@@ -84,6 +84,45 @@ class KotlinExposedTableGeneratorTest {
         }
     }
 
+    @Test fun `field duration emits the duration columns and the shared support files`() {
+        // field.duration → `durationColumn(...)` (Column<Duration>: native INTERVAL on Postgres,
+        // the canonical ISO-8601 string elsewhere) and `durationArrayColumn(...)` for isArray, both
+        // backed by the package-shared MetaDurationColumnType.kt + MetaDurationWire.kt.
+        val fixture = """{
+          "metadata.root": { "package": "acme::demo", "children": [
+            { "object.entity": { "name": "Timer", "children": [
+                { "field.long":     { "name": "id" } },
+                { "field.duration": { "name": "timeout", "@required": true } },
+                { "field.duration": { "name": "grace" } },
+                { "field.duration": { "name": "backoff", "isArray": true } },
+                { "source.rdb":     { "@table": "timers" } },
+                { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } }
+            ] } }
+          ] }
+        }""".trimIndent()
+        val outDir = Files.createTempDirectory("ktbl-duration-")
+        try {
+            val gen = KotlinExposedTableGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("test", fixture))
+
+            val src = Files.readString(outDir.resolve("acme/demo/TimerTable.kt"))
+            assertTrue("val timeout = durationColumn(\"timeout\")" in src, src)
+            assertTrue("val grace = durationColumn(\"grace\").nullable()" in src, src)
+            assertTrue("val backoff = durationArrayColumn(\"backoff\")" in src, src)
+
+            val sup = Files.readString(outDir.resolve("acme/demo/MetaDurationColumnType.kt"))
+            assertTrue("internal class MetaDurationColumnType : ColumnType<Duration>()" in sup, sup)
+            assertTrue("if (isPostgres()) \"INTERVAL\"" in sup, sup)
+            assertTrue("override fun parameterMarker(value: Duration?): String = if (isPostgres()) \"CAST(? AS INTERVAL)\" else \"?\"" in sup, sup)
+            assertTrue("internal fun Table.durationArrayColumn(name: String): Column<List<Duration>>" in sup, sup)
+            val wire = Files.readString(outDir.resolve("acme/demo/MetaDurationWire.kt"))
+            assertTrue("internal object MetaDurationWire" in wire, wire)
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
     @Test fun `skips entities without source rdb child`() {
         val noSource = """{
           "metadata.root": { "package": "x", "children": [

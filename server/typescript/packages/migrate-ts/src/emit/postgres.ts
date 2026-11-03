@@ -602,6 +602,7 @@ export function pgType(t: SqlType): string {
     case "blob":      return "BYTEA";
     case "uuid":      return "UUID";
     case "inet":      return "INET";
+    case "interval":  return "INTERVAL";
     case "array":     return `${pgType(t.element)}[]`;
   }
 }

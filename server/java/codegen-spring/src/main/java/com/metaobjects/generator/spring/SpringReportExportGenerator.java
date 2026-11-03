@@ -10,6 +10,7 @@ import com.metaobjects.generator.spring.SpringNaming;
 import com.metaobjects.field.DecimalField;
 import com.metaobjects.field.EnumField;
 import com.metaobjects.field.InetField;
+import com.metaobjects.field.DurationField;
 import com.metaobjects.field.MapField;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.field.StringField;
@@ -162,7 +163,8 @@ public class SpringReportExportGenerator extends MultiFileDirectGeneratorBase<Me
 
         String writerPackage = getArg(ARG_WRITER_PACKAGE, sharedPackage(served));
         boolean decimalsAsString = loader.getRoot().getWireFormat().decimalsAsString();
-        write(outRoot, writerPackage, WRITER_NAME, writerSource(writerPackage, xmlNulls, csvBom, decimalsAsString));
+        write(outRoot, writerPackage, WRITER_NAME,
+            writerSource(writerPackage, xmlNulls, csvBom, decimalsAsString, usesDurationCell(served)));
         for (MetaObject entity : served) {
             String[] split = SpringNaming.splitFqn(entity.getName());
             write(outRoot, split[0], split[1] + "Export",
@@ -269,6 +271,7 @@ public class SpringReportExportGenerator extends MultiFileDirectGeneratorBase<Me
             return "text";
         }
         if (DecimalField.SUBTYPE_DECIMAL.equals(sub)) return "decimal";
+        if (DurationField.SUBTYPE_DURATION.equals(sub)) return "duration";
         return "raw";
     }
 
@@ -277,13 +280,67 @@ public class SpringReportExportGenerator extends MultiFileDirectGeneratorBase<Me
     // -----------------------------------------------------------------------
 
     private static String writerSource(String pkg, String xmlNulls, boolean csvBom, boolean decimalsAsString) {
-        String text = WRITER_TEMPLATE
+        return writerSource(pkg, xmlNulls, csvBom, decimalsAsString, false);
+    }
+
+    /**
+     * The shared writer; {@code duration} adds the {@code duration(Duration)} cell factory, and is
+     * set only when a served report has a scalar {@code field.duration} column, so a model without
+     * one gets the writer it always got, byte for byte.
+     */
+    static String writerSource(String pkg, String xmlNulls, boolean csvBom, boolean decimalsAsString,
+            boolean duration) {
+        String template = duration ? WRITER_TEMPLATE.replace(DURATION_CELL_ANCHOR, DURATION_CELL + DURATION_CELL_ANCHOR)
+            : WRITER_TEMPLATE;
+        String text = template
             .replace("@PACKAGE@", pkg.isEmpty() ? "" : "package " + pkg + ";\n\n")
             .replace("@BOM@", String.valueOf(csvBom))
             .replace("@NIL@", String.valueOf(XML_NULLS_NIL.equals(xmlNulls)))
             .replace("@DECIMALS_AS_STRING@", String.valueOf(decimalsAsString));
         return text;
     }
+
+    /** True when a served report has a scalar {@code field.duration} column (an array is a JSON cell). */
+    static boolean usesDurationCell(List<MetaObject> served) {
+        for (MetaObject entity : served) {
+            List<String> credentials = SpringGeneratorSupport.credentialNames(entity);
+            for (MetaField f : SpringGeneratorSupport.dtoComponentFields(entity)) {
+                if (!credentials.contains(f.getName()) && "duration".equals(cellFactory(f))) return true;
+            }
+        }
+        return false;
+    }
+
+    /** Where {@link #DURATION_CELL} goes in the writer: just before the decimal cell factory. */
+    private static final String DURATION_CELL_ANCHOR =
+        "    /** A decimal as the wire setting writes it: under \"string\" canonical plain notation (no\n";
+
+    /** The {@code field.duration} cell factory, emitted only for a model that has one. */
+    private static final String DURATION_CELL = """
+    /** A field.duration in its canonical ISO-8601 wire form ([-]PT[nH][nM][n[.f]S], microseconds),
+     *  as the list route writes it; Duration.toString() differs for a negative span. */
+    public static Cell duration(java.time.Duration value) {
+        if (value == null) return NULL;
+        boolean negative = value.isNegative();
+        java.time.Duration mag = negative ? value.negated() : value;
+        long total = mag.getSeconds();
+        long micros = mag.getNano() / 1_000L;
+        if (total == 0 && micros == 0) return new Cell("PT0S", false);
+        StringBuilder b = new StringBuilder(negative ? "-PT" : "PT");
+        if (total / 3600 > 0) b.append(total / 3600).append('H');
+        if (total % 3600 / 60 > 0) b.append(total % 3600 / 60).append('M');
+        if (total % 60 > 0 || micros > 0) {
+            b.append(total % 60);
+            if (micros > 0) {
+                String digits = Long.toString(micros);
+                b.append('.').append(("000000".substring(digits.length()) + digits).replaceAll("0+$", ""));
+            }
+            b.append('S');
+        }
+        return new Cell(b.toString(), false);
+    }
+
+""";
 
     /** The shared writer, verbatim but for the four substitutions in {@link #writerSource}. */
     private static final String WRITER_TEMPLATE = """

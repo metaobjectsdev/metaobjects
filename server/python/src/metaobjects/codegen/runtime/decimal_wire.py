@@ -21,6 +21,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import re
+from datetime import timedelta
 from decimal import Context, Decimal, InvalidOperation
 from collections.abc import Mapping
 from typing import Any, Callable, Iterable
@@ -248,33 +249,42 @@ def coerce_decimal_predicates(
     return out, None
 
 
-def _render(value: Any, decimal: Callable[[Decimal], str]) -> Any:
+#: A ``timedelta`` (a ``field.duration``) as its wire string: the generated package's
+#: ``_duration_wire.format_duration``, handed in by a router whose entity has a duration.
+DurationFormat = Callable[[timedelta], str]
+
+
+def _render(value: Any, decimal: Callable[[Decimal], str], duration: DurationFormat | None = None) -> Any:
     """*value* with every ``Decimal`` (at any depth of a dict, list or Pydantic model) as the
-    string *decimal* makes of it; everything else is left for the framework's encoder."""
+    string *decimal* makes of it, and, when *duration* is given, every ``timedelta`` as the
+    string it makes of it (FastAPI's own encoder would write a float count of seconds);
+    everything else is left for the framework's encoder."""
     if isinstance(value, Decimal):
         return decimal(value)
+    if duration is not None and isinstance(value, timedelta):
+        return duration(value)
     if isinstance(value, dict):
-        return {k: _render(v, decimal) for k, v in value.items()}
+        return {k: _render(v, decimal, duration) for k, v in value.items()}
     if isinstance(value, (list, tuple)):
-        return [_render(v, decimal) for v in value]
+        return [_render(v, decimal, duration) for v in value]
     dump = getattr(value, "model_dump", None)
     if callable(dump):
-        return _render(dump(), decimal)
+        return _render(dump(), decimal, duration)
     return value
 
 
-def to_wire(value: Any) -> Any:
+def to_wire(value: Any, duration: DurationFormat | None = None) -> Any:
     """W1 over a whole response: every ``Decimal`` in *value* (a row, a list of rows, the
     ``{"rows", "total"}`` envelope, a Pydantic model) as its canonical string."""
-    return _render(value, format_decimal)
+    return _render(value, format_decimal, duration)
 
 
-def to_native(value: Any) -> Any:
+def to_native(value: Any, duration: DurationFormat | None = None) -> Any:
     """The ``native`` decimal form over a whole response: every ``Decimal`` as ``str(value)``,
     which is what Pydantic v2 writes for one and keeps the value's scale (``Decimal("12.50")``
     is ``"12.50"``). FastAPI's own encoder would turn a ``Decimal`` in a plain dict row into a
     ``float``, which is lossy; a string is the exact form."""
-    return _render(value, str)
+    return _render(value, str, duration)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -291,6 +301,9 @@ class WireOutput:
     shapes: dict[str, Any] = dataclasses.field(default_factory=dict)
     #: #484: credential fields, which no response carries (the key is absent, not null).
     hidden: tuple[str, ...] = ()
+    #: field.duration: how a ``timedelta`` leaves (the canonical ISO-8601 duration), whatever
+    #: *decimals* says. ``None`` for an entity with no duration field.
+    duration: DurationFormat | None = None
 
 
 def render_wire(value: Any, wire: WireOutput) -> Any:
@@ -300,7 +313,7 @@ def render_wire(value: Any, wire: WireOutput) -> Any:
         value = _drop_hidden(value, wire.hidden)
     if wire.null_members != "native" and wire.shapes:
         value = _shape_members(value, wire)
-    return to_wire(value) if wire.decimals == "string" else to_native(value)
+    return to_wire(value, wire.duration) if wire.decimals == "string" else to_native(value, wire.duration)
 
 
 def _drop_hidden(value: Any, hidden: tuple[str, ...]) -> Any:

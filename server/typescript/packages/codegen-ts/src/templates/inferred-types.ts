@@ -27,6 +27,7 @@ import {
   FIELD_SUBTYPE_UUID,
   FIELD_SUBTYPE_URI,
   FIELD_SUBTYPE_INET,
+  FIELD_SUBTYPE_DURATION,
   FIELD_ATTR_REQUIRED,
   FIELD_ATTR_OBJECT_REF,
   FIELD_ATTR_VALUE_TYPE,
@@ -215,6 +216,8 @@ const SCALAR_TS_BY_SUBTYPE: Record<string, string> = {
   // type, same as uuid). Other ports bind to their native URI/IP type.
   [FIELD_SUBTYPE_URI]: "string",
   [FIELD_SUBTYPE_INET]: "string",
+  // field.duration is an ISO-8601 duration string: TS has no native duration type.
+  [FIELD_SUBTYPE_DURATION]: "string",
   [FIELD_SUBTYPE_INT]: "number",
   [FIELD_SUBTYPE_LONG]: "number",
   [FIELD_SUBTYPE_DOUBLE]: "number",

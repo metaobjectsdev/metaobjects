@@ -55,7 +55,8 @@ public static class EfCoreFilterDispatch
     /// (naming the field) instead of an exception out of <see cref="ApplyFilter{T}"/>.
     /// <see cref="FilterParser"/> is substrate-agnostic and cannot know a column's type; this
     /// is the first place that does. A decimal operand is parsed with the wire grammar
-    /// (<see cref="DecimalWire.TryParse"/>) and compared exactly, never through a double.
+    /// (<see cref="DecimalWire.TryParse"/>) and compared exactly, never through a double; a
+    /// duration operand with the duration wire grammar (<see cref="DurationWire.TryParse"/>).
     /// A failed parse result is returned unchanged.
     /// </summary>
     public static FilterParseResult Validate<T>(FilterParseResult parsed)
@@ -205,6 +206,13 @@ public static class EfCoreFilterDispatch
             return DecimalWire.TryParse(raw, out var exact)
                 ? exact
                 : throw new FormatException("not a decimal: " + raw);
+        // field.duration: an operand is an ISO-8601 duration in the accepted form (no years,
+        // months or weeks), compared as a span: `PT90M` equals a stored `PT1H30M`. EF binds it as
+        // an interval on Postgres and through the property's canonical-string converter elsewhere.
+        if (underlying == typeof(TimeSpan))
+            return DurationWire.TryParse(raw, out var span)
+                ? span
+                : throw new FormatException("not an ISO-8601 duration: " + raw);
         return Convert.ChangeType(raw, underlying, CultureInfo.InvariantCulture);
     }
 }

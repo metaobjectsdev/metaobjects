@@ -160,6 +160,14 @@ public class SpringValueObjectGenerator extends MultiFileDirectGeneratorBase<Met
         if (usesDecimal) {
             src.append(SpringGeneratorSupport.decimalAnnotationImports(runtimePackage, wire));
         }
+        // field.duration: a Duration component binds the canonical serializer / strict deserializer.
+        boolean usesDuration = fields.stream()
+            .anyMatch(f -> SpringGeneratorSupport.isDurationComponent(componentTypeFr019(f, vo)));
+        if (usesDuration) {
+            if (!usesDecimal) src.append("import com.fasterxml.jackson.databind.annotation.JsonDeserialize;\n");
+            src.append(SpringGeneratorSupport.durationAnnotationImports(
+                runtimePackage, usesDecimal && wire.decimalsAsString()));
+        }
         if (usesValid) {
             src.append("import jakarta.validation.Valid;\n");
         }
@@ -188,6 +196,8 @@ public class SpringValueObjectGenerator extends MultiFileDirectGeneratorBase<Met
             if (!a.isEmpty()) src.append(a).append(' ');
             String decimalJson = SpringGeneratorSupport.decimalJsonAnnotations(type, runtimePackage, field, wire);
             if (!decimalJson.isEmpty()) src.append(decimalJson).append(' ');
+            String durationJson = SpringGeneratorSupport.durationJsonAnnotations(type);
+            if (!durationJson.isEmpty()) src.append(durationJson).append(' ');
             if (!jsonName.isEmpty()) src.append(jsonName).append(' ');
             src.append(type).append(' ').append(component);
             if (i < fields.size() - 1) src.append(',');

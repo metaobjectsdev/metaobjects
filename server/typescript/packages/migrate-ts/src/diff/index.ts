@@ -782,6 +782,25 @@ function canonTypeForDialect(t: SqlType, dialect: Dialect | undefined): SqlType 
   return t;
 }
 
+/**
+ * Before field.duration, introspection read a Postgres `interval` column as `text`, and a model
+ * could only describe one as a string. So a live interval column whose expected type is not an
+ * interval is read as text, exactly as it was: a model that does not use field.duration sees the
+ * diff it always saw, and an existing interval column modelled as a string does not turn into
+ * drift. Only an expected interval compares as one.
+ */
+function asPreDurationType(actual: SqlType, expected: SqlType): SqlType {
+  if (actual.kind === "interval" && expected.kind !== "interval") return { kind: "text" };
+  if (actual.kind === "array" && expected.kind === "array") {
+    const element = asPreDurationType(actual.element, expected.element);
+    return element === actual.element ? actual : { kind: "array", element };
+  }
+  if (actual.kind === "array" && actual.element.kind === "interval" && expected.kind !== "array") {
+    return { kind: "array", element: { kind: "text" } };
+  }
+  return actual;
+}
+
 function sqlTypeEqualsForDialect(a: SqlType, b: SqlType, dialect: Dialect | undefined): boolean {
   return sqlTypeEquals(canonTypeForDialect(a, dialect), canonTypeForDialect(b, dialect));
 }
@@ -809,11 +828,13 @@ function diffTableColumns(
   const actualCols = new Map(actual.columns.map((c) => [c.name, c]));
 
   for (const [name, ec] of expectedCols) {
-    const ac = actualCols.get(name);
-    if (!ac) {
+    const live = actualCols.get(name);
+    if (!live) {
       changes.push({ kind: "add-column", table, ...sx, column: ec, status: ALLOWED });
       continue;
     }
+    const preDuration = asPreDurationType(live.sqlType, ec.sqlType);
+    const ac = preDuration === live.sqlType ? live : { ...live, sqlType: preDuration };
     // Compare type, nullable, default — emit per-aspect change. Type equality is
     // dialect-aware: SQLite/D1 cannot physically represent a VARCHAR length or a
     // native json type, so those distinctions must not read as drift (see

@@ -19,6 +19,7 @@ export type SqlType =
   | { kind: "blob" }
   | { kind: "uuid" }
   | { kind: "inet" }        // Postgres-native inet (IPv4/IPv6) — field.inet (ADR-0036/0037 Wave 3)
+  | { kind: "interval" }    // Postgres-native interval — field.duration (text elsewhere)
   | { kind: "array"; element: SqlType };   // native SQL array (e.g. uuid[], text[])
 
 /**
@@ -64,6 +65,7 @@ export function sqlTypeEquals(a: SqlType, b: SqlType): boolean {
     case "blob":
     case "uuid":
     case "inet":
+    case "interval":
       return true;
   }
 }
@@ -115,6 +117,7 @@ export function isWidening(from: SqlType, to: SqlType): boolean {
     case "blob":
     case "uuid":
     case "inet":
+    case "interval":
     case "timestamp":
     case "array":
       // Array element-type changes are not auto-widened — require explicit allow.

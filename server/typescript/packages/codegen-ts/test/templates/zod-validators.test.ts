@@ -1,7 +1,7 @@
 import { describe, test, expect } from "bun:test";
 import { TypeId, TYPE_IDENTITY, TYPE_VALIDATOR,
          FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_ENUM, FIELD_SUBTYPE_OBJECT,
-         FIELD_SUBTYPE_URI, FIELD_SUBTYPE_INET,
+         FIELD_SUBTYPE_URI, FIELD_SUBTYPE_INET, FIELD_SUBTYPE_DURATION, DURATION_PATTERN,
          FIELD_ATTR_STRING_FORMAT, STRING_FORMAT_EMAIL, STRING_FORMAT_HOSTNAME,
          IDENTITY_SUBTYPE_PRIMARY, OBJECT_SUBTYPE_ENTITY,
          VALIDATOR_SUBTYPE_REGEX, VALIDATOR_SUBTYPE_LENGTH,
@@ -389,6 +389,21 @@ describe("renderZodValidators", () => {
     expect(out).not.toContain("z.string().ip()");
     expect(compact).toContain(".or(z.string().regex(");
     expect(compact).toContain("z.string().regex(/^(?:(?:25[0-5]"); // the IPv4 octet regex
+  });
+
+  test("field.duration → the accepted-form regex, canonicalized by the module-local durationWrite (declared once)", () => {
+    const hold = metaObject(OBJECT_SUBTYPE_ENTITY, "Hold");
+    hold.addChild(metaField(FIELD_SUBTYPE_LONG, "id"));
+    hold.addChild(metaField(FIELD_SUBTYPE_DURATION, "holdFor"));
+    hold.addChild(metaField(FIELD_SUBTYPE_DURATION, "grace"));
+    const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
+    primary.setAttr("fields", ["id"]);
+    primary.setAttr("generation", "increment");
+    hold.addChild(primary);
+
+    const out = renderZodValidators(hold).toString();
+    expect(out.replace(/\s+/g, "")).toContain(`holdFor:z.string().regex(/${DURATION_PATTERN}/).transform(durationWrite).optional()`);
+    expect(out.split("function durationWrite(").length - 1).toBe(1);
   });
 
   // #234 — @lenient degrades field.uri / field.inet to a plain string (no validator).

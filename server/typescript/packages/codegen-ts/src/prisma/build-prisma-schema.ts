@@ -19,6 +19,7 @@ import {
   FIELD_SUBTYPE_DATE,
   FIELD_SUBTYPE_DECIMAL,
   FIELD_SUBTYPE_DOUBLE,
+  FIELD_SUBTYPE_DURATION,
   FIELD_SUBTYPE_ENUM,
   FIELD_SUBTYPE_FLOAT,
   FIELD_SUBTYPE_INET,
@@ -275,8 +276,16 @@ function pgColumnType(t: SqlType, field: MetaField): ColumnType {
       return { scalar: "String", list: false, native: "@db.Uuid" };
     case "inet":
       return { scalar: "String", list: false, native: "@db.Inet" };
+    case "interval":
+      // field.duration. Prisma has no interval type, scalar or native, so the column is declared
+      // `Unsupported("interval")`: `prisma db push` / `migrate` create the interval column
+      // `meta verify --db` expects, and Prisma Client leaves the field out of its model — read and
+      // write it with `$queryRaw` (bind the Postgres spelling, `01:30:00`, not ISO-8601).
+      return { scalar: 'Unsupported("interval")', list: false };
     case "array": {
       if (t.element.kind === "array") throw unreachableType("postgresql", field, "a nested array");
+      // An array of an unsupported type is one unsupported type, never a list of one.
+      if (t.element.kind === "interval") return { scalar: 'Unsupported("interval[]")', list: false };
       const element = pgColumnType(t.element, field);
       return { ...element, list: true };
     }
@@ -328,6 +337,9 @@ function mysqlColumnType(t: SqlType, field: MetaField, needsLength: boolean): Co
       return varchar(36);
     case FIELD_SUBTYPE_INET:
       return varchar(45);
+    // The canonical ISO-8601 string, in the column the Drizzle generator's MySQL arm writes.
+    case FIELD_SUBTYPE_DURATION:
+      return varchar(64);
     case FIELD_SUBTYPE_TIMESTAMP:
       return { scalar: "DateTime", list: false, native: "@db.DateTime(3)" };
     case FIELD_SUBTYPE_TIME:

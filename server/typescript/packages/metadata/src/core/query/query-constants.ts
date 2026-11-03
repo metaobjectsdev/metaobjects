@@ -1,4 +1,4 @@
-import { FIELD_SUBTYPE_UUID, FIELD_SUBTYPE_CURRENCY, FIELD_SUBTYPE_ENUM, FIELD_SUBTYPE_URI, FIELD_SUBTYPE_INET, FIELD_ATTR_INT_VALUE_MAP } from "../field/field-constants.js";
+import { FIELD_SUBTYPE_UUID, FIELD_SUBTYPE_CURRENCY, FIELD_SUBTYPE_ENUM, FIELD_SUBTYPE_URI, FIELD_SUBTYPE_INET, FIELD_SUBTYPE_DURATION, FIELD_ATTR_INT_VALUE_MAP } from "../field/field-constants.js";
 
 // Query concern constants — filter operators, sort order values.
 //
@@ -61,6 +61,10 @@ export const OPS_BY_SUBTYPE: Readonly<Record<string, readonly FilterOp[]>> = {
   // inet: an IP address — identity-comparison ops only (no `like`; ordering
   // gt/lt is not exposed). Same op band as uuid.
   [FIELD_SUBTYPE_INET]: [FILTER_OP_EQ, FILTER_OP_NE, FILTER_OP_IN, FILTER_OP_IS_NULL],
+  // duration: identity-comparison ops only for now. Ordering is not exposed: a
+  // text column (SQLite, MySQL) cannot order ISO-8601 strings. Adding it later
+  // is additive.
+  [FIELD_SUBTYPE_DURATION]: [FILTER_OP_EQ, FILTER_OP_NE, FILTER_OP_IN, FILTER_OP_IS_NULL],
 } as const;
 
 export function opsForSubType(subType: string): readonly FilterOp[] {

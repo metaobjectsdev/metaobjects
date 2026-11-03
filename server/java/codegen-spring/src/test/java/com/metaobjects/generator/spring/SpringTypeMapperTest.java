@@ -156,6 +156,20 @@ public class SpringTypeMapperTest extends SharedRegistryTestBase {
     }
 
     @Test
+    public void durationFieldMapsToJavaTimeDuration() {
+        // field.duration binds to java.time.Duration, with the canonical ISO-8601 wire binding.
+        assertEquals("java.time.Duration",
+            SpringTypeMapper.javaTypeName(new com.metaobjects.field.DurationField("holdFor")));
+        assertEquals("@JsonSerialize(using = CanonicalDurationSerializer.class) "
+                + "@JsonDeserialize(using = CanonicalDurationDeserializer.class)",
+            SpringGeneratorSupport.durationJsonAnnotations("java.time.Duration"));
+        assertEquals("@JsonSerialize(contentUsing = CanonicalDurationSerializer.class) "
+                + "@JsonDeserialize(contentUsing = CanonicalDurationDeserializer.class)",
+            SpringGeneratorSupport.durationJsonAnnotations("java.util.List<java.time.Duration>"));
+        assertEquals("", SpringGeneratorSupport.durationJsonAnnotations("String"));
+    }
+
+    @Test
     public void stringFormatEmailEmitsJakartaEmail() {
         // ADR-0036/0037 Wave 3: @stringFormat:email → Jakarta @Email (codegen-owned matcher).
         StringField f = new StringField("contactEmail");

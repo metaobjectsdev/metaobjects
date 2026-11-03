@@ -100,6 +100,10 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<AllTypes>().Property(x => x.UriVal).HasColumnType("text").HasConversion(v => v!.ToString(), v => new System.Uri(v));
         modelBuilder.Entity<AllTypes>().Property(x => x.InetVal).HasColumnType("inet");
         modelBuilder.Entity<AllTypes>().Property(x => x.Inet6Val).HasColumnType("inet");
+        if (Database.ProviderName == "Npgsql.EntityFrameworkCore.PostgreSQL")
+            modelBuilder.Entity<AllTypes>().Property(x => x.DurationVal).HasColumnType("interval");
+        else
+            modelBuilder.Entity<AllTypes>().Property(x => x.DurationVal).HasConversion(new Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<System.TimeSpan, string>(v => global::MetaObjects.IntegrationTests.Generated.DurationWire.Format(v), v => global::MetaObjects.IntegrationTests.Generated.DurationWire.Parse(v)));
         modelBuilder.Entity<Asset>().Property(x => x.RecordedAt).HasColumnType("timestamp with time zone");
         modelBuilder.Entity<Asset>().Property(x => x.ObservedAt).HasColumnType("timestamp without time zone");
         modelBuilder.Entity<Asset>().Property(x => x.ExternalId).HasColumnType("uuid").HasConversion(v => System.Guid.Parse(v!), g => g.ToString("D"));

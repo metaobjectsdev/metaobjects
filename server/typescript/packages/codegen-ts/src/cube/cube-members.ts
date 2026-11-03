@@ -19,6 +19,7 @@ import {
   FIELD_SUBTYPE_ENUM,
   FIELD_SUBTYPE_FLOAT,
   FIELD_SUBTYPE_INET,
+  FIELD_SUBTYPE_DURATION,
   FIELD_SUBTYPE_INT,
   FIELD_SUBTYPE_LONG,
   FIELD_SUBTYPE_MAP,
@@ -62,11 +63,11 @@ const NUMBER_SUBTYPES: ReadonlySet<string> = new Set([
   FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT, FIELD_SUBTYPE_DECIMAL,
   FIELD_SUBTYPE_CURRENCY,
 ]);
-// uri and inet are strings on the wire, and Cube has no URI or network-address dimension type, so
-// each is a string dimension over its column.
+// uri, inet and duration are strings on the wire, and Cube has no URI, network-address or interval
+// dimension type, so each is a string dimension over its column.
 const STRING_SUBTYPES: ReadonlySet<string> = new Set([
   FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_ENUM, FIELD_SUBTYPE_UUID, FIELD_SUBTYPE_TIME, FIELD_SUBTYPE_URI,
-  FIELD_SUBTYPE_INET,
+  FIELD_SUBTYPE_INET, FIELD_SUBTYPE_DURATION,
 ]);
 
 // The subtypes `dimensionOfField` maps, in the order the refusal below lists them — derived from

@@ -245,6 +245,7 @@ Reach for these before inventing anything. When no row fits, run the decision pr
 | Open JSON, no reader narrows it | `field.string` + `@dbColumnType: jsonb` | the LAST rung — see "A JSON column" |
 | URL / URI | `field.uri` | native `URI`/`Uri`; `text` column; strict absolute-URI validation (add `@lenient: true` to store any string) — a real native type + behavior, so a subtype (not a validated string) |
 | IP address | `field.inet` | native IP type; Postgres `inet` column; strict IPv4/IPv6-literal validation (add `@lenient: true` for a plain-string `text` column) |
+| Elapsed time / timeout / delay | `field.duration` | native `TimeSpan`/`Duration`/`timedelta`; Postgres `interval` column; ISO-8601 on the wire (`PT1H30M`). Not for a calendar span ("every 3 months"): that is an int and a unit. Never a string or a count of seconds |
 | Validated plain string (email / hostname) | `field.string` + `@stringFormat` | `@stringFormat: email` or `@stringFormat: hostname` — idiomatic per-port validation; don't hand-write the `validator.regex` |
 
 Four rules behind those rows, in short (full text: `references/choosing-a-shape.md`):

@@ -249,6 +249,7 @@
                          (GeneratorInfo.ejectWith). -->
                     <include>KotlinEnumEmitter.kt</include>
                     <include>KotlinDecimalWireEmitter.kt</include>
+                    <include>KotlinDurationWireEmitter.kt</include>
                     <include>KotlinExtractSchemaEmitter.kt</include>
                     <include>KotlinOutputFormatSpecEmitter.kt</include>
                   </includes>

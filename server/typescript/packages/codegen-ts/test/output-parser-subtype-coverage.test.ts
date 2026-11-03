@@ -59,6 +59,7 @@ const WIDE = [
         { "field.currency": { name: "cur", "@required": true, "@currency": "USD" } },
         { "field.uri": { name: "url", "@required": true } },
         { "field.inet": { name: "ip", "@required": true } },
+        { "field.duration": { name: "wait", "@required": true } },
       ],
     },
   },
@@ -94,6 +95,8 @@ describe("A5 — strict response parser subtype coverage", () => {
     // Temporal values are ISO strings in raw JSON, the same reasoning zod-validators.ts
     // records for z.coerce.date().
     expect(src).toContain("ts: z.string()");
+    // A duration is an ISO-8601 string in the accepted form — never a calendar span.
+    expect(src).toContain("wait: z.string().regex(/^[-+]?P(?!$)(\\d+D)?");
   });
 
   test("an enum inheriting its @values through extends still resolves (ADR-0039 resolving)", async () => {
@@ -142,7 +145,7 @@ describe("A5 — strict response parser subtype coverage", () => {
       s: "x", i: 1, l: 2, dbl: 1.5, b: true, e: "A",
       u: "3f2504e0-4f89-11d3-9a0c-0305e82c3301",
       d: "2026-01-01", t: "10:00:00", ts: "2026-01-01T10:00:00Z",
-      dec: "1.25", cur: 199, url: "https://example.test", ip: "10.0.0.1",
+      dec: "1.25", cur: 199, url: "https://example.test", ip: "10.0.0.1", wait: "PT1H30M",
     };
     expect(schema.safeParse(ok).success).toBe(true);
 
@@ -152,5 +155,7 @@ describe("A5 — strict response parser subtype coverage", () => {
     expect(schema.safeParse({ ...ok, e: null }).success).toBe(false);
     // And a float where integer minor units are required.
     expect(schema.safeParse({ ...ok, cur: 1.99 }).success).toBe(false);
+    // A calendar span is not a duration.
+    expect(schema.safeParse({ ...ok, wait: "P1M" }).success).toBe(false);
   });
 });

@@ -24,14 +24,15 @@ across ports — a `field.currency` is integer minor units everywhere; a
 | `field.uuid` | `string` | `UUID` | `UUID` | `Guid` | `UUID` | `uuid` |
 | `field.uri` | `string` | `java.net.URI` | `java.net.URI` | `Uri` | `AnyUrl` | `text` |
 | `field.inet` | `string` | `InetAddress` | `InetAddress` | `IPAddress` | `IPvAnyAddress` | `inet` |
+| `field.duration` | `string` (ISO-8601) | `java.time.Duration` | `java.time.Duration` | `TimeSpan` | `timedelta` | `interval` |
 | `field.enum` | union + `z.enum` | `Enum` | `enum class` | `enum` | `Literal` inline, `Enum` with `UPPER_CASE` members when shared by `extends` | `varchar` + `CHECK` |
 | `field.object` | nested type | nested class | nested data class | nested class | nested Pydantic model | per `@storage` |
 | `field.map` | `Record<string, V>` | `Map<String, V>` | `Map<String, V>` | `Dictionary<string, V>` | `dict[str, V]` | `jsonb` |
 
-That is the whole registered vocabulary — 17 concrete subtypes. `field.base` is an
+That is the whole registered vocabulary — 18 concrete subtypes. `field.base` is an
 abstract registry anchor, never authored (`ERR_ABSTRACT_SUBTYPE_AUTHORED`).
 
-Four rows need a footnote:
+Five rows need a footnote:
 
 - **`field.decimal`** is exact in every port's own type. TypeScript's type is a string.
   Postgres and MySQL keep the declared `numeric(@precision, @scale)` exactly; SQLite and D1 have
@@ -48,6 +49,19 @@ Four rows need a footnote:
   which has none (the same reason `field.uuid` is a `string` there). `@lenient: true`
   degrades both to a plain string with no validator, and takes the `inet` column down to
   `text`.
+- **`field.duration`** is a fixed-length span: days, hours, minutes and seconds. A calendar
+  span ("every 3 months") is not one, because a month has no fixed length: model it as an int
+  and a unit. On the wire it is an ISO-8601 duration. Every port writes one canonical form,
+  `[-]PT[nH][nM][n[.f]S]`: hours are never folded into days (`PT26H`), there are at most six
+  fractional digits, and zero is `PT0S`. Every port reads that form and also a leading day
+  count (`P1DT2H`). Years, months and weeks are refused, and so are lowercase designators and
+  fractional hours. The column is a Postgres `interval` and text elsewhere, where it holds the
+  canonical form, so equal spans are equal strings. Filters take `eq`, `ne`, `in` and
+  `isNull`; range filters are not offered yet, because a text column cannot order the
+  strings. For the same reason a `sort` on a duration orders by span on Postgres but by
+  text on SQLite and MySQL (`PT10S` before `PT9S`). The
+  rule and its cross-port vectors are in
+  [`fixtures/duration-wire/`](../../fixtures/duration-wire/).
 - **`field.map`** is the typed dict: string keys, and a value type set by exactly one of
   `@valueType` (a scalar subtype) or `@objectRef` (a value object) — `V` above. It is one
   jsonb column holding the JSON object; `isArray` does not apply, so no port wraps the map

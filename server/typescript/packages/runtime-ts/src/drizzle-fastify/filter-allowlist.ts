@@ -15,6 +15,7 @@ import {
   FIELD_SUBTYPE_TIME,
   FIELD_SUBTYPE_TIMESTAMP,
   FIELD_SUBTYPE_UUID,
+  FIELD_SUBTYPE_DURATION,
   type FilterOp,
 } from "@metaobjectsdev/metadata";
 export { FILTER_OPS, OPS_BY_SUBTYPE, opsForSubType, type FilterOp };
@@ -33,6 +34,7 @@ export const FILTER_VALUE_FORMATS = [
   FIELD_SUBTYPE_TIME,
   FIELD_SUBTYPE_TIMESTAMP,
   FIELD_SUBTYPE_UUID,
+  FIELD_SUBTYPE_DURATION,
 ] as const;
 export type FilterValueFormat = (typeof FILTER_VALUE_FORMATS)[number];
 

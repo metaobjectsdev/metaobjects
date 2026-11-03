@@ -214,6 +214,39 @@ Double-precision (64-bit) IEEE-754 floating point. Binds to the native double/nu
 - `validator.*` — 0..*
 - `view.*` — 0..*
 
+### field.duration
+
+A fixed-length span of time: days, hours, minutes and seconds (ADR-0036/0037 — a concept with a native type + behavior). Binds to TS string (TS has no native duration type); other ports bind to their native type (C# System.TimeSpan, Java and Kotlin java.time.Duration, Python datetime.timedelta). DB column is the Postgres-native interval type, text elsewhere. The wire form is an ISO-8601 duration: every port writes [-]PT[nH][nM][n[.f]S] (hours never folded into days, up to 6 fractional digits, zero is PT0S) and reads that form plus a leading day count (nD, exactly 24 hours). Years, months and weeks are refused: a calendar span is not a fixed length.
+
+**Owning provider:** metaobjects-core-types
+
+**When to use:** A field holds an elapsed time, a timeout or a delay. Use it for a native Postgres interval column and a native duration type instead of a string or a number of seconds. A calendar span ("every 3 months") is not a duration: model it as an int and a unit.
+
+**Attributes**
+
+| Attribute | Type | Required | Default | Allowed values | Provider | Description |
+| --- | --- | --- | --- | --- | --- | --- |
+| `@column` | string | no |  |  | metaobjects-db | Physical column name for this field on an rdb source. Defaults to the field name under the project's naming.columns rule (the "naming" setting in .metaobjects/config.json). |
+| `@db.indexed` | boolean | no |  |  | metaobjects-db | When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means). |
+| `@dbColumnType` | string | no |  | `uuid`, `jsonb` | metaobjects-db | Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid \| jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2. |
+| `@default` | any | no |  |  | metaobjects-core-types | Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue(). |
+| `@example` | string | no |  |  | metaobjects-prompt | FR-010: an example value for this field, shown in the generated output-format prompt fragment. |
+| `@filterable` | boolean | no |  |  | metaobjects-ui | When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer). |
+| `@formExclude` | boolean | no |  |  | metaobjects-ui | When true, the field is omitted from generated forms, and the generated create, PATCH and PUT routes ignore a value sent for it (reads of it are unchanged); inert on fields for which no form is generated (e.g. projection/derived fields). |
+| `@instruction` | string | no |  |  | metaobjects-prompt | FR-010: a short instruction for this field, shown in the generated output-format prompt fragment. |
+| `@mutability` | string | no |  | `readWrite`, `writeOnce`, `readOnly` | metaobjects-core-types | FR-037 R1: who may write this field, and when. 'readWrite' (the default when absent) — the caller may set it on create and change it on update. 'writeOnce' — the caller sets it on create; it is excluded from the update shape thereafter, so a value presented on PATCH is ignored rather than rejected. 'readOnly' — nobody writes it: codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas omit it from input variants; the value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner. The three are mutually exclusive modes of ONE axis — who may write, and when — so the illegal pair is unrepresentable and inheritance has a total order: a subtype may TIGHTEN an inherited mode (readWrite < writeOnce < readOnly) and never loosen it (ERR_MUTABILITY_DOWNGRADE). Pairing a non-readWrite mode with @autoSet is ERR_MUTABILITY_AUTOSET_CONFLICT: @autoSet already says the SERVER supplies the value, which is a different axis from who may write it. |
+| `@required` | boolean | no |  |  | metaobjects-core-types | When true, the field is NOT NULL. Equivalent to attaching a validator.required child. On a non-array string, generated wire-tier input validation (create/patch) additionally rejects the empty string by default — whitespace is accepted — unless an explicit validator.length @min: 0 opts back to presence-only. In-process read models never enforce this at construction. |
+| `@sortable` | boolean | no |  |  | metaobjects-ui | When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out. |
+| `@sortableDefaultOrder` | string | no |  | `asc`, `desc` | metaobjects-ui | Direction a sort takes when it names this field but omits the order: a ?sort=<field> with no :order, and a layout.dataGrid whose @defaultSortField names it with no @defaultSortOrder. Defaults to 'asc'. |
+| `@unique` | boolean | no |  |  | metaobjects-core-types | When true, the field gets a column-level UNIQUE constraint. |
+| `@xmlText` | boolean | no |  |  | metaobjects-prompt | When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect when the eliciting prompt's @responseFormat is json. |
+
+**Allowed children**
+
+- `origin.*` — 0..*
+- `validator.*` — 0..*
+- `view.*` — 0..*
+
 ### field.enum
 
 String-backed enumeration constrained to a closed set of member symbols (@values). Each member is its own stored string with no name/value divergence.

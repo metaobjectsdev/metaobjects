@@ -391,6 +391,57 @@ public class JdbcCodecRoundTripTest {
     }
 
     /**
+     * {@code DurationCodec} on a text column: a written duration is stored canonically (one
+     * spelling per span, so an equality filter matches), and the text a Postgres interval
+     * returns reads back as the canonical wire string.
+     */
+    @Test
+    public void durationCodecStoresAndReadsTheCanonicalForm() throws Exception {
+        final java.util.Map<String, Object> store = new java.util.HashMap<>();
+        com.metaobjects.field.DurationField durationField = new com.metaobjects.field.DurationField("holdFor") {
+            @Override public void setString(Object obj, String value) { store.put("v", value); }
+        };
+        JdbcCodecs.DurationCodec codec = new JdbcCodecs.DurationCodec();
+
+        try (Connection conn = getConnection()) {
+            try (Statement st = conn.createStatement()) {
+                st.execute("CREATE TABLE codec_duration_probe (d VARCHAR(64))");
+            }
+            try (PreparedStatement ps = conn.prepareStatement("INSERT INTO codec_duration_probe (d) VALUES (?)")) {
+                codec.write(ps, durationField, 1, "P1DT0.5S");
+                ps.executeUpdate();
+                codec.write(ps, durationField, 1, java.time.Duration.ofSeconds(-90));
+                ps.executeUpdate();
+            }
+            try (Statement st = conn.createStatement()) {
+                st.execute("INSERT INTO codec_duration_probe (d) VALUES ('-1 days +02:00:00')");
+            }
+            java.util.List<String> stored = new java.util.ArrayList<>();
+            java.util.List<String> read = new java.util.ArrayList<>();
+            try (Statement st = conn.createStatement();
+                 ResultSet rs = st.executeQuery("SELECT d FROM codec_duration_probe")) {
+                while (rs.next()) {
+                    stored.add(rs.getString(1));
+                    codec.readInto(new Object(), durationField, rs, 1);
+                    read.add((String) store.get("v"));
+                }
+            }
+            assertEquals(java.util.List.of("PT24H0.5S", "-PT1M30S", "-1 days +02:00:00"), stored);
+            assertEquals(java.util.List.of("PT24H0.5S", "-PT1M30S", "-PT22H"), read);
+            try (PreparedStatement ps = conn.prepareStatement("INSERT INTO codec_duration_probe (d) VALUES (?)")) {
+                codec.write(ps, durationField, 1, "P1M");
+                fail("a calendar span is not a duration");
+            } catch (SQLException expected) {
+                assertTrue(expected.getMessage(), expected.getMessage().contains("holdFor"));
+            }
+            assertEquals("-00:01:30", JdbcCodecs.DurationCodec.postgresText(durationField, "-PT90S"));
+            try (Statement st = conn.createStatement()) {
+                st.execute("DROP TABLE codec_duration_probe");
+            }
+        }
+    }
+
+    /**
      * W2b zone-codec fix — {@code TimestampCodec} (plain TIMESTAMP) is zone-INDEPENDENT.
      *
      * <p>Drives the codec's {@code write → read} against a real TIMESTAMP column while the JVM

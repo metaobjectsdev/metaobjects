@@ -55,7 +55,7 @@ public class GeneratedScalarExtractLockStepTest extends SharedRegistryTestBase {
      */
     private static final List<String> SCALAR_SUBTYPES = List.of(
             "string", "int", "long", "double", "float", "decimal", "boolean",
-            "date", "time", "timestamp", "currency", "enum", "uuid", "uri", "inet");
+            "date", "time", "timestamp", "currency", "enum", "uuid", "uri", "inet", "duration");
 
     private static String fixture(String subType, boolean isArray) {
         String arr = isArray ? ", \"isArray\": true" : "";

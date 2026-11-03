@@ -18,6 +18,7 @@ import com.metaobjects.field.TimestampField
 import com.metaobjects.field.UuidField
 import com.metaobjects.field.UriField
 import com.metaobjects.field.InetField
+import com.metaobjects.field.DurationField
 import com.metaobjects.`object`.MetaObject
 import com.squareup.kotlinpoet.ANY
 import com.squareup.kotlinpoet.BOOLEAN
@@ -161,6 +162,19 @@ object KotlinTypeMapper {
      * extension into the package-shared [MetaInetUriColumnType] support file.
      */
     const val EXPOSED_INET_FN = "inetColumn"
+
+    /**
+     * Name of the generated, file-local Exposed extension function emitted for a
+     * [DurationField]. Returns a `Column<java.time.Duration>` whose `sqlType()` is the
+     * Postgres-native `INTERVAL` (text elsewhere, holding the canonical ISO-8601 string), so the
+     * column type MATCHES the `java.time.Duration` data-class property.
+     * [KotlinExposedTableGenerator] emits the supporting `ColumnType<Duration>` + this extension
+     * into the package-shared `MetaDurationColumnType` support file.
+     */
+    const val EXPOSED_DURATION_FN = "durationColumn"
+
+    /** [EXPOSED_DURATION_FN] for an `isArray` duration: `INTERVAL[]` on Postgres, a JSON text array elsewhere. */
+    const val EXPOSED_DURATION_ARRAY_FN = "durationArrayColumn"
 
     /**
      * Name of the generated, file-local Exposed extension function emitted for a
@@ -323,6 +337,10 @@ object KotlinTypeMapper {
         // column is the Postgres-native inet type; the file-local `inetColumn(...)` extension
         // gives a `Column<InetAddress>`. #234: a @lenient field.inet degrades to a plain String.
         is InetField      -> if (lenientNetField(field)) STRING else ClassName("java.net", "InetAddress")
+        // field.duration → native java.time.Duration property. The DB column is the Postgres-native
+        // interval (text elsewhere); the file-local `durationColumn(...)` extension gives a
+        // `Column<Duration>`, and the wire is the canonical ISO-8601 string (MetaDurationWire).
+        is DurationField  -> ClassName("java.time", "Duration")
         // field.map → an open-keyed Map<String, V> stored in a single jsonb column.
         // Keys are always String. The value type is the scalar named by @valueType,
         // or (for an @objectRef map) the referenced VO — which needs the loader to
@@ -583,6 +601,12 @@ object KotlinTypeMapper {
         // field.inet is a plain `text` column (the native inet column would reject a
         // not-strictly-valid value at INSERT).
         is InetField      -> if (lenientNetField(field)) "text($colExpr)" else "$EXPOSED_INET_FN($colExpr)"
+        // field.duration → file-local `durationColumn(...)` (a `Column<java.time.Duration>` over the
+        // Postgres-native INTERVAL, text elsewhere) or, with `isArray`, `durationArrayColumn(...)`
+        // (INTERVAL[] / a JSON text array). The helpers live in the package-shared
+        // MetaDurationColumnType.kt support file.
+        is DurationField  ->
+            if (isArrayResolved(field)) "$EXPOSED_DURATION_ARRAY_FN($colExpr)" else "$EXPOSED_DURATION_FN($colExpr)"
         // field.map → a single Postgres `JSONB` column holding the JSON object. Same emission
         // as a `field.object` jsonb column (the typed-object JSONB path) — the Exposed
         // `jsonb(name, encoder, decoder)` extension encoded/decoded through the shared Jackson
@@ -674,6 +698,12 @@ object KotlinTypeMapper {
      */
     fun usesInetUriHelper(field: MetaField<*>): Boolean =
         (field is UriField || field is InetField) && !lenientNetField(field)
+
+    /**
+     * True iff [field] needs the package-shared `MetaDurationColumnType.kt` support file — a
+     * [DurationField] (custom `Column<Duration>` over the Postgres-native interval, text elsewhere).
+     */
+    fun usesDurationHelper(field: MetaField<*>): Boolean = field is DurationField
 
     /**
      * True iff [field] needs the package-shared `MetaUuidStringColumnType.kt` support file —

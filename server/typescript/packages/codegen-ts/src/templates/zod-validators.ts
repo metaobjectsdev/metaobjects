@@ -17,7 +17,7 @@ import {
   FIELD_SUBTYPE_BOOLEAN, FIELD_SUBTYPE_DECIMAL, FIELD_ATTR_PRECISION, FIELD_ATTR_SCALE, FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT,
   FIELD_SUBTYPE_DATE, FIELD_SUBTYPE_TIME, FIELD_SUBTYPE_TIMESTAMP,
   FIELD_SUBTYPE_ENUM, FIELD_SUBTYPE_OBJECT, FIELD_SUBTYPE_MAP, FIELD_SUBTYPE_UUID,
-  FIELD_SUBTYPE_URI, FIELD_SUBTYPE_INET,
+  FIELD_SUBTYPE_URI, FIELD_SUBTYPE_INET, FIELD_SUBTYPE_DURATION,
   VALIDATOR_SUBTYPE_REQUIRED, VALIDATOR_SUBTYPE_LENGTH, VALIDATOR_SUBTYPE_REGEX,
   VALIDATOR_SUBTYPE_NUMERIC, VALIDATOR_SUBTYPE_ARRAY,
   IDENTITY_ATTR_FIELDS, IDENTITY_ATTR_GENERATION,
@@ -45,6 +45,7 @@ import {
 } from "./date-time-regex.js";
 import { renderDocsFor } from "./jsdoc.js";
 import { DECIMAL_WRITE_HELPER_DECL, zodDecimalWriteExpr } from "./decimal-wire-helper.js";
+import { DURATION_WRITE_HELPER_DECL, ZOD_DURATION_EXPR, ZOD_DURATION_WRITE_EXPR } from "./duration-wire-helper.js";
 import { sharedEnumForField } from "../enum-shared.js";
 import { sharedEnumImportSpecifier } from "../enum-import.js";
 import { sharedEnumZodConstName } from "./enums-file.js";
@@ -81,6 +82,13 @@ let decimalWriteUses = 0;
 
 function decimalHelperSince(since: number): string {
   return decimalWriteUses > since ? `${DECIMAL_WRITE_HELPER_DECL}\n\n` : "";
+}
+
+// The same device for the duration write rule (duration-wire-helper.ts).
+let durationWriteUses = 0;
+
+function durationHelperSince(since: number): string {
+  return durationWriteUses > since ? `${DURATION_WRITE_HELPER_DECL}\n\n` : "";
 }
 
 
@@ -269,6 +277,7 @@ export function renderInsertSchemaOnly(obj: MetaObject, ctx?: RenderContext): Co
   const z = imp("z@zod");
   const utcUsesBefore = utcTimestampUses;
   const decimalUsesBefore = decimalWriteUses;
+  const durationUsesBefore = durationWriteUses;
   const autoGenPkFields = autoGenPkFieldNames(obj);
   const assignedPkFields = assignedPkFieldNames(obj);
   const tphPin = tphDiscriminatorPin(obj);
@@ -320,7 +329,7 @@ export function renderInsertSchemaOnly(obj: MetaObject, ctx?: RenderContext): Co
   const docsPrefix = docs ? `${docs}\n` : "";
 
   return code`
-${utcTimestampHelperSince(utcUsesBefore)}${decimalHelperSince(decimalUsesBefore)}${docsPrefix}export const ${insertSchemaName} = ${z}.object({
+${utcTimestampHelperSince(utcUsesBefore)}${decimalHelperSince(decimalUsesBefore)}${durationHelperSince(durationUsesBefore)}${docsPrefix}export const ${insertSchemaName} = ${z}.object({
 ${joinCode(insertFieldLines, { on: ",\n" })}
 });
 `;
@@ -429,6 +438,7 @@ export function renderZodValidators(obj: MetaObject, ctx?: RenderContext): Code 
   const z = imp("z@zod");
   const utcUsesBefore = utcTimestampUses;
   const decimalUsesBefore = decimalWriteUses;
+  const durationUsesBefore = durationWriteUses;
   const autoGenPkFields = autoGenPkFieldNames(obj);
   const pkFields = primaryKeyFieldNames(obj);
   const assignedPkFields = assignedPkFieldNames(obj);
@@ -552,7 +562,7 @@ export type ${objName}CreatePreserving = ${z}.input<typeof ${preservingSchemaNam
     : code``;
 
   return code`
-${utcTimestampHelperSince(utcUsesBefore)}${decimalHelperSince(decimalUsesBefore)}${docsPrefix}export const ${insertSchemaName} = ${z}.object({
+${utcTimestampHelperSince(utcUsesBefore)}${decimalHelperSince(decimalUsesBefore)}${durationHelperSince(durationUsesBefore)}${docsPrefix}export const ${insertSchemaName} = ${z}.object({
 ${joinCode(insertFieldLines, { on: ",\n" })}
 });
 
@@ -761,6 +771,18 @@ function zodFieldExpr(
       // codegen owns the canonical IP matcher. Zod-version-agnostic regex union
       // (Zod 4 removed `z.string().ip()`); see net-regex.ts. @lenient → a plain string.
       baseStr = field.attr(FIELD_ATTR_LENIENT) === true ? "z.string()" : ZOD_INET_EXPR;
+      break;
+    case FIELD_SUBTYPE_DURATION:
+      // An ISO-8601 duration (days, hours, minutes, seconds; no years, months or weeks). A WRITE
+      // shape rewrites it to the canonical form (duration-wire-helper.ts), so equal spans are
+      // equal strings in a text column and in a jsonb value object; the TPH read shape parses
+      // rows the column codec has already put in that form.
+      if (readShape) {
+        baseStr = ZOD_DURATION_EXPR;
+        break;
+      }
+      baseStr = ZOD_DURATION_WRITE_EXPR;
+      durationWriteUses++;
       break;
     case FIELD_SUBTYPE_STRING: {
       // ADR-0036/0037 Wave 3: @stringFormat narrows a plain string to a closed

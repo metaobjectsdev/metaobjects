@@ -87,6 +87,7 @@
     <EmbeddedResource Include="Runtime/ConstraintErrors.cs" />
     <EmbeddedResource Include="Runtime/Iso8601TimestampConverter.cs" />
     <EmbeddedResource Include="Runtime/DecimalWire.cs" />
+    <EmbeddedResource Include="Runtime/DurationWire.cs" />
     <EmbeddedResource Include="Runtime/DecimalRangeEndpointFilter.cs" />
     <EmbeddedResource Include="Runtime/ReportExportHttp.cs" />
   </ItemGroup>

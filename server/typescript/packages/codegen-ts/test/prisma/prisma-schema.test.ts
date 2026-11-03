@@ -137,6 +137,21 @@ describe("prisma-schema — what the schema says", () => {
     }
   });
 
+  test("a field.duration: Unsupported(\"interval\") on Postgres, VarChar(64) on MySQL, String on SQLite", async () => {
+    const root = await loadJson(model([entity("Hold", [
+      { "source.rdb": { "@table": "holds" } }, longId,
+      { "field.duration": { name: "holdFor", "@required": true } },
+      { "field.duration": { name: "laps", isArray: true } }, pk,
+    ])]));
+    const fieldsOf = (provider: "postgresql" | "mysql" | "sqlite") =>
+      buildPrismaSchema(root, { provider }).models.find((m) => m.name === "Hold")!.fields;
+    const pg = fieldsOf("postgresql");
+    expect(pg.find((f) => f.name === "holdFor")).toMatchObject({ type: 'Unsupported("interval")', list: false });
+    expect(pg.find((f) => f.name === "laps")).toMatchObject({ type: 'Unsupported("interval[]")', list: false });
+    expect(fieldsOf("mysql").find((f) => f.name === "holdFor")!.attributes).toContain("@db.VarChar(64)");
+    expect(fieldsOf("sqlite").find((f) => f.name === "holdFor")).toMatchObject({ type: "String", list: false });
+  });
+
   test("a self relation is named, so its two ends pair", async () => {
     const spec = buildPrismaSchema(await loadShop(), { provider: "postgresql" });
     const employee = spec.models.find((m) => m.name === "Employee")!;

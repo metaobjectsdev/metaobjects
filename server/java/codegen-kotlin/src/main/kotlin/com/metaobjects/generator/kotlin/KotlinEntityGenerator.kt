@@ -19,6 +19,7 @@ import com.metaobjects.MetaData
 import com.metaobjects.field.DecimalField
 import com.metaobjects.field.EnumField
 import com.metaobjects.field.InetField
+import com.metaobjects.field.DurationField
 import com.metaobjects.field.MetaField
 import com.metaobjects.field.MapField
 import com.metaobjects.field.ObjectField
@@ -91,6 +92,7 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         parseArgs()
         val outRoot = Paths.get(outDir.absolutePath)
         decimalWirePackages.clear()
+        durationWirePackages.clear()
         // ADR-0019 Amendment 2: the project's wire setting, read from the loaded root.
         wire = WireFormat.of(loader.root)
         fr019Config = Fr019SharedEnum.ProvidedEnumConfig.fromArgs(args)
@@ -131,7 +133,12 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         emitNetJsonSupport(loader, outRoot)
         // ADR-0019 Amendment 1: the decimal wire rule, once per package that wrote a decimal property.
         for (pkg in decimalWirePackages) KotlinDecimalWireEmitter.write(pkg, outRoot, wire)
+        // field.duration: the canonical ISO-8601 wire rule, once per package that wrote a duration property.
+        for (pkg in durationWirePackages) KotlinDurationWireEmitter.write(pkg, outRoot)
     }
+
+    /** Packages whose emitted data classes carry a duration property: each gets one `MetaDurationWire.kt`. */
+    private val durationWirePackages = linkedSetOf<String>()
 
     /** Packages whose emitted data classes carry a decimal property: each gets one `MetaDecimalWire.kt`. */
     private val decimalWirePackages = linkedSetOf<String>()
@@ -310,6 +317,7 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             }
             decimalWireAnnotations(field, pkg, declaredRange = obj.subType == MetaObject.SUBTYPE_VALUE)
                 .forEach { propBuilder.addAnnotation(it) }
+            durationWireAnnotations(field, pkg).forEach { propBuilder.addAnnotation(it) }
             typeBuilder.addProperty(propBuilder.build())
         }
 
@@ -323,6 +331,7 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             typeBuilder.addProperty(
                 PropertySpec.builder(propName, propType).initializer(propName)
                     .apply { decimalWireAnnotations(field, pkg).forEach { addAnnotation(it) } }
+                    .apply { durationWireAnnotations(field, pkg).forEach { addAnnotation(it) } }
                     .build(),
             )
         }
@@ -667,6 +676,26 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
                 .build()
         }
         return annotations
+    }
+
+    /**
+     * `field.duration`: a `java.time.Duration` property is written as the canonical ISO-8601 string
+     * and read from the accepted form only, through the generated same-package `MetaDurationWire`
+     * (no MetaObjects import). Both halves in every wire mode: a host ObjectMapper's JavaTimeModule
+     * writes a Duration as decimal seconds (or `Duration.toString()`, which differs for a negative
+     * span), and `Duration.parse` accepts more than the accepted form. The serializer sits on the
+     * getter and the deserializer on the constructor parameter; `contentUsing` for an `isArray`.
+     */
+    private fun durationWireAnnotations(field: MetaField<*>, pkg: String): List<AnnotationSpec> {
+        if (field !is DurationField) return emptyList()
+        durationWirePackages.add(pkg)
+        val member = if (field.isArrayType) "contentUsing" else "using"
+        return listOf(
+            AnnotationSpec.builder(JSON_SERIALIZE).useSiteTarget(AnnotationSpec.UseSiteTarget.GET)
+                .addMember("$member = %T::class", ClassName(pkg, KotlinDurationWireEmitter.FILE_NAME, "Serializer")).build(),
+            AnnotationSpec.builder(JSON_DESERIALIZE).useSiteTarget(AnnotationSpec.UseSiteTarget.PARAM)
+                .addMember("$member = %T::class", ClassName(pkg, KotlinDurationWireEmitter.FILE_NAME, "Deserializer")).build(),
+        )
     }
 
     private fun isStrictNetField(field: MetaField<*>): Boolean =

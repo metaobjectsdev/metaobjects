@@ -184,20 +184,24 @@ public class ExtractorGenerator : IGenerator
 
         string baseType = CSharpNaming.DbColumnTypeClrOverride(field) ?? CSharpNaming.ScalarForField(field) ?? "string";
         bool mirrorIsValue = Fr010FieldMapping.ScalarMirrorType(field.SubType) != "string?";
+        // A duration parses through the DurationWire the entity generator emits into the POCO's
+        // own namespace (the POCO has a duration field, so the namespace has one).
+        string durationWire = "global::" + PackageBindingResolver.Resolve(
+            ctx.Config, PackageBindingResolver.EffectivePackage(owner), owner.Name, fallbackContext: owner.Name) + ".DurationWire";
 
         if (Fr010FieldMapping.IsArray(field))
         {
             // The POCO's scalar list is never null (an absent array is empty), whatever @required says.
             string elem = Fr010FieldMapping.ScalarMirrorType(field.SubType);
-            string x = Convert(mirrorIsValue ? "x!.Value" : "x!", baseType);
+            string x = Convert(mirrorIsValue ? "x!.Value" : "x!", baseType, durationWire);
             return $"({m} ?? global::System.Linq.Enumerable.Empty<{elem}>()).Where(x => x is not null).Select(x => {x}).ToList()";
         }
 
         if (required)
-            return Convert(mirrorIsValue ? $"{m}!.Value" : $"{m}!", baseType);
+            return Convert(mirrorIsValue ? $"{m}!.Value" : $"{m}!", baseType, durationWire);
         // Optional: null stays null. A nullable mirror value maps straight onto a nullable POCO
         // member of the same type; anything else converts the present value.
-        string converted = Convert(mirrorIsValue ? $"{m}.Value" : m, baseType);
+        string converted = Convert(mirrorIsValue ? $"{m}.Value" : m, baseType, durationWire);
         if (converted == m || converted == $"{m}.Value") return m;
         string nullable = CSharpNaming.IsValueType(baseType) ? $"({baseType}?)null" : "null";
         return $"{m} is null ? {nullable} : {converted}";
@@ -205,10 +209,10 @@ public class ExtractorGenerator : IGenerator
 
     /// <summary>
     /// Convert a present mirror value (<paramref name="v"/>, already unwrapped for value types) to
-    /// the POCO member's CLR type. The mirror carries temporal, uuid, uri and inet values as the
-    /// strings the model wrote; the POCO holds the native types.
+    /// the POCO member's CLR type. The mirror carries temporal, uuid, uri, inet and duration values
+    /// as the strings the model wrote; the POCO holds the native types.
     /// </summary>
-    private static string Convert(string v, string baseType) => baseType switch
+    private static string Convert(string v, string baseType, string durationWire) => baseType switch
     {
         "DateOnly" => $"global::System.DateOnly.Parse({v}, global::System.Globalization.CultureInfo.InvariantCulture)",
         "TimeOnly" => $"global::System.TimeOnly.Parse({v}, global::System.Globalization.CultureInfo.InvariantCulture)",
@@ -217,6 +221,7 @@ public class ExtractorGenerator : IGenerator
         "Guid" => $"global::System.Guid.Parse({v})",
         "Uri" => $"new global::System.Uri({v}, global::System.UriKind.RelativeOrAbsolute)",
         "IPAddress" => $"global::System.Net.IPAddress.Parse({v})",
+        "TimeSpan" => $"{durationWire}.Parse({v})",
         "JsonDocument" => $"global::System.Text.Json.JsonDocument.Parse({v})",
         "float" => $"(float){v}",
         _ => v,

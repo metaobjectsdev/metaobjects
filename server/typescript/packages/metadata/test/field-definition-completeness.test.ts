@@ -162,6 +162,8 @@ const EXPECTED_DATA_TYPE: Record<string, string> = {
   // ADR-0036/0037 Wave 3 — uri/inet bind to TS string.
   uri: "string",
   inet: "string",
+  // a fixed-length duration binds to TS string (an ISO-8601 duration).
+  duration: "string",
 };
 
 function expectedAttrsFor(subType: string): Record<string, AttrExp> {
@@ -179,7 +181,7 @@ function expectedAttrsFor(subType: string): Record<string, AttrExp> {
 }
 
 describe("field provider externalization — strict per-subtype completeness", () => {
-  test("registers all 18 field subtypes", () => {
+  test("registers all 19 field subtypes", () => {
     const registered = registry.allSubTypesOf(TYPE_FIELD).sort();
     expect(registered).toEqual([...FIELD_SUBTYPES].sort());
   });

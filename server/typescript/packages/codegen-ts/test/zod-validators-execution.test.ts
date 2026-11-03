@@ -37,7 +37,7 @@ import {
   TypeId, TYPE_IDENTITY, TYPE_VALIDATOR,
   IDENTITY_SUBTYPE_PRIMARY, OBJECT_SUBTYPE_ENTITY, OBJECT_SUBTYPE_VALUE,
   FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_INT, FIELD_SUBTYPE_STRING,
-  FIELD_SUBTYPE_ENUM, FIELD_SUBTYPE_URI, FIELD_SUBTYPE_INET,
+  FIELD_SUBTYPE_ENUM, FIELD_SUBTYPE_URI, FIELD_SUBTYPE_INET, FIELD_SUBTYPE_DURATION,
   FIELD_SUBTYPE_DATE, FIELD_SUBTYPE_TIME, FIELD_SUBTYPE_TIMESTAMP,
   FIELD_ATTR_REQUIRED, FIELD_ATTR_DEFAULT, FIELD_ATTR_MAX_LENGTH, FIELD_ATTR_VALUES,
   FIELD_ATTR_LENIENT, FIELD_ATTR_STRING_FORMAT, FIELD_ATTR_LOCAL_TIME,
@@ -251,6 +251,33 @@ describe("field.inet — the 0.20.6 regression class, executed", () => {
 
     expect(accepts(schema, { addr: "example.com" })).toBe(true);
     expect(accepts(schema, { addr: "192.168.1.1/24" })).toBe(true);
+  });
+});
+
+describe("field.duration — the accepted ISO-8601 form, stored canonically", () => {
+  test("the insert schema accepts an ISO-8601 duration and answers its canonical form", async () => {
+    const holdFor = metaField(FIELD_SUBTYPE_DURATION, "holdFor");
+    holdFor.setAttr(FIELD_ATTR_REQUIRED, true);
+    const schema = await insertSchemaOf(entityWith("Hold", holdFor));
+
+    expect(schema.parse({ holdFor: "PT90M" }).holdFor).toBe("PT1H30M");
+    expect(schema.parse({ holdFor: "P1DT2H" }).holdFor).toBe("PT26H");
+    expect(schema.parse({ holdFor: "-PT90S" }).holdFor).toBe("-PT1M30S");
+    expect(schema.parse({ holdFor: "PT1.123456789S" }).holdFor).toBe("PT1.123456S");
+    // The shared bound: 256204778 hours, one microsecond more refused.
+    expect(schema.parse({ holdFor: "-P10675199DT2H" }).holdFor).toBe("-PT256204778H");
+    for (const bad of ["P1M", "P1Y", "P2W", "1:30:00", "PT1.5H", "pt1h", "PT", "", "PT256204779H", "PT256204778H0.000001S"]) {
+      expect(accepts(schema, { holdFor: bad })).toBe(false);
+    }
+  });
+
+  test("the update schema canonicalizes too, and an optional duration may be null there", async () => {
+    const holdFor = metaField(FIELD_SUBTYPE_DURATION, "holdFor");
+    const schema = await updateSchemaOf(entityWith("Hold", holdFor));
+
+    expect(schema.parse({ holdFor: "PT5400S" }).holdFor).toBe("PT1H30M");
+    expect(schema.parse({ holdFor: null }).holdFor).toBeNull();
+    expect(accepts(schema, { holdFor: "P1M" })).toBe(false);
   });
 });
 

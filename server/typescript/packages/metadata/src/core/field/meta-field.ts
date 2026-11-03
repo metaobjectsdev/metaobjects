@@ -34,6 +34,7 @@ import {
   FIELD_SUBTYPE_UUID,
   FIELD_SUBTYPE_URI,
   FIELD_SUBTYPE_INET,
+  FIELD_SUBTYPE_DURATION,
   FIELD_ATTR_REQUIRED,
   FIELD_ATTR_UNIQUE,
   FIELD_ATTR_DEFAULT,
@@ -59,6 +60,9 @@ const FIELD_DATA_TYPE: Readonly<Record<string, DataType>> = {
   // URI/IP type in TS). Other ports bind to their native URI/IP type.
   [FIELD_SUBTYPE_URI]: DATA_TYPE_STRING,
   [FIELD_SUBTYPE_INET]: DATA_TYPE_STRING,
+  // field.duration binds to TS `string` (an ISO-8601 duration); other ports bind
+  // to their native duration type.
+  [FIELD_SUBTYPE_DURATION]: DATA_TYPE_STRING,
   [FIELD_SUBTYPE_INT]: DATA_TYPE_INT,
   [FIELD_SUBTYPE_LONG]: DATA_TYPE_LONG,
   [FIELD_SUBTYPE_CURRENCY]: DATA_TYPE_LONG,

@@ -34,6 +34,12 @@ export const FIELD_SUBTYPE_URI = "uri";
  *  IP (InetAddress / IPAddress / ipaddress). DB column is Postgres-native `inet`.
  *  Codegen emits IP validation accepting v4+v6 (Zod .ip()). */
 export const FIELD_SUBTYPE_INET = "inet";
+/** A fixed-length span of time (days, hours, minutes, seconds). Concept with a
+ *  native type + behavior → a subtype. TS binds to `string` (an ISO-8601
+ *  duration; TS has no native duration type); other ports bind to native
+ *  (TimeSpan / java.time.Duration / timedelta). DB column is Postgres-native
+ *  `interval`, text elsewhere. Years, months and weeks are refused. */
+export const FIELD_SUBTYPE_DURATION = "duration";
 
 export const FIELD_SUBTYPES = [
   SUBTYPE_BASE,
@@ -54,6 +60,7 @@ export const FIELD_SUBTYPES = [
   FIELD_SUBTYPE_UUID,
   FIELD_SUBTYPE_URI,
   FIELD_SUBTYPE_INET,
+  FIELD_SUBTYPE_DURATION,
 ] as const;
 export type FieldSubType = (typeof FIELD_SUBTYPES)[number];
 

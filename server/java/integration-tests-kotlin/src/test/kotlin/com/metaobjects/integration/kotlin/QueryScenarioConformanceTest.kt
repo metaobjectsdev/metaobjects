@@ -48,6 +48,16 @@ internal class QueryScenarioConformanceTest {
          */
         private val DEFERRED_SCENARIOS = emptyMap<String, String>()
 
+        /**
+         * `-Dmetaobjects.scenarios=a,b` narrows a run to the named scenarios (one Postgres
+         * container each, so a targeted run is far cheaper than the corpus). Unset = all.
+         */
+        private fun selected(name: String): Boolean {
+            val only = System.getProperty("metaobjects.scenarios")
+            if (only.isNullOrBlank()) return true
+            return only.split(",").map { it.trim() }.contains(name)
+        }
+
         @JvmStatic
         fun scenarios(): Stream<Arguments> {
             val corpus = ScenarioLoader.findCorpusRoot()
@@ -60,6 +70,7 @@ internal class QueryScenarioConformanceTest {
             )
             return all
                 .filter { it.name !in DEFERRED_SCENARIOS.keys && it.runsOn(ScenarioEngine.POSTGRES) }
+                .filter { selected(it.name) }
                 .stream()
                 .map { Arguments.of(it.name, it) }
         }

@@ -21,6 +21,7 @@ import {
   FIELD_SUBTYPE_UUID,
   FIELD_SUBTYPE_URI,
   FIELD_SUBTYPE_INET,
+  FIELD_SUBTYPE_DURATION,
   VALIDATOR_SUBTYPE_REQUIRED,
   VALIDATOR_SUBTYPE_LENGTH,
   FIELD_ATTR_MAX_LENGTH,
@@ -190,6 +191,7 @@ function sqliteJsonArrayElementTsType(subType: string): string | undefined {
     case FIELD_SUBTYPE_TIME:
     case FIELD_SUBTYPE_TIMESTAMP:
     case FIELD_SUBTYPE_DECIMAL:
+    case FIELD_SUBTYPE_DURATION:
       return "string";
     case FIELD_SUBTYPE_INT:
     case FIELD_SUBTYPE_LONG:
@@ -243,6 +245,23 @@ export interface EnumIntCustomType {
   intByMember: Record<string, number>;
 }
 
+/**
+ * A `field.duration` column: a generated Drizzle `customType` (the module-local const
+ * {@link DURATION_COLUMN_FN}) whose `toDriver` binds the dialect's spelling — the Postgres
+ * interval text `[-]HH:MM:SS[.f]` (Postgres refuses a signed ISO-8601 duration), the canonical
+ * ISO-8601 string on SQLite / MySQL — and whose `fromDriver` reads any of them back as the
+ * canonical ISO-8601 form. Drizzle's own pg-core `interval()` reads Postgres's text spelling
+ * (`01:30:00`), which is not the wire form. One declaration per module serves every duration
+ * column in it (templates/duration-wire-helper.ts).
+ */
+export const DURATION_COLUMN_FN = "durationColumn";
+
+export interface DurationCustomType {
+  /** The local const name, {@link DURATION_COLUMN_FN}. */
+  fnConstName: string;
+  dialect: Dialect;
+}
+
 export interface ColumnSpec {
   /** Drizzle function name, e.g., "text", "integer", "varchar". */
   fnName: string;
@@ -251,6 +270,8 @@ export interface ColumnSpec {
    * helper) rather than a Drizzle export — the renderer must NOT `imp()` it.
    */
   enumIntCustomType?: EnumIntCustomType;
+  /** Set for a scalar `field.duration`: `fnName` is the LOCAL duration codec const — never `imp()` it. */
+  durationCustomType?: DurationCustomType;
   /** DB column name (snake_case from field name, or @column override). */
   dbName: string;
   /** Positional args after dbName (currently always empty; reserved). */
@@ -458,7 +479,8 @@ export const PG_IDENTITY_CAPABLE_FNS: ReadonlySet<string> = new Set([
  *   indexed column (primary/secondary/reference identity, `index.lookup`, `@unique`) or one
  *   with a `@default` (a `TEXT` column cannot take a literal default). Those are
  *   `VARCHAR(255)`.
- * - `field.uuid` is `VARCHAR(36)` and `field.inet` `VARCHAR(45)`: MySQL has neither type.
+ * - `field.uuid` is `VARCHAR(36)`, `field.inet` `VARCHAR(45)` and `field.duration` `VARCHAR(64)`
+ *   (through the local duration codec): MySQL has none of those types.
  * - A string enum is `VARCHAR(n)`, `n` the longest member, typed as the member union.
  * - `field.timestamp` is `DATETIME(3)` in Drizzle's "date" mode (see normalizeTimestampMode).
  * - Arrays, `field.object`, `field.map` and `@dbColumnType: jsonb` are `JSON`.
@@ -506,6 +528,10 @@ function mapMysqlColumn(
       return varchar(36);
     case FIELD_SUBTYPE_INET:
       return varchar(45);
+    case FIELD_SUBTYPE_DURATION:
+      // VARCHAR(64) holding the canonical ISO-8601 string (MySQL has no interval type; a bounded
+      // column can be keyed). The column function is the local duration codec.
+      return { fnName: DURATION_COLUMN_FN };
     case FIELD_SUBTYPE_OBJECT:
     case FIELD_SUBTYPE_MAP:
       return { fnName: "json" };
@@ -652,6 +678,10 @@ export function mapColumnType(
           // SQLite has no native uuid/inet type; store as TEXT (string native binding).
           fnName = "text";
           break;
+        case FIELD_SUBTYPE_DURATION:
+          // TEXT holding the canonical ISO-8601 string, through the local duration codec.
+          fnName = DURATION_COLUMN_FN;
+          break;
         default:
           fnName = "text";
           break;
@@ -738,6 +768,12 @@ export function mapColumnType(
           // would itself reject a not-strictly-valid value at INSERT, defeating
           // the opt-out.
           fnName = field.attr(FIELD_ATTR_LENIENT) === true ? "text" : "inet";
+          break;
+        case FIELD_SUBTYPE_DURATION:
+          // The Postgres-native interval, through the local duration codec: it binds the
+          // interval spelling and reads the canonical ISO-8601 form. A duration array is
+          // interval[] (`.array()` below); Drizzle maps each element through the codec.
+          fnName = DURATION_COLUMN_FN;
           break;
         case FIELD_SUBTYPE_DECIMAL: {
           // Drizzle pg `numeric` infers as a TS `string` (precision-exact); the
@@ -952,6 +988,9 @@ export function mapColumnType(
   if (fnOptions !== undefined) result.fnOptions = fnOptions;
   if (defaultExpr !== undefined) result.defaultExpr = defaultExpr;
   if (enumIntCustomType !== undefined) result.enumIntCustomType = enumIntCustomType;
+  if (fnName === DURATION_COLUMN_FN && subType === FIELD_SUBTYPE_DURATION) {
+    result.durationCustomType = { fnConstName: DURATION_COLUMN_FN, dialect };
+  }
   if (dollarTypeRef !== undefined) result.dollarTypeRef = dollarTypeRef;
   if (leadingComment !== undefined) result.leadingComment = leadingComment;
 

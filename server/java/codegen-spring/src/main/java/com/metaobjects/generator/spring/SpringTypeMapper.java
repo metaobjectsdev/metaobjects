@@ -18,6 +18,7 @@ import com.metaobjects.field.TimestampField;
 import com.metaobjects.field.UuidField;
 import com.metaobjects.field.UriField;
 import com.metaobjects.field.InetField;
+import com.metaobjects.field.DurationField;
 import com.metaobjects.database.CoreDBMetaDataProvider;
 import com.metaobjects.identity.MetaIdentity;
 import com.metaobjects.object.MetaObject;
@@ -127,6 +128,10 @@ public final class SpringTypeMapper {
         // stays a String; the DB column is the Postgres-native inet type. #234: a @lenient
         // field.inet degrades to a plain String (no native InetAddress type, no validator).
         if (field instanceof InetField) return isLenientNetField(field) ? "String" : "java.net.InetAddress";
+        // duration — native java.time.Duration binding. The wire stays the canonical ISO-8601
+        // string (bound per component by the CanonicalDuration serializer/deserializer, since a
+        // host ObjectMapper writes a Duration as seconds); the DB column is the Postgres interval.
+        if (field instanceof DurationField) return "java.time.Duration";
         // field.object @objectRef → the referenced value object's generated record type
         // (Program D). A jsonb value-object column surfaces as the <VO> record (single) or
         // — via componentType wrapping — List<<VO>> (isArray). Fully-qualified so the

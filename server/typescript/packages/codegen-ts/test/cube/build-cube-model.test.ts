@@ -280,6 +280,7 @@ describe("Table C — dimension types", () => {
     ["time", { "field.time": { name: "x" } }],
     ["uri", { "field.uri": { name: "x" } }],
     ["inet", { "field.inet": { name: "x" } }],
+    ["duration", { "field.duration": { name: "x" } }],
   ])("%s → string, the column", async (_label, field) => {
     expect(await dimensionOf(field)).toEqual({ name: "d", sql: '{CUBE}."x"', type: "string" });
   });

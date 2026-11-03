@@ -151,6 +151,8 @@ public class DbContextGenerator : IGenerator
             // creates (ADR-0015).
             foreach (var f in p.Fields().Where(f => f.SubType == FIELD_SUBTYPE_MAP))
                 modelLines.Add(MapJsonbConfig(name, p, f, ctx));
+            // A duration column on a view reads through the same provider-dependent mapping.
+            AddDurationConfig(name, p, p.Fields(), ctx, modelLines);
         }
         foreach (var e in objects.Where(o => o.IsEntity() && !o.IsReadOnlyProjection()))
         {
@@ -1087,9 +1089,52 @@ public class DbContextGenerator : IGenerator
                 $"        modelBuilder.Entity<{className}>().Property(x => x.{prop}).HasColumnType(\"inet\");");
         }
 
+        // field.duration — a System.TimeSpan. Npgsql maps it to the native `interval` (and an array
+        // to `interval[]`), reading an interval with a month or year part as an error. Every other
+        // provider stores the canonical ISO-8601 string in a text column (the TS-owned SQLite / MySQL
+        // schemas), through the entity namespace's DurationWire; EF's own TimeSpan text ("01:30:00")
+        // would not be the cross-port form, and MySQL's `time` cannot hold more than 838 hours.
+        AddDurationConfig(className, entity, fieldList, ctx, modelLines);
+
         foreach (var f in fieldList.Where(f => !f.ResolvedIsArray() && f.DbColumnType is not null))
             if (DbColumnTypeConfig(className, f) is { } cfg) modelLines.Add(cfg);
     }
+
+    // field.duration — a System.TimeSpan. Npgsql maps it to the native `interval` (and an array
+    // to `interval[]`), reading an interval with a month or year part as an error. Every other
+    // provider stores the canonical ISO-8601 string in a text column (the TS-owned SQLite / MySQL
+    // schemas), through the entity namespace's DurationWire; EF's own TimeSpan text ("01:30:00")
+    // would not be the cross-port form, and MySQL's `time` cannot hold more than 838 hours.
+    private static void AddDurationConfig(
+        string className, MetaObject entity, IEnumerable<MetaField> fields, GenContext ctx, List<string> modelLines)
+    {
+        foreach (var f in fields.Where(f => f.SubType == FIELD_SUBTYPE_DURATION && f.DbColumnType is null))
+        {
+            var prop = CSharpNaming.Pascal(f.Name);
+            var converter = DurationConverter(entity, ctx);
+            var npgsql = f.ResolvedIsArray()
+                ? null
+                : $"            modelBuilder.Entity<{className}>().Property(x => x.{prop}).HasColumnType(\"interval\");";
+            var text = f.ResolvedIsArray()
+                ? $"            modelBuilder.Entity<{className}>().PrimitiveCollection(x => x.{prop}).ElementType().HasConversion({converter});"
+                : $"            modelBuilder.Entity<{className}>().Property(x => x.{prop}).HasConversion({converter});";
+            modelLines.Add(npgsql is null
+                ? $"        if (Database.ProviderName != \"{NpgsqlProviderName}\")\n{text}"
+                : $"        if (Database.ProviderName == \"{NpgsqlProviderName}\")\n{npgsql}\n        else\n{text}");
+        }
+    }
+
+    // A TimeSpan <-> canonical ISO-8601 string converter, through the DurationWire the entity
+    // generator emits into OWNER's namespace (owner has a duration field, so it has one).
+    private static string DurationConverter(MetaObject owner, GenContext ctx)
+    {
+        var ns = PackageBindingResolver.Resolve(ctx.Config, PackageBindingResolver.EffectivePackage(owner), owner.Name, fallbackContext: owner.Name);
+        return "new Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<System.TimeSpan, string>(" +
+            $"v => global::{ns}.DurationWire.Format(v), v => global::{ns}.DurationWire.Parse(v))";
+    }
+
+    // The EF Core provider name Npgsql registers (DbContext.Database.ProviderName).
+    private const string NpgsqlProviderName = "Npgsql.EntityFrameworkCore.PostgreSQL";
 
     // True when a value object declares a field.map, or holds a value object that does.
     private static bool HoldsMap(MetaObject vo, MetaRoot root, HashSet<MetaObject> seen)
@@ -1258,6 +1303,30 @@ public class DbContextGenerator : IGenerator
                 continue;
             }
 
+            // A `field.duration` member: the migration flattens it to an `interval` column on
+            // Postgres (Npgsql maps the TimeSpan natively) and a text column elsewhere, which holds
+            // the canonical ISO-8601 string — the same provider-dependent mapping a top-level
+            // duration takes (AddDurationConfig). Without the converter EF would write its own
+            // "01:30:00" there and fail to read another port's "PT1H30M".
+            if (nf.SubType == FIELD_SUBTYPE_DURATION && CSharpNaming.DbColumnTypeClrOverride(nf) is null)
+            {
+                var dprop = CSharpNaming.Pascal(nf.Name);
+                var converter = DurationConverter(vo, ctx);
+                if (nf.ResolvedIsArray())
+                {
+                    sb.AppendLine($"            b.PrimitiveCollection(p => p.{dprop}).HasColumnName(\"{nestedColAny}\");");
+                    sb.AppendLine($"            if (Database.ProviderName != \"{NpgsqlProviderName}\")");
+                    sb.AppendLine($"                b.PrimitiveCollection(p => p.{dprop}).ElementType().HasConversion({converter});");
+                }
+                else
+                {
+                    sb.AppendLine($"            b.Property(p => p.{dprop}).HasColumnName(\"{nestedColAny}\");");
+                    sb.AppendLine($"            if (Database.ProviderName != \"{NpgsqlProviderName}\")");
+                    sb.AppendLine($"                b.Property(p => p.{dprop}).HasConversion({converter});");
+                }
+                continue;
+            }
+
             var isScalar = CSharpNaming.ScalarFor(nf.SubType) is not null;
             var isEnum = nf.SubType == FIELD_SUBTYPE_ENUM && !nf.ResolvedIsArray();
             if (!isScalar && !isEnum)
@@ -1301,7 +1370,6 @@ public class DbContextGenerator : IGenerator
     /// </remarks>
     private static List<string> JsonEnumConversions(MetaObject vo, GenContext ctx, string builder = "b")
     {
-        _ = ctx;
         var lines = new List<string>();
         foreach (var nf in vo.Fields())
         {
@@ -1315,6 +1383,16 @@ public class DbContextGenerator : IGenerator
                 lines.Add(CSharpNaming.IsRequired(vo, nf)
                     ? $"            {builder}.Property(p => p.{prop}).HasConversion(v => v.ToString(\"0.############################\", System.Globalization.CultureInfo.InvariantCulture), s => decimal.Parse(s, System.Globalization.CultureInfo.InvariantCulture));"
                     : $"            {builder}.Property(p => p.{prop}).HasConversion(v => v == null ? null : v.Value.ToString(\"0.############################\", System.Globalization.CultureInfo.InvariantCulture), s => s == null ? (decimal?)null : decimal.Parse(s, System.Globalization.CultureInfo.InvariantCulture));");
+                continue;
+            }
+            // A duration member of a JSON document is stored as its canonical ISO-8601 string (the
+            // wire form), not as EF's own TimeSpan text ("01:30:00"), on every provider.
+            if (nf.SubType == FIELD_SUBTYPE_DURATION && CSharpNaming.DbColumnTypeClrOverride(nf) is null)
+            {
+                var converter = DurationConverter(vo, ctx);
+                lines.Add(nf.ResolvedIsArray()
+                    ? $"            {builder}.PrimitiveCollection(p => p.{prop}).ElementType().HasConversion({converter});"
+                    : $"            {builder}.Property(p => p.{prop}).HasConversion({converter});");
                 continue;
             }
             if (nf.SubType != FIELD_SUBTYPE_ENUM) continue;

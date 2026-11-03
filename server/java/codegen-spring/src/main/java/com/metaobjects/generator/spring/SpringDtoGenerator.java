@@ -376,6 +376,8 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         src.append("        Map<String, Object> assigned = new LinkedHashMap<>();\n");
         boolean usesDecimalPatch = false;
         boolean usesDecimalListPatch = false;
+        boolean usesDurationPatch = false;
+        boolean usesDurationListPatch = false;
         for (MetaField field : settable) {
             String name = field.getName();
             String type = patchComponentType(field, entity, dtoName);
@@ -400,6 +402,15 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
                    .append(", ").append(bound == null ? 0 : bound[1]).append(");\n");
                 usesDecimalPatch = true;
                 usesDecimalListPatch = true;
+                continue;
+            }
+            if ("java.time.Duration".equals(type) || "java.util.List<java.time.Duration>".equals(type)) {
+                // field.duration binds through the strict accepted-form rule, not the mapper's
+                // Duration.parse (which takes fractional hours, lowercase and numbers of seconds).
+                boolean list = !"java.time.Duration".equals(type);
+                src.append("        bindDuration").append(list ? "List" : "").append("(body, assigned, \"")
+                   .append(name).append("\", ").append(required).append(");\n");
+                if (list) usesDurationListPatch = true; else usesDurationPatch = true;
                 continue;
             }
             src.append("        bind(body, mapper, assigned, \"").append(name)
@@ -472,6 +483,51 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
                 src.append("        assigned.put(field, items);\n");
                 src.append("    }\n");
             }
+        }
+        if (usesDurationPatch || usesDurationListPatch) {
+            String pve = "import " + runtimePackage + ".PatchValidationException;\n";
+            int at = src.indexOf(pve);
+            src.insert(at, "import " + runtimePackage + ".CanonicalDurationDeserializer;\n");
+        }
+        if (usesDurationPatch) {
+            src.append("\n    private static void bindDuration(JsonNode body, Map<String, Object> assigned,\n");
+            src.append("            String field, boolean required) {\n");
+            src.append("        if (!body.has(field)) return;                         // absent → untouched\n");
+            src.append("        JsonNode node = body.get(field);\n");
+            src.append("        if (node.isNull()) {\n");
+            src.append("            if (required) throw new PatchValidationException(field);\n");
+            src.append("            assigned.put(field, null);                         // explicit null → clear\n");
+            src.append("            return;\n");
+            src.append("        }\n");
+            src.append("        try {\n");
+            src.append("            assigned.put(field, CanonicalDurationDeserializer.fromNode(node));\n");
+            src.append("        } catch (IllegalArgumentException e) {\n");
+            src.append("            throw new PatchValidationException(field);\n");
+            src.append("        }\n");
+            src.append("    }\n");
+        }
+        if (usesDurationListPatch) {
+            src.append("\n    private static void bindDurationList(JsonNode body, Map<String, Object> assigned,\n");
+            src.append("            String field, boolean required) {\n");
+            src.append("        if (!body.has(field)) return;                         // absent → untouched\n");
+            src.append("        JsonNode node = body.get(field);\n");
+            src.append("        if (node.isNull()) {\n");
+            src.append("            if (required) throw new PatchValidationException(field);\n");
+            src.append("            assigned.put(field, null);                         // explicit null → clear\n");
+            src.append("            return;\n");
+            src.append("        }\n");
+            src.append("        if (!node.isArray()) throw new PatchValidationException(field);\n");
+            src.append("        java.util.List<java.time.Duration> items = new java.util.ArrayList<>();\n");
+            src.append("        for (JsonNode item : node) {\n");
+            src.append("            if (item.isNull()) throw new PatchValidationException(field);\n");
+            src.append("            try {\n");
+            src.append("                items.add(CanonicalDurationDeserializer.fromNode(item));\n");
+            src.append("            } catch (IllegalArgumentException e) {\n");
+            src.append("                throw new PatchValidationException(field);\n");
+            src.append("            }\n");
+            src.append("        }\n");
+            src.append("        assigned.put(field, items);\n");
+            src.append("    }\n");
         }
         src.append("}\n");
 
@@ -561,10 +617,17 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         // deserializer (JsonDeserialize is imported once, for either reason).
         boolean usesDecimal = fields.stream()
             .anyMatch(f -> SpringGeneratorSupport.isDecimalComponent(componentTypeFr019(f, entity)));
+        // field.duration: a Duration component binds the canonical serializer / strict deserializer.
+        boolean usesDuration = fields.stream()
+            .anyMatch(f -> SpringGeneratorSupport.isDurationComponent(componentTypeFr019(f, entity)));
         if (usesDecimal) {
             src.append(SpringGeneratorSupport.decimalAnnotationImports(runtimePackage, wire));
-        } else if (usesNetDeser) {
+        } else if (usesNetDeser || usesDuration) {
             src.append("import com.fasterxml.jackson.databind.annotation.JsonDeserialize;\n");
+        }
+        if (usesDuration) {
+            src.append(SpringGeneratorSupport.durationAnnotationImports(
+                runtimePackage, usesDecimal && wire.decimalsAsString()));
         }
         // Wildcard import keeps the emit simple — record components carry a small,
         // closed set of jakarta.validation.constraints annotations.
@@ -574,7 +637,7 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         if (usesValidation) {
             src.append("import jakarta.validation.constraints.*;\n");
         }
-        if (usesDecimal || usesNetDeser || usesValid || usesValidation) {
+        if (usesDecimal || usesNetDeser || usesDuration || usesValid || usesValidation) {
             src.append('\n');
         }
         src.append("/** GENERATED — wire DTO for ").append(shortName)
@@ -596,6 +659,8 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
             if (!annotations.isEmpty()) src.append(annotations).append(' ');
             String decimalJson = SpringGeneratorSupport.decimalJsonAnnotations(type, runtimePackage, field, wire);
             if (!decimalJson.isEmpty()) src.append(decimalJson).append(' ');
+            String durationJson = SpringGeneratorSupport.durationJsonAnnotations(type);
+            if (!durationJson.isEmpty()) src.append(durationJson).append(' ');
             if (!jsonName.isEmpty()) src.append(jsonName).append(' ');
             src.append(type).append(' ').append(component);
             if (i < fields.size() - 1) src.append(',');

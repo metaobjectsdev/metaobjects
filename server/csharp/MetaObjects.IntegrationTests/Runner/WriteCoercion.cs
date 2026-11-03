@@ -90,6 +90,12 @@ public static class WriteCoercion
             return MetaObjects.Codegen.Runtime.DecimalWire.TryParse(raw, out var exact)
                 ? exact
                 : throw new FormatException($"not a decimal: {raw}");
+        // field.duration → System.TimeSpan from the ISO-8601 authoring form (Npgsql binds a
+        // TimeSpan as interval natively; a text column stores DurationWire's canonical form).
+        if (underlying == typeof(TimeSpan))
+            return MetaObjects.Codegen.Runtime.DurationWire.TryParse(raw, out var span)
+                ? span
+                : throw new FormatException($"not an ISO-8601 duration: {raw}");
         if (underlying == typeof(DateOnly)) return ParseDate(raw);
         if (underlying == typeof(TimeOnly)) return ParseTime(raw);
         if (underlying == typeof(DateTime)) return ParseDateTime(raw);

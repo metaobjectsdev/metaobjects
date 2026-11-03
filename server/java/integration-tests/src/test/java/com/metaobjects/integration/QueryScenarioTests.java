@@ -40,7 +40,18 @@ final class QueryScenarioTests {
     private static final Path CORPUS = ScenarioLoader.findCorpusRoot();
     private static final List<QueryScenario> SCENARIOS =
         ScenarioLoader.loadQueries(CORPUS.resolve("queries")).stream()
-            .filter(ScenarioEngine.POSTGRES::runs).toList();
+            .filter(ScenarioEngine.POSTGRES::runs)
+            .filter(QueryScenarioTests::selected).toList();
+
+    /**
+     * {@code -Dmetaobjects.scenarios=a,b} narrows a run to the named scenarios (one Postgres
+     * container each, so a targeted run is far cheaper than the corpus). Unset = all.
+     */
+    private static boolean selected(QueryScenario s) {
+        String only = System.getProperty("metaobjects.scenarios");
+        if (only == null || only.isBlank()) return true;
+        return java.util.Arrays.stream(only.split(",")).map(String::trim).anyMatch(s.name()::equals);
+    }
 
     /**
      * Scenarios deferred until the underlying Java port gap is closed.

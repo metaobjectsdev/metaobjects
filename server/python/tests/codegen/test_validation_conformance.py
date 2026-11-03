@@ -26,7 +26,7 @@ from pydantic import BaseModel, ValidationError
 
 import metaobjects.core_types  # noqa: F401  — side effect: registers core types
 from metaobjects import MetaDataLoader
-from metaobjects.codegen.generators.entity_model import render_entity_model
+from metaobjects.codegen.generators.entity_model import duration_wire_module, render_entity_model
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.shared.base_types import TYPE_OBJECT
 
@@ -68,15 +68,23 @@ def _build_generated_model(entity_name: str = DEFAULT_ENTITY) -> type[BaseModel]
     # resolves when ``__name__`` and the module's imports are in scope. A bare
     # exec namespace has no ``__name__`` (forward refs fall back to builtins and
     # fail — #234); a proper module import mirrors the TS runner's temp-module.
-    tmp_dir = tempfile.mkdtemp()
-    mod_name = f"generated_{entity_name.lower()}"
-    mod_path = Path(tmp_dir) / f"{mod_name}.py"
+    #
+    # The module lives in a package beside the generated ``_duration_wire.py`` companion the
+    # entity tier emits for a model with a ``field.duration`` (``Account.holdFor``), which the
+    # model imports package-relatively.
+    pkg_dir = Path(tempfile.mkdtemp()) / f"generated_pkg_{entity_name.lower()}"
+    pkg_dir.mkdir()
+    (pkg_dir / "__init__.py").write_text("")
+    companion = duration_wire_module()
+    (pkg_dir / companion.path).write_text(companion.content)
+    mod_name = f"{pkg_dir.name}.generated_{entity_name.lower()}"
+    mod_path = pkg_dir / f"generated_{entity_name.lower()}.py"
     mod_path.write_text(source)
-    spec = importlib.util.spec_from_file_location(mod_name, mod_path)
-    assert spec and spec.loader
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[mod_name] = module
-    spec.loader.exec_module(module)
+    sys.path.insert(0, str(pkg_dir.parent))
+    try:
+        module = importlib.import_module(mod_name)
+    finally:
+        sys.path.remove(str(pkg_dir.parent))
     model = getattr(module, f"{entity_name}Create")
     assert isinstance(model, type) and issubclass(model, BaseModel)
     return model

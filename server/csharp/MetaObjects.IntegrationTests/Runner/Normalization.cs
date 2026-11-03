@@ -76,6 +76,9 @@ public static class Normalization
         // e.g. 2001:0db8:..:8a2e:0370:7334 → 2001:db8::8a2e:370:7334), matching the wire contract.
         Uri uri => uri.ToString(),
         IPAddress ip => ip.ToString(),
+        // field.duration (System.TimeSpan — Npgsql reads an interval as one) renders its canonical
+        // ISO-8601 wire form: hours never folded into days, at most six fractional digits.
+        TimeSpan span => MetaObjects.Codegen.Runtime.DurationWire.Format(span),
         byte[] bytes => Convert.ToBase64String(bytes),
         // A pre-parsed JsonNode (assembled by a runner path) — sort keys.
         // (JsonDocument/JsonElement from a @dbColumnType:jsonb column are handled above.)

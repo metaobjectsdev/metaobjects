@@ -417,7 +417,7 @@ public class RoutesGenerator : PerEntityGenerator
             // body carries the derived (view-computed) fields (read-your-writes).
             AppendCreateHandler(sb, "/" + route, cls, dbSet, requiredKeys,
                 CreatedResult("prefix + \"/" + route + "\"", "input", credentials), voFields, mapVoFields, autoSetFields,
-                writeThrough ? (readDbSet, pkProp!, route) : null, parseBody: HasDecimalField(entity),
+                writeThrough ? (readDbSet, pkProp!, route) : null, parseBody: HasDecimalField(entity) || HasDurationField(entity),
                 deniedFields.Select(f => CSharpNaming.Pascal(f.Name)).ToList(), credentials);
 
             // PATCH + PUT share the same handler — TS reference exposes both verbs, and both
@@ -454,7 +454,7 @@ public class RoutesGenerator : PerEntityGenerator
             sb.AppendLine("            var entry = db.Entry(existing);");
             AppendUpdateAutoSet(sb, autoSetFields);
             AppendPartialMergeLoop(sb, null, voFields, mapVoFields, autoSetNavs, frozenNavs, HasDecimalField(entity),
-                deniedFields.Select(f => f.Name).ToList());
+                deniedFields.Select(f => f.Name).ToList(), HasDurationField(entity));
             AppendSaveChanges(sb);
             AppendArrayNullClears(sb, voFields, tableRef, pkColumnRef);
             // #214 — writes target the table; for a write-through entity re-read the row
@@ -1195,6 +1195,13 @@ public class RoutesGenerator : PerEntityGenerator
         return false;
     }
 
+    // true iff the entity has a field.duration column of its own (a TimeSpan property, so a
+    // DurationWire copy is emitted into its namespace). Its converter refuses a bad value while the
+    // body is bound, so, like a decimal, the create route parses the body itself to answer with the
+    // {error:"validation"} envelope, and the PATCH merge reads the wire form explicitly.
+    private static bool HasDurationField(MetaObject entity) =>
+        entity.Fields().Any(f => f.SubType == FIELD_SUBTYPE_DURATION && CSharpNaming.DbColumnTypeClrOverride(f) is null);
+
     private static void AppendDecimalRangeGroup(StringBuilder sb)
         {
             sb.AppendLine("        IEndpointRouteBuilder mount = app;");
@@ -1233,7 +1240,7 @@ public class RoutesGenerator : PerEntityGenerator
         StringBuilder sb, string? discProp, IReadOnlyList<VoField> voFields,
         IReadOnlyList<MapVoField> mapVoFields,
         IReadOnlyList<string> autoSetNavs, IReadOnlyList<string> frozenNavs, bool hasDecimal,
-        IReadOnlyList<string> deniedKeys)
+        IReadOnlyList<string> deniedKeys, bool hasDuration = false)
     {
         // A nullable array-of-VO column that a request clears to null (present-null) can NOT be
         // NULLed by an owned-nav assignment — EF OwnsMany(...).ToJson writes `[]` for a null
@@ -1338,22 +1345,47 @@ public class RoutesGenerator : PerEntityGenerator
         // `DecimalWire` resolves to the copy the entity generator emits into this namespace (the
         // routes and the entities share it), so the output differs between a packaged and an
         // ejected generator only in the helper-runtime `using`, as before.
-        if (hasDecimal)
+        if (hasDecimal || hasDuration)
         {
             sb.AppendLine("                object? __val;");
-            sb.AppendLine("                if (clr == typeof(decimal))");
-            sb.AppendLine("                {");
-            sb.AppendLine("                    if (!DecimalWire.TryParseElement(prop.Value, out var __dec) || !DecimalWire.FitsDeclared(existing.GetType(), target.Name, __dec)) return Results.BadRequest(new { error = \"validation\" });");
-            sb.AppendLine("                    __val = __dec;");
-            sb.AppendLine("                }");
-            sb.AppendLine("                else if (clr == typeof(System.Collections.Generic.IList<decimal>))");
-            sb.AppendLine("                {");
-            sb.AppendLine("                    if (prop.Value.ValueKind != System.Text.Json.JsonValueKind.Array) return Results.BadRequest(new { error = \"validation\" });");
-            sb.AppendLine("                    var __decs = new System.Collections.Generic.List<decimal>();");
-            sb.AppendLine("                    foreach (var __el in prop.Value.EnumerateArray())");
-            sb.AppendLine("                        if (DecimalWire.TryParseElement(__el, out var __d1) && DecimalWire.FitsDeclared(existing.GetType(), target.Name, __d1)) __decs.Add(__d1); else return Results.BadRequest(new { error = \"validation\" });");
-            sb.AppendLine("                    __val = __decs;");
-            sb.AppendLine("                }");
+            var arm = "if";
+            if (hasDecimal)
+            {
+                sb.AppendLine("                if (clr == typeof(decimal))");
+                sb.AppendLine("                {");
+                sb.AppendLine("                    if (!DecimalWire.TryParseElement(prop.Value, out var __dec) || !DecimalWire.FitsDeclared(existing.GetType(), target.Name, __dec)) return Results.BadRequest(new { error = \"validation\" });");
+                sb.AppendLine("                    __val = __dec;");
+                sb.AppendLine("                }");
+                sb.AppendLine("                else if (clr == typeof(System.Collections.Generic.IList<decimal>))");
+                sb.AppendLine("                {");
+                sb.AppendLine("                    if (prop.Value.ValueKind != System.Text.Json.JsonValueKind.Array) return Results.BadRequest(new { error = \"validation\" });");
+                sb.AppendLine("                    var __decs = new System.Collections.Generic.List<decimal>();");
+                sb.AppendLine("                    foreach (var __el in prop.Value.EnumerateArray())");
+                sb.AppendLine("                        if (DecimalWire.TryParseElement(__el, out var __d1) && DecimalWire.FitsDeclared(existing.GetType(), target.Name, __d1)) __decs.Add(__d1); else return Results.BadRequest(new { error = \"validation\" });");
+                sb.AppendLine("                    __val = __decs;");
+                sb.AppendLine("                }");
+                arm = "else if";
+            }
+            // field.duration: a bare TimeSpan deserialized here would take System.Text.Json's own
+            // "01:30:00" form, not the property's ISO-8601 converter, so the duration arms read the
+            // wire form through `DurationWire` (the copy the entity generator emits into this
+            // namespace) and refuse anything else with the validation envelope.
+            if (hasDuration)
+            {
+                sb.AppendLine($"                {arm} (clr == typeof(System.TimeSpan))");
+                sb.AppendLine("                {");
+                sb.AppendLine("                    if (!DurationWire.TryParseElement(prop.Value, out var __dur)) return Results.BadRequest(new { error = \"validation\" });");
+                sb.AppendLine("                    __val = __dur;");
+                sb.AppendLine("                }");
+                sb.AppendLine("                else if (clr == typeof(System.Collections.Generic.IList<System.TimeSpan>))");
+                sb.AppendLine("                {");
+                sb.AppendLine("                    if (prop.Value.ValueKind != System.Text.Json.JsonValueKind.Array) return Results.BadRequest(new { error = \"validation\" });");
+                sb.AppendLine("                    var __durs = new System.Collections.Generic.List<System.TimeSpan>();");
+                sb.AppendLine("                    foreach (var __el in prop.Value.EnumerateArray())");
+                sb.AppendLine("                        if (DurationWire.TryParseElement(__el, out var __u1)) __durs.Add(__u1); else return Results.BadRequest(new { error = \"validation\" });");
+                sb.AppendLine("                    __val = __durs;");
+                sb.AppendLine("                }");
+            }
             sb.AppendLine("                else");
             sb.AppendLine("                    __val = System.Text.Json.JsonSerializer.Deserialize(prop.Value.GetRawText(), clr, jsonOpts);");
         }
@@ -1447,7 +1479,7 @@ public class RoutesGenerator : PerEntityGenerator
         // VO columns on a TPH subtype are out of scope (Program D §6) — no typed arms.
         AppendCreateHandler(sb, "/" + subRoute, subCls, dbSet, requiredKeys,
             CreatedResult("prefix + \"/" + subRoute + "/\" + input." + pkProp, "input", credentials), [], mapVoFields, autoSetFields,
-            parseBody: HasDecimalField(st.Entity),
+            parseBody: HasDecimalField(st.Entity) || HasDurationField(st.Entity),
             deniedNavs: deniedFields.Select(f => CSharpNaming.Pascal(f.Name)).ToList(), credentials: credentials);
 
         // Per-subtype update (PATCH + PUT): partial merge of the JSON body onto the scoped
@@ -1470,7 +1502,7 @@ public class RoutesGenerator : PerEntityGenerator
         // ADR-0045 + the 0.19.4 lesson: TPH is a SEPARATE code path per port, so the
         // per-subtype merge states the same exclusion rather than inheriting it.
         AppendPartialMergeLoop(sb, discProp, [], mapVoFields, autoSetNavs, frozenNavs, HasDecimalField(st.Entity),
-            deniedFields.Select(f => f.Name).ToList());
+            deniedFields.Select(f => f.Name).ToList(), HasDurationField(st.Entity));
         AppendSaveChanges(sb);
         sb.AppendLine($"            return {OkResult("existing", credentials)};");
         sb.AppendLine("        }");

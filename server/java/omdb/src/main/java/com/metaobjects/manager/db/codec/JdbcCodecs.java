@@ -44,6 +44,8 @@ import com.metaobjects.field.TimestampField;
 import com.metaobjects.field.UuidField;
 import com.metaobjects.field.UriField;
 import com.metaobjects.field.InetField;
+import com.metaobjects.field.DurationField;
+import com.metaobjects.field.DurationWire;
 
 import java.math.BigDecimal;
 import java.sql.PreparedStatement;
@@ -104,6 +106,9 @@ public final class JdbcCodecs {
         // type (a plain setString fails "operator does not exist: inet = varchar"), mirroring
         // the UuidCodec native-column pattern.
         register(InetField.class, new InetCodec());
+        // field.duration ⇄ the canonical ISO-8601 string on a text column; the Postgres driver
+        // binds the interval spelling to its native interval column (see DurationCodec).
+        register(DurationField.class, new DurationCodec());
         register(ObjectField.class, DEFAULT);  // identity with the fallback codec
     }
 
@@ -538,6 +543,51 @@ public final class JdbcCodecs {
         @Override public void write(PreparedStatement s, MetaField f, int j, Object v) throws SQLException {
             if (v == null) s.setNull(j, Types.OTHER);
             else s.setObject(j, v.toString(), Types.OTHER);
+        }
+    }
+
+    /**
+     * {@code field.duration} ⇄ a text column holding the canonical ISO-8601 duration
+     * ({@link DurationWire#format}), or — on Postgres — the native {@code interval} column.
+     * DurationField is backed by {@code DataTypes.STRING} (the canonical wire string); a
+     * {@link java.time.Duration} value is accepted too.
+     *
+     * <p>Read: the column's text is either the stored ISO string or the text a Postgres
+     * interval returns ({@code 1 day 02:00:00}); both become the canonical string, and an
+     * interval with a year or month part is refused ({@link DurationWire#fromStored}). Write:
+     * the canonical string, so a text column holds one spelling per span. Postgres refuses a
+     * signed ISO-8601 duration, so {@code PostgresDriver} binds {@link #postgresText} instead.</p>
+     */
+    public static final class DurationCodec implements JdbcFieldCodec {
+        @Override public void readInto(Object o, MetaField f, ResultSet rs, int j) throws SQLException {
+            String v = rs.getString(j);
+            f.setString(o, (v == null || rs.wasNull()) ? null : stored(f, v));
+        }
+        @Override public void write(PreparedStatement s, MetaField f, int j, Object v) throws SQLException {
+            if (v == null) s.setNull(j, Types.VARCHAR);
+            else s.setString(j, DurationWire.format(toDuration(f, v)));
+        }
+
+        /** The Postgres interval input spelling of a duration value ({@code [-]HH:MM:SS[.f]}). */
+        public static String postgresText(MetaField f, Object v) throws SQLException {
+            return DurationWire.formatPostgres(toDuration(f, v));
+        }
+
+        static java.time.Duration toDuration(MetaField f, Object v) throws SQLException {
+            try {
+                if (v instanceof java.time.Duration d) return DurationWire.checkBound(d, d.toString());
+                return DurationWire.parse(v.toString());
+            } catch (IllegalArgumentException e) {
+                throw new SQLException("field.duration '" + f.getName() + "' cannot be written: " + e.getMessage(), e);
+            }
+        }
+
+        private static String stored(MetaField f, String v) throws SQLException {
+            try {
+                return DurationWire.canonicalizeStored(v);
+            } catch (IllegalArgumentException e) {
+                throw new SQLException("field.duration '" + f.getName() + "' cannot be read: " + e.getMessage(), e);
+            }
         }
     }
 

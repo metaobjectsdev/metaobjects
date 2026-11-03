@@ -511,6 +511,7 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
         if (field instanceof com.metaobjects.field.InetField)
             return SpringTypeMapper.javaTypeName(field).endsWith("InetAddress")
                 ? "coerceInet" : COERCE_STRING;
+        if (field instanceof com.metaobjects.field.DurationField)                       return "coerceDuration";
         return COERCE_STRING;
     }
 
@@ -670,6 +671,16 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
             src.append("        if (v == null) return null;\n");
             src.append("        try { return new java.net.URI(v.toString().trim()); }\n");
             src.append("        catch (java.net.URISyntaxException e) { return null; }\n");
+            src.append("    }\n");
+        }
+        if (used.contains("coerceDuration")) {
+            src.append("\n");
+            src.append("    /** The accepted ISO-8601 form only (no years, months or weeks); anything else -> null. */\n");
+            src.append("    private static java.time.Duration coerceDuration(Object v) {\n");
+            src.append("        if (v instanceof java.time.Duration t) return t;\n");
+            src.append("        if (v == null) return null;\n");
+            src.append("        try { return com.metaobjects.field.DurationWire.parse(v.toString().trim()); }\n");
+            src.append("        catch (IllegalArgumentException e) { return null; }\n");
             src.append("    }\n");
         }
         if (used.contains("coerceInet")) {

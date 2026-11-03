@@ -16,6 +16,7 @@ import com.metaobjects.field.StringField;
 import com.metaobjects.field.TimeField;
 import com.metaobjects.field.TimestampField;
 import com.metaobjects.field.UriField;
+import com.metaobjects.field.DurationField;
 import com.metaobjects.field.UuidField;
 import com.metaobjects.integration.Scenarios.QuerySpec;
 import com.metaobjects.manager.ObjectConnection;
@@ -185,6 +186,11 @@ final class RoundtripWriter {
             // setObject(.., Types.OTHER)) handles the bind, and InetCodec's rs.getString reads the
             // inet column's NATIVE wire form on read-back (bare address, no ::text cast → no /32|/128
             // mask, and Postgres returns the compressed canonical IPv6).
+            vo.setString(name, raw.toString());
+        } else if (mf instanceof DurationField) {
+            // field.duration is String-backed: author the ISO-8601 string verbatim. DurationCodec
+            // binds it canonically (text) / in the interval spelling (Postgres) and reads it back
+            // as the canonical wire string.
             vo.setString(name, raw.toString());
         } else if (mf instanceof UuidField) {
             // Author the upper-case UUID string; the write codec binds a java.util.UUID and the

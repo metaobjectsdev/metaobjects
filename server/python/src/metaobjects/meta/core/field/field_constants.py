@@ -35,6 +35,13 @@ FIELD_SUBTYPE_URI = "uri"
 # build-time codegen concern. DB column is the Postgres-native inet type. Ships
 # WITHOUT @kind in v1 (the native type subsumes ipv4/ipv6). Mirrors TS FIELD_SUBTYPE_INET.
 FIELD_SUBTYPE_INET = "inet"
+# field.duration: a fixed-length span of time (days, hours, minutes, seconds). A
+# concept WITH a native type + behavior → a subtype (the field.inet precedent).
+# String-backed on the wire: an ISO-8601 duration, written in the canonical form
+# ``[-]PT[nH][nM][n[.f]S]`` (fixtures/duration-wire). The native binding is
+# ``datetime.timedelta``; DB column is the Postgres-native interval, text elsewhere.
+# Calendar spans (years, months, weeks) are refused. Mirrors TS FIELD_SUBTYPE_DURATION.
+FIELD_SUBTYPE_DURATION = "duration"
 
 FIELD_SUBTYPES = (
     SUBTYPE_BASE,
@@ -54,6 +61,7 @@ FIELD_SUBTYPES = (
     FIELD_SUBTYPE_UUID,
     FIELD_SUBTYPE_URI,
     FIELD_SUBTYPE_INET,
+    FIELD_SUBTYPE_DURATION,
     # Note: FIELD_SUBTYPE_ENUM is intentionally excluded here; it is registered
     # separately in core_types.py with its dedicated @values AttrSchema.
 )

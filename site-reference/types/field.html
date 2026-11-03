@@ -987,6 +987,156 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <li><code>validator.*</code> — 0..*</li>
 <li><code>view.*</code> — 0..*</li>
 </ul>
+<h3>field.duration</h3>
+<p>A fixed-length span of time: days, hours, minutes and seconds (ADR-0036/0037 — a concept with a native type + behavior). Binds to TS string (TS has no native duration type); other ports bind to their native type (C# System.TimeSpan, Java and Kotlin java.time.Duration, Python datetime.timedelta). DB column is the Postgres-native interval type, text elsewhere. The wire form is an ISO-8601 duration: every port writes [-]PT[nH][nM][n[.f]S] (hours never folded into days, up to 6 fractional digits, zero is PT0S) and reads that form plus a leading day count (nD, exactly 24 hours). Years, months and weeks are refused: a calendar span is not a fixed length.</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>When to use:</strong> A field holds an elapsed time, a timeout or a delay. Use it for a native Postgres interval column and a native duration type instead of a string or a number of seconds. A calendar span (&quot;every 3 months&quot;) is not a duration: model it as an int and a unit.</p>
+<p><strong>Attributes</strong></p>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Allowed values</th>
+<th>Provider</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>@column</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>Physical column name for this field on an rdb source. Defaults to the field name under the project&#39;s naming.columns rule (the &quot;naming&quot; setting in .metaobjects/config.json).</td>
+</tr>
+<tr>
+<td><code>@db.indexed</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means).</td>
+</tr>
+<tr>
+<td><code>@dbColumnType</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>uuid</code>, <code>jsonb</code></td>
+<td>metaobjects-db</td>
+<td>Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.</td>
+</tr>
+<tr>
+<td><code>@default</code></td>
+<td>any</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Default value applied to the column when no value is supplied. Its type follows the field&#39;s own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue().</td>
+</tr>
+<tr>
+<td><code>@example</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>FR-010: an example value for this field, shown in the generated output-format prompt fragment.</td>
+</tr>
+<tr>
+<td><code>@filterable</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer).</td>
+</tr>
+<tr>
+<td><code>@formExclude</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is omitted from generated forms, and the generated create, PATCH and PUT routes ignore a value sent for it (reads of it are unchanged); inert on fields for which no form is generated (e.g. projection/derived fields).</td>
+</tr>
+<tr>
+<td><code>@instruction</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>FR-010: a short instruction for this field, shown in the generated output-format prompt fragment.</td>
+</tr>
+<tr>
+<td><code>@mutability</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>readWrite</code>, <code>writeOnce</code>, <code>readOnly</code></td>
+<td>metaobjects-core-types</td>
+<td>FR-037 R1: who may write this field, and when. &#39;readWrite&#39; (the default when absent) — the caller may set it on create and change it on update. &#39;writeOnce&#39; — the caller sets it on create; it is excluded from the update shape thereafter, so a value presented on PATCH is ignored rather than rejected. &#39;readOnly&#39; — nobody writes it: codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas omit it from input variants; the value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner. The three are mutually exclusive modes of ONE axis — who may write, and when — so the illegal pair is unrepresentable and inheritance has a total order: a subtype may TIGHTEN an inherited mode (readWrite &lt; writeOnce &lt; readOnly) and never loosen it (ERR_MUTABILITY_DOWNGRADE). Pairing a non-readWrite mode with @autoSet is ERR_MUTABILITY_AUTOSET_CONFLICT: @autoSet already says the SERVER supplies the value, which is a different axis from who may write it.</td>
+</tr>
+<tr>
+<td><code>@required</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>When true, the field is NOT NULL. Equivalent to attaching a validator.required child. On a non-array string, generated wire-tier input validation (create/patch) additionally rejects the empty string by default — whitespace is accepted — unless an explicit validator.length @min: 0 opts back to presence-only. In-process read models never enforce this at construction.</td>
+</tr>
+<tr>
+<td><code>@sortable</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui</td>
+<td>When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out.</td>
+</tr>
+<tr>
+<td><code>@sortableDefaultOrder</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td><code>asc</code>, <code>desc</code></td>
+<td>metaobjects-ui</td>
+<td>Direction a sort takes when it names this field but omits the order: a ?sort=<field> with no :order, and a layout.dataGrid whose @defaultSortField names it with no @defaultSortOrder. Defaults to &#39;asc&#39;.</td>
+</tr>
+<tr>
+<td><code>@unique</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>When true, the field gets a column-level UNIQUE constraint.</td>
+</tr>
+<tr>
+<td><code>@xmlText</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-prompt</td>
+<td>When true, this field receives its element&#39;s XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect when the eliciting prompt&#39;s @responseFormat is json.</td>
+</tr>
+</tbody></table>
+<p><strong>Allowed children</strong></p>
+<ul>
+<li><code>origin.*</code> — 0..*</li>
+<li><code>validator.*</code> — 0..*</li>
+<li><code>view.*</code> — 0..*</li>
+</ul>
 <h3>field.enum</h3>
 <p>String-backed enumeration constrained to a closed set of member symbols (@values). Each member is its own stored string with no name/value divergence.</p>
 <p><strong>Owning provider:</strong> metaobjects-core-types</p>

@@ -85,7 +85,12 @@ from ..runtime.m2m_codegen import (
     pk_field_name,
     resolve_m2m_descriptors,
 )
-from ..runtime.shared_predicates import emits_router, is_read_only_routed
+from ..runtime.shared_predicates import (
+    DURATION_WIRE_MODULE,
+    emits_router,
+    has_duration_field,
+    is_read_only_routed,
+)
 
 #: The repository ``Protocol`` declares a method named ``list`` (the cross-port contract keeps
 #: that name), and inside the class body a later bare ``list[...]`` annotation resolves to
@@ -322,7 +327,24 @@ def _wire_lines(entities: list[MetaObject], wire: WireFormat, name: str = "_WIRE
         args += f", shapes={shapes!r}"
     if hidden := _hidden_names(entities):
         args += f", hidden={tuple(hidden)!r}"
+    if has_duration_field(entities):
+        args += f", {_DURATION_WIRE_ARG}"
     return ["", "", f"{name} = WireOutput({args})"]
+
+
+#: The ``WireOutput`` argument a response holding a ``field.duration`` is written with: its
+#: ``timedelta`` leaves as the canonical ISO-8601 duration, not FastAPI's float of seconds.
+_DURATION_WIRE_ARG = "duration=format_duration"
+
+
+def _with_duration_import(parts: list[str]) -> list[str]:
+    """*parts* plus the import of the duration formatter, when a wire constant uses it. The
+    formatter is the generated package's own ``_duration_wire`` module, which the entity tier
+    emits beside any model with a ``field.duration``."""
+    if not any(_DURATION_WIRE_ARG in line for line in parts):
+        return parts
+    at = next(i for i, line in enumerate(parts) if line.startswith("from ."))
+    return [*parts[:at], f"from .{DURATION_WIRE_MODULE} import format_duration", *parts[at:]]
 
 
 def _m2m_wire_name(target: str) -> str:
@@ -1670,7 +1692,7 @@ class RouterGenerator:
             ))
             parts.append("")
 
-        return "\n".join(parts)
+        return "\n".join(_with_duration_import(parts))
 
     def render_router(
         self,
@@ -1914,7 +1936,7 @@ class RouterGenerator:
             parts.extend(self._emit_m2m_route(d, snake, pk_param, pk_type, repo_class))
             parts.append("")
 
-        return "\n".join(parts)
+        return "\n".join(_with_duration_import(parts))
 
     def _emit_readonly_reject_handlers(
         self,
@@ -2136,7 +2158,7 @@ class RouterGenerator:
             )
         )
         parts.append("")
-        return "\n".join(parts)
+        return "\n".join(_with_duration_import(parts))
 
     def generate(self, ctx: GenContext) -> list[EmittedFile]:
         index = build_object_index(ctx.entities)

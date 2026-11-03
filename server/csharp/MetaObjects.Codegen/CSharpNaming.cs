@@ -213,11 +213,14 @@ public static class CSharpNaming
             // the Postgres-native inet type). Both are string-backed on the wire.
             [FIELD_SUBTYPE_URI]       = "Uri",
             [FIELD_SUBTYPE_INET]      = "IPAddress",
+            // field.duration binds to the native System.TimeSpan value type (DB column is the
+            // Postgres-native interval, text elsewhere); string-backed (ISO-8601) on the wire.
+            [FIELD_SUBTYPE_DURATION]  = "TimeSpan",
         };
 
     /// <summary>Value types that take a <c>?</c> suffix when nullable (vs. reference types).</summary>
     private static readonly HashSet<string> ValueTypes = new(StringComparer.Ordinal)
-        { "int", "long", "double", "float", "decimal", "bool", "DateOnly", "TimeOnly", "DateTime", "DateTimeOffset", "Guid" };
+        { "int", "long", "double", "float", "decimal", "bool", "DateOnly", "TimeOnly", "DateTime", "DateTimeOffset", "Guid", "TimeSpan" };
 
     /// <summary>
     /// ADR-0036 Wave 3 — the CANONICAL hostname matcher for <c>@stringFormat: hostname</c>,

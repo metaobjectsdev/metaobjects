@@ -15,8 +15,9 @@ import {
   ANY_TEMPORAL_EXPECTED, FORMAT_EXPECTED, PLUS_OFFSET_HINT,
   looksLikeUnencodedPlusOffset, matchesAnyTemporal, matchesFormat, utcIsoIfZoned, utcIsoInstant,
 } from "./filter-value-format.js";
-import { FIELD_SUBTYPE_DECIMAL, FIELD_SUBTYPE_TIMESTAMP } from "@metaobjectsdev/metadata";
+import { FIELD_SUBTYPE_DECIMAL, FIELD_SUBTYPE_DURATION, FIELD_SUBTYPE_TIMESTAMP } from "@metaobjectsdev/metadata";
 import { canonicalDecimal } from "../decimal-wire.js";
+import { formatDuration, formatPostgresInterval, parseDurationLiteral } from "../duration-wire.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: dynamic dispatch over user's Drizzle table
 type AnyTable = any;
@@ -343,6 +344,13 @@ function coerce(value: unknown, rule: FilterFieldRule, col: unknown, field: stri
     const canonical = canonicalDecimal(s) as string;
     if (dialect === "mysql") return sql`CAST(${canonical} AS DECIMAL(65,30))`;
     return dialect === "sqlite" ? Number(canonical) : canonical;
+  }
+  // A duration bound is spelled the way the column stores it: the canonical string on a text
+  // column (SQLite, MySQL), so `PT90M` equals a stored `PT1H30M`; the interval spelling on
+  // Postgres, which compares spans and refuses a signed ISO-8601 duration.
+  if (rule.format === FIELD_SUBTYPE_DURATION) {
+    const micros = parseDurationLiteral(s) as bigint;
+    return dialect === "sqlite" || dialect === "mysql" ? formatDuration(micros) : formatPostgresInterval(micros);
   }
   // A timestamp bound is compared in the same UTC spelling the generated schemas store:
   // on SQLite/D1 the column is TEXT and compares as text. An instant field (`instant`, i.e.

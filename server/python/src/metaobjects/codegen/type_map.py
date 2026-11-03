@@ -39,6 +39,11 @@ _SCALAR: dict[str, PyType] = {
     # IPv4 + IPv6 — the Python analogue of TS Zod z.string().ip()). Wire/storage
     # form stays a string; DB column is the Postgres-native inet type.
     fc.FIELD_SUBTYPE_INET: PyType("IPvAnyAddress", ("from pydantic import IPvAnyAddress",)),
+    # field.duration binds the native datetime.timedelta. Its wire form is an ISO-8601
+    # duration (fixtures/duration-wire), which Pydantic's own timedelta handling does not
+    # hold to (it accepts numbers, clock text and calendar spans, and writes its own form):
+    # the generated model wraps this type in the duration codec (entity_model.py).
+    fc.FIELD_SUBTYPE_DURATION: PyType("datetime.timedelta", ("import datetime",)),
 }
 
 

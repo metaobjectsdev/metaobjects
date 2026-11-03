@@ -16,7 +16,9 @@ import kotlin.io.path.readText
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
+import kotlin.test.assertTrue
 
 /**
  * The `report-export` generator (the "Report export" section of `docs/features/api-contract.md`):
@@ -102,6 +104,65 @@ class KotlinReportExportGeneratorTest {
     }
 
     /** The shared writer, generated and compiled, with the entity row classes it never touches. */
+    /** A served report over an entity with a `field.duration` dimension. */
+    private val durationModel = """{
+      "metadata.root": { "package": "acme::shop", "children": [
+        { "object.entity": { "name": "Call", "children": [
+            { "source.rdb": { "@table": "calls" } },
+            { "field.long": { "name": "id" } },
+            { "field.duration": { "name": "holdFor" } },
+            { "identity.primary": { "name": "id", "@fields": ["id"] } },
+            { "dimension.attribute": { "name": "holdFor", "@of": "Call.holdFor" } },
+            { "measure.aggregate": { "name": "calls", "@agg": "count", "@of": "Call.id" } }
+        ] } },
+        { "object.report": { "name": "CallsByHold", "@from": "Call", "@dimensions": ["holdFor"], "@measures": ["calls"],
+          "children": [ { "source.rdb": { "@kind": "view", "@table": "v_calls_by_hold" } } ] } }
+      ] }
+    }""".trimIndent()
+
+    private fun emitDuration(): Map<String, String> {
+        val outDir = Files.createTempDirectory("report-export-duration-")
+        try {
+            val gen = KotlinReportExportGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(com.metaobjects.metadata.ktx.loadString("report-export-duration", durationModel))
+            val files = TreeMap<String, String>()
+            Files.walk(outDir).use { st ->
+                st.filter { it.isRegularFile() }.forEach { files[outDir.relativize(it).toString()] = it.readText() }
+            }
+            return files
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `the duration cell is in the writer only when a served report has a duration column`() {
+        // No duration in the model: the writer is the one it always was, with no duration text at all.
+        val plain = emit(listOf(KotlinReportExportGenerator())).getValue("acme/shop/ReportExportWriter.kt")
+        assertFalse("uration" in plain, plain)
+        // A duration column: the export calls the duration cell, and the writer differs from the
+        // plain one by exactly that factory.
+        val files = emitDuration()
+        val export = files.getValue("acme/shop/CallsByHoldExport.kt")
+        assertTrue("ReportExportWriter.duration(row.holdFor)" in export, export)
+        val withDuration = files.getValue("acme/shop/ReportExportWriter.kt")
+        assertTrue("fun duration(value: java.time.Duration?): Cell" in withDuration, withDuration)
+        val start = withDuration.indexOf("    /** A field.duration in its canonical")
+        val end = withDuration.indexOf("    /** A decimal as the wire setting writes it")
+        assertEquals(plain, withDuration.substring(0, start) + withDuration.substring(end))
+        // And it compiles and writes the canonical form.
+        val result = KotlinCompilation().apply {
+            sources = listOf(SourceFile.kotlin("ReportExportWriter.kt", withDuration))
+            inheritClassPath = true
+            messageOutputStream = java.io.OutputStream.nullOutputStream()
+        }.compile()
+        assertEquals(KotlinCompilation.ExitCode.OK, result.exitCode, result.messages)
+        val w = W(result.classLoader.loadClass("acme.shop.ReportExportWriter"))
+        val cell = w.call("duration", java.time.Duration.ofSeconds(-90, -500_000_000))!!
+        assertEquals("-PT1M30.5S", cell.javaClass.getMethod("getText").invoke(cell))
+    }
+
     private fun writer(args: Map<String, String>, wire: WireFormat = WireFormat.DEFAULT): Class<*> {
         val files = emit(listOf(KotlinReportExportGenerator()), args, wire)
         val result = KotlinCompilation().apply {

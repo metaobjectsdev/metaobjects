@@ -56,7 +56,8 @@ public static class HelperRuntime
     /// routes except <c>Iso8601TimestampConverter.cs</c>, which the host registers to give
     /// those routes the api contract's timestamp spelling — it serves the same wire, so
     /// the adopter owns it with them. <c>DecimalWire.cs</c> is the decimal wire form
-    /// (ADR-0019 Amendment 1): the filter dispatcher parses decimal operands through it.
+    /// (ADR-0019 Amendment 1): the filter dispatcher parses decimal operands through it, and
+    /// <c>DurationWire.cs</c> is the field.duration wire form it parses duration operands with.
     /// <c>ReportExportHttp.cs</c> is the HTTP side of report export: a report list route that
     /// is built with a <c>report-export</c> generator wired calls it.
     /// </summary>
@@ -70,6 +71,7 @@ public static class HelperRuntime
         "ConstraintErrors.cs",
         "Iso8601TimestampConverter.cs",
         "DecimalWire.cs",
+        "DurationWire.cs",
         "DecimalRangeEndpointFilter.cs",
         "ReportExportHttp.cs",
     ];

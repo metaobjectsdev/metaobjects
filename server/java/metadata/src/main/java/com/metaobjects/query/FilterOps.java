@@ -30,6 +30,7 @@ import com.metaobjects.field.TimestampField;
 import com.metaobjects.field.UuidField;
 import com.metaobjects.field.UriField;
 import com.metaobjects.field.InetField;
+import com.metaobjects.field.DurationField;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -118,6 +119,9 @@ public final class FilterOps {
         // inet is identity-comparison-only (uuid band — no like, no ordering).
         m.put(UriField.SUBTYPE_URI, OPS_STRING);
         m.put(InetField.SUBTYPE_INET, OPS_UUID);
+        // field.duration — identity-comparison ops only for now: a text column (SQLite, MySQL)
+        // cannot order ISO-8601 strings. Adding the ordering ops later is additive.
+        m.put(DurationField.SUBTYPE_DURATION, OPS_UUID);
         m.put(IntegerField.SUBTYPE_INT, OPS_NUMERIC);
         m.put(LongField.SUBTYPE_LONG, OPS_NUMERIC);
         m.put(DoubleField.SUBTYPE_DOUBLE, OPS_NUMERIC);

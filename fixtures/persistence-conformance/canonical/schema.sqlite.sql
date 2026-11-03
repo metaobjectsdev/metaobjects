@@ -133,6 +133,7 @@ CREATE TABLE "all_types" (
   "uriVal" TEXT NOT NULL,
   "inetVal" TEXT NOT NULL,
   "inet6Val" TEXT NOT NULL,
+  "durationVal" TEXT,
   "settings" TEXT,
   "labels" TEXT,
   CONSTRAINT "all_types_enumVal_chk" CHECK ("enumVal" IN ('LOW', 'MEDIUM', 'HIGH')),

@@ -565,6 +565,7 @@ export function sqliteType(t: SqlType, identity: ColumnDescriptor["identity"]): 
     case "blob":      return "BLOB";
     case "uuid":      return "TEXT";
     case "inet":      return "TEXT";          // SQLite has no inet type; store as text
+    case "interval":  return "TEXT";          // the canonical ISO-8601 duration string
     case "array":     return "TEXT";          // SQLite has no array type; store as JSON text
   }
 }

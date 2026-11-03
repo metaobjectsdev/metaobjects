@@ -9,6 +9,7 @@ another object shares its short name)."""
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.core.object.meta_object import MetaObject
@@ -40,7 +41,7 @@ from metaobjects.meta.persistence.origin.origin_constants import (
 )
 from metaobjects.shared.base_types import TYPE_ORIGIN, TYPE_VALIDATOR
 from metaobjects.codegen.config import GenConfig
-from metaobjects.codegen.constants import generated_header
+from metaobjects.codegen.constants import GENERATED_MARKER, generated_header
 from metaobjects.codegen.type_map import field_is_array, py_type_for
 from metaobjects.codegen.format import ruff_format
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator, per_entity
@@ -53,7 +54,12 @@ from metaobjects.codegen.value_objects import (
 
 from ..runtime import fr019_shared_enum as fr019
 from ..runtime.m2m_codegen import build_object_index, resolve_m2m_descriptors
-from ..runtime.shared_predicates import array_default, has_literal_default
+from ..runtime.shared_predicates import (
+    DURATION_WIRE_MODULE,
+    array_default,
+    has_duration_field,
+    has_literal_default,
+)
 
 
 def _is_int(value: object) -> bool:
@@ -71,6 +77,44 @@ _HOSTNAME_REGEX = (
     r"^(?=.{1,253}$)([a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)"
     r"(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$"
 )
+
+
+#: field.duration: a ``datetime.timedelta`` held to the ISO-8601 wire rule
+#: (fixtures/duration-wire). On input only an accepted ISO-8601 duration string (or a
+#: ``timedelta`` in process) is taken, so Pydantic's own timedelta parser, which also takes
+#: numbers, clock text and calendar spans, never sees a value; in JSON the canonical form is
+#: written (Pydantic writes ``PT5400S`` for 90 minutes). A Python-mode dump keeps the native
+#: ``timedelta``.
+DURATION_TYPE = (
+    "Annotated[datetime.timedelta, BeforeValidator(parse_duration_input), "
+    'PlainSerializer(format_duration, return_type=str, when_used="json")]'
+)
+#: The generated package's copy of the duration codec, emitted beside the models when any of
+#: them has a ``field.duration`` (:func:`duration_wire_module`). A copy rather than an import of
+#: the installed ``metaobjects``, so the generated package runs on its own, as an owned router's
+#: ``_runtime/`` does; the router imports its formatter from the same module.
+DURATION_IMPORTS: tuple[str, ...] = (
+    "import datetime",
+    "from typing import Annotated",
+    "from pydantic import BeforeValidator, PlainSerializer",
+    f"from .{DURATION_WIRE_MODULE} import format_duration, parse_duration_input",
+)
+
+#: Where the codec source is read from: ``codegen/runtime/`` beside this generator, which is the
+#: packaged ``metaobjects/codegen/runtime`` or, for an ejected copy, the adopter's own
+#: ``codegen/runtime`` (eject copies ``duration_wire.py`` there with this generator).
+_RUNTIME_SOURCE_DIR = Path(__file__).resolve().parent.parent / "runtime"
+
+
+def duration_wire_module() -> EmittedFile:
+    """The ``_duration_wire.py`` module a model with a ``field.duration`` imports its codec from:
+    ``codegen/runtime/duration_wire.py``, verbatim, under a generated header."""
+    src = _RUNTIME_SOURCE_DIR / "duration_wire.py"
+    return EmittedFile(
+        path=f"{DURATION_WIRE_MODULE}.py",
+        content=f"# {GENERATED_MARKER} — DO NOT EDIT. Copied from codegen/runtime/duration_wire.py: "
+        "edit that file and regenerate.\n" + src.read_text(encoding="utf-8"),
+    )
 
 
 def _validators(field: MetaField, sub_type: str) -> list[MetaField]:
@@ -298,6 +342,9 @@ def _type_expr_for_field(
     ):
         imports.add("from pydantic import EmailStr")
         type_expr = "list[EmailStr]" if field_is_array(field) else "EmailStr"
+    if field.sub_type == fc.FIELD_SUBTYPE_DURATION:
+        imports.update(DURATION_IMPORTS)
+        type_expr = f"list[{DURATION_TYPE}]" if field_is_array(field) else DURATION_TYPE
     if field.sub_type in (fc.FIELD_SUBTYPE_OBJECT, fc.FIELD_SUBTYPE_MAP):
         # A field.object (-> VO) and a field.map with @objectRef (-> dict[str, VO]) both
         # reference a value-object; import its model so the emitted annotation resolves.
@@ -908,6 +955,8 @@ class EntityModelGenerator:
         enums_module = self._render_shared_enums_module(matched)
         if enums_module is not None:
             files.append(enums_module)
+        if has_duration_field(matched):
+            files.append(duration_wire_module())
         return files
 
 

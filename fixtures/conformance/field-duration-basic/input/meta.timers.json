@@ -1,0 +1,20 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Timer",
+          "children": [
+            { "source.rdb": { "@table": "timers" } },
+            { "field.long": { "name": "id" } },
+            { "field.duration": { "name": "timeout", "@required": true } },
+            { "field.duration": { "name": "grace" } },
+            { "field.duration": { "name": "backoff", "isArray": true } },
+            { "identity.primary": { "name": "pk", "@fields": "id", "@generation": "increment" } }
+          ]
+        }
+      }
+    ]
+  }
+}

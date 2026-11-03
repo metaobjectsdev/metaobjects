@@ -50,6 +50,11 @@ import {
   FIELD_SUBTYPE_UUID,
   FIELD_SUBTYPE_URI,
   FIELD_SUBTYPE_INET,
+  FIELD_SUBTYPE_DURATION,
+  formatDuration,
+  formatPostgresInterval,
+  parseDurationLiteral,
+  parsePostgresInterval,
   FIELD_SUBTYPE_ENUM,
   FIELD_ATTR_VALUES,
   FIELD_ATTR_INT_VALUE_MAP,
@@ -327,6 +332,11 @@ export function buildExpectedSchemaWithProvenance(
           const normalized = normalizeBooleanLiteralForSqlite(col.default.value);
           if (normalized !== undefined) col.default = { kind: "literal", value: normalized };
         }
+        // A duration's default is built in the Postgres interval spelling; a TEXT column holds
+        // the canonical ISO-8601 form, which is what the runtime writes there.
+        if (kindBefore === "interval" && col.default?.kind === "literal") {
+          col.default = { kind: "literal", value: formatDuration(parsePostgresInterval(col.default.value)) };
+        }
         // `now()` is Postgres-only; SQLite has no such function, so a
         // `DEFAULT now()` (the @autoSet insert-time default, and any authored
         // @default "now()") makes the emitted CREATE TABLE un-appliable
@@ -490,6 +500,7 @@ function normalizeForSqlite(sqlType: SqlType): SqlType {
     case "timestamp":
     case "date":
     case "time":
+    case "interval":
       return { kind: "text" };
     case "integer":
       // SQLite stores every INTEGER as a 64-bit value and Drizzle's int() emits
@@ -1418,7 +1429,18 @@ function buildColumn(
     // against @values by the loader (FR-011 Check 5), so a miss here is unreachable;
     // throw rather than silently emit the symbol, which would fail only at apply time.
     const enumIntMap = field.subType === FIELD_SUBTYPE_ENUM ? intValueMapOf(field) : undefined;
-    if (enumIntMap !== undefined) {
+    if (field.subType === FIELD_SUBTYPE_DURATION && col.sqlType.kind === "interval") {
+      // Postgres refuses a signed ISO-8601 duration as interval input and stores any default in
+      // its own spelling, so the default is written in that spelling: it reads back unchanged.
+      const micros = parseDurationLiteral(defaultRaw);
+      if (micros === undefined) {
+        throw new Error(
+          `field.duration '${field.name}' @default '${defaultRaw}' is not an ISO-8601 duration ` +
+            `(such as PT1H30M; no years, months or weeks) — cannot build the column default for '${col.name}'.`,
+        );
+      }
+      col.default = { kind: "literal", value: formatPostgresInterval(micros) };
+    } else if (enumIntMap !== undefined) {
       const mapped = enumIntMap[defaultRaw];
       if (typeof mapped !== "number") {
         throw new Error(
@@ -1506,6 +1528,7 @@ function arrayElementSqlType(field: MetaData): SqlType | undefined {
       // ADR-0039: resolving — @localTime may be inherited via extends.
       return { kind: "timestamp", withTimezone: field.attr(FIELD_ATTR_LOCAL_TIME) !== true };
     case FIELD_SUBTYPE_INET:      return { kind: "inet" };
+    case FIELD_SUBTYPE_DURATION:  return { kind: "interval" };
     default:                      return undefined; // object/map → single jsonb column
   }
 }
@@ -1589,6 +1612,7 @@ function subtypeToSqlType(field: MetaData): SqlType {
     // stores as text (the native inet column would reject a not-strictly-valid
     // value at INSERT). ADR-0039: resolving — @lenient may be inherited via extends.
     case FIELD_SUBTYPE_INET:      return field.attr(FIELD_ATTR_LENIENT) === true ? { kind: "text" } : { kind: "inet" };
+    case FIELD_SUBTYPE_DURATION:  return { kind: "interval" }; // Postgres native INTERVAL; TEXT on SQLite
     // A string-backed field.enum is a text column with a membership CHECK; an
     // INT-BACKED one (@intValueMap, design D5) stores the mapped integer instead.
     // The TS/wire type is the member string either way — only the column differs.

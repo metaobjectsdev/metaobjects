@@ -765,4 +765,39 @@ public final class SpringGeneratorSupport {
             + "import " + runtimePackage + ".CanonicalDecimalDeserializer;\n"
             + "import " + runtimePackage + ".DeclaredDecimal;\n";
     }
+
+    /** The element type string of a duration component (see {@link #durationJsonAnnotations}). */
+    private static final String DURATION_TYPE = "java.time.Duration";
+    private static final String DURATION_LIST_TYPE = "java.util.List<java.time.Duration>";
+
+    /** True iff a record component of Java type {@code type} carries the duration wire binding. */
+    public static boolean isDurationComponent(String type) {
+        return DURATION_TYPE.equals(type) || DURATION_LIST_TYPE.equals(type);
+    }
+
+    /**
+     * {@code field.duration}: the Jackson annotations binding a {@code java.time.Duration} record
+     * component to the canonical ISO-8601 serializer and the strict deserializer shipped in the
+     * runtime package. Both halves ride in every wire mode: a host ObjectMapper's JavaTimeModule
+     * writes a Duration as decimal seconds (or {@code Duration.toString()}, which differs from the
+     * canonical form for negatives), and {@code Duration.parse} accepts more than the accepted form.
+     * A {@code List<Duration>} binds its elements ({@code contentUsing}). Empty for any other type.
+     */
+    public static String durationJsonAnnotations(String type) {
+        if (!isDurationComponent(type)) return "";
+        String key = DURATION_LIST_TYPE.equals(type) ? "contentUsing" : "using";
+        return "@JsonSerialize(" + key + " = CanonicalDurationSerializer.class) "
+            + "@JsonDeserialize(" + key + " = CanonicalDurationDeserializer.class)";
+    }
+
+    /**
+     * The imports {@link #durationJsonAnnotations} needs beyond {@code JsonDeserialize} (which the
+     * caller imports once for every reason it is used): {@code JsonSerialize} unless
+     * {@code serializeImported}, and the two runtime classes.
+     */
+    public static String durationAnnotationImports(String runtimePackage, boolean serializeImported) {
+        return (serializeImported ? "" : "import com.fasterxml.jackson.databind.annotation.JsonSerialize;\n")
+            + "import " + runtimePackage + ".CanonicalDurationDeserializer;\n"
+            + "import " + runtimePackage + ".CanonicalDurationSerializer;\n";
+    }
 }

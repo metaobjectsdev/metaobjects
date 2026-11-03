@@ -27,6 +27,7 @@ export * from "./shared/base-types.js";
 export * from "./shared/structural.js";
 export * from "./core/object/object-constants.js";
 export * from "./core/field/field-constants.js";
+export * from "./core/field/duration-wire.js";
 // FR-037 R1 — THE mutability accessors. Every consumer deciding "may this be
 // written, and when?" must go through these rather than reading the attr, so the
 // absent-means-readWrite default lives in exactly one place per port.

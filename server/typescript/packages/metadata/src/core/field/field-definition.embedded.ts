@@ -346,6 +346,14 @@ export const FIELD_DEFINITION: ProviderDefinition = {
           "description": "#234: opt this field out of strict well-formedness enforcement. When true, codegen binds a plain string (no URL/IP validator, no native URI/InetAddress type; field.inet uses a text column, not the native inet type) so a not-strictly-valid value round-trips unchanged. Default (absent/false) is strict: an absolute-scheme URI / an IPv4-or-IPv6 literal."
         }
       ]
+    },
+    {
+      "type": "field",
+      "subType": "duration",
+      "dataType": "string",
+      "extendsBase": true,
+      "description": "A fixed-length span of time: days, hours, minutes and seconds (ADR-0036/0037 — a concept with a native type + behavior). Binds to TS string (TS has no native duration type); other ports bind to their native type (C# System.TimeSpan, Java and Kotlin java.time.Duration, Python datetime.timedelta). DB column is the Postgres-native interval type, text elsewhere. The wire form is an ISO-8601 duration: every port writes [-]PT[nH][nM][n[.f]S] (hours never folded into days, up to 6 fractional digits, zero is PT0S) and reads that form plus a leading day count (nD, exactly 24 hours). Years, months and weeks are refused: a calendar span is not a fixed length.",
+      "whenToUse": "A field holds an elapsed time, a timeout or a delay. Use it for a native Postgres interval column and a native duration type instead of a string or a number of seconds. A calendar span (\"every 3 months\") is not a duration: model it as an int and a unit."
     }
   ]
 };

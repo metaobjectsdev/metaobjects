@@ -209,6 +209,8 @@ _SHARED_PREDICATES: tuple[str, ...] = ("shared_predicates",)
 _FR010_FIELD_MAPPING = "fr010_field_mapping"
 _M2M_CODEGEN = "m2m_codegen"
 _FR019_SHARED_ENUM = "fr019_shared_enum"
+#: The field.duration codec the entity tier emits as the generated package's ``_duration_wire.py``.
+_DURATION_WIRE = "duration_wire"
 _EXTRACT_DELEGATE = "extract_delegate_emitter"
 _EXTRACT_SCHEMA = "extract_schema_emitter"
 _OUTPUT_FORMAT_SPEC = "output_format_spec_emitter"
@@ -236,7 +238,7 @@ GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
         layer="model",
         factory=lambda _ctx: entity_model(),
         source=entity_model,
-        runtime=_SHARED_PREDICATES + (_FR019_SHARED_ENUM, _M2M_CODEGEN),
+        runtime=_SHARED_PREDICATES + (_FR019_SHARED_ENUM, _M2M_CODEGEN, _DURATION_WIRE),
     ),
     "routes": GeneratorEntry(
         name="routes",

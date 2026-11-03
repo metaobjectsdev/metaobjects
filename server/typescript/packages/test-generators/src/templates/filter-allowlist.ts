@@ -13,6 +13,7 @@ import {
   FIELD_SUBTYPE_TIMESTAMP,
   FIELD_SUBTYPE_CURRENCY,
   FIELD_SUBTYPE_UUID,
+  FIELD_SUBTYPE_DURATION,
   FIELD_SUBTYPE_ENUM,
   FIELD_ATTR_LOCAL_TIME,
   opsForField,
@@ -70,6 +71,9 @@ const VALUE_FORMAT_SUBTYPES = new Set<string>([
   FIELD_SUBTYPE_TIMESTAMP,
   FIELD_SUBTYPE_UUID,
   FIELD_SUBTYPE_DECIMAL,
+  // An ISO-8601 duration: runtime-ts refuses a value that is not one, and the column codec binds
+  // the dialect's spelling of it.
+  FIELD_SUBTYPE_DURATION,
 ]);
 
 /** Subtypes whose values are whole numbers — `field.currency` is integer minor units. */

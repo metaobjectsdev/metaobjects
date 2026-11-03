@@ -188,6 +188,7 @@ export function pgTypeToSqlType(
 
   // INET (ADR-0036/0037 Wave 3 — field.inet)
   if (dt === "inet") return { kind: "inet" };
+  if (dt === "interval") return { kind: "interval" };
 
   // Unknown types (user-defined enums, citext, ltree, etc.) fall back to text
   // so we don't blow up on unrecognised types.

@@ -109,6 +109,19 @@
     { "name": "lenient-inet-accepts-valid",     "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "reportedIp": "10.0.0.1" },      "expectValid": true },
 
     { "name": "assigned-pk-present", "entity": "Ledger", "payload": { "code": "L-1", "label": "ok" }, "expectValid": true },
-    { "name": "assigned-pk-missing", "entity": "Ledger", "payload": { "label": "ok" },                "expectValid": false }
+    { "name": "assigned-pk-missing", "entity": "Ledger", "payload": { "label": "ok" },                "expectValid": false },
+    { "name": "duration-accept-hours-minutes", "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "holdFor": "PT1H30M" }, "expectValid": true },
+    { "name": "duration-accept-days", "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "holdFor": "P1DT2H" }, "expectValid": true },
+    { "name": "duration-accept-negative", "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "holdFor": "-PT30S" }, "expectValid": true },
+    { "name": "duration-accept-fraction", "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "holdFor": "PT0.5S" }, "expectValid": true },
+    { "name": "duration-accept-zero", "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "holdFor": "PT0S" }, "expectValid": true },
+    { "name": "duration-reject-months", "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "holdFor": "P1M" }, "expectValid": false },
+    { "name": "duration-reject-years", "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "holdFor": "P1Y" }, "expectValid": false },
+    { "name": "duration-reject-weeks", "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "holdFor": "P2W" }, "expectValid": false },
+    { "name": "duration-reject-clock", "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "holdFor": "1:30:00" }, "expectValid": false },
+    { "name": "duration-reject-fractional-hours", "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "holdFor": "PT1.5H" }, "expectValid": false },
+    { "name": "duration-reject-lowercase", "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "holdFor": "pt1h" }, "expectValid": false },
+    { "name": "duration-reject-empty-time", "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "holdFor": "PT" }, "expectValid": false },
+    { "name": "duration-reject-too-long", "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "holdFor": "PT256204779H" }, "expectValid": false }
   ]
 }

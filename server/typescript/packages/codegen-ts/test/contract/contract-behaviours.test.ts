@@ -86,7 +86,7 @@ function sampleRow(): Record<string, unknown> {
     id: "6f1c2b1e-0d7a-4d55-9c1e-0a4e8f1d2c3b",
     title: "A title", email: null, host: null, quantity: 3, views: null, ratio: null, score: null, amount: null,
     active: null, startsOn: null, startsAt: null, publishedAt: null, wallClock: null, priceCents: null, status: "draft",
-    stage: null, homepage: null, looseLink: null, address: null, shipTo: null, stops: null, tags: null,
+    stage: null, homepage: null, looseLink: null, address: null, holdFor: null, shipTo: null, stops: null, tags: null,
     internalNote: null, issuedBy: null, syncedBy: null, createdAt: null, updatedAt: null,
   };
 }
@@ -172,6 +172,17 @@ describe("types the JSON Schema formats do not state", () => {
     expect(valid({ ...sampleRow(), startsAt: "09:30:00" })).toBe(true);
     expect(valid({ ...sampleRow(), startsAt: "09:30:00.250" })).toBe(true);
     expect(valid({ ...sampleRow(), startsAt: "9am" })).toBe(false);
+  });
+
+  test("a duration is an ISO-8601 duration of days, hours, minutes and seconds — never a calendar span", async () => {
+    const valid = validatorOf(await contractTree(corpusCase("all-fields")), `${ALL_FIELDS}.schema.json`);
+    for (const ok of ["PT1H30M", "P1DT2H", "-PT1M30S", "PT0.5S", "PT0S"]) {
+      expect(valid({ ...sampleRow(), holdFor: ok }), ok).toBe(true);
+    }
+    // ajv-formats' `duration` alone takes years, months and weeks; the pattern refuses them.
+    for (const bad of ["P1M", "P1Y", "P2W", "1:30:00", "PT1.5H", "pt1h", "PT"]) {
+      expect(valid({ ...sampleRow(), holdFor: bad }), bad).toBe(false);
+    }
   });
 
   test("a local timestamp has no offset, and a zoned one must", async () => {

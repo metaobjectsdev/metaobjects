@@ -48,6 +48,7 @@ from ..meta.core.field.field_constants import (
     FIELD_SUBTYPE_INT,
     FIELD_SUBTYPE_LONG,
     FIELD_SUBTYPE_INET,
+    FIELD_SUBTYPE_DURATION,
     FIELD_SUBTYPE_MAP,
     FIELD_SUBTYPE_OBJECT,
     FIELD_SUBTYPE_STRING,
@@ -1102,10 +1103,11 @@ def ops_for_subtype(field_subtype: str) -> frozenset[str]:
         return _OPS_STRING
     # ADR-0036/0037 Wave 3 — field.uri is string-like (substring searchable):
     # eq/ne/in/like/isNull. field.inet is uuid-like (an identity value, no
-    # substring search, no ordering): eq/ne/in/isNull.
+    # substring search, no ordering): eq/ne/in/isNull. field.duration takes the
+    # same band: ordering is deferred, since a text dialect cannot order ISO strings.
     if field_subtype == FIELD_SUBTYPE_URI:
         return _OPS_STRING
-    if field_subtype in ("uuid", FIELD_SUBTYPE_INET):
+    if field_subtype in ("uuid", FIELD_SUBTYPE_INET, FIELD_SUBTYPE_DURATION):
         return _OPS_UUID
     if field_subtype == "boolean":
         return _OPS_BOOLEAN

@@ -347,6 +347,7 @@
           { "field.uri":       { "name": "uriVal",   "@required": true } },
           { "field.inet":      { "name": "inetVal",  "@required": true } },
           { "field.inet":      { "name": "inet6Val", "@required": true } },
+          { "field.duration":  { "name": "durationVal" } },
           { "field.object":    { "name": "settings", "@objectRef": "Settings", "@storage": "jsonb" } },
           { "field.object":    { "name": "labels", "@objectRef": "Label", "@storage": "jsonb", "isArray": true } },
           { "identity.primary": { "name": "id", "@fields": "id", "@generation": "uuid" } },

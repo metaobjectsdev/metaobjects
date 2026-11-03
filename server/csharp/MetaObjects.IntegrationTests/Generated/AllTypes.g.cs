@@ -64,6 +64,9 @@ public class AllTypes
     [Required]
     [JsonConverter(typeof(MetaNetValidation.IPAddressJsonConverter))]
     public IPAddress Inet6Val { get; set; } = default!;
+    [Column(AllTypesNames.DurationValColumn)]
+    [DurationWire.Iso]
+    public TimeSpan? DurationVal { get; set; }
     public Settings? Settings { get; set; }
     public ICollection<Label>? Labels { get; set; }
 }

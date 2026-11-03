@@ -27,6 +27,7 @@ import {
   FIELD_SUBTYPE_ENUM,
   FIELD_SUBTYPE_OBJECT,
   FIELD_SUBTYPE_TIMESTAMP,
+  FIELD_SUBTYPE_DURATION,
   FIELD_ATTR_STORAGE,
   FIELD_ATTR_OBJECT_REF,
   OBJECT_SUBTYPE_VALUE,
@@ -40,10 +41,11 @@ import {
 } from "@metaobjectsdev/metadata";
 import type { Dialect, Row } from "./persistence-driver.js";
 import { decimalFits, decimalToWire, parseDecimalInput } from "./decimal-wire.js";
+import { durationToWire, formatDuration, formatPostgresInterval, parseDurationLiteral } from "./duration-wire.js";
 
 export function coerceRowOnRead(entity: MetaData, row: Row, dialect: Dialect): Row {
   const hydrated = parseJsonTextArrays(entity, deserializeJsonbObjectFields(entity, row));
-  const decoded = canonicalizeDecimals(entity, decodeIntBackedEnums(entity, hydrated));
+  const decoded = canonicalizeDurations(entity, canonicalizeDecimals(entity, decodeIntBackedEnums(entity, hydrated)));
   if (dialect !== "sqlite" && dialect !== "mysql") return decoded;
   return mapBooleansFromInt(entity, decoded);
 }
@@ -141,7 +143,7 @@ function encodeIntBackedEnums(entity: MetaData, row: Row): Row {
 }
 
 export function coerceRowOnWrite(entity: MetaData, row: Row, dialect: Dialect): Row {
-  const jsonbColumned = serializeJsonbColumns(entity, bindDecimals(entity, row));
+  const jsonbColumned = serializeJsonbColumns(entity, bindDurations(entity, bindDecimals(entity, row), dialect));
   // Dialect-independent: an int-backed enum's column is INTEGER on every dialect
   // (SQLite has one integer storage class), so the symbol→int encode is not gated
   // on the dialect the way the boolean mapping below is.
@@ -388,5 +390,77 @@ function bindDecimals(entity: MetaData, row: Row): Row {
       return v.map((element) => (element === null ? null : bind(element)));
     }
     return bind(v);
+  });
+}
+
+/**
+ * Apply `convert` to every `field.duration` value of `owner` present in `row`, an `isArray` one
+ * element by element, and recurse into a `field.object` / `field.map` whose value object declares
+ * durations (as `mapDecimals` does). `top` says whether `owner` is the stored row itself: a
+ * duration inside a jsonb value object is JSON, so it is always the canonical ISO string, while a
+ * top-level duration column takes the dialect's spelling. A row is copied only when something
+ * changed.
+ */
+function mapDurations(
+  owner: MetaData, row: Row, convert: (field: MetaData, value: unknown, top: boolean) => unknown, top = true,
+): Row {
+  let out: Row | null = null;
+  // ADR-0039: resolving — a duration may be inherited via extends.
+  for (const child of owner.children()) {
+    if (child.type !== TYPE_FIELD) continue;
+    if (!(child.name in row)) continue;
+    const v = row[child.name];
+    if (v === null || v === undefined) continue;
+    let next: unknown = v;
+    if (child.subType === FIELD_SUBTYPE_DURATION) {
+      next = Array.isArray(v)
+        ? v.map((el) => (el === null || el === undefined ? el : convert(child, el, top)))
+        : convert(child, v, top);
+    } else {
+      const vo = valueObjectOf(child);
+      if (vo === undefined) continue;
+      const one = (el: unknown): unknown =>
+        el !== null && typeof el === "object" && !Array.isArray(el) ? mapDurations(vo, el as Row, convert, false) : el;
+      if (child.subType === FIELD_SUBTYPE_MAP) {
+        if (typeof v === "object" && !Array.isArray(v)) {
+          let mapped: Row | null = null;
+          for (const [key, el] of Object.entries(v as Row)) {
+            const m = one(el);
+            if (m !== el) (mapped ??= { ...(v as Row) })[key] = m;
+          }
+          if (mapped !== null) next = mapped;
+        }
+      } else if (Array.isArray(v)) {
+        const mapped = v.map(one);
+        if (mapped.some((el, i) => el !== v[i])) next = mapped;
+      } else {
+        next = one(v);
+      }
+    }
+    if (next === v) continue;
+    out ??= { ...row };
+    out[child.name] = next;
+  }
+  return out ?? row;
+}
+
+/** Read side: a duration column's driver value (an interval's text or object, or the stored ISO
+ *  string), and a duration inside a jsonb value object, become the canonical wire string. An
+ *  interval with a year or month part throws. */
+function canonicalizeDurations(entity: MetaData, row: Row): Row {
+  return mapDurations(entity, row, (_field, v) => durationToWire(v));
+}
+
+/** Write side: a duration is bound as its canonical ISO-8601 string on a text column (SQLite,
+ *  MySQL), so the column holds one spelling per span, and in the Postgres interval spelling on
+ *  Postgres, which refuses a signed ISO-8601 duration. A value that is not a duration is refused
+ *  here, not by the database. */
+function bindDurations(entity: MetaData, row: Row, dialect: Dialect): Row {
+  return mapDurations(entity, row, (child, v, top) => {
+    const micros = typeof v === "string" ? parseDurationLiteral(v) : undefined;
+    if (micros === undefined) {
+      throw new Error(`field.duration '${child.name}' cannot be written: ${JSON.stringify(v)} is not an ISO-8601 duration (such as PT1H30M; no years, months or weeks)`);
+    }
+    return top && dialect === "postgres" ? formatPostgresInterval(micros) : formatDuration(micros);
   });
 }

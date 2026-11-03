@@ -198,6 +198,25 @@ public class PostgresDriver extends GenericSQLDriver {
     }
 
     /**
+     * {@code field.duration} → the native {@code interval} column. Postgres refuses a signed
+     * ISO-8601 duration as interval input ({@code '-PT1M30S'::interval} is "invalid input
+     * syntax"), so the value binds in the interval spelling {@code [-]HH:MM:SS[.f]} through
+     * {@code setObject(.., Types.OTHER)} (an untyped parameter, like jsonb). Postgres returns an
+     * interval in that same spelling, which {@code DurationCodec} reads back canonically.
+     */
+    @Override
+    protected void setStatementValue(PreparedStatement s, com.metaobjects.field.MetaField f, int index, Object value)
+            throws SQLException {
+        if (f instanceof com.metaobjects.field.DurationField && !f.isArrayType()) {
+            if (value == null) s.setNull(index, java.sql.Types.OTHER);
+            else s.setObject(index,
+                com.metaobjects.manager.db.codec.JdbcCodecs.DurationCodec.postgresText(f, value), java.sql.Types.OTHER);
+            return;
+        }
+        super.setStatementValue(s, f, index, value);
+    }
+
+    /**
      * dbColumnType slim-and-derive (Phase 1): Postgres has native array columns, so a
      * {@code field.string isArray} → {@code text[]} and a {@code field.uuid isArray} →
      * {@code uuid[]} (element type DERIVED from the field subtype — the removed
