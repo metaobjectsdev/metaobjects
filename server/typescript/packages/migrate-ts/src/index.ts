@@ -61,6 +61,8 @@ export {
   DuplicateSqlNameError,
   allowOptionFor, isBlockedChangesError, isPrimaryKeyChangeError, isDeclaredRenameError,
   isDuplicateSqlNameError,
+  InvalidCheckNameError,
+  isInvalidCheckNameError,
   isFkTargetNotUniqueError,
   isUnknownSchemaConventionsError,
   UnknownSchemaConventionsError,
@@ -68,7 +70,7 @@ export {
   FkTargetNotUniqueError,
   type FkTargetViolation,
 } from "./errors.js";
-export type { SqlNameCollision } from "./errors.js";
+export type { SqlNameCollision, CheckNameProblem } from "./errors.js";
 
 // Drop+add pairs in one table that may be a rename — the CLI's hint text reads it so the
 // declared rename is offered ahead of the data-losing `--allow drop-column`.

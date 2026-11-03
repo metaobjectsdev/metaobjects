@@ -1706,6 +1706,64 @@ function expressionFieldRefs(node: unknown, out: string[] = []): string[] {
   return out;
 }
 
+/** Field subtypes whose values a condition compares with a number literal. */
+const _CONDITION_NUMBER_SUBTYPES = new Set<string>([
+  FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT,
+  FIELD_SUBTYPE_DECIMAL, FIELD_SUBTYPE_CURRENCY,
+]);
+
+/**
+ * Why a cross-field validator's `@condition` cannot become a CHECK guard, or undefined when it
+ * can. Its names are already known to be fields. The rule, the same in every port:
+ *  - it types cleanly (the origin.computed inference) and its root is boolean, since a CHECK
+ *    negates it;
+ *  - a literal compared with a field is of that field's kind (a boolean for field.boolean, a
+ *    number for a numeric field, a string otherwise) and, for field.enum, one of its @values;
+ *  - no comparison has a null literal: `x = NULL` is never true, so use isNull / isNotNull.
+ */
+function conditionProblem(condition: unknown, obj: MetaObject): string | undefined {
+  const fields = new Map(obj.fields().map((f) => [f.name, f] as const));
+  const inferred = inferExprType(condition as ExprNode, (name) => fields.get(name)?.subType);
+  if (inferred.errors.length > 0) return `is not a valid expression: ${inferred.errors.join("; ")}.`;
+  if (inferred.type !== FIELD_SUBTYPE_BOOLEAN) {
+    return `must be a boolean expression (a comparison, a null test, or and / or / not of them), not a field.${String(inferred.type)}.`;
+  }
+  let problem: string | undefined;
+  const visit = (node: unknown): void => {
+    if (problem !== undefined || typeof node !== "object" || node === null) return;
+    const n = node as Record<string, unknown>;
+    if (n["left"] !== undefined && n["right"] !== undefined) {
+      for (const [a, b] of [[n["left"], n["right"]], [n["right"], n["left"]]] as const) {
+        const lit = a as Record<string, unknown>;
+        const ref = b as Record<string, unknown>;
+        if (!("value" in lit)) continue;
+        if (lit["value"] === null) {
+          problem = `compares with null, which is never true: use isNull or isNotNull.`;
+          return;
+        }
+        const field = typeof ref["field"] === "string" ? fields.get(ref["field"]) : undefined;
+        if (field === undefined) continue;
+        const value = lit["value"];
+        const kind = field.subType === FIELD_SUBTYPE_BOOLEAN ? "boolean"
+          : _CONDITION_NUMBER_SUBTYPES.has(field.subType) ? "number" : "string";
+        if (typeof value !== kind) {
+          problem = `compares "${field.name}" (field.${field.subType}) with ${JSON.stringify(value)}; it needs a ${kind}.`;
+          return;
+        }
+        const members = field.subType === FIELD_SUBTYPE_ENUM ? field.attr(FIELD_ATTR_VALUES) : undefined;
+        if (Array.isArray(members) && !members.map(String).includes(String(value))) {
+          problem = `compares "${field.name}" with ${JSON.stringify(value)}, which is not one of its @values (${members.join(", ")}).`;
+          return;
+        }
+      }
+    }
+    for (const key of ["left", "right", "arg"]) visit(n[key]);
+    if (Array.isArray(n["args"])) for (const a of n["args"]) visit(a);
+  };
+  visit(condition);
+  return problem;
+}
+
 export function validateCrossFieldValidators(root: MetaData): ParseError[] {
   const errors: ParseError[] = [];
   for (const obj of root.children().filter((c) => c.type === TYPE_OBJECT)) {
@@ -1726,13 +1784,19 @@ export function validateCrossFieldValidators(root: MetaData): ParseError[] {
       }
       const condition = v.attr(VALIDATOR_ATTR_CONDITION);
       if (condition !== undefined) {
+        const label = `validator.${v.subType} "${obj.name}.${v.name}" @condition`;
         const unknown = [...new Set(expressionFieldRefs(condition))].filter((f) => !fieldNames.has(f)).sort();
         if (unknown.length > 0) {
           errors.push(new ParseError(
-            `validator.${v.subType} "${obj.name}.${v.name}" @condition names ${unknown.map((f) => `"${f}"`).join(", ")}, ` +
+            `${label} names ${unknown.map((f) => `"${f}"`).join(", ")}, ` +
             `which ${unknown.length === 1 ? "is not a field" : "are not fields"} of "${obj.name}".`,
             { code: "ERR_BAD_ATTR_VALUE", source: v.source },
           ));
+          continue;
+        }
+        const problem = conditionProblem(condition, obj as MetaObject);
+        if (problem !== undefined) {
+          errors.push(new ParseError(`${label} ${problem}`, { code: "ERR_BAD_ATTR_VALUE", source: v.source }));
         }
       }
     }

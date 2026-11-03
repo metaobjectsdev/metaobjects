@@ -56,7 +56,7 @@ public static class ValidatorConstants
 
     /// <summary>The validators <c>meta migrate</c> renders as a CHECK (and so may carry @constraintName):
     /// numeric, length, regex and the cross-field ones. required is NOT NULL; array and base have none.</summary>
-    public static readonly string[] CHECK_VALIDATOR_SUBTYPES =
+    public static readonly IReadOnlyList<string> CHECK_VALIDATOR_SUBTYPES =
     [
         VALIDATOR_SUBTYPE_NUMERIC, VALIDATOR_SUBTYPE_LENGTH, VALIDATOR_SUBTYPE_REGEX,
         VALIDATOR_SUBTYPE_COMPARISON, VALIDATOR_SUBTYPE_REQUIRED_WHEN, VALIDATOR_SUBTYPE_PRESENT_IFF,

@@ -22,6 +22,7 @@ import {
   isPrimaryKeyChangeError,
   isDeclaredRenameError,
   isDuplicateSqlNameError,
+  isInvalidCheckNameError,
   isFkTargetNotUniqueError,
   FkTargetNotUniqueError,
   type FkTargetViolation,
@@ -382,6 +383,8 @@ const PK_CHANGE_HINT =
   "align the primary key manually, or reconcile the metadata identity to match the live table";
 const DUPLICATE_SQL_NAME_HINT =
   "rename one of the colliding declarations; an index's database name is its identity.secondary / index.lookup name, not prefixed with its table";
+const CHECK_NAME_HINT =
+  "give each constraint on a table its own @constraintName, at most 63 bytes";
 const FK_TARGET_NOT_UNIQUE_HINT =
   "declare an identity.secondary on the target entity with exactly the referenced fields, or reference its primary key";
 const DECLARED_RENAME_HINT =
@@ -1171,6 +1174,8 @@ export async function migrateCommand(
     if (err instanceof AlreadyEmittedError) return err.exitCode;
     // A metadata defect, not a tool failure: two declarations generate one database name.
     if (isDuplicateSqlNameError(err)) return refuseEngineError(err, DUPLICATE_SQL_NAME_HINT, fmt);
+    // A metadata defect too: a declared CHECK name that duplicates another constraint or is too long.
+    if (isInvalidCheckNameError(err)) return refuseEngineError(err, CHECK_NAME_HINT, fmt);
     // A metadata defect too: a foreign key whose target columns are not a unique key there.
     if (isFkTargetNotUniqueError(err)) return refuseEngineError(err, FK_TARGET_NOT_UNIQUE_HINT, fmt);
     // A metadata defect too: an enum member longer than the project's enums.maxLength.

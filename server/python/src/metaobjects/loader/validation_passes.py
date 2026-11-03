@@ -7,6 +7,7 @@ Warning strings are byte-identical to the expected-warnings fixtures.
 """
 from __future__ import annotations
 
+import json
 import math
 import re
 from typing import Callable, NamedTuple
@@ -3793,9 +3794,10 @@ def _validate_identity_sequence(root: MetaData, errors: list[MetaError]) -> None
 
 
 # Cross-field validators (comparison / requiredWhen / presentIff / atLeastOne), which the
-# database enforces as CHECKs: atLeastOne @max between 1 and the number of its @fields, and
-# every field a @condition names a field of the owning entity (ERR_BAD_ATTR_VALUE). Read
-# RESOLVING (ADR-0039). Mirrors TS validateCrossFieldValidators.
+# database enforces as CHECKs: atLeastOne @max between 1 and the number of its @fields,
+# every field a @condition names a field of the owning entity, and a @condition that can
+# become a CHECK guard (see _condition_problem) — all ERR_BAD_ATTR_VALUE. Read RESOLVING
+# (ADR-0039). Mirrors TS validateCrossFieldValidators.
 def _expr_field_refs(node: object, out: set[str]) -> None:
     if not isinstance(node, dict):
         return
@@ -3807,6 +3809,97 @@ def _expr_field_refs(node: object, out: set[str]) -> None:
     if isinstance(args, list):
         for a in args:
             _expr_field_refs(a, out)
+
+
+# Field subtypes whose values a condition compares with a number literal.
+_CONDITION_NUMBER_SUBTYPES = frozenset({
+    FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT,
+    FIELD_SUBTYPE_DECIMAL, FIELD_SUBTYPE_CURRENCY,
+})
+
+
+def _json_literal(value: object) -> str:
+    """A literal as JSON.stringify writes it, so the message matches the TS port's."""
+    if isinstance(value, float) and value.is_integer():
+        value = int(value)
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+
+def _literal_is_kind(value: object, kind: str) -> bool:
+    # bool is a subclass of int in Python: a bool literal is not a number, nor a number a bool.
+    if kind == "boolean":
+        return isinstance(value, bool)
+    if kind == "number":
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    return isinstance(value, str)
+
+
+def _condition_problem(condition: object, obj: MetaData) -> str | None:
+    """Why a cross-field validator's ``@condition`` cannot become a CHECK guard, or None when
+    it can. Its names are already known to be fields. The rule, the same in every port:
+      - it types cleanly (the origin.computed inference) and its root is boolean, since a
+        CHECK negates it;
+      - a literal compared with a field is of that field's kind (a boolean for field.boolean,
+        a number for a numeric field, a string otherwise) and, for field.enum, one of its
+        @values;
+      - no comparison has a null literal: ``x = NULL`` is never true, so use isNull / isNotNull.
+    Mirrors TS conditionProblem."""
+    fields = {f.name: f for f in obj.fields()}
+    inferred = infer_expr_type(
+        condition, lambda name: fields[name].sub_type if name in fields else None
+    )
+    if inferred.errors:
+        return f"is not a valid expression: {'; '.join(inferred.errors)}."
+    if inferred.type != FIELD_SUBTYPE_BOOLEAN:
+        return (
+            "must be a boolean expression (a comparison, a null test, or and / or / not of "
+            f"them), not a field.{inferred.type}."
+        )
+
+    def visit(node: object) -> str | None:
+        if not isinstance(node, dict):
+            return None
+        if node.get("left") is not None and node.get("right") is not None:
+            for lit, ref in ((node["left"], node["right"]), (node["right"], node["left"])):
+                if not isinstance(lit, dict) or "value" not in lit:
+                    continue
+                value = lit["value"]
+                if value is None:
+                    return "compares with null, which is never true: use isNull or isNotNull."
+                name = ref.get("field") if isinstance(ref, dict) else None
+                field = fields.get(name) if isinstance(name, str) else None
+                if field is None:
+                    continue
+                sub = field.sub_type
+                kind = (
+                    "boolean" if sub == FIELD_SUBTYPE_BOOLEAN
+                    else "number" if sub in _CONDITION_NUMBER_SUBTYPES
+                    else "string"
+                )
+                if not _literal_is_kind(value, kind):
+                    return (
+                        f'compares "{field.name}" (field.{sub}) with {_json_literal(value)}; '
+                        f"it needs a {kind}."
+                    )
+                members = field.get_meta_attr(FIELD_ATTR_VALUES) if sub == FIELD_SUBTYPE_ENUM else None
+                if isinstance(members, list) and str(value) not in [str(m) for m in members]:
+                    return (
+                        f'compares "{field.name}" with {_json_literal(value)}, which is not one '
+                        f"of its @values ({', '.join(str(m) for m in members)})."
+                    )
+        for key in ("left", "right", "arg"):
+            found = visit(node.get(key))
+            if found is not None:
+                return found
+        args = node.get("args")
+        if isinstance(args, list):
+            for a in args:
+                found = visit(a)
+                if found is not None:
+                    return found
+        return None
+
+    return visit(condition)
 
 
 def _validate_cross_field_validators(root: MetaData, errors: list[MetaError]) -> None:
@@ -3837,6 +3930,7 @@ def _validate_cross_field_validators(root: MetaData, errors: list[MetaError]) ->
             condition = v.get_meta_attr(vc.VALIDATOR_ATTR_CONDITION)
             if condition is None:
                 continue
+            label = f'validator.{v.sub_type} "{obj.name}.{v.name}" @condition'
             refs: set[str] = set()
             _expr_field_refs(condition, refs)
             unknown = sorted(refs - field_names)
@@ -3845,10 +3939,15 @@ def _validate_cross_field_validators(root: MetaData, errors: list[MetaError]) ->
                 verb = "is not a field" if len(unknown) == 1 else "are not fields"
                 errors.append(MetaError(
                     code=ErrorCode.ERR_BAD_ATTR_VALUE,
-                    message=(
-                        f'validator.{v.sub_type} "{obj.name}.{v.name}" @condition names {names}, '
-                        f'which {verb} of "{obj.name}".'
-                    ),
+                    message=f'{label} names {names}, which {verb} of "{obj.name}".',
+                    envelope=v.source,
+                ))
+                continue
+            problem = _condition_problem(condition, obj)
+            if problem is not None:
+                errors.append(MetaError(
+                    code=ErrorCode.ERR_BAD_ATTR_VALUE,
+                    message=f"{label} {problem}",
                     envelope=v.source,
                 ))
 

@@ -1,4 +1,6 @@
-import { DuplicateSqlNameError, FkTargetNotUniqueError, type FkTargetViolation } from "./errors.js";
+import {
+  DuplicateSqlNameError, FkTargetNotUniqueError, InvalidCheckNameError, type CheckNameProblem, type FkTargetViolation,
+} from "./errors.js";
 import { negateExpression, renderExpressionSql } from "./check-expression.js";
 import { canBeUniqueConstraint, resolveSchemaConventions, type SchemaConventions } from "./schema-conventions.js";
 import type {
@@ -301,6 +303,7 @@ export function buildExpectedSchemaWithProvenance(
   // declares but never emits (on a TPH subtype) is no key a database can reference.
   const fkTargetViolations = collectFkTargetViolations(tables, fkCtx.origins, provenance);
   applySchemaConventions(tables, conventions);
+  checkDeclaredCheckNames(tables, dialect);
 
   // Pass 3: dialect-specific SqlType normalization.
   if (dialect === "sqlite") {
@@ -900,7 +903,8 @@ function buildChecks(
         } else {
           expression = `${qcol} IN (${values.map((v) => `'${v.replace(/'/g, "''")}'`).join(", ")})`;
         }
-        checks.push({ name: declaredCheckName(field) ?? `${tableName}_${col}_chk`, expression });
+        const enumCheck = { name: `${tableName}_${col}_chk`, expression };
+        checks.push(withDeclaredName(enumCheck, field));
       }
     }
     // Validator-derived checks.
@@ -910,7 +914,12 @@ function buildChecks(
     const enforcesLength = dialect !== "sqlite" && dialect !== "d1";
     const enforcedMax = skipRedundant && enforcesLength && columnType.kind === "text" ? columnType.maxLength : undefined;
     for (const v of field.validators()) {
-      const check = validatorCheck(v, qcol, tableName, col, dialect, skipRedundant, enforcedMax);
+      // A declared @constraintName asks for the CHECK by name, so it is kept even where the
+      // conventions would skip it as redundant.
+      const keep = declaredCheckName(v) !== undefined;
+      const check = keep
+        ? validatorCheck(v, qcol, tableName, col, dialect)
+        : validatorCheck(v, qcol, tableName, col, dialect, skipRedundant, enforcedMax);
       if (check) checks.push(withDeclaredName(check, v));
     }
   }
@@ -974,20 +983,60 @@ function renderEquals(
   return `'${s.replace(/'/g, "''")}'`;
 }
 
-/**
- * Derive a CHECK from an entity-scoped cross-field validator. Every reference is
- * resolved to its physical column by name; nothing raw is read from metadata.
- * Returns null (skips the check) if any referenced field is missing.
- */
 /** A validator's or field.enum's declared CHECK name (`@constraintName`; ADR-0039 resolving), if any. */
 function declaredCheckName(node: MetaData): string | undefined {
   const name = node.attr(VALIDATOR_ATTR_CONSTRAINT_NAME);
   return typeof name === "string" && name.length > 0 ? name : undefined;
 }
 
+/** The CHECKs whose name was declared (`@constraintName`), so the name checks below apply only
+ *  to names an author wrote: a derived name keeps the behaviour it always had. */
+const DECLARED_CHECKS = new WeakSet<CheckDescriptor>();
+
 function withDeclaredName(check: CheckDescriptor, node: MetaData): CheckDescriptor {
   const name = declaredCheckName(node);
-  return name === undefined ? check : { ...check, name };
+  if (name === undefined) return check;
+  const named = { ...check, name };
+  DECLARED_CHECKS.add(named);
+  return named;
+}
+
+/** Postgres's identifier limit, in bytes (NAMEDATALEN - 1). A longer name is truncated. */
+const PG_IDENTIFIER_MAX_BYTES = 63;
+
+/**
+ * Refuse a declared CHECK name another constraint on the same table already has, or (on
+ * Postgres) one over 63 bytes. Runs after the conventions have named primary keys, foreign
+ * keys and unique constraints. A collision among derived names is left as it always was.
+ */
+function checkDeclaredCheckNames(tables: readonly TableDescriptor[], dialect: Dialect | undefined): void {
+  const problems: CheckNameProblem[] = [];
+  const limited = dialect !== "sqlite" && dialect !== "d1";
+  for (const t of tables) {
+    const declared = new Set(t.checks.filter((c) => DECLARED_CHECKS.has(c)).map((c) => c.name));
+    if (declared.size === 0) continue;
+    const owners = new Map<string, string>();
+    const reported = new Set<string>();
+    const claim = (name: string, label: string): void => {
+      const prior = owners.get(name);
+      if (prior === undefined) {
+        owners.set(name, label);
+      } else if (declared.has(name) && !reported.has(name)) {
+        reported.add(name);
+        problems.push({ table: t.name, name, duplicateOf: prior });
+      }
+    };
+    if (t.primaryKey.length > 0) claim(t.primaryKeyName ?? `${t.name}_pkey`, "the primary key");
+    for (const fk of t.foreignKeys) claim(fk.name, `the foreign key "${fk.name}"`);
+    for (const ix of t.indexes) if (ix.constraint === "unique") claim(ix.name, `the unique constraint "${ix.name}"`);
+    for (const c of t.checks) claim(c.name, `another CHECK named "${c.name}"`);
+    if (!limited) continue;
+    for (const name of declared) {
+      const bytes = Buffer.byteLength(name, "utf8");
+      if (bytes > PG_IDENTIFIER_MAX_BYTES) problems.push({ table: t.name, name, bytes });
+    }
+  }
+  if (problems.length > 0) throw new InvalidCheckNameError(problems);
 }
 
 /**
@@ -1004,10 +1053,23 @@ function withCondition(
     const field = entity.fields().find((f) => f.name === name);
     return field === undefined ? undefined : quoteCheckCol(resolveColumnName(field, strategy));
   };
-  const unless = renderExpressionSql(negateExpression(condition as ExprNode), column, dialect);
+  // An int-backed enum (@intValueMap) stores a member as its integer, so a member compared
+  // with it is rendered as that integer.
+  const stored = (name: string, value: unknown): string | undefined => {
+    const field = entity.fields().find((f) => f.name === name);
+    const intMap = field === undefined ? undefined : intValueMapOf(field);
+    const n = intMap === undefined || typeof value !== "string" ? undefined : intMap[value];
+    return typeof n === "number" ? String(n) : undefined;
+  };
+  const unless = renderExpressionSql(negateExpression(condition as ExprNode), column, dialect, stored);
   return { ...check, expression: `(${unless}) OR (${check.expression})` };
 }
 
+/**
+ * Derive a CHECK from an entity-scoped cross-field validator. Every reference is
+ * resolved to its physical column by name; nothing raw is read from metadata.
+ * Returns null (skips the check) if any referenced field is missing.
+ */
 function crossFieldCheck(
   v: MetaValidator, entity: MetaObject, tableName: string,
   strategy: ColumnNamingStrategy, dialect: Dialect | undefined,
@@ -1062,7 +1124,9 @@ function crossFieldCheck(
           : `num_nonnulls(${refs.map((r) => r!.qcol).join(", ")})`;
         return {
           name: `${tableName}_${firstCol}_atleastone_chk`,
-          expression: max === 1 ? `${count} = 1` : `${count} BETWEEN 1 AND ${max}`,
+          // Two comparisons, not BETWEEN: Postgres stores a BETWEEN as these two comparisons, and
+          // writing it the way Postgres reads it back keeps the CHECK free of drift.
+          expression: max === 1 ? `${count} = 1` : `${count} >= 1 AND ${count} <= ${max}`,
         };
       }
       return {

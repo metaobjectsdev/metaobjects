@@ -2091,26 +2091,11 @@ public static partial class ValidationPasses
     }
 
     // ---------------------------------------------------------------------------
-    // field.enum @maxLength — the column length of a string-stored enum:
-    //   1. every member of @values fits in it (ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH), the
-    //      longest offender named;
-    //   2. it is refused beside @intValueMap (ERR_ENUM_MAX_LENGTH_WITH_INT_VALUE_MAP): an
-    //      int-stored enum's column is an integer, so a length would change nothing.
-    // Read RESOLVING (ADR-0039), reported on the node that DECLARES one of the three, so an
-    // enum that only inherits them is not reported twice. Every field.enum in the tree is
-    // checked, root-level abstract enums included. Mirrors TS validateEnumMaxLength.
-    // ---------------------------------------------------------------------------
-    // ---------------------------------------------------------------------------
-    // identity.primary @sequenceStart / @sequenceName describe the sequence an @generation
-    // "increment" key draws from; on any other generation there is none, so either one is
-    // refused (ERR_SEQUENCE_WITHOUT_INCREMENT). Read RESOLVING (ADR-0039), reported on the
-    // identity that declares one of them. Mirrors TS validateIdentitySequence.
-    // ---------------------------------------------------------------------------
-    // ---------------------------------------------------------------------------
     // Cross-field validators (comparison / requiredWhen / presentIff / atLeastOne), which the
-    // database enforces as CHECKs: atLeastOne @max between 1 and the number of its @fields, and
-    // every field a @condition names a field of the owning entity (ERR_BAD_ATTR_VALUE). Read
-    // RESOLVING (ADR-0039). Mirrors TS validateCrossFieldValidators.
+    // database enforces as CHECKs (ERR_BAD_ATTR_VALUE): atLeastOne @max is between 1 and the
+    // number of its @fields; every field a @condition names is a field of the owning entity;
+    // and the @condition can become a CHECK guard (ConditionProblem). Read RESOLVING
+    // (ADR-0039). Mirrors TS validateCrossFieldValidators.
     // ---------------------------------------------------------------------------
     private static readonly HashSet<string> CrossFieldValidatorSubtypes = new(StringComparer.Ordinal)
     {
@@ -2146,22 +2131,118 @@ public static partial class ValidationPasses
                 }
                 var condition = v.Attr(VALIDATOR_ATTR_CONDITION);
                 if (condition is null) continue;
+                var label = $"validator.{v.SubType} \"{obj.Name}.{v.Name}\" @condition";
                 var unknown = MetaObjects.Core.Attr.ExpressionGrammar.FieldRefs(condition)
                     .Distinct(StringComparer.Ordinal).Where(f => !fieldNames.Contains(f))
                     .OrderBy(f => f, StringComparer.Ordinal).ToList();
                 if (unknown.Count > 0)
                 {
                     errors.Add(new MetaError(
-                        $"validator.{v.SubType} \"{obj.Name}.{v.Name}\" @condition names {string.Join(", ", unknown.Select(f => $"\"{f}\""))}, " +
+                        $"{label} names {string.Join(", ", unknown.Select(f => $"\"{f}\""))}, " +
                         $"which {(unknown.Count == 1 ? "is not a field" : "are not fields")} of \"{obj.Name}\".",
                         ErrorCode.ERR_BAD_ATTR_VALUE,
                         Envelope: v.Source));
+                    continue;
+                }
+                if (ConditionProblem(condition, obj) is { } problem)
+                {
+                    errors.Add(new MetaError($"{label} {problem}", ErrorCode.ERR_BAD_ATTR_VALUE, Envelope: v.Source));
                 }
             }
         }
         return errors;
     }
 
+    /// <summary>Field subtypes whose values a condition compares with a number literal.</summary>
+    private static readonly HashSet<string> ConditionNumberSubtypes = new(StringComparer.Ordinal)
+    {
+        FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT,
+        FIELD_SUBTYPE_DECIMAL, FIELD_SUBTYPE_CURRENCY,
+    };
+
+    /// <summary>
+    /// Why a cross-field validator's <c>@condition</c> cannot become a CHECK guard, or null when
+    /// it can. Its names are already known to be fields. The rule, the same in every port:
+    /// it types cleanly (the origin.computed inference) and its root is boolean, since a CHECK
+    /// negates it; a literal compared with a field is of that field's kind (a boolean for
+    /// field.boolean, a number for a numeric field, a string otherwise) and, for field.enum, one
+    /// of its @values; and no comparison has a null literal (<c>x = NULL</c> is never true, so
+    /// use isNull / isNotNull). Mirrors TS conditionProblem.
+    /// </summary>
+    private static string? ConditionProblem(object condition, MetaObject obj)
+    {
+        var fields = new Dictionary<string, MetaField>(StringComparer.Ordinal);
+        foreach (var f in obj.Fields()) fields.TryAdd(f.Name, f);
+        var inferred = MetaObjects.Core.Attr.ExpressionGrammar.InferExprType(
+            condition, name => fields.TryGetValue(name, out var f) ? f.SubType : null);
+        if (inferred.Errors.Count > 0) return $"is not a valid expression: {string.Join("; ", inferred.Errors)}.";
+        if (inferred.Type != FIELD_SUBTYPE_BOOLEAN)
+        {
+            return $"must be a boolean expression (a comparison, a null test, or and / or / not of them), not a field.{inferred.Type ?? "undefined"}.";
+        }
+        string? problem = null;
+        void Visit(object? node)
+        {
+            if (problem is not null || node is not IReadOnlyDictionary<string, object?> n) return;
+            if (n.TryGetValue("left", out var left) && left is not null && n.TryGetValue("right", out var right) && right is not null)
+            {
+                foreach (var (a, b) in new[] { (left, right), (right, left) })
+                {
+                    if (a is not IReadOnlyDictionary<string, object?> lit || !lit.TryGetValue("value", out var value)) continue;
+                    if (value is null)
+                    {
+                        problem = "compares with null, which is never true: use isNull or isNotNull.";
+                        return;
+                    }
+                    if (b is not IReadOnlyDictionary<string, object?> refNode
+                        || !refNode.TryGetValue("field", out var refName) || refName is not string name
+                        || !fields.TryGetValue(name, out var field))
+                    {
+                        continue;
+                    }
+                    var kind = field.SubType == FIELD_SUBTYPE_BOOLEAN ? "boolean"
+                        : ConditionNumberSubtypes.Contains(field.SubType) ? "number" : "string";
+                    var actual = value switch
+                    {
+                        bool => "boolean",
+                        long or int or double => "number",
+                        string => "string",
+                        _ => null,
+                    };
+                    if (actual != kind)
+                    {
+                        problem = $"compares \"{field.Name}\" (field.{field.SubType}) with {JsonStringify(value)}; it needs a {kind}.";
+                        return;
+                    }
+                    var members = field.SubType == FIELD_SUBTYPE_ENUM ? field.EffectiveEnumValues : null;
+                    if (members is not null && !members.Contains(Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture), StringComparer.Ordinal))
+                    {
+                        problem = $"compares \"{field.Name}\" with {JsonStringify(value)}, which is not one of its @values ({string.Join(", ", members)}).";
+                        return;
+                    }
+                }
+            }
+            n.TryGetValue("left", out var l);
+            Visit(l);
+            n.TryGetValue("right", out var r);
+            Visit(r);
+            n.TryGetValue("arg", out var g);
+            Visit(g);
+            if (n.TryGetValue("args", out var args) && args is IEnumerable<object?> list)
+            {
+                foreach (var x in list) Visit(x);
+            }
+        }
+        Visit(condition);
+        return problem;
+    }
+
+    // ---------------------------------------------------------------------------
+    // identity.primary @sequenceStart / @sequenceName describe the sequence an @generation
+    // "increment" key draws from; on any other generation there is none, so either one is
+    // refused (ERR_SEQUENCE_WITHOUT_INCREMENT). Read RESOLVING (ADR-0039), reported on the
+    // identity that declares one of them. Mirrors TS validateIdentitySequence.
+    // ---------------------------------------------------------------------------
     public static IReadOnlyList<MetaError> ValidateIdentitySequence(MetaData root)
     {
         var errors = new List<MetaError>();
@@ -2212,6 +2293,16 @@ public static partial class ValidationPasses
         return errors;
     }
 
+    // ---------------------------------------------------------------------------
+    // field.enum @maxLength — the column length of a string-stored enum:
+    //   1. every member of @values fits in it (ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH), the
+    //      longest offender named;
+    //   2. it is refused beside @intValueMap (ERR_ENUM_MAX_LENGTH_WITH_INT_VALUE_MAP): an
+    //      int-stored enum's column is an integer, so a length would change nothing.
+    // Read RESOLVING (ADR-0039), reported on the node that DECLARES one of the three, so an
+    // enum that only inherits them is not reported twice. Every field.enum in the tree is
+    // checked, root-level abstract enums included. Mirrors TS validateEnumMaxLength.
+    // ---------------------------------------------------------------------------
     public static IReadOnlyList<MetaError> ValidateEnumMaxLength(MetaData root)
     {
         var errors = new List<MetaError>();

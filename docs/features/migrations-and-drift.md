@@ -414,16 +414,26 @@ the re-diff is empty afterwards. Postgres keeps `IS [NOT] DISTINCT FROM`.
 A `validator.*` node and a `field.enum`'s member list each become a CHECK constraint. Three
 attributes shape it, all database-only (no generated code reads them):
 
-- **`@constraintName`** names the CHECK, for a database whose CHECKs were named by hand. On any
-  `validator.*` node, and on a `field.enum` for its membership CHECK. Absent, the name is derived
-  (`<table>_<column>_<kind>_chk`, `<table>_<column>_chk` for an enum), as before.
+- **`@constraintName`** names the CHECK, for a database whose CHECKs were named by hand. On the
+  validators that generate a CHECK (`numeric`, `length`, `regex`, `comparison`, `requiredWhen`,
+  `presentIff`, `atLeastOne`; `required` is a NOT NULL, not a CHECK), and on a `field.enum` for its
+  membership CHECK. Absent, the name is derived (`<table>_<column>_<kind>_chk`,
+  `<table>_<column>_chk` for an enum), as before. A declared name is refused (`ERR_CHECK_NAME`) when
+  another constraint on the table already has it, or, on Postgres, when it is over 63 bytes
+  (Postgres would truncate it, and the CHECK would never match its declaration). Under the
+  `efcore` conventions, a `validator.length` with a declared name is kept even where the column's
+  length already enforces it.
 - **`@condition`** on a cross-field validator (`comparison`, `requiredWhen`, `presentIff`,
   `atLeastOne`) is an expression, in the grammar `origin.computed` uses, over the entity's fields.
   The rule holds only where the condition does: the CHECK is `(NOT condition) OR (rule)`, with
-  the negation folded in (`kind = 'Clinic'` becomes `kind <> 'Clinic'`). A field the condition
-  names that is not a field of the entity is refused at load (`ERR_BAD_ATTR_VALUE`).
+  the negation folded in (`kind = 'Clinic'` becomes `kind <> 'Clinic'`). It is checked at load
+  (`ERR_BAD_ATTR_VALUE`): every field it names is a field of the entity, it is a boolean
+  expression, a literal compared with a field is of that field's kind (and, for an enum, one of
+  its `@values`), and no comparison has a `null` literal (`x = NULL` is never true: use `isNull`
+  or `isNotNull`). An int-backed enum's member is compared as its stored integer.
 - **`@max`** on `validator.atLeastOne` caps how many of its `@fields` may be present. `@max: 1`
   is "exactly one": `num_nonnulls(a, b) = 1` on Postgres, a sum of `IS NOT NULL` tests on SQLite.
+  A higher `@max` is `count >= 1 AND count <= max`.
   It must be between 1 and the number of `@fields` (`ERR_BAD_ATTR_VALUE`).
 
 ```json
@@ -442,7 +452,9 @@ attributes shape it, all database-only (no generated code reads them):
 
 On Postgres the last one is `CK_Notes_Owner CHECK (("kind" <> 'Owned') OR (num_nonnulls("patient_id", "case_id") = 1))`.
 
-Renaming a CHECK this way is a drop and an add of the same rule, under `--allow drop-check`.
+Renaming a CHECK this way is a drop and an add of the same rule on Postgres, under
+`--allow drop-check`. On SQLite and D1 a CHECK is matched by its expression when the name does not
+match, so a rename alone proposes nothing and the database keeps the old name.
 
 ## Schema conventions: names for objects no code addresses
 

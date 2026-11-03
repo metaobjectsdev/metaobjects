@@ -436,13 +436,18 @@ enforcement (a CHECK constraint / cross-field assertion) — no raw expression i
 | `validator.comparison` | two fields stand in a relational order (`@left @op @right`) | `@left`, `@op` (`gt`/`gte`/`lt`/`lte`/`ne`/`eq`), `@right` |
 | `validator.requiredWhen` | `@field` is required when `@when` equals `@equals` | `@field`, `@when`, `@equals` |
 | `validator.presentIff` | `@field` is present **iff** `@when` equals `@equals` (biconditional) | `@field`, `@when`, `@equals` |
-| `validator.atLeastOne` | at least one of `@fields` (2+) is present | `@fields` |
+| `validator.atLeastOne` | at least one of `@fields` (2+) is present; with `@max`, at most that many (`@max: 1` = exactly one) | `@fields`, `@max` |
+
+All four take an optional `@condition`, an expression over the entity's fields (the
+`origin.computed` grammar): the rule then holds only where the condition does. And every validator
+that becomes a CHECK takes an optional db-provider `@constraintName` naming it.
 
 ```json
 { "validator.comparison":   { "name": "hpInRange", "@left": "currentHp", "@op": "lte", "@right": "maxHp" } }
 { "validator.requiredWhen": { "name": "reasonIfRejected", "@field": "rejectReason", "@when": "status", "@equals": "rejected" } }
 { "validator.presentIff":   { "name": "usedAtWhenUsed", "@field": "usedAt", "@when": "isUsed", "@equals": "true" } }
 { "validator.atLeastOne":   { "name": "emailOrPhone", "@fields": ["email", "phone"] } }
+{ "validator.atLeastOne":   { "name": "oneOwner", "@fields": ["patientId", "caseId"], "@max": 1 } }
 ```
 
 These are children of `object.entity`, alongside its fields and identities.

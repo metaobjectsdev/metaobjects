@@ -11,6 +11,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { buildExpectedSchema } from "../../src/expected-schema.js";
+import { efcoreConventions } from "../../src/schema-conventions.js";
+import { isInvalidCheckNameError } from "../../src/errors.js";
 
 const FIXTURE = join(import.meta.dir, "../../../../../../fixtures/conformance/validator-constraint-name-condition-max/input/meta.checks.json");
 
@@ -56,7 +58,8 @@ describe("cross-field CHECK extensions", () => {
     const { root, errors } = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify(doc))]);
     expect(errors).toHaveLength(0);
     const t = buildExpectedSchema(root, { dialect: "postgres" }).tables[0]!;
-    expect(t.checks.map((c) => c.expression)).toEqual(['num_nonnulls("a", "b", "c") BETWEEN 1 AND 2']);
+    // Two comparisons, the way Postgres stores a BETWEEN, so the CHECK reads back unchanged.
+    expect(t.checks.map((c) => c.expression)).toEqual(['num_nonnulls("a", "b", "c") >= 1 AND num_nonnulls("a", "b", "c") <= 2']);
   });
 
   test("no @max, no @condition, no @constraintName: unchanged", async () => {
@@ -69,5 +72,117 @@ describe("cross-field CHECK extensions", () => {
     const { root } = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify(doc))]);
     const t = buildExpectedSchema(root, { dialect: "postgres" }).tables[0]!;
     expect(t.checks).toEqual([{ name: "t_a_atleastone_chk", expression: '"a" IS NOT NULL OR "b" IS NOT NULL' }]);
+  });
+
+});
+
+/** An entity "T" (table "t") with an id key and the given children, loaded with no errors. */
+async function load(children: unknown[]) {
+  const doc = { "metadata.root": { package: "acme", children: [{ "object.entity": { name: "T", children: [
+    { "source.rdb": { "@table": "t" } }, { "field.long": { name: "id" } },
+    { "identity.primary": { name: "pk", "@fields": "id" } },
+    ...children,
+  ] } }] } };
+  const { root, errors } = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify(doc))]);
+  expect(errors.map((e) => e.message)).toEqual([]);
+  return root;
+}
+
+async function checksOf(children: unknown[], dialect: "postgres" | "sqlite" = "postgres") {
+  const t = buildExpectedSchema(await load(children), { dialect }).tables[0]!;
+  return t.checks.map((c) => c.expression);
+}
+
+const AB = [{ "field.long": { name: "a" } }, { "field.long": { name: "b" } }];
+
+describe("@condition rendering", () => {
+  test("and / or / not / isNull / isNotNull negate by De Morgan, down to the comparisons", async () => {
+    const condition = { op: "and", args: [{ op: "isNull", arg: { field: "a" } }, { op: "not", arg: { op: "eq", left: { field: "b" }, right: { value: 1 } } }] };
+    expect(await checksOf([...AB, { "validator.atLeastOne": { name: "one", "@fields": ["a", "b"], "@condition": condition } }]))
+      .toEqual(['(("a" IS NOT NULL) OR ("b" = 1)) OR ("a" IS NOT NULL OR "b" IS NOT NULL)']);
+  });
+
+  test("an isNotNull condition negates to isNull; or negates to and", async () => {
+    const condition = { op: "or", args: [{ op: "isNotNull", arg: { field: "a" } }, { op: "gt", left: { field: "b" }, right: { value: 2 } }] };
+    expect(await checksOf([...AB, { "validator.atLeastOne": { name: "one", "@fields": ["a", "b"], "@condition": condition } }]))
+      .toEqual(['(("a" IS NULL) AND ("b" <= 2)) OR ("a" IS NOT NULL OR "b" IS NOT NULL)']);
+  });
+
+  test("coalesce is an operand, not a compound", async () => {
+    const condition = { op: "eq", left: { fn: "coalesce", args: [{ field: "a" }, { field: "b" }] }, right: { value: 1 } };
+    expect(await checksOf([...AB, { "validator.atLeastOne": { name: "one", "@fields": ["a", "b"], "@condition": condition } }]))
+      .toEqual(['(COALESCE("a", "b") <> 1) OR ("a" IS NOT NULL OR "b" IS NOT NULL)']);
+  });
+
+  test("a compound comparison operand is parenthesised (IS binds looser than =)", async () => {
+    const flag = { "field.boolean": { name: "flag" } };
+    const condition = { op: "eq", left: { op: "isNull", arg: { field: "a" } }, right: { field: "flag" } };
+    expect(await checksOf([...AB, flag, { "validator.atLeastOne": { name: "one", "@fields": ["a", "b"], "@condition": condition } }]))
+      .toEqual(['(("a" IS NULL) <> "flag") OR ("a" IS NOT NULL OR "b" IS NOT NULL)']);
+  });
+
+  test("a boolean literal is 1 / 0 on SQLite", async () => {
+    const flag = { "field.boolean": { name: "flag" } };
+    const condition = { op: "eq", left: { field: "flag" }, right: { value: true } };
+    expect(await checksOf([...AB, flag, { "validator.atLeastOne": { name: "one", "@fields": ["a", "b"], "@condition": condition } }], "sqlite"))
+      .toEqual(['("flag" <> 1) OR ("a" IS NOT NULL OR "b" IS NOT NULL)']);
+  });
+
+  test("an int-backed enum member is compared as its stored integer", async () => {
+    const kind = { "field.enum": { name: "kind", "@values": ["Owned", "Shared"], "@intValueMap": { Owned: 1, Shared: 2 } } };
+    const condition = { op: "eq", left: { field: "kind" }, right: { value: "Owned" } };
+    const out = await checksOf([...AB, kind, { "validator.atLeastOne": { name: "one", "@fields": ["a", "b"], "@condition": condition } }]);
+    expect(out).toContain('("kind" <> 1) OR ("a" IS NOT NULL OR "b" IS NOT NULL)');
+  });
+
+  test("requiredWhen and presentIff take a @condition too", async () => {
+    const kind = { "field.string": { name: "kind" } };
+    const condition = { op: "eq", left: { field: "kind" }, right: { value: "x" } };
+    const out = await checksOf([...AB, kind,
+      { "validator.requiredWhen": { name: "rw", "@field": "a", "@when": "b", "@equals": "1", "@condition": condition } },
+      { "validator.presentIff": { name: "pi", "@field": "b", "@when": "a", "@equals": "2", "@condition": condition } },
+    ]);
+    expect(out).toEqual([
+      `("kind" <> 'x') OR (("b" IS DISTINCT FROM 1) OR ("a" IS NOT NULL))`,
+      `("kind" <> 'x') OR (("b" IS NOT NULL) = ("a" IS NOT DISTINCT FROM 2))`,
+    ]);
+  });
+});
+
+describe("declared CHECK names", () => {
+  const len = (constraintName: string) => ({ "field.string": { name: "code", "@maxLength": 10, children: [
+    { "validator.length": { name: "len", "@max": 10, "@constraintName": constraintName } },
+  ] } });
+
+  test("two CHECKs on one table with one declared name are refused", async () => {
+    const root = await load([...AB,
+      { "validator.atLeastOne": { name: "one", "@fields": ["a", "b"], "@constraintName": "CK_T_X" } },
+      { "validator.comparison": { name: "cmp", "@left": "a", "@op": "lt", "@right": "b", "@constraintName": "CK_T_X" } },
+    ]);
+    let err: unknown;
+    try { buildExpectedSchema(root, { dialect: "postgres" }); } catch (e) { err = e; }
+    expect(isInvalidCheckNameError(err)).toBe(true);
+    expect((err as Error).message).toContain('CHECK "CK_T_X" on table "t" has the same name as another CHECK named "CK_T_X"');
+  });
+
+  test("a declared name equal to the primary key's is refused", async () => {
+    const root = await load([...AB, { "validator.atLeastOne": { name: "one", "@fields": ["a", "b"], "@constraintName": "t_pkey" } }]);
+    expect(() => buildExpectedSchema(root, { dialect: "postgres" })).toThrow(/has the same name as the primary key/);
+  });
+
+  test("a declared name over 63 bytes is refused on Postgres, accepted on SQLite", async () => {
+    const long = "CK_" + "x".repeat(61);
+    const root = await load([...AB, { "validator.atLeastOne": { name: "one", "@fields": ["a", "b"], "@constraintName": long } }]);
+    expect(() => buildExpectedSchema(root, { dialect: "postgres" })).toThrow(/is 64 bytes; Postgres keeps only the first 63/);
+    expect(buildExpectedSchema(root, { dialect: "sqlite" }).tables[0]!.checks.map((c) => c.name)).toEqual([long]);
+  });
+
+  test("a declared name keeps a length CHECK the efcore conventions would skip as redundant", async () => {
+    const t = buildExpectedSchema(await load([len("CK_T_Code")]), { dialect: "postgres", conventions: efcoreConventions }).tables[0]!;
+    expect(t.checks).toEqual([{ name: "CK_T_Code", expression: 'length("code") <= 10' }]);
+    const plain = buildExpectedSchema(await load([{ "field.string": { name: "code", "@maxLength": 10, children: [
+      { "validator.length": { name: "len", "@max": 10 } },
+    ] } }]), { dialect: "postgres", conventions: efcoreConventions }).tables[0]!;
+    expect(plain.checks).toEqual([]);
   });
 });

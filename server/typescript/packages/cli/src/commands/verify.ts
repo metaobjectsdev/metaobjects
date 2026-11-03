@@ -93,6 +93,7 @@ import {
   type ShadowSchemaSource,
   withoutFlywayHistory,
   isFkTargetNotUniqueError,
+  isInvalidCheckNameError,
   isUnknownSchemaConventionsError,
   resolveSchemaConventions,
   type SchemaConventions,
@@ -729,6 +730,7 @@ export async function verifyCommand(
         governed = scopeExpectedSchema(built, schemaScope, importedOption(collection));
       } catch (err) {
         if (isEnumLengthRefusal(err)) return refuseEnumLength(err);
+        if (isInvalidCheckNameError(err)) { log.error(`verify: ${err.message}`); return 1; }
         throw err;
       }
     }
@@ -1334,6 +1336,7 @@ export async function verifyCommand(
       // Building the expected schema to check the scope raises the same metadata refusals
       // the comparison below would; report them by name, not as an uncaught error.
       if (isEnumLengthRefusal(err)) return refuseEnumLength(err);
+      if (isInvalidCheckNameError(err)) { log.error(`verify: ${err.message}`); return 1; }
       throw err;
     }
     if (scopeMismatch !== undefined) {
@@ -1427,6 +1430,10 @@ export async function verifyCommand(
         if (isFkTargetNotUniqueError(err)) {
           log.error(`verify: ${err.message}`);
           log.error("verify: declare an identity.secondary on the target entity with exactly the referenced fields, or reference its primary key");
+          return 1;
+        }
+        if (isInvalidCheckNameError(err)) {
+          log.error(`verify: ${err.message}`);
           return 1;
         }
         if (isEnumLengthRefusal(err)) return refuseEnumLength(err);

@@ -56,11 +56,26 @@ export function negateExpression(node: ExprNode): ExprNode {
 }
 
 /**
+ * How a literal compared with a field is stored in that field's column, when that is not the
+ * literal itself: an int-backed enum (`@intValueMap`) stores a member as its integer. Answers the
+ * SQL for the stored value, or undefined to render the literal as written.
+ */
+export type StoredLiteral = (field: string, value: unknown) => string | undefined;
+
+/** A node SQL can use as a comparison operand without parentheses. */
+function isAtom(x: unknown): boolean {
+  const n = x as Node;
+  return typeof n["field"] === "string" || "value" in n || n["fn"] !== undefined;
+}
+
+/**
  * `node` as SQL. `column(field)` is the quoted physical column for a field name, or undefined
- * when the entity has no such field.
+ * when the entity has no such field. A compound operand of a comparison or a null test is
+ * parenthesised: `IS` binds looser than `=`, and `AND` / `OR` looser than both.
  */
 export function renderExpressionSql(
   node: ExprNode, column: (field: string) => string | undefined, dialect: Dialect | undefined,
+  stored?: StoredLiteral,
 ): string {
   const n = node as Node;
   if (typeof n["field"] === "string") {
@@ -70,10 +85,20 @@ export function renderExpressionSql(
   }
   if ("value" in n) return renderLiteral(n["value"], dialect);
   const op = n["op"];
-  const sub = (x: unknown): string => renderExpressionSql(x as ExprNode, column, dialect);
-  if (typeof op === "string" && SQL_OP[op] !== undefined) return `${sub(n["left"])} ${SQL_OP[op]} ${sub(n["right"])}`;
-  if (op === FILTER_OP_IS_NULL) return `${sub(n["arg"])} IS NULL`;
-  if (op === EXPR_OP_IS_NOT_NULL) return `${sub(n["arg"])} IS NOT NULL`;
+  const sub = (x: unknown): string => renderExpressionSql(x as ExprNode, column, dialect, stored);
+  const operand = (x: unknown, other: unknown): string => {
+    const o = (other ?? {}) as Node;
+    if (stored !== undefined && "value" in (x as Node) && typeof o["field"] === "string") {
+      const sql = stored(o["field"], (x as Node)["value"]);
+      if (sql !== undefined) return sql;
+    }
+    return isAtom(x) ? sub(x) : `(${sub(x)})`;
+  };
+  if (typeof op === "string" && SQL_OP[op] !== undefined) {
+    return `${operand(n["left"], n["right"])} ${SQL_OP[op]} ${operand(n["right"], n["left"])}`;
+  }
+  if (op === FILTER_OP_IS_NULL) return `${operand(n["arg"], undefined)} IS NULL`;
+  if (op === EXPR_OP_IS_NOT_NULL) return `${operand(n["arg"], undefined)} IS NOT NULL`;
   if (op === EXPR_OP_NOT) return `NOT (${sub(n["arg"])})`;
   if (op === FILTER_COMPOSE_AND || op === FILTER_COMPOSE_OR) {
     return (n["args"] as unknown[]).map((a) => `(${sub(a)})`).join(op === FILTER_COMPOSE_AND ? " AND " : " OR ");

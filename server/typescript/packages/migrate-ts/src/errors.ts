@@ -333,6 +333,45 @@ export function isDuplicateSqlNameError(err: unknown): err is DuplicateSqlNameEr
   return err instanceof Error && err.name === "DuplicateSqlNameError";
 }
 
+/** One problem with a declared CHECK name (`@constraintName` on a validator or a field.enum). */
+export interface CheckNameProblem {
+  readonly table: string;
+  readonly name: string;
+  /** Another constraint on the same table already has the name. */
+  readonly duplicateOf?: string;
+  /** The name is longer than Postgres's 63-byte identifier limit, in bytes. */
+  readonly bytes?: number;
+}
+
+/**
+ * A declared CHECK name that cannot be applied as written. Two constraints on one table with
+ * one name fail at apply on Postgres ("already exists") and, on SQLite, collapse in a
+ * name-keyed diff so every run proposes the CHECK again. A name over 63 bytes is truncated by
+ * Postgres when it is created, so the declared name never matches the database and the CHECK
+ * drifts forever. Either way the fix is to the metadata, so it is refused while the expected
+ * schema is built.
+ */
+export class InvalidCheckNameError extends Error {
+  override readonly name = "InvalidCheckNameError";
+  readonly problems: readonly CheckNameProblem[];
+
+  constructor(problems: readonly CheckNameProblem[]) {
+    const lines = problems.map((p) => p.duplicateOf !== undefined
+      ? `  CHECK "${p.name}" on table "${p.table}" has the same name as ${p.duplicateOf}`
+      : `  CHECK "${p.name}" on table "${p.table}" is ${p.bytes} bytes; Postgres keeps only the first 63`);
+    super(
+      `ERR_CHECK_NAME: a declared @constraintName cannot be applied as written.\n${lines.join("\n")}\n` +
+        "Give each constraint on a table its own @constraintName, at most 63 bytes.",
+    );
+    this.problems = problems;
+  }
+}
+
+/** Is `err` the {@link InvalidCheckNameError} from a declared CHECK name that cannot be applied? */
+export function isInvalidCheckNameError(err: unknown): err is InvalidCheckNameError {
+  return err instanceof Error && err.name === "InvalidCheckNameError";
+}
+
 /** `migrate.conventions` names a schema-conventions preset that does not exist. */
 export class UnknownSchemaConventionsError extends Error {
   override readonly name = "UnknownSchemaConventionsError";

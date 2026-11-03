@@ -2383,16 +2383,12 @@ public final class ValidationPhase {
     // =========================================================================
 
     // =========================================================================
-    // identity.primary @sequenceStart / @sequenceName describe the sequence an @generation
-    // "increment" key draws from; on any other generation there is none, so either one is
-    // refused (ERR_SEQUENCE_WITHOUT_INCREMENT). Read RESOLVING (ADR-0039), reported on the
-    // identity that declares one of them, every offender collected. Mirrors TS.
-    // =========================================================================
-
     // Cross-field validators (comparison / requiredWhen / presentIff / atLeastOne), which the
-    // database enforces as CHECKs: atLeastOne @max between 1 and the number of its @fields, and
-    // every field a @condition names a field of the owning entity (ERR_BAD_ATTR_VALUE). Every
-    // violation is collected. Mirrors TS validateCrossFieldValidators.
+    // database enforces as CHECKs: atLeastOne @max between 1 and the number of its @fields;
+    // every field a @condition names is a field of the owning entity; and the @condition can
+    // become a CHECK guard (see conditionProblem). ERR_BAD_ATTR_VALUE, one per validator,
+    // every violation collected. Mirrors TS validateCrossFieldValidators.
+    // =========================================================================
     static void validateCrossFieldValidators(MetaRoot root, List<MetaDataException> out) {
         java.util.Set<String> crossField = java.util.Set.of(
             com.metaobjects.validator.ComparisonValidator.SUBTYPE_COMPARISON,
@@ -2400,8 +2396,8 @@ public final class ValidationPhase {
             com.metaobjects.validator.PresentIffValidator.SUBTYPE_PRESENT_IFF,
             com.metaobjects.validator.AtLeastOneValidator.SUBTYPE_AT_LEAST_ONE);
         for (MetaObject obj : root.getChildren(MetaObject.class, false)) {
-            java.util.Set<String> fieldNames = new java.util.HashSet<>();
-            for (com.metaobjects.field.MetaField<?> f : obj.getMetaFields()) fieldNames.add(f.getShortName());
+            java.util.Map<String, MetaField<?>> fields = new java.util.LinkedHashMap<>();
+            for (MetaField<?> f : obj.getMetaFields()) fields.put(f.getShortName(), f);
             for (com.metaobjects.validator.MetaValidator v
                     : obj.getChildren(com.metaobjects.validator.MetaValidator.class, false)) {
                 if (!crossField.contains(v.getSubType())) continue;
@@ -2422,19 +2418,120 @@ public final class ValidationPhase {
                     }
                 }
                 if (!v.hasMetaAttr(com.metaobjects.validator.MetaValidator.ATTR_CONDITION)) continue;
+                Object condition = v.getMetaAttr(com.metaobjects.validator.MetaValidator.ATTR_CONDITION).getValue();
                 java.util.TreeSet<String> unknown = new java.util.TreeSet<>();
-                collectExprFieldRefs(v.getMetaAttr(com.metaobjects.validator.MetaValidator.ATTR_CONDITION).getValue(), unknown);
-                unknown.removeAll(fieldNames);
-                if (unknown.isEmpty()) continue;
-                StringBuilder names = new StringBuilder();
-                for (String u : unknown) names.append(names.length() == 0 ? "" : ", ").append('"').append(u).append('"');
-                out.add(new MetaDataException(
-                    ErrorMessageConstants.ERR_BAD_ATTR_VALUE + ": validator." + label + " @condition names " + names
-                        + ", which " + (unknown.size() == 1 ? "is not a field" : "are not fields")
-                        + " of \"" + obj.getShortName() + "\".",
-                    ErrorCode.ERR_BAD_ATTR_VALUE, v.getSource()));
+                collectExprFieldRefs(condition, unknown);
+                unknown.removeAll(fields.keySet());
+                if (!unknown.isEmpty()) {
+                    StringBuilder names = new StringBuilder();
+                    for (String u : unknown) names.append(names.length() == 0 ? "" : ", ").append('"').append(u).append('"');
+                    out.add(new MetaDataException(
+                        ErrorMessageConstants.ERR_BAD_ATTR_VALUE + ": validator." + label + " @condition names " + names
+                            + ", which " + (unknown.size() == 1 ? "is not a field" : "are not fields")
+                            + " of \"" + obj.getShortName() + "\".",
+                        ErrorCode.ERR_BAD_ATTR_VALUE, v.getSource()));
+                    continue;
+                }
+                String problem = conditionProblem(condition, fields);
+                if (problem != null) {
+                    out.add(new MetaDataException(
+                        ErrorMessageConstants.ERR_BAD_ATTR_VALUE + ": validator." + label + " @condition " + problem,
+                        ErrorCode.ERR_BAD_ATTR_VALUE, v.getSource()));
+                }
             }
         }
+    }
+
+    /** Field subtypes whose values a condition compares with a number literal. */
+    private static final java.util.Set<String> CONDITION_NUMBER_SUBTYPES = java.util.Set.of(
+        IntegerField.SUBTYPE_INT, LongField.SUBTYPE_LONG, DoubleField.SUBTYPE_DOUBLE,
+        FloatField.SUBTYPE_FLOAT, DecimalField.SUBTYPE_DECIMAL, CurrencyField.SUBTYPE_CURRENCY);
+
+    /**
+     * Why a cross-field validator's {@code @condition} cannot become a CHECK guard, or
+     * {@code null} when it can. Its names are already known to be fields. The rule, the same
+     * in every port:
+     *  - it types cleanly (the origin.computed inference) and its root is boolean, since a
+     *    CHECK negates it;
+     *  - a literal compared with a field is of that field's kind (a boolean for field.boolean,
+     *    a number for a numeric field, a string otherwise) and, for field.enum, one of its
+     *    @values;
+     *  - no comparison has a null literal: {@code x = NULL} is never true, so use isNull /
+     *    isNotNull.
+     * Mirrors TS conditionProblem.
+     */
+    private static String conditionProblem(Object condition, java.util.Map<String, MetaField<?>> fields) {
+        ExpressionAttribute.InferResult inferred = ExpressionAttribute.inferExprType(
+            condition, name -> fields.containsKey(name) ? fields.get(name).getSubType() : null);
+        if (!inferred.errors.isEmpty()) {
+            return "is not a valid expression: " + String.join("; ", inferred.errors) + ".";
+        }
+        if (!BooleanField.SUBTYPE_BOOLEAN.equals(inferred.type)) {
+            return "must be a boolean expression (a comparison, a null test, or and / or / not of them), not a field."
+                + inferred.type + ".";
+        }
+        return conditionLiteralProblem(condition, fields);
+    }
+
+    /** The first comparison in {@code node} whose literal side cannot be compared with its
+     *  other side, as conditionProblem's message tail, or {@code null}. */
+    private static String conditionLiteralProblem(Object node, java.util.Map<String, MetaField<?>> fields) {
+        if (!(node instanceof java.util.Map<?, ?> n)) return null;
+        if (n.get("left") != null && n.get("right") != null) {
+            Object[][] sides = { { n.get("left"), n.get("right") }, { n.get("right"), n.get("left") } };
+            for (Object[] side : sides) {
+                if (!(side[0] instanceof java.util.Map<?, ?> lit) || !lit.containsKey("value")) continue;
+                Object value = lit.get("value");
+                if (value == null) {
+                    return "compares with null, which is never true: use isNull or isNotNull.";
+                }
+                MetaField<?> field = side[1] instanceof java.util.Map<?, ?> ref && ref.get("field") instanceof String f
+                    ? fields.get(f) : null;
+                if (field == null) continue;
+                String subType = field.getSubType();
+                String kind = BooleanField.SUBTYPE_BOOLEAN.equals(subType) ? "boolean"
+                    : CONDITION_NUMBER_SUBTYPES.contains(subType) ? "number" : "string";
+                boolean matches = switch (kind) {
+                    case "boolean" -> value instanceof Boolean;
+                    case "number" -> value instanceof Number;
+                    default -> value instanceof String;
+                };
+                if (!matches) {
+                    return "compares \"" + field.getShortName() + "\" (field." + subType + ") with "
+                        + conditionJsonLiteral(value) + "; it needs a " + kind + ".";
+                }
+                if (EnumField.SUBTYPE_ENUM.equals(subType) && field.hasMetaAttr(EnumField.ATTR_VALUES)
+                        && field.getMetaAttr(EnumField.ATTR_VALUES).getValue() instanceof java.util.Collection<?> members) {
+                    List<String> names = new java.util.ArrayList<>();
+                    for (Object m : members) names.add(String.valueOf(m));
+                    if (!names.contains(String.valueOf(value))) {
+                        return "compares \"" + field.getShortName() + "\" with " + conditionJsonLiteral(value)
+                            + ", which is not one of its @values (" + String.join(", ", names) + ").";
+                    }
+                }
+            }
+        }
+        for (String k : List.of("left", "right", "arg")) {
+            String p = conditionLiteralProblem(n.get(k), fields);
+            if (p != null) return p;
+        }
+        if (n.get("args") instanceof java.util.Collection<?> args) {
+            for (Object a : args) {
+                String p = conditionLiteralProblem(a, fields);
+                if (p != null) return p;
+            }
+        }
+        return null;
+    }
+
+    /** A condition literal as JSON, the way TS JSON.stringify renders it (an integral
+     *  double without a fraction). */
+    private static String conditionJsonLiteral(Object value) {
+        if ((value instanceof Double || value instanceof Float) && !Double.isInfinite(((Number) value).doubleValue())
+                && ((Number) value).doubleValue() == Math.rint(((Number) value).doubleValue())) {
+            return Long.toString(((Number) value).longValue());
+        }
+        return new com.google.gson.GsonBuilder().disableHtmlEscaping().create().toJson(value);
     }
 
     /** The field names an expression tree (ExpressionAttribute's Map form) references. */
@@ -2445,6 +2542,13 @@ public final class ValidationPhase {
             if (m.get("args") instanceof java.util.Collection<?> args) for (Object a : args) collectExprFieldRefs(a, out);
         }
     }
+
+    // =========================================================================
+    // identity.primary @sequenceStart / @sequenceName describe the sequence an @generation
+    // "increment" key draws from; on any other generation there is none, so either one is
+    // refused (ERR_SEQUENCE_WITHOUT_INCREMENT). Read RESOLVING (ADR-0039), reported on the
+    // identity that declares one of them, every offender collected. Mirrors TS.
+    // =========================================================================
 
     static void validateIdentitySequence(MetaRoot root, List<MetaDataException> out) {
         for (MetaObject obj : root.getChildren(MetaObject.class, false)) {

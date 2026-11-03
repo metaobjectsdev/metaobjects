@@ -26,15 +26,15 @@ public static class ValidatorSchema
             Description: "Maximum allowed value (length, numeric value, or array element count depending on the validator subtype)."),
     ];
 
-    /// <summary>
-    /// Attrs per validator subtype. required uses none; regex adds @pattern;
-    /// length / numeric / array (and the base) use @min / @max.
-    /// </summary>
     /// <summary>@condition on a cross-field validator: the case the rule applies in (an attr.expression).</summary>
     private static readonly AttrSchema ConditionAttr = new(Name: ValidatorConstants.VALIDATOR_ATTR_CONDITION,
         ValueType: AttrConstants.ATTR_SUBTYPE_EXPRESSION, Required: false,
         Description: "The case this rule applies in: an expression over the owning entity's fields (the attr.expression grammar). Absent: always. The database CHECK is NOT (condition) OR (rule), so a row the condition does not hold for, or holds NULL for, is not checked. Enforced by the database only, like the rule itself.");
 
+    /// <summary>
+    /// Attrs per validator subtype. required uses none; regex adds @pattern;
+    /// length / numeric / array (and the base) use @min / @max.
+    /// </summary>
     public static readonly IReadOnlyDictionary<string, IReadOnlyList<AttrSchema>> ValidatorAttrsMap =
         new Dictionary<string, IReadOnlyList<AttrSchema>>
         {

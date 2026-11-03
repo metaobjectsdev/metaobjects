@@ -1,0 +1,62 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Visit",
+          "children": [
+            {
+              "source.rdb": {}
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "patientId"
+              }
+            },
+            {
+              "field.long": {
+                "name": "caregiverId"
+              }
+            },
+            {
+              "field.boolean": {
+                "name": "active"
+              }
+            },
+            {
+              "field.enum": {
+                "name": "kind",
+                "@values": [
+                  "Owned",
+                  "Shared"
+                ]
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": "id"
+              }
+            },
+            {
+              "validator.atLeastOne": {
+                "name": "none",
+                "@fields": [
+                  "patientId",
+                  "caregiverId"
+                ],
+                "@max": 0
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

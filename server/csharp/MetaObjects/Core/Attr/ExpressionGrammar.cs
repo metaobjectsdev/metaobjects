@@ -57,15 +57,6 @@ public static class ExpressionGrammar
         FILTER_COMPOSE_AND, FILTER_COMPOSE_OR,
     };
 
-    // -------------------------------------------------------------------------
-    // Structural validation — known node kinds, ops, arity. No entity/type
-    // context (see InferExprType for typing). Returns [] when valid.
-    // -------------------------------------------------------------------------
-
-    /// <summary>
-    /// Structural well-formedness of an expression tree (known node kinds, ops,
-    /// arity). Returns an empty list when valid. Mirrors TS <c>validateExprNode</c>.
-    /// </summary>
     /// <summary>The field names an expression tree references, in order of appearance.</summary>
     public static List<string> FieldRefs(object? node)
     {
@@ -83,6 +74,15 @@ public static class ExpressionGrammar
         return refs;
     }
 
+    // -------------------------------------------------------------------------
+    // Structural validation — known node kinds, ops, arity. No entity/type
+    // context (see InferExprType for typing). Returns [] when valid.
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Structural well-formedness of an expression tree (known node kinds, ops,
+    /// arity). Returns an empty list when valid. Mirrors TS <c>validateExprNode</c>.
+    /// </summary>
     public static List<string> ValidateExprNode(object? node)
     {
         if (node is not IReadOnlyDictionary<string, object?> n)

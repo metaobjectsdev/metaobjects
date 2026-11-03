@@ -106,4 +106,29 @@ describe("meta verify — schema refusals", () => {
     expect(scoped.code).toBe(1);
     expect(scoped.out).toContain('field.enum "Ticket.status" has the member "IN_PROGRESS"');
   });
+
+  test("--db: a declared CHECK name two validators share is refused by name, not as an introspection failure", async () => {
+    const root = await mkdtemp(join(tmpdir(), "verify-schema-refusals-"));
+    dirs.push(root);
+    await mkdir(join(root, "metaobjects"), { recursive: true });
+    await writeFile(join(root, "metaobjects", "meta.acme.json"), JSON.stringify({ "metadata.root": { package: "acme", children: [
+      { "object.entity": { name: "Slot", children: [
+        { "source.rdb": { "@table": "slots" } },
+        { "field.long": { name: "id" } },
+        { "field.long": { name: "a" } },
+        { "field.long": { name: "b" } },
+        { "identity.primary": { name: "pk", "@fields": "id", "@generation": "increment" } },
+        { "validator.atLeastOne": { name: "one", "@fields": ["a", "b"], "@constraintName": "CK_Slot" } },
+        { "validator.comparison": { name: "cmp", "@left": "a", "@op": "lt", "@right": "b", "@constraintName": "CK_Slot" } },
+      ] } },
+    ] } }), "utf8");
+    await mkdir(join(root, ".metaobjects"), { recursive: true });
+    await writeFile(join(root, ".metaobjects", "config.json"), JSON.stringify({ schema_version: 1 }), "utf8");
+
+    const { code, out } = await capture(() => verifyCommand(["--db", `file:${join(root, "t.db")}`], root));
+    expect(code).toBe(1);
+    expect(out).toContain("ERR_CHECK_NAME");
+    expect(out).toContain('CHECK "CK_Slot" on table "slots"');
+    expect(out).not.toContain("failed to introspect");
+  });
 });
