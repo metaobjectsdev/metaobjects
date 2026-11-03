@@ -304,7 +304,7 @@ requires. Same shape as `buf breaking --against '.git#tag=…'` / `oasdiff`.
 | Change | Required move |
 |---|---|
 | a type/subtype removed; an attr removed; an attr made required, retyped or re-arrayed; an enum member removed or an open attr closed; a child rule removed, its `min` raised or its `max` lowered; a default subtype changed | **major** (pre-1.0: minor — see below) |
-| a type/subtype added; an optional attr added; an enum member added; a child rule added or relaxed; a default subtype added | **none** — every document that loaded still loads, identically, so `metamodelVersion` stays put and the CHANGELOG names what was added. The package version follows the versioning table above |
+| a type/subtype added; an optional attr added; an enum member added; a child rule added or relaxed; a default subtype added | **minor** |
 | prose only (`description` / `rules` / `whenToUse`) | none — but read the warning |
 
 **Pre-1.0 a breaking change moves the MINOR**, for the same reason the package line

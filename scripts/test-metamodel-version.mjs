@@ -275,10 +275,8 @@ const v = (s) => parseVersion(s, "test");
 const bump = (sev, base) => requiredBump(sev, v(base));
 if (bump("none", "1.0") !== "none") bad("no change requires no bump");
 else ok("no change requires no bump");
-// Additive vocabulary moves no metamodel number: every document that loaded still loads,
-// identically, so the CHANGELOG names it and the package version follows docs/RELEASING.md.
-if (bump("additive", "1.0") !== "none") bad("additive requires no bump");
-else ok("additive requires no bump");
+if (bump("additive", "1.0") !== "minor") bad("additive requires a minor");
+else ok("additive requires a minor");
 if (bump("breaking", "1.0") !== "major") bad("post-1.0 breaking requires a major");
 else ok("post-1.0 breaking requires a major");
 // Pre-1.0 the major carries no promise, so a break moves the minor — the same rule the
@@ -307,8 +305,8 @@ else ok("pre-1.0 the correction flag changes nothing");
 // It cannot upgrade a lesser severity into a bump it did not earn.
 if (corr("none", "1.0") !== "none") bad("a correction over `none` is still none");
 else ok("a correction over `none` is still none");
-if (corr("additive", "1.0") !== "none") bad("a correction over `additive` is still none");
-else ok("a correction over `additive` is still none");
+if (corr("additive", "1.0") !== "minor") bad("a correction over `additive` is still a minor");
+else ok("a correction over `additive` is still a minor");
 
 const sat = (b, base, cur) => satisfies(b, v(base), v(cur));
 if (sat("minor", "1.0", "1.0")) bad("an unmoved version must NOT satisfy a minor");

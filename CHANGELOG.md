@@ -10,6 +10,11 @@ here.**
 
 ## [Unreleased]
 
+**`metamodelVersion` moves to `1.3`.** This release adds vocabulary (`field.duration`,
+`@constraintName`, `@condition`, `atLeastOne @max`, `@sequenceStart`, `@sequenceName`,
+`@flattenedColumnPrefix`, the `upperFirst` column rule) and nothing that loaded before stops
+loading. A port that reports `1.2` does not know that vocabulary; upgrade every port together.
+
 ### Added
 
 - **`field.duration`: a fixed-length span of time, in every port.** `TimeSpan` in C#,
@@ -128,13 +133,6 @@ here.**
   the `metaobjects-authoring` skill.
 
 ### Changed
-
-- **Added vocabulary no longer moves `metamodelVersion`.** The metamodel spec version now moves
-  only when metadata that loaded may stop loading or change meaning. A new type, subtype,
-  optional attribute or enum member leaves it unchanged, and its CHANGELOG entry names it; the
-  package version follows the versioning table in `docs/RELEASING.md`, as before. Matching
-  `metamodelVersion`s therefore no longer prove two ports know the same vocabulary; compare
-  their releases.
 
 - **`meta migrate` refuses a foreign key that references columns the target does not hold unique.**
   Behaviour change: an `identity.reference` whose dotted `@references` names target fields that are
