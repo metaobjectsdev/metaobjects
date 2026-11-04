@@ -1,10 +1,10 @@
-# Explorer data: `explorer.json` and the three inputs it reads
+# Explorer data: `explorer.json` and the inputs it reads
 
 A model explorer shows one project so a reader can see what it does and how it was designed:
 the objects and how they connect, the prompts and what they send and get back, the requirement
 tree and whether each claim holds, and which generated files each node produced. All of that
-is read from one data file, `explorer.json`. This page documents that file and the three
-inputs it is built from.
+is read from one data file, `explorer.json`. This page documents that file and the inputs it is
+built from.
 
 This page is the data layer. The site that reads it, built by `docsSiteFile()`, is
 [explorer-site.md](explorer-site.md); that generator builds the file during `meta gen`, so
@@ -13,7 +13,7 @@ you only build it by hand to feed a tool of your own.
 ## The inputs are port-neutral
 
 The builder (`buildExplorer` in `@metaobjectsdev/docs-site`) never loads metadata itself. It
-reads three documents:
+reads three documents, and a fourth optional input, the REST routes (see [`api`](#api)):
 
 | Input | Produced by | What it contributes |
 | --- | --- | --- |
