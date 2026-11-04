@@ -41,7 +41,7 @@ unregistered id throws `ERR_PROVIDER_MISSING_DEPENDENCY`; a cycle throws
 
 ## The three rules that govern every provider
 
-Before the mechanics, the three rules a provider must obey. Both are machine-enforced —
+Before the mechanics, the three rules a provider must obey. All three are machine-enforced —
 you will hit an error, not a review comment.
 
 ### 1. Own vs projected attributes (ADR-0050)
