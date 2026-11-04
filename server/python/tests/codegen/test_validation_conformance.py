@@ -180,3 +180,32 @@ def test_cross_field_rule_on_an_array_field_is_skipped() -> None:
     module = _import_source(render_entity_model(entity), "generated_cross_arr")
     module.ArrCreate(nums=[5], b=1)
     module.ArrCreate(nums=[1], b=0)
+
+
+_TIMESTAMP_MODEL = """
+{ "metadata.root": { "package": "acme::ts", "children": [
+  { "object.entity": { "name": "Window", "children": [
+    { "source.rdb": { "@table": "windows" } },
+    { "field.long": { "name": "id" } },
+    { "field.timestamp": { "name": "opensAt" } },
+    { "field.timestamp": { "name": "closesAt" } },
+    { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
+    { "validator.comparison": { "name": "opensBeforeCloses", "@left": "opensAt", "@op": "lt", "@right": "closesAt" } }
+  ]}}
+]}}
+"""
+
+
+def test_cross_field_comparison_of_mixed_aware_and_naive_timestamps_is_a_validation_error() -> None:
+    # Python cannot order an aware datetime against a naive one (TypeError); the model must
+    # report that as a ValidationError (HTTP 422), not let the TypeError escape as a 500.
+    result = MetaDataLoader.from_string(_TIMESTAMP_MODEL)
+    assert not result.errors, [str(e) for e in result.errors]
+    entity = next(c for c in result.root.children() if c.type == TYPE_OBJECT and c.name == "Window")
+    module = _import_source(render_entity_model(entity), "generated_cross_window")
+    module.WindowCreate(opensAt="2026-01-01T10:00:00Z", closesAt="2026-01-01T11:00:00Z")
+    module.WindowCreate(opensAt="2026-01-01T10:00:00", closesAt="2026-01-01T11:00:00")
+    with pytest.raises(ValidationError):
+        module.WindowCreate(opensAt="2026-01-01T11:00:00Z", closesAt="2026-01-01T10:00:00Z")
+    with pytest.raises(ValidationError):
+        module.WindowCreate(opensAt="2026-01-01T10:00:00Z", closesAt="2026-01-01T11:00:00")

@@ -517,9 +517,13 @@ def _cross_field_rules_method(
             if field_is_array(by_name[str(left)]) or field_is_array(by_name[str(right)]):
                 continue
             checks.append(
-                f"        if self.{left} is not None and self.{right} is not None "
-                f"and not (self.{left} {op} self.{right}):\n"
-                f"            raise ValueError({label})"
+                f"        if self.{left} is not None and self.{right} is not None:\n"
+                f"            try:\n"
+                f"                _ordered = self.{left} {op} self.{right}\n"
+                f"            except TypeError:\n"
+                f"                _ordered = False\n"
+                f"            if not _ordered:\n"
+                f"                raise ValueError({label})"
             )
         elif v.sub_type in (vc.VALIDATOR_SUBTYPE_REQUIRED_WHEN, vc.VALIDATOR_SUBTYPE_PRESENT_IFF):
             target, when = attr(vc.VALIDATOR_ATTR_FIELD), attr(vc.VALIDATOR_ATTR_WHEN)
