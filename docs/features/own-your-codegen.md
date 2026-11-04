@@ -906,13 +906,13 @@ provider class** in each language: a JSON file could express the declarative sur
 
 | Port | How the CLI / build tool loads your provider |
 |---|---|
-| **TypeScript** | `metaobjects.config.ts` → `providers: [myProvider]`. Threaded into `meta gen` (the docs site included), `meta verify`, **and** the offline `meta migrate` paths (baseline + generate). |
+| **TypeScript** | `metaobjects.config.ts` → `providers: [myProvider]`. Every command that loads metadata reads it: `meta gen` (the docs site included), `verify`, `export`, `deps`, `fmt`, `types`, `upgrade` and the offline `migrate` paths. |
 | **Python** | `metaobjects gen \| verify --provider module:symbol` (repeatable). The symbol resolves to a `Provider` (or a list, or a zero-arg factory returning one) and is composed **on top of** the core providers — parity with TS `config.providers`. E.g. `metaobjects gen --provider myapp.providers:view_provider`. A declarative `metaobjects.config.yaml` `providers:` list is also supported (resolved config-relative, no `PYTHONPATH=` — mirroring TS's config-file providers); see [`cli.md`](cli.md). |
-| **Java / Kotlin** | Put your compiled `MetaDataTypeProvider` on the **project classpath** with a `META-INF/services/com.metaobjects.registry.MetaDataTypeProvider` entry. `metaobjects-maven-plugin` builds the loader with the project classloader, so **Java ServiceLoader auto-discovers it** — no plugin config needed. |
-| **C#** | The loader accepts providers like every port; a first-class `dotnet meta` consumer-provider hook is tracked for a future release ([#158](https://github.com/metaobjectsdev/metaobjects/issues/158)). Today, extend the metamodel from an app that constructs the loader directly. |
+| **Java / Kotlin** | Name the class in the `metaobjects-maven-plugin` `<providers>` list (or `-Dmeta.providers`), or declare it as a Spring `MetaDataTypeProvider` bean. Nothing is discovered from the classpath: a `META-INF/services` entry does not add the provider to the loader. See [`extending-with-providers.md`](extending-with-providers.md#java). |
+| **C#** | Name the built assembly and type under `csharp.providers: [{ assembly, type }]` in `.metaobjects/config.json`; `dotnet meta gen`, `verify`, `fmt` load it. See [`extending-with-providers.md`](extending-with-providers.md#c). |
 
 This split follows each ecosystem's norms — interpreted ports (TS / Python) name or
-import the provider module; compiled ports (JVM) discover it on the build classpath —
+import the provider module; compiled ports (JVM, C#) name the provider class in their build config —
 the same "idiomatic per port" principle as generator ownership ([Per port](#per-port)).
 
 ## Removed at 1.0, restored in 1.1

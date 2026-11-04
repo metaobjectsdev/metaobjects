@@ -2,8 +2,8 @@
 
 This recipe walks through adding a new metamodel subtype to a downstream
 project — using the same `example-template-toolcall` example the conformance
-fixtures use, so the example here matches a real test that runs in TS, C#,
-and Python.
+fixtures use, so the example here matches a real test that runs in every
+port.
 
 For the conceptual reference (what a provider is, the error codes, the
 cross-port semantic rule), see
@@ -204,16 +204,9 @@ project, and any divergence is caught at the load boundary, not at runtime.
 
 ## The other languages
 
-Every port supports the same provider contract, wired in its own config: Python lists
-`module:symbol` under `providers` in `metaobjects.config.yaml`; C# lists the built assembly
-and type under `csharp.providers` in `.metaobjects/config.json`; Java and Kotlin list the
-class under the Maven plugin's `<providers>` (or declare a Spring `MetaDataTypeProvider`
-bean). A project whose metadata is loaded by more than one port's tools writes the provider
-once per port, with the same id and vocabulary; a TypeScript-only provider leaves the Java,
-Python and C# tools refusing the same file.
-
-[`../features/extending-with-providers.md`](../features/extending-with-providers.md#wiring-providers-into-the-loader)
-has a worked example per language and lists which commands load the provider in each.
+Every port takes a provider the same way in principle, wired in its own config. The per-language
+wiring, with a worked example for each, is in
+[`../features/extending-with-providers.md`](../features/extending-with-providers.md#wiring-providers-into-the-loader).
 
 ## When NOT to write a provider
 

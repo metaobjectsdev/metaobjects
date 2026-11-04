@@ -121,7 +121,7 @@ A single directory may freely mix `.json` and `.yaml` files — the loader disco
 
 ## Provider-based registration
 
-Java's `MetaDataTypeProvider` (`ServiceLoader`-discovered) is the implementation of the type-provider model adopted across every language port. New types, subtypes, and attributes are contributed by a provider — never by editing central registry files. Type-binding to native classes is resolved through `ObjectClassRegistry` at load time, not via reflection, so the registration stays AOT/native-image friendly (see [ADR-0001](../../spec/decisions/ADR-0001-cross-language-type-binding.md)).
+Java's `MetaDataTypeProvider` is the implementation of the type-provider model adopted across every language port. New types, subtypes, and attributes are contributed by a provider — never by editing central registry files. A project names its providers explicitly (Maven plugin `<providers>`, or Spring beans); see [extending-with-providers](../../docs/features/extending-with-providers.md). Type-binding to native classes is resolved through `ObjectClassRegistry` at load time, not via reflection, so the registration stays AOT/native-image friendly (see [ADR-0001](../../spec/decisions/ADR-0001-cross-language-type-binding.md)).
 
 ## Build + test
 
