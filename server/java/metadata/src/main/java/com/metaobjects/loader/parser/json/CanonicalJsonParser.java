@@ -1364,7 +1364,7 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
             if (isStrictLoad()
                     && !isDeclaredAttribute(md, attrName)
                     && !isExemptPropertiesAttr(entry.getValue())) {
-                getLoader().addError(new MetaDataException(
+                getLoader().addDeferredAttrError(new MetaDataException(
                     "Unknown attribute '" + JSON_ATTR_PREFIX + attrName + "' on "
                         + md.getType() + "." + md.getSubType() + " '" + md.getName()
                         + "' in file [" + getFilename() + "] — not declared by any "

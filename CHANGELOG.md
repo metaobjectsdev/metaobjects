@@ -10,8 +10,44 @@ here.**
 
 ## [Unreleased]
 
+### Added
+
+- **Generated record models enforce the four cross-field validators in every port.**
+  `validator.comparison`, `validator.requiredWhen`, `validator.presentIff` and
+  `validator.atLeastOne` used to render only as DB `CHECK` constraints, so a store with no `CHECK`
+  support (a graph or document database) enforced none of them and the application had to repeat the
+  rules in its writer. The full create/insert model now enforces them with the language's native
+  mechanism: a Zod refinement on the insert schema (TypeScript), a class-level Bean Validation
+  constraint on the create DTO (Java, Kotlin), `IValidatableObject` (C#) and a Pydantic
+  `model_validator` (Python). Semantics mirror the `CHECK` derivation: null-safe, `comparison` passes
+  when either side is null, `@equals` is read per the gating field's subtype. PATCH and
+  partial-update models are unchanged (a partial body cannot see the merged row, so the database
+  `CHECK` remains the enforcement there), and `CHECK` emission is unchanged. A record that violates a
+  declared rule is now rejected at the model where it used to reach the database. Gated by
+  `fixtures/validation-conformance/cross-field-cases.json` in all five ports.
+
 ### Fixed
 
+- **TypeScript: every `meta` command now loads the providers in `metaobjects.config.ts`.**
+  `meta export`, `meta deps`, `meta fmt`, `meta types` and `meta upgrade` loaded the core
+  vocabulary only, so a project's own subtype or attribute failed there while `meta gen` accepted
+  it. A config that exists but fails to load is now reported as its own error by `meta verify`
+  (exit 2, in every mode) and `meta prompt-snapshot`, instead of continuing without its providers
+  and reporting an unknown subtype.
+- **Python: `metaobjects fmt` reads the configured providers, and `--provider` adds to them.**
+  `fmt` ignored `providers:` in `metaobjects.config.yaml` (it also gains `--config`), and
+  `metaobjects verify --provider` replaced the configured list instead of adding to it.
+- **`ERR_COLUMN_NAME_COLLISION` no longer rejects a read-only view whose columns come from `@sql`.**
+  The 1.2.0 check treated every field of a sourced object as a column MetaObjects creates. For a
+  `source.rdb @kind: view` with an `@sql` body, the author's SQL defines the columns and the fields
+  only read them, so two fields on one column are legal and nothing can be written. That object is
+  now exempt in all four ports (TypeScript, Java, C#, Python), provided every source of the object
+  is read-only. A derived view (no `@sql`), which emits a select list from its fields, and an object
+  with a writable table source plus an `@sql` view replica are still checked. When both colliding fields already carry an
+  explicit `@column`, the message now says to rename one field or point one `@column` at a different
+  column, instead of suggesting a `@column` they already have. The error code is unchanged. New
+  conformance fixtures: `column-name-shared-in-sql-view-ok`, `error-column-name-collision-derived-view` and
+  `error-column-name-collision-table-with-sql-view`.
 - **`meta migrate` refuses, at plan time, to drop a column a view it does not own still reads.**
   With `--from-db`, a declared-`@unmanaged` view or one outside the scoped schemas whose live body
   names the dropped column now blocks the `drop-column`, and the message names the view and the
@@ -66,8 +102,30 @@ here.**
   new command. `examples/brownfield/` holds a runnable project for each, and the recipe ships in
   the `metaobjects-authoring` skill.
 
+- **A project's own provider class, wired in every port's config, loaded by every command.** A
+  project that declares its own vocabulary (a new subtype, or attributes on a core type) writes a
+  provider class in each language whose tools load the metadata, and names it once:
+  `defineConfig({ providers })` in TypeScript, `providers: ["module:symbol"]` in
+  `metaobjects.config.yaml` for Python, the new `csharp.providers: [{ "assembly", "type" }]` list
+  in `.metaobjects/config.json` for C#, and for Java and Kotlin the new Maven plugin
+  `<providers><provider>FQCN</provider></providers>` list, `MetaDataTypeProvider` beans composed by
+  the Spring auto-configured loader, `LoaderOptions.setProviders(...)`, and a `providers`
+  parameter on the `metadata-ktx` loader. C#, Java and Kotlin had no project-level way to do this
+  before; `META-INF/services` still does not add a provider to the JVM loader. Two new conformance
+  fixtures, `provider-custom-vocabulary-success` and
+  `provider-custom-vocabulary-missing-provider-fails`, hold every port to loading a project
+  subtype plus attributes with its provider and refusing the same file without it.
+  `docs/features/extending-with-providers.md` now has a worked example per language, and the
+  `metaobjects-authoring` skill teaches it, with a reference file per language.
+
 ### Changed
 
+- **Python and Java report a missing provider's errors in the same order as the other ports.**
+  When a file holds both an unknown subtype and unknown attributes, Python used to drop the whole
+  file at the unknown subtype and never report the attributes; it now reports
+  `ERR_UNKNOWN_SUBTYPE` and then each `ERR_UNKNOWN_ATTR`. Java reported the attribute errors
+  before the subtype error; it now reports them after it, as TypeScript and C# do. A load that
+  failed still fails; only the list of errors differs.
 - **A prompt or output template that names a variable not on its payload now raises at render time.**
   Behaviour change: a generated render helper used to render `Hi {{nmae}}` as `Hi ` with no error
   when the payload declares `name`; it now raises `ERR_VAR_NOT_ON_PAYLOAD (nmae)` (`RenderError` in

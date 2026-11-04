@@ -430,6 +430,11 @@ template hack. See the decision procedure in the **`metaobjects-authoring`** ski
 array column type) and a native UUID is `field.uuid` (not a string + `@dbColumnType`).
 When you register custom vocabulary for a custom generator, the same ADR-0037
 procedure decides whether it's a subtype, a `@kind` variant, or an attribute.
+The vocabulary itself is a provider class, listed once in the port's project
+configuration so `gen`, `verify --codegen` and the docs generators all load it (the
+**`metaobjects-authoring`** skill, "Your own vocabulary", has the per-language example).
+A generator then reads the custom attribute like any other: through the resolving
+accessor on the node, never by re-parsing the file.
 
 ## Per-target output
 

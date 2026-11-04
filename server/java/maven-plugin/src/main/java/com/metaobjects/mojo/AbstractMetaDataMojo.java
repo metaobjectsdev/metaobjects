@@ -336,6 +336,61 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
         this.loaderConfig = loaderConfig;
     }
 
+    /**
+     * A project's own metamodel vocabulary: fully-qualified names of
+     * {@link com.metaobjects.registry.MetaDataTypeProvider} classes (public, no-arg constructor)
+     * composed after the metamodel set for every goal that loads metadata
+     * ({@code generate}, {@code verify}, {@code fmt}, {@code editor}). Explicit list only — no
+     * classpath scan, so a library jar's own SPI providers never leak into the measured vocabulary.
+     * The classes are loaded through the project class loader: they must be in a dependency module
+     * or in the plugin's own {@code <dependencies>}; a provider in the module being built is not
+     * compiled yet at {@code generate-sources}.
+     */
+    @Parameter(property = "meta.providers")
+    public List<String> providers;
+
+    private List<com.metaobjects.registry.MetaDataTypeProvider> resolvedProviders;
+
+    /** Instantiate {@link #providers} (once per execution) through {@code projectClassLoader}. */
+    protected List<com.metaobjects.registry.MetaDataTypeProvider> resolveProviders(ClassLoader projectClassLoader)
+            throws MojoExecutionException {
+        if (resolvedProviders != null) return resolvedProviders;
+        List<com.metaobjects.registry.MetaDataTypeProvider> out = new ArrayList<>();
+        if (providers != null) {
+            for (String raw : providers) {
+                String className = raw == null ? "" : raw.trim();
+                if (className.isEmpty()) {
+                    throw new MojoExecutionException("<providers> contains an empty class name");
+                }
+                Class<?> c;
+                try {
+                    c = Class.forName(className, true, projectClassLoader);
+                } catch (ClassNotFoundException | LinkageError ex) {
+                    throw new MojoExecutionException("<providers> class [" + className + "] was not found. "
+                        + "A provider must be on the plugin's classpath: in a dependency module of this project "
+                        + "or in the plugin's <dependencies>. A provider in the same module is not compiled yet "
+                        + "at generate-sources, so it cannot be used here.", ex);
+                }
+                if (!com.metaobjects.registry.MetaDataTypeProvider.class.isAssignableFrom(c)) {
+                    throw new MojoExecutionException("<providers> class [" + className + "] does not implement "
+                        + com.metaobjects.registry.MetaDataTypeProvider.class.getName());
+                }
+                try {
+                    out.add((com.metaobjects.registry.MetaDataTypeProvider)
+                        c.getConstructor().newInstance());
+                } catch (NoSuchMethodException ex) {
+                    throw new MojoExecutionException("<providers> class [" + className
+                        + "] needs a public no-argument constructor", ex);
+                } catch (ReflectiveOperationException ex) {
+                    throw new MojoExecutionException("<providers> class [" + className
+                        + "] could not be instantiated: " + ex, ex);
+                }
+            }
+        }
+        resolvedProviders = List.copyOf(out);
+        return resolvedProviders;
+    }
+
     @Parameter
     public Map<String,String> globals;
     public Map<String, String> getGlobals() {
@@ -426,6 +481,7 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
         warnIfAgentContextStale();
 
         ClassLoader projectClassLoader = createProjectClassLoader();
+        resolveProviders(projectClassLoader);
 
         MetaDataLoader loader = createLoader(projectClassLoader);
 
@@ -607,6 +663,14 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
 
     protected MetaDataLoader createLoader(ClassLoader projectClassLoader) {
 
+        // Normally primed by the goal's execute() (which reports a bad <providers> entry as a
+        // MojoExecutionException); a direct caller that skipped that gets the same message unchecked.
+        List<com.metaobjects.registry.MetaDataTypeProvider> extraProviders;
+        try {
+            extraProviders = resolveProviders(projectClassLoader);
+        } catch (MojoExecutionException e) {
+            throw new MetaDataException(e.getMessage(), e);
+        }
         LoaderConfigurable configurable = null;
         String loaderClass = loaderConfig.getClassname();
         String loaderName = loaderConfig.getName();
@@ -623,6 +687,12 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
             configurable = new MetaDataLoader(
                     LoaderOptions.create(false, false, strict),
                     MetaDataLoader.SUBTYPE_MANUAL, loaderName);
+        }
+
+        // The project's own vocabulary (<providers>): the loader composes its registry from the
+        // metamodel set plus these, sealed and strict like the default.
+        if (!extraProviders.isEmpty()) {
+            configurable.getLoader().getLoaderOptions().setProviders(extraProviders);
         }
 
         // Configure the loader using the new pattern

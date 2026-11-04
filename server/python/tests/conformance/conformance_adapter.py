@@ -65,6 +65,42 @@ def _example_template_briefing_provider() -> Provider:
     return p
 
 
+def _example_custom_vocabulary_provider() -> Provider:
+    """Test-only: a project's own vocabulary (layout.picker + field.string attrs).
+
+    Mirrors the TS adapter's ``exampleCustomVocabularyProvider``: registers a new
+    ``layout.picker`` subtype (one optional ``displayField``) and extends
+    ``field.string`` with an optional boolean ``searchable`` and an optional
+    string-array ``valueLabels``. The ``provider-custom-vocabulary-*`` fixtures load
+    clean with it and are refused without it.
+    """
+    from metaobjects.meta.presentation.layout.meta_layout import MetaLayout
+
+    p = Provider("example-custom-vocabulary", dependencies=("metaobjects-core-types",))
+    p.add(
+        TypeDefinition(
+            type="layout",
+            sub_type="picker",
+            factory=MetaLayout,
+            attrs=[AttrSchema("displayField", "string", required=False)],
+            child_rules=[ChildRule(TYPE_ATTR, "*")],
+        )
+    )
+
+    def _extend(registry) -> None:
+        registry.extend(
+            "field",
+            "string",
+            attributes=[
+                AttrSchema("searchable", "boolean", required=False),
+                AttrSchema("valueLabels", "string", required=False, is_array=True),
+            ],
+        )
+
+    p.on_register(_extend)
+    return p
+
+
 def _noop_provider(provider_id: str, *deps: str) -> Provider:
     return Provider(provider_id, dependencies=tuple(deps))
 
@@ -96,6 +132,7 @@ _PROVIDER_MAP: dict[str, Provider] = {
     "metaobjects-template": prompt_provider,
     # Test-only — provider-extension-* fixtures.
     "example-template-briefing": _example_template_briefing_provider(),
+    "example-custom-vocabulary": _example_custom_vocabulary_provider(),
     "cycle-a": _noop_provider("cycle-a", "cycle-b"),
     "cycle-b": _noop_provider("cycle-b", "cycle-a"),
     "depends-on-missing": _noop_provider("depends-on-missing", "does-not-exist"),

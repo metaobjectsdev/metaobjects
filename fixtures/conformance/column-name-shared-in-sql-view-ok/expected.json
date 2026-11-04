@@ -1,0 +1,39 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.projection": {
+          "name": "UserView",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@sql": "SELECT u.id, u.username FROM app_user u",
+                "@view": "user_view"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id",
+                "@column": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "userName",
+                "@column": "username"
+              }
+            },
+            {
+              "field.string": {
+                "name": "displayName",
+                "@column": "username"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -175,6 +175,7 @@ public class MetaDataLoader implements LoaderConfigurable {
     // this list AFTER catching the load's (final) thrown MetaDataException and
     // merges the two into a single per-fixture error set.
     private final List<MetaDataException> errors = new ArrayList<>();
+    private final List<MetaDataException> deferredAttrErrors = new ArrayList<>();
 
     // FR5c — envelope-shaped warnings accumulator (cross-port parallel channel).
     //
@@ -717,7 +718,21 @@ public class MetaDataLoader implements LoaderConfigurable {
      */
     public static MetaDataLoader fromDirectory(String name, Path directory,
                                                DirectorySource.Options opts, List<String> libraries) {
-        MetaDataLoader loader = createManual(false, name);
+        return fromDirectory(name, directory, opts, libraries, List.of());
+    }
+
+    /**
+     * {@link #fromDirectory(String, Path, DirectorySource.Options, List)} with a project's own
+     * vocabulary: {@code providers} are composed after the metamodel set (see
+     * {@link LoaderOptions#setProviders}). Empty is byte-identical to the overload without it.
+     *
+     * @param providers extra {@link com.metaobjects.registry.MetaDataTypeProvider}s; null or empty adds none
+     */
+    public static MetaDataLoader fromDirectory(String name, Path directory,
+                                               DirectorySource.Options opts, List<String> libraries,
+                                               List<com.metaobjects.registry.MetaDataTypeProvider> providers) {
+        MetaDataLoader loader = new MetaDataLoader(
+            LoaderOptions.create(false, false, false).setProviders(providers), SUBTYPE_MANUAL, name);
         try {
             loader.init();
             List<MetaDataSource> sources = new ArrayList<>(
@@ -1037,12 +1052,30 @@ public class MetaDataLoader implements LoaderConfigurable {
     }
 
     /**
+     * Record an {@code ERR_UNKNOWN_ATTR} found while parsing, to be appended to {@link #getErrors()}
+     * once every source of this batch has been parsed. The cross-port contract orders structural
+     * errors (unknown type / subtype, ...) ahead of attribute-schema errors, because the TypeScript
+     * reference checks attributes in a pass after the tree is built; recording this one inline would
+     * interleave it in document order (see {@code provider-custom-vocabulary-missing-provider-fails}).
+     */
+    public void addDeferredAttrError(MetaDataException error) {
+        if (error == null) return;
+        deferredAttrErrors.add(error);
+    }
+
+    private void flushDeferredAttrErrors() {
+        errors.addAll(deferredAttrErrors);
+        deferredAttrErrors.clear();
+    }
+
+    /**
      * Clear accumulated errors. Called at the start of {@link #load(List)} so
      * a fresh batch does not see stale errors from a prior load on the same
      * loader instance.
      */
     void clearErrors() {
         errors.clear();
+        deferredAttrErrors.clear();
     }
 
     /**
@@ -1158,9 +1191,22 @@ public class MetaDataLoader implements LoaderConfigurable {
             // ai*/json*/object.managed tooling vocabulary). Downstream apps that
             // need extra vocabulary use setTypeRegistry(compose(...)) — their own
             // unsealed registry.
-            typeRegistry = com.metaobjects.registry.RegistryManifest.defaultLoaderRegistry();
+            typeRegistry = resolveDefaultTypeRegistry();
         }
         return typeRegistry;
+    }
+
+    /**
+     * The registry this loader uses when none was set explicitly: the shared sealed default, or —
+     * when {@link LoaderOptions#getProviders()} is non-empty — a sealed registry composed from the
+     * metamodel set plus those providers (the sanctioned project-vocabulary path).
+     */
+    private com.metaobjects.registry.MetaDataRegistry resolveDefaultTypeRegistry() {
+        List<com.metaobjects.registry.MetaDataTypeProvider> extra =
+            loaderOptions == null ? List.of() : loaderOptions.getProviders();
+        return extra.isEmpty()
+            ? com.metaobjects.registry.RegistryManifest.defaultLoaderRegistry()
+            : com.metaobjects.registry.RegistryManifest.composeLoaderRegistry(extra);
     }
 
     public MetaDataLoader setTypeRegistry(MetaDataRegistry typeRegistry) {
@@ -1441,7 +1487,7 @@ public class MetaDataLoader implements LoaderConfigurable {
         if (typeRegistry == null) {
             // ADR-0023 Decision 2 — default to the sealed defined-provider-set
             // registry (see getTypeRegistry()), not the polluted SPI singleton.
-            typeRegistry = com.metaobjects.registry.RegistryManifest.defaultLoaderRegistry();
+            typeRegistry = resolveDefaultTypeRegistry();
             log.debug("Initialized default (sealed metamodel) MetaDataRegistry for loader: {}", getName());
         }
 
@@ -1796,6 +1842,7 @@ public class MetaDataLoader implements LoaderConfigurable {
             }
         } finally {
             deferringOverlays = false;
+            flushDeferredAttrErrors();
         }
 
         // ADR-0055 — apply every queued overlay now, before super resolution.

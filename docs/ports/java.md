@@ -209,50 +209,61 @@ auto-load of the snapshot and `verify` drift for dependencies are separate, late
 
 ### Custom providers (optional)
 
-Java uses **SPI auto-discovery** for type providers — drop your provider
-class on the classpath, list its FQCN in
-`META-INF/services/com.metaobjects.registry.MetaDataTypeProvider`, and
-`MetaDataRegistry.getInstance()` will compose it in dependency order
-alongside the core providers:
+When the project needs a subtype or an attribute the core does not ship, write a class
+implementing `com.metaobjects.registry.MetaDataTypeProvider` (public, with a public no-arg
+constructor) and name it explicitly. The loader composes the full metamodel provider set plus
+exactly the providers you name; **listing a class in `META-INF/services` does not add it to
+the loader**, so a jar on the classpath cannot change the vocabulary by accident.
 
 ```java
-// src/main/java/com/example/providers/ExampleToolcallProvider.java
-package com.example.providers;
+package com.acme.vocab;
 
-import com.metaobjects.registry.MetaDataTypeProvider;
-import com.metaobjects.registry.MetaDataRegistry;
-
-public class ExampleToolcallProvider implements MetaDataTypeProvider {
-    @Override public String getProviderId()   { return "example-template-toolcall"; }
-    @Override public String[] getDependencies() { return new String[] { "core-types" }; }
+public final class AcmeVocabulary implements MetaDataTypeProvider {
+    public static final class PickerLayout extends MetaLayout {
+        public PickerLayout(String name) { super("picker", name); }
+    }
+    @Override public String getProviderId() { return "acme-vocabulary"; }
+    // JVM provider ids: field-types and layout-types register those types.
+    @Override public String[] getDependencies() { return new String[] {"field-types", "layout-types"}; }
     @Override public void registerTypes(MetaDataRegistry registry) {
-        // registry.register(...) — see the cross-port contract
+        registry.registerType(PickerLayout.class, def -> {       // a new subtype: layout.picker
+            def.type("layout").subType("picker").inheritsFrom("layout", "base");
+            def.optionalAttributeWithConstraints("displayField").ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+        });
+        registry.extendType(StringField.class, def -> {          // optional attrs on field.string
+            def.optionalAttributeWithConstraints("searchable").ofType(BooleanAttribute.SUBTYPE_BOOLEAN).asSingle();
+            def.optionalAttributeWithConstraints("valueLabels").ofType(StringAttribute.SUBTYPE_STRING).asArray();
+        });
     }
 }
 ```
 
-```
-# src/main/resources/META-INF/services/com.metaobjects.registry.MetaDataTypeProvider
-com.example.providers.ExampleToolcallProvider
+Wire it in the plugin configuration, with the provider's module on the plugin's classpath (a
+project dependency or the plugin's `<dependencies>`; a provider in the same module is not yet
+compiled at `generate-sources`):
+
+```xml
+<configuration>
+  <providers>
+    <provider>com.acme.vocab.AcmeVocabulary</provider>
+  </providers>
+</configuration>
 ```
 
-The provider contract is structurally identical to TS / C# / Python (id +
-dependencies + description + `registerTypes` body); the loader composes
-all providers via Kahn's algorithm and emits the same stable error codes
-on failure (`ERR_PROVIDER_DUPLICATE_ID`, `_MISSING_DEPENDENCY`,
-`_DEPENDENCY_CYCLE`).
+`metaobjects:generate` (with its docs generators), `metaobjects:verify`, `metaobjects:fmt` and
+`metaobjects:editor` all load it. A Spring Boot app declares the provider as a
+`MetaDataTypeProvider` bean and the auto-configured loader composes it. Code that loads the
+model itself passes it on the options:
+`LoaderOptions.create(false, false, true).setProviders(List.of(new AcmeVocabulary()))`, which
+composes through `RegistryManifest.composeLoaderRegistry(extras)`. Raw
+`MetaDataRegistry.compose(...)` composes only the explicit list, skips spec scoping, and is
+for internal and test partial sets.
 
-For callers who want to bypass SPI auto-discovery — or compose extra
-consumer vocabulary on top of the full metamodel provider set so it still
-strict-loads against the spec contract (no `--lax` fallback) — the
-sanctioned seam is
-`RegistryManifest.composeMetamodelRegistry(extraProviders)`, which composes
-the core metamodel providers plus `extraProviders` and runs the full
-spec-description + provenance-safe attr-scoping pipeline (hand the result
-to `loader.setTypeRegistry(...)`). Raw `MetaDataRegistry.compose(...)`
-composes only the explicit list, skips spec scoping, and is for
-internal/test partial sets. The cross-port contract lives in
-[`../features/extending-with-providers.md`](../features/extending-with-providers.md).
+Composition fails with the same stable codes as every other port (`ERR_PROVIDER_DUPLICATE_ID`,
+`ERR_PROVIDER_MISSING_DEPENDENCY`, `ERR_PROVIDER_DEPENDENCY_CYCLE`). If another port's tools load the same metadata, that port needs its own copy of the
+provider (same id, same vocabulary); a provider registered in one language is invisible to
+the others. Full contract and
+the other languages' versions: [`../features/extending-with-providers.md`](../features/extending-with-providers.md).
 
 ## Generate
 

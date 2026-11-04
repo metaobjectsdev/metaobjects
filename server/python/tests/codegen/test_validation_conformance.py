@@ -98,3 +98,114 @@ def test_validation_conformance(case: dict) -> None:
         f"case {case['name']!r}: generated model accepted={valid} "
         f"expectValid={case['expectValid']}"
     )
+
+
+# --- cross-field corpus (comparison / requiredWhen / presentIff / atLeastOne) ---------
+
+def _load_cross_field_entity(name: str = "Event") -> MetaObject:
+    meta = (_corpus_dir() / "meta.cross-field.json").read_text()
+    result = MetaDataLoader.from_string(meta)
+    assert not result.errors, [str(e) for e in result.errors]
+    for child in result.root.children():
+        if child.type == TYPE_OBJECT and getattr(child, "name", None) == name:
+            assert isinstance(child, MetaObject)
+            return child
+    raise AssertionError(f"{name} not found in meta.cross-field.json")
+
+
+def _import_source(source: str, mod_name: str):
+    mod_path = Path(tempfile.mkdtemp()) / f"{mod_name}.py"
+    mod_path.write_text(source)
+    spec = importlib.util.spec_from_file_location(mod_name, mod_path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[mod_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _load_cross_field_cases() -> list[dict]:
+    return json.loads((_corpus_dir() / "cross-field-cases.json").read_text())["cases"]
+
+
+@pytest.mark.parametrize("case", _load_cross_field_cases(), ids=lambda c: c["name"])
+def test_cross_field_conformance(case: dict) -> None:
+    module = _import_source(
+        render_entity_model(_load_cross_field_entity(case["entity"])), "generated_cross_event"
+    )
+    model = getattr(module, f"{case['entity']}Create")
+    try:
+        model(**case["payload"])
+        valid = True
+    except ValidationError:
+        valid = False
+    assert valid == case["expectValid"], f"case {case['name']!r}: accepted={valid}"
+
+
+def test_cross_field_rules_only_on_create_model() -> None:
+    module = _import_source(
+        render_entity_model(_load_cross_field_entity()), "generated_cross_event_patch"
+    )
+    assert hasattr(module.EventCreate, "_cross_field_rules")
+    assert not hasattr(module.EventPatch, "_cross_field_rules")
+    assert not hasattr(module.Event, "_cross_field_rules")
+    # A partial body that would violate the rules is still accepted by Patch.
+    module.EventPatch(startsAt=9, endsAt=1)
+    with pytest.raises(ValidationError):
+        module.EventCreate(startsAt=9, endsAt=1, email="a@b.c")
+
+
+_ARRAY_MODEL = """
+{ "metadata.root": { "package": "acme::arr", "children": [
+  { "object.entity": { "name": "Arr", "children": [
+    { "source.rdb": { "@table": "arrs" } },
+    { "field.long": { "name": "id" } },
+    { "field.int": { "name": "nums", "isArray": true } },
+    { "field.int": { "name": "b" } },
+    { "field.string": { "name": "note" } },
+    { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
+    { "validator.comparison": { "name": "numsLtB", "@left": "nums", "@op": "lt", "@right": "b" } },
+    { "validator.requiredWhen": { "name": "noteWhenNums", "@field": "note", "@when": "nums", "@equals": "1" } }
+  ]}}
+]}}
+"""
+
+
+def test_cross_field_rule_on_an_array_field_is_skipped() -> None:
+    # Every other port skips a comparison side or a gate that is an array (an array has no
+    # ordering against a scalar); so the create model accepts any body for these rules.
+    result = MetaDataLoader.from_string(_ARRAY_MODEL)
+    assert not result.errors, [str(e) for e in result.errors]
+    entity = next(c for c in result.root.children() if c.type == TYPE_OBJECT and c.name == "Arr")
+    module = _import_source(render_entity_model(entity), "generated_cross_arr")
+    module.ArrCreate(nums=[5], b=1)
+    module.ArrCreate(nums=[1], b=0)
+
+
+_TIMESTAMP_MODEL = """
+{ "metadata.root": { "package": "acme::ts", "children": [
+  { "object.entity": { "name": "Window", "children": [
+    { "source.rdb": { "@table": "windows" } },
+    { "field.long": { "name": "id" } },
+    { "field.timestamp": { "name": "opensAt" } },
+    { "field.timestamp": { "name": "closesAt" } },
+    { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
+    { "validator.comparison": { "name": "opensBeforeCloses", "@left": "opensAt", "@op": "lt", "@right": "closesAt" } }
+  ]}}
+]}}
+"""
+
+
+def test_cross_field_comparison_of_mixed_aware_and_naive_timestamps_is_a_validation_error() -> None:
+    # Python cannot order an aware datetime against a naive one (TypeError); the model must
+    # report that as a ValidationError (HTTP 422), not let the TypeError escape as a 500.
+    result = MetaDataLoader.from_string(_TIMESTAMP_MODEL)
+    assert not result.errors, [str(e) for e in result.errors]
+    entity = next(c for c in result.root.children() if c.type == TYPE_OBJECT and c.name == "Window")
+    module = _import_source(render_entity_model(entity), "generated_cross_window")
+    module.WindowCreate(opensAt="2026-01-01T10:00:00Z", closesAt="2026-01-01T11:00:00Z")
+    module.WindowCreate(opensAt="2026-01-01T10:00:00", closesAt="2026-01-01T11:00:00")
+    with pytest.raises(ValidationError):
+        module.WindowCreate(opensAt="2026-01-01T11:00:00Z", closesAt="2026-01-01T10:00:00Z")
+    with pytest.raises(ValidationError):
+        module.WindowCreate(opensAt="2026-01-01T10:00:00Z", closesAt="2026-01-01T11:00:00")

@@ -25,7 +25,7 @@ import {
 } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
 import { resolveCollection, defaultLoadMemoryProviders, type Collection } from "@metaobjectsdev/sdk";
-import { loadMetaobjectsConfig, loadMemoryOptionsFrom } from "./load-metaobjects-config.js";
+import { loadProjectProviders } from "./load-metaobjects-config.js";
 
 export type FmtFileStatus =
   | "formatted"
@@ -57,18 +57,6 @@ export interface FmtRunOptions {
   readonly files?: readonly string[];
 }
 
-async function projectProviders(collection: Collection): Promise<readonly MetaDataTypeProvider[]> {
-  try {
-    const cfg = await loadMetaobjectsConfig(collection.configDir);
-    return loadMemoryOptionsFrom(cfg).providers ?? [];
-  } catch {
-    // No metaobjects.config.ts (common for a non-TS-server project running
-    // `meta fmt` just for schema-neutral formatting) — format against the
-    // core vocabulary only, exactly like a project with no custom providers.
-    return [];
-  }
-}
-
 export async function runFmt(opts: FmtRunOptions): Promise<FmtRunResult> {
   let collection: Collection;
   try {
@@ -77,7 +65,14 @@ export async function runFmt(opts: FmtRunOptions): Promise<FmtRunResult> {
     return { files: [], fatal: err instanceof Error ? err.message : String(err) };
   }
 
-  const providers = await projectProviders(collection);
+  // Nearest-ancestor config (like every other command); a config that exists but fails
+  // to load is fatal rather than silently "no providers".
+  let providers: readonly MetaDataTypeProvider[];
+  try {
+    providers = await loadProjectProviders(opts.projectRoot, collection.configDir);
+  } catch (err) {
+    return { files: [], fatal: `metaobjects.config.ts failed to load: ${err instanceof Error ? err.message : String(err)}` };
+  }
   const registry = composeRegistry([...defaultLoadMemoryProviders, ...providers]);
 
   let targets: readonly string[];

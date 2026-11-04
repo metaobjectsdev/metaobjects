@@ -5,6 +5,9 @@ import com.metaobjects.database.PhysicalNaming;
 import com.metaobjects.loader.LoaderOptions;
 import com.metaobjects.loader.MetaDataLoader;
 
+import com.metaobjects.registry.MetaDataTypeProvider;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -42,6 +45,10 @@ import java.util.List;
  *   physical-naming-config: "classpath:.metaobjects/config.json"
  * }</pre>
  * 
+ * <p><strong>Project vocabulary:</strong> declare each {@link MetaDataTypeProvider} as a bean
+ * ({@code @Bean MetaDataTypeProvider contactVocabulary() { return new ContactVocabulary(); }})
+ * and the application loader composes it.</p>
+ *
  * <p><strong>Or use @Bean methods directly:</strong></p>
  * <pre>{@code
  * @Configuration
@@ -83,6 +90,14 @@ public class MetaDataLoaderConfiguration {
     private String physicalNamingConfig;
 
     /**
+     * A project's own vocabulary: every {@link MetaDataTypeProvider} bean in the context, in
+     * {@code @Order} order, is composed after the metamodel set into the application loader's
+     * registry (sealed and strict, like the default). Null when this class is built by hand.
+     */
+    @Autowired(required = false)
+    private ObjectProvider<MetaDataTypeProvider> typeProviders;
+
+    /**
      * Creates MetaDataLoader from application properties.
      *
      * <p>This bean will be automatically discovered and registered by
@@ -111,6 +126,9 @@ public class MetaDataLoaderConfiguration {
         // Preserve the pre-unification strict=true default (the no-options
         // fromUris overload routes through createManual which uses strict=false).
         LoaderOptions opts = LoaderOptions.create(false, false, true);
+        if (typeProviders != null) {
+            opts.setProviders(typeProviders.orderedStream().toList());
+        }
         // ADR-0058: the naming is resolved BEFORE the load call so the loader's own
         // "no config found" WARN fires only when neither this property, the default
         // classpath:.metaobjects/config.json, nor the file: walk found a project config.

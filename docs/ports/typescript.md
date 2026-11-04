@@ -260,9 +260,12 @@ export default defineConfig({
 });
 ```
 
-The CLI threads the list into every `meta gen` / `meta verify` / `meta
-migrate` / `meta prompt-snapshot` invocation. At the SDK level the same
-list is accepted directly:
+Every `meta` command that loads metadata reads the list: `gen` (with the docs
+generators and the docs site), `verify`, `migrate`, `fmt`, `types`, `export`,
+`deps`, `upgrade` and `prompt-snapshot`. A config that fails to load is reported
+as its own error, never as an unknown subtype. If another port's tools load the
+same metadata, that port needs its own copy of the provider. At the SDK level
+the same list is accepted directly:
 
 ```ts
 import { loadMemory } from "@metaobjectsdev/sdk";

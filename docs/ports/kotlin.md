@@ -339,15 +339,36 @@ The data dict itself: [`codegen-data-shapes.md`](../features/codegen-data-shapes
 
 ### Custom providers (optional)
 
-Kotlin inherits Java's SPI-based provider discovery directly — write a
-`MetaDataTypeProvider` implementation (or its Kotlin DSL equivalent in
-`metadata-ktx`), drop the FQCN into
-`META-INF/services/com.metaobjects.registry.MetaDataTypeProvider`, and the
-loader picks it up alongside the core providers. See the Java port's
-[Custom providers section](java.md#custom-providers-optional) for the
-mechanism; the
-[`../features/extending-with-providers.md`](../features/extending-with-providers.md)
-reference covers the cross-port contract.
+Kotlin runs on the JVM registry, so a provider is a `MetaDataTypeProvider` written in Kotlin
+and is wired exactly as in Java: the plugin's `<providers><provider>FQCN</provider></providers>`
+list (Kotlin generators run through `metaobjects:generate`, so `generate`, `verify`, `fmt`
+and `editor` all load it), a `MetaDataTypeProvider` bean in a Spring Boot app, or the
+`metadata-ktx` loader's `providers` parameter:
+
+```kotlin
+class PickerLayout(name: String) : MetaLayout("picker", name)
+
+class AcmeVocabulary : MetaDataTypeProvider {
+    override fun getProviderId() = "acme-vocabulary"
+    override fun getDependencies() = arrayOf("field-types", "layout-types")
+    override fun registerTypes(registry: MetaDataRegistry) {
+        registry.registerType(PickerLayout::class.java) { def ->
+            def.type("layout").subType("picker").inheritsFrom("layout", "base")
+            def.optionalAttributeWithConstraints("displayField").ofType("string").asSingle()
+        }
+        registry.extendType(StringField::class.java) { def ->
+            def.optionalAttributeWithConstraints("searchable").ofType("boolean").asSingle()
+            def.optionalAttributeWithConstraints("valueLabels").ofType("string").asArray()
+        }
+    }
+}
+
+val result = loadUris("app", uris, LoaderOptions.create(false, false, true), providers = listOf(AcmeVocabulary()))
+```
+
+`META-INF/services` does not add a provider to the loader. See the Java port's
+[Custom providers section](java.md#custom-providers-optional) for the plugin wiring, and
+[`../features/extending-with-providers.md`](../features/extending-with-providers.md) for the cross-port contract.
 
 ### Exposed 1.x output (`exposedApi`)
 

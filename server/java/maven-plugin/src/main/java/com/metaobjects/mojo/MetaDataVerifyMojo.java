@@ -341,6 +341,7 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
         }
 
         ClassLoader projectClassLoader = createProjectClassLoader();
+        resolveProviders(projectClassLoader);
         MetaDataLoader loader = createLoader(projectClassLoader);
         runFieldLintAdvisory(loader);
         int requirementErrors = runRequirementGate(loader);
@@ -376,6 +377,7 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
 
     private void verifyCodegen() throws MojoExecutionException, MojoFailureException {
         ClassLoader projectClassLoader = createProjectClassLoader();
+        resolveProviders(projectClassLoader);
         MetaDataLoader loader = createLoader(projectClassLoader);
         runFieldLintAdvisory(loader);
         int requirementErrors = runRequirementGate(loader);

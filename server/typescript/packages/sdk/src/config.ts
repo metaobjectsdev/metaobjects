@@ -239,6 +239,16 @@ export const ConfigSchema = z.object({
   csharp: z.strictObject({
     outDir: z.string().min(1).optional(),
     namespace: z.string().min(1).optional(),
+    /**
+     * The project's own metadata providers: each names a BUILT .NET assembly (a path relative
+     * to the directory holding `.metaobjects/`) and the provider's full type name. Only the C#
+     * port reads this; the TypeScript port validates it so the shared file loads, and takes
+     * its providers from `defineConfig({ providers })` in `metaobjects.config.ts` instead.
+     */
+    providers: z.array(z.strictObject({
+      assembly: z.string().min(1),
+      type: z.string().min(1),
+    })).optional(),
   }).optional(),
 }).strict();
 

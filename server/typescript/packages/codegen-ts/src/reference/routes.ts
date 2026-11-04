@@ -94,6 +94,7 @@ import {
 } from "@metaobjectsdev/codegen-ts/engine";
 import { renderRoutesIndex, routesIndexFileName } from "../templates/routes-index.js";
 import { isTphDiscriminatorBase, tphPlan } from "../templates/tph-discriminator.js";
+import { hasInsertRefinements } from "../templates/zod-validators.js";
 
 // --- composition (OWNED) — assembles one <Entity>.routes.ts. Change this to change the output. ---
 // Dispatch: a TPH discriminator base → polymorphic list/get + a per-subtype CRUD set; a
@@ -621,7 +622,11 @@ function renderTphRoutes(
     const subFileSpec = entityModuleSpecifier(
       ctx.selfTarget, ctx.entityModuleTarget, effectivePackage(sub), sub.name, ctx.extStyle,
     );
-    const subInsertSym = imp(`${sub.name}InsertSchema@${subFileSpec}`);
+    // A subtype with cross-field rules has a refined InsertSchema, which Zod will not
+    // `.omit()`; its codegen exports the discriminator-less refined body instead.
+    const subInsertBody = hasInsertRefinements(sub)
+      ? code`${imp(`${sub.name}InsertBodySchema@${subFileSpec}`)}`
+      : code`${imp(`${sub.name}InsertSchema@${subFileSpec}`)}.omit({ ${discField}: true })`;
     // FR-036 Program B: the per-subtype UPDATE must carry the FR-035 present-key
     // tristate (a non-@required subtype column accepts an explicit null → clears;
     // a @required column's explicit null is rejected). The subtype's own
@@ -640,7 +645,7 @@ function renderTphRoutes(
       path: ${baseConstSym}.$path + ${JSON.stringify(`/${segment}`)},
       db: ${dbSym},
       table: ${tableSym},
-      insertSchema: ${subInsertSym}.omit({ ${discField}: true }),
+      insertSchema: ${subInsertBody},
       updateSchema: ${subUpdateSym},
       filterAllowlist: ${subFilterSym},
       sortAllowlist: ${subSortSym},

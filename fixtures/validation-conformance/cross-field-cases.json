@@ -1,0 +1,263 @@
+{
+  "cases": [
+    {
+      "name": "cross-valid-baseline",
+      "entity": "Event",
+      "payload": {
+        "startsAt": 1,
+        "endsAt": 2,
+        "kind": "BIRTH",
+        "subject": "p1",
+        "state": "OPEN",
+        "email": "a@b.c"
+      },
+      "expectValid": true
+    },
+    {
+      "name": "comparison-violated",
+      "entity": "Event",
+      "payload": {
+        "startsAt": 5,
+        "endsAt": 2,
+        "kind": "BIRTH",
+        "subject": "p1",
+        "state": "OPEN",
+        "email": "a@b.c"
+      },
+      "expectValid": false
+    },
+    {
+      "name": "comparison-equal-boundary",
+      "entity": "Event",
+      "payload": {
+        "startsAt": 2,
+        "endsAt": 2,
+        "kind": "BIRTH",
+        "subject": "p1",
+        "state": "OPEN",
+        "email": "a@b.c"
+      },
+      "expectValid": true
+    },
+    {
+      "name": "comparison-null-right-passes",
+      "entity": "Event",
+      "payload": {
+        "startsAt": 1,
+        "kind": "BIRTH",
+        "subject": "p1",
+        "state": "OPEN",
+        "email": "a@b.c"
+      },
+      "expectValid": true
+    },
+    {
+      "name": "comparison-null-left-passes",
+      "entity": "Event",
+      "payload": {
+        "endsAt": 2,
+        "kind": "BIRTH",
+        "subject": "p1",
+        "state": "OPEN",
+        "email": "a@b.c"
+      },
+      "expectValid": true
+    },
+    {
+      "name": "required-when-violated",
+      "entity": "Event",
+      "payload": {
+        "startsAt": 1,
+        "endsAt": 2,
+        "kind": "BIRTH",
+        "state": "OPEN",
+        "email": "a@b.c"
+      },
+      "expectValid": false
+    },
+    {
+      "name": "required-when-other-value-unconstrained",
+      "entity": "Event",
+      "payload": {
+        "startsAt": 1,
+        "endsAt": 2,
+        "kind": "DEATH",
+        "state": "OPEN",
+        "email": "a@b.c"
+      },
+      "expectValid": true
+    },
+    {
+      "name": "required-when-gate-null-unconstrained",
+      "entity": "Event",
+      "payload": {
+        "startsAt": 1,
+        "endsAt": 2,
+        "state": "OPEN",
+        "email": "a@b.c"
+      },
+      "expectValid": true
+    },
+    {
+      "name": "required-when-boolean-violated",
+      "entity": "Event",
+      "payload": {
+        "startsAt": 1,
+        "endsAt": 2,
+        "kind": "BIRTH",
+        "subject": "p1",
+        "state": "OPEN",
+        "email": "a@b.c",
+        "flag": true
+      },
+      "expectValid": false
+    },
+    {
+      "name": "required-when-boolean-satisfied",
+      "entity": "Event",
+      "payload": {
+        "startsAt": 1,
+        "endsAt": 2,
+        "kind": "BIRTH",
+        "subject": "p1",
+        "state": "OPEN",
+        "email": "a@b.c",
+        "flag": true,
+        "flagNote": "why"
+      },
+      "expectValid": true
+    },
+    {
+      "name": "required-when-boolean-false-unconstrained",
+      "entity": "Event",
+      "payload": {
+        "startsAt": 1,
+        "endsAt": 2,
+        "kind": "BIRTH",
+        "subject": "p1",
+        "state": "OPEN",
+        "email": "a@b.c",
+        "flag": false
+      },
+      "expectValid": true
+    },
+    {
+      "name": "present-iff-missing-target",
+      "entity": "Event",
+      "payload": {
+        "startsAt": 1,
+        "endsAt": 2,
+        "kind": "BIRTH",
+        "subject": "p1",
+        "state": "CLOSED",
+        "email": "a@b.c"
+      },
+      "expectValid": false
+    },
+    {
+      "name": "present-iff-forbidden-target",
+      "entity": "Event",
+      "payload": {
+        "startsAt": 1,
+        "endsAt": 2,
+        "kind": "BIRTH",
+        "subject": "p1",
+        "state": "OPEN",
+        "email": "a@b.c",
+        "closedNote": "stray"
+      },
+      "expectValid": false
+    },
+    {
+      "name": "present-iff-satisfied",
+      "entity": "Event",
+      "payload": {
+        "startsAt": 1,
+        "endsAt": 2,
+        "kind": "BIRTH",
+        "subject": "p1",
+        "state": "CLOSED",
+        "email": "a@b.c",
+        "closedNote": "done"
+      },
+      "expectValid": true
+    },
+    {
+      "name": "present-iff-gate-null-forbids-target",
+      "entity": "Event",
+      "payload": {
+        "startsAt": 1,
+        "endsAt": 2,
+        "kind": "BIRTH",
+        "subject": "p1",
+        "email": "a@b.c",
+        "closedNote": "stray"
+      },
+      "expectValid": false
+    },
+    {
+      "name": "present-iff-both-absent",
+      "entity": "Event",
+      "payload": {
+        "startsAt": 1,
+        "endsAt": 2,
+        "kind": "BIRTH",
+        "subject": "p1",
+        "email": "a@b.c"
+      },
+      "expectValid": true
+    },
+    {
+      "name": "at-least-one-violated",
+      "entity": "Event",
+      "payload": {
+        "startsAt": 1,
+        "endsAt": 2,
+        "kind": "BIRTH",
+        "subject": "p1",
+        "state": "OPEN"
+      },
+      "expectValid": false
+    },
+    {
+      "name": "at-least-one-second-field",
+      "entity": "Event",
+      "payload": {
+        "startsAt": 1,
+        "endsAt": 2,
+        "kind": "BIRTH",
+        "subject": "p1",
+        "state": "OPEN",
+        "phone": "555"
+      },
+      "expectValid": true
+    },
+    {
+      "name": "at-least-one-both",
+      "entity": "Event",
+      "payload": {
+        "startsAt": 1,
+        "endsAt": 2,
+        "kind": "BIRTH",
+        "subject": "p1",
+        "state": "OPEN",
+        "email": "a@b.c",
+        "phone": "555"
+      },
+      "expectValid": true
+    },
+    {
+      "name": "rule-on-read-only-field-skipped",
+      "entity": "Event",
+      "payload": {
+        "startsAt": 1,
+        "endsAt": 2,
+        "kind": "OTHER",
+        "state": "OPEN",
+        "email": "a@b.c",
+        "review": "DONE"
+      },
+      "expectValid": true
+    }
+  ]
+}

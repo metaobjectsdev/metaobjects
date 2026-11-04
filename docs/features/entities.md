@@ -319,6 +319,28 @@ row = om.create("Author", {"name": "Ada", "bio": None})
 found = om.find_by_id("Author", row["id"])
 ```
 
+## Cross-field validators
+
+`validator.comparison`, `validator.requiredWhen`, `validator.presentIff` and `validator.atLeastOne`
+are declared as children of the entity and reference sibling fields by name. They are enforced in
+two places:
+
+- **The generated full record (create) model**, in every port, with the language's native
+  mechanism: a Zod refinement on the insert schema (TypeScript), a class-level Bean Validation
+  constraint on the create DTO (Java, Kotlin), `IValidatableObject` (C#) and a Pydantic
+  `model_validator` (Python). A store with no `CHECK` support, such as a graph or document
+  database, is therefore still covered.
+- **A database `CHECK` constraint**, derived by `meta migrate`.
+
+The two share one set of semantics: absent or null is SQL `NULL`; `comparison` passes when either
+side is null; `requiredWhen` is violated only when the gate equals `@equals` and the target is null;
+`presentIff` requires the target to be present exactly when the gate equals `@equals`; `atLeastOne`
+needs one non-null field. `@equals` is read per the gating field's subtype. The shared cases in
+`fixtures/validation-conformance/cross-field-cases.json` gate all five ports.
+
+PATCH and partial-update models do **not** enforce these rules, because a partial body cannot see
+the merged row. The database `CHECK` is the enforcement there.
+
 ## Verified by
 
 The following conformance fixtures gate this feature's behavior across ports:

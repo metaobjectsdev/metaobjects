@@ -208,13 +208,14 @@ public static class FieldLint
     /// </summary>
     public static void RunAdvisory(
         string metadataDir, IReadOnlyList<string>? metadataFiles, IReadOnlyList<string>? libraries, TextWriter stderr,
-        MetaObjects.Config.ImportScope? imports = null)
+        MetaObjects.Config.ImportScope? imports = null,
+        IReadOnlyList<IMetaDataTypeProvider>? providers = null)
     {
         List<Finding> findings;
         try
         {
             var load = new MetaObjects.Config.ResolvedMetadata(
-                metadataDir, metadataFiles, libraries ?? [], MetaObjects.Meta.PhysicalNaming.Default, null, null, imports).Load();
+                metadataDir, metadataFiles, libraries ?? [], MetaObjects.Meta.PhysicalNaming.Default, null, null, imports, null, providers).Load();
             if (load.Errors.Count > 0) return;
             var files = metadataFiles ?? new DirectorySource(metadataDir).Expand().Select(f => f.FilePath).ToList();
             findings = [.. LintReferenceFields(load.Root), .. LintDuplicateFields(files)];
