@@ -1,0 +1,259 @@
+{
+  "verify": [
+    {
+      "gate": "templates",
+      "ran": true,
+      "ok": true
+    },
+    {
+      "gate": "schema",
+      "ran": false,
+      "ok": true
+    },
+    {
+      "gate": "codegen",
+      "ran": false,
+      "ok": true
+    },
+    {
+      "gate": "deps",
+      "ran": false,
+      "ok": true
+    },
+    {
+      "gate": "requirements",
+      "ran": true,
+      "ok": true
+    },
+    {
+      "gate": "replay",
+      "ran": false,
+      "ok": true
+    }
+  ],
+  "exitCode": 0,
+  "summary": "2 gate(s) ran, all clean; 2 requirement diagnostic(s)",
+  "help": [],
+  "antiPatterns": {
+    "status": "ran",
+    "total": 0,
+    "rows": []
+  },
+  "requirements": {
+    "status": "ran",
+    "total": 2,
+    "rows": [
+      {
+        "code": "WARN_REQUIREMENT_NOTHING_IMPLEMENTS",
+        "path": "Shop.Checkout.Shipping",
+        "severity": "warn",
+        "source": "gate",
+        "message": "is 'live' but neither it nor anything nested under it names an implementing node. A functional requirement's check is existence — a subtree that claims nothing is a capability nobody built."
+      },
+      {
+        "code": "WARN_REQUIREMENT_OBJECT_UNCLAIMED",
+        "path": "",
+        "severity": "warn",
+        "source": "gate",
+        "message": "no requirement claims 'acme::shop::AuditEntry'. Add it to an L4 requirement's 'implementedBy'."
+      }
+    ]
+  },
+  "overlays": {
+    "status": "ran",
+    "total": 0,
+    "rows": []
+  },
+  "names": {
+    "status": "ran",
+    "total": 0,
+    "rows": []
+  },
+  "deprecations": {
+    "status": "ran",
+    "total": 0,
+    "rows": []
+  },
+  "fields": {
+    "status": "ran",
+    "total": 0,
+    "rows": []
+  },
+  "requirementCounts": {
+    "total": 9,
+    "functional": 8,
+    "architectural": 1,
+    "byStatus": [
+      {
+        "status": "planned",
+        "count": 1
+      },
+      {
+        "status": "live",
+        "count": 7
+      },
+      {
+        "status": "partial",
+        "count": 1
+      }
+    ],
+    "undecided": 1,
+    "entitiesClaimed": 2,
+    "entitiesTotal": 3,
+    "metadataFiles": 1
+  },
+  "requirementLedger": [
+    {
+      "path": "Addressable",
+      "package": "acme::shop",
+      "qualifiedPath": "acme::shop::Addressable",
+      "subType": "architectural",
+      "status": "live",
+      "digest": "c22897fd7559820a2a7a69bae54353900122be23f3d0058e9ec2b6195ae840e1",
+      "implementedBy": [
+        {
+          "ref": "BaseEntity",
+          "resolves": true,
+          "target": "acme::shop::BaseEntity"
+        }
+      ],
+      "diagnostics": [],
+      "verdict": "clean"
+    },
+    {
+      "path": "Shop",
+      "package": "acme::shop",
+      "qualifiedPath": "acme::shop::Shop",
+      "subType": "functional",
+      "level": 1,
+      "status": "live",
+      "digest": "edc8a9b8159eb03a08d020427683253d6d1471032e0cf48115956362fc121653",
+      "implementedBy": [],
+      "diagnostics": [],
+      "verdict": "clean"
+    },
+    {
+      "path": "Shop.Checkout",
+      "package": "acme::shop",
+      "qualifiedPath": "acme::shop::Shop.Checkout",
+      "subType": "functional",
+      "level": 2,
+      "status": "partial",
+      "disposition": "deferred",
+      "digest": "111b8c39a19c717933fdd529af808540a27c0592406d0a792c524960ac775a2d",
+      "implementedBy": [],
+      "diagnostics": [],
+      "verdict": "clean"
+    },
+    {
+      "path": "Shop.Checkout.Orders",
+      "package": "acme::shop",
+      "qualifiedPath": "acme::shop::Shop.Checkout.Orders",
+      "subType": "functional",
+      "level": 3,
+      "status": "live",
+      "digest": "e84c69fda54cb9f04f3949af069c2c5d56027e008be3198a08c4ee4fbcad8be6",
+      "implementedBy": [],
+      "diagnostics": [],
+      "verdict": "clean"
+    },
+    {
+      "path": "Shop.Checkout.Orders.Recorded",
+      "package": "acme::shop",
+      "qualifiedPath": "acme::shop::Shop.Checkout.Orders.Recorded",
+      "subType": "functional",
+      "level": 4,
+      "status": "live",
+      "digest": "6feebe1e415dda976cc6843c4546c1541b25e8ee44b85316811bfdb177f77635",
+      "implementedBy": [
+        {
+          "ref": "Order",
+          "resolves": true,
+          "target": "acme::shop::Order"
+        },
+        {
+          "ref": "Customer",
+          "resolves": true,
+          "target": "acme::shop::Customer"
+        }
+      ],
+      "diagnostics": [],
+      "verdict": "clean"
+    },
+    {
+      "path": "Shop.Checkout.Orders.Recorded.Quotable",
+      "package": "acme::shop",
+      "qualifiedPath": "acme::shop::Shop.Checkout.Orders.Recorded.Quotable",
+      "subType": "functional",
+      "level": 5,
+      "status": "live",
+      "digest": "b5d7fb7a9657bfda7b30e2629617bf5c56e4337ef7a06abfe55715613ecdda63",
+      "implementedBy": [
+        {
+          "ref": "Order.reference",
+          "resolves": true,
+          "target": "acme::shop::Order.reference"
+        }
+      ],
+      "diagnostics": [],
+      "verdict": "clean"
+    },
+    {
+      "path": "Shop.Checkout.Orders.Noted",
+      "package": "acme::shop",
+      "qualifiedPath": "acme::shop::Shop.Checkout.Orders.Noted",
+      "subType": "functional",
+      "level": 4,
+      "status": "live",
+      "digest": "45ed514b57928304f2d8b7c69e4cc3e5196cd8131ea57bc5ececc8056f52b995",
+      "implementedBy": [
+        {
+          "ref": "OrderNotePrompt",
+          "resolves": true,
+          "target": "acme::shop::OrderNotePrompt"
+        }
+      ],
+      "diagnostics": [],
+      "verdict": "clean"
+    },
+    {
+      "path": "Shop.Checkout.Orders.Refunded",
+      "package": "acme::shop",
+      "qualifiedPath": "acme::shop::Shop.Checkout.Orders.Refunded",
+      "subType": "functional",
+      "level": 4,
+      "status": "planned",
+      "digest": "dcaacae2ee305ce97e804148559dfe32c13dc69083ff736f09cab1b60a8d7a74",
+      "implementedBy": [
+        {
+          "ref": "Refund",
+          "resolves": false
+        }
+      ],
+      "diagnostics": [],
+      "verdict": "clean"
+    },
+    {
+      "path": "Shop.Checkout.Shipping",
+      "package": "acme::shop",
+      "qualifiedPath": "acme::shop::Shop.Checkout.Shipping",
+      "subType": "functional",
+      "level": 3,
+      "status": "live",
+      "digest": "d7d26a3dd5661647327cec62f969b61c74346e1df1e954de4d8392705bdecf31",
+      "implementedBy": [],
+      "diagnostics": [
+        {
+          "code": "WARN_REQUIREMENT_NOTHING_IMPLEMENTS",
+          "severity": "warn",
+          "source": "gate"
+        }
+      ],
+      "verdict": "warn"
+    }
+  ],
+  "notRepresented": [
+    "per-gate drift detail for every gate but schema (which template variable drifted, which generated file differs, which migration failed to replay) — printed as text on stderr; this payload carries each gate's pass/fail verdict, and the schema gate's differences in schemaDrift",
+    "the loader's own warnings and the agent-context/manifest advisories — printed as text on stderr"
+  ]
+}

@@ -11,6 +11,7 @@ import { existsSync } from "node:fs";
 import { join, relative, resolve as resolvePath } from "node:path";
 import { parseVerifyArgs, type MigrateFlags } from "../lib/args.js";
 import { log } from "../lib/log.js";
+import { requirementLedgerRows, type RequirementLedgerRow } from "../lib/requirement-ledger.js";
 import { emitStructured, type OutputFormat } from "../lib/format.js";
 import {
   antiPatternRows, missingBaseUrlRows, removedPropRows, ranSection, skippedSection, warnCapped,
@@ -428,6 +429,10 @@ export async function verifyCommand(
   // then omits the block rather than reporting zeroes that would read as an empty
   // ledger instead of no ledger.
   let requirementCounts: RequirementCounts | undefined;
+  // One row per requirement: its claim digest, each link as resolved, and the codes
+  // reported against its path. Undefined exactly when `requirementCounts` is — same
+  // opt-in-by-declaration rule.
+  let requirementLedger: RequirementLedgerRow[] | undefined;
 
   // Whether the schema gate is selected. `runSchemaVerify` makes this decision
   // internally (it is selected by --db or --dialect d1, not by a subverb flag);
@@ -522,6 +527,7 @@ export async function verifyCommand(
         exitCode,
         requirements: requirementSection,
         requirementCounts,
+        requirementLedger,
         antiPatterns: antiPatternSection,
         overlays: overlaySection,
         names: nameSection,
@@ -862,6 +868,11 @@ export async function verifyCommand(
       ...diags.map((d) => toDiagnosticRow(d, "gate")),
       ...lint.map((d) => toDiagnosticRow(d, "lint")),
     ]);
+    // The same findings per ENTRY, beside what each entry declares — so a reader learns an
+    // entry was checked and found clean from a row saying so, not from its path's absence.
+    if (s !== undefined && structured) {
+      requirementLedger = requirementLedgerRows(root, scan, diags, lint);
+    }
 
     if (errors.length > 0) {
       log.error(`meta verify — requirements: ${errors.length} error(s).`);
@@ -2077,6 +2088,7 @@ function buildVerifyPayload(input: {
   exitCode: number;
   requirements: AdvisorySection<AdvisoryDiagnosticRow>;
   requirementCounts: RequirementCounts | undefined;
+  requirementLedger?: RequirementLedgerRow[] | undefined;
   antiPatterns: AdvisorySection<AdvisoryFindingRow>;
   overlays: AdvisorySection<AdvisoryDiagnosticRow>;
   names: AdvisorySection<AdvisoryDiagnosticRow>;
@@ -2182,6 +2194,7 @@ function buildVerifyPayload(input: {
     deprecations: input.deprecations,
     fields: input.fields,
     ...(input.requirementCounts !== undefined ? { requirementCounts: input.requirementCounts } : {}),
+    ...(input.requirementLedger !== undefined ? { requirementLedger: input.requirementLedger } : {}),
     ...(input.schemaDrift !== undefined ? { schemaDrift: input.schemaDrift } : {}),
     // The honest boundary. Everything named here is REACHABLE — it is printed as
     // text on stderr — but it is not in this document, and a reader must not have

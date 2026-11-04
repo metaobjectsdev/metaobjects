@@ -17,6 +17,12 @@ export interface EmittedFile {
   content: string;
   /** Set by the runner from generator.name — generators should not set this. */
   generatedBy?: string;
+  /** The resolution key of the metadata node this file was rendered from
+   *  (`acme::shop::Order`), recorded beside the file's hash in `.gen-state/.hashes.json`.
+   *  `perEntity` sets it for you; a generator rendering one file from one node by other
+   *  means sets it itself. Leave it unset for a file rendered from the whole model or a
+   *  whole package (a barrel, a docs index). */
+  sourceNode?: string;
 }
 
 export interface GenContext {
@@ -229,8 +235,15 @@ export function perEntity(
 ): (ctx: GenContext) => Promise<EmittedFile[]> {
   return async (ctx) => {
     const matched = ctx.entities.filter(ctx.matches);
-    const results = await Promise.all(matched.map((e) => fn(e, ctx)));
-    return results.flatMap((r) => (Array.isArray(r) ? r : [r]));
+    const results = await Promise.all(matched.map(async (e) => {
+      const r = await fn(e, ctx);
+      // Each file names the object it was rendered from, unless the generator said
+      // otherwise — so every per-entity generator, owned copies included, records its
+      // provenance without a line of its own.
+      const key = e.resolutionKey();
+      return (Array.isArray(r) ? r : [r]).map((f) => (f.sourceNode !== undefined ? f : { ...f, sourceNode: key }));
+    }));
+    return results.flat();
   };
 }
 

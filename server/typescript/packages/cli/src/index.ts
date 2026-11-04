@@ -453,6 +453,9 @@ USAGE:
 
 FLAGS:
   --out <file>          Write output to a file (default: stdout)
+  --effective           Write the effective tree: every inherited field, child and
+                        attribute materialized on the node that inherits it (overlays
+                        are merged either way). The input the explorer builder reads.
   --help, -h            Print this help
 `,
   fmt: `meta fmt — rewrite metadata files into canonical form

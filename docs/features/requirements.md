@@ -397,7 +397,10 @@ A status with no entry is left out. When coverage is not measured the line ends
 counts the recorded gaps with no `@disposition`, when there are any. Then come the
 diagnostics, and when any is an error, `<prefix> <n> error(s).` and a non-zero exit.
 TypeScript caps the warnings it prints at `--limit` (20 by default); the other ports print
-every one. The structured `--format json|toon` payload is TypeScript-only.
+every one. The structured `--format json|toon` payload is TypeScript-only. It carries one
+`requirementLedger` row per requirement: its digest, each `@implementedBy` link with the node
+it resolved to, the findings against its path and a `clean` / `warn` / `error` verdict. See
+[explorer-data.md](explorer-data.md#meta-verify---format-json-requirementledger).
 
 **Metadata that does not load** is not a model with no requirement: `verify` fails on it in
 every port. The load errors are printed once. Where the drift gate that ran loaded the model,

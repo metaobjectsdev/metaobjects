@@ -3,7 +3,13 @@ import { writeFile } from "node:fs/promises";
 import { parseExportArgs } from "../lib/args.js";
 import { log } from "../lib/log.js";
 import { FileSource } from "@metaobjectsdev/metadata/core";
-import { TypeRegistry, registerCoreTypes, MetaDataLoader, canonicalSerialize } from "@metaobjectsdev/metadata";
+import {
+  TypeRegistry,
+  registerCoreTypes,
+  MetaDataLoader,
+  canonicalSerialize,
+  canonicalSerializeEffective,
+} from "@metaobjectsdev/metadata";
 import { registerForgeTypes, resolveCollection } from "@metaobjectsdev/sdk";
 import { collectionLoadOptions } from "../lib/collection-load-options.js";
 import { describeError } from "../lib/error-text.js";
@@ -59,7 +65,10 @@ export async function exportCommand(args: string[], cwd: string): Promise<number
     }),
   ]);
   const result = {
-    json: canonicalSerialize(loadResult.root),
+    // `--effective` materializes the super chain (every inherited member and attribute
+    // on the node that inherits it), so a reader that is not a loader — the explorer
+    // builder, a port without this project's providers — never resolves `extends` itself.
+    json: flags.effective ? canonicalSerializeEffective(loadResult.root) : canonicalSerialize(loadResult.root),
     errors: loadResult.errors,
     warnings: loadResult.warnings.map((w) => w.message),
   };
