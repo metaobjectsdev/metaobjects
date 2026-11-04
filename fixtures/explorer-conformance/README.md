@@ -24,6 +24,8 @@ What the requirement tree exercises:
   is `warn` (`WARN_REQUIREMENT_NOTHING_IMPLEMENTS`).
 - `AuditEntry` is claimed by nothing, which the gate reports with no requirement path; it lands
   in `ledger.diagnostics` and in no row.
+- `AuditEntry` names its field and its primary identity both `id`. The field comes first and
+  keeps the id `acme::shop::AuditEntry.id`; the identity is `acme::shop::AuditEntry.id[identity.primary]`.
 
 ## Regenerating
 

@@ -142,6 +142,9 @@ function walkModel(model: unknown): Walked[] {
     } else {
       pkg = parent.node.package;
       id = name === "" ? `${parent.node.id}#${index}` : `${parent.node.id}${CHILD_REF_SEPARATOR}${name}`;
+      // The first sibling of a name keeps the plain id: it is the one a dotted reference
+      // resolves to. A later sibling of another type sharing the name is qualified by type.
+      if (name !== "" && seen.has(id)) id = `${id}[${child.type}${TYPE_SUBTYPE_SEPARATOR}${child.subType}]`;
     }
     if (seen.has(id)) {
       throw new Error(`explorer: two nodes share the id "${id}" — the model names two siblings alike`);
@@ -295,9 +298,7 @@ function generatedFrom(manifest: unknown): ExplorerGenerated[] | undefined {
   const byNode = new Map<string, { path: string; generatedBy: string }[]>();
   for (const [path, entry] of Object.entries(manifest)) {
     if (!isRecord(entry) || typeof entry.sourceNode !== "string") continue;
-    // `generatedBy` is what TypeScript records; a JVM entry names its owner `generator`.
-    const by = typeof entry.generatedBy === "string" ? entry.generatedBy
-      : typeof entry.generator === "string" ? entry.generator : "";
+    const by = typeof entry.generatedBy === "string" ? entry.generatedBy : "";
     const list = byNode.get(entry.sourceNode) ?? [];
     list.push({ path, generatedBy: by });
     byNode.set(entry.sourceNode, list);

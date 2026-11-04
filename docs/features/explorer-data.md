@@ -131,14 +131,14 @@ each node nested inside one (field, identity, source, view, index, nested requir
 
 | Field | Meaning |
 | --- | --- |
-| `id` | A top-level node's id is `<package>::<name>`. A nested node's id is its parent's id followed by `.<name>`, for example `acme::shop::Order.total`. A nested requirement's id equals its ledger row's `qualifiedPath`. A nested node with no name gets `#<index>` in place of `.<name>`. |
+| `id` | A top-level node's id is `<package>::<name>`. A nested node's id is its parent's id followed by `.<name>`, for example `acme::shop::Order.total`. A nested requirement's id equals its ledger row's `qualifiedPath`. A nested node with no name gets `#<index>` in place of `.<name>`. When siblings of different types share a name, the first one in the effective JSON keeps `.<name>`, because that is the node a dotted `@implementedBy` reference such as `Order.id` resolves to. Each later one adds its type, for example `acme::shop::AuditEntry.id[identity.primary]`. |
 | `type`, `subType`, `name`, `package` | As in the model. `package` is the package of the top-level ancestor. |
 | `parent` | The id of the node it is nested in. A top-level node has no `parent`. |
 | `extends`, `abstract`, `isArray` | As in the effective JSON. |
 | `inheritedFrom` | Set on a member that came from a super. It holds the id of the object the member is declared on, meaning the topmost ancestor that has a member with the same type, name and body. A member redeclared with a different body belongs to the node itself. |
 | `attrs` | Every `@` attribute, without the `@`, with keys sorted. |
 
-Two nodes that would share an id are an error. The builder throws and names the id.
+Two nodes that would still share an id are an error: two top-level nodes with one name in one package, or two siblings with the same type and name. The builder throws and names the id.
 
 ### `edges`
 

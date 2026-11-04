@@ -71,19 +71,10 @@
       "attrs": {}
     },
     {
-      "id": "acme::shop::AuditEntry.message",
-      "type": "field",
-      "subType": "string",
-      "name": "message",
-      "package": "acme::shop",
-      "parent": "acme::shop::AuditEntry",
-      "attrs": {}
-    },
-    {
-      "id": "acme::shop::AuditEntry.pk",
+      "id": "acme::shop::AuditEntry.id[identity.primary]",
       "type": "identity",
       "subType": "primary",
-      "name": "pk",
+      "name": "id",
       "package": "acme::shop",
       "parent": "acme::shop::AuditEntry",
       "attrs": {
@@ -91,6 +82,15 @@
           "id"
         ]
       }
+    },
+    {
+      "id": "acme::shop::AuditEntry.message",
+      "type": "field",
+      "subType": "string",
+      "name": "message",
+      "package": "acme::shop",
+      "parent": "acme::shop::AuditEntry",
+      "attrs": {}
     },
     {
       "id": "acme::shop::BaseEntity",

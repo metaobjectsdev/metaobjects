@@ -54,7 +54,7 @@
           "name": "AuditEntry",
           "children": [
             { "field.uuid": { "name": "id" } },
-            { "identity.primary": { "name": "pk", "@fields": ["id"] } },
+            { "identity.primary": { "name": "id", "@fields": ["id"] } },
             { "field.string": { "name": "message" } },
             { "source.rdb": { "name": "db", "@table": "audit_entries" } }
           ]

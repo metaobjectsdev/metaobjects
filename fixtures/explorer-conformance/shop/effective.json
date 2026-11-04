@@ -179,7 +179,7 @@
             },
             {
               "identity.primary": {
-                "name": "pk",
+                "name": "id",
                 "@fields": [
                   "id"
                 ]

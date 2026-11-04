@@ -5,7 +5,7 @@
 // before this it had to infer "checked and clean" from a path's absence in the
 // diagnostics. One row per `requirement.*` node states it outright: what the entry
 // declares, the digest of its claim, whether each `@implementedBy` link resolves and to
-// WHAT, and the codes the gate and the authoring lint reported against its path.
+// WHAT, and the codes the gate and the authoring lint reported against it.
 //
 // Every value here comes from the SAME scan, resolver and diagnostics the gate used on
 // this run. Nothing is re-derived: a row that disagreed with the gate beside it would be
@@ -62,7 +62,7 @@ export interface RequirementLedgerRow {
   digest: string;
   implementedBy: RequirementLinkRow[];
   supersededBy?: RequirementLinkRow;
-  /** Every finding this run reported against the path, gate and lint, in report order. */
+  /** Every finding this run reported against this requirement, gate and lint, in report order. */
   diagnostics: RequirementDiagnosticRef[];
   /** From the GATE findings only: "error" when one can fail the build, "warn" when the
    *  worst is a warning, "clean" when the gate reported nothing against this entry. */
@@ -86,8 +86,8 @@ function implementedByRows(root: MetaData, req: MetaRequirement): RequirementLin
 /**
  * One row per requirement in the scan, in the scan's (document) order.
  *
- * `diags` are this run's gate diagnostics and `lint` its authoring findings; both are
- * matched to a row by path, which is how every diagnostic addresses a requirement.
+ * `diags` are this run's gate diagnostics and `lint` its authoring findings. Each is matched
+ * to a row by the requirement node it names, and by path only when it names none.
  */
 export function requirementLedgerRows(
   root: MetaData,
@@ -95,19 +95,22 @@ export function requirementLedgerRows(
   diags: readonly Diagnostic[],
   lint: readonly Diagnostic[],
 ): RequirementLedgerRow[] {
+  const byNode = new Map<MetaRequirement, RequirementDiagnosticRef[]>();
   const byPath = new Map<string, RequirementDiagnosticRef[]>();
   const note = (d: Diagnostic, source: "gate" | "lint"): void => {
-    if (d.path === undefined) return;
-    const list = byPath.get(d.path) ?? [];
-    list.push({ code: d.code, severity: d.severity, source });
-    byPath.set(d.path, list);
+    const ref = { code: d.code, severity: d.severity, source };
+    if (d.requirement !== undefined) {
+      byNode.set(d.requirement, [...(byNode.get(d.requirement) ?? []), ref]);
+    } else if (d.path !== undefined) {
+      byPath.set(d.path, [...(byPath.get(d.path) ?? []), ref]);
+    }
   };
   for (const d of diags) note(d, "gate");
   for (const d of lint) note(d, "lint");
 
   return scan.addressed.map(({ node: req, path }) => {
     const pkg = effectiveRequirementPackage(req);
-    const diagnostics = byPath.get(path) ?? [];
+    const diagnostics = [...(byNode.get(req) ?? []), ...(byPath.get(path) ?? [])];
     const gate = diagnostics.filter((d) => d.source === "gate");
     const verdict = gate.some((d) => d.severity === "error")
       ? "error"

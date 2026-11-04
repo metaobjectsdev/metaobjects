@@ -23,8 +23,18 @@ describe("explorer-conformance/shop", () => {
     expect(serializeExplorer(build())).toBe(text("expected.json"));
   });
 
-  test("is deterministic: the same inputs give the same bytes", () => {
-    expect(serializeExplorer(build())).toBe(serializeExplorer(build()));
+  test("object key order in the model and the manifest does not change the bytes", () => {
+    const reversed = (v: unknown): unknown =>
+      Array.isArray(v) ? v.map(reversed)
+        : typeof v === "object" && v !== null
+          ? Object.fromEntries(Object.entries(v).reverse().map(([k, x]) => [k, reversed(x)]))
+          : v;
+    const explorer = buildExplorer({
+      model: reversed(json("effective.json")),
+      verify: json("verify.json"),
+      manifest: reversed(json("hashes.json")),
+    });
+    expect(serializeExplorer(explorer)).toBe(text("expected.json"));
   });
 });
 
@@ -64,6 +74,12 @@ describe("buildExplorer", () => {
 
   test("rejects input that is not canonical metadata JSON", () => {
     expect(() => buildExplorer({ model: { nodes: [] } })).toThrow(/not canonical metadata JSON/);
+  });
+
+  test("a sibling sharing a member's name gets a type-qualified id; the member keeps the plain one", () => {
+    const nodes = new Map(build().nodes.map((n) => [n.id, n]));
+    expect(nodes.get("acme::shop::AuditEntry.id")?.type).toBe("field");
+    expect(nodes.get("acme::shop::AuditEntry.id[identity.primary]")?.type).toBe("identity");
   });
 
   test("rejects two top-level nodes sharing an id", () => {
