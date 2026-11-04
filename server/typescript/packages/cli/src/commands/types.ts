@@ -134,6 +134,8 @@ interface Entry {
   tsOnly: boolean;
   /** A type's shared root (`<type>.base`): its attrs apply to every subtype. */
   sharedRoot: boolean;
+  /** An attr entry: the id of the provider that registered it (ADR-0062). */
+  provider: string | undefined;
   raw: unknown; // the catalog node
 }
 
@@ -159,9 +161,10 @@ interface RawAttr {
   whenToUse?: string;
 }
 
-function attrRecord(at: RawAttr): Record<string, unknown> {
+function attrRecord(at: RawAttr, provider?: string): Record<string, unknown> {
   return {
     name: at.name,
+    ...(provider !== undefined ? { provider } : {}),
     valueType: at.valueType,
     isArray: at.isArray,
     required: at.required,
@@ -187,12 +190,14 @@ function payloadMatch(e: Entry): Record<string, unknown> {
     ...(e.whenToUse !== undefined ? { whenToUse: e.whenToUse } : {}),
   };
   if (e.kind === "subtype") {
-    out.attrs = (e.raw as { attrs: RawAttr[] }).attrs.map(attrRecord);
+    const mt = e.raw as { attrs: RawAttr[]; attrProviders: Record<string, string> };
+    out.attrs = mt.attrs.map((at) => attrRecord(at, mt.attrProviders[at.name]));
   } else {
     const at = e.raw as RawAttr;
     out.valueType = at.valueType;
     out.isArray = at.isArray;
     out.required = at.required;
+    if (e.provider !== undefined) out.provider = e.provider;
     if (at.allowedValues !== undefined) out.allowedValues = at.allowedValues;
   }
   return out;
@@ -280,13 +285,13 @@ export async function typesCommand(args: string[], fmt: OutputFormat = "text"): 
       kind: "subtype", name: tsName, owner: tsName, type: mt.type,
       description: mt.description, whenToUse: mt.whenToUse,
       attrNames: mt.attrs.map((a) => `@${a.name}`),
-      common: false, tsOnly: !mt.crossPort, sharedRoot: mt.sharedRoot, raw: mt,
+      common: false, tsOnly: !mt.crossPort, sharedRoot: mt.sharedRoot, provider: undefined, raw: mt,
     });
     for (const at of mt.attrs) {
       entries.push({
         kind: "attr", name: `${tsName} @${at.name}`, owner: tsName, type: mt.type,
         description: at.description, whenToUse: at.whenToUse, attrNames: [],
-        common: false, tsOnly: !mt.crossPort, sharedRoot: false, raw: at,
+        common: false, tsOnly: !mt.crossPort, sharedRoot: false, provider: mt.attrProviders[at.name], raw: at,
       });
     }
   }
@@ -299,7 +304,7 @@ export async function typesCommand(args: string[], fmt: OutputFormat = "text"): 
     entries.push({
       kind: "attr", name: `@${at.name}`, owner: "(any node)", type: "",
       description: at.description, whenToUse: at.whenToUse, attrNames: [],
-      common: true, tsOnly: false, sharedRoot: false, raw: at,
+      common: true, tsOnly: false, sharedRoot: false, provider: catalog.commonAttrProviders[at.name], raw: at,
     });
   }
 
@@ -359,12 +364,19 @@ export async function typesCommand(args: string[], fmt: OutputFormat = "text"): 
         log.info("  TypeScript-only: registered here, but not part of the cross-port metamodel contract.");
       if (e.whenToUse) log.info(`  → reach for it when: ${e.whenToUse}`);
       if (e.kind === "subtype") {
-        const mt = e.raw as { attrs: { name: string; valueType: string | null; required: boolean; description: string }[] };
+        const mt = e.raw as {
+          attrs: { name: string; valueType: string | null; required: boolean; description: string }[];
+          attrProviders: Record<string, string>;
+        };
         if (mt.attrs.length) {
           log.info("  @attrs:");
-          for (const at of mt.attrs)
-            log.info(`    @${at.name}  ${at.valueType ?? "any"}${at.required ? "  REQUIRED" : ""}  ${at.description}`);
+          for (const at of mt.attrs) {
+            const by = mt.attrProviders[at.name];
+            log.info(`    @${at.name}  ${at.valueType ?? "any"}${at.required ? "  REQUIRED" : ""}${by !== undefined ? `  [${by}]` : ""}  ${at.description}`);
+          }
         }
+      } else if (e.provider !== undefined) {
+        log.info(`  registered by provider: ${e.provider}`);
       }
     }
   } else {

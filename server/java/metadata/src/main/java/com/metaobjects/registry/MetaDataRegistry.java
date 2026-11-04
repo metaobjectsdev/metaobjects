@@ -85,6 +85,9 @@ public class MetaDataRegistry {
      */
     private final Map<String, CommonAttributeDef> commonAttributes = new ConcurrentHashMap<>();
 
+    /** ADR-0062 — common attr name -> the provider that registered it (or {@link #LIBRARY_PROVENANCE}). */
+    private final Map<String, String> commonAttrProvenance = new ConcurrentHashMap<>();
+
     /**
      * #265 — attr-name provenance stamped during provider composition:
      * {@code (type, subType) -> (attrName -> providerId)}. Consulted by
@@ -107,6 +110,9 @@ public class MetaDataRegistry {
      * {@link #applyStrictAttrScoping}, same as an unstamped name.
      */
     static final String LIBRARY_PROVENANCE = "_LIBRARY";
+
+    /** The shared-root subtype every type's concrete subtypes inherit from. */
+    private static final String SUBTYPE_BASE = "base";
 
     /**
      * #265 — the provider id currently executing its {@code registerTypes} turn
@@ -370,16 +376,21 @@ public class MetaDataRegistry {
         // ADR-0050: fails closed — checked BEFORE the commit below, so a violation
         // never reaches typeDefinitions (see checkNoProjectedRequiredAttr).
         checkNoProjectedRequiredAttr(typeIdToExtend, existing, extendedDefinition);
+        // ADR-0062: same fail-closed position — a name another provider already holds on a
+        // related slot never reaches typeDefinitions.
+        List<String> claimed = newAttrClaims(typeIdToExtend, builder);
+        checkAttrOwnership(typeIdToExtend, extendedDefinition.getParentType(),
+                extendedDefinition.getParentSubType(), claimed);
         typeDefinitions.put(typeIdToExtend, extendedDefinition);
         // #265 — extendType() rebuilds from `existing` and writes straight into
         // typeDefinitions WITHOUT going through register(), so it must stamp
-        // provenance itself. Unlike register()'s blanket stamp, this DIFFS: only
-        // attr names newly present vs. `existing` get stamped with the current
-        // provider. Blanket-stamping here would mis-attribute every attr `existing`
-        // already carried (e.g. re-registering core's own attrs as this provider's)
-        // — and a same-name redefinition (the attr-conflict probe) must keep its
-        // PRIOR origin, not be silently reassigned to whoever redefined it.
-        stampNewAttrProvenance(typeIdToExtend, existing, extendedDefinition);
+        // provenance itself. Unlike register()'s blanket stamp, only the names this
+        // extension claims get stamped with the current provider. Blanket-stamping here
+        // would mis-attribute every attr `existing` already carried (e.g. re-registering
+        // core's own attrs as this provider's) — and a same-name redefinition (the
+        // attr-conflict probe) must keep its PRIOR origin, not be silently reassigned to
+        // whoever redefined it.
+        stampAttrProvenance(typeIdToExtend, claimed);
 
         log.debug("Extended type: {} with additional attributes/children",
                  typeIdToExtend.toQualifiedName());
@@ -506,6 +517,10 @@ public class MetaDataRegistry {
                 atb.asSingle();
             }
         }
+        // ADR-0062: register() only checks names new to the slot's full requirement set, so
+        // a name this slot inherits and the directive re-declares is checked here.
+        checkAttrOwnership(typeId, existing.getParentType(), existing.getParentSubType(),
+                newAttrClaims(typeId, builder));
         register(builder.build());
     }
 
@@ -545,6 +560,26 @@ public class MetaDataRegistry {
             );
         }
 
+        // ADR-0062: refuse a name another provider already put on a related slot, BEFORE
+        // the definition becomes visible, so a refused registration leaves no trace.
+        // Only names NEW to this slot are checked: re-registering a slot a provider
+        // already owns replaces its complete definition and is not a new claim.
+        Set<String> alreadyDeclared = new HashSet<>();
+        if (existing != null) {
+            for (ChildRequirement req : existing.getChildRequirements()) {
+                if (isNamedAttrRequirement(req)) {
+                    alreadyDeclared.add(req.getName());
+                }
+            }
+        }
+        List<String> claimed = new ArrayList<>();
+        for (ChildRequirement req : definition.getDirectChildRequirements()) {
+            if (isNamedAttrRequirement(req) && !alreadyDeclared.contains(req.getName())) {
+                claimed.add(req.getName());
+            }
+        }
+        checkAttrOwnership(typeId, definition.getParentType(), definition.getParentSubType(), claimed);
+
         // Resolve inheritance if this type has a parent
         resolveInheritance(definition);
 
@@ -554,7 +589,7 @@ public class MetaDataRegistry {
         // provider's turn). Blanket, not diffed: register() always REPLACES the
         // (type, subType)'s complete definition (unlike extendType(), which
         // rebuilds an already-registered type from `existing` — see
-        // stampNewAttrProvenance for why that path diffs instead).
+        // stampAttrProvenance for why that path stamps only claimed names).
         recordAttrProvenance(typeId, definition.getDirectChildRequirements());
         log.debug("Registered type: {} -> {} (parent: {})", typeId.toQualifiedName(),
                  definition.getImplementationClass().getSimpleName(),
@@ -821,7 +856,9 @@ public class MetaDataRegistry {
      *       {@code CanonicalJsonParser.processAttributes} fires for any parent.</li>
      * </ul>
      *
-     * <p>Idempotent: re-registering the same attr name is a no-op.</p>
+     * <p>Idempotent: re-registering the same attr name is a no-op for the provider that
+     * registered it. A common attr is on every node type, so another provider may not claim
+     * its name, as a common attr or on any type (ADR-0062, {@code ERR_PROVIDER_ATTR_CONFLICT}).</p>
      *
      * @param name      bare attribute name (no {@code @} prefix; e.g. {@code "description"})
      * @param valueType attribute value subtype (e.g. {@link StringAttribute#SUBTYPE_STRING},
@@ -839,6 +876,7 @@ public class MetaDataRegistry {
         // Idempotent: skip re-registration of the same attr name (allows tests that
         // re-initialise the registry to not blow up on duplicate constraints). This
         // precedes the seal guard so a no-op re-registration never trips the seal.
+        checkCommonAttrOwnership(name);
         if (commonAttributes.containsKey(name)) {
             return;
         }
@@ -846,6 +884,7 @@ public class MetaDataRegistry {
 
         CommonAttributeDef def = new CommonAttributeDef(name, valueType, isArray);
         commonAttributes.put(name, def);
+        commonAttrProvenance.put(name, currentProviderId != null ? currentProviderId : LIBRARY_PROVENANCE);
 
         // 1. Global ChildRequirement under the UNIVERSAL_PARENT_KEY tier — makes
         //    acceptsChild() return true for this attr on any (parentType, parentSubType) pair.
@@ -891,6 +930,15 @@ public class MetaDataRegistry {
      */
     public CommonAttributeDef getCommonAttribute(String name) {
         return commonAttributes.get(name);
+    }
+
+    /**
+     * ADR-0062 — the provider that registered common attribute {@code name}, or
+     * {@code null} when it is not registered or was registered outside any provider's turn.
+     */
+    public String getCommonAttrProvider(String name) {
+        String providerId = commonAttrProvenance.get(name);
+        return LIBRARY_PROVENANCE.equals(providerId) ? null : providerId;
     }
 
     /**
@@ -1142,7 +1190,7 @@ public class MetaDataRegistry {
 
     /**
      * #265 — true for a NAMED {@code attr}-typed requirement (concrete, non-wildcard
-     * name): the shape {@link #recordAttrProvenance}/{@link #stampNewAttrProvenance}
+     * name): the shape {@link #recordAttrProvenance}/{@link #stampAttrProvenance}
      * track provenance for, and the shape {@link #isPrunableAttr} narrows further by
      * spec-inclusion. False for structural placement rules and the any-attr wildcard.
      */
@@ -1155,12 +1203,174 @@ public class MetaDataRegistry {
     }
 
     /**
+     * ADR-0062 — the provider that registered {@code attrName} on exactly
+     * {@code (type, subType)}, or {@code null} when it is not registered there or was
+     * registered outside any provider's turn. An inherited attr reports its declaring slot,
+     * so ask {@code <type>.base} for those.
+     */
+    public String getAttrProvider(String type, String subType, String attrName) {
+        Map<String, String> byName = attrProvenance.get(new MetaDataTypeId(type, subType));
+        String providerId = byName != null ? byName.get(attrName) : null;
+        return LIBRARY_PROVENANCE.equals(providerId) ? null : providerId;
+    }
+
+    /**
+     * ADR-0062 — the slots related to {@code typeId} for the provider-collision rule: the
+     * same-node-type slots it inherits from (its explicit parent chain, plus the
+     * {@code <type>.base} shared root by convention) and, when {@code typeId} is a shared
+     * root or a parent, every registered subtype of that type that inherits from it.
+     * {@code parentType}/{@code parentSubType} are the definition's own parent, passed in
+     * because a definition being registered is not in {@link #typeDefinitions} yet.
+     *
+     * <p>The rule is scoped to ONE node type. The JVM registry additionally chains every
+     * {@code <type>.base} to {@code metadata.base} (the attrs every node shares, owned by
+     * the core-types provider); no other port has that edge, and several providers re-declare
+     * {@code @isAbstract}/{@code @description} on their own root with the same meaning. A
+     * cross-type walk would make Java refuse what the other four ports accept, so the walk
+     * stops at the node-type boundary.</p>
+     */
+    private Set<MetaDataTypeId> relatedSlots(MetaDataTypeId typeId, String parentType, String parentSubType) {
+        Set<MetaDataTypeId> related = new LinkedHashSet<>();
+        String nextType = parentType;
+        String nextSubType = parentSubType;
+        while (nextType != null && nextSubType != null) {
+            MetaDataTypeId parent = new MetaDataTypeId(nextType, nextSubType);
+            if (!parent.type().equals(typeId.type()) || parent.equals(typeId) || !related.add(parent)) {
+                break;
+            }
+            TypeDefinition parentDef = typeDefinitions.get(parent);
+            nextType = parentDef != null && parentDef.hasParent() ? parentDef.getParentType() : null;
+            nextSubType = parentDef != null && parentDef.hasParent() ? parentDef.getParentSubType() : null;
+        }
+        boolean isSharedRoot = SUBTYPE_BASE.equals(typeId.subType());
+        if (!isSharedRoot) {
+            MetaDataTypeId root = new MetaDataTypeId(typeId.type(), SUBTYPE_BASE);
+            if (typeDefinitions.containsKey(root)) {
+                related.add(root);
+            }
+        }
+        for (Map.Entry<MetaDataTypeId, TypeDefinition> entry : typeDefinitions.entrySet()) {
+            MetaDataTypeId other = entry.getKey();
+            if (other.equals(typeId)) {
+                continue;
+            }
+            if (isSharedRoot && other.type().equals(typeId.type())) {
+                related.add(other);
+                continue;
+            }
+            TypeDefinition def = entry.getValue();
+            while (def != null && def.hasParent()) {
+                MetaDataTypeId parent = new MetaDataTypeId(def.getParentType(), def.getParentSubType());
+                if (!parent.type().equals(typeId.type())) {
+                    break;
+                }
+                if (parent.equals(typeId)) {
+                    related.add(other);
+                    break;
+                }
+                def = typeDefinitions.get(parent);
+            }
+        }
+        return related;
+    }
+
+    /**
+     * ADR-0062 — the provider-collision rule. Provider P may not put attribute {@code name}
+     * on {@code typeId} when a DIFFERENT provider Q already put the same name on a related
+     * slot (see {@link #relatedSlots}). Checked in both directions so the verdict does not
+     * depend on which provider registered first. The same provider declaring a name on
+     * several related slots stays legal, and an attr registered outside any provider's turn
+     * claims nothing.
+     */
+    private void checkAttrOwnership(MetaDataTypeId typeId, String parentType, String parentSubType,
+                                    Collection<String> names) {
+        String claimant = currentProviderId;
+        if (claimant == null || names.isEmpty()) {
+            return;
+        }
+        Set<MetaDataTypeId> related = relatedSlots(typeId, parentType, parentSubType);
+        for (String name : names) {
+            String commonOwner = getCommonAttrProvider(name);
+            if (commonOwner != null && !commonOwner.equals(claimant)) {
+                throw new MetaDataException(
+                    "Provider \"" + claimant + "\" declares attribute \"" + name + "\" on \""
+                        + typeId.toQualifiedName() + "\", but provider \"" + commonOwner
+                        + "\" already registers it as a common attribute, which every node type accepts; provider \""
+                        + claimant + "\" cannot declare it again (ADR-0062).",
+                    com.metaobjects.ErrorCode.ERR_PROVIDER_ATTR_CONFLICT);
+            }
+            for (MetaDataTypeId slot : related) {
+                Map<String, String> byName = attrProvenance.get(slot);
+                String owner = byName != null ? byName.get(name) : null;
+                if (owner == null || LIBRARY_PROVENANCE.equals(owner) || owner.equals(claimant)) {
+                    continue;
+                }
+                throw new MetaDataException(
+                    "Provider \"" + claimant + "\" declares attribute \"" + name + "\" on \""
+                        + typeId.toQualifiedName() + "\", but provider \"" + owner
+                        + "\" already declares it on the related slot \"" + slot.toQualifiedName()
+                        + "\". Two providers may not claim one attribute name on a type and the type it "
+                        + "inherits from; give the second provider its own idiomatic name (ADR-0062).",
+                    com.metaobjects.ErrorCode.ERR_PROVIDER_ATTR_SHADOW);
+            }
+        }
+    }
+
+    /**
+     * ADR-0062 — a common attr is on every node type, so provider P may not register common
+     * attr {@code name} when a DIFFERENT provider already registered that name as a common
+     * attr or on any type. Re-registration by the same provider, and registration outside
+     * any provider's turn, stay legal.
+     */
+    private void checkCommonAttrOwnership(String name) {
+        String claimant = currentProviderId;
+        if (claimant == null) {
+            return;
+        }
+        String commonOwner = getCommonAttrProvider(name);
+        if (commonOwner != null && !commonOwner.equals(claimant)) {
+            throw new MetaDataException(
+                "Provider \"" + claimant + "\" registers common attribute \"" + name + "\", but provider \""
+                    + commonOwner + "\" already registers it as a common attribute; provider \"" + claimant
+                    + "\" cannot declare it again (ADR-0062).",
+                com.metaobjects.ErrorCode.ERR_PROVIDER_ATTR_CONFLICT);
+        }
+        for (Map.Entry<MetaDataTypeId, Map<String, String>> entry : attrProvenance.entrySet()) {
+            String owner = entry.getValue().get(name);
+            if (owner == null || LIBRARY_PROVENANCE.equals(owner) || owner.equals(claimant)) {
+                continue;
+            }
+            throw new MetaDataException(
+                "Provider \"" + claimant + "\" registers common attribute \"" + name + "\", which every node "
+                    + "type accepts, but provider \"" + owner + "\" already declares it on \""
+                    + entry.getKey().toQualifiedName() + "\"; provider \"" + claimant
+                    + "\" cannot declare it again (ADR-0062).",
+                com.metaobjects.ErrorCode.ERR_PROVIDER_ATTR_CONFLICT);
+        }
+    }
+
+    /**
+     * ADR-0062 — text appended to a same-slot {@code ERR_PROVIDER_ATTR_CONFLICT} so it names
+     * the provider that holds the slot. Empty when the holder is unknown or is the provider
+     * running now (a plain duplicate declaration, not a cross-provider claim).
+     */
+    String describeSlotHolder(String type, String subType, String attrName) {
+        String owner = getAttrProvider(type, subType, attrName);
+        String claimant = currentProviderId;
+        if (owner == null || claimant == null || owner.equals(claimant)) {
+            return "";
+        }
+        return " Declared by provider \"" + owner + "\"; provider \"" + claimant
+            + "\" cannot declare it again (ADR-0062).";
+    }
+
+    /**
      * #265 — record provenance for every named attr requirement in {@code directRequirements}
      * onto {@code typeId}, stamping {@link #currentProviderId} (or {@link #LIBRARY_PROVENANCE}
      * outside a provider's turn). Called from {@link #register}, which always replaces the
      * (type, subType)'s COMPLETE definition — so a blanket stamp is correct here (contrast
-     * {@link #stampNewAttrProvenance}, which diffs because {@link #extendType} rebuilds from
-     * an already-registered definition).
+     * {@link #stampAttrProvenance}, which stamps only claimed names because
+     * {@link #extendType} rebuilds from an already-registered definition).
      */
     private void recordAttrProvenance(MetaDataTypeId typeId, Collection<ChildRequirement> directRequirements) {
         String providerId = currentProviderId != null ? currentProviderId : LIBRARY_PROVENANCE;
@@ -1174,39 +1384,45 @@ public class MetaDataRegistry {
     }
 
     /**
-     * #265 — {@link #extendType}'s provenance hook. Diffs {@code extended}'s named attr
-     * requirements against {@code existing}'s and stamps {@link #currentProviderId} (or
-     * {@link #LIBRARY_PROVENANCE}) ONLY onto names that are genuinely NEW. extendType()
-     * rebuilds via {@code TypeDefinitionBuilder.from(existing)} and writes the result
-     * straight into {@code typeDefinitions} without going through {@link #register} — a
-     * blanket stamp here would mis-attribute every attr {@code existing} already carried
-     * to whichever provider called extendType() this time. A same-name redefinition (the
-     * attr-conflict-clash probe) is intentionally left alone — it keeps its PRIOR origin.
+     * #265 — {@link #extendType}'s provenance hook: stamps {@link #currentProviderId} (or
+     * {@link #LIBRARY_PROVENANCE}) onto exactly {@code names} on {@code typeId}, the attr
+     * names the extension claimed (see {@link #newAttrClaims}). extendType() rebuilds via
+     * {@code TypeDefinitionBuilder.from(existing)}, which flattens every inherited
+     * requirement into the rebuilt definition's DIRECT requirements, so stamping those
+     * would wrongly spare a broadly-inherited library attr (e.g. object.base's
+     * {@code @discriminator} inherited onto object.projection) from strict scoping's
+     * prune. See the InheritedAttrProvenanceRegression test.
      */
-    private void stampNewAttrProvenance(MetaDataTypeId typeId, TypeDefinition existing, TypeDefinition extended) {
-        // Base set must be existing's FULL (direct + inherited) requirements, not just
-        // direct: TypeDefinitionBuilder.from(existing) seeds its flat builder map from
-        // existing.getChildRequirements() (direct + inherited), and build() writes that
-        // flat map into `extended`'s DIRECT requirements (inherited left empty). Diffing
-        // against direct-only would see every previously-INHERITED attr as "new" and
-        // stamp it with the extending provider's id — wrongly sparing a broadly-inherited
-        // library attr (e.g. object.base's @discriminator inherited onto object.projection,
-        // scoped by B2b to object.entity only) from strict scoping's prune. See the
-        // InheritedAttrProvenanceRegression test.
-        Set<String> existingNames = new HashSet<>();
-        for (ChildRequirement req : existing.getChildRequirements()) {
-            if (isNamedAttrRequirement(req)) {
-                existingNames.add(req.getName());
-            }
-        }
+    private void stampAttrProvenance(MetaDataTypeId typeId, Collection<String> names) {
         String providerId = currentProviderId != null ? currentProviderId : LIBRARY_PROVENANCE;
-        for (ChildRequirement req : extended.getDirectChildRequirements()) {
-            if (!isNamedAttrRequirement(req) || existingNames.contains(req.getName())) {
-                continue;
-            }
-            attrProvenance.computeIfAbsent(typeId, k -> new ConcurrentHashMap<>())
-                    .put(req.getName(), providerId);
+        for (String name : names) {
+            attrProvenance.computeIfAbsent(typeId, k -> new ConcurrentHashMap<>()).put(name, providerId);
         }
+    }
+
+    /**
+     * ADR-0062 — the attr names a builder seeded from {@code typeId}'s definition declares
+     * as a new claim on that slot: every declared name the slot does not already declare
+     * itself. That includes a name the slot only inherits, which is a claim on a related
+     * slot's name. A name the slot already declares is the builder's same-slot check.
+     */
+    private List<String> newAttrClaims(MetaDataTypeId typeId, TypeDefinitionBuilder builder) {
+        List<String> claimed = new ArrayList<>();
+        for (String name : builder.getDeclaredAttrNames()) {
+            if (!declaresAttrOn(typeId.type(), typeId.subType(), name)) {
+                claimed.add(name);
+            }
+        }
+        return claimed;
+    }
+
+    /**
+     * ADR-0062 — whether {@code (type, subType)} itself declares {@code attrName} (it was
+     * registered or extended onto exactly that slot), as opposed to inheriting it.
+     */
+    boolean declaresAttrOn(String type, String subType, String attrName) {
+        Map<String, String> byName = attrProvenance.get(new MetaDataTypeId(type, subType));
+        return byName != null && byName.containsKey(attrName);
     }
 
     /**
@@ -1222,10 +1438,9 @@ public class MetaDataRegistry {
      * <p>If the attr is genuinely required, it is OWN, not projected: declare it with the
      * type, in the type's own provider.</p>
      *
-     * <p>Diffs {@code extended}'s named attr requirements against {@code existing}'s (the
-     * same base set {@link #stampNewAttrProvenance} diffs against, for the same reason —
-     * {@code existing}'s FULL direct+inherited requirements, since {@code extended}'s
-     * direct-only set would otherwise see every previously-inherited attr as "new") and
+     * <p>Diffs {@code extended}'s named attr requirements against {@code existing}'s
+     * FULL direct+inherited requirements, since {@code extended}'s
+     * direct-only set would otherwise see every previously-inherited attr as "new", and
      * throws on the first newly-added attr that is required. Callers MUST invoke this
      * BEFORE committing {@code extended} into {@code typeDefinitions} so a violation
      * fails closed — the projected attr is never applied.

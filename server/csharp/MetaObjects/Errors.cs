@@ -57,6 +57,9 @@ public enum ErrorCode
     ERR_PROVIDER_DUPLICATE_ID,
     ERR_PROVIDER_MISSING_DEPENDENCY,
     ERR_PROVIDER_ATTR_CONFLICT,
+    // ADR-0062 — a provider declared an attribute name another provider already declares
+    // on the type it inherits from (or on a subtype that inherits from it).
+    ERR_PROVIDER_ATTR_SHADOW,
     // ADR-0050 — a provider tried to project a REQUIRED attribute onto a type it
     // does not own (via TypeRegistry.Extend). Projection is optional-only: a
     // required attr registered this way disappears silently whenever that

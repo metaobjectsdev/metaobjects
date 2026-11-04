@@ -1,0 +1,8 @@
+{
+  "description": "A provider registers a common attr (accepted on every node type) whose name another provider already declares per-type. The reverse order of common-attr-per-type-after; the verdict must not depend on which provider registers first.",
+  "providers": [
+    "common-sub-owner",
+    "common-late"
+  ],
+  "expectedError": "ERR_PROVIDER_ATTR_CONFLICT"
+}

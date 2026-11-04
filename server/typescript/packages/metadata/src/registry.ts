@@ -129,6 +129,20 @@ export class TypeRegistry {
   /** Keyed by `"type.subType"`. */
   private readonly _defs = new Map<string, TypeDefinition>();
 
+  /**
+   * ADR-0062 — the provider whose `registerTypes` turn is running, set by
+   * `runAsProvider` (which `composeRegistry` wraps around every provider). `undefined`
+   * outside a compose loop (a hand-built registry in a unit test), where nothing is
+   * attributed and nothing can collide.
+   */
+  private _currentProviderId: string | undefined;
+
+  /** ADR-0062 — `"type.subType"` -> (attr name -> id of the provider that registered it). */
+  private readonly _attrOwners = new Map<string, Map<string, string>>();
+
+  /** ADR-0062 — common attr name -> id of the provider that registered it. */
+  private readonly _commonAttrOwners = new Map<string, string>();
+
   /** Per-type insertion-ordered subtype lists. */
   private readonly _subTypes = new Map<string, string[]>();
 
@@ -156,6 +170,93 @@ export class TypeRegistry {
   /** Whether this registry has been sealed (ADR-0023). */
   isSealed(): boolean {
     return this._sealed;
+  }
+
+  /**
+   * Run `fn` with `providerId` recorded as the owner of every attribute registered or
+   * extended during the call (ADR-0062). `composeRegistry` wraps each provider's
+   * `registerTypes` in this; a hand-rolled composition may do the same.
+   */
+  runAsProvider<T>(providerId: string, fn: () => T): T {
+    const previous = this._currentProviderId;
+    this._currentProviderId = providerId;
+    try {
+      return fn();
+    } finally {
+      this._currentProviderId = previous;
+    }
+  }
+
+  /**
+   * The id of the provider that registered attribute `name` on exactly
+   * `(type, subType)`, or `undefined` when it is not registered there or was registered
+   * outside any provider's turn. Inherited attributes report the id of their declaring
+   * slot, so ask `<type>.base` for those. Used by the collision rule and by `meta types`.
+   */
+  attrOwner(type: string, subType: string, name: string): string | undefined {
+    return this._attrOwners.get(`${type}.${subType}`)?.get(name);
+  }
+
+  private stampAttrOwner(type: string, subType: string, name: string): void {
+    if (this._currentProviderId === undefined) return;
+    const key = `${type}.${subType}`;
+    let owners = this._attrOwners.get(key);
+    if (owners === undefined) {
+      owners = new Map();
+      this._attrOwners.set(key, owners);
+    }
+    owners.set(name, this._currentProviderId);
+  }
+
+  /**
+   * ADR-0062 — the provider-collision rule. Provider P may not put attribute `name` on
+   * `(type, subType)` when a DIFFERENT provider Q already put the same name on a related
+   * slot: the slot itself, a type it inherits from (`<type>.base`), or — when this slot
+   * is the shared root — any subtype that inherits from it; or registered it as a common
+   * attribute, which every node type accepts. Checked in both directions
+   * so the verdict does not depend on which provider happened to register first. The
+   * same provider declaring a name on several related slots stays legal, and an
+   * attribute registered outside any provider's turn claims nothing.
+   */
+  private checkAttrOwnership(type: string, subType: string, name: string): void {
+    const claimant = this._currentProviderId;
+    if (claimant === undefined) return;
+    const commonOwner = this._commonAttrOwners.get(name);
+    if (commonOwner !== undefined && commonOwner !== claimant) {
+      throw new MetaModelError(
+        `Provider "${claimant}" declares attribute "${name}" on "${type}.${subType}", but provider ` +
+          `"${commonOwner}" already registers it as a common attribute, which every node type accepts; ` +
+          `provider "${claimant}" cannot declare it again (ADR-0062)`,
+        { code: "ERR_PROVIDER_ATTR_CONFLICT" },
+      );
+    }
+    const related: string[] = [];
+    if (subType === SUBTYPE_BASE) {
+      for (const sub of this._subTypes.get(type) ?? []) {
+        if (sub !== SUBTYPE_BASE) related.push(sub);
+      }
+    } else if (this._defs.has(`${type}.${SUBTYPE_BASE}`)) {
+      related.push(SUBTYPE_BASE);
+    }
+    related.unshift(subType);
+    for (const sub of related) {
+      const owner = this._attrOwners.get(`${type}.${sub}`)?.get(name);
+      if (owner === undefined || owner === claimant) continue;
+      if (sub === subType) {
+        throw new MetaModelError(
+          `TypeRegistry.extend: attribute "${name}" is already declared on "${type}.${subType}" ` +
+            `by provider "${owner}"; provider "${claimant}" cannot declare it again (ADR-0062)`,
+          { code: "ERR_PROVIDER_ATTR_CONFLICT" },
+        );
+      }
+      throw new MetaModelError(
+        `Provider "${claimant}" declares attribute "${name}" on "${type}.${subType}", but provider ` +
+          `"${owner}" already declares it on the related slot "${type}.${sub}". Two providers ` +
+          `may not claim one attribute name on a type and the type it inherits from; give the ` +
+          `second provider its own idiomatic name (ADR-0062).`,
+        { code: "ERR_PROVIDER_ATTR_SHADOW" },
+      );
+    }
   }
 
   /** Guard at the top of every mutating registration method. */
@@ -194,13 +295,20 @@ export class TypeRegistry {
       }
     }
 
-    this._defs.set(key, def);
-
+    // ADR-0062: refuse a name another provider already put on a related slot, BEFORE
+    // the definition becomes visible, so a refused registration leaves no trace.
     const list = this._subTypes.get(def.typeId.type);
+    for (const attr of def.attributes) {
+      this.checkAttrOwnership(def.typeId.type, def.typeId.subType, attr.name);
+    }
+    this._defs.set(key, def);
     if (list !== undefined) {
       list.push(def.typeId.subType);
     } else {
       this._subTypes.set(def.typeId.type, [def.typeId.subType]);
+    }
+    for (const attr of def.attributes) {
+      this.stampAttrOwner(def.typeId.type, def.typeId.subType, attr.name);
     }
   }
 
@@ -239,12 +347,39 @@ export class TypeRegistry {
 
   /**
    * Register attrs that are accepted on every metatype. Callers (providers) use
-   * this to declare cross-cutting attrs (e.g. doc attrs). Repeated registration
-   * of the same name is silently deduped (first registration wins); conflicts with
-   * per-type attrs are resolved at validation time (Task 1.3).
+   * this to declare cross-cutting attrs (e.g. doc attrs). The same provider (or a
+   * registration outside any provider's turn) re-registering a name is deduped; a
+   * different provider registering a name another provider holds, as a common attr or
+   * on any type, is `ERR_PROVIDER_ATTR_CONFLICT` (ADR-0062). A name one provider holds
+   * both ways is resolved at validation time (Task 1.3).
    */
   registerCommonAttrs(attrs: AttrSchema[]): void {
     this.checkNotSealed("registerCommonAttrs");
+    // ADR-0062: a common attr is on every node type, so another provider may not register
+    // a common attr name a provider already holds, as a common attr or on any type.
+    // Checked for the whole batch first, so a refusal leaves no trace.
+    const claimant = this._currentProviderId;
+    for (const attr of attrs) {
+      if (claimant === undefined) break;
+      const owner = this._commonAttrOwners.get(attr.name);
+      if (owner !== undefined && owner !== claimant) {
+        throw new MetaModelError(
+          `Provider "${claimant}" registers common attribute "${attr.name}", but provider "${owner}" ` +
+            `already registers it as a common attribute; provider "${claimant}" cannot declare it again (ADR-0062)`,
+          { code: "ERR_PROVIDER_ATTR_CONFLICT" },
+        );
+      }
+      for (const [slot, owners] of this._attrOwners) {
+        const slotOwner = owners.get(attr.name);
+        if (slotOwner === undefined || slotOwner === claimant) continue;
+        throw new MetaModelError(
+          `Provider "${claimant}" registers common attribute "${attr.name}", which every node type accepts, ` +
+            `but provider "${slotOwner}" already declares it on "${slot}"; provider "${claimant}" cannot ` +
+            `declare it again (ADR-0062)`,
+          { code: "ERR_PROVIDER_ATTR_CONFLICT" },
+        );
+      }
+    }
     for (const attr of attrs) {
       if (attr.valueType === SUBTYPE_BASE) {
         throw new Error(
@@ -267,10 +402,16 @@ export class TypeRegistry {
         );
       }
       if (this._commonAttrs.some((existing) => existing.name === attr.name)) {
-        continue; // dedupe same-name re-registration; conflict-with-per-type-attr is checked at validation time
+        continue; // dedupe same-name re-registration
       }
       this._commonAttrs.push(attr);
+      if (claimant !== undefined) this._commonAttrOwners.set(attr.name, claimant);
     }
+  }
+
+  /** The id of the provider that registered common attr `name`, if one was composed in. */
+  commonAttrOwner(name: string): string | undefined {
+    return this._commonAttrOwners.get(name);
   }
 
   /** Returns the registered common attrs (attrs accepted on every metatype).
@@ -306,11 +447,14 @@ export class TypeRegistry {
         );
       }
       if (def.attributes.some((a) => a.name === attr.name)) {
+        // ADR-0062: name the provider that holds the slot when it is a different one.
+        this.checkAttrOwnership(type, subType, attr.name);
         throw new MetaModelError(
           `TypeRegistry.extend: attribute "${attr.name}" is already declared on "${type}.${subType}"`,
           { code: "ERR_PROVIDER_ATTR_CONFLICT" },
         );
       }
+      this.checkAttrOwnership(type, subType, attr.name);
       // ADR-0050: a REQUIRED attr may never be PROJECTED onto someone else's type.
       // `extend` is how a concern provider decorates a type another provider owns, and
       // a concern can be composed out. A required attr arriving this way makes the
@@ -332,6 +476,7 @@ export class TypeRegistry {
         );
       }
       def.attributes.push(attr);
+      this.stampAttrOwner(type, subType, attr.name);
     }
     for (const rule of ext.childRules ?? []) {
       def.childRules.push(rule);

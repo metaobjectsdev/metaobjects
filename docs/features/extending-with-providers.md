@@ -39,9 +39,9 @@ unregistered id throws `ERR_PROVIDER_MISSING_DEPENDENCY`; a cycle throws
 `ERR_PROVIDER_DUPLICATE_ID`. All three codes are stable across ports — see
 [`../../fixtures/conformance/ERROR-CODES.json`](../../fixtures/conformance/ERROR-CODES.json).
 
-## The two rules that govern every provider
+## The three rules that govern every provider
 
-Before the mechanics, the two rules a provider must obey. Both are machine-enforced —
+Before the mechanics, the three rules a provider must obey. All three are machine-enforced —
 you will hit an error, not a review comment.
 
 ### 1. Own vs projected attributes (ADR-0050)
@@ -79,6 +79,28 @@ So vendor or domain vocabulary enters by **registration**:
 
 "Declared" includes "declared by your provider" — that is what keeps strict provenance
 meaningful while still letting you extend the metamodel.
+
+### 3. One attribute name, one provider, per node type (ADR-0062)
+
+**Two providers may not claim the same attribute name on a node type.** The registry records
+which provider registered each attribute, and refuses a second provider's claim at composition:
+
+- on the same `(type, subType)` — `ERR_PROVIDER_ATTR_CONFLICT`;
+- on the shared root `(type, base)` that the subtype inherits from, or on a subtype of it —
+  `ERR_PROVIDER_ATTR_SHADOW`, whether the second provider registers the type or `extend`s it;
+- as a common attribute (accepted on every node type), or on any type when another provider
+  already registered it as a common attribute — `ERR_PROVIDER_ATTR_CONFLICT`. A common attribute
+  is on every slot, so it collides with the same name on any type, in either order.
+
+The message names both providers and the attribute. The check runs both ways, so it does not
+matter which provider registers first. The same provider repeating its own name, sibling
+subtypes using one name, and registration outside a provider's turn are all legal.
+
+This is what keeps per-paradigm physical names safe (ADR-0007, ADR-0018). Name your store's
+address in your store's own word (`@column` for a relational field, `@field` for a document
+field) and pick a word no other provider on that node type already holds. A store you have no
+provider for goes in the `attr.properties` bag, not an invented attribute. `meta types
+--detail` prints the registering provider next to each attribute, so you can see what is taken.
 
 ## What modularity does and does not mean
 
@@ -499,7 +521,8 @@ Composition surfaces these codes consistently across all ports (see
 | `ERR_PROVIDER_DUPLICATE_ID` | Two provider objects report the same `id` | `provider-extension-duplicate-id` |
 | `ERR_PROVIDER_MISSING_DEPENDENCY` | Provider declares dep on an unregistered id | `provider-extension-missing-dependency` |
 | `ERR_PROVIDER_DEPENDENCY_CYCLE` | Provider dependencies form a cycle | `provider-extension-dependency-cycle` |
-| `ERR_PROVIDER_ATTR_CONFLICT` | Two providers declare the same attr on the same `(type, subType)` | (covered by negative tests in core) |
+| `ERR_PROVIDER_ATTR_CONFLICT` | Two providers declare the same attr on the same `(type, subType)`, or one registers a common attr whose name the other holds as a common attr or on any type | `attr-conflict`, `common-attr-conflict`, `common-attr-per-type-after`, `common-attr-per-type-before` (provider-composition corpus) |
+| `ERR_PROVIDER_ATTR_SHADOW` | A provider declares an attr another provider already holds on the shared root or a descendant subtype of the same type | `attr-shadow-inherited`, `attr-shadow-descendant`, `attr-shadow-extend` (provider-composition corpus) |
 
 Each conformance fixture's `providers.json: string[]` lists the provider ids to
 compose for that test — the same wire format consumers use at runtime. Each

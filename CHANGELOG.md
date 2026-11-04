@@ -26,6 +26,29 @@ here.**
   declared rule is now rejected at the model where it used to reach the database. Gated by
   `fixtures/validation-conformance/cross-field-cases.json` in all five ports.
 
+- **Two providers can no longer claim one attribute name on a node type.** The registry now
+  records which provider registered each attribute and refuses a second provider's claim at
+  composition, in all five ports (TypeScript, Python, C#, Java, Kotlin). A repeat on the same
+  `(type, subType)` keeps `ERR_PROVIDER_ATTR_CONFLICT` (its message now names the owner); a name
+  another provider already holds on the shared root or a descendant subtype is the new
+  `ERR_PROVIDER_ATTR_SHADOW`. The refusal names both providers and the attribute, whichever
+  registers first, and leaves nothing in the registry. The same provider repeating its own name,
+  sibling subtypes sharing a name, and registration outside a provider all stay legal. The shipped
+  core providers have no such collision, so existing projects see no change. `meta types --detail`
+  prints the registering provider beside each attribute, and its JSON carries a `provider` field.
+  A common attribute is accepted on every node type, so it counts as a claim on every slot: a
+  second provider registering a common attribute name another provider holds, as a common
+  attribute or on any type, and a provider declaring a per-type attribute whose name another
+  provider registered as common, are both `ERR_PROVIDER_ATTR_CONFLICT`, in either order (two
+  common registrations used to be first-wins). The registry records each common attribute's
+  provider. Java's core providers no longer declare a per-type `@description` beside the
+  documentation provider's common one (same type, same meaning); `@description` is still accepted
+  on every node. This is how per-paradigm physical-name words (`@column`, `@field`) stay safe as
+  providers multiply; no wire-name attribute is added. See ADR-0062 and
+  `docs/features/extending-with-providers.md`. New conformance fixtures: `attr-shadow-inherited`,
+  `attr-shadow-descendant`, `attr-shadow-extend`, `common-attr-conflict`,
+  `common-attr-per-type-after`, `common-attr-per-type-before` and the `attr-ownership/` sub-corpus. Fixes #527.
+
 ### Fixed
 
 - **TypeScript: every `meta` command now loads the providers in `metaobjects.config.ts`.**

@@ -303,11 +303,11 @@ public final class RegistryManifest {
     // SP-G Phase1 Units2-3 — manifest emitter exclusions (documented, uniform
     // across all four ports; see fixtures/registry-conformance/README.md
     // "EXCLUDED" list + the SP-G divergence analysis buckets C-2/C-3/C-5/B-2):
-    //  - structural keywords (isArray/isAbstract) + the `description` commonAttr
-    //    are NOT per-type attrs. Java DOES register all three as ordinary
-    //    per-type attrs (on metadata.base / field.base, inherited everywhere) —
-    //    so this filter is what drops them from Java's emitter output. They are
-    //    no-ops for TS/C#/Python. `description` stays in the commonAttrs block.
+    //  - structural keywords (isArray/isAbstract) are NOT per-type attrs. Java
+    //    DOES register them as ordinary per-type attrs (on metadata.base /
+    //    field.base, inherited everywhere) — so this filter is what drops them
+    //    from Java's emitter output. They are no-ops for TS/C#/Python.
+    //    `description` lives only in the commonAttrs block (ADR-0062).
     //  - metadata.base is Java's internal inheritance anchor — other ports
     //    register only metadata.root (the deferred inheritsFrom anchor).
     //  - the generic view.* controls are a TS-web-presentation facet. Java
@@ -334,8 +334,6 @@ public final class RegistryManifest {
         NATIVE_BINDING,
         /** Bare structural / OO-shape keyword (isArray/isAbstract/extends/implements/isInterface). */
         STRUCTURAL_KEYWORD,
-        /** A commonAttr ({@code description}) re-registered per-type — belongs in commonAttrs. */
-        COMMON_ATTR_DUP,
         /** The {@code metadata.base} per-port inheritance anchor (deferred inheritsFrom facet). */
         INHERITANCE_ANCHOR,
         /** TS-web-presentation-only facet (the generic {@code view.*} controls). */
@@ -362,8 +360,7 @@ public final class RegistryManifest {
      * NOT per-type attributes — Java registers them on {@code object.base}
      * (inherited by entity/value), so the classification is what drops them from
      * the emitter (no-op for TS/C#/Python). They remain REGISTERED (the loader
-     * must accept an authored {@code extends:}). {@code description} is carved out
-     * ONLY per-type — it remains in the {@code commonAttrs} block. {@code object}
+     * must accept an authored {@code extends:}). {@code object}
      * (ADR-0001 class-FQN type binding) and {@code objectAdapter} (ADR-0005
      * value-access seam) are per-port binding mechanisms (same category as native
      * type bindings); they stay REGISTERED in Java (read by the value-access
@@ -376,8 +373,7 @@ public final class RegistryManifest {
             com.metaobjects.object.MetaObject.ATTR_IMPLEMENTS, ExclusionReason.STRUCTURAL_KEYWORD,
             com.metaobjects.object.MetaObject.ATTR_IS_INTERFACE, ExclusionReason.STRUCTURAL_KEYWORD,
             com.metaobjects.object.MetaObject.ATTR_OBJECT, ExclusionReason.NATIVE_BINDING,
-            com.metaobjects.object.AbstractObjectRepresentation.ATTR_OBJECT_ADAPTER, ExclusionReason.NATIVE_BINDING,
-            MetaData.ATTR_DESCRIPTION, ExclusionReason.COMMON_ATTR_DUP);
+            com.metaobjects.object.AbstractObjectRepresentation.ATTR_OBJECT_ADAPTER, ExclusionReason.NATIVE_BINDING);
 
     /**
      * Classify a per-type attr: an {@link ExclusionReason} (carved out) or

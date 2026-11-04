@@ -186,6 +186,14 @@ and address-free — the subtype names the *concept*; transport/protocol is a cl
 Declare config as the *names* of required keys (values stay in env/config) and
 generate a fail-closed check. Reference typed payloads instead of inlining shapes.
 
+**Name your attributes so they cannot collide.** Two providers may not claim one attribute
+name on a node type (ADR-0062): the registry refuses the second at composition with
+`ERR_PROVIDER_ATTR_CONFLICT` (same `(type, subType)`) or `ERR_PROVIDER_ATTR_SHADOW` (the shared
+`<type>.base` root, or a subtype of it), naming both providers. A physical address takes your
+store's own idiomatic word (`@column` relational, `@field` document), unique on that node type;
+`meta types --detail` shows which provider holds each name. A store with no provider of its own
+uses the registered `attr.properties` bag rather than an invented attribute.
+
 **Lifecycle.** Register with explicit provider wiring — never loosen `strict` to
 free-ride ad-hoc attrs. When core later ships the concept your provider shrinks from
 `register` to `extend` (the `template.toolcall` precedent). A second independent
