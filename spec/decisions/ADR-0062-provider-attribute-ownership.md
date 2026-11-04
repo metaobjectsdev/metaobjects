@@ -53,7 +53,7 @@ a collision.
 4. **Scope is one node type.** The JVM registry also chains every `<type>.base` to
    `metadata.base`, which the core-types provider owns. No other port has that edge, and several
    shipped providers re-declare `@isAbstract` on their own root with the same meaning. The rule stops at the node-type boundary so all five ports reach the same
-   verdict, and no shipped provider has to change.
+   verdict, and the only shipped-provider change is the Java `@description` copy removed under Consequences.
 
 5. **Owner tracking.** The registry records the registering provider per `(type, subType,
    attribute)`, and per common attribute. The error uses it, and `meta types` shows it
