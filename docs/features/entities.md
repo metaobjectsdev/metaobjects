@@ -83,6 +83,10 @@ YAML is desugared to canonical JSON at load time. See
 > an `ERR_TOO_MANY_OCCURRENCES` load error. `identity.secondary` / `identity.reference`
 > are not singletons and DO require an explicit `name`.
 
+An `@generation: increment` key's sequence can be given a start value (`@sequenceStart`) and
+a physical name (`@sequenceName`); see
+[migrations-and-drift.md](migrations-and-drift.md#an-increment-keys-sequence-sequencestart-and-sequencename).
+
 ## `extends:` for shared abstract bases
 
 Common base fields (`id`, `createdAt`, `updatedAt`) live on an abstract entity that
@@ -321,9 +325,9 @@ found = om.find_by_id("Author", row["id"])
 
 ## Cross-field validators
 
-`validator.comparison`, `validator.requiredWhen`, `validator.presentIff` and `validator.atLeastOne`
-are declared as children of the entity and reference sibling fields by name. They are enforced in
-two places:
+`validator.comparison`, `validator.requiredWhen`, `validator.presentIff`, `validator.atLeastOne`
+and `validator.exactlyOne` are declared as children of the entity and reference sibling fields by
+name. They are enforced in two places:
 
 - **The generated full record (create) model**, in every port, with the language's native
   mechanism: a Zod refinement on the insert schema (TypeScript), a class-level Bean Validation
@@ -335,15 +339,35 @@ two places:
 The two share one set of semantics: absent or null is SQL `NULL`; `comparison` passes when either
 side is null; `requiredWhen` is violated only when the gate equals `@equals` and the target is null;
 `presentIff` requires the target to be present exactly when the gate equals `@equals`; `atLeastOne`
-needs one non-null field. `@equals` is read per the gating field's subtype. The shared cases in
-`fixtures/validation-conformance/cross-field-cases.json` gate all five ports.
+needs one non-null field; `exactlyOne` needs exactly one. `@equals` is read per the gating field's
+subtype.
+
+Any of the five can carry a `@condition`, an expression over the entity's fields that says when the
+rule applies (the grammar and its load-time checks are in
+[migrations-and-drift.md](migrations-and-drift.md#checks-from-validators-names-conditions-how-many)). The rule is checked only
+when the condition is true. A condition that is false, or unknown because a field it reads is null,
+lets the record through, exactly as the `CHECK`'s `NOT (condition) OR (rule)` does in SQL.
+
+```json
+{ "object.entity": { "name": "Shift", "children": [
+  { "field.int": { "name": "startDay" } },
+  { "field.int": { "name": "endDay" } },
+  { "field.int": { "name": "startMin" } },
+  { "field.int": { "name": "endMin" } },
+  { "validator.comparison": { "name": "sameDayTimes", "@left": "endMin", "@op": "gt", "@right": "startMin",
+    "@condition": { "op": "eq", "left": { "field": "startDay" }, "right": { "field": "endDay" } } } }
+] } }
+```
+
+The shared cases in `fixtures/validation-conformance/cross-field-cases.json` gate all five ports.
 
 One difference: a `comparison` orders only fields of the same kind. Numerics compare with each other;
-strings and temporals compare only with their own subtype and `@localTime` flag. `eq` and `ne` also
+strings, temporals and durations compare only with their own subtype and `@localTime` flag. `eq` and `ne` also
 apply to two booleans, enums, `uuid`, `uri` or `inet` fields, and ordering on a boolean or enum is not
 enforced. Any other pair is skipped in the generated model, never rejected, but the DB `CHECK` still
-covers it where the database can compare the two columns. The full rule is in
-`fixtures/validation-conformance/README.md`.
+covers it where the database can compare the two columns. A comparison inside an `@condition` follows
+the same rule: when two fields it reads are of different kinds, the generated model leaves the whole
+validator to the database. The full rule is in `fixtures/validation-conformance/README.md`.
 
 PATCH and partial-update models do **not** enforce these rules, because a partial body cannot see
 the merged row. The database `CHECK` is the enforcement there.

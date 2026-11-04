@@ -352,6 +352,20 @@ out-of-scope table that already exists would become a proposed `DROP TABLE`.
   declaring object's FQN, and an object whose FQN is unknown was never proven to be
   anyone else's.
 
+### `migrate.conventions` — names for objects no code addresses
+
+Beside `scope`, the `migrate` block takes `conventions`: the name of a schema-conventions preset
+that decides primary-key and foreign-key constraint names, whether a foreign key gets an index,
+and whether a unique key is an index or a constraint. `default` (absent) is what migrate has
+always emitted; `efcore` is a reference preset that reproduces EF Core's naming. A project can
+supply its own conventions from `metaobjects.config.ts` instead. Table, view and column names are
+not conventions: they come from `naming`. See
+[Schema conventions](migrations-and-drift.md#schema-conventions-names-for-objects-no-code-addresses).
+
+```jsonc
+"migrate": { "scope": ["acme::billing::**"], "conventions": "efcore" }
+```
+
 ### Put the `migrate` block where the ledger lives
 
 **Whoever holds `.metaobjects/migrations/` and the schema snapshot owns the schema.**

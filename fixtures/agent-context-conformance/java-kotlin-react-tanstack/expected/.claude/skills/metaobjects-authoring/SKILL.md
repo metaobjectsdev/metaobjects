@@ -286,13 +286,10 @@ Reuse a constraint set across entities with an abstract `field.enum` + `extends`
 `field.object` embeds another `object` declaration. `@objectRef` names it;
 `@storage` controls persistence:
 
-- `flattened` — one DB column per sub-field (`address_street`, `address_city`, …).
-  Illegal on array fields. The prefix is the field's column and `_`;
-  `@flattenedColumnPrefix` on the field replaces it verbatim (`""` keeps the members'
-  own columns). Refused on any other storage.
-- `jsonb` — one `jsonb` column.
+- `flattened` — one DB column per sub-field (`address_street`, …); illegal on arrays. `@flattenedColumnPrefix`
+  replaces the `<column>_` prefix verbatim (`""` keeps the members' own columns).
+- `jsonb` — one `jsonb` column; also the default when `@storage` is not set.
 - `subdocument` — single jsonb column (a hint for document-store targets).
-- not set (the default) — one `jsonb` column, as `jsonb`.
 
 ```json
 { "field.object": { "name": "address", "@objectRef": "Address", "@storage": "flattened" } }
@@ -438,15 +435,14 @@ store with no `CHECK` support is still covered. PATCH and partial-update models 
 
 | Subtype | Rule | Key attrs |
 |---|---|---|
-| `validator.comparison` | two fields stand in a relational order (`@left @op @right`). Numerics compare with each other; strings and temporals only with the same subtype and `@localTime`; boolean, enum, uuid, uri and inet only `eq`/`ne`. Any other pair is skipped, never rejected. | `@left`, `@op` (`gt`/`gte`/`lt`/`lte`/`ne`/`eq`), `@right` |
+| `validator.comparison` | two fields stand in a relational order (`@left @op @right`). Numerics compare with each other; strings, temporals and durations only with the same subtype and `@localTime`; boolean, enum, uuid, uri and inet only `eq`/`ne`. Any other pair is skipped, never rejected. | `@left`, `@op` (`gt`/`gte`/`lt`/`lte`/`ne`/`eq`), `@right` |
 | `validator.requiredWhen` | `@field` is required when `@when` equals `@equals` | `@field`, `@when`, `@equals` |
 | `validator.presentIff` | `@field` is present **iff** `@when` equals `@equals` (biconditional) | `@field`, `@when`, `@equals` |
 | `validator.atLeastOne` | at least one of `@fields` (2+) is present | `@fields` |
 | `validator.exactlyOne` | exactly one of `@fields` (2+) is present | `@fields` |
 
-All five take an optional `@condition`, an expression over the entity's fields (the
-`origin.computed` grammar): the rule then holds only where the condition does. And every validator
-that becomes a CHECK takes an optional db-provider `@constraintName` naming it.
+All five take an optional `@condition` (the `origin.computed` grammar): the rule holds only where it does.
+Every validator that becomes a CHECK takes an optional `@constraintName`.
 
 ```json
 { "validator.comparison":   { "name": "hpInRange", "@left": "currentHp", "@op": "lte", "@right": "maxHp" } }

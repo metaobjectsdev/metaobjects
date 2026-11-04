@@ -329,6 +329,8 @@ check "a literal dependency version is repinned" 'grep -q "<version>8.1.0-rc.9</
 check "another group's version is left alone" 'grep -q "<version>0.61.0</version>" "$poly/ports/kotlin/pom.xml" && grep -q "<version>2.0.21</version>" "$poly/ports/kotlin/pom.xml"'
 check "every metaobjects version in the pom is repinned, a plugin's after its configuration included" '[ "$(grep -c "<version>8.1.0-rc.9</version>" "$poly/ports/kotlin/pom.xml")" = 3 ] && ! grep -q "8.0.9" "$poly/ports/kotlin/pom.xml"'
 check "the package reference is repinned" 'grep -q "Version=\"1.1.0-rc.9\"" "$poly/ports/csharp/App.csproj"'
+check "the in-place repins leave no sed backup files (BSD sed reads a bare -i -E as suffix -E)" \
+  '[ -z "$(find "$poly" \( -name "*-E" -o -name "*.mo-sed-bak" \) -print)" ]'
 check "the local tool manifest is repinned" 'grep -q "\"metaobjects.cli\": { \"version\": \"1.1.0-rc.9\"" "$poly/.config/dotnet-tools.json"'
 check "another tool in the manifest is left alone" 'grep -q "\"dotnet-ef\": { \"version\": \"8.0.0\"" "$poly/.config/dotnet-tools.json"'
 # R3: a second `link` at the same version changes no pom, so it reports no repin, a pom pinned
@@ -372,7 +374,7 @@ printf '%s' '<project>
   </dependencies>
 </project>' > "$mvnproj/app/pom.xml"
 check "the fixture poms have no trailing newline" \
-  '[ "$(tail -c1 "$mvnproj/pom.xml" | wc -l)" = 0 ] && [ "$(tail -c1 "$mvnproj/app/pom.xml" | wc -l)" = 0 ]'
+  '[ "$(tail -c1 "$mvnproj/pom.xml" | wc -l | tr -d " ")" = 0 ] && [ "$(tail -c1 "$mvnproj/app/pom.xml" | wc -l | tr -d " ")" = 0 ]'
 git init -q "$mvnproj"
 git -C "$mvnproj" add -A && git -C "$mvnproj" commit -q -m init
 cp "$mvnproj/pom.xml" "$WORK/pom.xml.orig"

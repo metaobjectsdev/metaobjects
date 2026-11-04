@@ -133,7 +133,8 @@ can compare the two column types:
   strings, temporals and durations of the same subtype; `eq` / `ne` also apply to two fields of the same boolean,
   enum, uuid, uri or inet subtype (`ownerId ne approverId` rejects two equal ids). Two durations order by
   length, not by their text (`Shift.actual lte planned` accepts `PT45M` against `PT1H`); the duration
-  payloads are ISO-8601, so a runner whose port defaults to another form pins `wire.durations: iso`.
+  payloads are ISO-8601, and the corpus pins `wire.durations: iso` in its own `.metaobjects/config.json`,
+  which a runner whose port defaults to another form reads.
 - `requiredWhen`: violated only when the gating field equals `@equals` and the target is null; a null
   gate is unconstrained. Both a string gate (`kind = BIRTH`) and a boolean gate (`flag = true`).
 - `presentIff`: the target is present exactly when the gate equals `@equals`; a null gate counts as
@@ -146,7 +147,8 @@ can compare the two column types:
   and `and` / `or` / `ne` / `isNull` over a `coalesce` with a literal default. A comparison inside a
   condition follows the `comparison` rule above: when two fields it reads are of different kinds, the
   whole rule is left to the database (`lateCallNeedsPhone` compares a date with a timestamp, so a `CALL`
-  without a phone is valid).
+  without a phone is valid). `eq` / `ne` on two equality-only fields test equality and never order them
+  (`offSiteCallNeedsPhone` compares an IPv4 with an IPv6 address, which have no order, and is enforced).
 - A rule naming a field the create body never carries (`reviewedBy`, `@mutability: readOnly`; likewise a
   derived field or a store-generated key) is skipped, so `review = DONE` without a reviewer is valid.
 

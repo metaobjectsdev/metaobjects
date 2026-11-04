@@ -25,10 +25,17 @@ every runtime `ObjectManager` and `verify` read it, so they always produce the s
 
 | Key | Values | Applies to | Default |
 |---|---|---|---|
-| `columns` | `snake_case`, `literal`, `kebab-case` | a field with no `@column` | `snake_case` |
+| `columns` | `snake_case`, `literal`, `kebab-case`, `upperFirst` | a field with no `@column` | `snake_case` |
 | `tables` | `snake_case`, `literal` | a source with no `@table`/`@view`/`@proc`/`@function`: its `name`, else the object's name made plural | `snake_case` |
 
 An unknown key or value fails when the file is read. Index and constraint names are unchanged.
+
+`upperFirst` upper-cases the field name's first letter and changes nothing
+else: `createdAt` becomes `CreatedAt`, `requestURL` becomes `RequestURL` and `address_line1`
+becomes `Address_line1`. It is not a word split, so it is not PascalCase. A schema whose columns
+are the field names with a capital first letter (EF Core's default, for one) then needs `@column`
+only where the database spells a name differently. It is a column rule only; `literal` tables
+already keep an object name verbatim.
 
 **Upgrade every port of an estate together.** A 1.0.x TypeScript tool refuses the new `naming` key,
 but a 1.0.x C#, Java or Python tool ignores an unknown top-level key silently and keeps the old

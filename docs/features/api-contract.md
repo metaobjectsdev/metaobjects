@@ -431,24 +431,24 @@ compares equal:
 
 ### The wire setting
 
-What a generated API writes for a decimal and for a value object's null member is a project
+What a generated API writes for a decimal, a duration and a value object's null member is a project
 setting, `wire` in `.metaobjects/config.json`, read by every port's codegen the way `naming` is
 ([ADR-0019 Amendment 2](../../spec/decisions/ADR-0019-runtime-return-type-contract.md)):
 
 ```json
-{ "schema_version": 1, "wire": { "decimals": "native", "nullMembers": "native" } }
+{ "schema_version": 1, "wire": { "decimals": "native", "nullMembers": "native", "durations": "native" } }
 ```
 
-Both keys default to `native`: **each port writes what its language's standard serializer
+Every key defaults to `native`: **each port writes what its language's standard serializer
 writes**, so a C# API looks like a C# API and a Python API like a Python API. Identical output
 across ports is something you opt into:
 
 ```json
-{ "schema_version": 1, "wire": { "decimals": "string", "nullMembers": "omit" } }
+{ "schema_version": 1, "wire": { "decimals": "string", "nullMembers": "omit", "durations": "iso" } }
 ```
 
-That is the form 1.1.0 and 1.1.1 wrote, and the form the cross-port conformance corpora pin in
-their own config. Choose it when clients written in several languages share one contract, or when
+For decimals and null members that is the form 1.1.0 and 1.1.1 wrote, and it is the form the
+cross-port conformance corpora pin in their own config. Choose it when clients written in several languages share one contract, or when
 a browser client must read a decimal exactly: `JSON.parse` turns a JSON number into a double
 before your code sees it.
 
@@ -466,6 +466,20 @@ before your code sees it.
   exactly.
 - `nullMembers` covers the members of an `object.value` only, and so also the jsonb that a typed
   serializer writes. A top-level entity field that is null is always written as `null`.
+- `durations` covers `field.duration` in a request and response body, both ways:
+
+| Port | `durations: native` (default) | `durations: iso` |
+|---|---|---|
+| C# | System.Text.Json's `TimeSpan` form, both ways: `"01:30:00"`, `"1.02:00:00"`, `"-00:01:30"` | the canonical ISO-8601 form: `"PT1H30M"`, `"PT26H"`, `"-PT1M30S"` |
+| Java | `Duration.toString()` and `Duration.parse`, as Spring Boot configures Jackson (`WRITE_DURATIONS_AS_TIMESTAMPS` off): `"PT1H30M"`, `"PT26H"`, `"PT-1M-30S"` | the canonical form |
+| Kotlin | same as Java | the canonical form |
+| Python | ISO-8601 as Pydantic v2 writes a `timedelta`, which folds 24 hours into a day: `"PT1H30M"`, `"P1DT2H"`, `"-PT1M30S"`; it also reads `"01:30:00"` | the canonical form |
+| TypeScript | the canonical form: a duration is a `string` in TypeScript, so there is no other standard spelling | the canonical form |
+
+  A filter operand (`?filter[timeout][gt]=PT1H`) is an ISO-8601 duration in every mode, because it
+  is the query grammar, not the body serializer. The canonical form and the accepted one are in
+  [`fixtures/duration-wire/`](../../fixtures/duration-wire/). Choose `iso` when clients written in
+  several languages share one contract.
 - There is no `"number"` value for `decimals`. In C#, Java and Kotlin, `native` already is a
   number; in Python and TypeScript, a number would be a lossy spelling those languages do not
   use.
