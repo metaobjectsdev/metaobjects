@@ -327,7 +327,8 @@ public class EjectSupportTest {
                 "entity", EjectSupport.ejectableByStableName(), EjectSupport.Port.KOTLIN, null).entry;
         assertEquals(List.of("com.metaobjects.generator.kotlin.KotlinEntityGenerator",
                 "com.metaobjects.generator.kotlin.KotlinEnumEmitter",
-                "com.metaobjects.generator.kotlin.KotlinDecimalWireEmitter"), entity.sources());
+                "com.metaobjects.generator.kotlin.KotlinDecimalWireEmitter",
+                "com.metaobjects.generator.kotlin.KotlinCrossFieldRules"), entity.sources());
         assertTrue(entity.resourceOf("com.metaobjects.generator.kotlin.KotlinDecimalWireEmitter")
                 .endsWith("/kotlin/KotlinDecimalWireEmitter.kt"));
         assertTrue(entity.resourceOf("com.metaobjects.generator.kotlin.KotlinEnumEmitter"),

@@ -12,6 +12,7 @@ import re
 
 from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.core.object.meta_object import MetaObject
+from metaobjects.meta.meta_data import MetaData
 from metaobjects.meta.core.object.object_constants import (
     OBJECT_SUBTYPE_ENTITY,
     OBJECT_SUBTYPE_VALUE,
@@ -457,6 +458,109 @@ def _assigned_pk_field_names(entity: MetaObject) -> set[str]:
     return {n for n in _primary_identity_field_names(entity) if n not in auto_gen}
 
 
+# --- Cross-field validators on the full record (create) model ----------------
+# Mirrors migrate-ts ``crossFieldCheck`` / ``renderEquals``: null-safe, SQL-CHECK-like
+# (None is SQL NULL; "" is NOT null). Enforced on the Create model only: a Patch body
+# cannot see the merged row, so the DB CHECK stays the enforcement point there.
+_COMPARISON_PY_OP = {"gt": ">", "gte": ">=", "lt": "<", "lte": "<=", "ne": "!=", "eq": "=="}
+_CROSS_FIELD_SUBTYPES = (
+    vc.VALIDATOR_SUBTYPE_COMPARISON,
+    vc.VALIDATOR_SUBTYPE_REQUIRED_WHEN,
+    vc.VALIDATOR_SUBTYPE_PRESENT_IFF,
+    vc.VALIDATOR_SUBTYPE_AT_LEAST_ONE,
+)
+_INT_SUBTYPES = (fc.FIELD_SUBTYPE_INT, fc.FIELD_SUBTYPE_LONG)
+_FLOAT_SUBTYPES = (fc.FIELD_SUBTYPE_DOUBLE, fc.FIELD_SUBTYPE_FLOAT)
+_DECIMAL_SUBTYPES = (fc.FIELD_SUBTYPE_DECIMAL, fc.FIELD_SUBTYPE_CURRENCY)
+_NUMERIC_LITERAL = re.compile(r"^-?\d+(\.\d+)?$")
+
+
+def _equals_literal(raw: object, when_field: MetaField, imports: set[str]) -> str:
+    """Python source for an ``@equals`` gating literal, typed by the gating field's
+    subtype (boolean -> True/False, numeric -> number, else string). Mirrors
+    ``renderEquals``."""
+    text = str(raw)
+    sub = when_field.sub_type
+    if sub == fc.FIELD_SUBTYPE_BOOLEAN:
+        return "True" if text in ("true", "1", "TRUE") else "False"
+    if sub in _INT_SUBTYPES and _NUMERIC_LITERAL.match(text):
+        return str(int(float(text))) if "." not in text else repr(float(text))
+    if sub in _FLOAT_SUBTYPES and _NUMERIC_LITERAL.match(text):
+        return repr(float(text))
+    if sub in _DECIMAL_SUBTYPES and _NUMERIC_LITERAL.match(text):
+        imports.add("from decimal import Decimal")
+        return f"Decimal({text!r})"
+    return repr(text)
+
+
+def _cross_field_rules_method(
+    entity: MetaObject, model_name: str, model_fields: set[str], imports: set[str]
+) -> list[str]:
+    """A ``model_validator(mode="after")`` enforcing the entity's cross-field validators
+    over the fields the model actually carries; ``[]`` when none apply. A validator whose
+    referenced field is missing from the model is skipped silently (as the DB CHECK is)."""
+    by_name = {f.name: f for f in entity.fields() if f.name in model_fields}
+    checks: list[str] = []
+    for v in entity.children():
+        if v.type != TYPE_VALIDATOR or v.sub_type not in _CROSS_FIELD_SUBTYPES:
+            continue
+        # ADR-0039: resolving read — a cross-field validator's attrs may be inherited.
+        def attr(name: str, node: MetaData = v) -> object:
+            return node.get_meta_attr(name)
+
+        label = repr(f"{v.name}")
+        if v.sub_type == vc.VALIDATOR_SUBTYPE_COMPARISON:
+            left, right = attr(vc.VALIDATOR_ATTR_LEFT), attr(vc.VALIDATOR_ATTR_RIGHT)
+            op = _COMPARISON_PY_OP.get(str(attr(vc.VALIDATOR_ATTR_OP)))
+            if left not in by_name or right not in by_name or op is None:
+                continue
+            if field_is_array(by_name[str(left)]) or field_is_array(by_name[str(right)]):
+                continue
+            checks.append(
+                f"        if self.{left} is not None and self.{right} is not None:\n"
+                f"            try:\n"
+                f"                _ordered = self.{left} {op} self.{right}\n"
+                f"            except TypeError:\n"
+                f"                _ordered = False\n"
+                f"            if not _ordered:\n"
+                f"                raise ValueError({label})"
+            )
+        elif v.sub_type in (vc.VALIDATOR_SUBTYPE_REQUIRED_WHEN, vc.VALIDATOR_SUBTYPE_PRESENT_IFF):
+            target, when = attr(vc.VALIDATOR_ATTR_FIELD), attr(vc.VALIDATOR_ATTR_WHEN)
+            if target not in by_name or when not in by_name or field_is_array(by_name[str(when)]):
+                continue
+            lit = _equals_literal(attr(vc.VALIDATOR_ATTR_EQUALS), by_name[str(when)], imports)
+            cmp_op = "is" if lit in ("True", "False") else "=="
+            gate = f"(self.{when} is not None and self.{when} {cmp_op} {lit})"
+            if v.sub_type == vc.VALIDATOR_SUBTYPE_REQUIRED_WHEN:
+                checks.append(
+                    f"        if {gate} and self.{target} is None:\n"
+                    f"            raise ValueError({label})"
+                )
+            else:
+                checks.append(
+                    f"        if (self.{target} is not None) != {gate}:\n"
+                    f"            raise ValueError({label})"
+                )
+        else:
+            raw = attr(vc.VALIDATOR_ATTR_FIELDS)
+            names = list(raw) if isinstance(raw, (list, tuple)) else ([raw] if isinstance(raw, str) else [])
+            if not names or any(n not in by_name for n in names):
+                continue
+            all_none = " and ".join(f"self.{n} is None" for n in names)
+            checks.append(f"        if {all_none}:\n            raise ValueError({label})")
+    if not checks:
+        return []
+    return [
+        "",
+        '    @model_validator(mode="after")',
+        f"    def _cross_field_rules(self) -> {model_name}:",
+        *checks,
+        "        return self",
+    ]
+
+
+
 def _create_field_line(
     field: MetaField, imports: set[str], config: GenConfig, *, force_required: bool = False
 ) -> tuple[str, bool]:
@@ -663,6 +767,15 @@ class EntityModelGenerator:
             imports.add("from typing import Literal")
         return lines, uses_field
 
+    def _emit_cross_field_rules(
+        self, entity: MetaObject, create_lines: list[str], imports: set[str]
+    ) -> list[str]:
+        """The ``<Name>Create`` cross-field ``model_validator`` (comparison / requiredWhen /
+        presentIff / atLeastOne), keyed by the field lines the create model carries.
+        Create only: a Patch body cannot see the merged row. Override to customize."""
+        carried = {m.group(1) for line in create_lines if (m := re.match(r"    (\w+):", line))}
+        return _cross_field_rules_method(entity, f"{model_class_name(entity)}Create", carried, imports)
+
     def _emit_patch_lines(
         self,
         entity: MetaObject,
@@ -755,11 +868,13 @@ class EntityModelGenerator:
         emit_create = entity.sub_type in (OBJECT_SUBTYPE_ENTITY, OBJECT_SUBTYPE_VALUE)
         emit_patch = entity.sub_type == OBJECT_SUBTYPE_ENTITY
         create_lines: list[str] = []
+        cross_lines: list[str] = []
         create_uses_field = False
         patch_lines: list[str] = []
         patch_uses_field = False
         if emit_create:
             create_lines, create_uses_field = self._emit_create_lines(entity, imports, config)
+            cross_lines = self._emit_cross_field_rules(entity, create_lines, imports)
         if emit_patch:
             patch_lines, patch_uses_field = self._emit_patch_lines(entity, imports, config)
 
@@ -771,6 +886,8 @@ class EntityModelGenerator:
             pyd_names.append("BaseModel")
         if uses_field or create_uses_field or patch_uses_field:
             pyd_names.append("Field")
+        if cross_lines:
+            pyd_names.append("model_validator")
 
         parts: list[str] = [
             generated_header(entity.name, _effective_fqn(entity)),
@@ -827,6 +944,7 @@ class EntityModelGenerator:
                 '(writeOnce is settable here, once); @default/@autoSet optional; present '
                 'values validated (FR-036)."""',
                 *create_lines,
+                *cross_lines,
             ]
         if emit_patch:
             parts += [

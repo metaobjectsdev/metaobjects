@@ -10,6 +10,22 @@ here.**
 
 ## [Unreleased]
 
+### Added
+
+- **Generated record models enforce the four cross-field validators in every port.**
+  `validator.comparison`, `validator.requiredWhen`, `validator.presentIff` and
+  `validator.atLeastOne` used to render only as DB `CHECK` constraints, so a store with no `CHECK`
+  support (a graph or document database) enforced none of them and the application had to repeat the
+  rules in its writer. The full create/insert model now enforces them with the language's native
+  mechanism: a Zod refinement on the insert schema (TypeScript), a class-level Bean Validation
+  constraint on the create DTO (Java, Kotlin), `IValidatableObject` (C#) and a Pydantic
+  `model_validator` (Python). Semantics mirror the `CHECK` derivation: null-safe, `comparison` passes
+  when either side is null, `@equals` is read per the gating field's subtype. PATCH and
+  partial-update models are unchanged (a partial body cannot see the merged row, so the database
+  `CHECK` remains the enforcement there), and `CHECK` emission is unchanged. A record that violates a
+  declared rule is now rejected at the model where it used to reach the database. Gated by
+  `fixtures/validation-conformance/cross-field-cases.json` in all five ports.
+
 ### Fixed
 
 - **`ERR_COLUMN_NAME_COLLISION` no longer rejects a read-only view whose columns come from `@sql`.**
