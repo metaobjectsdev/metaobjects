@@ -2172,7 +2172,7 @@ public static partial class ValidationPasses
 
     /// <summary>The accepted ISO-8601 duration form, the same pattern as TS DURATION_PATTERN.</summary>
     private static readonly Regex DurationLiteral =
-        new(@"^[-+]?P(?!$)([0-9]+W)?([0-9]+D)?(T(?=[0-9])([0-9]+H)?([0-9]+M)?([0-9]+(\.[0-9]+)?S)?)?$", RegexOptions.CultureInvariant);
+        new(@"^[-+]?P(?!\z)([0-9]+W)?([0-9]+D)?(T(?=[0-9])([0-9]+H)?([0-9]+M)?([0-9]+(\.[0-9]+)?S)?)?\z", RegexOptions.CultureInvariant);
 
     /// <summary>What a literal compared with a field.duration must be.</summary>
     private const string DurationLiteralForm = "an ISO-8601 duration (such as PT1H30M; no years or months)";

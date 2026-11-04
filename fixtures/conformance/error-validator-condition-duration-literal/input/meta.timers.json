@@ -51,6 +51,14 @@
             },
             {
               "validator.requiredWhen": {
+                "name": "requiredWhenTrailingNewline",
+                "@field": "storeId",
+                "@when": "timeout",
+                "@equals": "PT1H\n"
+              }
+            },
+            {
+              "validator.requiredWhen": {
                 "name": "requiredWhenIso",
                 "@field": "storeId",
                 "@when": "timeout",

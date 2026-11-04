@@ -39,6 +39,16 @@
         ],
         "jsonPath": "$['metadata.root'].children[0]['object.entity'].children[10]['validator.presentIff']"
       }
+    },
+    {
+      "code": "ERR_BAD_ATTR_VALUE",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.timers.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[0]['object.entity'].children[11]['validator.requiredWhen']"
+      }
     }
   ],
   "warnings": []
