@@ -32,6 +32,7 @@
           { "validator.comparison":  { "name": "ownerNotApprover", "@left": "ownerId", "@op": "ne", "@right": "approverId" } },
           { "validator.comparison":  { "name": "dateVsTimestamp", "@left": "eventDate", "@op": "lte", "@right": "loggedAt" } },
           { "validator.comparison":  { "name": "instantVsWallClock", "@left": "loggedAt", "@op": "lte", "@right": "wallClock" } },
+          { "validator.comparison":  { "name": "instantEqWallClock", "@left": "loggedAt", "@op": "eq", "@right": "wallClock" } },
           { "validator.atLeastOne":  { "name": "reachable", "@fields": ["email", "phone"] } },
           { "validator.requiredWhen": { "name": "reviewNeedsReviewer", "@field": "reviewedBy", "@when": "review", "@equals": "DONE" } }
         ]

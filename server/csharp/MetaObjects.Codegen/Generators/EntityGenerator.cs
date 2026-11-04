@@ -1157,7 +1157,10 @@ public class EntityGenerator : IGenerator
                              && CSharpNaming.ScalarForField(l) == CSharpNaming.ScalarForField(r))
                         cond = $"{a} {csOp} {b}";
                     else if (!ordering && l.SubType == r.SubType
-                             && (lk != CrossKind.Other || l.SubType is FIELD_SUBTYPE_UUID or FIELD_SUBTYPE_URI or FIELD_SUBTYPE_INET))
+                             && (lk != CrossKind.Other || l.SubType is FIELD_SUBTYPE_UUID or FIELD_SUBTYPE_URI or FIELD_SUBTYPE_INET)
+                             && CSharpNaming.ScalarForField(l) == CSharpNaming.ScalarForField(r)
+                             && (l.SubType != FIELD_SUBTYPE_ENUM
+                                 || ReferenceEquals(Fr019SharedEnum.ResolveSharedEnumDecl(l) ?? l, Fr019SharedEnum.ResolveSharedEnumDecl(r) ?? r)))
                         cond = op == "eq" ? $"Equals({a}, {b})" : $"!Equals({a}, {b})";
                     else break;
                     var lp = PropertyName(l); var rp = PropertyName(r);

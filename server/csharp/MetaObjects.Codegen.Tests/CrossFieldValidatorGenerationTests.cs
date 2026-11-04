@@ -37,6 +37,23 @@ public class CrossFieldValidatorGenerationTests
     ]}}
     """;
 
+    private const string EqAcrossClrTypes = """
+    { "metadata.root": { "package": "acme", "children": [
+      { "object.entity": { "name": "Stamp", "children": [
+        { "source.rdb": { "@table": "stamps" } },
+        { "field.long": { "name": "id" } },
+        { "field.timestamp": { "name": "loggedAt" } },
+        { "field.timestamp": { "name": "wallClock", "@localTime": true } },
+        { "field.enum": { "name": "colour", "@values": ["RED", "BLUE"] } },
+        { "field.enum": { "name": "shade", "@values": ["RED", "BLUE"] } },
+        { "identity.primary": { "@fields": "id" } },
+        { "validator.comparison": { "name": "sameInstant", "@left": "loggedAt", "@op": "eq", "@right": "wallClock" } },
+        { "validator.comparison": { "name": "differentInstant", "@left": "loggedAt", "@op": "ne", "@right": "wallClock" } },
+        { "validator.comparison": { "name": "sameColour", "@left": "colour", "@op": "eq", "@right": "shade" } }
+      ]}}
+    ]}}
+    """;
+
     private const string Plain = """
     { "metadata.root": { "package": "acme", "children": [
       { "object.entity": { "name": "Widget", "children": [
@@ -202,6 +219,14 @@ public class CrossFieldValidatorGenerationTests
     {
         var asm = Compile(new EntityGenerator(), Plain);
         Assert.False(typeof(IValidatableObject).IsAssignableFrom(asm.GetType("Acme.Widget")!));
+    }
+
+    [Fact]
+    public void Eq_and_ne_between_fields_of_different_clr_types_are_skipped_not_rejected()
+    {
+        var asm = Compile(new EntityGenerator(), EqAcrossClrTypes);
+        Assert.Empty(Validate(asm, "Stamp", "{\"loggedAt\":\"2030-01-02T00:00:00Z\",\"wallClock\":\"2020-01-01T00:00:00\",\"colour\":0,\"shade\":1}"));
+        Assert.Empty(Validate(asm, "Stamp", "{\"loggedAt\":\"2020-01-01T00:00:00Z\",\"wallClock\":\"2020-01-01T00:00:00\",\"colour\":0,\"shade\":0}"));
     }
 
     [Fact]
