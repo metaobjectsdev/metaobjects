@@ -7,6 +7,7 @@ package com.metaobjects.generator.kotlin
 import com.metaobjects.config.WireFormat
 import com.metaobjects.generator.util.GeneratorUtil
 import com.metaobjects.generator.kotlin.Fr019SharedEnum
+import com.metaobjects.generator.kotlin.KotlinCrossFieldRules
 import com.metaobjects.generator.kotlin.KotlinEnumEmitter
 import com.metaobjects.generator.kotlin.KotlinGenUtil
 import com.metaobjects.generator.kotlin.KotlinNaming

@@ -8,6 +8,7 @@ import com.metaobjects.config.WireFormat
 import com.metaobjects.generator.kotlin.ExposedApi
 import com.metaobjects.generator.kotlin.ExposedImports
 import com.metaobjects.generator.kotlin.Fr019SharedEnum
+import com.metaobjects.generator.kotlin.KotlinCrossFieldRules
 import com.metaobjects.generator.kotlin.KotlinGenUtil
 import com.metaobjects.generator.kotlin.KotlinM2mSupport
 import com.metaobjects.generator.kotlin.KotlinNaming
