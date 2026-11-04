@@ -137,6 +137,8 @@ export function generateExplorerSite(opts: ExplorerSiteOptions): ExplorerSiteRes
   const legend = legendHtml(ix.hasClaims());
   const pages: string[] = [];
   const files: string[] = [];
+  // Each body template is read once, not once per page it renders.
+  const bodies = new Map<string, string>();
 
   const written = new Set<string>();
   const write = (rel: string, content: string): void => {
@@ -151,7 +153,11 @@ export function generateExplorerSite(opts: ExplorerSiteOptions): ExplorerSiteRes
 
   const page = (template: string, href: string, nav: string, pageTitle: string, data: Record<string, unknown>, graph = false): void => {
     const relRoot = relHref(href, "");
-    const body = loadFrom(BUNDLED_TEMPLATES, template, opts.templatesDir);
+    let body = bodies.get(template);
+    if (body === undefined) {
+      body = loadFrom(BUNDLED_TEMPLATES, template, opts.templatesDir);
+      bodies.set(template, body);
+    }
     const payload = {
       ...data,
       siteTitle: esc(opts.title),

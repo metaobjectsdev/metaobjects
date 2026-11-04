@@ -95,38 +95,21 @@ export const docsSiteFile = function docsSiteFile(opts?: DocsSiteFileOpts): Gene
         );
       }
       const sourceDirs = promptSourceDirs(ctx, project, opts, ctx.sourceRoots);
-      const ownedTemplates = join(project, OWNED_DOCS_SITE_DIR, "templates");
-      const ownedAssets = join(project, OWNED_DOCS_SITE_DIR, "assets");
-      // The builder writes to a directory (its link check reads the pages back), so the site
-      // is built in a scratch directory and returned as files for the runner to write.
-      const scratch = mkdtempSync(join(tmpdir(), "meta-docs-site-"));
-      try {
+      const owned = ownedSiteDirs(project);
+      return buildInScratch(prefix, async (outDir) => {
         const result = await generateSite({
           sourceDirs,
-          outDir: scratch,
+          outDir,
           title: opts?.title ?? (basename(project) || "Metadata"),
           stamp: opts?.stamp ?? "",
           commit: "",
           core: { n: 15 },
           ...(opts?.assetBase !== undefined ? { assetBase: opts.assetBase } : {}),
           ...(ctx.providers !== undefined ? { extraProviders: ctx.providers } : {}),
-          ...(existsSync(ownedTemplates) ? { templatesDir: ownedTemplates } : {}),
-          ...(existsSync(ownedAssets) ? { assetsDir: ownedAssets } : {}),
+          ...owned,
         });
-        const written = [
-          ...result.pages,
-          "assets/site.css",
-          "assets/site.js",
-          "assets/search-index.json",
-        ];
-        const files: EmittedFile[] = written.map((path) => ({
-          path: `${prefix}${path}`,
-          content: readFileSync(join(scratch, path), "utf8"),
-        }));
-        return files;
-      } finally {
-        rmSync(scratch, { recursive: true, force: true });
-      }
+        return [...result.pages, "assets/site.css", "assets/site.js", "assets/search-index.json"];
+      });
     },
   };
 } as GeneratorFactory<DocsSiteFileOpts>;
@@ -149,6 +132,29 @@ function promptSourceDirs(ctx: GenContext, project: string, opts: DocsSiteFileOp
     }
   }
   return dirs;
+}
+
+/** The owned site directories `meta eject docs-site` wrote, only those that exist. */
+function ownedSiteDirs(project: string): { templatesDir?: string; assetsDir?: string } {
+  const templatesDir = join(project, OWNED_DOCS_SITE_DIR, "templates");
+  const assetsDir = join(project, OWNED_DOCS_SITE_DIR, "assets");
+  return {
+    ...(existsSync(templatesDir) && { templatesDir }),
+    ...(existsSync(assetsDir) && { assetsDir }),
+  };
+}
+
+/** The builder writes to a directory (its link check reads the pages back), so a site is built
+ *  in a scratch directory and returned as files for the runner to write. `build` returns the
+ *  page paths it wrote, relative to that directory. */
+async function buildInScratch(prefix: string, build: (outDir: string) => string[] | Promise<string[]>): Promise<EmittedFile[]> {
+  const scratch = mkdtempSync(join(tmpdir(), "meta-docs-site-"));
+  try {
+    const paths = await build(scratch);
+    return paths.map((path) => ({ path: `${prefix}${path}`, content: readFileSync(join(scratch, path), "utf8") }));
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
 }
 
 /** The routes the run mounts, as the api reference states them (`METHOD /path` per symbol). */
@@ -191,32 +197,21 @@ async function explorerSite(ctx: GenContext, project: string, prefix: string, op
     ...(routes.length > 0 && { routes }),
   });
   const texts = readPromptTexts(explorer, promptSourceDirs(ctx, project, opts, ctx.sourceRoots ?? []));
-  const ownedTemplates = join(project, OWNED_DOCS_SITE_DIR, "templates");
-  const ownedAssets = join(project, OWNED_DOCS_SITE_DIR, "assets");
-  if (existsSync(ownedTemplates) && !existsSync(join(ownedTemplates, EXPLORER_MARKER_TEMPLATE))) {
+  const owned = ownedSiteDirs(project);
+  if (owned.templatesDir !== undefined && !existsSync(join(owned.templatesDir, EXPLORER_MARKER_TEMPLATE))) {
     ctx.warn(
       `docs-site: ${OWNED_DOCS_SITE_DIR}/templates holds the classic site's theme, which the explorer ` +
         "does not read; it uses its bundled templates. Re-run `meta eject docs-site` to own the " +
         "explorer's theme, or pass `site: \"classic\"`.",
     );
   }
-  const scratch = mkdtempSync(join(tmpdir(), "meta-docs-site-"));
-  try {
-    const result = generateExplorerSite({
-      explorer,
-      outDir: scratch,
-      title: opts?.title ?? (basename(project) || "Metadata"),
-      stamp: opts?.stamp ?? "",
-      texts,
-      ...(opts?.assetBase !== undefined ? { assetBase: opts.assetBase } : {}),
-      ...(existsSync(ownedTemplates) ? { templatesDir: ownedTemplates } : {}),
-      ...(existsSync(ownedAssets) ? { assetsDir: ownedAssets } : {}),
-    });
-    return result.files.map((path) => ({
-      path: `${prefix}${path}`,
-      content: readFileSync(join(scratch, path), "utf8"),
-    }));
-  } finally {
-    rmSync(scratch, { recursive: true, force: true });
-  }
+  return buildInScratch(prefix, (outDir) => generateExplorerSite({
+    explorer,
+    outDir,
+    title: opts?.title ?? (basename(project) || "Metadata"),
+    stamp: opts?.stamp ?? "",
+    texts,
+    ...(opts?.assetBase !== undefined ? { assetBase: opts.assetBase } : {}),
+    ...owned,
+  }).files);
 }

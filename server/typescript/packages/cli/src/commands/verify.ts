@@ -1690,6 +1690,8 @@ export async function verifyCommand(
       return 2;
     }
     const config = forgeConfig;
+    // The explorer's requirement ledger, built only if the docs site asks for it.
+    const requirementLedger = () => requirementPayload(codegenRoot, genCollection);
     let result;
     try {
       result = await computeCodegenDrift(config, codegenRoot, genConfigDir, genCollection.inScope, genCollection.ownFiles, {
@@ -1699,7 +1701,7 @@ export async function verifyCommand(
           config.dialect,
           (m) => log.warn(`verify --codegen: [agent-docs] ${m}`),
         ),
-        requirementLedger: () => requirementPayload(codegenRoot, genCollection),
+        requirementLedger,
       });
     } catch (err) {
       log.error(`verify --codegen: regeneration failed: ${describeError(err)}`);
@@ -1722,7 +1724,7 @@ export async function verifyCommand(
             genCollection.ownFiles, {
               sourceRoots: sourceRootsOf(genCollection),
               agentSchema: () => buildAgentSchemaInput(codegenRoot, config.dialect, () => {}),
-              requirementLedger: () => requirementPayload(codegenRoot, genCollection),
+              requirementLedger,
             });
           return probe.error === undefined && probe.clean;
         } finally {
@@ -1929,7 +1931,6 @@ function toSchemaDriftRow(c: Change): SchemaDriftRow {
 // ---------------------------------------------------------------------------
 // structured output (--format toon|json)
 // ---------------------------------------------------------------------------
-
 
 /** One gate's verdict. `ran: false` is NOT a pass — it is "not selected". */
 interface VerifyGateRow {

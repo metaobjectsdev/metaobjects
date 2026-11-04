@@ -839,7 +839,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // so a narrowed run reads what a full run reads. A record for a generator no longer declared,
   // or for a file no longer on disk, is stale and stays out.
   const entityNarrowed = opts.entityFilter !== undefined && opts.entityFilter.length > 0;
-  const runOutputFiles = (ran: readonly Generator[]): RunOutputFile[] => {
+  const runOutputFiles = (): RunOutputFile[] => {
     const out = new Map<string, RunOutputFile>();
     const keyOf = (fullPath: string): string | undefined => {
       if (projectRoot === undefined) return fullPath.split(sep).join("/");
@@ -847,7 +847,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
       return relative(projectRoot, fullPath).split(sep).join("/");
     };
     if (opts.generatorNames !== undefined || entityNarrowed) {
-      const ranNames = new Set(ran.map((g) => g.name));
+      const ranNames = new Set(selected.map((g) => g.name));
       const declaredNames = new Set(config.generators.map((g) => g.name));
       const renderedNodes = new Set(safeEntities.map((e) => e.resolutionKey()));
       for (const rec of listGeneratedProvenance(genStateDir)) {
@@ -959,7 +959,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
       ...(config.providers !== undefined && { providers: config.providers }),
       docs: docsFactsFor(selfTarget.name),
       ...(selectedManifests !== undefined && { libraries: selectedManifests }),
-      ...(generator.readsRunOutput === true && { runOutput: () => runOutputFiles(selected) }),
+      ...(generator.readsRunOutput === true && { runOutput: runOutputFiles }),
       ...(requirementLedger !== undefined && { requirementLedger }),
       warn: (msg) => warnings.push(`[${generator.name}] ${msg}`),
     };

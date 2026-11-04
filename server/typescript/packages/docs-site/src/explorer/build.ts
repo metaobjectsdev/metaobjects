@@ -246,7 +246,7 @@ function modelEdges(walked: Walked[], byId: Map<string, Walked>): ExplorerEdge[]
 
 function asLinks(v: unknown): { ref: string; resolves: boolean; target?: string }[] {
   if (!Array.isArray(v)) return [];
-  return v.filter(isRecord).map(asLink).filter((l): l is NonNullable<typeof l> => l !== undefined);
+  return v.map(asLink).filter((l): l is NonNullable<typeof l> => l !== undefined);
 }
 
 function asLink(v: unknown): { ref: string; resolves: boolean; target?: string } | undefined {
@@ -404,7 +404,7 @@ export function buildExplorer(input: ExplorerInput): ExplorerJson {
   // members, which is two edges, but never the same edge twice.
   const unique = new Map<string, ExplorerEdge>();
   for (const e of edges) unique.set(edgeKey(e), e);
-  const sortedEdges = [...unique.values()].sort((a, b) => byCodeUnit(edgeKey(a), edgeKey(b)));
+  const sortedEdges = [...unique].sort(([a], [b]) => byCodeUnit(a, b)).map(([, e]) => e);
 
   return {
     format: EXPLORER_FORMAT,
