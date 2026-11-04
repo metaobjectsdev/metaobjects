@@ -42,7 +42,7 @@ here.**
     a node inherits through `extends` is written onto that node.
   - `meta verify --format json` adds `requirementLedger`, one row per requirement. A row carries its
     digest, each `@implementedBy` link with the node the gate resolved it to, the findings against
-    its path, and a `clean`, `warn` or `error` verdict. Text output is unchanged.
+    it, and a `clean`, `warn` or `error` verdict. Text output is unchanged.
   - `meta gen` records, in `.hashes.json`, the node each per-entity file was rendered from:
     `{ "hash", "generatedBy", "sourceNode" }`. `EmittedFile.sourceNode` lets an owned generator set
     it, and `perEntity` sets it automatically. A file rendered from the whole model keeps the plain
