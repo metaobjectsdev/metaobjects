@@ -434,7 +434,7 @@ store with no `CHECK` support is still covered. PATCH and partial-update models 
 
 | Subtype | Rule | Key attrs |
 |---|---|---|
-| `validator.comparison` | two fields stand in a relational order (`@left @op @right`) | `@left`, `@op` (`gt`/`gte`/`lt`/`lte`/`ne`/`eq`), `@right` |
+| `validator.comparison` | two fields stand in a relational order (`@left @op @right`). Numerics compare with each other; strings and temporals only with the same subtype and `@localTime`; boolean, enum, uuid, uri and inet only `eq`/`ne`. Any other pair is skipped, never rejected. | `@left`, `@op` (`gt`/`gte`/`lt`/`lte`/`ne`/`eq`), `@right` |
 | `validator.requiredWhen` | `@field` is required when `@when` equals `@equals` | `@field`, `@when`, `@equals` |
 | `validator.presentIff` | `@field` is present **iff** `@when` equals `@equals` (biconditional) | `@field`, `@when`, `@equals` |
 | `validator.atLeastOne` | at least one of `@fields` (2+) is present | `@fields` |
