@@ -1,4 +1,4 @@
-import { join, relative, resolve, isAbsolute, dirname } from "node:path";
+import { join, relative, resolve, isAbsolute, dirname, sep } from "node:path";
 import { warnMissingPromptGenerators } from "./prompt-generator-gate.js";
 import { runEmitsEntityModule, runEmitsHonoRoutes, runEmitsQueries, runEmitsRestRoutes, runEmitsUiTier, runRoutesExpose, warnUnmarkedRoutesGenerators, warnUnmarkedUiGenerators } from "./ui-tier-gate.js";
 import { warnRetiredCodegenAttrs } from "./retired-codegen-attrs.js";
@@ -16,7 +16,7 @@ import { assertNoCollectionNameCollisions } from "./naming/collection-name-colli
 import { isAbstract } from "./instance-artifacts.js";
 import { dbEmittingObjects, missingDialectMessage } from "./db-emitting.js";
 import { generatableObjects, hasAnyRdbSource } from "./source-detect.js";
-import type { Generator, GenContext, EmittedFile } from "./generator.js";
+import type { Generator, GenContext, EmittedFile, RunOutputFile } from "./generator.js";
 import type { MetaobjectsGenConfig } from "./metaobjects-config.js";
 import { normalizeConfig, assertCodegenDialect, DEFAULT_TARGET_NAME } from "./metaobjects-config.js";
 import type { ResolvedTarget } from "./import-path.js";
@@ -34,6 +34,7 @@ import {
   loadEngineVersion,
   saveEngineVersion,
   recordGeneratedProvenance,
+  listGeneratedProvenance,
   type GeneratedProvenance,
   type WriteResult,
   type MergeStrategy,
@@ -190,6 +191,14 @@ export interface RunGenOpts {
    * `GenContext.libraries`.
    */
   libraries?: readonly string[];
+  /**
+   * The requirement ledger as `meta verify --format json` states it, threaded onto
+   * `GenContext.requirementLedger` for the docs site's model explorer. codegen-ts cannot
+   * compute it (the requirement gate is the CLI's), so the caller that can supplies it; the
+   * runner calls it at most once, and only when a generator asks. Absent: the explorer
+   * shows no ledger.
+   */
+  requirementLedger?: () => unknown;
 }
 
 export interface RunGenResult {
@@ -791,6 +800,10 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
     if (unknown.length > 0) throw new Error(undeclaredGeneratorsMessage(unknown, declared));
     selected = config.generators.filter((_, i) => wanted.has(declared[i]!));
   }
+  // A generator that reads the run's output runs after every one that writes it, each group in
+  // declared order, so the list it reads is complete.
+  selected = [...selected.filter((g) => g.readsRunOutput !== true), ...selected.filter((g) => g.readsRunOutput === true)];
+  const requirementLedger = opts.requirementLedger !== undefined ? once(opts.requirementLedger) : undefined;
 
   // 4. Run each generator with a per-target render context; collect with full path.
   const emitted: {
@@ -820,6 +833,34 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // Generators that ran and produced no file. See the note at the `files.length === 0`
   // check below. A Set because a generator may run once per target.
   const emptyGenerators = new Set<string>();
+  // `ctx.runOutput`: what this run has generated so far, keyed as the manifest keys it. A run
+  // narrowed with `--generators` adds what the committed manifest records for the generators
+  // it did not run, so a narrowed run reads what a full run reads.
+  const runOutputFiles = (ran: readonly Generator[]): RunOutputFile[] => {
+    const out = new Map<string, RunOutputFile>();
+    const keyOf = (fullPath: string): string | undefined => {
+      if (projectRoot === undefined) return fullPath.split(sep).join("/");
+      if (outsideProject(fullPath)) return undefined;
+      return relative(projectRoot, fullPath).split(sep).join("/");
+    };
+    if (opts.generatorNames !== undefined) {
+      const ranNames = new Set(ran.map((g) => g.name));
+      for (const rec of listGeneratedProvenance(genStateDir)) {
+        if (ranNames.has(rec.generatedBy)) continue;
+        out.set(rec.path, rec);
+      }
+    }
+    for (const file of emitted) {
+      const path = keyOf(file.fullPath);
+      if (path === undefined) continue;
+      out.set(path, {
+        path,
+        generatedBy: file.generatedBy,
+        ...(file.sourceNode !== undefined && { sourceNode: file.sourceNode }),
+      });
+    }
+    return [...out.values()].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+  };
 
   for (const generator of selected) {
     const selfTarget = targetOf(generator);
@@ -909,6 +950,8 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
       ...(config.providers !== undefined && { providers: config.providers }),
       docs: docsFactsFor(selfTarget.name),
       ...(selectedManifests !== undefined && { libraries: selectedManifests }),
+      ...(generator.readsRunOutput === true && { runOutput: () => runOutputFiles(selected) }),
+      ...(requirementLedger !== undefined && { requirementLedger }),
       warn: (msg) => warnings.push(`[${generator.name}] ${msg}`),
     };
 
@@ -1348,4 +1391,17 @@ export function undeclaredGeneratorsMessage(unknown: readonly string[], declared
     (declared.length > 0 ? declared.join(", ") : "none") +
     "."
   );
+}
+
+/** Memoize a zero-argument callback: called at most once, and only when first asked. */
+function once<T>(fn: () => T): () => T {
+  let done = false;
+  let value: T | undefined;
+  return () => {
+    if (!done) {
+      value = fn();
+      done = true;
+    }
+    return value as T;
+  };
 }

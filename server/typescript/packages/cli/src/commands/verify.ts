@@ -12,6 +12,7 @@ import { join, relative, resolve as resolvePath } from "node:path";
 import { parseVerifyArgs, type MigrateFlags } from "../lib/args.js";
 import { log } from "../lib/log.js";
 import { requirementLedgerRows, type RequirementLedgerRow } from "../lib/requirement-ledger.js";
+import { requirementCountsOf, requirementPayload, type RequirementCounts } from "../lib/requirement-payload.js";
 import { emitStructured, type OutputFormat } from "../lib/format.js";
 import {
   antiPatternRows, missingBaseUrlRows, removedPropRows, ranSection, skippedSection, warnCapped,
@@ -807,22 +808,7 @@ export async function verifyCommand(
       // reason the text line carries it: the claimed/total ratio is only ever taken
       // over what actually loaded, so a reader needs the denominator's provenance to
       // notice a spine that covers half an estate.
-      requirementCounts = {
-        total: s.total,
-        functional: s.functional,
-        architectural: s.architectural,
-        byStatus: order
-          .filter((k) => (s.byStatus[k] ?? 0) > 0)
-          .map((k) => ({ status: k, count: s.byStatus[k] ?? 0 })),
-        undecided: s.undecided,
-        // Absent when coverage was not measured (FR-043 §5.4), never zeroed: a reader
-        // cannot tell `0/0 claimed` from "not measured", and the two mean opposite
-        // things.
-        ...(s.entitiesTotal === undefined
-          ? {}
-          : { entitiesClaimed: s.entitiesClaimed ?? 0, entitiesTotal: s.entitiesTotal }),
-        metadataFiles: collection.files.length,
-      };
+      requirementCounts = requirementCountsOf(s, collection.files.length);
     }
 
     const errors = diags.filter((d) => d.severity === "error");
@@ -1713,6 +1699,7 @@ export async function verifyCommand(
           config.dialect,
           (m) => log.warn(`verify --codegen: [agent-docs] ${m}`),
         ),
+        requirementLedger: () => requirementPayload(codegenRoot, genCollection),
       });
     } catch (err) {
       log.error(`verify --codegen: regeneration failed: ${describeError(err)}`);
@@ -1735,6 +1722,7 @@ export async function verifyCommand(
             genCollection.ownFiles, {
               sourceRoots: sourceRootsOf(genCollection),
               agentSchema: () => buildAgentSchemaInput(codegenRoot, config.dialect, () => {}),
+              requirementLedger: () => requirementPayload(codegenRoot, genCollection),
             });
           return probe.error === undefined && probe.clean;
         } finally {
@@ -1942,19 +1930,6 @@ function toSchemaDriftRow(c: Change): SchemaDriftRow {
 // structured output (--format toon|json)
 // ---------------------------------------------------------------------------
 
-/** The ledger counts `meta verify` prints on every run, machine-readable. */
-interface RequirementCounts {
-  total: number;
-  functional: number;
-  architectural: number;
-  byStatus: { status: string; count: number }[];
-  undecided: number;
-  /** Absent when coverage was not measured — FR-043 §5.4. */
-  entitiesClaimed?: number;
-  entitiesTotal?: number;
-  /** How many metadata files the two entity counts were taken over. */
-  metadataFiles: number;
-}
 
 /** One gate's verdict. `ran: false` is NOT a pass — it is "not selected". */
 interface VerifyGateRow {

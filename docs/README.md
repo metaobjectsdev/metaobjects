@@ -48,6 +48,7 @@ docs/
 │   ├── contract-emitters.md         # the contract-schema and openapi generators: JSON Schema and OpenAPI for the REST contract (FR-022)
 │   ├── cube-export.md               # the cube-model generator: reporting vocabulary as Cube data-model files (FR-044)
 │   ├── explorer-data.md             # explorer.json and its inputs: export --effective, the verify ledger rows, manifest provenance
+│   ├── explorer-site.md             # the model explorer site docsSiteFile() builds from explorer.json
 │   └── own-your-codegen.md          # scaffold-and-own generator ownership (ADR-0034)
 └── ports/                       # one file per language/framework port
     ├── typescript.md
@@ -80,6 +81,7 @@ this tree is documentation, not the source of truth.
 | Publish the API as JSON Schema or OpenAPI, and check a change against the last release | [`features/contract-emitters.md`](features/contract-emitters.md), [`recipes/check-api-against-last-release.md`](recipes/check-api-against-last-release.md) |
 | Export the reporting vocabulary to Cube (`cube-model`: cubes, joins, rollups; the `cube` lane that checks it against a real Cube) | [`features/cube-export.md`](features/cube-export.md) |
 | Build the data a model explorer reads (`explorer.json` from `meta export --effective`, `meta verify --format json` and the generated-file manifest) | [`features/explorer-data.md`](features/explorer-data.md) |
+| Build the model explorer site: what the software does, the model map, requirement pages, the matrix, trace and gaps (`docsSiteFile()`) | [`features/explorer-site.md`](features/explorer-site.md) |
 | Wire prompt construction (FR-004) | [`features/templates-and-payloads.md`](features/templates-and-payloads.md) |
 | Share a metadata shape across multiple instances (abstracts, `extends:`) | [`features/abstracts-and-inheritance.md`](features/abstracts-and-inheritance.md) |
 | Add a custom metamodel subtype or attribute to a downstream project | [`features/extending-with-providers.md`](features/extending-with-providers.md) + [`recipes/extending-metaobjects-with-providers.md`](recipes/extending-metaobjects-with-providers.md) |

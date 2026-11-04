@@ -34,6 +34,7 @@ import { describeError } from "../lib/error-text.js";
 import { findRuntimeBoundaryCrossings, runtimeBoundaryWarnings } from "../lib/runtime-boundary-advisory.js";
 import { hasLegacyDocsBlock, legacyDocsConfigMessage, NO_CONFIG_MESSAGE } from "../lib/docs-removed.js";
 import { buildAgentSchemaInput } from "../lib/agent-schema.js";
+import { requirementPayload } from "../lib/requirement-payload.js";
 import { existsSync } from "node:fs";
 
 /**
@@ -263,6 +264,8 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
       // that is what tells the post-selection audit "this project opted into none",
       // which is a different statement from a programmatic caller that never said.
       libraries: genCollection.libraries,
+      // The requirement ledger the docs site's model explorer shows, built only if it asks.
+      requirementLedger: () => requirementPayload(metadata, genCollection),
       ...(cliConfig.entities.length > 0 ? { entityFilter: cliConfig.entities } : {}),
     });
   } catch (err) {

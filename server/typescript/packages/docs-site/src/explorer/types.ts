@@ -19,6 +19,9 @@ export interface ExplorerNode {
   name: string;
   /** The package of the node's top-level ancestor, "" when it has none. */
   package: string;
+  /** Its position among its siblings in the effective tree (0-based): declaration order,
+   *  which `nodes` (sorted by id) does not keep. */
+  order: number;
   /** The id of the node this one is nested in; absent on a top-level node. */
   parent?: string;
   /** The id `extends` names, as the effective tree spells it. */
@@ -109,6 +112,15 @@ export interface ExplorerSlice {
   nodes: string[];
 }
 
+/** One HTTP route the project mounts for a node, as the run that generated the routes states
+ *  it. */
+export interface ExplorerRoute {
+  node: string;
+  method: string;
+  /** The mounted path, with the project's `apiPrefix`: `/api/orders/{id}`. */
+  path: string;
+}
+
 export interface ExplorerJson {
   format: typeof EXPLORER_FORMAT;
   nodes: ExplorerNode[];
@@ -117,5 +129,7 @@ export interface ExplorerJson {
   ledger?: ExplorerLedger;
   /** Absent without a manifest. */
   generated?: ExplorerGenerated[];
+  /** Absent without a routes input. Sorted by node, then path, then method. */
+  api?: ExplorerRoute[];
   slices: ExplorerSlice[];
 }

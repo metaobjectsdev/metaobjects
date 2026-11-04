@@ -61,6 +61,26 @@ describe("buildExplorer", () => {
     expect(build({ verify: true }).generated).toBeUndefined();
   });
 
+  test("routes are kept per known node, sorted, deduplicated; without them there is no api", () => {
+    const api = buildExplorer({
+      model: json("effective.json"),
+      routes: [
+        { node: "acme::shop::Order", method: "post", path: "/api/orders" },
+        { node: "acme::shop::Order", method: "GET", path: "/api/orders" },
+        { node: "acme::shop::Order", method: "GET", path: "/api/orders" },
+        { node: "acme::shop::Customer", method: "GET", path: "/api/customers/{id}" },
+        { node: "acme::shop::Gone", method: "GET", path: "/api/gone" },
+        { node: "acme::shop::Order", path: "/api/no-method" },
+      ],
+    }).api;
+    expect(api).toEqual([
+      { node: "acme::shop::Customer", method: "GET", path: "/api/customers/{id}" },
+      { node: "acme::shop::Order", method: "GET", path: "/api/orders" },
+      { node: "acme::shop::Order", method: "POST", path: "/api/orders" },
+    ]);
+    expect(build().api).toBeUndefined();
+  });
+
   test("a requirement slice holds the subtree, its targets and the owner of a claimed member", () => {
     const slice = build().slices.find((s) => s.id === "requirement:acme::shop::Shop.Checkout.Orders.Recorded");
     expect(slice?.nodes).toEqual([

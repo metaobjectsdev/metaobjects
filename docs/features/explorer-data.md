@@ -6,7 +6,9 @@ tree and whether each claim holds, and which generated files each node produced.
 is read from one data file, `explorer.json`. This page documents that file and the three
 inputs it is built from.
 
-This is the data layer only. No screen reads it yet.
+This page is the data layer. The site that reads it, built by `docsSiteFile()`, is
+[explorer-site.md](explorer-site.md); that generator builds the file during `meta gen`, so
+you only build it by hand to feed a tool of your own.
 
 ## The inputs are port-neutral
 
@@ -117,6 +119,7 @@ interface ExplorerJson {
   edges: ExplorerEdge[];
   ledger?: ExplorerLedger;        // absent without a verify payload with requirements
   generated?: ExplorerGenerated[]; // absent without a manifest
+  api?: ExplorerRoute[];           // absent without a routes input
   slices: ExplorerSlice[];
 }
 ```
@@ -134,6 +137,7 @@ each node nested inside one (field, identity, source, view, index, nested requir
 | `id` | A top-level node's id is `<package>::<name>`. A nested node's id is its parent's id followed by `.<name>`, for example `acme::shop::Order.total`. A nested requirement's id equals its ledger row's `qualifiedPath`. A nested node with no name gets `#<index>` in place of `.<name>`. When siblings of different types share a name, the first one in the effective JSON keeps `.<name>`, because that is the node a dotted `@implementedBy` reference such as `Order.id` resolves to. Each later one adds its type, for example `acme::shop::AuditEntry.id[identity.primary]`. |
 | `type`, `subType`, `name`, `package` | As in the model. `package` is the package of the top-level ancestor. |
 | `parent` | The id of the node it is nested in. A top-level node has no `parent`. |
+| `order` | Its position among its siblings in the effective tree, from 0: the declaration order, which the id sort does not keep. |
 | `extends`, `abstract`, `isArray` | As in the effective JSON. |
 | `inheritedFrom` | Set on a member that came from a super. It holds the id of the object the member is declared on, meaning the topmost ancestor that has a member with the same type, name and body. A member redeclared with a different body belongs to the node itself. |
 | `attrs` | Every `@` attribute, without the `@`, with keys sorted. |
@@ -171,6 +175,11 @@ finding, including those about something other than a single requirement.
 The manifest entries that carry `sourceNode`, grouped by node: `{ node, files: [{ path,
 generatedBy }] }`, sorted by node and then by path. A plain entry has no node and is left out.
 
+### `api`
+
+One row per REST route: `{ node, method, path }`, with the project's `apiPrefix` in the path,
+sorted by node, then path, then method. Absent when no routes were passed.
+
 ### `slices`
 
 Slices are named node sets that a view can open on. They are all derived from the model, so
@@ -186,7 +195,7 @@ never in metadata, and are not built yet.
 
 ### Determinism
 
-The same three inputs always produce the same bytes. Nodes are sorted by id. Edges are sorted
+The same inputs always produce the same bytes. Nodes are sorted by id. Edges are sorted
 by kind, then `from`, then `to`, then `via`, with duplicates removed. Slices are sorted by id,
 and ledger rows stay in the verify payload's order. `serializeExplorer` writes JSON indented
 two spaces, with one trailing newline. That makes the file safe to commit and diff.
@@ -205,14 +214,17 @@ writeFileSync("explorer.json", serializeExplorer(buildExplorer({
 })));
 ```
 
-A `verify` or `manifest` that is missing or malformed leaves its section out. A `model` that is
+`routes` (optional) is a list of `{ node, method, path }`, one per REST route, and becomes the
+`api` section; `docsSiteFile()` fills it from the routes the run mounts. The manifest records
+files, not the routes inside them, so a hand build that wants routes passes them here.
+
+A `verify`, `manifest` or `routes` that is missing or malformed leaves its section out. A `model` that is
 not canonical metadata JSON makes the builder throw.
 
 ## Not built yet
 
 - **`usage`**: which hand-written modules import a generated module. The design marks it
   optional, and nothing builds it yet.
-- **Routes per node** in `generated`: the manifest records files, not the routes inside them.
 - **Provenance from the JVM, Python and C# generators.** Their manifests have no `sourceNode`
   yet, so for those ports `generated` is empty.
 

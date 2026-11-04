@@ -299,10 +299,12 @@ wins over the packaged one.
 
 ### The docs site: `meta eject docs-site` copies the theme
 
-`docsSiteFile()` writes the HTML site (package navigation, search, a page per object and
-package, the ER diagrams) under `site/` in the `docs` target. It loads the model from your
-declared source directories, with your config's providers. To change how it looks, copy the
-templates and assets into your repo:
+`docsSiteFile()` writes the HTML site under `site/` in the `docs` target. By default that is
+the model explorer ([explorer-site.md](explorer-site.md)), drawn from the model this run
+loaded; `docsSiteFile({ site: "classic" })` writes the earlier site (package navigation,
+search, a page per object and package, the ER diagrams), which loads the model from your
+declared source directories with your config's providers. To change how either looks, copy
+the templates and assets into your repo:
 
 ```bash
 meta eject docs-site
@@ -314,10 +316,11 @@ That writes the Mustache templates to `codegen/docs-site/templates/` and the CSS
 packaged one. The site prints no date, so its pages depend on the model alone and
 `meta verify --codegen` can check them; `docsSiteFile({ stamp })` adds footer text.
 
-The page chrome loads daisyUI, Tailwind's browser build, Mermaid and svg-pan-zoom from
-jsDelivr, so a site opened offline renders unstyled and its diagrams do not work.
-`docsSiteFile({ assetBase: "/vendor/npm" })` replaces that base; serving the five files from
-it is on you. The files and how to fetch them are in the `@metaobjectsdev/docs-site` README,
+The explorer loads one file from jsDelivr, Cytoscape.js, for its graphs. The classic page
+chrome loads daisyUI, Tailwind's browser build, Mermaid and svg-pan-zoom from jsDelivr, so a
+classic site opened offline renders unstyled and its diagrams do not work.
+`docsSiteFile({ assetBase: "/vendor/npm" })` replaces that base for either site; serving the
+files from it is on you. The files and how to fetch them are in the `@metaobjectsdev/docs-site` README,
 "Offline use".
 
 ### The ER diagram comes from `docsFile()`

@@ -187,7 +187,7 @@ export async function computeCodegenDrift(
   projectRoot: string,
   scope?: (fqn: string) => boolean,
   sourceFiles?: readonly string[],
-  run?: Pick<RunGenOpts, "sourceRoots" | "agentSchema">,
+  run?: Pick<RunGenOpts, "sourceRoots" | "agentSchema" | "requirementLedger">,
 ): Promise<CodegenDriftResult> {
   const root = isAbsolute(projectRoot) ? projectRoot : resolve(projectRoot);
 
@@ -278,6 +278,7 @@ export async function computeCodegenDrift(
       ...(sourceFiles !== undefined ? { sourceFiles } : {}),
       ...(run?.sourceRoots !== undefined ? { sourceRoots: run.sourceRoots } : {}),
       ...(run?.agentSchema !== undefined ? { agentSchema: run.agentSchema } : {}),
+      ...(run?.requirementLedger !== undefined ? { requirementLedger: run.requirementLedger } : {}),
     });
 
     // Where gen discards hand edits instead of keeping them (handEdits: "overwrite").

@@ -1,0 +1,27 @@
+<div class="crumbs">{{{crumbsHtml}}}</div>
+<h1>{{{name}}} {{#isUnclaimed}}<span class="chip v-unclaimed">unclaimed</span>{{/isUnclaimed}}</h1>
+<span hidden data-pagefind-filter="kind">prompt</span>
+{{#description}}<div class="sub">{{{description}}}</div>{{/description}}
+<div class="meta-line">{{{attrsHtml}}}</div>
+<div class="grid two page">
+<div>
+  <h2>Payload: {{{payloadHtml}}}</h2>
+  {{#hasPayload}}<div class="tablewrap"><table><tr><th>Field</th><th>Type</th><th>Used in text</th></tr>{{#payloadRows}}<tr><td class="mono">{{{name}}} {{{requiredHtml}}}</td><td class="mono">{{{type}}}{{{refHtml}}}</td><td>{{{usedHtml}}}</td></tr>{{/payloadRows}}</table></div>{{/hasPayload}}
+  {{^hasPayload}}<div class="sub">No payload: the text renders from nothing typed.</div>{{/hasPayload}}
+  <h2>Reply: {{{replyHtml}}}</h2>
+  {{#hasReply}}<div class="tablewrap"><table><tr><th>Field</th><th>Type</th></tr>{{#replyRows}}<tr><td class="mono">{{{name}}}</td><td class="mono">{{{type}}}{{{valuesHtml}}}</td></tr>{{/replyRows}}</table></div>{{/hasReply}}
+  {{^hasReply}}<div class="sub">Outbound only: no reply parser.</div>{{/hasReply}}
+  <h2>Why it exists</h2>
+  {{#hasWhy}}<div class="tablewrap"><table><tr><th>Capability</th><th>Requirement</th><th>Level</th><th>Status</th></tr>{{#whyRows}}<tr><td>{{{capabilityHtml}}}</td><td>{{{reqHtml}}}<div class="sub small">{{{statement}}}</div></td><td>{{{levelHtml}}}</td><td>{{{statusHtml}}}</td></tr>{{/whyRows}}</table></div>{{/hasWhy}}
+  {{^hasWhy}}<div class="note">{{{whyEmptyHtml}}}</div>{{/hasWhy}}
+</div>
+<div>
+  <h2>Text <span class="h-sub mono">{{{textMeta}}}</span></h2>
+  {{#hasText}}<pre class="text">{{{textHtml}}}</pre>{{/hasText}}
+  {{^hasText}}<div class="note">The text <code>{{{textRef}}}</code> was not found beside the model, so this page cannot show it.</div>{{/hasText}}
+  <h3>Generated</h3>
+  {{#hasGenerated}}{{#generated}}<div class="gen"><span class="pill">{{{generator}}}</span>{{#files}}<div class="mono sub">{{{.}}}</div>{{/files}}</div>{{/generated}}{{/hasGenerated}}
+  {{^hasGenerated}}<div class="sub">{{{generatedNote}}}</div>{{/hasGenerated}}
+  <div class="note">Proven today: <code>meta verify --templates</code> fails if the text names a variable the payload lacks. This page shows the other direction too: payload fields the text never uses.</div>
+</div>
+</div>
