@@ -152,6 +152,9 @@ public static class CoreTypes
         // native System.Uri / System.Net.IPAddress bindings are build-time codegen concerns.
         [FIELD_SUBTYPE_URI]       = DataType.String,
         [FIELD_SUBTYPE_INET]      = DataType.String,
+        // field.duration is string-backed on the wire (an ISO-8601 duration); the native
+        // System.TimeSpan binding is a build-time codegen concern.
+        [FIELD_SUBTYPE_DURATION]  = DataType.String,
         [FIELD_SUBTYPE_DOUBLE]    = DataType.Double,
         [FIELD_SUBTYPE_FLOAT]     = DataType.Double,
         [FIELD_SUBTYPE_DECIMAL]   = DataType.Double,
@@ -332,7 +335,7 @@ public static class CoreTypes
                     objectAttrs));
         }
 
-        // field — 18 subtypes (base + 17)
+        // field — 19 subtypes (base + 18)
         List<ChildRule> fieldRules =
         [
             Wildcard(TYPE_VALIDATOR),

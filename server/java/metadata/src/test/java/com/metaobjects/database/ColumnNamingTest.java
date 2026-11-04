@@ -68,7 +68,7 @@ public class ColumnNamingTest extends SharedRegistryTestBase {
     public void anUnknownStrategyIsRefusedNotSilentlyDefaulted() {
         // A typo would otherwise bind a whole schema to the wrong columns and succeed.
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
-                () -> ColumnNaming.apply("createdAt", "PascalCase"));
+                () -> ColumnNaming.apply("createdAt", "camelCase"));
         org.junit.Assert.assertTrue(ex.getMessage(), ex.getMessage().contains("snake_case"));
     }
 }

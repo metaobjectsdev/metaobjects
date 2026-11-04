@@ -1,5 +1,5 @@
 {
-  "metamodelVersion": "1.2",
+  "metamodelVersion": "1.3",
   "types": [
     {
       "type": "attr",
@@ -1026,6 +1026,148 @@
     },
     {
       "type": "field",
+      "subType": "duration",
+      "description": "A fixed-length span of time: days, hours, minutes and seconds (ADR-0036/0037 — a concept with a native type + behavior). Binds to TS string (TS has no native duration type); other ports bind to their native type (C# System.TimeSpan, Java and Kotlin java.time.Duration, Python datetime.timedelta). DB column is the Postgres-native interval type; SQLite, D1 and MySQL store a 64-bit integer count of microseconds, which orders and compares as the span does. The wire form is an ISO-8601 duration: every port writes [-]PT[nH][nM][n[.f]S] (hours never folded into days, as many fractional digits as its native type holds, zero is PT0S) and reads that form plus leading week and day counts (nW, exactly 7 days; nD, exactly 24 hours) and a fraction of any length, truncated toward zero. Years and months are refused: a calendar span is not a fixed length. Justified in ADR-0023 Amendment 1.",
+      "whenToUse": "A field holds an elapsed time, a timeout or a delay. Use it for a native Postgres interval column and a native duration type instead of a string or a number of seconds. A calendar span (\"every 3 months\") is not a duration: model it as an int and a unit.",
+      "attrs": [
+        {
+          "name": "column",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "Physical column name for this field on an rdb source. Defaults to the field name under the project's naming.columns rule (the \"naming\" setting in .metaobjects/config.json)."
+        },
+        {
+          "name": "db.indexed",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means)."
+        },
+        {
+          "name": "dbColumnType",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "allowedValues": [
+            "uuid",
+            "jsonb"
+          ],
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
+        },
+        {
+          "name": "default",
+          "valueType": null,
+          "isArray": false,
+          "required": false,
+          "description": "Default value applied to the column when no value is supplied. Its type follows the field's own subtype (string / boolean / number / ...). Converted at consumption time via MetaField.defaultValue()."
+        },
+        {
+          "name": "example",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "FR-010: an example value for this field, shown in the generated output-format prompt fragment."
+        },
+        {
+          "name": "filterable",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer)."
+        },
+        {
+          "name": "formExclude",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "When true, the field is omitted from generated forms, and the generated create, PATCH and PUT routes ignore a value sent for it (reads of it are unchanged); inert on fields for which no form is generated (e.g. projection/derived fields)."
+        },
+        {
+          "name": "instruction",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "FR-010: a short instruction for this field, shown in the generated output-format prompt fragment."
+        },
+        {
+          "name": "mutability",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "allowedValues": [
+            "readWrite",
+            "writeOnce",
+            "readOnly"
+          ],
+          "description": "FR-037 R1: who may write this field, and when. 'readWrite' (the default when absent) — the caller may set it on create and change it on update. 'writeOnce' — the caller sets it on create; it is excluded from the update shape thereafter, so a value presented on PATCH is ignored rather than rejected. 'readOnly' — nobody writes it: codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas omit it from input variants; the value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner. The three are mutually exclusive modes of ONE axis — who may write, and when — so the illegal pair is unrepresentable and inheritance has a total order: a subtype may TIGHTEN an inherited mode (readWrite < writeOnce < readOnly) and never loosen it (ERR_MUTABILITY_DOWNGRADE). Pairing a non-readWrite mode with @autoSet is ERR_MUTABILITY_AUTOSET_CONFLICT: @autoSet already says the SERVER supplies the value, which is a different axis from who may write it."
+        },
+        {
+          "name": "required",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child. On a non-array string, generated wire-tier input validation (create/patch) additionally rejects the empty string by default — whitespace is accepted — unless an explicit validator.length @min: 0 opts back to presence-only. In-process read models never enforce this at construction."
+        },
+        {
+          "name": "sortable",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out."
+        },
+        {
+          "name": "sortableDefaultOrder",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "allowedValues": [
+            "asc",
+            "desc"
+          ],
+          "description": "Direction a sort takes when it names this field but omits the order: a ?sort=<field> with no :order, and a layout.dataGrid whose @defaultSortField names it with no @defaultSortOrder. Defaults to 'asc'."
+        },
+        {
+          "name": "unique",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "When true, the field gets a column-level UNIQUE constraint."
+        },
+        {
+          "name": "xmlText",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect when the eliciting prompt's @responseFormat is json."
+        }
+      ],
+      "children": [
+        {
+          "childType": "origin",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "validator",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "view",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        }
+      ]
+    },
+    {
+      "type": "field",
       "subType": "enum",
       "description": "String-backed enumeration constrained to a closed set of member symbols (@values). Each member is its own stored string with no name/value divergence.",
       "rules": "Required @values is a non-empty, duplicate-free set; each member must match ^[A-Za-z_][A-Za-z0-9_]*$ so symbol == stored string in every target language. Optional FR-010/FR-011 overlays add tolerant-extract aliasing (@enumAlias), per-member docs (@enumDoc), an uncoercible-value fallback (@coerceDefault, must be one of @values), and ASCII normalization mode (@normalize).",
@@ -1044,6 +1186,13 @@
           "isArray": false,
           "required": false,
           "description": "Physical column name for this field on an rdb source. Defaults to the field name under the project's naming.columns rule (the \"naming\" setting in .metaobjects/config.json)."
+        },
+        {
+          "name": "constraintName",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The database name of the CHECK constraint this enum's member list generates. Absent: <table>_<column>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider. Justified in ADR-0023 Amendment 1."
         },
         {
           "name": "db.indexed",
@@ -1118,6 +1267,13 @@
           "isArray": false,
           "required": false,
           "description": "Optional per-member int values ({member: int}) switching this enum field's DB persistence from string+CHECK to integer+CHECK. Keys must exactly match @values; values must be unique integers. The generated native type and wire format are unchanged in every language."
+        },
+        {
+          "name": "maxLength",
+          "valueType": "int",
+          "isArray": false,
+          "required": false,
+          "description": "Column length of a string-stored enum (drives VARCHAR(n)); every member must fit. Overrides the project's enums.maxLength. Refused with @intValueMap, whose column is an integer. Justified in ADR-0023 Amendment 1."
         },
         {
           "name": "mutability",
@@ -2004,6 +2160,13 @@
           "isArray": false,
           "required": false,
           "description": "When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer)."
+        },
+        {
+          "name": "flattenedColumnPrefix",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "On a field.object with @storage \"flattened\": the text put before each member's column, verbatim (\"\" allowed, so the members keep their own column names). Absent: this field's resolved column name and \"_\" (with @column \"bill\", the members are bill_<member column>). A fact about the owning table, so it lives on the embedding field, never on the value object. Refused on any other storage (ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE). Justified in ADR-0023 Amendment 1."
         },
         {
           "name": "formExclude",
@@ -2901,6 +3064,20 @@
             "assigned"
           ],
           "description": "Primary-key value generation strategy: 'increment' (auto-increment), 'uuid', or 'assigned' (caller-supplied)."
+        },
+        {
+          "name": "sequenceName",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The physical name of an @generation \"increment\" key's sequence (Postgres: GENERATED BY DEFAULT AS IDENTITY (SEQUENCE NAME ...)). Absent: the database's own default, <table>_<column>_seq on Postgres. Lets a model adopt a sequence that kept its name across a table rename. Refused without @generation \"increment\" (ERR_SEQUENCE_WITHOUT_INCREMENT). RDB-physical — contributed by the db provider. Justified in ADR-0023 Amendment 1."
+        },
+        {
+          "name": "sequenceStart",
+          "valueType": "long",
+          "isArray": false,
+          "required": false,
+          "description": "The first value an @generation \"increment\" key's sequence hands out (Postgres: GENERATED BY DEFAULT AS IDENTITY (START WITH n)). Absent: 1. Lets a model reproduce a table that keeps a low id range for seeded rows. Refused without @generation \"increment\" (ERR_SEQUENCE_WITHOUT_INCREMENT). RDB-physical — contributed by the db provider. Justified in ADR-0023 Amendment 1."
         }
       ],
       "children": []
@@ -4651,6 +4828,20 @@
       "whenToUse": "At least one of several fields must be present (email or phone). Declare it instead of hand-written OR-presence checks.",
       "attrs": [
         {
+          "name": "condition",
+          "valueType": "expression",
+          "isArray": false,
+          "required": false,
+          "description": "The case this rule applies in: an expression over the owning entity's fields (the attr.expression grammar). Absent: always. The database CHECK is NOT (condition) OR (rule), so a row the condition does not hold for, or holds NULL for, is not checked. Enforced like the rule itself: by the database CHECK and, on create, by the generated record model in every port. Justified in ADR-0023 Amendment 1."
+        },
+        {
+          "name": "constraintName",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The database name of the CHECK constraint this validator generates (numeric, length, regex and the cross-field validators; the others generate no CHECK). Absent: the derived <table>_<column>_<kind>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider. Justified in ADR-0023 Amendment 1."
+        },
+        {
           "name": "fields",
           "valueType": "string",
           "isArray": true,
@@ -4690,6 +4881,20 @@
       "whenToUse": "Two sibling fields must stand in an order (start <= end, currentHp <= maxHp). Declare it instead of hand-writing the cross-field assertion.",
       "attrs": [
         {
+          "name": "condition",
+          "valueType": "expression",
+          "isArray": false,
+          "required": false,
+          "description": "The case this rule applies in: an expression over the owning entity's fields (the attr.expression grammar). Absent: always. The database CHECK is NOT (condition) OR (rule), so a row the condition does not hold for, or holds NULL for, is not checked. Enforced like the rule itself: by the database CHECK and, on create, by the generated record model in every port. Justified in ADR-0023 Amendment 1."
+        },
+        {
+          "name": "constraintName",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The database name of the CHECK constraint this validator generates (numeric, length, regex and the cross-field validators; the others generate no CHECK). Absent: the derived <table>_<column>_<kind>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider. Justified in ADR-0023 Amendment 1."
+        },
+        {
           "name": "left",
           "valueType": "string",
           "isArray": false,
@@ -4723,10 +4928,48 @@
     },
     {
       "type": "validator",
+      "subType": "exactlyOne",
+      "description": "Cardinality of presence: exactly one of the named fields (@fields) is present (NOT NULL), and the others are null. Entity-scoped; references fields by name (same @fields-by-name pattern as identity.*). Justified in ADR-0023 Amendment 1.",
+      "rules": "@fields names two or more fields of the owning entity (ERR_BAD_ATTR_VALUE): one field would just be a required field. Satisfied when exactly one of them is non-null.",
+      "whenToUse": "A row belongs to exactly one of several alternatives (a store or a kiosk, never both, never neither). Declare it instead of hand-written count-of-non-nulls checks.",
+      "attrs": [
+        {
+          "name": "condition",
+          "valueType": "expression",
+          "isArray": false,
+          "required": false,
+          "description": "The case this rule applies in: an expression over the owning entity's fields (the attr.expression grammar). Absent: always. The database CHECK is NOT (condition) OR (rule), so a row the condition does not hold for, or holds NULL for, is not checked. Enforced like the rule itself: by the database CHECK and, on create, by the generated record model in every port. Justified in ADR-0023 Amendment 1."
+        },
+        {
+          "name": "constraintName",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The database name of the CHECK constraint this validator generates (numeric, length, regex and the cross-field validators; the others generate no CHECK). Absent: the derived <table>_<column>_<kind>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider. Justified in ADR-0023 Amendment 1."
+        },
+        {
+          "name": "fields",
+          "valueType": "string",
+          "isArray": true,
+          "required": true,
+          "description": "Names of the alternative fields; exactly one must be present."
+        }
+      ],
+      "children": []
+    },
+    {
+      "type": "validator",
       "subType": "length",
       "description": "Bounds string length / collection size via @min/@max.",
       "whenToUse": "Bound a string's length or a collection's size. Use @min/@max instead of hand-written guards.",
       "attrs": [
+        {
+          "name": "constraintName",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The database name of the CHECK constraint this validator generates (numeric, length, regex and the cross-field validators; the others generate no CHECK). Absent: the derived <table>_<column>_<kind>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider. Justified in ADR-0023 Amendment 1."
+        },
         {
           "name": "max",
           "valueType": "int",
@@ -4751,6 +4994,13 @@
       "whenToUse": "Bound a number's magnitude. Use @min/@max instead of hand-written range checks.",
       "attrs": [
         {
+          "name": "constraintName",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The database name of the CHECK constraint this validator generates (numeric, length, regex and the cross-field validators; the others generate no CHECK). Absent: the derived <table>_<column>_<kind>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider. Justified in ADR-0023 Amendment 1."
+        },
+        {
           "name": "max",
           "valueType": "int",
           "isArray": false,
@@ -4774,6 +5024,20 @@
       "rules": "@field and @when must name fields of the owning entity. @equals is rendered per @when's field subtype. Stricter than requiredWhen — also forbids @field when the condition is false.",
       "whenToUse": "A field must be present exactly when a condition holds, absent otherwise (biconditional). Declare it instead of hand-written presence logic.",
       "attrs": [
+        {
+          "name": "condition",
+          "valueType": "expression",
+          "isArray": false,
+          "required": false,
+          "description": "The case this rule applies in: an expression over the owning entity's fields (the attr.expression grammar). Absent: always. The database CHECK is NOT (condition) OR (rule), so a row the condition does not hold for, or holds NULL for, is not checked. Enforced like the rule itself: by the database CHECK and, on create, by the generated record model in every port. Justified in ADR-0023 Amendment 1."
+        },
+        {
+          "name": "constraintName",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The database name of the CHECK constraint this validator generates (numeric, length, regex and the cross-field validators; the others generate no CHECK). Absent: the derived <table>_<column>_<kind>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider. Justified in ADR-0023 Amendment 1."
+        },
         {
           "name": "equals",
           "valueType": "string",
@@ -4804,6 +5068,13 @@
       "description": "Requires the value match a regular expression (@pattern).",
       "whenToUse": "A string must match a pattern (email, slug, code). Set @pattern instead of hand-writing the regex test.",
       "attrs": [
+        {
+          "name": "constraintName",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The database name of the CHECK constraint this validator generates (numeric, length, regex and the cross-field validators; the others generate no CHECK). Absent: the derived <table>_<column>_<kind>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider. Justified in ADR-0023 Amendment 1."
+        },
         {
           "name": "max",
           "valueType": "int",
@@ -4843,6 +5114,20 @@
       "rules": "@field and @when must name fields of the owning entity. @equals is the gating value, compared against @when's value (rendered per @when's field subtype — boolean true/false, enum/string literal, numeric literal).",
       "whenToUse": "A field becomes required only when another field has a given value. Declare it instead of conditional validation code.",
       "attrs": [
+        {
+          "name": "condition",
+          "valueType": "expression",
+          "isArray": false,
+          "required": false,
+          "description": "The case this rule applies in: an expression over the owning entity's fields (the attr.expression grammar). Absent: always. The database CHECK is NOT (condition) OR (rule), so a row the condition does not hold for, or holds NULL for, is not checked. Enforced like the rule itself: by the database CHECK and, on create, by the generated record model in every port. Justified in ADR-0023 Amendment 1."
+        },
+        {
+          "name": "constraintName",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The database name of the CHECK constraint this validator generates (numeric, length, regex and the cross-field validators; the others generate no CHECK). Absent: the derived <table>_<column>_<kind>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider. Justified in ADR-0023 Amendment 1."
+        },
         {
           "name": "equals",
           "valueType": "string",

@@ -17,6 +17,11 @@ import static com.metaobjects.attr.StringAttribute.SUBTYPE_STRING;
  */
 public class PrimaryIdentity extends MetaIdentity {
 
+    /** The first value of an increment key's sequence. Absent: 1. */
+    public static final String ATTR_SEQUENCE_START = "sequenceStart";
+    /** The physical name of an increment key's sequence. Absent: the database's default. */
+    public static final String ATTR_SEQUENCE_NAME = "sequenceName";
+
     private static final Logger log = LoggerFactory.getLogger(PrimaryIdentity.class);
 
     /**
@@ -48,6 +53,11 @@ public class PrimaryIdentity extends MetaIdentity {
             // the dedicated validateIdentityFieldsAndGeneration pass already enforces it).
             def.requiredAttributeWithConstraints(ATTR_FIELDS).ofType(StringAttribute.SUBTYPE_STRING).asArray();
             def.optionalAttributeWithConstraints(ATTR_GENERATION).ofType(StringAttribute.SUBTYPE_STRING).withEnum(GENERATION_INCREMENT, GENERATION_UUID, GENERATION_ASSIGNED);
+            // The sequence an @generation "increment" key draws from: its first value and its
+            // physical name (spec/metamodel/db.json). Refused on any other generation, post-load
+            // in ValidationPhase.validateIdentitySequence.
+            def.optionalAttributeWithConstraints(ATTR_SEQUENCE_START).ofType(com.metaobjects.attr.LongAttribute.SUBTYPE_LONG).asSingle();
+            def.optionalAttributeWithConstraints(ATTR_SEQUENCE_NAME).ofType(StringAttribute.SUBTYPE_STRING).asSingle();
 
             // ACCEPTS ANY ATTRIBUTES (for extensibility from service providers)
             // ADR-0051: NO any-attr wildcard. An undeclared attribute is ERR_UNKNOWN_ATTR in

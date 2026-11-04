@@ -1,0 +1,25 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Ticket",
+          "children": [
+            { "source.rdb": { "@table": "tickets" } },
+            { "field.long": { "name": "id" } },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": "id",
+                "@generation": "increment",
+                "@sequenceStart": 1000000000,
+                "@sequenceName": "Ticket_Id_seq"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

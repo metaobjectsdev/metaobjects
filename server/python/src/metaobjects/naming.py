@@ -37,18 +37,23 @@ if TYPE_CHECKING:
 COLUMN_NAMING_SNAKE_CASE = "snake_case"
 COLUMN_NAMING_LITERAL = "literal"
 COLUMN_NAMING_KEBAB_CASE = "kebab-case"
+#: The first letter upper-cased, nothing else changed (``requestURL`` → ``RequestURL``), so
+#: a camelCase model maps with no ``@column`` onto a schema whose columns are spelled that
+#: way. Not a word split.
+COLUMN_NAMING_UPPER_FIRST = "upperFirst"
 
 COLUMN_NAMING_STRATEGIES = (
     COLUMN_NAMING_SNAKE_CASE,
     COLUMN_NAMING_LITERAL,
     COLUMN_NAMING_KEBAB_CASE,
+    COLUMN_NAMING_UPPER_FIRST,
 )
 
 #: ADR-0058 — the project default, in every port: what ``meta migrate`` has always
 #: created. FLIPPED in 1.1.0 (was ``literal`` in this port only).
 DEFAULT_COLUMN_NAMING = COLUMN_NAMING_SNAKE_CASE
 
-#: ADR-0058 — ``tables`` accepts only these two: no ``kebab-case`` table rule.
+#: ADR-0058 — ``tables`` accepts only these two: no ``kebab-case`` or ``upperFirst`` table rule.
 TABLE_NAMING_SNAKE_CASE = "snake_case"
 TABLE_NAMING_LITERAL = "literal"
 
@@ -132,6 +137,21 @@ def to_snake_case(name: str) -> str:
     return "".join(out)
 
 
+def to_upper_first_column(name: str) -> str:
+    """The ``upperFirst`` column rule: the first letter upper-cased, the rest verbatim.
+
+    One UTF-16 unit in, one out, as C#'s ``char.ToUpperInvariant`` and Java's
+    ``Character.toUpperCase`` do: a first character whose upper case is not one character
+    (``ß`` → ``SS``), or that is outside the Basic Multilingual Plane, is kept as written, so
+    every port names it alike.
+    """
+    first = name[:1]
+    upper = first.upper()
+    if len(upper) != 1 or ord(first) > 0xFFFF:
+        upper = first
+    return upper + name[1:]
+
+
 def apply_column_naming_strategy(name: str, strategy: str = DEFAULT_COLUMN_NAMING) -> str:
     """Apply a strategy to a bare name.
 
@@ -144,6 +164,8 @@ def apply_column_naming_strategy(name: str, strategy: str = DEFAULT_COLUMN_NAMIN
         return to_snake_case(name)
     if strategy == COLUMN_NAMING_KEBAB_CASE:
         return to_snake_case(name).replace("_", "-")
+    if strategy == COLUMN_NAMING_UPPER_FIRST:
+        return to_upper_first_column(name)
     raise ValueError(
         f"unknown column-naming strategy {strategy!r}; "
         f"expected one of: {', '.join(COLUMN_NAMING_STRATEGIES)}"
@@ -167,6 +189,33 @@ def resolve_column_name(field: MetaField, strategy: str | None = None) -> str:
         return col
     effective = strategy if strategy is not None else naming_rules_of(field).columns
     return apply_column_naming_strategy(field.name, effective)
+
+
+def resolve_flattened_column_prefix(field: MetaField, strategy: str | None = None) -> str:
+    """The text before each member's column when *field* (a ``field.object @storage
+    "flattened"``) expands its value object into the owning table: its
+    ``@flattenedColumnPrefix`` verbatim (``""`` allowed), else its own resolved column and
+    ``_``. Core naming, not one generator's: the migration creates these columns and the
+    generated ORM mappings address them, so every port spells them the same way.
+
+    ADR-0039: read RESOLVING — the prefix and ``@column`` may be inherited through
+    ``extends``. ``strategy`` as for :func:`resolve_column_name`.
+    """
+    prefix = field.get_meta_attr(fc.FIELD_ATTR_FLATTENED_COLUMN_PREFIX)
+    if isinstance(prefix, str):
+        return prefix
+    return resolve_column_name(field, strategy) + "_"
+
+
+def resolve_flattened_column_name(
+    field: MetaField, member: MetaField, strategy: str | None = None
+) -> str:
+    """The column a member of a flattened value object gets in the owning table: the
+    embedding field's :func:`resolve_flattened_column_prefix` followed by the member's own
+    resolved column. The member's rule is the embedding field's, so one project setting
+    names both halves."""
+    effective = strategy if strategy is not None else naming_rules_of(field).columns
+    return resolve_flattened_column_prefix(field, effective) + resolve_column_name(member, effective)
 
 
 def strip_package(name: str) -> str:

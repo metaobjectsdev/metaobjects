@@ -28,6 +28,13 @@ public class MetaRoot(TypeId typeId, string name) : MetaData(typeId, name)
     public WireFormat WireFormat { get; set; } = WireFormat.Default;
 
     /// <summary>
+    /// The project's enum storage defaults (<c>enums</c> in <c>.metaobjects/config.json</c>), set by
+    /// the same project-aware load as <see cref="PhysicalNaming"/> and read through
+    /// <see cref="MetaObjects.Meta.EnumDefaults.Of"/>. A tree loaded with no project has none.
+    /// </summary>
+    public EnumDefaults EnumDefaults { get; set; } = EnumDefaults.Default;
+
+    /// <summary>
     /// FR-023 — what the project imports from metadata dependencies, set by the same project-aware load
     /// as <see cref="PhysicalNaming"/>. Null for a tree loaded with no project (nothing is imported).
     /// Imported objects load so the project's own model resolves against them, but

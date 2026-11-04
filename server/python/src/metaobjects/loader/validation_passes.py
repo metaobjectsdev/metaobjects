@@ -7,6 +7,7 @@ Warning strings are byte-identical to the expected-warnings fixtures.
 """
 from __future__ import annotations
 
+import json
 import math
 import re
 from typing import Callable, NamedTuple
@@ -28,9 +29,12 @@ from ..meta.core.field.field_constants import (
     FIELD_ATTR_COERCE_DEFAULT,
     FIELD_ATTR_DEFAULT,
     FIELD_ATTR_INT_VALUE_MAP,
+    FIELD_ATTR_MAX_LENGTH,
     FIELD_ATTR_OBJECT_REF,
     FIELD_ATTR_REQUIRED,
     FIELD_ATTR_SORTABLE,
+    FIELD_ATTR_FLATTENED_COLUMN_PREFIX,
+    STORAGE_FLATTENED,
     FIELD_ATTR_STORAGE,
     FIELD_ATTR_VALUE_TYPE,
     FIELD_ATTR_VALUES,
@@ -44,6 +48,7 @@ from ..meta.core.field.field_constants import (
     FIELD_SUBTYPE_INT,
     FIELD_SUBTYPE_LONG,
     FIELD_SUBTYPE_INET,
+    FIELD_SUBTYPE_DURATION,
     FIELD_SUBTYPE_MAP,
     FIELD_SUBTYPE_OBJECT,
     FIELD_SUBTYPE_STRING,
@@ -85,6 +90,7 @@ from ..shared.base_types import (
     TYPE_REQUIREMENT,
     TYPE_SOURCE,
     TYPE_TEMPLATE,
+    TYPE_VALIDATOR,
 )
 from ..meta.template import template_constants as tc
 from ..meta.presentation.layout.layout_constants import (
@@ -247,6 +253,12 @@ def run_validations(
     # FR-015 — source.rdb @parameterRef typed-input rules.
     validate_source_parameter_ref(root, errors)
     _validate_field_object_storage(root, errors)
+    # field.enum @maxLength — every member fits; refused with @intValueMap.
+    _validate_enum_max_length(root, errors)
+    # identity.primary @sequenceStart / @sequenceName need @generation "increment".
+    _validate_identity_sequence(root, errors)
+    # cross-field validators — exactlyOne names two or more fields; @condition names entity fields.
+    _validate_cross_field_validators(root, errors)
     # field.map — exactly one of @valueType (scalar) or @objectRef (VO), and
     # @valueType (when set) must name a known scalar subtype.
     _validate_field_map(root, errors)
@@ -1097,6 +1109,10 @@ def ops_for_subtype(field_subtype: str) -> frozenset[str]:
         return _OPS_STRING
     if field_subtype in ("uuid", FIELD_SUBTYPE_INET):
         return _OPS_UUID
+    # field.duration is an orderable span: the numeric/temporal band. Every engine orders it
+    # (a Postgres interval; a microsecond integer on SQLite, D1 and MySQL).
+    if field_subtype == FIELD_SUBTYPE_DURATION:
+        return _OPS_NUMERIC_TEMPORAL
     if field_subtype == "boolean":
         return _OPS_BOOLEAN
     if field_subtype in _NUMERIC_TEMPORAL_SUBTYPES:
@@ -3711,6 +3727,282 @@ def _validate_sortable_has_supported_subtype(
 #      skipped when @objectRef is absent).
 #   2. @storage="flattened" + isArray → ERR_STORAGE_FLATTENED_ARRAY (flattened
 #      materialises one-column-per-field; arrays require @storage="jsonb").
+#   3. @flattenedColumnPrefix without @storage="flattened" →
+#      ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE (no other storage gives the
+#      members columns of their own to prefix).
+
+
+# identity.primary @sequenceStart / @sequenceName describe the sequence an @generation
+# "increment" key draws from; on any other generation there is none, so either one is refused
+# (ERR_SEQUENCE_WITHOUT_INCREMENT). Read RESOLVING (ADR-0039), reported on the identity that
+# declares one of them. Mirrors TS validateIdentitySequence.
+#: The largest value a field.int key (a 32-bit integer column) can hold.
+_SEQUENCE_INT_MAX = 2147483647
+
+
+def _validate_identity_sequence(root: MetaData, errors: list[MetaError]) -> None:
+    from ..meta.core.identity.identity_constants import (
+        GENERATION_INCREMENT,
+        IDENTITY_ATTR_GENERATION,
+        IDENTITY_SUBTYPE_PRIMARY,
+    )
+    from ..meta.persistence.db.db_constants import (
+        IDENTITY_PRIMARY_ATTR_SEQUENCE_NAME,
+        IDENTITY_PRIMARY_ATTR_SEQUENCE_START,
+    )
+
+    for obj in root.children():
+        if obj.type != TYPE_OBJECT:
+            continue
+        for ident in obj.own_children():
+            if ident.type != TYPE_IDENTITY or ident.sub_type != IDENTITY_SUBTYPE_PRIMARY:
+                continue
+            declared = [
+                f"@{a}"
+                for a in (IDENTITY_PRIMARY_ATTR_SEQUENCE_START, IDENTITY_PRIMARY_ATTR_SEQUENCE_NAME)
+                if ident.attr(a) is not None
+            ]
+            generation = ident.get_meta_attr(IDENTITY_ATTR_GENERATION)
+            if not declared:
+                continue
+            if generation == GENERATION_INCREMENT:
+                # The key field's own range bounds the start (Postgres refuses the sequence
+                # otherwise, at apply time): 1 to the largest value of a field.int / field.long.
+                start = ident.get_meta_attr(IDENTITY_PRIMARY_ATTR_SEQUENCE_START)
+                if isinstance(start, int) and not isinstance(start, bool):
+                    fields = ident.get_meta_attr(IDENTITY_ATTR_FIELDS)
+                    key_name = fields[0] if isinstance(fields, list) and fields else fields
+                    key = next((f for f in obj.fields() if f.name == key_name), None)
+                    maximum = _SEQUENCE_INT_MAX if key is not None and key.sub_type == FIELD_SUBTYPE_INT else None
+                    if start < 1 or (maximum is not None and start > maximum):
+                        kind = f" (field.{key.sub_type})" if key is not None else ""
+                        upper = f" and at most {maximum}" if maximum is not None else ""
+                        errors.append(MetaError(
+                            code=ErrorCode.ERR_SEQUENCE_START_OUT_OF_RANGE,
+                            message=(
+                                f'identity.primary "{obj.name}.{ident.name}" @sequenceStart {start} is out '
+                                f'of range for its key "{key_name}"{kind}: it must be at least 1{upper}.'
+                            ),
+                            envelope=ident.source,
+                        ))
+                continue
+            shown = f'"{generation}"' if isinstance(generation, str) else "not set"
+            names = " and ".join(declared)
+            errors.append(MetaError(
+                code=ErrorCode.ERR_SEQUENCE_WITHOUT_INCREMENT,
+                message=(
+                    f'identity.primary "{obj.name}.{ident.name}" sets {names}, but its @generation '
+                    f'is {shown}; only an @generation "increment" key draws from a sequence. Set '
+                    f'@generation "increment", or remove {names}.'
+                ),
+                envelope=ident.source,
+            ))
+
+
+# Cross-field validators (comparison / requiredWhen / presentIff / atLeastOne / exactlyOne), which
+# the database enforces as CHECKs: exactlyOne @fields names two or more fields,
+# every field a @condition names a field of the owning entity, and a @condition that can
+# become a CHECK guard (see _condition_problem) — all ERR_BAD_ATTR_VALUE. Read RESOLVING
+# (ADR-0039). Mirrors TS validateCrossFieldValidators.
+def _expr_field_refs(node: object, out: set[str]) -> None:
+    if not isinstance(node, dict):
+        return
+    if isinstance(node.get("field"), str):
+        out.add(node["field"])
+    for key in ("left", "right", "arg"):
+        _expr_field_refs(node.get(key), out)
+    args = node.get("args")
+    if isinstance(args, list):
+        for a in args:
+            _expr_field_refs(a, out)
+
+
+# Field subtypes whose values a condition compares with a number literal.
+_CONDITION_NUMBER_SUBTYPES = frozenset({
+    FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT,
+    FIELD_SUBTYPE_DECIMAL, FIELD_SUBTYPE_CURRENCY,
+})
+
+
+def _json_literal(value: object) -> str:
+    """A literal as JSON.stringify writes it, so the message matches the TS port's."""
+    if isinstance(value, float) and value.is_integer():
+        value = int(value)
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+
+def _literal_is_kind(value: object, kind: str) -> bool:
+    # bool is a subclass of int in Python: a bool literal is not a number, nor a number a bool.
+    if kind == "boolean":
+        return isinstance(value, bool)
+    if kind == "number":
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    return isinstance(value, str)
+
+
+def _condition_problem(condition: object, obj: MetaData) -> str | None:
+    """Why a cross-field validator's ``@condition`` cannot become a CHECK guard, or None when
+    it can. Its names are already known to be fields. The rule, the same in every port:
+      - it types cleanly (the origin.computed inference) and its root is boolean, since a
+        CHECK negates it;
+      - a literal compared with a field is of that field's kind (a boolean for field.boolean,
+        a number for a numeric field, a string otherwise) and, for field.enum, one of its
+        @values;
+      - no comparison has a null literal: ``x = NULL`` is never true, so use isNull / isNotNull.
+    Mirrors TS conditionProblem."""
+    fields = {f.name: f for f in obj.fields()}
+    inferred = infer_expr_type(
+        condition, lambda name: fields[name].sub_type if name in fields else None
+    )
+    if inferred.errors:
+        return f"is not a valid expression: {'; '.join(inferred.errors)}."
+    if inferred.type != FIELD_SUBTYPE_BOOLEAN:
+        return (
+            "must be a boolean expression (a comparison, a null test, or and / or / not of "
+            f"them), not a field.{inferred.type}."
+        )
+
+    def visit(node: object) -> str | None:
+        if not isinstance(node, dict):
+            return None
+        if node.get("left") is not None and node.get("right") is not None:
+            for lit, ref in ((node["left"], node["right"]), (node["right"], node["left"])):
+                if not isinstance(lit, dict) or "value" not in lit:
+                    continue
+                value = lit["value"]
+                if value is None:
+                    return "compares with null, which is never true: use isNull or isNotNull."
+                name = ref.get("field") if isinstance(ref, dict) else None
+                field = fields.get(name) if isinstance(name, str) else None
+                if field is None:
+                    continue
+                sub = field.sub_type
+                kind = (
+                    "boolean" if sub == FIELD_SUBTYPE_BOOLEAN
+                    else "number" if sub in _CONDITION_NUMBER_SUBTYPES
+                    else "string"
+                )
+                if not _literal_is_kind(value, kind):
+                    return (
+                        f'compares "{field.name}" (field.{sub}) with {_json_literal(value)}; '
+                        f"it needs a {kind}."
+                    )
+                members = field.get_meta_attr(FIELD_ATTR_VALUES) if sub == FIELD_SUBTYPE_ENUM else None
+                if isinstance(members, list) and str(value) not in [str(m) for m in members]:
+                    return (
+                        f'compares "{field.name}" with {_json_literal(value)}, which is not one '
+                        f"of its @values ({', '.join(str(m) for m in members)})."
+                    )
+        for key in ("left", "right", "arg"):
+            found = visit(node.get(key))
+            if found is not None:
+                return found
+        args = node.get("args")
+        if isinstance(args, list):
+            for a in args:
+                found = visit(a)
+                if found is not None:
+                    return found
+        return None
+
+    return visit(condition)
+
+
+def _validate_cross_field_validators(root: MetaData, errors: list[MetaError]) -> None:
+    from ..meta.core.validator import validator_constants as vc
+
+    for obj in root.children():
+        if obj.type != TYPE_OBJECT:
+            continue
+        field_names = {f.name for f in obj.fields()}
+        for v in obj.own_children():
+            if v.type != TYPE_VALIDATOR or v.sub_type not in vc.CROSS_FIELD_VALIDATOR_SUBTYPES:
+                continue
+            if v.sub_type == vc.VALIDATOR_SUBTYPE_EXACTLY_ONE:
+                fields = v.get_meta_attr(vc.VALIDATOR_ATTR_FIELDS)
+                count = len(fields) if isinstance(fields, list) else (0 if fields is None else 1)
+                if count < 2:
+                    plural = "" if count == 1 else "s"
+                    errors.append(MetaError(
+                        code=ErrorCode.ERR_BAD_ATTR_VALUE,
+                        message=(
+                            f'validator.exactlyOne "{obj.name}.{v.name}" @fields names {count} '
+                            f"field{plural}; it needs two or more. For one field, make that field required."
+                        ),
+                        envelope=v.source,
+                    ))
+                    continue
+            condition = v.get_meta_attr(vc.VALIDATOR_ATTR_CONDITION)
+            if condition is None:
+                continue
+            label = f'validator.{v.sub_type} "{obj.name}.{v.name}" @condition'
+            refs: set[str] = set()
+            _expr_field_refs(condition, refs)
+            unknown = sorted(refs - field_names)
+            if unknown:
+                names = ", ".join(f'"{u}"' for u in unknown)
+                verb = "is not a field" if len(unknown) == 1 else "are not fields"
+                errors.append(MetaError(
+                    code=ErrorCode.ERR_BAD_ATTR_VALUE,
+                    message=f'{label} names {names}, which {verb} of "{obj.name}".',
+                    envelope=v.source,
+                ))
+                continue
+            problem = _condition_problem(condition, obj)
+            if problem is not None:
+                errors.append(MetaError(
+                    code=ErrorCode.ERR_BAD_ATTR_VALUE,
+                    message=f"{label} {problem}",
+                    envelope=v.source,
+                ))
+
+
+# field.enum @maxLength — the column length of a string-stored enum:
+#   1. every member of @values fits in it (ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH), the longest
+#      offender named;
+#   2. it is refused beside @intValueMap (ERR_ENUM_MAX_LENGTH_WITH_INT_VALUE_MAP).
+# Read RESOLVING (ADR-0039), reported on the node that DECLARES one of the three, so an enum
+# that only inherits them is not reported twice. Mirrors TS validateEnumMaxLength.
+def _validate_enum_max_length(root: MetaData, errors: list[MetaError]) -> None:
+    for node in _walk(root):
+        if node.type != TYPE_FIELD or node.sub_type != FIELD_SUBTYPE_ENUM:
+            continue
+        declares = any(
+            node.attr(a) is not None
+            for a in (FIELD_ATTR_MAX_LENGTH, FIELD_ATTR_VALUES, FIELD_ATTR_INT_VALUE_MAP)
+        )
+        max_length = node.get_meta_attr(FIELD_ATTR_MAX_LENGTH)  # ADR-0039 resolving
+        if not declares or not isinstance(max_length, int) or isinstance(max_length, bool):
+            continue
+        owner = node.parent
+        label = f"{owner.name}.{node.name}" if owner is not None and owner.type == TYPE_OBJECT else node.name
+        if node.get_meta_attr(FIELD_ATTR_INT_VALUE_MAP) is not None:
+            errors.append(MetaError(
+                code=ErrorCode.ERR_ENUM_MAX_LENGTH_WITH_INT_VALUE_MAP,
+                message=(
+                    f'field.enum "{label}" sets @maxLength {max_length} and @intValueMap; an '
+                    f"@intValueMap enum is stored as an integer, so a column length does not "
+                    f"apply. Remove @maxLength."
+                ),
+                envelope=node.source,
+            ))
+            continue
+        values = node.get_meta_attr(FIELD_ATTR_VALUES)
+        too_long = sorted(
+            (v for v in (values if isinstance(values, list) else []) if isinstance(v, str) and len(v) > max_length),
+            key=len,
+            reverse=True,
+        )
+        if too_long:
+            errors.append(MetaError(
+                code=ErrorCode.ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH,
+                message=(
+                    f'field.enum "{label}" @maxLength {max_length} is shorter than its member '
+                    f'"{too_long[0]}" ({len(too_long[0])} characters). Raise @maxLength to at '
+                    f"least {len(too_long[0])}, or shorten the member."
+                ),
+                envelope=node.source,
+            ))
 
 
 def _validate_field_object_storage(root: MetaData, errors: list[MetaError]) -> None:
@@ -3737,9 +4029,33 @@ def _validate_field_object_storage(root: MetaData, errors: list[MetaError]) -> N
             ))
             continue
         storage = node.get_meta_attr(FIELD_ATTR_STORAGE)  # ADR-0039 resolving
+        # @flattenedColumnPrefix names the columns a flattened value object adds to the
+        # owning table; under any other storage it would change nothing, so it is refused
+        # rather than silently ignored.
+        # Only a field an object owns is checked (as TS and C# do): a root-level abstract
+        # field.object is a template, and the concrete field that extends it — resolving
+        # both the prefix and @storage — is the one checked.
+        owner = node.parent
+        if (
+            owner is not None
+            and owner.type == TYPE_OBJECT
+            and node.get_meta_attr(FIELD_ATTR_FLATTENED_COLUMN_PREFIX) is not None
+            and storage != STORAGE_FLATTENED
+        ):
+            storage_text = "not set (jsonb)" if storage is None else f'"{storage}"'
+            errors.append(MetaError(
+                code=ErrorCode.ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE,
+                message=(
+                    f'field.object "{owner.name}.{node.name}" sets @flattenedColumnPrefix, but its @storage '
+                    f"is {storage_text}; only a @storage \"flattened\" value object puts its "
+                    f"members' columns in the owning table. Set @storage \"flattened\", or "
+                    f"remove @flattenedColumnPrefix."
+                ),
+                envelope=node.source,
+            ))
         if storage is None:
             continue
-        if storage == "flattened" and node.resolved_is_array():  # ADR-0039 resolving isArray
+        if storage == STORAGE_FLATTENED and node.resolved_is_array():  # ADR-0039 resolving isArray
             errors.append(MetaError(
                 code=ErrorCode.ERR_STORAGE_FLATTENED_ARRAY,
                 message=(
@@ -4205,6 +4521,46 @@ def _has_explicit_column(field: MetaData) -> bool:
     return isinstance(col, str) and col != ""
 
 
+class _PhysicalColumn(NamedTuple):
+    """One physical column a field contributes to its object's table."""
+
+    column: str
+    #: ``street``, or ``shipTo.street`` for a member of a flattened value object.
+    label: str
+    #: The field that names it: the field itself, or the flattened value object's member.
+    named: MetaData
+    #: Set for a flattened member: the embedding field.object.
+    embedding: MetaData | None = None
+
+
+def _physical_columns_of(field: MetaData) -> list[_PhysicalColumn]:
+    from ..naming import resolve_column_name, resolve_flattened_column_name
+    # ADR-0039: resolving -- @storage and @objectRef may be inherited via extends.
+    if field.sub_type == FIELD_SUBTYPE_OBJECT and field.get_meta_attr(FIELD_ATTR_STORAGE) == STORAGE_FLATTENED:
+        target = bound_ref_target(field, FIELD_ATTR_OBJECT_REF)
+        if not isinstance(target, MetaObject):
+            return []
+        # Every member, as migrate's flattenObjectField expands it.
+        return [
+            _PhysicalColumn(
+                resolve_flattened_column_name(field, member),
+                f"{field.name}.{member.name}",
+                member,
+                field,
+            )
+            for member in target.fields()
+        ]
+    return [_PhysicalColumn(resolve_column_name(field), field.name, field)]
+
+
+def _collision_hint(a: _PhysicalColumn, b: _PhysicalColumn) -> str:
+    if a.embedding is not None or b.embedding is not None:
+        return "Give one flattened field a different @flattenedColumnPrefix, or rename one field."
+    if _has_explicit_column(a.named) and _has_explicit_column(b.named):
+        return "Rename one field, or point one @column at a different column."
+    return "Rename one field, or give one an explicit @column so the two columns differ."
+
+
 def _validate_column_name_collisions(root: MetaData, errors: list[MetaError]) -> None:
     """ERR_COLUMN_NAME_COLLISION: two fields of one stored object resolving to the SAME
     physical column (``userId`` + ``userID`` both snake_case to ``user_id``, or two
@@ -4213,8 +4569,11 @@ def _validate_column_name_collisions(root: MetaData, errors: list[MetaError]) ->
     Only the RESOLVED name is compared, through :func:`resolve_column_name`, so an
     explicit ``@column``, an inherited field and the project's column strategy are
     honoured. Scope: a concrete object declaring at least one source (a source-less
-    object generates nothing); derived fields and ``field.object`` (may flatten to
-    several columns) are skipped. ADR-0039: effective children (inherited fields count).
+    object generates nothing); derived fields are skipped. A ``field.object @storage
+    "flattened"`` has no column of its own: each member of its value object is a column,
+    named by :func:`resolve_flattened_column_name` exactly as migrate creates it. Any
+    other ``field.object`` is one column under its own resolved name.
+    ADR-0039: effective children (inherited fields count).
 
     Exempt: an object whose every source is read-only and at least one is a
     ``source.rdb @kind: view`` with an ``@sql`` body. The author's SQL defines that view's
@@ -4223,7 +4582,6 @@ def _validate_column_name_collisions(root: MetaData, errors: list[MetaError]) ->
     from its fields, and an object with a writable source has a real table whose columns
     MetaObjects creates; both stay checked.
     """
-    from ..naming import resolve_column_name
     from ..meta.core.field.meta_field import MetaField
     for obj in (c for c in root.children() if c.type == TYPE_OBJECT):
         if obj.is_abstract:
@@ -4236,29 +4594,23 @@ def _validate_column_name_collisions(root: MetaData, errors: list[MetaError]) ->
             for s in sources
         ):
             continue
-        seen: dict[str, MetaData] = {}
+        seen: dict[str, _PhysicalColumn] = {}
         for field in obj.children():
-            if not isinstance(field, MetaField) or field.sub_type == FIELD_SUBTYPE_OBJECT \
-                    or field.is_derived():
+            if not isinstance(field, MetaField) or field.is_derived():
                 continue
-            column = resolve_column_name(field)
-            first = seen.get(column)
-            if first is None:
-                seen[column] = field
-                continue
-            errors.append(MetaError(
-                code=ErrorCode.ERR_COLUMN_NAME_COLLISION,
-                message=(
-                    f'fields "{first.name}" and "{field.name}" on "{obj.name}" both resolve '
-                    f'to physical column "{column}". '
-                    + (
-                        "Rename one field, or point one @column at a different column."
-                        if _has_explicit_column(first) and _has_explicit_column(field)
-                        else "Rename one field, or give one an explicit @column so the two columns differ."
-                    )
-                ),
-                envelope=field.source,
-            ))
+            for col in _physical_columns_of(field):
+                first = seen.get(col.column)
+                if first is None:
+                    seen[col.column] = col
+                    continue
+                errors.append(MetaError(
+                    code=ErrorCode.ERR_COLUMN_NAME_COLLISION,
+                    message=(
+                        f'fields "{first.label}" and "{col.label}" on "{obj.name}" both resolve '
+                        f'to physical column "{col.column}". ' + _collision_hint(first, col)
+                    ),
+                    envelope=field.source,
+                ))
 
 
 def _validate_retired_requirement_links(root: MetaData, errors: list[MetaError]) -> None:

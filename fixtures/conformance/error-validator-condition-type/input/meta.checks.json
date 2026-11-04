@@ -1,0 +1,136 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Visit",
+          "children": [
+            {
+              "source.rdb": {}
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "storeId"
+              }
+            },
+            {
+              "field.long": {
+                "name": "kioskId"
+              }
+            },
+            {
+              "field.boolean": {
+                "name": "active"
+              }
+            },
+            {
+              "field.enum": {
+                "name": "kind",
+                "@values": [
+                  "Owned",
+                  "Shared"
+                ]
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": "id"
+              }
+            },
+            {
+              "validator.atLeastOne": {
+                "name": "notBoolean",
+                "@fields": [
+                  "storeId",
+                  "kioskId"
+                ],
+                "@condition": {
+                  "field": "storeId"
+                }
+              }
+            },
+            {
+              "validator.atLeastOne": {
+                "name": "booleanAsString",
+                "@fields": [
+                  "storeId",
+                  "kioskId"
+                ],
+                "@condition": {
+                  "op": "eq",
+                  "left": {
+                    "field": "active"
+                  },
+                  "right": {
+                    "value": "true"
+                  }
+                }
+              }
+            },
+            {
+              "validator.atLeastOne": {
+                "name": "nullLiteral",
+                "@fields": [
+                  "storeId",
+                  "kioskId"
+                ],
+                "@condition": {
+                  "op": "ne",
+                  "left": {
+                    "field": "storeId"
+                  },
+                  "right": {
+                    "value": null
+                  }
+                }
+              }
+            },
+            {
+              "validator.atLeastOne": {
+                "name": "notAMember",
+                "@fields": [
+                  "storeId",
+                  "kioskId"
+                ],
+                "@condition": {
+                  "op": "eq",
+                  "left": {
+                    "field": "kind"
+                  },
+                  "right": {
+                    "value": "Nope"
+                  }
+                }
+              }
+            },
+            {
+              "validator.atLeastOne": {
+                "name": "numberAsString",
+                "@fields": [
+                  "storeId",
+                  "kioskId"
+                ],
+                "@condition": {
+                  "op": "eq",
+                  "left": {
+                    "value": "5"
+                  },
+                  "right": {
+                    "field": "storeId"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

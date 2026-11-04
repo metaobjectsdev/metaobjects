@@ -1,0 +1,151 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "StoreHours",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "StoreHours"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.enum": {
+                "name": "kind",
+                "@constraintName": "CK_StoreHours_Kind",
+                "@values": [
+                  "InStore",
+                  "Phone"
+                ]
+              }
+            },
+            {
+              "field.int": {
+                "name": "startDay",
+                "children": [
+                  {
+                    "validator.numeric": {
+                      "name": "weekday",
+                      "@constraintName": "CK_StoreHours_StartDay",
+                      "@max": 6,
+                      "@min": 0
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.int": {
+                "name": "endDay"
+              }
+            },
+            {
+              "field.time": {
+                "name": "startTime"
+              }
+            },
+            {
+              "field.time": {
+                "name": "endTime"
+              }
+            },
+            {
+              "field.string": {
+                "name": "code",
+                "children": [
+                  {
+                    "validator.length": {
+                      "name": "len",
+                      "@constraintName": "CK_StoreHours_Code",
+                      "@max": 8
+                    }
+                  },
+                  {
+                    "validator.regex": {
+                      "name": "shape",
+                      "@constraintName": "CK_StoreHours_CodeShape",
+                      "@pattern": "^[A-Z0-9]+$"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.long": {
+                "name": "storeId"
+              }
+            },
+            {
+              "field.long": {
+                "name": "kioskId"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ],
+                "@generation": "increment"
+              }
+            },
+            {
+              "validator.comparison": {
+                "name": "sameDayTimes",
+                "@condition": {
+                  "op": "eq",
+                  "left": {
+                    "field": "startDay"
+                  },
+                  "right": {
+                    "field": "endDay"
+                  }
+                },
+                "@constraintName": "CK_StoreHours_SameDayTimes",
+                "@left": "endTime",
+                "@op": "gt",
+                "@right": "startTime"
+              }
+            },
+            {
+              "validator.exactlyOne": {
+                "name": "oneSource",
+                "@condition": {
+                  "op": "eq",
+                  "left": {
+                    "field": "kind"
+                  },
+                  "right": {
+                    "value": "InStore"
+                  }
+                },
+                "@constraintName": "CK_StoreHours_ExactlyOneLocation",
+                "@fields": [
+                  "storeId",
+                  "kioskId"
+                ]
+              }
+            },
+            {
+              "validator.atLeastOne": {
+                "name": "anyTime",
+                "@constraintName": "CK_StoreHours_AnyTime",
+                "@fields": [
+                  "startTime",
+                  "endTime"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

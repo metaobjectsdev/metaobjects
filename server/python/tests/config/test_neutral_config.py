@@ -177,3 +177,23 @@ def test_unknown_library_token_raises_loudly(tmp_path: Path) -> None:
         read_neutral_config(tmp_path)
     assert e.value.code == ErrorCode.ERR_UNKNOWN_LIBRARY
     assert "ai-trace" in str(e.value)
+
+
+@pytest.mark.parametrize("enums", [{}, {"maxLength": 32}, {"maxLength": 32.0}, {"maxLength": 1e2}])
+def test_an_enums_block_is_accepted_and_ignored(tmp_path: Path, enums: object) -> None:
+    """A project shared with a port that sizes a string-stored enum's column has an `enums`
+    block. This port sizes no column, so it reads nothing from the block, but accepts it."""
+    _write_config(tmp_path, {"schema_version": 1, "sources": [], "enums": enums})
+    assert read_neutral_config(tmp_path) is not None
+
+
+@pytest.mark.parametrize(
+    "enums",
+    [[], "32", {"maxLen": 32}, {"maxLength": 0}, {"maxLength": -1}, {"maxLength": 1.5}, {"maxLength": True}],
+    ids=repr,
+)
+def test_a_malformed_enums_block_is_refused(tmp_path: Path, enums: object) -> None:
+    _write_config(tmp_path, {"schema_version": 1, "sources": [], "enums": enums})
+    with pytest.raises(ParseError) as e:
+        read_neutral_config(tmp_path)
+    assert e.value.code == ErrorCode.ERR_BAD_ATTR_VALUE

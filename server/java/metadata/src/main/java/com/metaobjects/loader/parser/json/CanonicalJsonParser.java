@@ -5,6 +5,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.google.gson.JsonPrimitive;
+import com.metaobjects.database.CoreDBMetaDataProvider;
 import com.metaobjects.ErrorCode;
 import com.metaobjects.MetaData;
 import com.metaobjects.MetaDataException;
@@ -1047,8 +1048,9 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
 
             String existingVal = preAttrs.get(attrName);
             if (existingVal == null) continue;
-            if (isEmptyJsonValue(entry.getValue())) continue;
-            if (existingVal.isEmpty()) continue;
+            boolean emptyIsAValue = EMPTY_STRING_IS_A_VALUE.contains(attrName);
+            if (isEmptyJsonValue(entry.getValue(), emptyIsAValue)) continue;
+            if (existingVal.isEmpty() && !emptyIsAValue) continue;
 
             // Normalize the new JSON value to the same comma-delimited form
             // that {@link MetaAttribute#getValueAsString()} returns for arrays,
@@ -1057,7 +1059,7 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
             // parser's {@code convertJsonArrayToCommaDelimited} treatment of
             // array-shaped inline attrs.
             String newVal = normalizeAttrValueForCompare(entry.getValue());
-            if (newVal == null || newVal.isEmpty()) continue;
+            if (newVal == null || (newVal.isEmpty() && !emptyIsAValue)) continue;
             if (existingVal.equals(newVal)) continue;
 
             // Real conflict — emit ERR_MERGE_CONFLICT with merged envelope.
@@ -1180,11 +1182,17 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
         return raw;
     }
 
-    /** FR5c — empty-value check matching the TS reference. */
-    private static boolean isEmptyJsonValue(JsonElement el) {
+    /** Attrs whose empty string is a meaningful value rather than "not set" (FR5c). */
+    private static final java.util.Set<String> EMPTY_STRING_IS_A_VALUE =
+        java.util.Set.of(CoreDBMetaDataProvider.FLATTENED_COLUMN_PREFIX);
+
+    /** FR5c — empty-value check matching the TS reference. An attr in
+     *  {@link #EMPTY_STRING_IS_A_VALUE} treats {@code ""} as a value, so {@code ""} beside
+     *  {@code "home_"} is a conflict rather than last-loaded-wins. */
+    private static boolean isEmptyJsonValue(JsonElement el, boolean emptyStringIsAValue) {
         if (el == null || el.isJsonNull()) return true;
         if (el.isJsonArray() && el.getAsJsonArray().size() == 0) return true;
-        if (el.isJsonPrimitive() && el.getAsJsonPrimitive().isString()
+        if (!emptyStringIsAValue && el.isJsonPrimitive() && el.getAsJsonPrimitive().isString()
             && el.getAsString().isEmpty()) return true;
         return false;
     }

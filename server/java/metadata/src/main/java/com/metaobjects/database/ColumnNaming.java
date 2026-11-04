@@ -45,6 +45,13 @@ public final class ColumnNaming {
     public static final String SNAKE_CASE = "snake_case";
     /** camelCase / PascalCase to kebab-case. */
     public static final String KEBAB_CASE = "kebab-case";
+    /**
+     * The first letter upper-cased, nothing else changed ({@code requestURL} to
+     * {@code RequestURL}, {@code id} to {@code Id}): for a schema whose columns are named like
+     * the fields with an upper-case first letter, so a camelCase model maps onto it with no
+     * {@code @column}. Not a word split: one UTF-16 unit in, one out.
+     */
+    public static final String UPPER_FIRST = "upperFirst";
 
     /** The project default (ADR-0058) — what {@code meta migrate} has always created. */
     public static final String DEFAULT = SNAKE_CASE;
@@ -83,9 +90,16 @@ public final class ColumnNaming {
         if (LITERAL.equals(strategy)) return name;
         if (SNAKE_CASE.equals(strategy)) return toSnakeCase(name);
         if (KEBAB_CASE.equals(strategy)) return toSnakeCase(name).replace('_', '-');
+        if (UPPER_FIRST.equals(strategy)) return toUpperFirstColumn(name);
         throw new IllegalArgumentException(
                 "unknown column-naming strategy '" + strategy + "'; expected one of: "
-                        + LITERAL + ", " + SNAKE_CASE + ", " + KEBAB_CASE);
+                        + LITERAL + ", " + SNAKE_CASE + ", " + KEBAB_CASE + ", " + UPPER_FIRST);
+    }
+
+    /** The {@link #UPPER_FIRST} rule: the first letter upper-cased, the rest verbatim. */
+    public static String toUpperFirstColumn(String name) {
+        if (name == null || name.isEmpty()) return name;
+        return Character.toUpperCase(name.charAt(0)) + name.substring(1);
     }
 
     /**
@@ -117,6 +131,43 @@ public final class ColumnNaming {
         }
         if (explicit != null && !explicit.isEmpty()) return explicit;
         return apply(field.getName(), strategy);
+    }
+
+    /**
+     * The text before each member's column when {@code field} (a {@code field.object
+     * @storage "flattened"}) expands its value object into the owning table: its
+     * {@code @flattenedColumnPrefix} verbatim ({@code ""} allowed), else its own resolved column
+     * and {@code _}. Core naming, not one generator's: the migration creates these columns and
+     * the generated ORM mappings (the Kotlin Exposed tables) address them, so every one of them
+     * spells them here.
+     *
+     * <p>ADR-0039: read RESOLVING — the prefix and {@code @column} may be inherited through
+     * {@code extends}.</p>
+     */
+    public static String resolveFlattenedPrefix(MetaField<?> field, String strategy) {
+        if (field.hasMetaAttr(CoreDBMetaDataProvider.FLATTENED_COLUMN_PREFIX, true)) {
+            Object prefix = field.getMetaAttr(CoreDBMetaDataProvider.FLATTENED_COLUMN_PREFIX, true).getValue();
+            if (prefix instanceof String) return (String) prefix;
+        }
+        return resolve(field, strategy) + "_";
+    }
+
+    /** {@link #resolveFlattenedPrefix(MetaField, String)} under the project's rule. */
+    public static String resolveFlattenedPrefix(MetaField<?> field) {
+        return resolveFlattenedPrefix(field, PhysicalNaming.of(field).columns());
+    }
+
+    /**
+     * The column a member of a flattened value object gets in the owning table: the embedding
+     * field's {@link #resolveFlattenedPrefix prefix} followed by the member's own resolved column.
+     */
+    public static String resolveFlattened(MetaField<?> field, MetaField<?> member, String strategy) {
+        return resolveFlattenedPrefix(field, strategy) + resolve(member, strategy);
+    }
+
+    /** {@link #resolveFlattened(MetaField, MetaField, String)} under the project's rule. */
+    public static String resolveFlattened(MetaField<?> field, MetaField<?> member) {
+        return resolveFlattened(field, member, PhysicalNaming.of(field).columns());
     }
 
     /**

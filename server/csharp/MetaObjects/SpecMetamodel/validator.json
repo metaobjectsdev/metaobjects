@@ -66,7 +66,8 @@
       "children": [
         { "type": "attr", "subType": "string", "name": "left", "min": 1, "max": 1, "description": "Name of the left-hand field of the owning entity." },
         { "type": "attr", "subType": "string", "name": "op", "min": 1, "max": 1, "allowedValues": ["gt", "gte", "lt", "lte", "ne", "eq"], "description": "Relational operator: gt (>), gte (>=), lt (<), lte (<=), ne (<>), eq (=)." },
-        { "type": "attr", "subType": "string", "name": "right", "min": 1, "max": 1, "description": "Name of the right-hand field of the owning entity." }
+        { "type": "attr", "subType": "string", "name": "right", "min": 1, "max": 1, "description": "Name of the right-hand field of the owning entity." },
+        { "type": "attr", "subType": "expression", "name": "condition", "min": 0, "max": 1, "description": "The case this rule applies in: an expression over the owning entity's fields (the attr.expression grammar). Absent: always. The database CHECK is NOT (condition) OR (rule), so a row the condition does not hold for, or holds NULL for, is not checked. Enforced like the rule itself: by the database CHECK and, on create, by the generated record model in every port. Justified in ADR-0023 Amendment 1." }
       ]
     },
     {
@@ -78,7 +79,8 @@
       "children": [
         { "type": "attr", "subType": "string", "name": "field", "min": 1, "max": 1, "description": "Name of the field that becomes required when the condition holds." },
         { "type": "attr", "subType": "string", "name": "when", "min": 1, "max": 1, "description": "Name of the gating field whose value triggers the requirement." },
-        { "type": "attr", "subType": "string", "name": "equals", "min": 1, "max": 1, "description": "The gating value; when @when equals this, @field must be present." }
+        { "type": "attr", "subType": "string", "name": "equals", "min": 1, "max": 1, "description": "The gating value; when @when equals this, @field must be present." },
+        { "type": "attr", "subType": "expression", "name": "condition", "min": 0, "max": 1, "description": "The case this rule applies in: an expression over the owning entity's fields (the attr.expression grammar). Absent: always. The database CHECK is NOT (condition) OR (rule), so a row the condition does not hold for, or holds NULL for, is not checked. Enforced like the rule itself: by the database CHECK and, on create, by the generated record model in every port. Justified in ADR-0023 Amendment 1." }
       ]
     },
     {
@@ -90,7 +92,8 @@
       "children": [
         { "type": "attr", "subType": "string", "name": "field", "min": 1, "max": 1, "description": "Name of the field whose presence is governed by the condition." },
         { "type": "attr", "subType": "string", "name": "when", "min": 1, "max": 1, "description": "Name of the gating field." },
-        { "type": "attr", "subType": "string", "name": "equals", "min": 1, "max": 1, "description": "The gating value; @field is present exactly when @when equals this." }
+        { "type": "attr", "subType": "string", "name": "equals", "min": 1, "max": 1, "description": "The gating value; @field is present exactly when @when equals this." },
+        { "type": "attr", "subType": "expression", "name": "condition", "min": 0, "max": 1, "description": "The case this rule applies in: an expression over the owning entity's fields (the attr.expression grammar). Absent: always. The database CHECK is NOT (condition) OR (rule), so a row the condition does not hold for, or holds NULL for, is not checked. Enforced like the rule itself: by the database CHECK and, on create, by the generated record model in every port. Justified in ADR-0023 Amendment 1." }
       ]
     },
     {
@@ -100,7 +103,19 @@
       "whenToUse": "At least one of several fields must be present (email or phone). Declare it instead of hand-written OR-presence checks.",
       "rules": "@fields names two or more fields of the owning entity. Satisfied when any one of them is non-null.",
       "children": [
-        { "type": "attr", "subType": "string", "name": "fields", "isArray": true, "min": 1, "max": 1, "description": "Names of the candidate fields; at least one must be present." }
+        { "type": "attr", "subType": "string", "name": "fields", "isArray": true, "min": 1, "max": 1, "description": "Names of the candidate fields; at least one must be present." },
+        { "type": "attr", "subType": "expression", "name": "condition", "min": 0, "max": 1, "description": "The case this rule applies in: an expression over the owning entity's fields (the attr.expression grammar). Absent: always. The database CHECK is NOT (condition) OR (rule), so a row the condition does not hold for, or holds NULL for, is not checked. Enforced like the rule itself: by the database CHECK and, on create, by the generated record model in every port. Justified in ADR-0023 Amendment 1." }
+      ]
+    },
+    {
+      "type": "validator",
+      "subType": "exactlyOne",
+      "description": "Cardinality of presence: exactly one of the named fields (@fields) is present (NOT NULL), and the others are null. Entity-scoped; references fields by name (same @fields-by-name pattern as identity.*). Justified in ADR-0023 Amendment 1.",
+      "whenToUse": "A row belongs to exactly one of several alternatives (a store or a kiosk, never both, never neither). Declare it instead of hand-written count-of-non-nulls checks.",
+      "rules": "@fields names two or more fields of the owning entity (ERR_BAD_ATTR_VALUE): one field would just be a required field. Satisfied when exactly one of them is non-null.",
+      "children": [
+        { "type": "attr", "subType": "string", "name": "fields", "isArray": true, "min": 1, "max": 1, "description": "Names of the alternative fields; exactly one must be present." },
+        { "type": "attr", "subType": "expression", "name": "condition", "min": 0, "max": 1, "description": "The case this rule applies in: an expression over the owning entity's fields (the attr.expression grammar). Absent: always. The database CHECK is NOT (condition) OR (rule), so a row the condition does not hold for, or holds NULL for, is not checked. Enforced like the rule itself: by the database CHECK and, on create, by the generated record model in every port. Justified in ADR-0023 Amendment 1." }
       ]
     }
   ]

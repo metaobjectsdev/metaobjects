@@ -2,7 +2,7 @@ import { docsBlobUrl } from "./docs-ref.js";
 import type { MetaData } from "./shared/meta-data.js";
 import { TYPE_FIELD } from "./shared/base-types.js";
 import { PACKAGE_SEPARATOR } from "./shared/structural.js";
-import { FIELD_ATTR_COLUMN } from "./persistence/db/db-constants.js";
+import { FIELD_ATTR_COLUMN, FIELD_ATTR_FLATTENED_COLUMN_PREFIX } from "./persistence/db/db-constants.js";
 import {
   SOURCE_ATTR_SCHEMA,
   SOURCE_ROLE_PRIMARY,
@@ -54,16 +54,32 @@ export function toKebabCase(s: string): string {
 }
 
 /**
+ * The `upperFirst` column rule: the first letter upper-cased, nothing else changed
+ * (`createdAt` → `CreatedAt`, `requestURL` → `RequestURL`, `address_line1` →
+ * `Address_line1`). Not a word split: every other character keeps the case it was written
+ * in, so a model maps onto a schema whose columns are its field names with a capital first
+ * letter (EF Core's default, for one) with no `@column`.
+ */
+export function toUpperFirstColumn(s: string): string {
+  // One UTF-16 unit in, one out — as C#'s char.ToUpperInvariant and Java's
+  // Character.toUpperCase do — so `ß` (whose JavaScript upper case is "SS") stays `ß` in
+  // every port.
+  const first = s.charAt(0);
+  const upper = first.toUpperCase();
+  return (upper.length === 1 ? upper : first) + s.slice(1);
+}
+
+/**
  * How a field with no `@column` becomes a column name. One project setting,
  * `naming.columns` in `.metaobjects/config.json`, read by every port (ADR-0058): the
  * loaded root carries it ({@link physicalNamingOf}), so codegen, migrate, the runtime
  * and verify resolve the same name. Not a metadata attr: `@column` is the per-field
  * override, this is the rule for the rest.
  */
-export type ColumnNamingStrategy = "snake_case" | "literal" | "kebab-case";
+export type ColumnNamingStrategy = "snake_case" | "literal" | "kebab-case" | "upperFirst";
 
 /** Every column-naming rule, in the order the conformance corpus lists them. */
-export const COLUMN_NAMING_STRATEGIES: readonly ColumnNamingStrategy[] = ["snake_case", "literal", "kebab-case"];
+export const COLUMN_NAMING_STRATEGIES: readonly ColumnNamingStrategy[] = ["snake_case", "literal", "kebab-case", "upperFirst"];
 
 /** The default in EVERY port: what `meta migrate` has always created. */
 export const DEFAULT_COLUMN_NAMING_STRATEGY: ColumnNamingStrategy = "snake_case";
@@ -134,6 +150,7 @@ export function applyColumnNamingStrategy(name: string, strategy: ColumnNamingSt
     case "literal":     return name;
     case "kebab-case":  return toKebabCase(name);
     case "snake_case":  return toSnakeCase(name);
+    case "upperFirst":  return toUpperFirstColumn(name);
   }
 }
 
@@ -314,6 +331,40 @@ export function resolveColumnName(
   const col = field.attr(FIELD_ATTR_COLUMN);
   if (typeof col === "string" && col) return col;
   return applyColumnNamingStrategy(field.name, strategy);
+}
+
+/**
+ * The text before each member's column when `field` (a `field.object @storage "flattened"`)
+ * expands its value object into the owning table: its `@flattenedColumnPrefix` verbatim (`""` allowed),
+ * else its own resolved column and `_`. With `@column: "bill"` the members are
+ * `bill_<member column>`; under the `upperFirst` rule an `address` field gives `Address_`,
+ * which is EF Core's owned-type default.
+ *
+ * Core naming, not migrate's: generated ORM mappings (the Prisma schema, the C# EF mapping,
+ * the Kotlin Exposed tables) address these columns too, and must spell them exactly as the
+ * migration creates them.
+ * ADR-0039: resolving — `@flattenedColumnPrefix` and `@column` may be inherited through `extends`.
+ */
+export function resolveFlattenedColumnPrefix(
+  field: MetaData,
+  strategy: ColumnNamingStrategy = physicalNamingOf(field).columns,
+): string {
+  const prefix = field.attr(FIELD_ATTR_FLATTENED_COLUMN_PREFIX);
+  if (typeof prefix === "string") return prefix;
+  return resolveColumnName(field, strategy) + "_";
+}
+
+/**
+ * The column a member of a flattened value object gets in the owning table: the embedding
+ * field's {@link resolveFlattenedColumnPrefix} followed by the member's own resolved column
+ * (its `@column`, else its name under the rule).
+ */
+export function resolveFlattenedColumnName(
+  field: MetaData,
+  member: MetaData,
+  strategy: ColumnNamingStrategy = physicalNamingOf(field).columns,
+): string {
+  return resolveFlattenedColumnPrefix(field, strategy) + resolveColumnName(member, strategy);
 }
 
 /**

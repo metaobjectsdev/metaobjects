@@ -1,0 +1,256 @@
+/*
+ * Copyright 2004 Doug Mealing LLC dba Meta Objects
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.metaobjects.field;
+
+import java.time.Duration;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+/**
+ * The {@code field.duration} wire rule (shared vectors: {@code fixtures/duration-wire/}).
+ *
+ * <ul>
+ *   <li><b>Accepted</b> on read: {@link #ACCEPTED} — an optional sign, {@code P}, an optional week
+ *       count ({@code W} = exactly 7 days), an optional day count ({@code D} = exactly 24 hours), an
+ *       optional {@code T} followed by hours, minutes and seconds (a fraction of any length). Years
+ *       and months are refused: a calendar span has no fixed length. Validated BEFORE any parse,
+ *       and parsed here: {@link Duration#parse} accepts more (fractional hours, per-component signs,
+ *       lowercase) and refuses weeks and more than nine fractional digits.</li>
+ *   <li><b>Canonical</b> on write ({@link #format}): {@code [-]PT[<h>H][<m>M][<s>[.<f>]S]} —
+ *       hours never folded into days, zero components omitted, zero is {@code PT0S}, up to nine
+ *       fractional digits (a {@link Duration} holds nanoseconds; trailing zeros dropped), one
+ *       leading {@code -} for a negative span. {@link Duration#toString()} differs for negatives,
+ *       so it is never the wire form.</li>
+ *   <li><b>Postgres</b>: an {@code interval} reads back (IntervalStyle {@code postgres}) as
+ *       {@code [-]N days [-+]HH:MM:SS[.f]} — {@link #parsePostgres}; one with a year or month part
+ *       is refused. Postgres refuses a signed ISO-8601 duration as input, so a TEXT bind uses
+ *       {@link #formatPostgres} ({@code [-]HH:MM:SS[.f]}).</li>
+ * </ul>
+ *
+ * <p>A parsed value keeps nanoseconds (more fractional digits are truncated toward zero, never
+ * rounded). Storage is the database's limit, not this one: a Postgres interval and the
+ * SQLite / MySQL microsecond column both hold microseconds, so {@link #formatPostgres} and
+ * {@link #toMicros} truncate below a microsecond toward zero.</p>
+ */
+public final class DurationWire {
+
+    private DurationWire() {}
+
+    /** The accepted ISO-8601 duration form. */
+    public static final String ACCEPTED_REGEX =
+        "^[-+]?P(?!$)(\\d+W)?(\\d+D)?(T(?=\\d)(\\d+H)?(\\d+M)?(\\d+(\\.\\d+)?S)?)?$";
+
+    /** {@link #ACCEPTED_REGEX}, compiled. */
+    public static final Pattern ACCEPTED = Pattern.compile(ACCEPTED_REGEX);
+
+    /** Capturing form of {@link #ACCEPTED}: sign, weeks, days, hours, minutes, seconds, fraction. */
+    private static final Pattern PARTS = Pattern.compile(
+        "^([-+])?P(?!$)(?:(\\d+)W)?(?:(\\d+)D)?(?:T(?=\\d)(?:(\\d+)H)?(?:(\\d+)M)?(?:(\\d+)(?:\\.(\\d+))?S)?)?$");
+
+    /** A Postgres interval under IntervalStyle {@code postgres}, with no year or month part. */
+    private static final Pattern POSTGRES = Pattern.compile(
+        "^(?:([-+]?\\d+) days?(?: |$))?(?:([-+])?(\\d+):(\\d{2}):(\\d{2})(?:\\.(\\d{1,6}))?)?$");
+
+    private static final Pattern POSTGRES_CALENDAR = Pattern.compile("\\b(years?|mons?)\\b");
+
+    /** What a refused value is told it should be. */
+    public static final String EXPECTED =
+        "an ISO-8601 duration such as PT1H30M (no years or months)";
+
+    /**
+     * True iff {@code s} is in the accepted ISO-8601 form and fits a {@link Duration} (its own range
+     * is the only limit; a value past it is refused, never wrapped).
+     */
+    public static boolean isDuration(String s) {
+        if (s == null || !ACCEPTED.matcher(s).matches()) return false;
+        try {
+            parse(s);
+            return true;
+        } catch (IllegalArgumentException outOfRange) {
+            return false;
+        }
+    }
+
+    /**
+     * Parse an accepted ISO-8601 duration to the nanosecond (fractional digits past the ninth are
+     * truncated toward zero, never rounded).
+     *
+     * @throws IllegalArgumentException when {@code s} is not in the accepted form, or overflows
+     */
+    public static Duration parse(String s) {
+        if (s == null) throw new IllegalArgumentException("field.duration: null is not a duration");
+        Matcher m = PARTS.matcher(s);
+        if (!m.matches()) {
+            throw new IllegalArgumentException("field.duration: not " + EXPECTED + ": " + quote(s));
+        }
+        try {
+            long seconds = Math.addExact(
+                Math.addExact(Math.multiplyExact(num(m.group(2)), 604_800L),
+                              Math.multiplyExact(num(m.group(3)), 86_400L)),
+                Math.addExact(Math.multiplyExact(num(m.group(4)), 3_600L),
+                              Math.addExact(Math.multiplyExact(num(m.group(5)), 60L), num(m.group(6)))));
+            Duration d = Duration.ofSeconds(seconds, nanos(m.group(7)));
+            return "-".equals(m.group(1)) ? d.negated() : d;
+        } catch (ArithmeticException | NumberFormatException e) {
+            throw new IllegalArgumentException("field.duration: out of range: " + quote(s), e);
+        }
+    }
+
+    /** {@link #parse} then {@link #format}: the canonical spelling of an accepted duration. */
+    public static String canonicalize(String s) {
+        return format(parse(s));
+    }
+
+    /** The canonical wire form of {@code d}, to the nanosecond. */
+    public static String format(Duration d) {
+        if (d == null) throw new IllegalArgumentException("field.duration: null is not a duration");
+        boolean negative = d.isNegative();
+        Duration mag = negative ? d.negated() : d;
+        long total = mag.getSeconds();
+        long nanos = mag.getNano();
+        if (total == 0 && nanos == 0) return "PT0S";
+        long h = total / 3_600L;
+        long mi = (total % 3_600L) / 60L;
+        long s = total % 60L;
+        StringBuilder b = new StringBuilder(negative ? "-PT" : "PT");
+        if (h > 0) b.append(h).append('H');
+        if (mi > 0) b.append(mi).append('M');
+        if (s > 0 || nanos > 0) {
+            b.append(s);
+            appendFraction(b, nanos, 9);
+            b.append('S');
+        }
+        return b.toString();
+    }
+
+    /**
+     * The Postgres interval input spelling of {@code d}: {@code [-]HH:MM:SS[.f]}, no day part. An
+     * interval holds microseconds, so a sub-microsecond part is truncated toward zero here.
+     */
+    public static String formatPostgres(Duration d) {
+        if (d == null) throw new IllegalArgumentException("field.duration: null is not a duration");
+        boolean negative = d.isNegative();
+        Duration mag = negative ? d.negated() : d;
+        long total = mag.getSeconds();
+        long micros = mag.getNano() / 1_000L;
+        if (total == 0 && micros == 0) negative = false;
+        StringBuilder b = new StringBuilder(negative ? "-" : "");
+        long h = total / 3_600L;
+        if (h < 10) b.append('0');
+        b.append(h).append(':');
+        two(b, (total % 3_600L) / 60L);
+        b.append(':');
+        two(b, total % 60L);
+        appendFraction(b, micros, 6);
+        return b.toString();
+    }
+
+    /**
+     * Read the text a Postgres {@code interval} column returns (IntervalStyle {@code postgres}).
+     *
+     * @throws IllegalArgumentException for an interval with a year or month part (a calendar span
+     *         is not a duration — never a guess at the length of a month) or unreadable text
+     */
+    public static Duration parsePostgres(String s) {
+        if (s == null) throw new IllegalArgumentException("field.duration: null is not an interval");
+        if (POSTGRES_CALENDAR.matcher(s).find()) {
+            throw new IllegalArgumentException(
+                "field.duration: the interval " + quote(s) + " has a year or month part; a calendar span is not a duration");
+        }
+        Matcher m = POSTGRES.matcher(s);
+        if (s.isEmpty() || !m.matches() || (m.group(1) == null && m.group(3) == null)) {
+            throw new IllegalArgumentException("field.duration: not a Postgres interval: " + quote(s));
+        }
+        try {
+            Duration days = Duration.ofSeconds(Math.multiplyExact(m.group(1) == null ? 0L : Long.parseLong(m.group(1)), 86_400L));
+            if (m.group(3) == null) return days;
+            long secs = Math.addExact(Math.multiplyExact(Long.parseLong(m.group(3)), 3_600L),
+                Long.parseLong(m.group(4)) * 60L + Long.parseLong(m.group(5)));
+            Duration time = Duration.ofSeconds(secs, nanos(m.group(6)));
+            return days.plus("-".equals(m.group(2)) ? time.negated() : time);
+        } catch (ArithmeticException | NumberFormatException e) {
+            throw new IllegalArgumentException("field.duration: interval out of range: " + quote(s), e);
+        }
+    }
+
+    /**
+     * A stored duration: the canonical (or any accepted) ISO-8601 string a text column holds, or
+     * the text a Postgres interval column returns.
+     */
+    public static Duration fromStored(String s) {
+        return s != null && ACCEPTED.matcher(s).matches() ? parse(s) : parsePostgres(s);
+    }
+
+    /** {@link #fromStored} then {@link #format}: the canonical wire string of a stored value. */
+    public static String canonicalizeStored(String s) {
+        return format(fromStored(s));
+    }
+
+    /**
+     * The 64-bit count of microseconds a SQLite / MySQL column stores (sub-microsecond precision
+     * truncated toward zero).
+     *
+     * @throws IllegalArgumentException past the 64-bit range, which is that column's limit
+     */
+    public static long toMicros(Duration d) {
+        try {
+            boolean negative = d.isNegative();
+            Duration mag = negative ? d.negated() : d;
+            long micros = Math.addExact(Math.multiplyExact(mag.getSeconds(), 1_000_000L), mag.getNano() / 1_000L);
+            return negative ? -micros : micros;
+        } catch (ArithmeticException tooLong) {
+            throw new IllegalArgumentException(
+                "field.duration: " + d + " is past a 64-bit count of microseconds", tooLong);
+        }
+    }
+
+    /** A stored count of microseconds as a duration. */
+    public static Duration fromMicros(long micros) {
+        return Duration.ofSeconds(Math.floorDiv(micros, 1_000_000L), Math.floorMod(micros, 1_000_000L) * 1_000L);
+    }
+
+    // ── helpers ──
+
+    private static long num(String digits) {
+        return digits == null ? 0L : Long.parseLong(digits);
+    }
+
+    /** A fraction of any length → whole nanoseconds, the digits past the ninth truncated toward zero. */
+    private static long nanos(String frac) {
+        if (frac == null || frac.isEmpty()) return 0L;
+        String nine = frac.length() >= 9 ? frac.substring(0, 9) : (frac + "000000000").substring(0, 9);
+        return Long.parseLong(nine);
+    }
+
+    /** {@code value} as {@code width} zero-padded ASCII digits after a {@code .}, trailing zeros dropped. */
+    private static void appendFraction(StringBuilder b, long value, int width) {
+        if (value == 0) return;
+        String digits = Long.toString(value);
+        String f = "000000000".substring(0, width - digits.length()) + digits;
+        int end = f.length();
+        while (end > 0 && f.charAt(end - 1) == '0') end--;
+        b.append('.').append(f, 0, end);
+    }
+
+    private static void two(StringBuilder b, long v) {
+        if (v < 10) b.append('0');
+        b.append(v);
+    }
+
+    private static String quote(String s) {
+        return "\"" + s + "\"";
+    }
+}

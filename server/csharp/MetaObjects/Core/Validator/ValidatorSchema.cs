@@ -26,6 +26,11 @@ public static class ValidatorSchema
             Description: "Maximum allowed value (length, numeric value, or array element count depending on the validator subtype)."),
     ];
 
+    /// <summary>@condition on a cross-field validator: the case the rule applies in (an attr.expression).</summary>
+    private static readonly AttrSchema ConditionAttr = new(Name: ValidatorConstants.VALIDATOR_ATTR_CONDITION,
+        ValueType: AttrConstants.ATTR_SUBTYPE_EXPRESSION, Required: false,
+        Description: "The case this rule applies in: an expression over the owning entity's fields (the attr.expression grammar). Absent: always. The database CHECK is NOT (condition) OR (rule), so a row the condition does not hold for, or holds NULL for, is not checked. Enforced like the rule itself: by the database CHECK and, on create, by the generated record model in every port. Justified in ADR-0023 Amendment 1.");
+
     /// <summary>
     /// Attrs per validator subtype. required uses none; regex adds @pattern;
     /// length / numeric / array (and the base) use @min / @max.
@@ -57,6 +62,7 @@ public static class ValidatorSchema
                     Description: "Relational operator: gt (>), gte (>=), lt (<), lte (<=), ne (<>), eq (=)."),
                 new AttrSchema(Name: ValidatorConstants.VALIDATOR_ATTR_RIGHT, ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
                     Required: true, Description: "Name of the right-hand field of the owning entity."),
+                ConditionAttr,
             ],
             [ValidatorConstants.VALIDATOR_SUBTYPE_REQUIRED_WHEN] =
             [
@@ -66,6 +72,7 @@ public static class ValidatorSchema
                     Required: true, Description: "Name of the gating field whose value triggers the requirement."),
                 new AttrSchema(Name: ValidatorConstants.VALIDATOR_ATTR_EQUALS, ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
                     Required: true, Description: "The gating value; when @when equals this, @field must be present."),
+                ConditionAttr,
             ],
             [ValidatorConstants.VALIDATOR_SUBTYPE_PRESENT_IFF] =
             [
@@ -75,11 +82,19 @@ public static class ValidatorSchema
                     Required: true, Description: "Name of the gating field."),
                 new AttrSchema(Name: ValidatorConstants.VALIDATOR_ATTR_EQUALS, ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
                     Required: true, Description: "The gating value; @field is present exactly when @when equals this."),
+                ConditionAttr,
             ],
             [ValidatorConstants.VALIDATOR_SUBTYPE_AT_LEAST_ONE] =
             [
                 new AttrSchema(Name: ValidatorConstants.VALIDATOR_ATTR_FIELDS, ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
                     Required: true, IsArray: true, Description: "Names of the candidate fields; at least one must be present."),
+                ConditionAttr,
+            ],
+            [ValidatorConstants.VALIDATOR_SUBTYPE_EXACTLY_ONE] =
+            [
+                new AttrSchema(Name: ValidatorConstants.VALIDATOR_ATTR_FIELDS, ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
+                    Required: true, IsArray: true, Description: "Names of the alternative fields; exactly one must be present."),
+                ConditionAttr,
             ],
         };
 }

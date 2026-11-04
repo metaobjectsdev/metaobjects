@@ -32,6 +32,7 @@ import json
 from typing import Optional
 
 from ..errors import ErrorCode, MetaError
+from ..meta.core.field.field_constants import FIELD_ATTR_FLATTENED_COLUMN_PREFIX
 from ..meta.meta_data import MetaData
 from ..serializer_json import canonical_serialize
 from ..shared.separators import PACKAGE_SEP
@@ -273,14 +274,19 @@ def _build_contributors(files: tuple[str, ...]) -> tuple[Contributor, ...]:
     )
 
 
-def _is_empty_value(v: object) -> bool:
+#: Attrs whose empty string is a meaningful value rather than "not set" (FR5c).
+_EMPTY_STRING_IS_A_VALUE: frozenset[str] = frozenset({FIELD_ATTR_FLATTENED_COLUMN_PREFIX})
+
+
+def _is_empty_value(v: object, attr_name: str) -> bool:
     """Mirror TS ``isEmptyValue``: ``None``, ``""``, and ``[]`` are empty;
-    everything else is set.
+    everything else is set. ``@flattenedColumnPrefix: ""`` is a value (keep the
+    members' own columns), so ``""`` against ``"home_"`` is a conflict.
     """
     if v is None:
         return True
     if isinstance(v, str) and v == "":
-        return True
+        return attr_name not in _EMPTY_STRING_IS_A_VALUE
     if isinstance(v, list) and not v:
         return True
     return False
@@ -333,7 +339,7 @@ def _detect_attr_merge_conflicts(
         existing_val = pre_attrs[attr_name]
         new_val = getattr(src_attr, "value", None)
 
-        if _is_empty_value(new_val) or _is_empty_value(existing_val):
+        if _is_empty_value(new_val, attr_name) or _is_empty_value(existing_val, attr_name):
             continue
         if _attr_values_equal(existing_val, new_val):
             continue

@@ -78,7 +78,7 @@ def test_an_unknown_strategy_is_refused_not_silently_defaulted() -> None:
     # A typo'd strategy would otherwise bind an entire schema to the wrong columns and
     # report success.
     with pytest.raises(ValueError, match="snake_case"):
-        apply_column_naming_strategy("createdAt", "PascalCase")
+        apply_column_naming_strategy("createdAt", "camelCase")
 
 
 # WHERE THE STRATEGY ACTUALLY REACHES, in this port.
@@ -122,3 +122,12 @@ def test_object_manager_column_naming_argument_is_refused() -> None:
         "ObjectManager(column_naming=...). See "
         "https://github.com/metaobjectsdev/metaobjects/blob/v1.1.0/docs/features/migrations/physical-naming.md"
     )
+
+
+def test_upper_first_keeps_a_first_character_whose_upper_case_is_not_one_character() -> None:
+    # C# and Java map one UTF-16 unit to one; Python's str.upper gives "SS" for "ß".
+    from metaobjects.naming import to_upper_first_column
+
+    assert to_upper_first_column("requestURL") == "RequestURL"
+    assert to_upper_first_column("ßeta") == "ßeta"
+    assert to_upper_first_column("") == ""

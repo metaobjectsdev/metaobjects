@@ -23,6 +23,10 @@ public enum ColumnNamingStrategy
     SnakeCase,
     /// <summary>camelCase / PascalCase → kebab-case.</summary>
     KebabCase,
+    /// <summary><c>upperFirst</c>: the first letter upper-cased, nothing else changed
+    /// (<c>requestURL</c> → <c>RequestURL</c>), so a camelCase model maps onto a schema whose
+    /// columns are its field names with a capital first letter, with no <c>@column</c>.</summary>
+    UpperFirst,
 }
 
 /// <summary>
@@ -64,16 +68,53 @@ public sealed record PhysicalNaming(ColumnNamingStrategy Columns, TableNamingRul
     /// <summary>A field's physical column name: its explicit <c>@column</c> (resolving, so an
     /// inherited override counts), else the field name through the project's column strategy.
     /// The loader's collision check compares THESE resolved names, not the raw field names.</summary>
-    public static string ResolveColumnName(MetaField field)
+    public static string ResolveColumnName(MetaField field) =>
+        ResolveColumnName(field, PhysicalNaming.Of(field).Columns);
+
+    /// <summary><see cref="ResolveColumnName(MetaField)"/> under an explicit column rule — for
+    /// <c>verify --codegen</c>'s probe of an alternate rule, never a second configured source.</summary>
+    public static string ResolveColumnName(MetaField field, ColumnNamingStrategy strategy)
     {
         if (field.DbColumn is { Length: > 0 } explicitColumn) return explicitColumn;
-        return PhysicalNaming.Of(field).Columns switch
+        return strategy switch
         {
             ColumnNamingStrategy.SnakeCase => SourceNaming.ToSnakeCase(field.Name),
             ColumnNamingStrategy.KebabCase => SourceNaming.ToSnakeCase(field.Name).Replace('_', '-'),
+            ColumnNamingStrategy.UpperFirst => ToUpperFirstColumn(field.Name),
             _ => field.Name,
         };
     }
+
+    /// <summary>
+    /// The text before each member's column when <paramref name="field"/> (a <c>field.object
+    /// @storage "flattened"</c>) expands its value object into the owning table: its
+    /// <c>@flattenedColumnPrefix</c> verbatim (<c>""</c> allowed), else its own resolved column and
+    /// <c>_</c>. Core naming, not one generator's: the migration creates these columns and the
+    /// generated ORM mappings address them, so every one of them spells them here.
+    /// ADR-0039: resolving — <c>@flattenedColumnPrefix</c> and <c>@column</c> may be inherited.
+    /// </summary>
+    public static string ResolveFlattenedColumnPrefix(MetaField field) =>
+        ResolveFlattenedColumnPrefix(field, PhysicalNaming.Of(field).Columns);
+
+    /// <summary><see cref="ResolveFlattenedColumnPrefix(MetaField)"/> under an explicit column rule.</summary>
+    public static string ResolveFlattenedColumnPrefix(MetaField field, ColumnNamingStrategy strategy) =>
+        field.FlattenedColumnPrefix ?? ResolveColumnName(field, strategy) + "_";
+
+    /// <summary>The column a member of a flattened value object gets in the owning table: the
+    /// embedding field's prefix (<see cref="ResolveFlattenedColumnPrefix(MetaField)"/>) followed
+    /// by the member's own resolved column.</summary>
+    public static string ResolveFlattenedColumnName(MetaField field, MetaField member) =>
+        ResolveFlattenedColumnName(field, member, PhysicalNaming.Of(field).Columns);
+
+    /// <summary><see cref="ResolveFlattenedColumnName(MetaField, MetaField)"/> under an explicit column rule.</summary>
+    public static string ResolveFlattenedColumnName(MetaField field, MetaField member, ColumnNamingStrategy strategy) =>
+        ResolveFlattenedColumnPrefix(field, strategy) + ResolveColumnName(member, strategy);
+
+    /// <summary>The <c>upperFirst</c> column rule: the first letter upper-cased, the rest
+    /// verbatim (one UTF-16 unit in, one out). Not a word split — an acronym keeps the case it
+    /// was written in.</summary>
+    public static string ToUpperFirstColumn(string name) =>
+        name.Length == 0 ? name : char.ToUpperInvariant(name[0]) + name[1..];
 
     /// <summary><paramref name="name"/> cased by the table rule — no pluralization (the
     /// caller decides whether to pluralize; see <see cref="MetaSource.PhysicalName"/>).</summary>

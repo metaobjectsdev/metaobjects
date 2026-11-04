@@ -207,6 +207,18 @@ metadata.root:
                             An opening hour that cannot be declared without
                             inventing a date to hang it on.
                       - requirement.functional:
+                          name: fieldDuration
+                          title: Span of time
+                          level: 4
+                          status: live
+                          statement: >-
+                            A duration field holds a fixed length of time as a
+                            span, not as a count whose unit only the code
+                            knows.
+                          counterexample: >-
+                            A timeout read as seconds by one service and as
+                            milliseconds by another.
+                      - requirement.functional:
                           name: fieldTimestamp
                           title: Instant
                           level: 4
@@ -1370,6 +1382,17 @@ metadata.root:
                           counterexample: >-
                             A contact saved with neither an email address nor
                             a phone number, and no way to reach them.
+                      - requirement.functional:
+                          name: validatorExactlyOne
+                          title: Exactly one
+                          level: 4
+                          status: live
+                          statement: >-
+                            An exactly-one rule requires that one member of a
+                            declared group is given, and no other.
+                          counterexample: >-
+                            A booking tied to both a store and a kiosk, so
+                            neither can tell whose it is.
 
                 - requirement.functional:
                     name: presentation

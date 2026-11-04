@@ -1,4 +1,4 @@
-import { FIELD_SUBTYPE_UUID, FIELD_SUBTYPE_CURRENCY, FIELD_SUBTYPE_ENUM, FIELD_SUBTYPE_URI, FIELD_SUBTYPE_INET, FIELD_ATTR_INT_VALUE_MAP } from "../field/field-constants.js";
+import { FIELD_SUBTYPE_UUID, FIELD_SUBTYPE_CURRENCY, FIELD_SUBTYPE_ENUM, FIELD_SUBTYPE_URI, FIELD_SUBTYPE_INET, FIELD_SUBTYPE_DURATION, FIELD_ATTR_INT_VALUE_MAP } from "../field/field-constants.js";
 
 // Query concern constants — filter operators, sort order values.
 //
@@ -61,6 +61,9 @@ export const OPS_BY_SUBTYPE: Readonly<Record<string, readonly FilterOp[]>> = {
   // inet: an IP address — identity-comparison ops only (no `like`; ordering
   // gt/lt is not exposed). Same op band as uuid.
   [FIELD_SUBTYPE_INET]: [FILTER_OP_EQ, FILTER_OP_NE, FILTER_OP_IN, FILTER_OP_IS_NULL],
+  // duration: ordered on every database — a Postgres interval, and the 64-bit
+  // microsecond integer SQLite / D1 / MySQL store it as.
+  [FIELD_SUBTYPE_DURATION]: [FILTER_OP_EQ, FILTER_OP_NE, FILTER_OP_GT, FILTER_OP_GTE, FILTER_OP_LT, FILTER_OP_LTE, FILTER_OP_IN, FILTER_OP_IS_NULL],
 } as const;
 
 export function opsForSubType(subType: string): readonly FilterOp[] {

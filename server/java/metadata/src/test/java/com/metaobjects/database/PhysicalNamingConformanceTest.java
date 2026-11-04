@@ -22,6 +22,7 @@ import com.google.gson.JsonParser;
 import com.metaobjects.MetaDataException;
 import com.metaobjects.config.NeutralConfig;
 import com.metaobjects.field.MetaField;
+import com.metaobjects.field.ObjectField;
 import com.metaobjects.loader.LoaderOptions;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.object.MetaObject;
@@ -164,10 +165,18 @@ public class PhysicalNamingConformanceTest extends SharedRegistryTestBase {
         }
 
         for (Map.Entry<String, String> e : testCase.columns().entrySet()) {
-            String[] parts = e.getKey().split("\\.", 2);
+            String[] parts = e.getKey().split("\\.", 3);
             MetaObject obj = findObject(loader, parts[0]);
             MetaField<?> field = obj.getMetaField(parts[1]);
-            String actual = ColumnNaming.resolve(field);
+            String actual;
+            if (parts.length == 2) {
+                actual = ColumnNaming.resolve(field);
+            } else {
+                // `<Object>.<field>.<member>`: a member of the flattened value object the
+                // field embeds, named by core naming.
+                MetaField<?> member = ((ObjectField) field).getObjectRef().getMetaField(parts[2]);
+                actual = ColumnNaming.resolveFlattened(field, member);
+            }
             assertEquals(caseName + ": column name for " + e.getKey(), e.getValue(), actual);
         }
     }

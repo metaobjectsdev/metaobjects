@@ -11,8 +11,12 @@ import { FileSource } from "@metaobjectsdev/metadata/core";
 import {
   MetaDataLoader,
   isMetaRoot,
+  isMetaObject,
+  refTarget,
   resolveColumnName,
+  resolveFlattenedColumnName,
   resolveTableName,
+  FIELD_ATTR_OBJECT_REF,
   type MetaRoot,
 } from "@metaobjectsdev/metadata";
 import { ConfigSchema, physicalNamingFromConfig } from "../src/config.js";
@@ -49,9 +53,17 @@ function assertNames(root: MetaRoot, c: NamingCase): void {
   expect(tables).toEqual(c.tables);
   const columns: Record<string, string> = {};
   for (const key of Object.keys(c.columns)) {
-    const [objectName, fieldName] = key.split(".") as [string, string];
+    const [objectName, fieldName, memberName] = key.split(".") as [string, string, string | undefined];
     const field = root.findObject(objectName)!.fields().find((f) => f.name === fieldName)!;
-    columns[key] = resolveColumnName(field);
+    if (memberName === undefined) {
+      columns[key] = resolveColumnName(field);
+      continue;
+    }
+    // `<Object>.<field>.<member>`: a member of the flattened value object the field embeds.
+    const target = refTarget(field, FIELD_ATTR_OBJECT_REF);
+    if (target === undefined || !isMetaObject(target)) throw new Error(`${key}: @objectRef does not resolve`);
+    const member = target.fields().find((f) => f.name === memberName)!;
+    columns[key] = resolveFlattenedColumnName(field, member);
   }
   expect(columns).toEqual(c.columns);
 }

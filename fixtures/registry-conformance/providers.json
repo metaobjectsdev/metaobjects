@@ -23,13 +23,23 @@
       "projectsOnto": [
         "field.*",
         "field.date",
+        "field.enum",
         "field.object",
         "field.time",
         "field.timestamp",
+        "identity.primary",
         "identity.reference",
         "identity.secondary",
         "index.lookup",
-        "source.rdb"
+        "source.rdb",
+        "validator.atLeastOne",
+        "validator.comparison",
+        "validator.exactlyOne",
+        "validator.length",
+        "validator.numeric",
+        "validator.presentIff",
+        "validator.regex",
+        "validator.requiredWhen"
       ]
     },
     "metaobjects-documentation": {

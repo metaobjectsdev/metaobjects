@@ -16,6 +16,7 @@ export const VALIDATOR_SUBTYPE_COMPARISON = "comparison";
 export const VALIDATOR_SUBTYPE_REQUIRED_WHEN = "requiredWhen";
 export const VALIDATOR_SUBTYPE_PRESENT_IFF = "presentIff";
 export const VALIDATOR_SUBTYPE_AT_LEAST_ONE = "atLeastOne";
+export const VALIDATOR_SUBTYPE_EXACTLY_ONE = "exactlyOne";
 
 export const VALIDATOR_SUBTYPES = [
   SUBTYPE_BASE,
@@ -28,6 +29,7 @@ export const VALIDATOR_SUBTYPES = [
   VALIDATOR_SUBTYPE_REQUIRED_WHEN,
   VALIDATOR_SUBTYPE_PRESENT_IFF,
   VALIDATOR_SUBTYPE_AT_LEAST_ONE,
+  VALIDATOR_SUBTYPE_EXACTLY_ONE,
 ] as const;
 export type ValidatorSubType = (typeof VALIDATOR_SUBTYPES)[number];
 
@@ -50,3 +52,16 @@ export const VALIDATOR_ATTR_FIELDS = "fields";
 // Comparison operators (@op allowed values) → relational operator.
 export const VALIDATOR_COMPARISON_OPS = ["gt", "gte", "lt", "lte", "ne", "eq"] as const;
 export type ComparisonOp = (typeof VALIDATOR_COMPARISON_OPS)[number];
+
+/** comparison / requiredWhen / presentIff / atLeastOne / exactlyOne: the case the rule applies in (an attr.expression). */
+export const VALIDATOR_ATTR_CONDITION = "condition";
+/** Every validator (db provider): the database name of the CHECK it generates. */
+export const VALIDATOR_ATTR_CONSTRAINT_NAME = "constraintName";
+/** The cross-field validators: the database enforces them, nothing else evaluates them. */
+export const CROSS_FIELD_VALIDATOR_SUBTYPES: readonly string[] = [
+  VALIDATOR_SUBTYPE_COMPARISON,
+  VALIDATOR_SUBTYPE_REQUIRED_WHEN,
+  VALIDATOR_SUBTYPE_PRESENT_IFF,
+  VALIDATOR_SUBTYPE_AT_LEAST_ONE,
+  VALIDATOR_SUBTYPE_EXACTLY_ONE,
+];

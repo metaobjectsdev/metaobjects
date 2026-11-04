@@ -50,6 +50,8 @@ public class PresentIffValidator extends MetaValidator {
             def.requiredAttributeWithConstraints(ATTR_FIELD).ofType(StringAttribute.SUBTYPE_STRING).asSingle();
             def.requiredAttributeWithConstraints(ATTR_WHEN).ofType(StringAttribute.SUBTYPE_STRING).asSingle();
             def.requiredAttributeWithConstraints(ATTR_EQUALS).ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+            def.optionalAttributeWithConstraints(ATTR_CONDITION)
+               .ofType(com.metaobjects.attr.ExpressionAttribute.SUBTYPE_EXPRESSION).asSingle();
         });
     }
 

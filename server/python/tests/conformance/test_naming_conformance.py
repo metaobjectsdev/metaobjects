@@ -18,7 +18,9 @@ from metaobjects import FileSource, MetaDataLoader
 from metaobjects.config.neutral_config import read_neutral_config
 from metaobjects.errors import ParseError
 from metaobjects.meta.core.object.meta_object import MetaObject
-from metaobjects.naming import resolve_column_name
+from metaobjects.meta.core.field.field_constants import FIELD_ATTR_OBJECT_REF
+from metaobjects.naming import resolve_column_name, resolve_flattened_column_name
+from metaobjects.naming_refs import ref_target
 from metaobjects.shared.base_types import TYPE_OBJECT
 from metaobjects.source_resolution import primary_rdb_source
 
@@ -79,12 +81,19 @@ def test_physical_names_case(case: dict[str, object], tmp_path: Path) -> None:
         )
 
     for key, expected_column in case["columns"].items():  # type: ignore[union-attr]
-        obj_name, field_name = key.split(".", 1)
+        obj_name, field_name, *member_name = key.split(".", 2)
         obj = objects[obj_name]
         field = next(f for f in obj.fields() if f.name == field_name)
-        assert resolve_column_name(field) == expected_column, (
-            f"case {case['name']!r}: {key} column"
-        )
+        if not member_name:
+            actual = resolve_column_name(field)
+        else:
+            # `<Object>.<field>.<member>`: a member of the flattened value object the field
+            # embeds, named by core naming.
+            target = ref_target(field, FIELD_ATTR_OBJECT_REF)
+            assert isinstance(target, MetaObject), f"{key}: @objectRef does not resolve"
+            member = next(f for f in target.fields() if f.name == member_name[0])
+            actual = resolve_flattened_column_name(field, member)
+        assert actual == expected_column, f"case {case['name']!r}: {key} column"
 
 
 @pytest.mark.parametrize("invalid", _INVALID, ids=lambda c: c["name"])

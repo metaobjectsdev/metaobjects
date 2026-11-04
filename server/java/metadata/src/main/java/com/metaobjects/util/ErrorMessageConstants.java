@@ -169,6 +169,42 @@ public final class ErrorMessageConstants {
     public static final String ERR_STORAGE_FLATTENED_ARRAY = "ERR_STORAGE_FLATTENED_ARRAY";
 
     /**
+     * Error code emitted when {@code @flattenedColumnPrefix} is set on a {@code field.object}
+     * whose {@code @storage} is not {@code "flattened"} (absent is jsonb): no other storage
+     * gives the members columns of their own to prefix.
+     * Cross-language contract: {@code ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE}.
+     */
+    public static final String ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE =
+        "ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE";
+
+    /**
+     * A string-stored {@code field.enum}'s {@code @maxLength} (its column length) is shorter
+     * than one of its {@code @values} members, or the project's {@code enums.maxLength} is.
+     * Cross-language contract: {@code ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH}.
+     */
+    public static final String ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH = "ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH";
+
+    /**
+     * A {@code field.enum} sets both {@code @maxLength} and {@code @intValueMap}: an int-stored
+     * enum's column is an integer, so a length would change nothing.
+     * Cross-language contract: {@code ERR_ENUM_MAX_LENGTH_WITH_INT_VALUE_MAP}.
+     */
+    public static final String ERR_ENUM_MAX_LENGTH_WITH_INT_VALUE_MAP = "ERR_ENUM_MAX_LENGTH_WITH_INT_VALUE_MAP";
+
+    /**
+     * An {@code identity.primary} sets {@code @sequenceStart} or {@code @sequenceName} without
+     * {@code @generation "increment"}: only an increment key draws from a sequence.
+     * Cross-language contract: {@code ERR_SEQUENCE_WITHOUT_INCREMENT}.
+     */
+    public static final String ERR_SEQUENCE_WITHOUT_INCREMENT = "ERR_SEQUENCE_WITHOUT_INCREMENT";
+
+    /**
+     * An {@code identity.primary} {@code @sequenceStart} is below 1, or past the largest value its
+     * key field can hold. Cross-language contract: {@code ERR_SEQUENCE_START_OUT_OF_RANGE}.
+     */
+    public static final String ERR_SEQUENCE_START_OUT_OF_RANGE = "ERR_SEQUENCE_START_OUT_OF_RANGE";
+
+    /**
      * Error code emitted when {@code field.object @storage} is set on a field that
      * has no {@code @objectRef} — storage shape only applies to referenced objects.
      * Cross-language contract: {@code ERR_STORAGE_WITHOUT_OBJECT_REF}.
