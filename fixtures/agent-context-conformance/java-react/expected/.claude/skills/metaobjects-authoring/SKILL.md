@@ -426,7 +426,11 @@ behavior:
 
 Entity-scoped `validator.*` children declare invariants that reference sibling fields
 **by name** (the same name-reference pattern as `identity.*`). The backend derives the
-enforcement (a CHECK constraint / cross-field assertion) — no raw expression is stored.
+enforcement — no raw expression is stored. A DB `CHECK` constraint is emitted by `meta migrate`,
+and the generated full create/record model also enforces the rule in every port (Zod refinement,
+Bean Validation class-level constraint, `IValidatableObject`, Pydantic `model_validator`), so a
+store with no `CHECK` support is still covered. PATCH and partial-update models do not enforce them
+(a partial body cannot see the merged row); the DB `CHECK` is the enforcement there.
 
 | Subtype | Rule | Key attrs |
 |---|---|---|

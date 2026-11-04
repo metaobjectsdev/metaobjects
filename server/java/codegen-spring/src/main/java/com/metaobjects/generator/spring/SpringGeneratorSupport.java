@@ -12,7 +12,14 @@ import com.metaobjects.generator.spring.TphPlan;
 
 import com.metaobjects.MetaData;
 import com.metaobjects.config.WireFormat;
+import com.metaobjects.field.BooleanField;
+import com.metaobjects.field.CurrencyField;
+import com.metaobjects.field.DecimalField;
+import com.metaobjects.field.DoubleField;
 import com.metaobjects.field.EnumField;
+import com.metaobjects.field.FloatField;
+import com.metaobjects.field.IntegerField;
+import com.metaobjects.field.LongField;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.field.ObjectField;
 import com.metaobjects.field.StringField;
@@ -23,6 +30,10 @@ import com.metaobjects.object.MetaObject;
 import com.metaobjects.origin.AggregateOrigin;
 import com.metaobjects.origin.MetaOrigin;
 import com.metaobjects.validator.ArrayValidator;
+import com.metaobjects.validator.AtLeastOneValidator;
+import com.metaobjects.validator.ComparisonValidator;
+import com.metaobjects.validator.PresentIffValidator;
+import com.metaobjects.validator.RequiredWhenValidator;
 import com.metaobjects.validator.LengthValidator;
 import com.metaobjects.validator.MetaValidator;
 import com.metaobjects.validator.NumericValidator;
@@ -631,6 +642,118 @@ public final class SpringGeneratorSupport {
 
     public static boolean hasValidator(MetaField<?> field, Class<? extends MetaValidator> type) {
         return validator(field, type) != null;
+    }
+
+    // === entity-scoped cross-field validators (class-level Bean Validation) ==========
+
+    private static boolean isNumericCrossField(MetaField<?> f) {
+        return f instanceof IntegerField || f instanceof LongField || f instanceof DoubleField
+            || f instanceof FloatField || f instanceof DecimalField || f instanceof CurrencyField;
+    }
+
+    private static String crossAttr(MetaData v, String attr) {
+        if (!v.hasMetaAttr(attr)) return null;
+        Object raw = v.getMetaAttr(attr).getValue();
+        return raw == null ? null : String.valueOf(raw);
+    }
+
+    /** Resolve a by-name field reference through the resolving accessor; null when unknown. */
+    private static MetaField<?> crossField(MetaObject entity, String name, List<MetaField> components) {
+        if (name == null || name.isEmpty()) return null;
+        for (MetaField f : components) {
+            if (f.getName().equals(name)) return f;
+        }
+        return null;
+    }
+
+    /** Java boolean expression: does the gating field equal the @equals literal (null gate = false)? */
+    private static String crossEqualsExpr(String ref, MetaField<?> when, String raw) {
+        String s = raw == null ? "" : raw;
+        if (when instanceof BooleanField) {
+            boolean truthy = s.equals("true") || s.equals("1") || s.equals("TRUE");
+            return "(" + ref + " != null && " + ref + ".booleanValue() == " + truthy + ")";
+        }
+        if (isNumericCrossField(when) && s.matches("-?\\d+(\\.\\d+)?")) {
+            return "(" + ref + " != null && new java.math.BigDecimal(String.valueOf(" + ref
+                + ")).compareTo(new java.math.BigDecimal(\"" + s + "\")) == 0)";
+        }
+        return "(" + ref + " != null && \"" + escapeJavaString(s) + "\".equals(String.valueOf(" + ref + ")))";
+    }
+
+    /**
+     * Record-body members enforcing the entity-scoped cross-field validators
+     * ({@code validator.comparison / requiredWhen / presentIff / atLeastOne}) on the FULL create
+     * DTO: one {@code @AssertTrue} {@code isXxxValid()} method per validator (Bean Validation
+     * reads it as a class-level rule; {@code @JsonIgnore} keeps it off the wire). Null-safe in
+     * the DB CHECK sense (SQL NULL = Java null; "" is not null). A validator whose referenced
+     * field is missing is skipped. NOT added to the PATCH body: a partial body cannot see the
+     * merged row, so the DB CHECK stays the enforcement there.
+     */
+    public static List<String> crossFieldValidationMembers(MetaObject entity, List<MetaField> components) {
+        List<String> out = new ArrayList<>();
+        if (!MetaObject.SUBTYPE_ENTITY.equals(entity.getSubType())) return out;
+        java.util.Set<String> used = new java.util.HashSet<>();
+        for (MetaValidator v : entity.getChildren(MetaValidator.class)) {
+            String expr = null;
+            if (v instanceof ComparisonValidator) {
+                MetaField<?> l = crossField(entity, crossAttr(v, ComparisonValidator.ATTR_LEFT), components);
+                MetaField<?> r = crossField(entity, crossAttr(v, ComparisonValidator.ATTR_RIGHT), components);
+                String op = crossAttr(v, ComparisonValidator.ATTR_OP);
+                String jop = op == null ? null : switch (op) {
+                    case "gt" -> ">"; case "gte" -> ">="; case "lt" -> "<"; case "lte" -> "<=";
+                    case "ne" -> "!="; case "eq" -> "=="; default -> null; };
+                if (l == null || r == null || jop == null || l.isArrayType() || r.isArrayType()) continue;
+                String lc = "this." + SpringNaming.recordComponentName(l.getName());
+                String rc = "this." + SpringNaming.recordComponentName(r.getName());
+                String cmp;
+                if (isNumericCrossField(l) && isNumericCrossField(r) && !l.getSubType().equals(r.getSubType())) {
+                    cmp = "new java.math.BigDecimal(String.valueOf(" + lc + ")).compareTo(new java.math.BigDecimal(String.valueOf(" + rc + "))) " + jop + " 0";
+                } else {
+                    cmp = "((Comparable<Object>) (Object) " + lc + ").compareTo(" + rc + ") " + jop + " 0";
+                }
+                expr = lc + " == null || " + rc + " == null || " + cmp;
+            } else if (v instanceof RequiredWhenValidator || v instanceof PresentIffValidator) {
+                MetaField<?> t = crossField(entity, crossAttr(v, RequiredWhenValidator.ATTR_FIELD), components);
+                MetaField<?> w = crossField(entity, crossAttr(v, RequiredWhenValidator.ATTR_WHEN), components);
+                if (t == null || w == null || w.isArrayType()) continue;
+                String tc = "this." + SpringNaming.recordComponentName(t.getName());
+                String gate = crossEqualsExpr("this." + SpringNaming.recordComponentName(w.getName()), w,
+                    crossAttr(v, RequiredWhenValidator.ATTR_EQUALS));
+                expr = v instanceof RequiredWhenValidator
+                    ? "!" + gate + " || " + tc + " != null"
+                    : "(" + tc + " != null) == " + gate;
+            } else if (v instanceof AtLeastOneValidator) {
+                Object raw = v.hasMetaAttr(AtLeastOneValidator.ATTR_FIELDS)
+                    ? v.getMetaAttr(AtLeastOneValidator.ATTR_FIELDS).getValue() : null;
+                List<String> names = new ArrayList<>();
+                if (raw instanceof java.util.Collection<?> c) { for (Object o : c) names.add(String.valueOf(o)); }
+                else if (raw != null) names.add(String.valueOf(raw));
+                List<String> parts = new ArrayList<>();
+                boolean missing = names.isEmpty();
+                for (String n : names) {
+                    MetaField<?> f = crossField(entity, n, components);
+                    if (f == null) { missing = true; break; }
+                    parts.add("this." + SpringNaming.recordComponentName(f.getName()) + " != null");
+                }
+                if (missing) continue;
+                expr = String.join(" || ", parts);
+            }
+            if (expr == null) continue;
+            StringBuilder id = new StringBuilder();
+            for (char ch : v.getName().toCharArray()) id.append(Character.isJavaIdentifierPart(ch) ? ch : '_');
+            String base = id.length() == 0 ? "CrossField" : Character.toUpperCase(id.charAt(0)) + id.substring(1);
+            String method = "is" + base + "Valid";
+            for (int n = 2; !used.add(method); n++) method = "is" + base + n + "Valid";
+            out.add("\n    /** Cross-field validator " + v.getName().replace("*/", "* /")
+                + " (class-level Bean Validation; the DB CHECK enforces the PATCH path). */\n"
+                + "    @com.fasterxml.jackson.annotation.JsonIgnore\n"
+                + "    @AssertTrue(message = \"validator " + escapeJavaString(v.getName()) + " violated\")\n"
+                + "    @SuppressWarnings(\"unchecked\")\n"
+                + "    public boolean " + method + "() {\n"
+                + "        return " + expr + ";\n"
+                + "    }\n");
+        }
+        return out;
     }
 
     /** Escape a regex/string literal for safe embedding in generated Java source. */

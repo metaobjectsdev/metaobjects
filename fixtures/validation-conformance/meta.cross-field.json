@@ -1,0 +1,30 @@
+{
+  "metadata.root": {
+    "package": "acme::events",
+    "children": [
+      { "object.entity": {
+        "name": "Event",
+        "children": [
+          { "source.rdb":       { "@table": "events" } },
+          { "field.long":       { "name": "id" } },
+          { "field.int":        { "name": "startsAt" } },
+          { "field.int":        { "name": "endsAt" } },
+          { "field.string":     { "name": "kind" } },
+          { "field.string":     { "name": "subject" } },
+          { "field.string":     { "name": "state" } },
+          { "field.string":     { "name": "closedNote" } },
+          { "field.boolean":    { "name": "flag" } },
+          { "field.string":     { "name": "flagNote" } },
+          { "field.string":     { "name": "email" } },
+          { "field.string":     { "name": "phone" } },
+          { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
+          { "validator.comparison":  { "name": "startsBeforeEnds", "@left": "startsAt", "@op": "lte", "@right": "endsAt" } },
+          { "validator.requiredWhen": { "name": "birthNeedsSubject", "@field": "subject", "@when": "kind", "@equals": "BIRTH" } },
+          { "validator.requiredWhen": { "name": "flaggedNeedsNote", "@field": "flagNote", "@when": "flag", "@equals": "true" } },
+          { "validator.presentIff":  { "name": "closedIffNote", "@field": "closedNote", "@when": "state", "@equals": "CLOSED" } },
+          { "validator.atLeastOne":  { "name": "reachable", "@fields": ["email", "phone"] } }
+        ]
+      }}
+    ]
+  }
+}

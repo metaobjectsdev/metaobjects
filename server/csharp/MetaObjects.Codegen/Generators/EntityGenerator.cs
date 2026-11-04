@@ -293,6 +293,19 @@ public class EntityGenerator : IGenerator
         sb.AppendLine();
 
         EmitClassHeader(sb, entity, className, isProjection, pkFields, ctx);
+        // Cross-field validators run on the full create record only (never a read-only view).
+        // The C# base chain is real only when the declaration line actually names a base; fields
+        // the class skips as "inherited" are otherwise absent as properties, so a validator that
+        // references one is skipped rather than emitted against a member that does not exist.
+        var mappedBase = DirectMappedParent(entity, ctx.Config);
+        var declaresBase = mappedBase is not null && LastLineHasBase(sb);
+        var baseValidates = declaresBase && !InstanceArtifacts.IsAbstract(mappedBase!)
+            && HasEffectiveCrossField(mappedBase!);
+        var absent = mappedBase is not null && !declaresBase
+            ? new HashSet<string>(mappedBase.Fields().Select(f => f.Name), StringComparer.Ordinal)
+            : null;
+        var validateMethod = isProjection ? null : CrossFieldValidateMethod(entity, baseValidates, absent);
+        if (validateMethod is not null && !baseValidates) AppendValidatableInterface(sb);
         sb.AppendLine("{");
 
         // Nested enum declarations (before the class properties, as C# enum members
@@ -368,6 +381,11 @@ public class EntityGenerator : IGenerator
         }
         sb.Append(string.Join("\n", members));
         sb.AppendLine();
+        if (validateMethod is not null)
+        {
+            sb.AppendLine();
+            sb.Append(validateMethod);
+        }
         EmitClassBodyTrailer(sb, entity, ctx);
         sb.AppendLine("}");
         return new EmittedFile($"{className}.g.cs", sb.ToString());
@@ -556,6 +574,10 @@ public class EntityGenerator : IGenerator
 
         XmlDocBuilder.AppendTo(sb, entity);
         EmitClassDeclarationLine(sb, entity, className, ClassDeclarationKind.TphSubtype, ctx);
+        // TPH ancestors always emit Validate when they carry cross-field validators.
+        var tphBaseValidates = HasEffectiveCrossField(EmittedTphAncestor(entity, ctx));
+        var validateMethod = CrossFieldValidateMethod(entity, tphBaseValidates);
+        if (validateMethod is not null && !tphBaseValidates) AppendValidatableInterface(sb);
         sb.AppendLine("{");
 
         // Subtype-only enum declarations (an enum field declared on the subtype, not the base).
@@ -598,6 +620,11 @@ public class EntityGenerator : IGenerator
         }
         sb.Append(string.Join("\n", members));
         sb.AppendLine();
+        if (validateMethod is not null)
+        {
+            sb.AppendLine();
+            sb.Append(validateMethod);
+        }
         EmitClassBodyTrailer(sb, entity, ctx);
         sb.AppendLine("}");
         return new EmittedFile($"{className}.g.cs", sb.ToString());
@@ -971,6 +998,214 @@ public class EntityGenerator : IGenerator
         foreach (var e in materialized)
             sb.AppendLine($"public enum {e.Name} {{ {string.Join(", ", e.Values)} }}");
         return new EmittedFile("Enums.g.cs", sb.ToString());
+    }
+
+    // -------------------------------------------------------------------------
+    // Entity-scoped cross-field validators (validator.comparison / requiredWhen /
+    // presentIff / atLeastOne) -> IValidatableObject.Validate on the FULL record model,
+    // the class the generated create handler runs through Validator.TryValidateObject.
+    // Semantics mirror the schema-side CHECK derivation (migrate-ts crossFieldCheck):
+    // null = SQL NULL, "" is NOT null; a comparison with a null side passes; a null gate
+    // is unconstrained for requiredWhen and counts as "not equal" for presentIff.
+    // A validator naming a missing / array / non-scalar field is skipped silently.
+    //
+    // NOT emitted onto partial/PATCH handling: the update handler validates per property
+    // (TryValidateProperty), never TryValidateObject, so IValidatableObject does not run
+    // there; a partial body cannot see the merged row, and the DB CHECK stays the
+    // enforcement. Nuance: Validator.TryValidateObject runs IValidatableObject.Validate
+    // ONLY when every property-level attribute passed, so a body with a property-level
+    // violation reports that one first and the cross-field rules on a later pass.
+    // -------------------------------------------------------------------------
+
+    private static bool IsCrossFieldValidator(MetaValidator v) =>
+        v.SubType is VALIDATOR_SUBTYPE_COMPARISON or VALIDATOR_SUBTYPE_REQUIRED_WHEN
+            or VALIDATOR_SUBTYPE_PRESENT_IFF or VALIDATOR_SUBTYPE_AT_LEAST_ONE;
+
+    private enum CrossKind { Other, Numeric, Temporal, Str, Bool, Enum }
+
+    private static CrossKind KindOf(MetaField f) => f.SubType switch
+    {
+        FIELD_SUBTYPE_INT or FIELD_SUBTYPE_LONG or FIELD_SUBTYPE_DOUBLE or FIELD_SUBTYPE_FLOAT
+            or FIELD_SUBTYPE_DECIMAL or FIELD_SUBTYPE_CURRENCY => CrossKind.Numeric,
+        FIELD_SUBTYPE_DATE or FIELD_SUBTYPE_TIME or FIELD_SUBTYPE_TIMESTAMP => CrossKind.Temporal,
+        FIELD_SUBTYPE_STRING => CrossKind.Str,
+        FIELD_SUBTYPE_BOOLEAN => CrossKind.Bool,
+        FIELD_SUBTYPE_ENUM => CrossKind.Enum,
+        _ => CrossKind.Other,
+    };
+
+    private static string CsLiteral(string s) =>
+        "\"" + s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", "\\r").Replace("\n", "\\n") + "\"";
+
+    // The cross-field validators THIS class must evaluate. A class extending an emitted base
+    // that already implements Validate overrides it and evaluates only its OWN validators
+    // (ADR-0039: the generated-subclass own-only case); otherwise it evaluates the effective set.
+    private static List<MetaValidator> CrossFieldValidatorsFor(MetaObject entity, bool baseHasValidate)
+    {
+        // ADR-0039: own-only is sanctioned here — a generated subclass emits only the validators
+        // declared on itself, because the emitted base's Validate already covers the inherited ones.
+        var src = baseHasValidate ? entity.OwnValidators() : entity.Validators();
+        return src.Where(IsCrossFieldValidator).ToList();
+    }
+
+    private static bool HasEffectiveCrossField(MetaObject entity) =>
+        entity.Validators().Any(IsCrossFieldValidator);
+
+    private static bool LastLineHasBase(StringBuilder sb)
+    {
+        var len = sb.Length;
+        while (len > 0 && (sb[len - 1] == '\n' || sb[len - 1] == '\r')) len--;
+        var start = len;
+        while (start > 0 && sb[start - 1] != '\n') start--;
+        return sb.ToString(start, len - start).Contains(" : ", StringComparison.Ordinal);
+    }
+
+    // Appends `, IValidatableObject` (or ` : IValidatableObject`) to the just-written class
+    // declaration line. Works on the builder so an overridden declaration seam still applies.
+    private static void AppendValidatableInterface(StringBuilder sb)
+    {
+        var len = sb.Length;
+        while (len > 0 && (sb[len - 1] == '\n' || sb[len - 1] == '\r')) len--;
+        var lineStart = len;
+        while (lineStart > 0 && sb[lineStart - 1] != '\n') lineStart--;
+        var line = sb.ToString(lineStart, len - lineStart);
+        sb.Length = len;
+        sb.AppendLine(line.Contains(" : ", StringComparison.Ordinal) ? ", IValidatableObject" : " : IValidatableObject");
+    }
+
+    // Returns the emitted Validate method (4-space class-body indent), or null when nothing to emit.
+    private string? CrossFieldValidateMethod(
+        MetaObject entity, bool baseHasValidate, ISet<string>? absentProps = null)
+    {
+        var validators = CrossFieldValidatorsFor(entity, baseHasValidate);
+        if (validators.Count == 0) return null;
+
+        MetaField? Scalar(object? name)
+        {
+            if (name is not string n || n.Length == 0) return null;
+            // ADR-0039: resolving Fields() — a referenced field may be inherited.
+            var f = entity.Fields().FirstOrDefault(x => x.Name == n);
+            if (f is null || f.ResolvedIsArray()) return null;
+            if (absentProps is not null && absentProps.Contains(f.Name)) return null; // not a property of this class
+            return CSharpNaming.ScalarFor(f.SubType) is not null || f.SubType == FIELD_SUBTYPE_ENUM ? f : null;
+        }
+
+        string Gate(MetaField when, string raw)
+        {
+            var p = PropertyName(when);
+            switch (KindOf(when))
+            {
+                case CrossKind.Bool:
+                    var truthy = raw is "true" or "1" or "TRUE";
+                    return $"({p} == {(truthy ? "true" : "false")})";
+                case CrossKind.Numeric:
+                    if (!System.Text.RegularExpressions.Regex.IsMatch(raw, @"^-?\d+(\.\d+)?$")) return "false";
+                    var isInt = when.SubType is FIELD_SUBTYPE_INT or FIELD_SUBTYPE_LONG;
+                    if (isInt && raw.Contains('.')) return "false";
+                    var suffix = when.SubType switch
+                    {
+                        FIELD_SUBTYPE_DECIMAL or FIELD_SUBTYPE_CURRENCY => "m",
+                        FIELD_SUBTYPE_DOUBLE => "d",
+                        FIELD_SUBTYPE_FLOAT => "f",
+                        _ => "",
+                    };
+                    return $"({p} == {raw}{suffix})";
+                case CrossKind.Str:
+                    return $"({p} == {CsLiteral(raw)})";
+                default:
+                    return $"(((object?){p})?.ToString() == {CsLiteral(raw)})";
+            }
+        }
+
+        var body = new StringBuilder();
+        var i = 0;
+        foreach (var v in validators)
+        {
+            i++;
+            switch (v.SubType)
+            {
+                case VALIDATOR_SUBTYPE_COMPARISON:
+                {
+                    var l = Scalar(v.Attr(VALIDATOR_ATTR_LEFT));
+                    var r = Scalar(v.Attr(VALIDATOR_ATTR_RIGHT));
+                    var op = v.Attr(VALIDATOR_ATTR_OP) as string;
+                    if (l is null || r is null || op is null) break;
+                    var lk = KindOf(l); var rk = KindOf(r);
+                    var ordering = op is "gt" or "gte" or "lt" or "lte";
+                    var csOp = op switch { "gt" => ">", "gte" => ">=", "lt" => "<", "lte" => "<=", "ne" => "!=", "eq" => "==", _ => null };
+                    if (csOp is null) break;
+                    string cond;
+                    var a = $"__l{i}"; var b = $"__r{i}";
+                    if (lk == CrossKind.Str && rk == CrossKind.Str)
+                        cond = $"string.CompareOrdinal({a}, {b}) {csOp} 0";
+                    else if (lk == CrossKind.Numeric && rk == CrossKind.Numeric)
+                        cond = $"{a} {csOp} {b}";
+                    else if (lk == CrossKind.Temporal && rk == CrossKind.Temporal
+                             && CSharpNaming.ScalarForField(l) == CSharpNaming.ScalarForField(r))
+                        cond = $"{a} {csOp} {b}";
+                    else if (!ordering && lk == rk && lk != CrossKind.Other)
+                        cond = op == "eq" ? $"Equals({a}, {b})" : $"!Equals({a}, {b})";
+                    else break;
+                    var lp = PropertyName(l); var rp = PropertyName(r);
+                    body.AppendLine($"        if ({lp} is {{ }} {a} && {rp} is {{ }} {b} && !({cond}))");
+                    body.AppendLine($"            yield return new ValidationResult({CsLiteral($"{lp} must be {op} {rp}.")}, new[] {{ nameof({lp}), nameof({rp}) }});");
+                    break;
+                }
+                case VALIDATOR_SUBTYPE_REQUIRED_WHEN:
+                case VALIDATOR_SUBTYPE_PRESENT_IFF:
+                {
+                    var target = Scalar(v.Attr(VALIDATOR_ATTR_FIELD));
+                    var when = Scalar(v.Attr(VALIDATOR_ATTR_WHEN));
+                    if (target is null || when is null) break;
+                    var raw = Convert.ToString(v.Attr(VALIDATOR_ATTR_EQUALS), System.Globalization.CultureInfo.InvariantCulture) ?? "";
+                    var gate = Gate(when, raw);
+                    var tp = PropertyName(target); var wp = PropertyName(when);
+                    if (v.SubType == VALIDATOR_SUBTYPE_REQUIRED_WHEN)
+                    {
+                        body.AppendLine($"        if ({gate} && {tp} is null)");
+                        body.AppendLine($"            yield return new ValidationResult({CsLiteral($"{tp} is required when {wp} is {raw}.")}, new[] {{ nameof({tp}) }});");
+                    }
+                    else
+                    {
+                        body.AppendLine($"        if (({tp} is not null) != {gate})");
+                        body.AppendLine($"            yield return new ValidationResult({CsLiteral($"{tp} must be present if and only if {wp} is {raw}.")}, new[] {{ nameof({tp}) }});");
+                    }
+                    break;
+                }
+                case VALIDATOR_SUBTYPE_AT_LEAST_ONE:
+                {
+                    var raw = v.Attr(VALIDATOR_ATTR_FIELDS);
+                    var names = raw switch
+                    {
+                        string one => new List<object?> { one },
+                        System.Collections.IEnumerable many => many.Cast<object?>().ToList(),
+                        _ => new List<object?>(),
+                    };
+                    var fs = names.Select(Scalar).ToList();
+                    if (fs.Count == 0 || fs.Any(f => f is null)) break;
+                    var props = fs.Select(f => PropertyName(f!)).ToList();
+                    body.AppendLine($"        if ({string.Join(" && ", props.Select(p => $"{p} is null"))})");
+                    body.AppendLine($"            yield return new ValidationResult({CsLiteral($"At least one of {string.Join(", ", props)} is required.")}, new[] {{ {string.Join(", ", props.Select(p => $"nameof({p})"))} }});");
+                    break;
+                }
+            }
+        }
+        if (body.Length == 0) return null;
+
+        var sb = new StringBuilder();
+        sb.AppendLine("    /// <summary>Entity-scoped cross-field validators (comparison / requiredWhen / presentIff / atLeastOne). Create-time only; the database CHECK is the enforcement on partial updates.</summary>");
+        sb.AppendLine(baseHasValidate
+            ? "    public override IEnumerable<ValidationResult> Validate(ValidationContext validationContext)"
+            : "    public virtual IEnumerable<ValidationResult> Validate(ValidationContext validationContext)");
+        sb.AppendLine("    {");
+        if (baseHasValidate)
+        {
+            sb.AppendLine("        foreach (var __inherited in base.Validate(validationContext))");
+            sb.AppendLine("            yield return __inherited;");
+        }
+        sb.Append(body);
+        sb.AppendLine("    }");
+        return sb.ToString();
     }
 
     // Extension hook — invoked once per emitted property, AFTER the framework

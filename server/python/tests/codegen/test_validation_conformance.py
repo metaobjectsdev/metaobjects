@@ -98,3 +98,58 @@ def test_validation_conformance(case: dict) -> None:
         f"case {case['name']!r}: generated model accepted={valid} "
         f"expectValid={case['expectValid']}"
     )
+
+
+# --- cross-field corpus (comparison / requiredWhen / presentIff / atLeastOne) ---------
+
+def _load_cross_field_entity(name: str = "Event") -> MetaObject:
+    meta = (_corpus_dir() / "meta.cross-field.json").read_text()
+    result = MetaDataLoader.from_string(meta)
+    assert not result.errors, [str(e) for e in result.errors]
+    for child in result.root.children():
+        if child.type == TYPE_OBJECT and getattr(child, "name", None) == name:
+            assert isinstance(child, MetaObject)
+            return child
+    raise AssertionError(f"{name} not found in meta.cross-field.json")
+
+
+def _import_source(source: str, mod_name: str):
+    mod_path = Path(tempfile.mkdtemp()) / f"{mod_name}.py"
+    mod_path.write_text(source)
+    spec = importlib.util.spec_from_file_location(mod_name, mod_path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[mod_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _load_cross_field_cases() -> list[dict]:
+    return json.loads((_corpus_dir() / "cross-field-cases.json").read_text())["cases"]
+
+
+@pytest.mark.parametrize("case", _load_cross_field_cases(), ids=lambda c: c["name"])
+def test_cross_field_conformance(case: dict) -> None:
+    module = _import_source(
+        render_entity_model(_load_cross_field_entity(case["entity"])), "generated_cross_event"
+    )
+    model = getattr(module, f"{case['entity']}Create")
+    try:
+        model(**case["payload"])
+        valid = True
+    except ValidationError:
+        valid = False
+    assert valid == case["expectValid"], f"case {case['name']!r}: accepted={valid}"
+
+
+def test_cross_field_rules_only_on_create_model() -> None:
+    module = _import_source(
+        render_entity_model(_load_cross_field_entity()), "generated_cross_event_patch"
+    )
+    assert hasattr(module.EventCreate, "_cross_field_rules")
+    assert not hasattr(module.EventPatch, "_cross_field_rules")
+    assert not hasattr(module.Event, "_cross_field_rules")
+    # A partial body that would violate the rules is still accepted by Patch.
+    module.EventPatch(startsAt=9, endsAt=1)
+    src = render_entity_model(_load_cross_field_entity())
+    assert src.count("model_validator") == 2  # import + the single decorator

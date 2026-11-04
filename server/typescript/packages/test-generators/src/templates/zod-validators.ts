@@ -28,6 +28,10 @@ import {
   FIELD_ATTR_DB_COLUMN_TYPE, DB_COLUMN_TYPE_JSONB,
   AUTO_SET_ON_CREATE, AUTO_SET_ON_UPDATE,
   VALIDATOR_ATTR_MAX, VALIDATOR_ATTR_MIN, VALIDATOR_ATTR_PATTERN,
+  VALIDATOR_SUBTYPE_COMPARISON, VALIDATOR_SUBTYPE_REQUIRED_WHEN,
+  VALIDATOR_SUBTYPE_PRESENT_IFF, VALIDATOR_SUBTYPE_AT_LEAST_ONE,
+  VALIDATOR_ATTR_LEFT, VALIDATOR_ATTR_OP, VALIDATOR_ATTR_RIGHT,
+  VALIDATOR_ATTR_FIELD, VALIDATOR_ATTR_WHEN, VALIDATOR_ATTR_EQUALS, VALIDATOR_ATTR_FIELDS,
   GENERATION_INCREMENT, GENERATION_UUID,
   OBJECT_ATTR_DISCRIMINATOR, OBJECT_ATTR_DISCRIMINATOR_VALUE,
   OBJECT_SUBTYPE_VALUE,
@@ -256,6 +260,128 @@ function isInsertRequiredPk(field: MetaField, assignedPk: Set<string>): boolean 
   return field.attr(FIELD_ATTR_DEFAULT) === undefined;
 }
 
+// ── Entity-scoped cross-field validators on the full (insert) record ──────────
+// validator.comparison / requiredWhen / presentIff / atLeastOne are enforced on the
+// INSERT-shaped schemas only, as one `.superRefine`. A PATCH body cannot see the merged
+// row, so the Update schema is deliberately left alone (the DB CHECK stays the guard
+// there). Semantics mirror the migrate-ts CHECK derivation: absent / null / undefined is
+// SQL NULL, "" is NOT null; a comparison with a NULL side passes; requiredWhen is violated
+// only when the gate EQUALS the literal and the target is null; presentIff requires
+// (target != null) === (gate equals literal), a null gate being "not equal".
+
+const CROSS_FIELD_OPS: Record<string, string> = {
+  gt: ">", gte: ">=", lt: "<", lte: "<=", ne: "!==", eq: "===",
+};
+
+const NUMERIC_SUBTYPES: ReadonlySet<string> = new Set([
+  FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT,
+  FIELD_SUBTYPE_DECIMAL, FIELD_SUBTYPE_CURRENCY,
+]);
+
+/** Names of the fields the INSERT-shaped schemas carry (same skip rules as the emitters). */
+function insertSchemaFieldNameSet(obj: MetaObject): Set<string> {
+  const autoGen = autoGenPkFieldNames(obj);
+  const out = new Set<string>();
+  for (const f of obj.fields()) {
+    if (autoGen.has(f.name)) continue;
+    if (isReadOnlyMutability(f) || f.isDerived()) continue;
+    out.add(f.name);
+  }
+  return out;
+}
+
+/** The @equals literal as a TS expression, typed by the gating field's subtype. */
+function crossFieldLiteral(raw: unknown, when: MetaField): { lit: string; numeric: boolean } {
+  const s = String(raw);
+  if (when.subType === FIELD_SUBTYPE_BOOLEAN) {
+    return { lit: s === "true" || s === "1" || s === "TRUE" ? "true" : "false", numeric: false };
+  }
+  if (NUMERIC_SUBTYPES.has(when.subType) && /^-?\d+(\.\d+)?$/.test(s)) return { lit: s, numeric: true };
+  return { lit: JSON.stringify(s), numeric: false };
+}
+
+/** Does this object declare at least one cross-field validator that will be enforced
+ *  on its insert schema? Exported so the form emitter can tell a refined schema
+ *  (which Zod will not `.omit()`) from a plain object. */
+export function hasInsertRefinements(obj: MetaObject): boolean {
+  return crossFieldRefinementBody(obj).length > 0;
+}
+
+function crossFieldRefinementBody(obj: MetaObject): string[] {
+  const inSchema = insertSchemaFieldNameSet(obj);
+  const byName = new Map(obj.fields().map((f) => [f.name, f] as const));
+  // A reference must name a field that exists AND is in the insert schema; otherwise skip
+  // the validator (migrate skips on a missing field; a readOnly/derived/auto-PK field is
+  // never in the body, so enforcing on it would reject every create).
+  const ref = (name: unknown): MetaField | undefined => {
+    if (typeof name !== "string" || !inSchema.has(name)) return undefined;
+    return byName.get(name);
+  };
+  const acc = (f: MetaField) => `row[${JSON.stringify(f.name)}]`;
+  const issue = (path: string, msg: string) =>
+    `ctx.addIssue({ code: "custom", path: [${path}], message: ${JSON.stringify(msg)} });`;
+  const blocks: string[] = [];
+  // ADR-0039: entity.validators() is the resolving accessor (never ownValidators).
+  for (const v of obj.validators()) {
+    switch (v.subType) {
+      case VALIDATOR_SUBTYPE_COMPARISON: {
+        const left = ref(v.attr(VALIDATOR_ATTR_LEFT));
+        const right = ref(v.attr(VALIDATOR_ATTR_RIGHT));
+        const opName = String(v.attr(VALIDATOR_ATTR_OP));
+        const op = CROSS_FIELD_OPS[opName];
+        if (!left || !right || !op) break;
+        const numeric = NUMERIC_SUBTYPES.has(left.subType);
+        const c = numeric
+          ? "Number(l) - Number(r)"
+          : "l instanceof Date && r instanceof Date ? l.getTime() - r.getTime() : String(l) < String(r) ? -1 : String(l) > String(r) ? 1 : 0";
+        blocks.push(
+          `  {\n    const l: unknown = ${acc(left)};\n    const r: unknown = ${acc(right)};\n` +
+          `    if (l != null && r != null) {\n      const c = ${c};\n` +
+          `      if (!(c ${op} 0)) ${issue(JSON.stringify(left.name), `${left.name} must be ${opName} ${right.name}`)}\n    }\n  }`,
+        );
+        break;
+      }
+      case VALIDATOR_SUBTYPE_REQUIRED_WHEN:
+      case VALIDATOR_SUBTYPE_PRESENT_IFF: {
+        const target = ref(v.attr(VALIDATOR_ATTR_FIELD));
+        const when = ref(v.attr(VALIDATOR_ATTR_WHEN));
+        if (!target || !when) break;
+        const { lit, numeric } = crossFieldLiteral(v.attr(VALIDATOR_ATTR_EQUALS), when);
+        const gate = numeric ? `g != null && Number(g) === ${lit}` : `g === ${lit}`;
+        const path = JSON.stringify(target.name);
+        const decl = `    const g: unknown = ${acc(when)};\n    const t: unknown = ${acc(target)};\n    const open = ${gate};\n`;
+        if (v.subType === VALIDATOR_SUBTYPE_REQUIRED_WHEN) {
+          blocks.push(`  {\n${decl}    if (open && t == null) ${issue(path, `${target.name} is required when ${when.name} is ${String(v.attr(VALIDATOR_ATTR_EQUALS))}`)}\n  }`);
+        } else {
+          blocks.push(`  {\n${decl}    if ((t != null) !== open) ${issue(path, `${target.name} must be present if and only if ${when.name} is ${String(v.attr(VALIDATOR_ATTR_EQUALS))}`)}\n  }`);
+        }
+        break;
+      }
+      case VALIDATOR_SUBTYPE_AT_LEAST_ONE: {
+        const raw = v.attr(VALIDATOR_ATTR_FIELDS);
+        const names = Array.isArray(raw) ? raw : (typeof raw === "string" ? [raw] : []);
+        const refs = names.map(ref);
+        if (refs.length === 0 || refs.some((r) => r === undefined)) break;
+        const fields = refs as MetaField[];
+        const anyPresent = fields.map((f) => `${acc(f)} != null`).join(" || ");
+        blocks.push(`  if (!(${anyPresent})) ${issue(JSON.stringify(fields[0]!.name), `at least one of ${fields.map((f) => f.name).join(", ")} is required`)}`);
+        break;
+      }
+      default:
+        break;
+    }
+  }
+  return blocks;
+}
+
+/** `.superRefine(...)` suffix for an insert-shaped schema, or "" when the object has no
+ *  enforceable cross-field validator (output is then byte-identical to before). */
+function insertRefinementSuffix(obj: MetaObject): string {
+  const blocks = crossFieldRefinementBody(obj);
+  if (blocks.length === 0) return "";
+  return `.superRefine((row, ctx) => {\n${blocks.join("\n")}\n})`;
+}
+
 /**
  * Emit ONLY the `<Name>InsertSchema`. Used by the value-object file emitter
  * for metaobjects with no writable source.rdb — those have no PATCH/update
@@ -322,7 +448,7 @@ export function renderInsertSchemaOnly(obj: MetaObject, ctx?: RenderContext): Co
   return code`
 ${utcTimestampHelperSince(utcUsesBefore)}${decimalHelperSince(decimalUsesBefore)}${docsPrefix}export const ${insertSchemaName} = ${z}.object({
 ${joinCode(insertFieldLines, { on: ",\n" })}
-});
+})${insertRefinementSuffix(obj)};
 `;
 }
 
@@ -535,6 +661,21 @@ export function renderZodValidators(obj: MetaObject, ctx?: RenderContext): Code 
   const docs = renderDocsFor(obj);
   const docsPrefix = docs ? `${docs}\n` : "";
 
+  // A Zod object carrying refinements cannot be `.omit()`ed, and a TPH subtype's form
+  // omits the pinned discriminator. So when both apply, the unrefined shape is also
+  // exported as `<Name>InsertBaseSchema` for the form to omit from; the refined
+  // `<Name>InsertSchema` is built on it.
+  const refineSuffix = insertRefinementSuffix(obj);
+  const insertDecl = refineSuffix !== "" && tphPin !== undefined
+    ? code`${docsPrefix}export const ${objName}InsertBaseSchema = ${z}.object({
+${joinCode(insertFieldLines, { on: ",\n" })}
+});
+
+export const ${insertSchemaName} = ${objName}InsertBaseSchema${refineSuffix};`
+    : code`${docsPrefix}export const ${insertSchemaName} = ${z}.object({
+${joinCode(insertFieldLines, { on: ",\n" })}
+})${refineSuffix};`;
+
   // #203 — emit the preserving insert-shape only for @autoSet entities (nothing to
   // preserve otherwise). Backs `insertPreserving<Entity>` (import/restore/replication).
   const preservingBlock = emitPreserving
@@ -545,16 +686,14 @@ export function renderZodValidators(obj: MetaObject, ctx?: RenderContext): Code 
  * (no create-time now() stamp) so the caller's original values are preserved. */
 export const ${preservingSchemaName} = ${z}.object({
 ${joinCode(preservingFieldLines, { on: ",\n" })}
-});
+})${insertRefinementSuffix(obj)};
 
 /** Typed input of \`insertPreserving${objName}\` — ${preservingSchemaName}'s pre-transform shape. */
 export type ${objName}CreatePreserving = ${z}.input<typeof ${preservingSchemaName}>;`
     : code``;
 
   return code`
-${utcTimestampHelperSince(utcUsesBefore)}${decimalHelperSince(decimalUsesBefore)}${docsPrefix}export const ${insertSchemaName} = ${z}.object({
-${joinCode(insertFieldLines, { on: ",\n" })}
-});
+${utcTimestampHelperSince(utcUsesBefore)}${decimalHelperSince(decimalUsesBefore)}${insertDecl}
 
 ${docsPrefix}export const ${updateSchemaName} = ${z}.object({
 ${joinCode(updateFieldLines, { on: ",\n" })}

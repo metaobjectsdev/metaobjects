@@ -64,6 +64,7 @@ import {
 } from "@metaobjectsdev/codegen-ts/engine";
 import { humanize, valueObjectFor, numericInputControl } from "@metaobjectsdev/codegen-ts/templates/field-meta";
 import { tphDiscriminatorPin } from "@metaobjectsdev/codegen-ts/engine";
+import { hasInsertRefinements } from "@metaobjectsdev/codegen-ts/templates/zod-validators";
 
 function primaryFieldNames(entity: MetaObject): Set<string> {
   const set = new Set<string>();
@@ -352,7 +353,11 @@ export function renderFormFile(entity: MetaObject, ctx: RenderContext): string {
   const omitTph = (schema: string) => tphPin !== undefined
     ? `${schema}.omit({ ${tphPin.fieldName}: true })`
     : schema;
-  const insertSchema = omitTph(`${entityName}InsertSchema`);
+  // A refined (cross-field) schema cannot be `.omit()`ed; codegen exports the
+  // unrefined `<Name>InsertBaseSchema` for exactly this TPH case.
+  const insertSchema = tphPin !== undefined && hasInsertRefinements(entity)
+    ? `${entityName}InsertBaseSchema.omit({ ${tphPin.fieldName}: true })`
+    : omitTph(`${entityName}InsertSchema`);
   const updateSchema = omitTph(`${entityName}UpdateSchema`);
   const formSchema = `props.defaultValues !== undefined ? ${updateSchema} : ${insertSchema}`;
 

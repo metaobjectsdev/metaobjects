@@ -111,6 +111,28 @@ FR-036 pin cases (the two semantic pins + the length-precedence pin):
   absent `note` is still rejected. No port may apply the Pin 1 floor (min 1)
   when an author has explicitly said `@min: 0`.
 
+## Cross-field validators — `meta.cross-field.json` + `cross-field-cases.json`
+
+A second, separate pair of files pins the four entity-scoped cross-field validators
+(`validator.comparison`, `validator.requiredWhen`, `validator.presentIff`,
+`validator.atLeastOne`) on the generated **full record (create) model**. They are separate files
+so the run-time runners, which read `cases.json`, are unaffected. The entity is `Event`; every field
+is optional, so absence is expressible in every port.
+
+The semantics mirror the DB `CHECK` derivation in `migrate-ts/src/expected-schema.ts`, with an absent
+or null value standing for SQL `NULL` (and `""` NOT null):
+
+- `comparison` (`startsAt lte endsAt`): passes when either side is null.
+- `requiredWhen`: violated only when the gating field equals `@equals` and the target is null; a null
+  gate is unconstrained. Both a string gate (`kind = BIRTH`) and a boolean gate (`flag = true`).
+- `presentIff`: the target is present exactly when the gate equals `@equals`; a null gate counts as
+  not equal, so the target must be absent.
+- `atLeastOne` (`email`, `phone`): at least one is non-null.
+
+Each case violates at most one validator (single-violation design). PATCH and partial-update models
+are NOT covered here by design: they do not enforce cross-field rules, and the DB `CHECK` stays the
+enforcement for them.
+
 ## `field.uri` / `field.inet` strict contract (#234, ADR-0037 — Contract A)
 
 `Account` carries two OPTIONAL fields — `website` (`field.uri`) and `sourceIp`
