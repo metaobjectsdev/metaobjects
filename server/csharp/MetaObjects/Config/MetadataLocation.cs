@@ -82,13 +82,14 @@ public sealed class MetadataLocationException(string message) : Exception(messag
 
 public static class MetadataLocation
 {
+    /// <summary><c>csharp.providers</c> from <paramref name="cfg"/>, instantiated; null when none are declared.</summary>
+    internal static IReadOnlyList<IMetaDataTypeProvider>? LoadProviders(NeutralConfig? cfg) =>
+        cfg is { Providers.Count: > 0 } ? ProviderLoader.Load(cfg.Providers) : null;
+
     /// <summary>
     /// The project a metadata directory belongs to: its PARENT, the directory holding
     /// <c>metaobjects/</c> and <c>.metaobjects/</c>.
     /// </summary>
-    internal static IReadOnlyList<IMetaDataTypeProvider>? LoadProviders(NeutralConfig? cfg) =>
-        cfg is { Providers.Count: > 0 } ? ProviderLoader.Load(cfg.Providers) : null;
-
     public static string ProjectRootFor(string metadataDir) =>
         Path.GetDirectoryName(Path.GetFullPath(metadataDir)) ?? System.IO.Directory.GetCurrentDirectory();
 

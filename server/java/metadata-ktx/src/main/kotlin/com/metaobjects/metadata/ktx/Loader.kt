@@ -25,7 +25,8 @@ private fun withProviders(opts: LoaderOptions?, providers: List<MetaDataTypeProv
 
 /**
  * Load metadata from a filesystem directory; pass [DirectorySource.Options] to tune expansion and
- * [providers] to add a project's own vocabulary (composed after the metamodel set, sealed, strict).
+ * [providers] to add a project's own vocabulary (composed after the metamodel set into a sealed registry; the
+ * directory load itself stays lax, as it is without providers).
  */
 fun loadDirectory(
     name: String,
