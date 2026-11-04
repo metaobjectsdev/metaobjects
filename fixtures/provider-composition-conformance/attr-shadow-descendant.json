@@ -1,0 +1,8 @@
+{
+  "description": "A provider declares an attr on the shared root (<type>.base) after another provider declared that name on a subtype that inherits from it (the verdict must not depend on registration order).",
+  "providers": [
+    "shadow-sub-owner",
+    "shadow-base-late"
+  ],
+  "expectedError": "ERR_PROVIDER_ATTR_SHADOW"
+}

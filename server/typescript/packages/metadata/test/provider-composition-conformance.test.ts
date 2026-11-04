@@ -19,7 +19,7 @@ import type { MetaDataTypeProvider } from "../src/provider.js";
 import { composeRegistry } from "../src/provider.js";
 import { TypeRegistry, TypeId } from "../src/registry.js";
 import { MetaTemplate } from "../src/template/meta-template.js";
-import { TYPE_TEMPLATE, TYPE_ATTR, TYPE_VIEW } from "../src/shared/base-types.js";
+import { TYPE_TEMPLATE, TYPE_ATTR, TYPE_VIEW, SUBTYPE_BASE } from "../src/shared/base-types.js";
 import { CHILD_RULE_WILDCARD } from "../src/shared/structural.js";
 import { ATTR_SUBTYPE_STRING, ATTR_SUBTYPE_INT } from "../src/core/attr/attr-constants.js";
 import { VIEW_SUBTYPE_CURRENCY } from "../src/presentation/view/view-constants.js";
@@ -147,7 +147,60 @@ const extendSpecSubtypeProvider: MetaDataTypeProvider = {
   },
 };
 
+// ADR-0062 — attribute-ownership providers (see the corpus README). All register on
+// `template.base` and the fresh subtype `template.shadowprobe`.
+const SHADOW_SUBTYPE = "shadowprobe";
+
+function templateType(subType: string, attrName: string): Parameters<TypeRegistry["register"]>[0] {
+  return {
+    typeId: new TypeId(TYPE_TEMPLATE, subType),
+    description: "Test-only — attribute-ownership probe.",
+    factory: (typeId, name) => new MetaTemplate(typeId, name),
+    childRules: [],
+    attributes: [
+      { name: attrName, valueType: ATTR_SUBTYPE_STRING, required: false, description: "Ownership probe attr." },
+    ],
+  };
+}
+
+const shadowBaseProvider: MetaDataTypeProvider = {
+  id: "shadow-base",
+  registerTypes: (registry) => registry.register(templateType(SUBTYPE_BASE, "shadowAttr")),
+};
+const shadowSubClashProvider: MetaDataTypeProvider = {
+  id: "shadow-sub-clash",
+  dependencies: ["shadow-base"],
+  registerTypes: (registry) => registry.register(templateType(SHADOW_SUBTYPE, "shadowAttr")),
+};
+const shadowSubOwnerProvider: MetaDataTypeProvider = {
+  id: "shadow-sub-owner",
+  registerTypes: (registry) => registry.register(templateType(SHADOW_SUBTYPE, "reverseAttr")),
+};
+const shadowBaseLateProvider: MetaDataTypeProvider = {
+  id: "shadow-base-late",
+  dependencies: ["shadow-sub-owner"],
+  registerTypes: (registry) => registry.register(templateType(SUBTYPE_BASE, "reverseAttr")),
+};
+const shadowSubDistinctProvider: MetaDataTypeProvider = {
+  id: "shadow-sub-distinct",
+  dependencies: ["shadow-base"],
+  registerTypes: (registry) => registry.register(templateType(SHADOW_SUBTYPE, "distinctAttr")),
+};
+const shadowSelfProvider: MetaDataTypeProvider = {
+  id: "shadow-self",
+  registerTypes(registry) {
+    registry.register(templateType(SUBTYPE_BASE, "selfAttr"));
+    registry.register(templateType(SHADOW_SUBTYPE, "selfAttr"));
+  },
+};
+
 const PROVIDERS: Readonly<Record<string, MetaDataTypeProvider>> = {
+  "shadow-base": shadowBaseProvider,
+  "shadow-sub-clash": shadowSubClashProvider,
+  "shadow-sub-owner": shadowSubOwnerProvider,
+  "shadow-base-late": shadowBaseLateProvider,
+  "shadow-sub-distinct": shadowSubDistinctProvider,
+  "shadow-self": shadowSelfProvider,
   "duplicate-x": duplicateXProvider,
   "duplicate-x-clone": duplicateXCloneProvider,
   "depends-on-missing": dependsOnMissingProvider,
@@ -176,6 +229,8 @@ interface Manifest {
   expectAttrs?: ExpectAttrs;
   metadata?: unknown;
   expectErrors?: string[];
+  // ADR-0062 attr-ownership shape — see README.md "The `attr-ownership/` subdir".
+  expectOwners?: { type: string; subType: string; attr: string; owner: string }[];
 }
 
 /** Pull the stable ERR_ code off a caught error, if it carries one. */
@@ -277,6 +332,31 @@ for (const file of composeLoadManifestFiles) {
       const actualCodes = result.errors.map(errorCode).sort();
       const expectedCodes = [...(manifest.expectErrors ?? [])].sort();
       expect(actualCodes).toEqual(expectedCodes);
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
+// ADR-0062 attr-ownership corpus — composition succeeds and the registry names
+// the provider that owns each attribute.
+// ---------------------------------------------------------------------------
+
+const OWNERSHIP_CORPUS = join(CORPUS, "attr-ownership");
+const ownershipFiles = readdirSync(OWNERSHIP_CORPUS)
+  .filter((f) => f.endsWith(".json"))
+  .sort();
+
+test("provider-composition attr-ownership corpus is non-empty (guards against a mis-pathed OWNERSHIP_CORPUS)", () => {
+  expect(ownershipFiles.length).toBeGreaterThan(0);
+});
+
+for (const file of ownershipFiles) {
+  test(`provider-composition (attr-ownership): ${file}`, async () => {
+    const manifest: Manifest = await Bun.file(join(OWNERSHIP_CORPUS, file)).json();
+    const registry = composeRegistry(manifest.providers.map(resolve));
+    expect(manifest.expectOwners?.length ?? 0).toBeGreaterThan(0);
+    for (const { type, subType, attr, owner } of manifest.expectOwners ?? []) {
+      expect(registry.attrOwner(type, subType, attr)).toBe(owner);
     }
   });
 }

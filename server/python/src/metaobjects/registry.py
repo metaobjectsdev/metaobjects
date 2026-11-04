@@ -146,8 +146,51 @@ class TypeRegistry:
                 ErrorCode.ERR_REGISTRY_SEALED,
             )
 
+    def _check_attr_ownership(self, type_: str, sub_type: str, name: str) -> None:
+        """ADR-0062 -- the provider-collision rule.
+
+        Provider P may not put attribute ``name`` on ``(type_, sub_type)`` when a DIFFERENT
+        provider Q already put the same name on a related slot: the slot itself, the type
+        it inherits from (``<type>.base``) or, when this slot is the shared root, any
+        subtype that inherits from it. Checked in both directions so the verdict does not
+        depend on which provider registered first. The same provider declaring a name on
+        several related slots stays legal, and an attr registered outside any provider's
+        turn (no current provider, or the library sentinel) claims nothing.
+        """
+        claimant = self._current_provider_id
+        if claimant is None:
+            return
+        related = [sub_type]
+        if sub_type == SUBTYPE_BASE:
+            related += [s for (t, s) in self._defs if t == type_ and s != SUBTYPE_BASE]
+        elif (type_, SUBTYPE_BASE) in self._defs:
+            related.append(SUBTYPE_BASE)
+        for sub in related:
+            owner = self._attr_provenance.get((type_, sub, name))
+            if owner is None or owner == LIBRARY_ATTR_ORIGIN or owner == claimant:
+                continue
+            if sub == sub_type:
+                raise ParseError(
+                    f'TypeRegistry.extend: attribute "{name}" is already declared on '
+                    f'"{type_}.{sub_type}" by provider "{owner}"; provider "{claimant}" '
+                    "cannot declare it again (ADR-0062)",
+                    ErrorCode.ERR_PROVIDER_ATTR_CONFLICT,
+                )
+            raise ParseError(
+                f'Provider "{claimant}" declares attribute "{name}" on "{type_}.{sub_type}", '
+                f'but provider "{owner}" already declares it on the related slot '
+                f'"{type_}.{sub}". Two providers may not claim one attribute name on a type '
+                "and the type it inherits from; give the second provider its own idiomatic "
+                "name (ADR-0062).",
+                ErrorCode.ERR_PROVIDER_ATTR_SHADOW,
+            )
+
     def register(self, definition: TypeDefinition) -> None:
         self._check_not_sealed(f'register("{definition.key}")')
+        # ADR-0062: refuse a name another provider already put on a related slot, BEFORE
+        # the definition becomes visible, so a refused registration leaves no trace.
+        for attr in definition.attrs:
+            self._check_attr_ownership(definition.type, definition.sub_type, attr.name)
         # Store a per-registry COPY of the definition's mutable lists. Providers
         # hold their TypeDefinition objects as long-lived singletons (re-used across
         # every compose_registry call); a later provider's extend() does
@@ -317,11 +360,14 @@ class TypeRegistry:
                     f"which is not valid for attrs. Use None for a polymorphic/untyped attr."
                 )
             if any(existing.name == attr.name for existing in definition.attrs):
+                # ADR-0062: name the provider that holds the slot when it is a different one.
+                self._check_attr_ownership(type_, sub_type, attr.name)
                 raise ParseError(
                     f'TypeRegistry.extend: attribute "{attr.name}" is already declared '
                     f'on "{type_}.{sub_type}"',
                     ErrorCode.ERR_PROVIDER_ATTR_CONFLICT,
                 )
+            self._check_attr_ownership(type_, sub_type, attr.name)
             # ADR-0050: a REQUIRED attr may never be PROJECTED onto someone else's
             # type. A provider may only project OPTIONAL attributes onto a type it
             # does not own — a required attr registered this way disappears,

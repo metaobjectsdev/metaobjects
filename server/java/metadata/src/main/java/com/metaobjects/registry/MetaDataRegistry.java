@@ -108,6 +108,9 @@ public class MetaDataRegistry {
      */
     static final String LIBRARY_PROVENANCE = "_LIBRARY";
 
+    /** The shared-root subtype every type's concrete subtypes inherit from. */
+    private static final String SUBTYPE_BASE = "base";
+
     /**
      * #265 — the provider id currently executing its {@code registerTypes} turn
      * inside {@link #registerProviders}, or {@code null} outside that scope. Set
@@ -370,6 +373,22 @@ public class MetaDataRegistry {
         // ADR-0050: fails closed — checked BEFORE the commit below, so a violation
         // never reaches typeDefinitions (see checkNoProjectedRequiredAttr).
         checkNoProjectedRequiredAttr(typeIdToExtend, existing, extendedDefinition);
+        // ADR-0062: same fail-closed position — a name another provider already holds on a
+        // related slot never reaches typeDefinitions.
+        Set<String> existingNames = new HashSet<>();
+        for (ChildRequirement req : existing.getChildRequirements()) {
+            if (isNamedAttrRequirement(req)) {
+                existingNames.add(req.getName());
+            }
+        }
+        List<String> claimed = new ArrayList<>();
+        for (ChildRequirement req : extendedDefinition.getDirectChildRequirements()) {
+            if (isNamedAttrRequirement(req) && !existingNames.contains(req.getName())) {
+                claimed.add(req.getName());
+            }
+        }
+        checkAttrOwnership(typeIdToExtend, extendedDefinition.getParentType(),
+                extendedDefinition.getParentSubType(), claimed);
         typeDefinitions.put(typeIdToExtend, extendedDefinition);
         // #265 — extendType() rebuilds from `existing` and writes straight into
         // typeDefinitions WITHOUT going through register(), so it must stamp
@@ -544,6 +563,26 @@ public class MetaDataRegistry {
                 ", New: " + definition.getImplementationClass().getName()
             );
         }
+
+        // ADR-0062: refuse a name another provider already put on a related slot, BEFORE
+        // the definition becomes visible, so a refused registration leaves no trace.
+        // Only names NEW to this slot are checked: re-registering a slot a provider
+        // already owns replaces its complete definition and is not a new claim.
+        Set<String> alreadyDeclared = new HashSet<>();
+        if (existing != null) {
+            for (ChildRequirement req : existing.getChildRequirements()) {
+                if (isNamedAttrRequirement(req)) {
+                    alreadyDeclared.add(req.getName());
+                }
+            }
+        }
+        List<String> claimed = new ArrayList<>();
+        for (ChildRequirement req : definition.getDirectChildRequirements()) {
+            if (isNamedAttrRequirement(req) && !alreadyDeclared.contains(req.getName())) {
+                claimed.add(req.getName());
+            }
+        }
+        checkAttrOwnership(typeId, definition.getParentType(), definition.getParentSubType(), claimed);
 
         // Resolve inheritance if this type has a parent
         resolveInheritance(definition);
@@ -1152,6 +1191,126 @@ public class MetaDataRegistry {
         }
         String name = req.getName();
         return name != null && !"*".equals(name); // false for the any-attr wildcard
+    }
+
+    /**
+     * ADR-0062 — the provider that registered {@code attrName} on exactly
+     * {@code (type, subType)}, or {@code null} when it is not registered there or was
+     * registered outside any provider's turn. An inherited attr reports its declaring slot,
+     * so ask {@code <type>.base} for those.
+     */
+    public String getAttrProvider(String type, String subType, String attrName) {
+        Map<String, String> byName = attrProvenance.get(new MetaDataTypeId(type, subType));
+        String providerId = byName != null ? byName.get(attrName) : null;
+        return LIBRARY_PROVENANCE.equals(providerId) ? null : providerId;
+    }
+
+    /**
+     * ADR-0062 — the slots related to {@code typeId} for the provider-collision rule: the
+     * same-node-type slots it inherits from (its explicit parent chain, plus the
+     * {@code <type>.base} shared root by convention) and, when {@code typeId} is a shared
+     * root or a parent, every registered subtype of that type that inherits from it.
+     * {@code parentType}/{@code parentSubType} are the definition's own parent, passed in
+     * because a definition being registered is not in {@link #typeDefinitions} yet.
+     *
+     * <p>The rule is scoped to ONE node type. The JVM registry additionally chains every
+     * {@code <type>.base} to {@code metadata.base} (the attrs every node shares, owned by
+     * the core-types provider); no other port has that edge, and several providers re-declare
+     * {@code @isAbstract}/{@code @description} on their own root with the same meaning. A
+     * cross-type walk would make Java refuse what the other four ports accept, so the walk
+     * stops at the node-type boundary.</p>
+     */
+    private Set<MetaDataTypeId> relatedSlots(MetaDataTypeId typeId, String parentType, String parentSubType) {
+        Set<MetaDataTypeId> related = new LinkedHashSet<>();
+        String nextType = parentType;
+        String nextSubType = parentSubType;
+        while (nextType != null && nextSubType != null) {
+            MetaDataTypeId parent = new MetaDataTypeId(nextType, nextSubType);
+            if (!parent.type().equals(typeId.type()) || parent.equals(typeId) || !related.add(parent)) {
+                break;
+            }
+            TypeDefinition parentDef = typeDefinitions.get(parent);
+            nextType = parentDef != null && parentDef.hasParent() ? parentDef.getParentType() : null;
+            nextSubType = parentDef != null && parentDef.hasParent() ? parentDef.getParentSubType() : null;
+        }
+        boolean isSharedRoot = SUBTYPE_BASE.equals(typeId.subType());
+        if (!isSharedRoot) {
+            MetaDataTypeId root = new MetaDataTypeId(typeId.type(), SUBTYPE_BASE);
+            if (typeDefinitions.containsKey(root)) {
+                related.add(root);
+            }
+        }
+        for (Map.Entry<MetaDataTypeId, TypeDefinition> entry : typeDefinitions.entrySet()) {
+            MetaDataTypeId other = entry.getKey();
+            if (other.equals(typeId)) {
+                continue;
+            }
+            if (isSharedRoot && other.type().equals(typeId.type())) {
+                related.add(other);
+                continue;
+            }
+            TypeDefinition def = entry.getValue();
+            while (def != null && def.hasParent()) {
+                MetaDataTypeId parent = new MetaDataTypeId(def.getParentType(), def.getParentSubType());
+                if (!parent.type().equals(typeId.type())) {
+                    break;
+                }
+                if (parent.equals(typeId)) {
+                    related.add(other);
+                    break;
+                }
+                def = typeDefinitions.get(parent);
+            }
+        }
+        return related;
+    }
+
+    /**
+     * ADR-0062 — the provider-collision rule. Provider P may not put attribute {@code name}
+     * on {@code typeId} when a DIFFERENT provider Q already put the same name on a related
+     * slot (see {@link #relatedSlots}). Checked in both directions so the verdict does not
+     * depend on which provider registered first. The same provider declaring a name on
+     * several related slots stays legal, and an attr registered outside any provider's turn
+     * claims nothing.
+     */
+    private void checkAttrOwnership(MetaDataTypeId typeId, String parentType, String parentSubType,
+                                    Collection<String> names) {
+        String claimant = currentProviderId;
+        if (claimant == null || names.isEmpty()) {
+            return;
+        }
+        Set<MetaDataTypeId> related = relatedSlots(typeId, parentType, parentSubType);
+        for (String name : names) {
+            for (MetaDataTypeId slot : related) {
+                Map<String, String> byName = attrProvenance.get(slot);
+                String owner = byName != null ? byName.get(name) : null;
+                if (owner == null || LIBRARY_PROVENANCE.equals(owner) || owner.equals(claimant)) {
+                    continue;
+                }
+                throw new MetaDataException(
+                    "Provider \"" + claimant + "\" declares attribute \"" + name + "\" on \""
+                        + typeId.toQualifiedName() + "\", but provider \"" + owner
+                        + "\" already declares it on the related slot \"" + slot.toQualifiedName()
+                        + "\". Two providers may not claim one attribute name on a type and the type it "
+                        + "inherits from; give the second provider its own idiomatic name (ADR-0062).",
+                    com.metaobjects.ErrorCode.ERR_PROVIDER_ATTR_SHADOW);
+            }
+        }
+    }
+
+    /**
+     * ADR-0062 — text appended to a same-slot {@code ERR_PROVIDER_ATTR_CONFLICT} so it names
+     * the provider that holds the slot. Empty when the holder is unknown or is the provider
+     * running now (a plain duplicate declaration, not a cross-provider claim).
+     */
+    String describeSlotHolder(String type, String subType, String attrName) {
+        String owner = getAttrProvider(type, subType, attrName);
+        String claimant = currentProviderId;
+        if (owner == null || claimant == null || owner.equals(claimant)) {
+            return "";
+        }
+        return " Declared by provider \"" + owner + "\"; provider \"" + claimant
+            + "\" cannot declare it again (ADR-0062).";
     }
 
     /**

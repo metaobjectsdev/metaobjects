@@ -12,6 +12,7 @@ cross-port.
 | `ERR_PROVIDER_MISSING_DEPENDENCY` | A provider declares a dependency id absent from the set. |
 | `ERR_PROVIDER_DEPENDENCY_CYCLE` | Providers form a dependency cycle (topo-sort cannot proceed). |
 | `ERR_PROVIDER_ATTR_CONFLICT` | A provider `extend`s a type, redefining an attr another provider already declared. |
+| `ERR_PROVIDER_ATTR_SHADOW` | A provider declares an attr name that another provider already declares on the type it inherits from (`<type>.base`), or on a subtype that inherits from it (ADR-0062). |
 | `ERR_REGISTRY_SEALED` | A registration is attempted against a registry sealed after bootstrap (ADR-0023). |
 
 ## Corpus shape
@@ -111,6 +112,47 @@ Composing `["attr-conflict-base", "attr-conflict-clash"]` → `ERR_PROVIDER_ATTR
   test-only type, or `extend` an existing one, or `registerCommonAttrs`). Against a
   sealed registry this must throw `ERR_REGISTRY_SEALED`. This provider is **only**
   used via a manifest's `sealThenRegister` — never composed directly.
+
+### Attribute-ownership providers (ADR-0062)
+
+All six register on the `template` type's shared root (`template.base`) and one fresh
+subtype `template.shadowprobe`; each attr is a single optional string. They compose on
+their own (no `composeWithCore`), so each registers the root it needs.
+
+| id | dependencies | registers |
+|----|--------------|-----------|
+| `shadow-base` | none | `template.base` with attr `shadowAttr`. |
+| `shadow-sub-clash` | `shadow-base` | `template.shadowprobe` with attr `shadowAttr` (the name `shadow-base` owns on the root). |
+| `shadow-sub-owner` | none | `template.shadowprobe` with attr `reverseAttr`. |
+| `shadow-base-late` | `shadow-sub-owner` | `template.base` with attr `reverseAttr` (the name `shadow-sub-owner` owns on the subtype). |
+| `shadow-sub-distinct` | `shadow-base` | `template.shadowprobe` with attr `distinctAttr`. |
+| `shadow-self` | none | `template.base` with attr `selfAttr`, then `template.shadowprobe` with the SAME attr `selfAttr`. |
+
+Composing `["shadow-base", "shadow-sub-clash"]` and `["shadow-sub-owner", "shadow-base-late"]`
+→ `ERR_PROVIDER_ATTR_SHADOW` (the two directions: the verdict must not depend on which
+provider registered first). Two providers claiming one name on the SAME type is the
+existing `attr-conflict` scenario (`ERR_PROVIDER_ATTR_CONFLICT`).
+
+## The `attr-ownership/` subdir (ADR-0062)
+
+Positive scenarios: composition succeeds and the registry reports which provider owns each
+attribute. Own subdirectory for the same backward-compat reason as `compose-load/` (the flat
+runners list the parent non-recursively and require `expectedError`). Shape:
+
+```jsonc
+{
+  "description": "...",
+  "providers": ["shadow-base", "shadow-sub-distinct"],   // composed in listed order; must succeed
+  "expectOwners": [                                      // the port's per-slot attr-owner lookup
+    { "type": "template", "subType": "base", "attr": "shadowAttr", "owner": "shadow-base" }
+  ]
+}
+```
+
+`expectOwners` asks for the provider that registered `attr` on exactly `(type, subType)` — an
+inherited attr is asked of the slot that declares it. `distinct-names-load.json` proves distinct
+names load; `same-provider-redeclare.json` proves one provider re-declaring its own name on a type
+and on the type it inherits from stays legal.
 
 ## Notes
 

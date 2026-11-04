@@ -116,6 +116,44 @@ internal sealed class ExtendSpecSubtypeProvider : IMetaDataTypeProvider
     }
 }
 
+/// <summary>
+/// ADR-0062 attribute-ownership providers (see the corpus README). Each registers one string
+/// attr per listed (subtype, attr) pair on the <c>template</c> type: <c>base</c> is the shared
+/// root, <c>shadowprobe</c> a fresh subtype.
+/// </summary>
+internal sealed class ShadowTestProvider : IMetaDataTypeProvider
+{
+    public const string ShadowSubType = "shadowprobe";
+
+    private readonly (string SubType, string Attr)[] _types;
+
+    public ShadowTestProvider(string id, string[] dependencies, params (string SubType, string Attr)[] types)
+    {
+        Id = id;
+        Dependencies = dependencies;
+        _types = types;
+    }
+
+    public string Id { get; }
+    public IReadOnlyList<string> Dependencies { get; }
+
+    public void RegisterTypes(TypeRegistry registry)
+    {
+        foreach (var (subType, attr) in _types)
+        {
+            registry.Register(new TypeDefinition(
+                typeId: new TypeId("template", subType),
+                description: "Test-only — attribute-ownership probe.",
+                childRules: new List<ChildRule>(),
+                factory: (typeId, name) => new MetaTemplate(typeId, name),
+                attributes: new List<AttrSchema>
+                {
+                    new AttrSchema(attr, "string", Required: false, Description: "Ownership probe attr."),
+                }));
+        }
+    }
+}
+
 public sealed class ProviderCompositionConformanceTests
 {
     private static readonly IReadOnlyDictionary<string, IMetaDataTypeProvider> Providers =
@@ -131,6 +169,12 @@ public sealed class ProviderCompositionConformanceTests
             ["attr-conflict-clash"] = new AttrConflictClashProvider(),
             ["seal-probe"]          = new SealProbeProvider(),
             ["extend-spec-subtype"] = new ExtendSpecSubtypeProvider(),
+            ["shadow-base"]         = new ShadowTestProvider("shadow-base", System.Array.Empty<string>(), ("base", "shadowAttr")),
+            ["shadow-sub-clash"]    = new ShadowTestProvider("shadow-sub-clash", new[] { "shadow-base" }, (ShadowTestProvider.ShadowSubType, "shadowAttr")),
+            ["shadow-sub-owner"]    = new ShadowTestProvider("shadow-sub-owner", System.Array.Empty<string>(), (ShadowTestProvider.ShadowSubType, "reverseAttr")),
+            ["shadow-base-late"]    = new ShadowTestProvider("shadow-base-late", new[] { "shadow-sub-owner" }, ("base", "reverseAttr")),
+            ["shadow-sub-distinct"] = new ShadowTestProvider("shadow-sub-distinct", new[] { "shadow-base" }, (ShadowTestProvider.ShadowSubType, "distinctAttr")),
+            ["shadow-self"]         = new ShadowTestProvider("shadow-self", System.Array.Empty<string>(), ("base", "selfAttr"), (ShadowTestProvider.ShadowSubType, "selfAttr")),
         };
 
     // Flat-corpus (error-code) manifest shape — unchanged.
@@ -283,6 +327,46 @@ public sealed class ProviderCompositionConformanceTests
                 .OrderBy(c => c, System.StringComparer.Ordinal)
                 .ToList();
             Assert.Equal(expectedCodes, actualCodes);
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // ADR-0062 `attr-ownership/` corpus — composition succeeds and the registry names
+    // the provider that owns each attribute.
+    // -----------------------------------------------------------------------
+
+    private sealed record OwnerExpectation(string Type, string SubType, string Attr, string Owner);
+
+    private sealed record OwnershipManifest(string[] Providers, OwnerExpectation[] ExpectOwners);
+
+    private static string OwnershipCorpusRootPath() =>
+        Path.Combine(CorpusRootPath(), "attr-ownership");
+
+    public static IEnumerable<object[]> OwnershipManifestFiles()
+    {
+        foreach (var file in Directory.GetFiles(OwnershipCorpusRootPath(), "*.json").OrderBy(f => f, System.StringComparer.Ordinal))
+            yield return new object[] { Path.GetFileName(file) };
+    }
+
+    [Fact]
+    public void OwnershipCorpusIsNonEmpty()
+    {
+        Assert.NotEmpty(OwnershipManifestFiles());
+    }
+
+    [Theory]
+    [MemberData(nameof(OwnershipManifestFiles))]
+    public void ProviderCompositionAttrOwnership(string fileName)
+    {
+        var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+        var manifest = JsonSerializer.Deserialize<OwnershipManifest>(
+            File.ReadAllText(Path.Combine(OwnershipCorpusRootPath(), fileName)), opts)!;
+
+        var registry = Provider.ComposeRegistry(manifest.Providers.Select(Resolve).ToList());
+        Assert.NotEmpty(manifest.ExpectOwners);
+        foreach (var expected in manifest.ExpectOwners)
+        {
+            Assert.Equal(expected.Owner, registry.AttrOrigin(expected.Type, expected.SubType, expected.Attr));
         }
     }
 }

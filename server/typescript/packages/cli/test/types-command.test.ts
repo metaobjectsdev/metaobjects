@@ -318,3 +318,26 @@ describe("--detail prints each attr once", () => {
     expect(out).toContain("field.string @maxLength  (attr)");
   });
 });
+
+describe("ADR-0062 every attribute names the provider that registered it", () => {
+  test("--detail lists the owning provider beside each @attr", async () => {
+    const out = await run(["field.string", "--detail"]);
+    // @column is registered by the db provider onto a type the core provider owns.
+    expect(out).toMatch(/@column .*\[metaobjects-db\]/);
+  });
+
+  test("the JSON answer carries `provider` on each attr", async () => {
+    const calls: string[] = [];
+    const spy = spyOn(console, "log").mockImplementation((...a: unknown[]) => {
+      calls.push(a.map(String).join(" "));
+    });
+    try {
+      expect(await typesCommand(["field.string", "--limit", "0"], "json")).toBe(0);
+    } finally {
+      spy.mockRestore();
+    }
+    const doc = JSON.parse(calls[0] as string) as { matches: { name: string; attrs?: { name: string; provider?: string }[] }[] };
+    const subtype = doc.matches.find((m) => m.name === "field.string");
+    expect(subtype?.attrs?.find((a) => a.name === "column")?.provider).toBe("metaobjects-db");
+  });
+});

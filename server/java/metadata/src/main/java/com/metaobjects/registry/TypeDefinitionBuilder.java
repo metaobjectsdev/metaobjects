@@ -441,7 +441,13 @@ public class TypeDefinitionBuilder {
         }
         
         ChildRequirement existing = childRequirements.get(key);
-        if (existing != null && !existing.equals(requirement)) {
+        // ADR-0062: an IDENTICAL re-declaration is idempotent for the provider that owns the
+        // slot's attr, but another provider repeating it is still a second claim on the name.
+        boolean foreignRepeat = existing != null && existing.equals(requirement)
+            && "attr".equals(requirement.getExpectedType())
+            && registry != null
+            && !registry.describeSlotHolder(type, subType, requirement.getName()).isEmpty();
+        if (existing != null && (foreignRepeat || !existing.equals(requirement))) {
             // A colliding ATTR child requirement is a provider redefining an attr
             // another provider already declared on this type — the cross-port
             // ERR_PROVIDER_ATTR_CONFLICT invariant (mirrors the TS/Python/C#
@@ -452,7 +458,8 @@ public class TypeDefinitionBuilder {
                 throw new com.metaobjects.MetaDataException(
                     "Attribute '" + requirement.getName() + "' is already declared on this type "
                         + "(a provider redefined an attr another provider already declared). "
-                        + "Existing: " + existing + ", New: " + requirement,
+                        + "Existing: " + existing + ", New: " + requirement
+                        + (registry != null ? registry.describeSlotHolder(type, subType, requirement.getName()) : ""),
                     com.metaobjects.ErrorCode.ERR_PROVIDER_ATTR_CONFLICT);
             }
             throw new IllegalArgumentException(

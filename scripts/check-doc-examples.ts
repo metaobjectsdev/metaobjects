@@ -229,6 +229,7 @@ const FRAGMENT_CODES = new Set([
   // Environment-shaped: about the registry/provider wiring, never about the example.
   "ERR_REGISTRY_SEALED",
   "ERR_PROVIDER_ATTR_CONFLICT",
+  "ERR_PROVIDER_ATTR_SHADOW",
   "ERR_PROVIDER_DEPENDENCY_CYCLE",
   "ERR_PROVIDER_DUPLICATE_ID",
   "ERR_PROVIDER_MISSING_DEPENDENCY",
