@@ -4216,10 +4216,12 @@ def _validate_column_name_collisions(root: MetaData, errors: list[MetaError]) ->
     object generates nothing); derived fields and ``field.object`` (may flatten to
     several columns) are skipped. ADR-0039: effective children (inherited fields count).
 
-    Exempt: an object read through ``source.rdb @kind: view`` with an ``@sql`` body. The
-    author's SQL defines that view's columns and the fields only READ them, so two fields
-    on one column create no duplicate column and nothing can be written. A derived view
-    (no ``@sql``) emits a select list from its fields and stays checked.
+    Exempt: an object whose every source is read-only and at least one is a
+    ``source.rdb @kind: view`` with an ``@sql`` body. The author's SQL defines that view's
+    columns and the fields only READ them, so two fields on one column create no duplicate
+    column and nothing can be written. A derived view (no ``@sql``) emits a select list
+    from its fields, and an object with a writable source has a real table whose columns
+    MetaObjects creates; both stay checked.
     """
     from ..naming import resolve_column_name
     from ..meta.core.field.meta_field import MetaField
@@ -4228,11 +4230,10 @@ def _validate_column_name_collisions(root: MetaData, errors: list[MetaError]) ->
             continue
         if not any(c.type == TYPE_SOURCE for c in obj.children()):
             continue
-        if any(
-            isinstance(c, MetaSource)
-            and c.effective_kind() == SOURCE_KIND_VIEW
-            and c.sql_body() is not None
-            for c in obj.children()
+        sources = [c for c in obj.children() if isinstance(c, MetaSource)]
+        if all(s.is_read_only() for s in sources) and any(
+            s.effective_kind() == SOURCE_KIND_VIEW and s.sql_body() is not None
+            for s in sources
         ):
             continue
         seen: dict[str, MetaData] = {}

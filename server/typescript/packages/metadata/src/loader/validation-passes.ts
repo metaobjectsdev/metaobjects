@@ -2778,15 +2778,19 @@ export function validateRetiredRequirementLinks(root: MetaData): ParseError[] {
 // object generates nothing); derived fields (origin.*) and field.object (which may
 // flatten to several columns) are not columns of this table and are skipped.
 // ADR-0039: effective fields, so an inherited field collides like an own one.
-// Exempt: an object read through `source.rdb @kind: view` with an `@sql` body. The
-// author's SQL defines that view's columns and the fields only READ them, so two
-// fields on one column create no duplicate column and nothing can be written. A
-// derived view (no `@sql`) emits a select list from its fields and stays checked.
+// Exempt: an object whose every source is read-only and at least one is a
+// `source.rdb @kind: view` with an `@sql` body. The author's SQL defines that view's
+// columns and the fields only READ them, so two fields on one column create no
+// duplicate column and nothing can be written. A derived view (no `@sql`) emits a
+// select list from its fields, and an object with a writable source has a real table
+// whose columns MetaObjects creates; both stay checked.
 // ---------------------------------------------------------------------------
 
 function readsThroughSqlView(obj: MetaData): boolean {
-  return obj.children().some(
-    (c) => c instanceof MetaSource && c.effectiveKind === SOURCE_KIND_VIEW && c.sqlBody !== undefined,
+  const sources = obj.children().filter((c): c is MetaSource => c instanceof MetaSource);
+  return (
+    sources.every((s) => s.isReadOnly()) &&
+    sources.some((s) => s.effectiveKind === SOURCE_KIND_VIEW && s.sqlBody !== undefined)
   );
 }
 

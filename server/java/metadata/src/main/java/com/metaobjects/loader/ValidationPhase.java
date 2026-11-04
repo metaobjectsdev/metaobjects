@@ -5410,16 +5410,20 @@ public final class ValidationPhase {
      * columns) are skipped. ADR-0039: resolving accessors, so an inherited field collides like
      * an own one.</p>
      *
-     * <p>Exempt: an object read through {@code source.rdb @kind: view} with an {@code @sql}
-     * body. The author's SQL defines that view's columns and the fields only READ them, so two
-     * fields on one column create no duplicate column and nothing can be written. A derived
-     * view (no {@code @sql}) emits a select list from its fields and stays checked.</p>
+     * <p>Exempt: an object whose every source is read-only and at least one is a
+     * {@code source.rdb @kind: view} with an {@code @sql} body. The author's SQL defines that
+     * view's columns and the fields only READ them, so two fields on one column create no
+     * duplicate column and nothing can be written. A derived view (no {@code @sql}) emits a
+     * select list from its fields, and an object with a writable source has a real table whose
+     * columns MetaObjects creates; both stay checked.</p>
      */
     private static boolean readsThroughSqlView(MetaObject obj) {
+        boolean sqlView = false;
         for (MetaSource s : obj.getChildren(MetaSource.class, true)) {
-            if (MetaSource.KIND_VIEW.equals(s.getEffectiveKind()) && s.getSqlBody() != null) return true;
+            if (!s.isReadOnly()) return false;
+            if (MetaSource.KIND_VIEW.equals(s.getEffectiveKind()) && s.getSqlBody() != null) sqlView = true;
         }
-        return false;
+        return sqlView;
     }
 
     private static boolean hasExplicitColumn(MetaField<?> field) {

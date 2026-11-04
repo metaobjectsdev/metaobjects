@@ -1,0 +1,18 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      { "object.entity": {
+        "name": "Account",
+        "children": [
+          { "source.rdb": { "@kind": "table", "@table": "account" } },
+          { "source.rdb": { "@kind": "view", "@view": "account_view", "@role": "replica", "@sql": "SELECT a.id, a.username FROM account a" } },
+          { "field.long": { "name": "id", "@column": "id" } },
+          { "field.string": { "name": "userName", "@column": "username" } },
+          { "field.string": { "name": "displayName", "@column": "username" } },
+          { "identity.primary": { "name": "id", "@fields": ["id"] } }
+        ]
+      }}
+    ]
+  }
+}
