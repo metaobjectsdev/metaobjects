@@ -207,17 +207,37 @@ public final class RegistryManifest {
             synchronized (DEFAULT_LOCK) {
                 r = defaultLoaderRegistry;
                 if (r == null) {
-                    r = composeMetamodelRegistry();
-                    // The core constraint set is normally lazy-loaded on first
-                    // getAllValidationConstraints() read — which, post-seal, would
-                    // happen DURING a load and trip the seal guard. Force it now,
-                    // while still unsealed, so the sealed registry is fully built.
-                    r.getAllValidationConstraints();
-                    r.seal();
+                    r = composeLoaderRegistry(List.of());
                     defaultLoaderRegistry = r;
                 }
             }
         }
+        return r;
+    }
+
+    /**
+     * The sanctioned way to give a loader a project's own vocabulary: compose the
+     * metamodel provider set PLUS {@code extra} (a project's {@link MetaDataTypeProvider}s),
+     * run the strict spec-description pipeline, and SEAL the result — exactly what
+     * {@link #defaultLoaderRegistry()} does for zero extras, so a project that adds
+     * vocabulary is held to the same strict provenance (ADR-0023) as one that does not.
+     * Every {@code MetaDataLoader} entry point that accepts providers
+     * ({@code LoaderOptions.setProviders}, the {@code from*} factories, the Maven
+     * plugin's {@code <providers>}, the Spring auto-configuration, the Kotlin facade)
+     * routes through here. Unlike {@code defaultLoaderRegistry()} the result is a NEW
+     * registry on every call.
+     *
+     * @param extra additional providers composed after the metamodel provider set
+     * @return a new, sealed registry
+     */
+    public static MetaDataRegistry composeLoaderRegistry(Collection<MetaDataTypeProvider> extra) {
+        MetaDataRegistry r = composeMetamodelRegistry(extra);
+        // The core constraint set is normally lazy-loaded on first
+        // getAllValidationConstraints() read — which, post-seal, would
+        // happen DURING a load and trip the seal guard. Force it now,
+        // while still unsealed, so the sealed registry is fully built.
+        r.getAllValidationConstraints();
+        r.seal();
         return r;
     }
 

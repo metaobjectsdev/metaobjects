@@ -158,6 +158,9 @@ public class YamlTwinConformanceTest {
     private static Outcome load(FixtureDiscovery.Fixture f, List<Path> files, List<String> texts,
                                 String loaderName, MetaDataSource.MetaDataFormat format) {
         LoaderOptions opts = LoaderOptions.create(false, false, true);
+        if (f.hasProvidersJson && f.requiredProviders.contains("example-custom-vocabulary")) {
+            opts.setProviders(List.of(ConformanceTestProviders.EXAMPLE_CUSTOM_VOCABULARY));
+        }
         MetaDataLoader loader = new MetaDataLoader(opts, MetaDataLoader.SUBTYPE_MANUAL, loaderName);
         if (f.hasProvidersJson && f.requiredProviders.contains("example-template-briefing")) {
             com.metaobjects.registry.MetaDataRegistry reg =

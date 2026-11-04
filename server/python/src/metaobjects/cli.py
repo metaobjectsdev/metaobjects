@@ -1178,8 +1178,9 @@ def _cmd_fmt(args: argparse.Namespace) -> int:
 
     Mirrors the TS reference surface exactly: no ``metadata_dir`` positional —
     files come from the neutral ``.metaobjects/config.json`` ladder
-    (:func:`resolve_metadata_location`, rungs 3-4; this command does not read
-    this port's own ``metaobjects.config.yaml`` rung 2, matching the scope the
+    (:func:`resolve_metadata_location`, rungs 3-4; this command reads only the
+    ``providers`` of this port's own ``metaobjects.config.yaml`` (never its rung 2
+    ``metadata`` location), matching the scope the
     C# and Java ports also keep for `fmt`), optionally narrowed by explicit
     file arguments.
     """
@@ -1191,6 +1192,20 @@ def _cmd_fmt(args: argparse.Namespace) -> int:
     providers_extra, providers_ok = _providers_from_args(args)
     if not providers_ok:
         return 1
+    # The project's own `providers:` (metaobjects.config.yaml) reach fmt too, merged with
+    # --provider. Only the providers are read from the config: the metadata location stays
+    # on the neutral ladder (see the docstring).
+    config_path = _find_config(args)
+    if config_path is not None:
+        try:
+            fmt_config = load_project_config(config_path)
+        except ConfigError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        config_providers, config_providers_ok = _config_providers(fmt_config)
+        if not config_providers_ok:
+            return 1
+        providers_extra = [*config_providers, *providers_extra]
     providers = [*core_providers, *providers_extra]
     registry = compose_registry(providers)
 
@@ -2587,11 +2602,17 @@ def _load_verify_model(
             config = load_project_config(config_path) if config_path is not None else None
             libraries: "list[str] | None" = None
             if config is not None:
-                providers, provider_errors = _resolve_config_providers(config)
-                if provider_errors:
+                # Merge, never overwrite: the project's providers AND --provider both apply.
+                flag_provider_errors = provider_errors
+                config_providers, config_provider_errors = _resolve_config_providers(config)
+                if config_provider_errors:
                     return unread(
-                        "error: invalid provider in config:", *(f"  {m}" for m in provider_errors)
+                        "error: invalid provider in config:",
+                        *(f"  {m}" for m in config_provider_errors),
                     )
+                if flag_provider_errors:
+                    return unread("error: invalid --provider:", *(f"  {m}" for m in flag_provider_errors))
+                providers = [*config_providers, *providers]
                 libraries = config.libraries
                 start = project_root_for(config.metadata_dir())
             else:
@@ -3117,7 +3138,14 @@ def _build_parser() -> argparse.ArgumentParser:
         action="append",
         default=None,
         metavar="MODULE:SYMBOL",
-        help="consumer-registered Provider(s), repeatable (module:symbol)",
+        help="consumer-registered Provider(s), repeatable (module:symbol); merged with the "
+        "`providers:` of metaobjects.config.yaml",
+    )
+    fmt_p.add_argument(
+        "--config",
+        default=None,
+        help="path to the metaobjects.config.yaml whose `providers:` apply "
+        "(default: ./metaobjects.config.yaml in cwd)",
     )
     fmt_p.set_defaults(func=_cmd_fmt)
 

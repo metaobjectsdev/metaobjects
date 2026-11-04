@@ -106,6 +106,9 @@ class LoadResult:
         return list(self.envelope_warnings)
 
 
+_NODE_SKIPPING_CODES = frozenset({ErrorCode.ERR_UNKNOWN_SUBTYPE, ErrorCode.ERR_UNKNOWN_TYPE})
+
+
 class MetaDataLoader:
     """Source-polymorphic metadata loader.
 
@@ -152,7 +155,12 @@ class MetaDataLoader:
             # Today these only arrive from merge sites (see merge_roots);
             # the channel is exposed here for future parser-emitted ones.
             result.envelope_warnings.extend(parsed.envelope_warnings)
-            if not parsed.errors:
+            if not parsed.errors or all(
+                e.code in _NODE_SKIPPING_CODES for e in parsed.errors
+            ):
+                # An unknown type/subtype drops only that node; the rest of the tree is
+                # intact, so keep it and let the validation passes report what else is
+                # wrong in the same load (cross-port: the TS loader does the same).
                 roots.append(parsed.root)
 
         if roots:

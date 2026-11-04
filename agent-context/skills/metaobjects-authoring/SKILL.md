@@ -455,6 +455,12 @@ Several variants of one thing sharing **one table**: the base `object.entity` de
 `@discriminatorValue`. Codegen emits per-subtype routes with the discriminator injected and
 immutable. Supported in all five ports; the worked example is in `references/inheritance-tph.md`.
 
+## Your own vocabulary — a provider class, in every language
+
+A subtype or attribute the core does not ship (a `layout.picker`, `@searchable` on fields) is registered by a **provider class** in the project's own language — never a side file, never a loosened `strict`. Decide the shape first (`references/choosing-a-shape.md`, which also has the register/extend rules). List the provider once in the port's project configuration and every command that loads metadata — gen and its docs generators, verify, fmt — composes it. Where each port lists it, plus a worked example: `references/typescript-providers.md`, `references/python-providers.md`, `references/csharp-providers.md`, `references/java-providers.md`, `references/kotlin-providers.md` (only this stack's are installed).
+
+**Every port whose tools load the metadata needs its own copy**: a TypeScript-only provider leaves the Java, Python or C# side, and its docs build, failing with `ERR_UNKNOWN_SUBTYPE` / `ERR_UNKNOWN_ATTR`.
+
 ## Requirements — capability ledger (opt-in)
 
 **This capability exists whether or not the project uses it yet.** `requirement.functional` and `requirement.architectural` are registered metadata types, declared in the metadata directory beside the entities they describe and loaded by the same loader — no side file, no bespoke parser. They record *why* each part of the model exists, so a field with no reason to exist becomes visible as one.

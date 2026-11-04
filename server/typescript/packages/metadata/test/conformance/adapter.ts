@@ -26,9 +26,11 @@ import { canonicalSerialize, canonicalSerializeEffective } from "../../src/seria
 import { ParseError } from "../../src/errors.js";
 import { TypeId } from "../../src/registry.js";
 import { MetaTemplate } from "../../src/template/meta-template.js";
-import { TYPE_TEMPLATE, TYPE_ATTR } from "../../src/shared/base-types.js";
+import { TYPE_TEMPLATE, TYPE_ATTR, TYPE_FIELD, TYPE_LAYOUT } from "../../src/shared/base-types.js";
 import { CHILD_RULE_WILDCARD } from "../../src/shared/structural.js";
-import { ATTR_SUBTYPE_STRING } from "../../src/core/attr/attr-constants.js";
+import { ATTR_SUBTYPE_BOOLEAN, ATTR_SUBTYPE_STRING } from "../../src/core/attr/attr-constants.js";
+import { MetaLayout } from "../../src/presentation/layout/meta-layout.js";
+import { FIELD_SUBTYPE_STRING } from "../../src/core/field/field-constants.js";
 import { navigate } from "./navigator.js";
 import { binding } from "./binding.js";
 
@@ -71,6 +73,37 @@ const exampleTemplateBriefingProvider: MetaDataTypeProvider = {
         { name: "payloadRef", valueType: ATTR_SUBTYPE_STRING, required: true, description: "Briefing-input payload reference." },
         { name: "author",     valueType: ATTR_SUBTYPE_STRING, required: true, description: "Author of the briefing." },
         { name: "recipient",  valueType: ATTR_SUBTYPE_STRING, required: true, description: "Intended recipient role." },
+      ],
+    });
+  },
+};
+
+/**
+ * The project-vocabulary case (provider-custom-vocabulary-* fixtures): a
+ * downstream project's own provider that REGISTERS one new subtype
+ * (`layout.picker`, carrying its own `@displayField`) and EXTENDS an existing
+ * type (`field.string`) with two optional attrs (`@searchable`,
+ * `@valueLabels`). Every port carries the same provider, written in its own
+ * language, so the same metadata loads clean with it and is refused without it.
+ */
+const exampleCustomVocabularyProvider: MetaDataTypeProvider = {
+  id: "example-custom-vocabulary",
+  dependencies: ["metaobjects-core-types"],
+  description: "Test-only — a project's own vocabulary: layout.picker + field.string attrs.",
+  registerTypes(registry) {
+    registry.register({
+      typeId: new TypeId(TYPE_LAYOUT, "picker"),
+      description: "A picker that chooses one row of the owning object — test-only.",
+      factory: (typeId, name) => new MetaLayout(typeId, name),
+      childRules: [],
+      attributes: [
+        { name: "displayField", valueType: ATTR_SUBTYPE_STRING, required: false, description: "Field shown for each choice." },
+      ],
+    });
+    registry.extend(TYPE_FIELD, FIELD_SUBTYPE_STRING, {
+      attributes: [
+        { name: "searchable", valueType: ATTR_SUBTYPE_BOOLEAN, required: false, description: "Offer this field in search." },
+        { name: "valueLabels", valueType: ATTR_SUBTYPE_STRING, isArray: true, required: false, description: "Display labels for the field's values." },
       ],
     });
   },
@@ -126,6 +159,7 @@ export const PROVIDERS: Readonly<Record<string, MetaDataTypeProvider>> = {
   [uiProvider.id]: uiProvider,               // "metaobjects-ui" (filter/sort field markers)
   // Test-only — provider-extension-* fixtures.
   "example-template-briefing": exampleTemplateBriefingProvider,
+  "example-custom-vocabulary": exampleCustomVocabularyProvider,
   "cycle-a": cycleAProvider,
   "cycle-b": cycleBProvider,
   "depends-on-missing": dependsOnMissingProvider,

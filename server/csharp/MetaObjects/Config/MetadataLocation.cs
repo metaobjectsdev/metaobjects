@@ -34,6 +34,10 @@ namespace MetaObjects.Config;
 /// The generated-code directory the project declared (<c>csharp.outDir</c> in the same
 /// file), absolute; null when it declared none. An explicit <c>--out</c> takes precedence.
 /// </param>
+/// <param name="Providers">
+/// <c>csharp.providers</c>, already instantiated (null/empty: the core vocabulary only). Every
+/// loader entry point composes its registry from these via <see cref="Registry"/>.
+/// </param>
 /// <param name="Imports">
 /// FR-023 — the project's resolved metadata dependencies, read from the same file at EVERY rung of
 /// the ladder (the explicit directory included). Their committed snapshots load FIRST, ahead of
@@ -42,8 +46,13 @@ namespace MetaObjects.Config;
 /// </param>
 public sealed record ResolvedMetadata(
     string Directory, IReadOnlyList<string>? Files, IReadOnlyList<string> Libraries, PhysicalNaming Naming,
-    WireFormat? Wire = null, string? OutDir = null, ImportScope? Imports = null, string? Namespace = null)
+    WireFormat? Wire = null, string? OutDir = null, ImportScope? Imports = null, string? Namespace = null,
+    IReadOnlyList<IMetaDataTypeProvider>? Providers = null)
 {
+    /// <summary>The registry this metadata loads against: the core providers plus the project's
+    /// <c>csharp.providers</c>. Hosts that load by hand can pass it to <c>MetaDataLoader.FromDirectory</c>.</summary>
+    public TypeRegistry Registry() => Provider.ComposeRegistry(ProviderLoader.Compose(Providers));
+
     /// <summary>Load this metadata, with the project's <c>libraries</c>, and set the loaded
     /// root's <see cref="MetaRoot.PhysicalNaming"/> from <see cref="Naming"/> (ADR-0058) and its
     /// <see cref="MetaRoot.WireFormat"/> from <see cref="Wire"/>.</summary>
@@ -52,9 +61,9 @@ public sealed record ResolvedMetadata(
         var leading = Imports?.Sources();
         var result = Files is { } files
             ? MetaDataLoader.FromUris(
-                files.Select(f => new Uri(f)).ToList(), MetaDataLoader.DefaultRegistry(), Libraries, leading, strict)
+                files.Select(f => new Uri(f)).ToList(), Registry(), Libraries, leading, strict)
             : MetaDataLoader.FromDirectory(
-                Directory, MetaDataLoader.DefaultRegistry(), Libraries, leading, strict: strict);
+                Directory, Registry(), Libraries, leading, strict: strict);
         result.Root.PhysicalNaming = Naming;
         result.Root.WireFormat = Wire ?? WireFormat.Default;
         if (Imports is null) return result;
@@ -73,6 +82,10 @@ public sealed class MetadataLocationException(string message) : Exception(messag
 
 public static class MetadataLocation
 {
+    /// <summary><c>csharp.providers</c> from <paramref name="cfg"/>, instantiated; null when none are declared.</summary>
+    internal static IReadOnlyList<IMetaDataTypeProvider>? LoadProviders(NeutralConfig? cfg) =>
+        cfg is { Providers.Count: > 0 } ? ProviderLoader.Load(cfg.Providers) : null;
+
     /// <summary>
     /// The project a metadata directory belongs to: its PARENT, the directory holding
     /// <c>metaobjects/</c> and <c>.metaobjects/</c>.
@@ -117,7 +130,7 @@ public static class MetadataLocation
             // No config found means no project to read a lock from: nothing is imported.
             var explicitImports = explicitCfg is null ? ImportScope.None : ImportScope.Resolve(explicitCfg.ConfigDir, explicitCfg);
             return new ResolvedMetadata(
-                metadataDir, null, explicitLibs, explicitNaming, explicitCfg?.Wire, explicitCfg?.OutDir, explicitImports, explicitCfg?.Namespace);
+                metadataDir, null, explicitLibs, explicitNaming, explicitCfg?.Wire, explicitCfg?.OutDir, explicitImports, explicitCfg?.Namespace, LoadProviders(explicitCfg));
         }
 
         var cfg = NeutralConfig.Read(cwd);
@@ -132,7 +145,7 @@ public static class MetadataLocation
             // No declared sources: resolve the DEFAULT directory through the same ladder
             // the shared conformance corpus gates (ERR_COLLECTION_NOT_FOUND when absent).
             var defaultFiles = SourceResolver.ResolveCollection(cwd);
-            return new ResolvedMetadata(Path.Combine(cwd, NeutralConfig.DefaultMetadataDir), defaultFiles, libraries, naming, wire, cfg?.OutDir, imports, cfg?.Namespace);
+            return new ResolvedMetadata(Path.Combine(cwd, NeutralConfig.DefaultMetadataDir), defaultFiles, libraries, naming, wire, cfg?.OutDir, imports, cfg?.Namespace, LoadProviders(cfg));
         }
 
         if (specs.Count > 1)
@@ -162,6 +175,6 @@ public static class MetadataLocation
                 "\"sources\" at the file's containing directory.");
         }
 
-        return new ResolvedMetadata(resolved, files, libraries, naming, wire, cfg?.OutDir, imports, cfg?.Namespace);
+        return new ResolvedMetadata(resolved, files, libraries, naming, wire, cfg?.OutDir, imports, cfg?.Namespace, LoadProviders(cfg));
     }
 }

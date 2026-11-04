@@ -104,6 +104,8 @@ public static class VerifyCommand
         /// was imported so the <c>--codegen</c> gate regenerates exactly what <c>gen</c> wrote. Null: none.
         /// </summary>
         public MetaObjects.Config.ImportScope? Imports { get; init; }
+        /// <summary><c>csharp.providers</c>, instantiated; composed with the core providers on every load. Null: core only.</summary>
+        public IReadOnlyList<IMetaDataTypeProvider>? Providers { get; init; }
         /// <summary>
         /// ADR-0058 — the project's physical-naming rules, read from the SAME
         /// <c>.metaobjects/config.json</c> as <see cref="Libraries"/> (<c>Program.cs</c>'s
@@ -264,7 +266,7 @@ public static class VerifyCommand
         // The same load `gen` runs (ResolvedMetadata.Load): libraries, then the dependency snapshots, then the
         // project's own files; ADR-0058 naming and the wire format set on the root; the imports recorded on it.
         return new MetaObjects.Config.ResolvedMetadata(
-            opts.MetadataDir, opts.MetadataFiles, opts.Libraries, opts.Naming, opts.Wire, null, opts.Imports)
+            opts.MetadataDir, opts.MetadataFiles, opts.Libraries, opts.Naming, opts.Wire, null, opts.Imports, null, opts.Providers)
             .Load(opts.Strict);
     }
 
@@ -466,8 +468,10 @@ public static class VerifyCommand
         if (attr is string s && s.Length > 0) refs.Add(s);
     }
 
-    public static Outcome Run(string metadataDir, string templatesRoot, bool strict = true)
-        => Run(MetaDataLoader.FromDirectory(metadataDir, strict: strict), templatesRoot);
+    public static Outcome Run(
+        string metadataDir, string templatesRoot, bool strict = true, IReadOnlyList<IMetaDataTypeProvider>? providers = null)
+        => Run(MetaDataLoader.FromDirectory(
+            metadataDir, Provider.ComposeRegistry(MetaObjects.Config.ProviderLoader.Compose(providers)), strict: strict), templatesRoot);
 
     /// <summary>
     /// Same as the <c>metadataDir</c> overload above, but starting from an
