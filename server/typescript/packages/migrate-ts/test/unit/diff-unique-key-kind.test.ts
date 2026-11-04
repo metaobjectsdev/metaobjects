@@ -92,6 +92,23 @@ describe("a unique key that changes only between index and constraint", () => {
     expect(at("CREATE UNIQUE INDEX")).toBeLessThan(at("ADD CONSTRAINT \"FK_"));
   });
 
+  test("constraint to index while the FK onto it is renamed: the refit drops and re-adds it under the new name", async () => {
+    const { asIndex, asConstraint } = await schemas();
+    const ledgers = (s: SchemaSnapshot) => s.tables.find((t) => t.name === "Ledgers")!;
+    const wanted = ledgers(asIndex).foreignKeys[0]!.name;
+    ledgers(asConstraint).foreignKeys[0]!.name = "ledgers_account_fkey";
+    const { changes } = await diff(asIndex, asConstraint, { dialect: "postgres", allow: { dropIndex: true, dropFk: true } });
+    const rename = changes.find((c) => c.kind === "rename-constraints" && c.table === "Ledgers");
+    expect(rename?.kind === "rename-constraints" ? rename.constraintRenames : undefined)
+      .toEqual([{ from: "ledgers_account_fkey", to: wanted }]);
+    expect(changes.flatMap((c) => (c.kind === "drop-fk" ? [c.fk] : []))).toEqual([wanted]);
+    expect(changes.flatMap((c) => (c.kind === "add-fk" ? [c.fk.name] : []))).toEqual([wanted]);
+    const { up, down } = emit(changes, { dialect: "postgres" });
+    expect(up).not.toContain("DROP CONSTRAINT IF EXISTS \"ledgers_account_fkey\"");
+    expect(up.indexOf("RENAME CONSTRAINT \"ledgers_account_fkey\"")).toBeLessThan(up.indexOf(`DROP CONSTRAINT IF EXISTS "${wanted}"`));
+    expect(down.indexOf(`ADD CONSTRAINT "${wanted}"`)).toBeLessThan(down.indexOf(`RENAME CONSTRAINT "${wanted}" TO "ledgers_account_fkey"`));
+  });
+
   test("no preference (the default conventions): a live constraint is left as it is", async () => {
     const { asEither, asConstraint } = await schemas();
     const { changes } = await diff(asEither, asConstraint, { dialect: "postgres" });

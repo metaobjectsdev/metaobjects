@@ -284,6 +284,7 @@ export async function diff(
 
   // Pass 2: tables in both → compare columns/indexes/FKs
   const demotedKeys: { table: TableDescriptor; columns: readonly string[] }[] = [];
+  const renamedConstraints = new Map<string, ReadonlyMap<string, string>>();
   for (const [id, expectedTable] of expectedTables) {
     const actualTable = actualTables.get(id);
     if (!actualTable) continue;
@@ -305,6 +306,7 @@ export async function diff(
     // demoted, in one migration. The rename runs first, so the demotion uses the new name.
     const { promotions, demotions } = uniqueKindChanges(
       expectedTable, withRenamedIndexes(actualTable, [...constraintRenames, ...indexRenames]), canon);
+    if (constraintRenames.length > 0) renamedConstraints.set(id, new Map(constraintRenames.map((r) => [r.from, r.to])));
     if (constraintRenames.length > 0 || indexRenames.length > 0 || promotions.length > 0) {
       changes.push({
         kind: "rename-constraints", table: expectedTable.name, ...schemaSpread(expectedTable.schema),
@@ -324,7 +326,7 @@ export async function diff(
   }
   // A demoted UNIQUE constraint is dropped, and Postgres refuses that while a foreign key
   // relies on it, so each such FK is dropped first and added back once the index exists.
-  if (demotedKeys.length > 0) refitForeignKeysOnto(demotedKeys, actualTables, expectedTables, changes);
+  if (demotedKeys.length > 0) refitForeignKeysOnto(demotedKeys, actualTables, expectedTables, renamedConstraints, changes);
 
   // Pass 2b: views. Identity is (schema, name). How "changed" is decided is
   // DIALECT-DEPENDENT — see diffViews.
@@ -820,13 +822,15 @@ function uniqueKindChanges(
 
 /**
  * Drop and re-add every live foreign key that targets a demoted key's columns, unless the
- * diff already drops it. The re-added FK is the expected one when the model still declares
+ * diff already drops it. An FK the same migration renames is dropped under its new name, since
+ * the rename runs first. The re-added FK is the expected one when the model still declares
  * it, else the live one.
  */
 function refitForeignKeysOnto(
   keys: readonly { table: TableDescriptor; columns: readonly string[] }[],
   actualTables: ReadonlyMap<string, TableDescriptor>,
   expectedTables: ReadonlyMap<string, TableDescriptor>,
+  renamedConstraints: ReadonlyMap<string, ReadonlyMap<string, string>>,
   changes: Change[],
 ): void {
   const dropped = new Set(changes.flatMap((c) =>
@@ -838,8 +842,10 @@ function refitForeignKeysOnto(
         && fk.refColumns.length === k.columns.length && fk.refColumns.every((c, i) => c === k.columns[i]));
       if (target === undefined || dropped.has(`${id}\u0000${fk.name}`)) continue;
       const sx = schemaSpread(t.schema);
-      const want = expectedTables.get(id)?.foreignKeys.find((f) => f.name === fk.name) ?? fk;
-      changes.push({ kind: "drop-fk", table: t.name, ...sx, fk: fk.name, restore: fk, status: ALLOWED });
+      const name = renamedConstraints.get(id)?.get(fk.name) ?? fk.name;
+      const live = name === fk.name ? fk : { ...fk, name };
+      const want = expectedTables.get(id)?.foreignKeys.find((f) => f.name === name) ?? live;
+      changes.push({ kind: "drop-fk", table: t.name, ...sx, fk: name, restore: live, status: ALLOWED });
       if (!changes.some((c) => c.kind === "add-fk" && idOfChange(c) === id && c.fk.name === want.name)) {
         changes.push({ kind: "add-fk", table: t.name, ...sx, fk: want, status: ALLOWED });
       }
