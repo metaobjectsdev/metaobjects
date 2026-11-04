@@ -56,6 +56,10 @@ public class TypeDefinitionBuilder {
     private String parentType;
     private String parentSubType;
     private final Map<String, ChildRequirement> childRequirements = new HashMap<>();
+    // ADR-0062: attr names copied in by from() (the slot's own AND inherited names), and
+    // the attr names this builder's caller declared afterwards.
+    private final java.util.Set<String> seededAttrNames = new java.util.HashSet<>();
+    private final java.util.Set<String> declaredAttrNames = new java.util.LinkedHashSet<>();
 
     // Auto-constraint generation support
     private MetaDataRegistry registry;
@@ -124,6 +128,8 @@ public class TypeDefinitionBuilder {
             if ("*".equals(keyToUse)) {
                 // For wildcard requirements, create unique keys to avoid overwrites
                 keyToUse = "*:" + req.getExpectedType() + ":" + req.getExpectedSubType();
+            } else if ("attr".equals(req.getExpectedType())) {
+                builder.seededAttrNames.add(keyToUse);
             }
             builder.childRequirements.put(keyToUse, req);
         }
@@ -440,14 +446,23 @@ public class TypeDefinitionBuilder {
             key = "*:" + requirement.getExpectedType() + ":" + requirement.getExpectedSubType();
         }
         
+        boolean namedAttr = "attr".equals(requirement.getExpectedType()) && !"*".equals(requirement.getName());
+        if (namedAttr) {
+            declaredAttrNames.add(key);
+        }
         ChildRequirement existing = childRequirements.get(key);
+        // ADR-0062: a name this slot only INHERITS is not a same-slot redefinition. The
+        // registry's ownership check (extendType / applyExtendsAttrs) decides whether
+        // declaring it here is legal, so the declaration replaces the inherited copy.
+        boolean inheritedOrigin = existing != null && namedAttr && registry != null
+            && seededAttrNames.contains(key) && !registry.declaresAttrOn(type, subType, key);
         // ADR-0062: an IDENTICAL re-declaration is idempotent for the provider that owns the
         // slot's attr, but another provider repeating it is still a second claim on the name.
         boolean foreignRepeat = existing != null && existing.equals(requirement)
-            && "attr".equals(requirement.getExpectedType())
+            && namedAttr
             && registry != null
             && !registry.describeSlotHolder(type, subType, requirement.getName()).isEmpty();
-        if (existing != null && (foreignRepeat || !existing.equals(requirement))) {
+        if (existing != null && !inheritedOrigin && (foreignRepeat || !existing.equals(requirement))) {
             // A colliding ATTR child requirement is a provider redefining an attr
             // another provider already declared on this type — the cross-port
             // ERR_PROVIDER_ATTR_CONFLICT invariant (mirrors the TS/Python/C#
@@ -502,6 +517,14 @@ public class TypeDefinitionBuilder {
         return td;
     }
     
+    /**
+     * ADR-0062 — the named attr names declared on this builder after it was created, in
+     * declaration order (excludes the requirements {@link #from} copied in).
+     */
+    java.util.Set<String> getDeclaredAttrNames() {
+        return java.util.Collections.unmodifiableSet(declaredAttrNames);
+    }
+
     /**
      * Get the current type being built (for debugging)
      * 

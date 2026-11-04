@@ -103,6 +103,33 @@ public class AttrOwnershipTest {
     }
 
     @Test
+    public void extendingASubtypeWithANameItOnlyInheritsIsAShadowEvenWhenTheSpecDiffers() {
+        MetaDataException e = refusal(
+            provider("owner-a", new String[0], r -> {
+                root(r, "physicalName");
+                probe(r, "other");
+            }),
+            provider("owner-b", new String[]{"owner-a"}, r ->
+                r.extendType(ProbeTemplate.class, def ->
+                    def.optionalAttributeWithConstraints("physicalName")
+                       .ofType(StringAttribute.SUBTYPE_STRING).asArray())));
+        assertEquals(ErrorCode.ERR_PROVIDER_ATTR_SHADOW, e.getCode().orElseThrow());
+    }
+
+    @Test
+    public void ownerExtendingItsSubtypeWithAnInheritedNameIsLegalAndRecorded() {
+        MetaDataRegistry registry = MetaDataRegistry.compose(List.of(
+            provider("owner-a", new String[0], r -> {
+                root(r, "physicalName");
+                probe(r, "other");
+                r.extendType(ProbeTemplate.class, def ->
+                    def.optionalAttributeWithConstraints("physicalName")
+                       .ofType(StringAttribute.SUBTYPE_STRING).asSingle());
+            })));
+        assertEquals("owner-a", registry.getAttrProvider(TemplateConstants.TYPE_TEMPLATE, "probe", "physicalName"));
+    }
+
+    @Test
     public void sameSlotExtendByAnotherProviderKeepsAttrConflictAndNamesTheOwner() {
         MetaDataException e = refusal(
             provider("owner-a", new String[0], r -> probe(r, "physicalName")),

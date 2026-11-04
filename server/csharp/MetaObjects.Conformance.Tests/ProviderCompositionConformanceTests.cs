@@ -154,6 +154,53 @@ internal sealed class ShadowTestProvider : IMetaDataTypeProvider
     }
 }
 
+/// <summary>ADR-0062 — extends <c>template.shadowprobe</c> with the name <c>shadow-base</c> owns on the root.</summary>
+internal sealed class ShadowSubExtendClashProvider : IMetaDataTypeProvider
+{
+    public string Id => "shadow-sub-extend-clash";
+    public IReadOnlyList<string> Dependencies => new[] { "shadow-sub-distinct" };
+
+    public void RegisterTypes(TypeRegistry registry)
+    {
+        registry.Extend(
+            "template",
+            ShadowTestProvider.ShadowSubType,
+            attributes: new List<AttrSchema>
+            {
+                new AttrSchema("shadowAttr", "string", Required: false, Description: "Ownership probe attr."),
+            });
+    }
+}
+
+/// <summary>ADR-0062 — registers one optional string common attr, <c>times</c> times.</summary>
+internal sealed class CommonAttrTestProvider : IMetaDataTypeProvider
+{
+    private readonly string _attr;
+    private readonly int _times;
+
+    public CommonAttrTestProvider(string id, string[] dependencies, string attr, int times = 1)
+    {
+        Id = id;
+        Dependencies = dependencies;
+        _attr = attr;
+        _times = times;
+    }
+
+    public string Id { get; }
+    public IReadOnlyList<string> Dependencies { get; }
+
+    public void RegisterTypes(TypeRegistry registry)
+    {
+        for (int i = 0; i < _times; i++)
+        {
+            registry.RegisterCommonAttrs(new[]
+            {
+                new AttrSchema(_attr, "string", Required: false, Description: "Ownership probe common attr."),
+            });
+        }
+    }
+}
+
 public sealed class ProviderCompositionConformanceTests
 {
     private static readonly IReadOnlyDictionary<string, IMetaDataTypeProvider> Providers =
@@ -175,6 +222,10 @@ public sealed class ProviderCompositionConformanceTests
             ["shadow-base-late"]    = new ShadowTestProvider("shadow-base-late", new[] { "shadow-sub-owner" }, ("base", "reverseAttr")),
             ["shadow-sub-distinct"] = new ShadowTestProvider("shadow-sub-distinct", new[] { "shadow-base" }, (ShadowTestProvider.ShadowSubType, "distinctAttr")),
             ["shadow-self"]         = new ShadowTestProvider("shadow-self", System.Array.Empty<string>(), ("base", "selfAttr"), (ShadowTestProvider.ShadowSubType, "selfAttr")),
+            ["shadow-sub-extend-clash"] = new ShadowSubExtendClashProvider(),
+            ["common-owner"]        = new CommonAttrTestProvider("common-owner", System.Array.Empty<string>(), "commonAttr"),
+            ["common-clash"]        = new CommonAttrTestProvider("common-clash", new[] { "common-owner" }, "commonAttr"),
+            ["common-self"]         = new CommonAttrTestProvider("common-self", System.Array.Empty<string>(), "selfCommonAttr", times: 2),
         };
 
     // Flat-corpus (error-code) manifest shape — unchanged.
@@ -337,7 +388,10 @@ public sealed class ProviderCompositionConformanceTests
 
     private sealed record OwnerExpectation(string Type, string SubType, string Attr, string Owner);
 
-    private sealed record OwnershipManifest(string[] Providers, OwnerExpectation[] ExpectOwners);
+    private sealed record CommonOwnerExpectation(string Attr, string Owner);
+
+    private sealed record OwnershipManifest(
+        string[] Providers, OwnerExpectation[]? ExpectOwners, CommonOwnerExpectation[]? ExpectCommonOwners);
 
     private static string OwnershipCorpusRootPath() =>
         Path.Combine(CorpusRootPath(), "attr-ownership");
@@ -363,10 +417,16 @@ public sealed class ProviderCompositionConformanceTests
             File.ReadAllText(Path.Combine(OwnershipCorpusRootPath(), fileName)), opts)!;
 
         var registry = Provider.ComposeRegistry(manifest.Providers.Select(Resolve).ToList());
-        Assert.NotEmpty(manifest.ExpectOwners);
-        foreach (var expected in manifest.ExpectOwners)
+        OwnerExpectation[] owners = manifest.ExpectOwners ?? [];
+        CommonOwnerExpectation[] commonOwners = manifest.ExpectCommonOwners ?? [];
+        Assert.True(owners.Length + commonOwners.Length > 0);
+        foreach (var expected in owners)
         {
             Assert.Equal(expected.Owner, registry.AttrOrigin(expected.Type, expected.SubType, expected.Attr));
+        }
+        foreach (var expected in commonOwners)
+        {
+            Assert.Equal(expected.Owner, registry.CommonAttrOrigin(expected.Attr));
         }
     }
 }

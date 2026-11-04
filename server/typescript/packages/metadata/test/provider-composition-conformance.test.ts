@@ -17,7 +17,7 @@ import { join } from "node:path";
 import { readdirSync } from "node:fs";
 import type { MetaDataTypeProvider } from "../src/provider.js";
 import { composeRegistry } from "../src/provider.js";
-import { TypeRegistry, TypeId } from "../src/registry.js";
+import { TypeRegistry, TypeId, type AttrSchema } from "../src/registry.js";
 import { MetaTemplate } from "../src/template/meta-template.js";
 import { TYPE_TEMPLATE, TYPE_ATTR, TYPE_VIEW, SUBTYPE_BASE } from "../src/shared/base-types.js";
 import { CHILD_RULE_WILDCARD } from "../src/shared/structural.js";
@@ -194,7 +194,43 @@ const shadowSelfProvider: MetaDataTypeProvider = {
   },
 };
 
+const shadowSubExtendClashProvider: MetaDataTypeProvider = {
+  id: "shadow-sub-extend-clash",
+  dependencies: ["shadow-sub-distinct"],
+  registerTypes: (registry) =>
+    registry.extend(TYPE_TEMPLATE, SHADOW_SUBTYPE, {
+      attributes: [
+        { name: "shadowAttr", valueType: ATTR_SUBTYPE_STRING, required: false, description: "Ownership probe attr." },
+      ],
+    }),
+};
+
+function commonAttr(name: string): AttrSchema {
+  return { name, valueType: ATTR_SUBTYPE_STRING, required: false, description: "Ownership probe common attr." };
+}
+
+const commonOwnerProvider: MetaDataTypeProvider = {
+  id: "common-owner",
+  registerTypes: (registry) => registry.registerCommonAttrs([commonAttr("commonAttr")]),
+};
+const commonClashProvider: MetaDataTypeProvider = {
+  id: "common-clash",
+  dependencies: ["common-owner"],
+  registerTypes: (registry) => registry.registerCommonAttrs([commonAttr("commonAttr")]),
+};
+const commonSelfProvider: MetaDataTypeProvider = {
+  id: "common-self",
+  registerTypes(registry) {
+    registry.registerCommonAttrs([commonAttr("selfCommonAttr")]);
+    registry.registerCommonAttrs([commonAttr("selfCommonAttr")]);
+  },
+};
+
 const PROVIDERS: Readonly<Record<string, MetaDataTypeProvider>> = {
+  "shadow-sub-extend-clash": shadowSubExtendClashProvider,
+  "common-owner": commonOwnerProvider,
+  "common-clash": commonClashProvider,
+  "common-self": commonSelfProvider,
   "shadow-base": shadowBaseProvider,
   "shadow-sub-clash": shadowSubClashProvider,
   "shadow-sub-owner": shadowSubOwnerProvider,
@@ -231,6 +267,7 @@ interface Manifest {
   expectErrors?: string[];
   // ADR-0062 attr-ownership shape — see README.md "The `attr-ownership/` subdir".
   expectOwners?: { type: string; subType: string; attr: string; owner: string }[];
+  expectCommonOwners?: { attr: string; owner: string }[];
 }
 
 /** Pull the stable ERR_ code off a caught error, if it carries one. */
@@ -354,9 +391,12 @@ for (const file of ownershipFiles) {
   test(`provider-composition (attr-ownership): ${file}`, async () => {
     const manifest: Manifest = await Bun.file(join(OWNERSHIP_CORPUS, file)).json();
     const registry = composeRegistry(manifest.providers.map(resolve));
-    expect(manifest.expectOwners?.length ?? 0).toBeGreaterThan(0);
+    expect((manifest.expectOwners?.length ?? 0) + (manifest.expectCommonOwners?.length ?? 0)).toBeGreaterThan(0);
     for (const { type, subType, attr, owner } of manifest.expectOwners ?? []) {
       expect(registry.attrOwner(type, subType, attr)).toBe(owner);
+    }
+    for (const { attr, owner } of manifest.expectCommonOwners ?? []) {
+      expect(registry.commonAttrOwner(attr)).toBe(owner);
     }
   });
 }

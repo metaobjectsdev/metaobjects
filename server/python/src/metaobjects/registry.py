@@ -125,6 +125,9 @@ class TypeRegistry:
         # on a spec-declared subtype is never pruned by the library's strict
         # per-subtype allow-list — only LIBRARY-origin attrs are.
         self._attr_provenance: dict[tuple[str, str, str], str] = {}
+        # ADR-0062 -- common attr name -> the provider id that registered it
+        # (LIBRARY_ATTR_ORIGIN when registered outside any provider's turn).
+        self._common_attr_provenance: dict[str, str] = {}
 
     def seal(self) -> None:
         """Seal the registry: every subsequent mutating registration raises
@@ -261,11 +264,25 @@ class TypeRegistry:
         return self._default_sub_types.get(type_)
 
     def register_common_attrs(self, attrs: list[AttrSchema]) -> None:
-        """Register attrs accepted on every metatype. First-wins dedupe by name.
+        """Register attrs accepted on every metatype.
 
-        Conflict with per-type attrs is detected at validation time, not here.
+        The same provider (or a registration outside any provider's turn) re-registering a
+        name is deduped; a different provider registering a name another provider holds
+        raises ``ERR_PROVIDER_ATTR_CONFLICT`` (ADR-0062). Conflict with per-type attrs is
+        detected at validation time, not here.
         """
         self._check_not_sealed("register_common_attrs")
+        # ADR-0062: checked for the whole batch first, so a refusal leaves no trace.
+        claimant = self._current_provider_id
+        for attr in attrs:
+            owner = self._common_attr_provenance.get(attr.name, LIBRARY_ATTR_ORIGIN)
+            if claimant is not None and owner not in (LIBRARY_ATTR_ORIGIN, claimant):
+                raise ParseError(
+                    f'Provider "{claimant}" registers common attribute "{attr.name}", but '
+                    f'provider "{owner}" already registers it as a common attribute; provider '
+                    f'"{claimant}" cannot declare it again (ADR-0062)',
+                    ErrorCode.ERR_PROVIDER_ATTR_CONFLICT,
+                )
         for attr in attrs:
             # ADR-0050, the second door. A common attr is projected onto EVERY registered
             # type, so a required one is the same defect as a required extend() -- with the
@@ -282,8 +299,15 @@ class TypeRegistry:
                     ErrorCode.ERR_EXTEND_REQUIRED_ATTR,
                 )
             if any(existing.name == attr.name for existing in self._common_attrs):
-                continue  # first registration wins
+                continue  # dedupe same-name re-registration
             self._common_attrs.append(attr)
+            self._common_attr_provenance[attr.name] = claimant or LIBRARY_ATTR_ORIGIN
+
+    def common_attr_origin(self, attr_name: str) -> str:
+        """The provider id that registered common attr ``attr_name``, or
+        :data:`LIBRARY_ATTR_ORIGIN` if unregistered or registered outside any provider's
+        turn (ADR-0062)."""
+        return self._common_attr_provenance.get(attr_name, LIBRARY_ATTR_ORIGIN)
 
     def get_common_attrs(self) -> list[AttrSchema]:
         """Return a defensive copy of the registered common attrs."""

@@ -1,0 +1,8 @@
+{
+  "description": "A provider registers a common attr whose name another provider already registers as a common attr.",
+  "providers": [
+    "common-owner",
+    "common-clash"
+  ],
+  "expectedError": "ERR_PROVIDER_ATTR_CONFLICT"
+}

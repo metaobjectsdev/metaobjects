@@ -87,7 +87,9 @@ which provider registered each attribute, and refuses a second provider's claim 
 
 - on the same `(type, subType)` — `ERR_PROVIDER_ATTR_CONFLICT`;
 - on the shared root `(type, base)` that the subtype inherits from, or on a subtype of it —
-  `ERR_PROVIDER_ATTR_SHADOW`.
+  `ERR_PROVIDER_ATTR_SHADOW`, whether the second provider registers the type or `extend`s it;
+- as a common attribute (accepted on every node type) another provider already registered —
+  `ERR_PROVIDER_ATTR_CONFLICT`.
 
 The message names both providers and the attribute. The check runs both ways, so it does not
 matter which provider registers first. The same provider repeating its own name, sibling
@@ -518,8 +520,8 @@ Composition surfaces these codes consistently across all ports (see
 | `ERR_PROVIDER_DUPLICATE_ID` | Two provider objects report the same `id` | `provider-extension-duplicate-id` |
 | `ERR_PROVIDER_MISSING_DEPENDENCY` | Provider declares dep on an unregistered id | `provider-extension-missing-dependency` |
 | `ERR_PROVIDER_DEPENDENCY_CYCLE` | Provider dependencies form a cycle | `provider-extension-dependency-cycle` |
-| `ERR_PROVIDER_ATTR_CONFLICT` | Two providers declare the same attr on the same `(type, subType)` | `attr-conflict` (provider-composition corpus) |
-| `ERR_PROVIDER_ATTR_SHADOW` | A provider declares an attr another provider already holds on the shared root or a descendant subtype of the same type | `attr-shadow-inherited`, `attr-shadow-descendant` (provider-composition corpus) |
+| `ERR_PROVIDER_ATTR_CONFLICT` | Two providers declare the same attr on the same `(type, subType)`, or register the same common attr | `attr-conflict`, `common-attr-conflict` (provider-composition corpus) |
+| `ERR_PROVIDER_ATTR_SHADOW` | A provider declares an attr another provider already holds on the shared root or a descendant subtype of the same type | `attr-shadow-inherited`, `attr-shadow-descendant`, `attr-shadow-extend` (provider-composition corpus) |
 
 Each conformance fixture's `providers.json: string[]` lists the provider ids to
 compose for that test — the same wire format consumers use at runtime. Each

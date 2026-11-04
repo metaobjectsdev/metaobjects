@@ -419,18 +419,39 @@ public sealed class TypeRegistry
 
     private readonly List<AttrSchema> _commonAttrs = new();
 
+    /// <summary>ADR-0062 — common attr name -> the provider id that registered it
+    /// (<see cref="LibrarySentinel"/> when registered outside any provider's turn).</summary>
+    private readonly Dictionary<string, string> _commonAttrProvenance = new();
+
     /// <summary>
     /// Register attrs that are accepted on every metatype. Used by providers to
-    /// declare cross-cutting attrs (e.g. documentation attrs). Repeated
-    /// registration of the same name is silently deduped (first registration
-    /// wins); conflicts with per-type attrs are detected at validation time.
+    /// declare cross-cutting attrs (e.g. documentation attrs). The same provider (or
+    /// a registration outside any provider's turn) re-registering a name is deduped; a
+    /// different provider registering a name another provider holds throws
+    /// <c>ERR_PROVIDER_ATTR_CONFLICT</c> (ADR-0062). Conflicts with per-type attrs are
+    /// detected at validation time.
     /// Throws <see cref="InvalidOperationException"/> if any attr has
     /// ValueType == SUBTYPE_BASE.
     /// </summary>
     public void RegisterCommonAttrs(IEnumerable<AttrSchema> attrs)
     {
         CheckNotSealed("RegisterCommonAttrs");
-        foreach (AttrSchema attr in attrs)
+        List<AttrSchema> batch = attrs.ToList();
+        // ADR-0062: checked for the whole batch first, so a refusal leaves no trace.
+        string? claimant = CurrentProviderId;
+        foreach (AttrSchema attr in batch)
+        {
+            string owner = CommonAttrOrigin(attr.Name);
+            if (claimant is not null && owner != LibrarySentinel && owner != claimant)
+            {
+                throw new MetaModelException(
+                    $"Provider \"{claimant}\" registers common attribute \"{attr.Name}\", but provider \"{owner}\" " +
+                    $"already registers it as a common attribute; provider \"{claimant}\" cannot declare it again (ADR-0062)",
+                    ErrorCode.ERR_PROVIDER_ATTR_CONFLICT);
+            }
+        }
+
+        foreach (AttrSchema attr in batch)
         {
             if (attr.ValueType == SUBTYPE_BASE)
             {
@@ -458,12 +479,19 @@ public sealed class TypeRegistry
 
             if (_commonAttrs.Any(existing => existing.Name == attr.Name))
             {
-                continue; // first-wins dedupe; per-type conflicts handled at validation time
+                continue; // same-name dedupe; per-type conflicts handled at validation time
             }
 
             _commonAttrs.Add(attr);
+            _commonAttrProvenance[attr.Name] = claimant ?? LibrarySentinel;
         }
     }
+
+    /// <summary>ADR-0062 — the provider id that registered common attr
+    /// <paramref name="attrName"/>, or <see cref="LibrarySentinel"/> if unregistered or
+    /// registered outside any provider's turn.</summary>
+    public string CommonAttrOrigin(string attrName) =>
+        _commonAttrProvenance.TryGetValue(attrName, out string? origin) ? origin : LibrarySentinel;
 
     /// <summary>Returns the registered common attrs (defensive copy).</summary>
     public IReadOnlyList<AttrSchema> GetCommonAttrs() => _commonAttrs.ToList();

@@ -141,8 +141,35 @@ def _shadow_provider(provider_id: str, deps: tuple[str, ...], *types: tuple[str,
     return p
 
 
+class _ShadowSubExtendClashProvider(Provider):
+    """Extends `template.shadowprobe` with the name `shadow-base` owns on the root."""
+
+    def __init__(self) -> None:
+        super().__init__("shadow-sub-extend-clash", dependencies=("shadow-sub-distinct",))
+
+    def register_types(self, registry: TypeRegistry) -> None:  # noqa: D401
+        registry.extend("template", _SHADOW_SUBTYPE, attributes=[AttrSchema("shadowAttr", "string")])
+
+
+class _CommonAttrProvider(Provider):
+    """Registers one optional string common attr, `times` times."""
+
+    def __init__(self, provider_id: str, deps: tuple[str, ...], attr_name: str, times: int = 1) -> None:
+        super().__init__(provider_id, dependencies=deps)
+        self._attr_name = attr_name
+        self._times = times
+
+    def register_types(self, registry: TypeRegistry) -> None:  # noqa: D401
+        for _ in range(self._times):
+            registry.register_common_attrs([AttrSchema(self._attr_name, "string")])
+
+
 def _providers() -> dict[str, Provider]:
     return {
+        "shadow-sub-extend-clash": _ShadowSubExtendClashProvider(),
+        "common-owner": _CommonAttrProvider("common-owner", (), "commonAttr"),
+        "common-clash": _CommonAttrProvider("common-clash", ("common-owner",), "commonAttr"),
+        "common-self": _CommonAttrProvider("common-self", (), "selfCommonAttr", times=2),
         "shadow-base": _shadow_provider("shadow-base", (), ("base", "shadowAttr")),
         "shadow-sub-clash": _shadow_provider(
             "shadow-sub-clash", ("shadow-base",), (_SHADOW_SUBTYPE, "shadowAttr")
@@ -282,6 +309,8 @@ def test_provider_composition_attr_ownership(manifest_path: Path) -> None:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     providers = _providers()
     registry = compose_registry([_resolve(providers, pid) for pid in manifest["providers"]])
-    assert manifest["expectOwners"]
-    for owner in manifest["expectOwners"]:
+    assert manifest.get("expectOwners") or manifest.get("expectCommonOwners")
+    for owner in manifest.get("expectOwners", []):
         assert registry.attr_origin(owner["type"], owner["subType"], owner["attr"]) == owner["owner"]
+    for owner in manifest.get("expectCommonOwners", []):
+        assert registry.common_attr_origin(owner["attr"]) == owner["owner"]

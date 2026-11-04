@@ -34,8 +34,14 @@ a collision.
    - when `S` is the shared root, any registered subtype `(T, S')` — `ERR_PROVIDER_ATTR_SHADOW`.
 
    The check runs in both directions, so the verdict does not depend on which provider registers
-   first. A refusal names both providers and the attribute, and leaves nothing behind in the
-   registry.
+   first, and whether the second provider registers the slot or `extend`s it. A name a subtype
+   only inherits from the shared root is the root's, so declaring it on the subtype is a shadow,
+   not a same-slot repeat. A refusal names both providers and the attribute, and leaves nothing
+   behind in the registry.
+
+   A common attribute (accepted on every node type) follows the same rule against other common
+   attributes: a provider that registers common attribute `A` when a different provider already
+   registered common attribute `A` is refused with `ERR_PROVIDER_ATTR_CONFLICT`.
 
 3. **What stays legal.** The same provider declaring a name on several related slots (its own
    `@x` on the root and on a subtype) and re-registering its own slot. Sibling subtypes using
@@ -65,12 +71,19 @@ a collision.
   turned on), so existing adopters see no change.
 - A third-party provider that reuses a core or sibling provider's attribute name now fails at
   composition with a message that names both providers. The fix is a different idiomatic word.
+- A common attribute and a per-type attribute of the same name, from two providers, are not
+  refused yet. The Java port's core providers (`core-types`, `object-types`, `identity-types`,
+  `relationship-types` and `index-types`) declare a per-type `@description` beside the
+  documentation provider's common `@description`. Giving that name one owner removes the attribute
+  from those providers' own registrations, which is a change to their public attribute contract,
+  so it is left for a separate decision. Until then, that pair loads as it did before this ADR.
 - The two codes split by where the clash is, not by severity: `ERR_PROVIDER_ATTR_CONFLICT` keeps
   its established same-slot meaning and fixture, and `ERR_PROVIDER_ATTR_SHADOW` is the new
   inherited/descendant case.
 - Conformance: `fixtures/provider-composition-conformance/` carries the refusals
-  (`attr-shadow-inherited`, `attr-shadow-descendant`) and an `attr-ownership/` sub-corpus where
-  composition succeeds and each port reports the same owner per attribute.
+  (`attr-shadow-inherited`, `attr-shadow-descendant`, `attr-shadow-extend`,
+  `common-attr-conflict`) and an `attr-ownership/` sub-corpus where composition succeeds and each
+  port reports the same owner per attribute and per common attribute.
 
 ## Alternatives considered
 

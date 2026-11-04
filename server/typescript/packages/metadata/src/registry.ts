@@ -337,12 +337,27 @@ export class TypeRegistry {
 
   /**
    * Register attrs that are accepted on every metatype. Callers (providers) use
-   * this to declare cross-cutting attrs (e.g. doc attrs). Repeated registration
-   * of the same name is silently deduped (first registration wins); conflicts with
-   * per-type attrs are resolved at validation time (Task 1.3).
+   * this to declare cross-cutting attrs (e.g. doc attrs). The same provider (or a
+   * registration outside any provider's turn) re-registering a name is deduped; a
+   * different provider registering a name another provider holds is
+   * `ERR_PROVIDER_ATTR_CONFLICT` (ADR-0062). Conflicts with per-type attrs are
+   * resolved at validation time (Task 1.3).
    */
   registerCommonAttrs(attrs: AttrSchema[]): void {
     this.checkNotSealed("registerCommonAttrs");
+    // ADR-0062: another provider may not register a common attr name a provider already
+    // holds. Checked for the whole batch first, so a refusal leaves no trace.
+    const claimant = this._currentProviderId;
+    for (const attr of attrs) {
+      const owner = this._commonAttrOwners.get(attr.name);
+      if (owner !== undefined && claimant !== undefined && owner !== claimant) {
+        throw new MetaModelError(
+          `Provider "${claimant}" registers common attribute "${attr.name}", but provider "${owner}" ` +
+            `already registers it as a common attribute; provider "${claimant}" cannot declare it again (ADR-0062)`,
+          { code: "ERR_PROVIDER_ATTR_CONFLICT" },
+        );
+      }
+    }
     for (const attr of attrs) {
       if (attr.valueType === SUBTYPE_BASE) {
         throw new Error(
@@ -368,7 +383,7 @@ export class TypeRegistry {
         continue; // dedupe same-name re-registration; conflict-with-per-type-attr is checked at validation time
       }
       this._commonAttrs.push(attr);
-      if (this._currentProviderId !== undefined) this._commonAttrOwners.set(attr.name, this._currentProviderId);
+      if (claimant !== undefined) this._commonAttrOwners.set(attr.name, claimant);
     }
   }
 

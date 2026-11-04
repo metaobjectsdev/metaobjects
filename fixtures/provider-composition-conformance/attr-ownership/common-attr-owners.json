@@ -1,0 +1,17 @@
+{
+  "description": "Two providers registering DISTINCT common attr names compose cleanly, one provider re-registering its own common attr stays legal, and the registry records which provider owns each common attr.",
+  "providers": [
+    "common-owner",
+    "common-self"
+  ],
+  "expectCommonOwners": [
+    {
+      "attr": "commonAttr",
+      "owner": "common-owner"
+    },
+    {
+      "attr": "selfCommonAttr",
+      "owner": "common-self"
+    }
+  ]
+}

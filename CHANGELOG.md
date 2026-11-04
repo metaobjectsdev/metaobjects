@@ -37,10 +37,15 @@ here.**
   sibling subtypes sharing a name, and registration outside a provider all stay legal. The shipped
   core providers have no such collision, so existing projects see no change. `meta types --detail`
   prints the registering provider beside each attribute, and its JSON carries a `provider` field.
-  This is how per-paradigm physical-name words (`@column`, `@field`) stay safe as providers
-  multiply; no wire-name attribute is added. See ADR-0062 and
+  Two providers registering one common attribute name is also `ERR_PROVIDER_ATTR_CONFLICT` (it
+  used to be first-wins), and the registry records each common attribute's provider. A common
+  attribute and a per-type attribute of the same name from two providers are not refused yet:
+  Java's core providers declare a per-type `@description` beside the documentation provider's
+  common one. This is how per-paradigm physical-name words (`@column`, `@field`) stay safe as
+  providers multiply; no wire-name attribute is added. See ADR-0062 and
   `docs/features/extending-with-providers.md`. New conformance fixtures: `attr-shadow-inherited`,
-  `attr-shadow-descendant` and the `attr-ownership/` sub-corpus. Fixes #527.
+  `attr-shadow-descendant`, `attr-shadow-extend`, `common-attr-conflict` and the
+  `attr-ownership/` sub-corpus. Fixes #527.
 
 ### Fixed
 

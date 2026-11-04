@@ -15,6 +15,7 @@
  */
 package com.metaobjects.conformance;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.metaobjects.ErrorCode;
@@ -231,6 +232,23 @@ public class ProviderCompositionConformanceTest {
             registerShadowProbe(r, "selfAttr");
         });
 
+    private static final MetaDataTypeProvider SHADOW_SUB_EXTEND_CLASH =
+        shadowProvider("shadow-sub-extend-clash", new String[]{"shadow-sub-distinct"},
+            r -> r.extendType(ShadowProbeTemplate.class, def -> def
+                .optionalAttributeWithConstraints("shadowAttr")
+                .ofType(StringAttribute.SUBTYPE_STRING).asSingle()));
+    private static final MetaDataTypeProvider COMMON_OWNER =
+        shadowProvider("common-owner", new String[0],
+            r -> r.registerCommonAttribute("commonAttr", StringAttribute.SUBTYPE_STRING, false));
+    private static final MetaDataTypeProvider COMMON_CLASH =
+        shadowProvider("common-clash", new String[]{"common-owner"},
+            r -> r.registerCommonAttribute("commonAttr", StringAttribute.SUBTYPE_STRING, false));
+    private static final MetaDataTypeProvider COMMON_SELF =
+        shadowProvider("common-self", new String[0], r -> {
+            r.registerCommonAttribute("selfCommonAttr", StringAttribute.SUBTYPE_STRING, false);
+            r.registerCommonAttribute("selfCommonAttr", StringAttribute.SUBTYPE_STRING, false);
+        });
+
     private static MetaDataTypeProvider resolve(String id) {
         MetaDataTypeProvider p = ConformanceTestProviders.TEST_PROVIDERS.get(id);
         if (p != null) return p;
@@ -245,6 +263,10 @@ public class ProviderCompositionConformanceTest {
             case "shadow-base-late":    return SHADOW_BASE_LATE;
             case "shadow-sub-distinct": return SHADOW_SUB_DISTINCT;
             case "shadow-self":         return SHADOW_SELF;
+            case "shadow-sub-extend-clash": return SHADOW_SUB_EXTEND_CLASH;
+            case "common-owner":        return COMMON_OWNER;
+            case "common-clash":        return COMMON_CLASH;
+            case "common-self":         return COMMON_SELF;
             default:
                 throw new IllegalArgumentException(
                     "Unknown named provider \"" + id + "\" in provider-composition corpus");
@@ -382,8 +404,11 @@ public class ProviderCompositionConformanceTest {
 
             MetaDataRegistry registry = MetaDataRegistry.compose(resolved);
 
-            assertTrue(manifest.getAsJsonArray("expectOwners").size() > 0);
-            manifest.getAsJsonArray("expectOwners").forEach(el -> {
+            JsonArray owners = manifest.has("expectOwners") ? manifest.getAsJsonArray("expectOwners") : new JsonArray();
+            JsonArray commonOwners = manifest.has("expectCommonOwners")
+                ? manifest.getAsJsonArray("expectCommonOwners") : new JsonArray();
+            assertTrue(owners.size() + commonOwners.size() > 0);
+            owners.forEach(el -> {
                 JsonObject expected = el.getAsJsonObject();
                 assertEquals(
                     expected.get("owner").getAsString(),
@@ -391,6 +416,12 @@ public class ProviderCompositionConformanceTest {
                         expected.get("type").getAsString(),
                         expected.get("subType").getAsString(),
                         expected.get("attr").getAsString()));
+            });
+            commonOwners.forEach(el -> {
+                JsonObject expected = el.getAsJsonObject();
+                assertEquals(
+                    expected.get("owner").getAsString(),
+                    registry.getCommonAttrProvider(expected.get("attr").getAsString()));
             });
         }
     }
