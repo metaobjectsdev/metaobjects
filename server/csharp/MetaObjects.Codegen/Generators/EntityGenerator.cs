@@ -294,18 +294,11 @@ public class EntityGenerator : IGenerator
 
         EmitClassHeader(sb, entity, className, isProjection, pkFields, ctx);
         // Cross-field validators run on the full create record only (never a read-only view).
-        // The C# base chain is real only when the declaration line actually names a base; fields
-        // the class skips as "inherited" are otherwise absent as properties, so a validator that
-        // references one is skipped rather than emitted against a member that does not exist.
-        var mappedBase = DirectMappedParent(entity, ctx.Config);
-        var declaresBase = mappedBase is not null && LastLineHasBase(sb);
-        var validatingBase = declaresBase && !InstanceArtifacts.IsAbstract(mappedBase!)
-            && HasEffectiveCrossField(mappedBase!) ? mappedBase : null;
-        var absent = mappedBase is not null && !declaresBase
-            ? new HashSet<string>(mappedBase.Fields().Select(f => f.Name), StringComparer.Ordinal)
-            : null;
-        var validateMethod = isProjection ? null : CrossFieldValidateMethod(entity, validatingBase, absent);
-        if (validateMethod is not null && validatingBase is null) AppendValidatableInterface(sb);
+        // A non-TPH entity never has a validating base: its only possible base is an abstract
+        // shape, which declares no Validate, and every property it carries is present on this
+        // class (own or inherited through the base chain), so every effective rule is emitted here.
+        var validateMethod = isProjection ? null : CrossFieldValidateMethod(entity, validatingBase: null);
+        if (validateMethod is not null) AppendValidatableInterface(sb);
         sb.AppendLine("{");
 
         // Nested enum declarations (before the class properties, as C# enum members
@@ -313,9 +306,10 @@ public class EntityGenerator : IGenerator
         var enumDecls = CollectEnumDecls(entity);
 
         // Members in declared order: scalar columns + enum-typed props + (entities only) owned-type navs.
-        // When this entity extends an emitted base class (DirectMappedParent), the base carries
+        // When this entity extends an emitted abstract shape (DirectMappedParent), the shape carries
         // the inherited fields — emit ONLY this entity's own fields and let C# inheritance supply
-        // the rest (mirrors the metadata `extends` chain; the PK lives on the declaring base).
+        // the rest. A concrete parent is never a C# base (two mapped entities in one hierarchy would
+        // be an EF TPH/TPT mapping, not the one-table-per-entity model), so its fields are declared here.
         var inheritedNames = DirectMappedParent(entity, ctx.Config) is { } mp
             ? new HashSet<string>(mp.Fields().Select(f => f.Name), StringComparer.Ordinal)
             : new HashSet<string>(StringComparer.Ordinal);
@@ -482,7 +476,7 @@ public class EntityGenerator : IGenerator
                 // HasValue<Base>(...) fails model validation ("has a discriminator property,
                 // but does not have a discriminator value configured").
                 var classKeyword = TphPlanBuilder.IsTphDiscriminatorBase(entity, ctx.Root) ? "abstract class" : "class";
-                sb.AppendLine($"public {classKeyword} {className}");
+                sb.AppendLine($"public {classKeyword} {className}{MappedBaseClause(entity, ctx)}");
                 break;
             case ClassDeclarationKind.TphSubtype:
                 // Extend the nearest ancestor that actually GETS EMITTED as a class — the
@@ -504,13 +498,19 @@ public class EntityGenerator : IGenerator
                 sb.AppendLine($"public {tphKeyword} {className} : {baseClass}");
                 break;
             case ClassDeclarationKind.AbstractShape:
-                sb.AppendLine($"public abstract class {className}");
+                sb.AppendLine($"public abstract class {className}{MappedBaseClause(entity, ctx)}");
                 break;
             case ClassDeclarationKind.ValueObject:
                 sb.AppendLine($"public class {className}");
                 break;
         }
     }
+
+    // ` : Base` when this non-TPH entity or abstract shape extends an emitted abstract shape
+    // (DirectMappedParent), else empty. The member loops skip the fields that base carries,
+    // so the declaration line MUST name it or those properties exist nowhere on the class.
+    private static string MappedBaseClause(MetaObject entity, GenContext ctx) =>
+        DirectMappedParent(entity, ctx.Config) is { } parent ? $" : {CSharpNaming.Pascal(parent.Name)}" : "";
 
     // A M:N navigation collection property on the source entity. The collection is
     // the relationship name PascalCased; its element type is the target entity.
@@ -733,16 +733,23 @@ public class EntityGenerator : IGenerator
 
     // The directly-extended entity to emit as a C# base class for a NON-TPH entity (mapped
     // entity or abstract shape). The metadata `extends` chain becomes the C# inheritance
-    // chain: `class Physician : BaseAuditableEntity`, `abstract class BaseAuditableEntity :
-    // BaseEntity`. Returns the immediate `extends` target when it is an emitted entity — an
-    // abstract base (only when EmitAbstractShapes is on, since the base must exist as a type)
-    // or a concrete parent. Null when there is no such parent: the entity then flattens its
-    // (un-emitted) abstract ancestors' fields as before. TPH members use DirectTphParent.
+    // chain ONLY through abstract shapes: `class Physician : BaseAuditableEntity`, `abstract
+    // class BaseAuditableEntity : BaseEntity`. An abstract shape is not mapped, so EF folds
+    // its properties into each derived entity's own table — exactly what every other port
+    // and the migrate-ts schema give a child of an abstract parent.
+    //
+    // Returns null otherwise: the entity then declares every resolved field itself. That
+    // includes a CONCRETE parent. Each concrete entity owns a table carrying ALL its columns
+    // (the migrate-ts schema gives `Child` a table with the parent's columns and its own,
+    // and the other ports' child models carry both), but a C# `Child : Parent` between two
+    // MAPPED entities is an EF inheritance hierarchy — TPH (one shared table plus a
+    // discriminator) or TPT (child table holding only the child's own columns). Either
+    // contradicts that schema, so a concrete parent is flattened, never named as a base.
+    // TPH members use DirectTphParent.
     protected static MetaObject? DirectMappedParent(MetaObject entity, GenConfig config)
     {
         if (entity.SuperData is not MetaObject sup || !sup.IsEntity()) return null;
-        if (InstanceArtifacts.IsAbstract(sup)) return config.EmitAbstractShapes ? sup : null;
-        return sup;
+        return InstanceArtifacts.IsAbstract(sup) && config.EmitAbstractShapes ? sup : null;
     }
 
     // The nearest @discriminator-bearing ancestor of a TPH subtype (its TPH base).
@@ -1054,15 +1061,6 @@ public class EntityGenerator : IGenerator
     private static bool HasEffectiveCrossField(MetaObject entity) =>
         entity.Validators().Any(IsCrossFieldValidator);
 
-    private static bool LastLineHasBase(StringBuilder sb)
-    {
-        var len = sb.Length;
-        while (len > 0 && (sb[len - 1] == '\n' || sb[len - 1] == '\r')) len--;
-        var start = len;
-        while (start > 0 && sb[start - 1] != '\n') start--;
-        return sb.ToString(start, len - start).Contains(" : ", StringComparison.Ordinal);
-    }
-
     // Appends `, IValidatableObject` (or ` : IValidatableObject`) to the just-written class
     // declaration line. Works on the builder so an overridden declaration seam still applies.
     private static void AppendValidatableInterface(StringBuilder sb)
@@ -1077,8 +1075,7 @@ public class EntityGenerator : IGenerator
     }
 
     // Returns the emitted Validate method (4-space class-body indent), or null when nothing to emit.
-    private string? CrossFieldValidateMethod(
-        MetaObject entity, MetaObject? validatingBase, ISet<string>? absentProps = null)
+    private string? CrossFieldValidateMethod(MetaObject entity, MetaObject? validatingBase)
     {
         var validators = CrossFieldValidatorsFor(entity, validatingBase);
         if (validators.Count == 0) return null;
@@ -1098,7 +1095,6 @@ public class EntityGenerator : IGenerator
             var f = entity.Fields().FirstOrDefault(x => x.Name == n);
             if (f is null || f.ResolvedIsArray()) return null;
             if (f.IsReadOnlyMutability || f.IsDerived() || generatedKey.Contains(f.Name)) return null;
-            if (absentProps is not null && absentProps.Contains(f.Name)) return null; // not a property of this class
             return CSharpNaming.ScalarFor(f.SubType) is not null || f.SubType == FIELD_SUBTYPE_ENUM ? f : null;
         }
 
@@ -1160,7 +1156,11 @@ public class EntityGenerator : IGenerator
                     else if (lk == CrossKind.Temporal && rk == CrossKind.Temporal
                              && CSharpNaming.ScalarForField(l) == CSharpNaming.ScalarForField(r))
                         cond = $"{a} {csOp} {b}";
-                    else if (!ordering && lk == rk && lk != CrossKind.Other)
+                    else if (!ordering && l.SubType == r.SubType
+                             && (lk != CrossKind.Other || l.SubType is FIELD_SUBTYPE_UUID or FIELD_SUBTYPE_URI or FIELD_SUBTYPE_INET)
+                             && CSharpNaming.ScalarForField(l) == CSharpNaming.ScalarForField(r)
+                             && (l.SubType != FIELD_SUBTYPE_ENUM
+                                 || ReferenceEquals(Fr019SharedEnum.ResolveSharedEnumDecl(l) ?? l, Fr019SharedEnum.ResolveSharedEnumDecl(r) ?? r)))
                         cond = op == "eq" ? $"Equals({a}, {b})" : $"!Equals({a}, {b})";
                     else break;
                     var lp = PropertyName(l); var rp = PropertyName(r);

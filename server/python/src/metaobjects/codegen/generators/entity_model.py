@@ -32,6 +32,7 @@ from metaobjects.meta.core.identity.identity_constants import (
     IDENTITY_ATTR_GENERATION,
 )
 from metaobjects.meta.core.validator import validator_constants as vc
+from metaobjects.meta.persistence.db import db_constants as dbc
 from metaobjects.meta.persistence.origin.origin_constants import (
     AGG_ALL,
     AGG_ANY,
@@ -463,15 +464,42 @@ def _assigned_pk_field_names(entity: MetaObject) -> set[str]:
 # (None is SQL NULL; "" is NOT null). Enforced on the Create model only: a Patch body
 # cannot see the merged row, so the DB CHECK stays the enforcement point there.
 _COMPARISON_PY_OP = {"gt": ">", "gte": ">=", "lt": "<", "lte": "<=", "ne": "!=", "eq": "=="}
+_INT_SUBTYPES = (fc.FIELD_SUBTYPE_INT, fc.FIELD_SUBTYPE_LONG)
+_FLOAT_SUBTYPES = (fc.FIELD_SUBTYPE_DOUBLE, fc.FIELD_SUBTYPE_FLOAT)
+_DECIMAL_SUBTYPES = (fc.FIELD_SUBTYPE_DECIMAL, fc.FIELD_SUBTYPE_CURRENCY)
+_NUMERIC_CROSS = _INT_SUBTYPES + _FLOAT_SUBTYPES + _DECIMAL_SUBTYPES
+_ORDERED_CROSS = (
+    fc.FIELD_SUBTYPE_STRING, fc.FIELD_SUBTYPE_DATE, fc.FIELD_SUBTYPE_TIME, fc.FIELD_SUBTYPE_TIMESTAMP,
+)
+
+
+def _comparable(left: MetaField, right: MetaField, op: str) -> bool:
+    """Whether a comparison between these two fields has a sound meaning, as in every port: numerics
+    compare with each other, strings and temporals only with their own subtype and @localTime flag (a
+    date has no ordering against a timestamp, nor an aware datetime against a naive one, and Python
+    raises TypeError on both), and boolean, enum, uuid, uri
+    and inet fields only test equality. Anything else is skipped, never rejected."""
+    a, b = left.sub_type, right.sub_type
+    if a in _NUMERIC_CROSS and b in _NUMERIC_CROSS:
+        return True
+    if a != b:
+        return False
+    if (left.get_meta_attr(dbc.FIELD_ATTR_LOCAL_TIME) is True) != (
+        right.get_meta_attr(dbc.FIELD_ATTR_LOCAL_TIME) is True
+    ):
+        return False
+    if a in _ORDERED_CROSS:
+        return True
+    return op in ("eq", "ne") and a in (
+        fc.FIELD_SUBTYPE_BOOLEAN, fc.FIELD_SUBTYPE_ENUM,
+        fc.FIELD_SUBTYPE_UUID, fc.FIELD_SUBTYPE_URI, fc.FIELD_SUBTYPE_INET,
+    )
 _CROSS_FIELD_SUBTYPES = (
     vc.VALIDATOR_SUBTYPE_COMPARISON,
     vc.VALIDATOR_SUBTYPE_REQUIRED_WHEN,
     vc.VALIDATOR_SUBTYPE_PRESENT_IFF,
     vc.VALIDATOR_SUBTYPE_AT_LEAST_ONE,
 )
-_INT_SUBTYPES = (fc.FIELD_SUBTYPE_INT, fc.FIELD_SUBTYPE_LONG)
-_FLOAT_SUBTYPES = (fc.FIELD_SUBTYPE_DOUBLE, fc.FIELD_SUBTYPE_FLOAT)
-_DECIMAL_SUBTYPES = (fc.FIELD_SUBTYPE_DECIMAL, fc.FIELD_SUBTYPE_CURRENCY)
 _NUMERIC_LITERAL = re.compile(r"^-?\d+(\.\d+)?$")
 
 
@@ -515,6 +543,8 @@ def _cross_field_rules_method(
             if left not in by_name or right not in by_name or op is None:
                 continue
             if field_is_array(by_name[str(left)]) or field_is_array(by_name[str(right)]):
+                continue
+            if not _comparable(by_name[str(left)], by_name[str(right)], str(attr(vc.VALIDATOR_ATTR_OP))):
                 continue
             checks.append(
                 f"        if self.{left} is not None and self.{right} is not None:\n"

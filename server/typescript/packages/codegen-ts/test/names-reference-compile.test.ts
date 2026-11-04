@@ -22,7 +22,8 @@
 // splitting them into separate fixtures is how a defect BETWEEN two emissions survives —
 // the assigned-PK bug lived exactly there, between the entity file and the queries file.
 
-import { describe, test, expect } from "bun:test";
+import { describe, test, expect, setDefaultTimeout } from "bun:test";
+import { COMPILE_TEST_TIMEOUT_MS } from "./compile-timeout.js";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
@@ -35,6 +36,8 @@ import { buildPkMap } from "../src/pk-resolver.js";
 import { buildRelationMap } from "../src/relation-resolver.js";
 import type { GenContext } from "../src/generator.js";
 import type { Dialect } from "../src/metaobjects-config.js";
+
+setDefaultTimeout(COMPILE_TEST_TIMEOUT_MS);
 
 // Physical names deliberately unlike anything derivable, so a reading of the emitted
 // output can tell a reference from a re-derivation at a glance.

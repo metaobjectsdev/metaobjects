@@ -10,7 +10,8 @@
 // render the payload + output + extractor sources to a temp dir, dynamically import() the
 // emitted extractor module under bun, and CALL the generated functions.
 
-import { describe, test, expect, afterAll } from "bun:test";
+import { describe, test, expect, afterAll, setDefaultTimeout } from "bun:test";
+import { COMPILE_TEST_TIMEOUT_MS } from "./compile-timeout.js";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
@@ -22,6 +23,8 @@ import { makeRenderContext } from "../src/render-context.js";
 import { buildPkMap } from "../src/pk-resolver.js";
 import { buildRelationMap } from "../src/relation-resolver.js";
 import type { GenContext } from "../src/generator.js";
+
+setDefaultTimeout(COMPILE_TEST_TIMEOUT_MS);
 
 // Emit the REAL per-VO entity modules (`<VO>.ts` exporting `interface <VO>` +
 // its enum union-aliases) the same way `meta gen` does, so the generated

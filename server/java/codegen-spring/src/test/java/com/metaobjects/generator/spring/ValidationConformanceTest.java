@@ -51,7 +51,7 @@ public class ValidationConformanceTest extends SharedRegistryTestBase {
     @Rule
     public TemporaryFolder tmp = new TemporaryFolder();
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final ObjectMapper MAPPER = new ObjectMapper().findAndRegisterModules();
 
     private static Path repoRoot() {
         return Path.of(System.getProperty("user.dir")).resolve("../../..").normalize();

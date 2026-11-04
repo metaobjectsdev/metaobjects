@@ -5,6 +5,12 @@ using Xunit;
 
 namespace MetaObjects.Cli.Tests;
 
+// OwnedRunner.Run changes the process-wide working directory and console for the length of a run.
+// Outside the serial collection this class ran in parallel with every other class, so
+// GenCommandTests.Gen_writes_the_hash_manifest_beside_the_metadata_not_in_cwd read THIS test's
+// temp root as "the current directory", found the manifest gen had just written there, and failed
+// about one run in five.
+[Collection(OwnedRunnerCollection.Name)]
 public sealed class DependencyCliTests : IDisposable
 {
     private readonly string _root = Path.Combine(Path.GetTempPath(), "meta-dep-cli-" + Guid.NewGuid().ToString("N"));

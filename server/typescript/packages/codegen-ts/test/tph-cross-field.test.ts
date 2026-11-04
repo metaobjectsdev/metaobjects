@@ -11,7 +11,7 @@
 // kind = BIRTH) rejects a BIRTH row without a note and accepts every other row; a rule gated
 // on the discriminator reads the subtype's pinned value, so it holds on a body that omits it.
 
-import { describe, test, expect, afterEach } from "bun:test";
+import { describe, test, expect, afterEach, setDefaultTimeout } from "bun:test";
 import { mkdtempSync, writeFileSync, rmSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -25,6 +25,9 @@ import { makeRenderContext } from "../src/render-context.js";
 import { buildPkMap } from "../src/pk-resolver.js";
 import { buildRelationMap } from "../src/relation-resolver.js";
 import type { EmittedFile, GenContext } from "../src/generator.js";
+import { COMPILE_TEST_TIMEOUT_MS } from "./compile-timeout.js";
+
+setDefaultTimeout(COMPILE_TEST_TIMEOUT_MS);
 
 const MODEL = {
   "metadata.root": {

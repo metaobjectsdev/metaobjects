@@ -10,7 +10,8 @@
 // Both arms run through `runGen`, not through a hand-built RenderContext, so the whole
 // chain is under test: namesFile()'s `emitsNames` marker → the runner's aggregation →
 // ResolvedGenConfig.includeNames + RenderContext.includeNames → the template.
-import { describe, test, expect, beforeEach, afterEach } from "bun:test";
+import { describe, test, expect, beforeEach, afterEach, setDefaultTimeout } from "bun:test";
+import { COMPILE_TEST_TIMEOUT_MS } from "../compile-timeout.js";
 import { existsSync, mkdtempSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -22,6 +23,8 @@ import { namesFile } from "../../src/generators/index.js";
 import { entityFile } from "../../src/generators/entity-file.js";
 import { queriesFile } from "../../src/generators/queries-file.js";
 import type { ExtStyle } from "../../src/render-context.js";
+
+setDefaultTimeout(COMPILE_TEST_TIMEOUT_MS);
 
 const FIXTURE = resolve(import.meta.dir, "../fixtures/trainer-website-shape.json");
 
