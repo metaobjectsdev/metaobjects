@@ -80,6 +80,7 @@ queries:
       uriVal: "https://example.com/after?x=1"
       inetVal: "192.168.10.20"
       inet6Val: "2001:db8::dead:beef"
+      durationVal: "PT2700S"
       settings: { theme: "dark", notify: true, retries: 7 }
     expect:
       id: "22222222-2222-4222-8222-222222222222"
@@ -101,6 +102,7 @@ queries:
       uriVal: "https://example.com/after?x=1"
       inetVal: "192.168.10.20"
       inet6Val: "2001:db8::dead:beef"
+      durationVal: "PT45M"
       settings: { notify: true, retries: 7, theme: "dark" }
       # labels (array-of-VO jsonb) is neither seeded nor updated here → reads back null.
       labels: null
@@ -130,6 +132,7 @@ queries:
       uriVal: "https://example.com/after?x=1"
       inetVal: "192.168.10.20"
       inet6Val: "2001:db8::dead:beef"
+      durationVal: "PT45M"
       settings: { notify: true, retries: 7, theme: "dark" }
       # labels (array-of-VO jsonb) is neither seeded nor updated here → reads back null.
       labels: null

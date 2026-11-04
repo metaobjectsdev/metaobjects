@@ -20,6 +20,7 @@ import {
   describeReferentialActionConflict,
   type ReferentialActionConflict,
 } from "@metaobjectsdev/migrate-ts";
+import type { SchemaBuildOptions } from "./schema-build-options.js";
 
 export interface ReferentialActionConflictFinding {
   /** The metadata file declaring the FK-owning entity ("" when the loader recorded none). */
@@ -32,14 +33,16 @@ export interface ReferentialActionConflictFinding {
 export interface ReferentialActionConflictOptions {
   /** Skip an entity by FQN — imported (dependency) metadata is not the adopter's to fix. */
   skip?: (fqn: string) => boolean;
+  /** The project's schema settings: the build that reports the conflicts is the one migrate runs. */
+  schema: SchemaBuildOptions;
 }
 
 export function scanForReferentialActionConflicts(
   root: MetaData,
-  opts: ReferentialActionConflictOptions = {},
+  opts: ReferentialActionConflictOptions,
 ): ReferentialActionConflictFinding[] {
   const conflicts: ReferentialActionConflict[] = [];
-  buildExpectedSchema(root, { onReferentialActionConflict: (c) => conflicts.push(c) });
+  buildExpectedSchema(root, { ...opts.schema, onReferentialActionConflict: (c) => conflicts.push(c) });
 
   const out: ReferentialActionConflictFinding[] = [];
   const seen = new Set<string>();

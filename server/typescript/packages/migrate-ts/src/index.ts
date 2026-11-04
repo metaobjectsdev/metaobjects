@@ -14,9 +14,13 @@ export {
   describeReferentialActionConflict,
   type ReferentialActionConflict,
 } from "./referential-actions.js";
-export type { ExpectedSchemaWithProvenance, SchemaProvenance } from "./expected-schema.js";
+export type { ExpectedSchemaWithProvenance, SchemaProvenance, SchemaBuildSettings } from "./expected-schema.js";
 export { introspect, introspectPostgres, introspectSqlite } from "./introspect/index.js";
 export { diff } from "./diff/index.js";
+export {
+  defaultConventions, efcoreConventions, resolveSchemaConventions, SCHEMA_CONVENTION_PRESETS,
+  type SchemaConventions, type KeyContext, type ForeignKeyContext, type TableKeys,
+} from "./schema-conventions.js";
 export { collectUnmanagedNames } from "./unmanaged.js";
 // Per-command scope (`migrate.scope`) — see scope.ts for why the suppression is
 // two-sided and why the pattern engine stays in @metaobjectsdev/sdk.
@@ -57,8 +61,16 @@ export {
   DuplicateSqlNameError,
   allowOptionFor, isBlockedChangesError, isPrimaryKeyChangeError, isDeclaredRenameError,
   isDuplicateSqlNameError,
+  InvalidCheckNameError,
+  isInvalidCheckNameError,
+  isFkTargetNotUniqueError,
+  isUnknownSchemaConventionsError,
+  UnknownSchemaConventionsError,
+  InvalidSchemaConventionsError,
+  FkTargetNotUniqueError,
+  type FkTargetViolation,
 } from "./errors.js";
-export type { SqlNameCollision } from "./errors.js";
+export type { SqlNameCollision, CheckNameProblem } from "./errors.js";
 
 // Drop+add pairs in one table that may be a rename — the CLI's hint text reads it so the
 // declared rename is offered ahead of the data-losing `--allow drop-column`.
@@ -76,8 +88,9 @@ export type {
   ViewDescriptor, ViewChangeReason, FkAction, NameChange,
   Change, ChangeKind, ChangeStatus,
   AllowOptions, AmbiguousChange, AmbiguousResolution, AmbiguousCallback,
-  DiffResult, DataHazard, DeclaredRename, EmitResult, Dialect, ExprCanonPath,
+  DiffResult, DataHazard, DeclaredRename, EmitResult, Dialect, ExprCanonPath, SchemaAdvisory,
 } from "./types.js";
+export { DIALECT_POSTGRES, DIALECT_SQLITE, DIALECT_D1, DIALECTS, isSqliteFamily } from "./types.js";
 export type { DiffArgs } from "./diff/index.js";
 export type { EmitOptions } from "./emit/index.js";
 export type { WriteMigrationOptions, WriteMigrationResult } from "./write-migration.js";

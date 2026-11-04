@@ -30,6 +30,7 @@ import {
   type Change,
   type D1Binding,
 } from "@metaobjectsdev/migrate-ts";
+import type { SchemaBuildOptions } from "./schema-build-options.js";
 
 /** The FQN separator; an object's short name is the segment after the last one. */
 const FQN_SEPARATOR = "::";
@@ -52,6 +53,8 @@ export interface GenMigrateAdviceInput {
   migrateFormat: "default" | "flyway";
   /** Paths (any form) of the files this run wrote, merged or removed. */
   changedFiles: readonly string[];
+  /** The project's schema settings, so the schema compared is the one `meta migrate` builds. */
+  schema: SchemaBuildOptions;
 }
 
 /** The next-step line, or undefined when this run cannot have changed the schema. */
@@ -65,6 +68,7 @@ export async function genMigrateAdvice(input: GenMigrateAdviceInput): Promise<st
   let built;
   try {
     built = buildExpectedSchemaWithProvenance(input.metadata, {
+      ...input.schema,
       dialect: schemaDialect,
     });
   } catch {
@@ -109,6 +113,7 @@ function mysqlAdvice(input: GenMigrateAdviceInput): string | undefined {
   let provenance: ReadonlyMap<string, string>;
   try {
     provenance = buildExpectedSchemaWithProvenance(input.metadata, {
+      ...input.schema,
       dialect: "postgres",
     }).provenance;
   } catch {

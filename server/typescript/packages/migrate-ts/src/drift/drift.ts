@@ -15,7 +15,7 @@
 
 import type { Kysely } from "kysely";
 import type { MetaRoot } from "@metaobjectsdev/metadata";
-import { buildExpectedSchemaWithProvenance } from "../expected-schema.js";
+import { buildExpectedSchemaWithProvenance, type SchemaBuildSettings } from "../expected-schema.js";
 import { introspect } from "../introspect/index.js";
 import { diff } from "../diff/index.js";
 import { collectUnmanagedNames } from "../unmanaged.js";
@@ -27,8 +27,11 @@ import type { ViewReplaceProbe } from "../view-replace.js";
 import { postgresExprCanonProbe } from "../expr-canon-probe.js";
 import type { ExprCanonProbe } from "../expr-canon.js";
 import type { ShadowSchemaSource } from "../shadow-expected.js";
+import type { FkTargetViolation } from "../errors.js";
 
-export interface ComputeDriftOptions {
+/** `conventions` and `skipRedundantChecks` are the project's schema settings, passed to the
+ *  expected-schema build (see `BuildExpectedSchemaOptions`); absent = migrate's defaults. */
+export interface ComputeDriftOptions extends SchemaBuildSettings {
   /**
    * Destructive-change permissions. Mirrors `diff`'s `allow` — a drift that is
    * "allowed" still appears in `changes` (it's still drift), so the gate fails
@@ -111,6 +114,12 @@ export interface DriftResult extends DiffResult {
    * come to disagree with the one this comparison actually made.
    */
   importedOutOfScope: readonly string[] | undefined;
+  /**
+   * FKs whose target is not a unique key, on a dialect that does not refuse them at
+   * CREATE TABLE (SQLite and D1). Not drift and not a refusal: the caller reports them,
+   * as `meta migrate` does.
+   */
+  unenforcedFkTargetViolations?: readonly FkTargetViolation[];
 }
 
 /**
@@ -136,6 +145,8 @@ export async function computeDriftFromActual(
     buildExpectedSchemaWithProvenance(metadata, {
       dialect,
       ...(opts?.views !== undefined ? { views: opts.views } : {}),
+      conventions: opts?.conventions,
+      skipRedundantChecks: opts?.skipRedundantChecks,
     }),
     opts?.inScope,
     opts?.imported !== undefined ? { imported: opts.imported } : undefined,
@@ -163,6 +174,7 @@ export async function computeDriftFromActual(
     outOfScope: scoped.outOfScope,
     declaredSchemas: scoped.declaredSchemas,
     importedOutOfScope: scoped.importedOutOfScope,
+    ...(scoped.unenforcedFkTargetViolations !== undefined ? { unenforcedFkTargetViolations: scoped.unenforcedFkTargetViolations } : {}),
   };
 }
 

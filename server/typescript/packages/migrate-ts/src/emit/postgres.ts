@@ -1,3 +1,4 @@
+import { canBeUniqueConstraint } from "../schema-conventions.js";
 import type {
   Change, EmitResult, ColumnDescriptor, IndexDescriptor, FkDescriptor,
   TableDescriptor, ViewDescriptor, ColumnDefault, FkAction, NameChange, DataHazard,
@@ -37,12 +38,16 @@ import { dataHazardOf } from "../hazards.js";
 const STAGE_ORDER: Record<Change["kind"], number> = {
   "drop-view": 0,
   "rename-table": 0.5,
+  // After a table rename (its new name is the one this change addresses), before every drop/add.
+  "rename-constraints": 0.6,
   "drop-fk": 1, "drop-check": 1,
   "create-table": 1,
   "drop-index": 1.5,
   "add-column": 2, "drop-column": 2,
   "change-column-type": 2, "change-column-nullable": 2, "change-column-default": 2,
   "change-column-identity": 2,
+  // After column changes (the identity exists), before anything that could read the name.
+  "alter-sequence": 2.5,
   "rename-column": 3,
   "change-comment": 3.5,
   "add-index": 4,
@@ -230,6 +235,7 @@ function renderUp(c: Change, recreated: ReadonlySet<string> = new Set()): string
     // so a no-op down would still record the rollback as done.
     case "drop-table":             return `DROP TABLE IF EXISTS ${quoteQualified(c.table, c.schema)};`;
     case "rename-table":           return renderRenameTable(c, "up");
+    case "rename-constraints":     return renderRenameConstraints(c, "up");
     case "add-column": {
       const base = `ALTER TABLE ${quoteQualified(c.table, c.schema)} ADD COLUMN ${renderColumn(c.column)};`;
       if (!c.column.description) return base;
@@ -246,7 +252,8 @@ function renderUp(c: Change, recreated: ReadonlySet<string> = new Set()): string
       return c.to !== undefined
         ? `ALTER TABLE ${quoteQualified(c.table, c.schema)} ALTER COLUMN ${quote(c.column)} SET DEFAULT ${renderDefault(c.to)};`
         : `ALTER TABLE ${quoteQualified(c.table, c.schema)} ALTER COLUMN ${quote(c.column)} DROP DEFAULT;`;
-    case "change-column-identity": return renderIdentity(c.table, c.schema, c.column, c.to);
+    case "change-column-identity": return renderIdentity(c.table, c.schema, c.column, c.to, c.sequence);
+    case "alter-sequence":         return renderAlterSequence(c.sequenceSchema ?? c.schema, c.sequence, c.toStart, c.toName);
     case "change-comment":         return renderComment(c.table, c.schema, c.column, c.to);
     case "add-index":              return renderCreateIndex(c.table, c.schema, c.index);
     // #285: an index OWNED by a UNIQUE / PRIMARY KEY / EXCLUDE constraint cannot be
@@ -339,6 +346,34 @@ function renderRenameTable(c: Extract<Change, { kind: "rename-table" }>, dir: "u
   return (up ? lines : [...lines].reverse()).join("\n\n");
 }
 
+/** Constraints and indexes renamed in place on a table that keeps its name; the down renames them back. */
+function renderRenameConstraints(c: Extract<Change, { kind: "rename-constraints" }>, dir: "up" | "down"): string {
+  const up = dir === "up";
+  const table = quoteQualified(c.table, c.schema);
+  const flip = (r: NameChange): NameChange => (up ? r : { from: r.to, to: r.from });
+  // A promotion's down drops the constraint, which drops its index, then re-creates the
+  // plain index. Postgres refuses that drop while a foreign key relies on the key; the FK
+  // must be dropped first.
+  const promotions = (c.uniquePromotions ?? []).map((ix) => up
+    ? `ALTER TABLE ${table} ADD CONSTRAINT ${quote(ix.name)} UNIQUE USING INDEX ${quote(ix.name)};`
+    : [`ALTER TABLE ${table} DROP CONSTRAINT ${quote(ix.name)};`,
+       renderCreateIndex(c.table, c.schema, withoutConstraint(ix))].join("\n"));
+  const lines = [
+    ...(c.constraintRenames ?? []).map(flip).map((r) =>
+      `ALTER TABLE ${table} RENAME CONSTRAINT ${quote(r.from)} TO ${quote(r.to)};`),
+    ...(c.indexRenames ?? []).map(flip).map((r) =>
+      `ALTER INDEX ${quoteIndexQualified(r.from, c.schema)} RENAME TO ${quote(r.to)};`),
+    ...promotions,
+  ];
+  return (up ? lines : [...lines].reverse()).join("\n\n");
+}
+
+/** The index with no owning constraint: what a promotion started from. */
+function withoutConstraint(ix: IndexDescriptor): IndexDescriptor {
+  const { constraint: _owned, ...plain } = ix;
+  return plain;
+}
+
 function renderDown(c: Change, recreated: ReadonlySet<string> = new Set()): string {
   switch (c.kind) {
     case "create-table":           return `DROP TABLE ${quoteQualified(c.table.name, c.table.schema)};`;
@@ -360,6 +395,7 @@ function renderDown(c: Change, recreated: ReadonlySet<string> = new Set()): stri
       return parts.join("\n");
     }
     case "rename-table":           return renderRenameTable(c, "down");
+    case "rename-constraints":     return renderRenameConstraints(c, "down");
     case "add-column":             return `ALTER TABLE ${quoteQualified(c.table, c.schema)} DROP COLUMN ${quote(c.column.name)};`;
     case "drop-column":
       return c.restore
@@ -376,8 +412,19 @@ function renderDown(c: Change, recreated: ReadonlySet<string> = new Set()): stri
         ? `ALTER TABLE ${quoteQualified(c.table, c.schema)} ALTER COLUMN ${quote(c.column)} SET DEFAULT ${renderDefault(c.from)};`
         : `ALTER TABLE ${quoteQualified(c.table, c.schema)} ALTER COLUMN ${quote(c.column)} DROP DEFAULT;`;
     case "change-column-identity": return renderIdentity(c.table, c.schema, c.column, c.from);
+    // The down addresses the sequence by the name the up gave it, and runs in reverse order:
+    // rename back first, then restore the start.
+    case "alter-sequence":
+      // The counter is not moved back: values it has handed out stay handed out.
+      return [
+        ...(c.toName !== undefined ? [`ALTER SEQUENCE ${quoteQualified(c.toName, c.sequenceSchema ?? c.schema)} RENAME TO ${quote(c.sequence)};`] : []),
+        ...(c.fromStart !== undefined ? [`ALTER SEQUENCE ${quoteQualified(c.sequence, c.sequenceSchema ?? c.schema)} START WITH ${c.fromStart};`] : []),
+      ].join("\n");
     case "change-comment":         return renderComment(c.table, c.schema, c.column, c.from);
-    case "add-index":              return `DROP INDEX ${quoteIndexQualified(c.index.name, c.schema)};`;
+    case "add-index":
+      return isUniqueConstraint(c.index)
+        ? `ALTER TABLE ${quoteQualified(c.table, c.schema)} DROP CONSTRAINT ${quote(c.index.name)};`
+        : `DROP INDEX ${quoteIndexQualified(c.index.name, c.schema)};`;
     case "drop-index":
       // #285: the up dropped a CONSTRAINT, so the down must add one back — recreating a
       // bare unique index would leave the database in a different shape than it started
@@ -432,7 +479,7 @@ function renderDown(c: Change, recreated: ReadonlySet<string> = new Set()): stri
 function renderCreateTable(t: TableDescriptor): string {
   const colDefs = t.columns.map((c) => `  ${renderColumn(c)}`);
   if (t.primaryKey.length > 0) {
-    colDefs.push(`  CONSTRAINT ${quote(t.name + "_pkey")} PRIMARY KEY (${t.primaryKey.map(quote).join(", ")})`);
+    colDefs.push(`  CONSTRAINT ${quote(t.primaryKeyName ?? t.name + "_pkey")} PRIMARY KEY (${t.primaryKey.map(quote).join(", ")})`);
   }
   for (const chk of t.checks ?? []) {
     colDefs.push(`  CONSTRAINT ${quote(chk.name)} CHECK (${chk.expression})`);
@@ -455,9 +502,36 @@ function renderTableComments(t: TableDescriptor): string[] {
   return out;
 }
 
-function renderIdentity(table: string, schema: string | undefined, column: string, to: "increment" | undefined): string {
+/**
+ * Start first, under the live name; then the rename. `START WITH` alone only records the
+ * restart point, so the counter is moved up to the new start — never down, which could hand
+ * out an id already in use — by `setval(..., false)` when it has not reached it.
+ */
+function renderAlterSequence(schema: string | undefined, sequence: string, toStart: number | undefined, toName: string | undefined): string {
+  const seq = quoteQualified(sequence, schema);
+  const regclass = `'${seq.replace(/'/g, "''")}'`;
+  return [
+    ...(toStart !== undefined
+      ? [
+        `ALTER SEQUENCE ${seq} START WITH ${toStart};`,
+        `SELECT setval(${regclass}, ${toStart}, false) FROM ${seq} WHERE last_value < ${toStart};`,
+      ]
+      : []),
+    ...(toName !== undefined ? [`ALTER SEQUENCE ${seq} RENAME TO ${quote(toName)};`] : []),
+  ].join("\n");
+}
+
+function renderIdentity(
+  table: string,
+  schema: string | undefined,
+  column: string,
+  to: "increment" | undefined,
+  sequence?: { name?: string; start?: number },
+): string {
   const alter = `ALTER TABLE ${quoteQualified(table, schema)} ALTER COLUMN ${quote(column)}`;
-  return to === "increment" ? `${alter} ADD GENERATED BY DEFAULT AS IDENTITY;` : `${alter} DROP IDENTITY IF EXISTS;`;
+  return to === "increment"
+    ? `${alter} ADD GENERATED BY DEFAULT AS IDENTITY${identityOptions(sequence !== undefined ? { sequence } : {})};`
+    : `${alter} DROP IDENTITY IF EXISTS;`;
 }
 
 function renderComment(table: string, schema: string | undefined, column: string | undefined, to: string | undefined): string {
@@ -502,7 +576,7 @@ function hazardComment(h: DataHazard): string {
 
 function renderColumn(c: ColumnDescriptor): string {
   let s = `${quote(c.name)} ${pgType(c.sqlType)}`;
-  if (c.identity === "increment") s += " GENERATED BY DEFAULT AS IDENTITY";
+  if (c.identity === "increment") s += " GENERATED BY DEFAULT AS IDENTITY" + identityOptions(c);
   if (c.identity === "uuid")      s += " DEFAULT gen_random_uuid()";
   s += c.nullable ? "" : " NOT NULL";
   if (c.default !== undefined && c.identity === undefined) {
@@ -512,6 +586,15 @@ function renderColumn(c: ColumnDescriptor): string {
     s += ` DEFAULT ${renderDefault(c.default)}`;
   }
   return s;
+}
+
+/** ` (SEQUENCE NAME "x" START WITH n)` for what the model declares, else nothing. */
+function identityOptions(c: Pick<ColumnDescriptor, "sequence">): string {
+  const opts = [
+    ...(c.sequence?.name !== undefined ? [`SEQUENCE NAME ${quote(c.sequence.name)}`] : []),
+    ...(c.sequence?.start !== undefined ? [`START WITH ${c.sequence.start}`] : []),
+  ];
+  return opts.length === 0 ? "" : ` (${opts.join(" ")})`;
 }
 
 export function pgType(t: SqlType): string {
@@ -533,6 +616,7 @@ export function pgType(t: SqlType): string {
     case "blob":      return "BYTEA";
     case "uuid":      return "UUID";
     case "inet":      return "INET";
+    case "interval":  return "INTERVAL";
     case "array":     return `${pgType(t.element)}[]`;
   }
 }
@@ -543,7 +627,15 @@ function renderDefault(d: ColumnDefault): string {
   return `'${pgEscape(d.value)}'`;
 }
 
+/** A unique key the schema conventions create as a constraint (only a plain column key can be one). */
+function isUniqueConstraint(ix: IndexDescriptor): boolean {
+  return ix.constraint === "unique" && canBeUniqueConstraint(ix);
+}
+
 function renderCreateIndex(table: string, schema: string | undefined, ix: IndexDescriptor): string {
+  if (isUniqueConstraint(ix)) {
+    return `ALTER TABLE ${quoteQualified(table, schema)} ADD CONSTRAINT ${quote(ix.name)} UNIQUE (${ix.columns.map(quote).join(", ")});`;
+  }
   const u = ix.unique ? "UNIQUE " : "";
   // Key list: a raw expression (functional/expression index) takes precedence over
   // the per-column list. The expression is emitted verbatim (already valid SQL).

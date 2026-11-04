@@ -19,7 +19,10 @@
  * The gate is a REAL engine, per this package's doctrine — emitted-SQL inspection is
  * exactly what missed the bug, since the SQL looked perfectly reasonable:
  *   1. Build the live shape the way Drizzle does (a UNIQUE *constraint*).
- *   2. Diff against metadata that names the key differently → drop-index + add-index.
+ *   2. Diff against metadata whose key is DEFINED differently (here: partial) → drop-index
+ *      + add-index. (A key that differs only in NAME is renamed in place and never dropped;
+ *      one the conventions also want as a plain index is renamed, then demoted. The last
+ *      three tests below gate those.)
  *   3. APPLY to the real engine. Pre-fix this throws; that is the regression.
  *   4. Re-introspect and re-diff → MUST be empty (convergence, not just "it ran").
  *   5. Prove uniqueness is still enforced afterwards — a dropped constraint that took
@@ -33,6 +36,7 @@ import { Pool } from "pg";
 import { Kysely, PostgresDialect, sql } from "kysely";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { buildExpectedSchema } from "../../src/expected-schema.js";
+import { defaultConventions } from "../../src/schema-conventions.js";
 import { introspectPostgres } from "../../src/introspect/postgres.js";
 import { diff } from "../../src/diff/index.js";
 import { emit } from "../../src/emit/index.js";
@@ -40,8 +44,9 @@ import { emit } from "../../src/emit/index.js";
 const PG_URL = process.env["MIGRATE_TS_PG_URL"];
 
 // `identity.secondary` names the unique key `byMessageId`, while the live constraint is
-// called `work_item_message_id_unique` — the rename that triggers drop+add.
-const META = JSON.stringify({
+// called `work_item_message_id_unique`. META_PARTIAL also makes the key partial — a change
+// of DEFINITION, which is what drops it; META alone is a pure rename.
+const meta = (secondary: Record<string, unknown>) => JSON.stringify({
   "metadata.root": {
     package: "acme",
     children: [
@@ -53,13 +58,15 @@ const META = JSON.stringify({
             { "field.long": { name: "id" } },
             { "field.string": { name: "messageId", "@column": "message_id", "@required": true } },
             { "identity.primary": { name: "pk", "@fields": ["id"], "@generation": "increment" } },
-            { "identity.secondary": { name: "byMessageId", "@fields": ["messageId"] } },
+            { "identity.secondary": { name: "byMessageId", "@fields": ["messageId"], ...secondary } },
           ],
         },
       },
     ],
   },
 });
+const META = meta({});
+const META_PARTIAL = meta({ "@where": "message_id <> ''" });
 
 async function applyRaw(k: Kysely<Record<string, unknown>>, sqlText: string): Promise<void> {
   for (const stmt of sqlText.split(";").map((s) => s.trim()).filter((s) => s.length > 0)) {
@@ -115,7 +122,7 @@ describe("#285 — constraint-backed index drops as a constraint (PG)", () => {
     expect(bare?.constraint).toBeUndefined();
   });
 
-  test("REGRESSION: the rename applies against a real engine, converges, and keeps uniqueness", async () => {
+  test("REGRESSION: a redefined key is dropped as a constraint, applies, converges, and keeps uniqueness", async () => {
     await sql.raw("DROP TABLE IF EXISTS work_item CASCADE").execute(kysely);
     await sql
       .raw(
@@ -127,14 +134,14 @@ describe("#285 — constraint-backed index drops as a constraint (PG)", () => {
       )
       .execute(kysely);
 
-    const loaded = await new MetaDataLoader().load([new InMemoryStringSource(META)]);
+    const loaded = await new MetaDataLoader().load([new InMemoryStringSource(META_PARTIAL)]);
     expect(loaded.errors).toEqual([]);
     const expectedSchema = buildExpectedSchema(loaded.root, { dialect: "postgres" });
 
     const actual = await introspectPostgres(kysely);
     const d = await diff({ expected: expectedSchema, actual, dialect: "postgres", allow: { dropIndex: true } });
 
-    // The rename really does present as drop+add — the precondition for the bug.
+    // The redefinition really does present as drop+add — the precondition for the bug.
     expect(d.changes.some((c) => c.kind === "drop-index")).toBe(true);
 
     const sqlText = emit(d.changes, { dialect: "postgres" }).up;
@@ -158,6 +165,102 @@ describe("#285 — constraint-backed index drops as a constraint (PG)", () => {
 
     // VALUE SEMANTICS — uniqueness must still be enforced. A migration that simply
     // dropped the constraint and never re-added an equivalent would also "converge".
+    await sql.raw(`INSERT INTO work_item (message_id) VALUES ('m-1')`).execute(kysely);
+    await expect(
+      sql.raw(`INSERT INTO work_item (message_id) VALUES ('m-1')`).execute(kysely),
+    ).rejects.toThrow(/unique|duplicate key/i);
+  });
+
+  test("a key that differs only in NAME is renamed in place: ALTER INDEX RENAME, converges, still unique", async () => {
+    await sql.raw("DROP TABLE IF EXISTS work_item CASCADE").execute(kysely);
+    await sql
+      .raw(
+        `CREATE TABLE work_item (id serial PRIMARY KEY, message_id text NOT NULL);
+         CREATE UNIQUE INDEX work_item_message_id_unique ON work_item (message_id)`,
+      )
+      .execute(kysely);
+    const loaded = await new MetaDataLoader().load([new InMemoryStringSource(META)]);
+    expect(loaded.errors).toEqual([]);
+    const expectedSchema = buildExpectedSchema(loaded.root, { dialect: "postgres" });
+
+    const d = await diff({ expected: expectedSchema, actual: await introspectPostgres(kysely), dialect: "postgres" });
+    // (The fixture's `serial` id against the model's long also yields a column-type change.)
+    expect(d.changes.filter((c) => c.kind === "rename-constraints")).toHaveLength(1);
+    expect(d.changes.some((c) => c.kind === "drop-index" || c.kind === "add-index")).toBe(false);
+    const sqlText = emit(d.changes, { dialect: "postgres" }).up;
+    expect(sqlText).toContain('RENAME TO "byMessageId"');
+    expect(sqlText).not.toMatch(/DROP (INDEX|CONSTRAINT)/);
+
+    await applyRaw(kysely, sqlText);
+    const reDiff = await diff({ expected: expectedSchema, actual: await introspectPostgres(kysely), dialect: "postgres" });
+    expect(reDiff.changes.map((c) => c.kind)).toEqual([]);
+    await sql.raw(`INSERT INTO work_item (message_id) VALUES ('m-1')`).execute(kysely);
+    await expect(
+      sql.raw(`INSERT INTO work_item (message_id) VALUES ('m-1')`).execute(kysely),
+    ).rejects.toThrow(/unique|duplicate key/i);
+  });
+
+  test("a UNIQUE constraint under another name, under the default conventions: renamed and kept a constraint", async () => {
+    await sql.raw("DROP TABLE IF EXISTS work_item CASCADE").execute(kysely);
+    await sql
+      .raw(
+        `CREATE TABLE work_item (
+           id serial PRIMARY KEY,
+           message_id text NOT NULL,
+           CONSTRAINT work_item_message_id_unique UNIQUE (message_id)
+         )`,
+      )
+      .execute(kysely);
+    const loaded = await new MetaDataLoader().load([new InMemoryStringSource(META)]);
+    expect(loaded.errors).toEqual([]);
+    const expectedSchema = buildExpectedSchema(loaded.root, { dialect: "postgres" });
+
+    // Drizzle's unique() makes constraints; the default conventions accept either kind.
+    const d = await diff({ expected: expectedSchema, actual: await introspectPostgres(kysely), dialect: "postgres" });
+    expect(d.changes.some((c) => c.kind === "drop-index" || c.kind === "add-index")).toBe(false);
+    const sqlText = emit(d.changes, { dialect: "postgres" }).up;
+    expect(sqlText).toContain('RENAME CONSTRAINT "work_item_message_id_unique" TO "byMessageId"');
+    expect(sqlText).not.toMatch(/DROP (INDEX|CONSTRAINT)/);
+
+    await applyRaw(kysely, sqlText);
+    const live = await introspectPostgres(kysely);
+    expect(live.tables.find((t) => t.name === "work_item")!.indexes.find((i) => i.name === "byMessageId")?.constraint).toBe("unique");
+    const reDiff = await diff({ expected: expectedSchema, actual: live, dialect: "postgres" });
+    expect(reDiff.changes.map((c) => c.kind)).toEqual([]);
+  });
+
+  test("a UNIQUE constraint under another name, wanted as a plain index: renamed AND demoted in one migration", async () => {
+    await sql.raw("DROP TABLE IF EXISTS work_item CASCADE").execute(kysely);
+    await sql
+      .raw(
+        `CREATE TABLE work_item (
+           id serial PRIMARY KEY,
+           message_id text NOT NULL,
+           CONSTRAINT work_item_message_id_unique UNIQUE (message_id)
+         )`,
+      )
+      .execute(kysely);
+    const loaded = await new MetaDataLoader().load([new InMemoryStringSource(META)]);
+    expect(loaded.errors).toEqual([]);
+    const expectedSchema = buildExpectedSchema(loaded.root, {
+      dialect: "postgres",
+      conventions: { ...defaultConventions, id: "plain-unique-index", uniqueKeyKind: () => "index" },
+    });
+
+    // The demotion drops the constraint, so it is gated like any drop-index.
+    const gated = await diff({ expected: expectedSchema, actual: await introspectPostgres(kysely), dialect: "postgres" });
+    expect(gated.changes.find((c) => c.kind === "drop-index")?.status.state).toBe("blocked");
+
+    const d = await diff({ expected: expectedSchema, actual: await introspectPostgres(kysely), dialect: "postgres", allow: { dropIndex: true } });
+    const sqlText = emit(d.changes, { dialect: "postgres" }).up;
+    // Renamed first, then dropped as a constraint under its new name and re-created as an index.
+    expect(sqlText).toContain('RENAME CONSTRAINT "work_item_message_id_unique" TO "byMessageId"');
+    expect(sqlText).toMatch(/DROP CONSTRAINT IF EXISTS "byMessageId"/);
+    expect(sqlText.indexOf("RENAME CONSTRAINT")).toBeLessThan(sqlText.indexOf("DROP CONSTRAINT"));
+
+    await applyRaw(kysely, sqlText);
+    const reDiff = await diff({ expected: expectedSchema, actual: await introspectPostgres(kysely), dialect: "postgres" });
+    expect(reDiff.changes.map((c) => c.kind)).toEqual([]);
     await sql.raw(`INSERT INTO work_item (message_id) VALUES ('m-1')`).execute(kysely);
     await expect(
       sql.raw(`INSERT INTO work_item (message_id) VALUES ('m-1')`).execute(kysely),

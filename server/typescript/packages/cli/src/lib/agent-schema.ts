@@ -14,6 +14,7 @@ import type { AgentSchemaInput, Dialect, SchemaColumnLike } from "@metaobjectsde
 import { buildExpectedSchemaWithProvenance, columnTypeSql, qualifiedDbName } from "@metaobjectsdev/migrate-ts";
 import type { MetaRoot } from "@metaobjectsdev/metadata";
 import { describeError } from "./error-text.js";
+import type { SchemaBuildOptions } from "./schema-build-options.js";
 
 /**
  * The schema for `agent/schema.md`, or undefined, after saying why through `warn`, when the
@@ -24,6 +25,8 @@ export function buildAgentSchemaInput(
   root: MetaRoot,
   configured: Dialect | undefined,
   warn: (message: string) => void,
+  /** The project's schema settings, so the page describes the schema `meta migrate` builds. */
+  schema: SchemaBuildOptions,
 ): AgentSchemaInput | undefined {
   // THE RUNNER'S OWN GUARD DECIDES THIS, not a default applied here. `DEFAULT_DIALECT` is
   // inert: `meta gen` refuses a model that emits database code with no dialect declared, so a
@@ -45,6 +48,7 @@ export function buildAgentSchemaInput(
   const dialect = configured ?? DEFAULT_DIALECT;
   try {
     const built = buildExpectedSchemaWithProvenance(root, {
+      ...schema,
       dialect,
       // Views come from codegen-ts (migrate-ts never generates view DDL), exactly as
       // `verify --db` threads them.

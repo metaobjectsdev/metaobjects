@@ -35,6 +35,47 @@ export class SetNullNotNullableError extends Error {
   }
 }
 
+/** One identity.reference whose target fields are not a unique key on the table it references. */
+export interface FkTargetViolation {
+  /** The holder's table, qualified (`<schema>.<table>`): what `scopeExpectedSchema` governs by. */
+  table: string;
+  entityName: string;
+  referenceName: string;
+  targetEntityName: string;
+  targetFields: string[];
+  /** Set when the target is a TPH subtype: the entity whose table it is stored in. */
+  storedIn?: string;
+}
+
+/**
+ * Thrown by buildExpectedSchema() when one or more identity.references target fields the
+ * target table does not hold unique: not its primary key, not a plain identity.secondary,
+ * not a single @unique field. A database refuses such an FK at apply time, after earlier
+ * statements in the migration already ran; refusing here names every offending reference
+ * at once, so a model with several is fixed in one pass rather than one run per reference.
+ */
+export class FkTargetNotUniqueError extends Error {
+  override readonly name = "FkTargetNotUniqueError";
+  readonly violations: FkTargetViolation[];
+
+  constructor(violations: FkTargetViolation[]) {
+    const lines = violations.map((v) => {
+      const fieldList = v.targetFields.join(", ");
+      const head = `Entity "${v.entityName}": reference "${v.referenceName}" targets [${fieldList}] on "${v.targetEntityName}", ` +
+        `which is not a unique key of its table (its primary key, an identity.secondary without @where/@expr, or a @unique field). `;
+      return v.storedIn !== undefined
+        ? head + `"${v.targetEntityName}" is stored in the table of "${v.storedIn}", and a key declared on a TPH subtype is not emitted: ` +
+          `declare it on "${v.storedIn}" (an identity.secondary with @fields [${fieldList}]).`
+        : head + `Fix: declare an identity.secondary on "${v.targetEntityName}" with @fields [${fieldList}], or reference its whole primary key.`;
+    });
+    const head = violations.length === 1
+      ? "A database refuses this foreign key."
+      : `A database refuses these ${violations.length} foreign keys.`;
+    super(`${head}\n${lines.map((l) => `  - ${l}`).join("\n")}`);
+    this.violations = violations;
+  }
+}
+
 const ALLOW_OPTION_BY_KIND: Partial<Record<ChangeKind, keyof AllowOptions>> = {
   "drop-column": "dropColumn",
   "drop-table": "dropTable",
@@ -75,6 +116,7 @@ function changeLocator(c: Change): string {
     case "change-column-nullable":
     case "change-column-default":
     case "change-column-identity":
+    case "alter-sequence":
       return `${c.table}.${"column" in c ? c.column : c.from}`;
     case "change-comment":
       return c.column !== undefined ? `${c.table}.${c.column}` : c.table;
@@ -83,6 +125,8 @@ function changeLocator(c: Change): string {
     case "drop-table":
     case "rename-table":
       return c.kind === "drop-table" ? c.table : `${c.from}→${c.to}`;
+    case "rename-constraints":
+      return `${c.table}: ${[...(c.constraintRenames ?? []), ...(c.indexRenames ?? [])].map((r) => `${r.from}→${r.to}`).join(", ")}`;
     case "create-table":
       return c.table.name;
     case "add-index":
@@ -243,6 +287,13 @@ export class DuplicateSqlNameError extends Error {
           "(e.g. `ownersByEmail`).",
       );
     }
+    if (collisions.some((c) => c.owners.some((o) => o.includes("@sequenceName")))) {
+      fixes.push(
+        "A declared sequence name (identity.primary @sequenceName) is a relation in the same namespace: give each " +
+          "table's sequence its own name. An @sequenceName on an abstract base's identity is inherited by every " +
+          "entity that extends it, so declare it on each concrete entity instead.",
+      );
+    }
     if (anyOther) {
       fixes.push("Rename one of the tables/views (entity source `@table`, projection `@kind view @view`).");
     }
@@ -280,6 +331,73 @@ export function isPrimaryKeyChangeError(err: unknown): err is PrimaryKeyChangeEr
 /** Is `err` the {@link DuplicateSqlNameError} from two declarations sharing a database name? */
 export function isDuplicateSqlNameError(err: unknown): err is DuplicateSqlNameError {
   return err instanceof Error && err.name === "DuplicateSqlNameError";
+}
+
+/** One problem with a declared CHECK name (`@constraintName` on a validator or a field.enum). */
+export interface CheckNameProblem {
+  readonly table: string;
+  readonly name: string;
+  /** Another constraint on the same table already has the name. */
+  readonly duplicateOf?: string;
+  /** The name is longer than Postgres's 63-byte identifier limit, in bytes. */
+  readonly bytes?: number;
+}
+
+/**
+ * A declared CHECK name that cannot be applied as written. Two constraints on one table with
+ * one name fail at apply on Postgres ("already exists") and, on SQLite, collapse in a
+ * name-keyed diff so every run proposes the CHECK again. A name over 63 bytes is truncated by
+ * Postgres when it is created, so the declared name never matches the database and the CHECK
+ * drifts forever. Either way the fix is to the metadata, so it is refused while the expected
+ * schema is built.
+ */
+export class InvalidCheckNameError extends Error {
+  override readonly name = "InvalidCheckNameError";
+  readonly problems: readonly CheckNameProblem[];
+
+  constructor(problems: readonly CheckNameProblem[]) {
+    const lines = problems.map((p) => p.duplicateOf !== undefined
+      ? `  CHECK "${p.name}" on table "${p.table}" has the same name as ${p.duplicateOf}`
+      : `  CHECK "${p.name}" on table "${p.table}" is ${p.bytes} bytes; Postgres keeps only the first 63`);
+    super(
+      `ERR_CHECK_NAME: a declared @constraintName cannot be applied as written.\n${lines.join("\n")}\n` +
+        "Give each constraint on a table its own @constraintName, at most 63 bytes.",
+    );
+    this.problems = problems;
+  }
+}
+
+/** Is `err` the {@link InvalidCheckNameError} from a declared CHECK name that cannot be applied? */
+export function isInvalidCheckNameError(err: unknown): err is InvalidCheckNameError {
+  return err instanceof Error && err.name === "InvalidCheckNameError";
+}
+
+/** `migrate.conventions` names a schema-conventions preset that does not exist. */
+export class UnknownSchemaConventionsError extends Error {
+  override readonly name = "UnknownSchemaConventionsError";
+  constructor(readonly selected: string, readonly presets: readonly string[]) {
+    super(`migrate.conventions "${selected}" is not a schema-conventions preset: expected one of ${presets.join(", ")}`);
+  }
+}
+
+/** A project-supplied schema-conventions object lacks members this version calls. */
+export class InvalidSchemaConventionsError extends Error {
+  override readonly name = "InvalidSchemaConventionsError";
+  constructor(readonly id: string, readonly missing: readonly string[]) {
+    super(`the schema conventions "${id}" are missing ${missing.join(", ")} — start from a preset ` +
+      `({ ...efcoreConventions, id: "${id}", … }) so every member this version calls is present`);
+  }
+}
+
+/** Is `err` the {@link UnknownSchemaConventionsError}? */
+export function isUnknownSchemaConventionsError(err: unknown): err is UnknownSchemaConventionsError | InvalidSchemaConventionsError {
+  // Both are a project's conventions selection the tool cannot use: a config error.
+  return err instanceof Error && (err.name === "UnknownSchemaConventionsError" || err.name === "InvalidSchemaConventionsError");
+}
+
+/** Is `err` the {@link FkTargetNotUniqueError} from FKs whose targets are not unique keys? */
+export function isFkTargetNotUniqueError(err: unknown): err is FkTargetNotUniqueError {
+  return err instanceof Error && err.name === "FkTargetNotUniqueError";
 }
 
 /** Is `err` the {@link DeclaredRenameError} from a declared rename that does not apply? */

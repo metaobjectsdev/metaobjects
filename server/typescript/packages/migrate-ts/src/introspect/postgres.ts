@@ -50,8 +50,9 @@ export async function introspectPostgres(db: Kysely<Record<string, unknown>>): P
 
   for (const { schema, name } of tableRefs) {
     const columns = await readColumns(k, schema, name);
-    const primaryKey = await readPrimaryKey(k, schema, name);
+    const { columns: primaryKey, name: primaryKeyName } = await readPrimaryKey(k, schema, name);
     const description = await readPgCatalogColumnFacts(k, schema, name, columns);
+    await readPgColumnSequences(k, schema, name, columns);
     tables.push({
       name,
       schema,
@@ -60,6 +61,9 @@ export async function introspectPostgres(db: Kysely<Record<string, unknown>>): P
       foreignKeys: await readPgForeignKeys(k, schema, name),
       checks: await readPgChecks(k, schema, name),
       primaryKey,
+      // Only a name other than Postgres's default `<table>_pkey`, as the expected side
+      // records it — a database built without schema conventions reads back unchanged.
+      ...(primaryKeyName !== undefined && primaryKeyName !== `${name}_pkey` ? { primaryKeyName } : {}),
       ...(description !== undefined ? { description } : {}),
     });
   }
@@ -184,6 +188,7 @@ export function pgTypeToSqlType(
 
   // INET (ADR-0036/0037 Wave 3 — field.inet)
   if (dt === "inet") return { kind: "inet" };
+  if (dt === "interval") return { kind: "interval" };
 
   // Unknown types (user-defined enums, citext, ltree, etc.) fall back to text
   // so we don't blow up on unrecognised types.
@@ -529,16 +534,66 @@ async function readPgCatalogColumnFacts(
   }
 }
 
+/**
+ * The sequence behind each auto-increment column — a GENERATED identity's or a legacy
+ * serial's — found through `pg_depend` (the column OWNS it), with its name and start value
+ * from `pg_sequence`. Sets `liveSequence` on `columns` in place (never `sequence`, which is
+ * the model's declaration). Compared only against what the model declares.
+ */
+async function readPgColumnSequences(
+  k: RawKysely, schema: string, tableName: string, columns: ColumnDescriptor[],
+): Promise<void> {
+  // pg-mem gap: pg_depend / pg_sequence do not exist there — the query throws and the
+  // columns carry no sequence, so nothing about one is compared. Only that error is
+  // swallowed: on a real server any other failure (a permission error) must surface, or
+  // the diff would fall back to the default sequence name and could rename a sequence that
+  // does not exist.
+  try {
+    const rows = await sql<{ column_name: string; sequence_schema: string; sequence_name: string; seqstart: string | number }>`
+      SELECT a.attname AS column_name, sn.nspname AS sequence_schema, seq.relname AS sequence_name, ps.seqstart
+      FROM pg_class c
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
+      JOIN pg_depend d ON d.refobjid = c.oid AND d.refobjsubid = a.attnum
+        AND d.classid = 'pg_class'::regclass AND d.refclassid = 'pg_class'::regclass
+        AND d.deptype IN ('a', 'i')
+      JOIN pg_class seq ON seq.oid = d.objid AND seq.relkind = 'S'
+      JOIN pg_namespace sn ON sn.oid = seq.relnamespace
+      JOIN pg_sequence ps ON ps.seqrelid = seq.oid
+      WHERE n.nspname = ${schema}
+        AND c.relname = ${tableName}
+    `.execute(k);
+    const byName = new Map(columns.map((c) => [c.name, c] as const));
+    for (const r of rows.rows) {
+      const col = byName.get(r.column_name);
+      if (col === undefined) continue;
+      col.liveSequence = {
+        ...(r.sequence_schema !== schema ? { schema: r.sequence_schema } : {}),
+        name: r.sequence_name,
+        start: Number(r.seqstart),
+      };
+    }
+  } catch (err) {
+    if (!isMissingCatalogRelation(err, ["pg_depend", "pg_sequence"])) throw err;
+  }
+}
+
+/** pg-mem's error for a catalog relation it does not implement. */
+function isMissingCatalogRelation(err: unknown, relations: readonly string[]): boolean {
+  const message = err instanceof Error ? err.message : "";
+  return relations.some((r) => message.includes(`relation "${r}" does not exist`));
+}
+
 // Typed alias for raw Kysely — avoids per-call `as any` casts in the helpers below.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type RawKysely = Kysely<any>;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function readPrimaryKey(k: Kysely<any>, schema: string, tableName: string): Promise<string[]> {
+async function readPrimaryKey(k: Kysely<any>, schema: string, tableName: string): Promise<{ columns: string[]; name: string | undefined }> {
   // Uses information_schema only — avoids pg_attribute / pg_constraint joins
   // that are either missing or return empty in pg-mem.
-  const rows = await sql<{ column_name: string; ordinal_position: number }>`
-    SELECT kcu.column_name, kcu.ordinal_position
+  const rows = await sql<{ column_name: string; ordinal_position: number; constraint_name: string }>`
+    SELECT kcu.column_name, kcu.ordinal_position, tc.constraint_name
     FROM information_schema.table_constraints tc
     JOIN information_schema.key_column_usage kcu
       ON kcu.constraint_name = tc.constraint_name
@@ -549,7 +604,7 @@ async function readPrimaryKey(k: Kysely<any>, schema: string, tableName: string)
       AND tc.table_name      = ${tableName}
     ORDER BY kcu.ordinal_position
   `.execute(k);
-  return rows.rows.map((r) => r.column_name);
+  return { columns: rows.rows.map((r) => r.column_name), name: rows.rows[0]?.constraint_name };
 }
 
 async function readPgIndexes(k: RawKysely, schema: string, table: string): Promise<IndexDescriptor[]> {
@@ -703,7 +758,7 @@ export function indexDefKeyExpr(indexdef: string): string {
 }
 
 async function readPgForeignKeys(k: RawKysely, schema: string, table: string): Promise<FkDescriptor[]> {
-  // pg-mem gap: information_schema.referential_constraints is not supported —
+  // pg-mem gap: pg_constraint (and the information_schema views before it) is not supported —
   // the query returns empty rows or throws. We catch and return [] so other
   // tests still pass on pg-mem. Real PG (Postgres 16) handles this correctly.
   let rows: { rows: Array<{ fk_name: string; column_name: string; ref_table: string; ref_column: string; update_rule: string; delete_rule: string; ordinal: number }> };
@@ -717,27 +772,34 @@ async function readPgForeignKeys(k: RawKysely, schema: string, table: string): P
       delete_rule: string;
       ordinal: number;
     }>`
-      SELECT tc.constraint_name AS fk_name,
-             kcu.column_name,
-             ccu.table_name AS ref_table,
-             ccu.column_name AS ref_column,
-             rc.update_rule,
-             rc.delete_rule,
-             kcu.ordinal_position AS ordinal
-      FROM information_schema.table_constraints tc
-      JOIN information_schema.key_column_usage kcu
-        ON kcu.constraint_name = tc.constraint_name
-        AND kcu.table_schema = tc.table_schema
-      JOIN information_schema.referential_constraints rc
-        ON rc.constraint_name = tc.constraint_name
-        AND rc.constraint_schema = tc.table_schema
-      JOIN information_schema.constraint_column_usage ccu
-        ON ccu.constraint_name = tc.constraint_name
-        AND ccu.table_schema = tc.table_schema
-      WHERE tc.constraint_type = 'FOREIGN KEY'
-        AND tc.table_schema = ${schema}
-        AND tc.table_name = ${table}
-      ORDER BY tc.constraint_name, kcu.ordinal_position
+      -- pg_constraint, not information_schema: constraint_column_usage has no column
+      -- position, so joining it to key_column_usage paired every FK column with every
+      -- referenced column (a two-column FK read back as four). conkey and confkey are
+      -- parallel arrays; unnesting them together keeps each pair and the FK's order.
+      SELECT con.conname AS fk_name,
+             a.attname AS column_name,
+             rt.relname AS ref_table,
+             ra.attname AS ref_column,
+             CASE con.confupdtype WHEN 'c' THEN 'CASCADE' WHEN 'n' THEN 'SET NULL' WHEN 'r' THEN 'RESTRICT'
+                                  WHEN 'd' THEN 'SET DEFAULT' ELSE 'NO ACTION' END AS update_rule,
+             CASE con.confdeltype WHEN 'c' THEN 'CASCADE' WHEN 'n' THEN 'SET NULL' WHEN 'r' THEN 'RESTRICT'
+                                  WHEN 'd' THEN 'SET DEFAULT' ELSE 'NO ACTION' END AS delete_rule,
+             key.ord AS ordinal
+      FROM pg_constraint con
+      JOIN pg_class t ON t.oid = con.conrelid
+      JOIN pg_namespace n ON n.oid = t.relnamespace
+      JOIN pg_class rt ON rt.oid = con.confrelid
+      CROSS JOIN LATERAL unnest(con.conkey, con.confkey) WITH ORDINALITY AS key(attnum, refattnum, ord)
+      JOIN pg_attribute a ON a.attrelid = con.conrelid AND a.attnum = key.attnum
+      JOIN pg_attribute ra ON ra.attrelid = con.confrelid AND ra.attnum = key.refattnum
+      WHERE con.contype = 'f'
+        AND n.nspname = ${schema}
+        AND t.relname = ${table}
+        -- Same-schema FKs only: FkDescriptor carries no referenced schema and the emitter
+        -- assumes the holder's, so a cross-schema FK would read as one to a same-named
+        -- table here. (The information_schema join this replaced excluded them too.)
+        AND rt.relnamespace = t.relnamespace
+      ORDER BY con.conname, key.ord
     `.execute(k);
   } catch {
     // pg-mem: referential_constraints not supported — return empty FK list.

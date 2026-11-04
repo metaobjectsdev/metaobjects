@@ -15,7 +15,7 @@ description: |
 
     string / int / long / double / float / decimal / boolean /
     date / time / timestamp / timestamp(tz) / currency / enum / uuid /
-    uri / inet (IPv4 + IPv6) / object(@objectRef, jsonb storage)
+    uri / inet (IPv4 + IPv6) / duration / object(@objectRef, jsonb storage)
 
   Tricky wire cases asserted here:
     - decimal: exact, canonical (no trailing zeros) → "123.456".
@@ -26,6 +26,11 @@ description: |
       precision loss — a port routing these through a JS number / 32-bit int /
       double corrupts the low bits and fails.
     - uuid: written upper-case, reads back lowercase-canonical.
+    - duration: written in an accepted ISO-8601 form, read back canonical
+      (fixtures/duration-wire): a day folds into hours (`P1DT0.5S` -> `PT24H0.5S`)
+      and a negative span carries one leading sign (`-PT90S` -> `-PT1M30S`).
+      Postgres refuses a signed ISO duration as interval input, so this also
+      proves each port binds the value in a form Postgres reads.
     - id (uuid PK): NOT supplied on insert; gen_random_uuid() fills it, the
       runtime returns it, and the read-back is by that generated PK — so a
       server-generated PK is exercised on the write path too.
@@ -77,6 +82,7 @@ queries:
       uriVal: "https://example.com/a/b?q=1"
       inetVal: "192.168.1.1"
       inet6Val: "2001:db8::1"
+      durationVal: "P1DT0.5S"
       settings: { theme: "dark", notify: true, retries: 3 }
       # array-of-VO stored as JSONB (field.object @isArray @storage:jsonb). Element
       # order is preserved; each element's keys are sorted on read (like settings).
@@ -102,6 +108,7 @@ queries:
       uriVal: "https://example.com/a/b?q=1"
       inetVal: "192.168.1.1"
       inet6Val: "2001:db8::1"
+      durationVal: "PT24H0.5S"
       settings: { notify: true, retries: 3, theme: "dark" }
       labels:
         - { key: "alpha", weight: 10 }
@@ -129,6 +136,7 @@ queries:
       uriVal: "urn:isbn:0451450523"
       inetVal: "10.0.0.5"
       inet6Val: "fe80::1"
+      durationVal: "-PT90S"
       settings: { theme: "light", notify: false, retries: 0 }
       # empty array-of-VO: an empty JSON array must round-trip as [] (distinct from null).
       labels: []
@@ -151,6 +159,7 @@ queries:
       uriVal: "urn:isbn:0451450523"
       inetVal: "10.0.0.5"
       inet6Val: "fe80::1"
+      durationVal: "-PT1M30S"
       settings: { notify: false, retries: 0, theme: "light" }
       labels: []
 
@@ -190,6 +199,7 @@ queries:
       # Authored in the long (uncompressed) form; Postgres returns the canonical
       # compressed form, so the expected read-back is `2001:db8::8a2e:370:7334`.
       inet6Val: "2001:0db8:0000:0000:0000:8a2e:0370:7334"
+      durationVal: "PT876000H"
       settings: { theme: "dark", notify: true, retries: 9 }
       labels:
         - { key: "solo", weight: 99 }
@@ -212,6 +222,7 @@ queries:
       uriVal: "https://example.org/path#frag"
       inetVal: "255.255.255.255"
       inet6Val: "2001:db8::8a2e:370:7334"
+      durationVal: "PT876000H"
       settings: { notify: true, retries: 9, theme: "dark" }
       labels:
         - { key: "solo", weight: 99 }

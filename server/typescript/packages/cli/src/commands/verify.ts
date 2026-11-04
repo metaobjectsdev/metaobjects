@@ -7,11 +7,13 @@
 // silently break a prompt" guarantee, enforced at the last fixed point before
 // the text ships. Required-slot misses are warnings (don't fail the build).
 
+import { ENUM_LENGTH_HINT, isEnumLengthRefusal } from "../lib/enum-length-refusal.js";
 import { existsSync } from "node:fs";
 import { join, relative, resolve as resolvePath } from "node:path";
 import { parseVerifyArgs, type MigrateFlags } from "../lib/args.js";
 import { log } from "../lib/log.js";
 import { requirementLedgerRows, type RequirementLedgerRow } from "../lib/requirement-ledger.js";
+import { warnUnenforcedFkTargets } from "../lib/fk-target-warning.js";
 import { emitStructured, type OutputFormat } from "../lib/format.js";
 import {
   antiPatternRows, missingBaseUrlRows, removedPropRows, ranSection, skippedSection, warnCapped,
@@ -34,10 +36,12 @@ import { FileProvider, templateReferenceLine } from "../lib/file-provider.js";
 import { derivePayloadFieldTree } from "../lib/payload-field-tree.js";
 import { loadMemoryOptionsFrom, loadMetaobjectsConfig, RemovedNamingConfigError, resolveGenCollection, resolveGenConfigDir } from "../lib/load-metaobjects-config.js";
 import { collectionLoadOptions } from "../lib/collection-load-options.js";
+import { schemaBuildOptions, type SchemaBuildOptions } from "../lib/schema-build-options.js";
 import { computeCodegenDrift } from "../lib/codegen-drift.js";
 import { hasLegacyDocsBlock, legacyDocsConfigMessage, REMOVED_VERIFY_DOCS } from "../lib/docs-removed.js";
 import { buildAgentSchemaInput } from "../lib/agent-schema.js";
 import { sourceRootsOf } from "./gen.js";
+import { schemaAdvisoryLines } from "../lib/schema-advisories.js";
 import {
   checkRequirements, summariseRequirements, scanRequirements, type Diagnostic,
 } from "../lib/requirement-check.js";
@@ -92,6 +96,9 @@ import {
   postgresExprCanonProbe,
   type ShadowSchemaSource,
   withoutFlywayHistory,
+  isFkTargetNotUniqueError,
+  isInvalidCheckNameError,
+  isUnknownSchemaConventionsError,
 } from "@metaobjectsdev/migrate-ts";
 import {
   DEFAULT_METAOBJECTS_DIR,
@@ -121,8 +128,10 @@ import {
   physicalNamingOf,
   WIRE_DECIMALS,
   WIRE_NULL_MEMBERS,
+  WIRE_DURATIONS,
   WIRE_KEY_DECIMALS,
   WIRE_KEY_NULL_MEMBERS,
+  WIRE_KEY_DURATIONS,
   type WireFormat,
 } from "@metaobjectsdev/metadata";
 import {
@@ -166,6 +175,13 @@ function attrAsStringArray(attr: unknown): string[] {
   if (Array.isArray(attr)) return attr.filter((s): s is string => typeof s === "string");
   if (typeof attr === "string") return [attr];
   return [];
+}
+
+/** An enum member longer than the project's enums.maxLength: a metadata defect, reported by name. */
+function refuseEnumLength(err: Error): number {
+  log.error(`verify: ${err.message}`);
+  log.error(`verify: ${ENUM_LENGTH_HINT}`);
+  return 1;
 }
 
 export async function verifyCommand(
@@ -393,6 +409,19 @@ export async function verifyCommand(
         : isStrictAttr ? strictHint : "fix the metadata error above and re-run",
     }, fmt);
     return 1;
+  }
+
+  // The project's schema settings, resolved once for every expected-schema build and drift
+  // computation below. A `migrate.conventions` preset this version does not ship is a config
+  // error on every verify run, not only one that builds the expected schema (a typo'd preset
+  // otherwise passes `meta verify` and changes nothing until `meta migrate`).
+  let schema: SchemaBuildOptions;
+  try {
+    schema = schemaBuildOptions(collection, forgeConfig);
+  } catch (err) {
+    if (!isUnknownSchemaConventionsError(err)) throw err;
+    log.error(`verify: ${err.message}`);
+    return 2;
   }
 
   // The schema gate governs exactly the objects `meta migrate` governs — ONE
@@ -708,11 +737,19 @@ export async function verifyCommand(
     // passes no `governed` and gets the comparison exactly as it was.
     let governed: GovernedScope | undefined;
     if (schemaScope !== undefined) {
-      const built = buildExpectedSchemaWithProvenance(root, {
-        dialect,
-        views: buildProjectionViews(root, { dialect }),
-      });
-      governed = scopeExpectedSchema(built, schemaScope, importedOption(collection));
+      try {
+        const built = buildExpectedSchemaWithProvenance(root, {
+          ...schema,
+          dialect,
+          views: buildProjectionViews(root, { dialect }),
+        });
+        governed = scopeExpectedSchema(built, schemaScope, importedOption(collection));
+      } catch (err) {
+        if (isEnumLengthRefusal(err)) return refuseEnumLength(err);
+        if (isInvalidCheckNameError(err)) { log.error(`verify: ${err.message}`); return 1; }
+        if (isFkTargetNotUniqueError(err)) return refuseFkTarget(err);
+        throw err;
+      }
     }
 
     // `verifyReplay` calls `applyPending` itself. That is NOT a second replay: the
@@ -1072,6 +1109,7 @@ export async function verifyCommand(
         unindexedFks = scanForUnindexedForeignKeys(root, {
           dialect: scanDialect,
           skip: collection.imported,
+          schema,
         });
       }
     } catch {
@@ -1084,7 +1122,7 @@ export async function verifyCommand(
     // cascade) silently has no effect. Same discipline as its siblings.
     let actionConflicts: ReferentialActionConflictFinding[] = [];
     try {
-      actionConflicts = scanForReferentialActionConflicts(root, { skip: collection.imported });
+      actionConflicts = scanForReferentialActionConflicts(root, { skip: collection.imported, schema });
     } catch {
       // advisory only — a model the schema builder refuses is migrate's to report.
     }
@@ -1308,13 +1346,23 @@ export async function verifyCommand(
     // work at the top of `verifyCommand`, because `migrate.scope` governs only the
     // schema gate: a stale pattern must not fail a `--templates` run that never
     // consults it.
-    const scopeMismatch = migrateScopeMismatch(collection, () => {
-      const dialect: Dialect = usingD1 ? "d1" : (flags.dialect ?? inferDialect(flags.db as string));
-      return buildExpectedSchemaWithProvenance(root, {
-        dialect,
-        views: buildProjectionViews(root, { dialect }),
-      }).provenance;
-    });
+    let scopeMismatch: string | undefined;
+    try {
+      scopeMismatch = migrateScopeMismatch(collection, () => {
+        const dialect: Dialect = usingD1 ? "d1" : (flags.dialect ?? inferDialect(flags.db as string));
+        return buildExpectedSchemaWithProvenance(root, {
+          ...schema,
+          dialect,
+          views: buildProjectionViews(root, { dialect }),
+        }).provenance;
+      });
+    } catch (err) {
+      // Building the expected schema to check the scope raises the same metadata refusals
+      // the comparison below would; report them by name, not as an uncaught error.
+      if (isEnumLengthRefusal(err)) return refuseEnumLength(err);
+      if (isInvalidCheckNameError(err)) { log.error(`verify: ${err.message}`); return 1; }
+      throw err;
+    }
     if (scopeMismatch !== undefined) {
       log.error(`verify: ${scopeMismatch}`);
       return 2;
@@ -1389,6 +1437,7 @@ export async function verifyCommand(
           actual = withoutFlywayHistory(actual);
         }
         driftResult = await computeDriftFromActual(actual, kysely.dialect, root, {
+          ...schema,
           allow,
           views: expectedViews,
           // The same question `meta migrate` asks, so the report names the change it plans.
@@ -1402,10 +1451,19 @@ export async function verifyCommand(
           ...importedOption(collection),
         });
       } catch (err) {
+        // Metadata refusals raised while building the expected side, not introspection failures.
+        if (isFkTargetNotUniqueError(err)) return refuseFkTarget(err);
+        if (isInvalidCheckNameError(err)) {
+          log.error(`verify: ${err.message}`);
+          return 1;
+        }
+        if (isEnumLengthRefusal(err)) return refuseEnumLength(err);
         schemaRunError = `failed to introspect ${kysely.displayUrl}: ${describeError(err)}`;
         log.error(`verify: ${schemaRunError}`);
         return 1;
       }
+
+      warnUnenforcedFkTargets("verify", driftResult.unenforcedFkTargetViolations);
 
       if (driftResult.exprCanonPath !== undefined) {
         say(describeExprCanonPath(driftResult.exprCanonPath, driftResult.shadowUnavailable));
@@ -1494,6 +1552,7 @@ export async function verifyCommand(
     let driftResult;
     try {
       driftResult = await computeDriftFromActual(actual, "d1", root, {
+        ...schema,
         allow,
         views: expectedViews,
         ...(schemaScope !== undefined ? { inScope: schemaScope } : {}),
@@ -1631,6 +1690,8 @@ export async function verifyCommand(
       say(note);
     }
 
+    for (const line of schemaAdvisoryLines(driftResult.advisories)) log.warn(`verify: ${line}`);
+
     const changes = driftResult.changes;
     schemaDrift = { changes: changes.map(toSchemaDriftRow), findings: ledgerDrift };
     if (changes.length === 0 && ledgerDrift.length === 0) {
@@ -1704,6 +1765,16 @@ export async function verifyCommand(
       return 2;
     }
     const config = forgeConfig;
+    // The schema page describes the schema `meta gen` would, so it takes this package's settings.
+    // A conventions preset that does not resolve fails here as it does in `meta gen`.
+    let codegenSchema: SchemaBuildOptions;
+    try {
+      codegenSchema = schemaBuildOptions(genCollection, config);
+    } catch (err) {
+      if (!isUnknownSchemaConventionsError(err)) throw err;
+      log.error(`verify --codegen: ${err.message}`);
+      return 2;
+    }
     let result;
     try {
       result = await computeCodegenDrift(config, codegenRoot, genConfigDir, genCollection.inScope, genCollection.ownFiles, {
@@ -1712,7 +1783,9 @@ export async function verifyCommand(
           codegenRoot,
           config.dialect,
           (m) => log.warn(`verify --codegen: [agent-docs] ${m}`),
+          codegenSchema,
         ),
+        schemaSettings: codegenSchema,
       });
     } catch (err) {
       log.error(`verify --codegen: regeneration failed: ${describeError(err)}`);
@@ -1734,7 +1807,8 @@ export async function verifyCommand(
           const probe = await computeCodegenDrift(config, codegenRoot, genConfigDir, genCollection.inScope,
             genCollection.ownFiles, {
               sourceRoots: sourceRootsOf(genCollection),
-              agentSchema: () => buildAgentSchemaInput(codegenRoot, config.dialect, () => {}),
+              agentSchema: () => buildAgentSchemaInput(codegenRoot, config.dialect, () => {}, codegenSchema),
+              schemaSettings: codegenSchema,
             });
           return probe.error === undefined && probe.clean;
         } finally {
@@ -1889,6 +1963,7 @@ const DRIFT_PRESENTATION: Record<Change["kind"], { glyph: string; noun: string }
   "create-table": { glyph: "+", noun: "table" },
   "drop-table": { glyph: "-", noun: "table" },
   "rename-table": { glyph: "~", noun: "table" },
+  "rename-constraints": { glyph: "~", noun: "constraint name" },
   "add-column": { glyph: "+", noun: "column" },
   "drop-column": { glyph: "-", noun: "column" },
   "rename-column": { glyph: "~", noun: "column" },
@@ -1897,6 +1972,7 @@ const DRIFT_PRESENTATION: Record<Change["kind"], { glyph: string; noun: string }
   "change-column-default": { glyph: "~", noun: "column" },
   "change-column-identity": { glyph: "~", noun: "column" },
   "change-comment": { glyph: "~", noun: "comment" },
+  "alter-sequence": { glyph: "~", noun: "sequence" },
   "add-index": { glyph: "+", noun: "index" },
   "drop-index": { glyph: "-", noun: "index" },
   "add-fk": { glyph: "+", noun: "fk" },
@@ -1974,13 +2050,14 @@ interface VerifyGateRow {
  */
 /** A `wire` setting as the block that declares it in `.metaobjects/config.json`. */
 export function wireBlock(wire: WireFormat): string {
-  return `"wire": { "${WIRE_KEY_DECIMALS}": "${wire.decimals}", "${WIRE_KEY_NULL_MEMBERS}": "${wire.nullMembers}" }`;
+  return `"wire": { "${WIRE_KEY_DECIMALS}": "${wire.decimals}", "${WIRE_KEY_NULL_MEMBERS}": "${wire.nullMembers}", "${WIRE_KEY_DURATIONS}": "${wire.durations}" }`;
 }
 
 /**
  * ADR-0019 Amendment 2: the other `wire` setting under which `reproduces` says the generators
  * write the committed output exactly, or `undefined` when none does. Probes decimals {native,
- * string} x nullMembers {native, emit, omit}, skipping the setting this run used.
+ * string} x nullMembers {native, emit, omit} x durations {native, iso}, skipping the setting this
+ * run used.
  */
 export async function matchingWire(
   used: WireFormat,
@@ -1988,9 +2065,11 @@ export async function matchingWire(
 ): Promise<WireFormat | undefined> {
   for (const decimals of WIRE_DECIMALS) {
     for (const nullMembers of WIRE_NULL_MEMBERS) {
-      if (decimals === used.decimals && nullMembers === used.nullMembers) continue;
-      const wire: WireFormat = { decimals, nullMembers };
-      if (await reproduces(wire)) return wire;
+      for (const durations of WIRE_DURATIONS) {
+        if (decimals === used.decimals && nullMembers === used.nullMembers && durations === used.durations) continue;
+        const wire: WireFormat = { decimals, nullMembers, durations };
+        if (await reproduces(wire)) return wire;
+      }
     }
   }
   return undefined;
@@ -2001,7 +2080,7 @@ export function wireDiffersMessage(committed: WireFormat, used: WireFormat): str
   return (
     `The committed output was generated with ${wireBlock(committed)}; this run used ${wireBlock(used)} ` +
     "(.metaobjects/config.json; each key defaults to native). Do not regenerate: that changes the JSON " +
-    "your API writes for decimals or for a value object's null members. Declare " +
+    "your API writes for decimals, durations or a value object's null members. Declare " +
     `${wireBlock(committed)} in .metaobjects/config.json, and 'meta gen' and 'meta verify --codegen' both read it.`
   );
 }
@@ -2208,4 +2287,11 @@ function buildVerifyPayload(input: {
       "the loader's own warnings and the agent-context/manifest advisories — printed as text on stderr",
     ],
   };
+}
+
+/** An FK whose target is not a unique key, refused by name on every `--db` path. */
+function refuseFkTarget(err: Error): number {
+  log.error(`verify: ${err.message}`);
+  log.error("verify: declare an identity.secondary on the target entity with exactly the referenced fields, or reference its primary key");
+  return 1;
 }

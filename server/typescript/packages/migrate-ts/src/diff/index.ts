@@ -4,7 +4,9 @@ import type {
   DependentRelation,
   Change, ChangeStatus, DiffResult, AllowOptions, AmbiguousCallback, Dialect,
   CheckDescriptor, ColumnDefault, NameChange, DeclaredRename, ExprCanonPath,
+  SchemaAdvisory,
 } from "../types.js";
+import { PG_IDENTIFIER_MAX_BYTES } from "../types.js";
 import type { SqlType } from "../sql-type.js";
 import { sqlTypeEquals } from "../sql-type.js";
 import { applyStatus } from "./status.js";
@@ -281,12 +283,48 @@ export async function diff(
   const { renamed, predecessors } = diffRenamedTables(changes, expectedTables, actualTables, args.dialect, canon);
 
   // Pass 2: tables in both → compare columns/indexes/FKs
+  const demotedKeys: { table: TableDescriptor; columns: readonly string[] }[] = [];
   for (const [id, expectedTable] of expectedTables) {
     const actualTable = actualTables.get(id);
     if (!actualTable) continue;
     // An FK onto a renamed table follows the rename in the engine — compare it as such.
-    diffTablePair(expectedTable, withRenamedRefTables(actualTable, renamed), changes, args.dialect, canon);
+    if (args.dialect !== "postgres") {
+      diffTablePair(expectedTable, withRenamedRefTables(actualTable, renamed), changes, args.dialect, canon);
+      continue;
+    }
+    // Postgres: a constraint or index whose only change is its name is renamed in place, and so
+    // is a primary key. A unique key that changed only between index and constraint is promoted
+    // in place, or demoted by drop and re-create.
+    const tableChanges: Change[] = [];
+    diffTablePair(expectedTable, withRenamedRefTables(actualTable, renamed), tableChanges, args.dialect, canon);
+    const { constraintRenames, indexRenames, rest } = pairNameOnlyChanges(tableChanges, textColumnsOf(actualTable), canon);
+    const pk = primaryKeyRename(expectedTable, actualTable, actualTable.name);
+    if (pk !== undefined) constraintRenames.push(pk);
+    // A renamed key is compared for its kind under the name it is renamed to: a live UNIQUE
+    // constraint renamed onto a key the conventions want as a plain index is renamed AND
+    // demoted, in one migration. The rename runs first, so the demotion uses the new name.
+    const { promotions, demotions } = uniqueKindChanges(
+      expectedTable, withRenamedIndexes(actualTable, [...constraintRenames, ...indexRenames]), canon);
+    if (constraintRenames.length > 0 || indexRenames.length > 0 || promotions.length > 0) {
+      changes.push({
+        kind: "rename-constraints", table: expectedTable.name, ...schemaSpread(expectedTable.schema),
+        ...(constraintRenames.length > 0 ? { constraintRenames } : {}),
+        ...(indexRenames.length > 0 ? { indexRenames } : {}),
+        ...(promotions.length > 0 ? { uniquePromotions: promotions } : {}),
+        status: ALLOWED,
+      });
+    }
+    changes.push(...rest);
+    for (const d of demotions) {
+      const sx = schemaSpread(expectedTable.schema);
+      changes.push({ kind: "drop-index", table: expectedTable.name, ...sx, index: d.live.name, restore: d.live, status: ALLOWED });
+      changes.push({ kind: "add-index", table: expectedTable.name, ...sx, index: d.want, status: ALLOWED });
+      demotedKeys.push({ table: expectedTable, columns: d.live.columns });
+    }
   }
+  // A demoted UNIQUE constraint is dropped, and Postgres refuses that while a foreign key
+  // relies on it, so each such FK is dropped first and added back once the index exists.
+  if (demotedKeys.length > 0) refitForeignKeysOnto(demotedKeys, actualTables, expectedTables, changes);
 
   // Pass 2b: views. Identity is (schema, name). How "changed" is decided is
   // DIALECT-DEPENDENT — see diffViews.
@@ -364,6 +402,10 @@ export async function diff(
     changes,
     blocked: changes.filter((c) => c.status.state === "blocked"),
     hazards: changes.flatMap((c) => dataHazardOf(c) ?? []),
+    advisories: [
+      ...intervalAsStringAdvisories(expectedTables, (id) => actualTables.get(id) ?? predecessors.get(id)),
+      ...(args.dialect === "sqlite" || args.dialect === "d1" ? sequenceNotAppliedAdvisories(changes) : []),
+    ],
     ...(args.dialect === "postgres" ? { exprCanonPath } : {}),
     ...(shadowAnswer !== undefined && "unavailable" in shadowAnswer ? { shadowUnavailable: shadowAnswer.unavailable } : {}),
   };
@@ -422,7 +464,11 @@ function diffRenamedTables(
     const carried = withRenamedRefTables({ ...actual, name: r.to }, renamed);
     const tableChanges: Change[] = [];
     diffTablePair(expected, carried, tableChanges, dialect, canon);
-    changes.push(...(dialect === "postgres" ? foldNameOnlyChanges(r, tableChanges, textColumnsOf(actual), canon) : tableChanges));
+    if (dialect !== "postgres") { changes.push(...tableChanges); continue; }
+    changes.push(...foldNameOnlyChanges(r, tableChanges, textColumnsOf(actual), canon));
+    // `ALTER TABLE … RENAME` keeps the old primary-key name.
+    const pk = primaryKeyRename(expected, actual, r.from);
+    if (pk !== undefined) (r.constraintRenames ??= []).push(pk);
   }
   return { renamed, predecessors };
 }
@@ -546,6 +592,21 @@ function foldNameOnlyChanges(
   textColumns: ReadonlySet<string>,
   canon: ExprCanon,
 ): Change[] {
+  const { constraintRenames, indexRenames, rest } = pairNameOnlyChanges(tableChanges, textColumns, canon);
+  if (constraintRenames.length > 0) r.constraintRenames = constraintRenames;
+  if (indexRenames.length > 0) r.indexRenames = indexRenames;
+  return rest;
+}
+
+/**
+ * Pair each drop of a constraint or index with an add of the SAME definition under another
+ * name. The pairs are name changes; `rest` is every other change, in order.
+ */
+function pairNameOnlyChanges(
+  tableChanges: Change[],
+  textColumns: ReadonlySet<string>,
+  canon: ExprCanon,
+): { constraintRenames: NameChange[]; indexRenames: NameChange[]; rest: Change[] } {
   const constraintRenames: NameChange[] = [];
   const indexRenames: NameChange[] = [];
   const folded = new Set<Change>();
@@ -573,10 +634,7 @@ function foldNameOnlyChanges(
       }
     }
   }
-  if (folded.size === 0) return tableChanges;
-  if (constraintRenames.length > 0) r.constraintRenames = constraintRenames;
-  if (indexRenames.length > 0) r.indexRenames = indexRenames;
-  return tableChanges.filter((c) => !folded.has(c));
+  return { constraintRenames, indexRenames, rest: folded.size === 0 ? tableChanges : tableChanges.filter((c) => !folded.has(c)) };
 }
 
 function idOfChange(c: Change): string | undefined {
@@ -705,6 +763,90 @@ async function carryThroughColumnRenames(
   }
 }
 
+/** Postgres keeps the first 63 bytes of an identifier, so a longer name is compared as it is stored. */
+function pgStoredName(name: string): string {
+  if (Buffer.byteLength(name, "utf8") <= PG_IDENTIFIER_MAX_BYTES) return name;
+  let out = "";
+  for (const ch of name) {
+    if (Buffer.byteLength(out + ch, "utf8") > PG_IDENTIFIER_MAX_BYTES) break;
+    out += ch;
+  }
+  return out;
+}
+
+/**
+ * The rename a live primary key needs to carry the name the schema conventions give it, or
+ * undefined when the names agree or either side has no key (pg-mem reports none). An absent
+ * name is `<table>_pkey`; `liveTable` is the table's name as the database knows it.
+ */
+function primaryKeyRename(expected: TableDescriptor, actual: TableDescriptor, liveTable: string): NameChange | undefined {
+  if (expected.primaryKey.length === 0 || actual.primaryKey.length === 0) return undefined;
+  const from = pgStoredName(actual.primaryKeyName ?? `${liveTable}_pkey`);
+  const to = pgStoredName(expected.primaryKeyName ?? `${expected.name}_pkey`);
+  return from === to ? undefined : { from, to };
+}
+
+/** The live table with each renamed index (or the index backing a renamed constraint) under its new name. */
+function withRenamedIndexes(actual: TableDescriptor, renames: readonly NameChange[]): TableDescriptor {
+  if (renames.length === 0) return actual;
+  const to = new Map(renames.map((r) => [r.from, r.to]));
+  return { ...actual, indexes: actual.indexes.map((i) => (to.has(i.name) ? { ...i, name: to.get(i.name)! } : i)) };
+}
+
+/**
+ * Unique keys whose definition and name match but which differ only in being a plain index or
+ * a UNIQUE constraint. `promotions` are the expected constraints a live index becomes;
+ * `demotions` pair a live constraint with the plain index the conventions ask for (`plainIndex`);
+ * under conventions with no preference a live constraint stays.
+ */
+function uniqueKindChanges(
+  expected: TableDescriptor,
+  actual: TableDescriptor,
+  canon: ExprCanon,
+): { promotions: IndexDescriptor[]; demotions: { live: IndexDescriptor; want: IndexDescriptor }[] } {
+  const promotions: IndexDescriptor[] = [];
+  const demotions: { live: IndexDescriptor; want: IndexDescriptor }[] = [];
+  const live = new Map(actual.indexes.map((i) => [i.name, i]));
+  for (const want of expected.indexes) {
+    const a = live.get(want.name);
+    if (a === undefined || !want.unique || !a.unique || !indexEquals(want, a, canon)) continue;
+    // Only a plain index and a UNIQUE constraint trade places; a PK or EXCLUDE index is not a unique key.
+    if ((want.constraint ?? "unique") !== "unique" || (a.constraint ?? "unique") !== "unique") continue;
+    if (want.constraint === "unique" && a.constraint === undefined) promotions.push(want);
+    else if (want.plainIndex === true && a.constraint === "unique") demotions.push({ live: a, want });
+  }
+  return { promotions, demotions };
+}
+
+/**
+ * Drop and re-add every live foreign key that targets a demoted key's columns, unless the
+ * diff already drops it. The re-added FK is the expected one when the model still declares
+ * it, else the live one.
+ */
+function refitForeignKeysOnto(
+  keys: readonly { table: TableDescriptor; columns: readonly string[] }[],
+  actualTables: ReadonlyMap<string, TableDescriptor>,
+  expectedTables: ReadonlyMap<string, TableDescriptor>,
+  changes: Change[],
+): void {
+  const dropped = new Set(changes.flatMap((c) =>
+    c.kind === "drop-fk" ? [`${tableIdentity({ name: c.table, ...schemaSpread(c.schema) })}\u0000${c.fk}`] : []));
+  for (const [id, t] of actualTables) {
+    for (const fk of t.foreignKeys) {
+      // An FK names its target table in the referencing table's schema.
+      const target = keys.find((k) => fk.refTable === k.table.name && t.schema === k.table.schema
+        && fk.refColumns.length === k.columns.length && fk.refColumns.every((c, i) => c === k.columns[i]));
+      if (target === undefined || dropped.has(`${id}\u0000${fk.name}`)) continue;
+      const sx = schemaSpread(t.schema);
+      const want = expectedTables.get(id)?.foreignKeys.find((f) => f.name === fk.name) ?? fk;
+      changes.push({ kind: "drop-fk", table: t.name, ...sx, fk: fk.name, restore: fk, status: ALLOWED });
+      if (!changes.some((c) => c.kind === "add-fk" && idOfChange(c) === id && c.fk.name === want.name)) {
+        changes.push({ kind: "add-fk", table: t.name, ...sx, fk: want, status: ALLOWED });
+      }
+    }
+  }
+}
+
 /**
  * #258 — throw {@link PrimaryKeyChangeError} when a table's live PRIMARY KEY differs from
  * the metadata identity. Live PK column names are first mapped through any detected
@@ -760,8 +902,69 @@ function canonTypeForDialect(t: SqlType, dialect: Dialect | undefined): SqlType 
   return t;
 }
 
+/**
+ * Before field.duration, introspection read a Postgres `interval` column as `text`, and a model
+ * could only describe one as a string. So a live interval column the model declares as text is
+ * read as text, exactly as it was, and does not turn into drift (an `interval-as-string`
+ * advisory says so). An expected interval compares as one, and any other expected type is a
+ * real type change from the interval.
+ */
+function asPreDurationType(actual: SqlType, expected: SqlType): SqlType {
+  // Only where the model expects text (a field.string): a live interval modelled as anything
+  // else is a real type change, reported as interval → that type.
+  if (actual.kind === "interval" && expected.kind === "text") return { kind: "text" };
+  if (actual.kind === "array" && expected.kind === "array") {
+    const element = asPreDurationType(actual.element, expected.element);
+    return element === actual.element ? actual : { kind: "array", element };
+  }
+  return actual;
+}
+
+/** Every column a live `interval` (or array of them) the model does not declare as a duration:
+ *  `asPreDurationType` reads it as text so it is not drift, and this says so. */
+function intervalAsStringAdvisories(
+  expectedTables: ReadonlyMap<string, TableDescriptor>, liveOf: (id: string) => TableDescriptor | undefined,
+): SchemaAdvisory[] {
+  const out: SchemaAdvisory[] = [];
+  for (const [id, expected] of expectedTables) {
+    const live = liveOf(id);
+    if (live === undefined) continue;
+    const liveCols = new Map(live.columns.map((c) => [c.name, c]));
+    for (const ec of expected.columns) {
+      const lc = liveCols.get(ec.name);
+      if (lc === undefined || asPreDurationType(lc.sqlType, ec.sqlType) === lc.sqlType) continue;
+      out.push({ kind: "interval-as-string", table: expected.name, ...schemaSpread(expected.schema), column: ec.name });
+    }
+  }
+  return out;
+}
+
+/** A column this diff creates on SQLite or D1 with a declared sequence start or name, which
+ *  that database cannot hold (it has no sequence). */
+function sequenceNotAppliedAdvisories(changes: readonly Change[]): SchemaAdvisory[] {
+  const out: SchemaAdvisory[] = [];
+  const at = (table: string, schema: string | undefined, column: ColumnDescriptor): void => {
+    if (column.sequence !== undefined) out.push({ kind: "sequence-not-applied", table, ...schemaSpread(schema), column: column.name });
+  };
+  for (const c of changes) {
+    if (c.kind === "create-table") for (const col of c.table.columns) at(c.table.name, c.table.schema, col);
+    if (c.kind === "add-column") at(c.table, c.schema, c.column);
+  }
+  return out;
+}
+
 function sqlTypeEqualsForDialect(a: SqlType, b: SqlType, dialect: Dialect | undefined): boolean {
   return sqlTypeEquals(canonTypeForDialect(a, dialect), canonTypeForDialect(b, dialect));
+}
+
+/**
+ * The name Postgres gives an identity or serial column's sequence when none is declared:
+ * `<table>_<column>_seq`. Undefined past the 63-byte identifier limit, where Postgres
+ * truncates by its own rule; such a name is then never compared offline.
+ */
+function defaultSequenceName(table: string, column: string): string | undefined {
+  const name = `${table}_${column}_seq`;
+  return Buffer.byteLength(name, "utf8") <= PG_IDENTIFIER_MAX_BYTES ? name : undefined;
 }
 
 function diffTableColumns(
@@ -777,11 +980,13 @@ function diffTableColumns(
   const actualCols = new Map(actual.columns.map((c) => [c.name, c]));
 
   for (const [name, ec] of expectedCols) {
-    const ac = actualCols.get(name);
-    if (!ac) {
+    const live = actualCols.get(name);
+    if (!live) {
       changes.push({ kind: "add-column", table, ...sx, column: ec, status: ALLOWED });
       continue;
     }
+    const preDuration = asPreDurationType(live.sqlType, ec.sqlType);
+    const ac = preDuration === live.sqlType ? live : { ...live, sqlType: preDuration };
     // Compare type, nullable, default — emit per-aspect change. Type equality is
     // dialect-aware: SQLite/D1 cannot physically represent a VARCHAR length or a
     // native json type, so those distinctions must not read as drift (see
@@ -846,6 +1051,26 @@ function diffTableColumns(
       };
       changes.push(change);
     }
+    // The declared start and name of an increment key's sequence (Postgres only; SQLite has
+    // none). Only what the model DECLARES is compared, so an undeclared one never produces a
+    // change. The other side is the live sequence when introspected (`liveSequence`), else —
+    // a committed snapshot — what the previous model declared, with Postgres's defaults (start
+    // 1, `<table>_<column>_seq`) for what it left undeclared.
+    if (dialect === "postgres" && ec.identity === "increment" && ac.identity === "increment" && ec.sequence !== undefined) {
+      const live = ac.liveSequence;
+      const actualName = live?.name ?? ac.sequence?.name ?? defaultSequenceName(table, name);
+      const actualStart = live?.start ?? ac.sequence?.start ?? 1;
+      const startDiffers = ec.sequence.start !== undefined && ec.sequence.start !== actualStart;
+      const nameDiffers = ec.sequence.name !== undefined && actualName !== undefined && ec.sequence.name !== actualName;
+      if ((startDiffers || nameDiffers) && actualName !== undefined) {
+        changes.push({
+          kind: "alter-sequence", table, ...sx, column: name, sequence: actualName, status: ALLOWED,
+          ...(live?.schema !== undefined ? { sequenceSchema: live.schema } : {}),
+          ...(startDiffers ? { fromStart: actualStart, toStart: ec.sequence.start! } : {}),
+          ...(nameDiffers ? { toName: ec.sequence.name! } : {}),
+        });
+      }
+    }
     if (canon.catalog === true) {
       // Both sides read `increment` off a GENERATED identity (attidentity) or a legacy serial's
       // nextval default; a serial losing its sequence is the default change above, not this.
@@ -855,6 +1080,7 @@ function diffTableColumns(
         changes.push({
           kind: "change-column-identity", table, ...sx, column: name, status: ALLOWED,
           ...(from !== undefined ? { from } : {}), ...(to !== undefined ? { to } : {}),
+          ...(to !== undefined && ec.sequence !== undefined ? { sequence: ec.sequence } : {}),
         });
       }
       if (ec.description !== ac.description) {

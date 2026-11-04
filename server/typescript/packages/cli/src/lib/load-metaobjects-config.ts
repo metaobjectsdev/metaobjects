@@ -52,6 +52,13 @@ const CLI_PKG_PATHS: Record<string, { dist: string; src: string }> = {
     dist: "node_modules/@metaobjectsdev/metadata/dist/index.js",
     src: "node_modules/@metaobjectsdev/metadata/src/index.ts",
   },
+  // A config that supplies its own schema conventions starts from a preset
+  // (`efcoreConventions`) — aliased like the other codegen specifiers so the project
+  // needn't declare migrate-ts directly, and a global CLI still resolves it.
+  "@metaobjectsdev/migrate-ts": {
+    dist: "node_modules/@metaobjectsdev/migrate-ts/dist/index.js",
+    src: "node_modules/@metaobjectsdev/migrate-ts/src/index.ts",
+  },
   "@metaobjectsdev/codegen-ts/generators": {
     dist: "node_modules/@metaobjectsdev/codegen-ts/dist/generators/index.js",
     src: "node_modules/@metaobjectsdev/codegen-ts/src/generators/index.ts",
@@ -204,6 +211,18 @@ function rewriteImportSpecifiers(source: string, aliasMap: Record<string, string
 }
 
 /**
+ * What a command that loads `metaobjects.config.ts` only for its load options says when the
+ * file EXISTS but does not load: the run goes on without them, so name what it loses. An
+ * absent config says nothing — that is the ordinary unconfigured project.
+ */
+export function configNotLoadedWarning(projectRoot: string, err: unknown, command: string): string | undefined {
+  if (!existsSync(resolve(projectRoot, CONFIG_FILE))) return undefined;
+  const why = err instanceof Error ? err.message : String(err);
+  return `${command}: ${CONFIG_FILE} exists but did not load (${why}); this run goes on without its providers, ` +
+    `libraries and schemaConventions`;
+}
+
+/**
  * The `loadMemory` options a project's gen config contributes.
  *
  * One helper rather than a spread pair repeated at each of the eight load sites,
@@ -218,6 +237,8 @@ function rewriteImportSpecifiers(source: string, aliasMap: Record<string, string
 export function loadMemoryOptionsFrom(
   cfg: Pick<MetaobjectsGenConfig, "providers"> | undefined,
 ): { providers?: readonly MetaDataTypeProvider[] } {
+  // `schemaConventions` is not a load option: it reaches the expected-schema builds through
+  // `schemaBuildOptions` (schema-build-options.ts), never through the loaded model.
   return {
     ...(cfg?.providers !== undefined ? { providers: cfg.providers } : {}),
   };

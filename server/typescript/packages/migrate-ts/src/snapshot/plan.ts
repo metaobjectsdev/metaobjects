@@ -5,9 +5,10 @@ import { diff, type DiffArgs } from "../diff/index.js";
 import { collectUnmanagedNames } from "../unmanaged.js";
 import { carryForwardOutOfScope, scopeExpectedSchema, scopedDiffInputs, type ObjectScopePredicate } from "../scope.js";
 import type { Dialect, DiffResult, SchemaSnapshot } from "../types.js";
-import type { ExpectedViewInput } from "../expected-schema.js";
+import type { ExpectedViewInput, SchemaBuildSettings } from "../expected-schema.js";
 
-export interface PlanOfflineArgs extends Pick<DiffArgs, "allow" | "onAmbiguous" | "renames" | "ignoreTables"> {
+/** `conventions` and `skipRedundantChecks`: the project's schema settings, passed to the build. */
+export interface PlanOfflineArgs extends Pick<DiffArgs, "allow" | "onAmbiguous" | "renames" | "ignoreTables">, SchemaBuildSettings {
   metadata: MetaData;
   dialect: Dialect;
   /** The stored reference snapshot (the "from" side). Use `{ tables: [], views: [] }` for a fresh project. */
@@ -67,6 +68,8 @@ export async function planOffline(args: PlanOfflineArgs): Promise<PlanOfflineRes
     buildExpectedSchemaWithProvenance(args.metadata, {
       dialect: args.dialect,
       ...(args.views !== undefined ? { views: args.views } : {}),
+      conventions: args.conventions,
+      skipRedundantChecks: args.skipRedundantChecks,
     }),
     args.inScope,
     args.imported !== undefined ? { imported: args.imported } : undefined,
@@ -109,9 +112,12 @@ export function baselineFromMetadata(
   metadata: MetaData,
   dialect: Dialect,
   views?: readonly ExpectedViewInput[],
+  settings?: SchemaBuildSettings,
 ): SchemaSnapshot {
   return buildExpectedSchema(metadata, {
     dialect,
     ...(views !== undefined ? { views } : {}),
+    conventions: settings?.conventions,
+    skipRedundantChecks: settings?.skipRedundantChecks,
   });
 }
