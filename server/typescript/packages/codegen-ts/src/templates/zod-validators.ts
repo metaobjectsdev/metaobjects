@@ -336,7 +336,7 @@ function crossFieldRefinementBody(obj: MetaObject): string[] {
         const right = ref(v.attr(VALIDATOR_ATTR_RIGHT));
         const opName = String(v.attr(VALIDATOR_ATTR_OP));
         const op = CROSS_FIELD_OPS[opName];
-        if (!left || !right || !op) break;
+        if (!left || !right || !op || left.resolvedIsArray() || right.resolvedIsArray()) break;
         const numeric = NUMERIC_SUBTYPES.has(left.subType);
         const c = numeric
           ? "Number(l) - Number(r)"
@@ -352,7 +352,7 @@ function crossFieldRefinementBody(obj: MetaObject): string[] {
       case VALIDATOR_SUBTYPE_PRESENT_IFF: {
         const target = ref(v.attr(VALIDATOR_ATTR_FIELD));
         const when = ref(v.attr(VALIDATOR_ATTR_WHEN));
-        if (!target || !when) break;
+        if (!target || !when || when.resolvedIsArray()) break;
         const { lit, numeric } = crossFieldLiteral(v.attr(VALIDATOR_ATTR_EQUALS), when);
         const gate = numeric ? `g != null && Number(g) === ${lit}` : `g === ${lit}`;
         const path = JSON.stringify(target.name);

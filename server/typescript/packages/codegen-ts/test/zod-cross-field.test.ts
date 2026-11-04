@@ -109,6 +109,18 @@ describe("cross-field validators on the insert schema", () => {
     expect(renderZodValidators(e).toString()).not.toContain("superRefine");
   });
 
+  test("a comparison or gate on an array field is skipped, as in the other ports", async () => {
+    const nums = f(FIELD_SUBTYPE_INT, "nums");
+    nums.setIsArray(true);
+    const e = entityWith("Arr", [nums, f(FIELD_SUBTYPE_INT, "b"), f(FIELD_SUBTYPE_STRING, "note")], [
+      validator(VALIDATOR_SUBTYPE_COMPARISON, "cmp", { [VALIDATOR_ATTR_LEFT]: "nums", [VALIDATOR_ATTR_OP]: "lt", [VALIDATOR_ATTR_RIGHT]: "b" }),
+      validator(VALIDATOR_SUBTYPE_REQUIRED_WHEN, "rw", { [VALIDATOR_ATTR_FIELD]: "note", [VALIDATOR_ATTR_WHEN]: "nums", [VALIDATOR_ATTR_EQUALS]: "1" }),
+    ]);
+    const mod = await executeGenerated(renderZodValidators(e).toString());
+    expect(mod.ArrInsertSchema.safeParse({ nums: [1, 2], b: 5 }).success).toBe(true);
+    expect(mod.ArrInsertSchema.safeParse({ nums: [1], b: 0 }).success).toBe(true);
+  });
+
   test("numeric @equals compares numerically against the gate field", async () => {
     const e = entityWith("Lv", [f(FIELD_SUBTYPE_INT, "level"), f(FIELD_SUBTYPE_STRING, "note")], [
       validator(VALIDATOR_SUBTYPE_REQUIRED_WHEN, "rw", { [VALIDATOR_ATTR_FIELD]: "note", [VALIDATOR_ATTR_WHEN]: "level", [VALIDATOR_ATTR_EQUALS]: "3" }),

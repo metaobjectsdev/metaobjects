@@ -299,13 +299,13 @@ public class EntityGenerator : IGenerator
         // references one is skipped rather than emitted against a member that does not exist.
         var mappedBase = DirectMappedParent(entity, ctx.Config);
         var declaresBase = mappedBase is not null && LastLineHasBase(sb);
-        var baseValidates = declaresBase && !InstanceArtifacts.IsAbstract(mappedBase!)
-            && HasEffectiveCrossField(mappedBase!);
+        var validatingBase = declaresBase && !InstanceArtifacts.IsAbstract(mappedBase!)
+            && HasEffectiveCrossField(mappedBase!) ? mappedBase : null;
         var absent = mappedBase is not null && !declaresBase
             ? new HashSet<string>(mappedBase.Fields().Select(f => f.Name), StringComparer.Ordinal)
             : null;
-        var validateMethod = isProjection ? null : CrossFieldValidateMethod(entity, baseValidates, absent);
-        if (validateMethod is not null && !baseValidates) AppendValidatableInterface(sb);
+        var validateMethod = isProjection ? null : CrossFieldValidateMethod(entity, validatingBase, absent);
+        if (validateMethod is not null && validatingBase is null) AppendValidatableInterface(sb);
         sb.AppendLine("{");
 
         // Nested enum declarations (before the class properties, as C# enum members
@@ -574,10 +574,10 @@ public class EntityGenerator : IGenerator
 
         XmlDocBuilder.AppendTo(sb, entity);
         EmitClassDeclarationLine(sb, entity, className, ClassDeclarationKind.TphSubtype, ctx);
-        // TPH ancestors always emit Validate when they carry cross-field validators.
-        var tphBaseValidates = HasEffectiveCrossField(EmittedTphAncestor(entity, ctx));
-        var validateMethod = CrossFieldValidateMethod(entity, tphBaseValidates);
-        if (validateMethod is not null && !tphBaseValidates) AppendValidatableInterface(sb);
+        var tphAncestor = EmittedTphAncestor(entity, ctx);
+        var validatingBase = HasEffectiveCrossField(tphAncestor) ? tphAncestor : null;
+        var validateMethod = CrossFieldValidateMethod(entity, validatingBase);
+        if (validateMethod is not null && validatingBase is null) AppendValidatableInterface(sb);
         sb.AppendLine("{");
 
         // Subtype-only enum declarations (an enum field declared on the subtype, not the base).
@@ -1037,17 +1037,20 @@ public class EntityGenerator : IGenerator
     private static string CsLiteral(string s) =>
         "\"" + s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", "\\r").Replace("\n", "\\n") + "\"";
 
-    // The cross-field validators THIS class must evaluate. A class extending an emitted base
-    // that already implements Validate overrides it and evaluates only its OWN validators
-    // (ADR-0039: the generated-subclass own-only case); otherwise it evaluates the effective set.
-    private static List<MetaValidator> CrossFieldValidatorsFor(MetaObject entity, bool baseHasValidate)
+    // The cross-field validators THIS class must evaluate: its effective set, minus the ones the
+    // emitted base class's Validate already evaluates. Subtracting the base's effective set (not
+    // reading own validators) keeps a validator declared on an un-emitted intermediate level.
+    private static List<MetaValidator> CrossFieldValidatorsFor(MetaObject entity, MetaObject? validatingBase)
     {
-        // ADR-0039: own-only is sanctioned here — a generated subclass emits only the validators
-        // declared on itself, because the emitted base's Validate already covers the inherited ones.
-        var src = baseHasValidate ? entity.OwnValidators() : entity.Validators();
-        return src.Where(IsCrossFieldValidator).ToList();
+        var inherited = validatingBase is null
+            ? new HashSet<MetaValidator>(ReferenceEqualityComparer.Instance)
+            : new HashSet<MetaValidator>(validatingBase.Validators(), ReferenceEqualityComparer.Instance);
+        return entity.Validators().Where(v => IsCrossFieldValidator(v) && !inherited.Contains(v)).ToList();
     }
 
+    // A class whose effective validators include a cross-field one always declares or inherits
+    // Validate (CrossFieldValidateMethod emits it even when every rule is skipped), so a subclass
+    // may override it on exactly this test.
     private static bool HasEffectiveCrossField(MetaObject entity) =>
         entity.Validators().Any(IsCrossFieldValidator);
 
@@ -1075,10 +1078,11 @@ public class EntityGenerator : IGenerator
 
     // Returns the emitted Validate method (4-space class-body indent), or null when nothing to emit.
     private string? CrossFieldValidateMethod(
-        MetaObject entity, bool baseHasValidate, ISet<string>? absentProps = null)
+        MetaObject entity, MetaObject? validatingBase, ISet<string>? absentProps = null)
     {
-        var validators = CrossFieldValidatorsFor(entity, baseHasValidate);
+        var validators = CrossFieldValidatorsFor(entity, validatingBase);
         if (validators.Count == 0) return null;
+        var baseHasValidate = validatingBase is not null;
 
         MetaField? Scalar(object? name)
         {
@@ -1190,7 +1194,11 @@ public class EntityGenerator : IGenerator
                 }
             }
         }
-        if (body.Length == 0) return null;
+        if (body.Length == 0)
+        {
+            if (baseHasValidate) return null;
+            body.AppendLine("        yield break;");
+        }
 
         var sb = new StringBuilder();
         sb.AppendLine("    /// <summary>Entity-scoped cross-field validators (comparison / requiredWhen / presentIff / atLeastOne). Create-time only; the database CHECK is the enforcement on partial updates.</summary>");
