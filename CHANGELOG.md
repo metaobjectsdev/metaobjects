@@ -18,6 +18,25 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
 
 ### Added
 
+- **A model explorer site, built by `docsSiteFile()`.** The docs site now shows what the
+  software does and how the model is designed: a main page with count tiles and the feature and
+  quality cards with their roll-ups, a model map with slices (package, requirement subtree,
+  prompt) and colour-by (kind, API, claims, capability, status), a page per object, projection,
+  report, prompt and requirement with a one-hop mini-map, the traceability matrix, a trace from a
+  requirement to the files generated from it, the API index and a gaps page. Every page is drawn
+  from `explorer.json`, which the generator builds in the same run from the loaded model, the
+  requirement gate's ledger, the files the run wrote and the routes it mounts; it runs after the
+  other generators wherever it is listed. Declared status is a filled chip with its glyph, gate
+  verdicts are outlines, roll-ups are bars, and no colour reports a test result. Pages are marked
+  for Pagefind, work at phone width, depend on the model alone (so `meta verify --codegen` holds
+  them) and are link-checked. The graphs load Cytoscape.js from `assetBase`. `meta eject
+  docs-site` now copies the explorer's `explorer-*.mustache` templates and `explorer.css` /
+  `explorer.js` beside the classic theme. `buildExplorer` takes an optional `routes` input, and
+  nodes carry their declaration `order`. Each `requirements.rows` entry in `meta verify
+  --format json` now carries `node`: the entity's resolution key on a
+  `WARN_REQUIREMENT_OBJECT_UNCLAIMED` row, `""` on every other row, and each finding in a
+  `requirementLedger` row carries its `message`. See `docs/features/explorer-site.md`.
+
 - **Generated record models enforce the cross-field validators in every port.**
   `validator.comparison`, `validator.requiredWhen`, `validator.presentIff`,
   `validator.atLeastOne` and the new `validator.exactlyOne` used to render only as DB `CHECK`
@@ -224,6 +243,14 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
   `metaobjects-authoring` skill teaches it, with a reference file per language.
 
 ### Changed
+
+- **`docsSiteFile()` builds the model explorer by default.** A project that lists
+  `docsSiteFile()` gets a different site under `site/` on its next `meta gen`, with new page
+  paths (object pages move under `model/`); `meta gen` removes the old pages it wrote, as it
+  does any untouched generated file it no longer emits, and `meta verify --codegen` reports
+  drift until it has run. Pass `docsSiteFile({ site: "classic" })` to keep the earlier
+  site byte for byte. A project that ejected the classic theme gets a warning and the packaged
+  explorer theme; run `meta eject docs-site` again to copy the explorer's files.
 
 - **Python and Java report a missing provider's errors in the same order as the other ports.**
   When a file holds both an unknown subtype and unknown attributes, Python used to drop the whole

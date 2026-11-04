@@ -36,6 +36,7 @@ import { hasLegacyDocsBlock, legacyDocsConfigMessage, NO_CONFIG_MESSAGE } from "
 import { buildAgentSchemaInput } from "../lib/agent-schema.js";
 import { schemaBuildOptions, schemaBuildOptionsOrWarn, type SchemaBuildOptions } from "../lib/schema-build-options.js";
 import { isUnknownSchemaConventionsError } from "@metaobjectsdev/migrate-ts";
+import { requirementPayload } from "../lib/requirement-payload.js";
 import { existsSync } from "node:fs";
 
 /**
@@ -281,6 +282,8 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
       // that is what tells the post-selection audit "this project opted into none",
       // which is a different statement from a programmatic caller that never said.
       libraries: genCollection.libraries,
+      // The requirement ledger the docs site's model explorer shows, built only if it asks.
+      requirementLedger: () => requirementPayload(metadata, genCollection),
       ...(cliConfig.entities.length > 0 ? { entityFilter: cliConfig.entities } : {}),
     });
   } catch (err) {

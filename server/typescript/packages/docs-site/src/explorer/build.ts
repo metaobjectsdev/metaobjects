@@ -51,6 +51,7 @@ import {
   type ExplorerLedger,
   type ExplorerLedgerRow,
   type ExplorerNode,
+  type ExplorerRoute,
   type ExplorerSlice,
 } from "./types.js";
 
@@ -62,6 +63,9 @@ export interface ExplorerInput {
   verify?: unknown;
   /** Parsed `.metaobjects/.gen-state/.hashes.json`. Without it there is no `generated`. */
   manifest?: unknown;
+  /** The routes the project mounts: `[{ node, method, path }]`, one per route, `node` a node
+   *  id. A route whose node is not in the model is dropped. Without it there is no `api`. */
+  routes?: unknown;
 }
 
 const ROOT_KEY = `${TYPE_METADATA}${TYPE_SUBTYPE_SEPARATOR}${SUBTYPE_ROOT}`;
@@ -157,6 +161,7 @@ function walkModel(model: unknown): Walked[] {
       subType: child.subType,
       name,
       package: pkg,
+      order: index,
       ...(parent !== undefined ? { parent: parent.node.id } : {}),
       ...(typeof ext === "string" && ext !== "" ? { extends: nodeIdOf(ext) } : {}),
       ...(child.body[RESERVED_KEY_ABSTRACT] === true ? { abstract: true as const } : {}),
@@ -241,7 +246,7 @@ function modelEdges(walked: Walked[], byId: Map<string, Walked>): ExplorerEdge[]
 
 function asLinks(v: unknown): { ref: string; resolves: boolean; target?: string }[] {
   if (!Array.isArray(v)) return [];
-  return v.filter(isRecord).map(asLink).filter((l): l is NonNullable<typeof l> => l !== undefined);
+  return v.map(asLink).filter((l): l is NonNullable<typeof l> => l !== undefined);
 }
 
 function asLink(v: unknown): { ref: string; resolves: boolean; target?: string } | undefined {
@@ -266,6 +271,7 @@ function ledgerFrom(verify: unknown, byId: Map<string, Walked>, edges: ExplorerE
           code: String(d.code ?? ""),
           severity: String(d.severity ?? ""),
           source: String(d.source ?? ""),
+          message: String(d.message ?? ""),
         }))
       : [];
     rows.push({
@@ -314,6 +320,18 @@ function generatedFrom(manifest: unknown): ExplorerGenerated[] | undefined {
     node,
     files: (byNode.get(node) ?? []).sort((a, b) => byCodeUnit(a.path, b.path)),
   }));
+}
+
+function routesFrom(routes: unknown, byId: Map<string, Walked>): ExplorerRoute[] | undefined {
+  if (!Array.isArray(routes)) return undefined;
+  const seen = new Map<string, ExplorerRoute>();
+  for (const r of routes) {
+    if (!isRecord(r) || typeof r.node !== "string" || typeof r.method !== "string" || typeof r.path !== "string") continue;
+    if (!byId.has(r.node)) continue;
+    const route: ExplorerRoute = { node: r.node, method: r.method.toUpperCase(), path: r.path };
+    seen.set(`${route.node}\u0000${route.path}\u0000${route.method}`, route);
+  }
+  return [...seen.keys()].sort(byCodeUnit).map((k) => seen.get(k) as ExplorerRoute);
 }
 
 function derivedSlices(walked: Walked[], byId: Map<string, Walked>, edges: ExplorerEdge[]): ExplorerSlice[] {
@@ -381,12 +399,13 @@ export function buildExplorer(input: ExplorerInput): ExplorerJson {
   const edges = modelEdges(walked, byId);
   const ledger = input.verify !== undefined ? ledgerFrom(input.verify, byId, edges) : undefined;
   const generated = input.manifest !== undefined ? generatedFrom(input.manifest) : undefined;
+  const api = input.routes !== undefined ? routesFrom(input.routes, byId) : undefined;
 
   // One edge per (kind, from, to, via): an object can reach one target twice through two
   // members, which is two edges, but never the same edge twice.
   const unique = new Map<string, ExplorerEdge>();
   for (const e of edges) unique.set(edgeKey(e), e);
-  const sortedEdges = [...unique.values()].sort((a, b) => byCodeUnit(edgeKey(a), edgeKey(b)));
+  const sortedEdges = [...unique].sort(([a], [b]) => byCodeUnit(a, b)).map(([, e]) => e);
 
   return {
     format: EXPLORER_FORMAT,
@@ -394,6 +413,7 @@ export function buildExplorer(input: ExplorerInput): ExplorerJson {
     edges: sortedEdges,
     ...(ledger !== undefined ? { ledger } : {}),
     ...(generated !== undefined ? { generated } : {}),
+    ...(api !== undefined ? { api } : {}),
     slices: derivedSlices(walked, byId, sortedEdges),
   };
 }

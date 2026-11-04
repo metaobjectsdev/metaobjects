@@ -187,7 +187,7 @@ export async function computeCodegenDrift(
   projectRoot: string,
   scope?: (fqn: string) => boolean,
   sourceFiles?: readonly string[],
-  run?: Pick<RunGenOpts, "sourceRoots" | "agentSchema" | "schemaSettings">,
+  run?: Pick<RunGenOpts, "sourceRoots" | "agentSchema" | "schemaSettings" | "requirementLedger">,
 ): Promise<CodegenDriftResult> {
   const root = isAbsolute(projectRoot) ? projectRoot : resolve(projectRoot);
 
@@ -218,16 +218,19 @@ export async function computeCodegenDrift(
   // relative import paths in generated content come out identical.
   const tempRoot = mkdtempSync(join(tmpdir(), "meta-verify-codegen-"));
   try {
+    const untrackedOutDirs: string[] = [];
     const tempFor = (committed: string): string => {
       const rel = relative(root, committed);
       // If a committed outDir lives outside the project root, fall back to a
       // flattened, collision-safe slot under the temp root. (Relative-import
       // fidelity for out-of-tree targets isn't guaranteed, but the diff is
       // still meaningful per-file.)
-      const safeRel = rel.startsWith("..") || isAbsolute(rel)
-        ? committed.replace(/[^A-Za-z0-9]+/g, "_")
-        : rel;
-      return join(tempRoot, safeRel);
+      if (rel.startsWith("..") || isAbsolute(rel)) {
+        const slot = join(tempRoot, committed.replace(/[^A-Za-z0-9]+/g, "_"));
+        untrackedOutDirs.push(slot);
+        return slot;
+      }
+      return join(tempRoot, rel);
     };
 
     // Remap the config so runGen writes into the temp mirror instead of the
@@ -274,11 +277,13 @@ export async function computeCodegenDrift(
       // owned generator may read anything. `projectRoot` stays the temp tree, which the
       // owned route and entity generators compute their adapter import against.
       inputRoot: root,
+      untrackedOutDirs,
       ...(scope !== undefined ? { scope } : {}),
       ...(sourceFiles !== undefined ? { sourceFiles } : {}),
       ...(run?.sourceRoots !== undefined ? { sourceRoots: run.sourceRoots } : {}),
       ...(run?.agentSchema !== undefined ? { agentSchema: run.agentSchema } : {}),
       ...(run?.schemaSettings !== undefined ? { schemaSettings: run.schemaSettings } : {}),
+      ...(run?.requirementLedger !== undefined ? { requirementLedger: run.requirementLedger } : {}),
     });
 
     // Where gen discards hand edits instead of keeping them (handEdits: "overwrite").

@@ -76,7 +76,7 @@ export interface AdvisoryFindingRow {
 export interface AdvisoryDiagnosticRow {
   code: string;
   /** The dotted child-name path, or "" for a diagnostic whose subject is not a
-   *  requirement (object coverage names the entity in its message instead). */
+   *  requirement (a requirement row names an unclaimed entity in `node` instead). */
   path: string;
   severity: string;
   /** "gate" — can fail the build; "lint" — advisory authoring warning, never can. */

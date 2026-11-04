@@ -1,0 +1,5 @@
+<div class="crumbs">{{{crumbsHtml}}}</div>
+<h1>{{{name}}}</h1>
+<div class="tablewrap page"><table><tr><th>Name</th><th>Kind</th><th>Storage</th><th>Fields</th><th>Claim</th></tr>
+{{#rows}}<tr><td>{{{linkHtml}}} {{{abstractHtml}}}{{#description}}<div class="sub small">{{{description}}}</div>{{/description}}</td><td class="mono">{{{kind}}}</td><td class="mono">{{{storage}}}</td><td>{{fieldCount}}</td><td>{{{statusHtml}}}</td></tr>
+{{/rows}}</table></div>

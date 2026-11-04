@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{{pageTitle}}} · {{{siteTitle}}}</title>
+<meta name="generator" content="metaobjects docs-site explorer">
+<script>try{var t=localStorage.getItem("mo-theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
+<link rel="stylesheet" href="{{{relRoot}}}assets/explorer.css">
+</head>
+<body data-root="{{{relRoot}}}" data-page="{{{pageKey}}}">
+<header class="top">
+  <a class="brand" href="{{{relRoot}}}index.html">{{{siteTitle}}} <small>model explorer</small></a>
+  <nav class="nav" aria-label="Sections">{{#nav}}<a href="{{{href}}}"{{#on}} class="on" aria-current="page"{{/on}}>{{{label}}}</a>{{/nav}}</nav>
+  <div id="search" role="search"><input id="q" type="search" placeholder="Search the model (/)" autocomplete="off" aria-label="Search the model"><div id="results"></div></div>
+  <button id="theme" type="button" title="Toggle light and dark" aria-label="Toggle light and dark">◐</button>
+</header>
+<main data-pagefind-body>
+<span hidden data-pagefind-filter="section">{{{pageKey}}}</span>

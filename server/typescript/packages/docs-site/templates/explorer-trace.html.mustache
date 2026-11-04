@@ -1,0 +1,6 @@
+<h1>Trace</h1>
+<div class="sub">From intent to code: requirement levels, then the model nodes they name, then the files generated from those nodes.</div>
+{{#hasStarts}}<div class="toolbar"><label>Start at <select id="tstart">{{#options}}<option value="{{{value}}}">{{{label}}}</option>{{/options}}</select></label></div>
+<div id="cytrace" class="graph" role="img" aria-label="Trace from requirement to code"></div>
+<div class="note">Hand-written modules that import the generated files are not scanned in this build, so the trace stops at the generated files. Click a requirement or a model node to open its page.</div>{{/hasStarts}}
+{{^hasStarts}}<div class="note page">This model declares no requirements, so there is nothing to trace from. Every object's generated files are listed on its own page.</div>{{/hasStarts}}

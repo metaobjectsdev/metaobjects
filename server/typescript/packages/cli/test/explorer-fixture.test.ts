@@ -59,7 +59,7 @@ interface LedgerRow {
   verdict: string;
   digest: string;
   implementedBy: { ref: string; resolves: boolean; target?: string }[];
-  diagnostics: { code: string; severity: string; source: string }[];
+  diagnostics: { code: string; severity: string; source: string; message: string }[];
 }
 
 describe("explorer fixture — the committed inputs are what the CLI writes today", () => {
@@ -136,7 +136,12 @@ describe("meta verify --format json — requirementLedger rows", () => {
     const shipping = r.get("Shop.Checkout.Shipping");
     expect(shipping?.verdict).toBe("warn");
     expect(shipping?.diagnostics).toEqual([
-      { code: "WARN_REQUIREMENT_NOTHING_IMPLEMENTS", severity: "warn", source: "gate" },
+      {
+        code: "WARN_REQUIREMENT_NOTHING_IMPLEMENTS",
+        severity: "warn",
+        source: "gate",
+        message: expect.stringContaining("is 'live' but neither it nor anything nested under it names an implementing node"),
+      },
     ]);
     expect(r.get("Shop.Checkout.Orders.Recorded")?.verdict).toBe("clean");
   });

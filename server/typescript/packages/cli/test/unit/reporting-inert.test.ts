@@ -503,7 +503,9 @@ export default defineConfig({
     docsFile({ target: "out" }),
     requirementsFile({ target: "out" }),
     requirementsFile({ target: "out--requirements" }),
-    docsSiteFile({ target: "out--site" }),
+    // The classic site, whose pages this diff is stated against; the explorer's report
+    // pages are covered in docs-site's explorer-site.test.ts.
+    docsSiteFile({ target: "out--site", site: "classic" }),
   ],
 });
 `,

@@ -14,6 +14,7 @@ import { parseVerifyArgs, type MigrateFlags } from "../lib/args.js";
 import { log } from "../lib/log.js";
 import { requirementLedgerRows, type RequirementLedgerRow } from "../lib/requirement-ledger.js";
 import { warnUnenforcedFkTargets } from "../lib/fk-target-warning.js";
+import { requirementCountsOf, requirementDiagnosticRow, requirementPayload, type RequirementCounts, type RequirementDiagnosticRow } from "../lib/requirement-payload.js";
 import { emitStructured, type OutputFormat } from "../lib/format.js";
 import {
   antiPatternRows, missingBaseUrlRows, removedPropRows, ranSection, skippedSection, warnCapped,
@@ -437,7 +438,7 @@ export async function verifyCommand(
   // can carry them IN FULL. They were previously formatted straight to stderr and
   // existed nowhere else, which is why 96% of a 239-finding report was unreachable
   // by any flag, env var or format.
-  let requirementSection: AdvisorySection<AdvisoryDiagnosticRow> =
+  let requirementSection: AdvisorySection<RequirementDiagnosticRow> =
     skippedSection("the requirement pass did not run");
   let antiPatternSection: AdvisorySection<AdvisoryFindingRow> =
     skippedSection("the advisory anti-pattern pass did not run");
@@ -844,22 +845,7 @@ export async function verifyCommand(
       // reason the text line carries it: the claimed/total ratio is only ever taken
       // over what actually loaded, so a reader needs the denominator's provenance to
       // notice a spine that covers half an estate.
-      requirementCounts = {
-        total: s.total,
-        functional: s.functional,
-        architectural: s.architectural,
-        byStatus: order
-          .filter((k) => (s.byStatus[k] ?? 0) > 0)
-          .map((k) => ({ status: k, count: s.byStatus[k] ?? 0 })),
-        undecided: s.undecided,
-        // Absent when coverage was not measured (FR-043 §5.4), never zeroed: a reader
-        // cannot tell `0/0 claimed` from "not measured", and the two mean opposite
-        // things.
-        ...(s.entitiesTotal === undefined
-          ? {}
-          : { entitiesClaimed: s.entitiesClaimed ?? 0, entitiesTotal: s.entitiesTotal }),
-        metadataFiles: collection.files.length,
-      };
+      requirementCounts = requirementCountsOf(s, collection.files.length);
     }
 
     const errors = diags.filter((d) => d.severity === "error");
@@ -905,9 +891,9 @@ export async function verifyCommand(
     // Everything this pass found, uncapped, for the structured payload — gate
     // diagnostics and lint findings in one list, each row saying which it is, so a
     // reader can tell what can fail a build from what never can.
-    requirementSection = ranSection<AdvisoryDiagnosticRow>([
-      ...diags.map((d) => toDiagnosticRow(d, "gate")),
-      ...lint.map((d) => toDiagnosticRow(d, "lint")),
+    requirementSection = ranSection<RequirementDiagnosticRow>([
+      ...diags.map((d) => requirementDiagnosticRow(d, "gate")),
+      ...lint.map((d) => requirementDiagnosticRow(d, "lint")),
     ]);
     // The same findings per ENTRY, beside what each entry declares — so a reader learns an
     // entry was checked and found clean from a row saying so, not from its path's absence.
@@ -1775,6 +1761,8 @@ export async function verifyCommand(
       log.error(`verify --codegen: ${err.message}`);
       return 2;
     }
+    // The explorer's requirement ledger, built only if the docs site asks for it.
+    const requirementLedger = () => requirementPayload(codegenRoot, genCollection);
     let result;
     try {
       result = await computeCodegenDrift(config, codegenRoot, genConfigDir, genCollection.inScope, genCollection.ownFiles, {
@@ -1786,6 +1774,7 @@ export async function verifyCommand(
           codegenSchema,
         ),
         schemaSettings: codegenSchema,
+        requirementLedger,
       });
     } catch (err) {
       log.error(`verify --codegen: regeneration failed: ${describeError(err)}`);
@@ -1809,6 +1798,7 @@ export async function verifyCommand(
               sourceRoots: sourceRootsOf(genCollection),
               agentSchema: () => buildAgentSchemaInput(codegenRoot, config.dialect, () => {}, codegenSchema),
               schemaSettings: codegenSchema,
+              requirementLedger,
             });
           return probe.error === undefined && probe.clean;
         } finally {
@@ -2018,20 +2008,6 @@ function toSchemaDriftRow(c: Change): SchemaDriftRow {
 // structured output (--format toon|json)
 // ---------------------------------------------------------------------------
 
-/** The ledger counts `meta verify` prints on every run, machine-readable. */
-interface RequirementCounts {
-  total: number;
-  functional: number;
-  architectural: number;
-  byStatus: { status: string; count: number }[];
-  undecided: number;
-  /** Absent when coverage was not measured — FR-043 §5.4. */
-  entitiesClaimed?: number;
-  entitiesTotal?: number;
-  /** How many metadata files the two entity counts were taken over. */
-  metadataFiles: number;
-}
-
 /** One gate's verdict. `ran: false` is NOT a pass — it is "not selected". */
 interface VerifyGateRow {
   gate: string;
@@ -2169,7 +2145,7 @@ function toDiagnosticRow(d: Diagnostic, source: "gate" | "lint"): AdvisoryDiagno
 function buildVerifyPayload(input: {
   gates: VerifyGateRow[];
   exitCode: number;
-  requirements: AdvisorySection<AdvisoryDiagnosticRow>;
+  requirements: AdvisorySection<RequirementDiagnosticRow>;
   requirementCounts: RequirementCounts | undefined;
   requirementLedger?: RequirementLedgerRow[] | undefined;
   antiPatterns: AdvisorySection<AdvisoryFindingRow>;
