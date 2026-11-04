@@ -12,8 +12,8 @@
 //   - a reference onto an ABSTRACT level of a TPH hierarchy imported a table const from a
 //     module that has none: the rows live in the discriminator base's table.
 
-import { describe, expect, test } from "bun:test";
-import "./compile-timeout.js";
+import { describe, expect, test, setDefaultTimeout } from "bun:test";
+import { COMPILE_TEST_TIMEOUT_MS } from "./compile-timeout.js";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
@@ -27,6 +27,8 @@ import { makeRenderContext } from "../src/render-context.js";
 import { buildPkMap } from "../src/pk-resolver.js";
 import { buildRelationMap } from "../src/relation-resolver.js";
 import type { EmittedFile, GenContext } from "../src/generator.js";
+
+setDefaultTimeout(COMPILE_TEST_TIMEOUT_MS);
 
 const pk = { "identity.primary": { name: "pk", "@fields": "id", "@generation": "increment" } };
 

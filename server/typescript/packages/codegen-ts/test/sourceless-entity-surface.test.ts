@@ -18,8 +18,8 @@
 // The test compiles the output, plus a small hand-written repository that uses it the way a
 // document-store adopter would, with the real TypeScript compiler.
 
-import { describe, test, expect } from "bun:test";
-import "./compile-timeout.js";
+import { describe, test, expect, setDefaultTimeout } from "bun:test";
+import { COMPILE_TEST_TIMEOUT_MS } from "./compile-timeout.js";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
@@ -30,6 +30,8 @@ import { buildPkMap } from "../src/pk-resolver.js";
 import { buildRelationMap } from "../src/relation-resolver.js";
 import { isSourcelessEntity } from "../src/index.js";
 import type { GenContext } from "../src/generator.js";
+
+setDefaultTimeout(COMPILE_TEST_TIMEOUT_MS);
 
 const MODEL = {
   "metadata.root": {

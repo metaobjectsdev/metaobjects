@@ -45,7 +45,7 @@ public sealed class CrossFieldValidationConformanceTests
         AllCases().Select(c => new object[] { c.GetProperty("name").GetString()! });
 
     [Fact]
-    public void Discovers_all_cross_field_cases() => Assert.Equal(23, AllCases().Length);
+    public void Discovers_all_cross_field_cases() => Assert.Equal(24, AllCases().Length);
 
     [Theory]
     [MemberData(nameof(Cases))]

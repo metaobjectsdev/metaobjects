@@ -126,7 +126,9 @@ can compare the two column types:
 
 - `comparison` (`startsAt lte endsAt`): passes when either side is null. Fields of different kinds
   have no ordering and the rule is SKIPPED in every port, never an error (`eventDate lte loggedAt`, a
-  date against a timestamp, is declared on `Event` and must accept a body where the date is later). Ordering applies to numerics with each other and to
+  date against a timestamp, is declared on `Event` and must accept a body where the date is later). Two temporals of
+  the same subtype are still different kinds when only one carries `@localTime` (`loggedAt lte wallClock`, an
+  instant against a wall clock, is skipped the same way). Ordering applies to numerics with each other and to
   strings and temporals of the same subtype; `eq` / `ne` also apply to two fields of the same boolean,
   enum, uuid, uri or inet subtype (`ownerId ne approverId` rejects two equal ids).
 - `requiredWhen`: violated only when the gating field equals `@equals` and the target is null; a null

@@ -665,7 +665,8 @@ public final class SpringGeneratorSupport {
     /**
      * The comparison expression for two fields, or null when the pair has no sound one. Mirrors the
      * C# generator: numerics compare with each other, strings and temporals only with their own
-     * subtype (a date has no ordering against a timestamp, and casting both to Comparable would
+     * subtype and Java type (a date has no ordering against a timestamp, nor an Instant against a
+     * {@code @localTime} LocalDateTime, and casting both to Comparable would
      * throw ClassCastException inside the constraint method, turning a create into a 500), and
      * boolean, enum, uuid, uri and inet fields only test equality. Anything else is skipped, like every other port.
      */
@@ -676,14 +677,15 @@ public final class SpringGeneratorSupport {
             return "new java.math.BigDecimal(String.valueOf(" + lc + ")).compareTo(new java.math.BigDecimal(String.valueOf(" + rc + "))) " + jop + " 0";
         }
         if (!sameSubType) return null;
-        if (isNumericCrossField(l) || l instanceof StringField || isTemporalCrossField(l)) {
+        boolean comparable = isNumericCrossField(l) || l instanceof StringField || isTemporalCrossField(l);
+        boolean equatable = !ordering && (l instanceof BooleanField || l instanceof EnumField
+                || l instanceof UuidField || l instanceof UriField || l instanceof InetField);
+        if (!comparable && !equatable) return null;
+        if (!SpringTypeMapper.javaTypeName(l).equals(SpringTypeMapper.javaTypeName(r))) return null;
+        if (comparable) {
             return "((Comparable<Object>) (Object) " + lc + ").compareTo(" + rc + ") " + jop + " 0";
         }
-        if (!ordering && (l instanceof BooleanField || l instanceof EnumField
-                || l instanceof UuidField || l instanceof UriField || l instanceof InetField)) {
-            return (op.equals("eq") ? "" : "!") + "java.util.Objects.equals(" + lc + ", " + rc + ")";
-        }
-        return null;
+        return (op.equals("eq") ? "" : "!") + "java.util.Objects.equals(" + lc + ", " + rc + ")";
     }
 
     private static String crossAttr(MetaData v, String attr) {

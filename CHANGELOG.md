@@ -63,19 +63,24 @@ here.**
   changes the process-wide working directory, without joining the serial collection every other
   such class is in; the two classes ran in parallel and one read the other's directory as the cwd.
   The codegen-ts tests that type-check generated output with the real TypeScript compiler (28 files,
-  the slowest case measured at 3.3s against bun's 5s default) now run under a 30s timeout set in one
-  place, `test/compile-timeout.ts`, so a loaded machine cannot report a timeout for correct code.
+  the slowest case measured at 3.3s against bun's 5s default) now run under a 30s timeout whose value
+  lives in one place, `test/compile-timeout.ts`. Each of those files calls `setDefaultTimeout` with
+  it, because bun applies that call only to the file that makes it, so the timeout holds in a plain
+  `bun test` as well as in CI, and a loaded machine no longer reports a timeout for correct code.
 - **A cross-field `validator.comparison` between fields of different kinds is skipped in every
   port, never rejected and never a 500.** Comparing a `field.date` with a `field.timestamp` (or any
   two strings or temporals of different subtype) has no ordering. Java and Kotlin cast both sides
   to `Comparable` inside the class-level validity check, so the cast threw `ClassCastException` and
   a create answered 500 instead of 400; TypeScript compared the two as strings and Python raised a
   `TypeError` that surfaced as an invalid body. All five ports now follow one rule: numerics compare
-  with each other, strings and temporals only with their own subtype, boolean and enum fields test
+  with each other, strings and temporals only with their own subtype and `@localTime` flag (a
+  `field.timestamp` is an instant and a `@localTime` one a wall clock, which is a different native
+  type in every port), boolean and enum fields test
   `eq` / `ne` only (also on two `uuid`, `uri` or `inet` fields), and any other pair emits no rule, so an
   ordering test on two booleans or two enums is no longer enforced by the generated validators (C# never
   did). The database `CHECK` still covers the pair where the database can compare it. New shared cases
-  `comparison-across-kinds-is-skipped`, `uuid-ne-rejects-equal-ids` and `uuid-ne-accepts-different-ids`
+  `comparison-across-kinds-is-skipped`, `comparison-instant-vs-local-timestamp-is-skipped`,
+  `uuid-ne-rejects-equal-ids` and `uuid-ne-accepts-different-ids`
   in `fixtures/validation-conformance/`, run by every port.
 - **Test coverage for cross-field validators.** A subtype form on a TPH hierarchy that declares a
   cross-field rule now has a test proving the generated form binds the refined body schema (the rule

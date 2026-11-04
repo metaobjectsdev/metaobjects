@@ -287,14 +287,16 @@ const EQUALITY_SUBTYPES: ReadonlySet<string> = new Set([
 ]);
 
 /** Whether a comparison between these two fields has a sound meaning, as in every port:
- *  numerics compare with each other, strings and temporals only with their own subtype (a
- *  date against a timestamp compares two differently shaped strings, which is meaningless),
+ *  numerics compare with each other, strings and temporals only with their own subtype and
+ *  @localTime flag (a date against a timestamp, or an instant against a wall clock, compares
+ *  two differently shaped strings, which is meaningless),
  *  and boolean, enum, uuid, uri and inet fields only test equality. Anything else is skipped, never rejected. */
 function crossComparable(left: MetaField, right: MetaField, opName: string): boolean {
   const a = left.subType;
   const b = right.subType;
   if (NUMERIC_SUBTYPES.has(a) && NUMERIC_SUBTYPES.has(b)) return true;
   if (a !== b) return false;
+  if ((left.attr(FIELD_ATTR_LOCAL_TIME) === true) !== (right.attr(FIELD_ATTR_LOCAL_TIME) === true)) return false;
   if (ORDERED_SUBTYPES.has(a)) return true;
   return (opName === "eq" || opName === "ne") && EQUALITY_SUBTYPES.has(a);
 }

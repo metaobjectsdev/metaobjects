@@ -7,8 +7,8 @@
 // DbContextCompileTests). Any read-only/writable inconsistency that produces
 // non-compiling output fails here, not just the one we already knew about.
 
-import { describe, test, expect } from "bun:test";
-import "../compile-timeout.js";
+import { describe, test, expect, setDefaultTimeout } from "bun:test";
+import { COMPILE_TEST_TIMEOUT_MS } from "../compile-timeout.js";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
@@ -19,6 +19,8 @@ import { makeRenderContext } from "../../src/render-context.js";
 import { buildPkMap } from "../../src/pk-resolver.js";
 import { buildRelationMap } from "../../src/relation-resolver.js";
 import type { GenContext } from "../../src/generator.js";
+
+setDefaultTimeout(COMPILE_TEST_TIMEOUT_MS);
 
 async function loadProjectionRoot() {
   const json = JSON.stringify({

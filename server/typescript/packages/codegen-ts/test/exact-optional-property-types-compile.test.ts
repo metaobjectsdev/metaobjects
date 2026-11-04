@@ -14,8 +14,8 @@
 // each kind (scalar, enum, array, nested value object), plus a jsonb column typed by an
 // all-optional value object.
 
-import { describe, test, expect } from "bun:test";
-import "./compile-timeout.js";
+import { describe, test, expect, setDefaultTimeout } from "bun:test";
+import { COMPILE_TEST_TIMEOUT_MS } from "./compile-timeout.js";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
@@ -30,6 +30,8 @@ import { buildPkMap } from "../src/pk-resolver.js";
 import { buildRelationMap } from "../src/relation-resolver.js";
 import type { GenContext } from "../src/generator.js";
 import type { Dialect } from "../src/metaobjects-config.js";
+
+setDefaultTimeout(COMPILE_TEST_TIMEOUT_MS);
 
 const MODEL = {
   "metadata.root": {

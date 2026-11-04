@@ -32,6 +32,7 @@ from metaobjects.meta.core.identity.identity_constants import (
     IDENTITY_ATTR_GENERATION,
 )
 from metaobjects.meta.core.validator import validator_constants as vc
+from metaobjects.meta.persistence.db import db_constants as dbc
 from metaobjects.meta.persistence.origin.origin_constants import (
     AGG_ALL,
     AGG_ANY,
@@ -474,13 +475,18 @@ _ORDERED_CROSS = (
 
 def _comparable(left: MetaField, right: MetaField, op: str) -> bool:
     """Whether a comparison between these two fields has a sound meaning, as in every port: numerics
-    compare with each other, strings and temporals only with their own subtype (a date has no
-    ordering against a timestamp, and Python raises TypeError on one), and boolean, enum, uuid, uri
+    compare with each other, strings and temporals only with their own subtype and @localTime flag (a
+    date has no ordering against a timestamp, nor an aware datetime against a naive one, and Python
+    raises TypeError on both), and boolean, enum, uuid, uri
     and inet fields only test equality. Anything else is skipped, never rejected."""
     a, b = left.sub_type, right.sub_type
     if a in _NUMERIC_CROSS and b in _NUMERIC_CROSS:
         return True
     if a != b:
+        return False
+    if (left.get_meta_attr(dbc.FIELD_ATTR_LOCAL_TIME) is True) != (
+        right.get_meta_attr(dbc.FIELD_ATTR_LOCAL_TIME) is True
+    ):
         return False
     if a in _ORDERED_CROSS:
         return True

@@ -2,8 +2,8 @@
 // produce BYTE-IDENTICAL output to the built-in generators they were relocated from.
 // The reference generators import only "@metaobjectsdev/codegen-ts" (the public engine);
 // if this passes, a consumer can copy them out and own them with no behavior change.
-import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import "./compile-timeout.js";
+import { describe, test, expect, beforeEach, afterEach, setDefaultTimeout } from "bun:test";
+import { COMPILE_TEST_TIMEOUT_MS } from "./compile-timeout.js";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, readdirSync, readFileSync, cpSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -80,6 +80,8 @@ import {
 import type { RequirementTestArgs, RequirementTestsOpts } from "../src/index.js";
 import { MetaDataLoader, InMemoryStringSource, isMetaSource, isReadOnlySource, type MetaObject } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
+
+setDefaultTimeout(COMPILE_TEST_TIMEOUT_MS);
 
 const FIXTURE_DIR = resolve(import.meta.dir, "fixtures");
 // test → codegen-ts → packages → typescript → server → repo root

@@ -17,6 +17,7 @@
           { "field.string":     { "name": "flagNote" } },
           { "field.date":       { "name": "eventDate" } },
           { "field.timestamp":  { "name": "loggedAt" } },
+          { "field.timestamp":  { "name": "wallClock", "@localTime": true } },
           { "field.uuid":       { "name": "ownerId" } },
           { "field.uuid":       { "name": "approverId" } },
           { "field.string":     { "name": "email" } },
@@ -30,6 +31,7 @@
           { "validator.presentIff":  { "name": "closedIffNote", "@field": "closedNote", "@when": "state", "@equals": "CLOSED" } },
           { "validator.comparison":  { "name": "ownerNotApprover", "@left": "ownerId", "@op": "ne", "@right": "approverId" } },
           { "validator.comparison":  { "name": "dateVsTimestamp", "@left": "eventDate", "@op": "lte", "@right": "loggedAt" } },
+          { "validator.comparison":  { "name": "instantVsWallClock", "@left": "loggedAt", "@op": "lte", "@right": "wallClock" } },
           { "validator.atLeastOne":  { "name": "reachable", "@fields": ["email", "phone"] } },
           { "validator.requiredWhen": { "name": "reviewNeedsReviewer", "@field": "reviewedBy", "@when": "review", "@equals": "DONE" } }
         ]

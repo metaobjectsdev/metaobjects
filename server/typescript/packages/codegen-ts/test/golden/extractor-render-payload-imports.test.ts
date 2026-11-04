@@ -15,8 +15,8 @@
 // files AGAINST the REAL generated entity modules — NO hand-written payloads.ts.
 // The payload import must RESOLVE (no TS2307) and the payload type must be found.
 
-import { describe, test, expect, afterAll } from "bun:test";
-import "../compile-timeout.js";
+import { describe, test, expect, afterAll, setDefaultTimeout } from "bun:test";
+import { COMPILE_TEST_TIMEOUT_MS } from "../compile-timeout.js";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
@@ -31,6 +31,8 @@ import { buildPkMap } from "../../src/pk-resolver.js";
 import { buildRelationMap } from "../../src/relation-resolver.js";
 import type { GenContext, EmittedFile } from "../../src/generator.js";
 import type { Provider } from "@metaobjectsdev/render";
+
+setDefaultTimeout(COMPILE_TEST_TIMEOUT_MS);
 
 // A nested payload graph that exercises the multi-VO import grouping:
 //   Order (root) -> Customer (single nested), Line (array-of-objects),

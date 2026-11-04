@@ -18,8 +18,8 @@
 // This compiles entity + queries TOGETHER with the real TS compiler — the bug is
 // a mismatch BETWEEN those two files, so a single-file gate cannot see it.
 
-import { describe, test, expect } from "bun:test";
-import "./compile-timeout.js";
+import { describe, test, expect, setDefaultTimeout } from "bun:test";
+import { COMPILE_TEST_TIMEOUT_MS } from "./compile-timeout.js";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
@@ -31,6 +31,8 @@ import { buildPkMap } from "../src/pk-resolver.js";
 import { buildRelationMap } from "../src/relation-resolver.js";
 import type { GenContext } from "../src/generator.js";
 import type { Dialect } from "../src/metaobjects-config.js";
+
+setDefaultTimeout(COMPILE_TEST_TIMEOUT_MS);
 
 /** @param pkField the PK field node; @param identity the identity.primary node. */
 async function loadRoot(pkField: unknown, identity: unknown) {

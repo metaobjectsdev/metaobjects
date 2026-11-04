@@ -16,8 +16,8 @@
 // The read-view host, where the table and the view share one module and must not both
 // declare the codec, is covered by `int-enum-replica-view-no-dup.test.ts`.
 
-import { describe, test, expect } from "bun:test";
-import "../compile-timeout.js";
+import { describe, test, expect, setDefaultTimeout } from "bun:test";
+import { COMPILE_TEST_TIMEOUT_MS } from "../compile-timeout.js";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
@@ -27,6 +27,8 @@ import { makeRenderContext } from "../../src/render-context.js";
 import { buildPkMap } from "../../src/pk-resolver.js";
 import { buildRelationMap } from "../../src/relation-resolver.js";
 import type { GenContext } from "../../src/generator.js";
+
+setDefaultTimeout(COMPILE_TEST_TIMEOUT_MS);
 
 const STATUS = {
   "@values": ["DRAFT", "BOOKED", "DELIVERED", "CANCELLED"],

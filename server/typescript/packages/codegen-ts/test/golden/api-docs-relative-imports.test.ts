@@ -21,8 +21,8 @@
 //   (`ctx.config.includeHonoRoutes`, aggregated by the runner from a
 //   `routesFileHono` generator's `emitsHonoRoutes` marker).
 
-import { describe, test, expect, afterAll } from "bun:test";
-import "../compile-timeout.js";
+import { describe, test, expect, afterAll, setDefaultTimeout } from "bun:test";
+import { COMPILE_TEST_TIMEOUT_MS } from "../compile-timeout.js";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
@@ -41,6 +41,8 @@ import { buildPkMap } from "../../src/pk-resolver.js";
 import { buildRelationMap } from "../../src/relation-resolver.js";
 import { runGen, defineConfig } from "../../src/index.js";
 import type { Generator, GenContext, EmittedFile } from "../../src/generator.js";
+
+setDefaultTimeout(COMPILE_TEST_TIMEOUT_MS);
 
 const provider = frameworkTemplatesProvider;
 

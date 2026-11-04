@@ -275,6 +275,21 @@
       "expectValid": true
     },
     {
+      "name": "comparison-instant-vs-local-timestamp-is-skipped",
+      "entity": "Event",
+      "payload": {
+        "startsAt": 1,
+        "endsAt": 2,
+        "kind": "BIRTH",
+        "subject": "p1",
+        "state": "OPEN",
+        "email": "a@b.c",
+        "loggedAt": "2030-01-02T00:00:00Z",
+        "wallClock": "2020-01-01T00:00:00"
+      },
+      "expectValid": true
+    },
+    {
       "name": "uuid-ne-rejects-equal-ids",
       "entity": "Event",
       "payload": {

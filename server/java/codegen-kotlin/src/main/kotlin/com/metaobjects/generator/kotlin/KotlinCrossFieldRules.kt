@@ -41,7 +41,8 @@ object KotlinCrossFieldRules {
     /**
      * The comparison for two fields, or null when the pair has no sound one. Mirrors the C#
      * generator: numerics compare with each other, strings and temporals only with their own
-     * subtype (a date has no ordering against a timestamp, and casting both to Comparable throws
+     * subtype and Kotlin type (a date has no ordering against a timestamp, nor an Instant against a
+     * `@localTime` LocalDateTime, and casting both to Comparable throws
      * ClassCastException inside the validity property, turning a create into a 500), and
      * boolean, enum, uuid, uri and inet fields only test equality. Anything else is skipped, like every other port.
      */
@@ -52,13 +53,14 @@ object KotlinCrossFieldRules {
             return CodeBlock.of("java.math.BigDecimal(%L.toString()).compareTo(java.math.BigDecimal(%L.toString())) $kop 0", ref(l), ref(r))
         }
         if (!same) return null
-        if (isNumericCross(l) || l is StringField || isTemporalCross(l)) {
+        val comparable = isNumericCross(l) || l is StringField || isTemporalCross(l)
+        val equatable = !ordering && (l is BooleanField || l is EnumField || l is UuidField || l is UriField || l is InetField)
+        if (!comparable && !equatable) return null
+        if (KotlinTypeMapper.kotlinTypeName(l) != KotlinTypeMapper.kotlinTypeName(r)) return null
+        if (comparable) {
             return CodeBlock.of("(%L as Comparable<Any>).compareTo(%L) $kop 0", ref(l), ref(r))
         }
-        if (!ordering && (l is BooleanField || l is EnumField || l is UuidField || l is UriField || l is InetField)) {
-            return CodeBlock.of("(%L %L %L)", ref(l), if (op == "eq") "==" else "!=", ref(r))
-        }
-        return null
+        return CodeBlock.of("(%L %L %L)", ref(l), if (op == "eq") "==" else "!=", ref(r))
     }
 
     private fun crossAttr(v: MetaData, attr: String): String? =
