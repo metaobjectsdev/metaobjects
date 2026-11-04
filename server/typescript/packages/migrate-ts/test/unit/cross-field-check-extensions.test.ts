@@ -240,10 +240,16 @@ describe("a duration literal in a CHECK", () => {
       .toEqual([`(COALESCE("wait", "hold") <= '-00:01:00') OR ("a" < "b")`]);
   });
 
-  test("a literal that is not a duration is refused when the CHECK is built", async () => {
-    const root = await load([...AB, { "field.duration": { name: "wait" } },
+  test("a literal that is not a duration is refused at load, before any CHECK is built", async () => {
+    const doc = { "metadata.root": { package: "acme", children: [{ "object.entity": { name: "T", children: [
+      { "source.rdb": { "@table": "t" } }, { "field.long": { name: "id" } },
+      { "identity.primary": { name: "pk", "@fields": "id" } },
+      ...AB, { "field.duration": { name: "wait" } },
       { "validator.comparison": { name: "cmp", "@left": "a", "@op": "lt", "@right": "b",
-        "@condition": { op: "gt", left: { field: "wait" }, right: { value: "P1M" } } } }]);
-    expect(() => buildExpectedSchema(root, { dialect: "postgres" })).toThrow(/compares field.duration 'wait' with "P1M", which is not an ISO-8601 duration/);
+        "@condition": { op: "gt", left: { field: "wait" }, right: { value: "P1M" } } } },
+    ] } }] } };
+    const { errors } = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify(doc))]);
+    expect(errors.map((e) => [(e as { code?: string }).code, e.message])).toEqual([["ERR_BAD_ATTR_VALUE",
+      'validator.comparison "T.cmp" @condition compares "wait" with "P1M", which is not an ISO-8601 duration (such as PT1H30M; no years or months).']]);
   });
 });
