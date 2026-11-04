@@ -4445,6 +4445,14 @@ public static partial class ValidationPasses
     // declaring at least one source (a source-less object generates nothing); derived
     // fields and field.object (may flatten to several columns) are skipped.
     // ADR-0039: effective children, so an inherited field collides like an own one.
+    // Exempt: an object read through source.rdb @kind: view with an @sql body. The author's
+    // SQL defines that view's columns and the fields only READ them, so two fields on one
+    // column create no duplicate column and nothing can be written. A derived view (no @sql)
+    // emits a select list from its fields and stays checked.
+    private static bool ReadsThroughSqlView(MetaData obj) =>
+        obj.Children().OfType<MetaSource>().Any(s =>
+            s.EffectiveKind == SourceConstants.SOURCE_KIND_VIEW && s.SqlBody is not null);
+
     public static IReadOnlyList<MetaError> ValidateColumnNameCollisions(MetaData root)
     {
         var errors = new List<MetaError>();
@@ -4452,6 +4460,7 @@ public static partial class ValidationPasses
         {
             if (obj.IsAbstract) continue;
             if (!obj.Children().Any(c => c.Type == TYPE_SOURCE)) continue;
+            if (ReadsThroughSqlView(obj)) continue;
             var seen = new Dictionary<string, MetaField>(StringComparer.Ordinal);
             foreach (var field in obj.Children().OfType<MetaField>())
             {
@@ -4464,8 +4473,10 @@ public static partial class ValidationPasses
                 }
                 errors.Add(new MetaError(
                     $"fields \"{first.Name}\" and \"{field.Name}\" on \"{obj.Name}\" both resolve to " +
-                    $"physical column \"{column}\". Rename one field, or give one an explicit @column " +
-                    "so the two columns differ.",
+                    $"physical column \"{column}\". " +
+                    (first.DbColumn is { Length: > 0 } && field.DbColumn is { Length: > 0 }
+                        ? "Rename one field, or point one @column at a different column."
+                        : "Rename one field, or give one an explicit @column so the two columns differ."),
                     ErrorCode.ERR_COLUMN_NAME_COLLISION,
                     Envelope: field.Source));
             }

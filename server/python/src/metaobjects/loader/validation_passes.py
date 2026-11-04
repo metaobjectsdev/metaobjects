@@ -64,6 +64,7 @@ from ..meta.core.relationship.meta_relationship import MetaRelationship
 from ..meta.meta_data import MetaData
 from ..meta.persistence.source.meta_source import MetaSource
 from ..meta.persistence.source.source_constants import (
+    SOURCE_KIND_VIEW,
     SOURCE_READ_ONLY_KINDS,
     SOURCE_ROLE_PRIMARY,
 )
@@ -4198,6 +4199,12 @@ def _validate_index_lookup_fields(root: MetaData, errors: list[MetaError]) -> No
 # ---------------------------------------------------------------------------
 
 
+def _has_explicit_column(field: MetaData) -> bool:
+    from ..meta.core.field import field_constants as fc
+    col = field.get_meta_attr(fc.FIELD_ATTR_COLUMN)
+    return isinstance(col, str) and col != ""
+
+
 def _validate_column_name_collisions(root: MetaData, errors: list[MetaError]) -> None:
     """ERR_COLUMN_NAME_COLLISION: two fields of one stored object resolving to the SAME
     physical column (``userId`` + ``userID`` both snake_case to ``user_id``, or two
@@ -4208,6 +4215,11 @@ def _validate_column_name_collisions(root: MetaData, errors: list[MetaError]) ->
     honoured. Scope: a concrete object declaring at least one source (a source-less
     object generates nothing); derived fields and ``field.object`` (may flatten to
     several columns) are skipped. ADR-0039: effective children (inherited fields count).
+
+    Exempt: an object read through ``source.rdb @kind: view`` with an ``@sql`` body. The
+    author's SQL defines that view's columns and the fields only READ them, so two fields
+    on one column create no duplicate column and nothing can be written. A derived view
+    (no ``@sql``) emits a select list from its fields and stays checked.
     """
     from ..naming import resolve_column_name
     from ..meta.core.field.meta_field import MetaField
@@ -4215,6 +4227,13 @@ def _validate_column_name_collisions(root: MetaData, errors: list[MetaError]) ->
         if obj.is_abstract:
             continue
         if not any(c.type == TYPE_SOURCE for c in obj.children()):
+            continue
+        if any(
+            isinstance(c, MetaSource)
+            and c.effective_kind() == SOURCE_KIND_VIEW
+            and c.sql_body() is not None
+            for c in obj.children()
+        ):
             continue
         seen: dict[str, MetaData] = {}
         for field in obj.children():
@@ -4230,8 +4249,12 @@ def _validate_column_name_collisions(root: MetaData, errors: list[MetaError]) ->
                 code=ErrorCode.ERR_COLUMN_NAME_COLLISION,
                 message=(
                     f'fields "{first.name}" and "{field.name}" on "{obj.name}" both resolve '
-                    f'to physical column "{column}". Rename one field, or give one an '
-                    f"explicit @column so the two columns differ."
+                    f'to physical column "{column}". '
+                    + (
+                        "Rename one field, or point one @column at a different column."
+                        if _has_explicit_column(first) and _has_explicit_column(field)
+                        else "Rename one field, or give one an explicit @column so the two columns differ."
+                    )
                 ),
                 envelope=field.source,
             ))

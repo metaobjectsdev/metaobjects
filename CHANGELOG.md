@@ -12,6 +12,15 @@ here.**
 
 ### Fixed
 
+- **`ERR_COLUMN_NAME_COLLISION` no longer rejects a read-only view whose columns come from `@sql`.**
+  The 1.2.0 check treated every field of a sourced object as a column MetaObjects creates. For a
+  `source.rdb @kind: view` with an `@sql` body, the author's SQL defines the columns and the fields
+  only read them, so two fields on one column are legal and nothing can be written. That object is
+  now exempt in all four ports (TypeScript, Java, C#, Python). A derived view (no `@sql`), which
+  emits a select list from its fields, is still checked. When both colliding fields already carry an
+  explicit `@column`, the message now says to rename one field or point one `@column` at a different
+  column, instead of suggesting a `@column` they already have. The error code is unchanged. New
+  conformance fixtures: `column-name-shared-in-sql-view-ok` and `error-column-name-collision-derived-view`.
 - **`meta migrate` refuses, at plan time, to drop a column a view it does not own still reads.**
   With `--from-db`, a declared-`@unmanaged` view or one outside the scoped schemas whose live body
   names the dropped column now blocks the `drop-column`, and the message names the view and the

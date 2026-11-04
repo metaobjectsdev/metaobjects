@@ -5409,11 +5409,30 @@ public final class ValidationPhase {
      * generates nothing); derived fields and {@code field.object} (may flatten to several
      * columns) are skipped. ADR-0039: resolving accessors, so an inherited field collides like
      * an own one.</p>
+     *
+     * <p>Exempt: an object read through {@code source.rdb @kind: view} with an {@code @sql}
+     * body. The author's SQL defines that view's columns and the fields only READ them, so two
+     * fields on one column create no duplicate column and nothing can be written. A derived
+     * view (no {@code @sql}) emits a select list from its fields and stays checked.</p>
      */
+    private static boolean readsThroughSqlView(MetaObject obj) {
+        for (MetaSource s : obj.getChildren(MetaSource.class, true)) {
+            if (MetaSource.KIND_VIEW.equals(s.getEffectiveKind()) && s.getSqlBody() != null) return true;
+        }
+        return false;
+    }
+
+    private static boolean hasExplicitColumn(MetaField<?> field) {
+        if (!field.hasMetaAttr(CoreDBMetaDataProvider.COLUMN, true)) return false;
+        String v = field.getMetaAttr(CoreDBMetaDataProvider.COLUMN, true).getValueAsString();
+        return v != null && !v.isEmpty();
+    }
+
     static void validateColumnNameCollisions(MetaRoot root) {
         for (MetaObject obj : root.getChildren(MetaObject.class, false)) {
             if (isAbstract(obj)) continue;
             if (obj.getChildren(MetaSource.class, true).isEmpty()) continue;
+            if (readsThroughSqlView(obj)) continue;
             java.util.Map<String, MetaField<?>> seen = new java.util.HashMap<>();
             for (MetaField<?> field : obj.getChildren(MetaField.class, true)) {
                 if (ObjectField.SUBTYPE_OBJECT.equals(field.getSubType()) || field.isDerived()) continue;
@@ -5424,8 +5443,10 @@ public final class ValidationPhase {
                     ErrorMessageConstants.ERR_COLUMN_NAME_COLLISION
                         + ": fields \"" + first.getName() + "\" and \"" + field.getName()
                         + "\" on \"" + obj.getName() + "\" both resolve to physical column \""
-                        + column + "\". Rename one field, or give one an explicit @column so the"
-                        + " two columns differ.",
+                        + column + "\". "
+                        + (hasExplicitColumn(first) && hasExplicitColumn(field)
+                            ? "Rename one field, or point one @column at a different column."
+                            : "Rename one field, or give one an explicit @column so the two columns differ."),
                     ErrorCode.ERR_COLUMN_NAME_COLLISION, field.getSource());
             }
         }
