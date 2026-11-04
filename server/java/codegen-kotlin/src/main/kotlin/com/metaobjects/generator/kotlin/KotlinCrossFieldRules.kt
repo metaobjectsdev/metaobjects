@@ -1,6 +1,7 @@
 package com.metaobjects.generator.kotlin
 
 import com.metaobjects.MetaData
+import com.metaobjects.database.CoreDBMetaDataProvider
 import com.metaobjects.field.BooleanField
 import com.metaobjects.field.CurrencyField
 import com.metaobjects.field.DateField
@@ -38,6 +39,18 @@ object KotlinCrossFieldRules {
     private fun isTemporalCross(f: MetaField<*>): Boolean =
         f is DateField || f is TimeField || f is TimestampField
 
+    private fun flag(f: MetaField<*>, attr: String): Boolean =
+        f.hasMetaAttr(attr, true) &&
+            runCatching { f.getMetaAttr(attr, true).value }.getOrNull()?.toString()?.trim().toBoolean()
+
+    /**
+     * What decides the Kotlin type of a field beyond its subtype: a timestamp is an Instant unless
+     * `@localTime`, and a uri/inet is a native type unless `@lenient` (then a String). Read from the
+     * attributes rather than the type mapper so an ejected copy of this file stands alone.
+     */
+    private fun nativeShape(f: MetaField<*>): Pair<Boolean, Boolean> =
+        Pair(f is TimestampField && flag(f, CoreDBMetaDataProvider.LOCAL_TIME), (f is UriField || f is InetField) && flag(f, UriField.ATTR_LENIENT))
+
     /**
      * The comparison for two fields, or null when the pair has no sound one. Mirrors the C#
      * generator: numerics compare with each other, strings and temporals only with their own
@@ -56,7 +69,7 @@ object KotlinCrossFieldRules {
         val comparable = isNumericCross(l) || l is StringField || isTemporalCross(l)
         val equatable = !ordering && (l is BooleanField || l is EnumField || l is UuidField || l is UriField || l is InetField)
         if (!comparable && !equatable) return null
-        if (KotlinTypeMapper.kotlinTypeName(l) != KotlinTypeMapper.kotlinTypeName(r)) return null
+        if (nativeShape(l) != nativeShape(r)) return null
         if (comparable) {
             return CodeBlock.of("(%L as Comparable<Any>).compareTo(%L) $kop 0", ref(l), ref(r))
         }
