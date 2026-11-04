@@ -16,7 +16,7 @@ import {
   FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_CURRENCY,
   FIELD_SUBTYPE_BOOLEAN, FIELD_SUBTYPE_DECIMAL, FIELD_ATTR_PRECISION, FIELD_ATTR_SCALE, FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT,
   FIELD_SUBTYPE_DATE, FIELD_SUBTYPE_TIME, FIELD_SUBTYPE_TIMESTAMP,
-  FIELD_SUBTYPE_ENUM, FIELD_SUBTYPE_OBJECT, FIELD_SUBTYPE_MAP, FIELD_SUBTYPE_UUID,
+  FIELD_SUBTYPE_ENUM, FIELD_SUBTYPE_OBJECT, FIELD_SUBTYPE_MAP, FIELD_SUBTYPE_UUID, FIELD_SUBTYPE_URI, FIELD_SUBTYPE_INET,
   FIELD_SUBTYPE_URI, FIELD_SUBTYPE_INET,
   VALIDATOR_SUBTYPE_REQUIRED, VALIDATOR_SUBTYPE_LENGTH, VALIDATOR_SUBTYPE_REGEX,
   VALIDATOR_SUBTYPE_NUMERIC, VALIDATOR_SUBTYPE_ARRAY,
@@ -282,17 +282,22 @@ const ORDERED_SUBTYPES: ReadonlySet<string> = new Set([
   FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_DATE, FIELD_SUBTYPE_TIME, FIELD_SUBTYPE_TIMESTAMP,
 ]);
 
+/** Subtypes with equality but no ordering: a pair of the same one may be tested with eq / ne. */
+const EQUALITY_SUBTYPES: ReadonlySet<string> = new Set([
+  FIELD_SUBTYPE_BOOLEAN, FIELD_SUBTYPE_ENUM, FIELD_SUBTYPE_UUID, FIELD_SUBTYPE_URI, FIELD_SUBTYPE_INET,
+]);
+
 /** Whether a comparison between these two fields has a sound meaning, as in every port:
  *  numerics compare with each other, strings and temporals only with their own subtype (a
  *  date against a timestamp compares two differently shaped strings, which is meaningless),
- *  and boolean/enum fields only test equality. Anything else is skipped, never rejected. */
+ *  and boolean, enum, uuid, uri and inet fields only test equality. Anything else is skipped, never rejected. */
 function crossComparable(left: MetaField, right: MetaField, opName: string): boolean {
   const a = left.subType;
   const b = right.subType;
   if (NUMERIC_SUBTYPES.has(a) && NUMERIC_SUBTYPES.has(b)) return true;
   if (a !== b) return false;
   if (ORDERED_SUBTYPES.has(a)) return true;
-  return (opName === "eq" || opName === "ne") && (a === FIELD_SUBTYPE_BOOLEAN || a === FIELD_SUBTYPE_ENUM);
+  return (opName === "eq" || opName === "ne") && EQUALITY_SUBTYPES.has(a);
 }
 
 /** Names of the fields the INSERT-shaped schemas carry (same skip rules as the emitters). */

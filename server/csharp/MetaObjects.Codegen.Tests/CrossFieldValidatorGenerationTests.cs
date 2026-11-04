@@ -112,7 +112,7 @@ public class CrossFieldValidatorGenerationTests
     ]}}
     """;
 
-    // A decimal compared with a double: C# has no implicit conversion between the two.
+    // A concrete entity extending an abstract shape that declares a rule.
     private const string AbstractParent = """
     { "metadata.root": { "package": "acme", "children": [
       { "object.entity": { "name": "Base", "abstract": true, "children": [
@@ -128,6 +128,7 @@ public class CrossFieldValidatorGenerationTests
     ]}}
     """;
 
+    // A decimal compared with a double: C# has no implicit conversion between the two.
     private const string MixedNumeric = """
     { "metadata.root": { "package": "acme", "children": [
       { "object.entity": { "name": "Quote", "children": [

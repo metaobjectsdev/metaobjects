@@ -56,7 +56,8 @@ here.**
   inheritance hierarchy (one shared table, or a child table holding only its own columns). A child of
   an **abstract** parent with `EmitAbstractShapes` on now emits `class Child : Base`, as the
   generator always meant to, and declares only its own members. Regenerating changes those two shapes
-  of C# output only.
+  of C# output only. An adopter override of `EmitClassDeclarationLine` that names a concrete parent as
+  the base now gets that parent's properties twice; drop the base from the override.
 - **Test flakes fixed at their cause.** `GenCommandTests.Gen_writes_the_hash_manifest_beside_the_metadata_not_in_cwd`
   (C# Cli) failed about one run in five because `DependencyCliTests` runs `gen` in process, which
   changes the process-wide working directory, without joining the serial collection every other
@@ -71,8 +72,11 @@ here.**
   a create answered 500 instead of 400; TypeScript compared the two as strings and Python raised a
   `TypeError` that surfaced as an invalid body. All five ports now follow one rule: numerics compare
   with each other, strings and temporals only with their own subtype, boolean and enum fields test
-  equality only, and any other pair emits no rule. New shared case
-  `comparison-across-kinds-is-skipped` in `fixtures/validation-conformance/`, run by every port.
+  `eq` / `ne` only (also on two `uuid`, `uri` or `inet` fields), and any other pair emits no rule, so an
+  ordering test on two booleans or two enums is no longer enforced by the generated validators (C# never
+  did). The database `CHECK` still covers the pair where the database can compare it. New shared cases
+  `comparison-across-kinds-is-skipped`, `uuid-ne-rejects-equal-ids` and `uuid-ne-accepts-different-ids`
+  in `fixtures/validation-conformance/`, run by every port.
 - **Test coverage for cross-field validators.** A subtype form on a TPH hierarchy that declares a
   cross-field rule now has a test proving the generated form binds the refined body schema (the rule
   itself was enforced by the cross-field build). The Java check that a Patch is not held to cross-field

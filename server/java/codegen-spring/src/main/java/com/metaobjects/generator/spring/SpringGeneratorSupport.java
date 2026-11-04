@@ -26,6 +26,9 @@ import com.metaobjects.field.ObjectField;
 import com.metaobjects.field.StringField;
 import com.metaobjects.field.TimeField;
 import com.metaobjects.field.TimestampField;
+import com.metaobjects.field.InetField;
+import com.metaobjects.field.UriField;
+import com.metaobjects.field.UuidField;
 import com.metaobjects.generator.util.RestSurfaceGate;
 import com.metaobjects.identity.MetaIdentity;
 import com.metaobjects.identity.PrimaryIdentity;
@@ -664,7 +667,7 @@ public final class SpringGeneratorSupport {
      * C# generator: numerics compare with each other, strings and temporals only with their own
      * subtype (a date has no ordering against a timestamp, and casting both to Comparable would
      * throw ClassCastException inside the constraint method, turning a create into a 500), and
-     * boolean/enum fields only test equality. Anything else is skipped, like every other port.
+     * boolean, enum, uuid, uri and inet fields only test equality. Anything else is skipped, like every other port.
      */
     private static String crossComparison(MetaField<?> l, MetaField<?> r, String lc, String rc, String op, String jop) {
         boolean ordering = op.equals("gt") || op.equals("gte") || op.equals("lt") || op.equals("lte");
@@ -678,7 +681,8 @@ public final class SpringGeneratorSupport {
         if (l instanceof StringField || isTemporalCrossField(l)) {
             return "((Comparable<Object>) (Object) " + lc + ").compareTo(" + rc + ") " + jop + " 0";
         }
-        if (!ordering && (l instanceof BooleanField || l instanceof EnumField)) {
+        if (!ordering && (l instanceof BooleanField || l instanceof EnumField
+                || l instanceof UuidField || l instanceof UriField || l instanceof InetField)) {
             return (op.equals("eq") ? "" : "!") + "java.util.Objects.equals(" + lc + ", " + rc + ")";
         }
         return null;

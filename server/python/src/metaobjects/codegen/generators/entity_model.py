@@ -475,8 +475,8 @@ _ORDERED_CROSS = (
 def _comparable(left: MetaField, right: MetaField, op: str) -> bool:
     """Whether a comparison between these two fields has a sound meaning, as in every port: numerics
     compare with each other, strings and temporals only with their own subtype (a date has no
-    ordering against a timestamp, and Python raises TypeError on one), and boolean/enum fields
-    only test equality. Anything else is skipped, never rejected."""
+    ordering against a timestamp, and Python raises TypeError on one), and boolean, enum, uuid, uri
+    and inet fields only test equality. Anything else is skipped, never rejected."""
     a, b = left.sub_type, right.sub_type
     if a in _NUMERIC_CROSS and b in _NUMERIC_CROSS:
         return True
@@ -484,7 +484,10 @@ def _comparable(left: MetaField, right: MetaField, op: str) -> bool:
         return False
     if a in _ORDERED_CROSS:
         return True
-    return op in ("eq", "ne") and a in (fc.FIELD_SUBTYPE_BOOLEAN, fc.FIELD_SUBTYPE_ENUM)
+    return op in ("eq", "ne") and a in (
+        fc.FIELD_SUBTYPE_BOOLEAN, fc.FIELD_SUBTYPE_ENUM,
+        fc.FIELD_SUBTYPE_UUID, fc.FIELD_SUBTYPE_URI, fc.FIELD_SUBTYPE_INET,
+    )
 _CROSS_FIELD_SUBTYPES = (
     vc.VALIDATOR_SUBTYPE_COMPARISON,
     vc.VALIDATOR_SUBTYPE_REQUIRED_WHEN,

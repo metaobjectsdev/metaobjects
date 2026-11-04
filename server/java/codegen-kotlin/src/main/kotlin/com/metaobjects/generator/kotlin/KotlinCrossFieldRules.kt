@@ -12,8 +12,11 @@ import com.metaobjects.field.LongField
 import com.metaobjects.field.EnumField
 import com.metaobjects.field.MetaField
 import com.metaobjects.field.StringField
+import com.metaobjects.field.InetField
 import com.metaobjects.field.TimeField
 import com.metaobjects.field.TimestampField
+import com.metaobjects.field.UriField
+import com.metaobjects.field.UuidField
 import com.metaobjects.`object`.MetaObject
 import com.metaobjects.validator.AtLeastOneValidator
 import com.metaobjects.validator.ComparisonValidator
@@ -40,7 +43,7 @@ object KotlinCrossFieldRules {
      * generator: numerics compare with each other, strings and temporals only with their own
      * subtype (a date has no ordering against a timestamp, and casting both to Comparable throws
      * ClassCastException inside the validity property, turning a create into a 500), and
-     * boolean/enum fields only test equality. Anything else is skipped, like every other port.
+     * boolean, enum, uuid, uri and inet fields only test equality. Anything else is skipped, like every other port.
      */
     private fun comparison(l: MetaField<*>, r: MetaField<*>, op: String, kop: String, ref: (MetaField<*>) -> String): CodeBlock? {
         val ordering = op == "gt" || op == "gte" || op == "lt" || op == "lte"
@@ -53,7 +56,7 @@ object KotlinCrossFieldRules {
         if (l is StringField || isTemporalCross(l)) {
             return CodeBlock.of("(%L as Comparable<Any>).compareTo(%L) $kop 0", ref(l), ref(r))
         }
-        if (!ordering && (l is BooleanField || l is EnumField)) {
+        if (!ordering && (l is BooleanField || l is EnumField || l is UuidField || l is UriField || l is InetField)) {
             return CodeBlock.of("(%L %L %L)", ref(l), if (op == "eq") "==" else "!=", ref(r))
         }
         return null

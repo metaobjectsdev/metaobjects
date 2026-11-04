@@ -306,9 +306,10 @@ public class EntityGenerator : IGenerator
         var enumDecls = CollectEnumDecls(entity);
 
         // Members in declared order: scalar columns + enum-typed props + (entities only) owned-type navs.
-        // When this entity extends an emitted base class (DirectMappedParent), the base carries
+        // When this entity extends an emitted abstract shape (DirectMappedParent), the shape carries
         // the inherited fields — emit ONLY this entity's own fields and let C# inheritance supply
-        // the rest (mirrors the metadata `extends` chain; the PK lives on the declaring base).
+        // the rest. A concrete parent is never a C# base (two mapped entities in one hierarchy would
+        // be an EF TPH/TPT mapping, not the one-table-per-entity model), so its fields are declared here.
         var inheritedNames = DirectMappedParent(entity, ctx.Config) is { } mp
             ? new HashSet<string>(mp.Fields().Select(f => f.Name), StringComparer.Ordinal)
             : new HashSet<string>(StringComparer.Ordinal);
@@ -1155,7 +1156,8 @@ public class EntityGenerator : IGenerator
                     else if (lk == CrossKind.Temporal && rk == CrossKind.Temporal
                              && CSharpNaming.ScalarForField(l) == CSharpNaming.ScalarForField(r))
                         cond = $"{a} {csOp} {b}";
-                    else if (!ordering && lk == rk && lk != CrossKind.Other)
+                    else if (!ordering && ((lk == rk && lk != CrossKind.Other)
+                             || (l.SubType == r.SubType && l.SubType is FIELD_SUBTYPE_UUID or FIELD_SUBTYPE_URI or FIELD_SUBTYPE_INET)))
                         cond = op == "eq" ? $"Equals({a}, {b})" : $"!Equals({a}, {b})";
                     else break;
                     var lp = PropertyName(l); var rp = PropertyName(r);
