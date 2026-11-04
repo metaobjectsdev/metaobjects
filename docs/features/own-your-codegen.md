@@ -511,6 +511,11 @@ overwritten; an edited one is refused by name (`<handEdits>keep</handEdits>`, th
 replaced (`<handEdits>overwrite</handEdits>`). There is **no three-way merge**
 (TypeScript-only). **Commit the manifest.**
 
+A TypeScript entry can also carry the node the file was rendered from,
+`{ "hash", "generatedBy", "sourceNode" }`. That is provenance, not ownership, which is why it
+does not use the JVM's `generator` field. Every reader takes `hash` from either form. See
+[explorer-data.md](explorer-data.md#node-provenance-in-hashesjson).
+
 The `GENERATED` token in the header still matters at one moment: a file at a generated path
 that the manifest has no record of. A file that carries the token is taken as generated
 output (**adopted**: written fresh and recorded); one that does not is refused, whatever

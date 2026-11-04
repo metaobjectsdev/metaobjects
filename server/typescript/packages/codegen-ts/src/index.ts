@@ -95,7 +95,8 @@ export { decideAndWrite, GitMissingError, WRITE_STATUSES } from "./overwrite-pol
 // `listGeneratedPaths` answers the sibling question — WHICH paths we have ever
 // written — which is how the gate scopes itself to its own output instead of
 // convicting every stranger's file that happens to sit in the same directory.
-export { contentHash, readGeneratedHash, listGeneratedPaths } from "./overwrite-policy.js";
+export { contentHash, readGeneratedHash, listGeneratedPaths, recordGeneratedProvenance } from "./overwrite-policy.js";
+export type { GeneratedProvenance } from "./overwrite-policy.js";
 
 export { CodegenError } from "./errors.js";
 export { GENERATED_HEADER, GENERATED_EDIT_NOTE, NAMES_FILE_SUFFIX, DEFAULT_OUT_DIR, RETIRED_CODEGEN_ATTRS, sidecarLine, type RetiredCodegenAttr } from "./constants.js";

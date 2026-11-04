@@ -112,6 +112,24 @@ here.**
   and the `wire` setting, and a project on any port runs them through the Node `meta` CLI. They are
   reference helpers: opt-in, listed by `meta gen --list`, ejectable and gated by `verify --codegen`
   (ADR-0034 Amendment 10). Protobuf is not built. See `docs/features/contract-emitters.md`.
+- **The data spine for a model explorer.** These changes are data only. No screen reads the new
+  data yet.
+  - `meta export --effective` writes the effective canonical JSON. Every field, child and attribute
+    a node inherits through `extends` is written onto that node.
+  - `meta verify --format json` adds `requirementLedger`, one row per requirement. A row carries its
+    digest, each `@implementedBy` link with the node the gate resolved it to, the findings against
+    it, and a `clean`, `warn` or `error` verdict. Text output is unchanged.
+  - `meta gen` records, in `.hashes.json`, the node each per-entity file was rendered from:
+    `{ "hash", "generatedBy", "sourceNode" }`. `EmittedFile.sourceNode` lets an owned generator set
+    it, and `perEntity` sets it automatically. A file rendered from the whole model keeps the plain
+    hash entry. The field is not called `generator`, because on the JVM that word claims ownership.
+  - `@metaobjectsdev/docs-site` exports `buildExplorer` and `serializeExplorer`. Together they build a
+    deterministic `explorer.json` from those three inputs. The file holds nodes, typed edges, the
+    requirement ledger, the generated files for each node, and derived slices for each package,
+    requirement subtree and prompt.
+
+  Gated by the new `fixtures/explorer-conformance/` corpus. See `docs/features/explorer-data.md`.
+  No metamodel vocabulary changes, and `metamodelVersion` does not move.
 - **A recipe for checking an API change against the last release.** Emit the document at the last tag
   and at `HEAD`, then run oasdiff. See `docs/recipes/check-api-against-last-release.md`.
 - **A `pydantic` extra on the Python package.** `pip install "metaobjects[pydantic]"` installs

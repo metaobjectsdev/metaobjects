@@ -63,6 +63,11 @@ export interface Diagnostic {
   message: string;
 }
 
+/** The requirement node a gate or lint diagnostic is about. Two packages may each declare a
+ *  requirement at the same path, so the path alone cannot tell their findings apart. Kept
+ *  beside the diagnostic, not on it, so a diagnostic's shape is only its four fields. */
+export const diagnosticRequirement = new WeakMap<Diagnostic, MetaRequirement>();
+
 export const ERR_REQUIREMENT_LINK_ABOVE_FLOOR = "ERR_REQUIREMENT_LINK_ABOVE_FLOOR";
 export const ERR_REQUIREMENT_DANGLING_REF = "ERR_REQUIREMENT_DANGLING_REF";
 export const ERR_REQUIREMENT_BAD_LEVEL = "ERR_REQUIREMENT_BAD_LEVEL";
@@ -426,6 +431,7 @@ export function checkRequirements(root: MetaData, scan: RequirementScan = scanRe
   if (addressed.length === 0) return out; // opt-in by declaration — no requirements, nothing to say
 
   for (const { node: req, path: reqPath } of addressed) {
+    const report = (d: Diagnostic): void => { diagnosticRequirement.set(d, req); out.push(d); };
     const architectural = req.subType === REQUIREMENT_SUBTYPE_ARCHITECTURAL;
     const level = req.level();
     const refs = req.implementedBy();
@@ -443,7 +449,7 @@ export function checkRequirements(root: MetaData, scan: RequirementScan = scanRe
     if (!architectural || levelled) {
       if (!levelled || !Number.isInteger(level)
           || level < REQUIREMENT_MIN_LEVEL || level > REQUIREMENT_MAX_LEVEL) {
-        out.push({
+        report({
           severity: "error", code: ERR_REQUIREMENT_BAD_LEVEL, path: reqPath,
           message: `level must be an integer ${REQUIREMENT_MIN_LEVEL}-${REQUIREMENT_MAX_LEVEL} (got ${String(level)}). ` +
             `L1 solution, L2 segment (app/library), L3 service, L4 object, L5 member.` +
@@ -455,7 +461,7 @@ export function checkRequirements(root: MetaData, scan: RequirementScan = scanRe
       if (parent !== undefined && parent.type === TYPE_REQUIREMENT) {
         const pl = (parent as MetaRequirement).level();
         if (pl !== undefined && level !== undefined && level <= pl) {
-          out.push({
+          report({
             severity: "error", code: ERR_REQUIREMENT_LEVEL_NESTING, path: reqPath,
             message: `nested under "${parent.name}" (level ${pl}) but declares level ${level}. ` +
               `Nesting is the hierarchy — a child sits strictly below its parent.`,
@@ -466,7 +472,7 @@ export function checkRequirements(root: MetaData, scan: RequirementScan = scanRe
 
     // -- the link boundary ----------------------------------------------------
     if (refs.length > 0 && !req.mayReferenceModel()) {
-      out.push({
+      report({
         severity: "error", code: ERR_REQUIREMENT_LINK_ABOVE_FLOOR, path: reqPath,
         message: `'implementedBy' is legal at L${REQUIREMENT_LINK_FLOOR_LEVEL} (object) and ` +
           `L${REQUIREMENT_MAX_LEVEL} (member) only. L1-L3 are organisational and never reference ` +
@@ -495,7 +501,7 @@ export function checkRequirements(root: MetaData, scan: RequirementScan = scanRe
       // existing one — unlike the level checks above, which `@level` already
       // promised.
       if (!architectural && level === REQUIREMENT_LINK_FLOOR_LEVEL && !isObjectRef) {
-        out.push({
+        report({
           severity: "error", code: ERR_REQUIREMENT_L4_NOT_OBJECT, path: reqPath,
           message: `L${REQUIREMENT_LINK_FLOOR_LEVEL} references an object; '${ref}' names a member. ` +
             `Move it to a nested L${REQUIREMENT_LEVEL_MEMBER} child, or reference the object itself.`,
@@ -503,7 +509,7 @@ export function checkRequirements(root: MetaData, scan: RequirementScan = scanRe
         continue;
       }
       if (!architectural && level === REQUIREMENT_LEVEL_MEMBER && isObjectRef) {
-        out.push({
+        report({
           severity: "error", code: ERR_REQUIREMENT_L5_NOT_MEMBER, path: reqPath,
           message: `L${REQUIREMENT_LEVEL_MEMBER} references a member (field, view or identity); ` +
             `'${ref}' names an object. Move it to its L${REQUIREMENT_LINK_FLOOR_LEVEL} parent.`,
@@ -521,7 +527,7 @@ export function checkRequirements(root: MetaData, scan: RequirementScan = scanRe
           // resolved and only the member is gone, it listed that same object back and said
           // to qualify it: name the member instead.
           const hint = node === undefined ? didYouMeanHint(root, owner) : missingMemberHint(node, path);
-          out.push({
+          report({
             severity: "error", code: ERR_REQUIREMENT_DANGLING_REF, path: reqPath,
             message: `'${ref}' does not resolve in the loaded model (status '${String(req.status())}' — ` +
               `the model moved and the requirement is stale).` + hint,
@@ -547,7 +553,7 @@ export function checkRequirements(root: MetaData, scan: RequirementScan = scanRe
     if (superseded !== undefined) {
       const referrerPkg = effectiveRequirementPackage(req);
       if (resolveRequirementRef(addressed, superseded, referrerPkg) === undefined) {
-        out.push({
+        report({
           severity: "error", code: ERR_REQUIREMENT_DANGLING_REF, path: reqPath,
           message: `@supersededBy '${superseded}' does not name a requirement in the loaded ` +
             `ledger. It must name the requirement that REPLACED this one — if nothing did, ` +
@@ -577,7 +583,7 @@ export function checkRequirements(root: MetaData, scan: RequirementScan = scanRe
     // all": true for a flat policy (the original form), false for L1-L3 of a
     // levelled one, true again at the link floor.
     if (architectural && live && refs.length === 0 && req.mayReferenceModel()) {
-      out.push({
+      report({
         severity: "error", code: ERR_REQUIREMENT_ARCH_NO_IMPLEMENTERS, path: reqPath,
         message: `architectural requirement is '${String(status)}' but nothing implements it. ` +
           `Its check is universality — a claim set of zero means the policy is declared and unapplied.`,
@@ -587,7 +593,7 @@ export function checkRequirements(root: MetaData, scan: RequirementScan = scanRe
     // -- disposition: the decision, not the state -----------------------------
     const disposition = req.disposition();
     if (disposition !== undefined && !req.hasOutstandingWork()) {
-      out.push({
+      report({
         severity: "warn", code: WARN_REQUIREMENT_DISPOSITION_NOT_APPLICABLE, path: reqPath,
         message: `carries @disposition '${disposition}' but its status is '${String(status)}', which has no ` +
           `outstanding work to decide about. A disposition is meaningful on 'planned' and 'partial' only — ` +
@@ -608,7 +614,7 @@ export function checkRequirements(root: MetaData, scan: RequirementScan = scanRe
     // keeps its `WARN_` name on purpose: it identifies the finding, and one finding
     // under two codes would split every suppression and corpus case that keys on it.
     if (!architectural && live && !subtreeClaimsAnything(req)) {
-      out.push({
+      report({
         severity: scan.requireImplementers ? "error" : "warn",
         code: WARN_REQUIREMENT_NOTHING_IMPLEMENTS, path: reqPath,
         message: `is '${String(status)}' but neither it nor anything nested under it names an ` +
@@ -618,7 +624,7 @@ export function checkRequirements(root: MetaData, scan: RequirementScan = scanRe
     }
 
     if (disposition === REQUIREMENT_DISPOSITION_DEFERRED && req.trackedBy().length === 0) {
-      out.push({
+      report({
         severity: "warn", code: WARN_REQUIREMENT_DEFERRED_UNTRACKED, path: reqPath,
         message: `is deferred but names no @trackedBy issue. Deferring without a ticket is how a known gap ` +
           `becomes an unknown one — nothing will raise it again.`,

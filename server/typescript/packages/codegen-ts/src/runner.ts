@@ -33,6 +33,8 @@ import {
   listGeneratedPaths,
   loadEngineVersion,
   saveEngineVersion,
+  recordGeneratedProvenance,
+  type GeneratedProvenance,
   type WriteResult,
   type MergeStrategy,
   type BaselineMode,
@@ -791,7 +793,13 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   }
 
   // 4. Run each generator with a per-target render context; collect with full path.
-  const emitted: { fullPath: string; content: string; generatedBy: string; handEdits?: HandEdits }[] = [];
+  const emitted: {
+    fullPath: string;
+    content: string;
+    generatedBy: string;
+    handEdits?: HandEdits;
+    sourceNode?: string;
+  }[] = [];
   // FR-038 §8 — generators that opted into orphan reconciliation, paired with the
   // directory their policy's relative paths are measured from. Collected here
   // because `writeOutDir` is resolved per generator inside this loop.
@@ -972,6 +980,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
         content: file.content,
         generatedBy: generator.name,
         ...(generator.handEdits !== undefined && { handEdits: generator.handEdits }),
+        ...(file.sourceNode !== undefined && { sourceNode: file.sourceNode }),
       });
     }
   }
@@ -1276,6 +1285,21 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   reportRefusals();
   noteUntracked();
   reportAdoptions();
+
+  // G3 — which node each recorded file came from, beside its hash. Only with a real
+  // projectRoot: without one the manifest is keyed by path hashes, not paths.
+  if (projectRoot !== undefined) {
+    const provenance = new Map<string, GeneratedProvenance>();
+    for (const file of emitted) {
+      if (outsideProject(file.fullPath)) continue;
+      // The same key policyFor gives the write, so the two always name one entry.
+      provenance.set(relative(projectRoot, file.fullPath), {
+        generatedBy: file.generatedBy,
+        ...(file.sourceNode !== undefined && { sourceNode: file.sourceNode }),
+      });
+    }
+    recordGeneratedProvenance(genStateDir, provenance);
+  }
 
   // Sweep AFTER the writes: writing is the primary job, and a deletion that runs
   // first would be unrecoverable if a later write threw. Ordering cannot change

@@ -184,18 +184,80 @@ function loadHashes(genStateDir: string): HashesFile {
 }
 
 function saveHashes(genStateDir: string, hashes: HashesFile): void {
-  mkdirSync(genStateDir, { recursive: true });
   const raw = readRawManifest(genStateDir);
+  const next: Record<string, unknown> = {};
+  for (const [key, hash] of Object.entries(hashes)) {
+    const existing = raw[key];
+    next[key] = isRecord(existing) ? { ...existing, hash } : hash;
+  }
+  writeRawManifest(genStateDir, next);
+}
+
+function writeRawManifest(genStateDir: string, entries: Record<string, unknown>): void {
+  mkdirSync(genStateDir, { recursive: true });
   // Keys SORTED, because this file is committed. Insertion order would make the
   // diff — and any merge conflict between two people who both regenerated —
   // depend on which entity happened to generate first, which is noise nobody can
   // review.
   const sorted: Record<string, unknown> = {};
-  for (const key of Object.keys(hashes).sort()) {
-    const existing = raw[key];
-    sorted[key] = isRecord(existing) ? { ...existing, hash: hashes[key] } : hashes[key];
-  }
+  for (const key of Object.keys(entries).sort()) sorted[key] = entries[key];
   writeFileSync(join(genStateDir, HASHES_FILE), JSON.stringify(sorted, null, 2) + "\n");
+}
+
+/** What produced one generated file: the generator, and the metadata node it was rendered
+ *  from when it was rendered from one. */
+export interface GeneratedProvenance {
+  generatedBy: string;
+  /** The resolution key of the node (`acme::shop::Order`). Absent for a file rendered from
+   *  the whole model or a whole package — a barrel, a docs index. */
+  sourceNode?: string;
+}
+
+/** The manifest fields provenance owns. Every other field on an entry — `hash`, and the
+ *  JVM's `generator` / `outputDir` owner (ADR-0060) — is kept as it is. */
+const PROVENANCE_FIELDS = ["generatedBy", "sourceNode"] as const;
+
+/**
+ * Record, on each recorded path's manifest entry, the node it was generated from.
+ *
+ * A path with a source node becomes `{ "hash", "generatedBy", "sourceNode" }`; one without
+ * keeps (or returns to) the plain `"<hash>"` form, so a file rendered from the whole model
+ * adds nothing to the committed manifest. A path with no recorded hash is left alone — this
+ * describes what a write recorded, it never records a write.
+ *
+ * `generatedBy` is deliberately not the JVM's `generator` field: there `generator` is an
+ * OWNERSHIP claim the orphan sweep acts on, and a TypeScript name in it would read as a
+ * generator no Maven execution configures.
+ *
+ * Batched: one read and at most one write for the whole run. Nothing is written when no
+ * entry changes, so a regeneration that changes nothing leaves the file's bytes alone.
+ */
+export function recordGeneratedProvenance(
+  genStateDir: string,
+  provenance: ReadonlyMap<string, GeneratedProvenance>,
+): void {
+  if (!existsSync(join(genStateDir, HASHES_FILE))) return;
+  const raw = readRawManifest(genStateDir);
+  let changed = false;
+  for (const [key, prov] of provenance) {
+    const existing = raw[key];
+    const hash = entryHash(existing);
+    if (hash === undefined) continue;
+    const rest: Record<string, unknown> = {};
+    if (isRecord(existing)) {
+      for (const [k, v] of Object.entries(existing)) {
+        if (k !== "hash" && !(PROVENANCE_FIELDS as readonly string[]).includes(k)) rest[k] = v;
+      }
+    }
+    const next: unknown = prov.sourceNode !== undefined
+      ? { hash, ...rest, generatedBy: prov.generatedBy, sourceNode: prov.sourceNode }
+      : Object.keys(rest).length > 0 ? { hash, ...rest } : hash;
+    if (JSON.stringify(next) !== JSON.stringify(existing)) {
+      raw[key] = next;
+      changed = true;
+    }
+  }
+  if (changed) writeRawManifest(genStateDir, raw);
 }
 
 // ---------------------------------------------------------------------------

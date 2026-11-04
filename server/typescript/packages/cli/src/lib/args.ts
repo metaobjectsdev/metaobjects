@@ -199,11 +199,14 @@ function parseGeneratorNames(raw: string): string[] {
 
 export interface ExportFlags {
   out: string | undefined;
+  /** Emit the EFFECTIVE tree: inherited members and attributes materialized, overlays merged. */
+  effective: boolean;
 }
 
 /** The flag table `parseExportArgs` parses. Exported so the help text can be gated against it. */
 export const EXPORT_OPTIONS = {
   out: { type: "string" },
+  effective: { type: "boolean", default: false },
 } as const;
 
 export function parseExportArgs(argv: string[]): ExportFlags {
@@ -215,6 +218,7 @@ export function parseExportArgs(argv: string[]): ExportFlags {
   });
   return {
     out: values.out,
+    effective: values.effective,
   };
 }
 

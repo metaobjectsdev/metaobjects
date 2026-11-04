@@ -1,6 +1,6 @@
 # Conformance coverage
 
-The MetaObjects standard ships **35 shared conformance corpora** under
+The MetaObjects standard ships **36 shared conformance corpora** under
 [`fixtures/`](../fixtures/). Every port runs every corpus that is *applicable to
 it* and asserts the same expected behaviour against the same fixtures. **This page
 is the inverse index**: fixture → feature doc + per-port pass status, and it is the
@@ -61,6 +61,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/codegen-noop/`](../fixtures/codegen-noop/) (FR-044 — reporting vocabulary: what is lowered, what stays inert) | 1 model pair (`reporting/with` vs `reporting/without`) | ✓ (codegen + migrate) | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/cube-model/`](../fixtures/cube-model/) (FR-044 Plan 4 — the `cube-model` generator's golden Cube files, plus the canonical model's golden) | 46 cases (36 trees + 10 errors) + 1 canonical golden | ✓ (the exporter is TypeScript-only, spec R6; its `cube` lane also loads the files into a real Cube) | — | — | — | — |
 | [`fixtures/contract-conformance/`](../fixtures/contract-conformance/) (FR-022 — the `contract-schema` and `openapi` generators' golden trees and refusals) | 19 cases (14 trees + 5 errors) | ✓ (one neutral engine, ADR-0034 Amendment 10; the generated API lanes also hold real traffic to the documents) | — | — | — | — |
+| [`fixtures/explorer-conformance/`](../fixtures/explorer-conformance/) (the `explorer.json` data spine: `meta export --effective` + `meta verify --format json` + the generated-file manifest in, one explorer document out) | 1 case (`shop`) | ✓ (the builder is TypeScript, and reads only port-neutral inputs) | — | — | — | — |
 
 A ✓ means the port runs the corpus green; an explicit `n / m` is used where a port
 carries a ledgered divergence. The two ledgered YAML fixtures are documented
@@ -610,12 +611,28 @@ message. The case list, with the rule each pins, is the
 (`server/typescript/packages/integration-tests/cube-live/cube-model.live.ts`) loads the same
 files into a real Cube.
 
+### `fixtures/explorer-conformance/` (1 case)
+
+The `shop` case → [features/explorer-data.md](features/explorer-data.md). Its `project/` is a
+small model with inheritance, a value object, a reference, a prompt with a payload and a reply,
+and a five-level requirement tree that has a resolved member claim, a dangling planned claim and a
+live requirement nothing implements. `effective.json` and `verify.json` are what
+`meta export --effective` and `meta verify --format json` write for it, `hashes.json` is a
+hand-written manifest with node provenance, and `expected.json` is the explorer document built
+from the three, compared byte for byte.
+
+**One port runs it:** TypeScript, in
+`server/typescript/packages/docs-site/test/explorer-build.test.ts` (the builder) and
+`server/typescript/packages/cli/test/explorer-fixture.test.ts` (the two committed inputs are
+what the CLI writes today). The builder reads no loader, so a port that writes the same effective
+JSON and verify payload feeds it unchanged.
+
 ## Orphaned fixtures (tested but not yet documented)
 
 The fixtures in the nine corpora mapped above (metamodel 428 + yaml 16 + verify 45
 + render 18 + persistence 59 + api-contract 119 + source-resolution 25 + scope 10 +
-dependency 37) each map to a feature doc, and so do the two requirement corpora, `shared-model-conformance` and the
-`cube-model` corpus, whose case lists live in their own READMEs. None are orphaned today. The remaining
+dependency 37) each map to a feature doc, and so do the two requirement corpora, `shared-model-conformance`, the
+`cube-model` corpus and `explorer-conformance`, whose case lists live in their own READMEs. None are orphaned today. The remaining
 corpora in the totals table gate tooling contracts (registry manifests, provider
 composition, agent context, docs emit) rather than user-facing metamodel behaviour,
 so they have no feature-doc row.
