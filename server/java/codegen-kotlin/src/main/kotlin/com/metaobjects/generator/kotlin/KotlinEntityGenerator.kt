@@ -525,7 +525,7 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
                     .addAnnotation(
                         AnnotationSpec.builder(ClassName("kotlin", "Suppress")).addMember("%S", "UNCHECKED_CAST").build(),
                     )
-                    .getter(FunSpec.getterBuilder().addStatement("return %L", expr).build())
+                    .getter(FunSpec.getterBuilder().addStatement("return·(%L)", expr).build())
                     .build(),
             )
         }
