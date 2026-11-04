@@ -59,7 +59,7 @@ interface LedgerRow {
   verdict: string;
   digest: string;
   implementedBy: { ref: string; resolves: boolean; target?: string }[];
-  diagnostics: { code: string; severity: string; source: string }[];
+  diagnostics: { code: string; severity: string; source: string; message: string }[];
 }
 
 describe("explorer fixture — the committed inputs are what the CLI writes today", () => {
