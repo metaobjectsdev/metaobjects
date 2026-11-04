@@ -15,6 +15,7 @@ import com.metaobjects.config.WireFormat;
 import com.metaobjects.field.BooleanField;
 import com.metaobjects.field.CurrencyField;
 import com.metaobjects.field.DecimalField;
+import com.metaobjects.field.DateField;
 import com.metaobjects.field.DoubleField;
 import com.metaobjects.field.EnumField;
 import com.metaobjects.field.FloatField;
@@ -23,6 +24,8 @@ import com.metaobjects.field.LongField;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.field.ObjectField;
 import com.metaobjects.field.StringField;
+import com.metaobjects.field.TimeField;
+import com.metaobjects.field.TimestampField;
 import com.metaobjects.generator.util.RestSurfaceGate;
 import com.metaobjects.identity.MetaIdentity;
 import com.metaobjects.identity.PrimaryIdentity;
@@ -652,6 +655,35 @@ public final class SpringGeneratorSupport {
             || f instanceof FloatField || f instanceof DecimalField || f instanceof CurrencyField;
     }
 
+    private static boolean isTemporalCrossField(MetaField<?> f) {
+        return f instanceof DateField || f instanceof TimeField || f instanceof TimestampField;
+    }
+
+    /**
+     * The comparison expression for two fields, or null when the pair has no sound one. Mirrors the
+     * C# generator: numerics compare with each other, strings and temporals only with their own
+     * subtype (a date has no ordering against a timestamp, and casting both to Comparable would
+     * throw ClassCastException inside the constraint method, turning a create into a 500), and
+     * boolean/enum fields only test equality. Anything else is skipped, like every other port.
+     */
+    private static String crossComparison(MetaField<?> l, MetaField<?> r, String lc, String rc, String op, String jop) {
+        boolean ordering = op.equals("gt") || op.equals("gte") || op.equals("lt") || op.equals("lte");
+        boolean sameSubType = l.getSubType().equals(r.getSubType());
+        if (isNumericCrossField(l) && isNumericCrossField(r)) {
+            return sameSubType
+                ? "((Comparable<Object>) (Object) " + lc + ").compareTo(" + rc + ") " + jop + " 0"
+                : "new java.math.BigDecimal(String.valueOf(" + lc + ")).compareTo(new java.math.BigDecimal(String.valueOf(" + rc + "))) " + jop + " 0";
+        }
+        if (!sameSubType) return null;
+        if (l instanceof StringField || isTemporalCrossField(l)) {
+            return "((Comparable<Object>) (Object) " + lc + ").compareTo(" + rc + ") " + jop + " 0";
+        }
+        if (!ordering && (l instanceof BooleanField || l instanceof EnumField)) {
+            return (op.equals("eq") ? "" : "!") + "java.util.Objects.equals(" + lc + ", " + rc + ")";
+        }
+        return null;
+    }
+
     private static String crossAttr(MetaData v, String attr) {
         if (!v.hasMetaAttr(attr)) return null;
         Object raw = v.getMetaAttr(attr).getValue();
@@ -741,12 +773,8 @@ public final class SpringGeneratorSupport {
                 if (l == null || r == null || jop == null || l.isArrayType() || r.isArrayType()) continue;
                 String lc = ref.apply(l);
                 String rc = ref.apply(r);
-                String cmp;
-                if (isNumericCrossField(l) && isNumericCrossField(r) && !l.getSubType().equals(r.getSubType())) {
-                    cmp = "new java.math.BigDecimal(String.valueOf(" + lc + ")).compareTo(new java.math.BigDecimal(String.valueOf(" + rc + "))) " + jop + " 0";
-                } else {
-                    cmp = "((Comparable<Object>) (Object) " + lc + ").compareTo(" + rc + ") " + jop + " 0";
-                }
+                String cmp = crossComparison(l, r, lc, rc, op, jop);
+                if (cmp == null) continue;
                 expr = lc + " == null || " + rc + " == null || " + cmp;
             } else if (v instanceof RequiredWhenValidator || v instanceof PresentIffValidator) {
                 MetaField<?> t = crossField(entity, crossAttr(v, RequiredWhenValidator.ATTR_FIELD), components);

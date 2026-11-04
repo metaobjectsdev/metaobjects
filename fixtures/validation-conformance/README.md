@@ -122,7 +122,9 @@ is optional, so absence is expressible in every port.
 The semantics mirror the DB `CHECK` derivation in `migrate-ts/src/expected-schema.ts`, with an absent
 or null value standing for SQL `NULL` (and `""` NOT null):
 
-- `comparison` (`startsAt lte endsAt`): passes when either side is null.
+- `comparison` (`startsAt lte endsAt`): passes when either side is null. Fields of different kinds
+  have no ordering and the rule is SKIPPED in every port, never an error (`eventDate lte loggedAt`, a
+  date against a timestamp, is declared on `Event` and must accept a body where the date is later).
 - `requiredWhen`: violated only when the gating field equals `@equals` and the target is null; a null
   gate is unconstrained. Both a string gate (`kind = BIRTH`) and a boolean gate (`flag = true`).
 - `presentIff`: the target is present exactly when the gate equals `@equals`; a null gate counts as

@@ -294,18 +294,11 @@ public class EntityGenerator : IGenerator
 
         EmitClassHeader(sb, entity, className, isProjection, pkFields, ctx);
         // Cross-field validators run on the full create record only (never a read-only view).
-        // The C# base chain is real only when the declaration line actually names a base; fields
-        // the class skips as "inherited" are otherwise absent as properties, so a validator that
-        // references one is skipped rather than emitted against a member that does not exist.
-        var mappedBase = DirectMappedParent(entity, ctx.Config);
-        var declaresBase = mappedBase is not null && LastLineHasBase(sb);
-        var validatingBase = declaresBase && !InstanceArtifacts.IsAbstract(mappedBase!)
-            && HasEffectiveCrossField(mappedBase!) ? mappedBase : null;
-        var absent = mappedBase is not null && !declaresBase
-            ? new HashSet<string>(mappedBase.Fields().Select(f => f.Name), StringComparer.Ordinal)
-            : null;
-        var validateMethod = isProjection ? null : CrossFieldValidateMethod(entity, validatingBase, absent);
-        if (validateMethod is not null && validatingBase is null) AppendValidatableInterface(sb);
+        // A non-TPH entity never has a validating base: its only possible base is an abstract
+        // shape, which declares no Validate, and every property it carries is present on this
+        // class (own or inherited through the base chain), so every effective rule is emitted here.
+        var validateMethod = isProjection ? null : CrossFieldValidateMethod(entity, validatingBase: null);
+        if (validateMethod is not null) AppendValidatableInterface(sb);
         sb.AppendLine("{");
 
         // Nested enum declarations (before the class properties, as C# enum members
@@ -1067,15 +1060,6 @@ public class EntityGenerator : IGenerator
     private static bool HasEffectiveCrossField(MetaObject entity) =>
         entity.Validators().Any(IsCrossFieldValidator);
 
-    private static bool LastLineHasBase(StringBuilder sb)
-    {
-        var len = sb.Length;
-        while (len > 0 && (sb[len - 1] == '\n' || sb[len - 1] == '\r')) len--;
-        var start = len;
-        while (start > 0 && sb[start - 1] != '\n') start--;
-        return sb.ToString(start, len - start).Contains(" : ", StringComparison.Ordinal);
-    }
-
     // Appends `, IValidatableObject` (or ` : IValidatableObject`) to the just-written class
     // declaration line. Works on the builder so an overridden declaration seam still applies.
     private static void AppendValidatableInterface(StringBuilder sb)
@@ -1090,8 +1074,7 @@ public class EntityGenerator : IGenerator
     }
 
     // Returns the emitted Validate method (4-space class-body indent), or null when nothing to emit.
-    private string? CrossFieldValidateMethod(
-        MetaObject entity, MetaObject? validatingBase, ISet<string>? absentProps = null)
+    private string? CrossFieldValidateMethod(MetaObject entity, MetaObject? validatingBase)
     {
         var validators = CrossFieldValidatorsFor(entity, validatingBase);
         if (validators.Count == 0) return null;
@@ -1111,7 +1094,6 @@ public class EntityGenerator : IGenerator
             var f = entity.Fields().FirstOrDefault(x => x.Name == n);
             if (f is null || f.ResolvedIsArray()) return null;
             if (f.IsReadOnlyMutability || f.IsDerived() || generatedKey.Contains(f.Name)) return null;
-            if (absentProps is not null && absentProps.Contains(f.Name)) return null; // not a property of this class
             return CSharpNaming.ScalarFor(f.SubType) is not null || f.SubType == FIELD_SUBTYPE_ENUM ? f : null;
         }
 

@@ -15,6 +15,8 @@
           { "field.string":     { "name": "closedNote" } },
           { "field.boolean":    { "name": "flag" } },
           { "field.string":     { "name": "flagNote" } },
+          { "field.date":       { "name": "eventDate" } },
+          { "field.timestamp":  { "name": "loggedAt" } },
           { "field.string":     { "name": "email" } },
           { "field.string":     { "name": "phone" } },
           { "field.string":     { "name": "review" } },
@@ -24,6 +26,7 @@
           { "validator.requiredWhen": { "name": "birthNeedsSubject", "@field": "subject", "@when": "kind", "@equals": "BIRTH" } },
           { "validator.requiredWhen": { "name": "flaggedNeedsNote", "@field": "flagNote", "@when": "flag", "@equals": "true" } },
           { "validator.presentIff":  { "name": "closedIffNote", "@field": "closedNote", "@when": "state", "@equals": "CLOSED" } },
+          { "validator.comparison":  { "name": "dateVsTimestamp", "@left": "eventDate", "@op": "lte", "@right": "loggedAt" } },
           { "validator.atLeastOne":  { "name": "reachable", "@fields": ["email", "phone"] } },
           { "validator.requiredWhen": { "name": "reviewNeedsReviewer", "@field": "reviewedBy", "@when": "review", "@equals": "DONE" } }
         ]

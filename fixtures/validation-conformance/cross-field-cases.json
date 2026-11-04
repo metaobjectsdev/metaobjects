@@ -258,6 +258,21 @@
         "review": "DONE"
       },
       "expectValid": true
+    },
+    {
+      "name": "comparison-across-kinds-is-skipped",
+      "entity": "Event",
+      "payload": {
+        "startsAt": 1,
+        "endsAt": 2,
+        "kind": "BIRTH",
+        "subject": "p1",
+        "state": "OPEN",
+        "email": "a@b.c",
+        "eventDate": "2030-01-02",
+        "loggedAt": "2020-01-01T00:00:00Z"
+      },
+      "expectValid": true
     }
   ]
 }

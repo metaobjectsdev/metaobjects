@@ -463,6 +463,28 @@ def _assigned_pk_field_names(entity: MetaObject) -> set[str]:
 # (None is SQL NULL; "" is NOT null). Enforced on the Create model only: a Patch body
 # cannot see the merged row, so the DB CHECK stays the enforcement point there.
 _COMPARISON_PY_OP = {"gt": ">", "gte": ">=", "lt": "<", "lte": "<=", "ne": "!=", "eq": "=="}
+_NUMERIC_CROSS = (
+    fc.FIELD_SUBTYPE_INT, fc.FIELD_SUBTYPE_LONG, fc.FIELD_SUBTYPE_DOUBLE, fc.FIELD_SUBTYPE_FLOAT,
+    fc.FIELD_SUBTYPE_DECIMAL, fc.FIELD_SUBTYPE_CURRENCY,
+)
+_ORDERED_CROSS = (
+    fc.FIELD_SUBTYPE_STRING, fc.FIELD_SUBTYPE_DATE, fc.FIELD_SUBTYPE_TIME, fc.FIELD_SUBTYPE_TIMESTAMP,
+)
+
+
+def _comparable(left: MetaField, right: MetaField, op: str) -> bool:
+    """Whether a comparison between these two fields has a sound meaning, as in every port: numerics
+    compare with each other, strings and temporals only with their own subtype (a date has no
+    ordering against a timestamp, and Python raises TypeError on one), and boolean/enum fields
+    only test equality. Anything else is skipped, never rejected."""
+    a, b = left.sub_type, right.sub_type
+    if a in _NUMERIC_CROSS and b in _NUMERIC_CROSS:
+        return True
+    if a != b:
+        return False
+    if a in _ORDERED_CROSS:
+        return True
+    return op in ("eq", "ne") and a in (fc.FIELD_SUBTYPE_BOOLEAN, fc.FIELD_SUBTYPE_ENUM)
 _CROSS_FIELD_SUBTYPES = (
     vc.VALIDATOR_SUBTYPE_COMPARISON,
     vc.VALIDATOR_SUBTYPE_REQUIRED_WHEN,
@@ -515,6 +537,8 @@ def _cross_field_rules_method(
             if left not in by_name or right not in by_name or op is None:
                 continue
             if field_is_array(by_name[str(left)]) or field_is_array(by_name[str(right)]):
+                continue
+            if not _comparable(by_name[str(left)], by_name[str(right)], str(attr(vc.VALIDATOR_ATTR_OP))):
                 continue
             checks.append(
                 f"        if self.{left} is not None and self.{right} is not None:\n"

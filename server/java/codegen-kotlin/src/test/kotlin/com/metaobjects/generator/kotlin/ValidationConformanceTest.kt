@@ -92,7 +92,7 @@ class ValidationConformanceTest {
                 "generated Account.kt failed to compile:\n${compileResult.messages}")
 
             // --- validate each corpus payload through a jakarta Validator ---
-            val mapper = ObjectMapper().registerKotlinModule()
+            val mapper = ObjectMapper().findAndRegisterModules().registerKotlinModule()
             val validator: Validator = Validation.buildDefaultValidatorFactory().validator
 
             val casesJson = String(Files.readAllBytes(corpus.resolve(casesName)), StandardCharsets.UTF_8)

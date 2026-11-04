@@ -64,6 +64,20 @@ here.**
   The codegen-ts tests that type-check generated output with the real TypeScript compiler (28 files,
   the slowest case measured at 3.3s against bun's 5s default) now run under a 30s timeout set in one
   place, `test/compile-timeout.ts`, so a loaded machine cannot report a timeout for correct code.
+- **A cross-field `validator.comparison` between fields of different kinds is skipped in every
+  port, never rejected and never a 500.** Comparing a `field.date` with a `field.timestamp` (or any
+  two strings or temporals of different subtype) has no ordering. Java and Kotlin cast both sides
+  to `Comparable` inside the class-level validity check, so the cast threw `ClassCastException` and
+  a create answered 500 instead of 400; TypeScript compared the two as strings and Python raised a
+  `TypeError` that surfaced as an invalid body. All five ports now follow one rule: numerics compare
+  with each other, strings and temporals only with their own subtype, boolean and enum fields test
+  equality only, and any other pair emits no rule. New shared case
+  `comparison-across-kinds-is-skipped` in `fixtures/validation-conformance/`, run by every port.
+- **Test coverage for cross-field validators.** A subtype form on a TPH hierarchy that declares a
+  cross-field rule now has a test proving the generated form binds the refined body schema (the rule
+  itself was enforced by the cross-field build). The Java check that a Patch is not held to cross-field
+  validators now runs the generated classes (the violating body is rejected by the Dto and accepted
+  by the Patch) instead of comparing generated source text.
 
 - **`meta migrate` refuses, at plan time, to drop a column a view it does not own still reads.**
   With `--from-db`, a declared-`@unmanaged` view or one outside the scoped schemas whose live body

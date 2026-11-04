@@ -83,11 +83,22 @@ public class SpringCrossFieldValidationTest {
 
     /** Violation count Bean Validation reports for {@code json} bound to the compiled {@code EvDto}. */
     private int violations(boolean withValidators, String json) throws Exception {
+        return violations(withValidators, "acme.ev.EvDto", json);
+    }
+
+    /** Violation count Bean Validation reports for {@code json} bound to the compiled {@code className}. */
+    private int violations(boolean withValidators, String className, String json) throws Exception {
         Path src = gen(withValidators);
         Path classes = tmp.newFolder().toPath();
         compile(src, classes);
         try (URLClassLoader cl = new URLClassLoader(new URL[]{ classes.toUri().toURL() }, getClass().getClassLoader())) {
-            Object dto = MAPPER.readValue(json, cl.loadClass("acme.ev.EvDto"));
+            Class<?> cls = cl.loadClass(className);
+            // A Patch is built through its presence-tracking fromJson, never bound field by field;
+            // a Dto binds as a record.
+            Object dto = className.endsWith("Patch")
+                ? cls.getMethod("fromJson", com.fasterxml.jackson.databind.JsonNode.class, ObjectMapper.class)
+                    .invoke(null, MAPPER.readTree(json), MAPPER)
+                : MAPPER.readValue(json, cls);
             Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
             return validator.validate(dto).size();
         }
@@ -106,10 +117,11 @@ public class SpringCrossFieldValidationTest {
     }
 
     @Test
-    public void patchIsUnchangedByCrossFieldValidators() throws Exception {
-        String withV = Files.readString(gen(true).resolve("acme/ev/EvPatch.java"));
-        String without = Files.readString(gen(false).resolve("acme/ev/EvPatch.java"));
-        assertEquals("the generated PATCH body must not change", without, withV);
+    public void patchBodyIsNotHeldToCrossFieldValidators() throws Exception {
+        // Executed, not compared as text: the same violating body is rejected by the full class
+        // and accepted by the partial one, which cannot see the merged row.
+        assertEquals(1, violations(true, "acme.ev.EvDto", VIOLATES_COMPARISON));
+        assertEquals(0, violations(true, "acme.ev.EvPatch", VIOLATES_COMPARISON));
     }
 
     private static void compile(Path srcDir, Path classesDir) throws Exception {

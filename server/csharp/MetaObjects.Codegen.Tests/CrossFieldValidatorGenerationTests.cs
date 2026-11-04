@@ -113,6 +113,21 @@ public class CrossFieldValidatorGenerationTests
     """;
 
     // A decimal compared with a double: C# has no implicit conversion between the two.
+    private const string AbstractParent = """
+    { "metadata.root": { "package": "acme", "children": [
+      { "object.entity": { "name": "Base", "abstract": true, "children": [
+        { "field.int": { "name": "a" } },
+        { "field.int": { "name": "b" } },
+        { "validator.comparison": { "name": "ab", "@left": "a", "@op": "lte", "@right": "b" } }
+      ]}},
+      { "object.entity": { "name": "Item", "extends": "Base", "children": [
+        { "source.rdb": { "@table": "items" } },
+        { "field.long": { "name": "id" } },
+        { "identity.primary": { "@fields": "id" } }
+      ]}}
+    ]}}
+    """;
+
     private const string MixedNumeric = """
     { "metadata.root": { "package": "acme", "children": [
       { "object.entity": { "name": "Quote", "children": [
@@ -126,20 +141,20 @@ public class CrossFieldValidatorGenerationTests
     ]}}
     """;
 
-    private static GenContext Ctx(string model)
+    private static GenContext Ctx(string model, bool abstractShapes = false)
     {
         var r = new MetaDataLoader().Load([new InMemoryStringSource(model, id: "xf.json")]);
         Assert.Empty(r.Errors);
         return new GenContext
         {
             Entities = r.Root.Objects(), Root = r.Root,
-            Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme" },
+            Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme", EmitAbstractShapes = abstractShapes },
         };
     }
 
-    private static Assembly Compile(EntityGenerator generator, string model)
+    private static Assembly Compile(EntityGenerator generator, string model, bool abstractShapes = false)
     {
-        var trees = generator.Generate(Ctx(model)).Select(f => CSharpSyntaxTree.ParseText(f.Content)).ToArray();
+        var trees = generator.Generate(Ctx(model, abstractShapes)).Select(f => CSharpSyntaxTree.ParseText(f.Content)).ToArray();
         var refs = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
             .Split(Path.PathSeparator).Where(p => p.Length > 0)
             .Select(p => (MetadataReference)MetadataReference.CreateFromFile(p)).ToList();
@@ -185,25 +200,26 @@ public class CrossFieldValidatorGenerationTests
     }
 
     [Fact]
-    public void Derived_entity_runs_the_inherited_rule_and_its_own()
+    public void A_child_of_a_concrete_parent_runs_the_inherited_rule_and_its_own()
     {
-        var asm = Compile(new BasedEntityGenerator(), Inherited);
+        // The child is flattened (it carries the parent's properties itself), so the parent's
+        // rule has members to read and runs beside the child's own, with no special case.
+        var asm = Compile(new EntityGenerator(), Inherited);
         Assert.Equal(2, Validate(asm, "Child", "{\"a\":3,\"b\":1,\"c\":1,\"d\":0}").Count);
     }
 
     [Fact]
-    public void Without_an_emitted_base_class_a_validator_on_an_unemitted_member_is_skipped()
+    public void A_child_of_an_emitted_abstract_shape_enforces_the_rule_declared_on_the_shape()
     {
-        // The stock mapped declaration names no C# base, so Child carries only its own fields;
-        // the inherited rule references members it does not have and is skipped.
-        var asm = Compile(new EntityGenerator(), Inherited);
-        Assert.Single(Validate(asm, "Child", "{\"a\":3,\"b\":1,\"c\":1,\"d\":0}"));
+        var asm = Compile(new EntityGenerator(), AbstractParent, abstractShapes: true);
+        Assert.Single(Validate(asm, "Item", "{\"a\":3,\"b\":1}"));
+        Assert.Empty(Validate(asm, "Item", "{\"a\":1,\"b\":3}"));
     }
 
     [Fact]
-    public void Derived_entity_compiles_when_every_base_rule_is_skipped()
+    public void A_child_compiles_when_every_inherited_rule_is_skipped()
     {
-        var asm = Compile(new BasedEntityGenerator(), SkippedParent);
+        var asm = Compile(new EntityGenerator(), SkippedParent);
         Assert.Single(Validate(asm, "Child", "{\"kind\":\"X\"}"));
         Assert.Empty(Validate(asm, "Child", "{\"kind\":\"X\",\"note\":\"n\"}"));
     }
@@ -215,18 +231,5 @@ public class CrossFieldValidatorGenerationTests
         Assert.Single(Validate(asm, "Dog", "{\"lo\":1,\"hi\":2,\"kind\":\"FURRY\"}"));
         Assert.Single(Validate(asm, "Dog", "{\"lo\":3,\"hi\":2,\"kind\":\"FURRY\",\"fur\":\"f\"}"));
         Assert.Empty(Validate(asm, "Dog", "{\"lo\":1,\"hi\":2,\"kind\":\"FURRY\",\"fur\":\"f\"}"));
-    }
-
-    // Emits the metadata `extends` chain as a C# base, the shape an adopter override produces.
-    private sealed class BasedEntityGenerator : EntityGenerator
-    {
-        protected override void EmitClassDeclarationLine(
-            System.Text.StringBuilder sb, MetaObject entity, string className, ClassDeclarationKind kind, GenContext ctx)
-        {
-            if (kind == ClassDeclarationKind.MappedEntity && DirectMappedParent(entity, ctx.Config) is { } p)
-                sb.AppendLine($"public class {className} : {CSharpNaming.Pascal(p.Name)}");
-            else
-                base.EmitClassDeclarationLine(sb, entity, className, kind, ctx);
-        }
     }
 }

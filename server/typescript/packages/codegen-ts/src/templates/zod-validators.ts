@@ -278,6 +278,23 @@ const NUMERIC_SUBTYPES: ReadonlySet<string> = new Set([
   FIELD_SUBTYPE_DECIMAL, FIELD_SUBTYPE_CURRENCY,
 ]);
 
+const ORDERED_SUBTYPES: ReadonlySet<string> = new Set([
+  FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_DATE, FIELD_SUBTYPE_TIME, FIELD_SUBTYPE_TIMESTAMP,
+]);
+
+/** Whether a comparison between these two fields has a sound meaning, as in every port:
+ *  numerics compare with each other, strings and temporals only with their own subtype (a
+ *  date against a timestamp compares two differently shaped strings, which is meaningless),
+ *  and boolean/enum fields only test equality. Anything else is skipped, never rejected. */
+function crossComparable(left: MetaField, right: MetaField, opName: string): boolean {
+  const a = left.subType;
+  const b = right.subType;
+  if (NUMERIC_SUBTYPES.has(a) && NUMERIC_SUBTYPES.has(b)) return true;
+  if (a !== b) return false;
+  if (ORDERED_SUBTYPES.has(a)) return true;
+  return (opName === "eq" || opName === "ne") && (a === FIELD_SUBTYPE_BOOLEAN || a === FIELD_SUBTYPE_ENUM);
+}
+
 /** Names of the fields the INSERT-shaped schemas carry (same skip rules as the emitters). */
 function insertSchemaFieldNameSet(obj: MetaObject): Set<string> {
   const autoGen = autoGenPkFieldNames(obj);
@@ -337,6 +354,7 @@ function crossFieldRefinementBody(obj: MetaObject): string[] {
         const opName = String(v.attr(VALIDATOR_ATTR_OP));
         const op = CROSS_FIELD_OPS[opName];
         if (!left || !right || !op || left.resolvedIsArray() || right.resolvedIsArray()) break;
+        if (!crossComparable(left, right, opName)) break;
         const numeric = NUMERIC_SUBTYPES.has(left.subType);
         const c = numeric
           ? "Number(l) - Number(r)"

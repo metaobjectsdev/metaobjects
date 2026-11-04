@@ -3,12 +3,17 @@ package com.metaobjects.generator.kotlin
 import com.metaobjects.MetaData
 import com.metaobjects.field.BooleanField
 import com.metaobjects.field.CurrencyField
+import com.metaobjects.field.DateField
 import com.metaobjects.field.DecimalField
 import com.metaobjects.field.DoubleField
 import com.metaobjects.field.FloatField
 import com.metaobjects.field.IntegerField
 import com.metaobjects.field.LongField
+import com.metaobjects.field.EnumField
 import com.metaobjects.field.MetaField
+import com.metaobjects.field.StringField
+import com.metaobjects.field.TimeField
+import com.metaobjects.field.TimestampField
 import com.metaobjects.`object`.MetaObject
 import com.metaobjects.validator.AtLeastOneValidator
 import com.metaobjects.validator.ComparisonValidator
@@ -26,6 +31,33 @@ object KotlinCrossFieldRules {
     private fun isNumericCross(f: MetaField<*>): Boolean =
         f is IntegerField || f is LongField || f is DoubleField || f is FloatField ||
             f is DecimalField || f is CurrencyField
+
+    private fun isTemporalCross(f: MetaField<*>): Boolean =
+        f is DateField || f is TimeField || f is TimestampField
+
+    /**
+     * The comparison for two fields, or null when the pair has no sound one. Mirrors the C#
+     * generator: numerics compare with each other, strings and temporals only with their own
+     * subtype (a date has no ordering against a timestamp, and casting both to Comparable throws
+     * ClassCastException inside the validity property, turning a create into a 500), and
+     * boolean/enum fields only test equality. Anything else is skipped, like every other port.
+     */
+    private fun comparison(l: MetaField<*>, r: MetaField<*>, op: String, kop: String, ref: (MetaField<*>) -> String): CodeBlock? {
+        val ordering = op == "gt" || op == "gte" || op == "lt" || op == "lte"
+        val same = l.subType == r.subType
+        if (isNumericCross(l) && isNumericCross(r)) {
+            return if (same) CodeBlock.of("(%L as Comparable<Any>).compareTo(%L) $kop 0", ref(l), ref(r))
+            else CodeBlock.of("java.math.BigDecimal(%L.toString()).compareTo(java.math.BigDecimal(%L.toString())) $kop 0", ref(l), ref(r))
+        }
+        if (!same) return null
+        if (l is StringField || isTemporalCross(l)) {
+            return CodeBlock.of("(%L as Comparable<Any>).compareTo(%L) $kop 0", ref(l), ref(r))
+        }
+        if (!ordering && (l is BooleanField || l is EnumField)) {
+            return CodeBlock.of("(%L %L %L)", ref(l), if (op == "eq") "==" else "!=", ref(r))
+        }
+        return null
+    }
 
     private fun crossAttr(v: MetaData, attr: String): String? =
         if (v.hasMetaAttr(attr)) v.getMetaAttr(attr).value?.toString() else null
@@ -63,16 +95,13 @@ object KotlinCrossFieldRules {
                 is ComparisonValidator -> {
                     val l = fields[crossAttr(v, ComparisonValidator.ATTR_LEFT)] ?: continue
                     val r = fields[crossAttr(v, ComparisonValidator.ATTR_RIGHT)] ?: continue
-                    val op = when (crossAttr(v, ComparisonValidator.ATTR_OP)) {
+                    val opName = crossAttr(v, ComparisonValidator.ATTR_OP)
+                    val op = when (opName) {
                         "gt" -> ">"; "gte" -> ">="; "lt" -> "<"; "lte" -> "<="; "ne" -> "!="; "eq" -> "=="
                         else -> continue
                     }
                     if (l.isArrayType || r.isArrayType) continue
-                    val cmp = if (isNumericCross(l) && isNumericCross(r) && l.subType != r.subType) {
-                        CodeBlock.of("java.math.BigDecimal(%L.toString()).compareTo(java.math.BigDecimal(%L.toString())) $op 0", ref(l), ref(r))
-                    } else {
-                        CodeBlock.of("(%L as Comparable<Any>).compareTo(%L) $op 0", ref(l), ref(r))
-                    }
+                    val cmp = comparison(l, r, opName!!, op, ref) ?: continue
                     CodeBlock.of("%L == null || %L == null || %L", ref(l), ref(r), cmp)
                 }
                 is RequiredWhenValidator, is PresentIffValidator -> {
