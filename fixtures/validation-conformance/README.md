@@ -128,6 +128,8 @@ or null value standing for SQL `NULL` (and `""` NOT null):
 - `presentIff`: the target is present exactly when the gate equals `@equals`; a null gate counts as
   not equal, so the target must be absent.
 - `atLeastOne` (`email`, `phone`): at least one is non-null.
+- A rule naming a field the create body never carries (`reviewedBy`, `@mutability: readOnly`; likewise a
+  derived field or a store-generated key) is skipped, so `review = DONE` without a reviewer is valid.
 
 Each case violates at most one validator (single-violation design). PATCH and partial-update models
 are NOT covered here by design: they do not enforce cross-field rules, and the DB `CHECK` stays the

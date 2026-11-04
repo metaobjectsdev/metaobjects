@@ -17,12 +17,15 @@
           { "field.string":     { "name": "flagNote" } },
           { "field.string":     { "name": "email" } },
           { "field.string":     { "name": "phone" } },
+          { "field.string":     { "name": "review" } },
+          { "field.string":     { "name": "reviewedBy", "@mutability": "readOnly" } },
           { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
           { "validator.comparison":  { "name": "startsBeforeEnds", "@left": "startsAt", "@op": "lte", "@right": "endsAt" } },
           { "validator.requiredWhen": { "name": "birthNeedsSubject", "@field": "subject", "@when": "kind", "@equals": "BIRTH" } },
           { "validator.requiredWhen": { "name": "flaggedNeedsNote", "@field": "flagNote", "@when": "flag", "@equals": "true" } },
           { "validator.presentIff":  { "name": "closedIffNote", "@field": "closedNote", "@when": "state", "@equals": "CLOSED" } },
-          { "validator.atLeastOne":  { "name": "reachable", "@fields": ["email", "phone"] } }
+          { "validator.atLeastOne":  { "name": "reachable", "@fields": ["email", "phone"] } },
+          { "validator.requiredWhen": { "name": "reviewNeedsReviewer", "@field": "reviewedBy", "@when": "review", "@equals": "DONE" } }
         ]
       }}
     ]

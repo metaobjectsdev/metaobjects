@@ -245,6 +245,19 @@
         "phone": "555"
       },
       "expectValid": true
+    },
+    {
+      "name": "rule-on-read-only-field-skipped",
+      "entity": "Event",
+      "payload": {
+        "startsAt": 1,
+        "endsAt": 2,
+        "kind": "OTHER",
+        "state": "OPEN",
+        "email": "a@b.c",
+        "review": "DONE"
+      },
+      "expectValid": true
     }
   ]
 }

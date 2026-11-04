@@ -151,8 +151,8 @@ def test_cross_field_rules_only_on_create_model() -> None:
     assert not hasattr(module.Event, "_cross_field_rules")
     # A partial body that would violate the rules is still accepted by Patch.
     module.EventPatch(startsAt=9, endsAt=1)
-    src = render_entity_model(_load_cross_field_entity())
-    assert src.count("model_validator") == 2  # import + the single decorator
+    with pytest.raises(ValidationError):
+        module.EventCreate(startsAt=9, endsAt=1, email="a@b.c")
 
 
 _ARRAY_MODEL = """

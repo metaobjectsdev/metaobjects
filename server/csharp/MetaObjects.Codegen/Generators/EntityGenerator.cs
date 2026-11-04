@@ -1083,6 +1083,13 @@ public class EntityGenerator : IGenerator
         var validators = CrossFieldValidatorsFor(entity, validatingBase);
         if (validators.Count == 0) return null;
         var baseHasValidate = validatingBase is not null;
+        var generatedKey = entity.PrimaryIdentity() is MetaPrimaryIdentity
+            {
+                Generation: MetaObjects.Core.Identity.IdentityConstants.GENERATION_INCREMENT
+                    or MetaObjects.Core.Identity.IdentityConstants.GENERATION_UUID,
+            } pk
+            ? new HashSet<string>(pk.Fields, StringComparer.Ordinal)
+            : new HashSet<string>(StringComparer.Ordinal);
 
         MetaField? Scalar(object? name)
         {
@@ -1090,6 +1097,7 @@ public class EntityGenerator : IGenerator
             // ADR-0039: resolving Fields() — a referenced field may be inherited.
             var f = entity.Fields().FirstOrDefault(x => x.Name == n);
             if (f is null || f.ResolvedIsArray()) return null;
+            if (f.IsReadOnlyMutability || f.IsDerived() || generatedKey.Contains(f.Name)) return null;
             if (absentProps is not null && absentProps.Contains(f.Name)) return null; // not a property of this class
             return CSharpNaming.ScalarFor(f.SubType) is not null || f.SubType == FIELD_SUBTYPE_ENUM ? f : null;
         }
