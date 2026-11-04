@@ -8,7 +8,11 @@ import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadMemory } from "@metaobjectsdev/sdk";
-import { checkRequirements, scanRequirements } from "../../src/lib/requirement-check.js";
+import {
+  checkRequirements,
+  scanRequirements,
+  WARN_REQUIREMENT_OBJECT_UNCLAIMED,
+} from "../../src/lib/requirement-check.js";
 import { lintRequirements } from "../../src/lib/requirement-lint.js";
 import { requirementLedgerRows } from "../../src/lib/requirement-ledger.js";
 
@@ -50,7 +54,10 @@ describe("requirementLedgerRows", () => {
       const gate = checkRequirements(root, scan);
       expect(gate.length).toBeGreaterThan(0);
       for (const d of [...gate, ...lintRequirements(root, scan.addressed)]) {
-        expect(Object.keys(d).filter((k) => !["code", "message", "path", "severity"].includes(k))).toEqual([]);
+        // Only the object-coverage row names a structured `node` (the unclaimed entity).
+        const allowed = ["code", "message", "path", "severity"];
+        if (d.code === WARN_REQUIREMENT_OBJECT_UNCLAIMED) allowed.push("node");
+        expect(Object.keys(d).filter((k) => !allowed.includes(k))).toEqual([]);
       }
       const rows = requirementLedgerRows(root, scan, gate, lintRequirements(root, scan.addressed));
       const verdicts = rows.map((r) => [r.qualifiedPath, r.verdict, r.diagnostics.map((d) => d.code)]);
