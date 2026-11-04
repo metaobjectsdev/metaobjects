@@ -2,7 +2,7 @@
 // explorer-conformance fixture (requirements, a prompt, an unclaimed entity) and the
 // persistence-conformance fitness model (projections, reports, no requirements).
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
 import { MetaDataLoader, canonicalSerializeEffective } from "@metaobjectsdev/metadata";
@@ -179,5 +179,41 @@ describe("explorer site over the fitness model", async () => {
   test("with no requirements the main page says so, and no page claims an L5 column", () => {
     expect(fitness.page("index.html")).toContain("This model declares no requirements yet");
     expect(fitness.page("model/fitness/Program.html")).not.toContain("Claimed at L5");
+  });
+});
+
+describe("explorer site page paths", () => {
+  const model = (pkg: string | undefined, children: unknown[]): unknown => ({
+    "metadata.root": { ...(pkg !== undefined ? { package: pkg } : {}), children },
+  });
+  const entity = (name: string): unknown => ({ "object.entity": { name, children: [{ "field.string": { name: "title" } }] } });
+
+  test("an object named index does not take its package's index page", () => {
+    const out = scratch();
+    const r = generateExplorerSite({ explorer: buildExplorer({ model: model("acme", [entity("index"), entity("Order")]) }), outDir: out, title: "T" });
+    expect(r.pages).toContain("model/acme/index.html");
+    expect(r.pages).toContain("model/acme/index.node.html");
+    expect(readFileSync(join(out, "model/acme/index.html"), "utf8")).toContain("Order");
+  });
+
+  test("a model with no package gets pages under a directory no package name can take", () => {
+    const out = scratch();
+    const r = generateExplorerSite({ explorer: buildExplorer({ model: model(undefined, [entity("Order")]) }), outDir: out, title: "T" });
+    expect(r.pages).toContain("model/-root/Order.html");
+  });
+
+  test("a prompt's @textRef is read only below the directories it is given", () => {
+    const base = scratch();
+    const prompts = join(base, "prompts");
+    mkdirSync(prompts);
+    writeFileSync(join(prompts, "ok.mustache"), "Hello {{name}}");
+    writeFileSync(join(base, "secret.mustache"), "outside");
+    const prompt = (name: string, ref: string): unknown => ({ "template.prompt": { name, "@textRef": ref } });
+    const explorer = buildExplorer({ model: model("acme", [prompt("Ok", "ok"), prompt("Up", "../secret"), prompt("Abs", join(base, "secret"))]) });
+    const texts = readPromptTexts(explorer, [prompts]);
+    expect(texts.get("acme::Ok")).toBe("Hello {{name}}");
+    expect(texts.has("acme::Up")).toBe(false);
+    expect(texts.has("acme::Abs")).toBe(false);
+    expect(existsSync(join(base, "secret.mustache"))).toBe(true);
   });
 });

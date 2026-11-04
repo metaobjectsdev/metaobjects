@@ -834,8 +834,11 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // check below. A Set because a generator may run once per target.
   const emptyGenerators = new Set<string>();
   // `ctx.runOutput`: what this run has generated so far, keyed as the manifest keys it. A run
-  // narrowed with `--generators` adds what the committed manifest records for the generators
-  // it did not run, so a narrowed run reads what a full run reads.
+  // narrowed with `--generators` or to some entities adds what the committed manifest records
+  // for the rest — the declared generators it did not run, and the objects it did not render —
+  // so a narrowed run reads what a full run reads. A record for a generator no longer declared,
+  // or for a file no longer on disk, is stale and stays out.
+  const entityNarrowed = opts.entityFilter !== undefined && opts.entityFilter.length > 0;
   const runOutputFiles = (ran: readonly Generator[]): RunOutputFile[] => {
     const out = new Map<string, RunOutputFile>();
     const keyOf = (fullPath: string): string | undefined => {
@@ -843,10 +846,16 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
       if (outsideProject(fullPath)) return undefined;
       return relative(projectRoot, fullPath).split(sep).join("/");
     };
-    if (opts.generatorNames !== undefined) {
+    if (opts.generatorNames !== undefined || entityNarrowed) {
       const ranNames = new Set(ran.map((g) => g.name));
+      const declaredNames = new Set(config.generators.map((g) => g.name));
+      const renderedNodes = new Set(safeEntities.map((e) => e.resolutionKey()));
       for (const rec of listGeneratedProvenance(genStateDir)) {
-        if (ranNames.has(rec.generatedBy)) continue;
+        if (!declaredNames.has(rec.generatedBy)) continue;
+        // A generator that ran states its own output, except for the objects an entity
+        // filter kept it from.
+        if (ranNames.has(rec.generatedBy) && (!entityNarrowed || rec.sourceNode === undefined || renderedNodes.has(rec.sourceNode))) continue;
+        if (projectRoot !== undefined && !existsSync(join(projectRoot, rec.path))) continue;
         out.set(rec.path, rec);
       }
     }

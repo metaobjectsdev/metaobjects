@@ -173,12 +173,22 @@ async function explorerSite(ctx: GenContext, project: string, prefix: string, op
   for (const f of ctx.runOutput?.() ?? []) {
     manifest[f.path] = { generatedBy: f.generatedBy, ...(f.sourceNode !== undefined && { sourceNode: f.sourceNode }) };
   }
-  const ledger = ctx.requirementLedger?.();
+  // The ledger is the requirement gate's; a gate that throws leaves the section out (as a
+  // missing verify input does) rather than failing the whole run in the docs step.
+  let ledger: unknown;
+  try {
+    ledger = ctx.requirementLedger?.();
+  } catch (err) {
+    ctx.warn(`docs-site: the requirement ledger could not be built, so the site shows none: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  // No route at all means this run recorded none (no routes generator, or REST off), which the
+  // site says as such; an empty list would claim the run mounted nothing.
+  const routes = runRoutes(ctx);
   const explorer = buildExplorer({
     model: JSON.parse(canonicalSerializeEffective(ctx.loadedRoot)) as unknown,
     ...(ledger !== undefined && { verify: ledger }),
     manifest,
-    routes: runRoutes(ctx),
+    ...(routes.length > 0 && { routes }),
   });
   const texts = readPromptTexts(explorer, promptSourceDirs(ctx, project, opts, ctx.sourceRoots ?? []));
   const ownedTemplates = join(project, OWNED_DOCS_SITE_DIR, "templates");

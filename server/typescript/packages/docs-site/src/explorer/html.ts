@@ -8,6 +8,7 @@
 //   - a ROLL-UP of the statuses below is a separate stacked bar, and never repaints the chip.
 // Nothing here colours a test result: the build does not read one.
 
+import { REQUIREMENT_ATTR_DISPOSITION } from "@metaobjectsdev/metadata";
 import { STATUSES, STATUS_GLYPH, type ReqEntry, type Rollup } from "./index-model.js";
 
 export function esc(s: unknown): string {
@@ -45,7 +46,7 @@ export function verdictBadge(r: ReqEntry): string {
 
 /** The disposition pill (`accepted`, `deferred`). */
 export function dispositionPill(r: ReqEntry): string {
-  const d = r.node.attrs["disposition"];
+  const d = r.node.attrs[REQUIREMENT_ATTR_DISPOSITION];
   return typeof d === "string" ? `<span class="pill" title="@disposition">${esc(d)}</span>` : "";
 }
 

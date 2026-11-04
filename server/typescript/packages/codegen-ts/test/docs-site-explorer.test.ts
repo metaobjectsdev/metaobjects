@@ -63,9 +63,22 @@ describe("docsSiteFile() builds the model explorer", () => {
     expect(readFileSync(join(tmp, "docs", "site", "api.html"), "utf8")).toContain("/api/");
   });
 
-  test("without a routes generator in the run, no route is listed", async () => {
+  test("without a routes generator in the run, the site says no routes were recorded, not that none are mounted", async () => {
     await runGen({ config: config([entityFile(), docsSiteFile()]), metadata: root, projectRoot: tmp, sourceRoots: [sources] });
-    expect(explorerOf().api ?? []).toEqual([]);
+    expect(explorerOf().api).toBeUndefined();
+    expect(readFileSync(join(tmp, "docs", "site", "api.html"), "utf8")).toContain("recorded no routes");
+  });
+
+  test("a requirement ledger that throws leaves the ledger out with a warning, and the site still builds", async () => {
+    const result = await runGen({
+      config: config([docsSiteFile()]),
+      metadata: root,
+      projectRoot: tmp,
+      sourceRoots: [sources],
+      requirementLedger: () => { throw new Error("gate exploded"); },
+    });
+    expect(explorerOf().ledger).toBeUndefined();
+    expect(result.warnings.some((w) => w.includes("gate exploded"))).toBe(true);
   });
 
   test("the requirement ledger comes from the caller, asked for once", async () => {

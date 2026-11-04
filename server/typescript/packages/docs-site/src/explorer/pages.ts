@@ -63,7 +63,12 @@ import {
   TYPE_SEGMENT,
 } from "@metaobjectsdev/metadata/constants";
 import {
+  LAYOUT_DATA_GRID_ATTR_COLUMNS,
+  LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_FIELD,
+  LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_ORDER,
+  LAYOUT_DATA_GRID_ATTR_PAGE_SIZE,
   REQUIREMENT_ATTR_COUNTEREXAMPLE,
+  REQUIREMENT_ATTR_DISPOSITION,
   REQUIREMENT_ATTR_STATEMENT,
   REQUIREMENT_ATTR_TRACKED_BY,
   REQUIREMENT_LEVEL_OBJECT,
@@ -112,8 +117,16 @@ const byCodeUnit = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0
 const str = (v: unknown): string | undefined => (typeof v === "string" ? v : undefined);
 const strs = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : typeof v === "string" ? [v] : []);
 
+/** The directory of a package's pages. A package segment is an identifier, so `-root` (for
+ *  the empty package) cannot be one. */
 function pkgDir(pkg: string): string {
-  return pkg === "" ? "_root" : pkg.split("::").join("/");
+  return pkg === "" ? "-root" : pkg.split("::").join("/");
+}
+
+/** A page's file stem: the name, unless it would take the package page's `index.html` (on a
+ *  case-insensitive file system too). */
+function pageStem(name: string): string {
+  return name.toLowerCase() === "index" ? `${name}.node` : name;
 }
 
 /** A short form of an id for display: the part after the package. */
@@ -128,7 +141,7 @@ export class Pages {
   // ─── Addresses ───────────────────────────────────────────────────────────────
 
   objectPage(n: ExplorerNode): string {
-    return `model/${pkgDir(n.package)}/${n.name}.html`;
+    return `model/${pkgDir(n.package)}/${pageStem(n.name)}.html`;
   }
 
   packagePage(pkg: string): string {
@@ -136,7 +149,7 @@ export class Pages {
   }
 
   reqPage(r: ReqEntry): string {
-    return `requirements/${pkgDir(r.node.package)}/${this.reqPath(r)}.html`;
+    return `requirements/${pkgDir(r.node.package)}/${pageStem(this.reqPath(r))}.html`;
   }
 
   /** The requirement's dotted path, as every `verify` diagnostic prints it. */
@@ -470,11 +483,11 @@ export class Pages {
 
   private layoutRow(l: ExplorerNode): Record<string, unknown> {
     const parts: string[] = [];
-    const cols = strs(l.attrs["columns"]);
+    const cols = strs(l.attrs[LAYOUT_DATA_GRID_ATTR_COLUMNS]);
     if (cols.length > 0) parts.push(`columns ${cols.map((c) => `<code>${esc(c)}</code>`).join(", ")}`);
-    const sort = str(l.attrs["defaultSortField"]);
-    if (sort !== undefined) parts.push(`sorted by <code>${esc(sort)}</code>${str(l.attrs["defaultSortOrder"]) !== undefined ? ` ${esc(str(l.attrs["defaultSortOrder"]))}` : ""}`);
-    if (typeof l.attrs["pageSize"] === "number") parts.push(`${l.attrs["pageSize"]} per page`);
+    const sort = str(l.attrs[LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_FIELD]);
+    if (sort !== undefined) parts.push(`sorted by <code>${esc(sort)}</code>${str(l.attrs[LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_ORDER]) !== undefined ? ` ${esc(str(l.attrs[LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_ORDER]))}` : ""}`);
+    if (typeof l.attrs[LAYOUT_DATA_GRID_ATTR_PAGE_SIZE] === "number") parts.push(`${l.attrs[LAYOUT_DATA_GRID_ATTR_PAGE_SIZE]} per page`);
     return { kind: esc(`${l.type}.${l.subType}`), name: esc(l.name), detailHtml: parts.join(", ") };
   }
 
@@ -797,7 +810,7 @@ export class Pages {
       );
       const unclaimed = ix.storedEntities().filter((e) => this.unclaimedEntity(e));
       card("Entities no requirement claims", unclaimed.length, "meta verify", "The gate's coverage warning. Each is a capability nobody has written down.", unclaimed.length > 0 ? unclaimed.map((e) => this.link(from, e.id)).join(", ") : `<div class="sub">None.</div>`);
-      const undecided = ix.requirements.filter((r) => (r.status === REQUIREMENT_STATUS_PARTIAL || r.status === REQUIREMENT_STATUS_PLANNED) && r.node.attrs["disposition"] === undefined);
+      const undecided = ix.requirements.filter((r) => (r.status === REQUIREMENT_STATUS_PARTIAL || r.status === REQUIREMENT_STATUS_PLANNED) && r.node.attrs[REQUIREMENT_ATTR_DISPOSITION] === undefined);
       card("Undecided gaps", undecided.length, "meta verify", "A partial or planned entry with no <code>@disposition</code>: a gap nobody has ruled on. The gate counts these.", list(undecided.map((r) => `${levelBadge(r)}${this.reqLink(from, r)} ${statusChip(r.status)}`)));
     }
     if (ix.hasRequirements()) {

@@ -20,7 +20,7 @@
 // that index instead. The pages carry Pagefind's markup for it.
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { render, InMemoryProvider } from "@metaobjectsdev/render";
 import { REQUIREMENT_ATTR_STATEMENT, REQUIREMENT_SUBTYPE_ARCHITECTURAL, REQUIREMENT_SUBTYPE_FUNCTIONAL } from "@metaobjectsdev/metadata";
@@ -110,8 +110,12 @@ export function readPromptTexts(explorer: ExplorerJson, dirs: readonly string[])
   for (const n of explorer.nodes) {
     const ref = n.attrs[TEMPLATE_ATTR_TEXT_REF];
     if (n.parent !== undefined || typeof ref !== "string") continue;
+    // A ref names a file below one of the directories: an absolute ref, or one that climbs out
+    // with `..`, is not read, so a model cannot pull an arbitrary file into a published page.
+    const segments = ref.split(/[\\/]/);
+    if (isAbsolute(ref) || segments.some((s) => s === ".." || s === "")) continue;
     for (const d of dirs) {
-      const p = join(d, ...ref.split("/")) + ".mustache";
+      const p = join(d, ...segments) + ".mustache";
       if (existsSync(p)) {
         out.set(n.id, readFileSync(p, "utf8"));
         break;
@@ -134,7 +138,11 @@ export function generateExplorerSite(opts: ExplorerSiteOptions): ExplorerSiteRes
   const pages: string[] = [];
   const files: string[] = [];
 
+  const written = new Set<string>();
   const write = (rel: string, content: string): void => {
+    // Two nodes that map to one page would silently keep only the last; refuse instead.
+    if (written.has(rel)) throw new Error(`docs-site explorer: two pages map to ${rel}`);
+    written.add(rel);
     const abs = join(opts.outDir, rel);
     mkdirSync(dirname(abs), { recursive: true });
     writeFileSync(abs, content);

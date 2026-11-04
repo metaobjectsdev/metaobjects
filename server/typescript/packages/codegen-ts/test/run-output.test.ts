@@ -2,7 +2,7 @@
 // model explorer) runs after every other generator and reads the files through `ctx.runOutput`,
 // keyed as the manifest keys them. `requirementLedger` is the caller's callback, called once.
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { MetaDataLoader } from "@metaobjectsdev/metadata";
@@ -12,13 +12,14 @@ import { defineConfig } from "../src/metaobjects-config.js";
 import { perEntity, type Generator, type RunOutputFile } from "../src/generator.js";
 
 const FIXTURE = resolve(import.meta.dir, "fixtures", "single-entity.json");
+const TWO = resolve(import.meta.dir, "fixtures", "two-entities-fk.json");
 
 let tmp: string;
 beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), "codegen-run-output-")); });
 afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
 
-async function load() {
-  return (await new MetaDataLoader().load([new FileSource(FIXTURE)])).root;
+async function load(file = FIXTURE) {
+  return (await new MetaDataLoader().load([new FileSource(file)])).root;
 }
 
 function reader(seen: { files?: readonly RunOutputFile[] | undefined; ledger?: unknown[] }): Generator {
@@ -67,5 +68,24 @@ describe("readsRunOutput", () => {
     const narrowed = defineConfig({ outDir: join(tmp, "gen"), extStyle: "none", dbImport: "../db", dialect: "sqlite", generators: [alpha, reader(seen)] });
     await runGen({ config: narrowed, metadata: await load(), projectRoot: tmp, generatorNames: ["reader"] });
     expect(seen.files).toEqual([{ path: "gen/Post.alpha.ts", generatedBy: "alpha", sourceNode: "demo::Post" }]);
+  });
+
+  test("a run narrowed to some entities still reads the other objects' files from the manifest", async () => {
+    const config = (seen: { files?: readonly RunOutputFile[] | undefined }) =>
+      defineConfig({ outDir: join(tmp, "gen"), extStyle: "none", dbImport: "../db", dialect: "sqlite", generators: [alpha, reader(seen)] });
+    await runGen({ config: config({}), metadata: await load(TWO), projectRoot: tmp });
+    const seen: { files?: readonly RunOutputFile[] | undefined } = {};
+    await runGen({ config: config(seen), metadata: await load(TWO), projectRoot: tmp, entityFilter: ["Post"] });
+    expect(seen.files?.map((f) => f.path)).toEqual(["gen/Post.alpha.ts", "gen/User.alpha.ts"]);
+  });
+
+  test("a narrowed run leaves out records for a generator no longer declared or a file no longer on disk", async () => {
+    const beta: Generator = { name: "beta", generate: perEntity((e) => ({ path: `${e.name}.beta.ts`, content: "// b\n" })) };
+    const base = { outDir: join(tmp, "gen"), extStyle: "none" as const, dbImport: "../db", dialect: "sqlite" as const };
+    await runGen({ config: defineConfig({ ...base, generators: [alpha, beta, reader({})] }), metadata: await load(TWO), projectRoot: tmp });
+    unlinkSync(join(tmp, "gen", "User.alpha.ts"));
+    const seen: { files?: readonly RunOutputFile[] | undefined } = {};
+    await runGen({ config: defineConfig({ ...base, generators: [alpha, reader(seen)] }), metadata: await load(TWO), projectRoot: tmp, generatorNames: ["reader"] });
+    expect(seen.files?.map((f) => f.path)).toEqual(["gen/Post.alpha.ts"]);
   });
 });
