@@ -5,7 +5,8 @@
 // codec must be declared exactly once in that file. Declaring it on both sides is a
 // duplicate-identifier compile error, i.e. the same class of bug as emitting none.
 
-import { describe, test, expect } from "bun:test";
+import { describe, test, expect, setDefaultTimeout } from "bun:test";
+import { COMPILE_TEST_TIMEOUT_MS } from "../compile-timeout.js";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
@@ -15,6 +16,8 @@ import { makeRenderContext } from "../../src/render-context.js";
 import { buildPkMap } from "../../src/pk-resolver.js";
 import { buildRelationMap } from "../../src/relation-resolver.js";
 import type { GenContext } from "../../src/generator.js";
+
+setDefaultTimeout(COMPILE_TEST_TIMEOUT_MS);
 
 async function loadRoot() {
   const json = JSON.stringify({

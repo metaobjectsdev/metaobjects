@@ -48,6 +48,46 @@ here.**
   column, instead of suggesting a `@column` they already have. The error code is unchanged. New
   conformance fixtures: `column-name-shared-in-sql-view-ok`, `error-column-name-collision-derived-view` and
   `error-column-name-collision-table-with-sql-view`.
+- **C# codegen: an entity that extends another no longer loses the parent's properties.** The member
+  loop skipped every inherited field but the class declaration never named the base, so the fields
+  appeared nowhere. A child of a **concrete** parent now declares the parent's properties itself and
+  names no base: each concrete entity owns a table with all its columns (what `meta migrate` creates
+  and the other ports' models carry), and `class Child : Parent` between two mapped entities is an EF
+  inheritance hierarchy (one shared table, or a child table holding only its own columns). A child of
+  an **abstract** parent with `EmitAbstractShapes` on now emits `class Child : Base`, as the
+  generator always meant to, and declares only its own members. Regenerating changes those two shapes
+  of C# output only. An adopter override of `EmitClassDeclarationLine` that names a concrete parent as
+  the base now gets that parent's properties twice; drop the base from the override.
+- **Test flakes fixed at their cause.** `GenCommandTests.Gen_writes_the_hash_manifest_beside_the_metadata_not_in_cwd`
+  (C# Cli) failed about one run in five because `DependencyCliTests` runs `gen` in process, which
+  changes the process-wide working directory, without joining the serial collection every other
+  such class is in; the two classes ran in parallel and one read the other's directory as the cwd.
+  The codegen-ts tests that type-check generated output with the real TypeScript compiler (28 files,
+  the slowest case measured at 3.3s against bun's 5s default) now run under a 30s timeout whose value
+  lives in one place, `test/compile-timeout.ts`. Each of those files calls `setDefaultTimeout` with
+  it, because bun applies that call only to the file that makes it, so the timeout holds in a plain
+  `bun test` as well as in CI, and a loaded machine no longer reports a timeout for correct code.
+- **A cross-field `validator.comparison` between fields of different kinds is skipped in every
+  port, never rejected and never a 500.** Comparing a `field.date` with a `field.timestamp` (or any
+  two strings or temporals of different subtype) has no ordering. Java and Kotlin cast both sides
+  to `Comparable` inside the class-level validity check, so the cast threw `ClassCastException` and
+  a create answered 500 instead of 400; TypeScript compared the two as strings and Python raised a
+  `TypeError` that surfaced as an invalid body. All five ports now follow one rule: numerics compare
+  with each other, strings and temporals only with their own subtype and `@localTime` flag (a
+  `field.timestamp` is an instant and a `@localTime` one a wall clock, which is a different native
+  type in every port), boolean and enum fields test
+  `eq` / `ne` only (also on two `uuid`, `uri` or `inet` fields), and any other pair emits no rule, so an
+  ordering test on two booleans or two enums is no longer enforced by the generated validators (C# never
+  did). The database `CHECK` still covers the pair where the database can compare it. New shared cases
+  `comparison-across-kinds-is-skipped`, `comparison-instant-vs-local-timestamp-is-skipped`,
+  `uuid-ne-rejects-equal-ids` and `uuid-ne-accepts-different-ids`
+  in `fixtures/validation-conformance/`, run by every port.
+- **Test coverage for cross-field validators.** A subtype form on a TPH hierarchy that declares a
+  cross-field rule now has a test proving the generated form binds the refined body schema (the rule
+  itself was enforced by the cross-field build). The Java check that a Patch is not held to cross-field
+  validators now runs the generated classes (the violating body is rejected by the Dto and accepted
+  by the Patch) instead of comparing generated source text.
+
 - **`meta migrate` refuses, at plan time, to drop a column a view it does not own still reads.**
   With `--from-db`, a declared-`@unmanaged` view or one outside the scoped schemas whose live body
   names the dropped column now blocks the `drop-column`, and the message names the view and the

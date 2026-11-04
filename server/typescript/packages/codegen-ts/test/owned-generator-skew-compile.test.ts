@@ -13,7 +13,8 @@
 // Each mix of old/current entity and queries generators is generated and compiled with the
 // real TypeScript compiler.
 
-import { describe, test, expect } from "bun:test";
+import { describe, test, expect, setDefaultTimeout } from "bun:test";
+import { COMPILE_TEST_TIMEOUT_MS } from "./compile-timeout.js";
 import { mkdtempSync, rmSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import ts from "typescript";
@@ -25,6 +26,8 @@ import { entityFile as currentEntity } from "../src/reference/entity.js";
 import { queriesFile as currentQueries } from "../src/reference/queries.js";
 import { entityFile as ownedEntity108 } from "./fixtures/owned-1.0.8/entity.js";
 import { queriesFile as ownedQueries108 } from "./fixtures/owned-1.0.8/queries.js";
+
+setDefaultTimeout(COMPILE_TEST_TIMEOUT_MS);
 
 const FIXTURES = ["autoset-timestamps.json", "extends-chain.json", "two-entities-fk.json", "cross-package-vo.json"];
 

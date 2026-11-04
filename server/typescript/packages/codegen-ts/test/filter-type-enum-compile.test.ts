@@ -12,7 +12,8 @@
 // `@ts-expect-error` below must be USED (an unused one is TS2578), and the positive
 // assignments must type-check.
 
-import { describe, test, expect } from "bun:test";
+import { describe, test, expect, setDefaultTimeout } from "bun:test";
+import { COMPILE_TEST_TIMEOUT_MS } from "./compile-timeout.js";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
@@ -22,6 +23,8 @@ import { makeRenderContext } from "../src/render-context.js";
 import { buildPkMap } from "../src/pk-resolver.js";
 import { buildRelationMap } from "../src/relation-resolver.js";
 import type { GenContext } from "../src/generator.js";
+
+setDefaultTimeout(COMPILE_TEST_TIMEOUT_MS);
 
 const MODEL = {
   "metadata.root": {

@@ -258,6 +258,66 @@
         "review": "DONE"
       },
       "expectValid": true
+    },
+    {
+      "name": "comparison-across-kinds-is-skipped",
+      "entity": "Event",
+      "payload": {
+        "startsAt": 1,
+        "endsAt": 2,
+        "kind": "BIRTH",
+        "subject": "p1",
+        "state": "OPEN",
+        "email": "a@b.c",
+        "eventDate": "2030-01-02",
+        "loggedAt": "2020-01-01T00:00:00Z"
+      },
+      "expectValid": true
+    },
+    {
+      "name": "comparison-instant-vs-local-timestamp-is-skipped",
+      "entity": "Event",
+      "payload": {
+        "startsAt": 1,
+        "endsAt": 2,
+        "kind": "BIRTH",
+        "subject": "p1",
+        "state": "OPEN",
+        "email": "a@b.c",
+        "loggedAt": "2030-01-02T00:00:00Z",
+        "wallClock": "2020-01-01T00:00:00"
+      },
+      "expectValid": true
+    },
+    {
+      "name": "uuid-ne-rejects-equal-ids",
+      "entity": "Event",
+      "payload": {
+        "startsAt": 1,
+        "endsAt": 2,
+        "kind": "BIRTH",
+        "subject": "p1",
+        "state": "OPEN",
+        "email": "a@b.c",
+        "ownerId": "3f2b1c1e-8a64-4d0e-9a52-1f6c0d2b7a10",
+        "approverId": "3f2b1c1e-8a64-4d0e-9a52-1f6c0d2b7a10"
+      },
+      "expectValid": false
+    },
+    {
+      "name": "uuid-ne-accepts-different-ids",
+      "entity": "Event",
+      "payload": {
+        "startsAt": 1,
+        "endsAt": 2,
+        "kind": "BIRTH",
+        "subject": "p1",
+        "state": "OPEN",
+        "email": "a@b.c",
+        "ownerId": "3f2b1c1e-8a64-4d0e-9a52-1f6c0d2b7a10",
+        "approverId": "9b7d4e22-0c1a-4f3b-8d65-2a7e9c5f1b34"
+      },
+      "expectValid": true
     }
   ]
 }

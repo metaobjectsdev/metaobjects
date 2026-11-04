@@ -7,7 +7,8 @@
 // asserts the structure AND compiles the real generated output with tsc — the read
 // type + query code must type-check (`typeof view.$inferSelect`, the re-read, etc.).
 
-import { describe, test, expect } from "bun:test";
+import { describe, test, expect, setDefaultTimeout } from "bun:test";
+import { COMPILE_TEST_TIMEOUT_MS } from "../compile-timeout.js";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
@@ -21,6 +22,8 @@ import { entityFile as refEntityFile } from "../../src/reference/entity.js";
 import { queriesFile as refQueriesFile } from "../../src/reference/queries.js";
 import type { GenContext } from "../../src/generator.js";
 import type { Dialect } from "../../src/metaobjects-config.js";
+
+setDefaultTimeout(COMPILE_TEST_TIMEOUT_MS);
 
 // Customer + a write-through Order (replica view v_order_with_customer, derived
 // customerName from Customer.name via the customer join).

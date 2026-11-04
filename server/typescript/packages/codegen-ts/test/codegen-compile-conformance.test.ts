@@ -29,7 +29,8 @@
 // The peer lanes are the same test in each port. If one port drops out, that port keeps
 // precisely the bug class this exists to catch — so a skip here is never "just this lane".
 
-import { describe, test, expect } from "bun:test";
+import { describe, test, expect, setDefaultTimeout } from "bun:test";
+import { COMPILE_TEST_TIMEOUT_MS } from "./compile-timeout.js";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -48,6 +49,8 @@ import { makeRenderContext } from "../src/render-context.js";
 import { buildPkMap } from "../src/pk-resolver.js";
 import { buildRelationMap } from "../src/relation-resolver.js";
 import type { GenContext } from "../src/generator.js";
+
+setDefaultTimeout(COMPILE_TEST_TIMEOUT_MS);
 
 // test → codegen-ts → packages → typescript → server → repo root
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
