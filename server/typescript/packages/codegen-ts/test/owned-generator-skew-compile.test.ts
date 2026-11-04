@@ -14,6 +14,7 @@
 // real TypeScript compiler.
 
 import { describe, test, expect } from "bun:test";
+import "./compile-timeout.js";
 import { mkdtempSync, rmSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import ts from "typescript";

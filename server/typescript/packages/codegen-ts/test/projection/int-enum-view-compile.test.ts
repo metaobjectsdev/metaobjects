@@ -17,6 +17,7 @@
 // declare the codec, is covered by `int-enum-replica-view-no-dup.test.ts`.
 
 import { describe, test, expect } from "bun:test";
+import "../compile-timeout.js";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";

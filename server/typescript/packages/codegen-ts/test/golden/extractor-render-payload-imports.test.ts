@@ -16,6 +16,7 @@
 // The payload import must RESOLVE (no TS2307) and the payload type must be found.
 
 import { describe, test, expect, afterAll } from "bun:test";
+import "../compile-timeout.js";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";

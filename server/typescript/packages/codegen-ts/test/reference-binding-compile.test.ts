@@ -13,6 +13,7 @@
 //     module that has none: the rows live in the discriminator base's table.
 
 import { describe, expect, test } from "bun:test";
+import "./compile-timeout.js";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";

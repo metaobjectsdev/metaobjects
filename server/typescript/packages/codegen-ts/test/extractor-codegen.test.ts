@@ -11,6 +11,7 @@
 // emitted extractor module under bun, and CALL the generated functions.
 
 import { describe, test, expect, afterAll } from "bun:test";
+import "./compile-timeout.js";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";

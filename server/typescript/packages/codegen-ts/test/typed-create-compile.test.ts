@@ -11,6 +11,7 @@
 // clean, a misspelt or missing field is an error at the call site.
 
 import { describe, test, expect } from "bun:test";
+import "./compile-timeout.js";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";

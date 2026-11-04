@@ -15,6 +15,7 @@
 // only the extension errors this fix targets are asserted.
 
 import { describe, test, expect } from "bun:test";
+import "./compile-timeout.js";
 import { mkdtempSync, rmSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";

@@ -48,6 +48,23 @@ here.**
   column, instead of suggesting a `@column` they already have. The error code is unchanged. New
   conformance fixtures: `column-name-shared-in-sql-view-ok`, `error-column-name-collision-derived-view` and
   `error-column-name-collision-table-with-sql-view`.
+- **C# codegen: an entity that extends another no longer loses the parent's properties.** The member
+  loop skipped every inherited field but the class declaration never named the base, so the fields
+  appeared nowhere. A child of a **concrete** parent now declares the parent's properties itself and
+  names no base: each concrete entity owns a table with all its columns (what `meta migrate` creates
+  and the other ports' models carry), and `class Child : Parent` between two mapped entities is an EF
+  inheritance hierarchy (one shared table, or a child table holding only its own columns). A child of
+  an **abstract** parent with `EmitAbstractShapes` on now emits `class Child : Base`, as the
+  generator always meant to, and declares only its own members. Regenerating changes those two shapes
+  of C# output only.
+- **Test flakes fixed at their cause.** `GenCommandTests.Gen_writes_the_hash_manifest_beside_the_metadata_not_in_cwd`
+  (C# Cli) failed about one run in five because `DependencyCliTests` runs `gen` in process, which
+  changes the process-wide working directory, without joining the serial collection every other
+  such class is in; the two classes ran in parallel and one read the other's directory as the cwd.
+  The codegen-ts tests that type-check generated output with the real TypeScript compiler (28 files,
+  the slowest case measured at 3.3s against bun's 5s default) now run under a 30s timeout set in one
+  place, `test/compile-timeout.ts`, so a loaded machine cannot report a timeout for correct code.
+
 - **`meta migrate` refuses, at plan time, to drop a column a view it does not own still reads.**
   With `--from-db`, a declared-`@unmanaged` view or one outside the scoped schemas whose live body
   names the dropped column now blocks the `drop-column`, and the message names the view and the

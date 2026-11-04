@@ -11,6 +11,7 @@
 // chain is under test: namesFile()'s `emitsNames` marker → the runner's aggregation →
 // ResolvedGenConfig.includeNames + RenderContext.includeNames → the template.
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
+import "../compile-timeout.js";
 import { existsSync, mkdtempSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";

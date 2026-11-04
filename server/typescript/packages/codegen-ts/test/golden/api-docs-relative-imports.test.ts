@@ -22,6 +22,7 @@
 //   `routesFileHono` generator's `emitsHonoRoutes` marker).
 
 import { describe, test, expect, afterAll } from "bun:test";
+import "../compile-timeout.js";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";

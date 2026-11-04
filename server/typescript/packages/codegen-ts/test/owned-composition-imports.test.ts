@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import "./compile-timeout.js";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";

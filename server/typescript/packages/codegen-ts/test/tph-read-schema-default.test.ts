@@ -16,6 +16,7 @@
 // the field is declared at — and by compiling the tree, which is the symptom adopters saw.
 
 import { describe, test, expect } from "bun:test";
+import "./compile-timeout.js";
 import { mkdtempSync, writeFileSync, rmSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { pathToFileURL } from "node:url";

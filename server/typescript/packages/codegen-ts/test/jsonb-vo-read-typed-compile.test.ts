@@ -9,6 +9,7 @@
 // the generated finder, compiled against the generated tree with the real TS compiler.
 
 import { describe, test, expect } from "bun:test";
+import "./compile-timeout.js";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";

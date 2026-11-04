@@ -482,7 +482,7 @@ public class EntityGenerator : IGenerator
                 // HasValue<Base>(...) fails model validation ("has a discriminator property,
                 // but does not have a discriminator value configured").
                 var classKeyword = TphPlanBuilder.IsTphDiscriminatorBase(entity, ctx.Root) ? "abstract class" : "class";
-                sb.AppendLine($"public {classKeyword} {className}");
+                sb.AppendLine($"public {classKeyword} {className}{MappedBaseClause(entity, ctx)}");
                 break;
             case ClassDeclarationKind.TphSubtype:
                 // Extend the nearest ancestor that actually GETS EMITTED as a class — the
@@ -504,13 +504,19 @@ public class EntityGenerator : IGenerator
                 sb.AppendLine($"public {tphKeyword} {className} : {baseClass}");
                 break;
             case ClassDeclarationKind.AbstractShape:
-                sb.AppendLine($"public abstract class {className}");
+                sb.AppendLine($"public abstract class {className}{MappedBaseClause(entity, ctx)}");
                 break;
             case ClassDeclarationKind.ValueObject:
                 sb.AppendLine($"public class {className}");
                 break;
         }
     }
+
+    // ` : Base` when this non-TPH entity or abstract shape extends an emitted abstract shape
+    // (DirectMappedParent), else empty. The member loops skip the fields that base carries,
+    // so the declaration line MUST name it or those properties exist nowhere on the class.
+    private static string MappedBaseClause(MetaObject entity, GenContext ctx) =>
+        DirectMappedParent(entity, ctx.Config) is { } parent ? $" : {CSharpNaming.Pascal(parent.Name)}" : "";
 
     // A M:N navigation collection property on the source entity. The collection is
     // the relationship name PascalCased; its element type is the target entity.
@@ -733,16 +739,23 @@ public class EntityGenerator : IGenerator
 
     // The directly-extended entity to emit as a C# base class for a NON-TPH entity (mapped
     // entity or abstract shape). The metadata `extends` chain becomes the C# inheritance
-    // chain: `class Physician : BaseAuditableEntity`, `abstract class BaseAuditableEntity :
-    // BaseEntity`. Returns the immediate `extends` target when it is an emitted entity — an
-    // abstract base (only when EmitAbstractShapes is on, since the base must exist as a type)
-    // or a concrete parent. Null when there is no such parent: the entity then flattens its
-    // (un-emitted) abstract ancestors' fields as before. TPH members use DirectTphParent.
+    // chain ONLY through abstract shapes: `class Physician : BaseAuditableEntity`, `abstract
+    // class BaseAuditableEntity : BaseEntity`. An abstract shape is not mapped, so EF folds
+    // its properties into each derived entity's own table — exactly what every other port
+    // and the migrate-ts schema give a child of an abstract parent.
+    //
+    // Returns null otherwise: the entity then declares every resolved field itself. That
+    // includes a CONCRETE parent. Each concrete entity owns a table carrying ALL its columns
+    // (the migrate-ts schema gives `Child` a table with the parent's columns and its own,
+    // and the other ports' child models carry both), but a C# `Child : Parent` between two
+    // MAPPED entities is an EF inheritance hierarchy — TPH (one shared table plus a
+    // discriminator) or TPT (child table holding only the child's own columns). Either
+    // contradicts that schema, so a concrete parent is flattened, never named as a base.
+    // TPH members use DirectTphParent.
     protected static MetaObject? DirectMappedParent(MetaObject entity, GenConfig config)
     {
         if (entity.SuperData is not MetaObject sup || !sup.IsEntity()) return null;
-        if (InstanceArtifacts.IsAbstract(sup)) return config.EmitAbstractShapes ? sup : null;
-        return sup;
+        return InstanceArtifacts.IsAbstract(sup) && config.EmitAbstractShapes ? sup : null;
     }
 
     // The nearest @discriminator-bearing ancestor of a TPH subtype (its TPH base).

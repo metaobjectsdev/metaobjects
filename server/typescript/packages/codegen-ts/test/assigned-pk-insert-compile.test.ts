@@ -19,6 +19,7 @@
 // a mismatch BETWEEN those two files, so a single-file gate cannot see it.
 
 import { describe, test, expect } from "bun:test";
+import "./compile-timeout.js";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";

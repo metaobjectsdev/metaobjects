@@ -15,6 +15,7 @@
 // `bun run typecheck`) so it is hermetic + immune to workspace self-link noise.
 
 import { describe, test, expect } from "bun:test";
+import "./compile-timeout.js";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

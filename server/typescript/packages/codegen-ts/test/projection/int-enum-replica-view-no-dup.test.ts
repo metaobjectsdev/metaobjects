@@ -6,6 +6,7 @@
 // duplicate-identifier compile error, i.e. the same class of bug as emitting none.
 
 import { describe, test, expect } from "bun:test";
+import "../compile-timeout.js";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";

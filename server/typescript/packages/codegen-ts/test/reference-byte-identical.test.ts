@@ -3,6 +3,7 @@
 // The reference generators import only "@metaobjectsdev/codegen-ts" (the public engine);
 // if this passes, a consumer can copy them out and own them with no behavior change.
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
+import "./compile-timeout.js";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, readdirSync, readFileSync, cpSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";

@@ -12,6 +12,7 @@
 // pass just as well for a generator that emitted both the spread AND the restated literal,
 // which is the outcome this change exists to prevent.
 import { describe, test, expect } from "bun:test";
+import "./compile-timeout.js";
 import { mkdtempSync, rmSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";

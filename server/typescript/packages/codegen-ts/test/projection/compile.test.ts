@@ -8,6 +8,7 @@
 // non-compiling output fails here, not just the one we already knew about.
 
 import { describe, test, expect } from "bun:test";
+import "../compile-timeout.js";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";

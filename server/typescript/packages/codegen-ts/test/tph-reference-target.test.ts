@@ -17,6 +17,7 @@
 // `expected-schema-tph.test.ts`, which asserts the same FKs from the DDL side.
 
 import { describe, test, expect } from "bun:test";
+import "./compile-timeout.js";
 import { mkdtempSync, writeFileSync, rmSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import ts from "typescript";
