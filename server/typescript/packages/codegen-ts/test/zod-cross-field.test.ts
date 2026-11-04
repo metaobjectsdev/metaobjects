@@ -69,18 +69,12 @@ function sample(): MetaObject {
 }
 
 describe("cross-field validators on the insert schema", () => {
-  test("insert schema is refined; update schema is byte-for-byte what it was without validators", () => {
-    const withV = renderZodValidators(sample()).toString();
-    const without = renderZodValidators(entityWith("Thing", [
-      f(FIELD_SUBTYPE_INT, "a"), f(FIELD_SUBTYPE_INT, "b"), f(FIELD_SUBTYPE_STRING, "kind"),
-      f(FIELD_SUBTYPE_STRING, "target"), f(FIELD_SUBTYPE_BOOLEAN, "flag"), f(FIELD_SUBTYPE_INT, "level"),
-      f(FIELD_SUBTYPE_STRING, "email"), f(FIELD_SUBTYPE_STRING, "phone"),
-    ], [])).toString();
-    expect(withV).toContain(".superRefine(");
-    expect(without).not.toContain("superRefine");
-    const upd = (s: string) => s.slice(s.indexOf("export const ThingUpdateSchema"));
-    expect(upd(withV)).toBe(upd(without));
-    expect(upd(withV)).not.toContain("superRefine");
+  test("the update schema does not enforce the rules: a partial body cannot see the merged row", async () => {
+    const mod = await executeGenerated(renderZodValidators(sample()).toString());
+    const violating = { a: 5, b: 1, kind: "X" };
+    expect(mod.ThingInsertSchema.safeParse(violating).success).toBe(false);
+    expect(mod.ThingUpdateSchema.safeParse(violating).success).toBe(true);
+    expect(mod.ThingUpdateSchema.safeParse({ a: 5 }).success).toBe(true);
     expect(hasInsertRefinements(sample())).toBe(true);
   });
 
@@ -106,7 +100,9 @@ describe("cross-field validators on the insert schema", () => {
     const e = entityWith("Solo", [f(FIELD_SUBTYPE_INT, "a")], [
       validator(VALIDATOR_SUBTYPE_COMPARISON, "cmp", { [VALIDATOR_ATTR_LEFT]: "a", [VALIDATOR_ATTR_OP]: "lt", [VALIDATOR_ATTR_RIGHT]: "nope" }),
     ]);
-    expect(renderZodValidators(e).toString()).not.toContain("superRefine");
+    const mod = await executeGenerated(renderZodValidators(e).toString());
+    expect(mod.SoloInsertSchema.safeParse({ a: 5 }).success).toBe(true);
+    expect(hasInsertRefinements(e)).toBe(false);
   });
 
   test("a comparison or gate on an array field is skipped, as in the other ports", async () => {
