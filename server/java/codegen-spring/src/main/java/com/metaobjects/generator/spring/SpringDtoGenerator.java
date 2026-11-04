@@ -241,11 +241,13 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         // "writable" reading of this flag stays true.
         boolean writableForAutoSet = !GeneratorUtil.isReport(entity)
             && (SpringGeneratorSupport.repositoryAppliesTo(entity) || TphPlan.isTphSubtype(entity));
-        List<String> extraBodyMembers =
+        List<String> extraBodyMembers = new ArrayList<>(
             (writableForAutoSet && SpringGeneratorSupport.hasAutoSetFields(entity))
                 ? autoSetStampHelpers(entity, fields, SpringNaming.dtoName(
                       SpringNaming.splitFqn(entity.getName())[1]))
-                : List.of();
+                : List.<String>of());
+        // Entity-scoped cross-field validators: class-level @AssertTrue rules on the full DTO only.
+        extraBodyMembers.addAll(SpringGeneratorSupport.crossFieldValidationMembers(entity, fields));
         emitRecord(entity, outRoot, fields, annotationsPerField, extraBodyMembers);
     }
 
@@ -549,6 +551,7 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
             .anyMatch(a -> !a.replaceAll("@JsonDeserialize\\([^)]*\\)", "").trim().isEmpty());
         // @Valid (jakarta.validation, NOT ...constraints) cascades validation into a
         // value-object jsonb component — emitted on VO fields by emit() (Program D).
+        boolean crossField = extraBodyMembers.stream().anyMatch(m -> m.contains("@AssertTrue"));
         boolean usesValid = annotationsPerField.stream().anyMatch(a -> a.contains("@Valid"));
         // #234: a strict field.uri / field.inet component carries @JsonDeserialize(using = …).
         boolean usesNetDeser = annotationsPerField.stream().anyMatch(a -> a.contains("@JsonDeserialize"));
@@ -571,10 +574,10 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         if (usesValid) {
             src.append("import jakarta.validation.Valid;\n");
         }
-        if (usesValidation) {
+        if (usesValidation || crossField) {
             src.append("import jakarta.validation.constraints.*;\n");
         }
-        if (usesDecimal || usesNetDeser || usesValid || usesValidation) {
+        if (usesDecimal || usesNetDeser || usesValid || usesValidation || crossField) {
             src.append('\n');
         }
         src.append("/** GENERATED — wire DTO for ").append(shortName)

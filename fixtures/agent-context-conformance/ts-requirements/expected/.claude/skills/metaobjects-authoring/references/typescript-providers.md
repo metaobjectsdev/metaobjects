@@ -70,5 +70,5 @@ The metadata uses it like core vocabulary:
 
 Without the provider the same file fails `meta verify` with `ERR_UNKNOWN_SUBTYPE` on
 `layout.picker` and `ERR_UNKNOWN_ATTR` on `@searchable`. If another port's tools load this
-metadata too, that port needs its own copy of the provider (same `id`, same vocabulary).
+metadata too, that port needs its own copy of the provider (same `id`, same vocabulary). Each port's `verify` loads strict, so a clean run there proves that port's copy is complete.
 Full contract: `docs/features/extending-with-providers.md`.

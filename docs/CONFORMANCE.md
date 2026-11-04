@@ -26,7 +26,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 
 | Corpus | Fixtures | TS | Java | Kotlin | C# | Python |
 |---|---|---|---|---|---|---|
-| [`fixtures/conformance/`](../fixtures/conformance/) (metamodel) | 425 | ✓ | ✓ | inherits via `metadata-ktx` | ✓ | ✓ |
+| [`fixtures/conformance/`](../fixtures/conformance/) (metamodel) | 428 | ✓ | ✓ | inherits via `metadata-ktx` | ✓ | ✓ |
 | [`fixtures/yaml-conformance/`](../fixtures/yaml-conformance/) | 16 | 16 / 16 | 15 / 16 (1 ledgered: `yaml-quoted-leading-zero` — Java pipeline strips quotes off `"007"`) | inherits via Java | 15 / 16 (1 ledgered: `error-yaml-coerced-hex-in-string` — YamlDotNet doesn't coerce `0xFF`) | 16 / 16 |
 | [`fixtures/verify-conformance/`](../fixtures/verify-conformance/) | 45 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/verify-strict-conformance/`](../fixtures/verify-strict-conformance/) | 1 | ✓ | — | — | — | ✓ |
@@ -38,7 +38,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/persistence-conformance/`](../fixtures/persistence-conformance/) | 59 (53 query + 6 migration) | all 59; the 24 `report-*` and the `-15` decimal scenarios also on SQLite, MySQL and D1, `decimal-exact` also on MySQL (a scenario's `engines:` key is exact) | 53 query (migrations TS-only, ADR-0015); the `report-*` and `engines:` scenarios also on SQLite and MySQL | 53 query (via Exposed); the `report-*` and `engines:` scenarios also on SQLite and MySQL | 53 query; the `report-*` and `engines:` scenarios also on SQLite and MySQL | 53 query (pg8000); the `report-*` and `engines:` scenarios also on SQLite (`sqlite3`) and MySQL (PyMySQL) |
 | [`fixtures/api-contract-conformance/`](../fixtures/api-contract-conformance/) | 119 (31 core + 10 tph + 9 m2m + 5 jsonb + 2 write-through + 2 secret-fields + 12 projection + 37 report + 11 decimal) | ✓ (Fastify reference + generated lane); `report/` and `decimal/` also on SQLite, MySQL and D1 | ✓ (embedded HTTP + JDBC); `report/` and `decimal/` generated controllers over OMDB on Postgres, SQLite and MySQL | ✓ (embedded HTTP + Exposed); `report/` and `decimal/` also on SQLite and MySQL | ✓ (Kestrel + Npgsql); `report/` and `decimal/` also on SQLite and MySQL | ✓ (FastAPI + pg8000); `report/` and `decimal/` also on SQLite and MySQL |
 | [`fixtures/decimal-wire/`](../fixtures/decimal-wire/) | 1 vector file (format, parse, filter operand, 15-digit read) | ✓ (`runtime-ts` and the generated helper) | ✓ (`CanonicalDecimal`) | ✓ (the generated wire file) | ✓ (`DecimalWire`) | ✓ (`decimal_wire`) |
-| [`fixtures/validation-conformance/`](../fixtures/validation-conformance/) | 42 cases | ✓ (generated Zod + run-time `runValidators`) | ✓ | ✓ | ✓ | ✓ (generated Pydantic + run-time `run_validators`) |
+| [`fixtures/validation-conformance/`](../fixtures/validation-conformance/) | 42 cases + 20 cross-field cases (`cross-field-cases.json`, generated record model only) | ✓ (generated Zod + run-time `runValidators`) | ✓ | ✓ | ✓ | ✓ (generated Pydantic + run-time `run_validators`) |
 | [`fixtures/registry-conformance/`](../fixtures/registry-conformance/) | 1 canonical manifest | ✓ (reference emitter) | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/object-model-conformance/`](../fixtures/object-model-conformance/) | 1 shared metadata fixture (per-port scenarios) | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/codegen-conformance/`](../fixtures/codegen-conformance/) | 6 shared inputs; `shared-provided-enum` carries the enum-type decision table and `cross-package-binding` the reference-binding decision table (ADR-0059) every port answers | ✓ | ✓ | ✓ | ✓ | ✓ |
@@ -285,7 +285,7 @@ unit-test runners (`bun test`, `dotnet test`, `pytest`, `mvn test`) pull Docker.
 
 ## Fixture-to-doc mapping
 
-### `fixtures/conformance/` — metamodel loader + canonical serializer (425)
+### `fixtures/conformance/` — metamodel loader + canonical serializer (428)
 
 | Fixture prefix | Feature doc |
 |---|---|
@@ -612,7 +612,7 @@ files into a real Cube.
 
 ## Orphaned fixtures (tested but not yet documented)
 
-The fixtures in the nine corpora mapped above (metamodel 425 + yaml 16 + verify 45
+The fixtures in the nine corpora mapped above (metamodel 428 + yaml 16 + verify 45
 + render 18 + persistence 59 + api-contract 119 + source-resolution 25 + scope 10 +
 dependency 37) each map to a feature doc, and so do the two requirement corpora, `shared-model-conformance` and the
 `cube-model` corpus, whose case lists live in their own READMEs. None are orphaned today. The remaining

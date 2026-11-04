@@ -28,7 +28,7 @@ import { isTphDiscriminatorBase, tphConcreteSubtypes } from "./tph-discriminator
 import { isProjection, isWriteThrough } from "../projection/projection-detector.js";
 import { isReport } from "../source-detect.js";
 import { hasItemRoute } from "../api-surface.js";
-import { hasAutoSetFields } from "./zod-validators.js";
+import { hasAutoSetFields, hasInsertRefinements } from "./zod-validators.js";
 import { effectivePackage } from "../docs-paths.js";
 
 /**
@@ -372,6 +372,9 @@ export async function list${pluralize(baseName)}(db: Db, opts?: { limit?: number
     // the schema (schemaInputType), so a subtype module from an owned entity generator
     // that predates the `<Sub>Create` alias still satisfies it.
     const subCreateSym = schemaInputType(subInsertSym);
+    // A refined (cross-field) InsertSchema has no `.partial()`; the partial update reads
+    // the unrefined shape, as an unrefined subtype's does.
+    const subPartialSym = hasInsertRefinements(sub) ? imp(`${sub.name}InsertBaseSchema@${subFileSpec}`) : subInsertSym;
 
     subtypeSections.push(code`
 export async function list${pluralize(sub.name)}(db: Db, opts?: { limit?: number; offset?: number }): Promise<${subTypeSym}[]> {
@@ -395,7 +398,7 @@ ${supportsReturning(ctx.dialect) ? code`export async function create${sub.name}(
 }
 
 export async function update${sub.name}ById(db: Db, ${pkField}: ${pkType}, data: Partial<${subCreateSym}>): Promise<${subTypeSym} | null> {
-  const validated = ${subInsertSym}.partial().parse(data) as Record<string, unknown>;
+  const validated = ${subPartialSym}.partial().parse(data) as Record<string, unknown>;
   // The discriminator is immutable — a ${sub.name} can never become another subtype.
   const { [${JSON.stringify(discField)}]: _disc, ...safe } = validated;
   const [row] = await db.update(${tableSym}).set(safe)
@@ -417,7 +420,7 @@ export async function create${sub.name}(db: Db, data: ${subCreateSym}): Promise<
 }
 
 export async function update${sub.name}ById(db: Db, ${pkField}: ${pkType}, data: Partial<${subCreateSym}>): Promise<${subTypeSym} | null> {
-  const validated = ${subInsertSym}.partial().parse(data) as Record<string, unknown>;
+  const validated = ${subPartialSym}.partial().parse(data) as Record<string, unknown>;
   // The discriminator is immutable — a ${sub.name} can never become another subtype.
   const { [${JSON.stringify(discField)}]: _disc, ...safe } = validated;
   if (Object.keys(safe).length > 0) {

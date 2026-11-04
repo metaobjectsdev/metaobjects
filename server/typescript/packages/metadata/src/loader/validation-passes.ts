@@ -87,7 +87,8 @@ import {
   FIELD_SUBTYPE_TIMESTAMP,
   FIELD_SUBTYPE_UUID,
 } from "../core/field/field-constants.js";
-import { FIELD_ATTR_DB_INDEXED, IDENTITY_ATTR_EXPR } from "../persistence/db/db-constants.js";
+import { FIELD_ATTR_COLUMN, FIELD_ATTR_DB_INDEXED, IDENTITY_ATTR_EXPR } from "../persistence/db/db-constants.js";
+import { SOURCE_KIND_VIEW } from "../persistence/source/source-constants.js";
 import {
   IDENTITY_ATTR_FIELDS,
   IDENTITY_SUBTYPE_REFERENCE,
@@ -2777,13 +2778,33 @@ export function validateRetiredRequirementLinks(root: MetaData): ParseError[] {
 // object generates nothing); derived fields (origin.*) and field.object (which may
 // flatten to several columns) are not columns of this table and are skipped.
 // ADR-0039: effective fields, so an inherited field collides like an own one.
+// Exempt: an object whose every source is read-only and at least one is a
+// `source.rdb @kind: view` with an `@sql` body. The author's SQL defines that view's
+// columns and the fields only READ them, so two fields on one column create no
+// duplicate column and nothing can be written. A derived view (no `@sql`) emits a
+// select list from its fields, and an object with a writable source has a real table
+// whose columns MetaObjects creates; both stay checked.
 // ---------------------------------------------------------------------------
+
+function readsThroughSqlView(obj: MetaData): boolean {
+  const sources = obj.children().filter((c): c is MetaSource => c instanceof MetaSource);
+  return (
+    sources.every((s) => s.isReadOnly()) &&
+    sources.some((s) => s.effectiveKind === SOURCE_KIND_VIEW && s.sqlBody !== undefined)
+  );
+}
+
+function hasExplicitColumn(field: MetaData): boolean {
+  const col = field.attr(FIELD_ATTR_COLUMN);
+  return typeof col === "string" && col !== "";
+}
 
 export function validateColumnNameCollisions(root: MetaData): ParseError[] {
   const errors: ParseError[] = [];
   for (const obj of root.children().filter((c) => c.type === TYPE_OBJECT)) {
     if (obj.isAbstract) continue;
     if (!obj.children().some((c) => c.type === TYPE_SOURCE)) continue;
+    if (readsThroughSqlView(obj)) continue;
     const seen = new Map<string, MetaData>();
     for (const field of obj.children()) {
       if (!isMetaField(field) || field.subType === FIELD_SUBTYPE_OBJECT || field.isDerived()) continue;
@@ -2796,7 +2817,10 @@ export function validateColumnNameCollisions(root: MetaData): ParseError[] {
       errors.push(
         new ParseError(
           `fields "${first.name}" and "${field.name}" on "${obj.name}" both resolve to physical column ` +
-            `"${column}". Rename one field, or give one an explicit @column so the two columns differ.`,
+            `"${column}". ` +
+            (hasExplicitColumn(first) && hasExplicitColumn(field)
+              ? "Rename one field, or point one @column at a different column."
+              : "Rename one field, or give one an explicit @column so the two columns differ."),
           { code: "ERR_COLUMN_NAME_COLLISION", source: field.source },
         ),
       );

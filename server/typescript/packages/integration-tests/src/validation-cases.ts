@@ -27,3 +27,11 @@ export function loadCases(): ValidationCase[] {
   const parsed = JSON.parse(raw) as { cases: ValidationCase[] };
   return parsed.cases;
 }
+
+/** Read fixtures/validation-conformance/cross-field-cases.json — the entity-scoped
+ *  cross-field validator corpus (meta.cross-field.json, entity `Event`). */
+export function loadCrossFieldCases(): ValidationCase[] {
+  const raw = readFileSync(join(VALIDATION_DIR, "cross-field-cases.json"), "utf8");
+  const parsed = JSON.parse(raw) as { cases: ValidationCase[] };
+  return parsed.cases;
+}

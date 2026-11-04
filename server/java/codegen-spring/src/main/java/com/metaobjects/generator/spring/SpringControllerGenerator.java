@@ -25,6 +25,7 @@ import com.metaobjects.generator.util.RestSurfaceGate;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.source.MetaSource;
 import com.metaobjects.source.RdbSource;
+import com.metaobjects.validator.MetaValidator;
 import static com.metaobjects.generator.spring.SpringNaming.firstRdbSource;
 
 import java.io.IOException;
@@ -36,6 +37,7 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -1331,8 +1333,17 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             // is auto-generated and the discriminator is injected from the URL, so neither is checked.
             // validateValue applies @NotNull to a null value, so an absent @required column 400s too —
             // matching the vanilla create's whole-bean validate, scoped to this subtype.
-            List<MetaField> createValidated =
-                SpringGeneratorSupport.settableFields(st.entity(), TphPlan.discriminatorFieldOf(st.entity()));
+            String discField = TphPlan.discriminatorFieldOf(st.entity());
+            List<MetaField> createValidated = SpringGeneratorSupport.settableFields(st.entity(), discField);
+            // The subtype's cross-field rules are class-level @AssertTrue methods on <Sub>Dto, which
+            // the per-property validateValue below never reaches. They are evaluated here against the
+            // bound union body instead, the discriminator read as this route's pinned value.
+            List<Map.Entry<MetaValidator, String>> crossFieldRules = SpringGeneratorSupport.crossFieldRules(
+                st.entity(), SpringGeneratorSupport.dtoComponentFields(st.entity()),
+                f -> f.getName().equals(discField)
+                    ? "\"" + SpringGeneratorSupport.escapeJavaString(disc) + "\""
+                    : "dto." + SpringNaming.recordComponentName(f.getName()) + "()");
+            if (!crossFieldRules.isEmpty()) src.append("    @SuppressWarnings(\"unchecked\")\n");
             src.append("    @PostMapping(\"/").append(seg).append("\")\n");
             src.append("    public ResponseEntity<?> create").append(suffix)
                .append("(@RequestBody ").append(dtoName).append(" dto) {\n");
@@ -1343,6 +1354,11 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
                 String vc = SpringNaming.recordComponentName(vf.getName());
                 src.append("        if (!validator.validateValue(").append(subDto).append(".class, \"")
                    .append(vc).append("\", dto.").append(vc).append("()).isEmpty()) {\n");
+                src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", \"validation\"));\n");
+                src.append("        }\n");
+            }
+            for (Map.Entry<MetaValidator, String> rule : crossFieldRules) {
+                src.append("        if (!(").append(rule.getValue()).append(")) {\n");
                 src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", \"validation\"));\n");
                 src.append("        }\n");
             }

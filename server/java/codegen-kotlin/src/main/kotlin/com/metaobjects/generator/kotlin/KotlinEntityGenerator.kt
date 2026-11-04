@@ -7,6 +7,7 @@ package com.metaobjects.generator.kotlin
 import com.metaobjects.config.WireFormat
 import com.metaobjects.generator.util.GeneratorUtil
 import com.metaobjects.generator.kotlin.Fr019SharedEnum
+import com.metaobjects.generator.kotlin.KotlinCrossFieldRules
 import com.metaobjects.generator.kotlin.KotlinEnumEmitter
 import com.metaobjects.generator.kotlin.KotlinGenUtil
 import com.metaobjects.generator.kotlin.KotlinNaming
@@ -35,7 +36,9 @@ import com.metaobjects.validator.NumericValidator
 import com.metaobjects.validator.RegexValidator
 import com.metaobjects.validator.RequiredValidator
 import com.squareup.kotlinpoet.AnnotationSpec
+import com.squareup.kotlinpoet.BOOLEAN
 import com.squareup.kotlinpoet.ClassName
+import com.squareup.kotlinpoet.CodeBlock
 import com.squareup.kotlinpoet.FileSpec
 import com.squareup.kotlinpoet.FunSpec
 import com.squareup.kotlinpoet.KModifier
@@ -327,6 +330,12 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             )
         }
 
+        // Entity-scoped cross-field validators: class-level Bean Validation on the full create body.
+        // Not on the TPH union / a report row / a value object, and never on a PATCH body.
+        if (!tphBase && !reportRow && obj.subType == MetaObject.SUBTYPE_ENTITY) {
+            crossFieldProperties(obj).forEach { typeBuilder.addProperty(it) }
+        }
+
         val primaryCtor = ctorBuilder.build()
         typeBuilder.primaryConstructor(primaryCtor)
         addJavaBuilder(obj, typeBuilder, ClassName(pkg, shortName), primaryCtor.parameters)
@@ -483,6 +492,45 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         if (!field.hasMetaAttr(ObjectField.ATTR_OBJECTREF, true)) return null
         return runCatching { field.getMetaAttr(ObjectField.ATTR_OBJECTREF, true).valueAsString }
             .getOrNull()
+    }
+
+    // === entity-scoped cross-field validators ==================================
+
+    /**
+     * One `@get:AssertTrue @get:JsonIgnore val isXxxValid: Boolean` per entity-scoped cross-field
+     * validator (comparison / requiredWhen / presentIff / atLeastOne). Null-safe in the DB CHECK
+     * sense (SQL NULL = Kotlin null; "" is not null). A validator naming a missing field is
+     * skipped. Body-declared, so it stays out of the data class's equals / copy / constructor.
+     */
+    protected open fun crossFieldProperties(obj: MetaObject): List<PropertySpec> {
+        val out = mutableListOf<PropertySpec>()
+        val used = mutableSetOf<String>()
+        for ((v, expr) in KotlinCrossFieldRules.rules(obj) { CodeBlock.of("%N", it.name).toString() }) {
+            val base = v.name.map { if (it.isLetterOrDigit() || it == '_') it else '_' }.joinToString("")
+                .ifEmpty { "CrossField" }.replaceFirstChar { it.uppercaseChar() }
+            var name = "is${base}Valid"
+            var n = 2
+            while (!used.add(name)) name = "is${base}${n++}Valid"
+            out.add(
+                PropertySpec.builder(name, BOOLEAN)
+                    .addKdoc("Cross-field validator ${v.name.replace("*/", "* /")} (class-level Bean Validation; the DB CHECK enforces the PATCH path).\n")
+                    .addAnnotation(
+                        AnnotationSpec.builder(ClassName("com.fasterxml.jackson.annotation", "JsonIgnore"))
+                            .useSiteTarget(AnnotationSpec.UseSiteTarget.GET).build(),
+                    )
+                    .addAnnotation(
+                        AnnotationSpec.builder(ClassName(JAKARTA_CONSTRAINTS, "AssertTrue"))
+                            .useSiteTarget(AnnotationSpec.UseSiteTarget.GET)
+                            .addMember("message = %S", "validator ${v.name} violated").build(),
+                    )
+                    .addAnnotation(
+                        AnnotationSpec.builder(ClassName("kotlin", "Suppress")).addMember("%S", "UNCHECKED_CAST").build(),
+                    )
+                    .getter(FunSpec.getterBuilder().addStatement("return·(%L)", expr).build())
+                    .build(),
+            )
+        }
+        return out
     }
 
     // === validation (SP-C validator parity, Unit 5) =========================

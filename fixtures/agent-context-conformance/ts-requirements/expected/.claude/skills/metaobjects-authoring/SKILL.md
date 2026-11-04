@@ -426,7 +426,11 @@ behavior:
 
 Entity-scoped `validator.*` children declare invariants that reference sibling fields
 **by name** (the same name-reference pattern as `identity.*`). The backend derives the
-enforcement (a CHECK constraint / cross-field assertion) — no raw expression is stored.
+enforcement — no raw expression is stored. A DB `CHECK` constraint is emitted by `meta migrate`,
+and the generated full create/record model also enforces the rule in every port (Zod refinement,
+Bean Validation class-level constraint, `IValidatableObject`, Pydantic `model_validator`), so a
+store with no `CHECK` support is still covered. PATCH and partial-update models do not enforce them
+(a partial body cannot see the merged row); the DB `CHECK` is the enforcement there.
 
 | Subtype | Rule | Key attrs |
 |---|---|---|
@@ -453,17 +457,9 @@ immutable. Supported in all five ports; the worked example is in `references/inh
 
 ## Your own vocabulary — a provider class, in every language
 
-A subtype or attribute the core does not ship (a `layout.picker`, `@searchable` on fields) is registered by a **provider class** in the project's own language — never a side file, never a loosened `strict`. Decide the shape first (`references/choosing-a-shape.md`, which also has the register/extend rules). List the provider once in the port's project configuration and every command that loads metadata — gen and its docs generators, verify, fmt — composes it:
+A subtype or attribute the core does not ship (a `layout.picker`, `@searchable` on fields) is registered by a **provider class** in the project's own language — never a side file, never a loosened `strict`. Decide the shape first (`references/choosing-a-shape.md`, which also has the register/extend rules). List the provider once in the port's project configuration and every command that loads metadata — gen and its docs generators, verify, fmt — composes it. Where each port lists it, plus a worked example: `references/typescript-providers.md`, `references/python-providers.md`, `references/csharp-providers.md`, `references/java-providers.md`, `references/kotlin-providers.md` (only this stack's are installed).
 
-| Port | Where | Worked example |
-|---|---|---|
-| TypeScript | `providers` in `metaobjects.config.ts` | `references/typescript-providers.md` |
-| Python | `providers: ["module:symbol"]` in `metaobjects.config.yaml` | `references/python-providers.md` |
-| C# | `csharp.providers` in `.metaobjects/config.json` | `references/csharp-providers.md` |
-| Java | `<providers>` on the Maven plugin; Spring beans | `references/java-providers.md` |
-| Kotlin | the same Maven `<providers>`; `providers =` on `metadata-ktx` loaders | `references/kotlin-providers.md` |
-
-**Every port whose tools load the metadata needs its own copy**: a TypeScript-only provider leaves the Java, Python or C# side, and its docs build, failing with `ERR_UNKNOWN_SUBTYPE` / `ERR_UNKNOWN_ATTR`. Each port's `verify` loads strict, so it proves the copy is complete. Only this stack's examples are installed.
+**Every port whose tools load the metadata needs its own copy**: a TypeScript-only provider leaves the Java, Python or C# side, and its docs build, failing with `ERR_UNKNOWN_SUBTYPE` / `ERR_UNKNOWN_ATTR`.
 
 ## Requirements — capability ledger (opt-in)
 
