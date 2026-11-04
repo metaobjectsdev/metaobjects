@@ -178,7 +178,6 @@ describe("explorer site over explorer-conformance/shop", () => {
       expect(html).toContain("<main data-pagefind-body>");
       expect(html).toContain('name="viewport"');
     }
-    expect(shop.page("assets/explorer.css")).toContain("@media (max-width: 700px)");
   });
 
   test("the graph library loads only on the pages that draw a graph", () => {

@@ -34,13 +34,18 @@ export function levelBadge(r: ReqEntry): string {
     : `<span class="lvl" title="A flat architectural policy: no level">—</span>`;
 }
 
-/** A gate verdict as an outlined badge: `error` or `warn`, with the finding codes. */
+/** The `source` a verify finding carries when it can fail the build; anything else is an
+ *  authoring advisory, which never can. */
+export const GATE_SOURCE = "gate";
+
+/** A gate verdict as an outlined badge: `error` or `warn`, with the finding codes. Authoring
+ *  advisories never reach it. */
 export function verdictBadge(r: ReqEntry): string {
-  const row = r.row;
-  if (row === undefined || row.diagnostics.length === 0) return "";
-  const worst = row.diagnostics.some((d) => d.severity === "error") ? "error" : "warn";
-  const codes = row.diagnostics.map((d) => d.code).join(", ");
-  const n = row.diagnostics.length;
+  const gate = (r.row?.diagnostics ?? []).filter((d) => d.source === GATE_SOURCE);
+  if (gate.length === 0) return "";
+  const worst = gate.some((d) => d.severity === "error") ? "error" : "warn";
+  const codes = gate.map((d) => d.code).join(", ");
+  const n = gate.length;
   return `<span class="chip v-${worst}" title="meta verify: ${esc(codes)}">${worst === "error" ? "✕" : "!"} ${n} gate ${worst === "error" ? (n === 1 ? "error" : "errors") : n === 1 ? "warning" : "warnings"}</span>`;
 }
 

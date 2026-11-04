@@ -91,7 +91,7 @@ docsSiteFile({ assetBase: "/vendor/npm" })
 | Matrix | `matrix.html` | Requirements against stored entities and prompts. An empty column is a node nothing claims |
 | Trace | `trace.html?start=<id>` | One requirement down to the model nodes it claims and the files generated from them |
 | API | `api.html` | Every route this run mounts, by node |
-| Gaps | `gaps.html` | The gate's findings and coverage warnings, undecided gaps, and the checks this explorer adds: planned entries with live work below, prompts nothing claims, fields named like a reference with no `identity.reference`, payload fields the text never uses |
+| Gaps | `gaps.html` | The gate's findings and coverage warnings, the authoring lint's advisories (listed apart, never as a verdict), undecided gaps as the gate counts them (a roll-up parent of outstanding work is left out), and the checks this explorer adds: planned entries with live work below, prompts nothing claims, fields named like a reference with no `identity.reference`, payload fields the text never uses |
 
 An object named `index` gets `index.node.html`, so it never takes its package's index page,
 and a model with no package puts its pages under `model/-root/`.

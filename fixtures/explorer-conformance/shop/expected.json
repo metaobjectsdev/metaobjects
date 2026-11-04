@@ -837,7 +837,8 @@
           {
             "code": "WARN_REQUIREMENT_NOTHING_IMPLEMENTS",
             "severity": "warn",
-            "source": "gate"
+            "source": "gate",
+            "message": "is 'live' but neither it nor anything nested under it names an implementing node. A functional requirement's check is existence — a subtree that claims nothing is a capability nobody built."
           }
         ],
         "verdict": "warn"

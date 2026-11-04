@@ -77,8 +77,8 @@ import {
   REQUIREMENT_LEVEL_OBJECT,
   REQUIREMENT_LEVEL_SERVICE,
   REQUIREMENT_STATUS_LIVE,
-  REQUIREMENT_STATUS_PARTIAL,
   REQUIREMENT_STATUS_PLANNED,
+  REQUIREMENT_STATUSES_WITH_OUTSTANDING_WORK,
   REQUIREMENT_SUBTYPE_ARCHITECTURAL,
   REQUIREMENT_SUBTYPE_FUNCTIONAL,
 } from "@metaobjectsdev/metadata";
@@ -88,6 +88,7 @@ import type { ExplorerNode } from "./types.js";
 import {
   dispositionPill,
   esc,
+  GATE_SOURCE,
   levelBadge,
   relHref,
   rollupBar,
@@ -687,7 +688,8 @@ export class Pages {
             : `<span class="chip v-error">dangling</span>`,
       };
     });
-    const findings = (ix.doc.ledger?.diagnostics ?? []).filter((d): d is Diag => isDiag(d) && row !== undefined && d.path === row.path);
+    const findings = (row?.diagnostics ?? []).filter((d) => d.source === GATE_SOURCE);
+    const advisories = (row?.diagnostics ?? []).filter((d) => d.source !== GATE_SOURCE);
     const levelFinding = row?.diagnostics.some((d) => LEVEL_RULE_CODES.has(d.code)) ?? false;
     const testable = r.kind === REQUIREMENT_SUBTYPE_FUNCTIONAL && (r.level ?? 0) >= REQUIREMENT_LEVEL_OBJECT;
     const linksOk = links.length === 0 ? "none" : links.every((l) => l.resolves) ? "yes" : "no";
@@ -731,7 +733,14 @@ export class Pages {
         {
           what: "Gate findings",
           verdictHtml: findings.length > 0 ? `<span class="chip v-warn">${findings.length}</span>` : row !== undefined ? `<span class="chip s-live">none</span>` : `<span class="chip">not read</span>`,
-          how: findings.length > 0 ? findings.map((d) => `<code>${esc(d.code)}</code> ${esc(d.message)}`).join("<br>") : row !== undefined ? "Nothing reported for this path." : "This build read no <code>meta verify</code> output.",
+          how: findings.length > 0 ? findings.map((d) => `<code>${esc(d.code)}</code> ${esc(d.message)}`).join("<br>") : row !== undefined ? "Nothing reported for this entry." : "This build read no <code>meta verify</code> output.",
+        },
+        {
+          what: "Authoring advisories",
+          verdictHtml: row !== undefined ? `<span class="chip">${advisories.length}</span>` : `<span class="chip">not read</span>`,
+          how: advisories.length > 0
+            ? advisories.map((d) => `<code>${esc(d.code)}</code> ${esc(d.message)}`).join("<br>")
+            : row !== undefined ? "None. The authoring lint never fails a build." : "This build read no <code>meta verify</code> output.",
         },
         {
           what: "Test exists",
@@ -801,24 +810,27 @@ export class Pages {
     const card = (title: string, count: number | string, source: string, why: string, bodyHtml: string): void => {
       cards.push({ title: esc(title), count: esc(String(count)), source: esc(source), isGate: source === "meta verify", whyHtml: why, bodyHtml });
     };
-    const diags = (ix.doc.ledger?.diagnostics ?? []).filter(isDiag);
     if (ix.doc.ledger !== undefined) {
-      card(
-        "Gate findings",
-        diags.length,
-        "meta verify",
-        "Printed by every run of the requirement gate.",
-        diags.length === 0
+      // Each requirement's own findings come from its ledger row, which the gate scoped to that
+      // node; the flat list contributes only the findings with no requirement subject.
+      const findingsOf = (gate: boolean): { req?: ReqEntry; d: { code: string; severity: string; message: string } }[] => [
+        ...ix.requirements.flatMap((req) => (req.row?.diagnostics ?? []).filter((d) => (d.source === GATE_SOURCE) === gate).map((d) => ({ req, d }))),
+        ...(ix.doc.ledger?.diagnostics ?? []).filter((d): d is Diag => isDiag(d) && d.path === "" && (d.source === GATE_SOURCE) === gate).map((d) => ({ d })),
+      ];
+      const table = (rows: ReturnType<typeof findingsOf>, chip: (severity: string) => string): string =>
+        rows.length === 0
           ? `<div class="sub">None.</div>`
-          : `<table>${diags.map((d) => {
-              const req = ix.requirements.find((r) => r.row?.path === d.path && d.path !== "");
-              return `<tr><td><span class="chip v-${d.severity === "error" ? "error" : "warn"}">${esc(d.code)}</span></td><td>${req !== undefined ? this.reqLink(from, req) : ""}<div class="sub small">${esc(d.message)}</div></td></tr>`;
-            }).join("")}</table>`,
-      );
+          : `<table>${rows.map(({ req, d }) => `<tr><td><span class="${chip(d.severity)}">${esc(d.code)}</span></td><td>${req !== undefined ? this.reqLink(from, req) : ""}<div class="sub small">${esc(d.message)}</div></td></tr>`).join("")}</table>`;
+      const gate = findingsOf(true);
+      card("Gate findings", gate.length, "meta verify", "Printed by every run of the requirement gate.", table(gate, (sev) => `chip v-${sev === "error" ? "error" : "warn"}`));
+      const advisories = findingsOf(false);
+      card("Authoring advisories", advisories.length, "authoring lint", "Printed beside the gate's findings, and never able to fail a build.", table(advisories, () => "chip"));
       const unclaimed = ix.storedEntities().filter((e) => this.unclaimedEntity(e));
       card("Entities no requirement claims", unclaimed.length, "meta verify", "The gate's coverage warning. Each is a capability nobody has written down.", unclaimed.length > 0 ? unclaimed.map((e) => this.link(from, e.id)).join(", ") : `<div class="sub">None.</div>`);
-      const undecided = ix.requirements.filter((r) => (r.status === REQUIREMENT_STATUS_PARTIAL || r.status === REQUIREMENT_STATUS_PLANNED) && r.node.attrs[REQUIREMENT_ATTR_DISPOSITION] === undefined);
-      card("Undecided gaps", undecided.length, "meta verify", "A partial or planned entry with no <code>@disposition</code>: a gap nobody has ruled on. The gate counts these.", list(undecided.map((r) => `${levelBadge(r)}${this.reqLink(from, r)} ${statusChip(r.status)}`)));
+      const outstanding = (r: ReqEntry): boolean => (REQUIREMENT_STATUSES_WITH_OUTSTANDING_WORK as readonly string[]).includes(r.status);
+      const undecided = ix.requirements.filter((r) => outstanding(r) && r.node.attrs[REQUIREMENT_ATTR_DISPOSITION] === undefined && !ix.below(r).some(outstanding));
+      const counted = ix.doc.ledger.counts["undecided"];
+      card("Undecided gaps", typeof counted === "number" ? counted : "—", "meta verify", "A partial or planned entry with no <code>@disposition</code> and no outstanding work below it: a gap nobody has ruled on. A roll-up parent is left out, since a ruling on it settles nothing. The gate counts these.", list(undecided.map((r) => `${levelBadge(r)}${this.reqLink(from, r)} ${statusChip(r.status)}`)));
     }
     if (ix.hasRequirements()) {
       const behind = ix.requirements.filter((r) => r.status === REQUIREMENT_STATUS_PLANNED && ix.below(r).some((x) => x.status === REQUIREMENT_STATUS_LIVE));

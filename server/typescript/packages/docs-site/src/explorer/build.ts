@@ -271,6 +271,7 @@ function ledgerFrom(verify: unknown, byId: Map<string, Walked>, edges: ExplorerE
           code: String(d.code ?? ""),
           severity: String(d.severity ?? ""),
           source: String(d.source ?? ""),
+          message: String(d.message ?? ""),
         }))
       : [];
     rows.push({

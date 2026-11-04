@@ -28,8 +28,8 @@ here.**
   `explorer.js` beside the classic theme. `buildExplorer` takes an optional `routes` input, and
   nodes carry their declaration `order`. Each `requirements.rows` entry in `meta verify
   --format json` now carries `node`: the entity's resolution key on a
-  `WARN_REQUIREMENT_OBJECT_UNCLAIMED` row, `""` on every other row. See
-  `docs/features/explorer-site.md`.
+  `WARN_REQUIREMENT_OBJECT_UNCLAIMED` row, `""` on every other row, and each finding in a
+  `requirementLedger` row carries its `message`. See `docs/features/explorer-site.md`.
 
 - **Generated record models enforce the four cross-field validators in every port.**
   `validator.comparison`, `validator.requiredWhen`, `validator.presentIff` and

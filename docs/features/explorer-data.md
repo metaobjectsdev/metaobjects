@@ -76,7 +76,7 @@ does not have to infer "checked and clean" from a path that no diagnostic mentio
 | `digest` | The same SHA-256 over the claim that each generated requirement test carries ([requirements.md](requirements.md)). |
 | `implementedBy` | Each link as written (`ref`), whether it resolves, and the node it resolves to (`target`): the object's resolution key, followed by `.<member path>` for a member. The gate's own resolver produces these values. |
 | `supersededBy` | The same, for `@supersededBy`; its `target` is the replacement's `qualifiedPath`. |
-| `diagnostics` | Every finding reported against this requirement, as `{ code, severity, source }`. `source` is `gate` when the finding can fail the build and `lint` when it cannot. |
+| `diagnostics` | Every finding reported against this requirement, as `{ code, severity, source, message }`. `source` is `gate` when the finding can fail the build and `lint` when it cannot. Two packages may declare a requirement at the same `path`, so read a requirement's findings here rather than matching `requirements.rows` by path. |
 | `verdict` | From gate findings only: `error`, `warn`, or `clean`. |
 
 A finding that is not about a single requirement, such as an entity nobody claims, appears

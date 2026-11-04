@@ -43,6 +43,7 @@ export interface RequirementDiagnosticRef {
   severity: string;
   /** "gate" can fail the build; "lint" never can. */
   source: "gate" | "lint";
+  message: string;
 }
 
 /** One `requirement.*` node, as this run of `meta verify` judged it. */
@@ -99,7 +100,7 @@ export function requirementLedgerRows(
   const byNode = new Map<MetaRequirement, RequirementDiagnosticRef[]>();
   const byPath = new Map<string, RequirementDiagnosticRef[]>();
   const note = (d: Diagnostic, source: "gate" | "lint"): void => {
-    const ref = { code: d.code, severity: d.severity, source };
+    const ref = { code: d.code, severity: d.severity, source, message: d.message };
     const requirement = diagnosticRequirement.get(d);
     if (requirement !== undefined) {
       byNode.set(requirement, [...(byNode.get(requirement) ?? []), ref]);

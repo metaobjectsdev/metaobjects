@@ -73,7 +73,7 @@ export interface ExplorerLedgerRow {
   digest: string;
   implementedBy: { ref: string; resolves: boolean; target?: string }[];
   supersededBy?: { ref: string; resolves: boolean; target?: string };
-  diagnostics: { code: string; severity: string; source: string }[];
+  diagnostics: { code: string; severity: string; source: string; message: string }[];
   verdict: string;
 }
 
