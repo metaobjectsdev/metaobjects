@@ -36,8 +36,16 @@ public static class ProviderLoader
             throw Refuse(spec, $"the assembly file does not exist at {spec.AssemblyPath}. Build the vocabulary project first " +
                                "(for example `dotnet build <project>`), then re-run.");
 
-        var assembly = LoadAssembly(spec);
-        var type = assembly.GetType(spec.TypeName, throwOnError: false);
+        Type? type;
+        try
+        {
+            type = LoadAssembly(spec).GetType(spec.TypeName, throwOnError: false);
+        }
+        catch (Exception ex) when (ex is BadImageFormatException or FileLoadException or ReflectionTypeLoadException)
+        {
+            throw Refuse(spec, $"the assembly could not be loaded ({ex.GetType().Name}: {ex.Message}). " +
+                               "Point it at a managed .NET assembly built for this runtime.");
+        }
         if (type is null)
             throw Refuse(spec, $"type \"{spec.TypeName}\" was not found in the assembly (use the full, namespace-qualified name).");
         if (!typeof(IMetaDataTypeProvider).IsAssignableFrom(type) || type.IsAbstract || type.IsInterface)

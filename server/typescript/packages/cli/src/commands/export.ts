@@ -44,7 +44,8 @@ export async function exportCommand(args: string[], cwd: string): Promise<number
     log.error(describeError(err));
     return 1;
   }
-  const registry = composeRegistry([...defaultLoadMemoryProviders, forgeTypesProvider, ...providers]);
+  const base = [...defaultLoadMemoryProviders, forgeTypesProvider];
+  const registry = composeRegistry([...base, ...providers.filter((p) => !base.some((b) => b.id === p.id))]);
 
   // `loadAndExportJson` only accepts a scanned directory (`MetaDataLoader.fromDirectory`);
   // `resolveCollection` already resolved the file SET (declared `sources`, or the

@@ -133,7 +133,7 @@ export async function upgradeCommand(args: string[], cwd: string): Promise<numbe
   // is reported once and the core vocabulary is used.
   let projectProviders: readonly MetaDataTypeProvider[] = [];
   try {
-    projectProviders = await loadProjectProviders(cwd, projectRoot);
+    projectProviders = await loadProjectProviders(projectRoot, projectRoot);
   } catch (err) {
     log.warn(`metaobjects.config.ts failed to load (${describeError(err)}); upgrading against the core vocabulary only.`);
   }

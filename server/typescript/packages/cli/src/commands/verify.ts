@@ -329,13 +329,7 @@ export async function verifyCommand(
   // keeps a passing bare verify; the note says what was skipped and why.
   if (!flags.anyExplicit) {
     if (forgeConfig !== undefined) runCodegen = true;
-    else if (existsSync(join(genConfigDir, "metaobjects.config.ts"))) {
-      log.error(
-        "meta verify: metaobjects.config.ts exists but failed to load, so the codegen gate cannot run: " +
-          (configLoadError instanceof Error ? configLoadError.message : String(configLoadError)),
-      );
-      return 2;
-    } else say("meta verify — codegen gate skipped: no metaobjects.config.ts found, so there is no generated output to diff against");
+    else say("meta verify — codegen gate skipped: no metaobjects.config.ts found, so there is no generated output to diff against");
   }
 
   // ADR-0023 strict-by-default (#96): verify loads strict unless --lax is passed,

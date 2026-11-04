@@ -103,6 +103,21 @@ describe("config providers reach every metadata-loading command", () => {
     expect(bareCode).toBe(1);
   });
 
+  test("export accepts a config that opts into forge vocabulary itself", async () => {
+    const config = [
+      `import { defineConfig } from "@metaobjectsdev/codegen-ts";`,
+      `import { forgeTypesProvider } from ${JSON.stringify(join(import.meta.dir, "..", "..", "sdk", "src", "index.ts"))};`,
+      PROVIDER_SRC,
+      `export default defineConfig({ outDir: "out", dialect: "postgres", generators: [], providers: [forgeTypesProvider, vocab] });`,
+    ].join("\n");
+    const root = await project(config);
+    const out = join(root, "export.json");
+    const { result, err } = await captured(() => exportCommand(["--out", out], root));
+    expect(err).not.toContain("ERR_PROVIDER_DUPLICATE_ID");
+    expect(result).toBe(0);
+    expect(await readFile(out, "utf8")).toContain("layout.picker");
+  });
+
   test("export surfaces a broken config as itself", async () => {
     const root = await project(BROKEN_CONFIG);
     const { result, err } = await captured(() => exportCommand([], root));
