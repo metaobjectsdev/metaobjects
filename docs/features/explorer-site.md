@@ -92,6 +92,9 @@ docsSiteFile({ assetBase: "/vendor/npm" })
 | API | `api.html` | Every route this run mounts, by node |
 | Gaps | `gaps.html` | The gate's findings and coverage warnings, undecided gaps, and the checks this explorer adds: planned entries with live work below, prompts nothing claims, fields named like a reference with no `identity.reference`, payload fields the text never uses |
 
+An object named `index` gets `index.node.html`, so it never takes its package's index page,
+and a model with no package puts its pages under `model/-root/`.
+
 Every page works at phone width: the navigation scrolls, the tiles stack in two columns, and
 wide tables scroll inside their card.
 
