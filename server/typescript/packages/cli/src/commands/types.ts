@@ -20,7 +20,8 @@
 // The `--json` flag this once advertised in its own --help, twice, is not coming back: the
 // CLI rejects a bare `--json` before a command ever sees its args (index.ts, `formatAlias`),
 // on purpose — one global spelling for all three formats.
-import { composeRegistry, buildVocabularyCatalog } from "@metaobjectsdev/metadata";
+import { composeRegistry, buildVocabularyCatalog, type MetaDataTypeProvider } from "@metaobjectsdev/metadata";
+import { loadProjectProviders } from "../lib/load-metaobjects-config.js";
 import { defaultLoadMemoryProviders } from "@metaobjectsdev/sdk";
 import { log } from "../lib/log.js";
 import { emitStructured, type OutputFormat } from "../lib/format.js";
@@ -257,7 +258,18 @@ export async function typesCommand(args: string[], fmt: OutputFormat = "text"): 
   // once in this list, and printing it as registered vocabulary was part of how a TS-only
   // registration read as cross-port: `meta types forge --all` listed 20 attrs no other port
   // has. One composition, one door.
-  const registry = composeRegistry([...defaultLoadMemoryProviders], { validate: true });
+  // Plus the project's own providers when a `metaobjects.config.ts` governs this directory,
+  // so project vocabulary (`layout.picker`, extended attrs) is listed. No config: unchanged.
+  let projectProviders: readonly MetaDataTypeProvider[] = [];
+  try {
+    projectProviders = await loadProjectProviders(process.cwd(), process.cwd());
+  } catch (err) {
+    const msg = `metaobjects.config.ts failed to load: ${describeError(err)}`;
+    log.error(msg);
+    emitStructured({ error: msg, hint: "fix the config, or run outside the project for the built-in vocabulary" }, fmt);
+    return 1;
+  }
+  const registry = composeRegistry([...defaultLoadMemoryProviders, ...projectProviders], { validate: true });
   const catalog = buildVocabularyCatalog(registry);
 
   // Flatten the catalog into searchable entries.

@@ -3,8 +3,9 @@ import { writeFile } from "node:fs/promises";
 import { parseExportArgs } from "../lib/args.js";
 import { log } from "../lib/log.js";
 import { FileSource } from "@metaobjectsdev/metadata/core";
-import { TypeRegistry, registerCoreTypes, MetaDataLoader, canonicalSerialize } from "@metaobjectsdev/metadata";
-import { registerForgeTypes, resolveCollection } from "@metaobjectsdev/sdk";
+import { composeRegistry, MetaDataLoader, canonicalSerialize } from "@metaobjectsdev/metadata";
+import { defaultLoadMemoryProviders, forgeTypesProvider, resolveCollection } from "@metaobjectsdev/sdk";
+import { loadProjectProviders } from "../lib/load-metaobjects-config.js";
 import { collectionLoadOptions } from "../lib/collection-load-options.js";
 import { describeError } from "../lib/error-text.js";
 
@@ -19,12 +20,6 @@ export async function exportCommand(args: string[], cwd: string): Promise<number
 
   const projectRoot = cwd;
 
-  // Build a registry with core + forge types so metadata that includes
-  // descriptive types (decision, principle, etc.) loads without errors.
-  const registry = new TypeRegistry();
-  registerCoreTypes(registry);
-  registerForgeTypes(registry);
-
   // `export` has never used exit 2 for a metadata problem — only for a bad CLI
   // flag (see parseExportArgs above). Previously any directory-load failure
   // surfaced through loadAndExportJson's collected result.errors (exit 1); a
@@ -38,6 +33,18 @@ export async function exportCommand(args: string[], cwd: string): Promise<number
     log.error(describeError(err));
     return 1;
   }
+
+  // Core + descriptive (forge) types so decision/principle records load, plus the
+  // project's own `metaobjects.config.ts` providers (a config that exists but fails to
+  // load is reported as itself, not as an unknown-subtype error).
+  let providers;
+  try {
+    providers = await loadProjectProviders(cwd, collection.configDir);
+  } catch (err) {
+    log.error(describeError(err));
+    return 1;
+  }
+  const registry = composeRegistry([...defaultLoadMemoryProviders, forgeTypesProvider, ...providers]);
 
   // `loadAndExportJson` only accepts a scanned directory (`MetaDataLoader.fromDirectory`);
   // `resolveCollection` already resolved the file SET (declared `sources`, or the

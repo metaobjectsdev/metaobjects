@@ -120,27 +120,40 @@ does and does not do is in
 
 ### Custom providers (optional)
 
-If your app needs a metamodel subtype the core doesn't ship, declare an
-`IMetaDataTypeProvider` and compose it into the registry before loading:
+When the project needs a subtype or an attribute the core does not ship, write a public class
+implementing `IMetaDataTypeProvider` (with a public parameterless constructor) in its own
+class library, and list the built assembly in `.metaobjects/config.json`:
 
-```csharp
-using MetaObjects;
-using MetaObjects.Loader;
-
-var registry = Provider.ComposeRegistry(new IMetaDataTypeProvider[] {
-    CoreTypes.CoreTypesProvider,
-    yourProvider,            // adds your custom subtype/attrs
-});
-
-var loader = MetaDataLoader.FromDirectory("./metaobjects", registry);
+```json
+{
+  "schema_version": 1,
+  "csharp": {
+    "providers": [
+      { "assembly": "vocabulary/bin/Debug/net8.0/Acme.Vocabulary.dll", "type": "Acme.Vocabulary.AcmeVocabularyProvider" }
+    ]
+  }
+}
 ```
 
-The provider object has the same four-member contract (`Id`, `Dependencies`,
-`Description`, `RegisterTypes(registry)`) as TS / Python. Composition errors
-surface `ERR_PROVIDER_DUPLICATE_ID`, `ERR_PROVIDER_MISSING_DEPENDENCY`,
-`ERR_PROVIDER_DEPENDENCY_CYCLE` — codes match the cross-port contract. See
-[`../features/extending-with-providers.md`](../features/extending-with-providers.md)
-for the full reference and
+`assembly` is relative to the directory holding `.metaobjects/`. Build the vocabulary first;
+a missing dll, a missing type or a type that is not a provider is refused with an error
+naming `csharp.providers`. `dotnet meta gen` and `verify --codegen` (through the `codegen/`
+runner), `dotnet meta verify` and `dotnet meta fmt` then all compose the core providers plus
+these. An application that loads the model itself composes the registry, and
+`ComposeRegistry` takes exactly the set it is given:
+
+```csharp
+var registry = Provider.ComposeRegistry([.. CoreTypes.LibraryProviders, new AcmeVocabularyProvider()]);
+var load = MetaDataLoader.FromDirectory("./metaobjects", registry, strict: true);
+```
+
+The provider object has the same contract (`Id`, `Dependencies`, `RegisterTypes(registry)`
+calling `Register` and `Extend`) as the other ports. Composition errors surface
+`ERR_PROVIDER_DUPLICATE_ID`, `ERR_PROVIDER_MISSING_DEPENDENCY` and
+`ERR_PROVIDER_DEPENDENCY_CYCLE`. If another port's tools load the same metadata, that port needs its own copy of the
+provider (same id, same vocabulary); a provider registered in one language is invisible to
+the others. See [`../features/extending-with-providers.md`](../features/extending-with-providers.md) for the full reference with a worked
+`AcmeVocabularyProvider`, and
 [`../recipes/extending-metaobjects-with-providers.md`](../recipes/extending-metaobjects-with-providers.md)
 for a worked example.
 

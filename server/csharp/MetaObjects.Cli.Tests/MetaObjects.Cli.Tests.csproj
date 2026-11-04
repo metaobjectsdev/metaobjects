@@ -12,5 +12,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../MetaObjects.Cli/MetaObjects.Cli.csproj" />
+    <!-- Built, but NOT referenced: the tests load it by path through `csharp.providers`. -->
+    <ProjectReference Include="../MetaObjects.TestVocabulary/MetaObjects.TestVocabulary.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
 </Project>

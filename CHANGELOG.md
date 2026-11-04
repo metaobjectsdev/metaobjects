@@ -12,6 +12,15 @@ here.**
 
 ### Fixed
 
+- **TypeScript: every `meta` command now loads the providers in `metaobjects.config.ts`.**
+  `meta export`, `meta deps`, `meta fmt`, `meta types` and `meta upgrade` loaded the core
+  vocabulary only, so a project's own subtype or attribute failed there while `meta gen` accepted
+  it. A config that exists but fails to load is now reported as its own error by `meta verify`
+  (exit 2, in every mode) and `meta prompt-snapshot`, instead of continuing without its providers
+  and reporting an unknown subtype.
+- **Python: `metaobjects fmt` reads the configured providers, and `--provider` adds to them.**
+  `fmt` ignored `providers:` in `metaobjects.config.yaml` (it also gains `--config`), and
+  `metaobjects verify --provider` replaced the configured list instead of adding to it.
 - **`meta migrate` refuses, at plan time, to drop a column a view it does not own still reads.**
   With `--from-db`, a declared-`@unmanaged` view or one outside the scoped schemas whose live body
   names the dropped column now blocks the `drop-column`, and the message names the view and the
@@ -48,8 +57,30 @@ here.**
   new command. `examples/brownfield/` holds a runnable project for each, and the recipe ships in
   the `metaobjects-authoring` skill.
 
+- **A project's own provider class, wired in every port's config, loaded by every command.** A
+  project that declares its own vocabulary (a new subtype, or attributes on a core type) writes a
+  provider class in each language whose tools load the metadata, and names it once:
+  `defineConfig({ providers })` in TypeScript, `providers: ["module:symbol"]` in
+  `metaobjects.config.yaml` for Python, the new `csharp.providers: [{ "assembly", "type" }]` list
+  in `.metaobjects/config.json` for C#, and for Java and Kotlin the new Maven plugin
+  `<providers><provider>FQCN</provider></providers>` list, `MetaDataTypeProvider` beans composed by
+  the Spring auto-configured loader, `LoaderOptions.setProviders(...)`, and a `providers`
+  parameter on the `metadata-ktx` loader. C#, Java and Kotlin had no project-level way to do this
+  before; `META-INF/services` still does not add a provider to the JVM loader. Two new conformance
+  fixtures, `provider-custom-vocabulary-success` and
+  `provider-custom-vocabulary-missing-provider-fails`, hold every port to loading a project
+  subtype plus attributes with its provider and refusing the same file without it.
+  `docs/features/extending-with-providers.md` now has a worked example per language, and the
+  `metaobjects-authoring` skill teaches it, with a reference file per language.
+
 ### Changed
 
+- **Python and Java report a missing provider's errors in the same order as the other ports.**
+  When a file holds both an unknown subtype and unknown attributes, Python used to drop the whole
+  file at the unknown subtype and never report the attributes; it now reports
+  `ERR_UNKNOWN_SUBTYPE` and then each `ERR_UNKNOWN_ATTR`. Java reported the attribute errors
+  before the subtype error; it now reports them after it, as TypeScript and C# do. A load that
+  failed still fails; only the list of errors differs.
 - **A prompt or output template that names a variable not on its payload now raises at render time.**
   Behaviour change: a generated render helper used to render `Hi {{nmae}}` as `Hi ` with no error
   when the payload declares `name`; it now raises `ERR_VAR_NOT_ON_PAYLOAD (nmae)` (`RenderError` in

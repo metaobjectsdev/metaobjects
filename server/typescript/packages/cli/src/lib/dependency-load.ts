@@ -35,6 +35,7 @@ import {
   type ResolvedDependency,
 } from "@metaobjectsdev/sdk";
 import { collectionLoadOptions } from "./collection-load-options.js";
+import { loadProjectProviders } from "./load-metaobjects-config.js";
 
 /** `resolveCollection`'s code for "no `sources` declared and no default directory". */
 const ERR_COLLECTION_NOT_FOUND = "ERR_COLLECTION_NOT_FOUND";
@@ -130,7 +131,14 @@ export async function proveDependencySetLoads(configDir: string): Promise<Depend
     };
   }
 
-  const loadOptions = collectionLoadOptions(collection);
+  // The project's own providers: without them its custom vocabulary reads as "port-only".
+  let providers;
+  try {
+    providers = await loadProjectProviders(configDir, collection.configDir);
+  } catch (err) {
+    throw new DependencyLoadFailure("resolve", err);
+  }
+  const loadOptions = { ...collectionLoadOptions(collection), ...(providers.length > 0 ? { providers } : {}) };
   try {
     await loadMemory(collection.configDir, loadOptions);
     return { scope: "full" };

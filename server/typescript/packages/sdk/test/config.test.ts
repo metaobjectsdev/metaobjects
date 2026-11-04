@@ -284,3 +284,19 @@ describe("csharp.outDir (the C# port's generated-code directory)", () => {
     expect(ConfigSchema.safeParse({ schema_version: 1, csharp: { outDir: "" } }).success).toBe(false);
   });
 });
+
+describe("csharp.providers (read by the C# port only)", () => {
+  test("a config carrying provider assemblies validates", () => {
+    const ok = ConfigSchema.safeParse({
+      schema_version: 1,
+      csharp: { providers: [{ assembly: "bin/Debug/net8.0/Acme.Vocabulary.dll", type: "Acme.Vocabulary.AcmeProvider" }] },
+    });
+    expect(ok.success).toBe(true);
+  });
+  test("rejects an empty field, a missing field, and an unknown key", () => {
+    const bad = (p: unknown) => ConfigSchema.safeParse({ schema_version: 1, csharp: { providers: p } }).success;
+    expect(bad([{ assembly: "", type: "A.B" }])).toBe(false);
+    expect(bad([{ assembly: "a.dll" }])).toBe(false);
+    expect(bad([{ assembly: "a.dll", type: "A.B", extra: 1 }])).toBe(false);
+  });
+});

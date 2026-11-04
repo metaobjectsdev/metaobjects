@@ -362,6 +362,11 @@ public class ConformanceTest {
         String loaderName = detectLoaderName(inputFiles);
 
         LoaderOptions opts = LoaderOptions.create(false, false, true);
+        // A fixture naming the project-vocabulary provider loads through the SANCTIONED path:
+        // LoaderOptions.setProviders -> RegistryManifest.composeLoaderRegistry (sealed, strict).
+        if (fix.hasProvidersJson && fix.requiredProviders.contains("example-custom-vocabulary")) {
+            opts.setProviders(List.of(ConformanceTestProviders.EXAMPLE_CUSTOM_VOCABULARY));
+        }
         MetaDataLoader loader = new MetaDataLoader(opts, MetaDataLoader.SUBTYPE_MANUAL, loaderName);
         // A fixture that requires the test-only example-template-briefing provider
         // gets its OWN registry (core + briefing) via setTypeRegistry — no global

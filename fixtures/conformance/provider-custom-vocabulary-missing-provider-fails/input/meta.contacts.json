@@ -1,0 +1,17 @@
+{
+  "metadata.root": {
+    "package": "examples",
+    "children": [
+      {
+        "object.value": {
+          "name": "Contact",
+          "children": [
+            { "field.string": { "name": "name", "@searchable": true } },
+            { "field.string": { "name": "status", "@valueLabels": ["Active", "On hold"] } },
+            { "layout.picker": { "name": "contactPicker", "@displayField": "name" } }
+          ]
+        }
+      }
+    ]
+  }
+}

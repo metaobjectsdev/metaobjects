@@ -310,6 +310,23 @@ export async function resolveGenCollection(
 }
 
 /**
+ * The custom providers a project's `metaobjects.config.ts` contributes, for a command run
+ * from `startDir` (`fallback` = the collection's directory, as for `resolveGenConfigDir`).
+ *
+ * Absent config: `[]` (core vocabulary only). A config that EXISTS but fails to load
+ * THROWS, so the caller reports the real error instead of a downstream
+ * `ERR_UNKNOWN_SUBTYPE` that the config's own providers would have prevented.
+ */
+export async function loadProjectProviders(
+  startDir: string,
+  fallback: string,
+): Promise<readonly MetaDataTypeProvider[]> {
+  const dir = resolveGenConfigDir(startDir, fallback);
+  if (!existsSync(join(dir, CONFIG_FILE))) return [];
+  return loadMemoryOptionsFrom(await loadMetaobjectsConfig(dir)).providers ?? [];
+}
+
+/**
  * A `metaobjects.config.ts` that still sets column naming (ADR-0058). Its own class because
  * the commands that tolerate a missing or broken config (`meta migrate` falls back to
  * defaults) must NOT tolerate this one: falling back to the default rule would propose

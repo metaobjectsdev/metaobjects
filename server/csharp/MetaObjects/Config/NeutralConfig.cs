@@ -98,9 +98,14 @@ public sealed class NeutralConfig
     /// emits such a type stops and asks for one.
     public string? Namespace { get; }
 
+    /// `csharp.providers` — the project's own metamodel providers (assembly path resolved against
+    /// the directory holding `.metaobjects/`, plus a type name). Empty when absent. Instantiated by
+    /// <see cref="ProviderLoader"/>, not here, so reading a config never loads code.
+    public IReadOnlyList<ProviderSpec> Providers { get; }
+
     private NeutralConfig(
         IReadOnlyList<IReadOnlyDictionary<string, string>> sources, IReadOnlyList<string> libraries,
-        PhysicalNaming naming, WireFormat wire, (string? OutDir, string? Namespace) csharp,
+        PhysicalNaming naming, WireFormat wire, (string? OutDir, string? Namespace, IReadOnlyList<ProviderSpec> Providers) csharp,
         IReadOnlyList<DependencySpec> dependencies, IReadOnlyList<string> scopeInclude,
         IReadOnlyList<string>? migrateScope, string configDir)
     {
@@ -110,6 +115,7 @@ public sealed class NeutralConfig
         ConfigDir = configDir;
         OutDir = csharp.OutDir;
         Namespace = csharp.Namespace;
+        Providers = csharp.Providers;
         Sources = sources;
         Libraries = libraries;
         Naming = naming;
@@ -311,19 +317,26 @@ public sealed class NeutralConfig
     /// `dotnet meta verify` diffs, and `namespace`, the namespace both generate under. The other
     /// ports ignore the block, as they ignore any key they do not own. An unknown key, a
     /// non-string or empty value, or a non-object block is refused, the same rule as `naming`.
-    private static (string? OutDir, string? Namespace) ReadCSharp(JsonElement root, string path, string configDir)
+    private static (string? OutDir, string? Namespace, IReadOnlyList<ProviderSpec> Providers) ReadCSharp(
+        JsonElement root, string path, string configDir)
     {
-        if (!root.TryGetProperty("csharp", out var block)) return (null, null);
+        if (!root.TryGetProperty("csharp", out var block)) return (null, null, []);
         if (block.ValueKind != JsonValueKind.Object)
             throw new MetaModelException($"{path}: \"csharp\" must be an object", ErrorCode.ERR_BAD_ATTR_VALUE);
 
         string? outDir = null, ns = null;
+        IReadOnlyList<ProviderSpec> providers = [];
         foreach (var p in block.EnumerateObject())
         {
-            if (p.Name is not ("outDir" or "namespace"))
+            if (p.Name is not ("outDir" or "namespace" or "providers"))
                 throw new MetaModelException(
-                    $"{path}: \"csharp\" has an unknown key \"{p.Name}\" (expected \"outDir\" and/or \"namespace\")",
+                    $"{path}: \"csharp\" has an unknown key \"{p.Name}\" (expected \"outDir\", \"namespace\" and/or \"providers\")",
                     ErrorCode.ERR_BAD_ATTR_VALUE);
+            if (p.Name == "providers")
+            {
+                providers = ReadProviders(p.Value, path, configDir);
+                continue;
+            }
             if (p.Value.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(p.Value.GetString()))
                 throw new MetaModelException(
                     $"{path}: \"csharp.{p.Name}\" must be a non-empty string", ErrorCode.ERR_BAD_ATTR_VALUE);
@@ -332,7 +345,41 @@ public sealed class NeutralConfig
             else
                 ns = p.Value.GetString()!;
         }
-        return (outDir, ns);
+        return (outDir, ns, providers);
+    }
+
+    /// `csharp.providers`: an array of `{ "assembly", "type" }` objects. Both keys are required
+    /// non-empty strings; any other key is refused, like the rest of the `csharp` block.
+    private static IReadOnlyList<ProviderSpec> ReadProviders(JsonElement value, string path, string configDir)
+    {
+        if (value.ValueKind != JsonValueKind.Array)
+            throw new MetaModelException(
+                $"{path}: \"csharp.providers\" must be an array of {{ \"assembly\", \"type\" }} objects", ErrorCode.ERR_BAD_ATTR_VALUE);
+        var specs = new List<ProviderSpec>();
+        var i = 0;
+        foreach (var entry in value.EnumerateArray())
+        {
+            var at = $"csharp.providers[{i++}]";
+            if (entry.ValueKind != JsonValueKind.Object)
+                throw new MetaModelException($"{path}: \"{at}\" must be an object", ErrorCode.ERR_BAD_ATTR_VALUE);
+            string? asm = null, type = null;
+            foreach (var f in entry.EnumerateObject())
+            {
+                if (f.Name is not ("assembly" or "type"))
+                    throw new MetaModelException(
+                        $"{path}: \"{at}\" has an unknown key \"{f.Name}\" (expected \"assembly\" and \"type\")",
+                        ErrorCode.ERR_BAD_ATTR_VALUE);
+                if (f.Value.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(f.Value.GetString()))
+                    throw new MetaModelException(
+                        $"{path}: \"{at}.{f.Name}\" must be a non-empty string", ErrorCode.ERR_BAD_ATTR_VALUE);
+                if (f.Name == "assembly") asm = f.Value.GetString()!; else type = f.Value.GetString()!;
+            }
+            if (asm is null || type is null)
+                throw new MetaModelException(
+                    $"{path}: \"{at}\" needs both \"assembly\" and \"type\"", ErrorCode.ERR_BAD_ATTR_VALUE);
+            specs.Add(new ProviderSpec(Path.GetFullPath(asm, Path.GetFullPath(configDir)), type, path));
+        }
+        return specs;
     }
 
     /// The `wire` block (ADR-0019 Amendment 2): an unknown key, an unknown value, or a

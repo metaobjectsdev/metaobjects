@@ -309,6 +309,16 @@ export async function verifyCommand(
     forgeConfig = undefined;
     configLoadError = e;
   }
+  // A config that EXISTS but fails to load must be reported as itself in EVERY mode: continuing
+  // without its providers turns a config error into a misleading ERR_UNKNOWN_SUBTYPE on the
+  // custom vocabulary those providers register.
+  if (forgeConfig === undefined && existsSync(join(genConfigDir, "metaobjects.config.ts"))) {
+    log.error(
+      "meta verify: metaobjects.config.ts exists but failed to load: " +
+        (configLoadError instanceof Error ? configLoadError.message : String(configLoadError)),
+    );
+    return 2;
+  }
   // Both of the gen config's contributions to the load, together — see
   // `loadMemoryOptionsFrom`. Threading `providers` and forgetting `libraries` is how
   // a shipped library became unloadable through the CLI (#333).

@@ -64,6 +64,7 @@ public class MetaDataFmtMojo extends AbstractMetaDataMojo {
         warnIfAgentContextStale();
 
         ClassLoader projectClassLoader = createProjectClassLoader();
+        resolveProviders(projectClassLoader); // a bad <providers> entry fails here, before any load
         // ONE real directory walk — to learn the resolved file list via the full
         // <loader><sourceDir>/<sources>/.metaobjects/config.json ladder, and to
         // fail fast (via createLoader's own failOnLoaderErrors) if the project
@@ -77,6 +78,8 @@ public class MetaDataFmtMojo extends AbstractMetaDataMojo {
         List<Path> targets = resolveTargets(allFiles);
 
         boolean strict = !isLax();
+        // Every fresh reload in the safety check carries the same <providers> as the baseline.
+        List<com.metaobjects.registry.MetaDataTypeProvider> extraProviders = resolveProviders(projectClassLoader);
         String loaderName = getLoader().getName();
         List<String> libraries = getLoader().getLibraries();
         List<MetaDataSource> librarySources =
@@ -97,7 +100,7 @@ public class MetaDataFmtMojo extends AbstractMetaDataMojo {
                 // .load(List) requires init() to have run first, but takes the actual
                 // source list as a separate call — see FmtSupport.buildSources.
                 MetaDataLoader fresh = new MetaDataLoader(
-                    LoaderOptions.create(false, false, strict), MetaDataLoader.SUBTYPE_MANUAL,
+                    LoaderOptions.create(false, false, strict).setProviders(extraProviders), MetaDataLoader.SUBTYPE_MANUAL,
                     loaderName);
                 fresh.init();
                 return fresh;
@@ -110,7 +113,7 @@ public class MetaDataFmtMojo extends AbstractMetaDataMojo {
                 // a loader name may not — that is a SEPARATE identifier, the `sourceId`
                 // CanonicalJsonParser takes, for provenance only).
                 MetaDataLoader standalone = new MetaDataLoader(
-                    LoaderOptions.create(false, false, strict), MetaDataLoader.SUBTYPE_MANUAL,
+                    LoaderOptions.create(false, false, strict).setProviders(extraProviders), MetaDataLoader.SUBTYPE_MANUAL,
                     loaderNameForFile);
                 standalone.init();
                 return standalone;

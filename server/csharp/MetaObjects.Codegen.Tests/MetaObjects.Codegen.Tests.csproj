@@ -17,6 +17,8 @@
     <ProjectReference Include="../MetaObjects/MetaObjects.csproj" />
     <ProjectReference Include="../MetaObjects.Codegen/MetaObjects.Codegen.csproj" />
     <ProjectReference Include="../MetaObjects.Render/MetaObjects.Render.csproj" />
+    <!-- Built, NOT referenced: CsharpProvidersCodegenTests loads it by path through `csharp.providers`. -->
+    <ProjectReference Include="../MetaObjects.TestVocabulary/MetaObjects.TestVocabulary.csproj" ReferenceOutputAssembly="false" />
     <!-- CodegenDriftTests derives its default-suite list from GenCommand.DefaultGeneratorNames
          instead of hand-copying it a second time (a hand-copy that drifted silently is the
          reason this reference exists — see CodegenDriftTests.cs). -->

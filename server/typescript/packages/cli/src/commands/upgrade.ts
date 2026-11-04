@@ -27,7 +27,9 @@ import {
   coreProviders,
   SUBTYPE_BASE,
   retirementSuggestions,
+  type MetaDataTypeProvider,
 } from "@metaobjectsdev/metadata";
+import { loadProjectProviders } from "../lib/load-metaobjects-config.js";
 import { log } from "../lib/log.js";
 import { describeError } from "../lib/error-text.js";
 import { unknownFlagMessage } from "../lib/strict-args.js";
@@ -124,7 +126,18 @@ export async function upgradeCommand(args: string[], cwd: string): Promise<numbe
   // `{"object.base": …}` the loader refuses (ERR_ABSTRACT_SUBTYPE_AUTHORED) — the change
   // §10A of the 1.0 guide LEADS WITH. The one command whose job is "what does the new
   // version need me to change?" said "nothing", and the adopter then hit the load failure.
-  const registry = composeRegistry(coreProviders);
+  //
+  // A project's own providers count too: a custom type with a `base` plus another subtype
+  // has an abstract anchor as well. Best-effort, though: this command exists to repair a
+  // project that does not load, so an unloadable config must not block the rewrite — it
+  // is reported once and the core vocabulary is used.
+  let projectProviders: readonly MetaDataTypeProvider[] = [];
+  try {
+    projectProviders = await loadProjectProviders(cwd, projectRoot);
+  } catch (err) {
+    log.warn(`metaobjects.config.ts failed to load (${describeError(err)}); upgrading against the core vocabulary only.`);
+  }
+  const registry = composeRegistry([...coreProviders, ...projectProviders]);
   // `allTypes()` yields one TypeId per registered type.subType pair, so take the distinct
   // TYPE names off it.
   const abstractAnchorTypes = [...new Set(registry.allTypes().map((id) => id.type))]

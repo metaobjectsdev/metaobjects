@@ -4,6 +4,7 @@ import com.metaobjects.loader.DirectorySource
 import com.metaobjects.loader.LoaderOptions
 import com.metaobjects.loader.MetaDataLoader
 import com.metaobjects.loader.MetaDataSource.MetaDataFormat
+import com.metaobjects.registry.MetaDataTypeProvider
 import java.net.URI
 import java.nio.file.Path
 
@@ -13,26 +14,41 @@ import java.nio.file.Path
  * [MetaDataLoader] static factory.
  */
 
-/** Load metadata from a filesystem directory; pass [DirectorySource.Options] to tune expansion. */
+/**
+ * The options a `providers` argument rides on. Empty [providers] returns [opts] untouched (so the
+ * default load is byte-identical); otherwise the providers are set on [opts], or on the
+ * `createManual` defaults (lax, quiet, unregistered) when [opts] is null.
+ */
+private fun withProviders(opts: LoaderOptions?, providers: List<MetaDataTypeProvider>): LoaderOptions? =
+    if (providers.isEmpty()) opts
+    else (opts ?: LoaderOptions.create(false, false, false)).setProviders(providers)
+
+/**
+ * Load metadata from a filesystem directory; pass [DirectorySource.Options] to tune expansion and
+ * [providers] to add a project's own vocabulary (composed after the metamodel set, sealed, strict).
+ */
 fun loadDirectory(
     name: String,
     directory: Path,
     opts: DirectorySource.Options = DirectorySource.Options(),
-): MetaDataLoader = MetaDataLoader.fromDirectory(name, directory, opts)
+    providers: List<MetaDataTypeProvider> = emptyList(),
+): MetaDataLoader = MetaDataLoader.fromDirectory(name, directory, opts, null, providers)
 
-/** Load metadata from a list of URIs; pass [LoaderOptions] to tune (e.g. `strict=true`). */
+/** Load metadata from a list of URIs; pass [LoaderOptions] to tune (e.g. `strict=true`) and [providers] for a project's own vocabulary. */
 fun loadUris(
     name: String,
     uris: List<URI>,
     opts: LoaderOptions? = null,
-): MetaDataLoader = MetaDataLoader.fromUris(name, uris, opts)
+    providers: List<MetaDataTypeProvider> = emptyList(),
+): MetaDataLoader = MetaDataLoader.fromUris(name, uris, withProviders(opts, providers))
 
-/** Load metadata from classpath resource paths; pass [LoaderOptions] to tune. */
+/** Load metadata from classpath resource paths; pass [LoaderOptions] to tune and [providers] for a project's own vocabulary. */
 fun loadResources(
     name: String,
     resources: List<String>,
     opts: LoaderOptions? = null,
-): MetaDataLoader = MetaDataLoader.fromResources(name, resources, opts)
+    providers: List<MetaDataTypeProvider> = emptyList(),
+): MetaDataLoader = MetaDataLoader.fromResources(name, resources, withProviders(opts, providers))
 
 /**
  * Load metadata from a single inline string (defaults to JSON); pass [LoaderOptions] to
@@ -48,4 +64,5 @@ fun loadString(
     content: String,
     format: MetaDataFormat = MetaDataFormat.JSON,
     opts: LoaderOptions? = null,
-): MetaDataLoader = MetaDataLoader.fromString(name, content, format, opts)
+    providers: List<MetaDataTypeProvider> = emptyList(),
+): MetaDataLoader = MetaDataLoader.fromString(name, content, format, withProviders(opts, providers))

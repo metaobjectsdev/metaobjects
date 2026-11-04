@@ -99,23 +99,35 @@ metadata:
 
 ### Custom providers (optional)
 
-If your app needs a metamodel subtype the core doesn't ship, declare a
-`Provider` and pass it through `from_directory`:
+When the project needs a subtype or an attribute the core does not ship, declare a
+`metaobjects.provider.Provider` in a module beside `metaobjects.config.yaml` and list it as
+`module:symbol`:
 
-```python
-from metaobjects.provider import Provider
-from metaobjects import MetaDataLoader
-from .providers import your_provider
-
-result = MetaDataLoader.from_directory("./metaobjects", providers=[your_provider])
+```yaml
+metadata: metaobjects
+providers: ["acme_vocab:provider"]
 ```
 
-The provider object has the same four-member contract (`id`, `dependencies`,
-`description`, `register_types(registry)`) as TS / C#. Composition errors
-surface `ERR_PROVIDER_DUPLICATE_ID`, `ERR_PROVIDER_MISSING_DEPENDENCY`,
-`ERR_PROVIDER_DEPENDENCY_CYCLE` — codes match the cross-port contract. See
-[`../features/extending-with-providers.md`](../features/extending-with-providers.md)
-for the full reference and
+The module resolves relative to the config's directory. `metaobjects gen` (with its docs
+generators), every `metaobjects verify` mode and `metaobjects fmt` load that list, and
+`--provider module:symbol` adds to it for one run. Code that loads the model itself passes the
+full set, core first, because `providers=` is exactly what is composed:
+
+```python
+from metaobjects.core_types import core_providers
+from metaobjects.loader.meta_data_loader import MetaDataLoader
+from acme_vocab import provider
+
+result = MetaDataLoader.from_directory("./metaobjects", providers=[*core_providers, provider], strict=True)
+```
+
+The provider has the same contract (an id, its dependencies, `TypeDefinition`s added with
+`add`, and an `on_register` hook that `extend`s existing types) as the other ports.
+Composition errors surface `ERR_PROVIDER_DUPLICATE_ID`, `ERR_PROVIDER_MISSING_DEPENDENCY` and
+`ERR_PROVIDER_DEPENDENCY_CYCLE`. If another port's tools load the same metadata, that port needs its own copy of the
+provider (same id, same vocabulary); a provider registered in one language is invisible to
+the others. See [`../features/extending-with-providers.md`](../features/extending-with-providers.md) for the full reference with a worked
+provider, and
 [`../recipes/extending-metaobjects-with-providers.md`](../recipes/extending-metaobjects-with-providers.md)
 for a worked example.
 

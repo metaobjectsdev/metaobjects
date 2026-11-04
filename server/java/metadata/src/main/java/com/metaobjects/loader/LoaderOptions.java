@@ -1,5 +1,10 @@
 package com.metaobjects.loader;
 
+import com.metaobjects.registry.MetaDataTypeProvider;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
 import java.util.Objects;
 
 
@@ -12,6 +17,9 @@ public class LoaderOptions {
     private boolean shouldRegister = false;
     private boolean verbose = true;
     private boolean strict = true;
+
+    /** Extra vocabulary providers composed into the loader's registry; empty = the shared default. */
+    private List<MetaDataTypeProvider> providers = List.of();
 
     public LoaderOptions() {}
 
@@ -53,6 +61,22 @@ public class LoaderOptions {
         return strict;
     }
 
+    /**
+     * A project's own vocabulary: the loader composes
+     * {@link com.metaobjects.registry.RegistryManifest#composeLoaderRegistry(Collection)} with these
+     * providers appended after the metamodel set, instead of using the shared default registry.
+     * Empty (the default) leaves loading byte-identical to a loader given no providers.
+     */
+    public LoaderOptions setProviders(Collection<? extends MetaDataTypeProvider> providers) {
+        this.providers = providers == null ? List.of() : List.copyOf(new ArrayList<>(providers));
+        return this;
+    }
+
+    /** The extra providers (never null, unmodifiable). */
+    public List<MetaDataTypeProvider> getProviders() {
+        return providers;
+    }
+
     ///////////////////////////////////////////////////////////////////////////
     // Misc Functions
 
@@ -63,7 +87,8 @@ public class LoaderOptions {
         LoaderOptions that = (LoaderOptions) o;
         return shouldRegister == that.shouldRegister &&
                 verbose == that.verbose &&
-                strict == that.strict;
+                strict == that.strict &&
+                providers.equals(that.providers);
     }
 
     @Override
