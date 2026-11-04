@@ -7,6 +7,7 @@
       "subType": "value",
       "name": "Address",
       "package": "acme::shop",
+      "order": 1,
       "attrs": {}
     },
     {
@@ -15,6 +16,7 @@
       "subType": "string",
       "name": "city",
       "package": "acme::shop",
+      "order": 1,
       "parent": "acme::shop::Address",
       "attrs": {}
     },
@@ -24,6 +26,7 @@
       "subType": "string",
       "name": "street",
       "package": "acme::shop",
+      "order": 0,
       "parent": "acme::shop::Address",
       "attrs": {}
     },
@@ -33,6 +36,7 @@
       "subType": "architectural",
       "name": "Addressable",
       "package": "acme::shop",
+      "order": 8,
       "attrs": {
         "counterexample": "A row nobody can point at.",
         "implementedBy": [
@@ -48,6 +52,7 @@
       "subType": "entity",
       "name": "AuditEntry",
       "package": "acme::shop",
+      "order": 4,
       "attrs": {}
     },
     {
@@ -56,6 +61,7 @@
       "subType": "rdb",
       "name": "db",
       "package": "acme::shop",
+      "order": 3,
       "parent": "acme::shop::AuditEntry",
       "attrs": {
         "table": "audit_entries"
@@ -67,6 +73,7 @@
       "subType": "uuid",
       "name": "id",
       "package": "acme::shop",
+      "order": 0,
       "parent": "acme::shop::AuditEntry",
       "attrs": {}
     },
@@ -76,6 +83,7 @@
       "subType": "primary",
       "name": "id",
       "package": "acme::shop",
+      "order": 1,
       "parent": "acme::shop::AuditEntry",
       "attrs": {
         "fields": [
@@ -89,6 +97,7 @@
       "subType": "string",
       "name": "message",
       "package": "acme::shop",
+      "order": 2,
       "parent": "acme::shop::AuditEntry",
       "attrs": {}
     },
@@ -98,6 +107,7 @@
       "subType": "entity",
       "name": "BaseEntity",
       "package": "acme::shop",
+      "order": 0,
       "abstract": true,
       "attrs": {}
     },
@@ -107,6 +117,7 @@
       "subType": "timestamp",
       "name": "createdAt",
       "package": "acme::shop",
+      "order": 1,
       "parent": "acme::shop::BaseEntity",
       "attrs": {}
     },
@@ -116,6 +127,7 @@
       "subType": "uuid",
       "name": "id",
       "package": "acme::shop",
+      "order": 0,
       "parent": "acme::shop::BaseEntity",
       "attrs": {}
     },
@@ -125,6 +137,7 @@
       "subType": "primary",
       "name": "pk",
       "package": "acme::shop",
+      "order": 2,
       "parent": "acme::shop::BaseEntity",
       "attrs": {
         "fields": [
@@ -138,6 +151,7 @@
       "subType": "entity",
       "name": "Customer",
       "package": "acme::shop",
+      "order": 2,
       "extends": "acme::shop::BaseEntity",
       "attrs": {}
     },
@@ -147,6 +161,7 @@
       "subType": "timestamp",
       "name": "createdAt",
       "package": "acme::shop",
+      "order": 1,
       "parent": "acme::shop::Customer",
       "attrs": {},
       "inheritedFrom": "acme::shop::BaseEntity"
@@ -157,6 +172,7 @@
       "subType": "rdb",
       "name": "db",
       "package": "acme::shop",
+      "order": 6,
       "parent": "acme::shop::Customer",
       "attrs": {
         "table": "customers"
@@ -168,6 +184,7 @@
       "subType": "string",
       "name": "email",
       "package": "acme::shop",
+      "order": 4,
       "parent": "acme::shop::Customer",
       "attrs": {}
     },
@@ -177,6 +194,7 @@
       "subType": "uuid",
       "name": "id",
       "package": "acme::shop",
+      "order": 0,
       "parent": "acme::shop::Customer",
       "attrs": {},
       "inheritedFrom": "acme::shop::BaseEntity"
@@ -187,6 +205,7 @@
       "subType": "string",
       "name": "name",
       "package": "acme::shop",
+      "order": 3,
       "parent": "acme::shop::Customer",
       "attrs": {
         "required": true
@@ -198,6 +217,7 @@
       "subType": "primary",
       "name": "pk",
       "package": "acme::shop",
+      "order": 2,
       "parent": "acme::shop::Customer",
       "attrs": {
         "fields": [
@@ -212,6 +232,7 @@
       "subType": "object",
       "name": "shippingAddress",
       "package": "acme::shop",
+      "order": 5,
       "parent": "acme::shop::Customer",
       "attrs": {
         "objectRef": "acme::shop::Address"
@@ -223,6 +244,7 @@
       "subType": "entity",
       "name": "Order",
       "package": "acme::shop",
+      "order": 3,
       "extends": "acme::shop::BaseEntity",
       "attrs": {}
     },
@@ -232,6 +254,7 @@
       "subType": "timestamp",
       "name": "createdAt",
       "package": "acme::shop",
+      "order": 1,
       "parent": "acme::shop::Order",
       "attrs": {},
       "inheritedFrom": "acme::shop::BaseEntity"
@@ -242,6 +265,7 @@
       "subType": "uuid",
       "name": "customerId",
       "package": "acme::shop",
+      "order": 3,
       "parent": "acme::shop::Order",
       "attrs": {}
     },
@@ -251,6 +275,7 @@
       "subType": "reference",
       "name": "customerRef",
       "package": "acme::shop",
+      "order": 7,
       "parent": "acme::shop::Order",
       "attrs": {
         "fields": [
@@ -265,6 +290,7 @@
       "subType": "rdb",
       "name": "db",
       "package": "acme::shop",
+      "order": 9,
       "parent": "acme::shop::Order",
       "attrs": {
         "table": "orders"
@@ -276,6 +302,7 @@
       "subType": "uuid",
       "name": "id",
       "package": "acme::shop",
+      "order": 0,
       "parent": "acme::shop::Order",
       "attrs": {},
       "inheritedFrom": "acme::shop::BaseEntity"
@@ -286,6 +313,7 @@
       "subType": "lookup",
       "name": "orderByCustomerId",
       "package": "acme::shop",
+      "order": 8,
       "parent": "acme::shop::Order",
       "attrs": {
         "fields": [
@@ -299,6 +327,7 @@
       "subType": "primary",
       "name": "pk",
       "package": "acme::shop",
+      "order": 2,
       "parent": "acme::shop::Order",
       "attrs": {
         "fields": [
@@ -313,6 +342,7 @@
       "subType": "string",
       "name": "reference",
       "package": "acme::shop",
+      "order": 4,
       "parent": "acme::shop::Order",
       "attrs": {}
     },
@@ -322,6 +352,7 @@
       "subType": "enum",
       "name": "state",
       "package": "acme::shop",
+      "order": 6,
       "parent": "acme::shop::Order",
       "attrs": {
         "values": [
@@ -337,6 +368,7 @@
       "subType": "decimal",
       "name": "total",
       "package": "acme::shop",
+      "order": 5,
       "parent": "acme::shop::Order",
       "attrs": {}
     },
@@ -346,6 +378,7 @@
       "subType": "value",
       "name": "OrderNote",
       "package": "acme::shop",
+      "order": 6,
       "attrs": {}
     },
     {
@@ -354,6 +387,7 @@
       "subType": "string",
       "name": "text",
       "package": "acme::shop",
+      "order": 0,
       "parent": "acme::shop::OrderNote",
       "attrs": {
         "required": true
@@ -365,6 +399,7 @@
       "subType": "prompt",
       "name": "OrderNotePrompt",
       "package": "acme::shop",
+      "order": 7,
       "attrs": {
         "format": "text",
         "payloadRef": "acme::shop::OrderNoteRequest",
@@ -379,6 +414,7 @@
       "subType": "value",
       "name": "OrderNoteRequest",
       "package": "acme::shop",
+      "order": 5,
       "attrs": {}
     },
     {
@@ -387,6 +423,7 @@
       "subType": "string",
       "name": "reference",
       "package": "acme::shop",
+      "order": 0,
       "parent": "acme::shop::OrderNoteRequest",
       "attrs": {
         "required": true
@@ -398,6 +435,7 @@
       "subType": "functional",
       "name": "Shop",
       "package": "acme::shop",
+      "order": 9,
       "attrs": {
         "counterexample": "A customer who cannot place an order.",
         "level": 1,
@@ -411,6 +449,7 @@
       "subType": "functional",
       "name": "Checkout",
       "package": "acme::shop",
+      "order": 0,
       "parent": "acme::shop::Shop",
       "attrs": {
         "counterexample": "An order taken outside checkout.",
@@ -429,6 +468,7 @@
       "subType": "functional",
       "name": "Orders",
       "package": "acme::shop",
+      "order": 0,
       "parent": "acme::shop::Shop.Checkout",
       "attrs": {
         "counterexample": "A placed order that is lost.",
@@ -443,6 +483,7 @@
       "subType": "functional",
       "name": "Noted",
       "package": "acme::shop",
+      "order": 1,
       "parent": "acme::shop::Shop.Checkout.Orders",
       "attrs": {
         "counterexample": "An order with no note.",
@@ -460,6 +501,7 @@
       "subType": "functional",
       "name": "Recorded",
       "package": "acme::shop",
+      "order": 0,
       "parent": "acme::shop::Shop.Checkout.Orders",
       "attrs": {
         "counterexample": "A placed order has no row.",
@@ -478,6 +520,7 @@
       "subType": "functional",
       "name": "Quotable",
       "package": "acme::shop",
+      "order": 0,
       "parent": "acme::shop::Shop.Checkout.Orders.Recorded",
       "attrs": {
         "counterexample": "An order nobody can quote back.",
@@ -495,6 +538,7 @@
       "subType": "functional",
       "name": "Refunded",
       "package": "acme::shop",
+      "order": 2,
       "parent": "acme::shop::Shop.Checkout.Orders",
       "attrs": {
         "counterexample": "A paid order that cannot be refunded.",
@@ -512,6 +556,7 @@
       "subType": "functional",
       "name": "Shipping",
       "package": "acme::shop",
+      "order": 1,
       "parent": "acme::shop::Shop.Checkout",
       "attrs": {
         "counterexample": "A paid order that never ships.",
@@ -792,7 +837,8 @@
           {
             "code": "WARN_REQUIREMENT_NOTHING_IMPLEMENTS",
             "severity": "warn",
-            "source": "gate"
+            "source": "gate",
+            "message": "is 'live' but neither it nor anything nested under it names an implementing node. A functional requirement's check is existence — a subtree that claims nothing is a capability nobody built."
           }
         ],
         "verdict": "warn"
@@ -802,6 +848,7 @@
       {
         "code": "WARN_REQUIREMENT_NOTHING_IMPLEMENTS",
         "path": "Shop.Checkout.Shipping",
+        "node": "",
         "severity": "warn",
         "source": "gate",
         "message": "is 'live' but neither it nor anything nested under it names an implementing node. A functional requirement's check is existence — a subtree that claims nothing is a capability nobody built."
@@ -809,6 +856,7 @@
       {
         "code": "WARN_REQUIREMENT_OBJECT_UNCLAIMED",
         "path": "",
+        "node": "acme::shop::AuditEntry",
         "severity": "warn",
         "source": "gate",
         "message": "no requirement claims 'acme::shop::AuditEntry'. Add it to an L4 requirement's 'implementedBy'."

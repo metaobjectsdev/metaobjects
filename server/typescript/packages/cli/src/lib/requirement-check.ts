@@ -58,8 +58,11 @@ export interface Diagnostic {
    *  path. Two branches of a ledger may reuse a NAME, so a bare name does not
    *  locate the node, and a diagnostic you cannot locate is one you cannot act on.
    *  Absent on a diagnostic whose subject is not a requirement (object coverage
-   *  names the entity in its message instead). */
+   *  names the entity in `node` instead). */
   path?: string;
+  /** The entity a diagnostic is about when its subject is not a requirement (object
+   *  coverage): its fully-qualified name, `<package>::<name>`. */
+  node?: string;
   message: string;
 }
 
@@ -659,7 +662,7 @@ export function checkRequirements(root: MetaData, scan: RequirementScan = scanRe
     const key = ent.resolutionKey();
     if (!claimedObjects.has(key)) {
       out.push({
-        severity: OBJECT_COVERAGE_SEVERITY, code: WARN_REQUIREMENT_OBJECT_UNCLAIMED,
+        severity: OBJECT_COVERAGE_SEVERITY, code: WARN_REQUIREMENT_OBJECT_UNCLAIMED, node: key,
         message: `no requirement claims '${key}'. Add it to an L${REQUIREMENT_LINK_FLOOR_LEVEL} requirement's 'implementedBy'.`,
       });
     }

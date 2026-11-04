@@ -1,17 +1,19 @@
-# Explorer data: `explorer.json` and the three inputs it reads
+# Explorer data: `explorer.json` and the inputs it reads
 
 A model explorer shows one project so a reader can see what it does and how it was designed:
 the objects and how they connect, the prompts and what they send and get back, the requirement
 tree and whether each claim holds, and which generated files each node produced. All of that
-is read from one data file, `explorer.json`. This page documents that file and the three
-inputs it is built from.
+is read from one data file, `explorer.json`. This page documents that file and the inputs it is
+built from.
 
-This is the data layer only. No screen reads it yet.
+This page is the data layer. The site that reads it, built by `docsSiteFile()`, is
+[explorer-site.md](explorer-site.md); that generator builds the file during `meta gen`, so
+you only build it by hand to feed a tool of your own.
 
 ## The inputs are port-neutral
 
 The builder (`buildExplorer` in `@metaobjectsdev/docs-site`) never loads metadata itself. It
-reads three documents:
+reads three documents, and a fourth optional input, the REST routes (see [`api`](#api)):
 
 | Input | Produced by | What it contributes |
 | --- | --- | --- |
@@ -74,12 +76,17 @@ does not have to infer "checked and clean" from a path that no diagnostic mentio
 | `digest` | The same SHA-256 over the claim that each generated requirement test carries ([requirements.md](requirements.md)). |
 | `implementedBy` | Each link as written (`ref`), whether it resolves, and the node it resolves to (`target`): the object's resolution key, followed by `.<member path>` for a member. The gate's own resolver produces these values. |
 | `supersededBy` | The same, for `@supersededBy`; its `target` is the replacement's `qualifiedPath`. |
-| `diagnostics` | Every finding reported against this requirement, as `{ code, severity, source }`. `source` is `gate` when the finding can fail the build and `lint` when it cannot. |
+| `diagnostics` | Every finding reported against this requirement, as `{ code, severity, source, message }`. `source` is `gate` when the finding can fail the build and `lint` when it cannot. Two packages may declare a requirement at the same `path`, so read a requirement's findings here rather than matching `requirements.rows` by path. |
 | `verdict` | From gate findings only: `error`, `warn`, or `clean`. |
 
 A finding that is not about a single requirement, such as an entity nobody claims, appears
-in `requirements.rows` and in no ledger row. The structured payload is TypeScript-only, as
-the rest of `--format json` is.
+in `requirements.rows` and in no ledger row. Each `requirements.rows` entry is `{ code, path,
+node, severity, source, message }`. `path` is the requirement's dotted path, or `""` when the
+subject is not a requirement. `node` names that other subject: a
+`WARN_REQUIREMENT_OBJECT_UNCLAIMED` row carries the entity's resolution key there (for example
+`"node": "acme::shop::AuditEntry"`, the entity's id in `explorer.json`), and every other row
+carries `""`. Read the subject from `path` and `node`, never from `message`, whose wording may
+change. The structured payload is TypeScript-only, as the rest of `--format json` is.
 
 ### Node provenance in `.hashes.json`
 
@@ -117,6 +124,7 @@ interface ExplorerJson {
   edges: ExplorerEdge[];
   ledger?: ExplorerLedger;        // absent without a verify payload with requirements
   generated?: ExplorerGenerated[]; // absent without a manifest
+  api?: ExplorerRoute[];           // absent without a routes input
   slices: ExplorerSlice[];
 }
 ```
@@ -134,6 +142,7 @@ each node nested inside one (field, identity, source, view, index, nested requir
 | `id` | A top-level node's id is `<package>::<name>`. A nested node's id is its parent's id followed by `.<name>`, for example `acme::shop::Order.total`. A nested requirement's id equals its ledger row's `qualifiedPath`. A nested node with no name gets `#<index>` in place of `.<name>`. When siblings of different types share a name, the first one in the effective JSON keeps `.<name>`, because that is the node a dotted `@implementedBy` reference such as `Order.id` resolves to. Each later one adds its type, for example `acme::shop::AuditEntry.id[identity.primary]`. |
 | `type`, `subType`, `name`, `package` | As in the model. `package` is the package of the top-level ancestor. |
 | `parent` | The id of the node it is nested in. A top-level node has no `parent`. |
+| `order` | Its position among its siblings in the effective tree, from 0: the declaration order, which the id sort does not keep. |
 | `extends`, `abstract`, `isArray` | As in the effective JSON. |
 | `inheritedFrom` | Set on a member that came from a super. It holds the id of the object the member is declared on, meaning the topmost ancestor that has a member with the same type, name and body. A member redeclared with a different body belongs to the node itself. |
 | `attrs` | Every `@` attribute, without the `@`, with keys sorted. |
@@ -171,6 +180,11 @@ finding, including those about something other than a single requirement.
 The manifest entries that carry `sourceNode`, grouped by node: `{ node, files: [{ path,
 generatedBy }] }`, sorted by node and then by path. A plain entry has no node and is left out.
 
+### `api`
+
+One row per REST route: `{ node, method, path }`, with the project's `apiPrefix` in the path,
+sorted by node, then path, then method. Absent when no routes were passed.
+
 ### `slices`
 
 Slices are named node sets that a view can open on. They are all derived from the model, so
@@ -186,7 +200,7 @@ never in metadata, and are not built yet.
 
 ### Determinism
 
-The same three inputs always produce the same bytes. Nodes are sorted by id. Edges are sorted
+The same inputs always produce the same bytes. Nodes are sorted by id. Edges are sorted
 by kind, then `from`, then `to`, then `via`, with duplicates removed. Slices are sorted by id,
 and ledger rows stay in the verify payload's order. `serializeExplorer` writes JSON indented
 two spaces, with one trailing newline. That makes the file safe to commit and diff.
@@ -205,14 +219,17 @@ writeFileSync("explorer.json", serializeExplorer(buildExplorer({
 })));
 ```
 
-A `verify` or `manifest` that is missing or malformed leaves its section out. A `model` that is
+`routes` (optional) is a list of `{ node, method, path }`, one per REST route, and becomes the
+`api` section; `docsSiteFile()` fills it from the routes the run mounts. The manifest records
+files, not the routes inside them, so a hand build that wants routes passes them here.
+
+A `verify`, `manifest` or `routes` that is missing or malformed leaves its section out. A `model` that is
 not canonical metadata JSON makes the builder throw.
 
 ## Not built yet
 
 - **`usage`**: which hand-written modules import a generated module. The design marks it
   optional, and nothing builds it yet.
-- **Routes per node** in `generated`: the manifest records files, not the routes inside them.
 - **Provenance from the JVM, Python and C# generators.** Their manifests have no `sourceNode`
   yet, so for those ports `generated` is empty.
 

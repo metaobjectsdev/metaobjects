@@ -6,7 +6,7 @@
 export { runGen, declaredGeneratorNames, stableGeneratorName, undeclaredGeneratorsMessage } from "./runner.js";
 export type { RunGenOpts, RunGenResult } from "./runner.js";
 
-export type { Generator, GenContext, EmittedFile, GeneratorFactory } from "./generator.js";
+export type { Generator, GenContext, EmittedFile, GeneratorFactory, RunOutputFile } from "./generator.js";
 export { perEntity, perPackage, perModel, oncePerRun } from "./generator.js";
 // The one aggregation of the UI-tier markers, Hono routes and the routes' `expose` option:
 // the run's own answers to "does this run emit a UI tier?" and "which verbs are mounted?".

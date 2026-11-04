@@ -1,0 +1,5 @@
+<h1>Traceability matrix</h1>
+<div class="sub">Rows are requirements that name the model; columns are stored entities and prompts, most claimed first. An empty column is a node nothing claims; a cell's colour and glyph are the row's declared status.</div>
+{{#hasRows}}<div class="legend-row">{{{legendHtml}}}</div>
+<div class="mx">{{{tableHtml}}}</div>{{/hasRows}}
+{{^hasRows}}<div class="note page">{{#hasRequirements}}No requirement names the model yet: only L4 and L5 entries do.{{/hasRequirements}}{{^hasRequirements}}This model declares no requirements, so there is nothing to trace.{{/hasRequirements}}</div>{{/hasRows}}

@@ -324,7 +324,7 @@ documentation never lands in the code's output directory by default.
 | `requirements` | `requirementsFile()` | The declared ledger, as `requirements.md` + `requirements.toon`; nothing for a model with no `requirement.*` node. |
 | `agent-docs` | `agentDocsFile()` | Three pages an agent reads BEFORE touching a tier (below), under `agent/`. |
 | `metamodel-docs` | `metamodelDocsFile()` | The reference of the BUILT-IN metamodel (every registered type, subtype and attribute), not your model, under `metamodel/`. Its rendered form is published at <https://metaobjects.dev/reference>. |
-| `docs-site` | `docsSiteFile()` | The HTML site under `site/`; `meta eject docs-site` copies its templates and assets to `codegen/docs-site/` for you to change. |
+| `docs-site` | `docsSiteFile()` | The HTML site under `site/`: the model explorer by default ([explorer-site.md](explorer-site.md)), the earlier site with `site: "classic"`; `meta eject docs-site` copies its templates and assets to `codegen/docs-site/` for you to change. |
 
 ```ts
 targets: { docs: { outDir: "./docs/generated" } },

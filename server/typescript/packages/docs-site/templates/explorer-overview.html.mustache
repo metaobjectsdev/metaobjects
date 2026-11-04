@@ -1,0 +1,25 @@
+<h1>{{{heading}}}</h1>
+<div class="sub">Built from {{{sourcesLine}}}. Every number below is computed from the project's metadata or the gate's own output.</div>
+<div class="grid tiles">
+{{#tiles}}  <a class="card tile" href="{{{href}}}"><div class="n">{{{n}}}</div><div class="l">{{{l}}}</div></a>
+{{/tiles}}</div>
+{{#hasRequirements}}{{{legendHtml}}}{{/hasRequirements}}
+{{#hasRequirements}}
+<h2>Features <span class="h-sub">requirement.functional, by level</span></h2>
+{{#hasFeatures}}<div class="cap">
+{{#featureCards}}{{> card}}{{/featureCards}}
+</div>{{/hasFeatures}}
+{{^hasFeatures}}<div class="note">No <code>requirement.functional</code> is declared.</div>{{/hasFeatures}}
+<h2>Qualities <span class="h-sub">requirement.architectural, the non-functional policies</span></h2>
+{{#hasQualities}}<div class="cap">
+{{#qualityCards}}{{> card}}{{/qualityCards}}
+</div>{{/hasQualities}}
+{{^hasQualities}}<div class="note">No <code>requirement.architectural</code> is declared.</div>{{/hasQualities}}
+{{/hasRequirements}}
+{{^hasRequirements}}
+<div class="note intro">This model declares no requirements yet, so this page cannot say what each part is for. Declare <code>requirement.functional</code> entries (levels 1 to 3 for the problem, 4 and 5 naming the model) and this page opens on them, with every entity traced to the feature it serves.</div>
+{{/hasRequirements}}
+<h2>Packages <span class="h-sub">what the model holds</span></h2>
+<div class="cap">
+{{#packageCards}}<div class="card"><h3><a href="{{{href}}}">{{{name}}}</a></h3><div class="sub small">{{{kindLineHtml}}}</div><div class="members">{{{membersHtml}}}</div></div>
+{{/packageCards}}</div>

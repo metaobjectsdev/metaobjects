@@ -369,7 +369,7 @@ the summary at `info`, warnings as warnings and errors as errors.
 | `WARN_REQUIREMENT_DISPOSITION_NOT_APPLICABLE` | warn | `@disposition` on a status other than `planned` or `partial`. |
 | `WARN_REQUIREMENT_NOTHING_IMPLEMENTS` | warn | A `live` or `partial` functional requirement where neither it nor anything nested under it names a node. An error under [the strict switch](#requiring-implementers). |
 | `WARN_REQUIREMENT_DEFERRED_UNTRACKED` | warn | `@disposition: deferred` with no `@trackedBy`. |
-| `WARN_REQUIREMENT_OBJECT_UNCLAIMED` | warn | Coverage is measured and no requirement claims a concrete entity. The line has no requirement path, because its subject is the entity. |
+| `WARN_REQUIREMENT_OBJECT_UNCLAIMED` | warn | Coverage is measured and no requirement claims a concrete entity. The line has no requirement path, because its subject is the entity. Its `--format json` row names the entity in `node`. |
 
 A diagnostic prints as `  <code> [<path>]: <message>`.
 

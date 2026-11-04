@@ -1,7 +1,8 @@
 // The docs site as a generator (`docsSiteFile()`, ADR-0034 Amendment 9; `meta docs --site`
-// until 1.1.0). The site loads the model with a loader of its own, over whole source
-// directories, so what `meta gen` hands it is what these cases hold to: the project's own
-// providers, every declared source directory, and output that depends on the model alone.
+// until 1.1.0). The default site, the model explorer, reads the model `meta gen` loaded; the
+// classic site loads it again with a loader of its own, over whole source directories. Either
+// way these cases hold it to the project's own providers, every declared source directory, and
+// output that depends on the model alone.
 import { describe, test, expect, afterEach } from "bun:test";
 import { mkdtemp, rm, mkdir, writeFile, readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
@@ -102,11 +103,22 @@ describe("meta gen with docsSiteFile()", () => {
   test("threads the config's providers into the site's own loader, so a custom subtype renders", async () => {
     const root = await project(CUSTOM_META, config("providers: [geoProvider],", GEO_PROVIDER));
     expect(await run(["gen", "--cwd", root])).toBe(0);
-    expect(existsSync(join(root, "docs-out", "site", "acme", "geo", "Place.html"))).toBe(true);
+    const page = join(root, "docs-out", "site", "model", "acme", "geo", "Place.html");
+    expect(existsSync(page)).toBe(true);
+    expect(await readFile(page, "utf8")).toContain("geopoint");
   });
 
-  test("docsSiteFile({ assetBase }) points the page chrome at that base instead of jsDelivr", async () => {
+  test("docsSiteFile({ assetBase }) points the explorer's graph library at that base instead of jsDelivr", async () => {
     const cfg = config("").replace("docsSiteFile()", `docsSiteFile({ assetBase: "/vendor/npm" })`);
+    const root = await project(META, cfg);
+    expect(await run(["gen", "--cwd", root])).toBe(0);
+    const html = await readFile(join(root, "docs-out", "site", "map.html"), "utf8");
+    expect(html).not.toContain("cdn.jsdelivr.net");
+    expect(html).toContain('<script src="/vendor/npm/cytoscape@3.30.2/dist/cytoscape.min.js"></script>');
+  });
+
+  test("docsSiteFile({ site: \"classic\", assetBase }) points the classic chrome at that base", async () => {
+    const cfg = config("").replace("docsSiteFile()", `docsSiteFile({ site: "classic", assetBase: "/vendor/npm" })`);
     const root = await project(META, cfg);
     expect(await run(["gen", "--cwd", root])).toBe(0);
     const html = await readFile(join(root, "docs-out", "site", "index.html"), "utf8");
@@ -132,8 +144,8 @@ describe("meta gen with docsSiteFile()", () => {
     expect(await run(["gen", "--cwd", root])).toBe(0);
     const site = join(root, "docs-out", "site");
     for (const [pkg, model] of [["site", "Welcome"], ["shared", "SharedThing"]] as const) {
-      expect(existsSync(join(site, "acme", pkg, `${model}.html`))).toBe(true);
-      expect(await readFile(join(site, "acme", pkg, "index.html"), "utf8")).toContain(model);
+      expect(existsSync(join(site, "model", "acme", pkg, `${model}.html`))).toBe(true);
+      expect(await readFile(join(site, "model", "acme", pkg, "index.html"), "utf8")).toContain(model);
     }
   });
 

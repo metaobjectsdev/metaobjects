@@ -127,7 +127,33 @@ export interface GenContext {
    * call, where a docs generator's own options decide. See docs-run.ts.
    */
   docs?: DocsRunFacts;
+  /**
+   * The files this run generated, for a generator marked `readsRunOutput` (the docs site's
+   * model explorer, which lists what was generated from each node). The runner runs such a
+   * generator after every other one, so the list is complete. Paths are project-relative,
+   * as `.gen-state/.hashes.json` keys them. A run narrowed with `--generators` adds the
+   * files the committed manifest records for the generators it did not run, so a narrowed
+   * run lists what a full run lists. Absent for a generator without the marker.
+   */
+  runOutput?: () => readonly RunOutputFile[];
+  /**
+   * The requirement ledger as `meta verify --format json` states it (`requirementLedger`,
+   * `requirementCounts`, `requirements.rows`), computed by the caller that owns the
+   * requirement gate (`meta gen`, `meta verify --codegen`), which codegen-ts cannot import.
+   * Called at most once per run, and only when a generator asks. Absent when the caller
+   * supplied none; returns undefined when the model declares no requirement.
+   */
+  requirementLedger?: () => unknown;
   warn: (msg: string) => void;
+}
+
+/** One file of the run, as `GenContext.runOutput` lists it. */
+export interface RunOutputFile {
+  /** Project-relative path, `/`-separated. */
+  path: string;
+  generatedBy: string;
+  /** The node the file was rendered from (`EmittedFile.sourceNode`), when it was. */
+  sourceNode?: string;
 }
 
 export interface Generator {
@@ -190,6 +216,10 @@ export interface Generator {
    *  pages in the same target link to them (`ctx.docs.apiSurfaces`). Like `emitsModelDocs`,
    *  a cross-link fact only. */
   emitsApiDocs?: { readonly subDir: string };
+  /** Marks a generator that reads the files the rest of the run generated
+   *  (`ctx.runOutput`). The runner runs every marked generator after every unmarked one,
+   *  in declared order, so the list it reads is complete. */
+  readsRunOutput?: boolean;
   /** §A6 — marks the generator that emits the <Entity>Names artifact. The runner
    *  aggregates this across the suite into ResolvedGenConfig.includeNames, which the
    *  entity generator reads to decide whether it may reference those constants.

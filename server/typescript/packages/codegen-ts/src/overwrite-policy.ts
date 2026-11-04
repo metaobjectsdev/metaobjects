@@ -260,6 +260,26 @@ export function recordGeneratedProvenance(
   if (changed) writeRawManifest(genStateDir, raw);
 }
 
+/**
+ * Every recorded path that carries provenance, as `recordGeneratedProvenance` wrote it: the
+ * generator, and the source node when there is one. A plain `"<hash>"` entry carries no
+ * generator and is left out. Sorted by path.
+ */
+export function listGeneratedProvenance(
+  genStateDir: string,
+): { path: string; generatedBy: string; sourceNode?: string }[] {
+  const out: { path: string; generatedBy: string; sourceNode?: string }[] = [];
+  for (const [path, entry] of Object.entries(readRawManifest(genStateDir))) {
+    if (!isRecord(entry) || typeof entry.generatedBy !== "string") continue;
+    out.push({
+      path,
+      generatedBy: entry.generatedBy,
+      ...(typeof entry.sourceNode === "string" && { sourceNode: entry.sourceNode }),
+    });
+  }
+  return out.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+}
+
 // ---------------------------------------------------------------------------
 // FR-038 §8 — readers for orphan reconciliation.
 //
