@@ -74,7 +74,8 @@ so a model that declares none of them emits what it always did.
   `field.enum`). The derived name (`<table>_<column>_<kind>_chk`) stays the default. The declared
   one is a name an adopter chose: a database whose CHECKs were named by hand, or a program that
   compares a violation against the constraint name. A chosen name cannot be derived.
-- **`@condition`** (on the validators that generate a CHECK). A rule that holds only in some case
+- **`@condition`** (on the cross-field validators: `comparison`, `requiredWhen`, `presentIff`,
+  `atLeastOne`, `exactlyOne`). A rule that holds only in some case
   ("a refund needs a reason") is a guard the author states; no other metadata says when a rule
   applies. It uses the existing `attr.expression` grammar, so no new expression language comes
   with it.
