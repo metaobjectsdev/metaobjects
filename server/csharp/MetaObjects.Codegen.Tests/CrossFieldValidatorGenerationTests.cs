@@ -112,6 +112,20 @@ public class CrossFieldValidatorGenerationTests
     ]}}
     """;
 
+    // A decimal compared with a double: C# has no implicit conversion between the two.
+    private const string MixedNumeric = """
+    { "metadata.root": { "package": "acme", "children": [
+      { "object.entity": { "name": "Quote", "children": [
+        { "source.rdb": { "@table": "quotes" } },
+        { "field.long": { "name": "id" } },
+        { "field.decimal": { "name": "price", "@precision": 10, "@scale": 2 } },
+        { "field.double": { "name": "cap" } },
+        { "identity.primary": { "@fields": "id" } },
+        { "validator.comparison": { "name": "underCap", "@left": "price", "@op": "lte", "@right": "cap" } }
+      ]}}
+    ]}}
+    """;
+
     private static GenContext Ctx(string model)
     {
         var r = new MetaDataLoader().Load([new InMemoryStringSource(model, id: "xf.json")]);
@@ -153,6 +167,14 @@ public class CrossFieldValidatorGenerationTests
         Assert.Empty(Validate(asm, "Event", "{\"lo\":1,\"hi\":2,\"email\":\"e\"}"));
         Assert.Single(Validate(asm, "Event", "{\"lo\":2,\"hi\":1,\"email\":\"e\"}"));
         Assert.Single(Validate(asm, "Event", "{\"lo\":1,\"hi\":2}"));
+    }
+
+    [Fact]
+    public void A_decimal_compared_with_a_double_compiles_and_is_enforced()
+    {
+        var asm = Compile(new EntityGenerator(), MixedNumeric);
+        Assert.Single(Validate(asm, "Quote", "{\"price\":5.5,\"cap\":3}"));
+        Assert.Empty(Validate(asm, "Quote", "{\"price\":2.5,\"cap\":3}"));
     }
 
     [Fact]

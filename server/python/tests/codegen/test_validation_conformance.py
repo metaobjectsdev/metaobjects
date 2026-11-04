@@ -153,3 +153,30 @@ def test_cross_field_rules_only_on_create_model() -> None:
     module.EventPatch(startsAt=9, endsAt=1)
     src = render_entity_model(_load_cross_field_entity())
     assert src.count("model_validator") == 2  # import + the single decorator
+
+
+_ARRAY_MODEL = """
+{ "metadata.root": { "package": "acme::arr", "children": [
+  { "object.entity": { "name": "Arr", "children": [
+    { "source.rdb": { "@table": "arrs" } },
+    { "field.long": { "name": "id" } },
+    { "field.int": { "name": "nums", "isArray": true } },
+    { "field.int": { "name": "b" } },
+    { "field.string": { "name": "note" } },
+    { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
+    { "validator.comparison": { "name": "numsLtB", "@left": "nums", "@op": "lt", "@right": "b" } },
+    { "validator.requiredWhen": { "name": "noteWhenNums", "@field": "note", "@when": "nums", "@equals": "1" } }
+  ]}}
+]}}
+"""
+
+
+def test_cross_field_rule_on_an_array_field_is_skipped() -> None:
+    # Every other port skips a comparison side or a gate that is an array (an array has no
+    # ordering against a scalar); so the create model accepts any body for these rules.
+    result = MetaDataLoader.from_string(_ARRAY_MODEL)
+    assert not result.errors, [str(e) for e in result.errors]
+    entity = next(c for c in result.root.children() if c.type == TYPE_OBJECT and c.name == "Arr")
+    module = _import_source(render_entity_model(entity), "generated_cross_arr")
+    module.ArrCreate(nums=[5], b=1)
+    module.ArrCreate(nums=[1], b=0)

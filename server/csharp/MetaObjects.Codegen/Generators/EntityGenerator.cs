@@ -1143,7 +1143,12 @@ public class EntityGenerator : IGenerator
                     if (lk == CrossKind.Str && rk == CrossKind.Str)
                         cond = $"string.CompareOrdinal({a}, {b}) {csOp} 0";
                     else if (lk == CrossKind.Numeric && rk == CrossKind.Numeric)
-                        cond = $"{a} {csOp} {b}";
+                    {
+                        var ls = CSharpNaming.ScalarForField(l); var rs = CSharpNaming.ScalarForField(r);
+                        var la = ls != "decimal" && rs == "decimal" ? $"(decimal){a}" : a;
+                        var rb = rs != "decimal" && ls == "decimal" ? $"(decimal){b}" : b;
+                        cond = $"{la} {csOp} {rb}";
+                    }
                     else if (lk == CrossKind.Temporal && rk == CrossKind.Temporal
                              && CSharpNaming.ScalarForField(l) == CSharpNaming.ScalarForField(r))
                         cond = $"{a} {csOp} {b}";

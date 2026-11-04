@@ -514,6 +514,8 @@ def _cross_field_rules_method(
             op = _COMPARISON_PY_OP.get(str(attr(vc.VALIDATOR_ATTR_OP)))
             if left not in by_name or right not in by_name or op is None:
                 continue
+            if field_is_array(by_name[str(left)]) or field_is_array(by_name[str(right)]):
+                continue
             checks.append(
                 f"        if self.{left} is not None and self.{right} is not None "
                 f"and not (self.{left} {op} self.{right}):\n"
@@ -521,7 +523,7 @@ def _cross_field_rules_method(
             )
         elif v.sub_type in (vc.VALIDATOR_SUBTYPE_REQUIRED_WHEN, vc.VALIDATOR_SUBTYPE_PRESENT_IFF):
             target, when = attr(vc.VALIDATOR_ATTR_FIELD), attr(vc.VALIDATOR_ATTR_WHEN)
-            if target not in by_name or when not in by_name:
+            if target not in by_name or when not in by_name or field_is_array(by_name[str(when)]):
                 continue
             lit = _equals_literal(attr(vc.VALIDATOR_ATTR_EQUALS), by_name[str(when)], imports)
             cmp_op = "is" if lit in ("True", "False") else "=="
