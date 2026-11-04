@@ -847,6 +847,7 @@
       {
         "code": "WARN_REQUIREMENT_NOTHING_IMPLEMENTS",
         "path": "Shop.Checkout.Shipping",
+        "node": "",
         "severity": "warn",
         "source": "gate",
         "message": "is 'live' but neither it nor anything nested under it names an implementing node. A functional requirement's check is existence — a subtree that claims nothing is a capability nobody built."
@@ -854,6 +855,7 @@
       {
         "code": "WARN_REQUIREMENT_OBJECT_UNCLAIMED",
         "path": "",
+        "node": "acme::shop::AuditEntry",
         "severity": "warn",
         "source": "gate",
         "message": "no requirement claims 'acme::shop::AuditEntry'. Add it to an L4 requirement's 'implementedBy'."

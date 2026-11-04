@@ -44,7 +44,10 @@ import {
   REPORTING_ATTR_SEGMENT,
   REPORTING_ATTR_VIA,
   TEMPLATE_ATTR_FORMAT,
+  TEMPLATE_ATTR_MAX_TOKENS,
+  TEMPLATE_ATTR_MODEL,
   TEMPLATE_ATTR_PAYLOAD_REF,
+  TEMPLATE_ATTR_PROMPT_STYLE,
   TEMPLATE_ATTR_RESPONSE_FORMAT,
   TEMPLATE_ATTR_RESPONSE_REF,
   TEMPLATE_ATTR_TEXT_REF,
@@ -106,8 +109,12 @@ export const PAGE_API = "api.html";
 export const PAGE_GAPS = "gaps.html";
 export const PAGE_MODEL = "model/index.html";
 
-/** The member types a page gives an anchor (`#m-<name>`), so an L5 link can land on its row. */
+/** The member types a page gives an anchor, so an L5 link can land on its row. */
 const ANCHORED_TYPES = new Set<string>([TYPE_FIELD, TYPE_IDENTITY, TYPE_INDEX, TYPE_RELATIONSHIP, TYPE_DIMENSION, TYPE_MEASURE, TYPE_SEGMENT]);
+
+/** A member row's anchor: `m-<name>` for a field, `m-<type>-<name>` for anything else, since
+ *  siblings of different types may share a name. */
+const memberAnchor = (n: ExplorerNode): string => (n.type === TYPE_FIELD ? `m-${n.name}` : `m-${n.type}-${n.name}`);
 
 /** The gate codes that report the level and nesting rules (the proof table's "Level rules"). */
 const LEVEL_RULE_CODES = new Set(["ERR_REQUIREMENT_BAD_LEVEL", "ERR_REQUIREMENT_LEVEL_NESTING", "ERR_REQUIREMENT_LINK_ABOVE_FLOOR"]);
@@ -173,7 +180,7 @@ export class Pages {
     const page = this.objectPage(owner);
     if (ownerId === id) return page;
     const member = this.memberOf(ownerId, id);
-    return member !== undefined && ANCHORED_TYPES.has(member.type) ? `${page}#m-${member.name}` : page;
+    return member !== undefined && ANCHORED_TYPES.has(member.type) ? `${page}#${memberAnchor(member)}` : page;
   }
 
   /** The direct child of `ownerId` that `id` sits in (or is). */
@@ -392,7 +399,7 @@ export class Pages {
     const ix = this.ix;
     if (!ix.isEntity(n) || n.abstract === true) return false;
     const diags = ix.doc.ledger?.diagnostics ?? [];
-    return diags.some((d) => isDiag(d) && d.code === CODE_OBJECT_UNCLAIMED && d.message.includes(`'${n.id}'`));
+    return diags.some((d) => isDiag(d) && d.code === CODE_OBJECT_UNCLAIMED && d.node === n.id);
   }
 
   private whyRows(from: string, n: ExplorerNode): Record<string, unknown>[] {
@@ -432,7 +439,7 @@ export class Pages {
     if (this.ix.children(f.id).some((c) => c.type === TYPE_ORIGIN)) flags.push("derived");
     const claims = this.ix.claims(owner.id).filter((c) => c.member !== undefined && c.member.split(".")[0] === f.name);
     return {
-      anchor: esc(`m-${f.name}`),
+      anchor: esc(memberAnchor(f)),
       name: esc(f.name),
       inheritedHtml: f.inheritedFrom !== undefined ? `<span class="pill" title="declared on ${esc(f.inheritedFrom)}">inherited</span>` : "",
       type: esc(`${f.subType}${f.isArray === true ? "[]" : ""}`),
@@ -451,7 +458,7 @@ export class Pages {
     const card = str(c.attrs[RELATIONSHIP_ATTR_CARDINALITY]);
     const shape = c.type === TYPE_RELATIONSHIP ? [card, through !== undefined ? `through ${localName(through)}` : undefined].filter((x) => x !== undefined).join(", ") : `(${fields.join(", ")})`;
     return {
-      anchor: esc(`m-${c.name}`),
+      anchor: esc(memberAnchor(c)),
       kind: esc(`${c.type}.${c.subType}`),
       name: esc(c.name),
       inheritedHtml: c.inheritedFrom !== undefined ? `<span class="pill">inherited</span>` : "",
@@ -478,7 +485,7 @@ export class Pages {
     if (seg !== undefined) parts.push(`segment <code>${esc(seg)}</code>`);
     if (a[REPORTING_ATTR_FILTER] !== undefined) parts.push(`filter <code>${esc(fmt(a[REPORTING_ATTR_FILTER]))}</code>`);
     if (a[REPORTING_ATTR_DEFAULT] !== undefined) parts.push(`default <code>${esc(fmt(a[REPORTING_ATTR_DEFAULT]))}</code>`);
-    return { anchor: esc(`m-${c.name}`), kind: esc(`${c.type}.${c.subType}`), name: esc(c.name), definitionHtml: parts.join(" · ") };
+    return { anchor: esc(memberAnchor(c)), kind: esc(`${c.type}.${c.subType}`), name: esc(c.name), definitionHtml: parts.join(" · ") };
   }
 
   private layoutRow(l: ExplorerNode): Record<string, unknown> {
@@ -501,7 +508,7 @@ export class Pages {
         const def = this.originDefinition(from, o);
         const src = str(o.attrs[ORIGIN_PASSTHROUGH_ATTR_FROM]);
         if (src !== undefined && ix.byId.has(src)) bases.add(ix.ownerOf(src));
-        rows.push({ field: esc(f.name), anchor: esc(`m-${f.name}`), origin: esc(`origin.${o.subType}`), definitionHtml: def });
+        rows.push({ field: esc(f.name), origin: esc(`origin.${o.subType}`), definitionHtml: def });
       }
     }
     return {
@@ -577,7 +584,7 @@ export class Pages {
     })) : [];
     const textRef = str(n.attrs[TEMPLATE_ATTR_TEXT_REF]) ?? "";
     const lines = text !== undefined ? text.replace(/\n$/, "").split("\n").length : 0;
-    const attrs = [TEMPLATE_ATTR_FORMAT, TEMPLATE_ATTR_RESPONSE_FORMAT, "promptStyle", "model", "maxTokens"]
+    const attrs = [TEMPLATE_ATTR_FORMAT, TEMPLATE_ATTR_RESPONSE_FORMAT, TEMPLATE_ATTR_PROMPT_STYLE, TEMPLATE_ATTR_MODEL, TEMPLATE_ATTR_MAX_TOKENS]
       .filter((k) => n.attrs[k] !== undefined)
       .map((k) => `<span class="pill">@${esc(k)} ${esc(fmt(n.attrs[k]))}</span>`)
       .join("");
@@ -902,6 +909,8 @@ interface Diag {
   path: string;
   severity: string;
   source?: string;
+  /** The entity an object-coverage finding is about; "" or absent otherwise. */
+  node?: string;
   message: string;
 }
 

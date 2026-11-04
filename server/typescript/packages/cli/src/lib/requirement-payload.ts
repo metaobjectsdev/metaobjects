@@ -54,12 +54,20 @@ export function requirementCountsOf(s: RequirementSummary, metadataFiles: number
   };
 }
 
+/** One requirement finding as the structured payload carries it. */
+export interface RequirementDiagnosticRow extends AdvisoryDiagnosticRow {
+  /** The fully-qualified name of the entity the finding is about when its subject is not a
+   *  requirement (`WARN_REQUIREMENT_OBJECT_UNCLAIMED`), or "". */
+  node: string;
+}
+
 /** One finding as the structured payload carries it. */
-export function requirementDiagnosticRow(d: Diagnostic, source: "gate" | "lint"): AdvisoryDiagnosticRow {
+export function requirementDiagnosticRow(d: Diagnostic, source: "gate" | "lint"): RequirementDiagnosticRow {
   return {
     code: d.code,
     // "" rather than omitted: a tabular encoder (TOON) needs every row to carry the same keys.
     path: d.path ?? "",
+    node: d.node ?? "",
     severity: d.severity,
     source,
     message: d.message,
@@ -70,7 +78,7 @@ export function requirementDiagnosticRow(d: Diagnostic, source: "gate" | "lint")
 export interface RequirementPayload {
   requirementLedger: RequirementLedgerRow[];
   requirementCounts: RequirementCounts;
-  requirements: { rows: AdvisoryDiagnosticRow[] };
+  requirements: { rows: RequirementDiagnosticRow[] };
 }
 
 /**

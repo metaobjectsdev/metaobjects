@@ -88,4 +88,24 @@ describe("readsRunOutput", () => {
     await runGen({ config: defineConfig({ ...base, generators: [alpha, reader(seen)] }), metadata: await load(TWO), projectRoot: tmp, generatorNames: ["reader"] });
     expect(seen.files?.map((f) => f.path)).toEqual(["gen/Post.alpha.ts"]);
   });
+
+  test("a stand-in for an out-of-tree outDir is left out, as the out-of-tree outDir itself is", async () => {
+    const webAlpha: Generator = { ...alpha, target: "web" };
+    const config = (web: string, seen: { files?: readonly RunOutputFile[] | undefined }) =>
+      defineConfig({ outDir: join(tmp, "project", "gen"), targets: { web: { outDir: web } }, extStyle: "none", dbImport: "../db", dialect: "sqlite", generators: [webAlpha, reader(seen)] });
+    // `meta gen`: the web target sits outside the project.
+    const gen: { files?: readonly RunOutputFile[] | undefined } = {};
+    await runGen({ config: config(join(tmp, "web"), gen), metadata: await load(), projectRoot: join(tmp, "project") });
+    // `meta verify --codegen`: the same target, moved to a slot inside the regenerated tree.
+    const verify: { files?: readonly RunOutputFile[] | undefined } = {};
+    const slot = join(tmp, "verify", "_web");
+    await runGen({
+      config: { ...config(slot, verify), outDir: join(tmp, "verify", "gen") },
+      metadata: await load(),
+      projectRoot: join(tmp, "verify"),
+      untrackedOutDirs: [slot],
+    });
+    expect(gen.files).toEqual([]);
+    expect(verify.files).toEqual(gen.files);
+  });
 });

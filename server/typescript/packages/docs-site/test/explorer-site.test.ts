@@ -107,10 +107,12 @@ describe("explorer site over explorer-conformance/shop", () => {
     const shipping = shop.page("requirements/acme/shop/Shop.Checkout.Shipping.html");
     expect(shipping).toContain('class="chip s-live"');
     expect(shipping).toContain('class="chip v-warn"');
-    const css = shop.page("assets/explorer.css");
-    for (const v of ["v-error", "v-warn"]) {
-      const rule = css.split("\n").find((l) => l.includes(`.${v}`) && l.includes("{")) ?? "";
-      expect(rule).toContain("background: transparent");
+    // A verdict outline never also carries a declared-status fill.
+    for (const p of shop.pages) {
+      for (const m of shop.page(p).matchAll(/class="([^"]*)"/g)) {
+        const classes = (m[1] ?? "").split(" ");
+        if (classes.some((c) => c.startsWith("v-"))) expect(classes.filter((c) => c.startsWith("s-"))).toEqual([]);
+      }
     }
     // Nothing on any page claims a test result.
     for (const p of shop.pages) expect(shop.page(p)).not.toMatch(/class="[^"]*\b(test-pass|test-fail|passed|failed)\b/);
@@ -120,6 +122,33 @@ describe("explorer site over explorer-conformance/shop", () => {
     const audit = shop.page("model/acme/shop/AuditEntry.html");
     expect(audit).toContain("chip v-unclaimed");
     expect(audit).toContain("WARN_REQUIREMENT_OBJECT_UNCLAIMED");
+  });
+
+  test("the unclaimed outline follows the finding's node field, not its message", () => {
+    const reworded = (node: string, message: string): ExplorerJson => {
+      const explorer = shopExplorer();
+      const ledger = explorer.ledger;
+      if (ledger === undefined) throw new Error("the shop fixture has a ledger");
+      ledger.diagnostics = ledger.diagnostics.map((d) => {
+        const r = d as Record<string, unknown>;
+        return r["code"] === "WARN_REQUIREMENT_OBJECT_UNCLAIMED" ? { ...r, node, message } : d;
+      });
+      return explorer;
+    };
+    const auditPage = (explorer: ExplorerJson): string => {
+      const out = scratch();
+      generateExplorerSite({ explorer, outDir: out, title: "Shop" });
+      return readFileSync(join(out, "model/acme/shop/AuditEntry.html"), "utf8");
+    };
+    expect(auditPage(reworded("acme::shop::AuditEntry", "an entity is unclaimed"))).toContain("chip v-unclaimed");
+    expect(auditPage(reworded("", "no requirement claims 'acme::shop::AuditEntry'."))).not.toContain("chip v-unclaimed");
+  });
+
+  test("a field and a key that share a name get distinct anchors", () => {
+    // AuditEntry names its field and its primary identity both `id` (fixtures/explorer-conformance/README.md).
+    const audit = shop.page("model/acme/shop/AuditEntry.html");
+    expect(audit.match(/id="m-id"/g)?.length).toBe(1);
+    expect(audit.match(/id="m-identity-id"/g)?.length).toBe(1);
   });
 
   test("an object page says why it exists, holds its fields and lists what was generated from it", () => {
@@ -172,7 +201,7 @@ describe("explorer site over the fitness model", async () => {
     const report = fitness.page("model/fitness/ProgramMinutes.html");
     expect(report).toContain("Dimensions");
     expect(report).toContain("Measures");
-    expect(report).toContain(`href="../../model/fitness/Week.html#m-totalMinutes"`);
+    expect(report).toContain(`href="../../model/fitness/Week.html#m-measure-totalMinutes"`);
     expect(report).toContain(`<tr><th>From</th><td><a class="k-entity" href="../../model/fitness/Week.html">Week</a>`);
   });
 

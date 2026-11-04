@@ -199,6 +199,13 @@ export interface RunGenOpts {
    * shows no ledger.
    */
   requirementLedger?: () => unknown;
+  /**
+   * Directories inside `projectRoot` that stand in for output directories OUTSIDE the real
+   * project. `meta verify --codegen` regenerates into a temp tree and moves an out-of-tree
+   * target into a slot under it; a file written there is treated as outside the project, as
+   * `meta gen` treats the real one: written, never recorded, and absent from `ctx.runOutput`.
+   */
+  untrackedOutDirs?: readonly string[];
 }
 
 export interface RunGenResult {
@@ -367,10 +374,12 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // a watch loop, a test) would otherwise find the first run's snapshot and three-way merge,
   // which is exactly the record-keeping an untracked file does not have.
   const untrackedGenStateDir = join(tmpdir(), `meta-gen-untracked-${process.pid}-${randomUUID()}`);
+  const untrackedOutDirs = opts.untrackedOutDirs ?? [];
   const outsideProject = (fullPath: string): boolean => {
     if (projectRoot === undefined) return false;
     const rel = relative(projectRoot, fullPath);
-    return rel.startsWith("..") || isAbsolute(rel);
+    if (rel.startsWith("..") || isAbsolute(rel)) return true;
+    return untrackedOutDirs.some((dir) => isNestedIn(fullPath, dir));
   };
   let untrackedCount = 0;
   const policyFor = (fullPath: string, handEdits?: HandEdits): DecideAndWriteOpts => {

@@ -80,8 +80,13 @@ does not have to infer "checked and clean" from a path that no diagnostic mentio
 | `verdict` | From gate findings only: `error`, `warn`, or `clean`. |
 
 A finding that is not about a single requirement, such as an entity nobody claims, appears
-in `requirements.rows` and in no ledger row. The structured payload is TypeScript-only, as
-the rest of `--format json` is.
+in `requirements.rows` and in no ledger row. Each `requirements.rows` entry is `{ code, path,
+node, severity, source, message }`. `path` is the requirement's dotted path, or `""` when the
+subject is not a requirement. `node` names that other subject: a
+`WARN_REQUIREMENT_OBJECT_UNCLAIMED` row carries the entity's resolution key there (for example
+`"node": "acme::shop::AuditEntry"`, the entity's id in `explorer.json`), and every other row
+carries `""`. Read the subject from `path` and `node`, never from `message`, whose wording may
+change. The structured payload is TypeScript-only, as the rest of `--format json` is.
 
 ### Node provenance in `.hashes.json`
 

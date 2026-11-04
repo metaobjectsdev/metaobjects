@@ -12,7 +12,7 @@ import { join, relative, resolve as resolvePath } from "node:path";
 import { parseVerifyArgs, type MigrateFlags } from "../lib/args.js";
 import { log } from "../lib/log.js";
 import { requirementLedgerRows, type RequirementLedgerRow } from "../lib/requirement-ledger.js";
-import { requirementCountsOf, requirementPayload, type RequirementCounts } from "../lib/requirement-payload.js";
+import { requirementCountsOf, requirementDiagnosticRow, requirementPayload, type RequirementCounts, type RequirementDiagnosticRow } from "../lib/requirement-payload.js";
 import { emitStructured, type OutputFormat } from "../lib/format.js";
 import {
   antiPatternRows, missingBaseUrlRows, removedPropRows, ranSection, skippedSection, warnCapped,
@@ -409,7 +409,7 @@ export async function verifyCommand(
   // can carry them IN FULL. They were previously formatted straight to stderr and
   // existed nowhere else, which is why 96% of a 239-finding report was unreachable
   // by any flag, env var or format.
-  let requirementSection: AdvisorySection<AdvisoryDiagnosticRow> =
+  let requirementSection: AdvisorySection<RequirementDiagnosticRow> =
     skippedSection("the requirement pass did not run");
   let antiPatternSection: AdvisorySection<AdvisoryFindingRow> =
     skippedSection("the advisory anti-pattern pass did not run");
@@ -854,9 +854,9 @@ export async function verifyCommand(
     // Everything this pass found, uncapped, for the structured payload — gate
     // diagnostics and lint findings in one list, each row saying which it is, so a
     // reader can tell what can fail a build from what never can.
-    requirementSection = ranSection<AdvisoryDiagnosticRow>([
-      ...diags.map((d) => toDiagnosticRow(d, "gate")),
-      ...lint.map((d) => toDiagnosticRow(d, "lint")),
+    requirementSection = ranSection<RequirementDiagnosticRow>([
+      ...diags.map((d) => requirementDiagnosticRow(d, "gate")),
+      ...lint.map((d) => requirementDiagnosticRow(d, "lint")),
     ]);
     // The same findings per ENTRY, beside what each entry declares — so a reader learns an
     // entry was checked and found clean from a row saying so, not from its path's absence.
@@ -2066,7 +2066,7 @@ function toDiagnosticRow(d: Diagnostic, source: "gate" | "lint"): AdvisoryDiagno
 function buildVerifyPayload(input: {
   gates: VerifyGateRow[];
   exitCode: number;
-  requirements: AdvisorySection<AdvisoryDiagnosticRow>;
+  requirements: AdvisorySection<RequirementDiagnosticRow>;
   requirementCounts: RequirementCounts | undefined;
   requirementLedger?: RequirementLedgerRow[] | undefined;
   antiPatterns: AdvisorySection<AdvisoryFindingRow>;

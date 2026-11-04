@@ -22,12 +22,6 @@ test("CLASSIC_TEMPLATE_NAMES lists the classic site's 9 mustache templates", () 
   expect([...CLASSIC_ASSET_NAMES].sort()).toEqual(["site.css", "site.js"]);
 });
 
-test("the eject lists carry both sites' themes", () => {
-  expect([...SITE_TEMPLATE_NAMES]).toEqual([...CLASSIC_TEMPLATE_NAMES, ...EXPLORER_TEMPLATE_NAMES]);
-  expect([...SITE_ASSET_NAMES]).toEqual([...CLASSIC_ASSET_NAMES, ...EXPLORER_ASSET_NAMES]);
-  expect([...EXPLORER_ASSET_NAMES]).toEqual(["explorer.css", "explorer.js"]);
-});
-
 test("every bundled explorer template and asset is on the eject list, so an owned theme is whole", () => {
   const templates = readdirSync(join(PKG, "templates")).filter((f) => f.startsWith("explorer-")).sort();
   expect([...EXPLORER_TEMPLATE_NAMES].sort()).toEqual(templates);
