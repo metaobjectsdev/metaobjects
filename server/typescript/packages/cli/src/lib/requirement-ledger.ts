@@ -20,6 +20,7 @@ import {
 } from "@metaobjectsdev/metadata";
 import { requirementDigest } from "@metaobjectsdev/codegen-ts";
 import {
+  diagnosticRequirement,
   resolveRequirementRef,
   splitMemberRef,
   type Diagnostic,
@@ -99,8 +100,9 @@ export function requirementLedgerRows(
   const byPath = new Map<string, RequirementDiagnosticRef[]>();
   const note = (d: Diagnostic, source: "gate" | "lint"): void => {
     const ref = { code: d.code, severity: d.severity, source };
-    if (d.requirement !== undefined) {
-      byNode.set(d.requirement, [...(byNode.get(d.requirement) ?? []), ref]);
+    const requirement = diagnosticRequirement.get(d);
+    if (requirement !== undefined) {
+      byNode.set(requirement, [...(byNode.get(requirement) ?? []), ref]);
     } else if (d.path !== undefined) {
       byPath.set(d.path, [...(byPath.get(d.path) ?? []), ref]);
     }

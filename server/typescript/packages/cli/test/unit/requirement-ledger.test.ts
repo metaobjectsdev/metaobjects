@@ -47,7 +47,12 @@ describe("requirementLedgerRows", () => {
       writeFileSync(join(dir, "metaobjects/meta.b.yaml"), pkg("b", "acme::b::Receipt"));
       const root = await loadMemory(dir, { strict: true });
       const scan = scanRequirements(root);
-      const rows = requirementLedgerRows(root, scan, checkRequirements(root, scan), lintRequirements(root, scan.addressed));
+      const gate = checkRequirements(root, scan);
+      expect(gate.length).toBeGreaterThan(0);
+      for (const d of [...gate, ...lintRequirements(root, scan.addressed)]) {
+        expect(Object.keys(d).filter((k) => !["code", "message", "path", "severity"].includes(k))).toEqual([]);
+      }
+      const rows = requirementLedgerRows(root, scan, gate, lintRequirements(root, scan.addressed));
       const verdicts = rows.map((r) => [r.qualifiedPath, r.verdict, r.diagnostics.map((d) => d.code)]);
       expect(verdicts).toEqual([
         ["acme::a::Billing", "clean", []],

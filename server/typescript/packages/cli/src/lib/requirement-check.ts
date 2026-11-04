@@ -60,11 +60,13 @@ export interface Diagnostic {
    *  Absent on a diagnostic whose subject is not a requirement (object coverage
    *  names the entity in its message instead). */
   path?: string;
-  /** The requirement node the diagnostic is about, when it is about one. Two packages may
-   *  each declare a requirement at the same path; the node tells them apart. */
-  requirement?: MetaRequirement;
   message: string;
 }
+
+/** The requirement node a gate or lint diagnostic is about. Two packages may each declare a
+ *  requirement at the same path, so the path alone cannot tell their findings apart. Kept
+ *  beside the diagnostic, not on it, so a diagnostic's shape is only its four fields. */
+export const diagnosticRequirement = new WeakMap<Diagnostic, MetaRequirement>();
 
 export const ERR_REQUIREMENT_LINK_ABOVE_FLOOR = "ERR_REQUIREMENT_LINK_ABOVE_FLOOR";
 export const ERR_REQUIREMENT_DANGLING_REF = "ERR_REQUIREMENT_DANGLING_REF";
@@ -429,7 +431,7 @@ export function checkRequirements(root: MetaData, scan: RequirementScan = scanRe
   if (addressed.length === 0) return out; // opt-in by declaration — no requirements, nothing to say
 
   for (const { node: req, path: reqPath } of addressed) {
-    const report = (d: Diagnostic): void => { out.push({ ...d, requirement: req }); };
+    const report = (d: Diagnostic): void => { diagnosticRequirement.set(d, req); out.push(d); };
     const architectural = req.subType === REQUIREMENT_SUBTYPE_ARCHITECTURAL;
     const level = req.level();
     const refs = req.implementedBy();

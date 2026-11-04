@@ -56,7 +56,7 @@ import {
 // compares this path set against `walkRequirements()`, the generator's own walk,
 // rather than leaving the two to agree by inspection.)
 import {
-  collectAddressedRequirements, type AddressedRequirement, type Diagnostic,
+  collectAddressedRequirements, diagnosticRequirement, type AddressedRequirement, type Diagnostic,
 } from "./requirement-check.js";
 
 export const WARN_REQUIREMENT_NAME_NOT_ADDRESSABLE = "WARN_REQUIREMENT_NAME_NOT_ADDRESSABLE";
@@ -237,7 +237,9 @@ function excerpt(value: string): string {
 }
 
 function warn(at: AddressedRequirement, code: string, message: string): Diagnostic {
-  return { severity: "warn", code, path: at.path, requirement: at.node, message };
+  const d: Diagnostic = { severity: "warn", code, path: at.path, message };
+  diagnosticRequirement.set(d, at.node);
+  return d;
 }
 
 /**
