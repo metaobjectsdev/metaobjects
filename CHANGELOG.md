@@ -26,7 +26,6 @@ here.**
   declared rule is now rejected at the model where it used to reach the database. Gated by
   `fixtures/validation-conformance/cross-field-cases.json` in all five ports.
 
-
 - **Two providers can no longer claim one attribute name on a node type.** The registry now
   records which provider registered each attribute and refuses a second provider's claim at
   composition, in all five ports (TypeScript, Python, C#, Java, Kotlin). A repeat on the same

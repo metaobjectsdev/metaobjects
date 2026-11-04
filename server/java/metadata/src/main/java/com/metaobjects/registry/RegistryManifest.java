@@ -303,11 +303,11 @@ public final class RegistryManifest {
     // SP-G Phase1 Units2-3 — manifest emitter exclusions (documented, uniform
     // across all four ports; see fixtures/registry-conformance/README.md
     // "EXCLUDED" list + the SP-G divergence analysis buckets C-2/C-3/C-5/B-2):
-    //  - structural keywords (isArray/isAbstract) + the `description` commonAttr
-    //    are NOT per-type attrs. Java DOES register all three as ordinary
-    //    per-type attrs (on metadata.base / field.base, inherited everywhere) —
-    //    so this filter is what drops them from Java's emitter output. They are
-    //    no-ops for TS/C#/Python. `description` stays in the commonAttrs block.
+    //  - structural keywords (isArray/isAbstract) are NOT per-type attrs. Java
+    //    DOES register them as ordinary per-type attrs (on metadata.base /
+    //    field.base, inherited everywhere) — so this filter is what drops them
+    //    from Java's emitter output. They are no-ops for TS/C#/Python.
+    //    `description` lives only in the commonAttrs block (ADR-0062).
     //  - metadata.base is Java's internal inheritance anchor — other ports
     //    register only metadata.root (the deferred inheritsFrom anchor).
     //  - the generic view.* controls are a TS-web-presentation facet. Java

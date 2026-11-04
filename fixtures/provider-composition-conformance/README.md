@@ -1,6 +1,6 @@
 # provider-composition conformance
 
-Five registry/provider error codes are Tier-1 cross-port invariants that the
+Six registry/provider error codes are Tier-1 cross-port invariants that the
 existing `fixtures/conformance/error-*` corpus **cannot** reach: that corpus is
 metadata-input → error, but these codes are triggered by *how providers are
 composed and sealed*, not by any metadata document. This small corpus gates them
