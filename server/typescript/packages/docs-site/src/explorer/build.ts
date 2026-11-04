@@ -158,7 +158,7 @@ function walkModel(model: unknown): Walked[] {
       name,
       package: pkg,
       ...(parent !== undefined ? { parent: parent.node.id } : {}),
-      ...(typeof ext === "string" && ext !== "" ? { extends: ext } : {}),
+      ...(typeof ext === "string" && ext !== "" ? { extends: nodeIdOf(ext) } : {}),
       ...(child.body[RESERVED_KEY_ABSTRACT] === true ? { abstract: true as const } : {}),
       ...(child.body[RESERVED_KEY_IS_ARRAY] === true ? { isArray: true as const } : {}),
       attrs: attrsOf(child.body),
@@ -170,6 +170,11 @@ function walkModel(model: unknown): Walked[] {
 
   rawChildren(root).forEach((c, i) => visit(c, i, undefined));
   return out;
+}
+
+/** A canonical reference spells a root-level target `::Name`; the node's id is `Name`. */
+function nodeIdOf(ref: string): string {
+  return ref.startsWith(PACKAGE_SEPARATOR) ? ref.slice(PACKAGE_SEPARATOR.length) : ref;
 }
 
 /**
@@ -210,8 +215,10 @@ function markInherited(walked: Walked[], byId: Map<string, Walked>): void {
 function modelEdges(walked: Walked[], byId: Map<string, Walked>): ExplorerEdge[] {
   const edges: ExplorerEdge[] = [];
   const add = (kind: ExplorerEdgeKind, from: string, to: string | undefined, via?: string): void => {
-    if (to === undefined || !byId.has(from) || !byId.has(to)) return;
-    edges.push({ kind, from, to, ...(via !== undefined && via !== from ? { via } : {}) });
+    if (to === undefined) return;
+    const target = nodeIdOf(to);
+    if (!byId.has(from) || !byId.has(target)) return;
+    edges.push({ kind, from, to: target, ...(via !== undefined && via !== from ? { via } : {}) });
   };
   for (const w of walked) {
     const { node, body, owner } = w;

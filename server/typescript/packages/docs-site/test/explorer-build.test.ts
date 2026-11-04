@@ -94,4 +94,32 @@ describe("buildExplorer", () => {
     };
     expect(() => buildExplorer({ model })).toThrow(/two nodes share the id "p::A"/);
   });
+
+  test("a root-level target spelled `::Name` still gets its edges and inheritedFrom", () => {
+    const idField = { name: "id", type: "long" };
+    const model = {
+      "metadata.root": {
+        children: [
+          { "object.entity": { name: "BaseEntity", abstract: true, children: [{ "field.long": idField }] } },
+          {
+            "object.entity": {
+              name: "Order",
+              package: "acme::shop",
+              extends: "::BaseEntity",
+              children: [
+                { "field.long": idField },
+                { "relationship.association": { name: "owner", "@objectRef": "::BaseEntity" } },
+              ],
+            },
+          },
+        ],
+      },
+    };
+    const built = buildExplorer({ model });
+    const nodes = new Map(built.nodes.map((n) => [n.id, n]));
+    expect(nodes.get("acme::shop::Order")?.extends).toBe("BaseEntity");
+    expect(nodes.get("acme::shop::Order.id")?.inheritedFrom).toBe("BaseEntity");
+    expect(built.edges).toContainEqual({ kind: "extends", from: "acme::shop::Order", to: "BaseEntity" });
+    expect(built.edges).toContainEqual({ kind: "association", from: "acme::shop::Order", to: "BaseEntity", via: "acme::shop::Order.owner" });
+  });
 });

@@ -56,7 +56,7 @@ describe("recordGeneratedProvenance", () => {
   function seed(entries: Record<string, unknown>): string {
     const dir = join(tmp, ".gen-state");
     mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, ".hashes.json"), JSON.stringify(entries, null, 2) + "\n");
+    writeFileSync(join(dir, ".hashes.json"), JSON.stringify(entries));
     return dir;
   }
   const read = (dir: string): Record<string, unknown> => JSON.parse(readFileSync(join(dir, ".hashes.json"), "utf8"));
