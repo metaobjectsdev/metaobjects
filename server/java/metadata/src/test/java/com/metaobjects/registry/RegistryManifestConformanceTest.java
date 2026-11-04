@@ -216,8 +216,6 @@ public class RegistryManifestConformanceTest {
             RegistryManifest.classifyPerTypeAttr("object"));
         assertEquals(RegistryManifest.ExclusionReason.NATIVE_BINDING,
             RegistryManifest.classifyPerTypeAttr("objectAdapter"));
-        assertEquals(RegistryManifest.ExclusionReason.COMMON_ATTR_DUP,
-            RegistryManifest.classifyPerTypeAttr("description"));
         // Genuinely logical attrs are INCLUDED.
         assertEquals(RegistryManifest.ExclusionReason.INCLUDED,
             RegistryManifest.classifyPerTypeAttr("column"));

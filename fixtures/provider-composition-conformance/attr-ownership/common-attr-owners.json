@@ -1,8 +1,16 @@
 {
-  "description": "Two providers registering DISTINCT common attr names compose cleanly, one provider re-registering its own common attr stays legal, and the registry records which provider owns each common attr.",
+  "description": "Two providers registering DISTINCT common attr names compose cleanly, one provider declaring its own common attr name per-type and re-registering it as a common attr stays legal, and the registry records which provider owns each common attr and each per-type attr.",
   "providers": [
     "common-owner",
     "common-self"
+  ],
+  "expectOwners": [
+    {
+      "type": "template",
+      "subType": "shadowprobe",
+      "attr": "selfCommonAttr",
+      "owner": "common-self"
+    }
   ],
   "expectCommonOwners": [
     {

@@ -1,0 +1,8 @@
+{
+  "description": "A provider declares a per-type attr whose name another provider already registers as a common attr (accepted on every node type).",
+  "providers": [
+    "common-owner",
+    "common-sub-clash"
+  ],
+  "expectedError": "ERR_PROVIDER_ATTR_CONFLICT"
+}

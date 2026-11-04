@@ -222,8 +222,23 @@ const commonSelfProvider: MetaDataTypeProvider = {
   id: "common-self",
   registerTypes(registry) {
     registry.registerCommonAttrs([commonAttr("selfCommonAttr")]);
+    registry.register(templateType(SHADOW_SUBTYPE, "selfCommonAttr"));
     registry.registerCommonAttrs([commonAttr("selfCommonAttr")]);
   },
+};
+const commonSubClashProvider: MetaDataTypeProvider = {
+  id: "common-sub-clash",
+  dependencies: ["common-owner"],
+  registerTypes: (registry) => registry.register(templateType(SHADOW_SUBTYPE, "commonAttr")),
+};
+const commonSubOwnerProvider: MetaDataTypeProvider = {
+  id: "common-sub-owner",
+  registerTypes: (registry) => registry.register(templateType(SHADOW_SUBTYPE, "lateCommonAttr")),
+};
+const commonLateProvider: MetaDataTypeProvider = {
+  id: "common-late",
+  dependencies: ["common-sub-owner"],
+  registerTypes: (registry) => registry.registerCommonAttrs([commonAttr("lateCommonAttr")]),
 };
 
 const PROVIDERS: Readonly<Record<string, MetaDataTypeProvider>> = {
@@ -231,6 +246,9 @@ const PROVIDERS: Readonly<Record<string, MetaDataTypeProvider>> = {
   "common-owner": commonOwnerProvider,
   "common-clash": commonClashProvider,
   "common-self": commonSelfProvider,
+  "common-sub-clash": commonSubClashProvider,
+  "common-sub-owner": commonSubOwnerProvider,
+  "common-late": commonLateProvider,
   "shadow-base": shadowBaseProvider,
   "shadow-sub-clash": shadowSubClashProvider,
   "shadow-sub-owner": shadowSubOwnerProvider,

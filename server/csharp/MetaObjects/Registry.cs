@@ -255,7 +255,8 @@ public sealed class TypeRegistry
     /// <paramref name="name"/> on (type, subType) when a DIFFERENT provider Q already put
     /// the same name on a related slot: the slot itself, the type it inherits from
     /// (<c>&lt;type&gt;.base</c>) or, when this slot is the shared root, any subtype that
-    /// inherits from it. Checked in both directions so the verdict does not depend on which
+    /// inherits from it; or registered it as a common attr, which every node type accepts.
+    /// Checked in both directions so the verdict does not depend on which
     /// provider registered first. The same provider declaring a name on several related
     /// slots stays legal, and an attr registered outside any provider's turn (no current
     /// provider, or the library sentinel) claims nothing.
@@ -264,6 +265,16 @@ public sealed class TypeRegistry
     {
         string? claimant = CurrentProviderId;
         if (claimant is null) return;
+
+        string commonOwner = CommonAttrOrigin(name);
+        if (commonOwner != LibrarySentinel && commonOwner != claimant)
+        {
+            throw new MetaModelException(
+                $"Provider \"{claimant}\" declares attribute \"{name}\" on \"{type}.{subType}\", but provider " +
+                $"\"{commonOwner}\" already registers it as a common attribute, which every node type accepts; " +
+                $"provider \"{claimant}\" cannot declare it again (ADR-0062)",
+                ErrorCode.ERR_PROVIDER_ATTR_CONFLICT);
+        }
 
         var related = new List<string> { subType };
         if (subType == SUBTYPE_BASE)
@@ -427,9 +438,9 @@ public sealed class TypeRegistry
     /// Register attrs that are accepted on every metatype. Used by providers to
     /// declare cross-cutting attrs (e.g. documentation attrs). The same provider (or
     /// a registration outside any provider's turn) re-registering a name is deduped; a
-    /// different provider registering a name another provider holds throws
-    /// <c>ERR_PROVIDER_ATTR_CONFLICT</c> (ADR-0062). Conflicts with per-type attrs are
-    /// detected at validation time.
+    /// different provider registering a name another provider holds, as a common attr or on
+    /// any type, throws <c>ERR_PROVIDER_ATTR_CONFLICT</c> (ADR-0062). A name one provider
+    /// holds both ways is resolved at validation time.
     /// Throws <see cref="InvalidOperationException"/> if any attr has
     /// ValueType == SUBTYPE_BASE.
     /// </summary>
@@ -441,12 +452,23 @@ public sealed class TypeRegistry
         string? claimant = CurrentProviderId;
         foreach (AttrSchema attr in batch)
         {
+            if (claimant is null) break;
             string owner = CommonAttrOrigin(attr.Name);
-            if (claimant is not null && owner != LibrarySentinel && owner != claimant)
+            if (owner != LibrarySentinel && owner != claimant)
             {
                 throw new MetaModelException(
                     $"Provider \"{claimant}\" registers common attribute \"{attr.Name}\", but provider \"{owner}\" " +
                     $"already registers it as a common attribute; provider \"{claimant}\" cannot declare it again (ADR-0062)",
+                    ErrorCode.ERR_PROVIDER_ATTR_CONFLICT);
+            }
+
+            foreach (var ((slotType, slotSubType, slotAttr), slotOwner) in _attrProvenance)
+            {
+                if (slotAttr != attr.Name || slotOwner == LibrarySentinel || slotOwner == claimant) continue;
+                throw new MetaModelException(
+                    $"Provider \"{claimant}\" registers common attribute \"{attr.Name}\", which every node type accepts, " +
+                    $"but provider \"{slotOwner}\" already declares it on \"{slotType}.{slotSubType}\"; provider " +
+                    $"\"{claimant}\" cannot declare it again (ADR-0062)",
                     ErrorCode.ERR_PROVIDER_ATTR_CONFLICT);
             }
         }
@@ -479,7 +501,7 @@ public sealed class TypeRegistry
 
             if (_commonAttrs.Any(existing => existing.Name == attr.Name))
             {
-                continue; // same-name dedupe; per-type conflicts handled at validation time
+                continue; // same-name dedupe
             }
 
             _commonAttrs.Add(attr);

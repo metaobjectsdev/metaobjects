@@ -135,7 +135,6 @@ public abstract class MetaObject extends MetaData {
             def.optionalAttributeWithConstraints(ATTR_IS_INTERFACE).ofType(BooleanAttribute.SUBTYPE_BOOLEAN).asSingle();
 
             // OBJECT-SPECIFIC ATTRIBUTES
-            def.optionalAttributeWithConstraints(ATTR_DESCRIPTION).ofType(StringAttribute.SUBTYPE_STRING).asSingle();
             def.optionalAttributeWithConstraints(ATTR_OBJECT).ofType(StringAttribute.SUBTYPE_STRING).asSingle();
             // NOTE: @objectRef is NOT registered on object.base. It is a FIELD-level
             // attr (registered on field.base — see MetaField) consumed by field.object

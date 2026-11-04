@@ -27,7 +27,7 @@
     "ERR_PROVIDER_DEPENDENCY_CYCLE": "Provider composition has a dependency cycle.",
     "ERR_PROVIDER_DUPLICATE_ID": "Two providers in a composition share the same id.",
     "ERR_PROVIDER_MISSING_DEPENDENCY": "A provider declares a dependency id with no matching provider.",
-    "ERR_PROVIDER_ATTR_CONFLICT": "A provider extend redefines an attr another provider already declared.",
+    "ERR_PROVIDER_ATTR_CONFLICT": "A provider extend redefines an attr another provider already declared, or a provider registers a common attr whose name another provider holds as a common attr or on any type, or the reverse (ADR-0062).",
     "ERR_PROVIDER_ATTR_SHADOW": "A provider declares an attribute name on a type that another provider already declares on a related slot: the type it inherits from (<type>.base), or a subtype that inherits from it (ADR-0062). Two providers may not claim one attribute name on a node type; the second needs its own idiomatic name. The same provider re-declaring its own attribute stays legal.",
     "ERR_EXTEND_REQUIRED_ATTR": "A provider tried to project a REQUIRED attribute onto a type it does not own (via extends). Projection is optional-only: a required attr registered this way disappears silently whenever that provider is composed out, taking its validation rule with it. Declare it with the type instead (ADR-0050).",
     "ERR_SUBTYPE_RULE_VIOLATION": "A node violates a subtype composition rule (e.g. a value object with an identity or a source — FR-024 value purity; a projection extending a non-projection — FR-024/ADR-0028).",

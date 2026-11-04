@@ -45,7 +45,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/template-codegen-conformance/`](../fixtures/template-codegen-conformance/) | 3 | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/template-output-render-conformance/`](../fixtures/template-output-render-conformance/) | 5 | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/generator-registry-conformance/`](../fixtures/generator-registry-conformance/) | 1 canonical manifest | ✓ | ✓ | ✓ | ✓ | ✓ |
-| [`fixtures/provider-composition-conformance/`](../fixtures/provider-composition-conformance/) | 16 (9 error-shape + 4 compose-load + 3 attr-ownership) | ✓ | ✓ | — (JVM registry via Java) | ✓ | ✓ |
+| [`fixtures/provider-composition-conformance/`](../fixtures/provider-composition-conformance/) | 18 (11 error-shape + 4 compose-load + 3 attr-ownership) | ✓ | ✓ | — (JVM registry via Java) | ✓ | ✓ |
 | [`fixtures/source-resolution-conformance/`](../fixtures/source-resolution-conformance/) | 25 cases | ✓ (reference implementation) | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/scope-conformance/`](../fixtures/scope-conformance/) | 10 cases | ✓ (reference implementation) | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/dependency-conformance/`](../fixtures/dependency-conformance/) | 37 cases (26 resolution + 11 check) + 14 transport cases | ✓ (reference implementation; all three arms) | ✓ (resolution arm, all 26; no check, so the 11 check cases are not run) | inherits via Java | ✓ (resolution arm, all 26; no check, so the 11 check cases are not run) | ✓ (resolution arm, all 26 identically; no check yet, so the 11 check cases are not run; the transport arm is Node-only) |

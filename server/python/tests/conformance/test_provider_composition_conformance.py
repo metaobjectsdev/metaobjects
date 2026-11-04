@@ -152,15 +152,18 @@ class _ShadowSubExtendClashProvider(Provider):
 
 
 class _CommonAttrProvider(Provider):
-    """Registers one optional string common attr, `times` times."""
+    """Registers one optional string common attr; `self_claim` also declares it on
+    `template.shadowprobe` and then registers the common attr again."""
 
-    def __init__(self, provider_id: str, deps: tuple[str, ...], attr_name: str, times: int = 1) -> None:
+    def __init__(self, provider_id: str, deps: tuple[str, ...], attr_name: str, self_claim: bool = False) -> None:
         super().__init__(provider_id, dependencies=deps)
         self._attr_name = attr_name
-        self._times = times
+        self._self_claim = self_claim
 
     def register_types(self, registry: TypeRegistry) -> None:  # noqa: D401
-        for _ in range(self._times):
+        registry.register_common_attrs([AttrSchema(self._attr_name, "string")])
+        if self._self_claim:
+            registry.register(_template_type(_SHADOW_SUBTYPE, self._attr_name))
             registry.register_common_attrs([AttrSchema(self._attr_name, "string")])
 
 
@@ -169,7 +172,10 @@ def _providers() -> dict[str, Provider]:
         "shadow-sub-extend-clash": _ShadowSubExtendClashProvider(),
         "common-owner": _CommonAttrProvider("common-owner", (), "commonAttr"),
         "common-clash": _CommonAttrProvider("common-clash", ("common-owner",), "commonAttr"),
-        "common-self": _CommonAttrProvider("common-self", (), "selfCommonAttr", times=2),
+        "common-self": _CommonAttrProvider("common-self", (), "selfCommonAttr", self_claim=True),
+        "common-sub-clash": _shadow_provider("common-sub-clash", ("common-owner",), (_SHADOW_SUBTYPE, "commonAttr")),
+        "common-sub-owner": _shadow_provider("common-sub-owner", (), (_SHADOW_SUBTYPE, "lateCommonAttr")),
+        "common-late": _CommonAttrProvider("common-late", ("common-sub-owner",), "lateCommonAttr"),
         "shadow-base": _shadow_provider("shadow-base", (), ("base", "shadowAttr")),
         "shadow-sub-clash": _shadow_provider(
             "shadow-sub-clash", ("shadow-base",), (_SHADOW_SUBTYPE, "shadowAttr")

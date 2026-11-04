@@ -8,8 +8,6 @@ import com.metaobjects.registry.MetaDataRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import static com.metaobjects.object.MetaObject.ATTR_DESCRIPTION;
-
 /**
  * Abstract base relationship metadata for expressing object relationships.
  * Provides simplified model-driven relationship patterns optimized for AI generation.
@@ -142,10 +140,6 @@ public abstract class MetaRelationship extends MetaData {
 
             def.optionalAttributeWithConstraints(ATTR_SYMMETRIC)
                .ofType(BooleanAttribute.SUBTYPE_BOOLEAN)
-               .asSingle();
-
-            def.optionalAttributeWithConstraints(ATTR_DESCRIPTION)
-               .ofType(StringAttribute.SUBTYPE_STRING)
                .asSingle();
 
             // @onDelete / @onUpdate — enum-constrained; withEnum also marks as single

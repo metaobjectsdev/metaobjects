@@ -857,8 +857,8 @@ public class MetaDataRegistry {
      * </ul>
      *
      * <p>Idempotent: re-registering the same attr name is a no-op for the provider that
-     * registered it; another provider registering the same common attr name is refused
-     * (ADR-0062, {@code ERR_PROVIDER_ATTR_CONFLICT}).</p>
+     * registered it. A common attr is on every node type, so another provider may not claim
+     * its name, as a common attr or on any type (ADR-0062, {@code ERR_PROVIDER_ATTR_CONFLICT}).</p>
      *
      * @param name      bare attribute name (no {@code @} prefix; e.g. {@code "description"})
      * @param valueType attribute value subtype (e.g. {@link StringAttribute#SUBTYPE_STRING},
@@ -1290,6 +1290,15 @@ public class MetaDataRegistry {
         }
         Set<MetaDataTypeId> related = relatedSlots(typeId, parentType, parentSubType);
         for (String name : names) {
+            String commonOwner = getCommonAttrProvider(name);
+            if (commonOwner != null && !commonOwner.equals(claimant)) {
+                throw new MetaDataException(
+                    "Provider \"" + claimant + "\" declares attribute \"" + name + "\" on \""
+                        + typeId.toQualifiedName() + "\", but provider \"" + commonOwner
+                        + "\" already registers it as a common attribute, which every node type accepts; provider \""
+                        + claimant + "\" cannot declare it again (ADR-0062).",
+                    com.metaobjects.ErrorCode.ERR_PROVIDER_ATTR_CONFLICT);
+            }
             for (MetaDataTypeId slot : related) {
                 Map<String, String> byName = attrProvenance.get(slot);
                 String owner = byName != null ? byName.get(name) : null;
@@ -1308,9 +1317,10 @@ public class MetaDataRegistry {
     }
 
     /**
-     * ADR-0062 — provider P may not register common attr {@code name} when a DIFFERENT
-     * provider already registered it as a common attr. Re-registration by the same
-     * provider, and registration outside any provider's turn, stay legal.
+     * ADR-0062 — a common attr is on every node type, so provider P may not register common
+     * attr {@code name} when a DIFFERENT provider already registered that name as a common
+     * attr or on any type. Re-registration by the same provider, and registration outside
+     * any provider's turn, stay legal.
      */
     private void checkCommonAttrOwnership(String name) {
         String claimant = currentProviderId;
@@ -1322,6 +1332,18 @@ public class MetaDataRegistry {
             throw new MetaDataException(
                 "Provider \"" + claimant + "\" registers common attribute \"" + name + "\", but provider \""
                     + commonOwner + "\" already registers it as a common attribute; provider \"" + claimant
+                    + "\" cannot declare it again (ADR-0062).",
+                com.metaobjects.ErrorCode.ERR_PROVIDER_ATTR_CONFLICT);
+        }
+        for (Map.Entry<MetaDataTypeId, Map<String, String>> entry : attrProvenance.entrySet()) {
+            String owner = entry.getValue().get(name);
+            if (owner == null || LIBRARY_PROVENANCE.equals(owner) || owner.equals(claimant)) {
+                continue;
+            }
+            throw new MetaDataException(
+                "Provider \"" + claimant + "\" registers common attribute \"" + name + "\", which every node "
+                    + "type accepts, but provider \"" + owner + "\" already declares it on \""
+                    + entry.getKey().toQualifiedName() + "\"; provider \"" + claimant
                     + "\" cannot declare it again (ADR-0062).",
                 com.metaobjects.ErrorCode.ERR_PROVIDER_ATTR_CONFLICT);
         }

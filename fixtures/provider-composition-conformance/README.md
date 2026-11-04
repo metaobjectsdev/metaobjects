@@ -11,7 +11,7 @@ cross-port.
 | `ERR_PROVIDER_DUPLICATE_ID` | Two providers in a composition report the same `id`. |
 | `ERR_PROVIDER_MISSING_DEPENDENCY` | A provider declares a dependency id absent from the set. |
 | `ERR_PROVIDER_DEPENDENCY_CYCLE` | Providers form a dependency cycle (topo-sort cannot proceed). |
-| `ERR_PROVIDER_ATTR_CONFLICT` | A provider `extend`s a type, redefining an attr another provider already declared; or registers a common attr another provider already registered (ADR-0062). |
+| `ERR_PROVIDER_ATTR_CONFLICT` | A provider `extend`s a type, redefining an attr another provider already declared; or a common attr and another provider's common or per-type attr share a name, in either order (ADR-0062). |
 | `ERR_PROVIDER_ATTR_SHADOW` | A provider declares an attr name that another provider already declares on the type it inherits from (`<type>.base`), or on a subtype that inherits from it, whether it registers or `extend`s the type (ADR-0062). |
 | `ERR_REGISTRY_SEALED` | A registration is attempted against a registry sealed after bootstrap (ADR-0023). |
 
@@ -142,9 +142,15 @@ The common-attr providers each register one optional string common attr:
 |----|--------------|-----------|
 | `common-owner` | none | common attr `commonAttr`. |
 | `common-clash` | `common-owner` | common attr `commonAttr` (the name `common-owner` owns). |
-| `common-self` | none | common attr `selfCommonAttr`, then the SAME common attr again. |
+| `common-self` | none | common attr `selfCommonAttr`, then `template.shadowprobe` with attr `selfCommonAttr`, then the SAME common attr again. |
+| `common-sub-clash` | `common-owner` | `template.shadowprobe` with attr `commonAttr` (the name `common-owner` owns as common). |
+| `common-sub-owner` | none | `template.shadowprobe` with attr `lateCommonAttr`. |
+| `common-late` | `common-sub-owner` | common attr `lateCommonAttr` (the name `common-sub-owner` owns per-type). |
 
-Composing `["common-owner", "common-clash"]` → `ERR_PROVIDER_ATTR_CONFLICT`.
+Composing `["common-owner", "common-clash"]`, `["common-owner", "common-sub-clash"]` and
+`["common-sub-owner", "common-late"]` → `ERR_PROVIDER_ATTR_CONFLICT`. A common attr is on every
+node type, so it collides with another provider's common attr and, in both orders, with another
+provider's per-type attr of the same name.
 
 ## The `attr-ownership/` subdir (ADR-0062)
 
@@ -171,8 +177,8 @@ A manifest carries at least one of `expectOwners` / `expectCommonOwners`.
 inherited attr is asked of the slot that declares it. `distinct-names-load.json` proves distinct
 names load; `same-provider-redeclare.json` proves one provider re-declaring its own name on a type
 and on the type it inherits from stays legal; `common-attr-owners.json` proves distinct common attr
-names from two providers load, one provider re-registering its own common attr stays legal, and each
-port reports the same common-attr owner.
+names from two providers load, one provider declaring its own common attr name per-type and
+re-registering the common attr stays legal, and each port reports the same owners.
 
 ## Notes
 

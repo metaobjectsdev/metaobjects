@@ -212,7 +212,8 @@ export class TypeRegistry {
    * ADR-0062 — the provider-collision rule. Provider P may not put attribute `name` on
    * `(type, subType)` when a DIFFERENT provider Q already put the same name on a related
    * slot: the slot itself, a type it inherits from (`<type>.base`), or — when this slot
-   * is the shared root — any subtype that inherits from it. Checked in both directions
+   * is the shared root — any subtype that inherits from it; or registered it as a common
+   * attribute, which every node type accepts. Checked in both directions
    * so the verdict does not depend on which provider happened to register first. The
    * same provider declaring a name on several related slots stays legal, and an
    * attribute registered outside any provider's turn claims nothing.
@@ -220,6 +221,15 @@ export class TypeRegistry {
   private checkAttrOwnership(type: string, subType: string, name: string): void {
     const claimant = this._currentProviderId;
     if (claimant === undefined) return;
+    const commonOwner = this._commonAttrOwners.get(name);
+    if (commonOwner !== undefined && commonOwner !== claimant) {
+      throw new MetaModelError(
+        `Provider "${claimant}" declares attribute "${name}" on "${type}.${subType}", but provider ` +
+          `"${commonOwner}" already registers it as a common attribute, which every node type accepts; ` +
+          `provider "${claimant}" cannot declare it again (ADR-0062)`,
+        { code: "ERR_PROVIDER_ATTR_CONFLICT" },
+      );
+    }
     const related: string[] = [];
     if (subType === SUBTYPE_BASE) {
       for (const sub of this._subTypes.get(type) ?? []) {
@@ -339,21 +349,33 @@ export class TypeRegistry {
    * Register attrs that are accepted on every metatype. Callers (providers) use
    * this to declare cross-cutting attrs (e.g. doc attrs). The same provider (or a
    * registration outside any provider's turn) re-registering a name is deduped; a
-   * different provider registering a name another provider holds is
-   * `ERR_PROVIDER_ATTR_CONFLICT` (ADR-0062). Conflicts with per-type attrs are
-   * resolved at validation time (Task 1.3).
+   * different provider registering a name another provider holds, as a common attr or
+   * on any type, is `ERR_PROVIDER_ATTR_CONFLICT` (ADR-0062). A name one provider holds
+   * both ways is resolved at validation time (Task 1.3).
    */
   registerCommonAttrs(attrs: AttrSchema[]): void {
     this.checkNotSealed("registerCommonAttrs");
-    // ADR-0062: another provider may not register a common attr name a provider already
-    // holds. Checked for the whole batch first, so a refusal leaves no trace.
+    // ADR-0062: a common attr is on every node type, so another provider may not register
+    // a common attr name a provider already holds, as a common attr or on any type.
+    // Checked for the whole batch first, so a refusal leaves no trace.
     const claimant = this._currentProviderId;
     for (const attr of attrs) {
+      if (claimant === undefined) break;
       const owner = this._commonAttrOwners.get(attr.name);
-      if (owner !== undefined && claimant !== undefined && owner !== claimant) {
+      if (owner !== undefined && owner !== claimant) {
         throw new MetaModelError(
           `Provider "${claimant}" registers common attribute "${attr.name}", but provider "${owner}" ` +
             `already registers it as a common attribute; provider "${claimant}" cannot declare it again (ADR-0062)`,
+          { code: "ERR_PROVIDER_ATTR_CONFLICT" },
+        );
+      }
+      for (const [slot, owners] of this._attrOwners) {
+        const slotOwner = owners.get(attr.name);
+        if (slotOwner === undefined || slotOwner === claimant) continue;
+        throw new MetaModelError(
+          `Provider "${claimant}" registers common attribute "${attr.name}", which every node type accepts, ` +
+            `but provider "${slotOwner}" already declares it on "${slot}"; provider "${claimant}" cannot ` +
+            `declare it again (ADR-0062)`,
           { code: "ERR_PROVIDER_ATTR_CONFLICT" },
         );
       }
@@ -380,7 +402,7 @@ export class TypeRegistry {
         );
       }
       if (this._commonAttrs.some((existing) => existing.name === attr.name)) {
-        continue; // dedupe same-name re-registration; conflict-with-per-type-attr is checked at validation time
+        continue; // dedupe same-name re-registration
       }
       this._commonAttrs.push(attr);
       if (claimant !== undefined) this._commonAttrOwners.set(attr.name, claimant);

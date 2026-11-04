@@ -20,8 +20,6 @@ import com.metaobjects.attr.MetaAttribute;
 import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.registry.MetaDataRegistry;
 
-import static com.metaobjects.object.MetaObject.ATTR_DESCRIPTION;
-
 /**
  * A non-unique lookup index on one or more fields ({@code index.lookup}).
  *
@@ -62,9 +60,6 @@ public class LookupIndex extends Index {
             // physical attrs (@orders / @expr / @where / @using) via registry.extendType.
             def.optionalAttributeWithConstraints(ATTR_FIELDS)
                .ofType(StringAttribute.SUBTYPE_STRING).asArray();
-
-            def.optionalAttributeWithConstraints(ATTR_DESCRIPTION)
-               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
 
             // ACCEPTS ANY CHILD ATTRIBUTES (for extensibility from service providers)
             // ADR-0051: NO any-attr wildcard. An undeclared attribute is ERR_UNKNOWN_ATTR in

@@ -17,7 +17,6 @@ package com.metaobjects;
 
 import com.metaobjects.attr.BooleanAttribute;
 import com.metaobjects.attr.MetaAttribute;
-import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.field.MetaField;
 // ✅ MIGRATED: MetaKey import removed - using MetaRelationship instead
 import com.metaobjects.object.MetaObject;
@@ -148,7 +147,7 @@ public class MetaData implements Cloneable, Serializable {
     public static void registerTypes(MetaDataRegistry registry) {
         try {
             // Check if MetaData base type is already registered to prevent duplicates
-            if (registry.hasConstraint("metadata.base.description.placement")) {
+            if (registry.hasConstraint("metadata.base.isAbstract.placement")) {
                 log.debug("MetaData base type already registered, skipping");
                 return;
             }
@@ -158,7 +157,6 @@ public class MetaData implements Cloneable, Serializable {
                 .description("Base metadata type for inheritance hierarchy - enforces abstract requirements")
 
                 // COMMON ATTRIBUTES available to all metadata types
-                .optionalAttribute(ATTR_DESCRIPTION, StringAttribute.SUBTYPE_STRING)  // Description attribute for all metadata
                 .optionalAttribute(ATTR_IS_ABSTRACT, BooleanAttribute.SUBTYPE_BOOLEAN)  // Abstract flag for all metadata
 
                 // ROOT LEVEL can contain top-level metadata types

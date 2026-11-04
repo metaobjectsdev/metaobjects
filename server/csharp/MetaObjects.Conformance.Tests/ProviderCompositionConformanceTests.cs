@@ -172,18 +172,19 @@ internal sealed class ShadowSubExtendClashProvider : IMetaDataTypeProvider
     }
 }
 
-/// <summary>ADR-0062 — registers one optional string common attr, <c>times</c> times.</summary>
+/// <summary>ADR-0062 — registers one optional string common attr; <c>selfClaim</c> also declares
+/// it on <c>template.shadowprobe</c> and then registers the common attr again.</summary>
 internal sealed class CommonAttrTestProvider : IMetaDataTypeProvider
 {
     private readonly string _attr;
-    private readonly int _times;
+    private readonly bool _selfClaim;
 
-    public CommonAttrTestProvider(string id, string[] dependencies, string attr, int times = 1)
+    public CommonAttrTestProvider(string id, string[] dependencies, string attr, bool selfClaim = false)
     {
         Id = id;
         Dependencies = dependencies;
         _attr = attr;
-        _times = times;
+        _selfClaim = selfClaim;
     }
 
     public string Id { get; }
@@ -191,14 +192,19 @@ internal sealed class CommonAttrTestProvider : IMetaDataTypeProvider
 
     public void RegisterTypes(TypeRegistry registry)
     {
-        for (int i = 0; i < _times; i++)
+        RegisterCommon(registry);
+        if (_selfClaim)
         {
-            registry.RegisterCommonAttrs(new[]
-            {
-                new AttrSchema(_attr, "string", Required: false, Description: "Ownership probe common attr."),
-            });
+            new ShadowTestProvider(Id, System.Array.Empty<string>(), (ShadowTestProvider.ShadowSubType, _attr)).RegisterTypes(registry);
+            RegisterCommon(registry);
         }
     }
+
+    private void RegisterCommon(TypeRegistry registry) =>
+        registry.RegisterCommonAttrs(new[]
+        {
+            new AttrSchema(_attr, "string", Required: false, Description: "Ownership probe common attr."),
+        });
 }
 
 public sealed class ProviderCompositionConformanceTests
@@ -225,7 +231,10 @@ public sealed class ProviderCompositionConformanceTests
             ["shadow-sub-extend-clash"] = new ShadowSubExtendClashProvider(),
             ["common-owner"]        = new CommonAttrTestProvider("common-owner", System.Array.Empty<string>(), "commonAttr"),
             ["common-clash"]        = new CommonAttrTestProvider("common-clash", new[] { "common-owner" }, "commonAttr"),
-            ["common-self"]         = new CommonAttrTestProvider("common-self", System.Array.Empty<string>(), "selfCommonAttr", times: 2),
+            ["common-self"]         = new CommonAttrTestProvider("common-self", System.Array.Empty<string>(), "selfCommonAttr", selfClaim: true),
+            ["common-sub-clash"]    = new ShadowTestProvider("common-sub-clash", new[] { "common-owner" }, (ShadowTestProvider.ShadowSubType, "commonAttr")),
+            ["common-sub-owner"]    = new ShadowTestProvider("common-sub-owner", System.Array.Empty<string>(), (ShadowTestProvider.ShadowSubType, "lateCommonAttr")),
+            ["common-late"]         = new CommonAttrTestProvider("common-late", new[] { "common-sub-owner" }, "lateCommonAttr"),
         };
 
     // Flat-corpus (error-code) manifest shape — unchanged.

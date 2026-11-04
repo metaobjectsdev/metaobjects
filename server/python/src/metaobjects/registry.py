@@ -155,7 +155,8 @@ class TypeRegistry:
         Provider P may not put attribute ``name`` on ``(type_, sub_type)`` when a DIFFERENT
         provider Q already put the same name on a related slot: the slot itself, the type
         it inherits from (``<type>.base``) or, when this slot is the shared root, any
-        subtype that inherits from it. Checked in both directions so the verdict does not
+        subtype that inherits from it; or registered it as a common attr, which every node
+        type accepts. Checked in both directions so the verdict does not
         depend on which provider registered first. The same provider declaring a name on
         several related slots stays legal, and an attr registered outside any provider's
         turn (no current provider, or the library sentinel) claims nothing.
@@ -163,6 +164,14 @@ class TypeRegistry:
         claimant = self._current_provider_id
         if claimant is None:
             return
+        common_owner = self._common_attr_provenance.get(name, LIBRARY_ATTR_ORIGIN)
+        if common_owner not in (LIBRARY_ATTR_ORIGIN, claimant):
+            raise ParseError(
+                f'Provider "{claimant}" declares attribute "{name}" on "{type_}.{sub_type}", but '
+                f'provider "{common_owner}" already registers it as a common attribute, which every '
+                f'node type accepts; provider "{claimant}" cannot declare it again (ADR-0062)',
+                ErrorCode.ERR_PROVIDER_ATTR_CONFLICT,
+            )
         related = [sub_type]
         if sub_type == SUBTYPE_BASE:
             related += [s for (t, s) in self._defs if t == type_ and s != SUBTYPE_BASE]
@@ -267,20 +276,32 @@ class TypeRegistry:
         """Register attrs accepted on every metatype.
 
         The same provider (or a registration outside any provider's turn) re-registering a
-        name is deduped; a different provider registering a name another provider holds
-        raises ``ERR_PROVIDER_ATTR_CONFLICT`` (ADR-0062). Conflict with per-type attrs is
-        detected at validation time, not here.
+        name is deduped; a different provider registering a name another provider holds, as
+        a common attr or on any type, raises ``ERR_PROVIDER_ATTR_CONFLICT`` (ADR-0062). A
+        name one provider holds both ways is resolved at validation time.
         """
         self._check_not_sealed("register_common_attrs")
         # ADR-0062: checked for the whole batch first, so a refusal leaves no trace.
         claimant = self._current_provider_id
         for attr in attrs:
+            if claimant is None:
+                break
             owner = self._common_attr_provenance.get(attr.name, LIBRARY_ATTR_ORIGIN)
-            if claimant is not None and owner not in (LIBRARY_ATTR_ORIGIN, claimant):
+            if owner not in (LIBRARY_ATTR_ORIGIN, claimant):
                 raise ParseError(
                     f'Provider "{claimant}" registers common attribute "{attr.name}", but '
                     f'provider "{owner}" already registers it as a common attribute; provider '
                     f'"{claimant}" cannot declare it again (ADR-0062)',
+                    ErrorCode.ERR_PROVIDER_ATTR_CONFLICT,
+                )
+            for (slot_type, slot_sub, slot_attr), slot_owner in self._attr_provenance.items():
+                if slot_attr != attr.name or slot_owner in (LIBRARY_ATTR_ORIGIN, claimant):
+                    continue
+                raise ParseError(
+                    f'Provider "{claimant}" registers common attribute "{attr.name}", which every '
+                    f'node type accepts, but provider "{slot_owner}" already declares it on '
+                    f'"{slot_type}.{slot_sub}"; provider "{claimant}" cannot declare it again '
+                    "(ADR-0062)",
                     ErrorCode.ERR_PROVIDER_ATTR_CONFLICT,
                 )
         for attr in attrs:

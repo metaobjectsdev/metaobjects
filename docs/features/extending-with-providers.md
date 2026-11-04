@@ -88,8 +88,9 @@ which provider registered each attribute, and refuses a second provider's claim 
 - on the same `(type, subType)` — `ERR_PROVIDER_ATTR_CONFLICT`;
 - on the shared root `(type, base)` that the subtype inherits from, or on a subtype of it —
   `ERR_PROVIDER_ATTR_SHADOW`, whether the second provider registers the type or `extend`s it;
-- as a common attribute (accepted on every node type) another provider already registered —
-  `ERR_PROVIDER_ATTR_CONFLICT`.
+- as a common attribute (accepted on every node type), or on any type when another provider
+  already registered it as a common attribute — `ERR_PROVIDER_ATTR_CONFLICT`. A common attribute
+  is on every slot, so it collides with the same name on any type, in either order.
 
 The message names both providers and the attribute. The check runs both ways, so it does not
 matter which provider registers first. The same provider repeating its own name, sibling
@@ -520,7 +521,7 @@ Composition surfaces these codes consistently across all ports (see
 | `ERR_PROVIDER_DUPLICATE_ID` | Two provider objects report the same `id` | `provider-extension-duplicate-id` |
 | `ERR_PROVIDER_MISSING_DEPENDENCY` | Provider declares dep on an unregistered id | `provider-extension-missing-dependency` |
 | `ERR_PROVIDER_DEPENDENCY_CYCLE` | Provider dependencies form a cycle | `provider-extension-dependency-cycle` |
-| `ERR_PROVIDER_ATTR_CONFLICT` | Two providers declare the same attr on the same `(type, subType)`, or register the same common attr | `attr-conflict`, `common-attr-conflict` (provider-composition corpus) |
+| `ERR_PROVIDER_ATTR_CONFLICT` | Two providers declare the same attr on the same `(type, subType)`, or one registers a common attr whose name the other holds as a common attr or on any type | `attr-conflict`, `common-attr-conflict`, `common-attr-per-type-after`, `common-attr-per-type-before` (provider-composition corpus) |
 | `ERR_PROVIDER_ATTR_SHADOW` | A provider declares an attr another provider already holds on the shared root or a descendant subtype of the same type | `attr-shadow-inherited`, `attr-shadow-descendant`, `attr-shadow-extend` (provider-composition corpus) |
 
 Each conformance fixture's `providers.json: string[]` lists the provider ids to

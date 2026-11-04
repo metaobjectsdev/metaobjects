@@ -246,8 +246,16 @@ public class ProviderCompositionConformanceTest {
     private static final MetaDataTypeProvider COMMON_SELF =
         shadowProvider("common-self", new String[0], r -> {
             r.registerCommonAttribute("selfCommonAttr", StringAttribute.SUBTYPE_STRING, false);
+            registerShadowProbe(r, "selfCommonAttr");
             r.registerCommonAttribute("selfCommonAttr", StringAttribute.SUBTYPE_STRING, false);
         });
+    private static final MetaDataTypeProvider COMMON_SUB_CLASH =
+        shadowProvider("common-sub-clash", new String[]{"common-owner"}, r -> registerShadowProbe(r, "commonAttr"));
+    private static final MetaDataTypeProvider COMMON_SUB_OWNER =
+        shadowProvider("common-sub-owner", new String[0], r -> registerShadowProbe(r, "lateCommonAttr"));
+    private static final MetaDataTypeProvider COMMON_LATE =
+        shadowProvider("common-late", new String[]{"common-sub-owner"},
+            r -> r.registerCommonAttribute("lateCommonAttr", StringAttribute.SUBTYPE_STRING, false));
 
     private static MetaDataTypeProvider resolve(String id) {
         MetaDataTypeProvider p = ConformanceTestProviders.TEST_PROVIDERS.get(id);
@@ -267,6 +275,9 @@ public class ProviderCompositionConformanceTest {
             case "common-owner":        return COMMON_OWNER;
             case "common-clash":        return COMMON_CLASH;
             case "common-self":         return COMMON_SELF;
+            case "common-sub-clash":    return COMMON_SUB_CLASH;
+            case "common-sub-owner":    return COMMON_SUB_OWNER;
+            case "common-late":         return COMMON_LATE;
             default:
                 throw new IllegalArgumentException(
                     "Unknown named provider \"" + id + "\" in provider-composition corpus");

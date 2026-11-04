@@ -7,7 +7,6 @@ import com.metaobjects.registry.MetaDataRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import static com.metaobjects.object.MetaObject.ATTR_DESCRIPTION;
 import static com.metaobjects.attr.StringAttribute.SUBTYPE_STRING;
 
 /**
@@ -61,7 +60,6 @@ public class SecondaryIdentity extends MetaIdentity {
             // @fields XOR @expr, enforced by ValidationPhase (ERR_INVALID_INDEX),
             // because an exclusive-or is not expressible as a per-attr required flag.
             def.optionalAttributeWithConstraints(ATTR_FIELDS).ofType(StringAttribute.SUBTYPE_STRING).asArray();
-            def.optionalAttributeWithConstraints(ATTR_DESCRIPTION).ofType(StringAttribute.SUBTYPE_STRING).asSingle();
             // RDB-physical index attrs (@orders / @where / @expr / @using) are
             // contributed by CoreDBMetaDataProvider via registry.extendType, mirroring
             // the TS db provider's "extends" blocks in spec/metamodel/db.json.
