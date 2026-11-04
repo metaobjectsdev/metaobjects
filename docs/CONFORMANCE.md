@@ -288,7 +288,7 @@ unit-test runners (`bun test`, `dotnet test`, `pytest`, `mvn test`) pull Docker.
 
 ## Fixture-to-doc mapping
 
-### `fixtures/conformance/` — metamodel loader + canonical serializer (448)
+### `fixtures/conformance/` — metamodel loader + canonical serializer (449)
 
 | Fixture prefix | Feature doc |
 |---|---|
@@ -633,7 +633,7 @@ JSON and verify payload feeds it unchanged.
 
 ## Orphaned fixtures (tested but not yet documented)
 
-The fixtures in the nine corpora mapped above (metamodel 448 + yaml 16 + verify 45
+The fixtures in the nine corpora mapped above (metamodel 449 + yaml 16 + verify 45
 + render 18 + persistence 59 + api-contract 121 + source-resolution 25 + scope 10 +
 dependency 37) each map to a feature doc, and so do the two requirement corpora, `shared-model-conformance`, the
 `cube-model` corpus and `explorer-conformance`, whose case lists live in their own READMEs. None are orphaned today. The remaining
