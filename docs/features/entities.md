@@ -338,6 +338,13 @@ side is null; `requiredWhen` is violated only when the gate equals `@equals` and
 needs one non-null field. `@equals` is read per the gating field's subtype. The shared cases in
 `fixtures/validation-conformance/cross-field-cases.json` gate all five ports.
 
+One difference: a `comparison` orders only fields of the same kind. Numerics compare with each other;
+strings and temporals compare only with their own subtype and `@localTime` flag. `eq` and `ne` also
+apply to two booleans, enums, `uuid`, `uri` or `inet` fields, and ordering on a boolean or enum is not
+enforced. Any other pair is skipped in the generated model, never rejected, but the DB `CHECK` still
+covers it where the database can compare the two columns. The full rule is in
+`fixtures/validation-conformance/README.md`.
+
 PATCH and partial-update models do **not** enforce these rules, because a partial body cannot see
 the merged row. The database `CHECK` is the enforcement there.
 
