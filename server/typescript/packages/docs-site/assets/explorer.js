@@ -38,6 +38,8 @@
   function loadPagefind() {
     if (pagefindTried || !/^https?:$/.test(location.protocol)) return Promise.resolve(null);
     pagefindTried = true;
+    // Pagefind takes its base URL from where pagefind.js loads, so loading it from ROOT makes every
+    // result URL carry the path the site is served under (a sub-path included).
     var url = new URL(ROOT + "pagefind/pagefind.js", location.href).href;
     return fetch(url, { method: "HEAD" }).then(function (r) {
       if (!r.ok) return null;
