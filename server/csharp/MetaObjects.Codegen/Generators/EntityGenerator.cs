@@ -1156,8 +1156,8 @@ public class EntityGenerator : IGenerator
                     else if (lk == CrossKind.Temporal && rk == CrossKind.Temporal
                              && CSharpNaming.ScalarForField(l) == CSharpNaming.ScalarForField(r))
                         cond = $"{a} {csOp} {b}";
-                    else if (!ordering && ((lk == rk && lk != CrossKind.Other)
-                             || (l.SubType == r.SubType && l.SubType is FIELD_SUBTYPE_UUID or FIELD_SUBTYPE_URI or FIELD_SUBTYPE_INET)))
+                    else if (!ordering && l.SubType == r.SubType
+                             && (lk != CrossKind.Other || l.SubType is FIELD_SUBTYPE_UUID or FIELD_SUBTYPE_URI or FIELD_SUBTYPE_INET))
                         cond = op == "eq" ? $"Equals({a}, {b})" : $"!Equals({a}, {b})";
                     else break;
                     var lp = PropertyName(l); var rp = PropertyName(r);

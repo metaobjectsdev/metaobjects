@@ -672,13 +672,11 @@ public final class SpringGeneratorSupport {
     private static String crossComparison(MetaField<?> l, MetaField<?> r, String lc, String rc, String op, String jop) {
         boolean ordering = op.equals("gt") || op.equals("gte") || op.equals("lt") || op.equals("lte");
         boolean sameSubType = l.getSubType().equals(r.getSubType());
-        if (isNumericCrossField(l) && isNumericCrossField(r)) {
-            return sameSubType
-                ? "((Comparable<Object>) (Object) " + lc + ").compareTo(" + rc + ") " + jop + " 0"
-                : "new java.math.BigDecimal(String.valueOf(" + lc + ")).compareTo(new java.math.BigDecimal(String.valueOf(" + rc + "))) " + jop + " 0";
+        if (isNumericCrossField(l) && isNumericCrossField(r) && !sameSubType) {
+            return "new java.math.BigDecimal(String.valueOf(" + lc + ")).compareTo(new java.math.BigDecimal(String.valueOf(" + rc + "))) " + jop + " 0";
         }
         if (!sameSubType) return null;
-        if (l instanceof StringField || isTemporalCrossField(l)) {
+        if (isNumericCrossField(l) || l instanceof StringField || isTemporalCrossField(l)) {
             return "((Comparable<Object>) (Object) " + lc + ").compareTo(" + rc + ") " + jop + " 0";
         }
         if (!ordering && (l instanceof BooleanField || l instanceof EnumField

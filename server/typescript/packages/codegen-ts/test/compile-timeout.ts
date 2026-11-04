@@ -20,7 +20,7 @@ import { afterAll, setDefaultTimeout } from "bun:test";
 const BUN_DEFAULT_TIMEOUT_MS = 5_000;
 
 /** Per-test timeout for type-checking tests: ~9x the slowest measured case. */
-export const COMPILE_TEST_TIMEOUT_MS = 30_000;
+const COMPILE_TEST_TIMEOUT_MS = 30_000;
 
 setDefaultTimeout(COMPILE_TEST_TIMEOUT_MS);
 afterAll(() => setDefaultTimeout(BUN_DEFAULT_TIMEOUT_MS));

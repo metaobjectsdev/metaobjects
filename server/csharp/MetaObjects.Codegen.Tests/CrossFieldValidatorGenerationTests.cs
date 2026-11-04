@@ -153,13 +153,16 @@ public class CrossFieldValidatorGenerationTests
         };
     }
 
+    // Built once per run: opening every trusted-platform assembly is the cost of each compile.
+    private static readonly Lazy<List<MetadataReference>> CompileReferences = new(() =>
+        ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
+            .Split(Path.PathSeparator).Where(p => p.Length > 0)
+            .Select(p => (MetadataReference)MetadataReference.CreateFromFile(p)).ToList());
+
     private static Assembly Compile(EntityGenerator generator, string model, bool abstractShapes = false)
     {
         var trees = generator.Generate(Ctx(model, abstractShapes)).Select(f => CSharpSyntaxTree.ParseText(f.Content)).ToArray();
-        var refs = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
-            .Split(Path.PathSeparator).Where(p => p.Length > 0)
-            .Select(p => (MetadataReference)MetadataReference.CreateFromFile(p)).ToList();
-        var comp = CSharpCompilation.Create("xfi_" + Guid.NewGuid().ToString("N"), trees, refs,
+        var comp = CSharpCompilation.Create("xfi_" + Guid.NewGuid().ToString("N"), trees, CompileReferences.Value,
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
         using var ms = new MemoryStream();
         var emit = comp.Emit(ms);
@@ -167,10 +170,11 @@ public class CrossFieldValidatorGenerationTests
         return Assembly.Load(ms.ToArray());
     }
 
+    private static readonly JsonSerializerOptions ValidateJsonOptions = new() { PropertyNameCaseInsensitive = true };
+
     private static List<ValidationResult> Validate(Assembly asm, string type, string json)
     {
-        object inst = JsonSerializer.Deserialize(json, asm.GetType($"Acme.{type}")!,
-            new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
+        object inst = JsonSerializer.Deserialize(json, asm.GetType($"Acme.{type}")!, ValidateJsonOptions)!;
         var results = new List<ValidationResult>();
         Validator.TryValidateObject(inst, new ValidationContext(inst), results, true);
         return results;

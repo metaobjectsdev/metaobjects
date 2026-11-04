@@ -48,12 +48,11 @@ object KotlinCrossFieldRules {
     private fun comparison(l: MetaField<*>, r: MetaField<*>, op: String, kop: String, ref: (MetaField<*>) -> String): CodeBlock? {
         val ordering = op == "gt" || op == "gte" || op == "lt" || op == "lte"
         val same = l.subType == r.subType
-        if (isNumericCross(l) && isNumericCross(r)) {
-            return if (same) CodeBlock.of("(%L as Comparable<Any>).compareTo(%L) $kop 0", ref(l), ref(r))
-            else CodeBlock.of("java.math.BigDecimal(%L.toString()).compareTo(java.math.BigDecimal(%L.toString())) $kop 0", ref(l), ref(r))
+        if (isNumericCross(l) && isNumericCross(r) && !same) {
+            return CodeBlock.of("java.math.BigDecimal(%L.toString()).compareTo(java.math.BigDecimal(%L.toString())) $kop 0", ref(l), ref(r))
         }
         if (!same) return null
-        if (l is StringField || isTemporalCross(l)) {
+        if (isNumericCross(l) || l is StringField || isTemporalCross(l)) {
             return CodeBlock.of("(%L as Comparable<Any>).compareTo(%L) $kop 0", ref(l), ref(r))
         }
         if (!ordering && (l is BooleanField || l is EnumField || l is UuidField || l is UriField || l is InetField)) {

@@ -60,7 +60,8 @@ public class EntityExtendsParentTests
     [InlineData(true)]
     public void A_child_of_a_concrete_parent_declares_the_parents_properties_and_names_no_base(bool abstractShapes)
     {
-        var child = Generate(ConcreteParentModel, abstractShapes)["Child.g.cs"];
+        var files = Generate(ConcreteParentModel, abstractShapes);
+        var child = files["Child.g.cs"];
         // Not an EF inheritance hierarchy: Child owns its table and every column.
         Assert.Contains("public class Child", child);
         Assert.DoesNotContain("class Child :", child);
@@ -69,8 +70,7 @@ public class EntityExtendsParentTests
         Assert.Contains(" Extra { get; set; }", child);
         Assert.Contains("[Table(\"children\")]", child);
         // The parent is untouched.
-        var parent = Generate(ConcreteParentModel, abstractShapes)["Parent.g.cs"];
-        Assert.DoesNotContain("Extra", parent);
+        Assert.DoesNotContain("Extra", files["Parent.g.cs"]);
     }
 
     [Fact]
