@@ -28,17 +28,7 @@ import com.metaobjects.generator.GeneratorIOWriter
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase
 import com.metaobjects.loader.MetaDataLoader
 import com.metaobjects.`object`.MetaObject
-import com.metaobjects.field.BooleanField
-import com.metaobjects.field.CurrencyField
-import com.metaobjects.field.DoubleField
-import com.metaobjects.field.FloatField
-import com.metaobjects.field.IntegerField
-import com.metaobjects.field.LongField
 import com.metaobjects.validator.ArrayValidator
-import com.metaobjects.validator.AtLeastOneValidator
-import com.metaobjects.validator.ComparisonValidator
-import com.metaobjects.validator.PresentIffValidator
-import com.metaobjects.validator.RequiredWhenValidator
 import com.metaobjects.validator.LengthValidator
 import com.metaobjects.validator.MetaValidator
 import com.metaobjects.validator.NumericValidator
@@ -505,29 +495,6 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
 
     // === entity-scoped cross-field validators ==================================
 
-    private fun isNumericCross(f: MetaField<*>): Boolean =
-        f is IntegerField || f is LongField || f is DoubleField || f is FloatField ||
-            f is DecimalField || f is CurrencyField
-
-    private fun crossAttr(v: MetaData, attr: String): String? =
-        if (v.hasMetaAttr(attr)) v.getMetaAttr(attr).value?.toString() else null
-
-    /** Kotlin boolean expression: does the gating property equal the @equals literal (null gate = false)? */
-    private fun crossEquals(w: MetaField<*>, raw: String?): CodeBlock {
-        val s = raw ?: ""
-        if (w is BooleanField) {
-            val truthy = s == "true" || s == "1" || s == "TRUE"
-            return CodeBlock.of("(%N == %L)", w.name, truthy)
-        }
-        if (isNumericCross(w) && Regex("-?\\d+(\\.\\d+)?").matches(s)) {
-            return CodeBlock.of(
-                "(%N != null && java.math.BigDecimal(%N.toString()).compareTo(java.math.BigDecimal(%S)) == 0)",
-                w.name, w.name, s,
-            )
-        }
-        return CodeBlock.of("(%N?.toString() == %S)", w.name, s)
-    }
-
     /**
      * One `@get:AssertTrue @get:JsonIgnore val isXxxValid: Boolean` per entity-scoped cross-field
      * validator (comparison / requiredWhen / presentIff / atLeastOne). Null-safe in the DB CHECK
@@ -535,49 +502,9 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
      * skipped. Body-declared, so it stays out of the data class's equals / copy / constructor.
      */
     protected open fun crossFieldProperties(obj: MetaObject): List<PropertySpec> {
-        val fields = obj.metaFields.associateBy { it.name }
         val out = mutableListOf<PropertySpec>()
         val used = mutableSetOf<String>()
-        for (v in obj.getChildren(MetaValidator::class.java)) {
-            val expr: CodeBlock = when (v) {
-                is ComparisonValidator -> {
-                    val l = fields[crossAttr(v, ComparisonValidator.ATTR_LEFT)] ?: continue
-                    val r = fields[crossAttr(v, ComparisonValidator.ATTR_RIGHT)] ?: continue
-                    val op = when (crossAttr(v, ComparisonValidator.ATTR_OP)) {
-                        "gt" -> ">"; "gte" -> ">="; "lt" -> "<"; "lte" -> "<="; "ne" -> "!="; "eq" -> "=="
-                        else -> continue
-                    }
-                    if (l.isArrayType || r.isArrayType) continue
-                    val cmp = if (isNumericCross(l) && isNumericCross(r) && l.subType != r.subType) {
-                        CodeBlock.of("java.math.BigDecimal(%N.toString()).compareTo(java.math.BigDecimal(%N.toString())) $op 0", l.name, r.name)
-                    } else {
-                        CodeBlock.of("(%N as Comparable<Any>).compareTo(%N) $op 0", l.name, r.name)
-                    }
-                    CodeBlock.of("%N == null || %N == null || %L", l.name, r.name, cmp)
-                }
-                is RequiredWhenValidator, is PresentIffValidator -> {
-                    val t = fields[crossAttr(v, RequiredWhenValidator.ATTR_FIELD)] ?: continue
-                    val w = fields[crossAttr(v, RequiredWhenValidator.ATTR_WHEN)] ?: continue
-                    if (w.isArrayType) continue
-                    val gate = crossEquals(w, crossAttr(v, RequiredWhenValidator.ATTR_EQUALS))
-                    if (v is RequiredWhenValidator) CodeBlock.of("!%L || %N != null", gate, t.name)
-                    else CodeBlock.of("(%N != null) == %L", t.name, gate)
-                }
-                is AtLeastOneValidator -> {
-                    val raw = if (v.hasMetaAttr(AtLeastOneValidator.ATTR_FIELDS))
-                        v.getMetaAttr(AtLeastOneValidator.ATTR_FIELDS).value else null
-                    val names = when (raw) {
-                        is Collection<*> -> raw.map { it.toString() }
-                        null -> emptyList()
-                        else -> listOf(raw.toString())
-                    }
-                    if (names.isEmpty() || names.any { it !in fields }) continue
-                    CodeBlock.builder().apply {
-                        names.forEachIndexed { i, n -> if (i > 0) add(" || "); add("%N != null", n) }
-                    }.build()
-                }
-                else -> continue
-            }
+        for ((v, expr) in KotlinCrossFieldRules.rules(obj) { CodeBlock.of("%N", it.name).toString() }) {
             val base = v.name.map { if (it.isLetterOrDigit() || it == '_') it else '_' }.joinToString("")
                 .ifEmpty { "CrossField" }.replaceFirstChar { it.uppercaseChar() }
             var name = "is${base}Valid"

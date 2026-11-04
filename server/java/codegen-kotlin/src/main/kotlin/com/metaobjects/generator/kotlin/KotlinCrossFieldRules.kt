@@ -1,0 +1,101 @@
+package com.metaobjects.generator.kotlin
+
+import com.metaobjects.MetaData
+import com.metaobjects.field.BooleanField
+import com.metaobjects.field.CurrencyField
+import com.metaobjects.field.DecimalField
+import com.metaobjects.field.DoubleField
+import com.metaobjects.field.FloatField
+import com.metaobjects.field.IntegerField
+import com.metaobjects.field.LongField
+import com.metaobjects.field.MetaField
+import com.metaobjects.`object`.MetaObject
+import com.metaobjects.validator.AtLeastOneValidator
+import com.metaobjects.validator.ComparisonValidator
+import com.metaobjects.validator.MetaValidator
+import com.metaobjects.validator.PresentIffValidator
+import com.metaobjects.validator.RequiredWhenValidator
+import com.squareup.kotlinpoet.CodeBlock
+
+/**
+ * Entity-scoped cross-field validators (comparison / requiredWhen / presentIff / atLeastOne) as
+ * Kotlin boolean expressions. Read by the entity data class's `isXxxValid` properties and by the
+ * TPH per-subtype create handler, which validates the union body rather than the subtype class.
+ */
+object KotlinCrossFieldRules {
+    private fun isNumericCross(f: MetaField<*>): Boolean =
+        f is IntegerField || f is LongField || f is DoubleField || f is FloatField ||
+            f is DecimalField || f is CurrencyField
+
+    private fun crossAttr(v: MetaData, attr: String): String? =
+        if (v.hasMetaAttr(attr)) v.getMetaAttr(attr).value?.toString() else null
+
+    /** Kotlin boolean expression: does the gating property equal the @equals literal (null gate = false)? */
+    private fun crossEquals(w: MetaField<*>, wr: String, raw: String?): CodeBlock {
+        val s = raw ?: ""
+        if (w is BooleanField) {
+            val truthy = s == "true" || s == "1" || s == "TRUE"
+            return CodeBlock.of("(%L == %L)", wr, truthy)
+        }
+        if (isNumericCross(w) && Regex("-?\\d+(\\.\\d+)?").matches(s)) {
+            return CodeBlock.of(
+                "(%L != null && java.math.BigDecimal(%L.toString()).compareTo(java.math.BigDecimal(%S)) == 0)",
+                wr, wr, s,
+            )
+        }
+        return CodeBlock.of("(%L?.toString() == %S)", wr, s)
+    }
+
+    /**
+     * The entity-scoped cross-field validators as Kotlin boolean expressions (true = satisfied),
+     * in declaration order. [ref] renders a field reference: the bare property inside the data
+     * class, or a body accessor / pinned literal in a controller that validates a different bean.
+     */
+    fun rules(obj: MetaObject, ref: (MetaField<*>) -> String): List<Pair<MetaValidator, CodeBlock>> {
+        val fields = obj.metaFields.associateBy { it.name }
+        val out = mutableListOf<Pair<MetaValidator, CodeBlock>>()
+        for (v in obj.getChildren(MetaValidator::class.java)) {
+            val expr: CodeBlock = when (v) {
+                is ComparisonValidator -> {
+                    val l = fields[crossAttr(v, ComparisonValidator.ATTR_LEFT)] ?: continue
+                    val r = fields[crossAttr(v, ComparisonValidator.ATTR_RIGHT)] ?: continue
+                    val op = when (crossAttr(v, ComparisonValidator.ATTR_OP)) {
+                        "gt" -> ">"; "gte" -> ">="; "lt" -> "<"; "lte" -> "<="; "ne" -> "!="; "eq" -> "=="
+                        else -> continue
+                    }
+                    if (l.isArrayType || r.isArrayType) continue
+                    val cmp = if (isNumericCross(l) && isNumericCross(r) && l.subType != r.subType) {
+                        CodeBlock.of("java.math.BigDecimal(%L.toString()).compareTo(java.math.BigDecimal(%L.toString())) $op 0", ref(l), ref(r))
+                    } else {
+                        CodeBlock.of("(%L as Comparable<Any>).compareTo(%L) $op 0", ref(l), ref(r))
+                    }
+                    CodeBlock.of("%L == null || %L == null || %L", ref(l), ref(r), cmp)
+                }
+                is RequiredWhenValidator, is PresentIffValidator -> {
+                    val t = fields[crossAttr(v, RequiredWhenValidator.ATTR_FIELD)] ?: continue
+                    val w = fields[crossAttr(v, RequiredWhenValidator.ATTR_WHEN)] ?: continue
+                    if (w.isArrayType) continue
+                    val gate = crossEquals(w, ref(w), crossAttr(v, RequiredWhenValidator.ATTR_EQUALS))
+                    if (v is RequiredWhenValidator) CodeBlock.of("!%L || %L != null", gate, ref(t))
+                    else CodeBlock.of("(%L != null) == %L", ref(t), gate)
+                }
+                is AtLeastOneValidator -> {
+                    val raw = if (v.hasMetaAttr(AtLeastOneValidator.ATTR_FIELDS))
+                        v.getMetaAttr(AtLeastOneValidator.ATTR_FIELDS).value else null
+                    val names = when (raw) {
+                        is Collection<*> -> raw.map { it.toString() }
+                        null -> emptyList()
+                        else -> listOf(raw.toString())
+                    }
+                    if (names.isEmpty() || names.any { it !in fields }) continue
+                    CodeBlock.builder().apply {
+                        names.forEachIndexed { i, n -> if (i > 0) add(" || "); add("%L != null", ref(fields.getValue(n))) }
+                    }.build()
+                }
+                else -> continue
+            }
+            out.add(v to expr)
+        }
+        return out
+    }
+}

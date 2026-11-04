@@ -353,11 +353,11 @@ export function renderFormFile(entity: MetaObject, ctx: RenderContext): string {
   const omitTph = (schema: string) => tphPin !== undefined
     ? `${schema}.omit({ ${tphPin.fieldName}: true })`
     : schema;
-  // A refined (cross-field) schema cannot be `.omit()`ed; codegen exports the
-  // unrefined `<Name>InsertBaseSchema` for exactly this TPH case.
-  const insertSchema = tphPin !== undefined && hasInsertRefinements(entity)
-    ? `${entityName}InsertBaseSchema.omit({ ${tphPin.fieldName}: true })`
-    : omitTph(`${entityName}InsertSchema`);
+  // A refined (cross-field) schema cannot be `.omit()`ed; codegen exports the refined,
+  // discriminator-less `<Name>InsertBodySchema` for exactly this TPH case.
+  const refinedTph = tphPin !== undefined && hasInsertRefinements(entity);
+  const insertSchemaName = refinedTph ? `${entityName}InsertBodySchema` : `${entityName}InsertSchema`;
+  const insertSchema = refinedTph ? insertSchemaName : omitTph(insertSchemaName);
   const updateSchema = omitTph(`${entityName}UpdateSchema`);
   const formSchema = `props.defaultValues !== undefined ? ${updateSchema} : ${insertSchema}`;
 
@@ -554,7 +554,7 @@ ${control}
   const literalImports = code`
 import {
   ${entityName},
-  ${entityName}InsertSchema,
+  ${insertSchemaName},
   ${entityName}UpdateSchema,
 } from ${JSON.stringify(entityFileSpec)};
 import type { ${entityName} as ${entityName}Row } from ${JSON.stringify(entityFileSpec)};

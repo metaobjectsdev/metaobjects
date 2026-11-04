@@ -42,6 +42,7 @@ import com.metaobjects.validator.RequiredValidator;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * The static helpers the Spring generators share: which fields a DTO / patch carries, the
@@ -691,8 +692,36 @@ public final class SpringGeneratorSupport {
      */
     public static List<String> crossFieldValidationMembers(MetaObject entity, List<MetaField> components) {
         List<String> out = new ArrayList<>();
-        if (!MetaObject.SUBTYPE_ENTITY.equals(entity.getSubType())) return out;
         java.util.Set<String> used = new java.util.HashSet<>();
+        for (Map.Entry<MetaValidator, String> rule : crossFieldRules(
+                entity, components, f -> "this." + SpringNaming.recordComponentName(f.getName()))) {
+            MetaValidator v = rule.getKey();
+            StringBuilder id = new StringBuilder();
+            for (char ch : v.getName().toCharArray()) id.append(Character.isJavaIdentifierPart(ch) ? ch : '_');
+            String base = id.length() == 0 ? "CrossField" : Character.toUpperCase(id.charAt(0)) + id.substring(1);
+            String method = "is" + base + "Valid";
+            for (int n = 2; !used.add(method); n++) method = "is" + base + n + "Valid";
+            out.add("\n    /** Cross-field validator " + v.getName().replace("*/", "* /")
+                + " (class-level Bean Validation; the DB CHECK enforces the PATCH path). */\n"
+                + "    @com.fasterxml.jackson.annotation.JsonIgnore\n"
+                + "    @AssertTrue(message = \"validator " + escapeJavaString(v.getName()) + " violated\")\n"
+                + "    @SuppressWarnings(\"unchecked\")\n"
+                + "    public boolean " + method + "() {\n"
+                + "        return " + rule.getValue() + ";\n"
+                + "    }\n");
+        }
+        return out;
+    }
+
+    /**
+     * The entity-scoped cross-field validators as Java boolean expressions (true = satisfied), in
+     * declaration order. {@code ref} renders a field reference: {@code this.<component>} inside the
+     * DTO, or a body accessor / pinned literal in a controller that validates a different bean.
+     */
+    public static List<Map.Entry<MetaValidator, String>> crossFieldRules(
+            MetaObject entity, List<MetaField> components, java.util.function.Function<MetaField<?>, String> ref) {
+        List<Map.Entry<MetaValidator, String>> out = new ArrayList<>();
+        if (!MetaObject.SUBTYPE_ENTITY.equals(entity.getSubType())) return out;
         for (MetaValidator v : entity.getChildren(MetaValidator.class)) {
             String expr = null;
             if (v instanceof ComparisonValidator) {
@@ -703,8 +732,8 @@ public final class SpringGeneratorSupport {
                     case "gt" -> ">"; case "gte" -> ">="; case "lt" -> "<"; case "lte" -> "<=";
                     case "ne" -> "!="; case "eq" -> "=="; default -> null; };
                 if (l == null || r == null || jop == null || l.isArrayType() || r.isArrayType()) continue;
-                String lc = "this." + SpringNaming.recordComponentName(l.getName());
-                String rc = "this." + SpringNaming.recordComponentName(r.getName());
+                String lc = ref.apply(l);
+                String rc = ref.apply(r);
                 String cmp;
                 if (isNumericCrossField(l) && isNumericCrossField(r) && !l.getSubType().equals(r.getSubType())) {
                     cmp = "new java.math.BigDecimal(String.valueOf(" + lc + ")).compareTo(new java.math.BigDecimal(String.valueOf(" + rc + "))) " + jop + " 0";
@@ -716,8 +745,8 @@ public final class SpringGeneratorSupport {
                 MetaField<?> t = crossField(entity, crossAttr(v, RequiredWhenValidator.ATTR_FIELD), components);
                 MetaField<?> w = crossField(entity, crossAttr(v, RequiredWhenValidator.ATTR_WHEN), components);
                 if (t == null || w == null || w.isArrayType()) continue;
-                String tc = "this." + SpringNaming.recordComponentName(t.getName());
-                String gate = crossEqualsExpr("this." + SpringNaming.recordComponentName(w.getName()), w,
+                String tc = ref.apply(t);
+                String gate = crossEqualsExpr(ref.apply(w), w,
                     crossAttr(v, RequiredWhenValidator.ATTR_EQUALS));
                 expr = v instanceof RequiredWhenValidator
                     ? "!" + gate + " || " + tc + " != null"
@@ -733,25 +762,13 @@ public final class SpringGeneratorSupport {
                 for (String n : names) {
                     MetaField<?> f = crossField(entity, n, components);
                     if (f == null) { missing = true; break; }
-                    parts.add("this." + SpringNaming.recordComponentName(f.getName()) + " != null");
+                    parts.add(ref.apply(f) + " != null");
                 }
                 if (missing) continue;
                 expr = String.join(" || ", parts);
             }
             if (expr == null) continue;
-            StringBuilder id = new StringBuilder();
-            for (char ch : v.getName().toCharArray()) id.append(Character.isJavaIdentifierPart(ch) ? ch : '_');
-            String base = id.length() == 0 ? "CrossField" : Character.toUpperCase(id.charAt(0)) + id.substring(1);
-            String method = "is" + base + "Valid";
-            for (int n = 2; !used.add(method); n++) method = "is" + base + n + "Valid";
-            out.add("\n    /** Cross-field validator " + v.getName().replace("*/", "* /")
-                + " (class-level Bean Validation; the DB CHECK enforces the PATCH path). */\n"
-                + "    @com.fasterxml.jackson.annotation.JsonIgnore\n"
-                + "    @AssertTrue(message = \"validator " + escapeJavaString(v.getName()) + " violated\")\n"
-                + "    @SuppressWarnings(\"unchecked\")\n"
-                + "    public boolean " + method + "() {\n"
-                + "        return " + expr + ";\n"
-                + "    }\n");
+            out.add(Map.entry(v, expr));
         }
         return out;
     }

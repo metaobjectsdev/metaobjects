@@ -301,8 +301,10 @@ function crossFieldLiteral(raw: unknown, when: MetaField): { lit: string; numeri
 }
 
 /** Does this object declare at least one cross-field validator that will be enforced
- *  on its insert schema? Exported so the form emitter can tell a refined schema
- *  (which Zod will not `.omit()`) from a plain object. */
+ *  on its insert schema? Exported so the route, query and form emitters can tell a refined
+ *  schema (which Zod will not `.omit()` or `.partial()`) from a plain object; a refined TPH
+ *  subtype also exports `<Name>InsertBaseSchema` (unrefined) and `<Name>InsertBodySchema`
+ *  (refined, pinned discriminator omitted). */
 export function hasInsertRefinements(obj: MetaObject): boolean {
   return crossFieldRefinementBody(obj).length > 0;
 }
@@ -317,7 +319,12 @@ function crossFieldRefinementBody(obj: MetaObject): string[] {
     if (typeof name !== "string" || !inSchema.has(name)) return undefined;
     return byName.get(name);
   };
-  const acc = (f: MetaField) => `row[${JSON.stringify(f.name)}]`;
+  // A TPH subtype's discriminator is pinned to one literal, so the rule reads that literal:
+  // the same refinement then holds whether or not the body carries the discriminator.
+  const pin = tphDiscriminatorPin(obj);
+  const acc = (f: MetaField) => pin !== undefined && f.name === pin.fieldName
+    ? JSON.stringify(pin.value)
+    : `row[${JSON.stringify(f.name)}]`;
   const issue = (path: string, msg: string) =>
     `ctx.addIssue({ code: "custom", path: [${path}], message: ${JSON.stringify(msg)} });`;
   const blocks: string[] = [];
@@ -661,17 +668,21 @@ export function renderZodValidators(obj: MetaObject, ctx?: RenderContext): Code 
   const docs = renderDocsFor(obj);
   const docsPrefix = docs ? `${docs}\n` : "";
 
-  // A Zod object carrying refinements cannot be `.omit()`ed, and a TPH subtype's form
-  // omits the pinned discriminator. So when both apply, the unrefined shape is also
-  // exported as `<Name>InsertBaseSchema` for the form to omit from; the refined
-  // `<Name>InsertSchema` is built on it.
+  // A Zod object carrying refinements cannot be `.omit()`ed or `.partial()`ed, and a TPH
+  // subtype's route and form omit the pinned discriminator while its update query takes a
+  // partial. So when both apply, the unrefined shape is exported as `<Name>InsertBaseSchema`
+  // and refined twice: as `<Name>InsertSchema` and, discriminator omitted, as
+  // `<Name>InsertBodySchema`.
   const refineSuffix = insertRefinementSuffix(obj);
   const insertDecl = refineSuffix !== "" && tphPin !== undefined
-    ? code`${docsPrefix}export const ${objName}InsertBaseSchema = ${z}.object({
+    ? code`export const ${objName}InsertBaseSchema = ${z}.object({
 ${joinCode(insertFieldLines, { on: ",\n" })}
 });
 
-export const ${insertSchemaName} = ${objName}InsertBaseSchema${refineSuffix};`
+${docsPrefix}export const ${insertSchemaName} = ${objName}InsertBaseSchema${refineSuffix};
+
+/** ${insertSchemaName} without the pinned \`${tphPin.fieldName}\` — the body a per-subtype route accepts. */
+export const ${objName}InsertBodySchema = ${objName}InsertBaseSchema.omit({ ${tphPin.fieldName}: true })${refineSuffix};`
     : code`${docsPrefix}export const ${insertSchemaName} = ${z}.object({
 ${joinCode(insertFieldLines, { on: ",\n" })}
 })${refineSuffix};`;

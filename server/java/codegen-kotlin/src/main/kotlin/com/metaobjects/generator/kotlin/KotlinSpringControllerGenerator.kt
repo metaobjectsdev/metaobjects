@@ -1089,11 +1089,22 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 // annotated shape + field set the per-subtype PATCH validates. validateValue applies
                 // @NotNull to a null value, so an absent @required column 400s too — mirroring the
                 // vanilla create's whole-bean validate, scoped to this subtype.
+                // The subtype's cross-field rules live on its own data class as class-level @AssertTrue
+                // properties, which the per-property validateValue below never reaches. They are
+                // evaluated here against the bound union body, the discriminator read as this route's
+                // pinned value.
+                val crossFieldRules = KotlinCrossFieldRules.rules(st.entity) {
+                    if (it.name == plan.discriminatorField) disc else "dto.${it.name}"
+                }
+                if (crossFieldRules.isNotEmpty()) append("    @Suppress(\"UNCHECKED_CAST\")\n")
                 append("    @PostMapping(\"/$seg\")\n")
                 append("    fun create$sfx(@RequestBody dto: $shortName): ResponseEntity<Any> = transaction {\n")
                 for (field in stPatch) {
                     append("        if (validator.validateValue($validationRef::class.java, \"${field.name}\", dto.${field.name}).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\") as Any)\n")
                     appendDecimalRangeCheck("        ", field, "dto.${field.name}")
+                }
+                for ((_, rule) in crossFieldRules) {
+                    append("        if (!($rule)) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\") as Any)\n")
                 }
                 // #203/ADR-0045: capture one now() per temporal type so createdAt == updatedAt exactly.
                 for ((expr, valName) in insertNowVal) append("        val $valName = $expr\n")

@@ -33,6 +33,7 @@ import { decimalColumnsLine, itemRouteField, writeDeniedColumnsLine } from "../a
 import { DEFAULT_ID_FIELD, pkInfoOf } from "../pk-resolver.js";
 import type { RelationEntry } from "../relation-resolver.js";
 import { isTphDiscriminatorBase, tphPlan } from "./tph-discriminator.js";
+import { hasInsertRefinements } from "./zod-validators.js";
 import { authSeamJsDoc, type CrudVerb, exposeLine, intersectExpose, TPH_POLYMORPHIC_VERBS } from "../routes-expose.js";
 import { effectivePackage } from "../docs-paths.js";
 import { tphDiscriminatorPin, tphStorageObject } from "../tph.js";
@@ -550,7 +551,11 @@ function renderTphRoutesFile(
     const subFileSpec = entityModuleSpecifier(
       ctx.selfTarget, ctx.entityModuleTarget, effectivePackage(sub), sub.name, ctx.extStyle,
     );
-    const subInsertSym = imp(`${sub.name}InsertSchema@${subFileSpec}`);
+    // A subtype with cross-field rules has a refined InsertSchema, which Zod will not
+    // `.omit()`; its codegen exports the discriminator-less refined body instead.
+    const subInsertBody = hasInsertRefinements(sub)
+      ? code`${imp(`${sub.name}InsertBodySchema@${subFileSpec}`)}`
+      : code`${imp(`${sub.name}InsertSchema@${subFileSpec}`)}.omit({ ${discField}: true })`;
     // FR-036 Program B: the per-subtype UPDATE must carry the FR-035 present-key
     // tristate (a non-@required subtype column accepts an explicit null → clears;
     // a @required column's explicit null is rejected). The subtype's own
@@ -569,7 +574,7 @@ function renderTphRoutesFile(
       path: ${baseConstSym}.$path + ${JSON.stringify("/" + segment)},
       db: ${dbSym},
       table: ${tableSym},
-      insertSchema: ${subInsertSym}.omit({ ${discField}: true }),
+      insertSchema: ${subInsertBody},
       updateSchema: ${subUpdateSym},
       filterAllowlist: ${subFilterSym},
       sortAllowlist: ${subSortSym},
