@@ -2094,6 +2094,7 @@ public static partial class ValidationPasses
     // Cross-field validators (comparison / requiredWhen / presentIff / atLeastOne / exactlyOne),
     // which the database enforces as CHECKs (ERR_BAD_ATTR_VALUE): exactlyOne @fields names two or
     // more fields (one is just a required field); every field a @condition names is a field of the owning entity;
+    // a requiredWhen / presentIff @equals gating a field.duration is an ISO-8601 duration;
     // and the @condition can become a CHECK guard (ConditionProblem). Read RESOLVING
     // (ADR-0039). Mirrors TS validateCrossFieldValidators.
     // ---------------------------------------------------------------------------
@@ -2130,6 +2131,21 @@ public static partial class ValidationPasses
                         continue;
                     }
                 }
+                if (v.SubType == VALIDATOR_SUBTYPE_REQUIRED_WHEN || v.SubType == VALIDATOR_SUBTYPE_PRESENT_IFF)
+                {
+                    var whenName = v.Attr(VALIDATOR_ATTR_WHEN) as string;
+                    var when = obj.Fields().FirstOrDefault(f => f.Name == whenName);
+                    var equals = v.Attr(VALIDATOR_ATTR_EQUALS);
+                    if (when?.SubType == FIELD_SUBTYPE_DURATION && !(equals is string e && DurationLiteral.IsMatch(e)))
+                    {
+                        errors.Add(new MetaError(
+                            $"validator.{v.SubType} \"{obj.Name}.{v.Name}\" @equals {JsonStringify(equals)} gates field.duration " +
+                            $"\"{when.Name}\"; it needs {DurationLiteralForm}.",
+                            ErrorCode.ERR_BAD_ATTR_VALUE,
+                            Envelope: v.Source));
+                        continue;
+                    }
+                }
                 var condition = v.Attr(VALIDATOR_ATTR_CONDITION);
                 if (condition is null) continue;
                 var label = $"validator.{v.SubType} \"{obj.Name}.{v.Name}\" @condition";
@@ -2154,6 +2170,13 @@ public static partial class ValidationPasses
         return errors;
     }
 
+    /// <summary>The accepted ISO-8601 duration form, the same pattern as TS DURATION_PATTERN.</summary>
+    private static readonly Regex DurationLiteral =
+        new(@"^[-+]?P(?!$)([0-9]+W)?([0-9]+D)?(T(?=[0-9])([0-9]+H)?([0-9]+M)?([0-9]+(\.[0-9]+)?S)?)?$", RegexOptions.CultureInvariant);
+
+    /// <summary>What a literal compared with a field.duration must be.</summary>
+    private const string DurationLiteralForm = "an ISO-8601 duration (such as PT1H30M; no years or months)";
+
     /// <summary>Field subtypes whose values a condition compares with a number literal.</summary>
     private static readonly HashSet<string> ConditionNumberSubtypes = new(StringComparer.Ordinal)
     {
@@ -2167,7 +2190,7 @@ public static partial class ValidationPasses
     /// it types cleanly (the origin.computed inference) and its root is boolean, since a CHECK
     /// negates it; a literal compared with a field is of that field's kind (a boolean for
     /// field.boolean, a number for a numeric field, a string otherwise) and, for field.enum, one
-    /// of its @values; and no comparison has a null literal (<c>x = NULL</c> is never true, so
+    /// of its @values, for field.duration, an ISO-8601 duration; and no comparison has a null literal (<c>x = NULL</c> is never true, so
     /// use isNull / isNotNull). Mirrors TS conditionProblem.
     /// </summary>
     private static string? ConditionProblem(object condition, MetaObject obj)
@@ -2219,6 +2242,11 @@ public static partial class ValidationPasses
                     if (members is not null && !members.Contains(Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture), StringComparer.Ordinal))
                     {
                         problem = $"compares \"{field.Name}\" with {JsonStringify(value)}, which is not one of its @values ({string.Join(", ", members)}).";
+                        return;
+                    }
+                    if (field.SubType == FIELD_SUBTYPE_DURATION && !DurationLiteral.IsMatch((string)value))
+                    {
+                        problem = $"compares \"{field.Name}\" with {JsonStringify(value)}, which is not {DurationLiteralForm}.";
                         return;
                     }
                 }

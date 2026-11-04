@@ -26,6 +26,8 @@ import com.metaobjects.field.CurrencyField;
 import com.metaobjects.field.DateField;
 import com.metaobjects.field.DecimalField;
 import com.metaobjects.field.DoubleField;
+import com.metaobjects.field.DurationField;
+import com.metaobjects.field.DurationWire;
 import com.metaobjects.field.EnumField;
 import com.metaobjects.field.FloatField;
 import com.metaobjects.field.IntegerField;
@@ -2391,7 +2393,8 @@ public final class ValidationPhase {
     // =========================================================================
     // Cross-field validators (comparison / requiredWhen / presentIff / atLeastOne / exactlyOne),
     // which the database enforces as CHECKs: exactlyOne names two or more @fields;
-    // every field a @condition names is a field of the owning entity; and the @condition can
+    // every field a @condition names is a field of the owning entity; a requiredWhen /
+    // presentIff @equals gating a field.duration is an ISO-8601 duration; and the @condition can
     // become a CHECK guard (see conditionProblem). ERR_BAD_ATTR_VALUE, one per validator,
     // every violation collected. Mirrors TS validateCrossFieldValidators.
     // =========================================================================
@@ -2422,6 +2425,23 @@ public final class ValidationPhase {
                         continue;
                     }
                 }
+                if (com.metaobjects.validator.RequiredWhenValidator.SUBTYPE_REQUIRED_WHEN.equals(v.getSubType())
+                        || com.metaobjects.validator.PresentIffValidator.SUBTYPE_PRESENT_IFF.equals(v.getSubType())) {
+                    Object whenName = v.hasMetaAttr(com.metaobjects.validator.RequiredWhenValidator.ATTR_WHEN)
+                        ? v.getMetaAttr(com.metaobjects.validator.RequiredWhenValidator.ATTR_WHEN).getValue() : null;
+                    MetaField<?> when = whenName instanceof String w ? fields.get(w) : null;
+                    Object equals = v.hasMetaAttr(com.metaobjects.validator.RequiredWhenValidator.ATTR_EQUALS)
+                        ? v.getMetaAttr(com.metaobjects.validator.RequiredWhenValidator.ATTR_EQUALS).getValue() : null;
+                    if (when != null && DurationField.SUBTYPE_DURATION.equals(when.getSubType())
+                            && !(equals instanceof String e && DurationWire.ACCEPTED.matcher(e).matches())) {
+                        out.add(new MetaDataException(
+                            ErrorMessageConstants.ERR_BAD_ATTR_VALUE + ": validator." + label + " @equals "
+                                + conditionJsonLiteral(equals) + " gates field.duration \"" + when.getShortName()
+                                + "\"; it needs " + DURATION_LITERAL_FORM + ".",
+                            ErrorCode.ERR_BAD_ATTR_VALUE, v.getSource()));
+                        continue;
+                    }
+                }
                 if (!v.hasMetaAttr(com.metaobjects.validator.MetaValidator.ATTR_CONDITION)) continue;
                 Object condition = v.getMetaAttr(com.metaobjects.validator.MetaValidator.ATTR_CONDITION).getValue();
                 java.util.TreeSet<String> unknown = new java.util.TreeSet<>();
@@ -2447,6 +2467,9 @@ public final class ValidationPhase {
         }
     }
 
+    /** What a literal compared with a field.duration must be. */
+    private static final String DURATION_LITERAL_FORM = "an ISO-8601 duration (such as PT1H30M; no years or months)";
+
     /** Field subtypes whose values a condition compares with a number literal. */
     private static final java.util.Set<String> CONDITION_NUMBER_SUBTYPES = java.util.Set.of(
         IntegerField.SUBTYPE_INT, LongField.SUBTYPE_LONG, DoubleField.SUBTYPE_DOUBLE,
@@ -2460,7 +2483,7 @@ public final class ValidationPhase {
      *    CHECK negates it;
      *  - a literal compared with a field is of that field's kind (a boolean for field.boolean,
      *    a number for a numeric field, a string otherwise) and, for field.enum, one of its
-     *    @values;
+     *    @values, for field.duration, an ISO-8601 duration;
      *  - no comparison has a null literal: {@code x = NULL} is never true, so use isNull /
      *    isNotNull.
      * Mirrors TS conditionProblem.
@@ -2513,6 +2536,10 @@ public final class ValidationPhase {
                         return "compares \"" + field.getShortName() + "\" with " + conditionJsonLiteral(value)
                             + ", which is not one of its @values (" + String.join(", ", names) + ").";
                     }
+                }
+                if (DurationField.SUBTYPE_DURATION.equals(subType) && !DurationWire.ACCEPTED.matcher((String) value).matches()) {
+                    return "compares \"" + field.getShortName() + "\" with " + conditionJsonLiteral(value)
+                        + ", which is not " + DURATION_LITERAL_FORM + ".";
                 }
             }
         }

@@ -14,9 +14,14 @@ import { TYPE_VALIDATOR } from "../shared/base-types.js";
 import {
   CROSS_FIELD_VALIDATOR_SUBTYPES,
   VALIDATOR_ATTR_CONDITION,
+  VALIDATOR_ATTR_EQUALS,
   VALIDATOR_ATTR_FIELDS,
+  VALIDATOR_ATTR_WHEN,
   VALIDATOR_SUBTYPE_EXACTLY_ONE,
+  VALIDATOR_SUBTYPE_PRESENT_IFF,
+  VALIDATOR_SUBTYPE_REQUIRED_WHEN,
 } from "../core/validator/validator-constants.js";
+import { parseDurationLiteral } from "../core/field/duration-wire.js";
 import type { MetaData } from "../shared/meta-data.js";
 import type { MetaObject } from "../core/object/meta-object.js";
 import type { MetaReferenceIdentity } from "../core/identity/meta-identity.js";
@@ -96,6 +101,7 @@ import {
   FIELD_SUBTYPE_TIME,
   FIELD_SUBTYPE_TIMESTAMP,
   FIELD_SUBTYPE_UUID,
+  FIELD_SUBTYPE_DURATION,
 } from "../core/field/field-constants.js";
 import { FIELD_ATTR_COLUMN, FIELD_ATTR_FLATTENED_COLUMN_PREFIX, FIELD_ATTR_DB_INDEXED, IDENTITY_ATTR_EXPR, IDENTITY_ATTR_SEQUENCE_NAME, IDENTITY_ATTR_SEQUENCE_START } from "../persistence/db/db-constants.js";
 import { SOURCE_KIND_VIEW } from "../persistence/source/source-constants.js";
@@ -1692,7 +1698,9 @@ export function validateDerivedFieldProvidability(root: MetaData): ParseError[] 
 // which the database enforces as CHECKs:
 //   - exactlyOne @fields names two or more fields (ERR_BAD_ATTR_VALUE): one is a required field;
 //   - every field a @condition expression names is a field of the owning entity
-//     (ERR_BAD_ATTR_VALUE), so the CHECK it renders to references a real column.
+//     (ERR_BAD_ATTR_VALUE), so the CHECK it renders to references a real column;
+//   - a requiredWhen / presentIff @equals gating a field.duration is an ISO-8601 duration
+//     (ERR_BAD_ATTR_VALUE), the form its CHECK literal is built from.
 // Read RESOLVING (ADR-0039): an entity's validators and fields include inherited ones.
 // ---------------------------------------------------------------------------
 
@@ -1706,6 +1714,9 @@ function expressionFieldRefs(node: unknown, out: string[] = []): string[] {
   return out;
 }
 
+/** What a literal compared with a field.duration must be. */
+const DURATION_LITERAL_FORM = "an ISO-8601 duration (such as PT1H30M; no years or months)";
+
 /** Field subtypes whose values a condition compares with a number literal. */
 const _CONDITION_NUMBER_SUBTYPES = new Set<string>([
   FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT,
@@ -1718,7 +1729,8 @@ const _CONDITION_NUMBER_SUBTYPES = new Set<string>([
  *  - it types cleanly (the origin.computed inference) and its root is boolean, since a CHECK
  *    negates it;
  *  - a literal compared with a field is of that field's kind (a boolean for field.boolean, a
- *    number for a numeric field, a string otherwise) and, for field.enum, one of its @values;
+ *    number for a numeric field, a string otherwise) and, for field.enum, one of its @values,
+ *    for field.duration, an ISO-8601 duration;
  *  - no comparison has a null literal: `x = NULL` is never true, so use isNull / isNotNull.
  */
 function conditionProblem(condition: unknown, obj: MetaObject): string | undefined {
@@ -1755,6 +1767,10 @@ function conditionProblem(condition: unknown, obj: MetaObject): string | undefin
           problem = `compares "${field.name}" with ${JSON.stringify(value)}, which is not one of its @values (${members.join(", ")}).`;
           return;
         }
+        if (field.subType === FIELD_SUBTYPE_DURATION && parseDurationLiteral(value as string) === undefined) {
+          problem = `compares "${field.name}" with ${JSON.stringify(value)}, which is not ${DURATION_LITERAL_FORM}.`;
+          return;
+        }
       }
     }
     for (const key of ["left", "right", "arg"]) visit(n[key]);
@@ -1777,6 +1793,18 @@ export function validateCrossFieldValidators(root: MetaData): ParseError[] {
           errors.push(new ParseError(
             `validator.exactlyOne "${obj.name}.${v.name}" @fields names ${fields.length} field${fields.length === 1 ? "" : "s"}; ` +
             `it needs two or more. For one field, make that field required.`,
+            { code: "ERR_BAD_ATTR_VALUE", source: v.source },
+          ));
+          continue;
+        }
+      }
+      if (v.subType === VALIDATOR_SUBTYPE_REQUIRED_WHEN || v.subType === VALIDATOR_SUBTYPE_PRESENT_IFF) {
+        const when = (obj as MetaObject).fields().find((f) => f.name === v.attr(VALIDATOR_ATTR_WHEN));
+        const equals = v.attr(VALIDATOR_ATTR_EQUALS);
+        if (when?.subType === FIELD_SUBTYPE_DURATION && (typeof equals !== "string" || parseDurationLiteral(equals) === undefined)) {
+          errors.push(new ParseError(
+            `validator.${v.subType} "${obj.name}.${v.name}" @equals ${JSON.stringify(equals)} gates field.duration ` +
+            `"${when.name}"; it needs ${DURATION_LITERAL_FORM}.`,
             { code: "ERR_BAD_ATTR_VALUE", source: v.source },
           ));
           continue;

@@ -24,6 +24,7 @@ from .validate_discriminator import validate_discriminator
 from .validate_source_parameter_ref import validate_source_parameter_ref
 from .validate_source_escapes import validate_source_escapes
 from .validate_reporting import validate_reporting
+from ..codegen.runtime.duration_wire import DURATION_RE
 from ..meta.core.field.field_constants import (
     ENUM_MEMBER_PATTERN,
     FIELD_ATTR_COERCE_DEFAULT,
@@ -3801,7 +3802,8 @@ def _validate_identity_sequence(root: MetaData, errors: list[MetaError]) -> None
 
 # Cross-field validators (comparison / requiredWhen / presentIff / atLeastOne / exactlyOne), which
 # the database enforces as CHECKs: exactlyOne @fields names two or more fields,
-# every field a @condition names a field of the owning entity, and a @condition that can
+# every field a @condition names a field of the owning entity, a requiredWhen / presentIff
+# @equals gating a field.duration an ISO-8601 duration, and a @condition that can
 # become a CHECK guard (see _condition_problem) — all ERR_BAD_ATTR_VALUE. Read RESOLVING
 # (ADR-0039). Mirrors TS validateCrossFieldValidators.
 def _expr_field_refs(node: object, out: set[str]) -> None:
@@ -3816,6 +3818,9 @@ def _expr_field_refs(node: object, out: set[str]) -> None:
         for a in args:
             _expr_field_refs(a, out)
 
+
+# What a literal compared with a field.duration must be.
+_DURATION_LITERAL_FORM = "an ISO-8601 duration (such as PT1H30M; no years or months)"
 
 # Field subtypes whose values a condition compares with a number literal.
 _CONDITION_NUMBER_SUBTYPES = frozenset({
@@ -3847,7 +3852,7 @@ def _condition_problem(condition: object, obj: MetaData) -> str | None:
         CHECK negates it;
       - a literal compared with a field is of that field's kind (a boolean for field.boolean,
         a number for a numeric field, a string otherwise) and, for field.enum, one of its
-        @values;
+        @values, for field.duration, an ISO-8601 duration;
       - no comparison has a null literal: ``x = NULL`` is never true, so use isNull / isNotNull.
     Mirrors TS conditionProblem."""
     fields = {f.name: f for f in obj.fields()}
@@ -3893,6 +3898,11 @@ def _condition_problem(condition: object, obj: MetaData) -> str | None:
                         f'compares "{field.name}" with {_json_literal(value)}, which is not one '
                         f"of its @values ({', '.join(str(m) for m in members)})."
                     )
+                if sub == FIELD_SUBTYPE_DURATION and DURATION_RE.fullmatch(value) is None:
+                    return (
+                        f'compares "{field.name}" with {_json_literal(value)}, which is not '
+                        f"{_DURATION_LITERAL_FORM}."
+                    )
         for key in ("left", "right", "arg"):
             found = visit(node.get(key))
             if found is not None:
@@ -3928,6 +3938,22 @@ def _validate_cross_field_validators(root: MetaData, errors: list[MetaError]) ->
                         message=(
                             f'validator.exactlyOne "{obj.name}.{v.name}" @fields names {count} '
                             f"field{plural}; it needs two or more. For one field, make that field required."
+                        ),
+                        envelope=v.source,
+                    ))
+                    continue
+            if v.sub_type in (vc.VALIDATOR_SUBTYPE_REQUIRED_WHEN, vc.VALIDATOR_SUBTYPE_PRESENT_IFF):
+                when_name = v.get_meta_attr(vc.VALIDATOR_ATTR_WHEN)
+                when = next((f for f in obj.fields() if f.name == when_name), None)
+                equals = v.get_meta_attr(vc.VALIDATOR_ATTR_EQUALS)
+                if when is not None and when.sub_type == FIELD_SUBTYPE_DURATION and not (
+                    isinstance(equals, str) and DURATION_RE.fullmatch(equals)
+                ):
+                    errors.append(MetaError(
+                        code=ErrorCode.ERR_BAD_ATTR_VALUE,
+                        message=(
+                            f'validator.{v.sub_type} "{obj.name}.{v.name}" @equals {_json_literal(equals)} '
+                            f'gates field.duration "{when.name}"; it needs {_DURATION_LITERAL_FORM}.'
                         ),
                         envelope=v.source,
                     ))

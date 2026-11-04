@@ -1,0 +1,65 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Timer",
+          "children": [
+            { "source.rdb": {} },
+            { "field.long": { "name": "id" } },
+            { "field.long": { "name": "storeId" } },
+            { "field.long": { "name": "kioskId" } },
+            { "field.duration": { "name": "timeout" } },
+            { "identity.primary": { "name": "pk", "@fields": "id" } },
+            {
+              "validator.atLeastOne": {
+                "name": "conditionNotIso",
+                "@fields": ["storeId", "kioskId"],
+                "@condition": { "op": "gt", "left": { "field": "timeout" }, "right": { "value": "1 hour" } }
+              }
+            },
+            {
+              "validator.atLeastOne": {
+                "name": "conditionIso",
+                "@fields": ["storeId", "kioskId"],
+                "@condition": { "op": "gte", "left": { "field": "timeout" }, "right": { "value": "P1DT2H" } }
+              }
+            },
+            {
+              "validator.atLeastOne": {
+                "name": "conditionLiteralLeft",
+                "@fields": ["storeId", "kioskId"],
+                "@condition": { "op": "lt", "left": { "value": "PT" }, "right": { "field": "timeout" } }
+              }
+            },
+            {
+              "validator.requiredWhen": {
+                "name": "requiredWhenNotIso",
+                "@field": "storeId",
+                "@when": "timeout",
+                "@equals": "90 minutes"
+              }
+            },
+            {
+              "validator.presentIff": {
+                "name": "presentIffMonths",
+                "@field": "kioskId",
+                "@when": "timeout",
+                "@equals": "P1M"
+              }
+            },
+            {
+              "validator.requiredWhen": {
+                "name": "requiredWhenIso",
+                "@field": "storeId",
+                "@when": "timeout",
+                "@equals": "-PT1M30S"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
