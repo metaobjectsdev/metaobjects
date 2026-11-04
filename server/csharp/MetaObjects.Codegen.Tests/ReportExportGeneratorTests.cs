@@ -35,9 +35,25 @@ public class ReportExportGeneratorTests
         ] } }
         """;
 
-    private static MetaRoot Load()
+    // The same shop with a field.duration dimension on the served report.
+    private const string DurationModel = """
+        { "metadata.root": { "package": "acme::shop", "children": [
+          { "object.entity": { "name": "Line", "children": [
+            { "source.rdb": { "@table": "lines" } },
+            { "field.long": { "name": "id", "@required": true } },
+            { "field.duration": { "name": "wait" } },
+            { "identity.primary": { "name": "id", "@fields": ["id"] } },
+            { "dimension.attribute": { "name": "wait", "@of": "Line.wait" } },
+            { "measure.aggregate": { "name": "lines", "@agg": "count", "@of": "Line.id" } }
+          ] } },
+          { "object.report": { "name": "WaitTotals", "@from": "Line", "@dimensions": ["wait"], "@measures": ["lines"],
+            "children": [ { "source.rdb": { "@kind": "view", "@view": "v_wait_totals" } } ] } }
+        ] } }
+        """;
+
+    private static MetaRoot Load(string model = Model)
     {
-        var r = new MetaDataLoader().Load([new InMemoryStringSource(Model, id: "meta.shop.json")]);
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(model, id: "meta.shop.json")]);
         Assert.True(r.Errors.Count == 0, string.Join("\n", r.Errors.Select(e => e.Message)));
         return r.Root;
     }
@@ -130,9 +146,9 @@ public class ReportExportGeneratorTests
         }
         """;
 
-    private static MethodInfo[] Compile(ReportExportGenerator gen, string? decimals = null)
+    private static MethodInfo[] Compile(ReportExportGenerator gen, string? decimals = null, string model = Model)
     {
-        var root = Load();
+        var root = Load(model);
         if (decimals == "string") root.WireFormat = new WireFormat(DecimalWireForm.String, NullMemberForm.Native);
         var writer = gen.Generate(Ctx(root)).Single(f => f.Path == "ReportExportWriter.g.cs").Content;
         var tpa = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!).Split(Path.PathSeparator)
@@ -149,6 +165,32 @@ public class ReportExportGeneratorTests
 
     private static string Csv(MethodInfo[] h, object?[][] rows, params string[] cols) => (string)h[0].Invoke(null, [rows, cols, null])!;
     private static string Xml(MethodInfo[] h, object?[][] rows, params string[] cols) => (string)h[1].Invoke(null, [rows, cols])!;
+
+    private static string Writer(string model) =>
+        new ReportExportGenerator().Generate(Ctx(Load(model))).Single(f => f.Path == "ReportExportWriter.g.cs").Content;
+
+    // field.duration: the writer of a model with no duration column is the writer from before
+    // durations existed, byte for byte (the hash of that writer for this model, pinned).
+    [Fact]
+    public void The_writer_of_a_model_without_a_duration_column_is_unchanged()
+    {
+        var writer = Writer(Model);
+        Assert.DoesNotContain("TimeSpan ts", writer);
+        Assert.DoesNotContain("duration", writer, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("@DURATION", writer);
+        var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(writer.Replace("\r\n", "\n"))));
+        Assert.Equal("78913C645BB9D25C334F2285C210D0192510618A63C564AA7833C8AEA4A0B5AF", hash);
+    }
+
+    [Fact]
+    public void A_duration_column_is_written_in_its_canonical_form_and_never_guarded()
+    {
+        Assert.Contains("case TimeSpan ts: return new(Duration(ts), false);", Writer(DurationModel));
+        var h = Compile(new ReportExportGenerator(), model: DurationModel);
+        Assert.Equal("w\r\nPT26H\r\n-PT1M30S\r\nPT0.5S\r\nPT0.0000005S\r\nPT0S\r\n-PT256204778H48M5.4775808S\r\n\r\n",
+            Csv(h, [[TimeSpan.FromHours(26)], [TimeSpan.FromSeconds(-90)], [TimeSpan.FromMilliseconds(500)], [TimeSpan.FromTicks(5)], [TimeSpan.Zero], [TimeSpan.MinValue], [null]], "w"));
+        Assert.Contains("<w>-PT1M30S</w>", Xml(h, [[TimeSpan.FromSeconds(-90)]], "w"));
+    }
 
     [Fact]
     public void Csv_quotes_ends_every_record_with_crlf_and_guards_text_cells_only()

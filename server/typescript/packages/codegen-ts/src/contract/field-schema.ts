@@ -13,6 +13,7 @@ import {
   type MetaField,
   type MetaObject,
   WIRE_DECIMALS_STRING,
+  WIRE_DURATIONS_ISO,
   type WireFormat,
 } from "@metaobjectsdev/metadata";
 import {
@@ -33,6 +34,7 @@ import {
   FIELD_SUBTYPE_DATE,
   FIELD_SUBTYPE_DECIMAL,
   FIELD_SUBTYPE_DOUBLE,
+  FIELD_SUBTYPE_DURATION,
   FIELD_SUBTYPE_ENUM,
   FIELD_SUBTYPE_FLOAT,
   FIELD_SUBTYPE_INET,
@@ -70,6 +72,22 @@ export type ContractShape = "read" | "create" | "update";
 
 /** How a schema points at another object's schema: a relative file, or a component. */
 export type RefFor = (target: MetaObject, shape: ContractShape) => string;
+
+/**
+ * The accepted field.duration form (DURATION_PATTERN) as a JSON Schema `pattern` with no lookaround:
+ * DURATION_PATTERN's `(?!$)` and `(?=\d)` are not I-Regexp (RFC 9485), and an RE2-based validator or
+ * code generator refuses them. Spelled out instead: weeks and/or days (weeks first) with an optional
+ * time part, or a time part alone, where `T` is followed by at least one of hours, minutes and
+ * seconds, in that order, and the seconds may have a fraction of any length. Digits are `[0-9]` and
+ * groups capture, which I-Regexp also requires; the anchors make JSON Schema's search a full match.
+ * test/contract/duration-json-schema-pattern.test.ts holds the two to the same verdicts.
+ */
+export const DURATION_JSON_SCHEMA_PATTERN = (() => {
+  const seconds = "[0-9]+(\\.[0-9]+)?S";
+  const time = `T([0-9]+H([0-9]+M)?(${seconds})?|[0-9]+M(${seconds})?|${seconds})`;
+  const date = "([0-9]+W([0-9]+D)?|[0-9]+D)";
+  return `^[-+]?P(${date}(${time})?|${time})$`;
+})();
 
 /** The canonical decimal string (ADR-0019 Amendment 1): plain notation, no trailing fraction zeros. */
 export const DECIMAL_CANONICAL_PATTERN = "^-?(0|[1-9][0-9]*)(\\.[0-9]*[1-9])?$";
@@ -143,6 +161,17 @@ export function scalarSchema(subType: string): JsonSchema {
     case FIELD_SUBTYPE_URI: return { type: "string", format: "uri" };
     case FIELD_SUBTYPE_INET: return { type: "string", anyOf: [{ format: "ipv4" }, { format: "ipv6" }] };
     case FIELD_SUBTYPE_DECIMAL: return { type: "string", pattern: DECIMAL_INPUT_PATTERN };
+    // An ISO-8601 duration: the accepted form (weeks, days, hours, minutes, seconds; no years or months).
+    // A read answers the canonical form, which the same pattern matches. No `format: "duration"`:
+    // that format is RFC 3339's, which has no sign and no fractional seconds, so a validator that
+    // asserts formats (Ajv with ajv-formats) would refuse `-PT1M30S` and `PT1.5S`, both of which
+    // every server writes.
+    case FIELD_SUBTYPE_DURATION:
+      return {
+        type: "string",
+        pattern: DURATION_JSON_SCHEMA_PATTERN,
+        description: "An ISO-8601 duration: weeks, days, hours, minutes and seconds (no years or months).",
+      };
     default: return { type: "string" };
   }
 }
@@ -159,6 +188,12 @@ function plainValueSchema(field: MetaField, shape: ContractShape, wire: WireForm
   switch (field.subType) {
     case FIELD_SUBTYPE_DECIMAL:
       return decimalSchema(field, shape, wire);
+    // `wire.durations: native` leaves the form to the serving port's own serializer (a C#
+    // server writes `01:30:00`), so only `iso` can state one.
+    case FIELD_SUBTYPE_DURATION:
+      return wire.durations === WIRE_DURATIONS_ISO
+        ? scalarSchema(field.subType)
+        : { type: "string", description: `A span of time, in the serving language's own form. Set wire.durations to "iso" to fix ISO-8601 across server languages.` };
     case FIELD_SUBTYPE_TIMESTAMP:
       if (shape !== "read") return timestampInputSchema(field);
       return field.attr(FIELD_ATTR_LOCAL_TIME) === true

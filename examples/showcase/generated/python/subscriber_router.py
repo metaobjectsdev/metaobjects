@@ -72,6 +72,7 @@ _REQUIRED_FIELDS: frozenset[str] = frozenset(
 
 
 _DECIMAL_FIELDS: frozenset[str] = frozenset()
+_DURATION_FIELDS: dict[str, object] = {}
 
 
 _DECIMAL_LIMITS: dict[str, tuple[int, int]] = {}
@@ -158,7 +159,7 @@ def list_subscribers(
     if filter_result.error_envelope is not None:
         return JSONResponse(status_code=400, content=filter_result.error_envelope)
     predicates, decimal_error = coerce_decimal_predicates(
-        filter_result.predicates, _DECIMAL_FIELDS
+        filter_result.predicates, _DECIMAL_FIELDS, _DURATION_FIELDS
     )
     if decimal_error is not None:
         return JSONResponse(status_code=400, content=decimal_error)

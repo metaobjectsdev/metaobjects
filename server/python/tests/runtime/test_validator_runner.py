@@ -341,6 +341,33 @@ def test_non_string_uri_or_inet_is_a_type_failure_lenient_or_not() -> None:
     assert _rules(_net(), {"website": 5, "reportedIp": 5}) == ["website:type", "reportedIp:type"]
 
 
+# ── field.duration ───────────────────────────────────────────────────────────
+
+
+def _hold() -> MetaObject:
+    return _load({"field.duration": {"name": "holdFor"}}, {"field.duration": {"name": "steps", "isArray": True}})
+
+
+def test_duration_accepts_an_iso_duration_of_weeks_days_hours_minutes_and_seconds() -> None:
+    for d in ["PT1H30M", "P1DT2H", "-PT30S", "+PT2M", "PT0.5S", "PT0S", "P0D", "PT1.123456789S", "P2W",
+              "P1W1DT1H", "PT1.1234567890123S"]:
+        assert _rules(_hold(), {"holdFor": d}) == []
+
+
+def test_duration_rejects_calendar_spans_clock_text_and_what_timedelta_would_take() -> None:
+    for d in ["P1M", "P1Y", "PT1W", "P1.5W", "P1D1W", "1:30:00", "PT1.5H", "pt1h", "PT", "P", "", "PT1H\n", "90"]:
+        assert _errors(_hold(), {"holdFor": d}) == [{
+            "field": "holdFor", "rule": "format",
+            "message": "'holdFor' must be an ISO-8601 duration such as PT1H30M (no years or months)",
+            "expected": "duration", "received": d,
+        }]
+
+
+def test_duration_is_a_string_on_the_wire_and_each_array_element_is_checked() -> None:
+    assert _rules(_hold(), {"holdFor": 90}) == ["holdFor:type"]
+    assert _rules(_hold(), {"steps": ["PT1M", "P1M"]}) == ["steps[1]:format"]
+
+
 # ── assigned primary key ─────────────────────────────────────────────────────
 
 

@@ -182,7 +182,8 @@ soft-delete / status / type view it models.
   `validator.regex`** — hunt hand field-level validation (presence, length, numeric range,
   array bounds, `@pattern` regex) the validator subtypes model.
 - **Cross-field validators** — `validator.comparison` (`@left`/`@op`/`@right`, e.g.
-  "end ≥ start"), `validator.atLeastOne` (one-of-N present), `validator.requiredWhen`
+  "end ≥ start"), `validator.atLeastOne` (one-of-N present), `validator.exactlyOne` (exactly one of N
+  present), `validator.requiredWhen`
   (conditional-required), `validator.presentIff` (mutual presence). Hunt these as hand-coded
   multi-field rules — they ARE modelable (see the Semantic-constraint ratification section in
   `SKILL.md` to decide what belongs in shared metadata vs port-local).

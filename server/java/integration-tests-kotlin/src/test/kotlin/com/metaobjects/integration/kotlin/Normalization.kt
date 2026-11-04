@@ -51,6 +51,8 @@ object Normalization {
         is Double -> canonicalFloat(v)
         is BigDecimal -> canonicalDecimal(v)
         is UUID -> v.toString().lowercase()
+        // field.duration → the canonical ISO-8601 wire form (Duration.toString() differs for a negative span).
+        is java.time.Duration -> com.metaobjects.field.DurationWire.format(v)
         is ByteArray -> Base64.getEncoder().encodeToString(v)
         // DATE → "YYYY-MM-DD"; LocalDate.toString() is already this exact form.
         is LocalDate -> v.toString()

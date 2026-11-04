@@ -75,6 +75,8 @@ resolver's answer, materialized as importable constants.
 """
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import re
 from dataclasses import dataclass
 
@@ -90,13 +92,21 @@ from metaobjects.meta.persistence.source.meta_source import MetaSource
 from metaobjects.meta.persistence.source.source_constants import (
     PHYSICAL_NAME_ATTR_BY_KIND,
 )
+from metaobjects.meta.core.field.field_constants import (
+    FIELD_ATTR_OBJECT_REF,
+    FIELD_ATTR_STORAGE,
+    FIELD_SUBTYPE_OBJECT,
+    STORAGE_FLATTENED,
+)
 from metaobjects.naming import (
     resolve_column_name,
+    resolve_flattened_column_name,
     resolve_index_name,
     strip_package,
     to_snake_case,
 )
 from metaobjects.shared.base_types import TYPE_FIELD, TYPE_IDENTITY, TYPE_INDEX
+from metaobjects.naming_refs import ref_target
 from metaobjects.source_resolution import primary_rdb_source
 
 #: The nodes whose DATABASE index name this module carries.
@@ -221,7 +231,7 @@ def _key_consts(node: MetaData) -> list[_Const]:
     return out
 
 
-def _field_consts(field: MetaData, column: str) -> list[_Const]:
+def _field_consts(field: MetaData, column: str | None) -> list[_Const]:
     """One field. The ONE node kind with no type prefix: a field's sub_type does not
     change what ``COLUMN`` denotes.
 
@@ -229,12 +239,49 @@ def _field_consts(field: MetaData, column: str) -> list[_Const]:
     moment a case boundary or a ``@column`` appears, and a consumer holding one cannot
     recover the other — ``@column`` is free-form, so ``callPurpose`` may map to
     ``purpose_code``, which is neither the logical name nor any transformation of it.
+
+    ``column`` is ``None`` for a flattened field, which has no column of its own: only
+    ``FIELD`` is emitted and its members carry the columns.
     """
     member = _member(field.name)
     path = f"field {field.name!r}"
+    consts = [_Const(f"{member}_FIELD", _q(field.name), path)]
+    if column is not None:
+        consts.append(_Const(f"{member}_COLUMN", _q(column), path))
+    return consts
+
+
+def _flattened_members(field: MetaData, strategy: str) -> list[tuple[str, str]] | None:
+    """The ``(member name, column)`` pairs of a ``@storage: "flattened"`` value object, or
+    ``None`` for any other field.
+
+    The flattened test is migrate's own: a ``field.object`` whose RESOLVED ``@storage`` is
+    ``flattened`` (ADR-0039 — it may be inherited). Each member's column is core naming's
+    :func:`metaobjects.naming.resolve_flattened_column_name`, the rule ``meta migrate`` names
+    it by. A flattened field whose ``@objectRef`` does not resolve has no members; the loader
+    refuses that model before codegen runs.
+    """
+    if field.sub_type != FIELD_SUBTYPE_OBJECT or field.get_meta_attr(FIELD_ATTR_STORAGE) != STORAGE_FLATTENED:
+        return None
+    target = ref_target(field, FIELD_ATTR_OBJECT_REF)
+    if not isinstance(target, MetaObject):
+        return []
+    return [(m.name, resolve_flattened_column_name(field, m, strategy)) for m in target.fields()]
+
+
+def _flattened_member_consts(
+    field: MetaData, members: list[tuple[str, str]]
+) -> list[tuple[str, _Const]]:
+    """A flattened value object's ``<FIELD>_<MEMBER>_COLUMN`` constants, one per member,
+    emitted beside the field's own ``_FIELD`` constant (a flattened field has no column
+    constant of its own)."""
+    member = _member(field.name)
     return [
-        _Const(f"{member}_FIELD", _q(field.name), path),
-        _Const(f"{member}_COLUMN", _q(column), path),
+        (
+            f"{field.name}.{name}",
+            _Const(f"{member}_{_member(name)}_COLUMN", _q(column), f"field {field.name + '.' + name!r}"),
+        )
+        for name, column in sorted(members)
     ]
 
 
@@ -340,7 +387,13 @@ def _sources_by_role(entity: MetaObject) -> dict[str, MetaSource]:
     return out
 
 
-def render_names(entity: MetaObject, strategy: str, *, fragment: bool = False) -> str | None:
+def render_names(
+    entity: MetaObject,
+    strategy: str,
+    *,
+    fragment: bool = False,
+    warn: Callable[[str], None] | None = None,
+) -> str | None:
     """Render the names module for ``entity``, or ``None`` when it declares (and
     inherits) no primary ``source.rdb`` at all (#248).
 
@@ -404,11 +457,44 @@ def render_names(entity: MetaObject, strategy: str, *, fragment: bool = False) -
 
     # ADR-0039: fields() RESOLVES — an inherited field and an inherited @column both
     # must appear here, or the constant disagrees with what the runtime actually binds.
+    # (COLUMNS_BY_FIELD key, constant member) — a flattened member is keyed
+    # `<field>.<member>`, the path the naming corpus uses.
     columns: list[tuple[str, str]] = []
+    flattened: list[tuple[MetaData, list[tuple[str, _Const]]]] = []
     for field in sorted(entity.fields(), key=lambda f: f.name):
-        column = resolve_column_name(field, strategy)
-        columns.append((field.name, column))
-        groups.append(("fields", _field_consts(field, column), carried_by_super(field)))
+        members = _flattened_members(field, strategy)
+        if members is None:
+            column = resolve_column_name(field, strategy)
+            columns.append((field.name, f"{_member(field.name)}_COLUMN"))
+            groups.append(("fields", _field_consts(field, column), carried_by_super(field)))
+        else:
+            # A flattened field has no column of its own: it keeps its `_FIELD` constant and
+            # its members carry the columns.
+            groups.append(("fields", _field_consts(field, None), carried_by_super(field)))
+        if members:
+            flattened.append((field, _flattened_member_consts(field, members)))
+
+    # A flattened member's constant that would share a name with another constant — a field
+    # `shipToStreet` beside the member `street` of a flattened `shipTo` — is left out, with a
+    # warning, rather than refused: such a model generated before member constants existed,
+    # and every other constant it had is still emitted.
+    taken = {c.member for _s, consts, _i in groups for c in consts}
+    for field, consts in flattened:
+        kept = []
+        for key, const in consts:
+            if const.member in taken:
+                if warn is not None:
+                    warn(
+                        f"names: {entity.name}: the flattened column constant {upper}_{const.member} "
+                        "would share its name with another constant of the module, so it is not "
+                        "emitted. Rename the field or the value-object member to get it."
+                    )
+                continue
+            taken.add(const.member)
+            kept.append(const)
+            columns.append((key, const.member))
+        if kept:
+            groups.append(("fields", kept, carried_by_super(field)))
 
     for type_name in (TYPE_IDENTITY, TYPE_INDEX):
         keys = sorted(
@@ -488,11 +574,11 @@ def render_names(entity: MetaObject, strategy: str, *, fragment: bool = False) -
     # module's re-exported reference to the base's own constant. Always emitted, even
     # when empty, so a consumer can read it unconditionally.
     lines.append(f"{upper}_COLUMNS_BY_FIELD: Final[dict[str, str]] = {{")
-    for name, _column in columns:
+    for key, member in sorted(columns):
         # _q, not a bare f-string: the KEY is an author-supplied field name, and every
         # other literal in this module goes through the escaper. Spliced raw, a name
         # holding a quote emitted a module that does not parse.
-        lines.append(f"    {_q(name)}: {upper}_{_member(name)}_COLUMN,")
+        lines.append(f"    {_q(key)}: {upper}_{member},")
     lines.append("}")
     lines.append("")
     return "\n".join(lines)
@@ -508,7 +594,7 @@ class NamesGenerator:
         emitted: set[str] = set()
 
         def one(entity: MetaObject, *, fragment: bool) -> list[EmittedFile]:
-            source = render_names(entity, ctx.config.column_naming, fragment=fragment)
+            source = render_names(entity, ctx.config.column_naming, fragment=fragment, warn=ctx.warn)
             if source is None:
                 return []
             emitted.add(entity.resolution_key())

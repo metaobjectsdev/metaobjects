@@ -127,6 +127,10 @@ object KotlinNaming {
      */
     fun namesMember(fieldName: String): String = KotlinGenUtil.camelToSnake(fieldName).uppercase()
 
+    /** The constant naming a flattened member's column: `SHIP_TO_STREET_COLUMN`. */
+    fun flattenedColumnMember(fieldName: String, memberName: String): String =
+        "${namesMember(fieldName)}_${namesMember(memberName)}_COLUMN"
+
     /**
      * [KotlinSpringControllerGenerator] / [KotlinM2mSupport]: the REST collection segment —
      * the ENTITY NAME snake_cased and then pluralized (`Author` -> `authors`,

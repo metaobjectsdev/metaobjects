@@ -5,7 +5,7 @@ compare byte-equal after canonical serialization.
 
 This is the **serialization boundary** for the Python port (ADR-0019): the
 runtime ``ObjectManager`` returns native pg8000 values (``int`` / ``Decimal`` /
-``datetime`` / ``date`` / ``time`` / ``uuid.UUID`` / ``dict`` / ``list``); the
+``datetime`` / ``date`` / ``time`` / ``timedelta`` / ``uuid.UUID`` / ``dict`` / ``list``); the
 canonicalization to the cross-port wire form lives HERE, keyed by Python native
 type — mirroring the other ports' by-native-type runners (Java keys off
 ``Long`` vs ``Integer`` / ``BigDecimal`` / ``OffsetDateTime``; TS keys off
@@ -29,6 +29,8 @@ import re
 import uuid
 from collections.abc import Mapping
 from typing import Any
+
+from metaobjects.codegen.runtime.duration_wire import format_duration
 
 # Stable Postgres type OIDs (see pg_type.dat) for the int8 family — the BIGINT→
 # string wire discriminator. INTEGER (23) / SMALLINT (21) stay JSON numbers.
@@ -80,6 +82,11 @@ def normalize_value(v: Any, column_oid: int | None = None, *, actual: bool = Fal
         return str(v).lower()
     if isinstance(v, (bytes, bytearray, memoryview)):
         return base64.b64encode(bytes(v)).decode("ascii")
+    if isinstance(v, datetime.timedelta):
+        # field.duration: the canonical ISO-8601 duration (fixtures/duration-wire), through the
+        # production codec. pg8000 reads an interval as a timedelta; the runtime decodes a
+        # SQLite / MySQL text column to one too.
+        return format_duration(v)
     if isinstance(v, datetime.datetime):
         # The contract distinguishes TIMESTAMP from TIMESTAMPTZ by tzinfo
         # (ADR-0019): pg8000 surfaces a TIMESTAMPTZ as a tz-aware datetime and a

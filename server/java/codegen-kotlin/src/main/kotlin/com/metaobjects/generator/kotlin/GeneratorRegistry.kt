@@ -132,6 +132,9 @@ private val DECIMAL_WIRE_EMIT: List<String> = listOf(KotlinDecimalWireEmitter::c
  *  TPH per-subtype create. */
 private val CROSS_FIELD_EMIT: List<String> = listOf(KotlinCrossFieldRules::class.java.name)
 
+/** The duration wire file `entity`, `routes` and `exposed-table` each write beside their own output. */
+private val DURATION_WIRE_EMIT: List<String> = listOf(KotlinDurationWireEmitter::class.java.name)
+
 /** The rest of `api-docs`: the page IR (one file, `KotlinApiModel.kt`, which also holds the unit, symbol, field
  *  and kind types), the builder that fills it, the renderer and the page paths. */
 private val API_DOCS_EMIT: List<String> = listOf(
@@ -162,7 +165,7 @@ val GENERATOR_REGISTRY: Map<String, GeneratorInfo> = linkedMapOf(
         layer = GeneratorLayer.MODEL,
         factory = ::KotlinEntityGenerator,
         ejectResourcePath = ejectPath("KotlinEntityGenerator"),
-        ejectWith = ENUM_EMIT + DECIMAL_WIRE_EMIT + CROSS_FIELD_EMIT,
+        ejectWith = ENUM_EMIT + DECIMAL_WIRE_EMIT + CROSS_FIELD_EMIT + DURATION_WIRE_EMIT,
     ),
     "routes" to GeneratorInfo(
         name = "routes",
@@ -171,7 +174,7 @@ val GENERATOR_REGISTRY: Map<String, GeneratorInfo> = linkedMapOf(
         layer = GeneratorLayer.API,
         factory = ::KotlinSpringControllerGenerator,
         ejectResourcePath = ejectPath("KotlinSpringControllerGenerator"),
-        ejectWith = DECIMAL_WIRE_EMIT + CROSS_FIELD_EMIT,
+        ejectWith = DECIMAL_WIRE_EMIT + CROSS_FIELD_EMIT + DURATION_WIRE_EMIT,
         requires = listOf("entity", "exposed-table", "filter-allowlist", "relations"),
     ),
     "repository" to GeneratorInfo(
@@ -248,7 +251,7 @@ val GENERATOR_REGISTRY: Map<String, GeneratorInfo> = linkedMapOf(
         layer = GeneratorLayer.PERSISTENCE,
         factory = ::KotlinExposedTableGenerator,
         ejectResourcePath = ejectPath("KotlinExposedTableGenerator"),
-        ejectWith = DECIMAL_WIRE_EMIT,
+        ejectWith = DECIMAL_WIRE_EMIT + DURATION_WIRE_EMIT,
         requires = listOf("entity"),
     ),
     "relations" to GeneratorInfo(

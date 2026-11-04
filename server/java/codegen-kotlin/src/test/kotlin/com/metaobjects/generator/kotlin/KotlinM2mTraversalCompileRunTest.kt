@@ -243,7 +243,12 @@ class KotlinM2mTraversalCompileRunTest {
         // constructor whose first two params are (Long, String) and pass defaults for the rest.
         val ctor = clazz.declaredConstructors
             .firstOrNull { c ->
-                c.parameterTypes.size >= 2 &&
+                // Never the synthetic defaults constructor (`..., int mask, DefaultConstructorMarker`):
+                // declaredConstructors has no defined order, and a null for its int mask is the
+                // NullPointerException this test used to hit at random.
+                !c.isSynthetic &&
+                    c.parameterTypes.none { it.name == "kotlin.jvm.internal.DefaultConstructorMarker" } &&
+                    c.parameterTypes.size >= 2 &&
                     c.parameterTypes[0] == java.lang.Long::class.java &&
                     c.parameterTypes[1] == String::class.java
             } ?: error("no (Long, String, ...) constructor on ${clazz.name}")

@@ -65,3 +65,11 @@ export const API_CONTRACT_DECIMAL_SCENARIOS_DIR = resolve(API_CONTRACT_DECIMAL_D
 export const API_CONTRACT_DECIMAL_SCHEMA_SQL_PATH = resolve(API_CONTRACT_DECIMAL_DIR, "schema.postgres.sql");
 export const API_CONTRACT_DECIMAL_SQLITE_SCHEMA_SQL_PATH = resolve(API_CONTRACT_DECIMAL_DIR, "schema.sqlite.sql");
 export const API_CONTRACT_DECIMAL_MYSQL_SCHEMA_SQL_PATH = resolve(API_CONTRACT_DECIMAL_DIR, "schema.mysql.sql");
+
+// fixtures/api-contract-conformance/duration/ — a field.duration is an ISO-8601 span on the wire and
+// filters and sorts as a span (read, write, filter, sort) over HTTP, generated lane only.
+export const API_CONTRACT_DURATION_DIR = resolve(API_CONTRACT_DIR, "duration");
+export const API_CONTRACT_DURATION_SCENARIOS_DIR = resolve(API_CONTRACT_DURATION_DIR, "scenarios");
+export const API_CONTRACT_DURATION_SCHEMA_SQL_PATH = resolve(API_CONTRACT_DURATION_DIR, "schema.postgres.sql");
+export const API_CONTRACT_DURATION_SQLITE_SCHEMA_SQL_PATH = resolve(API_CONTRACT_DURATION_DIR, "schema.sqlite.sql");
+export const API_CONTRACT_DURATION_MYSQL_SCHEMA_SQL_PATH = resolve(API_CONTRACT_DURATION_DIR, "schema.mysql.sql");

@@ -36,6 +36,48 @@
           { "validator.atLeastOne":  { "name": "reachable", "@fields": ["email", "phone"] } },
           { "validator.requiredWhen": { "name": "reviewNeedsReviewer", "@field": "reviewedBy", "@when": "review", "@equals": "DONE" } }
         ]
+      }},
+      { "object.entity": {
+        "name": "Shift",
+        "children": [
+          { "source.rdb":       { "@table": "shifts" } },
+          { "field.long":       { "name": "id" } },
+          { "field.int":        { "name": "startDay" } },
+          { "field.int":        { "name": "endDay" } },
+          { "field.int":        { "name": "startMin" } },
+          { "field.int":        { "name": "endMin" } },
+          { "field.long":       { "name": "storeId" } },
+          { "field.long":       { "name": "kioskId" } },
+          { "field.string":     { "name": "kind" } },
+          { "field.string":     { "name": "note" } },
+          { "field.int":        { "name": "priority" } },
+          { "field.string":     { "name": "email" } },
+          { "field.string":     { "name": "phone" } },
+          { "field.date":       { "name": "shiftDate" } },
+          { "field.timestamp":  { "name": "loggedAt" } },
+          { "field.duration":   { "name": "planned" } },
+          { "field.duration":   { "name": "actual" } },
+          { "field.inet": { "name": "clientIp" } },
+          { "field.inet": { "name": "siteIp" } },
+          { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
+          { "validator.comparison": { "name": "sameDayTimes", "@left": "endMin", "@op": "gt", "@right": "startMin",
+            "@condition": { "op": "eq", "left": { "field": "startDay" }, "right": { "field": "endDay" } } } },
+          { "validator.comparison": { "name": "withinPlan", "@left": "actual", "@op": "lte", "@right": "planned" } },
+          { "validator.exactlyOne": { "name": "oneLocation", "@fields": ["storeId", "kioskId"] } },
+          { "validator.requiredWhen": { "name": "storePhoneNeedsNote", "@field": "note", "@when": "kind", "@equals": "PHONE",
+            "@condition": { "op": "not", "arg": { "op": "isNull", "arg": { "field": "storeId" } } } } },
+          { "validator.requiredWhen": { "name": "offSiteCallNeedsPhone", "@field": "phone", "@when": "kind", "@equals": "CALL", "@condition": { "op": "ne", "left": { "field": "clientIp" }, "right": { "field": "siteIp" } } } },
+          { "validator.requiredWhen": { "name": "lateCallNeedsPhone", "@field": "phone", "@when": "kind", "@equals": "CALL",
+            "@condition": { "op": "gt", "left": { "field": "shiftDate" }, "right": { "field": "loggedAt" } } } },
+          { "validator.atLeastOne": { "name": "urgentReachable", "@fields": ["email", "phone"],
+            "@condition": { "op": "and", "args": [
+              { "op": "gt", "left": { "fn": "coalesce", "args": [{ "field": "priority" }, { "value": 0 }] }, "right": { "value": 2 } },
+              { "op": "or", "args": [
+                { "op": "ne", "left": { "field": "kind" }, "right": { "value": "BATCH" } },
+                { "op": "isNull", "arg": { "field": "kind" } }
+              ] }
+            ] } } }
+        ]
       }}
     ]
   }

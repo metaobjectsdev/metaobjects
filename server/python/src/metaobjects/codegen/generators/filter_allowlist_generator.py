@@ -94,7 +94,10 @@ def ops_for_subtype_ordered(sub_type: str | None) -> tuple[str, ...]:
         return _OPS_STRING
     if sub_type in (fc.FIELD_SUBTYPE_UUID, fc.FIELD_SUBTYPE_INET):
         return _OPS_UUID
+    # field.duration is an orderable span (a Postgres interval; a microsecond integer on
+    # SQLite, D1 and MySQL): the numeric band.
     if sub_type in (
+        fc.FIELD_SUBTYPE_DURATION,
         fc.FIELD_SUBTYPE_INT,
         fc.FIELD_SUBTYPE_LONG,
         fc.FIELD_SUBTYPE_FLOAT,

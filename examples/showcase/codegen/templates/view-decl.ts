@@ -14,8 +14,9 @@ import {
   type MetaField, FIELD_SUBTYPE_OBJECT, FIELD_ATTR_OBJECT_REF,
 } from "@metaobjectsdev/metadata";
 import type { ColumnNamingStrategy } from "@metaobjectsdev/codegen-ts/engine";
-import { mapColumnType, type EnumIntCustomType } from "@metaobjectsdev/codegen-ts/engine";
+import { mapColumnType, DURATION_COLUMN_FN, type EnumIntCustomType } from "@metaobjectsdev/codegen-ts/engine";
 import { renderEnumIntCustomType } from "./enum-int-codec.js";
+import { renderDurationCustomType } from "./duration-wire-helper.js";
 import { zodTypeFor } from "./field-meta.js";
 import { columnExpr, type ObjectNames } from "@metaobjectsdev/codegen-ts/engine";
 
@@ -25,7 +26,8 @@ export interface ViewDeclOpts {
   /** Drives the timestamp column TS type (Date vs string) in the view declaration. */
   readonly timestampMode: "date" | "string";
   /**
-   * Int-backed-enum codec const names ALREADY declared in the module this view lands in.
+   * Local column-codec const names (int-backed enums, the duration codec) ALREADY declared in
+   * the module this view lands in.
    * A write-through entity's table and its replica view share one file, and both reference
    * the same codecs — so the view references these by name and declares only what the table
    * did not (a derived field's codec, which the write table omits). Absent = the view owns
@@ -88,6 +90,8 @@ function viewColumnLine(
   opts: ViewDeclOpts,
   /** Codecs this view needs, collected for the caller to DECLARE — see below. */
   enumIntTypes: Map<string, EnumIntCustomType>,
+  /** The duration codec's name, when a column needs it — declared by the caller, as above. */
+  usesDuration: Set<string>,
 ): Code {
   const { dialect, columnNamingStrategy, timestampMode } = opts;
   const spec = mapColumnType(f, dialect, columnNamingStrategy, timestampMode);
@@ -99,10 +103,14 @@ function viewColumnLine(
   if (spec.enumIntCustomType !== undefined) {
     enumIntTypes.set(spec.enumIntCustomType.fnConstName, spec.enumIntCustomType);
   }
+  // The field.duration codec is a local const too; collected under its name, declared once.
+  if (spec.durationCustomType !== undefined) usesDuration.add(spec.durationCustomType.fnConstName);
   const colSym =
     spec.enumIntCustomType !== undefined
       ? spec.enumIntCustomType.fnConstName
-      : imp(`${spec.fnName}@${spec.importModule}`);
+      : spec.durationCustomType !== undefined
+        ? spec.durationCustomType.fnConstName
+        : imp(`${spec.fnName}@${spec.importModule}`);
   const optsArg =
     spec.fnOptions && Object.keys(spec.fnOptions).length > 0
       ? `, ${JSON.stringify(spec.fnOptions)}`
@@ -164,7 +172,8 @@ export function renderExistingViewDecl(
   const { viewFn, core: viewModule } = dialectModule(opts.dialect);
   const viewSym = imp(`${viewFn}@${viewModule}`);
   const enumIntTypes = new Map<string, EnumIntCustomType>();
-  const viewColumnLines = fields.map((f) => viewColumnLine(f, opts, enumIntTypes));
+  const usesDuration = new Set<string>();
+  const viewColumnLines = fields.map((f) => viewColumnLine(f, opts, enumIntTypes, usesDuration));
   const viewNameExpr = typeof viewName === "string" ? code`${JSON.stringify(viewName)}` : viewName;
 
   // @schema — a view lands in a schema exactly as a table does, and migrate qualifies the
@@ -188,6 +197,9 @@ export function renderExistingViewDecl(
     .filter((t) => alreadyDeclared === undefined || !alreadyDeclared.has(t.fnConstName))
     .sort((a, b) => a.fnConstName.localeCompare(b.fnConstName))
     .map((t) => renderEnumIntCustomType(t, viewModule));
+  if (usesDuration.has(DURATION_COLUMN_FN) && (alreadyDeclared === undefined || !alreadyDeclared.has(DURATION_COLUMN_FN))) {
+    enumIntBlocks.unshift(renderDurationCustomType(opts.dialect, viewModule));
+  }
 
   const viewBlock = code`
 // View declaration — Drizzle uses this for typed SELECT queries.

@@ -21,7 +21,7 @@ import type { ColumnNamingStrategy } from "@metaobjectsdev/codegen-ts/engine";
 import type { RenderContext } from "@metaobjectsdev/codegen-ts/engine";
 import { valueObjectModuleSpecifier } from "@metaobjectsdev/codegen-ts/engine";
 import type { Dialect } from "@metaobjectsdev/codegen-ts/engine";
-import { physicalNameExpr, sourceSchemaExpr, type ObjectNames } from "@metaobjectsdev/codegen-ts/engine";
+import { columnExpr, physicalNameExpr, sourceSchemaExpr, type ObjectNames } from "@metaobjectsdev/codegen-ts/engine";
 import { renderFilterAllowlist, renderSortAllowlist } from "./filter-allowlist.js";
 import { renderFilterType } from "./filter-type.js";
 import { buildUiFieldDescriptor, resourcePath } from "@metaobjectsdev/codegen-ts/engine";
@@ -156,11 +156,8 @@ export function renderProjectionDecl(
     // A6 — reference the constant whenever the artifact is in the run AND carries this
     // field. A lookup MISS (a TPH subtype field the base's names artifact never saw) is
     // normal, not a divergence — fall back to the literal, same as every other §A6 site.
-    const namesEntry = names?.resolved.fields[f.name];
-    const dbColExpr: Code =
-      names !== undefined && namesEntry !== undefined
-        ? code`${names.symbol}.fields.${f.name}.column`
-        : code`${JSON.stringify(dbCol)}`;
+    // A flattened field has no `column` of its own (its members do), so it takes the literal.
+    const dbColExpr: Code = columnExpr(names, f.name, dbCol);
     // #356 — a projection's descriptor is the same shape the entity descriptor emits,
     // and now literally the SAME derivation: `buildUiFieldDescriptor` is what
     // `renderEntityConstants` reads, so the view kind, the label and the currency meta

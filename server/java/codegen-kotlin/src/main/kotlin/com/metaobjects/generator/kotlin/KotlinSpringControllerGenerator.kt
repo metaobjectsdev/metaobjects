@@ -20,6 +20,7 @@ import com.metaobjects.field.BooleanField
 import com.metaobjects.field.CurrencyField
 import com.metaobjects.field.DateField
 import com.metaobjects.field.DecimalField
+import com.metaobjects.field.DurationField
 import com.metaobjects.field.DoubleField
 import com.metaobjects.field.EnumField
 import com.metaobjects.field.FloatField
@@ -154,6 +155,8 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         // ADR-0019 Amendment 1: every controller reads a decimal filter operand, a decimal PATCH value
         // and an unreadable body through its package's generated MetaDecimalWire (no MetaObjects import).
         val decimalWirePackages = linkedSetOf<String>()
+        val durationWirePackages = linkedSetOf<String>()
+        durationsIso = WireFormat.of(loader.root).durationsIso()
 
         for (declared in loader.metaObjects) {
             // FR-044: a served report is emitted from its read model, the same object the
@@ -204,6 +207,10 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             // F22 — a view-only projection gets a READ-ONLY controller: reads served, every
             // write verb answering the cross-port 405 envelope.
             decimalWirePackages.add(PackageMapping.splitFqn(entity.name).first)
+            // field.duration: a filter operand / PATCH value reads through the package's MetaDurationWire.
+            if ((entity.metaFields + KotlinTphPlan.collectSubtypeFields(entity, loader)).any { it is DurationField }) {
+                durationWirePackages.add(PackageMapping.splitFqn(entity.name).first)
+            }
             if (RestSurfaceGate.isReadOnly(entity)) {
                 emitReadOnly(entity, outRoot, loader)
                 continue
@@ -215,6 +222,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         }
         val wire = WireFormat.of(loader.root)
         for (pkg in decimalWirePackages) KotlinDecimalWireEmitter.write(pkg, outRoot, wire)
+        for (pkg in durationWirePackages) KotlinDurationWireEmitter.write(pkg, outRoot)
     }
 
     /** #484: the call that turns a ResultRow into the response value — redacted when [creds] is non-empty. */
@@ -430,6 +438,9 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             }
             if (scalarFields.any { it.elementType == "InetAddress" }) {
                 append("import java.net.InetAddress\n")
+            }
+            if (scalarFields.any { it.elementType == "Duration" }) {
+                append("import java.time.Duration\n")
             }
             // FR-009 (#179): a filterable enum column is compared as its stored string via
             // `col.castTo<String>(TextColumnType())`; import both only when such a column exists
@@ -908,6 +919,9 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             if (filterSpecs.any { it.elementType == "InetAddress" }) {
                 append("import java.net.InetAddress\n")
             }
+            if (filterSpecs.any { it.elementType == "Duration" }) {
+                append("import java.time.Duration\n")
+            }
             // FR-009 (#179): a filterable enum in the union — the discriminator included — is
             // compared as its stored string via `col.castTo<String>(TextColumnType())`; same
             // conditional imports as the vanilla controller.
@@ -1364,8 +1378,20 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
      * anything else (or a value past the exact range) answers `400 {"error":"validation","field":...}`.
      * Everything else binds through the configured ObjectMapper.
      */
+    /** `wire.durations: iso` for the current run; native leaves a PATCH duration to the ObjectMapper. */
+    private var durationsIso = false
+
     private fun patchBindExpr(field: MetaField<*>, fn: String, ktType: String): String =
-        if (field is DecimalField) {
+        if (field is DurationField && durationsIso) {
+            // field.duration: the accepted ISO-8601 form only, never the ObjectMapper's Duration.parse.
+            val read = if (field.isArrayType) {
+                "body.get(\"$fn\").also { require(it.isArray) }.map { MetaDurationWire.fromNode(it) }"
+            } else {
+                "MetaDurationWire.fromNode(body.get(\"$fn\"))"
+            }
+            "runCatching { $read }" +
+                ".getOrElse { return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\", \"field\" to \"$fn\") as Any) }"
+        } else if (field is DecimalField) {
             val read = if (field.isArrayType) {
                 "body.get(\"$fn\").also { require(it.isArray) }.map { MetaDecimalWire.fromNode(it) }"
             } else {
@@ -1605,6 +1631,10 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 // eq/ne/in/isNull). A string passthrough would ClassCastException at runtime.
                 UuidField.SUBTYPE_UUID ->
                     out.append("coerce${shortName}Uuid(op, raw)\n")
+                // field.duration columns are Column<Duration>: the operand is read by the accepted
+                // ISO-8601 rule (MetaDurationWire), a malformed one is `invalid_filter_value`.
+                DurationField.SUBTYPE_DURATION ->
+                    out.append("coerce${shortName}Duration(op, raw)\n")
                 else ->
                     // Unrecognized subtype — fall through to a string pass-through. This branch
                     // is unreachable for fields that are actually @filterable (those subtypes
@@ -1639,6 +1669,9 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         // byte-identical to pre-uuid output.
         if (scalarFields.any { it.subType == UuidField.SUBTYPE_UUID }) {
             emitTypedCoercer(out, shortName, "Uuid", "UUID.fromString")
+        }
+        if (scalarFields.any { it.subType == DurationField.SUBTYPE_DURATION }) {
+            emitTypedCoercer(out, shortName, "Duration", "MetaDurationWire.parse")
         }
         // Timestamp coercer. ADR-0036 Wave 2: a default `field.timestamp` column is an
         // absolute `java.time.Instant` (its WHERE-arm casts `p.value as Instant`), so the
@@ -2169,6 +2202,9 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             }
             if (scalarFields.any { it.elementType == "InetAddress" }) {
                 append("import java.net.InetAddress\n")
+            }
+            if (scalarFields.any { it.elementType == "Duration" }) {
+                append("import java.time.Duration\n")
             }
             if (scalarFields.any { needsStringCastDispatch(it.subType, it.elementType, it.intBackedEnumType) }) {
                 append("import ${ExposedImports.core(api, "TextColumnType")}\n")

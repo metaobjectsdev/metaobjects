@@ -163,7 +163,7 @@ public class GeneratedReportExportCompileRunTest extends SharedRegistryTestBase 
 
     @Test
     public void numbersAreNeverGuardedAndStringWireDecimalsAreCanonical() throws Exception {
-        Loaded l = generate(Map.of(), new WireFormat(WireFormat.Decimals.STRING, WireFormat.NullMembers.OMIT));
+        Loaded l = generate(Map.of(), new WireFormat(WireFormat.Decimals.STRING, WireFormat.NullMembers.OMIT, WireFormat.Durations.ISO));
         String csv = l.csv(List.of("a", "b", "c", "d"), List.of(List.of(l.cell("raw", -7),
             l.cell("decimal", new BigDecimal("0.0")), l.cell("decimal", new BigDecimal("1E+3")),
             l.cell("decimal", new BigDecimal("12.50")))));

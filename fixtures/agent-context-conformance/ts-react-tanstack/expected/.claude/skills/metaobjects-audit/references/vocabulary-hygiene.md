@@ -39,6 +39,10 @@ such, surfaced in the roadmap, but **non-failing** (the code works; the form is 
   URL validation) — a distinct native type + behavior is a subtype, not a validated string.
 - A `field.string` that **holds an IP address** → recommend **`field.inet`** (native IP type;
   Postgres `inet` column).
+- A `field.string` (or a CLR/JVM type override) that **holds a time span** (`TimeSpan`, an
+  `interval` column, "seconds until…") → recommend **`field.duration`** (native duration type;
+  Postgres `interval` column; ISO-8601 on the wire). Not a calendar span: months and years
+  are not durations.
 
 **Custom-provider vocabulary (adopters who register their own types/attrs):** check
 new/custom vocab against the ADR-0037 procedure (advisory) — e.g. *a custom subtype

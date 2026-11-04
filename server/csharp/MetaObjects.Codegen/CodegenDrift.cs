@@ -98,7 +98,7 @@ public static class CodegenDrift
                 regen = CodegenRunner.Run(tempConfig, root, generators,
                     g => temps[roots.FindIndex(r => r.Committed == Path.GetFullPath(realRootFor(g)))]);
             }
-            catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+            catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or MetaModelException)
             {
                 return new Result { Clean = false, Error = $"verify --codegen: {ex.Message}" };
             }

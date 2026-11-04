@@ -838,7 +838,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("        }\n");
         src.append("        FilterParseResult filter = FilterParser.parse(\n");
         src.append("                request.getQueryString(), ").append(allowlistName).append(".FIELDS, ")
-           .append(allowlistName).append(".OPS_BY_FIELD, ").append(allowlistName).append(".DECIMAL_FIELDS);\n");
+           .append(allowlistName).append(".OPS_BY_FIELD, ").append(allowlistName).append(".DECIMAL_FIELDS, ").append(allowlistName).append(".DURATION_FIELDS);\n");
         src.append("        if (filter.error() != null) {\n");
         src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", filter.error(), \"field\", filter.field()));\n");
         src.append("        }\n");
@@ -940,7 +940,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("        }\n");
         src.append("        FilterParseResult filter = FilterParser.parse(\n");
         src.append("                request.getQueryString(), ").append(allowlistName).append(".FIELDS, ")
-           .append(allowlistName).append(".OPS_BY_FIELD, ").append(allowlistName).append(".DECIMAL_FIELDS);\n");
+           .append(allowlistName).append(".OPS_BY_FIELD, ").append(allowlistName).append(".DECIMAL_FIELDS, ").append(allowlistName).append(".DURATION_FIELDS);\n");
         src.append("        if (filter.error() != null) {\n");
         src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", filter.error(), \"field\", filter.field()));\n");
         src.append("        }\n");
@@ -1027,7 +1027,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("        }\n");
         src.append("        FilterParseResult filter = FilterParser.parse(\n");
         src.append("                request.getQueryString(), ").append(allowlistName).append(".FIELDS, ")
-           .append(allowlistName).append(".OPS_BY_FIELD, ").append(allowlistName).append(".DECIMAL_FIELDS);\n");
+           .append(allowlistName).append(".OPS_BY_FIELD, ").append(allowlistName).append(".DECIMAL_FIELDS, ").append(allowlistName).append(".DURATION_FIELDS);\n");
         src.append("        if (filter.error() != null) {\n");
         src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", filter.error(), \"field\", filter.field()));\n");
         src.append("        }\n");
@@ -1233,7 +1233,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("            if (sortClause == null) return ResponseEntity.badRequest().body(Map.of(\"error\", \"invalid_sort\", \"field\", sort.split(\":\", 2)[0]));\n");
         src.append("        }\n");
         src.append("        FilterParseResult filter = FilterParser.parse(request.getQueryString(), ")
-           .append(allowlistName).append(".FIELDS, ").append(allowlistName).append(".OPS_BY_FIELD, ").append(allowlistName).append(".DECIMAL_FIELDS);\n");
+           .append(allowlistName).append(".FIELDS, ").append(allowlistName).append(".OPS_BY_FIELD, ").append(allowlistName).append(".DECIMAL_FIELDS, ").append(allowlistName).append(".DURATION_FIELDS);\n");
         src.append("        if (filter.error() != null) return ResponseEntity.badRequest().body(Map.of(\"error\", filter.error(), \"field\", filter.field()));\n");
         src.append("        List<FilterPredicate> filters = filter.predicates();\n");
         src.append("        List<").append(dtoName).append("> rows = repository.list(actualLimit, actualOffset, sortClause, filters);\n");
@@ -1306,7 +1306,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             src.append("            if (sortClause == null) return ResponseEntity.badRequest().body(Map.of(\"error\", \"invalid_sort\", \"field\", sort.split(\":\", 2)[0]));\n");
             src.append("        }\n");
             src.append("        FilterParseResult filter = FilterParser.parse(request.getQueryString(), ")
-               .append(allowlistName).append(".FIELDS, ").append(allowlistName).append(".OPS_BY_FIELD, ").append(allowlistName).append(".DECIMAL_FIELDS);\n");
+               .append(allowlistName).append(".FIELDS, ").append(allowlistName).append(".OPS_BY_FIELD, ").append(allowlistName).append(".DECIMAL_FIELDS, ").append(allowlistName).append(".DURATION_FIELDS);\n");
             src.append("        if (filter.error() != null) return ResponseEntity.badRequest().body(Map.of(\"error\", filter.error(), \"field\", filter.field()));\n");
             src.append("        return ResponseEntity.ok(").append(redactAll(
                 "repository.listByType(\"" + disc + "\", actualLimit, actualOffset, sortClause, filter.predicates())",

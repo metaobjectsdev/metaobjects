@@ -3,6 +3,7 @@ package com.metaobjects.generator.kotlin
 import com.metaobjects.metadata.ktx.loadString
 import java.nio.file.Files
 import kotlin.test.Test
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class KotlinExposedTableGeneratorTest {
@@ -78,6 +79,45 @@ class KotlinExposedTableGeneratorTest {
             assertTrue("override fun sqlType(): String = \"inet\"" in sup, sup)
             assertTrue("internal fun Table.uriColumn(name: String): Column<URI>" in sup, sup)
             assertTrue("internal fun Table.inetColumn(name: String): Column<InetAddress>" in sup, sup)
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test fun `field duration emits the duration columns and the shared support files`() {
+        // field.duration → `durationColumn(...)` (Column<Duration>: native INTERVAL on Postgres,
+        // the canonical ISO-8601 string elsewhere) and `durationArrayColumn(...)` for isArray, both
+        // backed by the package-shared MetaDurationColumnType.kt + MetaDurationWire.kt.
+        val fixture = """{
+          "metadata.root": { "package": "acme::demo", "children": [
+            { "object.entity": { "name": "Timer", "children": [
+                { "field.long":     { "name": "id" } },
+                { "field.duration": { "name": "timeout", "@required": true } },
+                { "field.duration": { "name": "grace" } },
+                { "field.duration": { "name": "backoff", "isArray": true } },
+                { "source.rdb":     { "@table": "timers" } },
+                { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } }
+            ] } }
+          ] }
+        }""".trimIndent()
+        val outDir = Files.createTempDirectory("ktbl-duration-")
+        try {
+            val gen = KotlinExposedTableGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("test", fixture))
+
+            val src = Files.readString(outDir.resolve("acme/demo/TimerTable.kt"))
+            assertTrue("val timeout = durationColumn(\"timeout\")" in src, src)
+            assertTrue("val grace = durationColumn(\"grace\").nullable()" in src, src)
+            assertTrue("val backoff = durationArrayColumn(\"backoff\")" in src, src)
+
+            val sup = Files.readString(outDir.resolve("acme/demo/MetaDurationColumnType.kt"))
+            assertTrue("internal class MetaDurationColumnType : ColumnType<Duration>()" in sup, sup)
+            assertTrue("if (isPostgres()) \"INTERVAL\"" in sup, sup)
+            assertTrue("override fun parameterMarker(value: Duration?): String = if (isPostgres()) \"CAST(? AS INTERVAL)\" else \"?\"" in sup, sup)
+            assertTrue("internal fun Table.durationArrayColumn(name: String): Column<List<Duration>>" in sup, sup)
+            val wire = Files.readString(outDir.resolve("acme/demo/MetaDurationWire.kt"))
+            assertTrue("internal object MetaDurationWire" in wire, wire)
         } finally {
             outDir.toFile().deleteRecursively()
         }
@@ -256,6 +296,107 @@ class KotlinExposedTableGeneratorTest {
         }
     }
 
+    // @flattenedColumnPrefix replaces the default `<parent column>_` prefix, verbatim — "" keeps the
+    // members' own columns — through core naming (ColumnNaming.resolveFlattened), the names
+    // `meta migrate` creates for the same model.
+    @Test fun flattenedColumnPrefixNamesTheFlattenedColumns() {
+        val outDir = Files.createTempDirectory("ktbl-flat-prefix-")
+        try {
+            val model = """{
+              "metadata.root": { "package": "acme::demo", "children": [
+                { "object.value": { "name": "Address", "children": [
+                    { "field.string": { "name": "street", "@required": true } }
+                ] } },
+                { "object.entity": { "name": "User", "children": [
+                    { "field.long":   { "name": "id" } },
+                    { "field.object": { "name": "home", "@objectRef": "Address", "@storage": "flattened", "@flattenedColumnPrefix": "" } },
+                    { "field.object": { "name": "work", "@objectRef": "Address", "@storage": "flattened", "@flattenedColumnPrefix": "office_" } },
+                    { "source.rdb":   { "@table": "users" } },
+                    { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } }
+                ] } }
+              ] }
+            }""".trimIndent()
+            val gen = KotlinExposedTableGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("flat-prefix", model))
+
+            val src = Files.readString(outDir.resolve("acme/demo/UserTable.kt"))
+            assertTrue("val homeStreet = text(\"street\")" in src,
+                "expected the \"\" prefix to keep the member's own column; saw:\n$src")
+            assertTrue("val workStreet = text(\"office_street\")" in src,
+                "expected the office_ prefix; saw:\n$src")
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test fun flattenedColumnsKeepTheirLiteralWithTheNamesArtifactInTheRun() {
+        val outDir = Files.createTempDirectory("ktbl-flat-names-")
+        try {
+            val model = """{
+              "metadata.root": { "package": "acme::demo", "children": [
+                { "object.value": { "name": "Address", "children": [
+                    { "field.string": { "name": "street", "@required": true } }
+                ] } },
+                { "object.entity": { "name": "User", "children": [
+                    { "field.long":   { "name": "id" } },
+                    { "field.object": { "name": "work", "@objectRef": "Address", "@storage": "flattened", "@flattenedColumnPrefix": "office_" } },
+                    { "source.rdb":   { "@table": "users" } },
+                    { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } }
+                ] } }
+              ] }
+            }""".trimIndent()
+            val gen = KotlinExposedTableGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString(), KotlinGenUtil.ARG_USE_NAMES to "true"))
+            gen.execute(loadString("flat-names", model))
+
+            val src = Files.readString(outDir.resolve("acme/demo/UserTable.kt"))
+            // An owned (ejected) names generator from before member constants does not emit
+            // UserNames.WORK_STREET_COLUMN, so the table must not reference it.
+            assertTrue("val workStreet = text(\"office_street\")" in src,
+                "expected the flattened column's literal; saw:\n$src")
+            assertFalse("WORK_STREET_COLUMN" in src, "saw:\n$src")
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
+    private fun enumTable(statusDecl: String, maxLength: Long? = null): String {
+        val outDir = Files.createTempDirectory("ktbl-enum-len-")
+        try {
+            val model = """{
+              "metadata.root": { "package": "acme::demo", "children": [
+                { "object.entity": { "name": "Ticket", "children": [
+                    { "field.long": { "name": "id" } },
+                    { "field.enum": { "name": "status", $statusDecl } },
+                    { "source.rdb": { "@table": "tickets" } },
+                    { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } }
+                ] } }
+              ] }
+            }""".trimIndent()
+            val loader = loadString("enum-len", model)
+            if (maxLength != null) loader.root.enumDefaults = com.metaobjects.config.EnumDefaults(maxLength)
+            val gen = KotlinExposedTableGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loader)
+            return Files.readString(outDir.resolve("acme/demo/TicketTable.kt"))
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test fun anEnumColumnTakesItsLengthFromMaxLengthThenTheProjectDefault() {
+        val values = "\"@values\": [\"OPEN\", \"CLOSED\"]"
+        val own = enumTable("$values, \"@maxLength\": 16")
+        assertTrue("enumerationByName(\"status\", 16, " in own, own)
+        val byDefault = enumTable(values, maxLength = 24)
+        assertTrue("enumerationByName(\"status\", 24, " in byDefault, byDefault)
+        // No length anywhere: `text`, as `meta migrate` creates it.
+        val none = enumTable(values)
+        assertTrue("customEnumeration(\"status\", \"TEXT\", " in none, none)
+        assertFalse("enumerationByName(\"status\"" in none, none)
+    }
+
     @Test fun storageJsonbEmitsJsonbColumn() {
         val outDir = Files.createTempDirectory("ktbl-jsonb-")
         try {
@@ -339,8 +480,8 @@ class KotlinExposedTableGeneratorTest {
             val src = Files.readString(playerTable)
             // Typed enum column, not a varchar.
             assertTrue(
-                "val status = enumerationByName(\"status\", 64, PlayerStatus::class)" in src,
-                "expected enumerationByName column; saw:\n$src",
+                "val status = customEnumeration(\"status\", \"TEXT\", { v -> PlayerStatus.valueOf(v as String) }, { e -> e.name })" in src,
+                "expected text enum column; saw:\n$src",
             )
             assertTrue("varchar(\"status\"" !in src,
                 "expected NO varchar fallback for the enum column; saw:\n$src")

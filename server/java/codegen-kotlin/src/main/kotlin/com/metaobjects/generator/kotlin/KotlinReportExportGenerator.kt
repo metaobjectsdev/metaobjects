@@ -11,6 +11,7 @@ import com.metaobjects.generator.kotlin.PackageMapping
 import com.metaobjects.field.DecimalField
 import com.metaobjects.field.EnumField
 import com.metaobjects.field.InetField
+import com.metaobjects.field.DurationField
 import com.metaobjects.field.MapField
 import com.metaobjects.field.MetaField
 import com.metaobjects.field.StringField
@@ -95,7 +96,13 @@ open class KotlinReportExportGenerator : MultiFileDirectGeneratorBase<MetaObject
 
         val writerPackage = getArg(ARG_WRITER_PACKAGE) ?: sharedPackage(served)
         val decimalsAsString = WireFormat.of(loader.root).decimalsAsString()
-        write(outRoot, writerPackage, WRITER_NAME, writerSource(writerPackage, xmlNulls, csvBom, decimalsAsString))
+        // field.duration: the writer carries a duration cell factory only for a model whose served
+        // report has a scalar duration column (the same filter the per-report cells use).
+        val duration = served.any { entity ->
+            val credentials = KotlinGenUtil.reportCredentialNames(entity).toSet()
+            entity.metaFields.any { it.name !in credentials && cellFactory(it) == "duration" }
+        }
+        write(outRoot, writerPackage, WRITER_NAME, writerSource(writerPackage, xmlNulls, csvBom, decimalsAsString, duration))
         for (entity in served) {
             val (pkg, shortName) = PackageMapping.splitFqn(entity.name)
             write(outRoot, pkg, "${shortName}Export", exportSource(entity, pkg, shortName, writerPackage, maxRows))
@@ -180,6 +187,7 @@ open class KotlinReportExportGenerator : MultiFileDirectGeneratorBase<MetaObject
         return when {
             f is StringField || f is EnumField || f is UriField || f is InetField -> "text"
             f is DecimalField -> "decimal"
+            f is DurationField -> "duration"
             else -> "raw"
         }
     }
@@ -188,8 +196,13 @@ open class KotlinReportExportGenerator : MultiFileDirectGeneratorBase<MetaObject
     // The shared writer
     // -----------------------------------------------------------------------
 
-    private fun writerSource(pkg: String, xmlNulls: String, csvBom: Boolean, decimalsAsString: Boolean): String =
-        WRITER_TEMPLATE
+    /**
+     * The shared writer; [duration] adds the `duration(Duration?)` cell factory, and is set only when
+     * a served report has a scalar `field.duration` column, so a model without one gets the writer it
+     * always got, byte for byte.
+     */
+    private fun writerSource(pkg: String, xmlNulls: String, csvBom: Boolean, decimalsAsString: Boolean, duration: Boolean = false): String =
+        (if (duration) WRITER_TEMPLATE.replace(DURATION_CELL_ANCHOR, DURATION_CELL + DURATION_CELL_ANCHOR) else WRITER_TEMPLATE)
             .replace("@PACKAGE@", if (pkg.isEmpty()) "" else "package $pkg\n\n")
             .replace("@BOM@", csvBom.toString())
             .replace("@NIL@", (xmlNulls == XML_NULLS_NIL).toString())
@@ -206,6 +219,31 @@ open class KotlinReportExportGenerator : MultiFileDirectGeneratorBase<MetaObject
 
         const val XML_NULLS_EMPTY = "empty"
         const val XML_NULLS_NIL = "nil"
+
+        /** Where [DURATION_CELL] goes in the writer: just before the decimal cell factory. */
+        const val DURATION_CELL_ANCHOR = "    /** A decimal as the wire setting writes it: under \"string\" canonical plain notation (no\n"
+
+        /** The `field.duration` cell factory, emitted only for a model that has one (no Kotlin templates). */
+        const val DURATION_CELL: String = """    /** A field.duration in its canonical ISO-8601 wire form ([-]PT[nH][nM][n[.f]S], to the
+     *  nanosecond), as the list route writes it; Duration.toString() differs for a negative span. */
+    fun duration(value: java.time.Duration?): Cell {
+        if (value == null) return NULL
+        val mag = if (value.isNegative) value.negated() else value
+        val total = mag.seconds
+        val nanos = mag.nano.toLong()
+        if (total == 0L && nanos == 0L) return Cell("PT0S", false)
+        val b = StringBuilder(if (value.isNegative) "-PT" else "PT")
+        if (total / 3600 > 0) b.append(total / 3600).append('H')
+        if (total % 3600 / 60 > 0) b.append(total % 3600 / 60).append('M')
+        if (total % 60 > 0 || nanos > 0) {
+            b.append(total % 60)
+            if (nanos > 0) b.append('.').append(nanos.toString().padStart(9, '0').trimEnd('0'))
+            b.append('S')
+        }
+        return Cell(b.toString(), false)
+    }
+
+"""
 
         /** The simple name of the shared writer. */
         const val WRITER_NAME = "ReportExportWriter"

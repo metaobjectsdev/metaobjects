@@ -21,6 +21,7 @@ import {
   FIELD_SUBTYPE_UUID,
   FIELD_SUBTYPE_URI,
   FIELD_SUBTYPE_INET,
+  FIELD_SUBTYPE_DURATION,
   VALIDATOR_SUBTYPE_REQUIRED,
   VALIDATOR_SUBTYPE_LENGTH,
   FIELD_ATTR_MAX_LENGTH,
@@ -45,6 +46,7 @@ import {
   AGG_ANY,
   AGG_ALL,
   AGG_COLLECT,
+  resolveEnumMaxLength,
 } from "@metaobjectsdev/metadata";
 import { columnNameFromField } from "./naming.js";
 import { enumValues, intValueMapOf, intValueForMember } from "./enum-meta.js";
@@ -189,6 +191,7 @@ function sqliteJsonArrayElementTsType(subType: string): string | undefined {
     case FIELD_SUBTYPE_TIME:
     case FIELD_SUBTYPE_TIMESTAMP:
     case FIELD_SUBTYPE_DECIMAL:
+    case FIELD_SUBTYPE_DURATION:
       return "string";
     case FIELD_SUBTYPE_INT:
     case FIELD_SUBTYPE_LONG:
@@ -242,6 +245,23 @@ export interface EnumIntCustomType {
   intByMember: Record<string, number>;
 }
 
+/**
+ * A `field.duration` column: a generated Drizzle `customType` (the module-local const
+ * {@link DURATION_COLUMN_FN}) whose `toDriver` binds what the column holds — the Postgres
+ * interval text `[-]HH:MM:SS[.f]` (Postgres refuses a signed ISO-8601 duration), a 64-bit integer
+ * count of microseconds on SQLite / D1 / MySQL (it orders and compares as the span) — and whose
+ * `fromDriver` reads either back as the canonical ISO-8601 form. Drizzle's own pg-core `interval()` reads Postgres's text spelling
+ * (`01:30:00`), which is not the wire form. One declaration per module serves every duration
+ * column in it (templates/duration-wire-helper.ts).
+ */
+export const DURATION_COLUMN_FN = "durationColumn";
+
+export interface DurationCustomType {
+  /** The local const name, {@link DURATION_COLUMN_FN}. */
+  fnConstName: string;
+  dialect: Dialect;
+}
+
 export interface ColumnSpec {
   /** Drizzle function name, e.g., "text", "integer", "varchar". */
   fnName: string;
@@ -250,6 +270,8 @@ export interface ColumnSpec {
    * helper) rather than a Drizzle export — the renderer must NOT `imp()` it.
    */
   enumIntCustomType?: EnumIntCustomType;
+  /** Set for a scalar `field.duration`: `fnName` is the LOCAL duration codec const — never `imp()` it. */
+  durationCustomType?: DurationCustomType;
   /** DB column name (snake_case from field name, or @column override). */
   dbName: string;
   /** Positional args after dbName (currently always empty; reserved). */
@@ -458,6 +480,7 @@ export const PG_IDENTITY_CAPABLE_FNS: ReadonlySet<string> = new Set([
  *   with a `@default` (a `TEXT` column cannot take a literal default). Those are
  *   `VARCHAR(255)`.
  * - `field.uuid` is `VARCHAR(36)` and `field.inet` `VARCHAR(45)`: MySQL has neither type.
+ *   `field.duration` is a `BIGINT` count of microseconds, through the local duration codec.
  * - A string enum is `VARCHAR(n)`, `n` the longest member, typed as the member union.
  * - `field.timestamp` is `DATETIME(3)` in Drizzle's "date" mode (see normalizeTimestampMode).
  * - Arrays, `field.object`, `field.map` and `@dbColumnType: jsonb` are `JSON`.
@@ -505,6 +528,10 @@ function mapMysqlColumn(
       return varchar(36);
     case FIELD_SUBTYPE_INET:
       return varchar(45);
+    case FIELD_SUBTYPE_DURATION:
+      // A BIGINT count of microseconds (MySQL has no interval type; an integer orders as the span).
+      // The column function is the local duration codec.
+      return { fnName: DURATION_COLUMN_FN };
     case FIELD_SUBTYPE_OBJECT:
     case FIELD_SUBTYPE_MAP:
       return { fnName: "json" };
@@ -514,6 +541,10 @@ function mapMysqlColumn(
         const t = buildEnumIntCustomType(field, im);
         return t !== undefined ? { fnName: t.fnConstName, enumIntCustomType: t } : { fnName: "int" };
       }
+      // The column `meta migrate` creates: the enum's length (core's resolveEnumMaxLength —
+      // its @maxLength, else the project's enums.maxLength), else the longest member.
+      const sized = resolveEnumMaxLength(field);
+      if (sized !== undefined) return varchar(sized);
       const values = enumValues(field) ?? [];
       const longest = values.reduce((n, v) => Math.max(n, v.length), 1);
       return varchar(longest);
@@ -647,6 +678,10 @@ export function mapColumnType(
           // SQLite has no native uuid/inet type; store as TEXT (string native binding).
           fnName = "text";
           break;
+        case FIELD_SUBTYPE_DURATION:
+          // A 64-bit INTEGER count of microseconds, through the local duration codec.
+          fnName = DURATION_COLUMN_FN;
+          break;
         default:
           fnName = "text";
           break;
@@ -734,6 +769,12 @@ export function mapColumnType(
           // the opt-out.
           fnName = field.attr(FIELD_ATTR_LENIENT) === true ? "text" : "inet";
           break;
+        case FIELD_SUBTYPE_DURATION:
+          // The Postgres-native interval, through the local duration codec: it binds the
+          // interval spelling and reads the canonical ISO-8601 form. A duration array is
+          // interval[] (`.array()` below); Drizzle maps each element through the codec.
+          fnName = DURATION_COLUMN_FN;
+          break;
         case FIELD_SUBTYPE_DECIMAL: {
           // Drizzle pg `numeric` infers as a TS `string` (precision-exact); the
           // native TS binding for field.decimal is `string` to match. Read the
@@ -781,7 +822,16 @@ export function mapColumnType(
               enumIntCustomType = buildEnumIntCustomType(field, im);
               fnName = enumIntCustomType?.fnConstName ?? "integer";
             } else {
-              fnName = "text";
+              // A length (core's resolveEnumMaxLength) is the VARCHAR(n) `meta migrate`
+              // creates; with none the column is unbounded text, as before. An array enum is
+              // a text[] column, whose elements carry no length (migrate's arrayElementSqlType).
+              const sized = isArray ? undefined : resolveEnumMaxLength(field);
+              if (sized !== undefined) {
+                fnName = "varchar";
+                fnOptions = { length: sized };
+              } else {
+                fnName = "text";
+              }
             }
           }
           break;
@@ -798,7 +848,9 @@ export function mapColumnType(
   // arrays use { mode: "json" }, and the enum members go through Zod
   // validation at the Insert/Update layer instead. Mirrors the Zod
   // emission, which already uses z.enum([...]).
-  if (subType === FIELD_SUBTYPE_ENUM && !isArray && (fnName === "text" || (dialect === "mysql" && fnName === "varchar"))) {
+  // A sized enum is a varchar on Postgres too (resolveEnumMaxLength); pg-core's varchar
+  // takes the same `enum` option.
+  if (subType === FIELD_SUBTYPE_ENUM && !isArray && (fnName === "text" || fnName === "varchar")) {
     const values = enumValues(field);
     if (values !== undefined && values.length > 0) {
       fnOptions = { ...(fnOptions ?? {}), enum: values };
@@ -936,6 +988,9 @@ export function mapColumnType(
   if (fnOptions !== undefined) result.fnOptions = fnOptions;
   if (defaultExpr !== undefined) result.defaultExpr = defaultExpr;
   if (enumIntCustomType !== undefined) result.enumIntCustomType = enumIntCustomType;
+  if (fnName === DURATION_COLUMN_FN && subType === FIELD_SUBTYPE_DURATION) {
+    result.durationCustomType = { fnConstName: DURATION_COLUMN_FN, dialect };
+  }
   if (dollarTypeRef !== undefined) result.dollarTypeRef = dollarTypeRef;
   if (leadingComment !== undefined) result.leadingComment = leadingComment;
 

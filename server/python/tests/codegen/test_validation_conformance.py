@@ -22,11 +22,13 @@ import tempfile
 from pathlib import Path
 
 import pytest
+
+from metaobjects.wire import WireFormat
 from pydantic import BaseModel, ValidationError
 
 import metaobjects.core_types  # noqa: F401  — side effect: registers core types
 from metaobjects import MetaDataLoader
-from metaobjects.codegen.generators.entity_model import render_entity_model
+from metaobjects.codegen.generators.entity_model import duration_wire_module, render_entity_model
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.shared.base_types import TYPE_OBJECT
 
@@ -45,6 +47,9 @@ def _load_entity(name: str) -> MetaObject:
     meta = (_corpus_dir() / "meta.json").read_text()
     result = MetaDataLoader.from_string(meta)
     assert not result.errors, [str(e) for e in result.errors]
+    # The corpus' duration cases (duration-reject-*) pin the ISO-8601 input rule, which is what
+    # `wire.durations: iso` generates; under the `native` default Pydantic's own parser applies.
+    result.root.wire = WireFormat(durations="iso")  # type: ignore[attr-defined]
     for child in result.root.children():
         if child.type == TYPE_OBJECT and getattr(child, "name", None) == name:
             assert isinstance(child, MetaObject)
@@ -68,15 +73,23 @@ def _build_generated_model(entity_name: str = DEFAULT_ENTITY) -> type[BaseModel]
     # resolves when ``__name__`` and the module's imports are in scope. A bare
     # exec namespace has no ``__name__`` (forward refs fall back to builtins and
     # fail — #234); a proper module import mirrors the TS runner's temp-module.
-    tmp_dir = tempfile.mkdtemp()
-    mod_name = f"generated_{entity_name.lower()}"
-    mod_path = Path(tmp_dir) / f"{mod_name}.py"
+    #
+    # The module lives in a package beside the generated ``_duration_wire.py`` companion the
+    # entity tier emits for a model with a ``field.duration`` (``Account.holdFor``), which the
+    # model imports package-relatively.
+    pkg_dir = Path(tempfile.mkdtemp()) / f"generated_pkg_{entity_name.lower()}"
+    pkg_dir.mkdir()
+    (pkg_dir / "__init__.py").write_text("")
+    companion = duration_wire_module()
+    (pkg_dir / companion.path).write_text(companion.content)
+    mod_name = f"{pkg_dir.name}.generated_{entity_name.lower()}"
+    mod_path = pkg_dir / f"generated_{entity_name.lower()}.py"
     mod_path.write_text(source)
-    spec = importlib.util.spec_from_file_location(mod_name, mod_path)
-    assert spec and spec.loader
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[mod_name] = module
-    spec.loader.exec_module(module)
+    sys.path.insert(0, str(pkg_dir.parent))
+    try:
+        module = importlib.import_module(mod_name)
+    finally:
+        sys.path.remove(str(pkg_dir.parent))
     model = getattr(module, f"{entity_name}Create")
     assert isinstance(model, type) and issubclass(model, BaseModel)
     return model
@@ -209,3 +222,41 @@ def test_cross_field_comparison_of_mixed_aware_and_naive_timestamps_is_a_validat
         module.WindowCreate(opensAt="2026-01-01T11:00:00Z", closesAt="2026-01-01T10:00:00Z")
     with pytest.raises(ValidationError):
         module.WindowCreate(opensAt="2026-01-01T10:00:00Z", closesAt="2026-01-01T11:00:00")
+
+
+_DROPPED_RULE_MODEL = """
+{ "metadata.root": { "package": "acme::drop", "children": [
+  { "object.entity": { "name": "Drop", "children": [
+    { "source.rdb": { "@table": "drops" } },
+    { "field.long": { "name": "id" } },
+    { "field.int": { "name": "a" } },
+    { "field.int": { "name": "b" } },
+    { "field.string": { "name": "kind" } },
+    { "field.string": { "name": "note" } },
+    { "field.date": { "name": "d" } },
+    { "field.timestamp": { "name": "t" } },
+    { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
+    { "validator.atLeastOne": { "name": "dropped", "@fields": ["note"], "@condition": { "op": "and", "args": [
+      { "op": "gt", "left": { "field": "a" }, "right": { "field": "b" } },
+      { "op": "gt", "left": { "field": "d" }, "right": { "field": "t" } }
+    ] } } },
+    { "validator.requiredWhen": { "name": "kept", "@field": "note", "@when": "kind", "@equals": "X" } }
+  ]}}
+]}}
+"""
+
+
+def test_a_rule_left_to_the_database_declares_no_helper() -> None:
+    # The dropped rule's condition asks for `_cmp` and `_all`, then compares a date with a timestamp
+    # (no order), so the rule is left to the database; nothing it asked for may reach the module.
+    result = MetaDataLoader.from_string(_DROPPED_RULE_MODEL)
+    assert not result.errors, [str(e) for e in result.errors]
+    entity = next(c for c in result.root.children() if c.type == TYPE_OBJECT and c.name == "Drop")
+    source = render_entity_model(entity)
+    assert "_cross_field_rules" in source
+    assert "def _cmp" not in source
+    assert "def _all" not in source
+    module = _import_source(source, "generated_cross_drop")
+    with pytest.raises(ValidationError):
+        module.DropCreate(kind="X")
+    module.DropCreate(a=2, b=1, kind="Y")

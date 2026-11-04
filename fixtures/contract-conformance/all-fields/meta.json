@@ -48,6 +48,7 @@
           { "field.uri": { "name": "homepage" } },
           { "field.uri": { "name": "looseLink", "@lenient": true } },
           { "field.inet": { "name": "address" } },
+          { "field.duration": { "name": "holdFor", "@filterable": true } },
           { "field.object": { "name": "shipTo", "@objectRef": "Address", "@storage": "jsonb" } },
           { "field.object": { "name": "stops", "@objectRef": "Address", "isArray": true, "@storage": "jsonb", "children": [
             { "validator.array": { "name": "stopsCount", "@min": 1, "@max": 5 } }

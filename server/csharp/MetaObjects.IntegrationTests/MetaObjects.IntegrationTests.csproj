@@ -30,6 +30,8 @@
          hosted server runs the emitted artifact unmodified (the SP-C generate→
          compile→load pattern). -->
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.11.0" />
+    <!-- The design-time services (below) bring Roslyn's Workspaces 4.5; this keeps one Roslyn. -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.11.0" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
     <PackageReference Include="xunit" Version="2.6.4" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.5.6" />
@@ -37,6 +39,13 @@
     <PackageReference Include="YamlDotNet" Version="18.0.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.10" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.10" />
+    <!-- DurationIntervalEfCoreTests builds a compiled model of a context that maps durations the way
+         the generated one does (what `dotnet ef dbcontext optimize` runs), so it needs the design-time
+         services at compile time, not only as a tool. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.10">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; compile</IncludeAssets>
+    </PackageReference>
     <!-- The report scenarios also run on SQLite (in-memory file, no container): the same
          generated AppDbContext over the TypeScript-produced SQLite schema. -->
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.10" />

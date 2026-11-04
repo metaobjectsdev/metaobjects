@@ -283,6 +283,6 @@ emitted, created, diffed and dropped** — derived from the model, never written
 SQL. `field.enum` membership (`IN (…)`, the mapped integers for an `@intValueMap`
 enum), `validator.numeric` min/max, `validator.length` min/max, `validator.regex`
 (Postgres only — SQLite has no regex operator), and the entity-level cross-field
-validators (`comparison`, `requiredWhen`, `presentIff`, `atLeastOne`) each become a
+validators (`comparison`, `requiredWhen`, `presentIff`, `atLeastOne`, `exactlyOne`) each become a
 named `CHECK`. Array columns get none (the element rules are enforced app-side).
 (Partial + descending **indexes** are supported too — see Index modeling above.)

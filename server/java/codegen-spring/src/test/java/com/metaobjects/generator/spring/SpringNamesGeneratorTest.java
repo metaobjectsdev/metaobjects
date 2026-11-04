@@ -683,6 +683,12 @@ public class SpringNamesGeneratorTest extends SharedRegistryTestBase {
      * not succeed. Mirrors {@code SpringProjectionDtoCompileRunTest#compile}.
      */
     private void compileAll(Path root) throws Exception {
+        String failure = compile(root, List.of());
+        if (failure != null) fail(failure);
+    }
+
+    /** Compile every {@code .java} under {@code root}; the diagnostics when it fails, else null. */
+    private String compile(Path root, List<String> extraOpts) throws Exception {
         List<File> sources;
         try (Stream<Path> s = Files.walk(root)) {
             sources = s.filter(p -> p.toString().endsWith(".java"))
@@ -694,11 +700,12 @@ public class SpringNamesGeneratorTest extends SharedRegistryTestBase {
         JavaCompiler javac = ToolProvider.getSystemJavaCompiler();
         assertNotNull("JDK (not JRE) required -- getSystemJavaCompiler() returned null", javac);
 
-        Path classes = tempFolder.newFolder("classes-" + root.getFileName()).toPath();
+        Path classes = tempFolder.newFolder().toPath();
         String cp = System.getProperty("java.class.path");
         DiagnosticCollector<JavaFileObject> diags = new DiagnosticCollector<>();
         var fm = javac.getStandardFileManager(diags, null, null);
-        List<String> opts = List.of("-classpath", cp, "-d", classes.toString());
+        List<String> opts = new java.util.ArrayList<>(List.of("-classpath", cp, "-d", classes.toString()));
+        opts.addAll(extraOpts);
 
         boolean ok = javac.getTask(null, fm, diags, opts, null,
                 fm.getJavaFileObjectsFromFiles(sources)).call();
@@ -711,7 +718,162 @@ public class SpringNamesGeneratorTest extends SharedRegistryTestBase {
                       .append(':').append(d.getLineNumber()).append('\n');
                 }
             }
-            fail(sb.toString());
+            return sb.toString();
+        }
+        return null;
+    }
+
+    // -------------------------------------------------------------------------
+    // Flattened value objects: one constant per member's column, none for the field
+    // -------------------------------------------------------------------------
+
+    private static final String FLATTENED_FIXTURE = """
+        {
+          "metadata.root": { "package": "acme::ship", "children": [
+            { "object.value": { "name": "Address", "children": [
+                { "field.string": { "name": "street" } },
+                { "field.string": { "name": "postalCode", "@column": "ZIP" } }
+            ] } },
+            { "object.entity": { "name": "Shipment", "children": [
+                { "source.rdb":   { "@table": "shipments" } },
+                { "field.long":   { "name": "id" } },
+                { "field.object": { "name": "shipTo", "@objectRef": "Address", "@storage": "flattened" } },
+                { "field.object": { "name": "payload", "@objectRef": "Address" } },
+                { "identity.primary": { "@fields": ["id"], "@generation": "increment" } }
+            ] } }
+          ] }
+        }""";
+
+    @Test
+    public void aFlattenedMemberGetsAColumnConstantBesideItsFieldConstants() throws IOException {
+        String src = emit(FLATTENED_FIXTURE, "acme/ship/ShipmentNames.java", Map.of());
+
+        assertTrue(src, src.contains("public static final String SHIP_TO_STREET_COLUMN = \"ship_to_street\";"));
+        assertTrue(src, src.contains("public static final String SHIP_TO_POSTAL_CODE_COLUMN = \"ship_to_ZIP\";"));
+        assertTrue(src, src.contains("public static final String SHIP_TO_FIELD = \"shipTo\";"));
+        assertTrue(src, src.contains("public static final String PAYLOAD_COLUMN = \"payload\";"));
+        // A flattened field has no column of its own, so no _COLUMN constant and no map key.
+        assertFalse(src, src.contains("SHIP_TO_COLUMN"));
+        assertFalse(src, src.contains("Deprecated"));
+        assertFalse(src, src.contains("Map.entry(\"shipTo\","));
+        assertTrue(src, src.contains("Map.entry(\"shipTo.street\", SHIP_TO_STREET_COLUMN)"));
+        assertTrue(src, src.contains("Map.entry(\"shipTo.postalCode\", SHIP_TO_POSTAL_CODE_COLUMN)"));
+    }
+
+    /**
+     * A flattened field has no column constant: the generated names classes, a base and its
+     * subclass, compile under {@code -Xlint:all -Werror}, and reading the field's own column
+     * constant is a compile error.
+     */
+    @Test
+    public void aFlattenedFieldHasNoColumnConstantToRead() throws Exception {
+        String model = """
+            {
+              "metadata.root": { "package": "acme::ship", "children": [
+                { "object.value": { "name": "Address", "children": [
+                    { "field.string": { "name": "street" } }
+                ] } },
+                { "object.entity": { "name": "Base", "abstract": true, "children": [
+                    { "field.long":   { "name": "id" } },
+                    { "field.object": { "name": "shipTo", "@objectRef": "Address", "@storage": "flattened" } }
+                ] } },
+                { "object.entity": { "name": "Order", "extends": "acme::ship::Base", "children": [
+                    { "source.rdb":   { "@table": "orders" } },
+                    { "field.string": { "name": "note" } },
+                    { "identity.primary": { "@fields": ["id"], "@generation": "increment" } }
+                ] } }
+              ] }
+            }""";
+        Path outDir = tempFolder.newFolder().toPath();
+        Path workspace = tempFolder.newFolder().toPath();
+        SpringNamesGenerator gen = new SpringNamesGenerator();
+        gen.setArgs(Map.of("outputDir", outDir.toString()));
+        gen.execute(SpringTestFixtures.loadFixture(workspace, "names-deprecation", model));
+        String order = Files.readString(outDir.resolve("acme/ship/OrderNames.java"));
+        assertTrue(order, order.contains("public abstract class OrderNames extends BaseNames {"));
+        assertFalse(order, order.contains("SHIP_TO_COLUMN"));
+
+        List<String> strict = List.of("-Xlint:all", "-Werror");
+        String failure = compile(outDir, strict);
+        assertTrue("the generated names compile with -Xlint:all -Werror:\n" + failure, failure == null);
+
+        Files.writeString(outDir.resolve("acme/ship/UsesIt.java"),
+            "package acme.ship;\nclass UsesIt { String c = OrderNames.SHIP_TO_COLUMN; }\n");
+        failure = compile(outDir, strict);
+        assertTrue("a use of the absent constant does not compile:\n" + failure,
+            failure != null && failure.contains("SHIP_TO_COLUMN"));
+    }
+
+    @Test
+    public void aFlattenedMemberConstantCollidingWithAFieldConstantIsLeftOut() throws IOException {
+        String model = FLATTENED_FIXTURE.replace(
+            "\"@storage\": \"flattened\" }",
+            "\"@storage\": \"flattened\", \"@flattenedColumnPrefix\": \"st_\" } },\n"
+                + "                { \"field.string\": { \"name\": \"shipToStreet\" }");
+        String src = emit(model, "acme/ship/ShipmentNames.java", Map.of());
+
+        // The field's constant wins; the model generates, as it did before member constants.
+        assertTrue(src, src.contains("public static final String SHIP_TO_STREET_COLUMN = \"ship_to_street\";"));
+        assertFalse(src, src.contains("\"st_street\""));
+        assertTrue(src, src.contains("public static final String SHIP_TO_POSTAL_CODE_COLUMN = \"st_ZIP\";"));
+    }
+
+    @Test
+    public void aChildThatRedeclaresAFlattenedFieldAsJsonbDoesNotInheritItsMemberConstants() throws IOException {
+        String model = """
+            {
+              "metadata.root": { "package": "acme::ship", "children": [
+                { "object.value": { "name": "Address", "children": [
+                    { "field.string": { "name": "street" } }
+                ] } },
+                { "object.entity": { "name": "Base", "abstract": true, "children": [
+                    { "field.object": { "name": "shipTo", "@objectRef": "Address", "@storage": "flattened" } }
+                ] } },
+                { "object.entity": { "name": "Order", "extends": "acme::ship::Base", "children": [
+                    { "source.rdb":   { "@table": "orders" } },
+                    { "field.long":   { "name": "id" } },
+                    { "field.object": { "name": "shipTo", "@objectRef": "Address", "@storage": "jsonb" } },
+                    { "identity.primary": { "@fields": ["id"], "@generation": "increment" } }
+                ] } }
+              ] }
+            }""";
+        String src = emit(model, "acme/ship/OrderNames.java", Map.of());
+
+        // Extending BaseNames would make BaseNames.SHIP_TO_STREET_COLUMN reachable as
+        // OrderNames.SHIP_TO_STREET_COLUMN, naming a column `orders` does not have.
+        assertTrue(src, src.contains("public abstract class OrderNames {"));
+        assertFalse(src, src.contains("SHIP_TO_STREET_COLUMN"));
+        assertTrue(src, src.contains("public static final String SHIP_TO_COLUMN = \"ship_to\";"));
+    }
+
+    /**
+     * The cross-port naming corpus: every {@code <Object>.<field>.<member>} key is a flattened
+     * column, and the names artifact must carry each one as {@code <FIELD>_<MEMBER>_COLUMN}
+     * holding exactly the column {@code meta migrate} creates, under every naming rule.
+     */
+    @Test
+    public void everyFlattenedColumnInTheNamingCorpusIsAConstant() throws IOException {
+        Path dir = Path.of("").toAbsolutePath();
+        while (dir != null && !Files.isDirectory(dir.resolve("fixtures"))) dir = dir.getParent();
+        assertNotNull("could not locate the repository fixtures/ directory", dir);
+        Path corpus = dir.resolve("fixtures/naming-conformance/physical-names");
+        String model = Files.readString(corpus.resolve("meta.naming.json"));
+        com.fasterxml.jackson.databind.JsonNode cases = new com.fasterxml.jackson.databind.ObjectMapper()
+            .readTree(corpus.resolve("cases.json").toFile()).get("cases");
+        for (com.fasterxml.jackson.databind.JsonNode c : cases) {
+            com.fasterxml.jackson.databind.JsonNode naming = c.get("naming");
+            String columnsRule = naming != null && naming.has("columns") ? naming.get("columns").asText() : "snake_case";
+            String src = emit(model, "acme/naming/ShipmentNames.java", Map.of(), columnsRule);
+            var it = c.get("columns").fields();
+            while (it.hasNext()) {
+                var e = it.next();
+                String[] parts = e.getKey().split("\\.");
+                if (parts.length != 3 || !parts[0].equals("Shipment")) continue;
+                String member = SpringNamesGenerator.namesMember(parts[1]) + "_"
+                    + SpringNamesGenerator.namesMember(parts[2]) + "_COLUMN";
+                String decl = "public static final String " + member + " = \"" + e.getValue().asText() + "\";";
+                assertTrue(c.get("name").asText() + ": " + decl + "\n" + src, src.contains(decl));
+            }
         }
     }
 }

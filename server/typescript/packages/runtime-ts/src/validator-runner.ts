@@ -14,12 +14,13 @@ import {
   OBJECT_SUBTYPE_VALUE,
   VALIDATOR_ATTR_MIN, VALIDATOR_ATTR_MAX, VALIDATOR_ATTR_PATTERN,
   VALIDATOR_SUBTYPE_NUMERIC, VALIDATOR_SUBTYPE_ARRAY,
-  FIELD_SUBTYPE_URI, FIELD_SUBTYPE_INET, FIELD_ATTR_LENIENT,
+  FIELD_SUBTYPE_URI, FIELD_SUBTYPE_INET, FIELD_ATTR_LENIENT, FIELD_SUBTYPE_DURATION,
   IDENTITY_ATTR_FIELDS, IDENTITY_ATTR_GENERATION, GENERATION_INCREMENT, GENERATION_UUID,
 } from "@metaobjectsdev/metadata";
 import type { ValidationFailure } from "./errors.js";
 import { decimalFits, parseDecimalInput } from "./decimal-wire.js";
 import { isAbsoluteUri, isInetLiteral } from "./net-format.js";
+import { parseDurationLiteral } from "./duration-wire.js";
 
 export type ValidationResult =
   | { ok: true }
@@ -319,7 +320,8 @@ function comparable(value: unknown): number | bigint | undefined {
 
 function checkType(subType: string, value: unknown): string | null {
   if (subType === FIELD_SUBTYPE_STRING || subType === FIELD_SUBTYPE_UUID
-      || subType === FIELD_SUBTYPE_URI || subType === FIELD_SUBTYPE_INET) {
+      || subType === FIELD_SUBTYPE_URI || subType === FIELD_SUBTYPE_INET
+      || subType === FIELD_SUBTYPE_DURATION) {
     if (typeof value !== "string") return `expected string`;
   } else if (NUMERIC_FIELD_SUBTYPES.has(subType)) {
     if (typeof value !== "number") return `expected number`;
@@ -478,6 +480,16 @@ function scalarErrors(field: MetaData, value: unknown, required: boolean, label:
         expected: "inet", received: value,
       });
     }
+  }
+
+  // field.duration — an ISO-8601 duration with no years or months (no @lenient: the
+  // column is an interval on Postgres, so a value that is not a duration cannot be stored).
+  if (typeof value === "string" && field.subType === FIELD_SUBTYPE_DURATION && parseDurationLiteral(value) === undefined) {
+    errors.push({
+      field: label, rule: "format",
+      message: `'${label}' must be an ISO-8601 duration such as PT1H30M (no years or months)`,
+      expected: "duration", received: value,
+    });
   }
   return errors;
 }

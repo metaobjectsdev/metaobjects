@@ -19,6 +19,7 @@ import {
   FIELD_SUBTYPE_DATE,
   FIELD_SUBTYPE_DECIMAL,
   FIELD_SUBTYPE_DOUBLE,
+  FIELD_SUBTYPE_DURATION,
   FIELD_SUBTYPE_ENUM,
   FIELD_SUBTYPE_FLOAT,
   FIELD_SUBTYPE_INET,
@@ -37,6 +38,7 @@ import {
   pluralize,
   refTarget,
   resolveColumnName,
+  resolveFlattenedColumnName,
   resolveTableSchema,
   type MetaField,
   type MetaObject,
@@ -44,6 +46,7 @@ import {
 } from "@metaobjectsdev/metadata";
 import {
   buildExpectedSchemaWithProvenance,
+  type SchemaBuildSettings,
   qualifiedDbName,
   type CheckDescriptor,
   type ColumnDescriptor,
@@ -113,6 +116,8 @@ export interface BuildPrismaSchemaOptions {
    * them out, which is the only way to take a model with checks to SQLite.
    */
   readonly checks?: "file" | "omit";
+  /** The project's schema conventions and CHECK settings (`GenContext.schemaSettings`). */
+  readonly schemaSettings?: SchemaBuildSettings;
 }
 
 /** Postgres' default schema: a table in it carries no `@@schema`. */
@@ -213,8 +218,9 @@ function refuseSchema(obj: MetaObject, schema: string, provider: PrismaProvider)
 
 /**
  * The fields whose column lands in the table: the declaring object's, then each TPH subtype's. A
- * `field.object @storage: flattened` holds one column per field of its value object,
- * `<parent_col>_<nested_col>`, which is Prisma field `<parent><Nested>`.
+ * `field.object @storage: flattened` holds one column per field of its value object, named by
+ * core naming's `resolveFlattenedColumnName` (the field's `@flattenedColumnPrefix`, else its column
+ * and `_`, then the member's column), which is Prisma field `<parent><Nested>`.
  */
 function fieldsByColumn(obj: MetaObject, all: Iterable<MetaObject>, strategy: ReturnType<typeof physicalNamingOf>["columns"]): Map<string, ColumnField> {
   const members = [obj, ...[...all].filter((o) => o !== obj && tphStorageObject(o) === obj)];
@@ -229,8 +235,7 @@ function fieldsByColumn(obj: MetaObject, all: Iterable<MetaObject>, strategy: Re
       if (field.subType === FIELD_SUBTYPE_OBJECT && field.attr(FIELD_ATTR_STORAGE) === STORAGE_FLATTENED) {
         const value = refTarget(field, FIELD_ATTR_OBJECT_REF);
         if (value === undefined || !isMetaObject(value)) continue;
-        const prefix = `${resolveColumnName(field, strategy)}_`;
-        for (const nested of value.fields()) add(prefix + resolveColumnName(nested, strategy), nested, field.name + upperFirst(nested.name));
+        for (const nested of value.fields()) add(resolveFlattenedColumnName(field, nested, strategy), nested, field.name + upperFirst(nested.name));
         continue;
       }
       add(resolveColumnName(field, strategy), field, field.name);
@@ -274,8 +279,16 @@ function pgColumnType(t: SqlType, field: MetaField): ColumnType {
       return { scalar: "String", list: false, native: "@db.Uuid" };
     case "inet":
       return { scalar: "String", list: false, native: "@db.Inet" };
+    case "interval":
+      // field.duration. Prisma has no interval type, scalar or native, so the column is declared
+      // `Unsupported("interval")`: `prisma db push` / `migrate` create the interval column
+      // `meta verify --db` expects, and Prisma Client leaves the field out of its model — read and
+      // write it with `$queryRaw` (bind the Postgres spelling, `01:30:00`, not ISO-8601).
+      return { scalar: 'Unsupported("interval")', list: false };
     case "array": {
       if (t.element.kind === "array") throw unreachableType("postgresql", field, "a nested array");
+      // An array of an unsupported type is one unsupported type, never a list of one.
+      if (t.element.kind === "interval") return { scalar: 'Unsupported("interval[]")', list: false };
       const element = pgColumnType(t.element, field);
       return { ...element, list: true };
     }
@@ -327,6 +340,9 @@ function mysqlColumnType(t: SqlType, field: MetaField, needsLength: boolean): Co
       return varchar(36);
     case FIELD_SUBTYPE_INET:
       return varchar(45);
+    // A BIGINT count of microseconds, the column the Drizzle generator's MySQL arm writes.
+    case FIELD_SUBTYPE_DURATION:
+      return { scalar: "BigInt", list: false };
     case FIELD_SUBTYPE_TIMESTAMP:
       return { scalar: "DateTime", list: false, native: "@db.DateTime(3)" };
     case FIELD_SUBTYPE_TIME:
@@ -337,6 +353,9 @@ function mysqlColumnType(t: SqlType, field: MetaField, needsLength: boolean): Co
       return { scalar: "Float", list: false, native: "@db.Float" };
     case FIELD_SUBTYPE_ENUM: {
       if (t.kind === "integer") return { scalar: "Int", list: false };
+      // A length the expected schema carries (resolveEnumMaxLength: @maxLength, else the
+      // project's enums.maxLength) is the column; with none, the longest member sizes it.
+      if (t.kind === "text" && t.maxLength !== undefined) return varchar(t.maxLength);
       // ADR-0039: resolving — @values may be inherited.
       const raw = field.attr(FIELD_ATTR_VALUES);
       const values = Array.isArray(raw) ? raw.map(String) : [];
@@ -681,7 +700,10 @@ export function buildPrismaSchema(root: MetaRoot, options: BuildPrismaSchemaOpti
       if (schema !== undefined) throw refuseSchema(obj, schema, provider);
     }
   }
-  const { snapshot, provenance } = buildExpectedSchemaWithProvenance(root, dialect === undefined ? {} : { dialect });
+  const { snapshot, provenance } = buildExpectedSchemaWithProvenance(root, {
+    ...options.schemaSettings,
+    ...(dialect === undefined ? {} : { dialect }),
+  });
   const strategy = physicalNamingOf(root).columns;
 
   const entries: TableEntry[] = [];

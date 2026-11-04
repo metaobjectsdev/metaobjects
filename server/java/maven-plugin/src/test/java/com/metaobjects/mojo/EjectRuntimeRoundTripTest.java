@@ -155,9 +155,9 @@ public class EjectRuntimeRoundTripTest {
             if (!(gen instanceof com.metaobjects.generator.direct.MultiFileDirectGeneratorBase)) {
                 a.put("outputFilename", e.stableName + ".out");
             }
-            // The shared fitness corpus declares no decimal value-object member, and a value object
-            // names the decimal wire classes only for one: that generator runs over a small
-            // dedicated model that has one, so its declared set can be held exact too.
+            // The shared fitness corpus declares no decimal or duration value-object member, and a
+            // value object names the decimal / duration wire classes only for one: that generator runs
+            // over a small dedicated model that has both, so its declared set can be held exact too.
             gen.setArgs(a).execute("value-object".equals(e.stableName) ? decimalValueObjectLoader() : loader);
 
             Set<String> all = imports(out);
@@ -189,7 +189,8 @@ public class EjectRuntimeRoundTripTest {
     private static final String DECIMAL_VALUE_OBJECT_MODEL = """
         {"metadata.root":{"package":"acme","children":[
           {"object.value":{"name":"Price","children":[
-            {"field.decimal":{"name":"net","@precision":12,"@scale":2}}
+            {"field.decimal":{"name":"net","@precision":12,"@scale":2}},
+            {"field.duration":{"name":"validFor"}}
           ]}}
         ]}}""";
 

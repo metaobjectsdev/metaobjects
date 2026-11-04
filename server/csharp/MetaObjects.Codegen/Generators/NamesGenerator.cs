@@ -121,6 +121,7 @@ public sealed class NamesGenerator : PerEntityGenerator
     /// </summary>
     private static List<List<Member>> MemberGroups(ObjectNames n, bool ownOnly)
     {
+        var skipped = CollidingFlattenedMembers(n);
         var groups = new List<List<Member>>();
 
         // The object's own identity. `Name` is the METAMODEL name — it held the physical name
@@ -158,7 +159,17 @@ public sealed class NamesGenerator : PerEntityGenerator
         {
             var path = $"field \"{f.Name}\"";
             fieldMembers.Add(Str(CSharpNaming.FieldMemberName(f.Name, CSharpNaming.MEMBER_FIELD), f.Name, path));
-            fieldMembers.Add(Str(CSharpNaming.FieldMemberName(f.Name, CSharpNaming.MEMBER_COLUMN), f.Column, path));
+            if (f.Column is not null)
+                fieldMembers.Add(Str(CSharpNaming.FieldMemberName(f.Name, CSharpNaming.MEMBER_COLUMN), f.Column, path));
+            // A flattened field has no column of its own (Column is null): its members are the
+            // columns, so only they get constants. A member constant that would collide with another
+            // constant is not emitted; see CollidingFlattenedMembers.
+            foreach (var m in FlattenedMembers(f))
+            {
+                var memberName = CSharpNaming.FlattenedColumnMemberName(f.Name, m.Name);
+                if (!skipped.Contains(memberName))
+                    fieldMembers.Add(Str(memberName, m.Column!, $"field \"{f.Name}.{m.Name}\""));
+            }
         }
         groups.Add(fieldMembers);
 
@@ -183,6 +194,55 @@ public sealed class NamesGenerator : PerEntityGenerator
         }
 
         return groups;
+    }
+
+    private static IEnumerable<FieldNames> FlattenedMembers(FieldNames f) =>
+        (f.Members ?? new Dictionary<string, FieldNames>()).Values.OrderBy(v => v.Name, StringComparer.Ordinal);
+
+    /// <summary>
+    /// The flattened-member constants of <paramref name="n"/> that would share a name with
+    /// another constant of the same artifact — a field <c>shipToStreet</c> beside the member
+    /// <c>street</c> of a flattened <c>shipTo</c>. They are left out, with a warning, rather than
+    /// refused: such a model generated before member constants existed, and every other
+    /// constant it had is still emitted. Computed over the WHOLE resolved member set, so an
+    /// artifact and its base agree about what is skipped.
+    /// </summary>
+    private static HashSet<string> CollidingFlattenedMembers(ObjectNames n)
+    {
+        var taken = new HashSet<string>(StringComparer.Ordinal)
+        {
+            CSharpNaming.Pascal(CSharpNaming.MEMBER_TYPE),
+            CSharpNaming.Pascal(CSharpNaming.MEMBER_SUB_TYPE),
+            CSharpNaming.Pascal(CSharpNaming.MEMBER_NAME),
+        };
+        foreach (var (role, src) in n.Sources)
+        {
+            taken.Add(CSharpNaming.SourceMemberName(role, CSharpNaming.MEMBER_TYPE));
+            taken.Add(CSharpNaming.SourceMemberName(role, CSharpNaming.MEMBER_SUB_TYPE));
+            taken.Add(CSharpNaming.SourceMemberName(role, CSharpNaming.MEMBER_KIND));
+            taken.Add(CSharpNaming.SourceMemberName(role, SOURCE_ATTR_SCHEMA));
+            if (src.PhysicalNameAlias is { } alias) taken.Add(CSharpNaming.SourceMemberName(role, alias));
+        }
+        foreach (var f in n.Fields.Values)
+        {
+            taken.Add(CSharpNaming.FieldMemberName(f.Name, CSharpNaming.MEMBER_FIELD));
+            if (f.Column is not null) taken.Add(CSharpNaming.FieldMemberName(f.Name, CSharpNaming.MEMBER_COLUMN));
+        }
+        foreach (var k in n.Identities.Values.Concat(n.Indexes.Values))
+        {
+            foreach (var member in new[] { CSharpNaming.MEMBER_TYPE, CSharpNaming.MEMBER_SUB_TYPE, CSharpNaming.MEMBER_NAME, CSharpNaming.MEMBER_INDEX })
+                taken.Add(CSharpNaming.KeyMemberName(k.Type, k.Name, member));
+        }
+        var skipped = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var f in n.Fields.Values.OrderBy(v => v.Name, StringComparer.Ordinal))
+        {
+            foreach (var m in FlattenedMembers(f))
+            {
+                var name = CSharpNaming.FlattenedColumnMemberName(f.Name, m.Name);
+                if (!taken.Add(name)) skipped.Add(name);
+            }
+        }
+        return skipped;
     }
 
     /// <summary>
@@ -249,7 +309,22 @@ public sealed class NamesGenerator : PerEntityGenerator
             byMember[m.Name] = m.NodePath;
         }
 
+        foreach (var member in CollidingFlattenedMembers(names).OrderBy(m => m, StringComparer.Ordinal))
+            ctx.Warn($"names: {entity.Name}: the flattened column constant \"{member}\" would share its name " +
+                "with another constant of the artifact, so it is not emitted. Rename the field or the " +
+                "value-object member to get it.");
+
+        // C# class inheritance makes every base constant a member of this class too. When this
+        // object resolves a field differently from its base (a flattened field redeclared as
+        // jsonb, say), a base constant can name a column this table does not have; then the
+        // artifact is emitted complete, with no base, rather than inheriting it.
         var inherited = InheritedMembers(entity, strategy);
+        var full = MemberGroups(names, ownOnly: false).SelectMany(g => g).Select(m => m.Name).ToHashSet(StringComparer.Ordinal);
+        if (superCls is not null && !inherited.IsSubsetOf(full))
+        {
+            superCls = null;
+            inherited = [];
+        }
         var groups = MemberGroups(names, ownOnly: superCls is not null);
 
         var sb = new StringBuilder();
@@ -280,7 +355,9 @@ public sealed class NamesGenerator : PerEntityGenerator
         foreach (var group in groups.Where(g => g.Count > 0))
         {
             foreach (var m in group)
+            {
                 sb.AppendLine($"    public {(inherited.Contains(m.Name) ? "new " : "")}{m.Decl}");
+            }
             sb.AppendLine();
         }
         // ColumnsByField stays COMPLETE — every field, inherited included — because it is
@@ -292,8 +369,20 @@ public sealed class NamesGenerator : PerEntityGenerator
         var hides = superCls is null ? "" : "new ";
         sb.AppendLine($"    public static {hides}readonly Dictionary<string, string> ColumnsByField = new(System.StringComparer.Ordinal)");
         sb.AppendLine("    {");
+        var skippedMembers = CollidingFlattenedMembers(names);
         foreach (var f in names.Fields.Values.OrderBy(v => v.Name, StringComparer.Ordinal))
-            sb.AppendLine($"        [\"{f.Name}\"] = {CSharpNaming.FieldMemberName(f.Name, CSharpNaming.MEMBER_COLUMN)},");
+        {
+            // A flattened field has no entry of its own: only its member keys.
+            if (f.Column is not null)
+                sb.AppendLine($"        [\"{f.Name}\"] = {CSharpNaming.FieldMemberName(f.Name, CSharpNaming.MEMBER_COLUMN)},");
+            // A flattened member is keyed `<field>.<member>`, the path the naming corpus uses.
+            foreach (var m in FlattenedMembers(f))
+            {
+                var memberName = CSharpNaming.FlattenedColumnMemberName(f.Name, m.Name);
+                if (!skippedMembers.Contains(memberName))
+                    sb.AppendLine($"        [\"{f.Name}.{m.Name}\"] = {memberName},");
+            }
+        }
         sb.AppendLine("    };");
         sb.AppendLine("}");
 

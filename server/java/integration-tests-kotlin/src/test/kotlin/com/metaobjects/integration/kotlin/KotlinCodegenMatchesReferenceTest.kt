@@ -33,7 +33,7 @@ internal class KotlinCodegenMatchesReferenceTest {
                 ExpectedColumn("id", families = setOf("long")),
                 ExpectedColumn("title", families = setOf("varchar")),
                 ExpectedColumn("priceCents", families = setOf("long")),
-                ExpectedColumn("status", families = setOf("varchar", "enumerationByName")),
+                ExpectedColumn("status", families = setOf("varchar", "enumerationByName", "customEnumeration")),
                 // Plain `field.timestamp` (no @dbColumnType) → Exposed `datetime(...)` (Postgres
                 // `timestamp without time zone`, LocalDateTime). The TZ-aware opt-in is covered by
                 // Asset.recordedAt below.
@@ -74,7 +74,7 @@ internal class KotlinCodegenMatchesReferenceTest {
                 // string default — not the old `varchar(255)`. The view's DDL is TS-canonical-owned;
                 // this Exposed mapping is read-only.
                 ExpectedColumn("title", families = setOf("text")),
-                ExpectedColumn("status", families = setOf("varchar", "enumerationByName")),
+                ExpectedColumn("status", families = setOf("varchar", "enumerationByName", "customEnumeration")),
             ),
         ),
         "ProgramStat" to EntityExpectation(
@@ -137,7 +137,7 @@ internal class KotlinCodegenMatchesReferenceTest {
         "ProgramsByMonth" to EntityExpectation(
             columns = listOf(
                 ExpectedColumn("createdAtMonth", families = setOf("date"), nullable = false),
-                ExpectedColumn("status", families = setOf("varchar", "enumerationByName"), nullable = false),
+                ExpectedColumn("status", families = setOf("varchar", "enumerationByName", "customEnumeration"), nullable = false),
                 ExpectedColumn("programs", families = setOf("long"), nullable = false),
                 ExpectedColumn("listValue", families = setOf("long"), nullable = true),
             ),
@@ -253,7 +253,7 @@ internal class KotlinCodegenMatchesReferenceTest {
         "AllTypesBreakdown" to EntityExpectation(
             columns = listOf(
                 ExpectedColumn("flag", families = setOf("bool"), nullable = false),
-                ExpectedColumn("level", families = setOf("varchar", "enumerationByName"), nullable = false),
+                ExpectedColumn("level", families = setOf("varchar", "enumerationByName", "customEnumeration"), nullable = false),
                 ExpectedColumn("legacyStatus", families = setOf("customEnumeration"), nullable = true),
                 ExpectedColumn("dateKey", families = setOf("date"), nullable = false),
                 ExpectedColumn("uuidKey", families = setOf("uuid", "portableUuid"), nullable = false),
@@ -280,7 +280,7 @@ internal class KotlinCodegenMatchesReferenceTest {
         ),
         "LiveIntroPrograms" to EntityExpectation(
             columns = listOf(
-                ExpectedColumn("status", families = setOf("varchar", "enumerationByName"), nullable = false),
+                ExpectedColumn("status", families = setOf("varchar", "enumerationByName", "customEnumeration"), nullable = false),
                 ExpectedColumn("programs", families = setOf("long"), nullable = false),
                 ExpectedColumn("notDrafts", families = setOf("long"), nullable = false),
                 ExpectedColumn("listValue", families = setOf("long"), nullable = true),
@@ -334,7 +334,7 @@ internal class KotlinCodegenMatchesReferenceTest {
         ),
         "AuthsByKind" to EntityExpectation(
             columns = listOf(
-                ExpectedColumn("kind", families = setOf("varchar", "enumerationByName"), nullable = true),
+                ExpectedColumn("kind", families = setOf("varchar", "enumerationByName", "customEnumeration"), nullable = true),
                 ExpectedColumn("auths", families = setOf("long"), nullable = false),
                 ExpectedColumn("distinctRefs", families = setOf("long"), nullable = false),
             ),

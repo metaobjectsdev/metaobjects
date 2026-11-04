@@ -51,7 +51,7 @@ class KotlinDecimalWireTest {
     }""".trimIndent()
 
     /** The cross-port form the conformance corpora pin: canonical decimal strings, null members omitted. */
-    private val pinned = WireFormat(WireFormat.Decimals.STRING, WireFormat.NullMembers.OMIT)
+    private val pinned = WireFormat(WireFormat.Decimals.STRING, WireFormat.NullMembers.OMIT, WireFormat.Durations.ISO)
 
     private fun emit(json: String, generators: List<Generator>, wire: WireFormat = pinned): Map<String, String> {
         val outDir = Files.createTempDirectory("kt-decimal-wire-")
@@ -522,9 +522,9 @@ class KotlinDecimalWireTest {
 
     @Test
     fun `emit writes a null member as null like native, and omit leaves it out`() {
-        val emit = writeItem(WireFormat(WireFormat.Decimals.NATIVE, WireFormat.NullMembers.EMIT))
+        val emit = writeItem(WireFormat(WireFormat.Decimals.NATIVE, WireFormat.NullMembers.EMIT, WireFormat.Durations.ISO))
         assertTrue("\"note\":null" in emit, emit)
-        val omit = writeItem(WireFormat(WireFormat.Decimals.NATIVE, WireFormat.NullMembers.OMIT))
+        val omit = writeItem(WireFormat(WireFormat.Decimals.NATIVE, WireFormat.NullMembers.OMIT, WireFormat.Durations.ISO))
         assertFalse("note" in omit, omit)
         assertTrue("\"price\":12.50" in omit, omit)
     }

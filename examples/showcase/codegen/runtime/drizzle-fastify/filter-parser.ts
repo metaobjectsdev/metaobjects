@@ -15,8 +15,11 @@ import {
   ANY_TEMPORAL_EXPECTED, FORMAT_EXPECTED, PLUS_OFFSET_HINT,
   looksLikeUnencodedPlusOffset, matchesAnyTemporal, matchesFormat, utcIsoIfZoned, utcIsoInstant,
 } from "./filter-value-format.js";
-import { FIELD_SUBTYPE_DECIMAL, FIELD_SUBTYPE_TIMESTAMP } from "@metaobjectsdev/metadata";
+import { FIELD_SUBTYPE_DECIMAL, FIELD_SUBTYPE_DURATION, FIELD_SUBTYPE_TIMESTAMP } from "@metaobjectsdev/metadata";
 import { canonicalDecimal } from "../decimal-wire.js";
+import {
+  DURATION_MICROS_MAX, DURATION_MICROS_MIN, durationToStoredMicros, formatPostgresInterval, parseDurationLiteral,
+} from "../duration-wire.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: dynamic dispatch over user's Drizzle table
 type AnyTable = any;
@@ -344,6 +347,16 @@ function coerce(value: unknown, rule: FilterFieldRule, col: unknown, field: stri
     if (dialect === "mysql") return sql`CAST(${canonical} AS DECIMAL(65,30))`;
     return dialect === "sqlite" ? Number(canonical) : canonical;
   }
+  // A duration bound is spelled the way the column stores it: the microsecond integer on SQLite /
+  // D1 / MySQL, the interval spelling on Postgres (which refuses a signed ISO-8601 duration). Both
+  // compare and order as the span does.
+  if (rule.format === FIELD_SUBTYPE_DURATION) {
+    const micros = parseDurationLiteral(s) as bigint;
+    // A well-formed span past 64 bits of microseconds is no stored value on any database, so it is
+    // a bad operand (400), not an error out of the binder.
+    if (micros > DURATION_MICROS_MAX || micros < DURATION_MICROS_MIN) throw invalidValue(field, op, s, DURATION_IN_RANGE);
+    return dialect === "sqlite" || dialect === "mysql" ? durationToStoredMicros(micros) : formatPostgresInterval(micros);
+  }
   // A timestamp bound is compared in the same UTC spelling the generated schemas store:
   // on SQLite/D1 the column is TEXT and compares as text. An instant field (`instant`, i.e.
   // not @localTime) reads a zoneless or date-only bound as UTC, as its write schema does —
@@ -364,6 +377,7 @@ function coerce(value: unknown, rule: FilterFieldRule, col: unknown, field: stri
 
 /** `expected` for a non-whole bound on an integer-valued field (`integer: true`). */
 const INTEGER_EXPECTED = "integer (a whole number)";
+const DURATION_IN_RANGE = "duration within the 64-bit microsecond range";
 
 function coerceAs(value: unknown, subType: string, field: string, op: string, dateValues?: boolean): unknown {
   if (value === null || value === undefined) return null;

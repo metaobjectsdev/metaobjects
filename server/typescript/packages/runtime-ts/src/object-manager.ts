@@ -8,7 +8,7 @@ import {
   FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT, FIELD_SUBTYPE_DECIMAL,
 } from "@metaobjectsdev/metadata";
 import type {
-  PersistenceDriver, Row, WhereClause,
+  Dialect, PersistenceDriver, Row, WhereClause,
   InsertManySpec, UpdateManySpec, DeleteManySpec,
 } from "./persistence-driver.js";
 import {
@@ -125,7 +125,7 @@ export class ObjectManager {
     const entity = this.requireEntity(entityName);
     const driver = opts.tx ?? this.driver;
     const scoped = this.scopeFilter(filter, tphSubtypeOf(entity));
-    const spec = buildSelectSpec(entity, scoped, { ...opts, limit: 1 }, undefined, this.columnNamingStrategy);
+    const spec = buildSelectSpec(entity, scoped, { ...opts, limit: 1 }, undefined, this.columnNamingStrategy, driver.dialect);
     const row = await driver.selectOne(spec);
     if (row === null) return null;
     const jsRow = this.toJsRow(entity, row);
@@ -139,7 +139,7 @@ export class ObjectManager {
     const entity = this.requireEntity(entityName);
     const driver = opts.tx ?? this.driver;
     const scoped = this.scopeFilter(filter, tphSubtypeOf(entity));
-    const spec = buildSelectSpec(entity, scoped, opts, undefined, this.columnNamingStrategy);
+    const spec = buildSelectSpec(entity, scoped, opts, undefined, this.columnNamingStrategy, driver.dialect);
     const rows = (await driver.selectMany(spec)).map((r) => this.toJsRow(entity, r));
     if (opts.include && opts.include.length > 0) {
       await this.attachIncludes(entity, rows, opts.include, driver);
@@ -151,7 +151,7 @@ export class ObjectManager {
     const entity = this.requireEntity(entityName);
     const driver = opts.tx ?? this.driver;
     const scoped = this.scopeFilter(filter, tphSubtypeOf(entity));
-    return driver.count(buildCountSpec(entity, scoped, this.columnNamingStrategy));
+    return driver.count(buildCountSpec(entity, scoped, this.columnNamingStrategy, driver.dialect));
   }
 
   async load(refString: string): Promise<Row | null> {
@@ -291,7 +291,7 @@ export class ObjectManager {
     const spec: UpdateManySpec = {
       table: resolveTableName(entity),
       values: this.toDbRow(entity, coerced),
-      where: requireNonEmptyFilter(entity, filter, "updateMany", this.columnNamingStrategy),
+      where: requireNonEmptyFilter(entity, filter, "updateMany", this.columnNamingStrategy, driver.dialect),
     };
     return driver.updateMany(spec);
   }
@@ -301,7 +301,7 @@ export class ObjectManager {
     const driver = opts.tx ?? this.driver;
     const spec: DeleteManySpec = {
       table: resolveTableName(entity),
-      where: requireNonEmptyFilter(entity, filter, "deleteMany", this.columnNamingStrategy),
+      where: requireNonEmptyFilter(entity, filter, "deleteMany", this.columnNamingStrategy, driver.dialect),
     };
     return driver.deleteMany(spec);
   }
@@ -323,7 +323,7 @@ export class ObjectManager {
     const n2m = resolveN2mDescriptor(entity, relationName, this.metadata);
     if (n2m !== null) {
       const target = this.requireEntity(n2m.targetEntityName);
-      const { joinSpec, makeTargetSpec } = buildN2mLazySpecs(n2m, record, this.metadata, this.columnNamingStrategy);
+      const { joinSpec, makeTargetSpec } = buildN2mLazySpecs(n2m, record, this.metadata, this.columnNamingStrategy, driver.dialect);
       const joinRows = await driver.selectMany(joinSpec);
       const targetSpec = makeTargetSpec(joinRows);
       if (targetSpec === null) return [];
@@ -333,7 +333,7 @@ export class ObjectManager {
 
     const desc = resolveRelationDescriptor(entity, relationName, this.metadata);
     const target = this.requireEntity(desc.targetEntityName);
-    const spec = buildLazyRelateSpec(desc, record, this.metadata, this.columnNamingStrategy);
+    const spec = buildLazyRelateSpec(desc, record, this.metadata, this.columnNamingStrategy, driver.dialect);
     if (spec === null) return desc.cardinality === "one" ? null : [];
     if (desc.cardinality === "one") {
       const row = await driver.selectOne(spec);
@@ -376,7 +376,7 @@ export class ObjectManager {
       const n2m = resolveN2mDescriptor(entity, inc, this.metadata);
       if (n2m !== null) {
         const target = this.requireEntity(n2m.targetEntityName);
-        const { joinSpec, makeTargetSpec } = buildN2mBatchSpecs(n2m, records, this.metadata, this.columnNamingStrategy);
+        const { joinSpec, makeTargetSpec } = buildN2mBatchSpecs(n2m, records, this.metadata, this.columnNamingStrategy, driver.dialect);
         const joinRows = await driver.selectMany(joinSpec);
         const targetSpec = makeTargetSpec(joinRows);
         const targetRows = targetSpec === null ? [] : (await driver.selectMany(targetSpec)).map((r) => this.toJsRow(target, r));
@@ -418,7 +418,7 @@ export class ObjectManager {
 
       const desc = resolveRelationDescriptor(entity, inc, this.metadata);
       const target = this.requireEntity(desc.targetEntityName);
-      const spec = buildIncludeBatchSpec(desc, records, this.metadata, this.columnNamingStrategy);
+      const spec = buildIncludeBatchSpec(desc, records, this.metadata, this.columnNamingStrategy, driver.dialect);
       const targetRows = spec === null ? [] : (await driver.selectMany(spec)).map((r) => this.toJsRow(target, r));
 
       if (desc.cardinality === "one") {
@@ -553,9 +553,9 @@ export class ObjectManager {
 // updateMany / deleteMany with an empty filter would silently affect every row.
 // Force callers to be explicit (use $or-style or a tautology if they really mean "all").
 function requireNonEmptyFilter(
-  entity: MetaData, filter: Filter, op: string, strategy: ColumnNamingStrategy,
+  entity: MetaData, filter: Filter, op: string, strategy: ColumnNamingStrategy, dialect?: Dialect,
 ): WhereClause {
-  const where = compileFilter(entity, filter, strategy);
+  const where = compileFilter(entity, filter, strategy, dialect);
   if (where === null) {
     throw new MetadataError(
       `${op} on '${entity.name}' requires a non-empty filter — pass an explicit condition or use a per-row loop`,

@@ -245,6 +245,7 @@ Reach for these before inventing anything. When no row fits, run the decision pr
 | Open JSON, no reader narrows it | `field.string` + `@dbColumnType: jsonb` | the LAST rung — see "A JSON column" |
 | URL / URI | `field.uri` | native `URI`/`Uri`; `text` column; strict absolute-URI validation (add `@lenient: true` to store any string) — a real native type + behavior, so a subtype (not a validated string) |
 | IP address | `field.inet` | native IP type; Postgres `inet` column; strict IPv4/IPv6-literal validation (add `@lenient: true` for a plain-string `text` column) |
+| Elapsed time / timeout / delay | `field.duration` | native `TimeSpan`/`Duration`/`timedelta`; Postgres `interval` column; ISO-8601 on the wire (`PT1H30M`). Not for a calendar span ("every 3 months"): that is an int and a unit. Never a string or a count of seconds |
 | Validated plain string (email / hostname) | `field.string` + `@stringFormat` | `@stringFormat: email` or `@stringFormat: hostname` — idiomatic per-port validation; don't hand-write the `validator.regex` |
 
 Four rules behind those rows, in short (full text: `references/choosing-a-shape.md`):
@@ -286,9 +287,12 @@ Reuse a constraint set across entities with an abstract `field.enum` + `extends`
 `@storage` controls persistence:
 
 - `flattened` — one DB column per sub-field (`address_street`, `address_city`, …).
-  Illegal on array fields.
+  Illegal on array fields. The prefix is the field's column and `_`;
+  `@flattenedColumnPrefix` on the field replaces it verbatim (`""` keeps the members'
+  own columns). Refused on any other storage.
 - `jsonb` — one `jsonb` column.
-- `subdocument` (default, back-compat) — single jsonb column.
+- `subdocument` — single jsonb column (a hint for document-store targets).
+- not set (the default) — one `jsonb` column, as `jsonb`.
 
 ```json
 { "field.object": { "name": "address", "@objectRef": "Address", "@storage": "flattened" } }
@@ -438,12 +442,18 @@ store with no `CHECK` support is still covered. PATCH and partial-update models 
 | `validator.requiredWhen` | `@field` is required when `@when` equals `@equals` | `@field`, `@when`, `@equals` |
 | `validator.presentIff` | `@field` is present **iff** `@when` equals `@equals` (biconditional) | `@field`, `@when`, `@equals` |
 | `validator.atLeastOne` | at least one of `@fields` (2+) is present | `@fields` |
+| `validator.exactlyOne` | exactly one of `@fields` (2+) is present | `@fields` |
+
+All five take an optional `@condition`, an expression over the entity's fields (the
+`origin.computed` grammar): the rule then holds only where the condition does. And every validator
+that becomes a CHECK takes an optional db-provider `@constraintName` naming it.
 
 ```json
 { "validator.comparison":   { "name": "hpInRange", "@left": "currentHp", "@op": "lte", "@right": "maxHp" } }
 { "validator.requiredWhen": { "name": "reasonIfRejected", "@field": "rejectReason", "@when": "status", "@equals": "rejected" } }
 { "validator.presentIff":   { "name": "usedAtWhenUsed", "@field": "usedAt", "@when": "isUsed", "@equals": "true" } }
 { "validator.atLeastOne":   { "name": "emailOrPhone", "@fields": ["email", "phone"] } }
+{ "validator.exactlyOne":   { "name": "oneOwner", "@fields": ["customerId", "accountId"] } }
 ```
 
 These are children of `object.entity`, alongside its fields and identities.

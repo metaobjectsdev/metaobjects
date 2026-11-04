@@ -151,6 +151,8 @@ public class DbContextGenerator : IGenerator
             // creates (ADR-0015).
             foreach (var f in p.Fields().Where(f => f.SubType == FIELD_SUBTYPE_MAP))
                 modelLines.Add(MapJsonbConfig(name, p, f, ctx));
+            // A duration column on a view reads through the same provider-dependent mapping.
+            AddDurationConfig(name, p, p.Fields(), ctx, modelLines);
         }
         foreach (var e in objects.Where(o => o.IsEntity() && !o.IsReadOnlyProjection()))
         {
@@ -275,6 +277,7 @@ public class DbContextGenerator : IGenerator
         // did not model jsonbObjectsOnly suppressing the flattened arm on a read model.
         if (modelLines.Any(l => l.Contains(MapJsonbHelperName))) EmitMapJsonbHelper(sb);
         sb.AppendLine("}");
+        if (modelLines.Any(l => l.Contains(DurationIntervalHelperName + "."))) EmitDurationIntervalHelper(sb);
         return [new EmittedFile("AppDbContext.g.cs", sb.ToString())];
     }
 
@@ -926,7 +929,13 @@ public class DbContextGenerator : IGenerator
     private static string EnumConversionCall(string owner, MetaObject entity, MetaField f, GenConfig config)
     {
         var intMap = IntValueMapOf(f);
-        if (intMap is null) return "HasConversion<string>()";
+        // A string-backed enum's column length (EnumLength.ResolveMaxLength: its @maxLength, else
+        // the project's enums.maxLength) is the VARCHAR(n) `meta migrate` creates. An array enum
+        // is a text[] column, whose elements carry no length.
+        if (intMap is null)
+            return !f.ResolvedIsArray() && EnumLength.ResolveMaxLength(f) is { } length
+                ? $"HasConversion<string>().HasMaxLength({length})"
+                : "HasConversion<string>()";
 
         var members = f.EffectiveEnumValues ?? new List<string>();
         if (members.Count == 0) return "HasConversion<string>()";
@@ -1081,9 +1090,219 @@ public class DbContextGenerator : IGenerator
                 $"        modelBuilder.Entity<{className}>().Property(x => x.{prop}).HasColumnType(\"inet\");");
         }
 
+        // field.duration — a System.TimeSpan. Npgsql maps it to the native `interval` (and an array
+        // to `interval[]`), reading an interval with a month or year part as an error. Every other
+        // provider stores the canonical ISO-8601 string in a text column (the TS-owned SQLite / MySQL
+        // schemas), through the entity namespace's DurationWire; EF's own TimeSpan text ("01:30:00")
+        // would not be the cross-port form, and MySQL's `time` cannot hold more than 838 hours.
+        AddDurationConfig(className, entity, fieldList, ctx, modelLines);
+
         foreach (var f in fieldList.Where(f => !f.ResolvedIsArray() && f.DbColumnType is not null))
             if (DbColumnTypeConfig(className, f) is { } cfg) modelLines.Add(cfg);
     }
+
+    // field.duration — a System.TimeSpan. Npgsql maps it to the native `interval` (and an array
+    // to `interval[]`), reading an interval with a month or year part as an error. Every other
+    // provider stores a 64-bit count of microseconds in an integer column (the TS-owned SQLite /
+    // MySQL schemas), through the entity namespace's DurationWire; EF's own TimeSpan text
+    // ("01:30:00") does not order as the span, and MySQL's `time` cannot hold more than 838 hours.
+    private static void AddDurationConfig(
+        string className, MetaObject entity, IEnumerable<MetaField> fields, GenContext ctx, List<string> modelLines)
+    {
+        foreach (var f in fields.Where(f => f.SubType == FIELD_SUBTYPE_DURATION && f.DbColumnType is null))
+            modelLines.Add(string.Join("\n",
+                DurationColumnLines($"modelBuilder.Entity<{className}>()", "x", CSharpNaming.Pascal(f.Name), f.ResolvedIsArray(), entity, ctx, "        ")));
+    }
+
+    // The provider-dependent mapping of one duration column (a top-level property, or a member of a
+    // flattened value object through its owned builder `target`):
+    //   - Npgsql: the native `interval` (`interval[]` for an array), read through the generated
+    //     DurationInterval type mapping, so a month or year part, or a day count past what a TimeSpan
+    //     holds, is refused instead of read wrong (Npgsql's own TimeSpan read drops a negative month
+    //     part and wraps such a day count).
+    //   - any other provider (SQLite, MySQL): a 64-bit count of microseconds in an integer column
+    //     (sub-microsecond ticks truncated toward zero; a count past a TimeSpan refused, not
+    //     wrapped), which orders and compares as the span does. An array holds the counts.
+    private static IEnumerable<string> DurationColumnLines(
+        string target, string v, string prop, bool isArray, MetaObject owner, GenContext ctx, string indent)
+    {
+        var micros = DurationMicrosConverter(owner, ctx);
+        yield return $"{indent}if (Database.ProviderName == \"{NpgsqlProviderName}\")";
+        yield return isArray
+            ? $"{indent}    {target}.PrimitiveCollection({v} => {v}.{prop}).Metadata.SetTypeMapping({DurationIntervalHelperName}.ArrayMapping);"
+            : $"{indent}    {target}.Property({v} => {v}.{prop}).HasColumnType(\"interval\").Metadata.SetTypeMapping({DurationIntervalHelperName}.Mapping);";
+        yield return $"{indent}else";
+        yield return isArray
+            ? $"{indent}    {target}.PrimitiveCollection({v} => {v}.{prop}).ElementType().HasConversion({micros});"
+            : $"{indent}    {target}.Property({v} => {v}.{prop}).HasConversion({micros});";
+    }
+
+    // The namespace OWNER's DurationWire is emitted into (owner has a duration field, so it has one).
+    private static string DurationWireRef(MetaObject owner, GenContext ctx) =>
+        "global::" + PackageBindingResolver.Resolve(ctx.Config, PackageBindingResolver.EffectivePackage(owner), owner.Name, fallbackContext: owner.Name)
+        + ".DurationWire";
+
+    // A TimeSpan <-> canonical ISO-8601 string converter: a duration inside a JSON document.
+    private static string DurationConverter(MetaObject owner, GenContext ctx)
+    {
+        var dw = DurationWireRef(owner, ctx);
+        return "new Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<System.TimeSpan, string>(" +
+            $"v => {dw}.Format(v), v => {dw}.Parse(v))";
+    }
+
+    // A TimeSpan <-> microsecond-count converter: a duration column on a database without an interval type.
+    private static string DurationMicrosConverter(MetaObject owner, GenContext ctx)
+    {
+        var dw = DurationWireRef(owner, ctx);
+        return "new Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<System.TimeSpan, long>(" +
+            $"v => {dw}.ToMicros(v), v => {dw}.FromMicros(v))";
+    }
+
+    private const string DurationIntervalHelperName = "DurationInterval";
+
+    // field.duration on Npgsql — the interval type mapping the duration columns are read through.
+    // Npgsql's own TimeSpan read guards the month part with `months > 0` (so '-1 mons' reads as zero)
+    // and adds the day part unchecked (so a day count past a TimeSpan wraps); this mapping reads the
+    // value as NpgsqlInterval instead and refuses both. Npgsql is reached by reflection only, so the
+    // generated context compiles, and runs, in a project with no Npgsql reference; the class is first
+    // touched in the Npgsql branch of OnModelCreating. Emitted after the context class: the two
+    // mapping types must be public and top-level for a compiled model (`dotnet ef dbcontext
+    // optimize`), which re-creates a property's mapping as `<MappingType>.Default.Clone(...)` and
+    // refuses a nested or non-public one. DurationIntervalEfCoreTests (integration) gates LINQ,
+    // interval arithmetic and a compiled model against a live Postgres.
+    private static void EmitDurationIntervalHelper(StringBuilder sb) => sb.AppendLine(DurationIntervalHelperSource);
+
+    private const string DurationIntervalHelperSource = """
+
+/// <summary>
+/// field.duration on Npgsql: an <c>interval</c> column read through <c>NpgsqlInterval</c>, so a month
+/// or year part, or a day count past what a TimeSpan holds, is refused rather than read wrong.
+/// Npgsql is reached by reflection: a project on another provider needs no Npgsql reference.
+/// </summary>
+internal static class DurationInterval
+{
+    // The Npgsql shape this mapping reads, resolved and checked when the model is built (the
+    // first touch is SetTypeMapping in OnModelCreating, or the first query on a compiled model),
+    // so a missing or changed type fails there, naming what is missing, rather than on a row.
+    internal static readonly System.Type IntervalType = Resolve();
+    private static readonly System.Reflection.PropertyInfo Months = IntervalType.GetProperty("Months")!;
+    private static readonly System.Reflection.PropertyInfo Days = IntervalType.GetProperty("Days")!;
+    private static readonly System.Reflection.PropertyInfo Time = IntervalType.GetProperty("Time")!;
+    internal static readonly System.Reflection.MethodInfo GetFieldValue =
+        typeof(System.Data.Common.DbDataReader).GetMethod(nameof(System.Data.Common.DbDataReader.GetFieldValue))!;
+
+    internal static readonly Microsoft.EntityFrameworkCore.Storage.RelationalTypeMapping Mapping = DurationIntervalMapping.Default;
+    internal static readonly Microsoft.EntityFrameworkCore.Storage.RelationalTypeMapping ArrayMapping = DurationIntervalArrayMapping.Default;
+
+    private static System.Type Resolve()
+    {
+        var type = System.Type.GetType(IntervalShape.TypeName, throwOnError: false);
+        if (IntervalShape.Problem(type) is { } problem) throw new System.InvalidOperationException(problem);
+        return type!;
+    }
+
+    /// <summary>The check of the NpgsqlInterval shape, kept apart from the state above so it can run against any type.</summary>
+    internal static class IntervalShape
+    {
+        internal const string TypeName = "NpgsqlTypes.NpgsqlInterval, Npgsql";
+
+        /// <summary>Null when <paramref name="type"/> has the shape the mapping reads, else a message naming what is missing.</summary>
+        internal static string? Problem(System.Type? type)
+        {
+            const string Lead = "field.duration on Npgsql: the generated DurationInterval mapping reads an interval column as " +
+                "NpgsqlTypes.NpgsqlInterval (an Int32 Months, an Int32 Days and an Int64 Time in microseconds; " +
+                "tested with Npgsql 8.0.5), but ";
+            if (type is null) return Lead + "no type NpgsqlTypes.NpgsqlInterval was found in the loaded Npgsql assembly.";
+            var missing = new System.Collections.Generic.List<string>();
+            foreach (var (name, want) in new[] { ("Months", typeof(int)), ("Days", typeof(int)), ("Time", typeof(long)) })
+            {
+                var property = type.GetProperty(name);
+                if (property is null || property.PropertyType != want)
+                    missing.Add(want.Name + " " + name);
+            }
+            return missing.Count == 0
+                ? null
+                : Lead + type.FullName + " has no " + string.Join(", no ", missing) + " property. Check the Npgsql version the project references.";
+        }
+    }
+
+    /// <summary>An NpgsqlInterval as a TimeSpan: refused when it has a month or year part, or a span a TimeSpan cannot hold.</summary>
+    public static System.TimeSpan FromInterval(object interval)
+    {
+        if ((int)Months.GetValue(interval)! != 0)
+            throw new System.InvalidCastException("field.duration: the interval has a month or year part, so it is not a fixed-length span");
+        var days = (int)Days.GetValue(interval)!;
+        var micros = (long)Time.GetValue(interval)!;
+        return System.TimeSpan.FromTicks(checked(days * System.TimeSpan.TicksPerDay + micros * 10));
+    }
+
+    /// <summary>An interval[] (an NpgsqlInterval array) as the list a duration array property holds.</summary>
+    public static System.Collections.Generic.IList<System.TimeSpan> FromIntervals(object intervals)
+    {
+        var list = new System.Collections.Generic.List<System.TimeSpan>();
+        foreach (var interval in (System.Array)intervals) list.Add(FromInterval(interval!));
+        return list;
+    }
+
+    // A span as Postgres interval input: [-]HH:MM:SS[.f], hours unbounded, no day part. The column
+    // holds microseconds, so sub-microsecond ticks are truncated toward zero.
+    internal static string Literal(System.TimeSpan value)
+    {
+        long micros = value.Ticks / 10;
+        bool negative = micros < 0;
+        ulong rest = negative ? (ulong)(-(micros + 1)) + 1UL : (ulong)micros;
+        ulong frac = rest % 1_000_000UL, s = rest / 1_000_000UL % 60, m = rest / 60_000_000UL % 60, h = rest / 3_600_000_000UL;
+        var text = h.ToString("00", System.Globalization.CultureInfo.InvariantCulture) + ":" + m.ToString("00", System.Globalization.CultureInfo.InvariantCulture)
+            + ":" + s.ToString("00", System.Globalization.CultureInfo.InvariantCulture);
+        if (frac > 0) text += "." + frac.ToString("D6", System.Globalization.CultureInfo.InvariantCulture).TrimEnd('0');
+        return "INTERVAL '" + (negative ? "-" : "") + text + "'";
+    }
+}
+
+/// <summary>The type mapping of a field.duration column on Npgsql (an <c>interval</c>, read through <see cref="DurationInterval"/>).</summary>
+public sealed class DurationIntervalMapping : Microsoft.EntityFrameworkCore.Storage.RelationalTypeMapping
+{
+    public static DurationIntervalMapping Default { get; } = new();
+
+    public DurationIntervalMapping() : base("interval", typeof(System.TimeSpan)) { }
+    private DurationIntervalMapping(RelationalTypeMappingParameters parameters) : base(parameters) { }
+    protected override Microsoft.EntityFrameworkCore.Storage.RelationalTypeMapping Clone(RelationalTypeMappingParameters parameters) => new DurationIntervalMapping(parameters);
+    public override System.Reflection.MethodInfo GetDataReaderMethod() => DurationInterval.GetFieldValue.MakeGenericMethod(DurationInterval.IntervalType);
+    public override System.Linq.Expressions.Expression CustomizeDataReaderExpression(System.Linq.Expressions.Expression expression) =>
+        System.Linq.Expressions.Expression.Call(typeof(DurationInterval).GetMethod(nameof(DurationInterval.FromInterval))!,
+            System.Linq.Expressions.Expression.Convert(expression, typeof(object)));
+    protected override string GenerateNonNullSqlLiteral(object value) => DurationInterval.Literal((System.TimeSpan)value);
+}
+
+/// <summary>The type mapping of an <c>@isArray</c> field.duration column on Npgsql (an <c>interval[]</c>).</summary>
+public sealed class DurationIntervalArrayMapping : Microsoft.EntityFrameworkCore.Storage.RelationalTypeMapping
+{
+    private static readonly Microsoft.EntityFrameworkCore.ChangeTracking.ValueComparer<System.Collections.Generic.IList<System.TimeSpan>> ListComparer = new(
+        (a, b) => a == null ? b == null : b != null && System.Linq.Enumerable.SequenceEqual(a, b),
+        v => System.Linq.Enumerable.Aggregate(v, 0, (h, e) => System.HashCode.Combine(h, e)),
+        v => System.Linq.Enumerable.ToList(v));
+
+    // After ListComparer: static initializers run in declaration order. The element mapping is the
+    // scalar one, which is what lets EF query the column as a primitive collection (Contains, Count,
+    // Any): a compiled model carries only what the mapping itself names.
+    public static DurationIntervalArrayMapping Default { get; } = new();
+
+    public DurationIntervalArrayMapping() : base(new RelationalTypeMappingParameters(
+        new CoreTypeMappingParameters(typeof(System.Collections.Generic.IList<System.TimeSpan>), comparer: ListComparer, keyComparer: ListComparer,
+            elementMapping: DurationIntervalMapping.Default), "interval[]")) { }
+    private DurationIntervalArrayMapping(RelationalTypeMappingParameters parameters) : base(parameters) { }
+    protected override Microsoft.EntityFrameworkCore.Storage.RelationalTypeMapping Clone(RelationalTypeMappingParameters parameters) => new DurationIntervalArrayMapping(parameters);
+    public override System.Reflection.MethodInfo GetDataReaderMethod() => DurationInterval.GetFieldValue.MakeGenericMethod(DurationInterval.IntervalType.MakeArrayType());
+    public override System.Linq.Expressions.Expression CustomizeDataReaderExpression(System.Linq.Expressions.Expression expression) =>
+        System.Linq.Expressions.Expression.Call(typeof(DurationInterval).GetMethod(nameof(DurationInterval.FromIntervals))!,
+            System.Linq.Expressions.Expression.Convert(expression, typeof(object)));
+    protected override string GenerateNonNullSqlLiteral(object value) =>
+        "ARRAY[" + string.Join(",", System.Linq.Enumerable.Select((System.Collections.Generic.IEnumerable<System.TimeSpan>)value, DurationInterval.Literal)) + "]::interval[]";
+}
+""";
+
+    // The EF Core provider name Npgsql registers (DbContext.Database.ProviderName).
+    private const string NpgsqlProviderName = "Npgsql.EntityFrameworkCore.PostgreSQL";
 
     // True when a value object declares a field.map, or holds a value object that does.
     private static bool HoldsMap(MetaObject vo, MetaRoot root, HashSet<MetaObject> seen)
@@ -1099,7 +1318,7 @@ public class DbContextGenerator : IGenerator
     }
 
     // Owned-type config for an object-typed entity field. @storage flattened maps each
-    // nested scalar to "{parentCol}_{nestedCol}"; every other storage collapses to one
+    // nested scalar to its core-naming flattened column (PhysicalNaming.ResolveFlattenedColumnName); every other storage collapses to one
     // json column (.ToJson) — matching the TS-owned schema DDL. null (with a warning)
     // when @objectRef can't be resolved. <paramref name="owner"/> is the emitted CLR class
     // name (the write entity, or a write-through entity's <Entity>View read model — #214).
@@ -1118,7 +1337,6 @@ public class DbContextGenerator : IGenerator
         }
         var strategy = ctx.Config.ColumnNamingStrategy;
         var nav = CSharpNaming.Pascal(field.Name);
-        var parentCol = CSharpNaming.Column(field, strategy);
         // A6 -- the field itself belongs to `entity` (the JSON column's own physical
         // name, not the nested value object's), so it hits entity's own names artifact
         // unconditionally in practice — a lookup, not an assumption, per ColumnRef.
@@ -1164,14 +1382,14 @@ public class DbContextGenerator : IGenerator
                 ? $"        modelBuilder.Entity<{owner}>().OwnsOne(x => x.{nav}, b => b.ToJson({parentColRef}));"
                 : OwnedJsonBlock("OwnsOne", owner, nav, parentColRef, jsonEnums);
 
-        // Flattened-column prefix for each nested member: `<parent field's column>_`. This is
-        // migrate-ts's rule (expected-schema.ts flattenObjectField), and TS owns the schema
-        // (ADR-0015) — so it is the convention, NOT EF's, whose own owned-type default is
-        // `<Nav>_<Prop>` (`Address_Mood`) and binds a column no migration creates. A former
-        // `@embeddedColumnPrefix` override is gone from here: it was registered in no
-        // provider (unloadable under the strict registry, ADR-0023) and migrate never read
-        // it, so honouring it could only ever bind a column the migration does not create.
-        var prefix = $"{parentCol}_";
+        // Each nested member's column is core naming's, whole
+        // (PhysicalNaming.ResolveFlattenedColumnName): the field's @flattenedColumnPrefix verbatim,
+        // else `<parent field's column>_`, then the member's own column — the same function
+        // migrate-ts names these columns with, and TS owns the schema (ADR-0015). It is NOT EF's
+        // own owned-type default, `<Nav>_<Prop>`, which binds a column no migration creates
+        // (under the upperFirst column rule the two coincide). Under this generator's column
+        // rule, so verify's probe of an alternate rule names these columns the way it names
+        // every other.
 
         var sb = new StringBuilder();
         sb.AppendLine($"        modelBuilder.Entity<{owner}>().OwnsOne(x => x.{nav}, b =>");
@@ -1184,7 +1402,7 @@ public class DbContextGenerator : IGenerator
         //
         // Every member the migration flattens must be named here, in the value object's
         // declaration order. migrate's `flattenObjectField` (expected-schema.ts) iterates
-        // `targetObject.fields()` UNCONDITIONALLY and emits one `<prefix>_<member col>` per
+        // `targetObject.fields()` UNCONDITIONALLY and emits one `<prefix><member col>` per
         // member, so any member this loop skips gets EF's `<Nav>_<Prop>` default instead —
         // a column the migration never creates, failing at the engine with 42703.
         //
@@ -1205,7 +1423,7 @@ public class DbContextGenerator : IGenerator
         // (see the map loop in EmitFieldTypeConfig), pinned to its flattened column name.
         foreach (var nf in vo.Fields())
         {
-            var nestedColAny = $"{prefix}{CSharpNaming.Column(nf, strategy)}";
+            var nestedColAny = PhysicalNaming.ResolveFlattenedColumnName(field, nf, strategy);
 
             // An ARRAY enum: migrate gives it a native array column (subtypeToSqlType derives
             // text[] from isArray), and EF Core 8 maps it as a primitive collection. Same
@@ -1219,7 +1437,7 @@ public class DbContextGenerator : IGenerator
                 continue;
             }
 
-            // A NESTED value object: migrate gives it ONE json column at `<prefix>_<col>`
+            // A NESTED value object: migrate gives it ONE json column at `<prefix><col>`
             // (subtypeToSqlType returns { kind: "json" } for field.object — a nested VO does
             // not flatten recursively). EF models it as a nested owned type, so it needs its
             // own ToJson pinned to that column, plus the enum conversions its own members
@@ -1241,7 +1459,7 @@ public class DbContextGenerator : IGenerator
             }
 
             // A `field.map` member: the migration flattens it to a jsonb column at
-            // `<prefix>_<col>`, so it takes the SAME converter/comparer pair a top-level map
+            // `<prefix><col>`, so it takes the SAME converter/comparer pair a top-level map
             // takes, pinned to that name. Previously this fell to a warning whose stated
             // reason was that the port configured a top-level map nowhere either — that is
             // no longer true, and an unmapped dictionary here binds EF's `<Nav>_<Prop>`
@@ -1250,6 +1468,21 @@ public class DbContextGenerator : IGenerator
             {
                 sb.AppendLine($"            b.Property(p => p.{CSharpNaming.Pascal(nf.Name)})"
                     + $".HasColumnName(\"{nestedColAny}\")" + MapJsonbSuffix(vo, nf, ctx) + ";");
+                continue;
+            }
+
+            // A `field.duration` member: the migration flattens it to an `interval` column on
+            // Postgres and an integer microsecond count elsewhere — the same provider-dependent
+            // mapping a top-level duration takes (DurationColumnLines). Without it EF would write
+            // its own "01:30:00" text there and fail to read another port's count.
+            if (nf.SubType == FIELD_SUBTYPE_DURATION && CSharpNaming.DbColumnTypeClrOverride(nf) is null)
+            {
+                var dprop = CSharpNaming.Pascal(nf.Name);
+                sb.AppendLine(nf.ResolvedIsArray()
+                    ? $"            b.PrimitiveCollection(p => p.{dprop}).HasColumnName(\"{nestedColAny}\");"
+                    : $"            b.Property(p => p.{dprop}).HasColumnName(\"{nestedColAny}\");");
+                foreach (var line in DurationColumnLines("b", "p", dprop, nf.ResolvedIsArray(), vo, ctx, "            "))
+                    sb.AppendLine(line);
                 continue;
             }
 
@@ -1296,7 +1529,6 @@ public class DbContextGenerator : IGenerator
     /// </remarks>
     private static List<string> JsonEnumConversions(MetaObject vo, GenContext ctx, string builder = "b")
     {
-        _ = ctx;
         var lines = new List<string>();
         foreach (var nf in vo.Fields())
         {
@@ -1310,6 +1542,16 @@ public class DbContextGenerator : IGenerator
                 lines.Add(CSharpNaming.IsRequired(vo, nf)
                     ? $"            {builder}.Property(p => p.{prop}).HasConversion(v => v.ToString(\"0.############################\", System.Globalization.CultureInfo.InvariantCulture), s => decimal.Parse(s, System.Globalization.CultureInfo.InvariantCulture));"
                     : $"            {builder}.Property(p => p.{prop}).HasConversion(v => v == null ? null : v.Value.ToString(\"0.############################\", System.Globalization.CultureInfo.InvariantCulture), s => s == null ? (decimal?)null : decimal.Parse(s, System.Globalization.CultureInfo.InvariantCulture));");
+                continue;
+            }
+            // A duration member of a JSON document is stored as its canonical ISO-8601 string (the
+            // wire form), not as EF's own TimeSpan text ("01:30:00"), on every provider.
+            if (nf.SubType == FIELD_SUBTYPE_DURATION && CSharpNaming.DbColumnTypeClrOverride(nf) is null)
+            {
+                var converter = DurationConverter(vo, ctx);
+                lines.Add(nf.ResolvedIsArray()
+                    ? $"            {builder}.PrimitiveCollection(p => p.{prop}).ElementType().HasConversion({converter});"
+                    : $"            {builder}.Property(p => p.{prop}).HasConversion({converter});");
                 continue;
             }
             if (nf.SubType != FIELD_SUBTYPE_ENUM) continue;

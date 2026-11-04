@@ -59,6 +59,8 @@ class Exposed1xRoundTripTest {
                   { "field.uri":       { "name": "homepage",  "@required": true } },
                   { "field.inet":      { "name": "address",   "@required": true } },
                   { "field.string":    { "name": "externalRef", "@required": true, "@dbColumnType": "uuid" } },
+                  { "field.duration":  { "name": "holdFor",   "@required": true } },
+                  { "field.duration":  { "name": "retries",   "@required": true, "isArray": true } },
                   { "identity.primary": { "name": "id", "@fields": "id", "@generation": "uuid" } }
                 ]
               }}
@@ -102,12 +104,19 @@ class Exposed1xRoundTripTest {
                 // property is String, never java.util.UUID). Lowercase + canonical dashed
                 // form, matching what java.util.UUID.toString() always produces.
                 val wantExternalRef = "9d3b7f2a-5c4e-4a1b-8e6f-1a2b3c4d5e6f"
+                // field.duration: a negative span with microseconds (Postgres refuses a signed
+                // ISO-8601 duration as input, so this proves the interval-spelling bind) and an
+                // INTERVAL[] array including a span past a day.
+                val wantHoldFor = java.time.Duration.ofSeconds(-90, -500_000_000)
+                val wantRetries = listOf(java.time.Duration.ofHours(26), java.time.Duration.ofNanos(1_000))
 
                 val insertedId = RoundTripProbeTable.insert {
                     it[RoundTripProbeTable.createdAt] = wantCreatedAt
                     it[RoundTripProbeTable.homepage] = wantHomepage
                     it[RoundTripProbeTable.address] = wantAddress
                     it[RoundTripProbeTable.externalRef] = wantExternalRef
+                    it[RoundTripProbeTable.holdFor] = wantHoldFor
+                    it[RoundTripProbeTable.retries] = wantRetries
                 }[RoundTripProbeTable.id]
 
                 val row = RoundTripProbeTable.selectAll()
@@ -119,6 +128,12 @@ class Exposed1xRoundTripTest {
                 // Statically typed String (not java.util.UUID) — this line would not even
                 // COMPILE against the pre-fix native uuid(...)/javaUUID(...) Column<UUID>.
                 val gotExternalRef: String = row[RoundTripProbeTable.externalRef]
+                val gotHoldFor = row[RoundTripProbeTable.holdFor]
+                val gotRetries = row[RoundTripProbeTable.retries]
+                // An equality filter on the interval column binds through the same CAST marker.
+                val byHoldFor = RoundTripProbeTable.selectAll()
+                    .where { RoundTripProbeTable.holdFor eq wantHoldFor }
+                    .count()
 
                 val problems = mutableListOf<String>()
                 if (gotCreatedAt != wantCreatedAt) problems += "createdAt: want=${'$'}wantCreatedAt got=${'$'}gotCreatedAt"
@@ -129,6 +144,10 @@ class Exposed1xRoundTripTest {
                 if (gotExternalRef != wantExternalRef) {
                     problems += "externalRef: want=${'$'}wantExternalRef got=${'$'}gotExternalRef"
                 }
+
+                if (gotHoldFor != wantHoldFor) problems += "holdFor: want=${'$'}wantHoldFor got=${'$'}gotHoldFor"
+                if (gotRetries != wantRetries) problems += "retries: want=${'$'}wantRetries got=${'$'}gotRetries"
+                if (byHoldFor != 1L) problems += "holdFor eq filter: want=1 got=${'$'}byHoldFor"
 
                 if (problems.isEmpty()) "OK" else "MISMATCH: " + problems.joinToString("; ")
             }

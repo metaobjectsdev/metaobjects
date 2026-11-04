@@ -18,7 +18,7 @@ import {
 import type { RenderContext } from "../render-context.js";
 import { crossEntitySpecifier, valueObjectModuleSpecifier } from "../import-path.js";
 import {
-  mapColumnType, PG_IDENTITY_CAPABLE_FNS,
+  mapColumnType, PG_IDENTITY_CAPABLE_FNS, DURATION_COLUMN_FN,
   type ColumnSpec, type EnumIntCustomType,
 } from "../column-mapper.js";
 import { tableNameFromEntity } from "../naming.js";
@@ -28,6 +28,7 @@ import {
 } from "../names.js";
 import { resolveTableSchema } from "@metaobjectsdev/metadata";
 import { renderEnumIntCustomType } from "./enum-int-codec.js";
+import { renderDurationCustomType } from "./duration-wire-helper.js";
 import { renderRelationsBlock } from "./relations-block.js";
 import { renderDocsFor } from "./jsdoc.js";
 import { collectTphSubtypeFields, tphConcreteSubtypes } from "./tph-discriminator.js";
@@ -46,7 +47,8 @@ export function renderDrizzleSchema(
   obj: MetaObject,
   ctx: RenderContext,
   /**
-   * OUT param: the int-backed-enum codec const names this table DECLARES. A caller that
+   * OUT param: the local column-codec const names this table DECLARES (int-backed enums, and
+   * the duration codec). A caller that
    * emits another artifact referencing the same codecs into the SAME module — entity-file's
    * write-through replica view — passes a set here and hands it to that emitter, which then
    * references the consts instead of re-declaring them. A duplicate module-scope `const` is
@@ -211,6 +213,8 @@ export function renderDrizzleSchema(
   // Int-backed field.enum customType helpers, emitted ahead of the table. Keyed by
   // const name so a shared enum used by two fields of the SAME entity emits once.
   const enumIntTypes = new Map<string, EnumIntCustomType>();
+  // The field.duration codec: one declaration serves every duration column of the table.
+  let usesDurationCodec = false;
   for (const child of obj.fields()) {
     // #213 — a derived (origin-bearing) field is read-only, materialized on the
     // read (view) side, NOT a column on the entity's write table (FR-024 §7).
@@ -225,6 +229,7 @@ export function renderDrizzleSchema(
     if (spec.enumIntCustomType !== undefined) {
       enumIntTypes.set(spec.enumIntCustomType.fnConstName, spec.enumIntCustomType);
     }
+    if (spec.durationCustomType !== undefined) usesDurationCodec = true;
     const fieldDocs = renderDocsFor(child);
     const columnLine = renderColumn(spec, columnNameExpr(child, spec.dbName), child, ctx, isPk, pkGeneration, fkInfo, isComposite, pkg, obj.name);
     columnLines.push(fieldDocs ? code`  ${fieldDocs}\n${columnLine}` : columnLine);
@@ -244,6 +249,7 @@ export function renderDrizzleSchema(
     if (spec.enumIntCustomType !== undefined) {
       enumIntTypes.set(spec.enumIntCustomType.fnConstName, spec.enumIntCustomType);
     }
+    if (spec.durationCustomType !== undefined) usesDurationCodec = true;
     const fieldDocs = renderDocsFor(child);
     const columnLine = renderColumn(
       spec, columnNameExpr(child, spec.dbName), child, ctx, false, undefined, fkMap.get(child.name), isComposite, pkg, obj.name, true,
@@ -403,9 +409,11 @@ ${joinCode(columnLines, { on: ",\n", trim: false })}
     .map((t) => renderEnumIntCustomType(t, importModule));
   if (declaredEnumIntCodecs !== undefined) {
     for (const name of enumIntTypes.keys()) declaredEnumIntCodecs.add(name);
+    if (usesDurationCodec) declaredEnumIntCodecs.add(DURATION_COLUMN_FN);
   }
 
-  const blocks: Code[] = [...enumIntBlocks, tableBlock];
+  const durationBlocks = usesDurationCodec ? [renderDurationCustomType(dialect, importModule)] : [];
+  const blocks: Code[] = [...durationBlocks, ...enumIntBlocks, tableBlock];
   if (relationsBlock !== null) blocks.push(relationsBlock);
   return blocks.length === 1 ? blocks[0]! : joinCode(blocks, { on: "\n" });
 }
@@ -518,7 +526,9 @@ function renderColumn(
   const fnSym =
     spec.enumIntCustomType !== undefined
       ? spec.enumIntCustomType.fnConstName
-      : imp(`${spec.fnName}@${spec.importModule}`);
+      : spec.durationCustomType !== undefined
+        ? spec.durationCustomType.fnConstName
+        : imp(`${spec.fnName}@${spec.importModule}`);
 
   let baseCall: Code;
   if (spec.fnOptions !== undefined && Object.keys(spec.fnOptions).length > 0) {

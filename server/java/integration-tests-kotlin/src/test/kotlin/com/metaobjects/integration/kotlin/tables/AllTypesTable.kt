@@ -31,6 +31,7 @@ import org.jetbrains.exposed.sql.json.jsonb
  *   - `field.enum` (@values LOW/MEDIUM/HIGH)            → `varchar("enumVal", 64)` (text + CHECK in DDL)
  *   - `field.enum` + `@intValueMap` (int-backed)        → `intBackedEnum("intEnumVal", …)` (INTEGER + int CHECK)
  *   - `field.uuid` (non-key, @required)                 → `uuid("uuidVal")` (Postgres native uuid)
+ *   - `field.duration`                                  → `durationColumn("durationVal")` (Postgres INTERVAL)
  *   - `field.object` (@objectRef Settings, @storage jsonb) → `jsonb("settings", …)` (real Postgres JSONB)
  *   - `field.object` (@objectRef Label, @storage jsonb, isArray) → `jsonb("labels", …)` (JSONB array)
  *
@@ -80,6 +81,10 @@ object AllTypesTable : Table("all_types") {
     // canonical COMPRESSED IPv6) and binds the bare address on write.
     val inetVal = inetColumn("inetVal")
     val inet6Val = inetColumn("inet6Val")
+    // `field.duration` → the Postgres-native `INTERVAL` ([MetaDurationColumnType]): written in the
+    // interval spelling, read back as the canonical ISO-8601 duration. Nullable to match the
+    // canonical DDL (`"durationVal" INTERVAL`, no NOT NULL).
+    val durationVal = durationColumn("durationVal").nullable()
     // `@storage:jsonb` typed owned-object column. Raw-JSON-String identity encode/decode keeps
     // the JSON text; the runner serializes the authoring map on write and parses it back to a
     // Map on read so it re-serializes with sorted keys per the normalization contract. Nullable

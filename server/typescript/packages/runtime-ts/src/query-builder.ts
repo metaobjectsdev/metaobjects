@@ -5,12 +5,14 @@ import {
   IDENTITY_ATTR_FIELDS,
   OBJECT_SUBTYPE_REPORT,
   DEFAULT_COLUMN_NAMING_STRATEGY,
+  FIELD_SUBTYPE_DURATION,
   resolveTableName, resolveColumnName,
+  durationToStoredMicros, formatPostgresInterval, parseDurationLiteral,
 } from "@metaobjectsdev/metadata";
 import { MetadataError } from "./errors.js";
 import { intValueMapOf } from "./type-coercer.js";
 import type {
-  WhereClause, OrderBy, PrimitiveValue, Row,
+  Dialect, WhereClause, OrderBy, PrimitiveValue, Row,
   SelectSpec, InsertSpec, UpdateSpec, DeleteSpec, CountSpec,
 } from "./persistence-driver.js";
 
@@ -92,13 +94,14 @@ export function compileFilter(
   entity: MetaData,
   filter: Filter,
   strategy: ColumnNamingStrategy = DEFAULT_COLUMN_NAMING_STRATEGY,
+  dialect?: Dialect,
 ): WhereClause | null {
   if ("$and" in filter && Array.isArray(filter.$and)) {
     // TS can't narrow $and away from the Record branch, so the runtime check above
     // proves it's a Filter[] but the element type still needs a bridge cast.
     const andFilters = filter.$and as Filter[];
     const clauses = andFilters
-      .map((f) => compileFilter(entity, f, strategy))
+      .map((f) => compileFilter(entity, f, strategy, dialect))
       .filter((c): c is WhereClause => c !== null);
     if (clauses.length === 0) return null;
     return clauses.length === 1 ? clauses[0]! : { kind: "and", clauses };
@@ -106,16 +109,16 @@ export function compileFilter(
   const entries = Object.entries(filter);
   if (entries.length === 0) return null;
   if (entries.length === 1) {
-    return compileEntry(entity, entries[0]![0], entries[0]![1] as FilterValue, strategy);
+    return compileEntry(entity, entries[0]![0], entries[0]![1] as FilterValue, strategy, dialect);
   }
   return {
     kind: "and",
-    clauses: entries.map(([k, v]) => compileEntry(entity, k, v as FilterValue, strategy)),
+    clauses: entries.map(([k, v]) => compileEntry(entity, k, v as FilterValue, strategy, dialect)),
   };
 }
 
 function compileEntry(
-  entity: MetaData, fieldName: string, value: FilterValue, strategy: ColumnNamingStrategy,
+  entity: MetaData, fieldName: string, value: FilterValue, strategy: ColumnNamingStrategy, dialect?: Dialect,
 ): WhereClause {
   const field = getField(entity, fieldName);
   const column = resolveColumnName(field, strategy);
@@ -126,7 +129,7 @@ function compileEntry(
   // for type integer"). Applied at this ONE seam because every operator arrives here
   // with the field in hand; `like` is not reachable for such a field (the loader's
   // field-level operator band drops it), and `isNull` carries no value to encode.
-  const enc = <T,>(v: T): T => encodeFilterValue(field, v);
+  const enc = <T,>(v: T): T => encodeFilterValue(field, v, dialect);
 
   if (value === null) return { kind: "isNull", column, not: false };
   if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
@@ -167,7 +170,22 @@ function compileEntry(
  * is the honest answer for a member that does not exist, and the loader already
  * pins `@intValueMap`'s key set to `@values`.
  */
-function encodeFilterValue<T>(field: MetaData, value: T): T {
+function encodeFilterValue<T>(field: MetaData, value: T, dialect?: Dialect): T {
+  // A duration is compared in the form its column stores: the microsecond integer on SQLite / D1 /
+  // MySQL, the interval spelling on Postgres (which refuses a signed ISO-8601 duration). A value
+  // that is not a duration is refused, not bound.
+  if (field.subType === FIELD_SUBTYPE_DURATION && typeof value === "string") {
+    const micros = parseDurationLiteral(value);
+    if (micros === undefined) {
+      throw new MetadataError(`filter on field.duration '${field.name}': ${JSON.stringify(value)} is not an ISO-8601 duration`);
+    }
+    if (dialect === "postgres") return formatPostgresInterval(micros) as T;
+    if (dialect === "sqlite" || dialect === "mysql") return durationToStoredMicros(micros) as T;
+    if (dialect === "memory") return micros as T;
+    // With no dialect there is no stored form to compare against: an ISO string would match
+    // nothing on a microsecond column and fail on an interval one.
+    throw new MetadataError(`filter on field.duration '${field.name}' needs the driver's dialect to encode ${JSON.stringify(value)}`);
+  }
   const intMap = intValueMapOf(field);
   if (intMap === undefined || typeof value !== "string") return value;
   const stored = intMap[value];
@@ -192,6 +210,7 @@ export function buildSelectSpec(
   opts: QueryOpts,
   projectedFields?: string[],
   strategy: ColumnNamingStrategy = DEFAULT_COLUMN_NAMING_STRATEGY,
+  dialect?: Dialect,
 ): SelectSpec {
   const allFields = projectedFields ?? listFieldNames(entity);
   // A report's read model (FR-044) has no identity, so there is no key to add to the
@@ -217,7 +236,7 @@ export function buildSelectSpec(
     table: resolveTableName(entity),
     columns,
   };
-  const where = filter !== undefined ? compileFilter(entity, filter, strategy) : null;
+  const where = filter !== undefined ? compileFilter(entity, filter, strategy, dialect) : null;
   if (where !== null) spec.where = where;
   if (orderBy !== undefined) spec.orderBy = orderBy;
   if (opts.limit !== undefined) spec.limit = opts.limit;
@@ -228,9 +247,10 @@ export function buildSelectSpec(
 export function buildCountSpec(
   entity: MetaData, filter: Filter | undefined,
   strategy: ColumnNamingStrategy = DEFAULT_COLUMN_NAMING_STRATEGY,
+  dialect?: Dialect,
 ): CountSpec {
   const spec: CountSpec = { table: resolveTableName(entity) };
-  const where = filter !== undefined ? compileFilter(entity, filter, strategy) : null;
+  const where = filter !== undefined ? compileFilter(entity, filter, strategy, dialect) : null;
   if (where !== null) spec.where = where;
   return spec;
 }

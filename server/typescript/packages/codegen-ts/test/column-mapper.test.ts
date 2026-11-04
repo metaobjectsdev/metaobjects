@@ -12,9 +12,10 @@ import {
   FIELD_SUBTYPE_UUID,
   FIELD_SUBTYPE_URI,
   FIELD_SUBTYPE_INET,
+  FIELD_SUBTYPE_DURATION,
 } from "@metaobjectsdev/metadata";
 import { meta, metaField } from "./_meta-build.js";
-import { mapColumnType, type ColumnSpec } from "../src/column-mapper.js";
+import { mapColumnType, DURATION_COLUMN_FN, type ColumnSpec } from "../src/column-mapper.js";
 
 describe("mapColumnType — SQLite", () => {
   test("string → text(name)", () => {
@@ -297,6 +298,34 @@ describe("mapColumnType — field.uuid (R6 Plan 2a)", () => {
   test("SQLite: uri/inet → text (no native types)", () => {
     expect(mapColumnType(metaField(FIELD_SUBTYPE_URI, "u"), "sqlite").fnName).toBe("text");
     expect(mapColumnType(metaField(FIELD_SUBTYPE_INET, "ip"), "sqlite").fnName).toBe("text");
+  });
+
+  // field.duration — a local customType codec on every dialect (interval / text / varchar(64)),
+  // because Drizzle's pg-core interval() reads Postgres's text spelling, not the ISO wire form.
+  test("duration → the local duration codec on every dialect", () => {
+    for (const dialect of ["postgres", "sqlite", "mysql"] as const) {
+      const spec = mapColumnType(metaField(FIELD_SUBTYPE_DURATION, "holdFor"), dialect);
+      expect(spec.fnName).toBe(DURATION_COLUMN_FN);
+      expect(spec.durationCustomType).toEqual({ fnConstName: DURATION_COLUMN_FN, dialect });
+      expect(spec.fnOptions).toBeUndefined();
+    }
+  });
+
+  test("duration isArray → interval[] on Postgres; a JSON string array on SQLite and MySQL", () => {
+    const laps = (): ReturnType<typeof metaField> => {
+      const f = metaField(FIELD_SUBTYPE_DURATION, "laps");
+      f.setIsArray(true);
+      return f;
+    };
+    const pg = mapColumnType(laps(), "postgres");
+    expect(pg.fnName).toBe(DURATION_COLUMN_FN);
+    expect(pg.modifiers).toContain(".array()");
+    const lite = mapColumnType(laps(), "sqlite");
+    expect(lite.fnName).toBe("text");
+    expect(lite.durationCustomType).toBeUndefined();
+    expect(lite.dollarTypeRef).toEqual({ kind: "scalar", tsType: "string", array: true });
+    const my = mapColumnType(laps(), "mysql");
+    expect(my.fnName).toBe("json");
   });
 
   // Native arrays are DERIVED from isArray (dbColumnType slim-and-derive Phase 1):

@@ -186,8 +186,8 @@ When folding hand validators into metadata, apply human judgment per constraint.
 A constraint enters **shared metadata** only if it is a **true cross-language domain
 invariant**; a one-consumer preference stays in a thin local refinement layer.
 
-Cross-field rules **are** modelable (`comparison` / `atLeastOne` / `requiredWhen` /
-`presentIff`); ratification decides *which* belong in shared metadata. Output a
+Cross-field rules **are** modelable (`comparison` / `atLeastOne` / `exactlyOne` /
+`requiredWhen` / `presentIff`); ratification decides *which* belong in shared metadata. Output a
 **ratification table**: KEEP-IN-METADATA / LOCAL-REFINEMENT / DROP + rationale —
 human-approved, never applied silently. Distinguish `required` from has-a-safe-default
 (`@default` often fixes the over-requiring bug). A core attr ripples cross-port; for a

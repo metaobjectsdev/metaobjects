@@ -70,7 +70,7 @@ public class ValidationConformanceTest extends SharedRegistryTestBase {
         runCorpus("meta.json", "cases.json", "Account", "acme.auth");
     }
 
-    /** Entity-scoped cross-field validators (comparison / requiredWhen / presentIff / atLeastOne)
+    /** Entity-scoped cross-field validators (comparison / requiredWhen / presentIff / atLeastOne / exactlyOne, with @condition)
      *  enforced by the class-level Bean Validation on the generated full DTO. */
     @Test
     public void generatedDtoEnforcesCrossFieldVerdicts() throws Exception {
@@ -89,6 +89,11 @@ public class ValidationConformanceTest extends SharedRegistryTestBase {
         // 1. Load the corpus metadata.
         MetaDataLoader loader = SpringTestFixtures.loadFixture(
                 tmp.newFolder().toPath(), metaName.replace('.', '_'), Files.readString(metaFile));
+
+        // The corpus pins the cross-port duration rule (strict ISO-8601): wire.durations: iso.
+        loader.getRoot().setWireFormat(new com.metaobjects.config.WireFormat(
+            com.metaobjects.config.WireFormat.Decimals.NATIVE, com.metaobjects.config.WireFormat.NullMembers.NATIVE,
+            com.metaobjects.config.WireFormat.Durations.ISO));
 
         // 2. Generate the Account DTO.
         Path gen = tmp.newFolder("gen-dto").toPath();

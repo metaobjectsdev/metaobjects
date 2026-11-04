@@ -125,6 +125,7 @@ function generatePrismaFiles(ctx: GenContext, options: PrismaSchemaFileOptions):
     // The generator's own filter, never the run's selection: see the header.
     matches: ctx.matches,
     checks: options.checks ?? "file",
+    ...(ctx.schemaSettings !== undefined && { schemaSettings: ctx.schemaSettings }),
   });
   const fileName = options.fileName ?? DEFAULT_SCHEMA_FILE;
   const checksFile = spec.checks.length > 0 ? prismaChecksFileName(fileName) : undefined;

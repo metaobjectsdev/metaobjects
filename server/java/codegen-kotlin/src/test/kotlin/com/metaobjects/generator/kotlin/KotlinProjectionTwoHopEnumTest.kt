@@ -98,14 +98,14 @@ class KotlinProjectionTwoHopEnumTest {
 
             // The projection table references the SHARED enum.
             val viewTable = outDir.resolve("acme/commerce/ProgramViewTable.kt").readText()
-            assertTrue("SharedStatus::class" in viewTable,
+            assertTrue("SharedStatus.valueOf" in viewTable,
                 "projection table must reference the shared SharedStatus enum; saw:\n$viewTable")
-            assertFalse("ProgramViewStatus::class" in viewTable,
+            assertFalse("ProgramViewStatus.valueOf" in viewTable,
                 "projection table must NOT reference a per-projection enum; saw:\n$viewTable")
 
             // The ENTITY table still collapses onto the shared enum (byte-identity guardrail).
             val programTable = outDir.resolve("acme/commerce/ProgramTable.kt").readText()
-            assertTrue("SharedStatus::class" in programTable,
+            assertTrue("SharedStatus.valueOf" in programTable,
                 "entity table must still reference the shared enum; saw:\n$programTable")
 
             // Compile-gate: the whole generated tree must resolve.
@@ -131,7 +131,7 @@ class KotlinProjectionTwoHopEnumTest {
                     "consumer; files=${Files.walk(outDir).toList()}")
 
             val viewTable = outDir.resolve("acme/commerce/ProgramViewTable.kt").readText()
-            assertTrue("SharedStatus::class" in viewTable,
+            assertTrue("SharedStatus.valueOf" in viewTable,
                 "projection table must reference the shared SharedStatus enum; saw:\n$viewTable")
 
             val result = compile(outDir)

@@ -26,6 +26,7 @@ import {
 import type { MetaField } from "@metaobjectsdev/metadata";
 import { enumValues } from "../enum-meta.js";
 import { zodEnumExpr } from "./zod-enum.js";
+import { ZOD_DURATION_EXPR } from "./duration-wire-helper.js";
 import { templateSymbolBase } from "../naming.js";
 import { responseShape } from "./find-inbound.js";
 import { isRequired } from "./fr010-field-mapping.js";
@@ -85,6 +86,8 @@ const SCALAR_ZOD: Record<string, string> = {
   currency: "z.number().int()",
   uri: "z.string()",
   inet: "z.string()",
+  // An ISO-8601 duration string, in the accepted form (no years or months).
+  duration: ZOD_DURATION_EXPR,
 };
 
 // ADR-0039: resolving — root has no super (children()==ownChildren()); a top-level object/template may itself extend, so resolve rather than work-by-accident.

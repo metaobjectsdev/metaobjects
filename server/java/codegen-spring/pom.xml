@@ -286,6 +286,9 @@
                                         <include>CanonicalDecimal.java</include>
                                         <include>CanonicalDecimalDeserializer.java</include>
                                         <include>CanonicalDecimalSerializer.java</include>
+                                        <include>CanonicalDuration.java</include>
+                                        <include>CanonicalDurationDeserializer.java</include>
+                                        <include>CanonicalDurationSerializer.java</include>
                                         <include>DeclaredDecimal.java</include>
                                         <include>ConstraintErrors.java</include>
                                         <include>FilterParseResult.java</include>

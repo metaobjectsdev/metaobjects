@@ -103,6 +103,11 @@
         }
       ]
     },
+    "holdFor": {
+      "type": "string",
+      "pattern": "^[-+]?P(([0-9]+W([0-9]+D)?|[0-9]+D)(T([0-9]+H([0-9]+M)?([0-9]+(\\.[0-9]+)?S)?|[0-9]+M([0-9]+(\\.[0-9]+)?S)?|[0-9]+(\\.[0-9]+)?S))?|T([0-9]+H([0-9]+M)?([0-9]+(\\.[0-9]+)?S)?|[0-9]+M([0-9]+(\\.[0-9]+)?S)?|[0-9]+(\\.[0-9]+)?S))$",
+      "description": "An ISO-8601 duration: weeks, days, hours, minutes and seconds (no years or months)."
+    },
     "shipTo": {
       "$ref": "./Address.create.schema.json"
     },

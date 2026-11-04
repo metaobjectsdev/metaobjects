@@ -86,7 +86,7 @@ function sampleRow(): Record<string, unknown> {
     id: "6f1c2b1e-0d7a-4d55-9c1e-0a4e8f1d2c3b",
     title: "A title", email: null, host: null, quantity: 3, views: null, ratio: null, score: null, amount: null,
     active: null, startsOn: null, startsAt: null, publishedAt: null, wallClock: null, priceCents: null, status: "draft",
-    stage: null, homepage: null, looseLink: null, address: null, shipTo: null, stops: null, tags: null,
+    stage: null, homepage: null, looseLink: null, address: null, holdFor: null, shipTo: null, stops: null, tags: null,
     internalNote: null, issuedBy: null, syncedBy: null, createdAt: null, updatedAt: null,
   };
 }
@@ -172,6 +172,23 @@ describe("types the JSON Schema formats do not state", () => {
     expect(valid({ ...sampleRow(), startsAt: "09:30:00" })).toBe(true);
     expect(valid({ ...sampleRow(), startsAt: "09:30:00.250" })).toBe(true);
     expect(valid({ ...sampleRow(), startsAt: "9am" })).toBe(false);
+  });
+
+  test("with wire.durations iso, a duration is an ISO-8601 duration of weeks, days, hours, minutes and seconds — never a calendar span", async () => {
+    const valid = validatorOf(await contractTree(corpusCase("all-fields-wire-string-omit")), `${ALL_FIELDS}.schema.json`);
+    for (const ok of ["PT1H30M", "P1DT2H", "-PT1M30S", "PT0.5S", "PT0S", "P2W", "P1W1DT1H", "PT1.1234567890S"]) {
+      expect(valid({ ...sampleRow(), holdFor: ok }), ok).toBe(true);
+    }
+    // ajv-formats' `duration` alone takes years and months; the pattern refuses them.
+    for (const bad of ["P1M", "P1Y", "P1D1W", "1:30:00", "PT1.5H", "pt1h", "PT"]) {
+      expect(valid({ ...sampleRow(), holdFor: bad }), bad).toBe(false);
+    }
+  });
+
+  test("under the default, a duration is the serving language's own form, so any string", async () => {
+    const valid = validatorOf(await contractTree(corpusCase("all-fields")), `${ALL_FIELDS}.schema.json`);
+    for (const ok of ["PT1H30M", "01:30:00", "1.02:00:00"]) expect(valid({ ...sampleRow(), holdFor: ok }), ok).toBe(true);
+    expect(valid({ ...sampleRow(), holdFor: 90 })).toBe(false);
   });
 
   test("a local timestamp has no offset, and a zoned one must", async () => {

@@ -3,9 +3,12 @@ import type {
   UpdateSpec, UpdateManySpec, DeleteSpec, DeleteManySpec, WhereClause, Row,
 } from "../persistence-driver.js";
 import { ConstraintViolationError } from "../errors.js";
+import { parseDurationLiteral } from "../duration-wire.js";
 
 export interface InMemoryDriverOptions {
-  /** Initial table data: { tableName: Row[] }. */
+  /** Initial table data: { tableName: Row[] }, in the stored form the driver writes (a
+   *  `field.duration` is a bigint microsecond count; a wire-form string such as `"PT1H"` is
+   *  compared with a stored value as a span, but two seeded strings compare as text). */
   seed?: Record<string, Row[]>;
   /** Per-table PK field names (used to detect collisions + auto-increment). Default: ["id"]. */
   pkFields?: Record<string, string[]>;
@@ -195,9 +198,9 @@ function matchesWhere(row: Row, where?: WhereClause): boolean {
   if (!where) return true;
   switch (where.kind) {
     case "eq":
-      return row[where.column] === where.value;
+      return sameValue(row[where.column], where.value);
     case "ne":
-      return row[where.column] !== where.value;
+      return !sameValue(row[where.column], where.value);
     case "gt":
       return compareValues(row[where.column], where.value) > 0;
     case "gte":
@@ -207,7 +210,7 @@ function matchesWhere(row: Row, where?: WhereClause): boolean {
     case "lte":
       return compareValues(row[where.column], where.value) <= 0;
     case "in":
-      return where.values.some((v) => row[where.column] === v);
+      return where.values.some((v) => sameValue(row[where.column], v));
     case "like":
       return likeMatch(row[where.column], where.pattern);
     case "isNull": {
@@ -233,11 +236,32 @@ function compareForSort(a: unknown, b: unknown): number {
   return compareValues(a, b);
 }
 
-function compareValues(a: unknown, b: unknown): number {
+/**
+ * A duration is written as a bigint microsecond count, but a row seeded through
+ * `InMemoryDriverOptions.seed` may hold it in its wire form (`"PT1H"`). When one side is a bigint
+ * and the other a duration string, compare the string's microseconds.
+ */
+function asComparable(a: unknown, b: unknown): [unknown, unknown] {
+  if (typeof a === "bigint" && typeof b === "string") return [a, parseDurationLiteral(b) ?? b];
+  if (typeof b === "bigint" && typeof a === "string") return [parseDurationLiteral(a) ?? a, b];
+  return [a, b];
+}
+
+function sameValue(a: unknown, b: unknown): boolean {
+  const [x, y] = asComparable(a, b);
+  return x === y;
+}
+
+function compareValues(left: unknown, right: unknown): number {
+  const [a, b] = asComparable(left, right);
   if (a === b) return 0;
   if (a === null || a === undefined) return -1;
   if (b === null || b === undefined) return 1;
   if (typeof a === "number" && typeof b === "number") return a - b;
+  // A duration is held as a bigint microsecond count; compare it as a number, never as text.
+  if ((typeof a === "bigint" || typeof a === "number") && (typeof b === "bigint" || typeof b === "number")) {
+    return a < b ? -1 : a > b ? 1 : 0;
+  }
   return String(a).localeCompare(String(b));
 }
 

@@ -76,6 +76,11 @@ public class HelperRegistryPhysicalNamingTest {
             }
             for (Iterator<Map.Entry<String, JsonNode>> it = c.get("columns").fields(); it.hasNext(); ) {
                 Map.Entry<String, JsonNode> e = it.next();
+                // `<Object>.<field>.<member>` is a flattened value object's member column. It
+                // belongs to two fields, and dbColumnName takes one: no helper addresses it, so
+                // the corpus's flattened keys are core naming's (ColumnNaming.resolveFlattened)
+                // to pin, in PhysicalNamingConformanceTest.
+                if (e.getKey().chars().filter(ch -> ch == '.').count() > 1) continue;
                 String[] parts = e.getKey().split("\\.", 2);
                 MetaField<?> field = object(loader, parts[0]).getMetaField(parts[1]);
                 assertEquals(name + ": dbColumnName of " + e.getKey(), e.getValue().asText(),

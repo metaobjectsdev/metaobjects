@@ -1,0 +1,12 @@
+{ "metadata.root": {
+  "package": "acme::ops",
+  "children": [
+    { "object.entity": { "name": "Timer", "children": [
+        { "source.rdb":       { "@table": "timers" } },
+        { "field.long":       { "name": "id", "@filterable": true, "@sortable": true } },
+        { "field.string":     { "name": "label", "@required": true, "@maxLength": 16, "@filterable": true } },
+        { "field.duration":   { "name": "timeout", "@filterable": true, "@sortable": true } },
+        { "identity.primary": { "name": "pk", "@fields": "id", "@generation": "increment" } }
+    ] } }
+  ]
+} }

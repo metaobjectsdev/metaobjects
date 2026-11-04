@@ -68,6 +68,7 @@ public class WireConformanceTests
         var wire = ReadWire(c.GetProperty("wire"));
         Assert.Equal(c.GetProperty("decimals").GetString(), WireFormat.Spelling(wire.Decimals));
         Assert.Equal(c.GetProperty("nullMembers").GetString(), WireFormat.Spelling(wire.NullMembers));
+        Assert.Equal(c.GetProperty("durations").GetString(), WireFormat.Spelling(wire.Durations));
     }
 
     [Theory]
@@ -82,7 +83,7 @@ public class WireConformanceTests
     [Fact]
     public void A_project_without_the_setting_loads_with_the_native_default()
     {
-        Assert.Equal(new WireFormat(DecimalWireForm.Native, NullMemberForm.Native), WireFormat.Default);
+        Assert.Equal(new WireFormat(DecimalWireForm.Native, NullMemberForm.Native, DurationWireForm.Native), WireFormat.Default);
         var r = new MetaObjects.Loader.MetaDataLoader().Load([new MetaObjects.Loader.InMemoryStringSource(
             """{ "metadata.root": { "package": "acme", "children": [] } }""", id: "empty.json")]);
         Assert.Equal(WireFormat.Default, r.Root.WireFormat);

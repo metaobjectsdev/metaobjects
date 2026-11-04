@@ -1,7 +1,8 @@
 // Cross-field validation-conformance, TS (Zod) reference runner.
 //
-// Renders the GENERATED `EventInsertSchema` (validator.comparison / requiredWhen /
-// presentIff / atLeastOne enforced as a refinement) through the real codegen template
+// Renders the GENERATED `EventInsertSchema` and `ShiftInsertSchema` (validator.comparison /
+// requiredWhen / presentIff / atLeastOne / exactlyOne, each with or without an @condition,
+// enforced as a refinement) through the real codegen template
 // into a temp module, then safeParses every cross-field-cases.json payload.
 
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
@@ -17,7 +18,7 @@ import { loadCrossFieldCases } from "../src/validation-cases.ts";
 
 type ParseFn = { safeParse(value: unknown): { success: boolean } };
 
-const ENTITY_NAMES = ["Event"] as const;
+const ENTITY_NAMES = ["Event", "Shift"] as const;
 const insertSchemas = new Map<string, ParseFn>();
 let updateSchema: ParseFn;
 let tmpDir: string;
@@ -40,7 +41,7 @@ beforeAll(async () => {
     const schema = mod[`${name}InsertSchema`];
     if (!schema) throw new Error(`generated module did not export ${name}InsertSchema`);
     insertSchemas.set(name, schema as unknown as ParseFn);
-    updateSchema = mod[`${name}UpdateSchema`] as unknown as ParseFn;
+    if (name === "Event") updateSchema = mod[`${name}UpdateSchema`] as unknown as ParseFn;
   }
 });
 

@@ -391,6 +391,70 @@ public class JdbcCodecRoundTripTest {
     }
 
     /**
+     * {@code DurationCodec} on an engine without a native interval: a duration is stored as a
+     * 64-bit count of microseconds (so a range filter and a sort order it as a number), and reads
+     * back as the canonical wire string. The text a Postgres interval returns reads canonically too.
+     */
+    @Test
+    public void durationCodecStoresAMicrosecondCountAndReadsTheCanonicalForm() throws Exception {
+        final java.util.Map<String, Object> store = new java.util.HashMap<>();
+        com.metaobjects.field.DurationField durationField = new com.metaobjects.field.DurationField("holdFor") {
+            @Override public void setString(Object obj, String value) { store.put("v", value); }
+        };
+        JdbcCodecs.DurationCodec codec = new JdbcCodecs.DurationCodec();
+
+        try (Connection conn = getConnection()) {
+            try (Statement st = conn.createStatement()) {
+                st.execute("CREATE TABLE codec_duration_probe (d BIGINT, t VARCHAR(64))");
+            }
+            try (PreparedStatement ps = conn.prepareStatement("INSERT INTO codec_duration_probe (d) VALUES (?)")) {
+                codec.write(ps, durationField, 1, "P1DT0.5S");
+                ps.executeUpdate();
+                codec.write(ps, durationField, 1, java.time.Duration.ofSeconds(-90));
+                ps.executeUpdate();
+                codec.write(ps, durationField, 1, "PT1H30M");
+                ps.executeUpdate();
+            }
+            // A range filter binds through the same codec and compares numbers: > PT1H.
+            java.util.List<String> stored = new java.util.ArrayList<>();
+            java.util.List<String> read = new java.util.ArrayList<>();
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "SELECT d FROM codec_duration_probe WHERE d > ? ORDER BY d")) {
+                codec.write(ps, durationField, 1, "PT1H");
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        stored.add(rs.getString(1));
+                        codec.readInto(new Object(), durationField, rs, 1);
+                        read.add((String) store.get("v"));
+                    }
+                }
+            }
+            assertEquals(java.util.List.of("5400000000", "86400500000"), stored);
+            assertEquals(java.util.List.of("PT1H30M", "PT24H0.5S"), read);
+            // Postgres interval text in a text column reads canonically.
+            try (Statement st = conn.createStatement()) {
+                st.execute("INSERT INTO codec_duration_probe (t) VALUES ('-1 days +02:00:00')");
+            }
+            try (Statement st = conn.createStatement();
+                 ResultSet rs = st.executeQuery("SELECT t FROM codec_duration_probe WHERE t IS NOT NULL")) {
+                assertTrue(rs.next());
+                codec.readInto(new Object(), durationField, rs, 1);
+                assertEquals("-PT22H", store.get("v"));
+            }
+            try (PreparedStatement ps = conn.prepareStatement("INSERT INTO codec_duration_probe (d) VALUES (?)")) {
+                codec.write(ps, durationField, 1, "P1M");
+                fail("a calendar span is not a duration");
+            } catch (SQLException expected) {
+                assertTrue(expected.getMessage(), expected.getMessage().contains("holdFor"));
+            }
+            assertEquals("-00:01:30", JdbcCodecs.DurationCodec.postgresText(durationField, "-PT90S"));
+            try (Statement st = conn.createStatement()) {
+                st.execute("DROP TABLE codec_duration_probe");
+            }
+        }
+    }
+
+    /**
      * W2b zone-codec fix — {@code TimestampCodec} (plain TIMESTAMP) is zone-INDEPENDENT.
      *
      * <p>Drives the codec's {@code write → read} against a real TIMESTAMP column while the JVM

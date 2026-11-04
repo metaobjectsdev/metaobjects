@@ -44,6 +44,8 @@ import com.metaobjects.field.TimestampField;
 import com.metaobjects.field.UuidField;
 import com.metaobjects.field.UriField;
 import com.metaobjects.field.InetField;
+import com.metaobjects.field.DurationField;
+import com.metaobjects.field.DurationWire;
 
 import java.math.BigDecimal;
 import java.sql.PreparedStatement;
@@ -104,6 +106,9 @@ public final class JdbcCodecs {
         // type (a plain setString fails "operator does not exist: inet = varchar"), mirroring
         // the UuidCodec native-column pattern.
         register(InetField.class, new InetCodec());
+        // field.duration ⇄ a microsecond count on an integer column; the Postgres driver binds the
+        // interval spelling to its native interval column (see DurationCodec).
+        register(DurationField.class, new DurationCodec());
         register(ObjectField.class, DEFAULT);  // identity with the fallback codec
     }
 
@@ -538,6 +543,59 @@ public final class JdbcCodecs {
         @Override public void write(PreparedStatement s, MetaField f, int j, Object v) throws SQLException {
             if (v == null) s.setNull(j, Types.OTHER);
             else s.setObject(j, v.toString(), Types.OTHER);
+        }
+    }
+
+    /**
+     * {@code field.duration} ⇄ a 64-bit integer column holding the count of microseconds (SQLite,
+     * MySQL and any other engine without a native interval — Django's DurationField precedent), or
+     * — on Postgres — the native {@code interval} column. DurationField is backed by
+     * {@code DataTypes.STRING} (the canonical wire string); a {@link java.time.Duration} value is
+     * accepted too.
+     *
+     * <p>Read: an integer is a microsecond count; text is what a Postgres interval returns
+     * ({@code 1 day 02:00:00}) or a stored ISO string; all become the canonical string, and an
+     * interval with a year or month part is refused ({@link DurationWire#fromStored}). Write: the
+     * microsecond count (sub-microsecond truncated toward zero; past a 64-bit count is refused), so
+     * the column orders and compares as a number. Postgres refuses a signed ISO-8601 duration, so
+     * {@code PostgresDriver} binds {@link #postgresText} instead.</p>
+     */
+    public static final class DurationCodec implements JdbcFieldCodec {
+        @Override public int sqlType() { return Types.BIGINT; }
+        @Override public int sqlLength() { return 0; }
+
+        @Override public void readInto(Object o, MetaField f, ResultSet rs, int j) throws SQLException {
+            Object raw = rs.getObject(j);
+            if (raw == null || rs.wasNull()) { f.setString(o, null); return; }
+            try {
+                f.setString(o, raw instanceof Number n
+                    ? DurationWire.format(DurationWire.fromMicros(n.longValue()))
+                    : DurationWire.canonicalizeStored(rs.getString(j)));
+            } catch (IllegalArgumentException e) {
+                throw new SQLException("field.duration '" + f.getName() + "' cannot be read: " + e.getMessage(), e);
+            }
+        }
+        @Override public void write(PreparedStatement s, MetaField f, int j, Object v) throws SQLException {
+            if (v == null) { s.setNull(j, Types.BIGINT); return; }
+            try {
+                s.setLong(j, DurationWire.toMicros(toDuration(f, v)));
+            } catch (IllegalArgumentException e) {
+                throw new SQLException("field.duration '" + f.getName() + "' cannot be written: " + e.getMessage(), e);
+            }
+        }
+
+        /** The Postgres interval input spelling of a duration value ({@code [-]HH:MM:SS[.f]}). */
+        public static String postgresText(MetaField f, Object v) throws SQLException {
+            return DurationWire.formatPostgres(toDuration(f, v));
+        }
+
+        static java.time.Duration toDuration(MetaField f, Object v) throws SQLException {
+            if (v instanceof java.time.Duration d) return d;
+            try {
+                return DurationWire.parse(v.toString());
+            } catch (IllegalArgumentException e) {
+                throw new SQLException("field.duration '" + f.getName() + "' cannot be written: " + e.getMessage(), e);
+            }
         }
     }
 

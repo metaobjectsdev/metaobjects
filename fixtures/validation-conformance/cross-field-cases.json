@@ -318,6 +318,244 @@
         "approverId": "9b7d4e22-0c1a-4f3b-8d65-2a7e9c5f1b34"
       },
       "expectValid": true
+    },
+    {
+      "name": "shift-valid-baseline",
+      "entity": "Shift",
+      "payload": {
+        "startDay": 1,
+        "endDay": 1,
+        "startMin": 60,
+        "endMin": 120,
+        "storeId": 7,
+        "kind": "DESK"
+      },
+      "expectValid": true
+    },
+    {
+      "name": "condition-true-rule-violated",
+      "entity": "Shift",
+      "payload": {
+        "startDay": 1,
+        "endDay": 1,
+        "startMin": 120,
+        "endMin": 60,
+        "storeId": 7,
+        "kind": "DESK"
+      },
+      "expectValid": false
+    },
+    {
+      "name": "condition-false-rule-skipped",
+      "entity": "Shift",
+      "payload": {
+        "startDay": 1,
+        "endDay": 2,
+        "startMin": 120,
+        "endMin": 60,
+        "storeId": 7,
+        "kind": "DESK"
+      },
+      "expectValid": true
+    },
+    {
+      "name": "condition-null-rule-skipped",
+      "entity": "Shift",
+      "payload": {
+        "endDay": 1,
+        "startMin": 120,
+        "endMin": 60,
+        "storeId": 7,
+        "kind": "DESK"
+      },
+      "expectValid": true
+    },
+    {
+      "name": "exactly-one-none",
+      "entity": "Shift",
+      "payload": {
+        "startDay": 1,
+        "endDay": 1,
+        "startMin": 60,
+        "endMin": 120,
+        "kind": "DESK"
+      },
+      "expectValid": false
+    },
+    {
+      "name": "exactly-one-both",
+      "entity": "Shift",
+      "payload": {
+        "startDay": 1,
+        "endDay": 1,
+        "startMin": 60,
+        "endMin": 120,
+        "storeId": 7,
+        "kind": "DESK",
+        "kioskId": 3
+      },
+      "expectValid": false
+    },
+    {
+      "name": "exactly-one-other",
+      "entity": "Shift",
+      "payload": {
+        "startDay": 1,
+        "endDay": 1,
+        "startMin": 60,
+        "endMin": 120,
+        "kind": "DESK",
+        "kioskId": 3
+      },
+      "expectValid": true
+    },
+    {
+      "name": "condition-not-is-null-true-violated",
+      "entity": "Shift",
+      "payload": {
+        "startDay": 1,
+        "endDay": 1,
+        "startMin": 60,
+        "endMin": 120,
+        "storeId": 7,
+        "kind": "PHONE"
+      },
+      "expectValid": false
+    },
+    {
+      "name": "condition-not-is-null-false-skipped",
+      "entity": "Shift",
+      "payload": {
+        "startDay": 1,
+        "endDay": 1,
+        "startMin": 60,
+        "endMin": 120,
+        "kind": "PHONE",
+        "kioskId": 3
+      },
+      "expectValid": true
+    },
+    {
+      "name": "condition-and-true-violated",
+      "entity": "Shift",
+      "payload": {
+        "startDay": 1,
+        "endDay": 1,
+        "startMin": 60,
+        "endMin": 120,
+        "storeId": 7,
+        "kind": "DESK",
+        "priority": 3
+      },
+      "expectValid": false
+    },
+    {
+      "name": "condition-and-satisfied",
+      "entity": "Shift",
+      "payload": {
+        "startDay": 1,
+        "endDay": 1,
+        "startMin": 60,
+        "endMin": 120,
+        "storeId": 7,
+        "kind": "DESK",
+        "priority": 3,
+        "phone": "555"
+      },
+      "expectValid": true
+    },
+    {
+      "name": "condition-coalesce-default-skipped",
+      "entity": "Shift",
+      "payload": {
+        "startDay": 1,
+        "endDay": 1,
+        "startMin": 60,
+        "endMin": 120,
+        "storeId": 7,
+        "kind": "DESK"
+      },
+      "expectValid": true
+    },
+    {
+      "name": "condition-and-false-by-or-skipped",
+      "entity": "Shift",
+      "payload": {
+        "startDay": 1,
+        "endDay": 1,
+        "startMin": 60,
+        "endMin": 120,
+        "storeId": 7,
+        "kind": "BATCH",
+        "priority": 3
+      },
+      "expectValid": true
+    },
+    {
+      "name": "condition-or-null-branch-violated",
+      "entity": "Shift",
+      "payload": {
+        "startDay": 1,
+        "endDay": 1,
+        "startMin": 60,
+        "endMin": 120,
+        "storeId": 7,
+        "priority": 3
+      },
+      "expectValid": false
+    },
+    {
+      "name": "condition-comparing-across-kinds-leaves-rule-to-database",
+      "entity": "Shift",
+      "payload": {
+        "storeId": 7,
+        "kind": "CALL",
+        "shiftDate": "2030-01-02",
+        "loggedAt": "2020-01-01T00:00:00Z"
+      },
+      "expectValid": true
+    },
+    {
+      "name": "condition-ne-on-ipv4-and-ipv6-addresses-enforces-the-rule",
+      "entity": "Shift",
+      "payload": {
+        "storeId": 7,
+        "kind": "CALL",
+        "clientIp": "10.0.0.1",
+        "siteIp": "::1"
+      },
+      "expectValid": false
+    },
+    {
+      "name": "condition-ne-on-equal-addresses-lets-the-record-through",
+      "entity": "Shift",
+      "payload": {
+        "storeId": 7,
+        "kind": "CALL",
+        "clientIp": "10.0.0.1",
+        "siteIp": "10.0.0.1"
+      },
+      "expectValid": true
+    },
+    {
+      "name": "duration-comparison-rejects-a-longer-span",
+      "entity": "Shift",
+      "payload": {
+        "storeId": 7,
+        "planned": "PT1H",
+        "actual": "PT1H30M"
+      },
+      "expectValid": false
+    },
+    {
+      "name": "duration-comparison-orders-by-length-not-text",
+      "entity": "Shift",
+      "payload": {
+        "storeId": 7,
+        "planned": "PT1H",
+        "actual": "PT45M"
+      },
+      "expectValid": true
     }
   ]
 }

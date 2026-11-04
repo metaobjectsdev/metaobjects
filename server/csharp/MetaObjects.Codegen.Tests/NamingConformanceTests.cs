@@ -10,7 +10,9 @@
 // and CSharpNaming.Column — never a reimplementation. Each `invalid` block must be refused
 // when the config is read.
 using System.Text.Json;
+using MetaObjects;
 using MetaObjects.Config;
+using MetaObjects.Core.Field;
 using MetaObjects.Loader;
 using MetaObjects.Meta;
 using Xunit;
@@ -121,14 +123,54 @@ public class NamingConformanceTests
 
         foreach (var (key, expectedColumn) in c.Columns)
         {
-            var parts = key.Split('.', 2);
+            var parts = key.Split('.', 3);
             var obj = root.FindObject(parts[0]);
             Assert.NotNull(obj);
             // ADR-0039: Fields() is the resolving accessor (an inherited field must resolve).
             var field = obj!.Fields().FirstOrDefault(f => f.Name == parts[1]);
             Assert.NotNull(field);
-            // CSharpNaming.Column is the exact door the entity/names generators call.
-            Assert.Equal(expectedColumn, CSharpNaming.Column(field!, naming.Columns));
+            if (parts.Length == 2)
+            {
+                // CSharpNaming.Column is the exact door the entity/names generators call.
+                Assert.Equal(expectedColumn, CSharpNaming.Column(field!, naming.Columns));
+                continue;
+            }
+            // `<Object>.<field>.<member>`: a member of the flattened value object the field
+            // embeds, named by core naming, the door the DbContext generator calls.
+            var target = NamingRefs.RefTarget(field!, FieldConstants.FIELD_ATTR_OBJECT_REF) as MetaObject;
+            Assert.NotNull(target);
+            var member = target!.Fields().FirstOrDefault(f => f.Name == parts[2]);
+            Assert.NotNull(member);
+            Assert.Equal(expectedColumn, PhysicalNaming.ResolveFlattenedColumnName(field!, member!, naming.Columns));
+        }
+    }
+
+    /// <summary>
+    /// The names artifact names every column in the corpus the way the resolvers above do: a
+    /// scalar field's <c>Column</c>, and each member of a flattened value object under its
+    /// field's <c>Members</c>.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(ValidCaseNames))]
+    public void Names_artifact_carries_every_column(string name)
+    {
+        var c = LoadValidCase(name);
+        var naming = ReadNaming(c.Naming);
+        var root = LoadModel(naming);
+
+        foreach (var (key, expectedColumn) in c.Columns)
+        {
+            var parts = key.Split('.', 3);
+            var names = CSharpNaming.ResolveObjectNames(root.FindObject(parts[0])!, naming.Columns);
+            Assert.NotNull(names);
+            var field = names!.Fields[parts[1]];
+            if (parts.Length == 2)
+            {
+                Assert.Equal(expectedColumn, field.Column);
+                continue;
+            }
+            Assert.NotNull(field.Members);
+            Assert.Equal(expectedColumn, field.Members![parts[2]].Column);
         }
     }
 
