@@ -4715,7 +4715,8 @@ public static partial class ValidationPasses
     // compared (PhysicalNaming.ResolveColumnName), so an explicit @column, an inherited
     // field and the project's column strategy are honoured. Scope: a concrete object
     // declaring at least one source (a source-less object generates nothing); derived
-    // fields and field.object (may flatten to several columns) are skipped.
+    // fields are skipped. A flattened field.object contributes one column per member of its
+    // value object (PhysicalColumnsOf below); any other field.object is one jsonb column.
     // ADR-0039: effective children, so an inherited field collides like an own one.
     // Exempt: an object whose every source is read-only and at least one is a
     // source.rdb @kind: view with an @sql body. The author's SQL defines that view's columns
