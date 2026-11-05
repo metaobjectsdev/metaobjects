@@ -149,3 +149,17 @@ def test_verify_deps_drift_exits_one(
     project = _materialize("check-a-newer-artifact-than-the-lock-has-drifted", tmp_path)
     assert _run(project, ["verify", "--deps"], monkeypatch) == 1
     assert "ERR_DEPENDENCY_UPSTREAM_DRIFT" in capsys.readouterr().err
+
+
+def test_deps_check_a_non_utf8_manifest_is_unresolved_not_a_crash(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = _materialize("check-a-matching-artifact-is-current", tmp_path)
+    manifests = list(tmp_path.rglob("metaobjects.pkg.json"))
+    assert manifests
+    for manifest in manifests:
+        manifest.write_bytes(b"\xff\xfe\x00not utf-8")
+    assert _run(project, ["deps", "check"], monkeypatch) == 1
+    err = capsys.readouterr().err
+    assert "acme-common: unresolved" in err
+    assert "is not valid JSON" in err

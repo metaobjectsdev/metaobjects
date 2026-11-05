@@ -149,15 +149,16 @@ public sealed class DependencyCliTests : IDisposable
     }
 
     [Fact]
-    public void Verify_deps_reports_a_dependency_not_yet_synced_as_unresolved_not_stale()
+    public void Verify_deps_reports_a_dependency_not_yet_synced_as_unresolved_then_the_load_refuses_it()
     {
-        // No lock file at all: the check says so in its own words, before the metadata load would
-        // have refused the project as stale.
+        // No lock file at all: the check says so in its own words first; the metadata load that
+        // follows then refuses the missing snapshot and the run exits 2.
         var project = CheckProject("check-a-dependency-with-no-lock-file-is-unresolved", withSnapshot: false);
         var (exit, stdout, stderr) = CliProcess.Run(project, "verify", "--deps", "--no-field-lint");
-        Assert.NotEqual(0, exit);
+        Assert.Equal(2, exit);
         Assert.Contains("acme-common: unresolved", stderr);
         Assert.Contains("ERR_DEPENDENCY_UPSTREAM_DRIFT", stderr);
+        Assert.Contains("ERR_DEPENDENCY_SNAPSHOT_STALE", stderr);
     }
 
     [Fact]

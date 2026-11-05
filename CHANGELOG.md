@@ -40,8 +40,9 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
   Both run the 11 `expectCheck` cases of `fixtures/dependency-conformance/`. The check writes
   nothing, is never part of a bare `verify`, and resolves the `path` transport only: an `npm` or
   `python` dependency reports `unresolved` and names the Node `meta deps check`. In C# it runs
-  before the metadata loads, so a dependency declared but not yet synced is reported as such rather
-  than as a stale snapshot. The Node `meta deps sync` stays the only writer of the lock and the
+  before the metadata loads, so a dependency declared but not yet synced is reported `unresolved`
+  first (the check exits 1); the load that follows still refuses the missing or stale snapshot with
+  `ERR_DEPENDENCY_SNAPSHOT_STALE` and exit 2. The Node `meta deps sync` stays the only writer of the lock and the
   snapshot. See [docs/features/metadata-dependencies.md](docs/features/metadata-dependencies.md).
 
 - **A model explorer site, built by `docsSiteFile()`.** The docs site now shows what the

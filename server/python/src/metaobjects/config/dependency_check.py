@@ -80,11 +80,11 @@ def _read_manifest(directory: Path) -> tuple[dict[str, Any], bytes]:
     caught here)."""
     manifest_path = directory / MANIFEST_FILE
     try:
-        raw = manifest_path.read_text(encoding="utf-8")
+        raw = manifest_path.read_bytes()
     except OSError:
         raise _Unresolved(f"no {MANIFEST_FILE} found at {manifest_path}") from None
     try:
-        parsed = json.loads(raw)
+        parsed = json.loads(raw.decode("utf-8"))
     except ValueError as exc:
         raise _Unresolved(f"{manifest_path} is not valid JSON: {exc}") from None
     try:

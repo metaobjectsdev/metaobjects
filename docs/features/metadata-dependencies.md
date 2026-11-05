@@ -381,8 +381,9 @@ and with the same three states and the same `ERR_DEPENDENCY_UPSTREAM_DRIFT`. The
 check resolve the `path` transport only (see [Deferred](#deferred)). Python's `deps check`, like
 TypeScript's, also loads the locked snapshots together once the hashes match; `verify --deps` is
 the comparison alone in all three. Run `verify --deps` before `verify`'s own load: C# runs it
-first, so a dependency that is declared but not yet synced is reported as `unresolved` rather
-than as a stale snapshot.
+first, so a dependency that is declared but not yet synced is reported as `unresolved` (the
+check exits 1). The load that follows still refuses the missing or stale snapshot with
+`ERR_DEPENDENCY_SNAPSHOT_STALE` and exit 2.
 
 `verify --deps` runs `meta deps check`'s comparison as one of `verify`'s gated
 subverbs (never part of the bare default — it needs the publisher reachable, its

@@ -122,7 +122,9 @@ does and does not do is in
 each dependency's `path`, reads the publisher's `metaobjects.pkg.json`, hashes the artifact beside
 it and compares with the lock. `current`, `drifted` and `unresolved` (no directory, a bad
 manifest, a hash that does not match, or no lock entry yet) are the same states and the same
-`ERR_DEPENDENCY_UPSTREAM_DRIFT` exit as `meta deps check`. It never writes anything, it is never
+`ERR_DEPENDENCY_UPSTREAM_DRIFT` exit as `meta deps check`. The check runs before the metadata
+loads, so a dependency not yet synced is reported `unresolved` first; the load that follows still
+refuses the missing or stale snapshot with `ERR_DEPENDENCY_SNAPSHOT_STALE` and exit 2. It never writes anything, it is never
 part of a bare `verify`, and an `npm` or `python` dependency is reported `unresolved` (run the Node
 `meta deps check` for those).
 

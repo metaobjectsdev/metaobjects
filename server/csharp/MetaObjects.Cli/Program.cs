@@ -444,7 +444,8 @@ static int RunVerify(string[] rest)
 
     // The dependency gate runs BEFORE the metadata resolves: resolving verifies the committed snapshot
     // against the lock and refuses a stale one, and a drift or a not-yet-synced dependency is exactly
-    // what this gate exists to report in its own words. It returns here, then the run goes on.
+    // what this gate exists to report in its own words. It returns here, then the run goes on; the
+    // load that follows still refuses a missing or stale snapshot (ERR_DEPENDENCY_SNAPSHOT_STALE, exit 2).
     var depsExit = deps ? RunDepsGate(metadataDir) : 0;
 
     // Rung 1 (explicit positional) is honored as-is; an omitted metadataDir
