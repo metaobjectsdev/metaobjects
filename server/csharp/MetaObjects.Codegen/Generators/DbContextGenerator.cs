@@ -435,8 +435,13 @@ public class DbContextGenerator : IGenerator
         // (CSharpNaming.QualifiedOwnerTypeRef), not bare: a bare <Base> can resolve to
         // this DbContext's own same-named DbSet property instead of the entity type
         // (CS1061), which an already-plural base entity name now reaches.
+        // FR-019: a SHARED (root-level abstract) or @provided enum is not nested in the base —
+        // it is named where it lives, exactly as EnumConversionCall names it.
         var enumType = discField is not null && isEnum
-            ? $"{CSharpNaming.QualifiedOwnerTypeRef(owner, baseEntity, config)}.{CSharpNaming.EnumTypeName(baseEntity, discField)}" : null;
+            ? Fr019SharedEnum.SharedEnumForField(discField) is { } shared
+                ? Fr019SharedEnum.SharedEnumTypeReference(shared, config)
+                : $"{CSharpNaming.QualifiedOwnerTypeRef(owner, baseEntity, config)}.{CSharpNaming.EnumTypeName(baseEntity, discField)}"
+            : null;
 
         var sb = new StringBuilder();
         sb.Append($"        modelBuilder.Entity<{owner}>().HasDiscriminator(e => e.{discProp})");

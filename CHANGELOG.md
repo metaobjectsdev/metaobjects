@@ -217,6 +217,10 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
 
 ### Fixed
 
+- **C#: a TPH discriminator typed by a shared or `@provided` enum compiles.** `HasValue<Sub>(...)`
+  named the enum as a type nested in the base entity (`Vehicle.VehicleKind.Car`), which a shared
+  or provided enum (FR-019) is not; it now names it where it lives, as the enum conversions do.
+
 - **C#: a reference's `@constraintName` and non-primary-key target reach the EF model.** The
   relationship line now ends in `.HasConstraintName("...")` when the `identity.reference` declares
   `@constraintName` (the junction sides of an M:N too), so a database EF creates names its foreign
