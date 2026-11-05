@@ -204,8 +204,25 @@ the Maven build reads them offline and refuses a stale or hand-edited snapshot w
 ones; the generators emit nothing for an imported object unless `scope.include` names its
 package, and a new top-level node declared into a package a dependency owns fails with
 `ERR_DEPENDENCY_PACKAGE_NOT_OWNED`. Kotlin builds inherit all of this. See
-[`metadata-dependencies.md`](../features/metadata-dependencies.md). Spring runtime
-auto-load of the snapshot and `verify` drift for dependencies are separate, later slices.
+[`metadata-dependencies.md`](../features/metadata-dependencies.md).
+
+**Spring runtime.** `metaobjects:generate` ships `.metaobjects/deps.lock.json` and
+`.metaobjects/deps/**` as resources (target path `.metaobjects`) when the project has a lock, and
+the Spring application loader reads them off the classpath: when `classpath:.metaobjects/deps.lock.json`
+exists, each snapshot loads before `metaobjects.metadata-sources`, so an entity that `extends` an
+imported node boots with no extra configuration. It is verified exactly as at build time (hash,
+`ERR_DEPENDENCY_SNAPSHOT_STALE`, `ERR_DEPENDENCY_PACKAGE_NOT_OWNED`) and an imported node stays
+load-only. When the project's `config.json` is on the classpath too (the file
+`metaobjects.physical-naming-config` names, else `classpath:.metaobjects/config.json`), the lock is
+also checked against its declared dependencies, and a config that declares dependencies with no lock
+fails boot. If the lock is absent and nothing is declared, nothing changes.
+
+**Dependency drift.** `mvn metaobjects:verify -Dmeta.verify.mode=deps` is `meta deps check`: it
+re-resolves each declared dependency's `path`, reads the publisher's `metaobjects.pkg.json`, hashes the
+artifact and reports `current`, `drifted` or `unresolved` per dependency; the last two fail the build
+with `ERR_DEPENDENCY_UPSTREAM_DRIFT`. It loads no model, writes nothing, and is not part of the default
+gate set because it needs the publisher reachable. An `npm` or `python` dependency is found by the Node
+tool, so it reports `unresolved` here: run `meta deps check` for it.
 
 ### Custom providers (optional)
 

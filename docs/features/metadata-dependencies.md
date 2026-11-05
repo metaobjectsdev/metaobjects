@@ -170,7 +170,7 @@ owned packages — with no resolution at all; it just reads
 ## Every dependency-aware port loads the committed snapshot, never the live path
 
 Once synced, TypeScript's, Python's and Java's collection resolvers (Kotlin loads through
-Java's) load dependency artifacts from the committed
+Java's; a Spring app's runtime loader reads the same snapshot off the classpath) load dependency artifacts from the committed
 snapshot **first**, then your own project files, offline, with no transport
 involved. At load time it checks the snapshot against the lock and refuses
 (`ERR_DEPENDENCY_SNAPSHOT_STALE`) when they disagree — a missing lock for a declared
@@ -378,7 +378,8 @@ classifies those as breaking automatically — see [Deferred](#deferred).
 `verify --deps` runs `meta deps check`'s comparison as one of `verify`'s gated
 subverbs (never part of the bare default — it needs the publisher reachable, its
 `path` or its installed package, which CI checking out only your own repo may not
-have). Each declared
+have). Java and Kotlin run the `path` case of the same comparison as
+`mvn metaobjects:verify -Dmeta.verify.mode=deps` ([Java port page](../ports/java.md#consuming-a-shared-model-dependencies)). Each declared
 dependency reports one of:
 
 - **`current`** — the installed artifact's hash matches the lock.
@@ -644,6 +645,15 @@ Two rulings shape it:
   `.metaobjects/deps.lock.json` is on the classpath, so a Spring app whose entity `extends` a
   dependency's node does not fail at boot for want of one line of configuration.
 
+**Java and Kotlin: runtime load and `verify` (shipped, S4 and S5).** A Spring app loads the committed
+snapshot at runtime: `metaobjects:generate` ships `.metaobjects/deps.lock.json` and
+`.metaobjects/deps/**` on the classpath, and the application loader reads them when the lock is
+there, with the build-time scoping and error codes. `mvn metaobjects:verify -Dmeta.verify.mode=deps`
+is the Java and Kotlin `meta deps check`: it resolves a `path` dependency, hashes its artifact against
+the lock and fails with `ERR_DEPENDENCY_UPSTREAM_DRIFT` on `drifted` or `unresolved`. It is opt-in, and
+an `npm` or `python` dependency is `unresolved` there (run the Node `meta deps check` for those). See
+[the Java port page](../ports/java.md#consuming-a-shared-model-dependencies).
+
 **`meta deps sync` and `check` on a Maven- or C#-shaped project (shipped).** Both commands read
 only `.metaobjects/config.json`, and finish with a proof that the dependency set loads. A project
 whose own metadata is in a build-tool directory (`src/main/resources/metadata`, a C# project's
@@ -691,7 +701,7 @@ but **not** built yet — do not assume any of the following exists:
   an imported entity — "what's imported" is a load-time/codegen concept today, not a
   runtime one.
 - **Java, Kotlin, Python and C# as publishers** — Java, Kotlin and C# consume (S3 and S6);
-  publishing is TypeScript only. Spring apps do not yet auto-load the snapshot at runtime (S4).
+  publishing is TypeScript only.
 
 ## Verified by
 
@@ -702,7 +712,8 @@ but **not** built yet — do not assume any of the following exists:
   resolution-time error above, run by TypeScript (the reference implementation),
   Python and Java (Kotlin loads through the Java loader and Maven plugin, so it inherits the
   corpus run and adds a codegen test that an imported entity emits nothing). 11 pin the upstream
-  check (`current`, `drifted`, `unresolved`), run by TypeScript; Python and Java have no check yet.
+  check (`current`, `drifted`, `unresolved`), run by TypeScript and Java (Kotlin through the same
+  `metaobjects:verify` goal); Python has no check yet.
   Three artifacts under `fixtures/dependency-conformance/artifacts/` are
   pinned by sha256 in the README so the corpus itself can never silently drift.
   Python's runner asserts all 26 resolution cases identically to TypeScript's, with no

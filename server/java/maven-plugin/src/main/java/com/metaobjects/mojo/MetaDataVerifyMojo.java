@@ -1,5 +1,8 @@
 package com.metaobjects.mojo;
 
+import com.metaobjects.MetaDataException;
+import com.metaobjects.config.Dependencies;
+import com.metaobjects.config.NeutralConfig;
 import com.metaobjects.config.WireFormat;
 import com.metaobjects.generator.Generator;
 import com.metaobjects.generator.GeneratorBase;
@@ -36,6 +39,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -71,6 +75,12 @@ import java.util.TreeSet;
  *       shared {@link TemplateVerify} helper (which reuses the render
  *       {@link com.metaobjects.render.Verify} engine). Covers BOTH Java and Kotlin
  *       generation, since they share this one goal.</li>
+ *   <li>{@code deps} — FR-023 dependency drift: re-resolve each declared dependency's {@code path} and
+ *       compare the publisher's artifact with {@code .metaobjects/deps.lock.json}
+ *       ({@code current} / {@code drifted} / {@code unresolved}; the last two fail with
+ *       {@code ERR_DEPENDENCY_UPSTREAM_DRIFT}). Opt-in, never part of the default set: it needs the
+ *       publisher reachable, which CI may not have. It loads no model and writes nothing. Covers Java and
+ *       Kotlin alike, and is the counterpart of {@code meta deps check} / {@code verify --deps}.</li>
  *   <li>{@code db} — NOT supported by the Maven port; schema drift is the migrate engine
  *       (Node-owned, ADR-0015). A {@code db} value fails clearly.</li>
  * </ul>
@@ -111,6 +121,7 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
     static final String MODE_CODEGEN = "codegen";
     static final String MODE_TEMPLATES = "templates";
     static final String MODE_DB = "db";
+    static final String MODE_DEPS = "deps";
 
     /**
      * Which verify mode to run (ADR-0021 D2). Unset (the default) runs the cross-port default
@@ -188,18 +199,63 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
             verifyTemplates();
             return;
         }
+        if (MODE_DEPS.equalsIgnoreCase(m)) {
+            verifyDeps();
+            return;
+        }
         if (MODE_DB.equalsIgnoreCase(m)) {
             throw new MojoFailureException(
                     "meta:verify mode 'db' is not supported by the Maven port; schema verify is the "
-                            + "migrate engine (Node-owned, ADR-0015). Use mode 'codegen' or 'templates'.");
+                            + "migrate engine (Node-owned, ADR-0015). Use mode 'codegen', 'templates' or 'deps'.");
         }
         if (!MODE_CODEGEN.equalsIgnoreCase(m)) {
             throw new MojoFailureException(
-                    "meta:verify: unknown mode '" + mode + "'. Valid modes: 'codegen', 'templates' (or unset for both).");
+                    "meta:verify: unknown mode '" + mode + "'. Valid modes: 'codegen', 'templates' (or unset for both), "
+                            + "and 'deps' (dependency drift, opt-in).");
         }
 
         refuseSharedGeneratorDirs();
         verifyCodegen();
+    }
+
+    /**
+     * FR-023 — the {@code deps} mode. Re-resolves each dependency the project's
+     * {@code .metaobjects/config.json} declares and compares the publisher's artifact with the lock,
+     * reporting one line per dependency. A pure function of the config, the lock and the publisher's
+     * directory (see {@link Dependencies#check}): no snapshot is read and no model is loaded.
+     */
+    private void verifyDeps() throws MojoFailureException {
+        Path configDir = resolveProjectConfigDir(getSourceDir())
+                .orElse(getProjectBaseDir().toPath().toAbsolutePath().normalize());
+        List<Map<String, String>> specs;
+        Optional<Map<String, Dependencies.LockEntry>> lock;
+        try {
+            specs = NeutralConfig.read(configDir).map(NeutralConfig::getDependencies).orElse(List.of());
+            if (specs.isEmpty()) {
+                getLog().info(PREFIX + "deps: no dependencies declared \u2014 nothing to check.");
+                return;
+            }
+            lock = Dependencies.readLock(configDir);
+        } catch (MetaDataException e) {
+            throw new MojoFailureException(PREFIX + "deps: " + e.getMessage(), e);
+        }
+
+        List<Dependencies.CheckResult> results = Dependencies.check(configDir, specs, lock);
+        int failing = 0;
+        for (Dependencies.CheckResult r : results) {
+            if (r.status() == Dependencies.CheckStatus.CURRENT) {
+                getLog().info(PREFIX + "deps: " + r.line());
+            } else {
+                failing++;
+                getLog().error(PREFIX + "deps: " + r.line());
+            }
+        }
+        if (failing > 0) {
+            throw new MojoFailureException(PREFIX + "deps: " + failing + " of " + results.size() + " dependenc"
+                    + (results.size() == 1 ? "y" : "ies") + " drifted or unresolved ("
+                    + Dependencies.UPSTREAM_DRIFT + ").");
+        }
+        getLog().info(PREFIX + "deps: every dependency's installed artifact matches the lock.");
     }
 
     /** Set once the field lint and requirement gate have run, so a two-gate run reports them once. */

@@ -16,6 +16,7 @@
 package com.metaobjects.loader;
 
 import com.metaobjects.MetaData;
+import com.metaobjects.ErrorCode;
 import com.metaobjects.MetaDataException;
 import com.metaobjects.MetaDataNotFoundException;
 import com.metaobjects.MetaRoot;
@@ -822,14 +823,32 @@ public class MetaDataLoader implements LoaderConfigurable {
      */
     public static MetaDataLoader fromUris(String name, List<URI> uris, LoaderOptions opts,
                                           com.metaobjects.database.PhysicalNaming physicalNaming) {
+        return fromUris(name, uris, opts, physicalNaming, com.metaobjects.config.DependencySet.EMPTY);
+    }
+
+    /**
+     * Like {@link #fromUris(String, List, LoaderOptions, com.metaobjects.database.PhysicalNaming)}, for a
+     * project that imports a shared model (FR-023): the {@code dependencies}' snapshot artifacts load
+     * FIRST, ahead of {@code uris}, in the same batch the build-time path uses; the set is attached to the
+     * root, and a new top-level node declared into a package a dependency owns is refused
+     * ({@code ERR_DEPENDENCY_PACKAGE_NOT_OWNED}) after the loader's own errors.
+     */
+    public static MetaDataLoader fromUris(String name, List<URI> uris, LoaderOptions opts,
+                                          com.metaobjects.database.PhysicalNaming physicalNaming,
+                                          com.metaobjects.config.DependencySet dependencies) {
         MetaDataLoader loader = (opts == null)
             ? createManual(false, name)
             : new MetaDataLoader(opts, SUBTYPE_MANUAL, name);
         try {
             loader.init();
-            List<MetaDataSource> sources = new ArrayList<>(uris.size());
+            // Not setDependencies(): that is read by init(), which has already run. The snapshot
+            // sources join this batch instead, and the root carries the set for codegen and runtime.
+            loader.getRoot().setDependencySet(dependencies);
+            List<MetaDataSource> sources = new ArrayList<>(dependencies.sources());
             for (URI uri : uris) sources.add(new UriSource(uri));
             loader.load(sources);
+            // After the loader's own errors, never before: a strict load records them rather than throwing.
+            if (loader.getErrors().isEmpty()) dependencies.refuseUnownedPackages(loader.getRoot());
             loader.register();
             com.metaobjects.database.PhysicalNaming naming = physicalNaming != null
                 ? physicalNaming : discoverNamingOrWarn(name, uris);
@@ -841,6 +860,12 @@ public class MetaDataLoader implements LoaderConfigurable {
                 .discoverEnumDefaults(uris).orElse(com.metaobjects.config.EnumDefaults.DEFAULT));
         } catch (MetaDataLoadingException e) {
             throw e;
+        } catch (MetaDataException e) {
+            // The ownership refusal keeps its own coded error, as it does on the build-time path.
+            if (e.getCode().filter(ErrorCode.ERR_DEPENDENCY_PACKAGE_NOT_OWNED::equals).isPresent()) throw e;
+            throw new MetaDataLoadingException(
+                "Failed to load from URIs", name,
+                loader.getLoadingState().getCurrentPhase(), 0, e);
         } catch (Exception e) {
             throw new MetaDataLoadingException(
                 "Failed to load from URIs", name,

@@ -240,12 +240,16 @@ climbs out of the package, and a Python module that is not a package are
   has no `deps check` yet, so its runner filters the `expectCheck` cases out. Not the transport
   arm: Python never syncs.
 - **Java** — resolution, load-time failure, lock/snapshot integrity
-  (`DependencyConformanceTest`). Not the check arm: Java has no `deps check`, so its runner
-  skips the `expectCheck` cases. Not the transport arm: Java never syncs.
+  (`DependencyConformanceTest`), the check arm (`DependencyCheckConformanceTest`, over
+  `Dependencies.check`, the engine of `metaobjects:verify -Dmeta.verify.mode=deps`), and the
+  resolution and load-time arms again through the Spring runtime's classpath reader
+  (`DependencySnapshotRuntimeConformanceTest`: no file path, the project's own files handed over as
+  URIs). Not the transport arm: Java never syncs.
   `refuseUnownedPackages` runs after the loader's own errors,
   as the ordering note above requires. Java's `inScope` is the import-exclusion conjunct only,
   like Python's.
-- **Kotlin** — inherits via Java: it loads through the same loader and Maven plugin. The
+- **Kotlin** — inherits via Java: it loads through the same loader and Maven plugin, and checks
+  through the same `metaobjects:verify` goal. The
   Kotlin generators are covered by a codegen test that an imported entity emits nothing.
 - **C#** — the resolution arm: resolution, load-time failure, lock/snapshot integrity, on the
   neutral source ladder and again through the explicit metadata directory (C# has no native
