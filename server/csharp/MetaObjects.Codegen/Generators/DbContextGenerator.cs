@@ -387,14 +387,39 @@ public class DbContextGenerator : IGenerator
     /// the block is omitted entirely. The default body reproduces the inline emission,
     /// so default output is byte-identical.
     /// </summary>
+    /// <summary>The most configuration entries <c>OnModelCreating</c> holds before they are split into
+    /// <c>ConfigureModelNN</c> methods, called in order. One method holding every entry of a large model has
+    /// a stack frame too big for a thread-pool thread in a Debug build (each converter lambda is an
+    /// expression tree built from locals), so building the model overflows the stack. A model within the
+    /// limit is emitted as before.</summary>
+    public int ModelConfigChunkSize { get; init; } = 200;
+
     protected virtual void EmitOnModelCreatingBody(StringBuilder sb, IReadOnlyList<string> modelLines, GenContext ctx)
     {
         if (modelLines.Count == 0) return;
         sb.AppendLine();
         sb.AppendLine("    protected override void OnModelCreating(ModelBuilder modelBuilder)");
         sb.AppendLine("    {");
-        foreach (var line in modelLines) sb.AppendLine(line);
+        if (modelLines.Count <= ModelConfigChunkSize)
+        {
+            foreach (var line in modelLines) sb.AppendLine(line);
+            sb.AppendLine("    }");
+            return;
+        }
+        var chunks = modelLines.Chunk(Math.Max(1, ModelConfigChunkSize)).ToList();
+        for (var i = 0; i < chunks.Count; i++)
+        {
+            sb.AppendLine($"        ConfigureModel{i + 1:D2}(modelBuilder);");
+        }
         sb.AppendLine("    }");
+        for (var i = 0; i < chunks.Count; i++)
+        {
+            sb.AppendLine();
+            sb.AppendLine($"    private void ConfigureModel{i + 1:D2}(ModelBuilder modelBuilder)");
+            sb.AppendLine("    {");
+            foreach (var line in chunks[i]) sb.AppendLine(line);
+            sb.AppendLine("    }");
+        }
     }
 
     // R6 Plan 2b — EF mapping for a @dbColumnType physical-override field. The CLR

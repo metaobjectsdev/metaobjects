@@ -222,6 +222,13 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
 
 ### Fixed
 
+- **C#: a large model's `OnModelCreating` no longer overflows the stack.** The DbContext generator put
+  every configuration line in one method; on a model with hundreds of converters and owned types its
+  stack frame was too large for a thread-pool thread in a Debug build, so a test host crashed with a
+  stack overflow while building the model. Past `ModelConfigChunkSize` entries (default 200) the
+  configuration is split into `ConfigureModelNN` methods called in order; a smaller model is emitted
+  as before.
+
 - **C#: concurrent reads of a loaded model no longer corrupt its cache.** `MetaData.Cached`
   memoized derived reads (`Validators()`, `ResolvedIsArray()`, `OwnAttrs()`, …) in a plain
   `Dictionary`, so two threads touching a frozen node for the first time could corrupt it, and
