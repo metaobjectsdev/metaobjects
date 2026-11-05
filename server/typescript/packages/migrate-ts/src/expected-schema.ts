@@ -1549,7 +1549,7 @@ function buildColumn(
 function arrayElementSqlType(field: MetaData): SqlType | undefined {
   switch (field.subType) {
     // enum[] stores as text[] — membership is app-level (no CHECK — see buildChecks).
-    // An INT-BACKED enum[] (@intValueMap, design D7) stores as integer[] instead.
+    // An INT-BACKED enum[] (@intValueMap) stores its mapped ints as integer[] (still no CHECK).
     case FIELD_SUBTYPE_ENUM:      return isIntBackedEnum(field) ? { kind: "integer", bits: 32 } : { kind: "text" };
     case FIELD_SUBTYPE_STRING:
     case FIELD_SUBTYPE_URI:       return { kind: "text" };

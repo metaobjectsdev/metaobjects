@@ -335,7 +335,12 @@ The codegen emits:
   See [reporting](../features/reporting.md#how-a-report-is-served).
 - `AppDbContext.g.cs` — `DbSet<Author>`, projection `.ToView()`, `@storage` owned
   types via `OwnsOne` (single) / `OwnsMany(...).ToJson(...)` (`@isArray` array-of-VO),
-  enum-as-string via `HasConversion<string>()`.
+  enum-as-string via `HasConversion<string>()`. An int-backed enum (`@intValueMap`) gets a
+  converter pair that stores the declared integer and throws on a stored integer the map does
+  not describe. On an `isArray` enum that pair is the element converter of an EF Core primitive
+  collection, so a Postgres column is `integer[]` and a SQLite or MySQL column is a JSON array
+  of numbers (`[5,0]`). A non-required int-backed enum array is an `IList<TEnum>?`, so a NULL
+  column reads back as null.
 - `AuthorRoutes.g.cs` — CRUD minimal-API endpoints.
 - `AuthorFilterAllowlist.g.cs` — the server-side filter/sort allowlist feeding the
   generated list handler.

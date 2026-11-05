@@ -190,3 +190,101 @@ def test_filter_isnull_binds_no_param_and_is_not_coerced():
     sql, params = _compile_filter({"status": {"isNull": True}}, _order_entity(INT_MAP))
     assert params == []
     assert "IS NULL" in sql
+
+
+# --- arrays (design D7 lifted): element-wise member <-> int ---------------
+#
+# Before, `value in int_map` was False for a list, so the symbol LIST was bound
+# straight into an integer[] column — D7's silent failure mode. Each element now
+# encodes to its declared int on write and decodes to its member on read.
+
+ARRAY_INT_MAP = ', "isArray": true' + INT_MAP
+
+
+def test_int_backed_enum_array_write_encodes_each_element_in_order():
+    assert _coerce_write_value(_status_field(ARRAY_INT_MAP), ["PUBLISHED", "DRAFT"]) == [5, 0]
+
+
+def test_int_backed_enum_array_write_binds_ints_never_symbols():
+    encoded = _coerce_write_value(_status_field(ARRAY_INT_MAP), ["ARCHIVED", "DRAFT", "PUBLISHED"])
+    assert all(isinstance(v, int) and not isinstance(v, bool) for v in encoded)
+
+
+def test_int_backed_enum_array_write_empty_stays_empty():
+    assert _coerce_write_value(_status_field(ARRAY_INT_MAP), []) == []
+
+
+def test_int_backed_enum_array_write_null_stays_null():
+    assert _coerce_write_value(_status_field(ARRAY_INT_MAP), None) is None
+
+
+def test_int_backed_enum_array_write_null_element_stays_null():
+    """A null element of a string-backed enum array is bound as-is (a NULL
+    element); the int-backed form keeps that behaviour."""
+    assert _coerce_write_value(_status_field(ARRAY_INT_MAP), ["DRAFT", None]) == [0, None]
+
+
+def test_int_backed_enum_array_write_unknown_element_is_left_alone():
+    """Same stance as the scalar: membership is not the codec's to enforce."""
+    assert _coerce_write_value(_status_field(ARRAY_INT_MAP), ["DRAFT", "NOPE"]) == [0, "NOPE"]
+
+
+def test_string_backed_enum_array_write_is_unchanged():
+    assert _coerce_write_value(_status_field(', "isArray": true'), ["PUBLISHED", "DRAFT"]) == ["PUBLISHED", "DRAFT"]
+
+
+def test_int_backed_enum_array_read_decodes_each_element_in_order():
+    assert _decode_read_value(_status_field(ARRAY_INT_MAP), [5, 0, 9]) == ["PUBLISHED", "DRAFT", "ARCHIVED"]
+
+
+def test_int_backed_enum_array_read_empty_and_null():
+    field = _status_field(ARRAY_INT_MAP)
+    assert _decode_read_value(field, []) == []
+    assert _decode_read_value(field, None) is None
+
+
+def test_int_backed_enum_array_read_null_element_stays_null():
+    assert _decode_read_value(_status_field(ARRAY_INT_MAP), [0, None]) == ["DRAFT", None]
+
+
+def test_int_backed_enum_array_read_unmapped_element_raises():
+    with pytest.raises(ValueError) as exc:
+        _decode_read_value(_status_field(ARRAY_INT_MAP), [0, 7])
+    assert "7" in str(exc.value)
+    assert "intValueMap" in str(exc.value)
+
+
+def test_string_backed_enum_array_read_is_unchanged():
+    assert _decode_read_value(_status_field(', "isArray": true'), ["PUBLISHED"]) == ["PUBLISHED"]
+
+
+def test_int_backed_enum_array_inheriting_the_map_from_a_shared_enum():
+    """The adopter shape: one map on a shared abstract enum, a scalar and an
+    array field consuming it. Both the map and isArray are read RESOLVING."""
+    json_str = """{ "metadata.root": { "package": "acme", "children": [
+      { "field.enum": { "name": "StatusEnum", "abstract": true,
+        "@values": ["DRAFT","PUBLISHED","ARCHIVED"],
+        "@intValueMap": {"DRAFT": 0, "PUBLISHED": 5, "ARCHIVED": 9} } },
+      { "object.entity": { "name": "Order", "children": [
+        { "field.long": { "name": "id" } },
+        { "field.enum": { "name": "status", "extends": "acme::StatusEnum" } },
+        { "field.enum": { "name": "history", "extends": "acme::StatusEnum", "isArray": true } },
+        { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+      ]} }
+    ]} }"""
+    scalar = _field_of(json_str, "Order", "status")
+    array = _field_of(json_str, "Order", "history")
+    assert _coerce_write_value(scalar, "PUBLISHED") == 5
+    assert _coerce_write_value(array, ["PUBLISHED", "DRAFT"]) == [5, 0]
+    assert _decode_read_value(array, [5, 0]) == ["PUBLISHED", "DRAFT"]
+
+
+def test_filter_equality_on_an_int_backed_enum_array_binds_ints():
+    """The runtime has no array operators (contains/overlaps) and the loader
+    refuses @filterable on an array, but a direct ObjectManager filter can still
+    compare the whole array; its operand encodes like a write."""
+    from metaobjects.runtime.object_manager import _compile_filter
+    _, params = _compile_filter({"status": {"eq": ["PUBLISHED", "DRAFT"]}}, _order_entity(ARRAY_INT_MAP))
+    assert params == [[5, 0]]
+    _, params = _compile_filter({"status": ["ARCHIVED"]}, _order_entity(ARRAY_INT_MAP))
+    assert params == [[9]]

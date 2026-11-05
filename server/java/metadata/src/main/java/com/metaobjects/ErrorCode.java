@@ -563,15 +563,6 @@ public enum ErrorCode {
     ERR_ENUM_EXTENDS_VALUES_CONFLICT,
 
     /**
-     * A {@code field.enum} carries {@code @intValueMap} together with
-     * {@code isArray=true}. Int-backing is a persistence-layer codec and no port
-     * implements it element-wise over an array column, so the combination would
-     * silently persist member SYMBOLS into an integer array. An array-of-enum
-     * stays string-backed: drop {@code @intValueMap}, or make the field scalar.
-     */
-    ERR_ENUM_INT_VALUE_MAP_ARRAY,
-
-    /**
      * Two declared members of one {@code field.enum} normalize to the same key under the
      * default {@code @normalize: strip}; rename a member or set {@code collapse} / {@code none}.
      */

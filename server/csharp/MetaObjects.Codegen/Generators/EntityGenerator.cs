@@ -673,10 +673,22 @@ public class EntityGenerator : IGenerator
         var propName = PropertyName(field);
         var colAttr = $"    [Column({CSharpNaming.ColumnRef(entity, field, strategy, config.IncludeNames)})]\n";
         if (field.ResolvedIsArray()) // ADR-0039: resolving — array-ness inheritable via extends
-            return $"{colAttr}    public IList<{typeName}> {propName} {{ get; set; }} = new List<{typeName}>();";
+            return EnumArrayProperty(entity, field, colAttr, typeName, propName);
         var nullable = CSharpNaming.IsRequired(entity, field) ? "" : "?";
         return $"{colAttr}    public {typeName}{nullable} {propName} {{ get; set; }}";
     }
+
+    // An enum ARRAY property: IList<TEnum> with an empty-list initializer, except a
+    // NON-required int-backed one (@intValueMap, read resolving — it is normally inherited from
+    // a shared abstract enum), which is a nullable IList<TEnum>? with no initializer, the rule a
+    // non-required decimal array follows: its integer[] / JSON column is nullable, and a NULL
+    // must read back as null rather than fail materialization of a non-nullable collection.
+    // A string-backed enum array keeps the non-nullable form it has always had.
+    private static string EnumArrayProperty(
+        MetaObject owner, MetaField field, string colAttr, string typeName, string propName) =>
+        field.Attr(FIELD_ATTR_INT_VALUE_MAP) is not null && !CSharpNaming.IsRequired(owner, field)
+            ? $"{colAttr}    public IList<{typeName}>? {propName} {{ get; set; }}"
+            : $"{colAttr}    public IList<{typeName}> {propName} {{ get; set; }} = new List<{typeName}>();";
 
     // The directly-extended entity (the metadata `extends` target) of a TPH subtype — the
     // immediate parent in the inheritance chain (abstract intermediate or the root). Falls
@@ -1805,8 +1817,7 @@ public static class DurationWire
     }
 
     // A property for an enum-subtype field. The property type is the nested enum name.
-    // When the field is an array, emit List<EnumType> with an empty-list initializer;
-    // the List is never nullable (the column stores a jsonb array, always present).
+    // When the field is an array, see EnumArrayProperty.
     // withAttributes adds the EF [Column] mapping; abstract shape classes pass false
     // (shapes carry no EF mapping).
     protected virtual string EnumProperty(
@@ -1818,7 +1829,7 @@ public static class DurationWire
         var propName = PropertyName(field);
         var colAttr = withAttributes ? $"    [Column({CSharpNaming.ColumnRef(entity, field, strategy, config.IncludeNames)})]\n" : "";
         if (field.ResolvedIsArray()) // ADR-0039: resolving — array-ness inheritable via extends
-            return $"{colAttr}    public IList<{typeName}> {propName} {{ get; set; }} = new List<{typeName}>();";
+            return EnumArrayProperty(entity, field, colAttr, typeName, propName);
         var required = CSharpNaming.IsRequired(entity, field);
         var type = required ? typeName : typeName + "?";
         return $"{colAttr}    public {type} {propName} {{ get; set; }}";

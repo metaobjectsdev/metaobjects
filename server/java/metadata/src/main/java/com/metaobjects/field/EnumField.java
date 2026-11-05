@@ -88,7 +88,9 @@ public class EnumField extends PrimitiveField<String> {
     /**
      * Name of the optional per-member explicit-integer-value attribute
      * ({@code {member: int}}), switching this enum field's DB persistence from
-     * string+CHECK to integer+CHECK. Keys must exactly match the field's effective
+     * string+CHECK to integer+CHECK. On an {@code isArray} field each ELEMENT
+     * persists as its member's declared integer (an integer array, no CHECK —
+     * array membership stays app-level). Keys must exactly match the field's effective
      * {@code @values}; values must be unique integers ({@code ERR_BAD_ATTR_VALUE}
      * otherwise — enforced post-load in
      * {@link com.metaobjects.loader.ValidationPhase}). The generic "is this an

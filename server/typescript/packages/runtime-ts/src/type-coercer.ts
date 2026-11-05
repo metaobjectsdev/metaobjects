@@ -110,21 +110,50 @@ function decodeIntBackedEnums(entity: MetaData, row: Row): Row {
     if (!(child.name in row)) continue;
     const raw = row[child.name];
     if (raw === null || raw === undefined) continue;
+    // ADR-0039: resolving — array-ness may be inherited via extends.
+    if (child.resolvedIsArray()) {
+      if (!Array.isArray(raw)) continue;
+      out ??= { ...row };
+      out[child.name] = raw.map((el) => (el === null ? null : decodeArrayElement(child.name, intMap, el)));
+      continue;
+    }
     // A driver may hand back a BIGINT-ish string; Number() covers both shapes.
     const stored = typeof raw === "number" ? raw : Number(raw);
     if (!Number.isInteger(stored)) continue;
-    const member = Object.keys(intMap).find((k) => intMap[k] === stored);
-    if (member === undefined) {
-      throw new Error(
-        `field.enum '${child.name}' read stored value ${stored} with no member in ` +
-          `@intValueMap (declared: ${JSON.stringify(intMap)}) — the database holds a ` +
-          `value the model does not describe.`,
-      );
-    }
     out ??= { ...row };
-    out[child.name] = member;
+    out[child.name] = memberOf(child.name, intMap, stored);
   }
   return out ?? row;
+}
+
+function memberOf(fieldName: string, intMap: Record<string, number>, stored: number): string {
+  const member = Object.keys(intMap).find((k) => intMap[k] === stored);
+  if (member === undefined) {
+    throw new Error(
+      `field.enum '${fieldName}' read stored value ${stored} with no member in ` +
+        `@intValueMap (declared: ${JSON.stringify(intMap)}) — the database holds a ` +
+        `value the model does not describe.`,
+    );
+  }
+  return member;
+}
+
+/**
+ * One element of an int-backed enum ARRAY. Stricter than the scalar read, which
+ * leaves a non-integer alone: an integer column cannot hold one, but a JSON-text
+ * array (SQLite/MySQL) can, and a symbol there is exactly the corruption a
+ * scalar-only codec used to write. Anything but a mapped integer throws.
+ */
+function decodeArrayElement(fieldName: string, intMap: Record<string, number>, el: unknown): string {
+  const stored = typeof el === "number" ? el : typeof el === "string" && /^-?\d+$/.test(el) ? Number(el) : NaN;
+  if (!Number.isInteger(stored)) {
+    throw new Error(
+      `field.enum '${fieldName}' read stored value ${JSON.stringify(el)} with no member in ` +
+        `@intValueMap (declared: ${JSON.stringify(intMap)}) — an int-backed enum array holds ` +
+        `integers, and this element is not one.`,
+    );
+  }
+  return memberOf(fieldName, intMap, stored);
 }
 
 function encodeIntBackedEnums(entity: MetaData, row: Row): Row {
@@ -136,12 +165,38 @@ function encodeIntBackedEnums(entity: MetaData, row: Row): Row {
     if (!(child.name in row)) continue;
     const raw = row[child.name];
     if (raw === null || raw === undefined) continue;
+    // ADR-0039: resolving — array-ness may be inherited via extends.
+    if (child.resolvedIsArray() && Array.isArray(raw)) {
+      out ??= { ...row };
+      out[child.name] = raw.map((el) => encodeArrayElement(child.name, intMap, el));
+      continue;
+    }
     const encoded = encodeIntBackedEnum(intMap, raw);
     if (encoded === raw) continue;
     out ??= { ...row };
     out[child.name] = encoded;
   }
   return out ?? row;
+}
+
+/**
+ * One element of an int-backed enum ARRAY, member → int. A null element passes
+ * through, as in a string-backed enum array. An unmapped member THROWS where the
+ * scalar passes it on: the scalar's integer column and CHECK reject it, but an
+ * array column carries no CHECK and a JSON-text array (SQLite/MySQL) would store
+ * the symbol without complaint.
+ */
+function encodeArrayElement(fieldName: string, intMap: Record<string, number>, el: unknown): unknown {
+  if (el === null || el === undefined) return el;
+  if (typeof el === "number" && Number.isInteger(el) && Object.values(intMap).includes(el)) return el;
+  const stored = typeof el === "string" ? intMap[el] : undefined;
+  if (typeof stored !== "number") {
+    throw new Error(
+      `field.enum '${fieldName}' cannot write element ${typeof el === "string" ? `'${el}'` : JSON.stringify(el)}: ` +
+        `it has no entry in @intValueMap (declared: ${JSON.stringify(intMap)}).`,
+    );
+  }
+  return stored;
 }
 
 export function coerceRowOnWrite(entity: MetaData, row: Row, dialect: Dialect): Row {

@@ -198,6 +198,18 @@ trailing fraction zeros, zero as `"0"` (`^-?(0|[1-9][0-9]*)(\.[0-9]*[1-9])?$`). 
 | `report-decimal-exact` | postgres, mysql | the `EntryTotals` view over the seed: a sum is `"12345678901234567.9"`, an empty sum is `null`, a `@default: 0` sum is `"0"`, a zero-denominator ratio is `null` |
 | `report-decimal-exact-15` | all four | the A, D, E, F buckets of the same report, run on SQLite and D1 as well |
 
+### Int-backed enum array scenario
+
+`IntEnumArray` (`int_enum_arrays`) holds a scalar `state` and an array `history`, both extending
+the shared abstract enum `PublishState`, whose `@intValueMap` (DRAFT=0, PUBLISHED=5, ARCHIVED=9)
+they inherit. The array column is `integer[]` on Postgres, a JSON array of numbers in `TEXT` on
+SQLite and D1, and a `JSON` array of numbers on MySQL. It carries no CHECK (membership of an enum
+array is app-level); the scalar keeps its integer CHECK.
+
+| Scenario | Engines | What it pins |
+|---|---|---|
+| `roundtrip-int-enum-array` | all four | seeded raw ints (`[5,0]`, `[]`, null) read back as members in order; an unmapped stored element (42) fails the read; a filter on the scalar that shares the enum; `op: roundtrip` of a two-element, an empty and a null array through the write codec |
+
 A runner holds a decimal to **the type, not the value's shape**: before comparing it, every field
 the model declares `decimal` (an entity field, or a report field from `report-shapes.json`) must be
 `null` or a string in the canonical spelling, or the scenario fails with "decimal arrived as a

@@ -45,6 +45,8 @@ expect:
     # un-appliable DDL against an integer column, so this pins the lowering.
     - '"intEnumVal" INTEGER'
     - 'CHECK ("intEnumVal" IN (0, 5, 9))'
+    # An int-backed enum ARRAY stores its mapped ints as INTEGER[], with no CHECK.
+    - '"history" INTEGER[]'
     - 'CREATE UNIQUE INDEX "byTitle" ON "programs" ("title");'
     - 'ALTER TABLE "weeks" ADD CONSTRAINT "weeks_programId_fk"'
     # An identity.reference onto a TPH subtype binds the base's table (a subtype has none).
@@ -75,6 +77,8 @@ expect:
       # gadgets / gadget_events: the report-via-redeclared-field scenario's tables.
       - { table_name: "gadget_events" }
       - { table_name: "gadgets" }
+      # int_enum_arrays: the int-backed enum array (roundtrip-int-enum-array).
+      - { table_name: "int_enum_arrays" }
       - { table_name: "measurements" }
       - { table_name: "nodes" }
       - { table_name: "people" }

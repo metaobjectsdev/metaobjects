@@ -1187,10 +1187,18 @@ def _coerce_write_value(field: MetaField, value: Any) -> Any:
     #
     # An unmapped symbol is passed through untouched: membership is the column's
     # CHECK constraint to enforce, and inventing a value here would hide the drift.
+    #
+    # isArray=true (an ``integer[]`` column): encode ELEMENT-WISE, so the driver
+    # binds a list of ints, never the symbol list. A null element stays a null
+    # element (as in a string-backed enum array), and an unmapped element passes
+    # through like the scalar does; an array column carries no CHECK, so the
+    # database's integer[] type is what rejects it.
     if sub == fc.FIELD_SUBTYPE_ENUM:
         int_map = _int_value_map(field)
-        if int_map is not None and value in int_map:
-            return int_map[value]
+        if int_map is not None:
+            if _field_is_array(field) and isinstance(value, list):
+                return [_encode_enum_member(int_map, v) for v in value]
+            return _encode_enum_member(int_map, value)
 
     # Everything else (string / int / long / double / float / boolean / enum)
     # is already the native type pg8000 binds directly.
@@ -1271,6 +1279,14 @@ def _duration_write_value(field: MetaField, value: Any) -> DurationParam:
         raise ValueError(f"field.duration '{field.name}' cannot be written: {e}") from None
 
 
+def _encode_enum_member(int_map: dict[Any, Any], member: Any) -> Any:
+    """One member symbol as its declared int; ``None`` and an unmapped (or
+    unhashable) value pass through untouched."""
+    if isinstance(member, str) and member in int_map:
+        return int_map[member]
+    return member
+
+
 def _int_value_map(field: MetaField) -> dict[Any, Any] | None:
     """The declared ``@intValueMap`` (symbol → int), or ``None`` when the enum is
     string-backed.
@@ -1331,7 +1347,18 @@ def _decode_read_value(field: MetaField, value: Any) -> Any:
     if field.sub_type != fc.FIELD_SUBTYPE_ENUM:
         return value
     int_map = _int_value_map(field)
-    if int_map is None or not isinstance(value, int) or isinstance(value, bool):
+    if int_map is None:
+        return value
+    if isinstance(value, list):
+        # isArray=true (``integer[]``): decode element-wise; a null element stays null.
+        return [None if v is None else _decode_enum_int(field, int_map, v) for v in value]
+    return _decode_enum_int(field, int_map, value)
+
+
+def _decode_enum_int(field: MetaField, int_map: dict[Any, Any], value: Any) -> Any:
+    """One stored int as its member symbol. A non-int is returned as read; an int
+    with no member RAISES (see :func:`_decode_read_value`)."""
+    if not isinstance(value, int) or isinstance(value, bool):
         return value
     for symbol, stored in int_map.items():
         if stored == value:

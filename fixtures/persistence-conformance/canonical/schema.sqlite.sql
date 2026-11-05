@@ -158,6 +158,13 @@ CREATE TABLE "entries" (
   "flagged" INTEGER NOT NULL
 );
 
+CREATE TABLE "int_enum_arrays" (
+  "id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+  "state" INTEGER,
+  "history" TEXT,
+  CONSTRAINT "int_enum_arrays_state_chk" CHECK ("state" IN (0, 5, 9))
+);
+
 CREATE UNIQUE INDEX "byTitle" ON "programs" ("title");
 
 CREATE INDEX "idx_programs_title_status" ON "programs" ("title", "status");

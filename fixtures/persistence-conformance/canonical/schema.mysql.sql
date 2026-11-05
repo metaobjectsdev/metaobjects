@@ -107,6 +107,12 @@ CREATE TABLE `all_types` (
   `labels` JSON
 );
 
+CREATE TABLE `int_enum_arrays` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `state` INT,
+  `history` JSON
+);
+
 CREATE VIEW `v_program_minutes` AS
   SELECT
     w.`programId` AS `program`,

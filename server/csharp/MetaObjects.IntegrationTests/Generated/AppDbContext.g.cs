@@ -25,6 +25,7 @@ public class AppDbContext : DbContext
     public DbSet<Gadget> Gadgets { get; set; } = default!;
     public DbSet<GadgetEvent> GadgetEvents { get; set; } = default!;
     public DbSet<GadgetEventsByLabel> GadgetEventsByLabels { get; set; } = default!;
+    public DbSet<IntEnumArray> IntEnumArrays { get; set; } = default!;
     public DbSet<LiveIntroPrograms> LiveIntroPrograms { get; set; } = default!;
     public DbSet<Measurement> Measurements { get; set; } = default!;
     public DbSet<MeasurementStats> MeasurementStats { get; set; } = default!;
@@ -116,6 +117,8 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Friendship>().HasOne<Person>().WithMany().HasForeignKey(e => e.PersonAId).OnDelete(DeleteBehavior.NoAction);
         modelBuilder.Entity<Friendship>().HasOne<Person>().WithMany().HasForeignKey(e => e.PersonBId).OnDelete(DeleteBehavior.NoAction);
         modelBuilder.Entity<GadgetEvent>().HasOne<Gadget>().WithMany().HasForeignKey(e => e.GadgetId).OnDelete(DeleteBehavior.NoAction);
+        modelBuilder.Entity<IntEnumArray>().Property(x => x.State).HasConversion(v => v == PublishState.DRAFT ? 0 : v == PublishState.PUBLISHED ? 5 : 9, v => v == 0 ? PublishState.DRAFT : v == 5 ? PublishState.PUBLISHED : v == 9 ? PublishState.ARCHIVED : UnmappedEnumValue<PublishState>(v, "state"));
+        modelBuilder.Entity<IntEnumArray>().PrimitiveCollection(x => x.History).ElementType().HasConversion(new global::Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<PublishState, int>(v => v == PublishState.DRAFT ? 0 : v == PublishState.PUBLISHED ? 5 : 9, v => v == 0 ? PublishState.DRAFT : v == 5 ? PublishState.PUBLISHED : v == 9 ? PublishState.ARCHIVED : UnmappedEnumValue<PublishState>(v, "history")));
         modelBuilder.Entity<Measurement>().Property(x => x.PreciseKg).HasPrecision(9, 4);
         modelBuilder.Entity<Node>().HasOne<Node>().WithMany().HasForeignKey(e => e.ParentId).OnDelete(DeleteBehavior.NoAction);
         modelBuilder.Entity<Post>().HasMany(x => x.Tags).WithMany().UsingEntity<PostTag>(l => l.HasOne<Tag>().WithMany().HasForeignKey(j => j.TagId), r => r.HasOne<Post>().WithMany().HasForeignKey(j => j.PostId));

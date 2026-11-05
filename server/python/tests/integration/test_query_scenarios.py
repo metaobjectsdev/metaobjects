@@ -34,6 +34,24 @@ from .scenarios import QueryScenario, find_corpus_root, load_queries
 # ``tph-*`` scenarios run green and are no longer skipped.
 EXPECTED_FAILURES: dict[str, str] = {}
 
+# The same, for one engine only: (engine, scenario name) -> reason. The Python runtime's
+# SQLite and MySQL dialects bind no list parameter (``runtime/dialect.py`` encode_param has
+# no list case), so no primitive array -- string- or int-backed -- persists on those engines.
+_NO_ARRAYS = (
+    "the Python runtime stores no primitive array on this engine "
+    "(SqliteDialect/MySqlDialect.encode_param have no list case)"
+)
+ENGINE_EXPECTED_FAILURES: dict[tuple[str, str], str] = {
+    ("sqlite", "roundtrip-int-enum-array"): _NO_ARRAYS,
+    ("mysql", "roundtrip-int-enum-array"): _NO_ARRAYS,
+}
+
+
+def _skip_if_expected(engine: str, scenario: QueryScenario) -> None:
+    reason = ENGINE_EXPECTED_FAILURES.get((engine, scenario.name))
+    if reason:
+        pytest.skip(reason)
+
 _CORPUS = find_corpus_root()
 
 
@@ -75,9 +93,11 @@ def test_an_unknown_engine_name_is_a_runner_error(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize("scenario", _for("sqlite"), ids=lambda s: s.name)
 def test_report_scenario_on_sqlite(scenario: QueryScenario, tmp_path: Path) -> None:
+    _skip_if_expected("sqlite", scenario)
     query_runner.run_sqlite(scenario, tmp_path / "scenario.db", _CORPUS / "canonical")
 
 
 @pytest.mark.parametrize("scenario", _for("mysql"), ids=lambda s: s.name)
 def test_report_scenario_on_mysql(scenario: QueryScenario, mysql_empty: MySqlInfo) -> None:
+    _skip_if_expected("mysql", scenario)
     query_runner.run_mysql(scenario, mysql_empty, _CORPUS / "canonical")

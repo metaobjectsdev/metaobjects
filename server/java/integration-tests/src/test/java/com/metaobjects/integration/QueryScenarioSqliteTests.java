@@ -15,6 +15,7 @@ import java.util.Map;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assumptions.abort;
 
 /**
  * The persistence corpus' report scenarios ({@code report-*.yaml}) on SQLite, through the OMDB
@@ -50,6 +51,8 @@ final class QueryScenarioSqliteTests {
     @ParameterizedTest(name = "{0}")
     @MethodSource("scenarios")
     void reportScenario(String name, QueryScenario scenario) {
+        String deferralReason = Scenarios.DEFERRED.get(name);
+        if (deferralReason != null) abort(deferralReason);
         assertDoesNotThrow(() -> {
             try (SqliteDatabase db = new SqliteDatabase()) {
                 QueryScenarioRunner.run(scenario, db, CORPUS.resolve("canonical"), ScenarioEngine.SQLITE);

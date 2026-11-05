@@ -110,4 +110,39 @@ public class EnumFieldIntValueMapTest extends SharedRegistryTestBase {
         assertEquals(ErrorCode.ERR_BAD_ATTR_VALUE, ex.getCode().orElseThrow());
         assertTrue(ex.getMessage().contains("DRAFT") && ex.getMessage().contains("PUBLISHED"));
     }
+
+    // -----------------------------------------------------------------------
+    // Int-backed enum ARRAYS load (the former scalar-only refusal is gone):
+    // each element persists as its declared int, so the combination is legal
+    // with the map on the field and inherited from a shared abstract enum.
+    // -----------------------------------------------------------------------
+
+    @Test
+    public void ownIntValueMapOnAnArrayFieldLoadsClean() {
+        MetaDataLoader loader = loadThrough(
+            model(", \"isArray\": true, \"@intValueMap\": {\"DRAFT\": 0, \"PUBLISHED\": 5, \"ARCHIVED\": 9}"),
+            "intvaluemap-array-own-test.json");
+        MetaField<?> status = loader.getMetaObjectByName("acme::Order").getMetaField("status");
+        assertTrue(status.isArrayType());
+        assertTrue(status.hasMetaAttr(EnumField.ATTR_INT_VALUE_MAP));
+    }
+
+    @Test
+    public void inheritedIntValueMapOnAnArrayFieldLoadsClean() {
+        String json = "{ \"metadata.root\": { \"package\": \"acme\", \"children\": [" +
+            "{ \"field.enum\": { \"name\": \"Status\", \"abstract\": true," +
+            "  \"@values\": [\"DRAFT\",\"PUBLISHED\",\"ARCHIVED\"]," +
+            "  \"@intValueMap\": {\"DRAFT\": 0, \"PUBLISHED\": 5, \"ARCHIVED\": 9} } }," +
+            "{ \"object.entity\": { \"name\": \"Order\", \"children\": [" +
+            "{ \"field.long\": { \"name\": \"id\" } }," +
+            "{ \"field.enum\": { \"name\": \"code\", \"extends\": \"acme::Status\" } }," +
+            "{ \"field.enum\": { \"name\": \"history\", \"extends\": \"acme::Status\", \"isArray\": true } }," +
+            "{ \"identity.primary\": { \"@fields\": \"id\" } }" +
+            "]}}]}}";
+        MetaDataLoader loader = loadThrough(json, "intvaluemap-array-inherited-test.json");
+        MetaField<?> history = loader.getMetaObjectByName("acme::Order").getMetaField("history");
+        assertTrue(history.isArrayType());
+        // Read resolving: the array field encodes with the shared enum's map.
+        assertTrue(history.hasMetaAttr(EnumField.ATTR_INT_VALUE_MAP));
+    }
 }

@@ -17,6 +17,32 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
 
 ### Added
 
+- **An int-backed enum can be an array.** `@intValueMap` together with `isArray: true` (the
+  map on the field, or inherited from a shared enum) now loads in every port instead of
+  failing with `ERR_ENUM_INT_VALUE_MAP_ARRAY`, which is removed. Each element is stored as its
+  declared integer and read back as its member: `integer[]` on Postgres, and a JSON array of
+  numbers on SQLite, D1 and MySQL. A stored integer that maps to no member fails the read, as
+  it does for a scalar. The refusal had a cost beyond arrays: the map is read through
+  `extends`, so one map on a shared enum blocked every scalar column that used it whenever any
+  array field shared the enum too. Per port:
+  - TypeScript: ObjectManager and the generated Drizzle columns map elements on every engine
+    (Postgres through the element codec under `.array()`, SQLite and MySQL through a whole-array
+    JSON codec). An unmapped member throws on write, because the array column has no `CHECK`
+    to reject it. `meta migrate` already produced `integer[]`.
+  - C#: the generated array conversion now compiles (it wraps the pair in a `ValueConverter`),
+    the `UnmappedEnumValue` helper is emitted when a flattened value object's array member is
+    the only int-backed enum, projection and report-row enum arrays get the element converter
+    (they read stored ints as ordinals before), and a non-required int-backed enum array is
+    nullable.
+  - Python: ObjectManager maps elements on write, read and filter operands on Postgres. Its
+    SQLite and MySQL dialects store no primitive array, so the new scenario is deferred there.
+  - Java: OMDB stores no enum array on any engine, so its codec refuses an int-backed one on
+    write and read instead of writing symbols. Kotlin's Exposed generator emits no enum array
+    column. Both defer the new scenario.
+  Gated by the positive conformance fixtures `enum-int-backed-array` and
+  `enum-int-backed-array-inherited`, and the persistence scenario `roundtrip-int-enum-array`.
+
+
 - **`field.duration`: a fixed-length span of time, in every port.** `TimeSpan` in C#,
   `java.time.Duration` in Java and Kotlin, `timedelta` in Python, and a string in TypeScript;
   a Postgres `interval` column, and a 64-bit integer of microseconds on SQLite, D1 and MySQL, so

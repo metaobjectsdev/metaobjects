@@ -142,8 +142,13 @@ public class DbContextGenerator : IGenerator
             // An int-backed enum (@intValueMap) column in the view holds the declared INTEGER,
             // so it takes the same custom converter pair the table side gets — reading it as
             // a string would fail materialization exactly as the ordinal default does here.
-            foreach (var f in p.Fields().Where(f => f.SubType == FIELD_SUBTYPE_ENUM && !f.ResolvedIsArray()))
-                modelLines.Add($"        modelBuilder.Entity<{name}>().Property(x => x.{CSharpNaming.Pascal(f.Name)}).{EnumConversionCall(name, p, f, ctx.Config)};");
+            // An enum ARRAY column takes the table side's element converter too: left to EF's
+            // ordinal default, an int-backed array would read its stored ints as ORDINALS and
+            // silently name the wrong members, and a string-backed one would read text[] as int[].
+            foreach (var f in p.Fields().Where(f => f.SubType == FIELD_SUBTYPE_ENUM))
+                modelLines.Add(f.ResolvedIsArray()
+                    ? $"        modelBuilder.Entity<{name}>().PrimitiveCollection(x => x.{CSharpNaming.Pascal(f.Name)}).ElementType().{EnumConversionCall(name, p, f, ctx.Config)};"
+                    : $"        modelBuilder.Entity<{name}>().Property(x => x.{CSharpNaming.Pascal(f.Name)}).{EnumConversionCall(name, p, f, ctx.Config)};");
             // A field.map column on a view needs its jsonb mapping for the SAME reason:
             // EntityGenerator emits the Dictionary property for a projection too, so without
             // this loop the property carries no column type and no converter -- only an
@@ -905,7 +910,7 @@ public class DbContextGenerator : IGenerator
             || (f.SubType == FIELD_SUBTYPE_OBJECT && f.Storage == STORAGE_FLATTENED && !f.ResolvedIsArray()
                 && ValueObjectNames.ResolveFieldRef(f, root) is { } vo
                 && vo.Fields().Any(nf =>
-                    nf.SubType == FIELD_SUBTYPE_ENUM && !nf.ResolvedIsArray() && IntValueMapOf(nf) is not null))));
+                    nf.SubType == FIELD_SUBTYPE_ENUM && IntValueMapOf(nf) is not null))));
 
     /// <summary>
     /// The complete <c>HasConversion</c> call for an enum property: the generic
@@ -979,6 +984,14 @@ public class DbContextGenerator : IGenerator
             fromProvider.Append($"v == {ints[i]} ? {type}.{members[i]} : ");
         fromProvider.Append($"{UnmappedEnumHelperName}<{type}>(v, \"{f.Name}\")");
 
+        // An ARRAY's conversion goes on the primitive collection's ElementTypeBuilder, which
+        // is not generic: it has no HasConversion(lambda, lambda) overload to type the two
+        // lambdas against (CS1660), so the pair is wrapped in an explicit ValueConverter.
+        // The element converter is the scalar pair unchanged, so each element is stored as
+        // its declared int and an unmapped stored element throws exactly as a scalar does.
+        if (f.ResolvedIsArray())
+            return "HasConversion(new global::Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<"
+                + $"{type}, int>({toProvider}, {fromProvider}))";
         return $"HasConversion({toProvider}, {fromProvider})";
     }
 
