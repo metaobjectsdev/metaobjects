@@ -183,8 +183,8 @@ function markedFieldNames(
   hierarchy: readonly MetaObject[],
   isMarked: (f: MetaField) => boolean,
 ): string[] {
-  const marked = new Set(hierarchy.flatMap((o) => o.fields().filter(isMarked).map((f) => f.name)));
-  return [...new Set(objects.flatMap((o) => o.fields().map((f) => f.name)))].filter((n) => marked.has(n));
+  const marked = new Set(hierarchy.flatMap((o) => flatSurfaceFields(o).filter(isMarked).map((f) => f.name)));
+  return [...new Set(objects.flatMap((o) => flatSurfaceFields(o).map((f) => f.name)))].filter((n) => marked.has(n));
 }
 
 /** The objects that share `obj`'s table: a TPH base and every subtype, else `obj` alone. */

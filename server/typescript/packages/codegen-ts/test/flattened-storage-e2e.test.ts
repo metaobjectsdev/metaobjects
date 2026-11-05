@@ -25,7 +25,8 @@ import { queriesFile } from "../src/reference/queries.js";
 import { routesFileHono } from "../src/reference/routes-hono.js";
 import { routesFile } from "../src/reference/routes.js";
 import { buildOpenApiDocument } from "../src/contract/build-openapi.js";
-import { createFieldShapes, modelFieldShapes } from "../src/generators/api-field-shape.js";
+import { createFieldShapes, modelFieldShapes, updateFieldShapes } from "../src/generators/api-field-shape.js";
+import { writeDeniedFieldNames } from "../src/api-surface.js";
 
 const META = JSON.stringify({
   "metadata.root": { package: "acme", children: [
@@ -122,6 +123,40 @@ describe("flattened storage: the API contract and documented shapes use the flat
       expect(byName.get("shipToStreet")).toContain("string");
       expect(byName.get("shipToFloor")).toContain("number");
     }
+  });
+});
+
+describe("flattened storage: write protection on the flattened field covers every member", () => {
+  const PROTECTED = JSON.stringify({
+    "metadata.root": { package: "acme", children: [
+      { "object.value": { name: "Address", children: [
+        { "field.string": { name: "street" } },
+        { "field.string": { name: "city" } },
+      ] } },
+      { "object.entity": { name: "Account", children: [
+        { "source.rdb": { "@table": "accounts" } },
+        { "field.long": { name: "id" } },
+        { "field.object": { name: "registered", "@objectRef": "Address", "@storage": "flattened", "@mutability": "readOnly" } },
+        { "field.object": { name: "founding", "@objectRef": "Address", "@storage": "flattened", "@mutability": "writeOnce" } },
+        { "field.object": { name: "internal", "@objectRef": "Address", "@storage": "flattened", "@formExclude": true } },
+        { "field.object": { name: "open", "@objectRef": "Address", "@storage": "flattened" } },
+        { "identity.primary": { name: "pk", "@fields": "id", "@generation": "increment" } },
+      ] } },
+    ] },
+  });
+
+  test("readOnly leaves the members out of create and update, writeOnce out of update, formExclude out of the body", async () => {
+    const { root } = await new MetaDataLoader({ strict: true }).load([new InMemoryStringSource(PROTECTED, { id: "p.json" })]);
+    const account = root.findObject("Account")!;
+    const create = createFieldShapes(account).map((f) => f.name);
+    const update = updateFieldShapes(account).map((f) => f.name);
+    expect(create).not.toContain("registeredStreet");
+    expect(update).not.toContain("registeredStreet");
+    expect(create).toContain("foundingStreet");
+    expect(update).not.toContain("foundingStreet");
+    expect(create).toContain("openStreet");
+    expect(update).toContain("openStreet");
+    expect(writeDeniedFieldNames(account)).toEqual(["internalStreet", "internalCity"]);
   });
 });
 

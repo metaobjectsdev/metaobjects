@@ -15,6 +15,11 @@ import {
   FIELD_SUBTYPE_OBJECT,
   FIELD_ATTR_OBJECT_REF,
   FIELD_ATTR_STORAGE,
+  FIELD_ATTR_FORM_EXCLUDE,
+  FIELD_ATTR_MUTABILITY,
+  MUTABILITY_READ_ONLY,
+  MUTABILITY_WRITE_ONCE,
+  fieldMutability,
   STORAGE_FLATTENED,
   type MetaField,
   type MetaObject,
@@ -54,15 +59,27 @@ export function flattenedMembersOf(field: MetaField, strategy: ColumnNamingStrat
   }));
 }
 
+const MUTABILITY_TIGHTNESS = [MUTABILITY_READ_ONLY, MUTABILITY_WRITE_ONCE] as const;
+
 /**
  * A member field presented under its flat key: it behaves as the value object's own field in
  * every way (subtype, attributes, validators) except that its `name` is `<field><Member>`,
- * which is what the Zod schema and the filter allowlist key it by.
+ * which is what the Zod schema and the filter allowlist key it by, and that the write
+ * protection of the flattened `parent` (`@mutability`, `@formExclude`) applies to every member.
  */
-function asFlatKey(member: MetaField, key: string): MetaField {
+function asFlatKey(member: MetaField, key: string, parent: MetaField): MetaField {
+  const attr = (name: string): unknown => {
+    if (name === FIELD_ATTR_FORM_EXCLUDE && parent.attr(FIELD_ATTR_FORM_EXCLUDE) === true) return true;
+    if (name === FIELD_ATTR_MUTABILITY) {
+      const modes = [fieldMutability(parent), fieldMutability(member)];
+      return MUTABILITY_TIGHTNESS.find((mode) => modes.includes(mode)) ?? member.attr(name);
+    }
+    return member.attr(name);
+  };
   return new Proxy(member, {
     get(target, prop) {
       if (prop === "name") return key;
+      if (prop === "attr") return attr;
       const value = Reflect.get(target, prop, target) as unknown;
       return typeof value === "function" ? (value as (...a: unknown[]) => unknown).bind(target) : value;
     },
@@ -86,6 +103,6 @@ export function flatSurfaceFields(obj: MetaObject): MetaField[] {
   return obj.fields().flatMap((f) => {
     if (baseFieldNames !== undefined && !baseFieldNames.has(f.name)) return [f];
     const members = flattenedMembersOf(f, strategy);
-    return members === undefined ? [f] : members.map((m) => asFlatKey(m.member, m.key));
+    return members === undefined ? [f] : members.map((m) => asFlatKey(m.member, m.key, f));
   });
 }
