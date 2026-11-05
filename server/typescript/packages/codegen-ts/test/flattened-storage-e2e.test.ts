@@ -160,6 +160,39 @@ describe("flattened storage: write protection on the flattened field covers ever
   });
 });
 
+describe("flattened storage: a derived value-object member keeps its column", () => {
+  test("the Drizzle table binds every column migrate creates, derived members included", async () => {
+    const DERIVED = JSON.stringify({
+      "metadata.root": { package: "acme", children: [
+        { "object.entity": { name: "Source", children: [
+          { "source.rdb": { "@table": "sources" } },
+          { "field.long": { name: "id" } },
+          { "field.string": { name: "label" } },
+          { "identity.primary": { name: "pk", "@fields": "id", "@generation": "increment" } },
+        ] } },
+        { "object.value": { name: "Tag", children: [
+          { "field.string": { name: "text" } },
+          { "field.string": { name: "mirror", children: [{ "origin.passthrough": { "@from": "Source.label" } }] } },
+        ] } },
+        { "object.entity": { name: "Note", children: [
+          { "source.rdb": { "@table": "notes" } },
+          { "field.long": { name: "id" } },
+          { "field.object": { name: "tag", "@objectRef": "Tag", "@storage": "flattened" } },
+          { "identity.primary": { name: "pk", "@fields": "id", "@generation": "increment" } },
+        ] } },
+      ] },
+    });
+    const { root, errors } = await new MetaDataLoader({ strict: true }).load([new InMemoryStringSource(DERIVED, { id: "d.json" })]);
+    expect(errors).toEqual([]);
+    const expected = buildExpectedSchema(root, { dialect: "postgres" }).tables.find((t) => t.name === "notes")!.columns.map((c) => c.name).sort();
+    const outDir = await generate(root, "postgres", [entityFile()], tmpdir());
+    const source = readFileSync(allTs(outDir).find((f) => f.endsWith("Note.ts"))!, "utf8");
+    const table = source.slice(source.indexOf("Table(\"notes\""), source.indexOf("});", source.indexOf("Table(\"notes\"")));
+    const bound = [...table.matchAll(/^\s+\w+: \w+\("([^"]+)"/gm)].map((m) => m[1]!).sort();
+    expect(bound).toEqual(expected);
+  });
+});
+
 describe("flattened storage: a TPH subtype's own flattened field keeps migrate's single column", () => {
   test("migrate folds a subtype's field.object as one column, so the table binds one column named for the field", async () => {
     const TPH = JSON.stringify({

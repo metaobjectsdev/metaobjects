@@ -17,6 +17,7 @@ import {
   viewForContext,
   VIEW_CONTEXT_GRID,
   effectivePackage,
+  flatSurfaceFields,
 } from "@metaobjectsdev/codegen-ts/engine";
 import {
   isSortableField,
@@ -102,7 +103,7 @@ function extractGrids(entity: MetaObject, tph?: TphGridInfo): GridSpec[] {
   // For a TPH base, also index the subtype-only fields so they can be folded
   // into the polymorphic grid's column set.
   const fieldsByName = new Map(
-    [...entity.fields(), ...(tph?.subtypeFields ?? [])].map((f) => [f.name, f] as const),
+    [...flatSurfaceFields(entity), ...(tph?.subtypeFields ?? [])].map((f) => [f.name, f] as const),
   );
 
   const grids: GridSpec[] = [];

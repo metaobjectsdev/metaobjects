@@ -331,8 +331,8 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
   rewrite use the same flat keys. A flattened field on a write-through entity is refused with a
   `CodegenError` instead of generating code that cannot work. A flattened field declared on a TPH
   subtype keeps a single column named for the field, as `meta migrate` creates it, and a value
-  object that declares one keeps it as one nested key. Form, grid and hook generators still see
-  the field as one object field.
+  object that declares one keeps it as one nested key. The React form and the TanStack grid
+  columns use the same flat keys, so a form posts `shipToStreet`, not a nested `shipTo`.
 
 - **TypeScript: every `meta` command now loads the providers in `metaobjects.config.ts`.**
   `meta export`, `meta deps`, `meta fmt`, `meta types` and `meta upgrade` loaded the core
