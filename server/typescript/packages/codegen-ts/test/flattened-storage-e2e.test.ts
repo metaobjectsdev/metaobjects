@@ -1,6 +1,6 @@
 // `field.object @storage: "flattened"` (#524). The generated Drizzle table must bind the columns
 // `meta migrate` creates (one per member of the value object, none for the field), and the
-// value object must stay a nested JSON object through the generated queries and routes.
+// generated queries and routes must expose those members as flat keys.
 //
 //  1. parity: the columns of the generated table, per dialect, are exactly migrate-ts's expected
 //     schema for the same model;
