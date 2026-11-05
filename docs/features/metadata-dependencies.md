@@ -375,6 +375,15 @@ classifies those as breaking automatically — see [Deferred](#deferred).
 
 ## What fails at `meta deps check` / `verify --deps`
 
+The check ships in TypeScript (`meta deps check`, `meta verify --deps`), Python (`metaobjects deps
+check`, `metaobjects verify --deps`) and C# (`dotnet meta verify --deps`), against the same corpus
+and with the same three states and the same `ERR_DEPENDENCY_UPSTREAM_DRIFT`. The Python and C#
+check resolve the `path` transport only (see [Deferred](#deferred)). Python's `deps check`, like
+TypeScript's, also loads the locked snapshots together once the hashes match; `verify --deps` is
+the comparison alone in all three. Run `verify --deps` before `verify`'s own load: C# runs it
+first, so a dependency that is declared but not yet synced is reported as `unresolved` rather
+than as a stale snapshot.
+
 `verify --deps` runs `meta deps check`'s comparison as one of `verify`'s gated
 subverbs (never part of the bare default — it needs the publisher reachable, its
 `path` or its installed package, which CI checking out only your own repo may not
@@ -702,6 +711,10 @@ but **not** built yet — do not assume any of the following exists:
   runtime one.
 - **Java, Kotlin, Python and C# as publishers** — Java, Kotlin and C# consume (S3 and S6);
   publishing is TypeScript only.
+- **`npm` and `python` transports in the Python and C# check.** Both ports' check resolves
+  `path` only; an `npm` or `python` dependency reports `unresolved` and names the Node `meta deps
+  check`, because resolving it needs the consumer's installed packages (a check that cannot check
+  must not pass).
 
 ## Verified by
 
@@ -712,8 +725,9 @@ but **not** built yet — do not assume any of the following exists:
   resolution-time error above, run by TypeScript (the reference implementation),
   Python and Java (Kotlin loads through the Java loader and Maven plugin, so it inherits the
   corpus run and adds a codegen test that an imported entity emits nothing). 11 pin the upstream
-  check (`current`, `drifted`, `unresolved`), run by TypeScript and Java (Kotlin through the same
-  `metaobjects:verify` goal); Python has no check yet.
+  check (`current`, `drifted`, `unresolved`), run by TypeScript, Java (Kotlin through the same
+  `metaobjects:verify` goal), Python (`metaobjects deps check`, `verify --deps`) and C#
+  (`dotnet meta verify --deps`).
   Three artifacts under `fixtures/dependency-conformance/artifacts/` are
   pinned by sha256 in the README so the corpus itself can never silently drift.
   Python's runner asserts all 26 resolution cases identically to TypeScript's, with no

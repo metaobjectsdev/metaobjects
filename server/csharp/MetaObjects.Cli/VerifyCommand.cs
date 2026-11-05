@@ -158,12 +158,15 @@ public static class VerifyCommand
         public bool CodegenHandedOff { get; init; }
 
         /// <summary>True when no explicit subverb flag was passed (bare verify).</summary>
-        public bool NoExplicitSubverb => Bare || (!Templates && !Codegen && !Db && !CodegenHandedOff);
+        public bool NoExplicitSubverb => Bare || (!Templates && !Codegen && !Deps && !Db && !CodegenHandedOff);
 
         /// <summary>True when the user named no subverb. A bare verify runs the codegen gate too, in
         /// the owned runner or here, so <see cref="Codegen"/>/<see cref="CodegenHandedOff"/> may be
         /// set without the run having stopped being bare.</summary>
         public bool Bare { get; init; }
+
+        /// <summary><c>--deps</c> was named: the dependency gate ran in Program.cs, so this is not a bare verify.</summary>
+        public bool Deps { get; init; }
     }
 
     /// <summary>The aggregate outcome of a subverb dispatch (pure; no console I/O).</summary>

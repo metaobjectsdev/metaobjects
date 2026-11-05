@@ -95,4 +95,88 @@ public sealed class DependencyCliTests : IDisposable
         Assert.Contains("ERR_DEPENDENCY_SNAPSHOT_STALE", stdout + stderr);
         Assert.Contains("meta deps sync", stdout + stderr);
     }
+
+    // -- verify --deps (FR-023 Phase 2): the upstream check. The statuses themselves are the corpus's
+    // `expectCheck` arm; these pin the CLI around it. --
+
+    /// <summary>One check case of the corpus, laid out under the temp root; returns its project directory.</summary>
+    private string CheckProject(string caseName, bool withSnapshot)
+    {
+        using var doc = JsonDocument.Parse(File.ReadAllText(Path.Combine(CorpusDir(), "cases.json")));
+        var c = doc.RootElement.GetProperty("cases").EnumerateArray()
+            .Single(x => x.GetProperty("name").GetString() == caseName);
+        foreach (var f in c.GetProperty("tree").EnumerateObject()) Write(f.Name, f.Value.GetString()!);
+        if (c.TryGetProperty("treeFiles", out var treeFiles))
+            foreach (var f in treeFiles.EnumerateObject())
+            {
+                var dest = Path.Combine(_root, f.Name);
+                Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
+                File.Copy(Path.Combine(CorpusDir(), f.Value.GetString()!), dest);
+            }
+        var project = Path.Combine(_root, c.GetProperty("resolveFrom").GetString()!);
+        Directory.CreateDirectory(Path.Combine(project, ".metaobjects"));
+        File.WriteAllText(Path.Combine(project, ".metaobjects", "config.json"), c.GetProperty("config").GetRawText());
+        if (c.TryGetProperty("lock", out var lockJson))
+            File.WriteAllText(Path.Combine(project, ".metaobjects", "deps.lock.json"), lockJson.GetRawText());
+        if (withSnapshot)
+        {
+            var snapshot = Path.Combine(project, ".metaobjects", "deps", "acme-common", "acme-common.metaobjects.json");
+            Directory.CreateDirectory(Path.GetDirectoryName(snapshot)!);
+            File.Copy(Path.Combine(CorpusDir(), "artifacts", "acme-common-v1.json"), snapshot);
+        }
+        return project;
+    }
+
+    [Fact]
+    public void Verify_deps_passes_when_the_dependency_is_current()
+    {
+        var project = CheckProject("check-a-matching-artifact-is-current", withSnapshot: true);
+        var (exit, stdout, stderr) = CliProcess.Run(project, "verify", "--deps", "--no-field-lint");
+        Assert.True(exit == 0, stdout + stderr);
+        Assert.Contains("acme-common: current — 1.0.0 (10fbf886)", stdout);
+        Assert.Contains("every dependency's installed artifact matches the lock", stdout);
+    }
+
+    [Fact]
+    public void Verify_deps_fails_on_drift_and_names_the_code()
+    {
+        var project = CheckProject("check-a-newer-artifact-than-the-lock-has-drifted", withSnapshot: true);
+        var (exit, stdout, stderr) = CliProcess.Run(project, "verify", "--deps", "--no-field-lint");
+        Assert.NotEqual(0, exit);
+        Assert.Contains("acme-common: drifted — lock 1.0.0 (10fbf886), installed 1.1.0 (fa00b9f3)", stderr);
+        Assert.Contains("run meta deps sync", stderr);
+        Assert.Contains("ERR_DEPENDENCY_UPSTREAM_DRIFT", stderr);
+    }
+
+    [Fact]
+    public void Verify_deps_reports_a_dependency_not_yet_synced_as_unresolved_not_stale()
+    {
+        // No lock file at all: the check says so in its own words, before the metadata load would
+        // have refused the project as stale.
+        var project = CheckProject("check-a-dependency-with-no-lock-file-is-unresolved", withSnapshot: false);
+        var (exit, stdout, stderr) = CliProcess.Run(project, "verify", "--deps", "--no-field-lint");
+        Assert.NotEqual(0, exit);
+        Assert.Contains("acme-common: unresolved", stderr);
+        Assert.Contains("ERR_DEPENDENCY_UPSTREAM_DRIFT", stderr);
+    }
+
+    [Fact]
+    public void A_bare_verify_does_not_run_the_dependency_check()
+    {
+        var project = CheckProject("check-a-newer-artifact-than-the-lock-has-drifted", withSnapshot: true);
+        Directory.CreateDirectory(Path.Combine(project, "templates"));
+        var (_, stdout, stderr) = CliProcess.Run(project, "verify", "--no-field-lint");
+        Assert.DoesNotContain("drifted", stdout + stderr);
+        Assert.DoesNotContain("ERR_DEPENDENCY_UPSTREAM_DRIFT", stdout + stderr);
+    }
+
+    [Fact]
+    public void Verify_deps_with_nothing_declared_passes()
+    {
+        Write(".metaobjects/config.json", "{\"schema_version\":1}");
+        Write("metaobjects/meta.app.json", """{"metadata.root":{"package":"app","children":[]}}""");
+        var (exit, stdout, stderr) = CliProcess.Run(_root, "verify", "--deps", "--no-field-lint");
+        Assert.True(exit == 0, stdout + stderr);
+        Assert.Contains("no dependencies declared", stdout);
+    }
 }

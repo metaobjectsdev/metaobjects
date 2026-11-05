@@ -21,7 +21,8 @@ namespace MetaObjects.Conformance.Tests;
 public class DependencyConformanceTests : IDisposable
 {
     private static readonly string CorpusDir = FindCorpusDir();
-    private static readonly JsonElement AllCases = LoadCases();
+    private static readonly JsonElement AllCases = LoadCases(check: false);
+    private static readonly JsonElement CheckCases = LoadCases(check: true);
 
     private readonly string _tmp = Directory.CreateTempSubdirectory("mo-dep-conformance-").FullName;
 
@@ -39,13 +40,13 @@ public class DependencyConformanceTests : IDisposable
         return Path.Combine(dir!.FullName, "fixtures", "dependency-conformance");
     }
 
-    private static JsonElement LoadCases()
+    private static JsonElement LoadCases(bool check)
     {
         using var doc = JsonDocument.Parse(File.ReadAllText(Path.Combine(FindCorpusDir(), "cases.json")));
-        // The corpus has two arms. The resolution arm is this runner's; the check arm (`expectCheck`) is
-        // `deps check`'s, which this port does not have yet (that is `verify --deps`).
+        // The corpus has two arms, both run here: resolution (`CorpusCaseMatchesTheReference`) and the check
+        // (`expectCheck`, `CheckCaseMatchesTheReference` — what `verify --deps` reports).
         var resolution = doc.RootElement.GetProperty("cases").EnumerateArray()
-            .Where(c => !c.TryGetProperty("expectCheck", out _)).ToList();
+            .Where(c => c.TryGetProperty("expectCheck", out _) == check).ToList();
         return JsonSerializer.SerializeToElement(resolution);
     }
 
@@ -54,6 +55,31 @@ public class DependencyConformanceTests : IDisposable
         var data = new TheoryData<string>();
         foreach (var c in AllCases.EnumerateArray()) data.Add(c.GetProperty("name").GetString()!);
         return data;
+    }
+
+    public static TheoryData<string> CheckCaseNames()
+    {
+        var data = new TheoryData<string>();
+        foreach (var c in CheckCases.EnumerateArray()) data.Add(c.GetProperty("name").GetString()!);
+        return data;
+    }
+
+    [Fact]
+    public void CheckCorpusIsNotEmpty() => Assert.NotEmpty(CheckCaseNames());
+
+    /// <summary>The check arm: the status of every declared dependency, by name. A pure function of the
+    /// config, the lock and the publisher's directory — no loader, no snapshot.</summary>
+    [Theory]
+    [MemberData(nameof(CheckCaseNames))]
+    public void CheckCaseMatchesTheReference(string name)
+    {
+        var c = CheckCases.EnumerateArray().Single(x => x.GetProperty("name").GetString() == name);
+        var resolveDir = Materialize(c);
+        var cfg = NeutralConfig.Read(resolveDir);
+        Assert.NotNull(cfg);
+        var results = DependencyResolver.CheckDependencies(resolveDir, cfg!.Dependencies, DependencyResolver.ReadLock(resolveDir));
+        var expected = c.GetProperty("expectCheck").EnumerateObject().ToDictionary(p => p.Name, p => p.Value.GetString()!);
+        Assert.Equal(expected.OrderBy(kv => kv.Key), results.ToDictionary(r => r.Name, r => r.StatusName).OrderBy(kv => kv.Key));
     }
 
     [Fact]

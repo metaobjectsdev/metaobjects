@@ -16,7 +16,7 @@ Two subcommands:
       so ``--generators render-helper`` read a hardcoded ``templates`` whatever
       this flag said.
 
-  metaobjects verify <metadataDir> [--codegen] [--templates] [--db URL] ...
+  metaobjects verify <metadataDir> [--codegen] [--templates] [--deps] [--db URL] ...
       Drift gate with explicit subverbs (ADR-0021 D2 — one verify vocabulary
       across ports):
 
@@ -34,6 +34,11 @@ Two subcommands:
                      node's refs via a filesystem provider rooted at
                      ``templates`` in ``metaobjects.config.yaml`` (else
                      ``--prompts``), over the config's ``metadata``.
+        --deps       dependency drift (FR-023): re-resolve each declared
+                     dependency's ``path`` and compare its artifact's hash with
+                     ``.metaobjects/deps.lock.json`` (``metaobjects deps check``
+                     is the same comparison plus a load of the locked snapshots).
+                     Opt-in: never part of a bare ``verify``.
         --db URL     REJECTED in the Python port (exit 2): schema verify is the
                      migrate engine (ADR-0015), not this CLI.
 
@@ -70,7 +75,14 @@ from metaobjects.config.dependencies import (
     refuse_library_package_misuse,
     refuse_unowned_packages,
 )
-from metaobjects.config.neutral_config import read_neutral_config
+from metaobjects.config.dependencies import read_lock
+from metaobjects.config.dependency_check import (
+    check_dependencies,
+    format_check_line,
+    prove_locked_set_loads,
+    summary_line,
+)
+from metaobjects.config.neutral_config import find_project_dir, read_neutral_config
 from metaobjects.field_lint import lint_duplicate_fields, lint_reference_fields
 from metaobjects.loader.meta_data_loader import LoadResult
 from metaobjects.loader.sources import FileSource
@@ -2781,6 +2793,64 @@ def _verify_requirements(args: argparse.Namespace, model: "_VerifyModel | None")
     return 0
 
 
+def _deps_project_root(args: argparse.Namespace) -> Path:
+    """The project whose ``.metaobjects/config.json`` declares the dependencies: the one holding
+    the metadata the run names (``<metadata_dir>``, else the config's ``metadata``), else the
+    nearest project at or above the working directory. The same root ``_load_verify_model``
+    reads the lock from."""
+    metadata_dir = getattr(args, "metadata_dir", None)
+    if metadata_dir:
+        return project_root_for(metadata_dir)
+    config_path = _find_config(args)
+    if config_path is not None:
+        try:
+            return project_root_for(load_project_config(config_path).metadata_dir())
+        except ConfigError:
+            pass
+    return find_project_dir(Path.cwd()) or Path.cwd().resolve()
+
+
+def _run_deps_check(root: Path, command: str, *, prove_load: bool) -> int:
+    """The check both ``deps check`` and ``verify --deps`` run: 0 current, 1 drifted or
+    unresolved (``ERR_DEPENDENCY_UPSTREAM_DRIFT``), 2 when the config or lock cannot be read."""
+    try:
+        neutral = read_neutral_config(root)
+        specs = neutral.dependencies if neutral is not None else []
+        lock = read_lock(root)
+    except ParseError as exc:
+        print(f"{command}: {exc.code}: {exc}", file=sys.stderr)
+        return 2
+    if not specs:
+        print(f"{command}: no dependencies declared — nothing to check.")
+        return 0
+
+    results = check_dependencies(root, specs, lock)
+    failing = [r for r in results if r.status != "current"]
+    for r in results:
+        print(format_check_line(r), file=sys.stderr if r.status != "current" else sys.stdout)
+    if failing:
+        print(summary_line(command, len(failing), len(results)), file=sys.stderr)
+        return 1
+    if prove_load:
+        # Matching hashes only prove the snapshot is the locked one, not that it still loads.
+        failure = prove_locked_set_loads(root, specs)
+        if failure is not None:
+            print(f"{command}: the locked dependency set does not load: {failure}", file=sys.stderr)
+            return 1
+    if command == "metaobjects verify --deps":
+        print("verify --deps: every dependency's installed artifact matches the lock.")
+    return 0
+
+
+def _verify_deps(args: argparse.Namespace) -> int:
+    return _run_deps_check(_deps_project_root(args), "metaobjects verify --deps", prove_load=False)
+
+
+def _cmd_deps(args: argparse.Namespace) -> int:
+    root = find_project_dir(Path.cwd()) or Path.cwd().resolve()
+    return _run_deps_check(root, "metaobjects deps check", prove_load=True)
+
+
 def _cmd_verify(args: argparse.Namespace) -> int:
     """Subverb dispatch (ADR-0021 D2). Run each requested mode; aggregate exit =
     max (non-zero if ANY mode drifts). Bare ``verify`` (no subverb) runs the
@@ -2798,13 +2868,14 @@ def _cmd_verify(args: argparse.Namespace) -> int:
     run_db = args.db is not None
     run_templates = bool(args.templates)
     run_codegen = bool(args.codegen)
-    any_explicit = run_db or run_templates or run_codegen
+    run_deps = bool(args.deps)
+    any_explicit = run_db or run_templates or run_codegen or run_deps
 
     if not any_explicit:
         print(
             "metaobjects verify — running --codegen --templates (default). Explicit "
             "subverbs: --codegen (codegen drift), --templates (template/prompt "
-            "drift), --db (schema drift — not supported in Python).",
+            "drift), --deps (dependency drift), --db (schema drift — not supported in Python).",
             file=sys.stderr,
         )
         run_codegen = True
@@ -2830,6 +2901,8 @@ def _cmd_verify(args: argparse.Namespace) -> int:
             exit_code = max(exit_code, _verify_codegen(args))
         if run_templates:
             exit_code = max(exit_code, _verify_templates(args))
+        if run_deps:
+            exit_code = max(exit_code, _verify_deps(args))
     # One load for both passes that read the model. The requirement gate runs on EVERY verify.
     load_failure: list[str] = []
     model = _load_verify_model(args, load_failure)
@@ -2987,7 +3060,7 @@ def _build_parser() -> argparse.ArgumentParser:
     verify = sub.add_parser(
         "verify",
         help=(
-            "drift gate — explicit subverbs --codegen / --templates / --db "
+            "drift gate — explicit subverbs --codegen / --templates / --deps / --db "
             "(ADR-0021 D2); bare verify runs --codegen and --templates"
         ),
     )
@@ -3023,6 +3096,15 @@ def _build_parser() -> argparse.ArgumentParser:
             "template drift: each template.* node's {{field}} ↔ payload-VO "
             "field tree (render verify); reads `metadata` and `templates` from "
             "metaobjects.config.yaml, or takes <metadata_dir> with --prompts"
+        ),
+    )
+    verify.add_argument(
+        "--deps",
+        action="store_true",
+        help=(
+            "dependency drift (FR-023): re-resolve each declared dependency's `path` and "
+            "compare its artifact's hash with .metaobjects/deps.lock.json. Opt-in, never part "
+            "of bare verify: it needs the publisher's directory reachable"
         ),
     )
     verify.add_argument(
@@ -3174,6 +3256,23 @@ def _build_parser() -> argparse.ArgumentParser:
                         help="also wire the api-docs generator (a `docs` target)")
     init_p.add_argument("--root", default=None, help="project root (default: cwd)")
     init_p.set_defaults(func=_cmd_init)
+
+    deps_p = sub.add_parser(
+        "deps",
+        help=(
+            "metadata dependencies (FR-023): `deps check` compares each declared dependency's "
+            "publisher artifact with the lock. `deps sync` is the Node `meta` CLI's job"
+        ),
+    )
+    deps_sub = deps_p.add_subparsers(dest="deps_command", required=True)
+    deps_check = deps_sub.add_parser(
+        "check",
+        help=(
+            "exit 1 when a declared dependency has drifted from, or cannot be compared with, "
+            "the lock (ERR_DEPENDENCY_UPSTREAM_DRIFT). Read-only"
+        ),
+    )
+    deps_check.set_defaults(func=_cmd_deps)
 
     agent_docs = sub.add_parser(
         "agent-docs",

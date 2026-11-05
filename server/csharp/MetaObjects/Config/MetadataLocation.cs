@@ -118,6 +118,15 @@ public static class MetadataLocation
     }
 
     /// <summary>
+    /// The port-neutral config that declares a run's dependencies: that of the project holding an
+    /// explicit <paramref name="metadataDir"/>, else <paramref name="cwd"/>'s. Null when there is none, which
+    /// declares no dependencies. Unlike <see cref="Resolve"/> it verifies no snapshot, so the upstream check
+    /// can report on a project whose snapshot is stale or not yet synced.
+    /// </summary>
+    public static NeutralConfig? ProjectConfig(string? metadataDir, string cwd) =>
+        metadataDir is not null ? ConfigFor(metadataDir) : NeutralConfig.Read(cwd);
+
+    /// <summary>
     /// Resolve where metadata lives. An explicit <paramref name="metadataDir"/> is used as
     /// given; otherwise <paramref name="cwd"/>'s <c>.metaobjects/config.json</c>
     /// <c>sources</c> (or the default directory) decides. <c>libraries</c> and
