@@ -496,7 +496,7 @@ public class EntityGenerator : IGenerator
                 // HasValue<Base>(...) fails model validation ("has a discriminator property,
                 // but does not have a discriminator value configured").
                 var classKeyword = TphPlanBuilder.IsTphDiscriminatorBase(entity, ctx.Root) ? "abstract class" : "class";
-                sb.AppendLine($"public {classKeyword} {className}");
+                sb.AppendLine($"public {classKeyword} {className}{AbstractShapeBaseClause(entity, ctx)}");
                 break;
             case ClassDeclarationKind.TphSubtype:
                 // Extend the nearest ancestor that actually GETS EMITTED as a class — the
@@ -518,7 +518,7 @@ public class EntityGenerator : IGenerator
                 sb.AppendLine($"public {tphKeyword} {className} : {baseClass}");
                 break;
             case ClassDeclarationKind.AbstractShape:
-                sb.AppendLine($"public abstract class {className}");
+                sb.AppendLine($"public abstract class {className}{AbstractShapeBaseClause(entity, ctx)}");
                 break;
             case ClassDeclarationKind.ValueObject:
                 sb.AppendLine($"public class {className}");
@@ -750,6 +750,15 @@ public class EntityGenerator : IGenerator
             cursor = DirectTphParent(cursor);
         return cursor;
     }
+
+    // ` : <Shape>` when the entity's direct parent is an emitted abstract SHAPE (EmitAbstractShapes):
+    // the class body leaves out the fields that shape declares (inheritedNames), so without the
+    // clause they are on no class at all. "" otherwise — a concrete parent is not named here,
+    // since a mapped C# base class would make EF read the pair as an inheritance hierarchy.
+    private static string AbstractShapeBaseClause(MetaObject entity, GenContext ctx) =>
+        DirectMappedParent(entity, ctx.Config) is { } parent && InstanceArtifacts.IsAbstract(parent)
+            ? $" : {CSharpNaming.Pascal(parent.Name)}"
+            : string.Empty;
 
     // The directly-extended entity to emit as a C# base class for a NON-TPH entity (mapped
     // entity or abstract shape). The metadata `extends` chain becomes the C# inheritance

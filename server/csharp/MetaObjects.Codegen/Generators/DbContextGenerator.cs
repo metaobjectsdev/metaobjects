@@ -169,6 +169,7 @@ public class DbContextGenerator : IGenerator
                 modelLines.Add(MapJsonbConfig(name, p, f, ctx));
             // A duration column on a view reads through the same provider-dependent mapping.
             AddDurationConfig(name, p, p.Fields(), ctx, modelLines);
+            EmitShapeInheritedFacets(name, p, p.Fields(), ctx, modelLines);
         }
         foreach (var e in objects.Where(o => o.IsEntity() && !o.IsReadOnlyProjection()))
         {
@@ -188,6 +189,7 @@ public class DbContextGenerator : IGenerator
             // finalization on a field.uri / @dbColumnType:uuid column). jsonbObjectsOnly:false —
             // the write entity carries flattened VOs too (its per-column spread is mapped here).
             EmitFieldTypeConfig(owner, e, configFields, ctx, modelLines, jsonbObjectsOnly: false);
+            EmitShapeInheritedFacets(owner, e, configFields, ctx, modelLines);
 
             // identity.primary @generation: assigned — the caller supplies the key. EF's
             // convention makes a single integer or Guid key generated on add, which leaves a key
@@ -512,6 +514,55 @@ public class DbContextGenerator : IGenerator
                     modelLines.Add(line);
             }
         }
+    }
+
+    /// <summary>
+    /// Under <see cref="GenConfig.EmitAbstractShapes"/>, a concrete class extends the abstract
+    /// shape its entity extends, and the fields that shape declares live on the shape class —
+    /// which carries no EF attributes by design. So the <c>[Key]</c>, <c>[Column]</c> and
+    /// <c>[MaxLength]</c> those fields would have carried on the concrete class are configured
+    /// here instead, or the model keys the entity by convention, names the columns after the
+    /// properties, and drops the declared length. Nothing when the knob is off (the concrete
+    /// class then declares every field itself, attributes included).
+    /// </summary>
+    private void EmitShapeInheritedFacets(
+        string className, MetaObject entity, IEnumerable<MetaField> fields, GenContext ctx, List<string> modelLines)
+    {
+        if (!ctx.Config.EmitAbstractShapes) return;
+        if (entity.SuperData is not MetaObject parent || !parent.IsEntity() || !InstanceArtifacts.IsAbstract(parent)
+            || TphPlanBuilder.IsTphMember(parent, ctx.Root))
+            return;
+        var shapeDeclared = new HashSet<string>(parent.Fields().Select(f => f.Name), StringComparer.Ordinal);
+        var lhs = $"        modelBuilder.Entity<{className}>()";
+
+        if (entity.PrimaryIdentity()?.Fields is [var keyName] && shapeDeclared.Contains(keyName)
+            && entity.FindField(keyName) is { } keyField)
+            modelLines.Add($"{lhs}.HasKey(x => x.{PropertyName(keyField)});");
+
+        foreach (var f in fields.Where(f => shapeDeclared.Contains(f.Name)))
+        {
+            var col = CSharpNaming.ColumnRef(entity, f, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames);
+            var prop = PropertyName(f);
+            var isScalar = CSharpNaming.ScalarFor(f.SubType) is not null;
+            if (f.ResolvedIsArray() && (isScalar || f.SubType == FIELD_SUBTYPE_ENUM))
+                modelLines.Add($"{lhs}.PrimitiveCollection(x => x.{prop}).HasColumnName({col});");
+            else if (isScalar || f.SubType is FIELD_SUBTYPE_ENUM or FIELD_SUBTYPE_MAP)
+                modelLines.Add($"{lhs}.Property(x => x.{prop}).HasColumnName({col})"
+                    + (f.SubType == FIELD_SUBTYPE_STRING && EffectiveMaxLength(f) is { } max ? $".HasMaxLength({max})" : "")
+                    + ";");
+            // An object field's column is already named by its owned-type config.
+        }
+    }
+
+    /// <summary>A string field's effective maximum length: the strictest of <c>@maxLength</c> and
+    /// a <c>validator.length @max</c> — the same value EntityGenerator's <c>[MaxLength]</c> carries.</summary>
+    private static long? EffectiveMaxLength(MetaField f)
+    {
+        long? max = f.MaxLength;
+        foreach (var v in f.Validators())
+            if (v.SubType == MetaObjects.Core.Validator.ValidatorConstants.VALIDATOR_SUBTYPE_LENGTH && v.Max is long lmax)
+                max = max is long cur ? Math.Min(cur, lmax) : lmax;
+        return max;
     }
 
     /// <summary>The key field of a single-column primary identity declared

@@ -291,4 +291,58 @@ public sealed class EfModelGapsTests
         Assert.Equal(new[] { "ada", "lin" }, cards.Select(c => (string)GeneratedEfModel.Get(c, "Name")!).OrderBy(n => n));
         Assert.Equal(2, GeneratedEfModel.All(db, gen.Type("BadgeRow")).Count);
     }
+
+    // ── D11a: facets of fields inherited from an abstract base (EmitAbstractShapes) ──────────
+
+    private const string AbstractBaseModel = """
+    { "metadata.root": { "package": "acme", "children": [
+      { "object.entity": { "name": "AuditedRow", "abstract": true, "children": [
+        { "field.string": { "name": "ledgerCode", "@maxLength": 12 } },
+        { "field.string": { "name": "createdBy", "@maxLength": 200, "@column": "created_by" } },
+        { "field.enum":   { "name": "origin", "@values": ["APP", "IMPORT"], "@column": "origin_kind" } },
+        { "identity.primary": { "name": "pk", "@fields": "ledgerCode", "@generation": "assigned" } }
+      ]}},
+      { "object.entity": { "name": "Ledger", "extends": "AuditedRow", "children": [
+        { "source.rdb": { "@table": "ledgers" } },
+        { "field.string": { "name": "title", "@maxLength": 40 } }
+      ]}}
+    ]}}
+    """;
+
+    [Fact]
+    public async Task Fields_inherited_from_an_abstract_shape_keep_their_key_column_and_length()
+    {
+        // With EmitAbstractShapes the inherited fields are declared on the abstract shape class,
+        // which carries no EF attributes, so their key, column name and length never reached the
+        // concrete entity's model.
+        var gen = GeneratedEfModel.Compile(AbstractBaseModel, "Acme.AbstractBase",
+            c => c with { EmitAbstractShapes = true });
+        using (var model = gen.ModelOnlyContext())
+        {
+            var ledger = EntityType(model, "Ledger");
+            Assert.Equal(new[] { "LedgerCode" }, ledger.FindPrimaryKey()!.Properties.Select(p => p.Name));
+            var createdBy = ledger.FindProperty("CreatedBy")!;
+            Assert.Equal(200, createdBy.GetMaxLength());
+            Assert.Equal("created_by", createdBy.GetColumnName());
+            Assert.Equal(12, ledger.FindProperty("LedgerCode")!.GetMaxLength());
+            Assert.Equal("origin_kind", ledger.FindProperty("Origin")!.GetColumnName());
+            Assert.Equal(40, ledger.FindProperty("Title")!.GetMaxLength());
+        }
+
+        await using var pg = await PostgresContainer.StartAsync();
+        using (var db = gen.NewContext(o => o.UseNpgsql(pg.ConnectionString)))
+            db.Database.EnsureCreated();
+        var columns = await Rows(pg.ConnectionString, """
+            SELECT column_name, character_maximum_length FROM information_schema.columns
+            WHERE table_name = 'ledgers' ORDER BY column_name
+            """);
+        Assert.Contains(new object?[] { "created_by", 200 }, columns);
+        Assert.Contains(new object?[] { "ledgerCode", 12 }, columns);
+        using (var db = gen.NewContext(o => o.UseNpgsql(pg.ConnectionString)))
+        {
+            db.Add(gen.New("Ledger", ("LedgerCode", "L-1"), ("CreatedBy", "ada"), ("Title", "first")));
+            db.SaveChanges();
+        }
+        Assert.Single(await Rows(pg.ConnectionString, """SELECT "created_by" FROM "ledgers" WHERE "ledgerCode" = 'L-1' """));
+    }
 }

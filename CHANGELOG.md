@@ -217,6 +217,15 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
 
 ### Fixed
 
+- **C#: under `EmitAbstractShapes`, a concrete entity extends its abstract shape and keeps the
+  facets of the fields it inherits.** The entity class left out the fields its abstract parent
+  declares, expecting the shape class to carry them, but never named the shape as its base, so
+  those fields were on no class and the context did not compile. It now declares `: <Shape>`
+  (an abstract shape extending another does too). The shape carries no EF attributes, so the
+  context configures what the inherited fields' attributes would have: the single-column key
+  (`HasKey`), each column name (`HasColumnName`) and a string's `@maxLength` (`HasMaxLength`).
+  Models without the knob are unchanged.
+
 - **C#: a TPH discriminator typed by a shared or `@provided` enum compiles.** `HasValue<Sub>(...)`
   named the enum as a type nested in the base entity (`Vehicle.VehicleKind.Car`), which a shared
   or provided enum (FR-019) is not; it now names it where it lives, as the enum conversions do.

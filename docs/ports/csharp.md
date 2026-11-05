@@ -369,7 +369,9 @@ false }` emits none, for a project that writes its own.
 `identity.primary @generation: assigned` key is `ValueGeneratedNever()`, so EF always sends the
 caller's value, `0` included. An `identity.reference` relationship carries
 `.HasConstraintName(...)` from `@constraintName`, and `.HasPrincipalKey(...)` when `@references`
-names target fields other than the primary key.
+names target fields other than the primary key. Under `EmitAbstractShapes` a concrete entity
+extends its abstract shape class, which carries no EF attributes, so the key, column names and
+`@maxLength` of the fields it inherits from there are configured in the context instead.
 
 ### Decimals and null members on the wire
 
