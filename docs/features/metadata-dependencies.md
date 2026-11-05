@@ -378,7 +378,8 @@ classifies those as breaking automatically — see [Deferred](#deferred).
 `verify --deps` runs `meta deps check`'s comparison as one of `verify`'s gated
 subverbs (never part of the bare default — it needs the publisher reachable, its
 `path` or its installed package, which CI checking out only your own repo may not
-have). Each declared
+have). Java and Kotlin run the `path` case of the same comparison as
+`mvn metaobjects:verify -Dmeta.verify.mode=deps` ([Java port page](../ports/java.md#consuming-a-shared-model-dependencies)). Each declared
 dependency reports one of:
 
 - **`current`** — the installed artifact's hash matches the lock.

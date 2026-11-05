@@ -650,7 +650,7 @@ needs a `prompts/` (else `templates/`) directory, or `--templates <root>`, and e
 | Port | Bare command | Config each check needs | One check alone |
 |---|---|---|---|
 | TypeScript | `meta verify` | Codegen: `metaobjects.config.ts`. Templates: the `template.*` nodes in the model. | `meta verify --codegen`, `meta verify --templates` |
-| Java | `mvn metaobjects:verify` | Codegen: the `<generators>` in the plugin configuration. Templates: `-Dmeta.verify.templateRoot`. | `-Dmeta.verify.mode=codegen`, `-Dmeta.verify.mode=templates` |
+| Java | `mvn metaobjects:verify` | Codegen: the `<generators>` in the plugin configuration. Templates: `-Dmeta.verify.templateRoot`. | `-Dmeta.verify.mode=codegen`, `-Dmeta.verify.mode=templates` (`-Dmeta.verify.mode=deps` for dependency drift, opt-in) |
 | Kotlin | `mvn metaobjects:verify` (the same goal as Java) | As Java. `MetadataStartupValidator` adds a startup check. | As Java |
 | C# | `dotnet meta verify` | Codegen: an output directory (`csharp.outDir` in `.metaobjects/config.json`, or `--out <dir>`) and `codegen/Generators.cs`. Templates: `--templates <root>`, or a `prompts/` (else `templates/`) directory in the working directory; with neither, a bare run exits 2. | `dotnet meta verify --codegen`, `dotnet meta verify --templates <root>` |
 | Python | `metaobjects verify` | Codegen: `metaobjects.config.yaml`. Templates: `metaobjects.config.yaml` or `--prompts <dir>`. | `metaobjects verify --codegen`, `metaobjects verify --templates` |
