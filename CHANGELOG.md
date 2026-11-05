@@ -326,11 +326,13 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
   query failed with an undefined-column error. The Drizzle table now carries one column per member,
   named by the same `resolveFlattenedColumnName` the migration uses, and the Zod schemas, the
   Row/Insert types and the filter allowlist expose them as flat keys (`shipToStreet`), the same
-  surface Prisma already has. Generated queries, Hono and Fastify routes need no change. Two shapes
-  are refused with a `CodegenError` instead of generating code that cannot work: a flattened field
-  on a write-through entity, and one declared on a TPH subtype (`meta migrate` folds a subtype's
-  `field.object` into the shared table as a single column). Declare it on the base, or use
-  `@storage: jsonb`. Form, grid and hook generators still see the field as one object field.
+  surface Prisma already has. Generated queries, Hono and Fastify routes need no change. The client filter
+  type, the sort allowlist, the OpenAPI filter and sort parameters and the string-decimal wire
+  rewrite use the same flat keys. A flattened field on a write-through entity is refused with a
+  `CodegenError` instead of generating code that cannot work. A flattened field declared on a TPH
+  subtype keeps a single column named for the field, as `meta migrate` creates it, and a value
+  object that declares one keeps it as one nested key. Form, grid and hook generators still see
+  the field as one object field.
 
 - **TypeScript: every `meta` command now loads the providers in `metaobjects.config.ts`.**
   `meta export`, `meta deps`, `meta fmt`, `meta types` and `meta upgrade` loaded the core

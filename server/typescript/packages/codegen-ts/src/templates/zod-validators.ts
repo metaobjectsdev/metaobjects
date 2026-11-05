@@ -320,7 +320,7 @@ function crossComparable(left: MetaField, right: MetaField, opName: string): boo
 function insertSchemaFieldNameSet(obj: MetaObject): Set<string> {
   const autoGen = autoGenPkFieldNames(obj);
   const out = new Set<string>();
-  for (const f of obj.fields()) {
+  for (const f of flatSurfaceFields(obj)) {
     if (autoGen.has(f.name)) continue;
     if (isReadOnlyMutability(f) || f.isDerived()) continue;
     out.add(f.name);
@@ -386,7 +386,7 @@ interface RefinementBuild { blocks: string[]; helpers: Set<string> }
 
 function crossFieldRefinement(obj: MetaObject): RefinementBuild {
   const inSchema = insertSchemaFieldNameSet(obj);
-  const byName = new Map(obj.fields().map((f) => [f.name, f] as const));
+  const byName = new Map(flatSurfaceFields(obj).map((f) => [f.name, f] as const));
   // A reference must name a field that exists AND is in the insert schema; otherwise skip
   // the validator (migrate skips on a missing field; a readOnly/derived/auto-PK field is
   // never in the body, so enforcing on it would reject every create).

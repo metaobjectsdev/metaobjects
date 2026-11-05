@@ -42,6 +42,7 @@ import {
   type MetaObject,
   type MetaRoot,
 } from "@metaobjectsdev/metadata";
+import { flatSurfaceFields } from "./flattened.js";
 import { isAbstract } from "./instance-artifacts.js";
 import { isProjection } from "./projection/projection-detector.js";
 import { hasAnyRdbSource, hasWritableRdbSource, isReport, servedReport } from "./source-detect.js";
@@ -145,7 +146,7 @@ export function servesClientTier(entity: MetaObject): boolean {
 export function decimalFieldNames(entity: MetaObject): readonly string[] {
   // ADR-0039: resolving. A decimal may be inherited via extends, and a report read model's
   // derived ratio, average or sum is a field of the report itself.
-  return entity.fields().filter((f) => f.subType === FIELD_SUBTYPE_DECIMAL).map((f) => f.name);
+  return flatSurfaceFields(entity).filter((f) => f.subType === FIELD_SUBTYPE_DECIMAL).map((f) => f.name);
 }
 
 /**

@@ -20,6 +20,8 @@ import {
   type MetaObject,
 } from "@metaobjectsdev/metadata";
 import type { ColumnNamingStrategy } from "./metaobjects-config.js";
+import { hasWritableRdbSource } from "./source-detect.js";
+import { tphDiscriminatorBase, tphStorageObject } from "./tph.js";
 
 export interface FlattenedMember {
   /** The value object's own field. */
@@ -70,10 +72,19 @@ function asFlatKey(member: MetaField, key: string): MetaField {
 /**
  * `obj.fields()` as the flat surface sees them: each flattened `field.object` replaced by its
  * members, keyed `<field><Member>`. Identical to `obj.fields()` for an object with none.
+ *
+ * Only a table-backed object flattens: a value object has no table, so a flattened field it
+ * declares is nested jsonb when embedded. A field a TPH subtype declares beyond its base is
+ * folded into the shared table as one jsonb column (`meta migrate` does not expand it), so it
+ * stays a single key too.
  */
 export function flatSurfaceFields(obj: MetaObject): MetaField[] {
+  if (!hasWritableRdbSource(tphStorageObject(obj))) return obj.fields();
   const strategy = physicalNamingOf(obj).columns;
+  const tphBase = tphDiscriminatorBase(obj);
+  const baseFieldNames = tphBase === undefined ? undefined : new Set(tphBase.fields().map((f) => f.name));
   return obj.fields().flatMap((f) => {
+    if (baseFieldNames !== undefined && !baseFieldNames.has(f.name)) return [f];
     const members = flattenedMembersOf(f, strategy);
     return members === undefined ? [f] : members.map((m) => asFlatKey(m.member, m.key));
   });

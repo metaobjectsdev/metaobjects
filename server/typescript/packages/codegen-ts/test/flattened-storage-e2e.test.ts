@@ -29,7 +29,7 @@ const META = JSON.stringify({
   "metadata.root": { package: "acme", children: [
     { "object.value": { name: "Address", children: [
       { "field.string": { name: "street" } },
-      { "field.string": { name: "city" } },
+      { "field.string": { name: "city", "@filterable": true } },
       { "field.int": { name: "floor" } },
     ] } },
     { "object.entity": { name: "Shipment", children: [
@@ -95,8 +95,8 @@ describe("flattened storage: generated Drizzle columns match migrate's expected 
   }
 });
 
-describe("flattened storage: a TPH subtype is refused, not emitted out of step with migrate", () => {
-  test("migrate folds a subtype's field.object as one column, so codegen refuses the flattened form", async () => {
+describe("flattened storage: a TPH subtype's own flattened field keeps migrate's single column", () => {
+  test("migrate folds a subtype's field.object as one column, so the table binds one column named for the field", async () => {
     const TPH = JSON.stringify({
       "metadata.root": { package: "acme", children: [
         { "object.value": { name: "Address", children: [{ "field.string": { name: "street" } }] } },
@@ -112,7 +112,31 @@ describe("flattened storage: a TPH subtype is refused, not emitted out of step w
       ] },
     });
     const { root } = await new MetaDataLoader({ strict: true }).load([new InMemoryStringSource(TPH, { id: "tph.json" })]);
-    await expect(generate(root, "postgres", [entityFile()], tmpdir())).rejects.toThrow(/flattened/);
+    const expected = buildExpectedSchema(root, { dialect: "postgres" });
+    const expectedColumns = expected.tables.find((t) => t.name === "parties")!.columns.map((c) => c.name).sort();
+    const outDir = await generate(root, "postgres", [entityFile()], tmpdir());
+    const source = readFileSync(allTs(outDir).find((f) => f.endsWith("Party.ts"))!, "utf8");
+    const table = source.slice(source.indexOf("Table(\"parties\""), source.indexOf("});", source.indexOf("Table(\"parties\"")));
+    const bound = [...table.matchAll(/^\s+\w+: \w+\("([^"]+)"/gm)].map((m) => m[1]!).sort();
+    expect(bound).toEqual(expectedColumns);
+  });
+});
+
+describe("flattened storage: a value object has no table, so it does not flatten", () => {
+  test("a flattened field on an object.value stays one key", async () => {
+    const VO = JSON.stringify({
+      "metadata.root": { package: "acme", children: [
+        { "object.value": { name: "Address", children: [{ "field.string": { name: "street" } }] } },
+        { "object.value": { name: "Contact", children: [
+          { "field.object": { name: "home", "@objectRef": "Address", "@storage": "flattened" } },
+        ] } },
+      ] },
+    });
+    const { root } = await new MetaDataLoader({ strict: true }).load([new InMemoryStringSource(VO, { id: "vo.json" })]);
+    const outDir = await generate(root, "sqlite", [entityFile()], import.meta.dir);
+    const mod = (await import(pathToFileURL(allTs(outDir).find((f) => f.endsWith("Contact.ts"))!).href)) as Record<string, { shape?: object }>;
+    const schema = Object.values(mod).find((v) => typeof v === "object" && v !== null && "shape" in v)!;
+    expect(Object.keys(schema.shape!)).toEqual(["home"]);
   });
 });
 
@@ -192,10 +216,15 @@ describe("flattened storage: generated queries and routes, executed on SQLite", 
     expect((await post({ ref: "bad", billToFloor: "high" })).status).toBe(400);
   });
 
-  test("a flattened member is filterable through the allowlist", async () => {
-    // Member fields carry no @filterable here, so the filter is rejected, never a 500.
-    const res = await app.request("/shipments?filter[shipToCity][eq]=Rome");
-    expect(res.status).toBeLessThan(500);
+  test("a flattened member filters and sorts by its flat key", async () => {
+    await queries["createShipment"]!(db, { ref: "f1", shipToCity: "Zagreb" });
+    await queries["createShipment"]!(db, { ref: "f2", shipToCity: "Athens" });
+    const filtered = await app.request("/shipments?filter[shipToCity][eq]=Zagreb");
+    expect(filtered.status).toBe(200);
+    expect(((await filtered.json()) as { ref: string }[]).map((r) => r.ref)).toEqual(["f1"]);
+    const sorted = await app.request("/shipments?filter[shipToCity][in]=Zagreb,Athens&sort=shipToCity:asc");
+    expect(sorted.status).toBe(200);
+    expect(((await sorted.json()) as { ref: string }[]).map((r) => r.ref)).toEqual(["f2", "f1"]);
   });
 
   test("Fastify routes: flat JSON in and out", async () => {

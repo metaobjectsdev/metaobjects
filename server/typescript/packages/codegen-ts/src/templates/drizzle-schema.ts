@@ -2,7 +2,6 @@
 // with FK .references() on FK columns derived from relationship children,
 // plus the relations() block auto-emitted at the end.
 
-import { CodegenError } from "../errors.js";
 import { code, imp, joinCode, type Code } from "ts-poet";
 import { MetaObject, MetaField, MetaIndex, isMetaObject } from "@metaobjectsdev/metadata";
 import {
@@ -220,12 +219,10 @@ export function renderDrizzleSchema(
   // One column per member of a flattened value object, keyed `<field><Member>` and named by
   // core naming (`resolveFlattenedColumnName`), the name `meta migrate` creates; the
   // `<Entity>Names` constant when the artifact carries it. No CHECK constraint: migrate derives
-  // CHECKs from the entity's own fields only. `forceNullable` is a TPH subtype's own field
-  // (rows of other subtypes store NULL there).
+  // CHECKs from the entity's own fields only.
   const pushFlattenedColumns = (
     owner: MetaField,
     members: NonNullable<ReturnType<typeof flattenedMembersOf>>,
-    forceNullable: boolean,
   ): void => {
     for (const m of members) {
       if (m.member.isDerived()) continue;
@@ -240,7 +237,7 @@ export function renderDrizzleSchema(
         ? code`${names.symbol}.fields.${owner.name}.members.${m.member.name}.column`
         : code`${JSON.stringify(m.column)}`;
       columnLines.push(
-        renderColumn(spec, dbExpr, m.member, ctx, false, undefined, undefined, isComposite, pkg, obj.name, forceNullable, m.key),
+        renderColumn(spec, dbExpr, m.member, ctx, false, undefined, undefined, isComposite, pkg, obj.name, false, m.key),
       );
     }
   };
@@ -254,7 +251,7 @@ export function renderDrizzleSchema(
     // none of its own - exactly the columns `meta migrate` creates (flattened.ts).
     const flat = flattenedMembersOf(child, ctx.columnNamingStrategy);
     if (flat !== undefined) {
-      pushFlattenedColumns(child, flat, false);
+      pushFlattenedColumns(child, flat);
       continue;
     }
     const isPk = pkFieldNames.has(child.name);
@@ -281,17 +278,6 @@ export function renderDrizzleSchema(
   for (const child of collectTphSubtypeFields(obj, ctx.loadedRoot)) {
     // #213 — a TPH subtype's derived field is read-only too; never a table column.
     if (child.isDerived()) continue;
-    const flatSub = flattenedMembersOf(child, ctx.columnNamingStrategy);
-    if (flatSub !== undefined) {
-      // `meta migrate` folds a subtype's field.object into the shared table as ONE column and
-      // does not expand a flattened one, so a flattened subtype field would bind columns the
-      // migration never creates - the defect this feature exists to remove. Refuse it.
-      throw new CodegenError(
-        `${obj.name}: the TPH subtype field '${child.name}' is field.object @storage: flattened, which ` +
-          `is not supported on a subtype yet (meta migrate does not expand it into the shared table). ` +
-          `Declare it on the base, or use @storage: jsonb.`,
-      );
-    }
     const spec = mapColumnType(child, ctx.dialect, ctx.columnNamingStrategy, ctx.timestampMode);
     if (spec.enumIntCustomType !== undefined) {
       enumIntTypes.set(spec.enumIntCustomType.fnConstName, spec.enumIntCustomType);
