@@ -337,7 +337,8 @@ The codegen emits:
   types via `OwnsOne` (single) / `OwnsMany(...).ToJson(...)` (`@isArray` array-of-VO),
   enum-as-string via `HasConversion<string>()`. An int-backed enum (`@intValueMap`) gets a
   converter pair that stores the declared integer and throws on a stored integer the map does
-  not describe. On an `isArray` enum that pair is the element converter of an EF Core primitive
+  not describe, and on a write of a value it does not describe (a cast integer, say), rather
+  than storing another member's integer. On an `isArray` enum that pair is the element converter of an EF Core primitive
   collection, so a Postgres column is `integer[]` and a SQLite or MySQL column is a JSON array
   of numbers (`[5,0]`). A non-required int-backed enum array is an `IList<TEnum>?`, so a NULL
   column reads back as null.

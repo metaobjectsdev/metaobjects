@@ -73,7 +73,7 @@ public class IntBackedEnumArrayCodegenTests
 
         var dbctx = DbContext(ctx);
         Assert.Contains("b.PrimitiveCollection(p => p.Tags).HasColumnName(\"home_tags\").ElementType()"
-            + ".HasConversion(new global::Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<Address.AddressTags, int>(v => v == Address.AddressTags.A ? 1 : 2, "
+            + ".HasConversion(new global::Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<Address.AddressTags, int>(v => v == Address.AddressTags.A ? 1 : v == Address.AddressTags.B ? 2 : UnmappedEnumMember(v, \"tags\"), "
             + "v => v == 1 ? Address.AddressTags.A : v == 2 ? Address.AddressTags.B : UnmappedEnumValue<Address.AddressTags>(v, \"tags\")));",
             dbctx);
         Assert.Contains("private static T UnmappedEnumValue<T>(int stored, string field)", dbctx);
@@ -105,7 +105,7 @@ public class IntBackedEnumArrayCodegenTests
 
         var dbctx = DbContext(ctx);
         Assert.Contains("modelBuilder.Entity<DocSummary>().PrimitiveCollection(x => x.History).ElementType()"
-            + ".HasConversion(new global::Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<Status, int>(v => v == Status.DRAFT ? 0 : v == Status.PUBLISHED ? 5 : 9, "
+            + ".HasConversion(new global::Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<Status, int>(v => v == Status.DRAFT ? 0 : v == Status.PUBLISHED ? 5 : v == Status.ARCHIVED ? 9 : UnmappedEnumMember(v, \"history\"), "
             + "v => v == 0 ? Status.DRAFT : v == 5 ? Status.PUBLISHED : v == 9 ? Status.ARCHIVED : UnmappedEnumValue<Status>(v, \"history\")));",
             dbctx);
         Assert.Contains("modelBuilder.Entity<DocSummary>().PrimitiveCollection(x => x.Labels).ElementType().HasConversion<string>();",
@@ -138,7 +138,7 @@ public class IntBackedEnumArrayCodegenTests
 
         var dbctx = DbContext(ctx);
         Assert.Contains("modelBuilder.Entity<Doc>().PrimitiveCollection(x => x.History).ElementType()"
-            + ".HasConversion(new global::Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<Status, int>(v => v == Status.DRAFT ? 0 : 5, "
+            + ".HasConversion(new global::Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<Status, int>(v => v == Status.DRAFT ? 0 : v == Status.PUBLISHED ? 5 : UnmappedEnumMember(v, \"history\"), "
             + "v => v == 0 ? Status.DRAFT : v == 5 ? Status.PUBLISHED : UnmappedEnumValue<Status>(v, \"history\")));",
             dbctx);
 

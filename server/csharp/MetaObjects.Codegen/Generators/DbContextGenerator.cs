@@ -696,6 +696,9 @@ public class DbContextGenerator : IGenerator
     /// <summary>Name of the generated fail-fast helper the read converters end in.</summary>
     private const string UnmappedEnumHelperName = "UnmappedEnumValue";
 
+    /// <summary>Name of the generated fail-fast helper the write converters end in.</summary>
+    private const string UnmappedEnumMemberHelperName = "UnmappedEnumMember";
+
     /// <summary>
     /// Emits the fail-fast helper every int-backed enum's provider→model converter ends
     /// in. Emitted only when at least one such converter was generated, so a model with
@@ -716,6 +719,16 @@ public class DbContextGenerator : IGenerator
         sb.AppendLine("        throw new System.InvalidOperationException(");
         sb.AppendLine("            $\"field.enum '{field}' read stored value {stored} with no member in \" +");
         sb.AppendLine("            \"@intValueMap — the database holds a value the model does not describe.\");");
+        sb.AppendLine();
+        sb.AppendLine("    /// <summary>");
+        sb.AppendLine("    /// An int-backed field.enum property held a value outside @values (a cast integer, or");
+        sb.AppendLine("    /// a member the C# enum declares that the metadata does not): it has no declared");
+        sb.AppendLine("    /// integer, and writing some other member's instead would corrupt the row silently.");
+        sb.AppendLine("    /// </summary>");
+        sb.AppendLine($"    private static int {UnmappedEnumMemberHelperName}(object? value, string field) =>");
+        sb.AppendLine("        throw new System.InvalidOperationException(");
+        sb.AppendLine("            $\"field.enum '{field}' cannot write {value}: it has no integer in \" +");
+        sb.AppendLine("            \"@intValueMap — the value is not one of the members the model declares.\");");
     }
 
     /// <summary>
@@ -942,9 +955,11 @@ public class DbContextGenerator : IGenerator
     /// with no member THROWS rather than silently materializing as the last member —
     /// matching all four sibling ports. CS8188 bans a throw-EXPRESSION inside an
     /// expression tree, but a method CALL is legal there and the throw itself happens in
-    /// the helper's ordinary body. Only the read side needs this: the model→provider
-    /// chain is exhaustive over the enum by construction, since <c>@intValueMap</c>'s
-    /// keys are loader-validated to match <c>@values</c> exactly.</para>
+    /// the helper's ordinary body. The model→provider chain does the same, ending in
+    /// <c>UnmappedEnumMember</c>: <c>@intValueMap</c>'s keys match <c>@values</c>
+    /// exactly, but the C# enum can still hold a value outside them (a cast integer, or a
+    /// <c>@provided</c> enum's extra member), which must not be stored as another member's
+    /// integer.</para>
     /// </remarks>
     private static string EnumConversionCall(string owner, MetaObject entity, MetaField f, GenConfig config)
     {
@@ -990,9 +1005,14 @@ public class DbContextGenerator : IGenerator
 
         var toProvider = new System.Text.StringBuilder("v => ");
         var fromProvider = new System.Text.StringBuilder("v => ");
-        for (var i = 0; i < members.Count - 1; i++)
+        // Every member gets its own branch on the WRITE side too, ending in the throwing helper:
+        // a value outside @values (a cast like (E)99, or a member a @provided C# enum carries
+        // that the metadata does not) would otherwise fall into the else branch and be stored
+        // as the LAST member's int, silently.
+        for (var i = 0; i < members.Count; i++)
             toProvider.Append($"v == {type}.{members[i]} ? {ints[i]} : ");
-        toProvider.Append(ints[^1]);
+        // Typed object: the lambda's parameter is the property's type, nullable or not.
+        toProvider.Append($"{UnmappedEnumMemberHelperName}(v, \"{f.Name}\")");
         // Every member gets its own branch here (no last-member fallthrough) so the
         // final else can reject an int the model does not describe.
         for (var i = 0; i < members.Count; i++)

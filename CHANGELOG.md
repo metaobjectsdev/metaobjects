@@ -217,6 +217,14 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
 
 ### Fixed
 
+- **C#: an int-backed enum refuses to write a value its `@intValueMap` does not describe.** The
+  write converter was `v == A ? 1 : v == B ? 2 : 3`, so the last member was the else branch: a
+  cast like `(Status)99`, or a member a `@provided` C# enum declares that `@values` does not, was
+  stored as the last member's integer, and a single-member enum wrote its constant whatever the
+  value. Every member now has its own branch, ending in a generated `UnmappedEnumMember` helper
+  that throws, as the read side already did with `UnmappedEnumValue`. Scalars, array elements
+  and flattened value-object members alike.
+
 - **C#: the reverse finders take `GenConfig.ContextTypeName`.** They hardcoded `AppDbContext`
   as their first parameter's type, so a project that renamed its context got finders that did
   not compile.

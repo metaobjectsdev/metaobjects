@@ -186,7 +186,7 @@ public class ObjectFieldCodegenTests
         // migration never created — measured against a real Postgres, not inferred.
         Assert.Contains("b.Property(p => p.Kind).HasColumnName(\"homeAddress_kind\").HasConversion<string>();", dbContext);
         Assert.Contains(
-            "b.Property(p => p.Grade).HasColumnName(\"homeAddress_grade\").HasConversion(v => v == Address.AddressGrade.LO ? 1 : 2, " +
+            "b.Property(p => p.Grade).HasColumnName(\"homeAddress_grade\").HasConversion(v => v == Address.AddressGrade.LO ? 1 : v == Address.AddressGrade.HI ? 2 : UnmappedEnumMember(v, \"grade\"), " +
             "v => v == 1 ? Address.AddressGrade.LO : v == 2 ? Address.AddressGrade.HI : UnmappedEnumValue<Address.AddressGrade>(v, \"grade\"));",
             dbContext);
         // ...and the fail-fast helper that converter names is declared, even though the ONLY
