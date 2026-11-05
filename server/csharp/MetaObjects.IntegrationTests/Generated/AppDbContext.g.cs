@@ -112,6 +112,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Auth>().Property(x => x.Type).HasConversion<string>();
         modelBuilder.Entity<Auth>().HasDiscriminator(e => e.Type).HasValue<BridgeAuth>(Auth.AuthType.Bridge).HasValue<CopayAuth>(Auth.AuthType.Copay).HasValue<PriorAuthAuth>(Auth.AuthType.PriorAuth).HasValue<ReferralAuth>(Auth.AuthType.Referral);
         modelBuilder.Entity<CopayAuth>().Property(x => x.CopayAmount).HasPrecision(10, 2);
+        modelBuilder.Entity<ReferralAuth>().Property(x => x.Urgency).HasDefaultValue("routine").HasSentinel("routine");
         modelBuilder.Entity<Entry>().Property(x => x.Amount).HasPrecision(28, 10);
         modelBuilder.Entity<Follow>().HasOne<Person>().WithMany().HasForeignKey(e => e.FollowerId).OnDelete(DeleteBehavior.NoAction);
         modelBuilder.Entity<Follow>().HasOne<Person>().WithMany().HasForeignKey(e => e.FolloweeId).OnDelete(DeleteBehavior.NoAction);

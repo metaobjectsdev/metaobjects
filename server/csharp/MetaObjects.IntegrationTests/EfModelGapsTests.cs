@@ -485,4 +485,103 @@ public sealed class EfModelGapsTests
             Assert.Equal(10.7, GeneratedEfModel.Get(GeneratedEfModel.Get(address, "Geo")!, "Lng"));
         }
     }
+
+    // ── D11d: core @default in the EF model ─────────────────────────────────────────────────
+
+    private const string DefaultsModel = """
+    { "metadata.root": { "package": "acme", "children": [
+      { "object.entity": { "name": "Preference", "children": [
+        { "source.rdb": { "@table": "preferences" } },
+        { "field.long":      { "name": "id" } },
+        { "field.boolean":   { "name": "enabled", "@required": true, "@default": true } },
+        { "field.boolean":   { "name": "optIn", "@default": true } },
+        { "field.string":    { "name": "label", "@default": "n/a" } },
+        { "field.int":       { "name": "retries", "@required": true, "@default": 5 } },
+        { "field.decimal":   { "name": "price", "@precision": 8, "@scale": 2, "@default": 9.99 } },
+        { "field.enum":      { "name": "level", "@values": ["LOW", "HIGH"], "@required": true, "@default": "HIGH" } },
+        { "field.timestamp": { "name": "createdAt", "@required": true, "@default": "now" } },
+        { "field.timestamp": { "name": "touchedAt", "@default": "now" } },
+        { "identity.primary": { "@fields": "id", "@generation": "increment" } }
+      ]}}
+    ]}}
+    """;
+
+    private static async Task<GeneratedEfModel> DefaultsDatabase(PostgresContainer pg)
+    {
+        var gen = GeneratedEfModel.Compile(DefaultsModel, "Acme.Defaults");
+        using var db = gen.NewContext(o => o.UseNpgsql(pg.ConnectionString));
+        await db.Database.EnsureCreatedAsync();
+        return gen;
+    }
+
+    [Fact]
+    public async Task A_declared_default_reaches_the_model_and_the_schema_ef_creates()
+    {
+        await using var pg = await PostgresContainer.StartAsync();
+        var gen = await DefaultsDatabase(pg);
+        using (var db = gen.ModelOnlyContext())
+        {
+            var t = EntityType(db, "Preference");
+            Assert.Equal(true, t.FindProperty("Enabled")!.GetDefaultValue());
+            Assert.Equal("n/a", t.FindProperty("Label")!.GetDefaultValue());
+            Assert.Equal(5, t.FindProperty("Retries")!.GetDefaultValue());
+            Assert.Equal("now()", t.FindProperty("CreatedAt")!.GetDefaultValueSql());
+            // A SQL default on a NULLABLE property is left out: EF would omit an explicit NULL.
+            Assert.Null(t.FindProperty("TouchedAt")!.GetDefaultValueSql());
+        }
+        var defaults = (await Rows(pg.ConnectionString, """
+                SELECT column_name, column_default FROM information_schema.columns
+                WHERE table_name = 'preferences' AND column_default IS NOT NULL AND column_name <> 'id'
+                ORDER BY column_name
+                """))
+            .ToDictionary(r => (string)r[0]!, r => (string)r[1]!);
+        Assert.Equal(new[] { "createdAt", "enabled", "label", "level", "optIn", "price", "retries" }, defaults.Keys);
+        Assert.Equal("true", defaults["enabled"]);
+        Assert.Equal("'HIGH'::text", defaults["level"]);
+        Assert.Equal("now()", defaults["createdAt"]);
+    }
+
+    [Fact]
+    public async Task A_value_the_app_sets_is_stored_even_when_it_is_the_clr_default()
+    {
+        // The hazard: with a database default, EF leaves a property out of the INSERT when its
+        // value equals the property's sentinel — by default the CLR default. A bool defaulting to
+        // true would then turn the app's `false` into `true`, and a nullable one its NULL. The
+        // sentinel is the declared default itself, so EF omits only a value the database would
+        // write anyway.
+        await using var pg = await PostgresContainer.StartAsync();
+        var gen = await DefaultsDatabase(pg);
+        var created = new DateTimeOffset(2020, 1, 2, 3, 4, 5, TimeSpan.Zero);
+        using (var db = gen.NewContext(o => o.UseNpgsql(pg.ConnectionString)))
+        {
+            db.Add(gen.New("Preference", ("Enabled", false), ("OptIn", null), ("Label", null), ("Retries", 0),
+                ("Price", 0m), ("Level", gen.Enum("Preference+PreferenceLevel", "LOW")), ("CreatedAt", created)));
+            db.SaveChanges();
+        }
+        var row = (await Rows(pg.ConnectionString,
+            """SELECT "enabled", "optIn", "label", "retries", "price", "level", "createdAt" FROM "preferences" """)).Single();
+        Assert.Equal(new object?[] { false, null, null, 0, 0m, "LOW", created.UtcDateTime }, row);
+
+        using (var db = gen.NewContext(o => o.UseNpgsql(pg.ConnectionString)))
+        {
+            var p = Assert.Single(GeneratedEfModel.All(db, gen.Type("Preference")));
+            Assert.Equal(false, GeneratedEfModel.Get(p, "Enabled"));
+            Assert.Null(GeneratedEfModel.Get(p, "OptIn"));
+        }
+    }
+
+    [Fact]
+    public async Task An_untouched_entity_gets_the_declared_defaults()
+    {
+        await using var pg = await PostgresContainer.StartAsync();
+        var gen = await DefaultsDatabase(pg);
+        using (var db = gen.NewContext(o => o.UseNpgsql(pg.ConnectionString)))
+        {
+            db.Add(gen.New("Preference"));
+            db.SaveChanges();
+        }
+        var row = (await Rows(pg.ConnectionString,
+            """SELECT "enabled", "optIn", "label", "retries", "price", "createdAt" > now() - interval '1 hour' FROM "preferences" """)).Single();
+        Assert.Equal(new object?[] { true, true, "n/a", 5, 9.99m, true }, row);
+    }
 }

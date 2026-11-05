@@ -222,6 +222,21 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
 
 ### Fixed
 
+- **C#: a field's `@default` reaches the EF model.** The context configured no default at all,
+  so a database EF creates (`EnsureCreated`, an EF migration) had none, and an insert that relied
+  on one failed with a NOT NULL violation. A literal the property's CLR type holds (bool, string,
+  number, enum member) is now `HasDefaultValue(v).HasSentinel(v)`. The sentinel matters: EF leaves
+  a property with a database default out of the INSERT when its value equals the sentinel, which is
+  otherwise the CLR default, so a bool defaulting to `true` would have stored `true` when the app
+  set `false` (and a nullable one, or a string, would have lost an explicit NULL). With the
+  default as the sentinel, EF omits only a value the database would write anyway; a live test
+  sets every such property to its CLR default and reads it back. A SQL expression (`now()`,
+  anything function-like, `current_timestamp`; a bare `now` is `now()`), or a timestamp, date or
+  uuid literal, is `HasDefaultValueSql(...)` on a `@required` property only: on a nullable one EF
+  would replace an explicit NULL with the default, so it is left out there. Primary keys, arrays,
+  value objects, maps and durations get no default. A model whose database lacks a declared
+  default (one `meta migrate` did not build) now sees EF omit a column whose value equals it.
+
 - **C#: a `@required` value-object member of a value object starts as an instance.** It was
   `public T X { get; set; } = default!;`, so a document that omitted it deserialized to null
   behind a non-nullable type. It is now `= new T();` (an abstract target keeps `default!`, and

@@ -190,6 +190,7 @@ public class DbContextGenerator : IGenerator
             // the write entity carries flattened VOs too (its per-column spread is mapped here).
             EmitFieldTypeConfig(owner, e, configFields, ctx, modelLines, jsonbObjectsOnly: false);
             EmitShapeInheritedFacets(owner, e, configFields, ctx, modelLines);
+            EmitDefaultValueConfig(owner, e, configFields, ctx, modelLines);
 
             // identity.primary @generation: assigned — the caller supplies the key. EF's
             // convention makes a single integer or Guid key generated on add, which leaves a key
@@ -526,6 +527,96 @@ public class DbContextGenerator : IGenerator
     }
 
     /// <summary>
+    /// Core <c>@default</c> as the column default EF knows about, so a database EF creates carries
+    /// it and the model agrees with the schema <c>meta migrate</c> builds:
+    /// <list type="bullet">
+    ///   <item>A literal the property's CLR type can hold (bool, string, a number, an enum member)
+    ///   is <c>HasDefaultValue(v).HasSentinel(v)</c>. The sentinel is the load-bearing half. EF
+    ///   leaves a property with a database default out of the INSERT when its value equals the
+    ///   sentinel, which is otherwise the CLR default — so a bool defaulting to <c>true</c> would
+    ///   store <c>true</c> when the app set <c>false</c>, and a nullable one its explicit NULL.
+    ///   With the declared default as the sentinel, EF omits only the value the database would
+    ///   write anyway, for nullable and non-nullable properties alike.</item>
+    ///   <item>A SQL expression (<c>now()</c>, anything function-like, <c>current_timestamp</c>;
+    ///   a bare <c>now</c> is <c>now()</c>, as migrate reads it) or a literal of a type with no
+    ///   C# literal here (a timestamp, date, uuid) is <c>HasDefaultValueSql(...)</c>, on a
+    ///   REQUIRED property only. Its sentinel stays the CLR default, which on a non-nullable
+    ///   property means "not supplied"; on a nullable one it is NULL, and an app that set NULL on
+    ///   purpose would get the default instead, so those are left out.</item>
+    /// </list>
+    /// Not configured: primary-key fields, arrays, value objects, maps and durations.
+    /// </summary>
+    private void EmitDefaultValueConfig(
+        string className, MetaObject entity, IEnumerable<MetaField> fields, GenContext ctx, List<string> modelLines)
+    {
+        var pk = entity.PrimaryIdentity()?.Fields ?? [];
+        foreach (var f in fields)
+        {
+            if (f.Default is not { } raw || f.ResolvedIsArray() || pk.Contains(f.Name)) continue;
+            if (CSharpNaming.DbColumnTypeClrOverride(f) is not null) continue;
+            var lhs = $"        modelBuilder.Entity<{className}>().Property(x => x.{PropertyName(f)})";
+            if (DefaultLiteral(className, entity, f, raw, ctx.Config) is { } literal)
+            {
+                modelLines.Add($"{lhs}.HasDefaultValue({literal}).HasSentinel({literal});");
+                continue;
+            }
+            if (!CSharpNaming.IsRequired(entity, f) || DefaultSql(f, raw) is not { } sql) continue;
+            modelLines.Add($"{lhs}.HasDefaultValueSql(\"{CSharpNaming.CSharpStringLiteral(sql)}\");");
+        }
+    }
+
+    // The SQL expressions migrate treats as an expression default (expected-schema.ts
+    // EXPR_DEFAULT_PATTERNS): the rest of a string default is a literal.
+    private static readonly System.Text.RegularExpressions.Regex ExprDefault = new(
+        @"^(current_timestamp|now\(\)|current_date|current_time)$|\(\)",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    /// <summary>A C# literal of the property's own CLR type for a <c>@default</c>, or <c>null</c>
+    /// when the default is a SQL expression or its type has no literal form here.</summary>
+    private static string? DefaultLiteral(string className, MetaObject entity, MetaField f, object raw, GenConfig config)
+    {
+        var text = Convert.ToString(raw, System.Globalization.CultureInfo.InvariantCulture) ?? "";
+        if (f.SubType == FIELD_SUBTYPE_ENUM)
+        {
+            if (f.EffectiveEnumValues is not { } members || !members.Contains(text)) return null;
+            var type = Fr019SharedEnum.SharedEnumForField(f) is { } shared
+                ? Fr019SharedEnum.SharedEnumTypeReference(shared, config)
+                : $"{CSharpNaming.QualifiedOwnerTypeRef(className, entity, config)}.{CSharpNaming.EnumTypeName(entity, f)}";
+            return $"{type}.{text}";
+        }
+        var clr = CSharpNaming.ScalarForField(f);
+        if (clr == "string")
+            return text.Length > 0 && (ExprDefault.IsMatch(text) || text.Equals("now", StringComparison.OrdinalIgnoreCase))
+                ? null
+                : $"\"{CSharpNaming.CSharpStringLiteral(text)}\"";
+        if (clr == "bool")
+            return raw is bool b ? (b ? "true" : "false")
+                : bool.TryParse(text, out var pb) ? (pb ? "true" : "false") : null;
+        var suffix = clr switch
+        {
+            "int" => "", "long" => "L", "double" => "d", "float" => "f", "decimal" => "m",
+            "short" => "", "byte" => "", _ => null,
+        };
+        if (suffix is null
+            || !decimal.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out _))
+            return null;
+        // An integral literal for a short/byte property needs the cast: EF requires the default's
+        // type to be the property's own.
+        return clr is "short" or "byte" ? $"({clr}){text}" : text + suffix;
+    }
+
+    /// <summary>The SQL a <c>@default</c> that has no C# literal stands for: the expression as
+    /// declared (a bare <c>now</c> as <c>now()</c>), or a quoted SQL literal.</summary>
+    private static string? DefaultSql(MetaField f, object raw)
+    {
+        if (raw is not string text || f.SubType is FIELD_SUBTYPE_DURATION or FIELD_SUBTYPE_MAP or FIELD_SUBTYPE_OBJECT)
+            return null;
+        if (text.Equals("now", StringComparison.OrdinalIgnoreCase)) return "now()";
+        if (text.Length > 0 && ExprDefault.IsMatch(text)) return text;
+        return "'" + text.Replace("'", "''") + "'";
+    }
+
+    /// <summary>
     /// FR-017 TPH — the per-field configuration of the fields a concrete SUBTYPE declares beyond
     /// its TPH ancestors. A subtype gets no DbSet and is not in the emitted set, so the root's
     /// pass (over the root's own fields) never reaches them: an owned value object was left for
@@ -549,6 +640,7 @@ public class DbContextGenerator : IGenerator
 
             var cls = CSharpNaming.Pascal(st.Entity.Name);
             EmitFieldTypeConfig(cls, st.Entity, own, ctx, modelLines, jsonbObjectsOnly: false);
+            EmitDefaultValueConfig(cls, st.Entity, own, ctx, modelLines);
             foreach (var f in own.Where(f => !f.ResolvedIsArray() && f.Mutability != MUTABILITY_READ_WRITE))
                 modelLines.Add(
                     $"        modelBuilder.Entity<{cls}>().Property(x => x.{PropertyName(f)}).Metadata.SetAfterSaveBehavior(PropertySaveBehavior.Ignore);");

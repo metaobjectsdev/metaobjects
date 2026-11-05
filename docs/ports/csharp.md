@@ -380,6 +380,13 @@ extends its abstract shape class, which carries no EF attributes, so the key, co
 A `@storage: flattened` value object pins each member to its flattened column; a value object
 nested inside it is one jsonb column holding the whole document (EF Core 8 cannot own a JSON
 column inside a table-split owned type).
+A field's `@default` is `HasDefaultValue(v).HasSentinel(v)` when it is a C# literal of the
+property's type (bool, string, number, enum member): EF then leaves the column out of an INSERT
+only when the value is the default anyway, so an explicit `false`, `0` or NULL is stored as set. A
+SQL expression (`now()`, anything function-like; a bare `now` is `now()`) or a timestamp, date or
+uuid literal is `HasDefaultValueSql(...)`, and only on a `@required` property, because EF cannot
+tell a deliberate NULL from "not supplied". An enum, timestamp or uuid property has no C#
+initializer from its `@default`, so a new entity carries the CLR default and EF sends it.
 
 ### Decimals and null members on the wire
 
