@@ -7,6 +7,7 @@
 // optional fields (matching Zod's `.optional()` inference — `T | undefined` —
 // without the superfluous `| null` that Drizzle nullable columns introduce).
 
+import { flatSurfaceFields } from "../flattened.js";
 import { code, imp, joinCode, type Code } from "ts-poet";
 import type { MetaObject, MetaField } from "@metaobjectsdev/metadata";
 import {
@@ -146,7 +147,7 @@ export function renderEnumTypeAliases(entity: MetaObject, ctx?: RenderContext): 
   // and non-colliding value objects keep their bare name (byte-identical).
   const ownerName = ctx ? ctx.valueObjectEmittedName(entity) : entity.name;
 
-  for (const field of entity.fields()) {
+  for (const field of flatSurfaceFields(entity)) {
     if (field.subType !== FIELD_SUBTYPE_ENUM) continue;
 
     const values = enumValues(field);
@@ -402,7 +403,7 @@ export function renderValueObjectInterface(entity: MetaObject, ctx?: RenderConte
   const objName = ctx ? ctx.valueObjectEmittedName(entity) : entity.name;
 
   const lines: Code[] = [];
-  for (const field of entity.fields()) {
+  for (const field of flatSurfaceFields(entity)) {
     const required = field.attr(FIELD_ATTR_REQUIRED) === true;
     const optional = required ? "" : "?";
     const undefinedArm = required ? "" : " | undefined";

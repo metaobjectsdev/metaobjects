@@ -1,0 +1,80 @@
+// `field.object @storage: flattened` — the one place codegen-ts decides what a flattened value
+// object looks like in the Drizzle table and in the schemas that validate its writes.
+//
+// The columns are the ones `meta migrate` creates: one per member of the value object, named
+// by core naming (`resolveFlattenedColumnName`), and none for the field itself. The generated
+// surface is FLAT, the same surface the Prisma generator exposes: each member is a key
+// `<field><Member>` (`shipToStreet`) on the Drizzle table, the Row/Insert types, the Zod
+// schemas and the filter allowlist.
+
+import {
+  isMetaObject,
+  refTarget,
+  resolveFlattenedColumnName,
+  physicalNamingOf,
+  FIELD_SUBTYPE_OBJECT,
+  FIELD_ATTR_OBJECT_REF,
+  FIELD_ATTR_STORAGE,
+  STORAGE_FLATTENED,
+  type MetaField,
+  type MetaObject,
+} from "@metaobjectsdev/metadata";
+import type { ColumnNamingStrategy } from "./metaobjects-config.js";
+
+export interface FlattenedMember {
+  /** The value object's own field. */
+  readonly member: MetaField;
+  /** The key of the member on the flat surface: `shipToStreet`. */
+  readonly key: string;
+  /** The member's column in the database: `ship_to_street`. */
+  readonly column: string;
+}
+
+function upperFirst(s: string): string {
+  return s.length === 0 ? s : s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/** True for a `field.object` whose storage is `flattened` (ADR-0039: resolving read). */
+export function isFlattenedObjectField(field: MetaField): boolean {
+  return field.subType === FIELD_SUBTYPE_OBJECT && field.attr(FIELD_ATTR_STORAGE) === STORAGE_FLATTENED;
+}
+
+/** The members of a flattened field, or undefined when it is not flattened (or names no value object). */
+export function flattenedMembersOf(field: MetaField, strategy: ColumnNamingStrategy): FlattenedMember[] | undefined {
+  if (!isFlattenedObjectField(field)) return undefined;
+  const valueObject = refTarget(field, FIELD_ATTR_OBJECT_REF);
+  if (valueObject === undefined || !isMetaObject(valueObject)) return undefined;
+  // ADR-0039: effective fields — members inherited via extends are columns too (as migrate does).
+  return valueObject.fields().map((member) => ({
+    member,
+    key: field.name + upperFirst(member.name),
+    column: resolveFlattenedColumnName(field, member, strategy),
+  }));
+}
+
+/**
+ * A member field presented under its flat key: it behaves as the value object's own field in
+ * every way (subtype, attributes, validators) except that its `name` is `<field><Member>`,
+ * which is what the Zod schema and the filter allowlist key it by.
+ */
+function asFlatKey(member: MetaField, key: string): MetaField {
+  return new Proxy(member, {
+    get(target, prop) {
+      if (prop === "name") return key;
+      const value = Reflect.get(target, prop, target) as unknown;
+      return typeof value === "function" ? (value as (...a: unknown[]) => unknown).bind(target) : value;
+    },
+  });
+}
+
+/**
+ * `obj.fields()` as the flat surface sees them: each flattened `field.object` replaced by its
+ * members, keyed `<field><Member>`. Identical to `obj.fields()` for an object with none.
+ */
+export function flatSurfaceFields(obj: MetaObject): MetaField[] {
+  const strategy = physicalNamingOf(obj).columns;
+  return obj.fields().flatMap((f) => {
+    const members = flattenedMembersOf(f, strategy);
+    return members === undefined ? [f] : members.map((m) => asFlatKey(m.member, m.key));
+  });
+}
