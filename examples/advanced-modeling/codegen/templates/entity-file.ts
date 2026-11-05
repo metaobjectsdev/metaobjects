@@ -6,6 +6,8 @@
 //   !hasWritableRdbSource(entity)      → renderValueObjectFile (in-memory / transit shape: interface + Zod schema)
 //   vanilla / write-through entity     → Drizzle table path
 
+import { CodegenError } from "./errors.js";
+import { flattenedMembersOf } from "@metaobjectsdev/codegen-ts/engine";
 import { code, imp, joinCode, type Code } from "@metaobjectsdev/codegen-ts/engine";
 import type { MetaObject, MetaField } from "@metaobjectsdev/metadata";
 import { SOURCE_ROLE_REPLICA } from "@metaobjectsdev/metadata";
@@ -137,6 +139,16 @@ export function renderEntityFile(
   // compile error). A base+write-through combo keeps the TPH polymorphic read path (reads
   // the base table); routing its reads through a replica view is a documented non-goal.
   const writeThrough = isWriteThrough(entity) && !tphBase;
+  // A write-through entity reads through a replica view whose columns are declared per field;
+  // that declaration has no flattened-member form yet, and a view column bound under the wrong
+  // name fails at query time, so refuse rather than emit it.
+  if (writeThrough && entity.fields().some((f) => flattenedMembersOf(f, ctx.columnNamingStrategy) !== undefined)) {
+    throw new CodegenError(
+      `${entity.name}: a write-through entity (writable table plus a replica view) cannot hold a ` +
+        `field.object @storage: flattened field yet - the replica view declaration has no flattened-member form. ` +
+        `Use @storage: jsonb, or drop the replica view.`,
+    );
+  }
   // Rendered BEFORE the replica view below, for two reasons that both matter: the table
   // DECLARES the int-backed-enum codecs (a `const` the view's declaration would duplicate,
   // and a duplicate module-scope const is a parse error), and those consts must precede the
