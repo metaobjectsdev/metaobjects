@@ -1,0 +1,3 @@
+{"metadata.root":{"package":"app","children":[{"object.entity":{"name":"Vip","extends":"acme::common::Audited",
+"children":[{"source.rdb":{"@table":"vips"}},{"field.long":{"name":"id"}},
+{"identity.primary":{"name":"pk","@fields":["id"]}}]}}]}}

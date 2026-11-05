@@ -182,6 +182,20 @@ public class MetaDataLoaderConfigurationDependenciesTest {
     }
 
     @Test
+    public void aLockedDependencyTheClasspathConfigNoLongerDeclaresFailsBootAsStale() throws Exception {
+        // The config on the classpath is authoritative for WHAT is declared: a lock entry it does not
+        // declare is stale, even though the snapshot itself still hashes to the lock.
+        Path root = app(VIP, true, true, false);
+        write(root.resolve(".metaobjects/config.json"), """
+                {"schema_version":1,"sources":[],"dependencies":[]}
+                """);
+        run(root, ctx -> {
+            assertThat(ctx).hasFailed();
+            assertThat(codeOf(ctx.getStartupFailure())).isEqualTo(ErrorCode.ERR_DEPENDENCY_SNAPSHOT_STALE);
+        });
+    }
+
+    @Test
     public void aNodeDeclaredIntoADependencysPackageIsRefused() throws Exception {
         run(app(INTRUDER, true, true, true), ctx -> {
             assertThat(ctx).hasFailed();
