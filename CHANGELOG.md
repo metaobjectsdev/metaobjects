@@ -217,6 +217,12 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
 
 ### Fixed
 
+- **C#: a `@required` value-object member of a value object starts as an instance.** It was
+  `public T X { get; set; } = default!;`, so a document that omitted it deserialized to null
+  behind a non-nullable type. It is now `= new T();` (an abstract target keeps `default!`, and
+  an entity's owned navigation is unchanged), so the member is present and its own members are
+  validated.
+
 - **C#: a value object nested inside a flattened one maps to one jsonb value.** The flattened
   owner configured it as a nested owned `ToJson`, which EF Core 8 refuses inside a table-split
   owned type ("All owned types containing a JSON column must be mapped to a JSON column

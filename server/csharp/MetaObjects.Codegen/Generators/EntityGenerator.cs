@@ -924,7 +924,7 @@ public class EntityGenerator : IGenerator
                 // but HONOURS on a flattened one — binding an unprefixed column the migration
                 // never creates.
                 member = EnumProperty(vo, field, ctx.Config, ctx.Config.ColumnNamingStrategy, withAttributes: false);
-            else if (field.SubType == FIELD_SUBTYPE_OBJECT && ObjectNavProperty(vo, field, ctx) is { } nav)
+            else if (field.SubType == FIELD_SUBTYPE_OBJECT && ObjectNavProperty(vo, field, ctx, valueObject: true) is { } nav)
                 member = nav;
             else if (field.SubType == FIELD_SUBTYPE_MAP)
                 member = MapProperty(vo, field, ctx, withAttributes: false);
@@ -2226,7 +2226,13 @@ public static class DurationWire
 
     // An owned-type navigation property for an object-typed field. Returns null (with
     // a warning) when the @objectRef can't be resolved.
-    protected string? ObjectNavProperty(MetaObject owner, MetaField field, GenContext ctx)
+    //
+    // valueObject: the owner is a value-object POCO. A REQUIRED member there starts as an
+    // instance (`= new T();`) rather than `= default!`, so a document that omits the member
+    // deserializes with it present instead of null behind a non-nullable type. An abstract
+    // target cannot be constructed and keeps the filler; an entity's owned navigation keeps it
+    // too (EF materializes it from the row).
+    protected string? ObjectNavProperty(MetaObject owner, MetaField field, GenContext ctx, bool valueObject = false)
     {
         if (ValueObjectNames.ResolveFieldRef(field, ctx.Root) is not { } target)
         {
@@ -2247,9 +2253,10 @@ public static class DurationWire
             return required
                 ? $"    public ICollection<{typeName}> {propName} {{ get; set; }} = new List<{typeName}>();"
                 : $"    public ICollection<{typeName}>? {propName} {{ get; set; }}";
-        return required
-            ? $"    public {typeName} {propName} {{ get; set; }} = default!;"
-            : $"    public {typeName}? {propName} {{ get; set; }}";
+        if (!required) return $"    public {typeName}? {propName} {{ get; set; }}";
+        return valueObject && !target.IsAbstract
+            ? $"    public {typeName} {propName} {{ get; set; }} = new {typeName}();"
+            : $"    public {typeName} {propName} {{ get; set; }} = default!;";
     }
 
     // A property for a field.map (an open-keyed map). Emits a single
