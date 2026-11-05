@@ -677,6 +677,18 @@ A `::`-relative package (`"package": "::parts"`) is expanded when the file is pa
 that file's root package, so `package` on such a node is already the full
 `beta::other::parts`.
 
+### Int-backed enums in the runtime
+
+A `field.enum` with `@intValueMap` (own or inherited from a shared abstract enum) is stored as its
+declared integers while `ObjectManager` callers pass and receive member symbols. The codec in
+`metaobjects.runtime.object_manager` encodes on every write and on filter operands, and decodes on
+every read. On an `isArray: true` field it does this for each element. On Postgres the array is an
+`integer[]` holding the ints in order: `["PUBLISHED", "DRAFT"]` is stored as `{5,0}`. An empty
+array stays empty, a null array stays null, and a null element stays a null element. An int that
+has no member raises `ValueError` on read, whether it is a scalar or an array element. SQLite and
+MySQL cannot store an array of any primitive type in this runtime, so an enum array of either kind
+is Postgres-only.
+
 ### Run-time validation
 
 `run_validators` checks a data mapping against an entity's metadata, with no generated

@@ -141,7 +141,6 @@ const FAIL_CODES = new Set([
   "ERR_UNKNOWN_ATTR",            // #337 — @verifiedBy after retirement
   "ERR_BAD_ATTR_VALUE",          // #337/#343 — @status: abandoned
   "ERR_INVALID_INDEX",           // #342 — @fields together with @expr
-  "ERR_ENUM_INT_VALUE_MAP_ARRAY", // @intValueMap on an @isArray enum
   "ERR_ENUM_EXTENDS_VALUES_CONFLICT",
   "ERR_UNKNOWN_TYPE",
   "ERR_UNKNOWN_SUBTYPE",

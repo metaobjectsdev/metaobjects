@@ -196,10 +196,14 @@ deferred (see [enum-datatype-design.md](../superpowers/specs/2026-05-23-enum-dat
 
 Two rules follow from int-backing being a **persistence-layer codec**:
 
-- **It is scalar-only.** `@intValueMap` together with `isArray: true` is a load error,
-  `ERR_ENUM_INT_VALUE_MAP_ARRAY`, in every port — no port implements the codec element-wise
-  over an array column, so the combination would silently persist member *symbols* into an
-  integer array. An array-of-enum stays string-backed.
+- **An array is mapped element by element.** An enum field with `isArray: true` that
+  carries `@intValueMap` (its own, or inherited from a shared enum) stores each element as
+  its declared integer: an `integer[]` column on Postgres, and a JSON array of numbers
+  (`[5,0]`) where an engine keeps arrays as JSON text (SQLite, D1, MySQL). Each element reads
+  back as its member. A null array stays null and an empty one stays empty. The array column
+  has no `CHECK`, the same as a string-backed enum array. Where a port's runtime stores no
+  primitive array on an engine, it refuses an int-backed one there rather than writing
+  symbols: see that port's page under [docs/ports/](../ports/).
 - **A stored integer that maps to no member throws on read**, in every port. The row holds
   data the model says is impossible (a hand-written `INSERT`, or a member removed without a
   migration); surfacing the raw integer would hand you a "member" that is not one — and is

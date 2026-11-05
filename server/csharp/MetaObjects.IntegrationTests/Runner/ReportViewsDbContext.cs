@@ -26,9 +26,11 @@ public sealed class ReportViewsDbContext : AppDbContext
 {
     public ReportViewsDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
-    // The one table the decimal scenarios write (`Entry`): plain scalars every engine maps, so it
-    // stays in the model. The other tables carry Postgres-only columns (jsonb, inet, uuid).
-    private static readonly HashSet<Type> WritableTables = [typeof(Entry)];
+    // The tables the non-Postgres scenarios write: `Entry` (the decimal scenarios) and
+    // `IntEnumArray` (an int-backed enum array, a primitive collection every engine maps — as
+    // JSON text off Postgres). Both are plain columns, so they stay in the model. The other
+    // tables carry Postgres-only columns (jsonb, inet, uuid).
+    private static readonly HashSet<Type> WritableTables = [typeof(Entry), typeof(IntEnumArray)];
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

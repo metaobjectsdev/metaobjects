@@ -101,15 +101,7 @@ describe("mapColumnType — int-backed field.enum (@intValueMap)", () => {
     expect(spec.checkConstraint).toBe("status IN (0, 5, 9)");
   });
 
-  // Design D7, narrowed: int-backing is scalar-only, so there is no array codegen
-  // shape to assert — the combination never reaches a generator. This test replaced
-  // one that asserted `statusIntEnum(...).array()`, which composed on Postgres while
-  // four ports silently got it wrong (Python bound the symbol list into an integer[],
-  // Java and Kotlin emitted a scalar codec, and the sqlite branch stored symbols as
-  // JSON text). The rejection itself is gated by the loader tests + the cross-port
-  // error-enum-intvaluemap-array fixtures; this pins the CODEGEN-side consequence:
-  // an array enum reaching a generator is always string-backed.
-  test("an array-of-enum reaching codegen is string-backed — @intValueMap cannot load with isArray", async () => {
+  test("a string-backed array-of-enum is unchanged — text[] with no codec", async () => {
     const spec = mapColumnType(
       await statusField({ name: "status", isArray: true, "@values": VALUES }),
       "postgres",
@@ -117,7 +109,69 @@ describe("mapColumnType — int-backed field.enum (@intValueMap)", () => {
     expect(spec.fnName).toBe("text");
     expect(spec.enumIntCustomType).toBeUndefined();
     expect(spec.modifiers).toContain(".array()");
-    // Membership on arrays stays app-level, exactly as for string-backed enum[].
     expect(spec.checkConstraint).toBeUndefined();
+  });
+
+  // An int-backed enum ARRAY persists each element as its int. On Postgres the scalar
+  // codec composes through Drizzle's `.array()` (PgArray maps element-wise), so the
+  // column is `integer[]`; the codec is the array-aware variant so a null element
+  // reads back as null and an unmapped member throws instead of binding NULL.
+  test("postgres int-backed enum ARRAY → the element codec + .array() (integer[])", async () => {
+    const spec = mapColumnType(
+      await statusField({ name: "status", isArray: true, "@values": VALUES, "@intValueMap": INT_MAP }),
+      "postgres",
+    );
+    expect(spec.fnName).toBe("statusIntEnum");
+    expect(spec.enumIntCustomType).toEqual({
+      fnConstName: "statusIntEnum",
+      toIntConstName: "STATUS_TO_INT",
+      fromIntConstName: "STATUS_FROM_INT",
+      dataType: "integer",
+      members: VALUES,
+      intByMember: INT_MAP,
+      array: "native",
+    });
+    expect(spec.modifiers).toContain(".array()");
+    expect(spec.fnOptions?.enum).toBeUndefined();
+    // Membership on an array column stays app-level, as for string-backed enum[].
+    expect(spec.checkConstraint).toBeUndefined();
+  });
+
+  // SQLite and MySQL keep an array in ONE JSON column. A text(…, { mode: "json" }) /
+  // json() column would serialize the member SYMBOLS (D7's failure mode), so the
+  // column is a whole-array codec writing a JSON array of the mapped ints.
+  for (const [dialect, dataType] of [["sqlite", "text"], ["mysql", "json"]] as const) {
+    test(`${dialect} int-backed enum ARRAY → a JSON-array-of-ints codec (${dataType})`, async () => {
+      const spec = mapColumnType(
+        await statusField({ name: "status", isArray: true, "@values": VALUES, "@intValueMap": INT_MAP }),
+        dialect,
+      );
+      expect(spec.fnName).toBe("statusIntEnumArray");
+      expect(spec.enumIntCustomType).toEqual({
+        fnConstName: "statusIntEnumArray",
+        toIntConstName: "STATUS_TO_INT",
+        fromIntConstName: "STATUS_FROM_INT",
+        dataType,
+        members: VALUES,
+        intByMember: INT_MAP,
+        array: "json",
+      });
+      expect(spec.fnOptions).toBeUndefined();
+      expect(spec.modifiers).not.toContain(".array()");
+      // The codec's data type is already the member array; a $type<string[]>() would widen it.
+      expect(spec.dollarTypeRef).toBeUndefined();
+      expect(spec.checkConstraint).toBeUndefined();
+    });
+  }
+
+  test("map AND array-ness both inherited from the shared declaration", async () => {
+    const spec = mapColumnType(
+      await statusField({ name: "status", extends: "Status", isArray: true }, [
+        { "field.enum": { name: "Status", abstract: true, "@values": VALUES, "@intValueMap": INT_MAP } },
+      ]),
+      "sqlite",
+    );
+    expect(spec.enumIntCustomType?.array).toBe("json");
+    expect(spec.enumIntCustomType?.intByMember).toEqual(INT_MAP);
   });
 });

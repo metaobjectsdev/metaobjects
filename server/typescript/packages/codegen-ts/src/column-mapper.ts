@@ -240,6 +240,15 @@ export interface EnumIntCustomType {
   members: string[];
   /** Member symbol -> stored integer. */
   intByMember: Record<string, number>;
+  /**
+   * Set only for an `isArray` field. `"native"`: the element codec under Drizzle's
+   * Postgres `.array()` (PgArray maps each element through it), so the column is
+   * `integer[]`. `"json"`: a whole-array codec for the dialects that keep an array
+   * in one JSON column (SQLite text, MySQL json), writing a JSON array of the mapped
+   * ints. Either way a null element stays null and an unmapped member throws on
+   * write — an array column carries no CHECK to reject it.
+   */
+  array?: "native" | "json";
 }
 
 export interface ColumnSpec {
@@ -410,6 +419,8 @@ function screamingSnake(s: string): string {
 function buildEnumIntCustomType(
   field: MetaField,
   intByMember: Record<string, number>,
+  /** The JSON column type for an array kept in one JSON column; undefined for a scalar or a native array. */
+  jsonArrayDataType?: string,
 ): EnumIntCustomType | undefined {
   const members = enumValues(field);
   if (members === undefined || members.length === 0) return undefined;
@@ -421,13 +432,21 @@ function buildEnumIntCustomType(
   const base = field.name.replace(/[^A-Za-z0-9]/g, "");
   const camel = base.charAt(0).toLowerCase() + base.slice(1);
   const screaming = screamingSnake(base);
-  return {
-    fnConstName: `${camel}IntEnum`,
+  const shared = {
     toIntConstName: `${screaming}_TO_INT`,
     fromIntConstName: `${screaming}_FROM_INT`,
-    dataType: "integer",
     members,
     intByMember,
+  };
+  if (jsonArrayDataType !== undefined) {
+    return { fnConstName: `${camel}IntEnumArray`, ...shared, dataType: jsonArrayDataType, array: "json" };
+  }
+  return {
+    fnConstName: `${camel}IntEnum`,
+    ...shared,
+    dataType: "integer",
+    // ADR-0039: resolving — array-ness may be inherited via extends.
+    ...(field.resolvedIsArray() ? { array: "native" as const } : {}),
   };
 }
 
@@ -467,6 +486,11 @@ function mapMysqlColumn(
   timestampMode: "date" | "string",
 ): { fnName: string; fnOptions?: Record<string, unknown>; enumIntCustomType?: EnumIntCustomType } {
   if (field.resolvedIsArray() || field.attr(FIELD_ATTR_DB_COLUMN_TYPE) === DB_COLUMN_TYPE_JSONB) {
+    // An int-backed enum array is a JSON array of the mapped ints, through its own codec:
+    // a plain json() column would serialize the member symbols.
+    const im = field.subType === FIELD_SUBTYPE_ENUM && field.resolvedIsArray() ? intValueMapOf(field) : undefined;
+    const t = im !== undefined ? buildEnumIntCustomType(field, im, "json") : undefined;
+    if (t !== undefined) return { fnName: t.fnConstName, enumIntCustomType: t };
     return { fnName: "json" };
   }
   const varchar = (length: number) => ({ fnName: "varchar", fnOptions: { length } as Record<string, unknown> });
@@ -567,7 +591,18 @@ export function mapColumnType(
 
   let leadingComment: string | undefined;
   if (dialect === "sqlite") {
-    if (isArray) {
+    const arrayIntMap = isArray && subType === FIELD_SUBTYPE_ENUM ? intValueMapOf(field) : undefined;
+    if (arrayIntMap !== undefined) {
+      // An int-backed enum array: the JSON text holds the mapped ints, through a
+      // whole-array codec. text(…, { mode: "json" }) would store the member symbols.
+      enumIntCustomType = buildEnumIntCustomType(field, arrayIntMap, "text");
+      if (enumIntCustomType !== undefined) {
+        fnName = enumIntCustomType.fnConstName;
+      } else {
+        fnName = "text";
+        fnOptions = { mode: "json" };
+      }
+    } else if (isArray) {
       // SQLite has no native array type; serialize as JSON in a text column.
       fnName = "text";
       fnOptions = { mode: "json" };
@@ -772,9 +807,9 @@ export function mapColumnType(
           // An INT-BACKED enum (@intValueMap, design D5) stores the mapped integer,
           // so the Drizzle column is integer — matching migrate-ts's expected-schema.
           // The TS-facing type stays the member-string union; the symbol<->int
-          // translation happens at the write/read boundary. Scalar only: D7 makes
-          // @intValueMap + isArray ERR_ENUM_INT_VALUE_MAP_ARRAY at load, so an array
-          // enum reaching here is always string-backed.
+          // translation happens at the write/read boundary. An ARRAY composes through
+          // `.array()` below (Drizzle's PgArray maps each element through the codec),
+          // so the column is integer[]; the codec is marked `array: "native"`.
           {
             const im = intValueMapOf(field);
             if (im !== undefined) {
@@ -902,8 +937,9 @@ export function mapColumnType(
       const scalar = typeof vt === "string" ? sqliteJsonArrayElementTsType(vt) : undefined;
       dollarTypeRef = { kind: "map", value: { scalar: (scalar ?? "string") as "string" | "number" | "boolean" } };
     }
-  } else if (dialect !== "postgres" && isArray) {
+  } else if (dialect !== "postgres" && isArray && enumIntCustomType === undefined) {
     // SQLite (JSON-in-text) and MySQL (json) both hold an array in one JSON column.
+    // (An int-backed enum array's codec is already typed as the member array.)
     if (subType === FIELD_SUBTYPE_OBJECT) {
       const base = objectRefBaseName(field);
       if (base !== undefined) {

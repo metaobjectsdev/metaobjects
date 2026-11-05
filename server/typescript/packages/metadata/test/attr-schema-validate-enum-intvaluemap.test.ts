@@ -79,16 +79,16 @@ describe("field.enum @intValueMap content rules", () => {
   });
 });
 
-// Design D7, narrowed: int-backing is scalar-only. No port implements the codec
-// element-wise over an array column, and two ports that happen to compose are
-// not a feature — so the combination is rejected at LOAD, in every port.
-describe("field.enum @intValueMap is scalar-only", () => {
+// An int-backed enum ARRAY loads: each element persists as its declared int
+// (the persistence layers map element-wise). It was refused at load (design D7)
+// while no port's codec mapped arrays; that refusal also blocked every SCALAR
+// column sharing the enum, because the map lives on the shared declaration.
+describe("field.enum @intValueMap on an array field", () => {
   const MAP = ', "@intValueMap": {"DRAFT": 0, "PUBLISHED": 5, "ARCHIVED": 9}';
 
-  test("rejects @intValueMap on an isArray field", async () => {
+  test("accepts @intValueMap on an isArray field", async () => {
     const result = await load(base(`, "isArray": true${MAP}`));
-    const codes = result.errors.map((e) => (e as { code?: string })?.code);
-    expect(codes).toContain("ERR_ENUM_INT_VALUE_MAP_ARRAY");
+    expect(result.errors).toEqual([]);
   });
 
   test("an array enum with no @intValueMap stays valid (string-backed)", async () => {
@@ -96,10 +96,9 @@ describe("field.enum @intValueMap is scalar-only", () => {
     expect(result.errors).toEqual([]);
   });
 
-  // The two halves land on DIFFERENT nodes on the canonical authoring shape:
-  // #246 forces @intValueMap onto the shared abstract declaration, and isArray
-  // is declared by the consuming field. An own-only read would never see both.
-  test("rejects an inherited @intValueMap combined with a locally-declared isArray", async () => {
+  // The canonical authoring shape: #246 puts @intValueMap on the shared abstract
+  // declaration, and the consuming field declares isArray.
+  test("accepts an inherited @intValueMap combined with a locally-declared isArray", async () => {
     const result = await load(`{
       "metadata.root": { "package": "acme", "children": [
         { "field.enum": { "name": "Status", "abstract": true,
@@ -107,11 +106,16 @@ describe("field.enum @intValueMap is scalar-only", () => {
         { "object.entity": { "name": "Order", "children": [
           { "field.long": { "name": "id" } },
           { "field.enum": { "name": "status", "extends": "Status", "isArray": true } },
+          { "field.enum": { "name": "primary", "extends": "Status" } },
           { "identity.primary": { "name": "pk", "@fields": ["id"] } }
         ]}}
       ]}
     }`);
-    const codes = result.errors.map((e) => (e as { code?: string })?.code);
-    expect(codes).toContain("ERR_ENUM_INT_VALUE_MAP_ARRAY");
+    expect(result.errors).toEqual([]);
+  });
+
+  test("the other @intValueMap content rules still apply to an array field", async () => {
+    const result = await load(base(', "isArray": true, "@intValueMap": {"DRAFT": 0, "PUBLISHED": 0, "ARCHIVED": 9}'));
+    expect((result.errors[0] as { code?: string })?.code).toBe("ERR_BAD_ATTR_VALUE");
   });
 });

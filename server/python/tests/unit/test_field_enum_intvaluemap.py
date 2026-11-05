@@ -183,3 +183,42 @@ def test_intvaluemap_on_the_shared_declaration_itself_loads_clean():
         ]} }"""
     )
     assert result.errors == []
+
+
+# ---------------------------------------------------------------------------
+# Int-backed enum ARRAYS load (design D7 lifted). The runtime codec maps each
+# element member <-> int, so the combination is no longer refused — both with
+# the map on the field itself and inherited from a shared abstract enum (the
+# shape adopters write: one map on the shared enum, scalar and array consumers).
+# ---------------------------------------------------------------------------
+
+
+def test_intvaluemap_on_an_array_field_loads_clean():
+    result = _load(_model(', "isArray": true, "@intValueMap": {"DRAFT": 0, "PUBLISHED": 5, "ARCHIVED": 9}'))
+    assert result.errors == []
+
+
+def test_intvaluemap_inherited_from_a_shared_enum_onto_an_array_field_loads_clean():
+    result = _load(
+        """{ "metadata.root": { "package": "acme", "children": [
+          { "field.enum": { "name": "Status", "abstract": true,
+            "@values": ["DRAFT","PUBLISHED","ARCHIVED"],
+            "@intValueMap": {"DRAFT": 0, "PUBLISHED": 5, "ARCHIVED": 9} } },
+          { "object.entity": { "name": "Order", "children": [
+            { "field.long": { "name": "id" } },
+            { "field.enum": { "name": "status", "extends": "acme::Status" } },
+            { "field.enum": { "name": "history", "extends": "acme::Status", "isArray": true } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+          ]} }
+        ]} }"""
+    )
+    assert result.errors == []
+
+
+def test_the_array_refusal_code_is_gone():
+    assert not hasattr(ErrorCode, "ERR_ENUM_INT_VALUE_MAP_ARRAY")
+
+
+def test_the_other_intvaluemap_rules_still_apply_to_an_array_field():
+    result = _load(_model(', "isArray": true, "@intValueMap": {"DRAFT": 0, "PUBLISHED": 0, "ARCHIVED": 9}'))
+    assert [e.code for e in result.errors] == [ErrorCode.ERR_BAD_ATTR_VALUE]

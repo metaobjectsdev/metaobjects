@@ -56,8 +56,8 @@ final class QueryScenarioTests {
     // FR-017 TPH (table-per-hierarchy) runtime support — discriminator injection on create +
     // subtype-scoped reads/updates/deletes — now lands in the Java port (TphHelper +
     // ObjectManagerDB inject/scope, adapter load-then-mutate update), so the tph-*.yaml scenarios
-    // run. No scenarios are currently deferred.
-    private static final Map<String, String> EXPECTED_FAILURES = Map.of();
+    // run. The one current deferral is port-wide, so it lives in Scenarios.DEFERRED.
+    private static final Map<String, String> EXPECTED_FAILURES = Scenarios.DEFERRED;
 
     @BeforeAll
     static void beforeAll() {

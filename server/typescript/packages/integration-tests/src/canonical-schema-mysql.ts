@@ -5,7 +5,9 @@
 // adopter to write them. The VIEWS are not hand-written: each is `buildReportViews(root,
 // { dialect: "mysql" })`, the one producer of report SQL, wrapped in the recipe's
 // `CREATE VIEW`. Only the tables the report scenarios read are declared (programs, weeks, nodes,
-// sessions, measurements, assets, auths, all_types) — the rest of the canonical model gates the entity runtime on Postgres.
+// sessions, measurements, assets, auths, all_types), plus the entity tables a non-report scenario
+// with `mysql` in its `engines:` reads (entries, int_enum_arrays) — the rest of the canonical
+// model gates the entity runtime on Postgres.
 //
 // Committed as fixtures/persistence-conformance/canonical/schema.mysql.sql and drift-checked
 // by test/schema-artifact.test.ts, so a port that runs the report scenarios on MySQL executes
@@ -120,6 +122,13 @@ const TABLES = [
   \`inet6Val\` VARCHAR(45) NOT NULL,
   \`settings\` JSON,
   \`labels\` JSON
+)`,
+  // An int-backed enum array has no MySQL array type: it is a JSON array of the mapped
+  // integers ([5,0]), never of the member symbols. No CHECK on the array column.
+  `CREATE TABLE \`int_enum_arrays\` (
+  \`id\` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  \`state\` INT,
+  \`history\` JSON
 )`,
 ];
 
