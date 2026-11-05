@@ -217,6 +217,12 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
 
 ### Fixed
 
+- **C#: `identity.primary @generation: assigned` configures the key `ValueGeneratedNever()`.**
+  EF's convention made a single integer or Guid key generated on add, so a caller-supplied key
+  equal to the CLR default (`0`) was left out of the INSERT and the row refused, and
+  `EnsureCreated` built an identity column. `increment`, `uuid` and an absent `@generation` keep
+  EF's convention.
+
 - **C#: an int-backed enum refuses to write a value its `@intValueMap` does not describe.** The
   write converter was `v == A ? 1 : v == B ? 2 : 3`, so the last member was the else branch: a
   cast like `(Status)99`, or a member a `@provided` C# enum declares that `@values` does not, was

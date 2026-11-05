@@ -365,6 +365,10 @@ attribute without re-implementing `EmitClassHeader`.
 `GenConfig.ContextTypeName` (default `AppDbContext`). `new EntityGenerator { EmitsReverseFinders =
 false }` emits none, for a project that writes its own.
 
+**What the context configures beyond the column types.** A single-column
+`identity.primary @generation: assigned` key is `ValueGeneratedNever()`, so EF always sends the
+caller's value, `0` included.
+
 ### Decimals and null members on the wire
 
 What the generated API writes is the project setting `wire` in `.metaobjects/config.json`
