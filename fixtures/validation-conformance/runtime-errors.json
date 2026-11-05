@@ -207,6 +207,60 @@
         "rule": "required",
         "message": "'code' is required"
       }
+    ],
+    "duration-reject-months": [
+      {
+        "field": "holdFor",
+        "rule": "format",
+        "message": "'holdFor' must be an ISO-8601 duration such as PT1H30M (no years or months)",
+        "expected": "duration",
+        "received": "P1M"
+      }
+    ],
+    "duration-reject-years": [
+      {
+        "field": "holdFor",
+        "rule": "format",
+        "message": "'holdFor' must be an ISO-8601 duration such as PT1H30M (no years or months)",
+        "expected": "duration",
+        "received": "P1Y"
+      }
+    ],
+    "duration-reject-clock": [
+      {
+        "field": "holdFor",
+        "rule": "format",
+        "message": "'holdFor' must be an ISO-8601 duration such as PT1H30M (no years or months)",
+        "expected": "duration",
+        "received": "1:30:00"
+      }
+    ],
+    "duration-reject-fractional-hours": [
+      {
+        "field": "holdFor",
+        "rule": "format",
+        "message": "'holdFor' must be an ISO-8601 duration such as PT1H30M (no years or months)",
+        "expected": "duration",
+        "received": "PT1.5H"
+      }
+    ],
+    "duration-reject-lowercase": [
+      {
+        "field": "holdFor",
+        "rule": "format",
+        "message": "'holdFor' must be an ISO-8601 duration such as PT1H30M (no years or months)",
+        "expected": "duration",
+        "received": "pt1h"
+      }
+    ],
+    "duration-reject-empty-time": [
+      {
+        "field": "holdFor",
+        "rule": "format",
+        "message": "'holdFor' must be an ISO-8601 duration such as PT1H30M (no years or months)",
+        "expected": "duration",
+        "received": "PT"
+      }
     ]
   }
 }

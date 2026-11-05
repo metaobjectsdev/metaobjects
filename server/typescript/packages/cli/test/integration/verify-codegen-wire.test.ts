@@ -84,8 +84,8 @@ describe("meta verify --codegen — the wire setting", () => {
       out = []; err = [];
       expect(await run(["verify", "--cwd", root, "--codegen"])).toBe(1);
       expect(all()).toContain(
-        'The committed output was generated with "wire": { "decimals": "string", "nullMembers": "omit" }; ' +
-          'this run used "wire": { "decimals": "native", "nullMembers": "native" }',
+        'The committed output was generated with "wire": { "decimals": "string", "nullMembers": "omit", "durations": "native" }; ' +
+          'this run used "wire": { "decimals": "native", "nullMembers": "native", "durations": "native" }',
       );
       expect(all()).toContain("Do not regenerate");
       expect(all()).not.toContain("Run 'meta gen' to regenerate");

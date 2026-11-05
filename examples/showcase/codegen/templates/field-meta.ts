@@ -22,6 +22,7 @@ import {
   FIELD_SUBTYPE_UUID,
   FIELD_SUBTYPE_URI,
   FIELD_SUBTYPE_INET,
+  FIELD_SUBTYPE_DURATION,
   FIELD_SUBTYPE_OBJECT,
   FIELD_ATTR_OBJECT_REF,
   FIELD_ATTR_STRING_FORMAT,
@@ -43,6 +44,7 @@ import { enumValues } from "@metaobjectsdev/codegen-ts/engine";
 import { zodEnumExpr } from "./zod-enum.js";
 import { viewForContext } from "@metaobjectsdev/codegen-ts/engine";
 import { ZOD_INET_EXPR } from "./net-regex.js";
+import { ZOD_DURATION_EXPR } from "./duration-wire-helper.js";
 
 // ---------------------------------------------------------------------------
 // inferViewKind
@@ -140,6 +142,9 @@ export function zodTypeFor(field: MetaField, timestampMode: "date" | "string" = 
       // (v4 or v6 literal). Zod-version-agnostic regex union (Zod 4 removed
       // `z.string().ip()`); see net-regex.ts. @lenient → a plain string.
       return field.attr(FIELD_ATTR_LENIENT) === true ? "z.string()" : ZOD_INET_EXPR;
+    case FIELD_SUBTYPE_DURATION:
+      // An ISO-8601 duration string; the column codec reads every row in the canonical form.
+      return ZOD_DURATION_EXPR;
     case FIELD_SUBTYPE_BOOLEAN:
       return "z.boolean()";
     case FIELD_SUBTYPE_DATE:

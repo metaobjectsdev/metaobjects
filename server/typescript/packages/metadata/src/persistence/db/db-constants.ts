@@ -6,6 +6,12 @@ import {
 
 /** Column name override on a field (maps to @column in metadata). */
 export const FIELD_ATTR_COLUMN = "column";
+/**
+ * `@flattenedColumnPrefix` on a `field.object @storage "flattened"`: the text before each member's
+ * column, verbatim (`""` allowed). Absent → the field's resolved column and `_`
+ * ({@link resolveFlattenedColumnPrefix} in naming.ts).
+ */
+export const FIELD_ATTR_FLATTENED_COLUMN_PREFIX = "flattenedColumnPrefix";
 /** When true, suppress the @filterable-without-index Loader warning (Project D drift check). */
 export const FIELD_ATTR_DB_INDEXED = "db.indexed";
 
@@ -24,6 +30,10 @@ export const IDENTITY_ATTR_EXPR = "expr";
 export const IDENTITY_ATTR_USING = "using";
 /** identity.reference: physical FK constraint-name override. Absent → the auto-derived `<table>_<firstFkColumn>_fk`. */
 export const IDENTITY_ATTR_CONSTRAINT_NAME = "constraintName";
+/** identity.primary (@generation "increment"): the sequence's first value. Absent → 1. */
+export const IDENTITY_ATTR_SEQUENCE_START = "sequenceStart";
+/** identity.primary (@generation "increment"): the sequence's physical name. Absent → the database's default. */
+export const IDENTITY_ATTR_SEQUENCE_NAME = "sequenceName";
 
 /**
  * R6 Plan 2b: `@dbColumnType` — physical DB column-type override on a field.

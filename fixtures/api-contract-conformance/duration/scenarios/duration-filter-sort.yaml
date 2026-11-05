@@ -1,0 +1,80 @@
+name: duration-filter-sort
+description: >
+  A duration filters and sorts as the span it is, never as text, on every engine (D4): Postgres keeps
+  an interval, SQLite, D1 and MySQL a 64-bit count of microseconds. A range filter takes in a
+  negative span, equality holds across spellings (PT5400S is PT1H30M), and a bad operand is
+  400 invalid_filter_value naming the field.
+requests:
+  - { id: s1, method: POST, path: /api/timers, body: { label: thirty, timeout: "PT30M" }, expect: { status: 201 } }
+  - { id: s2, method: POST, path: /api/timers, body: { label: ninety, timeout: "PT1H30M" }, expect: { status: 201 } }
+  - { id: s3, method: POST, path: /api/timers, body: { label: minus, timeout: "-PT1M30S" }, expect: { status: 201 } }
+  - { id: s4, method: POST, path: /api/timers, body: { label: long, timeout: "PT26H" }, expect: { status: 201 } }
+  - { id: s5, method: POST, path: /api/timers, body: { label: none }, expect: { status: 201 } }
+  - id: r1
+    method: GET
+    path: /api/timers?filter[timeout][gt]=PT1H&sort=timeout:desc
+    expect:
+      status: 200
+      body:
+        equals:
+          - { id: 4, label: long, timeout: "PT26H" }
+          - { id: 2, label: ninety, timeout: "PT1H30M" }
+  - id: r2
+    method: GET
+    path: /api/timers?filter[timeout][lte]=PT30M&sort=timeout:asc
+    expect:
+      status: 200
+      body:
+        equals:
+          - { id: 3, label: minus, timeout: "-PT1M30S" }
+          - { id: 1, label: thirty, timeout: "PT30M" }
+  - id: r3
+    method: GET
+    path: /api/timers?filter[timeout][eq]=PT5400S
+    expect:
+      status: 200
+      body:
+        equals:
+          - { id: 2, label: ninety, timeout: "PT1H30M" }
+  - id: r4
+    method: GET
+    path: /api/timers?filter[timeout][in]=PT30M,P1DT2H&sort=timeout:asc
+    expect:
+      status: 200
+      body:
+        equals:
+          - { id: 1, label: thirty, timeout: "PT30M" }
+          - { id: 4, label: long, timeout: "PT26H" }
+  - id: r5
+    method: GET
+    path: /api/timers?filter[timeout][isNull]=true
+    expect:
+      status: 200
+      body:
+        equals:
+          - { id: 5, label: none, timeout: null }
+  - id: r6
+    method: GET
+    path: /api/timers?filter[timeout][isNull]=false&sort=timeout:asc&limit=2
+    expect:
+      status: 200
+      body:
+        equals:
+          - { id: 3, label: minus, timeout: "-PT1M30S" }
+          - { id: 1, label: thirty, timeout: "PT30M" }
+  - id: r7
+    method: GET
+    path: /api/timers?filter[timeout][gt]=P1M
+    expect:
+      status: 400
+      body:
+        error: invalid_filter_value
+        field: timeout
+  - id: r8
+    method: GET
+    path: /api/timers?filter[timeout][gt]=soon
+    expect:
+      status: 400
+      body:
+        error: invalid_filter_value
+        field: timeout

@@ -57,6 +57,23 @@ public static class ExpressionGrammar
         FILTER_COMPOSE_AND, FILTER_COMPOSE_OR,
     };
 
+    /// <summary>The field names an expression tree references, in order of appearance.</summary>
+    public static List<string> FieldRefs(object? node)
+    {
+        var refs = new List<string>();
+        void Walk(object? x)
+        {
+            if (x is not IReadOnlyDictionary<string, object?> n) return;
+            if (Get(n, KEY_FIELD) is string f) refs.Add(f);
+            Walk(Get(n, KEY_LEFT));
+            Walk(Get(n, KEY_RIGHT));
+            Walk(Get(n, KEY_ARG));
+            if (Get(n, KEY_ARGS) is IEnumerable<object?> args) foreach (var a in args) Walk(a);
+        }
+        Walk(node);
+        return refs;
+    }
+
     // -------------------------------------------------------------------------
     // Structural validation — known node kinds, ops, arity. No entity/type
     // context (see InferExprType for typing). Returns [] when valid.

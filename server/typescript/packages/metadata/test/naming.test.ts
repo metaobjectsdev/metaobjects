@@ -1,4 +1,5 @@
 import { describe, it, expect } from "bun:test";
+import { toUpperFirstColumn } from "../src/naming.js";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -370,4 +371,18 @@ describe("fixtures/naming-conformance/already-plural-pluralize.json", () => {
       expect(pluralizeTableNameLegacy(name)).toBe(legacyPlural);
     },
   );
+});
+
+describe("toUpperFirstColumn", () => {
+  it("upper-cases the first letter only", () => {
+    expect(toUpperFirstColumn("requestURL")).toBe("RequestURL");
+    expect(toUpperFirstColumn("")).toBe("");
+  });
+
+  // C#'s char.ToUpperInvariant and Java's Character.toUpperCase map one character to one
+  // character, so `ß` stays `ß` there; JavaScript's toUpperCase gives "SS". Every port keeps a
+  // first character whose upper case is not a single character, so all five name it alike.
+  it("keeps a first character whose upper case is not one character", () => {
+    expect(toUpperFirstColumn("ßeta")).toBe("ßeta");
+  });
 });

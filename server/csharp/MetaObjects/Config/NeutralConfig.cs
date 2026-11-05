@@ -29,7 +29,7 @@
 // generated code lands in; the other ports ignore the block.
 //
 // `wire` (ADR-0019 Amendment 2) is read here too — the output form of a generated REST surface
-// (`decimals`, `nullMembers`), refused exactly as `naming` is.
+// (`decimals`, `nullMembers`, `durations`), refused exactly as `naming` is.
 using System.Text.Json;
 using MetaObjects.Meta;
 
@@ -86,6 +86,10 @@ public sealed class NeutralConfig
     /// ADR-0019 Amendment 2 — the project's wire-format setting (`wire` in config.json), each
     /// absent key at its native default. Never null.
     public WireFormat Wire { get; }
+
+    /// The project's enum storage defaults (`enums` in config.json). Never null: an absent
+    /// block is no default, same as an empty `enums: {}`.
+    public EnumDefaults Enums { get; private init; } = EnumDefaults.Default;
 
     /// The C# port's generated-code directory (`csharp.outDir` in config.json), resolved
     /// against the directory holding `.metaobjects/` so it reads the same from any working
@@ -257,7 +261,7 @@ public sealed class NeutralConfig
                         case "columns":
                             if (p.Value.ValueKind != JsonValueKind.String || !TryParseColumnNaming(p.Value.GetString()!, out columns))
                                 throw new MetaModelException(
-                                    $"{path}: \"naming.columns\" must be one of \"snake_case\", \"literal\", \"kebab-case\"",
+                                    $"{path}: \"naming.columns\" must be one of \"snake_case\", \"literal\", \"kebab-case\", \"upperFirst\"",
                                     ErrorCode.ERR_BAD_ATTR_VALUE);
                             break;
                         case "tables":
@@ -278,7 +282,7 @@ public sealed class NeutralConfig
             // lists read above, are IGNORED by design — see the file header.
             return new NeutralConfig(specs, libraries, new PhysicalNaming(columns, tables), ReadWire(root, path),
                 ReadCSharp(root, path, configDir), dependencies, scopeInclude, migrateScope,
-                Path.GetFullPath(configDir));
+                Path.GetFullPath(configDir)) { Enums = ReadEnums(root, path) };
         }
     }
 
@@ -382,6 +386,38 @@ public sealed class NeutralConfig
         return specs;
     }
 
+    /// The `enums` block: `maxLength`, a positive integer, is the column length of a string-stored
+    /// enum with no @maxLength. An unknown key, a wrong-typed value, or a non-object block is
+    /// refused, the same rule as `naming`.
+    private static EnumDefaults ReadEnums(JsonElement root, string path)
+    {
+        if (!root.TryGetProperty("enums", out var enums)) return EnumDefaults.Default;
+        if (enums.ValueKind != JsonValueKind.Object)
+            throw new MetaModelException($"{path}: \"enums\" must be an object", ErrorCode.ERR_BAD_ATTR_VALUE);
+        long? maxLength = null;
+        foreach (var p in enums.EnumerateObject())
+        {
+            switch (p.Name)
+            {
+                case "maxLength":
+                    // A whole number however JSON spells it (32, 32.0, 1e2): a reader that parses
+                    // numbers as doubles (TypeScript's) cannot tell those apart.
+                    if (p.Value.ValueKind != JsonValueKind.Number || !p.Value.TryGetDouble(out var d)
+                        || d <= 0 || d != Math.Floor(d) || d > long.MaxValue)
+                        throw new MetaModelException(
+                            $"{path}: \"enums.maxLength\" must be a positive integer",
+                            ErrorCode.ERR_BAD_ATTR_VALUE);
+                    maxLength = (long)d;
+                    break;
+                default:
+                    throw new MetaModelException(
+                        $"{path}: \"enums\" has an unknown key \"{p.Name}\" (expected \"maxLength\")",
+                        ErrorCode.ERR_BAD_ATTR_VALUE);
+            }
+        }
+        return maxLength is null ? EnumDefaults.Default : new EnumDefaults(maxLength);
+    }
+
     /// The `wire` block (ADR-0019 Amendment 2): an unknown key, an unknown value, or a
     /// non-object block is refused, the same rule as `naming`.
     private static WireFormat ReadWire(JsonElement root, string path)
@@ -392,6 +428,7 @@ public sealed class NeutralConfig
 
         var decimals = DecimalWireForm.Native;
         var nullMembers = NullMemberForm.Native;
+        var durations = DurationWireForm.Native;
         foreach (var p in wire.EnumerateObject())
         {
             var raw = p.Value.ValueKind == JsonValueKind.String ? p.Value.GetString() : null;
@@ -418,13 +455,23 @@ public sealed class NeutralConfig
                             ErrorCode.ERR_BAD_ATTR_VALUE),
                     };
                     break;
+                case "durations":
+                    durations = raw switch
+                    {
+                        "native" => DurationWireForm.Native,
+                        "iso" => DurationWireForm.Iso,
+                        _ => throw new MetaModelException(
+                            $"{path}: \"wire.durations\" must be one of \"native\", \"iso\"",
+                            ErrorCode.ERR_BAD_ATTR_VALUE),
+                    };
+                    break;
                 default:
                     throw new MetaModelException(
-                        $"{path}: \"wire\" has an unknown key \"{p.Name}\" (expected \"decimals\" and/or \"nullMembers\")",
+                        $"{path}: \"wire\" has an unknown key \"{p.Name}\" (expected \"decimals\", \"nullMembers\" and/or \"durations\")",
                         ErrorCode.ERR_BAD_ATTR_VALUE);
             }
         }
-        return new WireFormat(decimals, nullMembers);
+        return new WireFormat(decimals, nullMembers, durations);
     }
 
     /// The cross-port spellings (ADR-0058) — not .NET enum names, so the JSON value reads
@@ -436,6 +483,7 @@ public sealed class NeutralConfig
             case "literal":     strategy = ColumnNamingStrategy.Literal;   return true;
             case "snake_case":  strategy = ColumnNamingStrategy.SnakeCase; return true;
             case "kebab-case":  strategy = ColumnNamingStrategy.KebabCase; return true;
+            case "upperFirst":  strategy = ColumnNamingStrategy.UpperFirst; return true;
             default:            strategy = ColumnNamingStrategy.Literal;   return false;
         }
     }

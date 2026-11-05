@@ -8,10 +8,15 @@ import {
   DEFAULT_PHYSICAL_NAMING,
   TABLE_NAMING_RULES,
   DEFAULT_WIRE_FORMAT,
+  DEFAULT_ENUM_DEFAULTS,
+  type EnumDefaults,
   WIRE_DECIMALS,
   WIRE_NULL_MEMBERS,
+  WIRE_DURATIONS,
   WIRE_KEY_DECIMALS,
   WIRE_KEY_NULL_MEMBERS,
+  WIRE_KEY_DURATIONS,
+  type WireDurations,
   type WireDecimals,
   type WireFormat,
   type WireNullMembers,
@@ -81,6 +86,14 @@ const MigrateBlock = z.object({
    *  Include-only — there's no `migrate.scope.exclude`, since a migration run
    *  is scoped to what it's touching, not filtered down from "everything". */
   scope: z.array(z.string().min(1)),
+  /** Schema conventions for the database objects no code addresses: a preset name
+   *  (`default`, `efcore`); meta migrate refuses a name it does not know. A project's own
+   *  conventions object is supplied from metaobjects.config.ts instead. */
+  conventions: z.string().min(1),
+  /** Which validator CHECKs the expected schema carries. `skipRedundant` (default false) leaves
+   *  out a CHECK the column type already enforces, for a database whose CHECKs were written by
+   *  hand only where the type does not; a CHECK with a declared `@constraintName` is kept. */
+  checks: z.object({ skipRedundant: z.boolean() }).partial().strict(),
 // .strict() for the same reason as the top level and the source arms below, and
 // with sharper teeth here: `{ migrate: { scopee: [...], dialect: "postgres" } }`
 // used to parse to `{ dialect: "postgres" }`, so a typo'd `scope` key meant
@@ -214,7 +227,9 @@ export const ConfigSchema = z.object({
    * (default; the string the in-process type holds) or `string` (canonical W1 string).
    * `nullMembers`: `native` (default; as stored), `emit` (every declared member, `null` when
    * unset) or `omit` (drop null members) for a value object's members. Input rules do not
-   * follow it. Absent means the default for both.
+   * follow those two. `durations`: `native` (default; the language's own serializer for its
+   * duration type, both ways) or `iso` (canonical ISO-8601 in every port, both ways). Absent
+   * means the default for each.
    */
   wire: z
     .strictObject({
@@ -224,10 +239,24 @@ export const ConfigSchema = z.object({
       nullMembers: z.enum(WIRE_NULL_MEMBERS as unknown as [WireNullMembers, ...WireNullMembers[]], {
         message: `"wire.nullMembers" must be one of ${WIRE_NULL_MEMBERS.map((v) => `"${v}"`).join(", ")}`,
       }).optional(),
+      durations: z.enum(WIRE_DURATIONS as unknown as [WireDurations, ...WireDurations[]], {
+        message: `"wire.durations" must be one of ${WIRE_DURATIONS.map((v) => `"${v}"`).join(", ")}`,
+      }).optional(),
     }, {
       error: (iss) => iss.code === "unrecognized_keys"
-        ? `"wire" has an unknown key "${iss.keys[0]}" (expected "${WIRE_KEY_DECIMALS}" and/or "${WIRE_KEY_NULL_MEMBERS}")`
+        ? `"wire" has an unknown key "${iss.keys[0]}" (expected "${WIRE_KEY_DECIMALS}", "${WIRE_KEY_NULL_MEMBERS}" and/or "${WIRE_KEY_DURATIONS}")`
         : iss.code === "invalid_type" ? `"wire" must be an object` : undefined,
+    })
+    .optional(),
+  /**
+   * How a string-stored `field.enum` is stored. `maxLength` is the column length (VARCHAR(n))
+   * of an enum that declares no `@maxLength` of its own; every member must fit. Absent means
+   * no default: such an enum is an unbounded text column, as before. An `@intValueMap` enum is
+   * an integer column and takes no length. Read by every port's config reader.
+   */
+  enums: z
+    .strictObject({
+      maxLength: z.number().int().positive().optional(),
     })
     .optional(),
   /**
@@ -262,11 +291,17 @@ export function physicalNamingFromConfig(cfg: Pick<Config, "naming">): PhysicalN
   };
 }
 
+/** The enum storage defaults a config declares (`enums`); none when absent. */
+export function enumDefaultsFromConfig(cfg: Pick<Config, "enums">): EnumDefaults {
+  return cfg.enums?.maxLength === undefined ? DEFAULT_ENUM_DEFAULTS : { maxLength: cfg.enums.maxLength };
+}
+
 /** The wire format a config declares, each absent key at its default (ADR-0019 Amendment 2). */
 export function wireFormatFromConfig(cfg: Pick<Config, "wire">): WireFormat {
   return {
     decimals: cfg.wire?.decimals ?? DEFAULT_WIRE_FORMAT.decimals,
     nullMembers: cfg.wire?.nullMembers ?? DEFAULT_WIRE_FORMAT.nullMembers,
+    durations: cfg.wire?.durations ?? DEFAULT_WIRE_FORMAT.durations,
   };
 }
 

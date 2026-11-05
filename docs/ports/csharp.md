@@ -381,6 +381,25 @@ generator copies `DecimalWire.cs` and `DecimalRangeEndpointFilter.cs`. Do not st
 attributes or delete `DecimalWire.g.cs` to change the output: they also check input. Set `wire`
 and regenerate.
 
+A `field.duration` is a `TimeSpan` carrying `[DurationWire.Iso]`, which reads and writes the
+ISO-8601 form every port shares (`PT1H30M`, and on input `P1W`, `P2DT3H`) instead of
+System.Text.Json's `01:30:00`. It writes up to seven fractional digits, a `TimeSpan` tick, and
+truncates a longer input fraction toward zero. On Npgsql it is an `interval` column. EF reads an
+interval through Npgsql's own `TimeSpan` conversion, which (as of Npgsql 8.0.5) silently drops a
+negative month or year part (`'-1 mons'` reads as `PT0S`) and wraps a day count past `TimeSpan`'s
+range, so the generated context maps each duration column through `NpgsqlInterval` instead
+(`DurationIntervalMapping`, `DurationIntervalArrayMapping`, emitted beside `AppDbContext`) and
+refuses either one on read. LINQ still translates as it does on Npgsql's own mapping: `TimeSpan`
+members (`TotalSeconds`, `Hours`, ...), a timestamp plus a duration, comparison, ordering, `Min`,
+`Max`, `EF.Functions.Sum`, and `Contains` / `Count` / `Any` on a duration array. A compiled model
+(`dotnet ef dbcontext optimize`) keeps the mapping and the refusal; EF Core 8's compiled model
+carries no element type, so there a duration array reads and writes but is not queryable as a
+collection. On any other provider a value converter stores the 64-bit microsecond count, so sorting
+and range filters follow the span. Both columns hold microseconds, so a tick below one is dropped
+on write. `TimeSpan`'s own range is the only limit: a longer span is refused, never wrapped.
+`DurationWire.g.cs` is emitted once per namespace that has a duration, and an owned `routes`
+generator also copies `DurationWire.cs`.
+
 ### `<Entity>Names` — the physical names, as constants
 
 `names` is opt-in — list `new MetaObjects.Codegen.Generators.NamesGenerator()` in
@@ -443,6 +462,11 @@ no port's codegen names a primary key (Postgres migrations hardcode `<table>_pke
 emits an unnamed PK), and carrying that would restate a migrate-only formula in the
 artifact built to stop exactly that.
 
+A `@storage: flattened` value-object field gets one constant per member column
+(`ShipToStreetColumn`, keyed `shipTo.street` in `ColumnsByField`). Its own `ShipToColumn` is still
+emitted but `[Obsolete]`: the table has no column by that name. Declaring it raises no warning;
+reading it does, so a project that never reads it builds clean under `TreatWarningsAsErrors`.
+
 `const`, not `static readonly`: a `[Table("...")]`/`[Column("...")]` attribute
 argument must be a compile-time constant, and those two attributes are the
 whole reason this artifact can replace a literal there rather than sit beside
@@ -495,7 +519,9 @@ complete on every class, inherited entries included.
 Column names come from the project's `naming` setting in `.metaobjects/config.json`
 (ADR-0058), the one every port reads, default `snake_case` (what `meta migrate` creates). A
 database whose columns are named exactly like the fields declares
-`"naming": { "columns": "literal" }`; through 1.0 that was this port's default. `dotnet meta gen`
+`"naming": { "columns": "literal" }`; through 1.0 that was this port's default. One whose columns
+are the field names with the first letter upper-cased (`requestURL` → `RequestURL`) declares
+`"upperFirst"`. `dotnet meta gen`
 and `dotnet meta verify --codegen` both read the setting, so a plain run and the drift gate
 resolve the identical column strings; `--column-naming` is refused
 ([physical-naming.md](../features/migrations/physical-naming.md)). `verify --codegen` says so

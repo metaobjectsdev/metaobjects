@@ -43,6 +43,12 @@ public abstract class MetaValidator extends MetaData {
     /** Cross-port maximum-bound attribute ({@code @max}). */
     public final static String ATTR_MAX = "max";
 
+    /** A cross-field validator's @condition: the rule applies only where this expression holds. */
+    public final static String ATTR_CONDITION = "condition";
+
+    /** The database name of the CHECK a CHECK-generating validator (or a field.enum's membership) generates. */
+    public final static String ATTR_CONSTRAINT_NAME = "constraintName";
+
     /**
      * Register this type with the MetaDataRegistry (called by provider)
      * @param registry the MetaDataRegistry to register with

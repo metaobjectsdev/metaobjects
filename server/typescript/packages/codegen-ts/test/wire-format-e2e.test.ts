@@ -122,7 +122,7 @@ describe("wire.decimals", () => {
   });
 
   test("string: the canonical form, exactly as 1.1.1", async () => {
-    const { app, sqlite, options } = await serverFor({ decimals: "string", nullMembers: "native" });
+    const { app, sqlite, options } = await serverFor({ decimals: "string", nullMembers: "native", durations: "native" });
     expect(options).toContain('decimalWire: "string"');
     seed(sqlite);
     const row = await get(app);
@@ -157,7 +157,7 @@ describe("wire.nullMembers", () => {
   });
 
   test("omit: null members are dropped from a value object, an array of them and a map of them", async () => {
-    const { app, sqlite, options } = await serverFor({ decimals: "native", nullMembers: "omit" });
+    const { app, sqlite, options } = await serverFor({ decimals: "native", nullMembers: "omit", durations: "native" });
     expect(options).toContain('nullMembers: "omit"');
     seed(sqlite);
     const row = await get(app);
@@ -167,7 +167,7 @@ describe("wire.nullMembers", () => {
   });
 
   test("emit: every declared member is present, null when unset", async () => {
-    const { app, sqlite, options } = await serverFor({ decimals: "native", nullMembers: "emit" });
+    const { app, sqlite, options } = await serverFor({ decimals: "native", nullMembers: "emit", durations: "native" });
     expect(options).toContain('nullMembers: "emit"');
     seed(sqlite);
     const row = await get(app);
@@ -179,7 +179,7 @@ describe("wire.nullMembers", () => {
 
   test("a top-level null field is unchanged in every mode", async () => {
     for (const nullMembers of ["native", "emit", "omit"] as const) {
-      const { app, sqlite } = await serverFor({ decimals: "native", nullMembers });
+      const { app, sqlite } = await serverFor({ decimals: "native", nullMembers, durations: "native" });
       sqlite.run(`INSERT INTO entries (amount) VALUES (NULL)`);
       const row = await get(app);
       expect(row["amount"]).toBeNull();

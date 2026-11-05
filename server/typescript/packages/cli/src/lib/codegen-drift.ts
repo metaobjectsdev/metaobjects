@@ -187,7 +187,7 @@ export async function computeCodegenDrift(
   projectRoot: string,
   scope?: (fqn: string) => boolean,
   sourceFiles?: readonly string[],
-  run?: Pick<RunGenOpts, "sourceRoots" | "agentSchema" | "requirementLedger">,
+  run?: Pick<RunGenOpts, "sourceRoots" | "agentSchema" | "schemaSettings" | "requirementLedger">,
 ): Promise<CodegenDriftResult> {
   const root = isAbsolute(projectRoot) ? projectRoot : resolve(projectRoot);
 
@@ -282,6 +282,7 @@ export async function computeCodegenDrift(
       ...(sourceFiles !== undefined ? { sourceFiles } : {}),
       ...(run?.sourceRoots !== undefined ? { sourceRoots: run.sourceRoots } : {}),
       ...(run?.agentSchema !== undefined ? { agentSchema: run.agentSchema } : {}),
+      ...(run?.schemaSettings !== undefined ? { schemaSettings: run.schemaSettings } : {}),
       ...(run?.requirementLedger !== undefined ? { requirementLedger: run.requirementLedger } : {}),
     });
 

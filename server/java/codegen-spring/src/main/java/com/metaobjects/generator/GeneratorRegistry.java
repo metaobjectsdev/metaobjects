@@ -269,11 +269,11 @@ public final class GeneratorRegistry {
         }
     }
 
-    /** What the generated controller imports — the whole filter pipeline, the patch and
+    /** What the generated controller imports — the whole filter pipeline (with the decimal and duration operand parsers), the patch and
      *  constraint error mapping, and the record-component escape. Declared before
      *  {@code REGISTRY}: static initializers run in order. */
     private static final List<String> ROUTES_RUNTIME = List.of(
-            "CanonicalDecimal", "ConstraintErrors", "FilterParseResult", "FilterParser", "FilterPredicate",
+            "CanonicalDecimal", "CanonicalDuration", "ConstraintErrors", "FilterParseResult", "FilterParser", "FilterPredicate",
             "PatchValidationException", "RecordComponentNames", "ReportExport", "UnreadableBody");
 
     /** The writer a generated type's package and class name are read from, and its base. */
@@ -441,13 +441,15 @@ public final class GeneratorRegistry {
         register(m, "dto", SpringDtoGenerator.class.getName(),
                 "Per-entity Spring DTO record.", Tier.NATIVE, Layer.MODEL,
                 ejectPath(SpringDtoGenerator.class), List.of("CanonicalDecimal", "CanonicalDecimalDeserializer",
-                        "CanonicalDecimalSerializer", "DeclaredDecimal", "PatchValidationException"), null, RECORD_EMIT);
+                        "CanonicalDecimalSerializer", "CanonicalDuration", "CanonicalDurationDeserializer",
+                        "CanonicalDurationSerializer", "DeclaredDecimal", "PatchValidationException"), null, RECORD_EMIT);
         register(m, "value-object", SpringValueObjectGenerator.class.getName(),
                 "Per-value-object Spring record with jakarta constraints — the typed "
                     + "component the DTO/Patch bind for a field.object @storage:jsonb column, "
                     + "and a template's payload/response type.", Tier.NATIVE, Layer.MODEL,
                 ejectPath(SpringValueObjectGenerator.class), List.of("CanonicalDecimal",
-                        "CanonicalDecimalDeserializer", "CanonicalDecimalSerializer", "DeclaredDecimal"), null, RECORD_EMIT);
+                        "CanonicalDecimalDeserializer", "CanonicalDecimalSerializer", "CanonicalDuration",
+                        "CanonicalDurationDeserializer", "CanonicalDurationSerializer", "DeclaredDecimal"), null, RECORD_EMIT);
         register(m, "trace-helper", LlmTraceHelperGenerator.class.getName(),
                 "Per-entity typed record<Entity> LLM-trace helper (extract + buildLlmCallRow + persist; "
                     + "LlmCallBase-derived entities only).", Tier.NATIVE, Layer.CAPABILITY,

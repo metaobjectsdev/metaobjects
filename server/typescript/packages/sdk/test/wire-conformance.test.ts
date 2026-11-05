@@ -6,13 +6,13 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { DEFAULT_WIRE_FORMAT, wireFormatOf, type WireDecimals, type WireNullMembers } from "@metaobjectsdev/metadata";
+import { DEFAULT_WIRE_FORMAT, wireFormatOf, type WireDecimals, type WireDurations, type WireNullMembers } from "@metaobjectsdev/metadata";
 import { ConfigSchema, wireFormatFromConfig } from "../src/config.js";
 import { loadMemory } from "../src/memory.js";
 
 const CORPUS = resolve(import.meta.dir, "../../../../../fixtures/wire-conformance/config-blocks.json");
 
-interface WireCase { name: string; wire: unknown; decimals: WireDecimals; nullMembers: WireNullMembers }
+interface WireCase { name: string; wire: unknown; decimals: WireDecimals; nullMembers: WireNullMembers; durations: WireDurations }
 const corpus = JSON.parse(readFileSync(CORPUS, "utf8")) as {
   cases: WireCase[];
   invalid: { name: string; wire: unknown }[];
@@ -29,9 +29,9 @@ const MODEL = { "metadata.root": { package: "w", children: [
 
 describe("wire conformance (ADR-0019 Amendment 2)", () => {
   for (const c of corpus.cases) {
-    test(`${c.name}: resolves to decimals=${c.decimals} nullMembers=${c.nullMembers}`, () => {
+    test(`${c.name}: resolves to decimals=${c.decimals} nullMembers=${c.nullMembers} durations=${c.durations}`, () => {
       const wire = wireFormatFromConfig(ConfigSchema.parse(configFor(c.wire)));
-      expect(wire).toEqual({ decimals: c.decimals, nullMembers: c.nullMembers });
+      expect(wire).toEqual({ decimals: c.decimals, nullMembers: c.nullMembers, durations: c.durations });
     });
   }
 
@@ -50,7 +50,7 @@ describe("wire conformance (ADR-0019 Amendment 2)", () => {
   test("an unknown key and a non-object block are refused by name", () => {
     const unknown = ConfigSchema.safeParse(configFor({ dates: "iso" }));
     expect(unknown.error?.issues.map((i) => i.message)).toContain(
-      '"wire" has an unknown key "dates" (expected "decimals" and/or "nullMembers")');
+      '"wire" has an unknown key "dates" (expected "decimals", "nullMembers" and/or "durations")');
     const scalar = ConfigSchema.safeParse(configFor("string"));
     expect(scalar.error?.issues.map((i) => i.message)).toContain('"wire" must be an object');
   });
@@ -64,8 +64,8 @@ describe("wire conformance (ADR-0019 Amendment 2)", () => {
       writeFileSync(join(dir, ".metaobjects", "config.json"), JSON.stringify(configFor(portable.wire)));
       writeFileSync(join(dir, "metaobjects", "meta.w.json"), JSON.stringify(MODEL));
       const root = await loadMemory(dir);
-      expect(root.wireFormat).toEqual({ decimals: "string", nullMembers: "omit" });
-      expect(wireFormatOf(root.findObject("Thing")!)).toEqual({ decimals: "string", nullMembers: "omit" });
+      expect(root.wireFormat).toEqual({ decimals: "string", nullMembers: "omit", durations: "iso" });
+      expect(wireFormatOf(root.findObject("Thing")!)).toEqual({ decimals: "string", nullMembers: "omit", durations: "iso" });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

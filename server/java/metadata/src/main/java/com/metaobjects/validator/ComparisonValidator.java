@@ -50,6 +50,8 @@ public class ComparisonValidator extends MetaValidator {
             def.requiredAttributeWithConstraints(ATTR_OP).ofType(StringAttribute.SUBTYPE_STRING)
                .withEnum("gt", "gte", "lt", "lte", "ne", "eq");
             def.requiredAttributeWithConstraints(ATTR_RIGHT).ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+            def.optionalAttributeWithConstraints(ATTR_CONDITION)
+               .ofType(com.metaobjects.attr.ExpressionAttribute.SUBTYPE_EXPRESSION).asSingle();
         });
     }
 

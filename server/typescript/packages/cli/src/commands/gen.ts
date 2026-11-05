@@ -34,6 +34,8 @@ import { describeError } from "../lib/error-text.js";
 import { findRuntimeBoundaryCrossings, runtimeBoundaryWarnings } from "../lib/runtime-boundary-advisory.js";
 import { hasLegacyDocsBlock, legacyDocsConfigMessage, NO_CONFIG_MESSAGE } from "../lib/docs-removed.js";
 import { buildAgentSchemaInput } from "../lib/agent-schema.js";
+import { schemaBuildOptions, schemaBuildOptionsOrWarn, type SchemaBuildOptions } from "../lib/schema-build-options.js";
+import { isUnknownSchemaConventionsError } from "@metaobjectsdev/migrate-ts";
 import { requirementPayload } from "../lib/requirement-payload.js";
 import { existsSync } from "node:fs";
 
@@ -215,6 +217,19 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
     : [];
   for (const w of unknownAttrs) { log.warn(`warning: ${w}`); warnings.push(w); }
 
+  // The schema settings `meta migrate` builds with, for the Prisma schema, the schema page and
+  // the migrate advice. A conventions preset that does not resolve is a config error here as in
+  // `meta migrate` and `meta verify`: generating with the default names instead would write a
+  // Prisma schema whose keys the database does not have.
+  let schemaOptions: SchemaBuildOptions;
+  try {
+    schemaOptions = schemaBuildOptions(genCollection, forgeConfig);
+  } catch (err) {
+    if (!isUnknownSchemaConventionsError(err)) throw err;
+    log.error(`gen: ${err.message}`);
+    return 2;
+  }
+
   // FR-023 §11.1 item 2 — refuse a positional that names ONLY objects imported
   // from a dependency and excluded from output by the default exclusion rule.
   // Distinct from the runner's existing "no entities matched" WARNING
@@ -259,7 +274,10 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
         metadata,
         forgeConfig.dialect,
         (m) => { const w = `[agent-docs] ${m}`; log.warn(w); warnings.push(w); },
+        schemaOptions,
       ),
+      // The Prisma schema names its keys by the same conventions migrate uses.
+      schemaSettings: schemaOptions,
       // FR-043 §6 — the shipped-library selection. Always passed, including as `[]`:
       // that is what tells the post-selection audit "this project opted into none",
       // which is a different statement from a programmatic caller that never said.
@@ -326,6 +344,7 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
 
   const migrateDefaults = await resolveMigrateDefaults(projectRoot);
   const migrateAdvice = await genMigrateAdvice({
+    schema: schemaOptions,
     metadata,
     dialect: forgeConfig.dialect,
     migrateDialect: migrateDefaults.dialect,
@@ -504,6 +523,7 @@ async function listCatalogCommand(
       reportLoadError(log, "failed to load metadata", err);
       return 1;
     }
+    const schemaOptions = schemaBuildOptionsOrWarn(genCollection, forgeConfig, () => {});
 
     opts = {
       project: {
@@ -526,11 +546,14 @@ async function listCatalogCommand(
         scope: genCollection.inScope,
         sourceFiles: genCollection.ownFiles,
         sourceRoots: sourceRootsOf(genCollection),
-        agentSchema: () => buildAgentSchemaInput(
+        agentSchema: () => schemaOptions === undefined ? undefined : buildAgentSchemaInput(
           metadata,
           forgeConfig.dialect,
-            () => {},
+          () => {},
+          schemaOptions,
         ),
+        // The Prisma schema names its keys by the same conventions migrate uses.
+        ...(schemaOptions !== undefined && { schemaSettings: schemaOptions }),
       },
     };
   } else {

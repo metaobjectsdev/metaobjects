@@ -35,6 +35,14 @@ FIELD_SUBTYPE_URI = "uri"
 # build-time codegen concern. DB column is the Postgres-native inet type. Ships
 # WITHOUT @kind in v1 (the native type subsumes ipv4/ipv6). Mirrors TS FIELD_SUBTYPE_INET.
 FIELD_SUBTYPE_INET = "inet"
+# field.duration: a fixed-length span of time (days, hours, minutes, seconds). A
+# concept WITH a native type + behavior → a subtype (the field.inet precedent).
+# String-backed on the wire: an ISO-8601 duration, written in the canonical form
+# ``[-]PT[nH][nM][n[.f]S]`` (fixtures/duration-wire). The native binding is
+# ``datetime.timedelta``; DB column is the Postgres-native interval; SQLite and MySQL
+# store a 64-bit integer count of microseconds.
+# Calendar spans (years, months) are refused; a week is exactly 7 days. Mirrors TS FIELD_SUBTYPE_DURATION.
+FIELD_SUBTYPE_DURATION = "duration"
 
 FIELD_SUBTYPES = (
     SUBTYPE_BASE,
@@ -54,6 +62,7 @@ FIELD_SUBTYPES = (
     FIELD_SUBTYPE_UUID,
     FIELD_SUBTYPE_URI,
     FIELD_SUBTYPE_INET,
+    FIELD_SUBTYPE_DURATION,
     # Note: FIELD_SUBTYPE_ENUM is intentionally excluded here; it is registered
     # separately in core_types.py with its dedicated @values AttrSchema.
 )
@@ -129,9 +138,15 @@ NORMALIZE_DEFAULT = NORMALIZE_STRIP
 NORMALIZE_MODES = (NORMALIZE_NONE, NORMALIZE_COLLAPSE, NORMALIZE_STRIP)
 # Persistence-side storage shape for owned field.object data. Cross-port values.
 FIELD_ATTR_STORAGE = "storage"
-STORAGE_VALUES = ("flattened", "jsonb", "subdocument")
+#: @storage "flattened": the nested object's columns expand into the parent table.
+STORAGE_FLATTENED = "flattened"
+STORAGE_VALUES = (STORAGE_FLATTENED, "jsonb", "subdocument")
 # Physical column name override (cross-port; renamed from @dbColumn).
 FIELD_ATTR_COLUMN = "column"
+# @flattenedColumnPrefix on a field.object @storage "flattened": the text before each member's column,
+# verbatim ("" allowed). Absent: the field's resolved column and "_"
+# (metaobjects.naming.resolve_flattened_column_prefix).
+FIELD_ATTR_FLATTENED_COLUMN_PREFIX = "flattenedColumnPrefix"
 
 # ADR-0036/0037 Wave 3 — @stringFormat: a closed validation format for a plain
 # field.string that has NO native type or behavior of its own (email | hostname).

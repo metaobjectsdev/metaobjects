@@ -7,7 +7,7 @@ from pathlib import Path
 
 from metaobjects.errors import ErrorCode, ParseError
 from metaobjects.naming import COLUMN_NAMING_STRATEGIES, TABLE_NAMING_RULES, NamingRules
-from metaobjects.wire import WIRE_DECIMALS, WIRE_NULL_MEMBERS, WireFormat
+from metaobjects.wire import WIRE_DECIMALS, WIRE_DURATIONS, WIRE_NULL_MEMBERS, WireFormat
 
 #: The DEFAULT value of `sources` when the key is absent or empty — never a
 #: requirement, and never assumed to exist by any other code path.
@@ -175,6 +175,7 @@ def read_neutral_config(config_dir: Path) -> NeutralConfig | None:
     libraries = _read_libraries(raw, path)
     naming = _read_naming(raw, path)
     wire = _read_wire(raw, path)
+    _check_enums(raw, path)
 
     # Unknown top-level keys are IGNORED by design — see the module docstring.
     return NeutralConfig(
@@ -305,12 +306,48 @@ def _read_naming(raw: dict[str, object], path: Path) -> NamingRules:
     return NamingRules(columns=columns, tables=tables)
 
 
+#: Every key the `enums` block accepts, and the ONLY ones it accepts (refused, not ignored, like `naming`).
+_ENUMS_KEYS = ("maxLength",)
+
+
+def _check_enums(raw: dict[str, object], path: Path) -> None:
+    """The `enums` block: `maxLength`, a positive integer, is the column length a port that
+    sizes a string-stored enum's column gives one with no @maxLength. This port sizes no
+    column (it emits no DDL and no column type), so it reads nothing from the block, but a
+    project shared with a port that does has one: the block is accepted, and its shape is
+    checked so a typo is refused here as it is there (a non-object block, an unknown key, or
+    a value that is not a positive integer)."""
+    if "enums" not in raw:
+        return
+    enums = raw["enums"]
+    if not isinstance(enums, dict):
+        raise ParseError(f"{path}: 'enums' must be an object", code=ErrorCode.ERR_BAD_ATTR_VALUE)
+    unknown = sorted(set(enums) - set(_ENUMS_KEYS))
+    if unknown:
+        raise ParseError(
+            f"{path}: 'enums' has unknown key(s) {unknown}; accepted: {list(_ENUMS_KEYS)}",
+            code=ErrorCode.ERR_BAD_ATTR_VALUE,
+        )
+    if "maxLength" not in enums:
+        return
+    value = enums["maxLength"]
+    # A whole number however JSON spells it (32, 32.0, 1e2): a reader that parses numbers as
+    # doubles (TypeScript's) cannot tell those apart, so every port accepts all three.
+    if isinstance(value, float) and value.is_integer():
+        value = int(value)
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ParseError(
+            f"{path}: 'enums.maxLength' must be a positive integer, got {value!r}",
+            code=ErrorCode.ERR_BAD_ATTR_VALUE,
+        )
+
+
 #: Every key the `wire` block accepts, and the ONLY ones it accepts (refused, not ignored, like `naming`).
-_WIRE_KEYS = ("decimals", "nullMembers")
+_WIRE_KEYS = ("decimals", "nullMembers", "durations")
 
 
 def _read_wire(raw: dict[str, object], path: Path) -> WireFormat:
-    """ADR-0019 Amendment 2 — the `wire` block. Absent or `{}` ⇒ `native` for both keys.
+    """ADR-0019 Amendment 2 — the `wire` block. Absent or `{}` ⇒ `native` for every key.
     Refuses a non-object `wire`, an unknown key, or a value outside the closed set a key
     accepts: a mistake must not silently fall back to the default and change the JSON an
     API writes."""
@@ -322,11 +359,11 @@ def _read_wire(raw: dict[str, object], path: Path) -> WireFormat:
     for key in wire:
         if key not in _WIRE_KEYS:
             raise ParseError(
-                f'{path}: "wire" has an unknown key "{key}" (expected "decimals" and/or "nullMembers")',
+                f'{path}: "wire" has an unknown key "{key}" (expected "decimals", "nullMembers" and/or "durations")',
                 code=ErrorCode.ERR_COLLECTION_NOT_FOUND,
             )
     values: dict[str, str] = {}
-    for key, allowed in (("decimals", WIRE_DECIMALS), ("nullMembers", WIRE_NULL_MEMBERS)):
+    for key, allowed in (("decimals", WIRE_DECIMALS), ("nullMembers", WIRE_NULL_MEMBERS), ("durations", WIRE_DURATIONS)):
         value = wire.get(key, allowed[0])
         if not isinstance(value, str) or value not in allowed:
             choices = ", ".join(f'"{a}"' for a in allowed)
@@ -335,7 +372,7 @@ def _read_wire(raw: dict[str, object], path: Path) -> WireFormat:
                 code=ErrorCode.ERR_COLLECTION_NOT_FOUND,
             )
         values[key] = value
-    return WireFormat(decimals=values["decimals"], null_members=values["nullMembers"])
+    return WireFormat(decimals=values["decimals"], null_members=values["nullMembers"], durations=values["durations"])
 
 
 def _validate_dependency_spec(dep: object, path: Path) -> dict[str, str]:

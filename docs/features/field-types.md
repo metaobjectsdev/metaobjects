@@ -24,14 +24,15 @@ across ports — a `field.currency` is integer minor units everywhere; a
 | `field.uuid` | `string` | `UUID` | `UUID` | `Guid` | `UUID` | `uuid` |
 | `field.uri` | `string` | `java.net.URI` | `java.net.URI` | `Uri` | `AnyUrl` | `text` |
 | `field.inet` | `string` | `InetAddress` | `InetAddress` | `IPAddress` | `IPvAnyAddress` | `inet` |
+| `field.duration` | `string` (ISO-8601) | `java.time.Duration` | `java.time.Duration` | `TimeSpan` | `timedelta` | `interval` |
 | `field.enum` | union + `z.enum` | `Enum` | `enum class` | `enum` | `Literal` inline, `Enum` with `UPPER_CASE` members when shared by `extends` | `varchar` + `CHECK` |
 | `field.object` | nested type | nested class | nested data class | nested class | nested Pydantic model | per `@storage` |
 | `field.map` | `Record<string, V>` | `Map<String, V>` | `Map<String, V>` | `Dictionary<string, V>` | `dict[str, V]` | `jsonb` |
 
-That is the whole registered vocabulary — 17 concrete subtypes. `field.base` is an
+That is the whole registered vocabulary — 18 concrete subtypes. `field.base` is an
 abstract registry anchor, never authored (`ERR_ABSTRACT_SUBTYPE_AUTHORED`).
 
-Four rows need a footnote:
+Five rows need a footnote:
 
 - **`field.decimal`** is exact in every port's own type. TypeScript's type is a string.
   Postgres and MySQL keep the declared `numeric(@precision, @scale)` exactly; SQLite and D1 have
@@ -48,6 +49,29 @@ Four rows need a footnote:
   which has none (the same reason `field.uuid` is a `string` there). `@lenient: true`
   degrades both to a plain string with no validator, and takes the `inet` column down to
   `text`.
+- **`field.duration`** is a fixed-length span: days, hours, minutes and seconds. A calendar
+  span ("every 3 months") is not one, because a month has no fixed length: model it as an int
+  and a unit. On the wire each port writes its own language's standard form by default (a C#
+  `TimeSpan` is `"01:30:00"`), and `"wire": { "durations": "iso" }` in `.metaobjects/config.json`
+  makes every port write one ISO-8601 form ([the wire setting](api-contract.md#the-wire-setting)).
+  That form is `[-]PT[nH][nM][n[.f]S]`: hours are never folded into days (`PT26H`), and zero is `PT0S`.
+  It is one form at each port's own precision: a port writes as many fractional digits as its
+  own type holds (6 in TypeScript and Python, 7 in C#, 9 in Java and Kotlin) and truncates a
+  longer fraction toward zero. A Postgres `interval` and the integer column below both hold
+  microseconds, so a C#, Java or Kotlin server can answer a POST with more digits than the
+  database kept: `PT0.1234567S` is answered as sent and read back as `PT0.123456S`. Read the row
+  back when the stored value matters. The Java types above are generated code's: Java's
+  metadata-driven runtime (OMDB) holds a duration as its canonical ISO-8601 `String`, and
+  `java.time.Duration` appears only inside its JDBC codec. Every port reads that form and also leading
+  week and day counts (`P1W` is 7 days, `P1DT2H` is 26 hours). Years and months are refused, and
+  so are lowercase designators and fractional hours. The column is a Postgres `interval`; SQLite, D1 and MySQL store a 64-bit
+  integer count of microseconds, the way Django stores a `DurationField` outside Postgres. Both
+  order and compare as the span does, so every filter operator a number has (`eq`, `ne`, `gt`,
+  `gte`, `lt`, `lte`, `in`, `isNull`) and `sort` work on every database. There is no shared upper
+  bound: each port is limited only by its own type (a .NET `TimeSpan`, a Python `timedelta`) and
+  each database by its own column, and refuses what it cannot hold rather than wrapping it. The
+  rule and its cross-port vectors are in
+  [`fixtures/duration-wire/`](../../fixtures/duration-wire/).
 - **`field.map`** is the typed dict: string keys, and a value type set by exactly one of
   `@valueType` (a scalar subtype) or `@objectRef` (a value object) — `V` above. It is one
   jsonb column holding the JSON object; `isArray` does not apply, so no port wraps the map
@@ -111,7 +135,8 @@ A field has **two names**: the one your code calls it (`createdAt`, the metadata
 database calls it. `@column` sets the second. It never changes the first.
 
 With no `@column`, the physical name comes from the project's **column rule**:
-`snake_case` (the default), `literal` (the field name verbatim) or `kebab-case`. That
+`snake_case` (the default), `literal` (the field name verbatim), `kebab-case` or
+`upperFirst` (the first letter upper-cased, the rest verbatim). That
 is CONFIG, not metadata, on purpose: the same model has to be able to drive a
 snake_case Postgres schema and a literal-column one. It is ONE setting for the whole
 project, `naming` in `.metaobjects/config.json` (ADR-0058):
@@ -189,6 +214,26 @@ must be a non-empty set of unique members matching `^[A-Za-z_][A-Za-z0-9_]*$`.
 The loader enforces members own-only and emits `ERR_BAD_ATTR_VALUE` on a bad
 member or `ERR_MISSING_REQUIRED_ATTR` on missing `@values`.
 
+**Column length:** a string-stored enum is an unbounded text column unless it has a length.
+`@maxLength` on the field gives it one, and `"enums": { "maxLength": n }` in
+`.metaobjects/config.json` gives every enum without its own `@maxLength` a default:
+
+```json
+{ "field.enum": { "name": "status", "@values": ["DRAFT", "PUBLISHED", "ARCHIVED"], "@maxLength": 16 } }
+```
+
+The column is then `VARCHAR(n)`: `meta migrate` creates it, and the generated column bindings
+that carry a length name the same one: TypeScript's Drizzle and Prisma, C#'s EF Core
+(`HasMaxLength(n)`) and Kotlin's Exposed. Java and Python generate no such binding; their loaders
+apply the same member-length refusals, and the database column holds the length. Every member must fit. A member
+longer than `@maxLength` is refused at load, and one longer than the project default is refused
+when the column is sized, both as `ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH`, with the member named.
+`@maxLength` beside `@intValueMap` is refused (`ERR_ENUM_MAX_LENGTH_WITH_INT_VALUE_MAP`): an
+int-backed enum's column is an integer. An array of enums stays a `text[]` column.
+Turning a length on for a column that already exists (text to `VARCHAR(n)`) fails on any longer
+row, so `meta migrate` gates it behind `--allow type-change`; turning it off widens the column and
+is allowed. SQLite does not enforce the length, so there is nothing to change there.
+
 **Int-backed storage:** `@intValueMap` switches the DB column from string to integer while
 preserving the string wire format and generated enum type. Keys must match `@values` exactly;
 values must be unique integers. Display labels and native Postgres `ENUM` types remain
@@ -258,9 +303,10 @@ declaration. The `@storage` attr controls how the embedded shape persists.
 
 | `@storage` | Persistence shape | Use case |
 |---|---|---|
-| `flattened` | One DB column per sub-field: `<parent>_<sub>` | EF Core `OwnsOne` / DDD value-objects |
+| `flattened` | One DB column per sub-field: `<prefix><sub>`, the prefix `<parent>_` by default | EF Core `OwnsOne` / DDD value-objects |
 | `jsonb` | One `jsonb` column | Structured-but-evolvable user-defined shapes |
-| `subdocument` (default — back-compat) | Single jsonb column | Pre-`@storage` projects |
+| `subdocument` | Single jsonb column | A hint for document-store targets |
+| not set (the default) | One `jsonb` column, as `jsonb` | Pre-`@storage` projects |
 
 Example: an `Author` with an embedded `Address` flattened to per-sub-field columns:
 
@@ -274,6 +320,35 @@ Example: an `Author` with an embedded `Address` flattened to per-sub-field colum
 
 For `flattened`, the generated table gets `address_street`, `address_city`,
 `address_postal_code` columns instead of one `address` jsonb.
+
+Each member's column is a **prefix** followed by the member's own column (its `@column`, else
+its name under the project's column rule). The prefix defaults to the embedding field's column
+and `_` (`address_`; with `@column: "bill"`, `bill_`; under the `upperFirst` rule, `Address_`,
+EF Core's own default). **`@flattenedColumnPrefix`** on the embedding field replaces it,
+verbatim:
+
+```json
+{ "field.object": { "name": "homeAddress", "@objectRef": "Address", "@storage": "flattened",
+    "@flattenedColumnPrefix": "" } }
+```
+
+gives `street`, `city`, `postal_code`; `"@flattenedColumnPrefix": "home_"` gives `home_street`, and
+so on. The prefix belongs to the embedding field, not the value object, because it is a fact
+about the owning table: one `Address` embedded twice needs two prefixes. Every port names these
+columns through the same core function (`resolveFlattenedColumnName` and its per-port
+equivalents), so `meta migrate`, the Prisma schema, the C# EF mapping and the Kotlin Exposed
+tables agree, and the owning object's names artifact carries each one as a constant
+(`ShipmentNames.ShipToStreetColumn` in C#; see the codegen skill's physical-names reference
+for every port). The field itself has no column constant, because the table has no column of
+that name. On a field whose `@storage` is not `flattened` the attribute is refused at load
+(`ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE`): no other storage gives the members
+columns of their own.
+
+Two member columns that come out the same are refused at load (`ERR_COLUMN_NAME_COLLISION`):
+two embeddings that share a prefix (two `""` embeddings of one `Address` both give `street`), or
+a `""` member beside a field of the same name. When two files both declare the same field (a
+merge, not an `overlay`) with different prefixes, `""` included, the loader reports
+`ERR_MERGE_CONFLICT`.
 
 ## What each port generates
 
@@ -447,6 +522,8 @@ The following conformance fixtures gate this feature's behavior across ports:
 - [`fixtures/conformance/field-object-storage-jsonb-single/`](../../fixtures/conformance/field-object-storage-jsonb-single/) — `@storage=jsonb` single-record column
 - [`fixtures/conformance/field-object-storage-jsonb-array/`](../../fixtures/conformance/field-object-storage-jsonb-array/) — `@storage=jsonb` on array field
 - [`fixtures/conformance/error-field-object-storage-flattened-array/`](../../fixtures/conformance/error-field-object-storage-flattened-array/) — `@storage=flattened` on array field is illegal
+- [`fixtures/conformance/error-field-object-flattened-column-prefix-without-flattened-storage/`](../../fixtures/conformance/error-field-object-flattened-column-prefix-without-flattened-storage/) and [`…-default-storage/`](../../fixtures/conformance/error-field-object-flattened-column-prefix-default-storage/) — `@flattenedColumnPrefix` without `@storage=flattened` is illegal
+- [`fixtures/naming-conformance/physical-names/`](../../fixtures/naming-conformance/physical-names/) — flattened member columns under every column rule, with and without `@flattenedColumnPrefix`
 - [`fixtures/conformance/error-field-object-storage-no-object-ref/`](../../fixtures/conformance/error-field-object-storage-no-object-ref/) — `field.object` without `@objectRef` rejected
 
 Cross-port runner coverage: TS / Java / Kotlin / C# / Python all execute these

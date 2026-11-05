@@ -17,6 +17,10 @@ public static class DbConstants
 {
     /// <summary>Custom DB column name override on a field (source-v2 attr <c>@column</c>).</summary>
     public const string FIELD_ATTR_COLUMN     = "column";
+    /// <summary><c>@flattenedColumnPrefix</c> on a <c>field.object @storage "flattened"</c>: the text before
+    /// each member's column, verbatim (<c>""</c> allowed). Absent: the field's resolved column and
+    /// <c>_</c> (<see cref="MetaObjects.Meta.PhysicalNaming.ResolveFlattenedColumnPrefix(MetaObjects.Core.Field.MetaField)"/>).</summary>
+    public const string FIELD_ATTR_FLATTENED_COLUMN_PREFIX = "flattenedColumnPrefix";
     /// <summary>When true, suppress the @filterable-without-index Loader warning (Project D drift check).</summary>
     public const string FIELD_ATTR_DB_INDEXED = "db.indexed";
 
@@ -45,6 +49,10 @@ public static class DbConstants
     public const string IDENTITY_ATTR_USING            = "using";
     /// <summary>identity.reference: physical FK constraint-name override. Absent =&gt; the auto-derived default.</summary>
     public const string IDENTITY_ATTR_CONSTRAINT_NAME  = "constraintName";
+    /// <summary>identity.primary (@generation "increment"): the sequence's first value. Absent → 1.</summary>
+    public const string IDENTITY_ATTR_SEQUENCE_START   = "sequenceStart";
+    /// <summary>identity.primary (@generation "increment"): the sequence's physical name. Absent → the database's default.</summary>
+    public const string IDENTITY_ATTR_SEQUENCE_NAME    = "sequenceName";
     /// <summary>identity.reference: referential action on parent delete — the explicit per-FK override (ADR-0047).</summary>
     public const string IDENTITY_ATTR_ON_DELETE        = "onDelete";
     /// <summary>identity.reference: referential action on key update — the explicit per-FK override (ADR-0047).</summary>

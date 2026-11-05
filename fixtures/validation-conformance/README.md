@@ -113,11 +113,12 @@ FR-036 pin cases (the two semantic pins + the length-precedence pin):
 
 ## Cross-field validators — `meta.cross-field.json` + `cross-field-cases.json`
 
-A second, separate pair of files pins the four entity-scoped cross-field validators
+A second, separate pair of files pins the five entity-scoped cross-field validators
 (`validator.comparison`, `validator.requiredWhen`, `validator.presentIff`,
-`validator.atLeastOne`) on the generated **full record (create) model**. They are separate files
-so the run-time runners, which read `cases.json`, are unaffected. The entity is `Event`; every field
-is optional, so absence is expressible in every port.
+`validator.atLeastOne`, `validator.exactlyOne`) and their `@condition` on the generated **full
+record (create) model**. They are separate files so the run-time runners, which read `cases.json`,
+are unaffected. There are two entities, `Event` (the unconditional rules) and `Shift` (`exactlyOne`
+and the conditional rules); every field is optional, so absence is expressible in every port.
 
 The semantics mirror the DB `CHECK` derivation in `migrate-ts/src/expected-schema.ts`, with an absent
 or null value standing for SQL `NULL` (and `""` NOT null). One deliberate difference: a comparison the
@@ -129,13 +130,25 @@ can compare the two column types:
   date against a timestamp, is declared on `Event` and must accept a body where the date is later). Two temporals of
   the same subtype are still different kinds when only one carries `@localTime` (`loggedAt lte wallClock`, an
   instant against a wall clock, is skipped the same way). Ordering applies to numerics with each other and to
-  strings and temporals of the same subtype; `eq` / `ne` also apply to two fields of the same boolean,
-  enum, uuid, uri or inet subtype (`ownerId ne approverId` rejects two equal ids).
+  strings, temporals and durations of the same subtype; `eq` / `ne` also apply to two fields of the same boolean,
+  enum, uuid, uri or inet subtype (`ownerId ne approverId` rejects two equal ids). Two durations order by
+  length, not by their text (`Shift.actual lte planned` accepts `PT45M` against `PT1H`); the duration
+  payloads are ISO-8601, and the corpus pins `wire.durations: iso` in its own `.metaobjects/config.json`,
+  which a runner whose port defaults to another form reads.
 - `requiredWhen`: violated only when the gating field equals `@equals` and the target is null; a null
   gate is unconstrained. Both a string gate (`kind = BIRTH`) and a boolean gate (`flag = true`).
 - `presentIff`: the target is present exactly when the gate equals `@equals`; a null gate counts as
   not equal, so the target must be absent.
 - `atLeastOne` (`email`, `phone`): at least one is non-null.
+- `exactlyOne` (`Shift`: `storeId`, `kioskId`): exactly one is non-null; none and both are invalid.
+- `@condition` (`Shift`): the rule is checked only when the condition is TRUE under SQL three-valued
+  logic, since the CHECK is `NOT (condition) OR (rule)`. A false condition and a NULL one (a field it
+  compares is absent) both skip the rule. The cases cover a field-to-field `eq`, `not` over `isNull`,
+  and `and` / `or` / `ne` / `isNull` over a `coalesce` with a literal default. A comparison inside a
+  condition follows the `comparison` rule above: when two fields it reads are of different kinds, the
+  whole rule is left to the database (`lateCallNeedsPhone` compares a date with a timestamp, so a `CALL`
+  without a phone is valid). `eq` / `ne` on two equality-only fields test equality and never order them
+  (`offSiteCallNeedsPhone` compares an IPv4 with an IPv6 address, which have no order, and is enforced).
 - A rule naming a field the create body never carries (`reviewedBy`, `@mutability: readOnly`; likewise a
   derived field or a store-generated key) is skipped, so `review = DONE` without a reviewer is valid.
 
@@ -183,6 +196,16 @@ So the rule is:
 
 Python fuses both (Pydantic construct-or-`ValidationError`); the Java/Kotlin/C#
 runners wrap the bind step so a native-parse failure maps to `valid=false`.
+
+## `field.duration` accepted form
+
+`Account.holdFor` (`field.duration`, OPTIONAL) pins the duration accept/reject verdicts. ACCEPT an
+ISO-8601 duration of days, hours, minutes and seconds (`PT1H30M`, `P1DT2H`, `-PT30S`, `PT0.5S`,
+`PT0S`). REJECT a calendar span (`P1M`, `P1Y`, `P2W`), a clock form (`1:30:00`), a fractional hour
+(`PT1.5H`), lowercase designators, and a `T` with no component (`PT`). The full rule, with the
+canonical form every port writes, is in [`fixtures/duration-wire/`](../duration-wire/); a port
+that binds a native duration type (`TimeSpan`, `java.time.Duration`, `timedelta`) still refuses
+what that type's own parser would accept beyond this form.
 
 ## Run-time runners (TypeScript and Python)
 

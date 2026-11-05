@@ -1,4 +1,5 @@
 import { resolve as resolvePath } from "node:path";
+import { ENUM_LENGTH_HINT, isEnumLengthRefusal } from "../lib/enum-length-refusal.js";
 import { mkdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { spawn } from "node:child_process";
@@ -12,15 +13,22 @@ import { emitStructured, narrate, toonEncode } from "../lib/format.js";
 import { buildKyselyFromUrl, inferDialect, redactUrl } from "../lib/kysely.js";
 import { describeExprCanonPath, shadowSession } from "../lib/shadow.js";
 import { log } from "../lib/log.js";
+import { warnUnenforcedFkTargets } from "../lib/fk-target-warning.js";
 import { loadMemory, resolveCollection, resolveConfigDir, type Collection } from "@metaobjectsdev/sdk";
-import { loadMemoryOptionsFrom, loadMetaobjectsConfig, RemovedNamingConfigError, resolveGenConfigDir } from "../lib/load-metaobjects-config.js";
+import { configNotLoadedWarning, loadMemoryOptionsFrom, loadMetaobjectsConfig, RemovedNamingConfigError, resolveGenConfigDir } from "../lib/load-metaobjects-config.js";
 import { collectionLoadOptions } from "../lib/collection-load-options.js";
+import { schemaBuildOptions, type SchemaBuildOptions } from "../lib/schema-build-options.js";
 import { exclusionNotes, importedOption, migrateScopeMismatch } from "../lib/migrate-scope.js";
 import {
   isBlockedChangesError,
   isPrimaryKeyChangeError,
   isDeclaredRenameError,
   isDuplicateSqlNameError,
+  isInvalidCheckNameError,
+  isFkTargetNotUniqueError,
+  FkTargetNotUniqueError,
+  type FkTargetViolation,
+  isUnknownSchemaConventionsError,
   buildExpectedSchemaWithProvenance,
   scopeExpectedSchema,
   scopedDiffInputs,
@@ -50,6 +58,7 @@ import {
   type AmbiguousResolution,
   type Change,
   type DataHazard,
+  type DiffResult,
   type Dialect,
   type D1Binding,
   type EmitResult,
@@ -69,12 +78,13 @@ import {
   defaultWranglerRunner,
   type WranglerRunner,
 } from "../lib/wrangler.js";
-import { buildProjectionViews } from "@metaobjectsdev/codegen-ts";
+import { buildProjectionViews, type MetaobjectsGenConfig } from "@metaobjectsdev/codegen-ts";
 import { tokensToAllowOptions, blockedEntriesFor, blockedHintLines, viewRecreateNote } from "../lib/allow.js";
 import { reportLoadError } from "../lib/load-error.js";
 import { decimalPrecisionWarnings } from "../lib/decimal-precision-advisory.js";
+import { schemaAdvisoryLines } from "../lib/schema-advisories.js";
 import { scanForReferentialActionConflicts } from "../lib/referential-action-advisory.js";
-import type { MetaData } from "@metaobjectsdev/metadata";
+import type { MetaData, MetaRoot } from "@metaobjectsdev/metadata";
 import { describeError } from "../lib/error-text.js";
 
 /**
@@ -288,10 +298,10 @@ function sqlPreview(sql: { up: string; down: string }): string {
  * child's. Advisory: it never changes the exit code, and a scan that throws is dropped
  * (the schema build itself reports anything wrong with the model).
  */
-function warnReferentialActionConflicts(metadata: MetaData, collection: Collection): void {
+function warnReferentialActionConflicts(metadata: MetaData, collection: Collection, schema: SchemaBuildOptions): void {
   let findings;
   try {
-    findings = scanForReferentialActionConflicts(metadata, { skip: collection.imported });
+    findings = scanForReferentialActionConflicts(metadata, { skip: collection.imported, schema });
   } catch {
     return;
   }
@@ -352,6 +362,16 @@ function mapOnAmbiguous(v: "abort" | "rename" | "drop-add"): AmbiguousResolution
 }
 
 /**
+ * FKs whose target is not a unique key, on tables this run does not govern (imported, or
+ * outside migrate.scope). This project never emits them, so they are reported, not refused.
+ */
+function warnUngovernedFkTargets(violations: readonly FkTargetViolation[] | undefined): void {
+  if (violations === undefined || violations.length === 0) return;
+  log.warn(`migrate: ${new FkTargetNotUniqueError([...violations]).message}`);
+  log.warn(`migrate: the table(s) holding ${violations.length === 1 ? "that foreign key are" : "those foreign keys are"} not governed by this run (imported, or outside migrate.scope), so nothing is refused.`);
+}
+
+/**
  * The report-and-exit for an engine refusal whose message the engine already made
  * actionable — the sibling of `refuseScopeMismatch` above, which is the same decision
  * for scope. The engine's guards (`isPrimaryKeyChangeError` et al.) narrow at the catch
@@ -363,12 +383,45 @@ function refuseEngineError(err: Error, hint: string, fmt: OutputFormat): number 
   return 1;
 }
 
+const SCHEMA_CONVENTIONS_HINT =
+  "set migrate.conventions in .metaobjects/config.json to one of the presets, or supply your own conventions from metaobjects.config.ts";
+
+/**
+ * The project's schema settings (`migrate.conventions`, a conventions object from
+ * `metaobjects.config.ts`, `migrate.checks`), or exit 2 after naming the config error: a
+ * preset this version does not ship, or a conventions object missing a member.
+ */
+function resolveSchemaBuild(
+  collection: Collection,
+  genConfig: MetaobjectsGenConfig | undefined,
+  fmt: OutputFormat,
+): SchemaBuildOptions | number {
+  try {
+    return schemaBuildOptions(collection, genConfig);
+  } catch (err) {
+    if (!isUnknownSchemaConventionsError(err)) throw err;
+    refuseEngineError(err, SCHEMA_CONVENTIONS_HINT, fmt);
+    return 2;
+  }
+}
+
 const PK_CHANGE_HINT =
   "align the primary key manually, or reconcile the metadata identity to match the live table";
 const DUPLICATE_SQL_NAME_HINT =
   "rename one of the colliding declarations; an index's database name is its identity.secondary / index.lookup name, not prefixed with its table";
+const CHECK_NAME_HINT =
+  "give each constraint on a table its own @constraintName, at most 63 bytes";
+const FK_TARGET_NOT_UNIQUE_HINT =
+  "declare an identity.secondary on the target entity with exactly the referenced fields, or reference its primary key";
 const DECLARED_RENAME_HINT =
   "fix or remove the --rename-table / --rename-column flag; a table's name is its name in the metadata (the new name when it is renamed too)";
+
+/** Print the diff's advice that is not drift (`schemaAdvisoryLines`), one warning each. */
+function warnAdvisories(advisories: DiffResult["advisories"] | undefined): string[] {
+  const lines = schemaAdvisoryLines(advisories);
+  for (const w of lines) log.warn(`migrate: ${w}`);
+  return lines;
+}
 
 /**
  * Warn about changes that apply to an empty table and fail on a populated one. Warn, not
@@ -736,13 +789,17 @@ export async function migrateCommand(
   // providers. Column naming is not read here: it is `naming` in
   // `.metaobjects/config.json`, set on the loaded root (ADR-0058).
   let postgresLoadOptions: ReturnType<typeof loadMemoryOptionsFrom> = {};
+  let postgresGenConfig: MetaobjectsGenConfig | undefined;
   try {
-    postgresLoadOptions = loadMemoryOptionsFrom(await loadMetaobjectsConfig(genRoot));
+    postgresGenConfig = await loadMetaobjectsConfig(genRoot);
+    postgresLoadOptions = loadMemoryOptionsFrom(postgresGenConfig);
   } catch (e) {
     if (e instanceof RemovedNamingConfigError) {
       log.error(e.message);
       return 2;
     }
+    const warning = configNotLoadedWarning(genRoot, e, "migrate");
+    if (warning !== undefined) log.warn(warning);
     postgresLoadOptions = {};
   }
 
@@ -759,6 +816,9 @@ export async function migrateCommand(
     return 2;
   }
 
+  const schema = resolveSchemaBuild(collection, postgresGenConfig, fmt);
+  if (typeof schema === "number") return schema;
+
   let metadata;
   try {
     metadata = await loadMemory(collection.configDir, {
@@ -769,7 +829,7 @@ export async function migrateCommand(
     reportLoadError(log, "failed to load metadata", err);
     return 1;
   }
-  warnReferentialActionConflicts(metadata, collection);
+  warnReferentialActionConflicts(metadata, collection, schema);
 
   let kysely;
   try {
@@ -806,6 +866,7 @@ export async function migrateCommand(
     // there is no separate view-migration emitter.
     const expectedViews = buildProjectionViews(metadata, { dialect: kysely.dialect });
     const built = buildExpectedSchemaWithProvenance(metadata, {
+      ...schema,
       dialect: kysely.dialect,
       views: expectedViews,
     });
@@ -818,6 +879,8 @@ export async function migrateCommand(
     const scoped = scopeExpectedSchema(built, collection.inMigrateScope, importedOption(collection));
     const expected = scoped.snapshot;
     logOutOfScope(scoped.outOfScope, scoped.importedOutOfScope ?? [], fmt);
+    warnUngovernedFkTargets(scoped.ungovernedFkTargetViolations);
+    warnUnenforcedFkTargets("migrate", scoped.unenforcedFkTargetViolations);
     let actual;
     try {
       actual = await introspect(kysely.db, kysely.dialect);
@@ -916,7 +979,7 @@ export async function migrateCommand(
     }
 
     changeCounts = summarizeChanges(diffResult.changes);
-    hazardWarnings = warnDataHazards(diffResult.hazards);
+    hazardWarnings = [...warnDataHazards(diffResult.hazards), ...warnAdvisories(diffResult.advisories)];
 
     // #313 — refuse to AUTHOR a drop for an object the committed snapshot never
     // contained. This path diffs metadata against introspection and never reads the
@@ -1151,6 +1214,12 @@ export async function migrateCommand(
     if (err instanceof AlreadyEmittedError) return err.exitCode;
     // A metadata defect, not a tool failure: two declarations generate one database name.
     if (isDuplicateSqlNameError(err)) return refuseEngineError(err, DUPLICATE_SQL_NAME_HINT, fmt);
+    // A metadata defect too: a declared CHECK name that duplicates another constraint or is too long.
+    if (isInvalidCheckNameError(err)) return refuseEngineError(err, CHECK_NAME_HINT, fmt);
+    // A metadata defect too: a foreign key whose target columns are not a unique key there.
+    if (isFkTargetNotUniqueError(err)) return refuseEngineError(err, FK_TARGET_NOT_UNIQUE_HINT, fmt);
+    // A metadata defect too: an enum member longer than the project's enums.maxLength.
+    if (isEnumLengthRefusal(err)) return refuseEngineError(err, ENUM_LENGTH_HINT, fmt);
     // Unexpected error: emit structured error on stdout in the active format, then exit 1.
     const msg = describeError(err) ?? String(err);
     log.error(`migrate: unexpected error: ${msg}`);
@@ -1167,20 +1236,28 @@ export async function migrateCommand(
  *
  * Throws what loading throws; a `RemovedNamingConfigError` from the config propagates unchanged.
  */
-async function loadBaselineMetadata(metaRoot: string, genRoot: string) {
+async function loadBaselineMetadata(
+  metaRoot: string,
+  genRoot: string,
+): Promise<{ metadata: MetaRoot; schema: SchemaBuildOptions }> {
   let baselineLoadOptions: ReturnType<typeof loadMemoryOptionsFrom> = {};
+  let cfg: MetaobjectsGenConfig | undefined;
   try {
-    const cfg = await loadMetaobjectsConfig(genRoot);
+    cfg = await loadMetaobjectsConfig(genRoot);
     baselineLoadOptions = loadMemoryOptionsFrom(cfg);
   } catch (e) {
     if (e instanceof RemovedNamingConfigError) throw e;
     // config absent — no custom providers, no libraries, default snake_case
+    const warning = configNotLoadedWarning(genRoot, e, "migrate");
+    if (warning !== undefined) log.warn(warning);
   }
   const collection = await resolveCollection(metaRoot);
-  return await loadMemory(collection.configDir, {
+  const schema = schemaBuildOptions(collection, cfg);
+  const metadata = await loadMemory(collection.configDir, {
     ...collectionLoadOptions(collection),
     ...baselineLoadOptions,
   });
+  return { metadata, schema };
 }
 
 /**
@@ -1201,8 +1278,8 @@ async function withGeneratedSpelling(
 ): Promise<{ snapshot: SchemaSnapshot; path?: ExprCanonPath; shadowUnavailable?: string }> {
   let expected: SchemaSnapshot;
   try {
-    const metadata = await loadBaselineMetadata(metaRoot, genRoot);
-    expected = baselineFromMetadata(metadata, dialect, buildProjectionViews(metadata, { dialect }));
+    const { metadata, schema } = await loadBaselineMetadata(metaRoot, genRoot);
+    expected = baselineFromMetadata(metadata, dialect, buildProjectionViews(metadata, { dialect }), schema);
   } catch {
     return { snapshot };
   }
@@ -1313,18 +1390,23 @@ export async function runBaseline(
     // would delete the entry, and removing the scope later would then propose
     // CREATE TABLE for a table that exists.
     let metadata;
+    let schema;
     try {
-      metadata = await loadBaselineMetadata(metaRoot, genRoot);
+      ({ metadata, schema } = await loadBaselineMetadata(metaRoot, genRoot));
     } catch (err) {
       if (err instanceof RemovedNamingConfigError) {
         log.error(err.message);
+        return 2;
+      }
+      if (isUnknownSchemaConventionsError(err)) {
+        refuseEngineError(err, SCHEMA_CONVENTIONS_HINT, fmt);
         return 2;
       }
       reportLoadError(log, "migrate baseline: failed to load metadata", err);
       return 1;
     }
     const baselineViews = buildProjectionViews(metadata, { dialect: config.dialect });
-    snapshot = baselineFromMetadata(metadata, config.dialect, baselineViews);
+    snapshot = baselineFromMetadata(metadata, config.dialect, baselineViews, schema);
   }
 
   if (config.dryRun) {
@@ -1463,15 +1545,18 @@ export async function runOfflineGenerate(
   // mirroring the DB path (and `meta gen`) so offline generate resolves
   // config-registered custom subtypes too (#157).
   let offlineLoadOptions: ReturnType<typeof loadMemoryOptionsFrom> = {};
+  let offlineGenConfig: MetaobjectsGenConfig | undefined;
   try {
-    const cfg = await loadMetaobjectsConfig(genRoot);
-    offlineLoadOptions = loadMemoryOptionsFrom(cfg);
+    offlineGenConfig = await loadMetaobjectsConfig(genRoot);
+    offlineLoadOptions = loadMemoryOptionsFrom(offlineGenConfig);
   } catch (e) {
     if (e instanceof RemovedNamingConfigError) {
       log.error(e.message);
       return 2;
     }
     // config absent — no custom providers, no libraries, default snake_case
+    const warning = configNotLoadedWarning(genRoot, e, "migrate");
+    if (warning !== undefined) log.warn(warning);
   }
 
   let metadata;
@@ -1486,7 +1571,9 @@ export async function runOfflineGenerate(
     reportLoadError(log, "migrate: failed to load metadata", err);
     return 1;
   }
-  warnReferentialActionConflicts(metadata, collection);
+  const schema = resolveSchemaBuild(collection, offlineGenConfig, fmt);
+  if (typeof schema === "number") return schema;
+  warnReferentialActionConflicts(metadata, collection, schema);
   warnDecimalPrecision(metadata, collection, config.dialect);
 
   const offlineDialect = config.dialect;
@@ -1494,6 +1581,7 @@ export async function runOfflineGenerate(
   const scopeRc = refuseScopeMismatch(
     collection,
     () => buildExpectedSchemaWithProvenance(metadata, {
+      ...schema,
       dialect: offlineDialect,
       views: offlineViews,
     }).provenance,
@@ -1534,6 +1622,7 @@ export async function runOfflineGenerate(
   let plan;
   try {
     plan = await planOffline({
+      ...schema,
       metadata,
       dialect: config.dialect,
       snapshot,
@@ -1594,7 +1683,7 @@ export async function runOfflineGenerate(
     finishMigrate(fmt, [`migrate: no changes`, ...narratedNotes(offlineNotes)], migrateResultToData(offlineResult({})));
     return 0;
   }
-  const offlineWarnings = warnDataHazards(diffResult.hazards);
+  const offlineWarnings = [...warnDataHazards(diffResult.hazards), ...warnAdvisories(diffResult.advisories)];
 
   const emitResult = emit(diffResult.changes, {
     dialect: config.dialect,
@@ -1761,13 +1850,17 @@ async function runD1Migrate(
   // 3. Load metadata. Best-effort config read for consumer providers; falls
   //    back to default core+forge bundle if metaobjects.config.ts is absent.
   let d1LoadOptions: ReturnType<typeof loadMemoryOptionsFrom> = {};
+  let d1GenConfig: MetaobjectsGenConfig | undefined;
   try {
-    d1LoadOptions = loadMemoryOptionsFrom(await loadMetaobjectsConfig(genRoot));
+    d1GenConfig = await loadMetaobjectsConfig(genRoot);
+    d1LoadOptions = loadMemoryOptionsFrom(d1GenConfig);
   } catch (e) {
     if (e instanceof RemovedNamingConfigError) {
       log.error(e.message);
       return 2;
     }
+    const warning = configNotLoadedWarning(genRoot, e, "migrate");
+    if (warning !== undefined) log.warn(warning);
     d1LoadOptions = {};
   }
 
@@ -1792,18 +1885,22 @@ async function runD1Migrate(
     reportLoadError(log, "migrate: failed to load metadata", err);
     return 1;
   }
-  warnReferentialActionConflicts(metadata, collection);
+  const schema = resolveSchemaBuild(collection, d1GenConfig, fmt);
+  if (typeof schema === "number") return schema;
+  warnReferentialActionConflicts(metadata, collection, schema);
   warnDecimalPrecision(metadata, collection, "d1");
 
   // 4. Build expected schema + introspect actual.
   const expectedViews = buildProjectionViews(metadata, { dialect: "d1" });
-  const built = buildExpectedSchemaWithProvenance(metadata, { dialect: "d1", views: expectedViews });
+  const built = buildExpectedSchemaWithProvenance(metadata, { ...schema, dialect: "d1", views: expectedViews });
   const scopeRc = refuseScopeMismatch(collection, () => built.provenance, fmt);
   if (scopeRc !== undefined) return scopeRc;
   // Per-command scope — both-sided, exactly as on the Kysely path above.
   const scoped = scopeExpectedSchema(built, collection.inMigrateScope, importedOption(collection));
   const expected = scoped.snapshot;
   logOutOfScope(scoped.outOfScope, scoped.importedOutOfScope ?? [], fmt);
+  warnUngovernedFkTargets(scoped.ungovernedFkTargetViolations);
+  warnUnenforcedFkTargets("migrate", scoped.unenforcedFkTargetViolations);
   let actual;
   try {
     actual = await introspectD1({

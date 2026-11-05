@@ -14,6 +14,7 @@ import {
   VALIDATOR_SUBTYPE_PRESENT_IFF, VALIDATOR_SUBTYPE_AT_LEAST_ONE,
   VALIDATOR_ATTR_LEFT, VALIDATOR_ATTR_OP, VALIDATOR_ATTR_RIGHT,
   VALIDATOR_ATTR_FIELD, VALIDATOR_ATTR_WHEN, VALIDATOR_ATTR_EQUALS, VALIDATOR_ATTR_FIELDS,
+  VALIDATOR_ATTR_CONDITION, FIELD_SUBTYPE_DATE, FIELD_SUBTYPE_TIMESTAMP, FIELD_SUBTYPE_DURATION,
 } from "@metaobjectsdev/metadata";
 import type { AttrValue, MetaField, MetaObject } from "@metaobjectsdev/metadata";
 import { meta, metaObject, metaField } from "./_meta-build.js";
@@ -115,6 +116,47 @@ describe("cross-field validators on the insert schema", () => {
     const mod = await executeGenerated(renderZodValidators(e).toString());
     expect(mod.ArrInsertSchema.safeParse({ nums: [1, 2], b: 5 }).success).toBe(true);
     expect(mod.ArrInsertSchema.safeParse({ nums: [1], b: 0 }).success).toBe(true);
+  });
+
+  test("a rule left to the database declares no helper: nothing unused reaches the schema", async () => {
+    // Each rule below asks for a helper and is then dropped: its condition compares a date with a
+    // timestamp, which has no order. The one rule kept needs no helper.
+    const crossKind = { op: "gt", left: { field: "d" }, right: { field: "t" } };
+    const e = entityWith("Kept", [
+      f(FIELD_SUBTYPE_INT, "a"), f(FIELD_SUBTYPE_INT, "b"), f(FIELD_SUBTYPE_DATE, "d"),
+      f(FIELD_SUBTYPE_TIMESTAMP, "t"), f(FIELD_SUBTYPE_DURATION, "p"), f(FIELD_SUBTYPE_DURATION, "q"),
+      f(FIELD_SUBTYPE_STRING, "kind"), f(FIELD_SUBTYPE_STRING, "note"),
+    ], [
+      validator(VALIDATOR_SUBTYPE_AT_LEAST_ONE, "and", {
+        [VALIDATOR_ATTR_FIELDS]: ["note"],
+        [VALIDATOR_ATTR_CONDITION]: { op: "and", args: [{ op: "gt", left: { field: "a" }, right: { field: "b" } }, crossKind] },
+      }),
+      validator(VALIDATOR_SUBTYPE_COMPARISON, "span", {
+        [VALIDATOR_ATTR_LEFT]: "p", [VALIDATOR_ATTR_OP]: "lte", [VALIDATOR_ATTR_RIGHT]: "q", [VALIDATOR_ATTR_CONDITION]: crossKind,
+      }),
+      validator(VALIDATOR_SUBTYPE_REQUIRED_WHEN, "rw", { [VALIDATOR_ATTR_FIELD]: "note", [VALIDATOR_ATTR_WHEN]: "kind", [VALIDATOR_ATTR_EQUALS]: "X" }),
+    ]);
+    const out = renderZodValidators(e).toString();
+    expect(out).toContain(".superRefine(");
+    expect(out).not.toContain("const cmp = ");
+    expect(out).not.toContain("const all = ");
+    expect(out).not.toContain("const micros = (d");
+  });
+
+  test("two durations compare by length, and text that is no duration is unchecked like a null side", async () => {
+    const e = entityWith("Span", [f(FIELD_SUBTYPE_DURATION, "p"), f(FIELD_SUBTYPE_DURATION, "q")], [
+      validator(VALIDATOR_SUBTYPE_COMPARISON, "span", { [VALIDATOR_ATTR_LEFT]: "p", [VALIDATOR_ATTR_OP]: "lte", [VALIDATOR_ATTR_RIGHT]: "q" }),
+    ]);
+    const out = renderZodValidators(e).toString();
+    // The refinement's parser accepts only what the field's own schema accepts: no bare `P`, `PT`
+    // or `P1DT`, so text that is no duration reads as null (unchecked) rather than as a zero span.
+    const parser = out.slice(out.indexOf("const micros = (d"));
+    expect(parser).toContain("P(?!$)");
+    expect(parser).toContain("T(?=\\d)");
+    expect(parser).not.toContain("?? 0) - (micros(");
+    const mod = await executeGenerated(out);
+    expect(mod.SpanInsertSchema.safeParse({ p: "PT1H30M", q: "PT1H" }).success).toBe(false);
+    expect(mod.SpanInsertSchema.safeParse({ p: "PT45M", q: "PT1H" }).success).toBe(true);
   });
 
   test("numeric @equals compares numerically against the gate field", async () => {

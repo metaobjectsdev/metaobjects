@@ -48,7 +48,7 @@ public sealed class ValidationConformanceTests
     [Fact]
     public void Discovers_all_validation_conformance_cases()
     {
-        Assert.Equal(42, Cases().Count());
+        Assert.Equal(54, Cases().Count());
     }
 
     [Theory]
@@ -117,6 +117,8 @@ public sealed class ValidationConformanceTests
                 new FileSource(Path.Combine(CorpusDir(), "meta.json")),
             ]);
             Assert.Empty(loadResult.Errors);
+            // The corpus cases state durations in ISO-8601, the cross-port wire form.
+            loadResult.Root.WireFormat = WireFormat.Default with { Durations = DurationWireForm.Iso };
 
             var ctx = new GenContext
             {

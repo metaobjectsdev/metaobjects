@@ -12,7 +12,7 @@
 //       decimal  → @precision, @scale
 //       object   → @objectRef
 //       currency → @currency
-//       enum     → @values, @provided, @intValueMap
+//       enum     → @values, @provided, @intValueMap, @maxLength
 //       int/long/double/float/boolean/date/time/timestamp/uuid → none
 //   - the "any attr" wildcard is gone; a misplaced attr is now ERR_UNKNOWN_ATTR.
 //
@@ -104,11 +104,19 @@ const ENUM_CORE_EXTRA: Record<string, AttrExp> = {
   values: { valueType: "string", required: true },
   provided: { valueType: "boolean", required: false },
   intValueMap: { valueType: "intMap", required: false },
+  // The column length of a string-stored enum (refused beside @intValueMap at load).
+  maxLength: { valueType: "int", required: false },
+};
+
+// db provider: the name of the CHECK an enum's member list generates.
+const ENUM_DB_EXTRA: Record<string, AttrExp> = {
+  constraintName: { valueType: "string", required: false },
 };
 
 /** Scoped concern attrs (db / prompt). */
 const STORAGE_EXTRA: Record<string, AttrExp> = {
   storage: { valueType: "string", required: false },
+  flattenedColumnPrefix: { valueType: "string", required: false },
 };
 const AUTO_SET_EXTRA: Record<string, AttrExp> = {
   autoSet: { valueType: "string", required: false },
@@ -154,6 +162,8 @@ const EXPECTED_DATA_TYPE: Record<string, string> = {
   // ADR-0036/0037 Wave 3 — uri/inet bind to TS string.
   uri: "string",
   inet: "string",
+  // a fixed-length duration binds to TS string (an ISO-8601 duration).
+  duration: "string",
 };
 
 function expectedAttrsFor(subType: string): Record<string, AttrExp> {
@@ -163,7 +173,7 @@ function expectedAttrsFor(subType: string): Record<string, AttrExp> {
   if (subType === FIELD_SUBTYPE_OBJECT) Object.assign(exp, OBJECT_CORE_EXTRA, STORAGE_EXTRA);
   if (subType === FIELD_SUBTYPE_MAP) Object.assign(exp, MAP_EXTRA);
   if (subType === FIELD_SUBTYPE_CURRENCY) Object.assign(exp, CURRENCY_EXTRA);
-  if (subType === FIELD_SUBTYPE_ENUM) Object.assign(exp, ENUM_CORE_EXTRA, ENUM_PROMPT_EXTRA);
+  if (subType === FIELD_SUBTYPE_ENUM) Object.assign(exp, ENUM_CORE_EXTRA, ENUM_PROMPT_EXTRA, ENUM_DB_EXTRA);
   if (TEMPORAL.has(subType)) Object.assign(exp, AUTO_SET_EXTRA);
   if (subType === FIELD_SUBTYPE_TIMESTAMP) Object.assign(exp, LOCAL_TIME_EXTRA);
   if (subType === "uri" || subType === "inet") Object.assign(exp, LENIENT_EXTRA);
@@ -171,7 +181,7 @@ function expectedAttrsFor(subType: string): Record<string, AttrExp> {
 }
 
 describe("field provider externalization — strict per-subtype completeness", () => {
-  test("registers all 18 field subtypes", () => {
+  test("registers all 19 field subtypes", () => {
     const registered = registry.allSubTypesOf(TYPE_FIELD).sort();
     expect(registered).toEqual([...FIELD_SUBTYPES].sort());
   });

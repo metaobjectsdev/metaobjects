@@ -2090,6 +2090,290 @@ public static partial class ValidationPasses
         }
     }
 
+    // ---------------------------------------------------------------------------
+    // Cross-field validators (comparison / requiredWhen / presentIff / atLeastOne / exactlyOne),
+    // which the database enforces as CHECKs (ERR_BAD_ATTR_VALUE): exactlyOne @fields names two or
+    // more fields (one is just a required field); every field a @condition names is a field of the owning entity;
+    // a requiredWhen / presentIff @equals gating a field.duration is an ISO-8601 duration;
+    // and the @condition can become a CHECK guard (ConditionProblem). Read RESOLVING
+    // (ADR-0039). Mirrors TS validateCrossFieldValidators.
+    // ---------------------------------------------------------------------------
+    private static readonly HashSet<string> CrossFieldValidatorSubtypes = new(StringComparer.Ordinal)
+    {
+        VALIDATOR_SUBTYPE_COMPARISON, VALIDATOR_SUBTYPE_REQUIRED_WHEN,
+        VALIDATOR_SUBTYPE_PRESENT_IFF, VALIDATOR_SUBTYPE_AT_LEAST_ONE, VALIDATOR_SUBTYPE_EXACTLY_ONE,
+    };
+
+    public static IReadOnlyList<MetaError> ValidateCrossFieldValidators(MetaData root)
+    {
+        var errors = new List<MetaError>();
+        foreach (var obj in root.Children().OfType<MetaObject>())
+        {
+            var fieldNames = obj.Fields().Select(f => f.Name).ToHashSet(StringComparer.Ordinal);
+            foreach (var v in obj.OwnChildren().Where(c => c.Type == TYPE_VALIDATOR && CrossFieldValidatorSubtypes.Contains(c.SubType)))
+            {
+                if (v.SubType == VALIDATOR_SUBTYPE_EXACTLY_ONE)
+                {
+                    var fields = v.Attr(VALIDATOR_ATTR_FIELDS) switch
+                    {
+                        string s => 1,
+                        IReadOnlyList<string> ss => ss.Count,
+                        IReadOnlyList<object?> os => os.Count,
+                        _ => 0,
+                    };
+                    if (fields < 2)
+                    {
+                        errors.Add(new MetaError(
+                            $"validator.exactlyOne \"{obj.Name}.{v.Name}\" @fields names {fields} field{(fields == 1 ? "" : "s")}; " +
+                            "it needs two or more. For one field, make that field required.",
+                            ErrorCode.ERR_BAD_ATTR_VALUE,
+                            Envelope: v.Source));
+                        continue;
+                    }
+                }
+                if (v.SubType == VALIDATOR_SUBTYPE_REQUIRED_WHEN || v.SubType == VALIDATOR_SUBTYPE_PRESENT_IFF)
+                {
+                    var whenName = v.Attr(VALIDATOR_ATTR_WHEN) as string;
+                    var when = obj.Fields().FirstOrDefault(f => f.Name == whenName);
+                    var equals = v.Attr(VALIDATOR_ATTR_EQUALS);
+                    if (when?.SubType == FIELD_SUBTYPE_DURATION && !(equals is string e && DurationLiteral.IsMatch(e)))
+                    {
+                        errors.Add(new MetaError(
+                            $"validator.{v.SubType} \"{obj.Name}.{v.Name}\" @equals {JsonStringify(equals)} gates field.duration " +
+                            $"\"{when.Name}\"; it needs {DurationLiteralForm}.",
+                            ErrorCode.ERR_BAD_ATTR_VALUE,
+                            Envelope: v.Source));
+                        continue;
+                    }
+                }
+                var condition = v.Attr(VALIDATOR_ATTR_CONDITION);
+                if (condition is null) continue;
+                var label = $"validator.{v.SubType} \"{obj.Name}.{v.Name}\" @condition";
+                var unknown = MetaObjects.Core.Attr.ExpressionGrammar.FieldRefs(condition)
+                    .Distinct(StringComparer.Ordinal).Where(f => !fieldNames.Contains(f))
+                    .OrderBy(f => f, StringComparer.Ordinal).ToList();
+                if (unknown.Count > 0)
+                {
+                    errors.Add(new MetaError(
+                        $"{label} names {string.Join(", ", unknown.Select(f => $"\"{f}\""))}, " +
+                        $"which {(unknown.Count == 1 ? "is not a field" : "are not fields")} of \"{obj.Name}\".",
+                        ErrorCode.ERR_BAD_ATTR_VALUE,
+                        Envelope: v.Source));
+                    continue;
+                }
+                if (ConditionProblem(condition, obj) is { } problem)
+                {
+                    errors.Add(new MetaError($"{label} {problem}", ErrorCode.ERR_BAD_ATTR_VALUE, Envelope: v.Source));
+                }
+            }
+        }
+        return errors;
+    }
+
+    /// <summary>The accepted ISO-8601 duration form, the same pattern as TS DURATION_PATTERN.</summary>
+    private static readonly Regex DurationLiteral =
+        new(@"^[-+]?P(?!\z)([0-9]+W)?([0-9]+D)?(T(?=[0-9])([0-9]+H)?([0-9]+M)?([0-9]+(\.[0-9]+)?S)?)?\z", RegexOptions.CultureInvariant);
+
+    /// <summary>What a literal compared with a field.duration must be.</summary>
+    private const string DurationLiteralForm = "an ISO-8601 duration (such as PT1H30M; no years or months)";
+
+    /// <summary>Field subtypes whose values a condition compares with a number literal.</summary>
+    private static readonly HashSet<string> ConditionNumberSubtypes = new(StringComparer.Ordinal)
+    {
+        FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT,
+        FIELD_SUBTYPE_DECIMAL, FIELD_SUBTYPE_CURRENCY,
+    };
+
+    /// <summary>
+    /// Why a cross-field validator's <c>@condition</c> cannot become a CHECK guard, or null when
+    /// it can. Its names are already known to be fields. The rule, the same in every port:
+    /// it types cleanly (the origin.computed inference) and its root is boolean, since a CHECK
+    /// negates it; a literal compared with a field is of that field's kind (a boolean for
+    /// field.boolean, a number for a numeric field, a string otherwise) and, for field.enum, one
+    /// of its @values, for field.duration, an ISO-8601 duration; and no comparison has a null literal (<c>x = NULL</c> is never true, so
+    /// use isNull / isNotNull). Mirrors TS conditionProblem.
+    /// </summary>
+    private static string? ConditionProblem(object condition, MetaObject obj)
+    {
+        var fields = new Dictionary<string, MetaField>(StringComparer.Ordinal);
+        foreach (var f in obj.Fields()) fields.TryAdd(f.Name, f);
+        var inferred = MetaObjects.Core.Attr.ExpressionGrammar.InferExprType(
+            condition, name => fields.TryGetValue(name, out var f) ? f.SubType : null);
+        if (inferred.Errors.Count > 0) return $"is not a valid expression: {string.Join("; ", inferred.Errors)}.";
+        if (inferred.Type != FIELD_SUBTYPE_BOOLEAN)
+        {
+            return $"must be a boolean expression (a comparison, a null test, or and / or / not of them), not a field.{inferred.Type ?? "undefined"}.";
+        }
+        string? problem = null;
+        void Visit(object? node)
+        {
+            if (problem is not null || node is not IReadOnlyDictionary<string, object?> n) return;
+            if (n.TryGetValue("left", out var left) && left is not null && n.TryGetValue("right", out var right) && right is not null)
+            {
+                foreach (var (a, b) in new[] { (left, right), (right, left) })
+                {
+                    if (a is not IReadOnlyDictionary<string, object?> lit || !lit.TryGetValue("value", out var value)) continue;
+                    if (value is null)
+                    {
+                        problem = "compares with null, which is never true: use isNull or isNotNull.";
+                        return;
+                    }
+                    if (b is not IReadOnlyDictionary<string, object?> refNode
+                        || !refNode.TryGetValue("field", out var refName) || refName is not string name
+                        || !fields.TryGetValue(name, out var field))
+                    {
+                        continue;
+                    }
+                    var kind = field.SubType == FIELD_SUBTYPE_BOOLEAN ? "boolean"
+                        : ConditionNumberSubtypes.Contains(field.SubType) ? "number" : "string";
+                    var actual = value switch
+                    {
+                        bool => "boolean",
+                        long or int or double => "number",
+                        string => "string",
+                        _ => null,
+                    };
+                    if (actual != kind)
+                    {
+                        problem = $"compares \"{field.Name}\" (field.{field.SubType}) with {JsonStringify(value)}; it needs a {kind}.";
+                        return;
+                    }
+                    var members = field.SubType == FIELD_SUBTYPE_ENUM ? field.EffectiveEnumValues : null;
+                    if (members is not null && !members.Contains(Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture), StringComparer.Ordinal))
+                    {
+                        problem = $"compares \"{field.Name}\" with {JsonStringify(value)}, which is not one of its @values ({string.Join(", ", members)}).";
+                        return;
+                    }
+                    if (field.SubType == FIELD_SUBTYPE_DURATION && !DurationLiteral.IsMatch((string)value))
+                    {
+                        problem = $"compares \"{field.Name}\" with {JsonStringify(value)}, which is not {DurationLiteralForm}.";
+                        return;
+                    }
+                }
+            }
+            n.TryGetValue("left", out var l);
+            Visit(l);
+            n.TryGetValue("right", out var r);
+            Visit(r);
+            n.TryGetValue("arg", out var g);
+            Visit(g);
+            if (n.TryGetValue("args", out var args) && args is IEnumerable<object?> list)
+            {
+                foreach (var x in list) Visit(x);
+            }
+        }
+        Visit(condition);
+        return problem;
+    }
+
+    // ---------------------------------------------------------------------------
+    // identity.primary @sequenceStart / @sequenceName describe the sequence an @generation
+    // "increment" key draws from; on any other generation there is none, so either one is
+    // refused (ERR_SEQUENCE_WITHOUT_INCREMENT). Read RESOLVING (ADR-0039), reported on the
+    // identity that declares one of them. Mirrors TS validateIdentitySequence.
+    // ---------------------------------------------------------------------------
+    public static IReadOnlyList<MetaError> ValidateIdentitySequence(MetaData root)
+    {
+        var errors = new List<MetaError>();
+        foreach (var obj in root.Children().Where(c => c.Type == TYPE_OBJECT))
+        {
+            foreach (var id in obj.OwnChildren().Where(c => c.Type == TYPE_IDENTITY && c.SubType == IDENTITY_SUBTYPE_PRIMARY))
+            {
+                var declared = new[] { MetaObjects.Persistence.Db.DbConstants.IDENTITY_ATTR_SEQUENCE_START, MetaObjects.Persistence.Db.DbConstants.IDENTITY_ATTR_SEQUENCE_NAME }
+                    .Where(a => id.OwnAttr(a) is not null).ToList();
+                var generation = id.Attr(IDENTITY_ATTR_GENERATION) as string;
+                if (declared.Count == 0) continue;
+                if (generation == GENERATION_INCREMENT)
+                {
+                    // The key field's own range bounds the start (Postgres refuses the sequence
+                    // otherwise, at apply time): 1 to the largest value of a field.int / field.long.
+                    if (id.Attr(MetaObjects.Persistence.Db.DbConstants.IDENTITY_ATTR_SEQUENCE_START) is long start)
+                    {
+                        var keyName = id.Attr(IDENTITY_ATTR_FIELDS) switch
+                        {
+                            string s => s,
+                            IReadOnlyList<string> ss => ss.FirstOrDefault(),
+                            IReadOnlyList<object?> os => os.FirstOrDefault() as string,
+                            _ => null,
+                        };
+                        var key = (obj as MetaObject)?.Fields().FirstOrDefault(f => f.Name == keyName);
+                        long? max = key?.SubType == FIELD_SUBTYPE_INT ? int.MaxValue : null;
+                        if (start < 1 || (max is { } m && start > m))
+                        {
+                            errors.Add(new MetaError(
+                                $"identity.primary \"{obj.Name}.{id.Name}\" @sequenceStart {start} is out of range for its key " +
+                                $"\"{keyName}\"{(key is not null ? $" (field.{key.SubType})" : "")}: it must be at least 1" +
+                                $"{(max is { } mx ? $" and at most {mx}" : "")}.",
+                                ErrorCode.ERR_SEQUENCE_START_OUT_OF_RANGE,
+                                Envelope: id.Source));
+                        }
+                    }
+                    continue;
+                }
+                var shown = generation is null ? "not set" : $"\"{generation}\"";
+                var names = string.Join(" and ", declared.Select(a => "@" + a));
+                errors.Add(new MetaError(
+                    $"identity.primary \"{obj.Name}.{id.Name}\" sets {names}, but its @generation is {shown}; " +
+                    $"only an @generation \"increment\" key draws from a sequence. Set @generation \"increment\", or remove {names}.",
+                    ErrorCode.ERR_SEQUENCE_WITHOUT_INCREMENT,
+                    Envelope: id.Source));
+            }
+        }
+        return errors;
+    }
+
+    // ---------------------------------------------------------------------------
+    // field.enum @maxLength — the column length of a string-stored enum:
+    //   1. every member of @values fits in it (ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH), the
+    //      longest offender named;
+    //   2. it is refused beside @intValueMap (ERR_ENUM_MAX_LENGTH_WITH_INT_VALUE_MAP): an
+    //      int-stored enum's column is an integer, so a length would change nothing.
+    // Read RESOLVING (ADR-0039), reported on the node that DECLARES one of the three, so an
+    // enum that only inherits them is not reported twice. Every field.enum in the tree is
+    // checked, root-level abstract enums included. Mirrors TS validateEnumMaxLength.
+    // ---------------------------------------------------------------------------
+    public static IReadOnlyList<MetaError> ValidateEnumMaxLength(MetaData root)
+    {
+        var errors = new List<MetaError>();
+        void Visit(MetaData node)
+        {
+            foreach (var child in node.OwnChildren())
+            {
+                if (child.Type == TYPE_FIELD && child.SubType == FIELD_SUBTYPE_ENUM && child is MetaField f) CheckEnum(f);
+                if (child.Type != TYPE_FIELD) Visit(child);
+            }
+        }
+        void CheckEnum(MetaField field)
+        {
+            var declares = new[] { FIELD_ATTR_MAX_LENGTH, FIELD_ATTR_VALUES, FIELD_ATTR_INT_VALUE_MAP }
+                .Any(a => field.OwnAttr(a) is not null);
+            if (!declares || field.MaxLength is not { } maxLength) return;
+            var owner = field.Parent;
+            var label = owner is not null && owner.Type == TYPE_OBJECT ? $"{owner.Name}.{field.Name}" : field.Name;
+            if (field.Attr(FIELD_ATTR_INT_VALUE_MAP) is not null)
+            {
+                errors.Add(new MetaError(
+                    $"field.enum \"{label}\" sets @maxLength {maxLength} and @intValueMap; an @intValueMap enum is stored as an integer, so a column length does not apply. Remove @maxLength.",
+                    ErrorCode.ERR_ENUM_MAX_LENGTH_WITH_INT_VALUE_MAP,
+                    Envelope: field.Source));
+                return;
+            }
+            var tooLong = (field.EffectiveEnumValues ?? [])
+                .Where(v => v.Length > maxLength)
+                .OrderByDescending(v => v.Length)
+                .FirstOrDefault();
+            if (tooLong is not null)
+            {
+                errors.Add(new MetaError(
+                    $"field.enum \"{label}\" @maxLength {maxLength} is shorter than its member \"{tooLong}\" ({tooLong.Length} characters). Raise @maxLength to at least {tooLong.Length}, or shorten the member.",
+                    ErrorCode.ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH,
+                    Envelope: field.Source));
+            }
+        }
+        Visit(root);
+        return errors;
+    }
+
     // -------------------------------------------------------------------------
     // Attr-type check helper — mirrors valueMatchesType() in attr-schema-validate.ts
     //
@@ -2924,6 +3208,8 @@ public static partial class ValidationPasses
     //       now a clear load-time error.)
     //     - @storage "flattened" requires isArray=false (cannot flatten a
     //       variable-length array) → ERR_STORAGE_FLATTENED_ARRAY
+    //     - @flattenedColumnPrefix requires @storage "flattened" (no other storage gives the
+    //       members columns of their own to prefix) → ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE
     //
     // Ported from validateFieldObjectStorage in
     // typescript/packages/metadata/src/loader/validation-passes.ts.
@@ -2959,6 +3245,20 @@ public static partial class ValidationPasses
 
                 // ADR-0039: resolving — @storage and array-ness may be inherited via extends.
                 var storage = field.Attr(FIELD_ATTR_STORAGE);
+                // @flattenedColumnPrefix names the columns a flattened value object adds to the owning
+                // table; under any other storage it would change nothing, so it is refused
+                // rather than silently ignored.
+                if (field.Attr(MetaObjects.Persistence.Db.DbConstants.FIELD_ATTR_FLATTENED_COLUMN_PREFIX) is not null
+                    && !(storage is string sp && sp == STORAGE_FLATTENED))
+                {
+                    var storageText = storage is null ? "not set (jsonb)" : $"\"{storage}\"";
+                    errors.Add(new MetaError(
+                        $"field.object \"{obj.Name}.{field.Name}\" sets @flattenedColumnPrefix, but its @storage is {storageText}; " +
+                        "only a @storage \"flattened\" value object puts its members' columns in the owning table. " +
+                        "Set @storage \"flattened\", or remove @flattenedColumnPrefix.",
+                        ErrorCode.ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE,
+                        Envelope: field.Source));
+                }
                 if (storage is null) continue;
 
                 if (storage is string st && st == STORAGE_FLATTENED && field.ResolvedIsArray())
@@ -4443,7 +4743,8 @@ public static partial class ValidationPasses
     // compared (PhysicalNaming.ResolveColumnName), so an explicit @column, an inherited
     // field and the project's column strategy are honoured. Scope: a concrete object
     // declaring at least one source (a source-less object generates nothing); derived
-    // fields and field.object (may flatten to several columns) are skipped.
+    // fields are skipped. A flattened field.object contributes one column per member of its
+    // value object (PhysicalColumnsOf below); any other field.object is one jsonb column.
     // ADR-0039: effective children, so an inherited field collides like an own one.
     // Exempt: an object whose every source is read-only and at least one is a
     // source.rdb @kind: view with an @sql body. The author's SQL defines that view's columns
@@ -4458,6 +4759,35 @@ public static partial class ValidationPasses
             sources.Any(s => s.EffectiveKind == SourceConstants.SOURCE_KIND_VIEW && s.SqlBody is not null);
     }
 
+    /// <summary>One physical column a field contributes to its object's table.</summary>
+    private sealed record PhysicalColumn(string Column, string Label, MetaField Named, bool Embedded);
+
+    // A field.object whose RESOLVED @storage is flattened has no column of its own: each member
+    // of its value object is one, named by PhysicalNaming.ResolveFlattenedColumnName exactly as
+    // migrate creates it. Any other field is one column under its own resolved name.
+    private static IEnumerable<PhysicalColumn> PhysicalColumnsOf(MetaField field)
+    {
+        if (field.SubType == FIELD_SUBTYPE_OBJECT && field.Storage == STORAGE_FLATTENED)
+        {
+            if (NamingRefs.RefTarget(field, FIELD_ATTR_OBJECT_REF) is not MetaObject target) yield break;
+            foreach (var member in target.Fields())
+                yield return new PhysicalColumn(
+                    PhysicalNaming.ResolveFlattenedColumnName(field, member),
+                    $"{field.Name}.{member.Name}", member, true);
+            yield break;
+        }
+        yield return new PhysicalColumn(PhysicalNaming.ResolveColumnName(field), field.Name, field, false);
+    }
+
+    private static string CollisionHint(PhysicalColumn a, PhysicalColumn b)
+    {
+        if (a.Embedded || b.Embedded)
+            return "Give one flattened field a different @flattenedColumnPrefix, or rename one field.";
+        return a.Named.DbColumn is { Length: > 0 } && b.Named.DbColumn is { Length: > 0 }
+            ? "Rename one field, or point one @column at a different column."
+            : "Rename one field, or give one an explicit @column so the two columns differ.";
+    }
+
     public static IReadOnlyList<MetaError> ValidateColumnNameCollisions(MetaData root)
     {
         var errors = new List<MetaError>();
@@ -4466,24 +4796,23 @@ public static partial class ValidationPasses
             if (obj.IsAbstract) continue;
             if (!obj.Children().Any(c => c.Type == TYPE_SOURCE)) continue;
             if (ReadsThroughSqlView(obj)) continue;
-            var seen = new Dictionary<string, MetaField>(StringComparer.Ordinal);
+            var seen = new Dictionary<string, PhysicalColumn>(StringComparer.Ordinal);
             foreach (var field in obj.Children().OfType<MetaField>())
             {
-                if (field.SubType == FIELD_SUBTYPE_OBJECT || field.IsDerived()) continue;
-                var column = PhysicalNaming.ResolveColumnName(field);
-                if (!seen.TryGetValue(column, out var first))
+                if (field.IsDerived()) continue;
+                foreach (var col in PhysicalColumnsOf(field))
                 {
-                    seen[column] = field;
-                    continue;
+                    if (!seen.TryGetValue(col.Column, out var first))
+                    {
+                        seen[col.Column] = col;
+                        continue;
+                    }
+                    errors.Add(new MetaError(
+                        $"fields \"{first.Label}\" and \"{col.Label}\" on \"{obj.Name}\" both resolve to " +
+                        $"physical column \"{col.Column}\". " + CollisionHint(first, col),
+                        ErrorCode.ERR_COLUMN_NAME_COLLISION,
+                        Envelope: field.Source));
                 }
-                errors.Add(new MetaError(
-                    $"fields \"{first.Name}\" and \"{field.Name}\" on \"{obj.Name}\" both resolve to " +
-                    $"physical column \"{column}\". " +
-                    (first.DbColumn is { Length: > 0 } && field.DbColumn is { Length: > 0 }
-                        ? "Rename one field, or point one @column at a different column."
-                        : "Rename one field, or give one an explicit @column so the two columns differ."),
-                    ErrorCode.ERR_COLUMN_NAME_COLLISION,
-                    Envelope: field.Source));
             }
         }
         return errors;

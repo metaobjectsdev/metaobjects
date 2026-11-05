@@ -160,6 +160,11 @@ public class SpringFilterAllowlistGenerator extends MultiFileDirectGeneratorBase
         return !field.isArrayType() && field instanceof com.metaobjects.field.DecimalField;
     }
 
+    /** True for a scalar (non-array) {@code field.duration}: the DTO declares it {@code java.time.Duration}. */
+    private static boolean isDurationTyped(MetaField<?> field) {
+        return !field.isArrayType() && field instanceof com.metaobjects.field.DurationField;
+    }
+
     private static Set<String> opsForField(MetaField field) {
         // Single source of truth — com.metaobjects.query.FilterOps (the same
         // band the loader's validation path reads). Returns a canonical-ordered
@@ -208,6 +213,19 @@ public class SpringFilterAllowlistGenerator extends MultiFileDirectGeneratorBase
             for (MetaField f : TphPlan.collectSubtypeFields(entity, loader)) {
                 if (opsByField.containsKey(f.getName()) && isDecimalTyped(f)
                         && !decimalFields.contains(f.getName())) decimalFields.add(f.getName());
+            }
+        }
+
+        // The duration-typed filterable fields. Under wire.durations: iso an operand is a canonical
+        // ISO-8601 span (the accepted form, compared as a span); under native it stays the raw string.
+        java.util.List<String> durationFields = new java.util.ArrayList<>();
+        if (loader.getRoot().getWireFormat().durationsIso()) {
+            java.util.List<MetaField> durationCandidates = new java.util.ArrayList<>();
+            entity.getMetaFields().forEach(durationCandidates::add);
+            if (TphPlan.isTphBase(entity, loader)) durationCandidates.addAll(TphPlan.collectSubtypeFields(entity, loader));
+            for (MetaField f : durationCandidates) {
+                if (opsByField.containsKey(f.getName()) && isDurationTyped(f)
+                        && !durationFields.contains(f.getName())) durationFields.add(f.getName());
             }
         }
 
@@ -272,6 +290,16 @@ public class SpringFilterAllowlistGenerator extends MultiFileDirectGeneratorBase
         for (String f : decimalFields) {
             if (!firstDecimal) src.append(", ");
             firstDecimal = false;
+            src.append('"').append(f).append('"');
+        }
+        src.append(");\n");
+
+        src.append("\n    /** Filterable fields typed duration under wire.durations: iso: their operands parse as a span. */\n");
+        src.append("    public static final Set<String> DURATION_FIELDS = Set.of(");
+        boolean firstDuration = true;
+        for (String f : durationFields) {
+            if (!firstDuration) src.append(", ");
+            firstDuration = false;
             src.append('"').append(f).append('"');
         }
         src.append(");\n");

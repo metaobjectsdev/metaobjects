@@ -67,6 +67,18 @@ public class MetaField(TypeId typeId, string name) : MetaData(typeId, name), IDa
         }
     }
 
+    /// <summary>Flattened-member column prefix (<c>@flattenedColumnPrefix</c> on a <c>field.object
+    /// @storage "flattened"</c>); <c>""</c> is a value, null is absent.
+    /// ADR-0039: resolving — inheritable via extends.</summary>
+    public string? FlattenedColumnPrefix
+    {
+        get
+        {
+            var v = Attr(FIELD_ATTR_FLATTENED_COLUMN_PREFIX);
+            return v is string s ? s : null;
+        }
+    }
+
     /// <summary>
     /// R6 Plan 2b — physical DB column-type override (own-only <c>@dbColumnType</c>):
     /// <c>uuid</c> / <c>jsonb</c>, or null when absent. Own-only

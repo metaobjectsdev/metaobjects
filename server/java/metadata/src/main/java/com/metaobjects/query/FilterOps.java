@@ -30,6 +30,7 @@ import com.metaobjects.field.TimestampField;
 import com.metaobjects.field.UuidField;
 import com.metaobjects.field.UriField;
 import com.metaobjects.field.InetField;
+import com.metaobjects.field.DurationField;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -126,6 +127,8 @@ public final class FilterOps {
         m.put(CurrencyField.SUBTYPE_CURRENCY, OPS_NUMERIC);
         m.put(DateField.SUBTYPE_DATE, OPS_NUMERIC);
         m.put(TimeField.SUBTYPE_TIME, OPS_NUMERIC);
+        // field.duration orders on every DB: a native interval on Postgres, a microsecond count elsewhere.
+        m.put(DurationField.SUBTYPE_DURATION, OPS_NUMERIC);
         m.put(TimestampField.SUBTYPE_TIMESTAMP, OPS_NUMERIC);
         m.put(BooleanField.SUBTYPE_BOOLEAN, OPS_BOOLEAN);
         OPS_BY_SUBTYPE = Collections.unmodifiableMap(m);

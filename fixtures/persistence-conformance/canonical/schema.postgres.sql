@@ -132,6 +132,7 @@ CREATE TABLE "all_types" (
   "uriVal" TEXT NOT NULL,
   "inetVal" INET NOT NULL,
   "inet6Val" INET NOT NULL,
+  "durationVal" INTERVAL,
   "settings" JSONB,
   "labels" JSONB,
   CONSTRAINT "all_types_pkey" PRIMARY KEY ("id"),

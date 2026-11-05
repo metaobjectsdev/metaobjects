@@ -20,6 +20,7 @@ import com.metaobjects.field.TimestampField
 import com.metaobjects.field.UuidField
 import com.metaobjects.field.UriField
 import com.metaobjects.field.InetField
+import com.metaobjects.field.DurationField
 import com.metaobjects.metadata.ktx.loadString
 import com.squareup.kotlinpoet.BOOLEAN
 import com.squareup.kotlinpoet.ClassName
@@ -155,6 +156,21 @@ class KotlinTypeMapperTest {
         assertEquals("InetAddress", tn.simpleName)
         assertEquals("inetColumn(\"source_ip\")", KotlinTypeMapper.exposedColumnSpec(f))
         assertTrue(KotlinTypeMapper.usesInetUriHelper(f))
+    }
+
+    @Test fun `duration field maps to java time Duration and a file-local durationColumn`() {
+        // field.duration: native java.time.Duration property; the Exposed column is the file-local
+        // `durationColumn(...)` (Column<Duration> over native INTERVAL, a BIGINT count of microseconds elsewhere) and, with
+        // isArray, `durationArrayColumn(...)`.
+        val f = DurationField("holdFor")
+        val tn = KotlinTypeMapper.kotlinTypeName(f) as ClassName
+        assertEquals("java.time", tn.packageName)
+        assertEquals("Duration", tn.simpleName)
+        assertEquals("durationColumn(\"hold_for\")", KotlinTypeMapper.exposedColumnSpec(f))
+        assertTrue(KotlinTypeMapper.usesDurationHelper(f))
+        val arr = DurationField("retries")
+        arr.setArray(true)
+        assertEquals("durationArrayColumn(\"retries\")", KotlinTypeMapper.exposedColumnSpec(arr))
     }
 
     @Test fun `string field with isArray derives native text array column`() {
@@ -354,11 +370,14 @@ class KotlinTypeMapperTest {
         assertEquals("long(\"price_cents\")", KotlinTypeMapper.exposedColumnSpec(f))
     }
 
-    @Test fun `enum field maps to String and varchar(64) exposed column`() {
+    @Test fun `enum field maps to String and a text exposed column when no length is configured`() {
         val f = EnumField("status")
-        // v1 enum representation: String + VARCHAR; full enum-class emission deferred.
+        // v1 enum representation: String; full enum-class emission deferred. No @maxLength and
+        // no project enums.maxLength: `text`, as `meta migrate` creates it.
         assertEquals(STRING, KotlinTypeMapper.kotlinTypeName(f))
-        assertEquals("varchar(\"status\", 64)", KotlinTypeMapper.exposedColumnSpec(f))
+        assertEquals("text(\"status\")", KotlinTypeMapper.exposedColumnSpec(f))
+        f.addMetaAttr(IntAttribute.create("maxLength", 32))
+        assertEquals("varchar(\"status\", 32)", KotlinTypeMapper.exposedColumnSpec(f))
     }
 
     @Test fun enumTypeNameComputesClassName() {

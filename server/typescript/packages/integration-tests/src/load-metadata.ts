@@ -6,10 +6,10 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { DEFAULT_WIRE_FORMAT, loadDirectory, loadUris, type MetaRoot, type WireFormat } from "@metaobjectsdev/metadata";
-import { ConfigSchema, physicalNamingFromConfig, wireFormatFromConfig, type Config } from "@metaobjectsdev/sdk";
+import { ConfigSchema, enumDefaultsFromConfig, physicalNamingFromConfig, wireFormatFromConfig, type Config } from "@metaobjectsdev/sdk";
 
 /**
- * ADR-0058 — set `root`'s physical naming and wire format from the nearest `.metaobjects/config.json` at or
+ * ADR-0058 — set `root`'s physical naming, wire format and enum defaults from the nearest `.metaobjects/config.json` at or
  * above `startDir`, as a project-aware load does. A corpus that pins a committed schema
  * declares the naming that schema uses there, and every port's runner reads that one file.
  * No file up to the repository root leaves the default.
@@ -21,6 +21,8 @@ export function applyNearestNaming(root: MetaRoot, startDir: string): MetaRoot {
   // ADR-0019 Amendment 2: the corpus pins its wire form in the same file, so generated
   // routes are emitted with it and no lane carries a literal.
   root.wireFormat = wireFormatFromConfig(config);
+  // `enums.maxLength` sizes an enum column, so a corpus that sets it gets the schema it pins.
+  root.enumDefaults = enumDefaultsFromConfig(config);
   return root;
 }
 

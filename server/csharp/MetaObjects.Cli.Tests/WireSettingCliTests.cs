@@ -108,12 +108,12 @@ public sealed class WireSettingCliTests : IDisposable
         var output = stdout + stderr;
         Assert.Equal(1, exit);
         Assert.Contains(
-            "The committed output was generated with \"wire\": { \"decimals\": \"string\", \"nullMembers\": \"omit\" }; " +
-            "this run used \"wire\": { \"decimals\": \"native\", \"nullMembers\": \"native\" } " +
+            "The committed output was generated with \"wire\": { \"decimals\": \"string\", \"nullMembers\": \"omit\", \"durations\": \"native\" }; " +
+            "this run used \"wire\": { \"decimals\": \"native\", \"nullMembers\": \"native\", \"durations\": \"native\" } " +
             "(.metaobjects/config.json; each key defaults to native). Do not regenerate",
             output);
         Assert.Contains(
-            "Declare \"wire\": { \"decimals\": \"string\", \"nullMembers\": \"omit\" } in .metaobjects/config.json",
+            "Declare \"wire\": { \"decimals\": \"string\", \"nullMembers\": \"omit\", \"durations\": \"native\" } in .metaobjects/config.json",
             output);
         Assert.DoesNotContain("Run 'dotnet meta gen' to regenerate", output);
     }

@@ -16,6 +16,7 @@ import {
   FIELD_SUBTYPE_UUID,
   FIELD_SUBTYPE_URI,
   FIELD_SUBTYPE_INET,
+  FIELD_SUBTYPE_DURATION,
   FIELD_SUBTYPE_DATE,
   FIELD_SUBTYPE_TIME,
   FIELD_SUBTYPE_TIMESTAMP,
@@ -46,6 +47,8 @@ export function scalarKind(subType: string): string | null {
     // ADR-0036/0037 Wave 3: uri/inet are string scalars on the wire.
     case FIELD_SUBTYPE_URI:
     case FIELD_SUBTYPE_INET:
+    // field.duration is an ISO-8601 duration string on the wire.
+    case FIELD_SUBTYPE_DURATION:
     case FIELD_SUBTYPE_DATE:
     case FIELD_SUBTYPE_TIME:
     case FIELD_SUBTYPE_TIMESTAMP:

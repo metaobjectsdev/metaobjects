@@ -10,6 +10,12 @@ here.**
 
 ## [Unreleased]
 
+**`metamodelVersion` moves to `1.3`.** This release adds vocabulary (`field.duration`,
+`validator.exactlyOne`, `@constraintName`, `@condition`, `@maxLength` on `field.enum`,
+`@sequenceStart`, `@sequenceName`, `@flattenedColumnPrefix`, the `upperFirst` column rule) and
+nothing that loaded before stops
+loading. A port that reports `1.2` does not know that vocabulary; upgrade every port together.
+
 ### Added
 
 - **A model explorer site, built by `docsSiteFile()`.** The docs site now shows what the
@@ -31,15 +37,17 @@ here.**
   `WARN_REQUIREMENT_OBJECT_UNCLAIMED` row, `""` on every other row, and each finding in a
   `requirementLedger` row carries its `message`. See `docs/features/explorer-site.md`.
 
-- **Generated record models enforce the four cross-field validators in every port.**
-  `validator.comparison`, `validator.requiredWhen`, `validator.presentIff` and
-  `validator.atLeastOne` used to render only as DB `CHECK` constraints, so a store with no `CHECK`
-  support (a graph or document database) enforced none of them and the application had to repeat the
-  rules in its writer. The full create/insert model now enforces them with the language's native
+- **Generated record models enforce the cross-field validators in every port.**
+  `validator.comparison`, `validator.requiredWhen`, `validator.presentIff`,
+  `validator.atLeastOne` and the new `validator.exactlyOne` used to render only as DB `CHECK`
+  constraints, so a store with no `CHECK` support (a graph or document database) enforced none of
+  them and the application had to repeat the rules in its writer. The full create/insert model now enforces them with the language's native
   mechanism: a Zod refinement on the insert schema (TypeScript), a class-level Bean Validation
   constraint on the create DTO (Java, Kotlin), `IValidatableObject` (C#) and a Pydantic
   `model_validator` (Python). Semantics mirror the `CHECK` derivation: null-safe, `comparison` passes
-  when either side is null, `@equals` is read per the gating field's subtype. PATCH and
+  when either side is null, `@equals` is read per the gating field's subtype, and a rule with a
+  `@condition` is checked only when the condition is true (false or null lets the record through, as
+  the `CHECK`'s `NOT (condition) OR (rule)` does). PATCH and
   partial-update models are unchanged (a partial body cannot see the merged row, so the database
   `CHECK` remains the enforcement there), and `CHECK` emission is unchanged. A record that violates a
   declared rule is now rejected at the model where it used to reach the database. Gated by
@@ -67,6 +75,234 @@ here.**
   `docs/features/extending-with-providers.md`. New conformance fixtures: `attr-shadow-inherited`,
   `attr-shadow-descendant`, `attr-shadow-extend`, `common-attr-conflict`,
   `common-attr-per-type-after`, `common-attr-per-type-before` and the `attr-ownership/` sub-corpus. Fixes #527.
+
+- **`field.duration`: a fixed-length span of time, in every port.** `TimeSpan` in C#,
+  `java.time.Duration` in Java and Kotlin, `timedelta` in Python, and a string in TypeScript;
+  a Postgres `interval` column, and a 64-bit integer of microseconds on SQLite, D1 and MySQL, so
+  sorting and range filters follow the span on every database. On the wire each port writes its own
+  language's standard form by default; `"wire": { "durations": "iso" }` makes every port write one
+  canonical ISO-8601 form (`PT1H30M`, `PT26H`, `-PT1M30S`, `PT0S`) at its own precision: as many
+  fractional digits as its duration type holds (6 in TypeScript and Python, 7 in C#, 9 in Java and
+  Kotlin). The database keeps microseconds, so a C#, Java or Kotlin server can answer a POST with
+  more digits than it stored; read the row back for the stored value. A week is 7 days and a day 24
+  hours; years and months are refused. Postgres does not accept a
+  signed ISO-8601 duration as input, so a value bound as text, and a declared `@default`, use
+  its own `HH:MM:SS` spelling, which it returns unchanged. Filters: every numeric operator.
+  Shared vectors in `fixtures/duration-wire/`; see `docs/features/field-types.md`. Each port is
+  limited only by its own duration type and each database by its own column.
+  - **`wire.durations`: `"native"` (default) or `"iso"`**, beside `decimals` and `nullMembers` in
+    `.metaobjects/config.json` (ADR-0019 Amendment 2). `native` is the language's own serializer,
+    both ways: System.Text.Json's `TimeSpan` form in C# (`"01:30:00"`), `Duration.toString()` in
+    Java and Kotlin, Pydantic's `timedelta` form in Python (which folds 24 hours into a day,
+    `"P1DT2H"`), and the canonical string in TypeScript. `iso` is the canonical form in every port.
+    A filter operand is ISO-8601 in both modes. The api-contract and persistence corpora pin `iso`,
+    and a new `api-contract-conformance/duration/` sub-corpus gates it through every port's
+    generated routes on Postgres and SQLite (and MySQL and D1 where a port has them).
+  - An owned (ejected) generator copy from before this release does not know `field.duration`:
+    re-eject it (`meta eject <name> --force`, or merge) before a model uses one. Models without a
+    duration are unaffected.
+  - A live Postgres `interval` column modelled as a `field.string`, the only way to model one
+    until now, is still read as text by `meta migrate` and `meta verify`, so it does not become
+    drift. Change it to `field.duration` to get the native column and type.
+- **CHECK names, conditions and "exactly one" from validators.** `@constraintName` on a validator
+  that generates a CHECK (`numeric`, `length`, `regex` and the cross-field validators), and on a
+  `field.enum` for its membership CHECK, names the CHECK `meta migrate`
+  generates, for a database whose CHECKs were named by hand. A cross-field validator
+  (`comparison`, `requiredWhen`, `presentIff`, `atLeastOne`, `exactlyOne`) takes `@condition`, an
+  expression over the entity's fields, so the rule holds only where it does. The new
+  `validator.exactlyOne` says exactly one of its `@fields` is present, and becomes a
+  `num_nonnulls(...) = 1` CHECK (a sum of presence tests on SQLite and D1). The generated create
+  model enforces both as well, in every port (see the record-model entry above): an `exactlyOne`
+  rule, and a conditional rule only where its condition is true. They are optional; a model without
+  them generates what it did. A `@condition` naming a field the entity does not have, one that is not
+  a boolean expression, one comparing a field with a literal of another kind (or with `null`), or an
+  `exactlyOne` naming fewer than two fields, is refused at load (`ERR_BAD_ATTR_VALUE`) in every port. A declared CHECK name another constraint on the table
+  already has, or one over 63 bytes on Postgres, is refused by `meta migrate` and `meta verify`
+  (`ERR_CHECK_NAME`). See `docs/features/migrations-and-drift.md`, "CHECKs from validators".
+- **Contract emitters: JSON Schema and OpenAPI generators (FR-022).** `jsonSchemaFile()`
+  (`contract-schema`) writes JSON Schema 2020-12 for each object's read, create and update shapes, and
+  a strict structured-output subset with `profile: "strict"`. `openApiFile()` (`openapi`) writes one
+  OpenAPI 3.1 document for the generated REST surface: the routes, the filter, sort and paging
+  parameters, the error envelope, and those shapes as components. The output follows the REST contract
+  and the `wire` setting, and a project on any port runs them through the Node `meta` CLI. They are
+  reference helpers: opt-in, listed by `meta gen --list`, ejectable and gated by `verify --codegen`
+  (ADR-0034 Amendment 10). Protobuf is not built. See `docs/features/contract-emitters.md`.
+- **The data spine for a model explorer.** These changes are data only. No screen reads the new
+  data yet.
+  - `meta export --effective` writes the effective canonical JSON. Every field, child and attribute
+    a node inherits through `extends` is written onto that node.
+  - `meta verify --format json` adds `requirementLedger`, one row per requirement. A row carries its
+    digest, each `@implementedBy` link with the node the gate resolved it to, the findings against
+    it, and a `clean`, `warn` or `error` verdict. Text output is unchanged.
+  - `meta gen` records, in `.hashes.json`, the node each per-entity file was rendered from:
+    `{ "hash", "generatedBy", "sourceNode" }`. `EmittedFile.sourceNode` lets an owned generator set
+    it, and `perEntity` sets it automatically. A file rendered from the whole model keeps the plain
+    hash entry. The field is not called `generator`, because on the JVM that word claims ownership.
+  - `@metaobjectsdev/docs-site` exports `buildExplorer` and `serializeExplorer`. Together they build a
+    deterministic `explorer.json` from those three inputs. The file holds nodes, typed edges, the
+    requirement ledger, the generated files for each node, and derived slices for each package,
+    requirement subtree and prompt.
+
+  Gated by the new `fixtures/explorer-conformance/` corpus. See `docs/features/explorer-data.md`.
+  No metamodel vocabulary changes, and `metamodelVersion` does not move.
+- **`@flattenedColumnPrefix`: name a flattened value object's columns.** On a `field.object` with
+  `@storage: "flattened"`, it replaces the default prefix (the field's column and `_`) verbatim;
+  `""` keeps the members' own column names. It sits on the embedding field because one value
+  object embedded twice needs two prefixes. Flattened column names now come from core naming in
+  every port (`resolveFlattenedColumnName` in TypeScript, `PhysicalNaming.ResolveFlattenedColumnName`
+  in C#, `ColumnNaming.resolveFlattened` on the JVM, `resolve_flattened_column_name` in Python), and
+  `meta migrate`, the Prisma schema, the C# EF mapping and the Kotlin Exposed tables all use it. Set
+  on any other storage, it is refused at load (`ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE`).
+  See `docs/features/field-types.md`, "Embedded value objects".
+- **Names artifacts carry a flattened value object's member columns.** Each member of a
+  `@storage: "flattened"` value object is a column of the owning table, and the owner's names
+  artifact now has a constant for each, named by core naming: `fields.shipTo.members.street.column`
+  in TypeScript, `ShipToStreetColumn` in C#, `SHIP_TO_STREET_COLUMN` in Java and Kotlin,
+  `SHIPMENT_SHIP_TO_STREET_COLUMN` in Python, keyed `shipTo.street` in the column-by-field maps.
+  The generated EF Core and Exposed bindings spell these columns through the same core naming
+  function. A member constant
+  that would share its name with another constant is left out with a warning, so every model
+  that generated before still generates. In C# and Java, a names class no longer extends its
+  base's when that would make a base constant that is not a column of its own table reachable
+  through it (a flattened field redeclared as jsonb, say); it is emitted complete instead.
+- **`@sequenceStart` and `@sequenceName` on `identity.primary`.** An `@generation: increment`
+  key's sequence can be given its first value and its physical name, so a model can reproduce a
+  table that keeps a low id range for seeded rows, or adopt a sequence that kept its name across
+  a table rename. On Postgres `meta migrate` creates
+  `GENERATED BY DEFAULT AS IDENTITY (SEQUENCE NAME "…" START WITH n)`, reads the live sequence
+  back from the catalog, and alters one whose declared start or name differs in place: a new
+  start is set and the counter moved up to it (never down), a new name is a rename. Only what
+  the model declares is compared, on the live, shadow and snapshot paths alike, so a model that
+  declares neither sees no new change and writes the same SQL and snapshots. Every port
+  registers both attributes and refuses either without `@generation: increment`
+  (`ERR_SEQUENCE_WITHOUT_INCREMENT`) and a start below 1 or past the key's range
+  (`ERR_SEQUENCE_START_OUT_OF_RANGE`); a name two tables declare is refused as a duplicate
+  database name. See `docs/features/migrations-and-drift.md`.
+- **A string-stored enum's column length: `@maxLength` on `field.enum`, and `enums.maxLength`.**
+  `@maxLength` on a `field.enum` makes its column `VARCHAR(n)`, and `"enums": { "maxLength": n }`
+  in `.metaobjects/config.json` gives every enum without one a default; with neither, the column
+  stays unbounded text, as before. The ports that size a column resolve the length through one
+  core function (`resolveEnumMaxLength` in TypeScript, `EnumLength.ResolveMaxLength` in C#,
+  `EnumLength.resolveMaxLength` on the JVM), and `meta migrate`, the Drizzle, Prisma, EF Core and
+  Exposed bindings use it. Python emits no column types, so it accepts the `enums` block and
+  sizes nothing. A member longer than the length is refused
+  (`ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH`): at load for `@maxLength`, when the column is sized for
+  the project default, which `meta migrate` and `meta verify` report by name. `@maxLength` beside
+  `@intValueMap` is refused at load (`ERR_ENUM_MAX_LENGTH_WITH_INT_VALUE_MAP`). A new shared
+  corpus, `fixtures/enum-length-conformance/`, pins the resolution in those ports.
+- **An `upperFirst` column rule.** `"naming": { "columns": "upperFirst" }` in
+  `.metaobjects/config.json` upper-cases a field name's first letter and changes nothing else
+  (`createdAt` → `CreatedAt`, `requestURL` → `RequestURL`, `address_line1` → `Address_line1`), in
+  every port. A schema whose columns are the field names with a capital first letter (EF Core's
+  default, for one) then needs `@column` only where the database spells a name differently. A
+  column rule only; `literal` tables keep an object name verbatim.
+  See `docs/features/migrations/physical-naming.md`.
+- **Schema conventions for the database objects no code addresses.** `migrate.conventions` in
+  `.metaobjects/config.json` picks how `meta migrate` names primary-key and foreign-key
+  constraints, whether each foreign key gets an index, and whether a unique key an FK references
+  is a constraint or an index. `default` is what migrate has always emitted, so nothing changes
+  unless you set it. `efcore` reproduces EF Core's conventions (`PK_`, `FK_`, `IX_`, its
+  63-character `~` truncation, alternate keys as constraints), so a database built by EF Core
+  migrations and one built by `meta migrate` match. A project can supply its own conventions
+  object from `metaobjects.config.ts`; an unknown preset name, or an object missing a member, is
+  refused by name. The PK name is now introspected too, so a `baseline --from-db` snapshot of a
+  database whose primary keys are not named `<table>_pkey` records their names (not compared;
+  nothing churns). See `docs/features/migrations-and-drift.md`, "Schema conventions".
+- **`migrate.checks.skipRedundant`: leave out the CHECKs a column type already enforces.** Set in
+  `.metaobjects/config.json` (default `false`), `meta migrate` and `meta verify --db` leave out a
+  `validator.length` maximum the column's `VARCHAR(n)` enforces (not on SQLite or D1, which do not
+  enforce one) and a length minimum of 0 or less, for a database whose CHECKs were written by hand
+  only where the column type does not already enforce the rule. A validator with a declared
+  `@constraintName` keeps its CHECK. A malformed `checks` block is refused when the config loads.
+  See `docs/features/migrations-and-drift.md`, "CHECKs from validators".
+- **A recipe for checking an API change against the last release.** Emit the document at the last tag
+  and at `HEAD`, then run oasdiff. See `docs/recipes/check-api-against-last-release.md`.
+- **A `pydantic` extra on the Python package.** `pip install "metaobjects[pydantic]"` installs
+  `pydantic>=2.8`, the minimum the generated Python models need, so an adopter can get the enforced
+  floor with the package. The base install is unchanged.
+- **A recipe for moving existing models into MetaObjects without a rewrite.**
+  `docs/features/adopting-existing-models.md` takes Drizzle tables, Zod schemas and Pydantic models
+  from writing the model through retiring the old code, and proves the generated types match first.
+  The proof is a test file that `tsc` or pytest runs, so nothing reads your source and there is no
+  new command. `examples/brownfield/` holds a runnable project for each, and the recipe ships in
+  the `metaobjects-authoring` skill.
+- **A project's own provider class, wired in every port's config, loaded by every command.** A
+  project that declares its own vocabulary (a new subtype, or attributes on a core type) writes a
+  provider class in each language whose tools load the metadata, and names it once:
+  `defineConfig({ providers })` in TypeScript, `providers: ["module:symbol"]` in
+  `metaobjects.config.yaml` for Python, the new `csharp.providers: [{ "assembly", "type" }]` list
+  in `.metaobjects/config.json` for C#, and for Java and Kotlin the new Maven plugin
+  `<providers><provider>FQCN</provider></providers>` list, `MetaDataTypeProvider` beans composed by
+  the Spring auto-configured loader, `LoaderOptions.setProviders(...)`, and a `providers`
+  parameter on the `metadata-ktx` loader. C#, Java and Kotlin had no project-level way to do this
+  before; `META-INF/services` still does not add a provider to the JVM loader. Two new conformance
+  fixtures, `provider-custom-vocabulary-success` and
+  `provider-custom-vocabulary-missing-provider-fails`, hold every port to loading a project
+  subtype plus attributes with its provider and refusing the same file without it.
+  `docs/features/extending-with-providers.md` now has a worked example per language, and the
+  `metaobjects-authoring` skill teaches it, with a reference file per language.
+
+### Changed
+
+- **`docsSiteFile()` builds the model explorer by default.** A project that lists
+  `docsSiteFile()` gets a different site under `site/` on its next `meta gen`, with new page
+  paths (object pages move under `model/`); `meta gen` removes the old pages it wrote, as it
+  does any untouched generated file it no longer emits, and `meta verify --codegen` reports
+  drift until it has run. Pass `docsSiteFile({ site: "classic" })` to keep the earlier
+  site byte for byte. A project that ejected the classic theme gets a warning and the packaged
+  explorer theme; run `meta eject docs-site` again to copy the explorer's files.
+
+- **Python and Java report a missing provider's errors in the same order as the other ports.**
+  When a file holds both an unknown subtype and unknown attributes, Python used to drop the whole
+  file at the unknown subtype and never report the attributes; it now reports
+  `ERR_UNKNOWN_SUBTYPE` and then each `ERR_UNKNOWN_ATTR`. Java reported the attribute errors
+  before the subtype error; it now reports them after it, as TypeScript and C# do. A load that
+  failed still fails; only the list of errors differs.
+- **`meta migrate` refuses a foreign key that references columns the target does not hold unique.**
+  Behaviour change: an `identity.reference` whose dotted `@references` names target fields that are
+  not the target's primary key, a plain `identity.secondary` (no `@where`, no `@expr`) or a single
+  `@unique` field used to emit an FK the database refuses at apply time ("there is no unique
+  constraint matching given keys"), after earlier statements had already run. `meta migrate` and
+  `meta verify --db` now fail first with `FkTargetNotUniqueError`, which lists every offending
+  reference at once (entity, reference, target and fields); both report it as a metadata refusal
+  with a hint. The check is against the table the model actually builds: a key declared on a TPH
+  subtype is not emitted, so it does not count (the message says to declare it on the base), and
+  a bare reference into a composite primary key with fewer FK fields is caught too. An FK on a
+  table this run does not govern (imported, or outside `migrate.scope`) is warned about, not
+  refused, and an FK into a table the model does not build (`@unmanaged`) is not checked. Postgres
+  refuses the DDL and D1 always enforces foreign keys, so both refuse. SQLite only warns: it accepts
+  the `CREATE TABLE`, and checks foreign keys only with `PRAGMA foreign_keys` on, which is off by
+  default, so the FK fails (`foreign key mismatch`) on a write with enforcement on. `meta verify
+  --db` gives the same verdict. Fix: declare an `identity.secondary` on those fields of the target.
+  This is a `meta migrate` correction; it moves no metamodel version.
+- **A constraint or index whose only change is its name is renamed in place on Postgres.** A
+  drop plus an add of the same definition under another name, on a table that is not itself
+  renamed (switching schema conventions renames every FK), used to be a gated `drop-fk` /
+  `drop-index` that dropped and rebuilt the object. It is now one `rename-constraints` change:
+  `ALTER TABLE … RENAME CONSTRAINT` / `ALTER INDEX … RENAME`, and the down renames it back. SQLite
+  cannot rename a constraint and keeps the rebuild. The primary key's name is now compared too,
+  so a convention switch, or a table rename (which keeps the old `<table>_pkey`), renames it, and
+  `meta verify --db` reports a mismatch it used to pass. A unique key that changes only between
+  plain index and UNIQUE constraint is promoted in place (`ADD CONSTRAINT … UNIQUE USING INDEX`);
+  the reverse, when the conventions ask for a plain index, drops the constraint, re-creates the
+  index, and drops and re-adds each FK onto it, behind `--allow drop-index` and `--allow drop-fk`.
+  The default conventions accept either kind, so a database built with Drizzle's `unique()`
+  constraints is left as it is. A key that changes both its name and its kind
+  is renamed, then promoted or demoted, in the same migration.
+- **A prompt or output template that names a variable not on its payload now raises at render time.**
+  Behaviour change: a generated render helper used to render `Hi {{nmae}}` as `Hi ` with no error
+  when the payload declares `name`; it now raises `ERR_VAR_NOT_ON_PAYLOAD (nmae)` (`RenderError` in
+  Python, `RenderException` in Java, Kotlin and C#, an `Error` in TypeScript). The build-time check
+  already caught this when the helper was generated; the gap was text edited or served afterwards.
+  The silent paths were the TypeScript `promptRender()` handle, the Python helper on a Mustache body
+  (only Jinja was checked), and the Java and Kotlin helpers, whose `Renderer` accepted the payload
+  field tree and never read it. The C# helper and the TypeScript `render-helper` already raised. All
+  five ports are held to it by `fixtures/template-output-render-conformance/runtime-drift/`. A call
+  to `render()` with no declared payload is unchanged: it has nothing to compare against, so it keeps
+  the engine's default and checks only when you pass `verify` (`verify:` in TypeScript, `verify=` in
+  Python, `Verify` in C#, the `verify` field of `RenderRequest` in Java and Kotlin). If a template
+  already named a missing variable, regenerate and fix the name; the generated helper text changes
+  (TypeScript `prompts.ts` and Python helpers gain a `verify` argument).
 
 ### Fixed
 
@@ -124,6 +360,23 @@ here.**
   `comparison-across-kinds-is-skipped`, `comparison-instant-vs-local-timestamp-is-skipped`,
   `uuid-ne-rejects-equal-ids` and `uuid-ne-accepts-different-ids`
   in `fixtures/validation-conformance/`, run by every port.
+- **Two `field.duration` fields order by length in every port, and a comparison inside `@condition`
+  follows the same kind rule.** The kind rule above listed no durations, so a `validator.comparison`
+  between two durations emitted no rule in any port. Durations now order with their own subtype, by
+  length rather than by their ISO-8601 text (`PT45M` is shorter than `PT1H`). A comparison inside an
+  `@condition` that reads two fields of different kinds (a date against a timestamp, or an enum
+  against a string) now leaves the whole validator to the database, as a field it cannot see already
+  did, where TypeScript, Java and Kotlin had compared the two as strings and C# had compared an enum
+  with a string. An `eq` / `ne` inside `@condition` on two uuid, uri or inet fields now tests
+  equality in every port: Python ordered the two values, so an IPv4 against an IPv6 address read as
+  unknown and the rule was skipped, and C# skipped those comparisons altogether. C# also gave
+  `field.uri` and `field.inet` no filter operators, so `@filterable` on either, or any `@condition`
+  that reads one, failed to load; they now take the same bands as in the other ports (uri the string
+  band, inet the uuid band), and the shared `filter-ops-matrix` fixture lists both. New shared cases
+  `duration-comparison-rejects-a-longer-span`, `duration-comparison-orders-by-length-not-text`,
+  `condition-comparing-across-kinds-leaves-rule-to-database`,
+  `condition-ne-on-ipv4-and-ipv6-addresses-enforces-the-rule` and
+  `condition-ne-on-equal-addresses-lets-the-record-through`.
 - **Test coverage for cross-field validators.** A subtype form on a TPH hierarchy that declares a
   cross-field rule now has a test proving the generated form binds the refined body schema (the rule
   itself was enforced by the cross-field build). The Java check that a Patch is not held to cross-field
@@ -144,94 +397,14 @@ here.**
 - **Docs: edit an `@sql` body when you remove a column it reads.** The tool never parses the body;
   Postgres fails at apply and SQLite applies and leaves a broken view.
 
-### Added
-
-- **Contract emitters: JSON Schema and OpenAPI generators (FR-022).** `jsonSchemaFile()`
-  (`contract-schema`) writes JSON Schema 2020-12 for each object's read, create and update shapes, and
-  a strict structured-output subset with `profile: "strict"`. `openApiFile()` (`openapi`) writes one
-  OpenAPI 3.1 document for the generated REST surface: the routes, the filter, sort and paging
-  parameters, the error envelope, and those shapes as components. The output follows the REST contract
-  and the `wire` setting, and a project on any port runs them through the Node `meta` CLI. They are
-  reference helpers: opt-in, listed by `meta gen --list`, ejectable and gated by `verify --codegen`
-  (ADR-0034 Amendment 10). Protobuf is not built. See `docs/features/contract-emitters.md`.
-- **The data spine for a model explorer.** These changes are data only. No screen reads the new
-  data yet.
-  - `meta export --effective` writes the effective canonical JSON. Every field, child and attribute
-    a node inherits through `extends` is written onto that node.
-  - `meta verify --format json` adds `requirementLedger`, one row per requirement. A row carries its
-    digest, each `@implementedBy` link with the node the gate resolved it to, the findings against
-    it, and a `clean`, `warn` or `error` verdict. Text output is unchanged.
-  - `meta gen` records, in `.hashes.json`, the node each per-entity file was rendered from:
-    `{ "hash", "generatedBy", "sourceNode" }`. `EmittedFile.sourceNode` lets an owned generator set
-    it, and `perEntity` sets it automatically. A file rendered from the whole model keeps the plain
-    hash entry. The field is not called `generator`, because on the JVM that word claims ownership.
-  - `@metaobjectsdev/docs-site` exports `buildExplorer` and `serializeExplorer`. Together they build a
-    deterministic `explorer.json` from those three inputs. The file holds nodes, typed edges, the
-    requirement ledger, the generated files for each node, and derived slices for each package,
-    requirement subtree and prompt.
-
-  Gated by the new `fixtures/explorer-conformance/` corpus. See `docs/features/explorer-data.md`.
-  No metamodel vocabulary changes, and `metamodelVersion` does not move.
-- **A recipe for checking an API change against the last release.** Emit the document at the last tag
-  and at `HEAD`, then run oasdiff. See `docs/recipes/check-api-against-last-release.md`.
-- **A `pydantic` extra on the Python package.** `pip install "metaobjects[pydantic]"` installs
-  `pydantic>=2.8`, the minimum the generated Python models need, so an adopter can get the enforced
-  floor with the package. The base install is unchanged.
-- **A recipe for moving existing models into MetaObjects without a rewrite.**
-  `docs/features/adopting-existing-models.md` takes Drizzle tables, Zod schemas and Pydantic models
-  from writing the model through retiring the old code, and proves the generated types match first.
-  The proof is a test file that `tsc` or pytest runs, so nothing reads your source and there is no
-  new command. `examples/brownfield/` holds a runnable project for each, and the recipe ships in
-  the `metaobjects-authoring` skill.
-
-- **A project's own provider class, wired in every port's config, loaded by every command.** A
-  project that declares its own vocabulary (a new subtype, or attributes on a core type) writes a
-  provider class in each language whose tools load the metadata, and names it once:
-  `defineConfig({ providers })` in TypeScript, `providers: ["module:symbol"]` in
-  `metaobjects.config.yaml` for Python, the new `csharp.providers: [{ "assembly", "type" }]` list
-  in `.metaobjects/config.json` for C#, and for Java and Kotlin the new Maven plugin
-  `<providers><provider>FQCN</provider></providers>` list, `MetaDataTypeProvider` beans composed by
-  the Spring auto-configured loader, `LoaderOptions.setProviders(...)`, and a `providers`
-  parameter on the `metadata-ktx` loader. C#, Java and Kotlin had no project-level way to do this
-  before; `META-INF/services` still does not add a provider to the JVM loader. Two new conformance
-  fixtures, `provider-custom-vocabulary-success` and
-  `provider-custom-vocabulary-missing-provider-fails`, hold every port to loading a project
-  subtype plus attributes with its provider and refusing the same file without it.
-  `docs/features/extending-with-providers.md` now has a worked example per language, and the
-  `metaobjects-authoring` skill teaches it, with a reference file per language.
-
-### Changed
-
-- **`docsSiteFile()` builds the model explorer by default.** A project that lists
-  `docsSiteFile()` gets a different site under `site/` on its next `meta gen`, with new page
-  paths (object pages move under `model/`); `meta gen` removes the old pages it wrote, as it
-  does any untouched generated file it no longer emits, and `meta verify --codegen` reports
-  drift until it has run. Pass `docsSiteFile({ site: "classic" })` to keep the earlier
-  site byte for byte. A project that ejected the classic theme gets a warning and the packaged
-  explorer theme; run `meta eject docs-site` again to copy the explorer's files.
-
-- **Python and Java report a missing provider's errors in the same order as the other ports.**
-  When a file holds both an unknown subtype and unknown attributes, Python used to drop the whole
-  file at the unknown subtype and never report the attributes; it now reports
-  `ERR_UNKNOWN_SUBTYPE` and then each `ERR_UNKNOWN_ATTR`. Java reported the attribute errors
-  before the subtype error; it now reports them after it, as TypeScript and C# do. A load that
-  failed still fails; only the list of errors differs.
-- **A prompt or output template that names a variable not on its payload now raises at render time.**
-  Behaviour change: a generated render helper used to render `Hi {{nmae}}` as `Hi ` with no error
-  when the payload declares `name`; it now raises `ERR_VAR_NOT_ON_PAYLOAD (nmae)` (`RenderError` in
-  Python, `RenderException` in Java, Kotlin and C#, an `Error` in TypeScript). The build-time check
-  already caught this when the helper was generated; the gap was text edited or served afterwards.
-  The silent paths were the TypeScript `promptRender()` handle, the Python helper on a Mustache body
-  (only Jinja was checked), and the Java and Kotlin helpers, whose `Renderer` accepted the payload
-  field tree and never read it. The C# helper and the TypeScript `render-helper` already raised. All
-  five ports are held to it by `fixtures/template-output-render-conformance/runtime-drift/`. A call
-  to `render()` with no declared payload is unchanged: it has nothing to compare against, so it keeps
-  the engine's default and checks only when you pass `verify` (`verify:` in TypeScript, `verify=` in
-  Python, `Verify` in C#, the `verify` field of `RenderRequest` in Java and Kotlin). If a template
-  already named a missing variable, regenerate and fix the name; the generated helper text changes
-  (TypeScript `prompts.ts` and Python helpers gain a `verify` argument).
-
-### Fixed
+- **Postgres introspection reads a composite foreign key's columns once each, in order.** It joined
+  `information_schema.key_column_usage` to `constraint_column_usage`, which has no column position, so
+  every FK column was paired with every referenced column: a two-column FK read back as four columns and
+  a three-column one as nine. `meta migrate` reads its expected side back from the shadow database, so
+  the doubled columns reached the emitted DDL, which Postgres refused ("foreign key referenced-columns
+  list must not contain duplicates"); `verify --db` misreported every composite FK. It now reads
+  `pg_constraint`, pairing `conkey` with `confkey` by position. As before, only same-schema foreign
+  keys are read (the FK descriptor carries no referenced schema).
 
 - **Python: an array field's `default` generated a string.** A model with
   `field.string[]: { default: "{}" }` generated `tags: list[str] = '{}'`, which fails on first use.

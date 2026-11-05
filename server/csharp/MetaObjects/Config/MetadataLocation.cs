@@ -53,6 +53,11 @@ public sealed record ResolvedMetadata(
     /// <c>csharp.providers</c>. Hosts that load by hand can pass it to <c>MetaDataLoader.FromDirectory</c>.</summary>
     public TypeRegistry Registry() => Provider.ComposeRegistry(ProviderLoader.Compose(Providers));
 
+    /// <summary>The project's enum storage defaults (<c>enums</c> in config.json), set on the loaded
+    /// root by <see cref="Load"/>. An init property, not a positional parameter, so the record's
+    /// constructor and <c>Deconstruct</c> keep the signatures they had.</summary>
+    public EnumDefaults? Enums { get; init; }
+
     /// <summary>Load this metadata, with the project's <c>libraries</c>, and set the loaded
     /// root's <see cref="MetaRoot.PhysicalNaming"/> from <see cref="Naming"/> (ADR-0058) and its
     /// <see cref="MetaRoot.WireFormat"/> from <see cref="Wire"/>.</summary>
@@ -66,6 +71,7 @@ public sealed record ResolvedMetadata(
                 Directory, Registry(), Libraries, leading, strict: strict);
         result.Root.PhysicalNaming = Naming;
         result.Root.WireFormat = Wire ?? WireFormat.Default;
+        result.Root.EnumDefaults = Enums ?? EnumDefaults.Default;
         if (Imports is null) return result;
 
         result.Root.ImportScope = Imports;
@@ -130,7 +136,7 @@ public static class MetadataLocation
             // No config found means no project to read a lock from: nothing is imported.
             var explicitImports = explicitCfg is null ? ImportScope.None : ImportScope.Resolve(explicitCfg.ConfigDir, explicitCfg);
             return new ResolvedMetadata(
-                metadataDir, null, explicitLibs, explicitNaming, explicitCfg?.Wire, explicitCfg?.OutDir, explicitImports, explicitCfg?.Namespace, LoadProviders(explicitCfg));
+                metadataDir, null, explicitLibs, explicitNaming, explicitCfg?.Wire, explicitCfg?.OutDir, explicitImports, explicitCfg?.Namespace, LoadProviders(explicitCfg)) { Enums = explicitCfg?.Enums };
         }
 
         var cfg = NeutralConfig.Read(cwd);
@@ -145,7 +151,7 @@ public static class MetadataLocation
             // No declared sources: resolve the DEFAULT directory through the same ladder
             // the shared conformance corpus gates (ERR_COLLECTION_NOT_FOUND when absent).
             var defaultFiles = SourceResolver.ResolveCollection(cwd);
-            return new ResolvedMetadata(Path.Combine(cwd, NeutralConfig.DefaultMetadataDir), defaultFiles, libraries, naming, wire, cfg?.OutDir, imports, cfg?.Namespace, LoadProviders(cfg));
+            return new ResolvedMetadata(Path.Combine(cwd, NeutralConfig.DefaultMetadataDir), defaultFiles, libraries, naming, wire, cfg?.OutDir, imports, cfg?.Namespace, LoadProviders(cfg)) { Enums = cfg?.Enums };
         }
 
         if (specs.Count > 1)
@@ -175,6 +181,6 @@ public static class MetadataLocation
                 "\"sources\" at the file's containing directory.");
         }
 
-        return new ResolvedMetadata(resolved, files, libraries, naming, wire, cfg?.OutDir, imports, cfg?.Namespace, LoadProviders(cfg));
+        return new ResolvedMetadata(resolved, files, libraries, naming, wire, cfg?.OutDir, imports, cfg?.Namespace, LoadProviders(cfg)) { Enums = cfg?.Enums };
     }
 }

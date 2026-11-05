@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_SEQUENCE_WITHOUT_INCREMENT",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.seq.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[0]['object.entity'].children[2]['identity.primary']"
+      }
+    }
+  ],
+  "warnings": []
+}

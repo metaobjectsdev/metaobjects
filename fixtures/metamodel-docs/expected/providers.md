@@ -13,14 +13,14 @@ provider owns. This is the ownership lens over the same vocabulary
 
 Core metaobjects metamodel types and subtypes.
 
-**Owns (registers):** `attr.base`, `attr.boolean`, `attr.class`, `attr.double`, `attr.expression`, `attr.filter`, `attr.int`, `attr.intMap`, `attr.long`, `attr.properties`, `attr.string`, `field.base`, `field.boolean`, `field.currency`, `field.date`, `field.decimal`, `field.double`, `field.enum`, `field.float`, `field.inet`, `field.int`, `field.long`, `field.map`, `field.object`, `field.string`, `field.time`, `field.timestamp`, `field.uri`, `field.uuid`, `identity.primary`, `identity.reference`, `identity.secondary`, `layout.base`, `layout.dataGrid`, `object.base`, `object.entity`, `object.projection`, `object.report`, `object.value`, `origin.aggregate`, `origin.base`, `origin.computed`, `origin.first`, `origin.passthrough`, `relationship.aggregation`, `relationship.association`, `relationship.base`, `relationship.composition`, `source.base`, `source.rdb`, `template.base`, `template.output`, `template.prompt`, `template.toolcall`, `validator.array`, `validator.atLeastOne`, `validator.base`, `validator.comparison`, `validator.length`, `validator.numeric`, `validator.presentIff`, `validator.regex`, `validator.required`, `validator.requiredWhen`, `view.base`, `view.currency`
+**Owns (registers):** `attr.base`, `attr.boolean`, `attr.class`, `attr.double`, `attr.expression`, `attr.filter`, `attr.int`, `attr.intMap`, `attr.long`, `attr.properties`, `attr.string`, `field.base`, `field.boolean`, `field.currency`, `field.date`, `field.decimal`, `field.double`, `field.duration`, `field.enum`, `field.float`, `field.inet`, `field.int`, `field.long`, `field.map`, `field.object`, `field.string`, `field.time`, `field.timestamp`, `field.uri`, `field.uuid`, `identity.primary`, `identity.reference`, `identity.secondary`, `layout.base`, `layout.dataGrid`, `object.base`, `object.entity`, `object.projection`, `object.report`, `object.value`, `origin.aggregate`, `origin.base`, `origin.computed`, `origin.first`, `origin.passthrough`, `relationship.aggregation`, `relationship.association`, `relationship.base`, `relationship.composition`, `source.base`, `source.rdb`, `template.base`, `template.output`, `template.prompt`, `template.toolcall`, `validator.array`, `validator.atLeastOne`, `validator.base`, `validator.comparison`, `validator.exactlyOne`, `validator.length`, `validator.numeric`, `validator.presentIff`, `validator.regex`, `validator.required`, `validator.requiredWhen`, `view.base`, `view.currency`
 
 **Contributes attributes:**
 
 - `field.base`: `@default`, `@mutability`, `@required`, `@unique`
 - `field.currency`: `@currency`
 - `field.decimal`: `@precision`, `@scale`
-- `field.enum`: `@intValueMap`, `@provided`, `@values`
+- `field.enum`: `@intValueMap`, `@maxLength`, `@provided`, `@values`
 - `field.inet`: `@lenient`
 - `field.map`: `@objectRef`, `@valueType`
 - `field.object`: `@objectRef`
@@ -44,14 +44,15 @@ Core metaobjects metamodel types and subtypes.
 - `template.prompt`: `@format`, `@maxChars`, `@maxTokens`, `@model`, `@owner`, `@payloadRef`, `@promptStyle`, `@requiredSlots`, `@requiredTags`, `@responseFormat`, `@responseRef`, `@since`, `@textRef`
 - `template.toolcall`: `@maxTokens`, `@owner`, `@payloadRef`, `@since`, `@toolName`
 - `validator.array`: `@max`, `@min`
-- `validator.atLeastOne`: `@fields`
+- `validator.atLeastOne`: `@condition`, `@fields`
 - `validator.base`: `@max`, `@min`
-- `validator.comparison`: `@left`, `@op`, `@right`
+- `validator.comparison`: `@condition`, `@left`, `@op`, `@right`
+- `validator.exactlyOne`: `@condition`, `@fields`
 - `validator.length`: `@max`, `@min`
 - `validator.numeric`: `@max`, `@min`
-- `validator.presentIff`: `@equals`, `@field`, `@when`
+- `validator.presentIff`: `@condition`, `@equals`, `@field`, `@when`
 - `validator.regex`: `@max`, `@min`, `@pattern`
-- `validator.requiredWhen`: `@equals`, `@field`, `@when`
+- `validator.requiredWhen`: `@condition`, `@equals`, `@field`, `@when`
 
 ## metaobjects-db
 
@@ -65,22 +66,32 @@ DB-domain attributes — @column / @db.indexed / @dbColumnType on every field, @
 - `field.date`: `@autoSet`, `@column`, `@db.indexed`, `@dbColumnType`
 - `field.decimal`: `@column`, `@db.indexed`, `@dbColumnType`
 - `field.double`: `@column`, `@db.indexed`, `@dbColumnType`
-- `field.enum`: `@column`, `@db.indexed`, `@dbColumnType`
+- `field.duration`: `@column`, `@db.indexed`, `@dbColumnType`
+- `field.enum`: `@column`, `@constraintName`, `@db.indexed`, `@dbColumnType`
 - `field.float`: `@column`, `@db.indexed`, `@dbColumnType`
 - `field.inet`: `@column`, `@db.indexed`, `@dbColumnType`
 - `field.int`: `@column`, `@db.indexed`, `@dbColumnType`
 - `field.long`: `@column`, `@db.indexed`, `@dbColumnType`
 - `field.map`: `@column`, `@db.indexed`, `@dbColumnType`
-- `field.object`: `@column`, `@db.indexed`, `@dbColumnType`, `@storage`
+- `field.object`: `@column`, `@db.indexed`, `@dbColumnType`, `@flattenedColumnPrefix`, `@storage`
 - `field.string`: `@column`, `@db.indexed`, `@dbColumnType`
 - `field.time`: `@autoSet`, `@column`, `@db.indexed`, `@dbColumnType`
 - `field.timestamp`: `@autoSet`, `@column`, `@db.indexed`, `@dbColumnType`, `@localTime`
 - `field.uri`: `@column`, `@db.indexed`, `@dbColumnType`
 - `field.uuid`: `@column`, `@db.indexed`, `@dbColumnType`
+- `identity.primary`: `@sequenceName`, `@sequenceStart`
 - `identity.reference`: `@constraintName`, `@onDelete`, `@onUpdate`
 - `identity.secondary`: `@expr`, `@orders`, `@using`, `@where`
 - `index.lookup`: `@expr`, `@orders`, `@using`, `@where`
 - `source.rdb`: `@function`, `@kind`, `@materializedView`, `@parameterRef`, `@proc`, `@role`, `@schema`, `@sql`, `@table`, `@unmanaged`, `@view`
+- `validator.atLeastOne`: `@constraintName`
+- `validator.comparison`: `@constraintName`
+- `validator.exactlyOne`: `@constraintName`
+- `validator.length`: `@constraintName`
+- `validator.numeric`: `@constraintName`
+- `validator.presentIff`: `@constraintName`
+- `validator.regex`: `@constraintName`
+- `validator.requiredWhen`: `@constraintName`
 
 ## metaobjects-documentation
 
@@ -100,6 +111,7 @@ Prompt / AI + serialization domain — @xmlText / @example / @instruction field 
 - `field.date`: `@example`, `@instruction`, `@xmlText`
 - `field.decimal`: `@example`, `@instruction`, `@xmlText`
 - `field.double`: `@example`, `@instruction`, `@xmlText`
+- `field.duration`: `@example`, `@instruction`, `@xmlText`
 - `field.enum`: `@coerceDefault`, `@enumAlias`, `@enumDoc`, `@example`, `@instruction`, `@normalize`, `@xmlText`
 - `field.float`: `@example`, `@instruction`, `@xmlText`
 - `field.inet`: `@example`, `@instruction`, `@xmlText`
@@ -126,6 +138,7 @@ UI/query-surface domain — @filterable / @sortable / @sortableDefaultOrder fiel
 - `field.date`: `@filterable`, `@formExclude`, `@sortable`, `@sortableDefaultOrder`
 - `field.decimal`: `@filterable`, `@formExclude`, `@sortable`, `@sortableDefaultOrder`
 - `field.double`: `@filterable`, `@formExclude`, `@sortable`, `@sortableDefaultOrder`
+- `field.duration`: `@filterable`, `@formExclude`, `@sortable`, `@sortableDefaultOrder`
 - `field.enum`: `@filterable`, `@formExclude`, `@sortable`, `@sortableDefaultOrder`
 - `field.float`: `@filterable`, `@formExclude`, `@sortable`, `@sortableDefaultOrder`
 - `field.inet`: `@filterable`, `@formExclude`, `@sortable`, `@sortableDefaultOrder`

@@ -68,6 +68,7 @@ public class FieldTypesMetaDataProvider implements MetaDataTypeProvider {
         UuidField.registerTypes(registry);
         UriField.registerTypes(registry);
         InetField.registerTypes(registry);
+        DurationField.registerTypes(registry);
 
         log.debug("Field types registered via provider");
     }

@@ -23,6 +23,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 
+from ..codegen.runtime.duration_wire import NOT_A_DURATION, is_duration_literal
 from ..meta.core.field import field_constants as fc
 from ..meta.core.identity import identity_constants as ic
 from ..meta.core.object.meta_object import MetaObject
@@ -72,6 +73,7 @@ _NUMERIC_FIELD_SUBTYPES = frozenset({fc.FIELD_SUBTYPE_INT, fc.FIELD_SUBTYPE_DOUB
 _INT64_FIELD_SUBTYPES = frozenset({fc.FIELD_SUBTYPE_LONG, fc.FIELD_SUBTYPE_CURRENCY})
 _STRING_FIELD_SUBTYPES = frozenset({
     fc.FIELD_SUBTYPE_STRING, fc.FIELD_SUBTYPE_UUID, fc.FIELD_SUBTYPE_URI, fc.FIELD_SUBTYPE_INET,
+    fc.FIELD_SUBTYPE_DURATION,
 })
 
 # ASCII digits only — ``\d`` would also admit other Unicode digits, which JS ``\d`` does not.
@@ -382,6 +384,11 @@ def _scalar_errors(field: MetaData, value: object, required: bool, label: str) -
             errors.append(ValidationFailure(
                 label, "format", f"'{label}' must be an IPv4 or IPv6 address", "inet", value,
             ))
+
+    # field.duration — an ISO-8601 duration with no years or months (no @lenient: the
+    # column is an interval on Postgres, so a value that is not a duration cannot be stored).
+    if isinstance(value, str) and field.sub_type == fc.FIELD_SUBTYPE_DURATION and not is_duration_literal(value):
+        errors.append(ValidationFailure(label, "format", f"'{label}' {NOT_A_DURATION}", "duration", value))
     return errors
 
 

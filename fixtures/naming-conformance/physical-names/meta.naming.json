@@ -59,6 +59,32 @@
             { "identity.primary": { "name": "id", "@fields": "id" } }
           ]
         }
+      },
+      { "field.object": { "name": "AddrCols", "abstract": true, "@objectRef": "acme::naming::Address", "@flattenedColumnPrefix": "addr_" } },
+      {
+        "object.value": {
+          "name": "Address",
+          "children": [
+            { "field.string": { "name": "street" } },
+            { "field.string": { "name": "postalCode" } },
+            { "field.string": { "name": "country", "@column": "CTRY" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Shipment",
+          "children": [
+            { "source.rdb": {} },
+            { "field.long": { "name": "id" } },
+            { "field.object": { "name": "shipTo", "@objectRef": "Address", "@storage": "flattened" } },
+            { "field.object": { "name": "billTo", "@objectRef": "Address", "@storage": "flattened", "@column": "bill" } },
+            { "field.object": { "name": "returnTo", "@objectRef": "Address", "@storage": "flattened", "@flattenedColumnPrefix": "" } },
+            { "field.object": { "name": "giftTo", "@objectRef": "Address", "@storage": "flattened", "@flattenedColumnPrefix": "g_" } },
+            { "field.object": { "name": "homeTo", "extends": "acme::naming::AddrCols", "@storage": "flattened" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } }
+          ]
+        }
       }
     ]
   }

@@ -129,7 +129,7 @@ public class SpringWireFormatCompileRunTest {
 
     @Test
     public void stringAndOmitGiveTheCanonicalCrossPortForm() throws Exception {
-        generate(new WireFormat(WireFormat.Decimals.STRING, WireFormat.NullMembers.OMIT), (src, cl) -> {
+        generate(new WireFormat(WireFormat.Decimals.STRING, WireFormat.NullMembers.OMIT, WireFormat.Durations.ISO), (src, cl) -> {
             String raw = writtenBytes(cl);
             JsonNode out = MAPPER.readTree(raw);
             assertEquals("12.5", out.get("amount").asText());
@@ -142,7 +142,7 @@ public class SpringWireFormatCompileRunTest {
 
     @Test
     public void emitWritesTheNullMemberLikeNative() throws Exception {
-        generate(new WireFormat(WireFormat.Decimals.NATIVE, WireFormat.NullMembers.EMIT), (src, cl) -> {
+        generate(new WireFormat(WireFormat.Decimals.NATIVE, WireFormat.NullMembers.EMIT, WireFormat.Durations.ISO), (src, cl) -> {
             String raw = writtenBytes(cl);
             JsonNode out = MAPPER.readTree(raw);
             assertTrue(out.get("price").has("note"));

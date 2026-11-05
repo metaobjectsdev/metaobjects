@@ -1,6 +1,6 @@
 {
-  "registeredSubTypeCount": 65,
-  "exercisedSubTypeCount": 53,
+  "registeredSubTypeCount": 66,
+  "exercisedSubTypeCount": 58,
   "untestedSubTypes": [
     "attr.boolean",
     "attr.class",
@@ -9,11 +9,7 @@
     "attr.filter",
     "attr.int",
     "attr.intMap",
-    "attr.long",
-    "validator.atLeastOne",
-    "validator.comparison",
-    "validator.presentIff",
-    "validator.requiredWhen"
+    "attr.long"
   ],
   "untestedAttrsByExercisedSubType": [
     {
@@ -73,7 +69,6 @@
         "formExclude",
         "instruction",
         "mutability",
-        "sortable",
         "sortableDefaultOrder",
         "unique",
         "xmlText"
@@ -83,6 +78,23 @@
       "key": "field.double",
       "untestedAttrs": [
         "column",
+        "dbColumnType",
+        "default",
+        "example",
+        "formExclude",
+        "instruction",
+        "mutability",
+        "sortable",
+        "sortableDefaultOrder",
+        "unique",
+        "xmlText"
+      ]
+    },
+    {
+      "key": "field.duration",
+      "untestedAttrs": [
+        "column",
+        "db.indexed",
         "dbColumnType",
         "default",
         "example",
@@ -121,7 +133,6 @@
         "formExclude",
         "instruction",
         "mutability",
-        "sortable",
         "sortableDefaultOrder",
         "unique",
         "xmlText"
@@ -148,7 +159,6 @@
     {
       "key": "field.int",
       "untestedAttrs": [
-        "column",
         "dbColumnType",
         "example",
         "formExclude",
@@ -188,7 +198,6 @@
         "sortable",
         "sortableDefaultOrder",
         "unique",
-        "valueType",
         "xmlText"
       ]
     },
@@ -211,7 +220,6 @@
     {
       "key": "field.string",
       "untestedAttrs": [
-        "formExclude",
         "sortableDefaultOrder",
         "xmlText"
       ]
@@ -325,12 +333,6 @@
       ]
     },
     {
-      "key": "source.rdb",
-      "untestedAttrs": [
-        "materializedView"
-      ]
-    },
-    {
       "key": "template.output",
       "untestedAttrs": [
         "owner",
@@ -356,10 +358,22 @@
       ]
     },
     {
+      "key": "validator.presentIff",
+      "untestedAttrs": [
+        "constraintName"
+      ]
+    },
+    {
       "key": "validator.regex",
       "untestedAttrs": [
         "max",
         "min"
+      ]
+    },
+    {
+      "key": "validator.requiredWhen",
+      "untestedAttrs": [
+        "constraintName"
       ]
     }
   ]

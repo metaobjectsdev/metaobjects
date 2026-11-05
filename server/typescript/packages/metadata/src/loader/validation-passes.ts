@@ -10,6 +10,18 @@
 // Private:  _findObject, _findField, _findRelationship,
 //           _validateFromPath, _validateViaPath  (helpers, not exported).
 
+import { TYPE_VALIDATOR } from "../shared/base-types.js";
+import {
+  CROSS_FIELD_VALIDATOR_SUBTYPES,
+  VALIDATOR_ATTR_CONDITION,
+  VALIDATOR_ATTR_EQUALS,
+  VALIDATOR_ATTR_FIELDS,
+  VALIDATOR_ATTR_WHEN,
+  VALIDATOR_SUBTYPE_EXACTLY_ONE,
+  VALIDATOR_SUBTYPE_PRESENT_IFF,
+  VALIDATOR_SUBTYPE_REQUIRED_WHEN,
+} from "../core/validator/validator-constants.js";
+import { parseDurationLiteral } from "../core/field/duration-wire.js";
 import type { MetaData } from "../shared/meta-data.js";
 import type { MetaObject } from "../core/object/meta-object.js";
 import type { MetaReferenceIdentity } from "../core/identity/meta-identity.js";
@@ -33,7 +45,7 @@ import {
   INDEX_SUBTYPE_LOOKUP,
   INDEX_ATTR_FIELDS,
 } from "../core/index/index-constants.js";
-import { IDENTITY_SUBTYPE_SECONDARY } from "../core/identity/identity-constants.js";
+import { IDENTITY_SUBTYPE_SECONDARY, IDENTITY_SUBTYPE_PRIMARY, IDENTITY_ATTR_GENERATION, GENERATION_INCREMENT } from "../core/identity/identity-constants.js";
 import type { MetaIdentity } from "../core/identity/meta-identity.js";
 import { MetaIndex } from "../core/index/meta-index.js";
 import {
@@ -55,8 +67,8 @@ import {
   OBJECT_PROJECTION_ATTR_FILTER,
 } from "../core/object/object-constants.js";
 import { MetaSource } from "../persistence/source/meta-source.js";
-import { resolveColumnName } from "../naming.js";
-import { isMetaField } from "../shared/node-guards.js";
+import { resolveColumnName, resolveFlattenedColumnName } from "../naming.js";
+import { isMetaField, isMetaObject } from "../shared/node-guards.js";
 import {
   LAYOUT_SUBTYPE_DATA_GRID,
   LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_FIELD,
@@ -77,6 +89,9 @@ import {
   FIELD_SUBTYPE_DECIMAL,
   FIELD_SUBTYPE_BOOLEAN,
   FIELD_SUBTYPE_ENUM,
+  FIELD_ATTR_INT_VALUE_MAP,
+  FIELD_ATTR_MAX_LENGTH,
+  FIELD_ATTR_VALUES,
   FIELD_SUBTYPE_OBJECT,
   FIELD_SUBTYPE_MAP,
   FIELD_ATTR_REQUIRED,
@@ -86,8 +101,9 @@ import {
   FIELD_SUBTYPE_TIME,
   FIELD_SUBTYPE_TIMESTAMP,
   FIELD_SUBTYPE_UUID,
+  FIELD_SUBTYPE_DURATION,
 } from "../core/field/field-constants.js";
-import { FIELD_ATTR_COLUMN, FIELD_ATTR_DB_INDEXED, IDENTITY_ATTR_EXPR } from "../persistence/db/db-constants.js";
+import { FIELD_ATTR_COLUMN, FIELD_ATTR_FLATTENED_COLUMN_PREFIX, FIELD_ATTR_DB_INDEXED, IDENTITY_ATTR_EXPR, IDENTITY_ATTR_SEQUENCE_NAME, IDENTITY_ATTR_SEQUENCE_START } from "../persistence/db/db-constants.js";
 import { SOURCE_KIND_VIEW } from "../persistence/source/source-constants.js";
 import {
   IDENTITY_ATTR_FIELDS,
@@ -1678,6 +1694,244 @@ export function validateDerivedFieldProvidability(root: MetaData): ParseError[] 
 }
 
 // ---------------------------------------------------------------------------
+// Cross-field validators (comparison / requiredWhen / presentIff / atLeastOne / exactlyOne),
+// which the database enforces as CHECKs:
+//   - exactlyOne @fields names two or more fields (ERR_BAD_ATTR_VALUE): one is a required field;
+//   - every field a @condition expression names is a field of the owning entity
+//     (ERR_BAD_ATTR_VALUE), so the CHECK it renders to references a real column;
+//   - a requiredWhen / presentIff @equals gating a field.duration is an ISO-8601 duration
+//     (ERR_BAD_ATTR_VALUE), the form its CHECK literal is built from.
+// Read RESOLVING (ADR-0039): an entity's validators and fields include inherited ones.
+// ---------------------------------------------------------------------------
+
+/** The field names an attr.expression tree references. */
+function expressionFieldRefs(node: unknown, out: string[] = []): string[] {
+  if (typeof node !== "object" || node === null) return out;
+  const n = node as Record<string, unknown>;
+  if (typeof n["field"] === "string") out.push(n["field"]);
+  for (const key of ["left", "right", "arg"]) expressionFieldRefs(n[key], out);
+  for (const key of ["args"]) if (Array.isArray(n[key])) for (const a of n[key] as unknown[]) expressionFieldRefs(a, out);
+  return out;
+}
+
+/** What a literal compared with a field.duration must be. */
+const DURATION_LITERAL_FORM = "an ISO-8601 duration (such as PT1H30M; no years or months)";
+
+/** Field subtypes whose values a condition compares with a number literal. */
+const _CONDITION_NUMBER_SUBTYPES = new Set<string>([
+  FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT,
+  FIELD_SUBTYPE_DECIMAL, FIELD_SUBTYPE_CURRENCY,
+]);
+
+/**
+ * Why a cross-field validator's `@condition` cannot become a CHECK guard, or undefined when it
+ * can. Its names are already known to be fields. The rule, the same in every port:
+ *  - it types cleanly (the origin.computed inference) and its root is boolean, since a CHECK
+ *    negates it;
+ *  - a literal compared with a field is of that field's kind (a boolean for field.boolean, a
+ *    number for a numeric field, a string otherwise) and, for field.enum, one of its @values,
+ *    for field.duration, an ISO-8601 duration;
+ *  - no comparison has a null literal: `x = NULL` is never true, so use isNull / isNotNull.
+ */
+function conditionProblem(condition: unknown, obj: MetaObject): string | undefined {
+  const fields = new Map(obj.fields().map((f) => [f.name, f] as const));
+  const inferred = inferExprType(condition as ExprNode, (name) => fields.get(name)?.subType);
+  if (inferred.errors.length > 0) return `is not a valid expression: ${inferred.errors.join("; ")}.`;
+  if (inferred.type !== FIELD_SUBTYPE_BOOLEAN) {
+    return `must be a boolean expression (a comparison, a null test, or and / or / not of them), not a field.${String(inferred.type)}.`;
+  }
+  let problem: string | undefined;
+  const visit = (node: unknown): void => {
+    if (problem !== undefined || typeof node !== "object" || node === null) return;
+    const n = node as Record<string, unknown>;
+    if (n["left"] !== undefined && n["right"] !== undefined) {
+      for (const [a, b] of [[n["left"], n["right"]], [n["right"], n["left"]]] as const) {
+        const lit = a as Record<string, unknown>;
+        const ref = b as Record<string, unknown>;
+        if (!("value" in lit)) continue;
+        if (lit["value"] === null) {
+          problem = `compares with null, which is never true: use isNull or isNotNull.`;
+          return;
+        }
+        const field = typeof ref["field"] === "string" ? fields.get(ref["field"]) : undefined;
+        if (field === undefined) continue;
+        const value = lit["value"];
+        const kind = field.subType === FIELD_SUBTYPE_BOOLEAN ? "boolean"
+          : _CONDITION_NUMBER_SUBTYPES.has(field.subType) ? "number" : "string";
+        if (typeof value !== kind) {
+          problem = `compares "${field.name}" (field.${field.subType}) with ${JSON.stringify(value)}; it needs a ${kind}.`;
+          return;
+        }
+        const members = field.subType === FIELD_SUBTYPE_ENUM ? field.attr(FIELD_ATTR_VALUES) : undefined;
+        if (Array.isArray(members) && !members.map(String).includes(String(value))) {
+          problem = `compares "${field.name}" with ${JSON.stringify(value)}, which is not one of its @values (${members.join(", ")}).`;
+          return;
+        }
+        if (field.subType === FIELD_SUBTYPE_DURATION && parseDurationLiteral(value as string) === undefined) {
+          problem = `compares "${field.name}" with ${JSON.stringify(value)}, which is not ${DURATION_LITERAL_FORM}.`;
+          return;
+        }
+      }
+    }
+    for (const key of ["left", "right", "arg"]) visit(n[key]);
+    if (Array.isArray(n["args"])) for (const a of n["args"]) visit(a);
+  };
+  visit(condition);
+  return problem;
+}
+
+export function validateCrossFieldValidators(root: MetaData): ParseError[] {
+  const errors: ParseError[] = [];
+  for (const obj of root.children().filter((c) => c.type === TYPE_OBJECT)) {
+    const fieldNames = new Set((obj as MetaObject).fields().map((f) => f.name));
+    // ADR-0039: own — each validator is checked where it is declared.
+    for (const v of obj.ownChildren()) {
+      if (v.type !== TYPE_VALIDATOR || !CROSS_FIELD_VALIDATOR_SUBTYPES.includes(v.subType)) continue;
+      if (v.subType === VALIDATOR_SUBTYPE_EXACTLY_ONE) {
+        const fields = [v.attr(VALIDATOR_ATTR_FIELDS)].flat().filter((f) => typeof f === "string");
+        if (fields.length < 2) {
+          errors.push(new ParseError(
+            `validator.exactlyOne "${obj.name}.${v.name}" @fields names ${fields.length} field${fields.length === 1 ? "" : "s"}; ` +
+            `it needs two or more. For one field, make that field required.`,
+            { code: "ERR_BAD_ATTR_VALUE", source: v.source },
+          ));
+          continue;
+        }
+      }
+      if (v.subType === VALIDATOR_SUBTYPE_REQUIRED_WHEN || v.subType === VALIDATOR_SUBTYPE_PRESENT_IFF) {
+        const when = (obj as MetaObject).fields().find((f) => f.name === v.attr(VALIDATOR_ATTR_WHEN));
+        const equals = v.attr(VALIDATOR_ATTR_EQUALS);
+        if (when?.subType === FIELD_SUBTYPE_DURATION && (typeof equals !== "string" || parseDurationLiteral(equals) === undefined)) {
+          errors.push(new ParseError(
+            `validator.${v.subType} "${obj.name}.${v.name}" @equals ${JSON.stringify(equals)} gates field.duration ` +
+            `"${when.name}"; it needs ${DURATION_LITERAL_FORM}.`,
+            { code: "ERR_BAD_ATTR_VALUE", source: v.source },
+          ));
+          continue;
+        }
+      }
+      const condition = v.attr(VALIDATOR_ATTR_CONDITION);
+      if (condition !== undefined) {
+        const label = `validator.${v.subType} "${obj.name}.${v.name}" @condition`;
+        const unknown = [...new Set(expressionFieldRefs(condition))].filter((f) => !fieldNames.has(f)).sort();
+        if (unknown.length > 0) {
+          errors.push(new ParseError(
+            `${label} names ${unknown.map((f) => `"${f}"`).join(", ")}, ` +
+            `which ${unknown.length === 1 ? "is not a field" : "are not fields"} of "${obj.name}".`,
+            { code: "ERR_BAD_ATTR_VALUE", source: v.source },
+          ));
+          continue;
+        }
+        const problem = conditionProblem(condition, obj as MetaObject);
+        if (problem !== undefined) {
+          errors.push(new ParseError(`${label} ${problem}`, { code: "ERR_BAD_ATTR_VALUE", source: v.source }));
+        }
+      }
+    }
+  }
+  return errors;
+}
+
+// ---------------------------------------------------------------------------
+// identity.primary @sequenceStart / @sequenceName describe the sequence an @generation
+// "increment" key draws from. On any other generation there is no sequence, so either one
+// is refused (ERR_SEQUENCE_WITHOUT_INCREMENT) rather than silently ignored. Read RESOLVING
+// (ADR-0039), reported on the identity that declares one of them.
+// ---------------------------------------------------------------------------
+
+/** The largest value a field.int key (a 32-bit integer column) can hold. */
+const SEQUENCE_INT_MAX = 2147483647;
+
+export function validateIdentitySequence(root: MetaData): ParseError[] {
+  const errors: ParseError[] = [];
+  for (const obj of root.children().filter((c) => c.type === TYPE_OBJECT)) {
+    for (const id of obj.ownChildren()) {
+      if (id.type !== TYPE_IDENTITY || id.subType !== IDENTITY_SUBTYPE_PRIMARY) continue;
+      const declared = [IDENTITY_ATTR_SEQUENCE_START, IDENTITY_ATTR_SEQUENCE_NAME].filter((a) => id.ownAttr(a) !== undefined);
+      if (declared.length === 0) continue;
+      if (id.attr(IDENTITY_ATTR_GENERATION) === GENERATION_INCREMENT) {
+        const start = id.attr(IDENTITY_ATTR_SEQUENCE_START);
+        if (typeof start === "number") {
+          // The key field's own range bounds the start (Postgres refuses the sequence
+          // otherwise, at apply time): 1 to the largest value of a field.int / field.long.
+          const keyName = [id.attr(IDENTITY_ATTR_FIELDS)].flat()[0];
+          const key = (obj as MetaObject).fields().find((f) => f.name === keyName);
+          const max = key?.subType === FIELD_SUBTYPE_INT ? SEQUENCE_INT_MAX : undefined;
+          if (start < 1 || (max !== undefined && start > max)) {
+            errors.push(new ParseError(
+              `identity.primary "${obj.name}.${id.name}" @sequenceStart ${start} is out of range for its key ` +
+              `"${String(keyName)}"${key !== undefined ? ` (field.${key.subType})` : ""}: it must be at least 1` +
+              `${max !== undefined ? ` and at most ${max}` : ""}.`,
+              { code: "ERR_SEQUENCE_START_OUT_OF_RANGE", source: id.source },
+            ));
+          }
+        }
+        continue;
+      }
+      const generation = id.attr(IDENTITY_ATTR_GENERATION);
+      const shown = typeof generation === "string" ? `"${generation}"` : "not set";
+      errors.push(new ParseError(
+        `identity.primary "${obj.name}.${id.name}" sets ${declared.map((a) => `@${a}`).join(" and ")}, but its @generation is ${shown}; ` +
+        `only an @generation "increment" key draws from a sequence. Set @generation "increment", or remove ${declared.map((a) => `@${a}`).join(" and ")}.`,
+        { code: "ERR_SEQUENCE_WITHOUT_INCREMENT", source: id.source },
+      ));
+    }
+  }
+  return errors;
+}
+
+// ---------------------------------------------------------------------------
+// field.enum @maxLength — the column length of a string-stored enum:
+//   1. every member of @values fits in it (ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH), the
+//      longest offender named;
+//   2. it is refused beside @intValueMap (ERR_ENUM_MAX_LENGTH_WITH_INT_VALUE_MAP): an
+//      int-stored enum's column is an integer, so a length would change nothing.
+// Read RESOLVING (ADR-0039: all three may be inherited through extends), and reported on
+// the node that DECLARES one of them, so an enum that only inherits them is not
+// reported a second time. Every field.enum in the tree is checked, root-level abstract
+// enums included. The project default (enums.maxLength) is not this pass's: the loader
+// does not see the project config; resolveEnumMaxLength refuses an overflow of it.
+// ---------------------------------------------------------------------------
+
+export function validateEnumMaxLength(root: MetaData): ParseError[] {
+  const errors: ParseError[] = [];
+  const visit = (node: MetaData): void => {
+    // ADR-0039: own children — every node is visited once, where it is declared.
+    for (const child of node.ownChildren()) {
+      if (child.type === TYPE_FIELD && child.subType === FIELD_SUBTYPE_ENUM) checkEnum(child);
+      if (child.type !== TYPE_FIELD) visit(child);
+    }
+  };
+  const checkEnum = (field: MetaData): void => {
+    const declares = [FIELD_ATTR_MAX_LENGTH, FIELD_ATTR_VALUES, FIELD_ATTR_INT_VALUE_MAP]
+      .some((a) => field.ownAttr(a) !== undefined);
+    const maxLength = field.attr(FIELD_ATTR_MAX_LENGTH);
+    if (!declares || typeof maxLength !== "number") return;
+    const owner = field.parent;
+    const label = owner !== undefined && owner.type === TYPE_OBJECT ? `${owner.name}.${field.name}` : field.name;
+    if (field.attr(FIELD_ATTR_INT_VALUE_MAP) !== undefined) {
+      errors.push(new ParseError(
+        `field.enum "${label}" sets @maxLength ${maxLength} and @intValueMap; an @intValueMap enum is stored as an integer, so a column length does not apply. Remove @maxLength.`,
+        { code: "ERR_ENUM_MAX_LENGTH_WITH_INT_VALUE_MAP", source: field.source },
+      ));
+      return;
+    }
+    const values = field.attr(FIELD_ATTR_VALUES);
+    const tooLong = (Array.isArray(values) ? values : [])
+      .filter((v): v is string => typeof v === "string" && v.length > maxLength)
+      .sort((a, b) => b.length - a.length);
+    if (tooLong.length > 0) {
+      errors.push(new ParseError(
+        `field.enum "${label}" @maxLength ${maxLength} is shorter than its member "${tooLong[0]}" (${tooLong[0]!.length} characters). Raise @maxLength to at least ${tooLong[0]!.length}, or shorten the member.`,
+        { code: "ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH", source: field.source },
+      ));
+    }
+  };
+  visit(root);
+  return errors;
+}
+
+// ---------------------------------------------------------------------------
 // field.object + @storage cross-attribute validation
 //
 // Rules (ADR-0013):
@@ -1696,6 +1950,8 @@ export function validateDerivedFieldProvidability(root: MetaData): ParseError[] 
 //      node: when @objectRef is absent we skip the flattened/array check below.)
 //   2. @storage "flattened" requires isArray to be absent or false (cannot
 //      flatten a variable-length array into a fixed column set).
+//   3. @flattenedColumnPrefix requires @storage "flattened" (ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE):
+//      no other storage gives the members columns of their own to prefix.
 // ---------------------------------------------------------------------------
 
 export function validateFieldObjectStorage(root: MetaData): ParseError[] {
@@ -1724,6 +1980,17 @@ export function validateFieldObjectStorage(root: MetaData): ParseError[] {
 
       // ADR-0039: resolving — @storage and array-ness may be inherited via extends.
       const storage = field.attr(FIELD_ATTR_STORAGE);
+      // @flattenedColumnPrefix names the columns a flattened value object adds to the owning table.
+      // Under any other storage (absent is jsonb) there are no such columns, so the prefix
+      // would change nothing: refuse it rather than ignore it silently.
+      if (field.attr(FIELD_ATTR_FLATTENED_COLUMN_PREFIX) !== undefined && storage !== STORAGE_FLATTENED) {
+        errors.push(
+          new ParseError(
+            `field.object "${obj.name}.${field.name}" sets @flattenedColumnPrefix, but its @storage is ${storage === undefined || storage === null ? "not set (jsonb)" : `"${String(storage)}"`}; only a @storage "flattened" value object puts its members' columns in the owning table. Set @storage "flattened", or remove @flattenedColumnPrefix.`,
+            { code: "ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE", source: field.source },
+          ),
+        );
+      }
       if (storage === undefined || storage === null) continue;
       if (storage === STORAGE_FLATTENED && field.resolvedIsArray()) {
         errors.push(
@@ -2775,8 +3042,12 @@ export function validateRetiredRequirementLinks(root: MetaData): ParseError[] {
 // is compared, through the single door `resolveColumnName`, so an explicit @column
 // override, an inherited field and the project's column strategy are all honoured.
 // Scope: a concrete object that declares at least one source (a source-less
-// object generates nothing); derived fields (origin.*) and field.object (which may
-// flatten to several columns) are not columns of this table and are skipped.
+// object generates nothing); derived fields (origin.*) are not columns of this table
+// and are skipped. A `field.object @storage "flattened"` has no column of its own: each
+// member of its value object is a column, named by `resolveFlattenedColumnName` exactly
+// as migrate creates it, so two embeddings with one `@flattenedColumnPrefix` (or a `""`
+// prefix beside a field of the member's name) collide here. Any other field.object is
+// one jsonb column under its own resolved name.
 // ADR-0039: effective fields, so an inherited field collides like an own one.
 // Exempt: an object whose every source is read-only and at least one is a
 // `source.rdb @kind: view` with an `@sql` body. The author's SQL defines that view's
@@ -2799,31 +3070,66 @@ function hasExplicitColumn(field: MetaData): boolean {
   return typeof col === "string" && col !== "";
 }
 
+/** One physical column a field contributes to its object's table. */
+interface PhysicalColumn {
+  readonly column: string;
+  /** `street`, or `shipTo.street` for a member of a flattened value object. */
+  readonly label: string;
+  /** The field that names it: the field itself, or the flattened value object's member. */
+  readonly named: MetaData;
+  /** Set for a flattened member: the embedding field.object. */
+  readonly embedding?: MetaData;
+}
+
+function physicalColumnsOf(field: MetaData): PhysicalColumn[] {
+  // ADR-0039: resolving — @storage and @objectRef may be inherited via extends.
+  if (field.subType === FIELD_SUBTYPE_OBJECT && field.attr(FIELD_ATTR_STORAGE) === STORAGE_FLATTENED) {
+    const target = refTarget(field, FIELD_ATTR_OBJECT_REF);
+    if (target === undefined || !isMetaObject(target)) return [];
+    // Every member, as migrate's flattenObjectField expands it.
+    return target.fields().map((member) => ({
+      column: resolveFlattenedColumnName(field, member),
+      label: `${field.name}.${member.name}`,
+      named: member,
+      embedding: field,
+    }));
+  }
+  return [{ column: resolveColumnName(field), label: field.name, named: field }];
+}
+
+function collisionHint(a: PhysicalColumn, b: PhysicalColumn): string {
+  if (a.embedding !== undefined || b.embedding !== undefined) {
+    return "Give one flattened field a different @flattenedColumnPrefix, or rename one field.";
+  }
+  return hasExplicitColumn(a.named) && hasExplicitColumn(b.named)
+    ? "Rename one field, or point one @column at a different column."
+    : "Rename one field, or give one an explicit @column so the two columns differ.";
+}
+
 export function validateColumnNameCollisions(root: MetaData): ParseError[] {
   const errors: ParseError[] = [];
   for (const obj of root.children().filter((c) => c.type === TYPE_OBJECT)) {
     if (obj.isAbstract) continue;
     if (!obj.children().some((c) => c.type === TYPE_SOURCE)) continue;
     if (readsThroughSqlView(obj)) continue;
-    const seen = new Map<string, MetaData>();
+    const seen = new Map<string, PhysicalColumn>();
     for (const field of obj.children()) {
-      if (!isMetaField(field) || field.subType === FIELD_SUBTYPE_OBJECT || field.isDerived()) continue;
-      const column = resolveColumnName(field);
-      const first = seen.get(column);
-      if (first === undefined) {
-        seen.set(column, field);
-        continue;
+      if (!isMetaField(field) || field.isDerived()) continue;
+      for (const col of physicalColumnsOf(field)) {
+        const first = seen.get(col.column);
+        if (first === undefined) {
+          seen.set(col.column, col);
+          continue;
+        }
+        errors.push(
+          new ParseError(
+            `fields "${first.label}" and "${col.label}" on "${obj.name}" both resolve to physical column ` +
+              `"${col.column}". ` +
+              collisionHint(first, col),
+            { code: "ERR_COLUMN_NAME_COLLISION", source: field.source },
+          ),
+        );
       }
-      errors.push(
-        new ParseError(
-          `fields "${first.name}" and "${field.name}" on "${obj.name}" both resolve to physical column ` +
-            `"${column}". ` +
-            (hasExplicitColumn(first) && hasExplicitColumn(field)
-              ? "Rename one field, or point one @column at a different column."
-              : "Rename one field, or give one an explicit @column so the two columns differ."),
-          { code: "ERR_COLUMN_NAME_COLLISION", source: field.source },
-        ),
-      );
     }
   }
   return errors;

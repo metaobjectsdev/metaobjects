@@ -30,6 +30,7 @@ import {
   type Dialect,
   type TableDescriptor,
 } from "@metaobjectsdev/migrate-ts";
+import type { SchemaBuildOptions } from "./schema-build-options.js";
 
 export interface UnindexedFkFinding {
   /** The metadata file declaring the entity ("" when the loader recorded none). */
@@ -43,6 +44,8 @@ export interface UnindexedFkOptions {
   dialect: Dialect;
   /** Skip an entity by FQN — imported (dependency) metadata is not the adopter's to index. */
   skip?: (fqn: string) => boolean;
+  /** The project's schema settings: the conventions decide which FK indexes the schema already has. */
+  schema: SchemaBuildOptions;
 }
 
 const INDEX_LOOKUP = `${TYPE_INDEX}${TYPE_SUBTYPE_SEPARATOR}${INDEX_SUBTYPE_LOOKUP}`;
@@ -63,6 +66,7 @@ function pascal(s: string): string {
 
 export function scanForUnindexedForeignKeys(root: MetaData, opts: UnindexedFkOptions): UnindexedFkFinding[] {
   const { snapshot, provenance } = buildExpectedSchemaWithProvenance(root, {
+    ...opts.schema,
     dialect: opts.dialect,
   });
   // ADR-0058: the same column rule the expected schema just used, from the loaded root.

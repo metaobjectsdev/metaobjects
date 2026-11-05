@@ -522,7 +522,7 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
     /**
      * ADR-0019 Amendment 2: the other {@code wire} setting under which the generators reproduce the
      * committed output exactly, or {@code null} when none does. Probes decimals {native, string} x
-     * nullMembers {native, omit} ({@code emit} writes what {@code native} writes on the JVM), skipping
+     * nullMembers {native, omit} x durations {native, iso} ({@code emit} writes what {@code native} writes on the JVM), skipping
      * the setting this run used, then puts that setting back on the root. Each probe runs fresh
      * generator instances, since a generator need not support a second {@code execute}. A probe that
      * fails answers "no match", so the ordinary drift report still prints.
@@ -536,8 +536,9 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
         try {
             for (WireFormat.Decimals d : WireFormat.Decimals.values()) {
                 for (WireFormat.NullMembers n : List.of(WireFormat.NullMembers.NATIVE, WireFormat.NullMembers.OMIT)) {
-                    if (d == used.decimals() && n == usedNulls) continue;
-                    loader.getRoot().setWireFormat(new WireFormat(d, n));
+                  for (WireFormat.Durations u : WireFormat.Durations.values()) {
+                    if (d == used.decimals() && n == usedNulls && u == used.durations()) continue;
+                    loader.getRoot().setWireFormat(new WireFormat(d, n, u));
                     for (GenTarget t : targets) deleteRecursively(t.tempDir);
                     try {
                         for (Generator gen : buildGenerators(projectClassLoader, overrides)) gen.execute(loader);
@@ -550,7 +551,8 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
                     if (ownHashes != null) {
                         drift.addAll(strandedOutsideTargets(ownHashes, targets, projectRoot, new ArrayList<>()));
                     }
-                    if (drift.isEmpty()) return new WireFormat(d, n);
+                    if (drift.isEmpty()) return new WireFormat(d, n, u);
+                  }
                 }
             }
             return null;
@@ -562,14 +564,15 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
     /** The {@code wire} block that declares {@code wire}. */
     static String wireBlock(WireFormat wire) {
         return "\"wire\": { \"decimals\": \"" + wire.decimals().wireName()
-                + "\", \"nullMembers\": \"" + wire.nullMembers().wireName() + "\" }";
+                + "\", \"nullMembers\": \"" + wire.nullMembers().wireName()
+                + "\", \"durations\": \"" + wire.durations().wireName() + "\" }";
     }
 
     /** The verify failure for committed output that another {@code wire} setting reproduces. */
     static String wireDiffers(WireFormat committed, WireFormat used) {
         return "The committed output was generated with " + wireBlock(committed) + "; this run used "
                 + wireBlock(used) + " (.metaobjects/config.json; each key defaults to native). Do not "
-                + "regenerate: that changes the JSON your API writes for decimals or for a value object's "
+                + "regenerate: that changes the JSON your API writes for decimals, durations or for a value object's "
                 + "null members. Declare " + wireBlock(committed) + " in .metaobjects/config.json, and "
                 + "generate and verify both read it.";
     }

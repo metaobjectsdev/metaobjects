@@ -1,0 +1,18 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Order",
+          "children": [
+            { "field.long": { "name": "id" } },
+            { "field.enum": { "name": "status", "@values": ["DRAFT", "AWAITING_REVIEW"], "@maxLength": 9 } },
+            { "field.enum": { "name": "channel", "@values": ["EMAIL", "TELEPHONE"], "@maxLength": 5 } },
+            { "identity.primary": { "name": "id", "@fields": "id" } }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -96,6 +96,75 @@ public class ObjectFieldCodegenTests
         Assert.DoesNotContain("[Key]", address);
     }
 
+    // @flattenedColumnPrefix replaces the default `<parent column>_` prefix, verbatim ("" keeps the members'
+    // own columns), and the default prefix follows the project's column rule: the names
+    // `meta migrate` creates for the same model (core naming's ResolveFlattenedColumnPrefix).
+    [Theory]
+    [InlineData(ColumnNamingStrategy.Literal, "street", "Officestreet", "homeAddress_street")]
+    [InlineData(ColumnNamingStrategy.UpperFirst, "Street", "OfficeStreet", "HomeAddress_Street")]
+    public void DbContext_flattened_columns_follow_column_prefix_and_the_column_rule(
+        ColumnNamingStrategy strategy, string plain, string prefixed, string byDefault)
+    {
+        const string model = """
+        { "metadata.root": { "package": "acme", "children": [
+          { "object.value": { "name": "Address", "children": [ { "field.string": { "name": "street" } } ]}},
+          { "object.entity": { "name": "Customer", "children": [
+            { "source.rdb": { "@table": "customers" } },
+            { "field.long":   { "name": "id" } },
+            { "field.object": { "name": "mailing", "@objectRef": "Address", "@storage": "flattened", "@flattenedColumnPrefix": "" } },
+            { "field.object": { "name": "work", "@objectRef": "Address", "@storage": "flattened", "@flattenedColumnPrefix": "Office" } },
+            { "field.object": { "name": "homeAddress", "@objectRef": "Address", "@storage": "flattened" } },
+            { "identity.primary": { "@fields": "id" } }
+          ]}}
+        ]}}
+        """;
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(model, id: "prefix.json")]);
+        Assert.Empty(r.Errors);
+        var ctx = new GenContext
+        {
+            Entities = r.Root.Objects(), Root = r.Root,
+            Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", ColumnNamingStrategy = strategy },
+        };
+        var dbContext = new DbContextGenerator().Generate(ctx).Single().Content;
+
+        Assert.Contains($"b.Property(p => p.Street).HasColumnName(\"{plain}\");", dbContext);
+        Assert.Contains($"b.Property(p => p.Street).HasColumnName(\"{prefixed}\");", dbContext);
+        Assert.Contains($"b.Property(p => p.Street).HasColumnName(\"{byDefault}\");", dbContext);
+    }
+
+    // Each flattened member's column is core naming's, whole: the generator does not build the
+    // member half itself. A member whose @column is "" is the case that told them apart: core
+    // treats an empty @column as absent, so the column is `bill_street`, not `bill_`.
+    [Fact]
+    public void DbContext_flattened_member_columns_are_core_namings()
+    {
+        const string model = """
+        { "metadata.root": { "package": "acme", "children": [
+          { "object.value": { "name": "Address", "children": [ { "field.string": { "name": "street", "@column": "" } } ]}},
+          { "object.entity": { "name": "Customer", "children": [
+            { "source.rdb": { "@table": "customers" } },
+            { "field.long":   { "name": "id" } },
+            { "field.object": { "name": "billing", "@objectRef": "Address", "@storage": "flattened", "@column": "bill" } },
+            { "identity.primary": { "@fields": "id" } }
+          ]}}
+        ]}}
+        """;
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(model, id: "member.json")]);
+        Assert.Empty(r.Errors);
+        var ctx = new GenContext
+        {
+            Entities = r.Root.Objects(), Root = r.Root,
+            Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", ColumnNamingStrategy = ColumnNamingStrategy.SnakeCase },
+        };
+        var dbContext = new DbContextGenerator().Generate(ctx).Single().Content;
+
+        var billing = r.Root.FindObject("Customer")!.Fields().Single(f => f.Name == "billing");
+        var street = r.Root.FindObject("Address")!.Fields().Single(f => f.Name == "street");
+        var expected = PhysicalNaming.ResolveFlattenedColumnName(billing, street, ColumnNamingStrategy.SnakeCase);
+        Assert.Equal("bill_street", expected);
+        Assert.Contains($"b.Property(p => p.Street).HasColumnName(\"{expected}\");", dbContext);
+    }
+
     [Fact]
     public void DbContext_configures_owned_types_flattened_and_json()
     {

@@ -1,0 +1,22 @@
+{
+  "metadata.root": {
+    "package": "test",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Order",
+          "children": [
+            {
+              "field.object": {
+                "name": "home",
+                "@objectRef": "test::Address",
+                "@storage": "flattened",
+                "@flattenedColumnPrefix": "home_"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

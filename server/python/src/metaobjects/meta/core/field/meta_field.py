@@ -31,6 +31,9 @@ _FIELD_DATA_TYPE = {
     # are surfaced at codegen time (see codegen/type_map.py).
     fc.FIELD_SUBTYPE_URI: DataType.STRING,
     fc.FIELD_SUBTYPE_INET: DataType.STRING,
+    # field.duration is string-backed on the wire (an ISO-8601 duration); the native
+    # datetime.timedelta binding is surfaced at codegen time and by the runtime codec.
+    fc.FIELD_SUBTYPE_DURATION: DataType.STRING,
 }
 
 

@@ -77,7 +77,7 @@ public class SpringDecimalWireCompileRunTest {
         Path classesDir = tmp.newFolder("classes").toPath();
         MetaDataLoader loader = SpringTestFixtures.loadFixture(tmp.newFolder("fx").toPath(), "ledger", META);
         // The canonical output form is opt-in (ADR-0019 Amendment 2): pin the form the corpora pin.
-        loader.getRoot().setWireFormat(new WireFormat(WireFormat.Decimals.STRING, WireFormat.NullMembers.OMIT));
+        loader.getRoot().setWireFormat(new WireFormat(WireFormat.Decimals.STRING, WireFormat.NullMembers.OMIT, WireFormat.Durations.ISO));
         runGenerator(new SpringDtoGenerator(), loader, srcDir);
         runGenerator(new SpringValueObjectGenerator(), loader, srcDir);
         runGenerator(new SpringFilterAllowlistGenerator(), loader, srcDir);

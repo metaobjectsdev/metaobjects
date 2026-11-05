@@ -27,6 +27,7 @@ export * from "./shared/base-types.js";
 export * from "./shared/structural.js";
 export * from "./core/object/object-constants.js";
 export * from "./core/field/field-constants.js";
+export * from "./core/field/duration-wire.js";
 // FR-037 R1 — THE mutability accessors. Every consumer deciding "may this be
 // written, and when?" must go through these rather than reading the attr, so the
 // absent-means-readWrite default lives in exactly one place per port.
@@ -94,6 +95,7 @@ export {
 } from "./core/requirement/resolve-claim.js";
 export * from "./core/relationship/relationship-constants.js";
 export * from "./core/query/query-constants.js";
+export { EXPR_OP_IS_NOT_NULL, EXPR_OP_NOT, EXPR_FN_COALESCE, type ExprNode } from "./core/attr/meta-attr-expression.js";
 export * from "./persistence/source/source-constants.js";
 export * from "./persistence/origin/origin-constants.js";
 export * from "./template/template-constants.js";
@@ -368,25 +370,29 @@ export {
 // Naming — hoisted from runtime-ts in v0.2.3 so multiple consumers (runtime-ts, migrate-ts, codegen-ts)
 // share identical name resolution. See spec §4.1.
 export {
-  toSnakeCase, toKebabCase, pluralize, pluralizeTableNameLegacy,
+  toSnakeCase, toKebabCase, toUpperFirstColumn, pluralize, pluralizeTableNameLegacy,
   applyColumnNamingStrategy, DEFAULT_COLUMN_NAMING_STRATEGY, COLUMN_NAMING_STRATEGIES,
   TABLE_NAMING_RULES, DEFAULT_PHYSICAL_NAMING, physicalNamingOf, applyTableNamingRule,
   PHYSICAL_NAMING_MIGRATION_GUIDE, PHYSICAL_NAMING_MIGRATION_GUIDE_PATH, physicalNamingRemovedMessage,
-  resolveTableName, resolveColumnName, resolveTableSchema, resolveIndexName,
+  resolveTableName, resolveColumnName, resolveFlattenedColumnPrefix, resolveFlattenedColumnName,
+  resolveTableSchema, resolveIndexName,
   primaryRdbSource, sourceAddressKey,
   buildNameMap,
   stripPackage, packageOfResolutionKey,
 } from "./naming.js";
 export type { EntityNameMap, ColumnNamingStrategy, PhysicalNaming, TableNamingRule } from "./naming.js";
+export { resolveEnumMaxLength, enumDefaultsOf, DEFAULT_ENUM_DEFAULTS, ENUMS_KEY_MAX_LENGTH } from "./enum-length.js";
+export type { EnumDefaults } from "./enum-length.js";
 
 // Wire format (ADR-0019 Amendment 2): the `wire` block of .metaobjects/config.json.
 export {
-  WIRE_DECIMALS, WIRE_NULL_MEMBERS, WIRE_KEY_DECIMALS, WIRE_KEY_NULL_MEMBERS,
+  WIRE_DECIMALS, WIRE_NULL_MEMBERS, WIRE_DURATIONS, WIRE_KEY_DECIMALS, WIRE_KEY_NULL_MEMBERS, WIRE_KEY_DURATIONS,
   WIRE_DECIMALS_NATIVE, WIRE_DECIMALS_STRING,
   WIRE_NULL_MEMBERS_NATIVE, WIRE_NULL_MEMBERS_EMIT, WIRE_NULL_MEMBERS_OMIT,
+  WIRE_DURATIONS_NATIVE, WIRE_DURATIONS_ISO,
   DEFAULT_WIRE_FORMAT, wireFormatOf,
 } from "./wire.js";
-export type { WireFormat, WireDecimals, WireNullMembers } from "./wire.js";
+export type { WireFormat, WireDecimals, WireNullMembers, WireDurations } from "./wire.js";
 
 // Retired vocabulary: the map the loader reads to explain a retirement, and the raw-document
 // rewriter `meta upgrade` drives from the SAME entries — so the error message and the fix

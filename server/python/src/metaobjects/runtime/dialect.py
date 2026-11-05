@@ -13,7 +13,7 @@ ObjectManager itself stays one implementation:
   turned into the native Python type the metadata declares (``decode_value``).
 
 The Postgres dialect is the identity on both value hooks: pg8000 already speaks native types
-(ADR-0019). SQLite and MySQL decode by the FIELD's declared subtype, because neither engine
+(ADR-0019), a ``field.duration``'s ``timedelta`` included (bound and read as an interval). SQLite and MySQL decode by the FIELD's declared subtype, because neither engine
 has the column types Postgres has (a SQLite boolean is ``0``/``1``, its date and uuid are
 ``TEXT``; a MySQL ``TIME`` arrives as a ``timedelta``, its ``SUM`` of an integer as a
 ``Decimal``), so the declared type is the only authority on what a value means.
@@ -28,6 +28,7 @@ import uuid as _uuid
 from typing import Any
 
 from ..codegen.runtime.decimal_wire import decimal_from_double15
+from ..codegen.runtime.duration_wire import to_stored_micros
 from ..meta.core.field import field_constants as fc
 from ..meta.core.field.meta_field import MetaField
 from ..meta.persistence.db import db_constants as dbc
@@ -37,6 +38,22 @@ from ..meta.persistence.db import db_constants as dbc
 #: equivalent for the FIELD's declared subtype, so one boundary serves every engine.
 PG_OID_INT8 = 20
 PG_OID_INT4 = 23
+
+
+class DurationParam(_dt.timedelta):
+    """A ``field.duration``'s bound value: the ``timedelta`` the write codec makes of it.
+
+    The SQLite and MySQL dialects bind it as its 64-bit microsecond count (an INTEGER / BIGINT
+    column, so it orders and compares as a number), and they key that on THIS type, not on
+    ``timedelta``: only the duration write codec makes
+    one, so a ``timedelta`` handed in for any other column binds exactly as it did before.
+    pg8000 binds it as the ``timedelta`` it is (an interval)."""
+
+    __slots__ = ()
+
+    @classmethod
+    def of(cls, value: _dt.timedelta) -> "DurationParam":
+        return cls(days=value.days, seconds=value.seconds, microseconds=value.microseconds)
 
 
 def sqlite_supports_returning() -> bool:
@@ -261,6 +278,9 @@ class SqliteDialect(Dialect):
             return value.isoformat()
         if isinstance(value, _dt.time):
             return value.isoformat()
+        if isinstance(value, DurationParam):
+            # field.duration: an INTEGER column holding the microsecond count.
+            return to_stored_micros(value)
         return value
 
     def decode_value(self, field: MetaField, value: Any) -> Any:
@@ -298,6 +318,10 @@ class MySqlDialect(Dialect):
             return value.astimezone(_dt.timezone.utc).replace(tzinfo=None)
         if isinstance(value, _dt.time):
             return value.isoformat()
+        if isinstance(value, DurationParam):
+            # field.duration: a BIGINT column holding the microsecond count. PyMySQL would
+            # otherwise bind a timedelta as a TIME literal.
+            return to_stored_micros(value)
         return value
 
     def decode_value(self, field: MetaField, value: Any) -> Any:

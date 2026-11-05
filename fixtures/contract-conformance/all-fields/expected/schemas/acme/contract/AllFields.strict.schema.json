@@ -129,6 +129,13 @@
         "null"
       ]
     },
+    "holdFor": {
+      "description": "A span of time, in the serving language's own form. Set wire.durations to \"iso\" to fix ISO-8601 across server languages.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "shipTo": {
       "description": "A postal address.",
       "type": [
@@ -235,6 +242,7 @@
     "homepage",
     "looseLink",
     "address",
+    "holdFor",
     "shipTo",
     "stops",
     "tags",

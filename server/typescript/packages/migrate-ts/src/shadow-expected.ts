@@ -21,10 +21,30 @@ export type ShadowCatalog = { catalog: SchemaSnapshot } | { unavailable: string 
 /** Applies `expected` to a scratch database and reads it back (see shadow-canon.ts). */
 export type ShadowSchemaSource = (expected: SchemaSnapshot) => Promise<ShadowCatalog>;
 
-/** `expected` re-read from `shadow`: each model table replaced by the shadow's table of the same name. */
+/**
+ * `expected` re-read from `shadow`: each model table replaced by the shadow's table of the same
+ * name. A column's DECLARED sequence (`sequence`) is the model's, carried across, and the
+ * shadow's own read of it (`liveSequence`) is dropped: the shadow database names every
+ * sequence, declared or not, and only what the model declares may be compared or emitted.
+ */
 export function expectedFromShadow(shadow: SchemaSnapshot, expected: SchemaSnapshot): SchemaSnapshot {
   const byId = new Map(shadow.tables.map((t) => [qualifiedDbName(t), t] as const));
-  return { ...expected, tables: expected.tables.map((model) => byId.get(qualifiedDbName(model)) ?? model) };
+  return {
+    ...expected,
+    tables: expected.tables.map((model) => {
+      const read = byId.get(qualifiedDbName(model));
+      if (read === undefined) return model;
+      const declared = new Map(model.columns.map((c) => [c.name, c.sequence] as const));
+      return {
+        ...read,
+        columns: read.columns.map((c) => {
+          const { liveSequence: _live, sequence: _read, ...rest } = c;
+          const seq = declared.get(c.name);
+          return seq === undefined ? rest : { ...rest, sequence: seq };
+        }),
+      };
+    }),
+  };
 }
 
 /**

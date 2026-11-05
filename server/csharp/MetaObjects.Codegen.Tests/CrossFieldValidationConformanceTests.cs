@@ -6,6 +6,8 @@ using Microsoft.CodeAnalysis.CSharp;
 using MetaObjects.Codegen;
 using MetaObjects.Codegen.Generators;
 using MetaObjects.Loader;
+using MetaObjects.Config;
+using MetaObjects.Meta;
 using Xunit;
 
 namespace MetaObjects.Codegen.Tests;
@@ -45,7 +47,7 @@ public sealed class CrossFieldValidationConformanceTests
         AllCases().Select(c => new object[] { c.GetProperty("name").GetString()! });
 
     [Fact]
-    public void Discovers_all_cross_field_cases() => Assert.Equal(24, AllCases().Length);
+    public void Discovers_all_cross_field_cases() => Assert.Equal(43, AllCases().Length);
 
     [Theory]
     [MemberData(nameof(Cases))]
@@ -100,6 +102,10 @@ public sealed class CrossFieldValidationConformanceTests
             var loadResult = new MetaDataLoader().Load(
                 [new FileSource(Path.Combine(CorpusDir(), "meta.cross-field.json"))]);
             Assert.Empty(loadResult.Errors);
+            // The corpus pins its wire form in its own .metaobjects/config.json (`wire.durations:
+            // iso`, the form its duration payloads take); C#'s native default is System.Text.Json's
+            // own TimeSpan form.
+            loadResult.Root.WireFormat = NeutralConfig.Read(CorpusDir())?.Wire ?? WireFormat.Default;
             var ctx = new GenContext
             {
                 Entities = loadResult.Root.Objects(),

@@ -1,4 +1,8 @@
 import type { MetaData } from "@metaobjectsdev/metadata";
+import {
+  EXPR_FN_COALESCE, EXPR_OP_IS_NOT_NULL, EXPR_OP_NOT, FILTER_COMPOSE_AND, FILTER_COMPOSE_OR,
+  FILTER_OP_EQ, FILTER_OP_GT, FILTER_OP_GTE, FILTER_OP_IS_NULL, FILTER_OP_LT, FILTER_OP_LTE, FILTER_OP_NE,
+} from "@metaobjectsdev/metadata";
 import { LinkGraph, fqnOf, type Ref } from "../link-graph.js";
 import type { CoverageTracker } from "../coverage.js";
 import { esc, badge } from "../badges.js";
@@ -253,8 +257,14 @@ export function buildObjectPage(fqn: string, g: LinkGraph, cov: CoverageTracker)
     if (v.subType === "comparison") rule = `${esc(String(at("left") ?? ""))} ${esc(String(at("op") ?? ""))} ${esc(String(at("right") ?? ""))}`;
     else if (v.subType === "requiredWhen") rule = `${esc(String(at("field") ?? ""))} required when ${esc(String(at("when") ?? ""))} = ${esc(String(at("equals") ?? ""))}`;
     else if (v.subType === "presentIff") rule = `${esc(String(at("field") ?? ""))} present iff ${esc(String(at("when") ?? ""))} = ${esc(String(at("equals") ?? ""))}`;
-    else if (v.subType === "atLeastOne") { const fs = at("fields"); rule = `at least one of ${esc(Array.isArray(fs) ? fs.map(String).join(", ") : String(fs ?? ""))}`; }
+    else if (v.subType === "atLeastOne" || v.subType === "exactlyOne") {
+      const fs = at("fields");
+      const list = esc(Array.isArray(fs) ? fs.map(String).join(", ") : String(fs ?? ""));
+      rule = `${v.subType === "exactlyOne" ? "exactly one" : "at least one"} of ${list}`;
+    }
     else rule = esc(v.subType);
+    const condition = at("condition");
+    if (condition !== undefined && rule !== esc(v.subType)) rule += `, when ${esc(expressionText(condition))}`;
     validators.push({ scope: "object", subject: v.name || v.subType, rule });
   }
   validators.sort((a, b) => a.subject.localeCompare(b.subject));
@@ -365,4 +375,24 @@ export function buildObjectPage(fqn: string, g: LinkGraph, cov: CoverageTracker)
     hierarchy, inheritanceMermaid, neighborhoodMermaid, neighborhoodLegend, neighborhoodMore, referencedBy, references, usedByTemplates, sourceFile: src,
     report, reporting,
   };
+}
+
+const EXPR_TEXT_OP: Readonly<Record<string, string>> = {
+  [FILTER_OP_EQ]: "=", [FILTER_OP_NE]: "≠", [FILTER_OP_GT]: ">", [FILTER_OP_GTE]: "≥", [FILTER_OP_LT]: "<", [FILTER_OP_LTE]: "≤",
+};
+
+/** An attr.expression as one line of reading text (a cross-field validator's @condition). */
+function expressionText(node: unknown): string {
+  if (typeof node !== "object" || node === null) return String(node);
+  const n = node as Record<string, unknown>;
+  if (typeof n["field"] === "string") return n["field"];
+  if ("value" in n) return JSON.stringify(n["value"]);
+  const op = n["op"];
+  if (typeof op === "string" && EXPR_TEXT_OP[op] !== undefined) return `${expressionText(n["left"])} ${EXPR_TEXT_OP[op]} ${expressionText(n["right"])}`;
+  if (op === FILTER_OP_IS_NULL) return `${expressionText(n["arg"])} is empty`;
+  if (op === EXPR_OP_IS_NOT_NULL) return `${expressionText(n["arg"])} is set`;
+  if (op === EXPR_OP_NOT) return `not (${expressionText(n["arg"])})`;
+  if ((op === FILTER_COMPOSE_AND || op === FILTER_COMPOSE_OR) && Array.isArray(n["args"])) return n["args"].map((a) => `(${expressionText(a)})`).join(` ${op} `);
+  if (n["fn"] === EXPR_FN_COALESCE && Array.isArray(n["args"])) return `coalesce(${n["args"].map(expressionText).join(", ")})`;
+  return JSON.stringify(node);
 }

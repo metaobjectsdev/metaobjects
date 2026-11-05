@@ -1,11 +1,11 @@
 """The project ``wire`` setting (ADR-0019 Amendment 2): the OUTPUT form of a generated REST surface.
 
-``wire`` in ``.metaobjects/config.json`` (``{"decimals": ..., "nullMembers": ...}``) is read by
+``wire`` in ``.metaobjects/config.json`` (``{"decimals": ..., "nullMembers": ..., "durations": ...}``) is read by
 the same port-neutral reader as ``naming`` and carried by the loaded root (``MetaRoot.wire``);
-codegen reads it with :func:`wire_of`. The default is ``native`` for both keys: what this
+codegen reads it with :func:`wire_of`. The default is ``native`` for every key: what this
 port's own serializer writes (Pydantic's ``str(Decimal)``, a value object as the runtime holds
-it). ``"decimals": "string"`` and ``"nullMembers": "omit"`` give the portable form the
-conformance corpora pin. INPUT rules (W2/W3) do not depend on this setting.
+it, Pydantic's own ``timedelta`` form). ``"decimals": "string"``, ``"nullMembers": "omit"`` and
+``"durations": "iso"`` give the portable form the conformance corpora pin. INPUT rules (W2/W3) do not depend on this setting.
 """
 from __future__ import annotations
 
@@ -20,10 +20,12 @@ WIRE_NATIVE = "native"
 WIRE_DECIMALS_STRING = "string"
 WIRE_NULLS_EMIT = "emit"
 WIRE_NULLS_OMIT = "omit"
+WIRE_DURATIONS_ISO = "iso"
 
 #: The closed sets each key accepts, in the order the refusal message lists them.
 WIRE_DECIMALS = (WIRE_NATIVE, WIRE_DECIMALS_STRING)
 WIRE_NULL_MEMBERS = (WIRE_NATIVE, WIRE_NULLS_EMIT, WIRE_NULLS_OMIT)
+WIRE_DURATIONS = (WIRE_NATIVE, WIRE_DURATIONS_ISO)
 
 
 @dataclass(frozen=True)
@@ -33,6 +35,7 @@ class WireFormat:
 
     decimals: str = WIRE_NATIVE
     null_members: str = WIRE_NATIVE
+    durations: str = WIRE_NATIVE
 
 
 def wire_of(node: "MetaData") -> WireFormat:
@@ -47,7 +50,7 @@ def wire_of(node: "MetaData") -> WireFormat:
 
 def wire_block(wire: WireFormat) -> str:
     """A wire format as the ``wire`` block that declares it."""
-    return f'"wire": {{ "decimals": "{wire.decimals}", "nullMembers": "{wire.null_members}" }}'
+    return f'"wire": {{ "decimals": "{wire.decimals}", "nullMembers": "{wire.null_members}", "durations": "{wire.durations}" }}'
 
 
 def wire_candidates(used: WireFormat) -> list[WireFormat]:
@@ -56,7 +59,8 @@ def wire_candidates(used: WireFormat) -> list[WireFormat]:
         candidate
         for d in WIRE_DECIMALS
         for n in WIRE_NULL_MEMBERS
-        if (candidate := WireFormat(decimals=d, null_members=n)) != used
+        for u in WIRE_DURATIONS
+        if (candidate := WireFormat(decimals=d, null_members=n, durations=u)) != used
     ]
 
 

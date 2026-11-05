@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_UNKNOWN_ATTR",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.checks.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[0]['object.entity'].children[7]['validator.atLeastOne']"
+      }
+    }
+  ],
+  "warnings": []
+}

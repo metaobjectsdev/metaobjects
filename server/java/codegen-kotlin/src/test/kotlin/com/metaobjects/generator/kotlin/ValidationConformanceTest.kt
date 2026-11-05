@@ -51,7 +51,7 @@ class ValidationConformanceTest {
         runCorpus("meta.json", "cases.json", "Account", "acme.auth")
     }
 
-    /** Entity-scoped cross-field validators enforced by class-level Bean Validation on the data class. */
+    /** Entity-scoped cross-field validators (incl. exactlyOne and @condition) enforced by class-level Bean Validation on the data class. */
     @Test fun `generated Event data class enforces the cross-field verdicts`() {
         runCorpus("meta.cross-field.json", "cross-field-cases.json", "Event", "acme.events")
     }
@@ -64,6 +64,12 @@ class ValidationConformanceTest {
         try {
             // --- generate the Account data class with jakarta.validation annotations ---
             val loader = loadString("validation-conformance", metaJson)
+            // The corpus pins the cross-port duration rule (strict ISO-8601), which is wire.durations: iso.
+            loader.root.wireFormat = com.metaobjects.config.WireFormat(
+                com.metaobjects.config.WireFormat.Decimals.NATIVE,
+                com.metaobjects.config.WireFormat.NullMembers.NATIVE,
+                com.metaobjects.config.WireFormat.Durations.ISO,
+            )
             val gen = KotlinEntityGenerator()
             gen.setArgs(mapOf("outputDir" to outDir.toString()))
             gen.execute(loader)

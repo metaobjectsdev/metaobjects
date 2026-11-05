@@ -10,6 +10,7 @@ import com.metaobjects.integration.kotlin.Scenarios.QueryScenario
 import com.metaobjects.integration.kotlin.Scenarios.QuerySpec
 import com.metaobjects.integration.kotlin.tables.AssetTable
 import com.metaobjects.integration.kotlin.tables.EntryTable
+import com.metaobjects.integration.kotlin.tables.MetaDurationColumnType
 import com.metaobjects.integration.kotlin.tables.ReferenceDecimal
 import com.metaobjects.integration.kotlin.tables.AuthTable
 import com.metaobjects.integration.kotlin.tables.MeasurementTable
@@ -484,6 +485,9 @@ object QueryScenarioRunner {
         // Int-backed field.enum: bind the member SYMBOL and let the column's codec encode it to
         // the stored int (see the same guard in `coerce`).
         if (col.columnType is IntBackedEnumColumnType) return raw.toString()
+        // field.duration: parse the ISO-8601 authoring literal (checked BEFORE the sqlType
+        // dispatch, whose `int` substring branch would match "interval").
+        if (col.columnType is MetaDurationColumnType) return com.metaobjects.field.DurationWire.parse(raw.toString())
         val type = col.columnType.sqlType().lowercase()
         return when {
             type == "uuid" -> if (raw is UUID) raw else UUID.fromString(raw.toString().lowercase())
@@ -684,6 +688,8 @@ object QueryScenarioRunner {
         // member SYMBOL and the column's own codec maps it to the stored int. Checked BEFORE the
         // sqlType dispatch, whose `int` branch would try "PUBLISHED".toInt().
         if (col.columnType is IntBackedEnumColumnType) return raw.toString()
+        // A duration operand is the ISO-8601 literal (before the sqlType dispatch: "interval" contains "int").
+        if (col.columnType is MetaDurationColumnType) return com.metaobjects.field.DurationWire.parse(raw.toString())
         val type = col.columnType.sqlType().lowercase()
         return when {
             // uuid columns compare against java.util.UUID — the YAML supplies a string

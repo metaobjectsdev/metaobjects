@@ -9,7 +9,8 @@
 //   bun run prerelease:publish --iter 5              # pin the iteration number
 //   bun run prerelease:publish --base 0.25.0         # override the in-development version
 //
-// The base version is the lowest CHANGELOG.md `## [x.y.z]` section that is not released yet —
+// The base version is the lowest CHANGELOG.md `## [x.y.z]` section on the released major line (or
+// the next major) that is not released yet —
 // the repository's own declaration of what is being worked on — falling back to minor+1 when
 // every section is released. "Released" is read from public npm and the release tags, never
 // from package.json (release prep bumps that first). `--base` may override, but never to skip
@@ -394,7 +395,11 @@ if (wants("java")) {
     "examples/showcase/jvm/pom.xml",
   ];
   touch(...poms);
-  await run(`sed -i 's/${javaReleased.replace(/\./g, "\\.")}/${V.maven}/g' ${poms.map((f) => `'${f}'`).join(" ")}`);
+  // In JS rather than `sed -i`, whose in-place flag GNU and BSD (macOS) sed spell differently.
+  for (const f of poms) {
+    const path = join(ROOT, f);
+    writeFileSync(path, readFileSync(path, "utf8").replaceAll(javaReleased, V.maven));
+  }
   await run("scripts/check-pom-versions.sh");
   ok(`java poms → ${V.maven}`);
   const settings = join(scratch("m2"), "settings.xml");

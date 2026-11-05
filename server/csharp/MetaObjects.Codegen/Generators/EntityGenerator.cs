@@ -18,6 +18,7 @@ using MetaObjects.Meta;
 using MetaObjects.Persistence.Origin;
 using static MetaObjects.Core.Field.FieldConstants;
 using static MetaObjects.Core.Validator.ValidatorConstants;
+using static MetaObjects.Core.Query.QueryConstants;
 using static MetaObjects.Persistence.Origin.OriginConstants;
 using static MetaObjects.Persistence.Source.SourceConstants;
 
@@ -197,6 +198,12 @@ public class EntityGenerator : IGenerator
         var decimalNamespaces = HelperNamespaces(mapped.Concat(unmappedShapes).Concat(valueObjects).Where(HasDecimalWireField), ctx);
         foreach (var ns in decimalNamespaces)
             files.Add(EmitDecimalWireFile(ns, HelperFileName("DecimalWire", ns, decimalNamespaces)));
+
+        // field.duration — the duration wire helper, ONCE per namespace that has a duration
+        // property (the same shape sets the decimal helper is seeded from).
+        var durationNamespaces = HelperNamespaces(mapped.Concat(unmappedShapes).Concat(valueObjects).Where(HasDurationField), ctx);
+        foreach (var ns in durationNamespaces)
+            files.Add(EmitDurationWireFile(ns, HelperFileName("DurationWire", ns, durationNamespaces)));
         return files;
     }
 
@@ -650,6 +657,7 @@ public class EntityGenerator : IGenerator
             arr.AppendLine($"    [Column({CSharpNaming.ColumnRef(entity, field, strategy, includeNames)})]");
             AppendArrayValidatorAttributes(arr, field);
             AppendDecimalConverterAttribute(arr, field, nullable: false, _wire);
+            AppendDurationConverterAttribute(arr, field, _wire);
             // A NON-required decimal array is nullable (no initializer) so PATCH null / an omitted
             // POST value stays a NULL column instead of failing as a required collection.
             if (IsDecimalWireField(field) && !CSharpNaming.IsRequired(entity, field))
@@ -667,6 +675,7 @@ public class EntityGenerator : IGenerator
             AppendNumericValidatorAttributes(sb, field);
         var required = CSharpNaming.IsRequired(entity, field);
         AppendDecimalConverterAttribute(sb, field, nullable: !required, _wire);
+        AppendDurationConverterAttribute(sb, field, _wire);
         var nullable = required ? "" : "?";
         // Mirrors ScalarProperty's own initializer handling (its non-TPH sibling): a
         // literal-safe @default (bool/int/long/double/float/decimal/string) wins over the
@@ -1009,7 +1018,7 @@ public class EntityGenerator : IGenerator
 
     // -------------------------------------------------------------------------
     // Entity-scoped cross-field validators (validator.comparison / requiredWhen /
-    // presentIff / atLeastOne) -> IValidatableObject.Validate on the FULL record model,
+    // presentIff / atLeastOne / exactlyOne, each with an optional @condition) -> IValidatableObject.Validate on the FULL record model,
     // the class the generated create handler runs through Validator.TryValidateObject.
     // Semantics mirror the schema-side CHECK derivation (migrate-ts crossFieldCheck):
     // null = SQL NULL, "" is NOT null; a comparison with a null side passes; a null gate
@@ -1026,9 +1035,9 @@ public class EntityGenerator : IGenerator
 
     private static bool IsCrossFieldValidator(MetaValidator v) =>
         v.SubType is VALIDATOR_SUBTYPE_COMPARISON or VALIDATOR_SUBTYPE_REQUIRED_WHEN
-            or VALIDATOR_SUBTYPE_PRESENT_IFF or VALIDATOR_SUBTYPE_AT_LEAST_ONE;
+            or VALIDATOR_SUBTYPE_PRESENT_IFF or VALIDATOR_SUBTYPE_AT_LEAST_ONE or VALIDATOR_SUBTYPE_EXACTLY_ONE;
 
-    private enum CrossKind { Other, Numeric, Temporal, Str, Bool, Enum }
+    private enum CrossKind { Other, Numeric, Temporal, Str, Bool, Enum, Duration }
 
     private static CrossKind KindOf(MetaField f) => f.SubType switch
     {
@@ -1038,8 +1047,39 @@ public class EntityGenerator : IGenerator
         FIELD_SUBTYPE_STRING => CrossKind.Str,
         FIELD_SUBTYPE_BOOLEAN => CrossKind.Bool,
         FIELD_SUBTYPE_ENUM => CrossKind.Enum,
+        FIELD_SUBTYPE_DURATION => CrossKind.Duration,
         _ => CrossKind.Other,
     };
+
+    // Whether a comparison between these two fields has a sound meaning, as in every port:
+    // numerics compare with each other, strings, temporals and durations only with their own
+    // subtype and CLR type (a date against a timestamp, or an instant against a @localTime wall
+    // clock, has no ordering), and boolean, enum, uuid, uri and inet fields only test equality.
+    // Anything else is skipped, never rejected.
+    private static bool CrossComparable(MetaField l, MetaField r, string op)
+    {
+        var lk = KindOf(l); var rk = KindOf(r);
+        if (lk == CrossKind.Numeric && rk == CrossKind.Numeric) return true;
+        if (l.SubType != r.SubType || CSharpNaming.ScalarForField(l) != CSharpNaming.ScalarForField(r)) return false;
+        if (lk is CrossKind.Str or CrossKind.Temporal or CrossKind.Duration) return true;
+        return op is "eq" or "ne"
+            && (lk is CrossKind.Bool or CrossKind.Enum || l.SubType is FIELD_SUBTYPE_UUID or FIELD_SUBTYPE_URI or FIELD_SUBTYPE_INET)
+            && (l.SubType != FIELD_SUBTYPE_ENUM
+                || ReferenceEquals(Fr019SharedEnum.ResolveSharedEnumDecl(l) ?? l, Fr019SharedEnum.ResolveSharedEnumDecl(r) ?? r));
+    }
+
+    // An ISO-8601 duration (weeks, days, hours, minutes, seconds) as microseconds, or null.
+    private static long? ParseIsoDurationMicros(string text)
+    {
+        var m = System.Text.RegularExpressions.Regex.Match(text,
+            @"^([-+])?P(?!$)(?:(\d+)W)?(?:(\d+)D)?(?:T(?=\d)(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)(?:\.(\d+))?S)?)?$");
+        if (!m.Success) return null;
+        long G(int i) => m.Groups[i].Success ? long.Parse(m.Groups[i].Value, System.Globalization.CultureInfo.InvariantCulture) : 0;
+        var hours = (G(2) * 7 + G(3)) * 24 + G(4);
+        var frac = m.Groups[7].Success ? long.Parse(m.Groups[7].Value.PadRight(6, '0')[..6], System.Globalization.CultureInfo.InvariantCulture) : 0;
+        var us = ((hours * 60 + G(5)) * 60 + G(6)) * 1_000_000L + frac;
+        return m.Groups[1].Value == "-" ? -us : us;
+    }
 
     private static string CsLiteral(string s) =>
         "\"" + s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", "\\r").Replace("\n", "\\n") + "\"";
@@ -1080,7 +1120,7 @@ public class EntityGenerator : IGenerator
         var validators = CrossFieldValidatorsFor(entity, validatingBase);
         if (validators.Count == 0) return null;
         var baseHasValidate = validatingBase is not null;
-        var generatedKey = entity.PrimaryIdentity() is MetaPrimaryIdentity
+        HashSet<string> generatedKey = entity.PrimaryIdentity() is MetaPrimaryIdentity
             {
                 Generation: MetaObjects.Core.Identity.IdentityConstants.GENERATION_INCREMENT
                     or MetaObjects.Core.Identity.IdentityConstants.GENERATION_UUID,
@@ -1125,11 +1165,210 @@ public class EntityGenerator : IGenerator
             }
         }
 
+
+        // ---- @condition -> a C# expression of type bool? (SQL three-valued logic) ----------
+        // bool?'s lifted & and | are SQL AND / OR (false & null = false, true | null = true) and !
+        // keeps null, so only comparisons need care: a null side gives null, not false. The
+        // expression is emitted into the model, never interpreted at runtime. Null = the
+        // condition is not expressible here (names a field outside the create model, or a
+        // type this tier does not compare), and the whole rule is left to the database.
+        var condN = 0;
+
+        // The field a node compares as: itself, or a coalesce's first field.
+        MetaField? NodeField(object? node)
+        {
+            if (node is not IReadOnlyDictionary<string, object?> n) return null;
+            if (n.TryGetValue("field", out var fn) && fn is string) return Scalar(fn);
+            if (n.TryGetValue("fn", out var f) && f as string == MetaObjects.Core.Attr.ExpressionGrammar.EXPR_FN_COALESCE
+                && n.TryGetValue("args", out var args) && args is IEnumerable<object?> list)
+                foreach (var a in list) if (NodeField(a) is { } found) return found;
+            return null;
+        }
+
+        IEnumerable<object?> Leaves(object? node)
+        {
+            if (node is not IReadOnlyDictionary<string, object?> n) yield break;
+            if (n.ContainsKey("field") || n.ContainsKey("value")) { yield return node; yield break; }
+            if (n.TryGetValue("args", out var args) && args is IEnumerable<object?> list)
+                foreach (var a in list) foreach (var l in Leaves(a)) yield return l;
+        }
+
+        // A comparison inside a condition follows the validator rule: every pair of fields it
+        // reads must be comparable, or the whole rule is left to the database.
+        bool CondComparable(object? left, object? right, string op)
+        {
+            var fields = Leaves(left).Concat(Leaves(right))
+                .Select(l => l is IReadOnlyDictionary<string, object?> ln && ln.TryGetValue("field", out var fnm) ? Scalar(fnm) : null)
+                .OfType<MetaField>().ToList();
+            for (var x = 0; x < fields.Count; x++)
+                for (var y = x + 1; y < fields.Count; y++)
+                    if (!CrossComparable(fields[x], fields[y], op)) return false;
+            return true;
+        }
+
+        static string InvariantNumber(object v)
+        {
+            if (v is not double d) return Convert.ToString(v, System.Globalization.CultureInfo.InvariantCulture) ?? "0";
+            var t = d.ToString("R", System.Globalization.CultureInfo.InvariantCulture);
+            return t.Contains('.') || t.Contains('E') ? t : t + ".0";
+        }
+
+        // A value node as (expr, mayBeNull) compared as `kind`; numeric operands are normalised
+        // to `numTarget` ("decimal", "double" or "" for integers). Null = unsupported.
+        (string Expr, bool MayBeNull)? Val(object? node, CrossKind kind, string numTarget, string? temporalClr)
+        {
+            if (node is not IReadOnlyDictionary<string, object?> n) return null;
+            if (n.TryGetValue("field", out var fname))
+            {
+                var f = Scalar(fname);
+                if (f is null) return null;
+                var p = PropertyName(f);
+                // Enum, uuid, uri and inet values compare by their text form.
+                if (kind == CrossKind.Enum || (kind == CrossKind.Str && f.SubType != FIELD_SUBTYPE_STRING))
+                    return ($"((object?){p})?.ToString()", true);
+                if (kind == CrossKind.Numeric && numTarget.Length > 0) return ($"(({numTarget}?){p})", true);
+                return (p, true);
+            }
+            if (n.TryGetValue("value", out var lit))
+            {
+                switch (kind)
+                {
+                    case CrossKind.Numeric when lit is long or int or double:
+                        return (numTarget.Length > 0 ? $"(({numTarget}){InvariantNumber(lit)})" : InvariantNumber(lit), false);
+                    case CrossKind.Str or CrossKind.Enum when lit is string s:
+                        return (CsLiteral(s), false);
+                    case CrossKind.Bool when lit is bool b:
+                        return (b ? "true" : "false", false);
+                    case CrossKind.Duration when lit is string d:
+                        return ParseIsoDurationMicros(d) is { } us ? ($"TimeSpan.FromTicks({us * 10}L)", false) : null;
+                    case CrossKind.Temporal when lit is string t && temporalClr is not null:
+                    {
+                        var inv = "System.Globalization.CultureInfo.InvariantCulture";
+                        return temporalClr switch
+                        {
+                            "DateOnly" => ($"DateOnly.Parse({CsLiteral(t)}, {inv})", false),
+                            "TimeOnly" => ($"TimeOnly.Parse({CsLiteral(t)}, {inv})", false),
+                            "DateTimeOffset" => ($"DateTimeOffset.Parse({CsLiteral(t)}, {inv}, System.Globalization.DateTimeStyles.AssumeUniversal)", false),
+                            "DateTime" => ($"DateTime.Parse({CsLiteral(t)}, {inv})", false),
+                            _ => null,
+                        };
+                    }
+                    default: return null;
+                }
+            }
+            if (n.TryGetValue("fn", out var fnName) && fnName as string == MetaObjects.Core.Attr.ExpressionGrammar.EXPR_FN_COALESCE
+                && n.TryGetValue("args", out var args) && args is IEnumerable<object?> list)
+            {
+                var parts = new List<(string Expr, bool MayBeNull)>();
+                foreach (var a in list)
+                {
+                    if (Val(a, kind, numTarget, temporalClr) is not { } part) return null;
+                    parts.Add(part);
+                }
+                if (parts.Count == 0) return null;
+                return ($"({string.Join(" ?? ", parts.Select(x => x.Expr))})", parts.All(x => x.MayBeNull));
+            }
+            return null;
+        }
+
+        string? CondCs(object? node)
+        {
+            if (node is not IReadOnlyDictionary<string, object?> n || n.GetValueOrDefault("op") is not string op) return null;
+            switch (op)
+            {
+                case FILTER_OP_EQ or FILTER_OP_NE or FILTER_OP_GT or FILTER_OP_GTE or FILTER_OP_LT or FILTER_OP_LTE:
+                {
+                    var left = n.GetValueOrDefault("left"); var right = n.GetValueOrDefault("right");
+                    if (!CondComparable(left, right, op)) return null;
+                    var anchor = NodeField(left) ?? NodeField(right);
+                    if (anchor is null) return null;
+                    // CondComparable has checked every pair of fields; what is left is how the anchor
+                    // compares: its CLR type, its numeric promotion, or its text form.
+                    var kind = KindOf(anchor);
+                    var ordering = op is FILTER_OP_GT or FILTER_OP_GTE or FILTER_OP_LT or FILTER_OP_LTE;
+                    string? temporalClr = null; var numTarget = "";
+                    switch (kind)
+                    {
+                        case CrossKind.Temporal:
+                            temporalClr = CSharpNaming.ScalarForField(anchor);
+                            break;
+                        case CrossKind.Numeric:
+                            foreach (var l in Leaves(left).Concat(Leaves(right)))
+                            {
+                                if (l is not IReadOnlyDictionary<string, object?> ln) continue;
+                                if (ln.TryGetValue("field", out var fnm))
+                                {
+                                    if (Scalar(fnm) is not { } lf) return null;
+                                    if (lf.SubType is FIELD_SUBTYPE_DECIMAL) numTarget = "decimal";
+                                    else if (lf.SubType is FIELD_SUBTYPE_DOUBLE or FIELD_SUBTYPE_FLOAT && numTarget != "decimal") numTarget = "double";
+                                }
+                                else if (ln.GetValueOrDefault("value") is double && numTarget.Length == 0) numTarget = "double";
+                            }
+                            break;
+                        case CrossKind.Str or CrossKind.Enum:
+                            kind = CrossKind.Str;
+                            break;
+                        case CrossKind.Bool when !ordering:
+                        case CrossKind.Duration:
+                            break;
+                        case CrossKind.Other when !ordering && anchor.SubType is FIELD_SUBTYPE_UUID or FIELD_SUBTYPE_URI or FIELD_SUBTYPE_INET:
+                            kind = CrossKind.Str;
+                            break;
+                        default:
+                            return null;
+                    }
+                    if (Val(left, kind, numTarget, temporalClr) is not { } lv || Val(right, kind, numTarget, temporalClr) is not { } rv) return null;
+                    var csOp = op switch { FILTER_OP_GT => ">", FILTER_OP_GTE => ">=", FILTER_OP_LT => "<", FILTER_OP_LTE => "<=", FILTER_OP_NE => "!=", _ => "==" };
+                    var guards = new List<string>();
+                    string Unwrap((string Expr, bool MayBeNull) x)
+                    {
+                        if (!x.MayBeNull) return x.Expr;
+                        var name = $"__c{++condN}";
+                        guards.Add($"{x.Expr} is {{ }} {name}");
+                        return name;
+                    }
+                    var a = Unwrap(lv); var b = Unwrap(rv);
+                    var cmp = kind == CrossKind.Str ? $"string.CompareOrdinal({a}, {b}) {csOp} 0" : $"{a} {csOp} {b}";
+                    return guards.Count == 0
+                        ? $"(bool?)({cmp})"
+                        : $"({string.Join(" && ", guards)} ? (bool?)({cmp}) : null)";
+                }
+                case FILTER_OP_IS_NULL or MetaObjects.Core.Attr.ExpressionGrammar.EXPR_OP_IS_NOT_NULL:
+                {
+                    var arg = n.GetValueOrDefault("arg");
+                    if (arg is IReadOnlyDictionary<string, object?> an && an.ContainsKey("value"))
+                        return (an["value"] is null) == (op == FILTER_OP_IS_NULL) ? "true" : "false";
+                    var anchor = NodeField(arg);
+                    if (anchor is null) return null;
+                    var kind = KindOf(anchor);
+                    if (kind == CrossKind.Enum) kind = CrossKind.Str;
+                    // Only the null-ness is read, so any operand type works; temporal and numeric need no normalisation.
+                    if (Val(arg, kind, "", null) is not { } v) return null;
+                    return $"(((object?){v.Expr}) is {(op == FILTER_OP_IS_NULL ? "null" : "not null")})";
+                }
+                case MetaObjects.Core.Attr.ExpressionGrammar.EXPR_OP_NOT:
+                    return CondCs(n.GetValueOrDefault("arg")) is { } inner ? $"!({inner})" : null;
+                case FILTER_COMPOSE_AND or FILTER_COMPOSE_OR:
+                {
+                    if (n.GetValueOrDefault("args") is not IEnumerable<object?> list) return null;
+                    var parts = new List<string>();
+                    foreach (var a in list)
+                    {
+                        if (CondCs(a) is not { } part) return null;
+                        parts.Add(part);
+                    }
+                    return parts.Count == 0 ? null : "(" + string.Join(op == FILTER_COMPOSE_AND ? " & " : " | ", parts) + ")";
+                }
+                default: return null;
+            }
+        }
+
         var body = new StringBuilder();
         var i = 0;
         foreach (var v in validators)
         {
             i++;
+            var rule = new StringBuilder();
             switch (v.SubType)
             {
                 case VALIDATOR_SUBTYPE_COMPARISON:
@@ -1138,34 +1377,27 @@ public class EntityGenerator : IGenerator
                     var r = Scalar(v.Attr(VALIDATOR_ATTR_RIGHT));
                     var op = v.Attr(VALIDATOR_ATTR_OP) as string;
                     if (l is null || r is null || op is null) break;
-                    var lk = KindOf(l); var rk = KindOf(r);
-                    var ordering = op is "gt" or "gte" or "lt" or "lte";
                     var csOp = op switch { "gt" => ">", "gte" => ">=", "lt" => "<", "lte" => "<=", "ne" => "!=", "eq" => "==", _ => null };
-                    if (csOp is null) break;
+                    if (csOp is null || !CrossComparable(l, r, op)) break;
+                    var lk = KindOf(l);
                     string cond;
                     var a = $"__l{i}"; var b = $"__r{i}";
-                    if (lk == CrossKind.Str && rk == CrossKind.Str)
+                    if (lk == CrossKind.Str)
                         cond = $"string.CompareOrdinal({a}, {b}) {csOp} 0";
-                    else if (lk == CrossKind.Numeric && rk == CrossKind.Numeric)
+                    else if (lk == CrossKind.Numeric)
                     {
                         var ls = CSharpNaming.ScalarForField(l); var rs = CSharpNaming.ScalarForField(r);
                         var la = ls != "decimal" && rs == "decimal" ? $"(decimal){a}" : a;
                         var rb = rs != "decimal" && ls == "decimal" ? $"(decimal){b}" : b;
                         cond = $"{la} {csOp} {rb}";
                     }
-                    else if (lk == CrossKind.Temporal && rk == CrossKind.Temporal
-                             && CSharpNaming.ScalarForField(l) == CSharpNaming.ScalarForField(r))
+                    else if (lk is CrossKind.Temporal or CrossKind.Duration)
                         cond = $"{a} {csOp} {b}";
-                    else if (!ordering && l.SubType == r.SubType
-                             && (lk != CrossKind.Other || l.SubType is FIELD_SUBTYPE_UUID or FIELD_SUBTYPE_URI or FIELD_SUBTYPE_INET)
-                             && CSharpNaming.ScalarForField(l) == CSharpNaming.ScalarForField(r)
-                             && (l.SubType != FIELD_SUBTYPE_ENUM
-                                 || ReferenceEquals(Fr019SharedEnum.ResolveSharedEnumDecl(l) ?? l, Fr019SharedEnum.ResolveSharedEnumDecl(r) ?? r)))
+                    else
                         cond = op == "eq" ? $"Equals({a}, {b})" : $"!Equals({a}, {b})";
-                    else break;
                     var lp = PropertyName(l); var rp = PropertyName(r);
-                    body.AppendLine($"        if ({lp} is {{ }} {a} && {rp} is {{ }} {b} && !({cond}))");
-                    body.AppendLine($"            yield return new ValidationResult({CsLiteral($"{lp} must be {op} {rp}.")}, new[] {{ nameof({lp}), nameof({rp}) }});");
+                    rule.AppendLine($"        if ({lp} is {{ }} {a} && {rp} is {{ }} {b} && !({cond}))");
+                    rule.AppendLine($"            yield return new ValidationResult({CsLiteral($"{lp} must be {op} {rp}.")}, new[] {{ nameof({lp}), nameof({rp}) }});");
                     break;
                 }
                 case VALIDATOR_SUBTYPE_REQUIRED_WHEN:
@@ -1179,13 +1411,13 @@ public class EntityGenerator : IGenerator
                     var tp = PropertyName(target); var wp = PropertyName(when);
                     if (v.SubType == VALIDATOR_SUBTYPE_REQUIRED_WHEN)
                     {
-                        body.AppendLine($"        if ({gate} && {tp} is null)");
-                        body.AppendLine($"            yield return new ValidationResult({CsLiteral($"{tp} is required when {wp} is {raw}.")}, new[] {{ nameof({tp}) }});");
+                        rule.AppendLine($"        if ({gate} && {tp} is null)");
+                        rule.AppendLine($"            yield return new ValidationResult({CsLiteral($"{tp} is required when {wp} is {raw}.")}, new[] {{ nameof({tp}) }});");
                     }
                     else
                     {
-                        body.AppendLine($"        if (({tp} is not null) != {gate})");
-                        body.AppendLine($"            yield return new ValidationResult({CsLiteral($"{tp} must be present if and only if {wp} is {raw}.")}, new[] {{ nameof({tp}) }});");
+                        rule.AppendLine($"        if (({tp} is not null) != {gate})");
+                        rule.AppendLine($"            yield return new ValidationResult({CsLiteral($"{tp} must be present if and only if {wp} is {raw}.")}, new[] {{ nameof({tp}) }});");
                     }
                     break;
                 }
@@ -1201,11 +1433,44 @@ public class EntityGenerator : IGenerator
                     var fs = names.Select(Scalar).ToList();
                     if (fs.Count == 0 || fs.Any(f => f is null)) break;
                     var props = fs.Select(f => PropertyName(f!)).ToList();
-                    body.AppendLine($"        if ({string.Join(" && ", props.Select(p => $"{p} is null"))})");
-                    body.AppendLine($"            yield return new ValidationResult({CsLiteral($"At least one of {string.Join(", ", props)} is required.")}, new[] {{ {string.Join(", ", props.Select(p => $"nameof({p})"))} }});");
+                    rule.AppendLine($"        if ({string.Join(" && ", props.Select(p => $"{p} is null"))})");
+                    rule.AppendLine($"            yield return new ValidationResult({CsLiteral($"At least one of {string.Join(", ", props)} is required.")}, new[] {{ {string.Join(", ", props.Select(p => $"nameof({p})"))} }});");
+                    break;
+                }
+                case VALIDATOR_SUBTYPE_EXACTLY_ONE:
+                {
+                    var raw = v.Attr(VALIDATOR_ATTR_FIELDS);
+                    var names = raw switch
+                    {
+                        string one => new List<object?> { one },
+                        System.Collections.IEnumerable many => many.Cast<object?>().ToList(),
+                        _ => new List<object?>(),
+                    };
+                    var fs = names.Select(Scalar).ToList();
+                    if (fs.Count == 0 || fs.Any(f => f is null)) break;
+                    var props = fs.Select(f => PropertyName(f!)).ToList();
+                    // Exactly one non-null: absent is null, "" is not null. (object?) keeps the test valid for any property type.
+                    var count = string.Join(" + ", props.Select(p => $"(((object?){p}) is null ? 0 : 1)"));
+                    rule.AppendLine($"        if ({count} != 1)");
+                    rule.AppendLine($"            yield return new ValidationResult({CsLiteral($"Exactly one of {string.Join(", ", props)} is required.")}, new[] {{ {string.Join(", ", props.Select(p => $"nameof({p})"))} }});");
                     break;
                 }
             }
+            if (rule.Length == 0) continue;
+            // A rule with an @condition is checked only when the condition is TRUE (the CHECK is
+            // NOT (condition) OR (rule)); false or NULL lets the record through. A condition that
+            // names a field outside the create model leaves the whole rule to the database.
+            if (v.Attr(VALIDATOR_ATTR_CONDITION) is { } condition)
+            {
+                var guard = CondCs(condition);
+                if (guard is null) continue;
+                body.AppendLine($"        if (({guard}) == true)");
+                body.AppendLine("        {");
+                foreach (var line in rule.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries))
+                    body.AppendLine("    " + line.TrimEnd('\r'));
+                body.AppendLine("        }");
+            }
+            else body.Append(rule);
         }
         if (body.Length == 0)
         {
@@ -1214,7 +1479,7 @@ public class EntityGenerator : IGenerator
         }
 
         var sb = new StringBuilder();
-        sb.AppendLine("    /// <summary>Entity-scoped cross-field validators (comparison / requiredWhen / presentIff / atLeastOne). Create-time only; the database CHECK is the enforcement on partial updates.</summary>");
+        sb.AppendLine("    /// <summary>Entity-scoped cross-field validators (comparison / requiredWhen / presentIff / atLeastOne / exactlyOne, each with its optional @condition). Create-time only; the database CHECK is the enforcement on partial updates.</summary>");
         sb.AppendLine(baseHasValidate
             ? "    public override IEnumerable<ValidationResult> Validate(ValidationContext validationContext)"
             : "    public virtual IEnumerable<ValidationResult> Validate(ValidationContext validationContext)");
@@ -1639,6 +1904,290 @@ public static class DecimalWire
     private static EmittedFile EmitDecimalWireFile(string ns, string fileName) =>
         new(fileName, DecimalWireSourceTemplate.Replace("__NS__", ns, StringComparison.Ordinal) + "\n");
 
+    // field.duration — the duration wire form (fixtures/duration-wire/). This text is the
+    // Runtime/DurationWire.cs source with its namespace as __NS__; DurationWireTests gates the two
+    // byte-for-byte after the namespace swap. It lives HERE (not read from the HelperRuntime
+    // resource) so an ejected EntityGenerator stays self-contained, the way DecimalWire's is.
+    private const string DurationWireSourceTemplate = """
+// <auto-generated/>
+// DurationWire — the wire form of a field.duration: a fixed-length span of time, a TimeSpan in C#.
+//
+// Under `wire.durations: iso` a duration is an ISO-8601 duration STRING on the wire. Every port writes the canonical form
+// `[-]PT[<h>H][<m>M][<s>[.<f>]S]`: hours never folded into days, zero components left out, zero
+// as `PT0S`, one leading `-` for a negative span, and as many fractional digits as the port's own
+// type holds, trailing zeros dropped: seven here (a TimeSpan tick is 100 ns). Every port reads that
+// form plus a leading week count (`nW`, exactly 7 days) and day count (`nD`, exactly 24 hours), an
+// optional `+`, and a fraction of any length; the digits past a tick are truncated toward zero,
+// never rounded. Years and months are refused: a calendar span has no fixed length.
+// Under `wire.durations: native` the property carries no converter and System.Text.Json's own
+// TimeSpan form (`01:30:00`) is the wire form instead. A span longer than a TimeSpan
+// holds (about 10.7 million days) is refused, never wrapped: that is this port's own limit, not a
+// cross-port one. On a database without an interval type (SQLite, MySQL) a duration is stored as a
+// 64-bit count of microseconds (ToMicros / FromMicros), the column's own precision. The rule and its
+// cross-port vectors are in fixtures/duration-wire/.
+//
+// ONE source, two homes. This file is the package's production helper (the filter dispatcher
+// parses its operands through it). The entity generator emits the SAME text, with only the
+// namespace changed, as `DurationWire.g.cs` into every namespace that has a duration property,
+// so the `[DurationWire.Iso]` on each property resolves inside the generated project and the
+// generated entity code imports nothing from MetaObjects (CLAUDE.md). DurationWireTests gates
+// the two texts byte-for-byte. Keep this file free of references to anything but the BCL.
+
+#nullable enable
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
+namespace __NS__;
+
+/// <summary>The canonical wire form of a duration: format, parse, and the System.Text.Json converters.</summary>
+public static class DurationWire
+{
+    /// <summary>The accepted form, as a regular expression (the cross-port statement of the rule; this helper parses it by hand).</summary>
+    public const string Pattern = @"^[-+]?P(?!$)([0-9]+W)?([0-9]+D)?(T(?=[0-9])([0-9]+H)?([0-9]+M)?([0-9]+(\.[0-9]+)?S)?)?$";
+
+    /// <summary>The fractional-second digits the canonical form carries at most: a TimeSpan tick is 100 ns.</summary>
+    public const int FractionDigits = 7;
+
+    private const ulong TicksPerSecond = (ulong)TimeSpan.TicksPerSecond;
+    private const ulong TicksPerMinute = (ulong)TimeSpan.TicksPerMinute;
+    private const ulong TicksPerHour = (ulong)TimeSpan.TicksPerHour;
+    private const ulong TicksPerDay = (ulong)TimeSpan.TicksPerDay;
+    private const ulong TicksPerWeek = 7UL * TicksPerDay;
+    private const long TicksPerMicro = TimeSpan.TicksPerMillisecond / 1000L;
+
+    /// <summary>The canonical string of <paramref name="value"/>: <c>[-]PT[nH][nM][n[.f]S]</c>, up to seven fractional digits.</summary>
+    public static string Format(TimeSpan value)
+    {
+        long ticks = value.Ticks;
+        if (ticks == 0) return "PT0S";
+        bool negative = ticks < 0;
+        // The magnitude as unsigned, so TimeSpan.MinValue (whose negation a long cannot hold) formats too.
+        ulong rest = negative ? (ulong)(-(ticks + 1)) + 1UL : (ulong)ticks;
+        ulong h = rest / TicksPerHour;
+        rest %= TicksPerHour;
+        ulong m = rest / TicksPerMinute;
+        rest %= TicksPerMinute;
+        ulong s = rest / TicksPerSecond;
+        ulong frac = rest % TicksPerSecond;
+        var sb = new StringBuilder(negative ? "-PT" : "PT");
+        if (h > 0) sb.Append(h.ToString(CultureInfo.InvariantCulture)).Append('H');
+        if (m > 0) sb.Append(m.ToString(CultureInfo.InvariantCulture)).Append('M');
+        if (s > 0 || frac > 0)
+        {
+            sb.Append(s.ToString(CultureInfo.InvariantCulture));
+            if (frac > 0) sb.Append('.').Append(frac.ToString("D7", CultureInfo.InvariantCulture).TrimEnd('0'));
+            sb.Append('S');
+        }
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Parse an ISO-8601 duration in the accepted form (<see cref="Pattern"/>). False for anything
+    /// else: years or months, lowercase designators, fractional hours, minutes or weeks, a comma,
+    /// per-component signs, whitespace, out-of-order components, or a span a TimeSpan cannot hold.
+    /// Fractional seconds past the seventh digit (a tick) are truncated toward zero.
+    /// </summary>
+    public static bool TryParse(string? text, out TimeSpan value)
+    {
+        value = TimeSpan.Zero;
+        if (text is null) return false;
+        int i = 0, n = text.Length;
+        bool negative = false;
+        if (i < n && (text[i] == '-' || text[i] == '+')) { negative = text[i] == '-'; i++; }
+        if (i >= n || text[i] != 'P') return false;
+        i++;
+        if (i >= n) return false; // "P" alone has no component
+        ulong ticks = 0; // the magnitude
+        try
+        {
+            checked
+            {
+                // Optional week and day counts, in that order, each at most once.
+                int dateOrder = 0; // 1 = W, 2 = D
+                while (i < n && IsDigit(text[i]))
+                {
+                    ulong count = ReadDigits(text, ref i);
+                    if (i >= n) return false;
+                    int at = text[i] switch { 'W' => 1, 'D' => 2, _ => 0 };
+                    if (at == 0 || at <= dateOrder) return false;
+                    dateOrder = at;
+                    ticks += count * (at == 1 ? TicksPerWeek : TicksPerDay);
+                    i++;
+                }
+                if (i < n)
+                {
+                    if (text[i] != 'T') return false;
+                    i++;
+                    if (i >= n || !IsDigit(text[i])) return false; // `T` must be followed by a component
+                    int order = 0; // 1 = H, 2 = M, 3 = S: each at most once, in that order
+                    while (i < n)
+                    {
+                        if (!IsDigit(text[i])) return false;
+                        ulong whole = ReadDigits(text, ref i);
+                        if (i >= n) return false;
+                        if (text[i] == '.')
+                        {
+                            i++;
+                            int fracStart = i;
+                            while (i < n && IsDigit(text[i])) i++;
+                            int digits = i - fracStart;
+                            if (digits < 1 || i >= n || text[i] != 'S' || order >= 3) return false;
+                            // The first seven digits are whole ticks; the rest are truncated toward zero.
+                            var seven = text.Substring(fracStart, Math.Min(digits, FractionDigits)).PadRight(FractionDigits, '0');
+                            ticks += whole * TicksPerSecond + ulong.Parse(seven, NumberStyles.None, CultureInfo.InvariantCulture);
+                            order = 3;
+                            i++;
+                            continue;
+                        }
+                        int at = text[i] switch { 'H' => 1, 'M' => 2, 'S' => 3, _ => 0 };
+                        if (at == 0 || at <= order) return false;
+                        order = at;
+                        ticks += whole * (at == 1 ? TicksPerHour : at == 2 ? TicksPerMinute : TicksPerSecond);
+                        i++;
+                    }
+                }
+            }
+        }
+        catch (OverflowException)
+        {
+            return false;
+        }
+        // A TimeSpan holds one more tick below zero than above it.
+        if (negative ? ticks > (ulong)long.MaxValue + 1UL : ticks > (ulong)long.MaxValue) return false;
+        value = TimeSpan.FromTicks(!negative ? (long)ticks : ticks > (ulong)long.MaxValue ? long.MinValue : -(long)ticks);
+        return true;
+    }
+
+    /// <summary>The stored form on a database without an interval type: whole microseconds, sub-microsecond ticks truncated toward zero.</summary>
+    public static long ToMicros(TimeSpan value) => value.Ticks / TicksPerMicro;
+
+    /// <summary>A stored microsecond count as a TimeSpan. Throws <see cref="OverflowException"/> for a count a TimeSpan cannot hold: refused, never wrapped.</summary>
+    public static TimeSpan FromMicros(long micros) => TimeSpan.FromTicks(checked(micros * TicksPerMicro));
+
+    /// <summary>Parse the accepted form, or throw <see cref="FormatException"/>.</summary>
+    public static TimeSpan Parse(string text) =>
+        TryParse(text, out var value)
+            ? value
+            : throw new FormatException("not an ISO-8601 duration (such as PT1H30M; no years or months): " + text);
+
+    /// <summary>The canonical form of an accepted ISO-8601 duration, or null when <paramref name="text"/> is not one.</summary>
+    public static string? Canonical(string? text) => TryParse(text, out var value) ? Format(value) : null;
+
+    /// <summary>An already-parsed JSON value (a PATCH merge reads one property at a time): a string in the accepted form.</summary>
+    public static bool TryParseElement(JsonElement element, out TimeSpan value)
+    {
+        value = TimeSpan.Zero;
+        return element.ValueKind == JsonValueKind.String && TryParse(element.GetString(), out value);
+    }
+
+    private static bool IsDigit(char c) => c >= '0' && c <= '9';
+
+    // A run of ASCII digits at i (at least one; the caller checked), advancing i past it.
+    private static ulong ReadDigits(string text, ref int i)
+    {
+        ulong v = 0;
+        while (i < text.Length && IsDigit(text[i]))
+        {
+            v = checked(v * 10 + (ulong)(text[i] - '0'));
+            i++;
+        }
+        return v;
+    }
+
+    private static TimeSpan ReadOne(ref Utf8JsonReader reader)
+    {
+        if (reader.TokenType != JsonTokenType.String || !TryParse(reader.GetString(), out var value))
+            throw new JsonException("field.duration: expected an ISO-8601 duration such as PT1H30M (no years or months)");
+        return value;
+    }
+
+    /// <summary>
+    /// A duration property (<c>TimeSpan</c>, <c>TimeSpan?</c> or <c>IList&lt;TimeSpan&gt;</c>): written as the
+    /// canonical string, read from a string in the accepted form; anything else is refused. Attached per
+    /// property, so no host serializer setting can put System.Text.Json's own TimeSpan form on the wire.
+    /// </summary>
+    [AttributeUsage(AttributeTargets.Property)]
+    public sealed class IsoAttribute : JsonConverterAttribute
+    {
+        public override JsonConverter? CreateConverter(Type typeToConvert)
+        {
+            if (typeToConvert == typeof(TimeSpan)) return new DurationJsonConverter();
+            if (typeToConvert == typeof(TimeSpan?)) return new NullableDurationJsonConverter();
+            if (typeToConvert == typeof(IList<TimeSpan>)) return new DurationListJsonConverter();
+            return null;
+        }
+    }
+
+    /// <summary>A duration property: the canonical string.</summary>
+    public sealed class DurationJsonConverter : JsonConverter<TimeSpan>
+    {
+        public override TimeSpan Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+            => ReadOne(ref reader);
+
+        public override void Write(Utf8JsonWriter writer, TimeSpan value, JsonSerializerOptions options)
+            => writer.WriteStringValue(Format(value));
+    }
+
+    /// <summary>A nullable duration property: null is JSON null, with the key present.</summary>
+    public sealed class NullableDurationJsonConverter : JsonConverter<TimeSpan?>
+    {
+        public override bool HandleNull => true;
+
+        public override TimeSpan? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+            => reader.TokenType == JsonTokenType.Null ? null : ReadOne(ref reader);
+
+        public override void Write(Utf8JsonWriter writer, TimeSpan? value, JsonSerializerOptions options)
+        {
+            if (value is null) writer.WriteNullValue();
+            else writer.WriteStringValue(Format(value.Value));
+        }
+    }
+
+    /// <summary>An <c>@isArray</c> duration property, typed <c>IList&lt;TimeSpan&gt;</c>: an array of canonical strings.</summary>
+    public sealed class DurationListJsonConverter : JsonConverter<IList<TimeSpan>>
+    {
+        public override IList<TimeSpan>? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            if (reader.TokenType == JsonTokenType.Null) return null;
+            if (reader.TokenType != JsonTokenType.StartArray) throw new JsonException("field.duration: expected an array of ISO-8601 durations");
+            var list = new List<TimeSpan>();
+            while (reader.Read() && reader.TokenType != JsonTokenType.EndArray) list.Add(ReadOne(ref reader));
+            return list;
+        }
+
+        public override void Write(Utf8JsonWriter writer, IList<TimeSpan> value, JsonSerializerOptions options)
+        {
+            writer.WriteStartArray();
+            foreach (var d in value) writer.WriteStringValue(Format(d));
+            writer.WriteEndArray();
+        }
+    }
+}
+""";
+
+    private static EmittedFile EmitDurationWireFile(string ns, string fileName) =>
+        new(fileName, DurationWireSourceTemplate.Replace("__NS__", ns, StringComparison.Ordinal) + "\n");
+
+    // true iff FIELD is a field.duration (single or @isArray): a System.TimeSpan property carrying
+    // the per-property ISO-8601 converter.
+    private static bool IsDurationField(MetaField field) =>
+        field.SubType == FIELD_SUBTYPE_DURATION && CSharpNaming.DbColumnTypeClrOverride(field) is null;
+
+    private static bool HasDurationField(MetaObject entity) => entity.Fields().Any(IsDurationField);
+
+    // Under `wire.durations: iso` the per-property converter writes and reads ISO-8601 (host JSON
+    // options cannot drop a property attribute). One attribute serves TimeSpan, TimeSpan? and
+    // IList<TimeSpan>. Under the default `native` there is no attribute: System.Text.Json's own
+    // TimeSpan form ("01:30:00") is the wire form, both ways.
+    private static void AppendDurationConverterAttribute(StringBuilder sb, MetaField field, WireFormat wire)
+    {
+        if (wire.Durations == DurationWireForm.Iso && IsDurationField(field)) sb.AppendLine("    [DurationWire.Iso]");
+    }
+
     // true iff FIELD surfaces as a CLR decimal (single or @isArray) and so carries the
     // per-property wire converter. A jsonb override keeps the JsonDocument type, not decimal.
     private static bool IsDecimalWireField(MetaField field) =>
@@ -1840,6 +2389,7 @@ public static class DecimalWire
             // EF Core 8 on SQLite materializes a primitive collection only through IList<T> (an
             // ICollection<T> property throws at query compile time), so a scalar array is an IList<T>.
             AppendDecimalConverterAttribute(arr, field, nullable: false, _wire);
+            AppendDurationConverterAttribute(arr, field, _wire);
             // A NON-required decimal array is nullable (no initializer) so PATCH null / an omitted
             // POST value stays a NULL column instead of failing as a required collection; a
             // NON-required value-object array is nullable so a null member is omitted on the wire.
@@ -1902,6 +2452,9 @@ public static class DecimalWire
         // ADR-0019 Amendment 1: a decimal crosses JSON as a canonical string. Attached per
         // property (not through host JsonSerializerOptions) so no host configuration drops it.
         AppendDecimalConverterAttribute(sb, field, nullable: !nonNull, _wire);
+        // field.duration: a TimeSpan crosses JSON as its canonical ISO-8601 string, never as
+        // System.Text.Json's own "01:30:00".
+        AppendDurationConverterAttribute(sb, field, _wire);
 
         var type = nonNull ? baseType : baseType + "?";
         // A literal-safe @default (bool / integer / floating / string) emits a property
@@ -2082,10 +2635,23 @@ public static class DecimalWire
                 return NumericLiteral(raw) is { } f ? $" = {f}f;" : string.Empty;
             case "decimal":
                 return NumericLiteral(raw) is { } m ? $" = {m}m;" : string.Empty;
+            // field.duration: an ISO-8601 @default in the accepted form is parsed by the namespace's
+            // DurationWire (a malformed one emits nothing, as for the other types).
+            case "TimeSpan":
+                return raw is string iso && DurationDefaultPattern.IsMatch(iso)
+                    ? $" = DurationWire.Parse(\"{iso}\");"
+                    : string.Empty;
             default:
                 return string.Empty;
         }
     }
+
+    // The accepted field.duration form (fixtures/duration-wire/), the gate on a duration @default.
+    // `\z`, not `$`: .NET's `$` also matches before a trailing newline, which would land in the
+    // emitted string literal. A span a TimeSpan cannot hold is refused by DurationWire.Parse when it runs.
+    private static readonly System.Text.RegularExpressions.Regex DurationDefaultPattern = new(
+        @"^[-+]?P(?!\z)([0-9]+W)?([0-9]+D)?(T(?=[0-9])([0-9]+H)?([0-9]+M)?([0-9]+(\.[0-9]+)?S)?)?\z",
+        System.Text.RegularExpressions.RegexOptions.CultureInvariant);
 
     // The invariant string form of a numeric default, or null if it isn't a clean
     // number (so a malformed @default never injects garbage into the initializer).

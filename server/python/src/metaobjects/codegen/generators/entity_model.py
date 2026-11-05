@@ -9,6 +9,7 @@ another object shares its short name)."""
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.core.object.meta_object import MetaObject
@@ -21,6 +22,7 @@ from metaobjects.meta.core.field import field_constants as fc
 # FR-037 R1 — THE mutability accessors. Every consumer deciding "may this be
 # written, and when?" goes through these, so the absent-means-readWrite default
 # lives in exactly one place per port.
+from metaobjects.loader.validation_passes import EXPR_FN_COALESCE, EXPR_OP_IS_NOT_NULL, EXPR_OP_NOT
 from metaobjects.loader.validate_field_mutability import (
     is_read_only_mutability,
     is_write_once_mutability,
@@ -33,6 +35,7 @@ from metaobjects.meta.core.identity.identity_constants import (
 )
 from metaobjects.meta.core.validator import validator_constants as vc
 from metaobjects.meta.persistence.db import db_constants as dbc
+from metaobjects.wire import WIRE_DURATIONS_ISO, wire_of
 from metaobjects.meta.persistence.origin.origin_constants import (
     AGG_ALL,
     AGG_ANY,
@@ -42,7 +45,7 @@ from metaobjects.meta.persistence.origin.origin_constants import (
 )
 from metaobjects.shared.base_types import TYPE_ORIGIN, TYPE_VALIDATOR
 from metaobjects.codegen.config import GenConfig
-from metaobjects.codegen.constants import generated_header
+from metaobjects.codegen.constants import GENERATED_MARKER, generated_header
 from metaobjects.codegen.type_map import field_is_array, py_type_for
 from metaobjects.codegen.format import ruff_format
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator, per_entity
@@ -55,7 +58,12 @@ from metaobjects.codegen.value_objects import (
 
 from ..runtime import fr019_shared_enum as fr019
 from ..runtime.m2m_codegen import build_object_index, resolve_m2m_descriptors
-from ..runtime.shared_predicates import array_default, has_literal_default
+from ..runtime.shared_predicates import (
+    DURATION_WIRE_MODULE,
+    array_default,
+    has_duration_field,
+    has_literal_default,
+)
 
 
 def _is_int(value: object) -> bool:
@@ -73,6 +81,45 @@ _HOSTNAME_REGEX = (
     r"^(?=.{1,253}$)([a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)"
     r"(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$"
 )
+
+
+#: field.duration under ``wire.durations: iso``: a ``datetime.timedelta`` held to the ISO-8601
+#: wire rule (fixtures/duration-wire). Under ``native`` the field is a plain ``timedelta`` and
+#: Pydantic's own parser and serializer apply. On input only an accepted ISO-8601 duration string (or a
+#: ``timedelta`` in process) is taken, so Pydantic's own timedelta parser, which also takes
+#: numbers, clock text and calendar spans, never sees a value; in JSON the canonical form is
+#: written (Pydantic writes ``PT5400S`` for 90 minutes). A Python-mode dump keeps the native
+#: ``timedelta``.
+DURATION_TYPE = (
+    "Annotated[datetime.timedelta, BeforeValidator(parse_duration_input), "
+    'PlainSerializer(format_duration, return_type=str, when_used="json")]'
+)
+#: The generated package's copy of the duration codec, emitted beside the models when any of
+#: them has a ``field.duration`` (:func:`duration_wire_module`). A copy rather than an import of
+#: the installed ``metaobjects``, so the generated package runs on its own, as an owned router's
+#: ``_runtime/`` does; the router imports its formatter from the same module.
+DURATION_IMPORTS: tuple[str, ...] = (
+    "import datetime",
+    "from typing import Annotated",
+    "from pydantic import BeforeValidator, PlainSerializer",
+    f"from .{DURATION_WIRE_MODULE} import format_duration, parse_duration_input",
+)
+
+#: Where the codec source is read from: ``codegen/runtime/`` beside this generator, which is the
+#: packaged ``metaobjects/codegen/runtime`` or, for an ejected copy, the adopter's own
+#: ``codegen/runtime`` (eject copies ``duration_wire.py`` there with this generator).
+_RUNTIME_SOURCE_DIR = Path(__file__).resolve().parent.parent / "runtime"
+
+
+def duration_wire_module() -> EmittedFile:
+    """The ``_duration_wire.py`` module a model with a ``field.duration`` imports its codec from:
+    ``codegen/runtime/duration_wire.py``, verbatim, under a generated header."""
+    src = _RUNTIME_SOURCE_DIR / "duration_wire.py"
+    return EmittedFile(
+        path=f"{DURATION_WIRE_MODULE}.py",
+        content=f"# {GENERATED_MARKER} — DO NOT EDIT. Copied from codegen/runtime/duration_wire.py: "
+        "edit that file and regenerate.\n" + src.read_text(encoding="utf-8"),
+    )
 
 
 def _validators(field: MetaField, sub_type: str) -> list[MetaField]:
@@ -162,7 +209,9 @@ def _validator_constraints(field: MetaField, *, wire: bool) -> dict[str, object]
     min_len = _first_attr(field, vc.VALIDATOR_SUBTYPE_LENGTH, vc.VALIDATOR_ATTR_MIN)
     max_len = _first_attr(field, vc.VALIDATOR_SUBTYPE_LENGTH, vc.VALIDATOR_ATTR_MAX)
     field_max = field.attrs().get(fc.FIELD_ATTR_MAX_LENGTH)
-    if _is_int(field_max):
+    # On a field.enum @maxLength is the column length, not an input rule: the Literal of its
+    # members is the rule, and every member fits.
+    if _is_int(field_max) and field.sub_type != fc.FIELD_SUBTYPE_ENUM:
         # FR-036 A3 — strictest-wins: when BOTH a validator.length @max and a field
         # @maxLength cap a string, the smaller bound governs (never the field attr
         # unconditionally, which could loosen a tighter validator).
@@ -298,6 +347,16 @@ def _type_expr_for_field(
     ):
         imports.add("from pydantic import EmailStr")
         type_expr = "list[EmailStr]" if field_is_array(field) else "EmailStr"
+    if field.sub_type == fc.FIELD_SUBTYPE_DURATION:
+        # `wire.durations: native` leaves Pydantic's own timedelta handling in place, both ways;
+        # `iso` holds the field to the ISO-8601 wire rule.
+        if wire_of(field).durations == WIRE_DURATIONS_ISO:
+            imports.update(DURATION_IMPORTS)
+            duration_type = DURATION_TYPE
+        else:
+            imports.add("import datetime")
+            duration_type = "datetime.timedelta"
+        type_expr = f"list[{duration_type}]" if field_is_array(field) else duration_type
     if field.sub_type in (fc.FIELD_SUBTYPE_OBJECT, fc.FIELD_SUBTYPE_MAP):
         # A field.object (-> VO) and a field.map with @objectRef (-> dict[str, VO]) both
         # reference a value-object; import its model so the emitted annotation resolves.
@@ -470,12 +529,19 @@ _DECIMAL_SUBTYPES = (fc.FIELD_SUBTYPE_DECIMAL, fc.FIELD_SUBTYPE_CURRENCY)
 _NUMERIC_CROSS = _INT_SUBTYPES + _FLOAT_SUBTYPES + _DECIMAL_SUBTYPES
 _ORDERED_CROSS = (
     fc.FIELD_SUBTYPE_STRING, fc.FIELD_SUBTYPE_DATE, fc.FIELD_SUBTYPE_TIME, fc.FIELD_SUBTYPE_TIMESTAMP,
+    fc.FIELD_SUBTYPE_DURATION,
+)
+# Subtypes whose values test only equality: compared with ``==``, never ordered (a uri or an
+# inet value need not order, and ordering one raises TypeError).
+_EQUALITY_ONLY_CROSS = (
+    fc.FIELD_SUBTYPE_BOOLEAN, fc.FIELD_SUBTYPE_ENUM,
+    fc.FIELD_SUBTYPE_UUID, fc.FIELD_SUBTYPE_URI, fc.FIELD_SUBTYPE_INET,
 )
 
 
 def _comparable(left: MetaField, right: MetaField, op: str) -> bool:
     """Whether a comparison between these two fields has a sound meaning, as in every port: numerics
-    compare with each other, strings and temporals only with their own subtype and @localTime flag (a
+    compare with each other, strings, temporals and durations only with their own subtype and @localTime flag (a
     date has no ordering against a timestamp, nor an aware datetime against a naive one, and Python
     raises TypeError on both), and boolean, enum, uuid, uri
     and inet fields only test equality. Anything else is skipped, never rejected."""
@@ -490,15 +556,13 @@ def _comparable(left: MetaField, right: MetaField, op: str) -> bool:
         return False
     if a in _ORDERED_CROSS:
         return True
-    return op in ("eq", "ne") and a in (
-        fc.FIELD_SUBTYPE_BOOLEAN, fc.FIELD_SUBTYPE_ENUM,
-        fc.FIELD_SUBTYPE_UUID, fc.FIELD_SUBTYPE_URI, fc.FIELD_SUBTYPE_INET,
-    )
+    return op in ("eq", "ne") and a in _EQUALITY_ONLY_CROSS
 _CROSS_FIELD_SUBTYPES = (
     vc.VALIDATOR_SUBTYPE_COMPARISON,
     vc.VALIDATOR_SUBTYPE_REQUIRED_WHEN,
     vc.VALIDATOR_SUBTYPE_PRESENT_IFF,
     vc.VALIDATOR_SUBTYPE_AT_LEAST_ONE,
+    vc.VALIDATOR_SUBTYPE_EXACTLY_ONE,
 )
 _NUMERIC_LITERAL = re.compile(r"^-?\d+(\.\d+)?$")
 
@@ -521,6 +585,182 @@ def _equals_literal(raw: object, when_field: MetaField, imports: set[str]) -> st
     return repr(text)
 
 
+# --- @condition: a rule is checked only where its condition is TRUE -----------
+# The CHECK is ``NOT (condition) OR (rule)``, so a condition that is FALSE or NULL (SQL
+# three-valued logic) lets the record through. The condition is generated as a small Python
+# expression of type ``bool | None`` (``None`` is SQL NULL); the helpers below are declared
+# inside the generated method, so the generated model imports nothing from MetaObjects.
+_HELPER_CMP = (
+    "        def _cmp(a: object, b: object) -> int | None:\n"
+    "            if a is None or b is None:\n"
+    "                return None\n"
+    "            try:\n"
+    "                return (a > b) - (a < b)  # type: ignore[operator]\n"
+    "            except TypeError:\n"
+    "                return None\n"
+)
+_HELPER_TRI = (
+    "        def _all(*v: bool | None) -> bool | None:\n"
+    "            return False if False in v else None if None in v else True\n"
+    "\n"
+    "        def _any(*v: bool | None) -> bool | None:\n"
+    "            return True if True in v else None if None in v else False\n"
+    "\n"
+    "        def _not(v: bool | None) -> bool | None:\n"
+    "            return None if v is None else not v\n"
+)
+_CONDITION_HELPERS = (_HELPER_CMP, _HELPER_TRI)
+_NUMERIC_SUBTYPES = (*_INT_SUBTYPES, *_FLOAT_SUBTYPES, *_DECIMAL_SUBTYPES)
+EXPR_OP_IS_NULL, EXPR_OP_AND, EXPR_OP_OR = "isNull", "and", "or"
+_COMPARE_NUMBER, _COMPARE_DURATION, _COMPARE_PLAIN = "number", "duration", "plain"
+_TEMPORAL_PARSERS = {
+    fc.FIELD_SUBTYPE_DATE: "datetime.date.fromisoformat",
+    fc.FIELD_SUBTYPE_TIME: "datetime.time.fromisoformat",
+    fc.FIELD_SUBTYPE_TIMESTAMP: "datetime.datetime.fromisoformat",
+}
+
+
+def _compare_kind(field: MetaField | None) -> str:
+    if field is None:
+        return _COMPARE_PLAIN
+    if field.sub_type in _NUMERIC_SUBTYPES:
+        return _COMPARE_NUMBER
+    if field.sub_type == fc.FIELD_SUBTYPE_DURATION:
+        return _COMPARE_DURATION
+    return _COMPARE_PLAIN
+
+
+_DURATION_LITERAL = re.compile(
+    r"^([-+])?P(?!$)(?:(\d+)W)?(?:(\d+)D)?(?:T(?=\d)(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)(?:\.(\d+))?S)?)?$",
+    re.ASCII,
+)
+
+
+def _duration_micros(text: str) -> int | None:
+    """An ISO-8601 duration literal (weeks, days, hours, minutes, seconds; the accepted wire
+    form) as microseconds, or ``None`` when it is not one."""
+    m = _DURATION_LITERAL.match(text)
+    if m is None:
+        return None
+    sign, w, d, h, mi, sec, frac = m.groups()
+    hours = (int(w or 0) * 7 + int(d or 0)) * 24 + int(h or 0)
+    micros = ((hours * 60 + int(mi or 0)) * 60 + int(sec or 0)) * 1_000_000 + int((frac or "").ljust(6, "0")[:6] or 0)
+    return -micros if sign == "-" else micros
+
+
+class _ConditionBuilder:
+    """Lowers an ``@condition`` expression to a ``bool | None`` Python expression over the
+    model's fields; ``None`` from a method means a field is not in the model (skip the rule)."""
+
+    def __init__(self, by_name: dict[str, MetaField], imports: set[str]) -> None:
+        self.by_name = by_name
+        self.imports = imports
+        self.helpers: set[str] = set()
+
+    def _node_field(self, node: object) -> MetaField | None:
+        if not isinstance(node, dict):
+            return None
+        name = node.get("field")
+        if isinstance(name, str):
+            return self.by_name.get(name)
+        args = node.get("args")
+        if node.get("fn") == EXPR_FN_COALESCE and isinstance(args, list):
+            for a in args:
+                f = self._node_field(a)
+                if f is not None:
+                    return f
+        return None
+
+    def _node_fields(self, node: object) -> list[MetaField]:
+        """Every field a value node reads: the field itself, or each field among a coalesce's arguments."""
+        if not isinstance(node, dict):
+            return []
+        name = node.get("field")
+        if isinstance(name, str):
+            f = self.by_name.get(name)
+            return [] if f is None else [f]
+        args = node.get("args")
+        if node.get("fn") == EXPR_FN_COALESCE and isinstance(args, list):
+            return [f for a in args for f in self._node_fields(a)]
+        return []
+
+    def _pairs_comparable(self, left: object, right: object, op: str) -> bool:
+        """A comparison inside a condition follows the validator rule: every pair of fields it
+        reads must be comparable, or the whole rule is left to the database."""
+        fields = self._node_fields(left) + self._node_fields(right)
+        return all(_comparable(a, b, op) for i, a in enumerate(fields) for b in fields[i + 1:])
+
+    def _literal(self, value: object, kind: str, field: MetaField | None) -> str | None:
+        if kind == _COMPARE_DURATION and isinstance(value, str):
+            micros = _duration_micros(value)
+            if micros is None:
+                return None
+            self.imports.add("import datetime")
+            return f"datetime.timedelta(microseconds={micros})"
+        if kind == _COMPARE_PLAIN and isinstance(value, str) and field is not None:
+            parser = _TEMPORAL_PARSERS.get(field.sub_type)
+            if parser is not None:
+                self.imports.add("import datetime")
+                return f"{parser}({value!r})"
+        return repr(value)
+
+    def value(self, node: object, kind: str, ref: MetaField | None) -> str | None:
+        if not isinstance(node, dict):
+            return None
+        name = node.get("field")
+        if isinstance(name, str):
+            return f"self.{name}" if name in self.by_name else None
+        if "value" in node:
+            return self._literal(node["value"], kind, ref)
+        args = node.get("args")
+        if node.get("fn") == EXPR_FN_COALESCE and isinstance(args, list):
+            parts = [self.value(a, kind, ref) for a in args]
+            if any(p is None for p in parts):
+                return None
+            return f"next((x for x in ({', '.join(parts)},) if x is not None), None)"  # type: ignore[arg-type]
+        return None
+
+    def condition(self, node: object) -> str | None:
+        if not isinstance(node, dict):
+            return None
+        op = node.get("op")
+        if isinstance(op, str) and op in _COMPARISON_PY_OP:
+            if not self._pairs_comparable(node.get("left"), node.get("right"), op):
+                return None
+            ref = self._node_field(node.get("left")) or self._node_field(node.get("right"))
+            kind = _compare_kind(ref)
+            left = self.value(node.get("left"), kind, ref)
+            right = self.value(node.get("right"), kind, ref)
+            if left is None or right is None:
+                return None
+            if ref is not None and ref.sub_type in _EQUALITY_ONLY_CROSS:
+                return (
+                    f"(lambda a, b: None if a is None or b is None else a {_COMPARISON_PY_OP[op]} b)"
+                    f"({left}, {right})"
+                )
+            self.helpers.add(_HELPER_CMP)
+            return f"(lambda c: None if c is None else c {_COMPARISON_PY_OP[op]} 0)(_cmp({left}, {right}))"
+        if op in (EXPR_OP_IS_NULL, EXPR_OP_IS_NOT_NULL):
+            arg = self.value(node.get("arg"), _COMPARE_PLAIN, None)
+            if arg is None:
+                return None
+            return f"({arg} is {'' if op == EXPR_OP_IS_NULL else 'not '}None)"
+        if op == EXPR_OP_NOT:
+            arg = self.condition(node.get("arg"))
+            if arg is None:
+                return None
+            self.helpers.add(_HELPER_TRI)
+            return f"_not({arg})"
+        args = node.get("args")
+        if op in (EXPR_OP_AND, EXPR_OP_OR) and isinstance(args, list):
+            parts = [self.condition(a) for a in args]
+            if any(p is None for p in parts):
+                return None
+            self.helpers.add(_HELPER_TRI)
+            return f"{'_all' if op == EXPR_OP_AND else '_any'}({', '.join(parts)})"  # type: ignore[arg-type]
+        return None
+
+
 def _cross_field_rules_method(
     entity: MetaObject, model_name: str, model_fields: set[str], imports: set[str]
 ) -> list[str]:
@@ -529,9 +769,29 @@ def _cross_field_rules_method(
     referenced field is missing from the model is skipped silently (as the DB CHECK is)."""
     by_name = {f.name: f for f in entity.fields() if f.name in model_fields}
     checks: list[str] = []
+    builder = _ConditionBuilder(by_name, imports)
+
+    def guarded(v: MetaData, block: str) -> None:
+        """Add a rule's block, checked only where its ``@condition`` is TRUE (three-valued)."""
+        condition = v.get_meta_attr(vc.VALIDATOR_ATTR_CONDITION)
+        if condition is None:
+            checks.append(block)
+            return
+        guard = builder.condition(condition)
+        if guard is None:
+            # Left to the database: undo the imports and helpers this rule asked for, so a
+            # dropped rule leaves nothing unused in the generated module.
+            imports.intersection_update(kept[0])
+            builder.helpers.intersection_update(kept[1])
+            return
+        inner = "\n".join(("    " + ln) if ln else ln for ln in block.split("\n"))
+        checks.append(f"        if {guard} is True:\n{inner}")
+
     for v in entity.children():
         if v.type != TYPE_VALIDATOR or v.sub_type not in _CROSS_FIELD_SUBTYPES:
             continue
+        kept = (set(imports), set(builder.helpers))  # what the rules kept so far need
+
         # ADR-0039: resolving read — a cross-field validator's attrs may be inherited.
         def attr(name: str, node: MetaData = v) -> object:
             return node.get_meta_attr(name)
@@ -546,14 +806,15 @@ def _cross_field_rules_method(
                 continue
             if not _comparable(by_name[str(left)], by_name[str(right)], str(attr(vc.VALIDATOR_ATTR_OP))):
                 continue
-            checks.append(
+            guarded(
+                v,
                 f"        if self.{left} is not None and self.{right} is not None:\n"
                 f"            try:\n"
                 f"                _ordered = self.{left} {op} self.{right}\n"
                 f"            except TypeError:\n"
                 f"                _ordered = False\n"
                 f"            if not _ordered:\n"
-                f"                raise ValueError({label})"
+                f"                raise ValueError({label})",
             )
         elif v.sub_type in (vc.VALIDATOR_SUBTYPE_REQUIRED_WHEN, vc.VALIDATOR_SUBTYPE_PRESENT_IFF):
             target, when = attr(vc.VALIDATOR_ATTR_FIELD), attr(vc.VALIDATOR_ATTR_WHEN)
@@ -563,28 +824,42 @@ def _cross_field_rules_method(
             cmp_op = "is" if lit in ("True", "False") else "=="
             gate = f"(self.{when} is not None and self.{when} {cmp_op} {lit})"
             if v.sub_type == vc.VALIDATOR_SUBTYPE_REQUIRED_WHEN:
-                checks.append(
+                guarded(
+                    v,
                     f"        if {gate} and self.{target} is None:\n"
-                    f"            raise ValueError({label})"
+                    f"            raise ValueError({label})",
                 )
             else:
-                checks.append(
+                guarded(
+                    v,
                     f"        if (self.{target} is not None) != {gate}:\n"
-                    f"            raise ValueError({label})"
+                    f"            raise ValueError({label})",
                 )
         else:
             raw = attr(vc.VALIDATOR_ATTR_FIELDS)
             names = list(raw) if isinstance(raw, (list, tuple)) else ([raw] if isinstance(raw, str) else [])
             if not names or any(n not in by_name for n in names):
                 continue
-            all_none = " and ".join(f"self.{n} is None" for n in names)
-            checks.append(f"        if {all_none}:\n            raise ValueError({label})")
+            if v.sub_type == vc.VALIDATOR_SUBTYPE_EXACTLY_ONE:
+                present = ", ".join(f"self.{n}" for n in names)
+                guarded(
+                    v,
+                    f"        if sum(x is not None for x in ({present},)) != 1:\n"
+                    f"            raise ValueError({label})",
+                )
+            else:
+                all_none = " and ".join(f"self.{n} is None" for n in names)
+                guarded(v, f"        if {all_none}:\n            raise ValueError({label})")
     if not checks:
         return []
+    # Declared in a fixed order, so the output does not depend on which rule needed one first.
+    helper_src = "\n".join(h for h in _CONDITION_HELPERS if h in builder.helpers).rstrip("\n").split("\n")
     return [
         "",
         '    @model_validator(mode="after")',
         f"    def _cross_field_rules(self) -> {model_name}:",
+        *(helper_src if builder.helpers else []),
+        *([""] if builder.helpers else []),
         *checks,
         "        return self",
     ]
@@ -801,7 +1076,8 @@ class EntityModelGenerator:
         self, entity: MetaObject, create_lines: list[str], imports: set[str]
     ) -> list[str]:
         """The ``<Name>Create`` cross-field ``model_validator`` (comparison / requiredWhen /
-        presentIff / atLeastOne), keyed by the field lines the create model carries.
+        presentIff / atLeastOne / exactlyOne, each optionally under an ``@condition``), keyed by
+        the field lines the create model carries.
         Create only: a Patch body cannot see the merged row. Override to customize."""
         carried = {m.group(1) for line in create_lines if (m := re.match(r"    (\w+):", line))}
         return _cross_field_rules_method(entity, f"{model_class_name(entity)}Create", carried, imports)
@@ -1054,6 +1330,8 @@ class EntityModelGenerator:
         enums_module = self._render_shared_enums_module(matched)
         if enums_module is not None:
             files.append(enums_module)
+        if has_duration_field(matched) and any(wire_of(e).durations == WIRE_DURATIONS_ISO for e in matched):
+            files.append(duration_wire_module())
         return files
 
 

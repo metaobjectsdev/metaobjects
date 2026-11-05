@@ -40,6 +40,13 @@ export interface TableDescriptor {
   checks: CheckDescriptor[];
   primaryKey: string[];              // column names; [] if none
   /**
+   * The primary-key constraint's name, when the project's schema conventions name it
+   * something other than `<table>_pkey` (absent = `<table>_pkey`, which keeps every
+   * existing snapshot byte-identical). Rendered at create; on Postgres the diff compares it
+   * and renames a live key whose name differs (`rename-constraints`).
+   */
+  primaryKeyName?: string;
+  /**
    * Human-readable description threaded from entity `@description`.
    * Postgres: emitted as `COMMENT ON TABLE … IS '…';` after CREATE TABLE.
    * SQLite: silently ignored (no native COMMENT support).
@@ -61,6 +68,20 @@ export interface ColumnDescriptor {
   udtName?: string;
   default?: ColumnDefault;
   identity?: "increment" | "uuid";
+  /**
+   * The sequence an `increment` identity draws from, as the MODEL declares it: only what the
+   * identity.primary declares (`@sequenceStart` → `start`, `@sequenceName` → `name`). The only
+   * sequence fact the emitter renders and a snapshot records, and the only one compared, so an
+   * undeclared start or name never produces a change or a different byte of SQL.
+   */
+  sequence?: { name?: string; start?: number };
+  /**
+   * Postgres introspection only: the sequence the live column actually owns (`pg_depend`), its
+   * schema, name and start (`pg_sequence`). Read by the diff to compare against `sequence` and
+   * to address an `alter-sequence`; never emitted, never written to a snapshot, so it changes
+   * nothing for a model that declares no sequence.
+   */
+  liveSequence?: { schema?: string; name: string; start: number };
   /**
    * Human-readable description threaded from field `@description`.
    * Postgres: emitted as `COMMENT ON COLUMN … IS '…';` after CREATE TABLE or ADD COLUMN.
@@ -112,16 +133,23 @@ export interface IndexDescriptor {
    * refuses `DROP INDEX` on such an index ("cannot drop index X because constraint
    * X on table Y requires it"), so the emitter must drop the CONSTRAINT instead.
    *
-   * Never authored in metadata and never present on the expected side — it describes
-   * how the database happens to hold an index, not what the model asks for. It is
-   * therefore deliberately NOT compared by `indexEquals`: a unique index and a unique
-   * constraint over the same columns are the same model-level thing.
+   * Never authored in metadata. On the expected side it is set only by the project's
+   * schema conventions (`uniqueKeyKind`), so the emitter creates the key as a UNIQUE
+   * constraint (EF Core's alternate keys are constraints). It is deliberately NOT
+   * compared by `indexEquals`: a unique index and a unique constraint over the same
+   * columns are the same model-level thing, so an existing database never churns.
    *
    * This matters far beyond an edge case: Drizzle's `unique()` produces constraints,
    * so every adopter migrating from a Drizzle-managed schema has constraint-backed
    * unique indexes (#285).
    */
   constraint?: "unique" | "primary" | "exclude";
+  /**
+   * EXPECTED-ONLY. Set when the schema conventions want this unique key as a plain index
+   * (`uniqueKeyKind` answers `index`), so a live UNIQUE constraint over it is converted. Absent,
+   * a live key of either kind satisfies the model.
+   */
+  plainIndex?: true;
 }
 
 export interface CheckDescriptor {
@@ -251,6 +279,25 @@ export type Change =
       indexRenames?: NameChange[];
       status: ChangeStatus;
     }
+  | {
+      kind: "rename-constraints"; table: string; schema?: string;
+      /**
+       * Constraints (FK / CHECK / constraint-backed index) on a table that is NOT renamed,
+       * whose definition is unchanged and whose name differs — e.g. after the project's
+       * schema conventions changed. Renamed in place, never dropped and re-created.
+       * Postgres only; sqlite/d1 cannot rename a constraint and keep the drop+add.
+       */
+      constraintRenames?: NameChange[];
+      /** Plain indexes on that table whose definition is unchanged and whose name differs. Postgres only. */
+      indexRenames?: NameChange[];
+      /**
+       * Plain unique indexes the schema conventions now want as UNIQUE constraints, with the
+       * same name and definition. Promoted in place (`ADD CONSTRAINT … UNIQUE USING INDEX`), so
+       * a foreign key that relies on the index keeps it. Postgres only.
+       */
+      uniquePromotions?: IndexDescriptor[];
+      status: ChangeStatus;
+    }
   | { kind: "add-column"; table: string; schema?: string; column: ColumnDescriptor; status: ChangeStatus }
   | {
       kind: "drop-column"; table: string; schema?: string; column: string; restore?: ColumnDescriptor; status: ChangeStatus;
@@ -290,7 +337,17 @@ export type Change =
       from?: ColumnDefault; to?: ColumnDefault; status: ChangeStatus }
   /** Postgres, shadow path only: an `increment` identity (`GENERATED BY DEFAULT AS IDENTITY`) added or dropped. */
   | { kind: "change-column-identity"; table: string; schema?: string; column: string;
-      from?: "increment"; to?: "increment"; status: ChangeStatus }
+      from?: "increment"; to?: "increment";
+      /** The model's declared sequence for an identity being ADDED (rendered as its options). */
+      sequence?: { name?: string; start?: number };
+      status: ChangeStatus }
+  /**
+   * Postgres: an increment identity's sequence whose declared start or name differs from the
+   * live one, altered in place (`ALTER SEQUENCE … START WITH` / `RENAME TO`). `sequence` is the
+   * live name the change addresses; each pair is set only when it differs.
+   */
+  | { kind: "alter-sequence"; table: string; schema?: string; column: string; sequence: string;
+      sequenceSchema?: string; fromStart?: number; toStart?: number; toName?: string; status: ChangeStatus }
   /**
    * Postgres, shadow path only: a table comment (no `column`) or column comment set, changed or
    * cleared. Clearing one the model does not declare is gated behind `allow.dropComment`.
@@ -569,7 +626,23 @@ export interface DiffResult {
   exprCanonPath?: ExprCanonPath;
   /** Postgres: why no scratch (shadow) database was used, when one was asked for and could not be. */
   shadowUnavailable?: string;
+  /** Things that are not drift but deserve a word: see {@link SchemaAdvisory}. Empty when none. */
+  advisories: SchemaAdvisory[];
 }
+
+/**
+ * Not drift, but a better model exists.
+ *  - `interval-as-string`: a live Postgres `interval` column the model declares as something
+ *    other than a `field.duration` (a `field.string`, the only way to model one before
+ *    `field.duration` existed). It is compared as text, so it does not drift; modelling it as
+ *    `field.duration` gives the native type and span ordering.
+ *  - `sequence-not-applied`: a column created on SQLite or D1 whose primary key declares
+ *    `@sequenceStart` or `@sequenceName`. SQLite has no sequence, so neither is applied; the
+ *    key counts from 1. Reported when the column is created, not on every run.
+ */
+export type SchemaAdvisory =
+  | { kind: "interval-as-string"; table: string; schema?: string; column: string }
+  | { kind: "sequence-not-applied"; table: string; schema?: string; column: string };
 
 /**
  * Where Postgres's own spelling of an expected expression came from.
@@ -628,4 +701,16 @@ export interface EmitResult {
   notices?: readonly string[];
 }
 
-export type Dialect = "postgres" | "sqlite" | "d1";
+export const DIALECT_POSTGRES = "postgres";
+export const DIALECT_SQLITE = "sqlite";
+export const DIALECT_D1 = "d1";
+export const DIALECTS = [DIALECT_POSTGRES, DIALECT_SQLITE, DIALECT_D1] as const;
+export type Dialect = (typeof DIALECTS)[number];
+
+/** SQLite and D1 (which is SQLite) share one SQL dialect. */
+export function isSqliteFamily(dialect: Dialect | undefined): boolean {
+  return dialect === DIALECT_SQLITE || dialect === DIALECT_D1;
+}
+
+/** Postgres's identifier limit, in bytes (NAMEDATALEN - 1). The server truncates a longer name. */
+export const PG_IDENTIFIER_MAX_BYTES = 63;

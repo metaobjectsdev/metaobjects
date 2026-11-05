@@ -245,6 +245,7 @@ Reach for these before inventing anything. When no row fits, run the decision pr
 | Open JSON, no reader narrows it | `field.string` + `@dbColumnType: jsonb` | the LAST rung — see "A JSON column" |
 | URL / URI | `field.uri` | native `URI`/`Uri`; `text` column; strict absolute-URI validation (add `@lenient: true` to store any string) — a real native type + behavior, so a subtype (not a validated string) |
 | IP address | `field.inet` | native IP type; Postgres `inet` column; strict IPv4/IPv6-literal validation (add `@lenient: true` for a plain-string `text` column) |
+| Elapsed time / timeout / delay | `field.duration` | native `TimeSpan`/`Duration`/`timedelta`; Postgres `interval` column; wire form is the port's native one by default, canonical ISO-8601 (`PT1H30M`) under `wire.durations: iso`. Not for a calendar span ("every 3 months"): that is an int and a unit. Never a string or a count of seconds |
 | Validated plain string (email / hostname) | `field.string` + `@stringFormat` | `@stringFormat: email` or `@stringFormat: hostname` — idiomatic per-port validation; don't hand-write the `validator.regex` |
 
 Four rules behind those rows, in short (full text: `references/choosing-a-shape.md`):
@@ -285,10 +286,10 @@ Reuse a constraint set across entities with an abstract `field.enum` + `extends`
 `field.object` embeds another `object` declaration. `@objectRef` names it;
 `@storage` controls persistence:
 
-- `flattened` — one DB column per sub-field (`address_street`, `address_city`, …).
-  Illegal on array fields.
-- `jsonb` — one `jsonb` column.
-- `subdocument` (default, back-compat) — single jsonb column.
+- `flattened` — one DB column per sub-field (`address_street`, …); illegal on arrays. `@flattenedColumnPrefix`
+  replaces the `<column>_` prefix verbatim (`""` keeps the members' own columns).
+- `jsonb` — one `jsonb` column; also the default when `@storage` is not set.
+- `subdocument` — single jsonb column (a hint for document-store targets).
 
 ```json
 { "field.object": { "name": "address", "@objectRef": "Address", "@storage": "flattened" } }
@@ -434,16 +435,21 @@ store with no `CHECK` support is still covered. PATCH and partial-update models 
 
 | Subtype | Rule | Key attrs |
 |---|---|---|
-| `validator.comparison` | two fields stand in a relational order (`@left @op @right`). Numerics compare with each other; strings and temporals only with the same subtype and `@localTime`; boolean, enum, uuid, uri and inet only `eq`/`ne`. Any other pair is skipped, never rejected. | `@left`, `@op` (`gt`/`gte`/`lt`/`lte`/`ne`/`eq`), `@right` |
+| `validator.comparison` | two fields stand in a relational order (`@left @op @right`). Numerics compare with each other; strings, temporals and durations only with the same subtype and `@localTime`; boolean, enum, uuid, uri and inet only `eq`/`ne`. Any other pair is skipped, never rejected. | `@left`, `@op` (`gt`/`gte`/`lt`/`lte`/`ne`/`eq`), `@right` |
 | `validator.requiredWhen` | `@field` is required when `@when` equals `@equals` | `@field`, `@when`, `@equals` |
 | `validator.presentIff` | `@field` is present **iff** `@when` equals `@equals` (biconditional) | `@field`, `@when`, `@equals` |
 | `validator.atLeastOne` | at least one of `@fields` (2+) is present | `@fields` |
+| `validator.exactlyOne` | exactly one of `@fields` (2+) is present | `@fields` |
+
+All five take an optional `@condition` (the `origin.computed` grammar): the rule holds only where it does.
+Every validator that becomes a CHECK takes an optional `@constraintName`.
 
 ```json
 { "validator.comparison":   { "name": "hpInRange", "@left": "currentHp", "@op": "lte", "@right": "maxHp" } }
 { "validator.requiredWhen": { "name": "reasonIfRejected", "@field": "rejectReason", "@when": "status", "@equals": "rejected" } }
 { "validator.presentIff":   { "name": "usedAtWhenUsed", "@field": "usedAt", "@when": "isUsed", "@equals": "true" } }
 { "validator.atLeastOne":   { "name": "emailOrPhone", "@fields": ["email", "phone"] } }
+{ "validator.exactlyOne":   { "name": "oneOwner", "@fields": ["customerId", "accountId"] } }
 ```
 
 These are children of `object.entity`, alongside its fields and identities.

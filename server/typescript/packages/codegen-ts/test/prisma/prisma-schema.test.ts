@@ -12,6 +12,7 @@ import { InMemoryStringSource, MetaDataLoader, type MetaRoot } from "@metaobject
 import { defineConfig, runGen, type Generator } from "../../src/index.js";
 import { prismaSchemaFile, type PrismaSchemaFileOptions } from "../../src/generators/prisma-schema-file.js";
 import { buildPrismaSchema } from "../../src/prisma/build-prisma-schema.js";
+import { efcoreConventions } from "@metaobjectsdev/migrate-ts";
 import {
   ERR_PRISMA_NAME_COLLISION,
   ERR_PRISMA_READ_ONLY_SOURCE,
@@ -125,6 +126,34 @@ describe("prisma-schema — what the schema says", () => {
     expect(spec.checks.map((c) => c.name)).toContain("customers_tier_chk");
   });
 
+  test("a string-stored enum with a length is a VarChar of it, on Postgres and MySQL", async () => {
+    const root = await loadJson(model([entity("Ticket", [
+      { "source.rdb": { "@table": "tickets" } }, longId,
+      { "field.enum": { name: "status", "@values": ["OPEN", "CLOSED"], "@maxLength": 16 } }, pk,
+    ])]));
+    for (const provider of ["postgresql", "mysql"] as const) {
+      const status = buildPrismaSchema(root, { provider }).models.find((m) => m.name === "Ticket")!
+        .fields.find((f) => f.name === "status")!;
+      expect(status.attributes).toContain("@db.VarChar(16)");
+    }
+  });
+
+  test("a field.duration: Unsupported(\"interval\") on Postgres, BigInt microseconds on MySQL and SQLite", async () => {
+    const root = await loadJson(model([entity("Hold", [
+      { "source.rdb": { "@table": "holds" } }, longId,
+      { "field.duration": { name: "holdFor", "@required": true } },
+      { "field.duration": { name: "laps", isArray: true } }, pk,
+    ])]));
+    const fieldsOf = (provider: "postgresql" | "mysql" | "sqlite") =>
+      buildPrismaSchema(root, { provider }).models.find((m) => m.name === "Hold")!.fields;
+    const pg = fieldsOf("postgresql");
+    expect(pg.find((f) => f.name === "holdFor")).toMatchObject({ type: 'Unsupported("interval")', list: false });
+    expect(pg.find((f) => f.name === "laps")).toMatchObject({ type: 'Unsupported("interval[]")', list: false });
+    // SQLite and MySQL store a 64-bit integer count of microseconds.
+    expect(fieldsOf("mysql").find((f) => f.name === "holdFor")).toMatchObject({ type: "BigInt", list: false });
+    expect(fieldsOf("sqlite").find((f) => f.name === "holdFor")).toMatchObject({ type: "BigInt", list: false });
+  });
+
   test("a self relation is named, so its two ends pair", async () => {
     const spec = buildPrismaSchema(await loadShop(), { provider: "postgresql" });
     const employee = spec.models.find((m) => m.name === "Employee")!;
@@ -132,6 +161,27 @@ describe("prisma-schema — what the schema says", () => {
     expect(manager.attributes[0]).toStartWith('@relation("employees_manager_id_fk", ');
     const back = employee.fields.find((f) => f.name === "employeesByManager")!;
     expect(back).toMatchObject({ type: "Employee", list: true, attributes: ['@relation("employees_manager_id_fk")'] });
+  });
+
+  test("the project's schema conventions name the keys, as they do for meta migrate", async () => {
+    const root = await loadShop();
+    const managerOf = (spec: ReturnType<typeof buildPrismaSchema>) =>
+      spec.models.find((m) => m.name === "Employee")!.fields.find((f) => f.name === "manager")!.attributes[0];
+    expect(managerOf(buildPrismaSchema(root, { provider: "postgresql" }))).toStartWith('@relation("employees_manager_id_fk", ');
+    expect(managerOf(buildPrismaSchema(root, { provider: "postgresql", schemaSettings: { conventions: efcoreConventions } })))
+      .toStartWith('@relation("FK_employees_employees_manager_id", ');
+  });
+
+  test("the generator reads the settings from the run (GenContext.schemaSettings)", async () => {
+    await runGen({
+      config: defineConfig({ outDir: tmp, dialect: "postgres", generators: [prismaSchemaFile({ provider: "postgresql" })] }),
+      metadata: await loadShop(),
+      projectRoot: tmp,
+      schemaSettings: { conventions: efcoreConventions },
+    });
+    const schema = readFileSync(join(tmp, "schema.prisma"), "utf8");
+    expect(schema).toContain('@relation("FK_employees_employees_manager_id"');
+    expect(schema).not.toContain("employees_manager_id_fk");
   });
 
   test("a one-to-one reference gets an optional singular back relation", async () => {
@@ -199,6 +249,23 @@ describe("prisma-schema — what the schema says", () => {
     }
     const pgPostal = buildPrismaSchema(root, { provider: "postgresql" }).models[0]!.fields[2]!;
     expect(pgPostal.attributes).toContain("@db.VarChar(10)");
+  });
+
+  test("a flattened field.object's @flattenedColumnPrefix names its columns, as meta migrate creates them", async () => {
+    const root = await loadJson(model([
+      { "object.value": { name: "Address", children: [{ "field.string": { name: "street" } }] } },
+      entity("Customer", [
+        { "source.rdb": {} },
+        longId,
+        { "field.object": { name: "homeAddress", "@objectRef": "Address", "@storage": "flattened", "@flattenedColumnPrefix": "" } },
+        { "field.object": { name: "workAddress", "@objectRef": "Address", "@storage": "flattened", "@flattenedColumnPrefix": "office_" } },
+        pk,
+      ]),
+    ]));
+    const fields = buildPrismaSchema(root, { provider: "postgresql" }).models.find((m) => m.name === "Customer")!.fields;
+    expect(fields.map((f) => f.name)).toEqual(["id", "homeAddressStreet", "workAddressStreet"]);
+    expect(fields[1]!.attributes).toContain('@map("street")');
+    expect(fields[2]!.attributes).toContain('@map("office_street")');
   });
 
   test("a stored procedure is not a model, and not refused: meta migrate does not create it either", async () => {

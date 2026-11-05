@@ -5,7 +5,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { MetaDataLoader, InMemoryStringSource, type MetaRoot } from "@metaobjectsdev/metadata";
-import { buildExpectedSchema, snapshotPath, writeSnapshot } from "@metaobjectsdev/migrate-ts";
+import { buildExpectedSchema, defaultConventions, snapshotPath, writeSnapshot } from "@metaobjectsdev/migrate-ts";
 import { genMigrateAdvice, type GenMigrateAdviceInput } from "../../src/lib/gen-migrate-advice.js";
 
 const dirs: string[] = [];
@@ -49,6 +49,7 @@ function input(over: Partial<GenMigrateAdviceInput> & Pick<GenMigrateAdviceInput
     migrateOutDir: OUT_DIR,
     migrateFormat: "default",
     changedFiles: ["src/generated/Pet.ts"],
+    schema: { conventions: defaultConventions, skipRedundantChecks: false },
     ...over,
   };
 }

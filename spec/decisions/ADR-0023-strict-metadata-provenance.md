@@ -50,3 +50,47 @@ Downstream apps may register their own providers (extending the registry before 
 - **Runtime codegen-read instrumentation** (record every attr a generator queries, fail undeclared). Rejected: strict-load + sealed-registry makes undeclared attrs unreadable by construction, so instrumentation is unnecessary.
 - **Seal the global singleton as-is** (JVM). Rejected: it would freeze the *polluted* vocabulary; the loader must default to the defined-provider set instead.
 - **Static attr-name-constant provenance scan.** Useful as a lint but fragile (misses dynamic reads); the structural approach is stronger.
+
+## Amendment 1 (2026-11-04): the 1.3 schema vocabulary, justified
+
+Section 3 asks for a written case, per attribute, that its value cannot be computed from the
+metadata already there. The 1.3 release adds the vocabulary below. Each one states a fact about a
+database or a rule that the model has no other way to know; each derived default stays as it was,
+so a model that declares none of them emits what it always did.
+
+- **`@flattenedColumnPrefix`** (on a `field.object` with `@storage: flattened`). The default is
+  computed: the field's resolved column and `_`. What cannot be computed is an existing table that
+  used another prefix, or none at all, and a value object embedded twice on one table with a
+  different prefix each time. `@column` on the field cannot say it: `""` is not a column name, and
+  the prefix belongs to the embedding, not to the value object, which other tables embed too.
+- **`@sequenceStart` and `@sequenceName`** (on an `@generation: increment` `identity.primary`).
+  The first value a sequence hands out and its physical name are facts of a database that already
+  exists: a low id range kept for seeded rows, a sequence that kept its name across a table
+  rename. Nothing in the model implies either. They are not `@dbColumnType`, which spells a
+  column's type and is own-only: these are options of the identity's sequence, compared and
+  altered in place by `meta migrate`, and they keep their meaning when the column type changes.
+  Postgres only; SQLite and D1 have no sequence, and migrate says so when it creates such a key.
+- **`@constraintName`** (on a validator that generates a CHECK, and on a string-stored
+  `field.enum`). The derived name (`<table>_<column>_<kind>_chk`) stays the default. The declared
+  one is a name an adopter chose: a database whose CHECKs were named by hand, or a program that
+  compares a violation against the constraint name. A chosen name cannot be derived.
+- **`@condition`** (on the cross-field validators: `comparison`, `requiredWhen`, `presentIff`,
+  `atLeastOne`, `exactlyOne`). A rule that holds only in some case
+  ("a refund needs a reason") is a guard the author states; no other metadata says when a rule
+  applies. It uses the existing `attr.expression` grammar, so no new expression language comes
+  with it.
+- **`validator.exactlyOne`** (a subtype, per ADR-0037). "Exactly one of these fields is set" has
+  its own SQL form (`num_nonnulls(...) = 1`) and its own record-model check, so it is a thing with
+  its own behaviour, not a variant of `atLeastOne`. The first draft spelled it `atLeastOne` with
+  `@max: 1`, which overloaded `@max` (numeric everywhere else) and read against the validator's
+  name; that never shipped. It cannot be computed: nothing else in the model bounds how many of a
+  set of fields may be set.
+- **`@maxLength` on `field.enum`**. The longest member could size the column, but then adding a
+  longer member would silently become a column type change, and the width an existing database
+  already uses (a `VARCHAR(32)` sized for growth) is a physical fact the member list does not
+  carry. The project-wide default (`enums.maxLength`) is configuration, not vocabulary. Absent
+  both, the column stays unbounded text, as before.
+- **`field.duration`** (a subtype, per ADR-0037). A fixed-length span has its own native type in
+  four ports (`TimeSpan`, `java.time.Duration`, `timedelta`) and in Postgres (`interval`), its own
+  wire grammar and its own ordering. A `field.string` or a `field.long` holding a count cannot carry
+  the unit or the native type, so it is a subtype, not an attribute.

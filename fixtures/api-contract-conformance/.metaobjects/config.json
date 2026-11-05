@@ -1,5 +1,5 @@
 {
   "schema_version": 1,
   "naming": { "columns": "literal" },
-  "wire": { "decimals": "string", "nullMembers": "omit" }
+  "wire": { "decimals": "string", "nullMembers": "omit", "durations": "iso" }
 }

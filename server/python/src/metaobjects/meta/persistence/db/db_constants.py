@@ -76,6 +76,10 @@ IDENTITY_SECONDARY_ATTR_EXPR = "expr"
 IDENTITY_SECONDARY_ATTR_USING = "using"
 # identity.reference: physical FK constraint-name override.
 IDENTITY_REFERENCE_ATTR_CONSTRAINT_NAME = "constraintName"
+#: identity.primary (@generation "increment"): the sequence's first value. Absent → 1.
+IDENTITY_PRIMARY_ATTR_SEQUENCE_START = "sequenceStart"
+#: identity.primary (@generation "increment"): the sequence's physical name. Absent → the database's default.
+IDENTITY_PRIMARY_ATTR_SEQUENCE_NAME = "sequenceName"
 # identity.reference: referential action on parent delete — the explicit per-FK override (ADR-0047).
 IDENTITY_REFERENCE_ATTR_ON_DELETE = "onDelete"
 # identity.reference: referential action on key update — the explicit per-FK override (ADR-0047).

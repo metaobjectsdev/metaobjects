@@ -1,0 +1,105 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Visit",
+          "children": [
+            {
+              "source.rdb": {}
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "storeId"
+              }
+            },
+            {
+              "field.long": {
+                "name": "kioskId"
+              }
+            },
+            {
+              "field.boolean": {
+                "name": "active"
+              }
+            },
+            {
+              "field.enum": {
+                "name": "kind",
+                "@values": [
+                  "Owned",
+                  "Shared"
+                ]
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": "id"
+              }
+            },
+            {
+              "validator.requiredWhen": {
+                "name": "rw",
+                "@field": "storeId",
+                "@when": "kind",
+                "@equals": "Owned",
+                "@condition": {
+                  "op": "and",
+                  "args": [
+                    {
+                      "op": "isNull",
+                      "arg": {
+                        "field": "nosuch"
+                      }
+                    },
+                    {
+                      "op": "isNull",
+                      "arg": {
+                        "field": "other"
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "validator.presentIff": {
+                "name": "pi",
+                "@field": "kioskId",
+                "@when": "kind",
+                "@equals": "Shared",
+                "@condition": {
+                  "op": "isNotNull",
+                  "arg": {
+                    "field": "gone"
+                  }
+                }
+              }
+            },
+            {
+              "validator.comparison": {
+                "name": "cmp",
+                "@left": "storeId",
+                "@op": "lt",
+                "@right": "kioskId",
+                "@condition": {
+                  "op": "isNotNull",
+                  "arg": {
+                    "field": "missing"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

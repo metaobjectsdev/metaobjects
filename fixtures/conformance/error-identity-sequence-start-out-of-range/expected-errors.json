@@ -1,0 +1,25 @@
+{
+  "errors": [
+    {
+      "code": "ERR_SEQUENCE_START_OUT_OF_RANGE",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.seq.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[0]['object.entity'].children[2]['identity.primary']"
+      }
+    },
+    {
+      "code": "ERR_SEQUENCE_START_OUT_OF_RANGE",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.seq.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[1]['object.entity'].children[2]['identity.primary']"
+      }
+    }
+  ],
+  "warnings": []
+}

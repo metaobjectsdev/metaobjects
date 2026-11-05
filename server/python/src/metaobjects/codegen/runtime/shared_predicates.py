@@ -207,3 +207,14 @@ def emits_writable_router(entity: MetaObject) -> bool:
         and not is_read_only_routed(entity)
         and not is_tph_subtype(entity)
     )
+
+
+#: The generated package's copy of the ``field.duration`` codec (``codegen/runtime/duration_wire.py``,
+#: emitted by the entity tier beside any model with a duration). The models import their
+#: validator and serializer from it, and a router its response formatter.
+DURATION_WIRE_MODULE = "_duration_wire"
+
+
+def has_duration_field(objects: list[MetaObject]) -> bool:
+    """True when any of *objects* has a ``field.duration`` (ADR-0039 resolving)."""
+    return any(f.sub_type == fc.FIELD_SUBTYPE_DURATION for o in objects for f in o.fields())

@@ -2292,7 +2292,7 @@ def naming_candidates(used: NamingRules) -> list[NamingRules]:
     """Every naming other than ``used``, in the order ``verify --codegen`` probes them (the C#
     port probes the same order): the used table rule first, so a different column rule alone
     is tried before a different table rule; within each, the used column rule first, then
-    snake_case, literal, kebab-case."""
+    snake_case, literal, kebab-case, upperFirst."""
     tables = sorted(TABLE_NAMING_RULES, key=lambda t: t != used.tables)
     columns = sorted(COLUMN_NAMING_STRATEGIES, key=lambda c: c != used.columns)
     return [
@@ -2337,7 +2337,7 @@ def wire_differs_message(committed: WireFormat, used: WireFormat) -> str:
         f"The committed output was generated with {wire_block(committed)}; this run used "
         f"{wire_block(used)} (the wire block of .metaobjects/config.json; each key defaults to "
         f"native). Do not regenerate: that changes the JSON the generated routes write "
-        f"(decimals, value-object null members) for clients already reading it. "
+        f"(decimals, durations, value-object null members) for clients already reading it. "
         f"Declare {wire_block(committed)} in .metaobjects/config.json, and gen and verify "
         f"--codegen both read it."
     )

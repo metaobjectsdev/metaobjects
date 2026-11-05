@@ -1,61 +1,90 @@
 {
-  "_comment": "Cross-port physical naming (ADR-0058). Each case is the `naming` block of a project's .metaobjects/config.json. A port parses it with the reader it uses for that file, loads meta.naming.json, and resolves every table and column below through the resolver its codegen, migrate (TypeScript), runtime and verify use. `tables` keys are object names; `columns` keys are `<Object>.<field>`. Overrides (@table, a source's structural name, @column) win under every rule; the entity-name fallback keeps the frozen legacy pluralizer under every rule. `invalid` blocks must be refused when the config is read.",
+  "_comment": "Cross-port physical naming (ADR-0058). Each case is the `naming` block of a project's .metaobjects/config.json. A port parses it with the reader it uses for that file, loads meta.naming.json, and resolves every table and column below through the resolver its codegen, migrate (TypeScript), runtime and verify use. `tables` keys are object names; `columns` keys are `<Object>.<field>`. Overrides (@table, a source's structural name, @column) win under every rule; the entity-name fallback keeps the frozen legacy pluralizer under every rule. `invalid` blocks must be refused when the config is read. `upperFirst` upper-cases the field name's first letter and changes nothing else (`requestURL` → `RequestURL`). A key `<Object>.<field>.<member>` names a member of a `@storage: flattened` value object: its column is the flattened prefix (`@flattenedColumnPrefix` on the embedding field, verbatim, `\"\"` allowed; else that field's resolved column and `_`) followed by the member's resolved column; a prefix inherited through `extends` counts.",
   "cases": [
     {
       "name": "default",
       "naming": null,
-      "tables": { "OrderItem": "order_items", "Person": "people", "AuditEntry": "audit_log", "Category": "categories", "HTTPRequest": "http_requests" },
+      "tables": { "OrderItem": "order_items", "Person": "people", "AuditEntry": "audit_log", "Category": "categories", "HTTPRequest": "http_requests", "Shipment": "shipments" },
       "columns": {
         "OrderItem.id": "id", "OrderItem.createdAt": "created_at", "OrderItem.unitPriceCents": "unit_price_cents", "OrderItem.sku": "SKU_CODE",
         "Person.firstName": "first_name", "Person.lastName": "family_name",
-        "AuditEntry.eventType": "event_type", "Category.displayName": "display_name", "HTTPRequest.requestURL": "request_url"
+        "AuditEntry.eventType": "event_type",
+        "Category.displayName": "display_name",
+        "HTTPRequest.requestURL": "request_url",
+        "Shipment.id": "id", "Shipment.shipTo.street": "ship_to_street", "Shipment.shipTo.postalCode": "ship_to_postal_code", "Shipment.shipTo.country": "ship_to_CTRY", "Shipment.billTo.postalCode": "bill_postal_code", "Shipment.returnTo.postalCode": "postal_code", "Shipment.giftTo.postalCode": "g_postal_code", "Shipment.giftTo.country": "g_CTRY", "Shipment.homeTo.postalCode": "addr_postal_code"
       }
     },
     {
       "name": "empty block is the default",
       "naming": {},
-      "tables": { "OrderItem": "order_items", "Person": "people", "AuditEntry": "audit_log", "Category": "categories", "HTTPRequest": "http_requests" },
+      "tables": { "OrderItem": "order_items", "Person": "people", "AuditEntry": "audit_log", "Category": "categories", "HTTPRequest": "http_requests", "Shipment": "shipments" },
       "columns": {
         "OrderItem.id": "id", "OrderItem.createdAt": "created_at", "OrderItem.unitPriceCents": "unit_price_cents", "OrderItem.sku": "SKU_CODE",
         "Person.firstName": "first_name", "Person.lastName": "family_name",
-        "AuditEntry.eventType": "event_type", "Category.displayName": "display_name", "HTTPRequest.requestURL": "request_url"
+        "AuditEntry.eventType": "event_type",
+        "Category.displayName": "display_name",
+        "HTTPRequest.requestURL": "request_url",
+        "Shipment.id": "id", "Shipment.shipTo.street": "ship_to_street", "Shipment.shipTo.postalCode": "ship_to_postal_code", "Shipment.shipTo.country": "ship_to_CTRY", "Shipment.billTo.postalCode": "bill_postal_code", "Shipment.returnTo.postalCode": "postal_code", "Shipment.giftTo.postalCode": "g_postal_code", "Shipment.giftTo.country": "g_CTRY", "Shipment.homeTo.postalCode": "addr_postal_code"
       }
     },
     {
       "name": "literal columns",
       "naming": { "columns": "literal" },
-      "tables": { "OrderItem": "order_items", "Person": "people", "AuditEntry": "audit_log", "Category": "categories", "HTTPRequest": "http_requests" },
+      "tables": { "OrderItem": "order_items", "Person": "people", "AuditEntry": "audit_log", "Category": "categories", "HTTPRequest": "http_requests", "Shipment": "shipments" },
       "columns": {
         "OrderItem.id": "id", "OrderItem.createdAt": "createdAt", "OrderItem.unitPriceCents": "unitPriceCents", "OrderItem.sku": "SKU_CODE",
         "Person.firstName": "firstName", "Person.lastName": "family_name",
-        "AuditEntry.eventType": "eventType", "Category.displayName": "displayName", "HTTPRequest.requestURL": "requestURL"
+        "AuditEntry.eventType": "eventType",
+        "Category.displayName": "displayName",
+        "HTTPRequest.requestURL": "requestURL",
+        "Shipment.id": "id", "Shipment.shipTo.street": "shipTo_street", "Shipment.shipTo.postalCode": "shipTo_postalCode", "Shipment.shipTo.country": "shipTo_CTRY", "Shipment.billTo.postalCode": "bill_postalCode", "Shipment.returnTo.postalCode": "postalCode", "Shipment.giftTo.postalCode": "g_postalCode", "Shipment.giftTo.country": "g_CTRY", "Shipment.homeTo.postalCode": "addr_postalCode"
       }
     },
     {
       "name": "literal tables",
       "naming": { "tables": "literal" },
-      "tables": { "OrderItem": "OrderItems", "Person": "people", "AuditEntry": "AuditLog", "Category": "Categories", "HTTPRequest": "HTTPRequests" },
+      "tables": { "OrderItem": "OrderItems", "Person": "people", "AuditEntry": "AuditLog", "Category": "Categories", "HTTPRequest": "HTTPRequests", "Shipment": "Shipments" },
       "columns": {
         "OrderItem.id": "id", "OrderItem.createdAt": "created_at", "OrderItem.unitPriceCents": "unit_price_cents", "OrderItem.sku": "SKU_CODE",
         "Person.firstName": "first_name", "Person.lastName": "family_name",
-        "AuditEntry.eventType": "event_type", "Category.displayName": "display_name", "HTTPRequest.requestURL": "request_url"
+        "AuditEntry.eventType": "event_type",
+        "Category.displayName": "display_name",
+        "HTTPRequest.requestURL": "request_url",
+        "Shipment.id": "id", "Shipment.shipTo.street": "ship_to_street", "Shipment.shipTo.postalCode": "ship_to_postal_code", "Shipment.shipTo.country": "ship_to_CTRY", "Shipment.billTo.postalCode": "bill_postal_code", "Shipment.returnTo.postalCode": "postal_code", "Shipment.giftTo.postalCode": "g_postal_code", "Shipment.giftTo.country": "g_CTRY", "Shipment.homeTo.postalCode": "addr_postal_code"
       }
     },
     {
       "name": "kebab-case columns, literal tables",
       "naming": { "columns": "kebab-case", "tables": "literal" },
-      "tables": { "OrderItem": "OrderItems", "Person": "people", "AuditEntry": "AuditLog", "Category": "Categories", "HTTPRequest": "HTTPRequests" },
+      "tables": { "OrderItem": "OrderItems", "Person": "people", "AuditEntry": "AuditLog", "Category": "Categories", "HTTPRequest": "HTTPRequests", "Shipment": "Shipments" },
       "columns": {
         "OrderItem.id": "id", "OrderItem.createdAt": "created-at", "OrderItem.unitPriceCents": "unit-price-cents", "OrderItem.sku": "SKU_CODE",
         "Person.firstName": "first-name", "Person.lastName": "family_name",
-        "AuditEntry.eventType": "event-type", "Category.displayName": "display-name", "HTTPRequest.requestURL": "request-url"
+        "AuditEntry.eventType": "event-type",
+        "Category.displayName": "display-name",
+        "HTTPRequest.requestURL": "request-url",
+        "Shipment.id": "id", "Shipment.shipTo.street": "ship-to_street", "Shipment.shipTo.postalCode": "ship-to_postal-code", "Shipment.shipTo.country": "ship-to_CTRY", "Shipment.billTo.postalCode": "bill_postal-code", "Shipment.returnTo.postalCode": "postal-code", "Shipment.giftTo.postalCode": "g_postal-code", "Shipment.giftTo.country": "g_CTRY", "Shipment.homeTo.postalCode": "addr_postal-code"
+      }
+    },
+    {
+      "name": "upperFirst columns, literal tables",
+      "naming": { "columns": "upperFirst", "tables": "literal" },
+      "tables": { "OrderItem": "OrderItems", "Person": "people", "AuditEntry": "AuditLog", "Category": "Categories", "HTTPRequest": "HTTPRequests", "Shipment": "Shipments" },
+      "columns": {
+        "OrderItem.id": "Id", "OrderItem.createdAt": "CreatedAt", "OrderItem.unitPriceCents": "UnitPriceCents", "OrderItem.sku": "SKU_CODE",
+        "Person.firstName": "FirstName", "Person.lastName": "family_name",
+        "AuditEntry.eventType": "EventType",
+        "Category.displayName": "DisplayName",
+        "HTTPRequest.requestURL": "RequestURL",
+        "Shipment.id": "Id", "Shipment.shipTo.street": "ShipTo_Street", "Shipment.shipTo.postalCode": "ShipTo_PostalCode", "Shipment.shipTo.country": "ShipTo_CTRY", "Shipment.billTo.postalCode": "bill_PostalCode", "Shipment.returnTo.postalCode": "PostalCode", "Shipment.giftTo.postalCode": "g_PostalCode", "Shipment.giftTo.country": "g_CTRY", "Shipment.homeTo.postalCode": "addr_PostalCode"
       }
     }
   ],
   "invalid": [
     { "name": "unknown column rule", "naming": { "columns": "camelCase" } },
     { "name": "kebab-case is not a table rule", "naming": { "tables": "kebab-case" } },
+    { "name": "upperFirst is not a table rule", "naming": { "tables": "upperFirst" } },
     { "name": "unknown key", "naming": { "column": "literal" } },
-    { "name": "not an object", "naming": "snake_case" }
+    { "name": "not an object", "naming": "snake_case"}
   ]
 }

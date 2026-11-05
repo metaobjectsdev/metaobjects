@@ -41,12 +41,13 @@ const STAGE_ORDER: Record<Change["kind"], number> = {
   // rename-table runs before every other table change (mirrors postgres): changes on a
   // renamed table — including its recreate-and-copy — are keyed by the NEW name.
   "rename-table": 0.5,
+  "rename-constraints": 0.6,
   "drop-fk": 1, "drop-check": 1,
   "create-table": 1,
   "drop-index": 1.5,
   "add-column": 2, "drop-column": 2,
   "change-column-type": 2, "change-column-nullable": 2, "change-column-default": 2,
-  "change-column-identity": 2, "change-comment": 2,
+  "change-column-identity": 2, "change-comment": 2, "alter-sequence": 2,
   "rename-column": 3,
   "add-index": 4,
   "add-fk": 5,
@@ -151,6 +152,7 @@ export function changeTable(c: Change): string | undefined {
     case "create-table": return c.table.name;
     case "drop-table":   return c.table;
     case "rename-table": return c.from;             // applies to source table
+    case "rename-constraints": return c.table;
     case "add-column":
     case "drop-column":
     case "rename-column":
@@ -390,6 +392,8 @@ function renderUpNative(c: Change): string {
       assertNoCarriedRenames(c);
       return `ALTER TABLE ${quote(c.from)} RENAME TO ${quote(c.to)};`;
     }
+    case "rename-constraints":
+      throw new Error("rename-constraints is postgres-only — the sqlite/d1 diff never produces it (sqlite cannot rename a constraint)");
     case "add-column":     return `ALTER TABLE ${quote(c.table)} ADD COLUMN ${renderColumnInline(c.column)};`;
     case "drop-column":    return `ALTER TABLE ${quote(c.table)} DROP COLUMN ${quote(c.column)};`;
     case "rename-column": {
@@ -411,7 +415,8 @@ function renderUpNative(c: Change): string {
       throw new Error(`renderUpNative: ${c.kind} should have been handled by recreate bundler`);
     case "change-column-identity":
     case "change-comment":
-      // Planned only on the Postgres shadow path; SQLite has neither GENERATED identity nor COMMENT.
+    case "alter-sequence":
+      // Planned only on Postgres; SQLite has no GENERATED identity, COMMENT or sequence.
       throw new Error(`renderUpNative: ${c.kind} is a Postgres-only change`);
     // SQLite has no schema namespacing for views and no CREATE OR REPLACE VIEW;
     // a replace is DROP + CREATE. The view body lives in ViewDescriptor.sql.
@@ -465,6 +470,8 @@ function renderDownNative(c: Change): string {
       assertNoCarriedRenames(c);
       return `ALTER TABLE ${quote(c.to)} RENAME TO ${quote(c.from)};`;
     }
+    case "rename-constraints":
+      throw new Error("rename-constraints is postgres-only — the sqlite/d1 diff never produces it (sqlite cannot rename a constraint)");
     case "add-column":     return `ALTER TABLE ${quote(c.table)} DROP COLUMN ${quote(c.column.name)};`;
     case "drop-column": return renderDropColumnDown(c);
     case "rename-column": {
@@ -486,7 +493,8 @@ function renderDownNative(c: Change): string {
       throw new Error(`renderDownNative: ${c.kind} should have been handled by recreate bundler`);
     case "change-column-identity":
     case "change-comment":
-      // Planned only on the Postgres shadow path; SQLite has neither GENERATED identity nor COMMENT.
+    case "alter-sequence":
+      // Planned only on Postgres; SQLite has no GENERATED identity, COMMENT or sequence.
       throw new Error(`renderDownNative: ${c.kind} is a Postgres-only change`);
     case "create-view":   return `DROP VIEW IF EXISTS ${quote(c.view.name)};`;
     // The view as the DB held it (`restore`) is a valid restore payload: a view dropped
@@ -584,6 +592,7 @@ export function sqliteType(t: SqlType, identity: ColumnDescriptor["identity"]): 
     case "blob":      return "BLOB";
     case "uuid":      return "TEXT";
     case "inet":      return "TEXT";          // SQLite has no inet type; store as text
+    case "interval":  return "INTEGER";       // the duration's microseconds (orders as the span does)
     case "array":     return "TEXT";          // SQLite has no array type; store as JSON text
   }
 }

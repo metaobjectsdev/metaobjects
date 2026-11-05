@@ -26,6 +26,8 @@ import com.metaobjects.field.CurrencyField;
 import com.metaobjects.field.DateField;
 import com.metaobjects.field.DecimalField;
 import com.metaobjects.field.DoubleField;
+import com.metaobjects.field.DurationField;
+import com.metaobjects.field.DurationWire;
 import com.metaobjects.field.EnumField;
 import com.metaobjects.field.FloatField;
 import com.metaobjects.field.IntegerField;
@@ -262,6 +264,9 @@ public final class ValidationPhase {
         // FR-024 B6 — derived-field providability (entity origin fields need a read source).
         pass(collected, () -> validateDerivedFieldProvidability(root));
         pass(collected, () -> validateObjectFieldStorage(root));
+        validateEnumMaxLength(root, collected);
+        validateIdentitySequence(root, collected);
+        validateCrossFieldValidators(root, collected);
         pass(collected, () -> validateFieldMap(root));
         pass(collected, () -> validateIdentityFieldsAndGeneration(root));
         // FR-024 B3/B4a — subtype rules (identity-name, value purity, projection licensing).
@@ -290,7 +295,13 @@ public final class ValidationPhase {
         pass(collected, () -> validateSortableHasSupportedSubtype(root));
         pass(collected, () -> validateIndexLookupFields(root));
         // Two fields of one stored object resolving to the same physical column.
-        pass(collected, () -> validateColumnNameCollisions(root));
+        // Collects every collision (a flattened embedding can collide on several members at
+        // once); keyed by message like the reporting pass, since they share code + envelope.
+        pass(collected, () -> {
+            List<MetaDataException> collisions = validateColumnNameCollisions(root);
+            reportingFindings.addAll(collisions);
+            collected.addAll(collisions);
+        });
         // FR-039 — a retired requirement carries no @implementedBy (refused, not exempted,
         // so the dangling-ref class is unreachable) and @supersededBy is legal only there.
         pass(collected, () -> validateRetiredRequirementLinks(root));
@@ -2361,10 +2372,321 @@ public final class ValidationPhase {
     //   2. @storage="flattened" + isArray → ERR_STORAGE_FLATTENED_ARRAY
     //      (flattened storage materialises one column-per-field; arrays would
     //       require a side table, which is what @storage="jsonb" is for.)
+    //   3. @flattenedColumnPrefix without @storage="flattened" →
+    //      ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE (no other storage gives
+    //      the members columns of their own to prefix).
     //
     // Only field.object nodes are inspected; @storage on other field subtypes is
     // already rejected by the constraint phase.
     // =========================================================================
+
+    // =========================================================================
+    // field.enum @maxLength — the column length of a string-stored enum:
+    //   1. every member of @values fits in it (ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH), the
+    //      longest offender named;
+    //   2. it is refused beside @intValueMap (ERR_ENUM_MAX_LENGTH_WITH_INT_VALUE_MAP).
+    // Read RESOLVING (ADR-0039), reported on the node that DECLARES one of the three, so an
+    // enum that only inherits them is not reported twice. Every field.enum in the tree is
+    // checked, root-level abstract enums included. Mirrors TS validateEnumMaxLength.
+    // =========================================================================
+
+    // =========================================================================
+    // Cross-field validators (comparison / requiredWhen / presentIff / atLeastOne / exactlyOne),
+    // which the database enforces as CHECKs: exactlyOne names two or more @fields;
+    // every field a @condition names is a field of the owning entity; a requiredWhen /
+    // presentIff @equals gating a field.duration is an ISO-8601 duration; and the @condition can
+    // become a CHECK guard (see conditionProblem). ERR_BAD_ATTR_VALUE, one per validator,
+    // every violation collected. Mirrors TS validateCrossFieldValidators.
+    // =========================================================================
+    static void validateCrossFieldValidators(MetaRoot root, List<MetaDataException> out) {
+        java.util.Set<String> crossField = java.util.Set.of(
+            com.metaobjects.validator.ComparisonValidator.SUBTYPE_COMPARISON,
+            com.metaobjects.validator.RequiredWhenValidator.SUBTYPE_REQUIRED_WHEN,
+            com.metaobjects.validator.PresentIffValidator.SUBTYPE_PRESENT_IFF,
+            com.metaobjects.validator.AtLeastOneValidator.SUBTYPE_AT_LEAST_ONE,
+            com.metaobjects.validator.ExactlyOneValidator.SUBTYPE_EXACTLY_ONE);
+        for (MetaObject obj : root.getChildren(MetaObject.class, false)) {
+            java.util.Map<String, MetaField<?>> fields = new java.util.LinkedHashMap<>();
+            for (MetaField<?> f : obj.getMetaFields()) fields.put(f.getShortName(), f);
+            for (com.metaobjects.validator.MetaValidator v
+                    : obj.getChildren(com.metaobjects.validator.MetaValidator.class, false)) {
+                if (!crossField.contains(v.getSubType())) continue;
+                String label = v.getSubType() + " \"" + obj.getShortName() + "." + v.getShortName() + "\"";
+                if (com.metaobjects.validator.ExactlyOneValidator.SUBTYPE_EXACTLY_ONE.equals(v.getSubType())) {
+                    Object raw = v.hasMetaAttr(com.metaobjects.validator.ExactlyOneValidator.ATTR_FIELDS)
+                        ? v.getMetaAttr(com.metaobjects.validator.ExactlyOneValidator.ATTR_FIELDS).getValue() : null;
+                    int count = raw instanceof java.util.Collection<?> c ? c.size() : raw == null ? 0 : 1;
+                    if (count < 2) {
+                        out.add(new MetaDataException(
+                            ErrorMessageConstants.ERR_BAD_ATTR_VALUE + ": validator." + label + " @fields names "
+                                + count + " field" + (count == 1 ? "" : "s")
+                                + "; it needs two or more. For one field, make that field required.",
+                            ErrorCode.ERR_BAD_ATTR_VALUE, v.getSource()));
+                        continue;
+                    }
+                }
+                if (com.metaobjects.validator.RequiredWhenValidator.SUBTYPE_REQUIRED_WHEN.equals(v.getSubType())
+                        || com.metaobjects.validator.PresentIffValidator.SUBTYPE_PRESENT_IFF.equals(v.getSubType())) {
+                    Object whenName = v.hasMetaAttr(com.metaobjects.validator.RequiredWhenValidator.ATTR_WHEN)
+                        ? v.getMetaAttr(com.metaobjects.validator.RequiredWhenValidator.ATTR_WHEN).getValue() : null;
+                    MetaField<?> when = whenName instanceof String w ? fields.get(w) : null;
+                    Object equals = v.hasMetaAttr(com.metaobjects.validator.RequiredWhenValidator.ATTR_EQUALS)
+                        ? v.getMetaAttr(com.metaobjects.validator.RequiredWhenValidator.ATTR_EQUALS).getValue() : null;
+                    if (when != null && DurationField.SUBTYPE_DURATION.equals(when.getSubType())
+                            && !(equals instanceof String e && DurationWire.ACCEPTED.matcher(e).matches())) {
+                        out.add(new MetaDataException(
+                            ErrorMessageConstants.ERR_BAD_ATTR_VALUE + ": validator." + label + " @equals "
+                                + conditionJsonLiteral(equals) + " gates field.duration \"" + when.getShortName()
+                                + "\"; it needs " + DURATION_LITERAL_FORM + ".",
+                            ErrorCode.ERR_BAD_ATTR_VALUE, v.getSource()));
+                        continue;
+                    }
+                }
+                if (!v.hasMetaAttr(com.metaobjects.validator.MetaValidator.ATTR_CONDITION)) continue;
+                Object condition = v.getMetaAttr(com.metaobjects.validator.MetaValidator.ATTR_CONDITION).getValue();
+                java.util.TreeSet<String> unknown = new java.util.TreeSet<>();
+                collectExprFieldRefs(condition, unknown);
+                unknown.removeAll(fields.keySet());
+                if (!unknown.isEmpty()) {
+                    StringBuilder names = new StringBuilder();
+                    for (String u : unknown) names.append(names.length() == 0 ? "" : ", ").append('"').append(u).append('"');
+                    out.add(new MetaDataException(
+                        ErrorMessageConstants.ERR_BAD_ATTR_VALUE + ": validator." + label + " @condition names " + names
+                            + ", which " + (unknown.size() == 1 ? "is not a field" : "are not fields")
+                            + " of \"" + obj.getShortName() + "\".",
+                        ErrorCode.ERR_BAD_ATTR_VALUE, v.getSource()));
+                    continue;
+                }
+                String problem = conditionProblem(condition, fields);
+                if (problem != null) {
+                    out.add(new MetaDataException(
+                        ErrorMessageConstants.ERR_BAD_ATTR_VALUE + ": validator." + label + " @condition " + problem,
+                        ErrorCode.ERR_BAD_ATTR_VALUE, v.getSource()));
+                }
+            }
+        }
+    }
+
+    /** What a literal compared with a field.duration must be. */
+    private static final String DURATION_LITERAL_FORM = "an ISO-8601 duration (such as PT1H30M; no years or months)";
+
+    /** Field subtypes whose values a condition compares with a number literal. */
+    private static final java.util.Set<String> CONDITION_NUMBER_SUBTYPES = java.util.Set.of(
+        IntegerField.SUBTYPE_INT, LongField.SUBTYPE_LONG, DoubleField.SUBTYPE_DOUBLE,
+        FloatField.SUBTYPE_FLOAT, DecimalField.SUBTYPE_DECIMAL, CurrencyField.SUBTYPE_CURRENCY);
+
+    /**
+     * Why a cross-field validator's {@code @condition} cannot become a CHECK guard, or
+     * {@code null} when it can. Its names are already known to be fields. The rule, the same
+     * in every port:
+     *  - it types cleanly (the origin.computed inference) and its root is boolean, since a
+     *    CHECK negates it;
+     *  - a literal compared with a field is of that field's kind (a boolean for field.boolean,
+     *    a number for a numeric field, a string otherwise) and, for field.enum, one of its
+     *    @values, for field.duration, an ISO-8601 duration;
+     *  - no comparison has a null literal: {@code x = NULL} is never true, so use isNull /
+     *    isNotNull.
+     * Mirrors TS conditionProblem.
+     */
+    private static String conditionProblem(Object condition, java.util.Map<String, MetaField<?>> fields) {
+        ExpressionAttribute.InferResult inferred = ExpressionAttribute.inferExprType(
+            condition, name -> fields.containsKey(name) ? fields.get(name).getSubType() : null);
+        if (!inferred.errors.isEmpty()) {
+            return "is not a valid expression: " + String.join("; ", inferred.errors) + ".";
+        }
+        if (!BooleanField.SUBTYPE_BOOLEAN.equals(inferred.type)) {
+            return "must be a boolean expression (a comparison, a null test, or and / or / not of them), not a field."
+                + inferred.type + ".";
+        }
+        return conditionLiteralProblem(condition, fields);
+    }
+
+    /** The first comparison in {@code node} whose literal side cannot be compared with its
+     *  other side, as conditionProblem's message tail, or {@code null}. */
+    private static String conditionLiteralProblem(Object node, java.util.Map<String, MetaField<?>> fields) {
+        if (!(node instanceof java.util.Map<?, ?> n)) return null;
+        if (n.get("left") != null && n.get("right") != null) {
+            Object[][] sides = { { n.get("left"), n.get("right") }, { n.get("right"), n.get("left") } };
+            for (Object[] side : sides) {
+                if (!(side[0] instanceof java.util.Map<?, ?> lit) || !lit.containsKey("value")) continue;
+                Object value = lit.get("value");
+                if (value == null) {
+                    return "compares with null, which is never true: use isNull or isNotNull.";
+                }
+                MetaField<?> field = side[1] instanceof java.util.Map<?, ?> ref && ref.get("field") instanceof String f
+                    ? fields.get(f) : null;
+                if (field == null) continue;
+                String subType = field.getSubType();
+                String kind = BooleanField.SUBTYPE_BOOLEAN.equals(subType) ? "boolean"
+                    : CONDITION_NUMBER_SUBTYPES.contains(subType) ? "number" : "string";
+                boolean matches = switch (kind) {
+                    case "boolean" -> value instanceof Boolean;
+                    case "number" -> value instanceof Number;
+                    default -> value instanceof String;
+                };
+                if (!matches) {
+                    return "compares \"" + field.getShortName() + "\" (field." + subType + ") with "
+                        + conditionJsonLiteral(value) + "; it needs a " + kind + ".";
+                }
+                if (EnumField.SUBTYPE_ENUM.equals(subType) && field.hasMetaAttr(EnumField.ATTR_VALUES)
+                        && field.getMetaAttr(EnumField.ATTR_VALUES).getValue() instanceof java.util.Collection<?> members) {
+                    List<String> names = new java.util.ArrayList<>();
+                    for (Object m : members) names.add(String.valueOf(m));
+                    if (!names.contains(String.valueOf(value))) {
+                        return "compares \"" + field.getShortName() + "\" with " + conditionJsonLiteral(value)
+                            + ", which is not one of its @values (" + String.join(", ", names) + ").";
+                    }
+                }
+                if (DurationField.SUBTYPE_DURATION.equals(subType) && !DurationWire.ACCEPTED.matcher((String) value).matches()) {
+                    return "compares \"" + field.getShortName() + "\" with " + conditionJsonLiteral(value)
+                        + ", which is not " + DURATION_LITERAL_FORM + ".";
+                }
+            }
+        }
+        for (String k : List.of("left", "right", "arg")) {
+            String p = conditionLiteralProblem(n.get(k), fields);
+            if (p != null) return p;
+        }
+        if (n.get("args") instanceof java.util.Collection<?> args) {
+            for (Object a : args) {
+                String p = conditionLiteralProblem(a, fields);
+                if (p != null) return p;
+            }
+        }
+        return null;
+    }
+
+    /** A condition literal as JSON, the way TS JSON.stringify renders it (an integral
+     *  double without a fraction). */
+    private static String conditionJsonLiteral(Object value) {
+        if ((value instanceof Double || value instanceof Float) && !Double.isInfinite(((Number) value).doubleValue())
+                && ((Number) value).doubleValue() == Math.rint(((Number) value).doubleValue())) {
+            return Long.toString(((Number) value).longValue());
+        }
+        return new com.google.gson.GsonBuilder().disableHtmlEscaping().create().toJson(value);
+    }
+
+    /** The field names an expression tree (ExpressionAttribute's Map form) references. */
+    private static void collectExprFieldRefs(Object node, java.util.Set<String> out) {
+        if (node instanceof java.util.Map<?, ?> m) {
+            if (m.get("field") instanceof String f) out.add(f);
+            for (String k : List.of("left", "right", "arg")) collectExprFieldRefs(m.get(k), out);
+            if (m.get("args") instanceof java.util.Collection<?> args) for (Object a : args) collectExprFieldRefs(a, out);
+        }
+    }
+
+    // =========================================================================
+    // identity.primary @sequenceStart / @sequenceName describe the sequence an @generation
+    // "increment" key draws from; on any other generation there is none, so either one is
+    // refused (ERR_SEQUENCE_WITHOUT_INCREMENT). Read RESOLVING (ADR-0039), reported on the
+    // identity that declares one of them, every offender collected. Mirrors TS.
+    // =========================================================================
+
+    static void validateIdentitySequence(MetaRoot root, List<MetaDataException> out) {
+        for (MetaObject obj : root.getChildren(MetaObject.class, false)) {
+            for (com.metaobjects.identity.PrimaryIdentity id
+                    : obj.getChildren(com.metaobjects.identity.PrimaryIdentity.class, false)) {
+                List<String> declared = new java.util.ArrayList<>();
+                for (String a : List.of(com.metaobjects.identity.PrimaryIdentity.ATTR_SEQUENCE_START,
+                                        com.metaobjects.identity.PrimaryIdentity.ATTR_SEQUENCE_NAME)) {
+                    if (id.hasMetaAttr(a, false)) declared.add("@" + a);
+                }
+                String generation = id.hasMetaAttr(com.metaobjects.identity.MetaIdentity.ATTR_GENERATION)
+                    ? id.getMetaAttr(com.metaobjects.identity.MetaIdentity.ATTR_GENERATION).getValueAsString() : null;
+                if (declared.isEmpty()) continue;
+                if (com.metaobjects.identity.MetaIdentity.GENERATION_INCREMENT.equals(generation)) {
+                    // The key field's own range bounds the start (Postgres refuses the sequence
+                    // otherwise, at apply time): 1 to the largest value of a field.int / field.long.
+                    if (id.hasMetaAttr(com.metaobjects.identity.PrimaryIdentity.ATTR_SEQUENCE_START)) {
+                        Object raw = id.getMetaAttr(com.metaobjects.identity.PrimaryIdentity.ATTR_SEQUENCE_START).getValue();
+                        if (raw instanceof Number n) {
+                            long start = n.longValue();
+                            List<String> keys = id.getFields();
+                            String keyName = keys.isEmpty() ? null : keys.get(0);
+                            com.metaobjects.field.MetaField<?> key = null;
+                            for (com.metaobjects.field.MetaField<?> f : obj.getMetaFields()) {
+                                if (f.getShortName().equals(keyName)) { key = f; break; }
+                            }
+                            Long max = key instanceof com.metaobjects.field.IntegerField ? (long) Integer.MAX_VALUE : null;
+                            if (start < 1 || (max != null && start > max)) {
+                                out.add(new MetaDataException(
+                                    ErrorMessageConstants.ERR_SEQUENCE_START_OUT_OF_RANGE
+                                        + ": identity.primary \"" + obj.getShortName() + "." + id.getShortName()
+                                        + "\" @sequenceStart " + start + " is out of range for its key \"" + keyName + "\""
+                                        + (key != null ? " (field." + key.getSubType() + ")" : "")
+                                        + ": it must be at least 1" + (max != null ? " and at most " + max : "") + ".",
+                                    ErrorCode.ERR_SEQUENCE_START_OUT_OF_RANGE, id.getSource()));
+                            }
+                        }
+                    }
+                    continue;
+                }
+                String shown = generation == null ? "not set" : "\"" + generation + "\"";
+                String names = String.join(" and ", declared);
+                out.add(new MetaDataException(
+                    ErrorMessageConstants.ERR_SEQUENCE_WITHOUT_INCREMENT
+                        + ": identity.primary \"" + obj.getShortName() + "." + id.getShortName() + "\" sets "
+                        + names + ", but its @generation is " + shown + "; only an @generation \"increment\""
+                        + " key draws from a sequence. Set @generation \"increment\", or remove " + names + ".",
+                    ErrorCode.ERR_SEQUENCE_WITHOUT_INCREMENT, id.getSource()));
+            }
+        }
+    }
+
+    /** Every offending enum is reported, as the other ports do, not only the first. */
+    static void validateEnumMaxLength(MetaData node, List<MetaDataException> out) {
+        for (MetaData child : node.getChildren(MetaData.class, false)) {
+            if (child instanceof EnumField) {
+                try {
+                    validateEnumMaxLengthNode((EnumField) child);
+                } catch (MetaDataException e) {
+                    out.add(e);
+                }
+            } else if (!(child instanceof com.metaobjects.field.MetaField)) {
+                validateEnumMaxLength(child, out);
+            }
+        }
+    }
+
+    private static void validateEnumMaxLengthNode(EnumField field) {
+        boolean declares = field.hasMetaAttr(EnumField.ATTR_MAX_LENGTH, false)
+            || field.hasMetaAttr(EnumField.ATTR_VALUES, false)
+            || field.hasMetaAttr(EnumField.ATTR_INT_VALUE_MAP, false);
+        if (!declares || !field.hasMetaAttr(EnumField.ATTR_MAX_LENGTH)) return;
+        Object rawLength = field.getMetaAttr(EnumField.ATTR_MAX_LENGTH).getValue();
+        if (!(rawLength instanceof Number)) return;
+        long maxLength = ((Number) rawLength).longValue();
+        MetaData owner = field.getParent();
+        String label = owner instanceof MetaObject
+            ? ((MetaObject) owner).getShortName() + "." + field.getShortName()
+            : field.getShortName();
+        if (field.hasMetaAttr(EnumField.ATTR_INT_VALUE_MAP)) {
+            throw new MetaDataException(
+                ErrorMessageConstants.ERR_ENUM_MAX_LENGTH_WITH_INT_VALUE_MAP
+                    + ": field.enum \"" + label + "\" sets @maxLength " + maxLength
+                    + " and @intValueMap; an @intValueMap enum is stored as an integer, so a column"
+                    + " length does not apply. Remove @maxLength.",
+                ErrorCode.ERR_ENUM_MAX_LENGTH_WITH_INT_VALUE_MAP, field.getSource());
+        }
+        String tooLong = null;
+        Object raw = field.hasMetaAttr(EnumField.ATTR_VALUES)
+            ? field.getMetaAttr(EnumField.ATTR_VALUES).getValue() : null;
+        if (raw instanceof List) {
+            for (Object o : (List<?>) raw) {
+                String v = String.valueOf(o);
+                if (v.length() > maxLength && (tooLong == null || v.length() > tooLong.length())) tooLong = v;
+            }
+        }
+        if (tooLong != null) {
+            throw new MetaDataException(
+                ErrorMessageConstants.ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH
+                    + ": field.enum \"" + label + "\" @maxLength " + maxLength
+                    + " is shorter than its member \"" + tooLong + "\" (" + tooLong.length()
+                    + " characters). Raise @maxLength to at least " + tooLong.length()
+                    + ", or shorten the member.",
+                ErrorCode.ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH, field.getSource());
+        }
+    }
 
     static void validateObjectFieldStorage(MetaRoot root) {
         walkObjectFieldStorage(root);
@@ -2400,10 +2722,32 @@ public final class ValidationPhase {
         }
 
         // ADR-0039: @storage is also an effective property — resolve it.
-        if (!node.hasMetaAttr(ObjectField.ATTR_STORAGE)) return;
+        Object storageVal = node.hasMetaAttr(ObjectField.ATTR_STORAGE)
+            ? node.getMetaAttr(ObjectField.ATTR_STORAGE).getValue()
+            : null;
 
-        Object storageVal = node.getMetaAttr(ObjectField.ATTR_STORAGE).getValue();
-        if ("flattened".equals(String.valueOf(storageVal)) && field.isArrayType()) {
+        // @flattenedColumnPrefix names the columns a flattened value object adds to the owning
+        // table; under any other storage it would change nothing, so it is refused rather
+        // than silently ignored.
+        // Only a field an object owns is checked (as TS and C# do): a root-level abstract
+        // field.object is a template, and the concrete field that extends it — resolving both
+        // the prefix and @storage — is the one checked.
+        MetaData owner = node.getParent();
+        if (owner instanceof MetaObject
+                && node.hasMetaAttr(ObjectField.ATTR_FLATTENED_COLUMN_PREFIX)
+                && !ObjectField.STORAGE_FLATTENED.equals(storageVal == null ? null : String.valueOf(storageVal))) {
+            String storageText = storageVal == null ? "not set (jsonb)" : "\"" + storageVal + "\"";
+            throw new MetaDataException(
+                ErrorMessageConstants.ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE
+                    + ": field.object \"" + ((MetaObject) owner).getShortName() + "." + field.getName()
+                    + "\" sets @flattenedColumnPrefix, but its @storage is " + storageText
+                    + "; only a @storage \"flattened\" value object puts its members' columns in"
+                    + " the owning table. Set @storage \"flattened\", or remove @flattenedColumnPrefix.",
+                ErrorCode.ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE, field.getSource());
+        }
+
+        if (storageVal == null) return;
+        if (ObjectField.STORAGE_FLATTENED.equals(String.valueOf(storageVal)) && field.isArrayType()) {
             throw new MetaDataException(
                 ErrorMessageConstants.ERR_STORAGE_FLATTENED_ARRAY
                     + ": field.object '" + field.getName()
@@ -5406,8 +5750,10 @@ public final class ValidationPhase {
      * <p>Only the RESOLVED name is compared, through {@link com.metaobjects.database.ColumnNaming#resolve},
      * so an explicit {@code @column}, an inherited field and the project's column strategy are
      * honoured. Scope: a concrete object declaring at least one source (a source-less object
-     * generates nothing); derived fields and {@code field.object} (may flatten to several
-     * columns) are skipped. ADR-0039: resolving accessors, so an inherited field collides like
+     * generates nothing); derived fields are skipped. A {@code field.object @storage "flattened"}
+     * has no column of its own: each member of its value object is a column, named by
+     * {@link com.metaobjects.database.ColumnNaming#resolveFlattened} exactly as migrate creates
+     * it. Any other {@code field.object} is one jsonb column under its own resolved name. ADR-0039: resolving accessors, so an inherited field collides like
      * an own one.</p>
      *
      * <p>Exempt: an object whose every source is read-only and at least one is a
@@ -5432,28 +5778,76 @@ public final class ValidationPhase {
         return v != null && !v.isEmpty();
     }
 
-    static void validateColumnNameCollisions(MetaRoot root) {
+    /** One physical column a field contributes to its object's table. */
+    private static final class PhysicalColumn {
+        final String column;
+        /** {@code street}, or {@code shipTo.street} for a member of a flattened value object. */
+        final String label;
+        /** The field that names the column: the field itself, or the flattened value object's member. */
+        final MetaField<?> named;
+        final boolean flattenedMember;
+
+        PhysicalColumn(String column, String label, MetaField<?> named, boolean flattenedMember) {
+            this.column = column;
+            this.label = label;
+            this.named = named;
+            this.flattenedMember = flattenedMember;
+        }
+    }
+
+    private static List<PhysicalColumn> physicalColumnsOf(MetaField<?> field) {
+        // ADR-0039: resolving - @storage and @objectRef may be inherited via extends.
+        if (ObjectField.SUBTYPE_OBJECT.equals(field.getSubType())
+                && field.hasMetaAttr(ObjectField.ATTR_STORAGE)
+                && ObjectField.STORAGE_FLATTENED.equals(
+                    String.valueOf(field.getMetaAttr(ObjectField.ATTR_STORAGE).getValue()))) {
+            MetaObject target = field.hasMetaAttr(ObjectField.ATTR_OBJECTREF)
+                ? References.refTarget(field, ObjectField.ATTR_OBJECTREF) : null;
+            List<PhysicalColumn> out = new ArrayList<>();
+            if (target == null) return out;
+            // Every member, as migrate expands it.
+            for (MetaField<?> member : target.getChildren(MetaField.class, true)) {
+                out.add(new PhysicalColumn(
+                    com.metaobjects.database.ColumnNaming.resolveFlattened(field, member),
+                    field.getName() + "." + member.getName(), member, true));
+            }
+            return out;
+        }
+        return List.of(new PhysicalColumn(
+            com.metaobjects.database.ColumnNaming.resolve(field), field.getName(), field, false));
+    }
+
+    private static String collisionHint(PhysicalColumn a, PhysicalColumn b) {
+        if (a.flattenedMember || b.flattenedMember) {
+            return "Give one flattened field a different @flattenedColumnPrefix, or rename one field.";
+        }
+        return hasExplicitColumn(a.named) && hasExplicitColumn(b.named)
+            ? "Rename one field, or point one @column at a different column."
+            : "Rename one field, or give one an explicit @column so the two columns differ.";
+    }
+
+    static List<MetaDataException> validateColumnNameCollisions(MetaRoot root) {
+        List<MetaDataException> errors = new ArrayList<>();
         for (MetaObject obj : root.getChildren(MetaObject.class, false)) {
             if (isAbstract(obj)) continue;
             if (obj.getChildren(MetaSource.class, true).isEmpty()) continue;
             if (readsThroughSqlView(obj)) continue;
-            java.util.Map<String, MetaField<?>> seen = new java.util.HashMap<>();
+            java.util.Map<String, PhysicalColumn> seen = new java.util.HashMap<>();
             for (MetaField<?> field : obj.getChildren(MetaField.class, true)) {
-                if (ObjectField.SUBTYPE_OBJECT.equals(field.getSubType()) || field.isDerived()) continue;
-                String column = com.metaobjects.database.ColumnNaming.resolve(field);
-                MetaField<?> first = seen.putIfAbsent(column, field);
-                if (first == null) continue;
-                throw new MetaDataException(
-                    ErrorMessageConstants.ERR_COLUMN_NAME_COLLISION
-                        + ": fields \"" + first.getName() + "\" and \"" + field.getName()
-                        + "\" on \"" + obj.getName() + "\" both resolve to physical column \""
-                        + column + "\". "
-                        + (hasExplicitColumn(first) && hasExplicitColumn(field)
-                            ? "Rename one field, or point one @column at a different column."
-                            : "Rename one field, or give one an explicit @column so the two columns differ."),
-                    ErrorCode.ERR_COLUMN_NAME_COLLISION, field.getSource());
+                if (field.isDerived()) continue;
+                for (PhysicalColumn col : physicalColumnsOf(field)) {
+                    PhysicalColumn first = seen.putIfAbsent(col.column, col);
+                    if (first == null) continue;
+                    errors.add(new MetaDataException(
+                        ErrorMessageConstants.ERR_COLUMN_NAME_COLLISION
+                            + ": fields \"" + first.label + "\" and \"" + col.label
+                            + "\" on \"" + obj.getName() + "\" both resolve to physical column \""
+                            + col.column + "\". " + collisionHint(first, col),
+                        ErrorCode.ERR_COLUMN_NAME_COLLISION, field.getSource()));
+                }
             }
         }
+        return errors;
     }
 
     static void validateIndexLookupFields(MetaRoot root) {

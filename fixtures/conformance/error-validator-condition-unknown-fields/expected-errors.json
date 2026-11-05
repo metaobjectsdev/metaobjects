@@ -1,0 +1,35 @@
+{
+  "errors": [
+    {
+      "code": "ERR_BAD_ATTR_VALUE",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.checks.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[0]['object.entity'].children[7]['validator.requiredWhen']"
+      }
+    },
+    {
+      "code": "ERR_BAD_ATTR_VALUE",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.checks.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[0]['object.entity'].children[8]['validator.presentIff']"
+      }
+    },
+    {
+      "code": "ERR_BAD_ATTR_VALUE",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.checks.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[0]['object.entity'].children[9]['validator.comparison']"
+      }
+    }
+  ],
+  "warnings": []
+}

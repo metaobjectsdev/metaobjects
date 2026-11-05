@@ -4,6 +4,7 @@ package com.metaobjects.generator.kotlin
 // com.metaobjects.generator.kotlin when this generator is copied out via
 // `mvn metaobjects:eject` and its own package is renamed — an explicit import, not
 // same-package bare-name resolution, is what keeps the ejected copy compiling.
+import org.slf4j.LoggerFactory
 import com.metaobjects.generator.kotlin.KotlinGenUtil
 import com.metaobjects.generator.kotlin.KotlinNaming
 import com.metaobjects.generator.kotlin.PackageMapping
@@ -148,7 +149,23 @@ open class KotlinNamesGenerator :
         val value: String,
         val path: String,
         val section: String,
+        /** A flattened value object's member column: left out, not refused, when it collides. */
+        val flattened: Boolean = false,
     )
+
+
+    /**
+     * The flattened-member constants of [names] that would share a name with another
+     * constant of the same object — a field `shipToStreet` beside the member `street` of a
+     * flattened `shipTo`. They are left out, with a warning, rather than refused: such a model
+     * generated before member constants existed, and every other constant it had is still
+     * emitted. Computed over the WHOLE resolved set, so an object and its base agree.
+     */
+    protected fun collidingFlattenedMembers(names: KotlinGenUtil.KotlinObjectNames): Set<String> {
+        val raw = rawMembersOf(names, all = true)
+        val taken = raw.filter { !it.flattened }.mapTo(mutableSetOf()) { it.member }
+        return raw.filter { it.flattened && !taken.add(it.member) }.mapTo(sortedSetOf()) { it.member }
+    }
 
     /** @return true when a file was written. */
     protected open fun emit(
@@ -181,6 +198,11 @@ open class KotlinNamesGenerator :
 
         val resolved = membersOf(names, all = true)
         val own = membersOf(names, all = false)
+        for (skipped in collidingFlattenedMembers(names)) {
+            LOG.warn("names: {}: the flattened column constant {} would share its name with another " +
+                "constant of the object, so it is not emitted. Rename the field or the value-object " +
+                "member to get it.", entity.name, skipped)
+        }
 
         // Two nodes whose SCREAMING_SNAKE member forms collide would emit duplicate const
         // members. Kotlin would refuse to compile it, but the error would name a generated
@@ -234,9 +256,19 @@ open class KotlinNamesGenerator :
             // It stays COMPLETE — every field, inherited included — because it is the
             // lookup surface, and a miss on an inherited field is exactly the
             // fallback-to-literal this artifact removes.
-            append("\n    val COLUMNS_BY_FIELD: Map<String, String> = mapOf(\n")
-            for (name in names.fields.keys.sorted()) {
-                append("        \"$name\" to ${KotlinNaming.namesMember(name)}_COLUMN,\n")
+            append("\n")
+            append("    val COLUMNS_BY_FIELD: Map<String, String> = mapOf(\n")
+            val skippedMembers = collidingFlattenedMembers(names)
+            val rows = names.fields.values.flatMap { f ->
+                // A flattened field has no column of its own: only its members are keyed.
+                (if (f.members == null) listOf(f.name to "${KotlinNaming.namesMember(f.name)}_COLUMN") else emptyList()) +
+                    // A flattened member is keyed `<field>.<member>`, the path the naming corpus uses.
+                    f.members.orEmpty().values
+                        .map { m -> "${f.name}.${m.name}" to KotlinNaming.flattenedColumnMember(f.name, m.name) }
+                        .filter { (_, constant) -> constant !in skippedMembers }
+            }.sortedBy { it.first }
+            for ((key, constant) in rows) {
+                append("        \"$key\" to $constant,\n")
             }
             append("    )\n")
             append("}\n")
@@ -260,6 +292,11 @@ open class KotlinNamesGenerator :
      * are re-exported, with no `inheritsSource` flag needed to say so.
      */
     protected fun membersOf(names: KotlinGenUtil.KotlinObjectNames, all: Boolean): List<NameConst> {
+        val skipped = collidingFlattenedMembers(names)
+        return rawMembersOf(names, all).filterNot { it.flattened && it.member in skipped }
+    }
+
+    private fun rawMembersOf(names: KotlinGenUtil.KotlinObjectNames, all: Boolean): List<NameConst> {
         val out = mutableListOf<NameConst>()
         val self = names.name
         out += NameConst("TYPE", names.type, self, "self")
@@ -295,7 +332,14 @@ open class KotlinNamesGenerator :
             val member = KotlinNaming.namesMember(f.name)
             val path = "$self.fields.${f.name}"
             out += NameConst("${member}_FIELD", f.name, path, "fields")
-            out += NameConst("${member}_COLUMN", f.column, path, "fields")
+            val column = f.column
+            if (column != null) {
+                out += NameConst("${member}_COLUMN", column, path, "fields")
+            }
+            // A flattened field has no column of its own: one constant per member's column.
+            for (m in f.members.orEmpty().values.sortedBy { it.name }) {
+                out += NameConst(KotlinNaming.flattenedColumnMember(f.name, m.name), checkNotNull(m.column), "$path.${m.name}", "fields", flattened = true)
+            }
         }
 
         addKeys(out, self, "identities", if (all) names.identities else names.ownIdentities)
@@ -348,4 +392,8 @@ open class KotlinNamesGenerator :
         PackageMapping.splitFqn(md.name).first.replace('.', '/')
     override fun getSingleOutputFilename(md: MetaObject): String =
         KotlinNaming.namesObjectName(PackageMapping.splitFqn(md.name).second) + ".kt"
+
+    private companion object {
+        val LOG = LoggerFactory.getLogger(KotlinNamesGenerator::class.java)
+    }
 }

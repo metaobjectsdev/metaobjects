@@ -1078,6 +1078,8 @@ _VALIDATOR_MIN_MAX_ATTRS = [
     AttrSchema(name=vc.VALIDATOR_ATTR_MIN, value_type=ATTR_SUBTYPE_INT),
     AttrSchema(name=vc.VALIDATOR_ATTR_MAX, value_type=ATTR_SUBTYPE_INT),
 ]
+# A cross-field validator's optional @condition (an expression over the entity's fields).
+_VALIDATOR_CONDITION_ATTR = AttrSchema(name=vc.VALIDATOR_ATTR_CONDITION, value_type=ATTR_SUBTYPE_EXPRESSION)
 _VALIDATOR_ATTRS_BY_SUBTYPE: dict[str, list[AttrSchema]] = {
     SUBTYPE_BASE: list(_VALIDATOR_MIN_MAX_ATTRS),
     vc.VALIDATOR_SUBTYPE_REQUIRED: [],
@@ -1094,19 +1096,27 @@ _VALIDATOR_ATTRS_BY_SUBTYPE: dict[str, list[AttrSchema]] = {
         AttrSchema(name=vc.VALIDATOR_ATTR_OP, value_type=ATTR_SUBTYPE_STRING, required=True,
                    allowed_values=("gt", "gte", "lt", "lte", "ne", "eq")),
         AttrSchema(name=vc.VALIDATOR_ATTR_RIGHT, value_type=ATTR_SUBTYPE_STRING, required=True),
+        _VALIDATOR_CONDITION_ATTR,
     ],
     vc.VALIDATOR_SUBTYPE_REQUIRED_WHEN: [
         AttrSchema(name=vc.VALIDATOR_ATTR_FIELD, value_type=ATTR_SUBTYPE_STRING, required=True),
         AttrSchema(name=vc.VALIDATOR_ATTR_WHEN, value_type=ATTR_SUBTYPE_STRING, required=True),
         AttrSchema(name=vc.VALIDATOR_ATTR_EQUALS, value_type=ATTR_SUBTYPE_STRING, required=True),
+        _VALIDATOR_CONDITION_ATTR,
     ],
     vc.VALIDATOR_SUBTYPE_PRESENT_IFF: [
         AttrSchema(name=vc.VALIDATOR_ATTR_FIELD, value_type=ATTR_SUBTYPE_STRING, required=True),
         AttrSchema(name=vc.VALIDATOR_ATTR_WHEN, value_type=ATTR_SUBTYPE_STRING, required=True),
         AttrSchema(name=vc.VALIDATOR_ATTR_EQUALS, value_type=ATTR_SUBTYPE_STRING, required=True),
+        _VALIDATOR_CONDITION_ATTR,
     ],
     vc.VALIDATOR_SUBTYPE_AT_LEAST_ONE: [
         AttrSchema(name=vc.VALIDATOR_ATTR_FIELDS, value_type=ATTR_SUBTYPE_STRING, required=True, is_array=True),
+        _VALIDATOR_CONDITION_ATTR,
+    ],
+    vc.VALIDATOR_SUBTYPE_EXACTLY_ONE: [
+        AttrSchema(name=vc.VALIDATOR_ATTR_FIELDS, value_type=ATTR_SUBTYPE_STRING, required=True, is_array=True),
+        _VALIDATOR_CONDITION_ATTR,
     ],
 }
 for _sub, _attrs in _VALIDATOR_ATTRS_BY_SUBTYPE.items():

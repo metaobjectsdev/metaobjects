@@ -147,6 +147,6 @@ class KotlinCodegenSnapshotTest {
         val useNames = Regex("\"useNames\"\\s*:\\s*true").containsMatchIn(json)
         val decimals = if (Regex("\"wireDecimals\"\\s*:\\s*\"string\"").containsMatchIn(json)) WireFormat.Decimals.STRING else WireFormat.Decimals.NATIVE
         val nulls = if (Regex("\"wireNullMembers\"\\s*:\\s*\"omit\"").containsMatchIn(json)) WireFormat.NullMembers.OMIT else WireFormat.NullMembers.NATIVE
-        return FixtureConfig(gens, pkg, useNames, WireFormat(decimals, nulls))
+        return FixtureConfig(gens, pkg, useNames, WireFormat(decimals, nulls, if (Regex("\"wireDurations\"\\s*:\\s*\"iso\"").containsMatchIn(json)) WireFormat.Durations.ISO else WireFormat.Durations.NATIVE))
     }
 }

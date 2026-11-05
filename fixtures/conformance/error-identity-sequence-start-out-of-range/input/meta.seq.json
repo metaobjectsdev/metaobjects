@@ -1,0 +1,53 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Small",
+          "children": [
+            {
+              "source.rdb": {}
+            },
+            {
+              "field.int": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": "id",
+                "@generation": "increment",
+                "@sequenceStart": 3000000000
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Zero",
+          "children": [
+            {
+              "source.rdb": {}
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": "id",
+                "@generation": "increment",
+                "@sequenceStart": 0
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

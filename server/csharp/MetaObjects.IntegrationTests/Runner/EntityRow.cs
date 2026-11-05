@@ -44,7 +44,7 @@ public static class EntityRow
         // ADR-0036 Wave 2 — a default field.timestamp materializes as DateTimeOffset (an
         // absolute instant); pass it straight through to Normalization (which renders the
         // UTC wire string + "Z"), NOT into PocoToJsonNode's reflection path.
-        if (t.IsPrimitive || value is string or decimal or DateTime or DateTimeOffset or DateOnly or TimeOnly or Guid or Enum)
+        if (t.IsPrimitive || value is string or decimal or DateTime or DateTimeOffset or DateOnly or TimeOnly or Guid or TimeSpan or Enum)
             return value;
         // ADR-0036 Wave 3 — a field.uri materializes as System.Uri (EF HasConversion) and a
         // field.inet as System.Net.IPAddress (Npgsql inet). Both are reference types, so pass

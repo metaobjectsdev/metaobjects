@@ -78,14 +78,14 @@ class KotlinExposedTableCrossPackageEnumTest {
             val orderTable = readGenerated(outDir, "acme/orders/OrderTable.kt")
             assertTrue(orderTable.contains("import acme.common.RecordStatus"),
                 "OrderTable must import the cross-package shared enum; saw:\n$orderTable")
-            assertTrue(orderTable.contains("RecordStatus::class"),
-                "OrderTable still references the enum in enumerationByName; saw:\n$orderTable")
+            assertTrue(orderTable.contains("RecordStatus.valueOf"),
+                "OrderTable still references the enum in its text enum column; saw:\n$orderTable")
 
             val invoiceTable = readGenerated(outDir, "acme/billing/InvoiceTable.kt")
             assertTrue(invoiceTable.contains("import acme.common.RecordStatus"),
                 "InvoiceTable must import the cross-package shared enum; saw:\n$invoiceTable")
-            assertTrue(invoiceTable.contains("RecordStatus::class"),
-                "InvoiceTable still references the enum in enumerationByName; saw:\n$invoiceTable")
+            assertTrue(invoiceTable.contains("RecordStatus.valueOf"),
+                "InvoiceTable still references the enum in its text enum column; saw:\n$invoiceTable")
 
             // TPH-fold path: the base ShipmentTable.kt (NOT AirShipmentTable — TPH subtypes emit
             // no table of their own) must carry the import for the SUBTYPE-only cross-package
@@ -93,7 +93,7 @@ class KotlinExposedTableCrossPackageEnumTest {
             val shipmentTable = readGenerated(outDir, "acme/shipping/ShipmentTable.kt")
             assertTrue(shipmentTable.contains("import acme.common.RecordStatus"),
                 "TPH-folded ShipmentTable must import the cross-package shared enum; saw:\n$shipmentTable")
-            assertTrue(shipmentTable.contains("val recordStatus = enumerationByName(\"record_status\", ${KotlinTypeMapper.ENUM_VARCHAR_LEN}, RecordStatus::class).nullable()"),
+            assertTrue(shipmentTable.contains("val recordStatus = customEnumeration(\"record_status\", \"TEXT\", { v -> RecordStatus.valueOf(v as String) }, { e -> e.name }).nullable()"),
                 "TPH-folded status column must reference the shared enum; saw:\n$shipmentTable")
             assertTrue(!Files.exists(outDir.resolve("acme/shipping/AirShipmentTable.kt")),
                 "a TPH subtype must NOT emit its own table")

@@ -1,3 +1,4 @@
+import type { SchemaBuildSettings } from "@metaobjectsdev/migrate-ts";
 import type { ExposeOption } from "./routes-expose.js";
 import type { MetaDataTypeProvider, MetaObject, MetaRoot, TypeRegistry } from "@metaobjectsdev/metadata";
 import type { LibraryManifest } from "@metaobjectsdev/metadata/library";
@@ -127,6 +128,13 @@ export interface GenContext {
    * call, where a docs generator's own options decide. See docs-run.ts.
    */
   docs?: DocsRunFacts;
+  /**
+   * The project's schema settings for a generator that builds the expected physical schema
+   * (the Prisma schema): `migrate.conventions` and `migrate.checks` from .metaobjects/config.json,
+   * or a conventions object from metaobjects.config.ts, resolved by the caller. Absent: the
+   * default conventions, every CHECK.
+   */
+  schemaSettings?: SchemaBuildSettings;
   /**
    * The files this run generated, for a generator marked `readsRunOutput` (the docs site's
    * model explorer, which lists what was generated from each node). The runner runs such a

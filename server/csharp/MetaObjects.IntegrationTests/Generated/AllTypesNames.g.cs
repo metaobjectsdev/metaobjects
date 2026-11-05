@@ -27,6 +27,8 @@ public abstract class AllTypesNames
     public const string DateValColumn = "dateVal";
     public const string DecValField = "decVal";
     public const string DecValColumn = "decVal";
+    public const string DurationValField = "durationVal";
+    public const string DurationValColumn = "durationVal";
     public const string EnumValField = "enumVal";
     public const string EnumValColumn = "enumVal";
     public const string FValField = "fVal";
@@ -72,6 +74,7 @@ public abstract class AllTypesNames
         ["dVal"] = DValColumn,
         ["dateVal"] = DateValColumn,
         ["decVal"] = DecValColumn,
+        ["durationVal"] = DurationValColumn,
         ["enumVal"] = EnumValColumn,
         ["fVal"] = FValColumn,
         ["iVal"] = IValColumn,

@@ -12,7 +12,7 @@ import { MetadataError } from "./errors.js";
 import {
   buildSelectSpec, resolvePkFields,
 } from "./query-builder.js";
-import type { SelectSpec, PrimitiveValue, Row } from "./persistence-driver.js";
+import type { Dialect, SelectSpec, PrimitiveValue, Row } from "./persistence-driver.js";
 
 export interface RelationDescriptor {
   /** "one" = source holds the FK pointing at target. "many" = target holds the FK pointing back at source. */
@@ -148,11 +148,12 @@ export function buildLazyRelateSpec(
   sourceRecord: Row,
   root: MetaData,
   strategy: ColumnNamingStrategy = DEFAULT_COLUMN_NAMING_STRATEGY,
+  dialect?: Dialect,
 ): SelectSpec | null {
   const lookup = sourceRecord[desc.sourceField];
   if (lookup === null || lookup === undefined) return null;
   const target = mustGetEntity(root, desc.targetEntityName);
-  return buildSelectSpec(target, { [desc.targetField]: lookup as PrimitiveValue }, {}, undefined, strategy);
+  return buildSelectSpec(target, { [desc.targetField]: lookup as PrimitiveValue }, {}, undefined, strategy, dialect);
 }
 
 /** Builds one batched IN(...) lookup. Returns null when there are no non-null source values. */
@@ -161,6 +162,7 @@ export function buildIncludeBatchSpec(
   sourceRecords: Row[],
   root: MetaData,
   strategy: ColumnNamingStrategy = DEFAULT_COLUMN_NAMING_STRATEGY,
+  dialect?: Dialect,
 ): SelectSpec | null {
   const seen = new Set<PrimitiveValue>();
   for (const rec of sourceRecords) {
@@ -170,7 +172,7 @@ export function buildIncludeBatchSpec(
   }
   if (seen.size === 0) return null;
   const target = mustGetEntity(root, desc.targetEntityName);
-  return buildSelectSpec(target, { [desc.targetField]: [...seen] as (string | number)[] }, {}, undefined, strategy);
+  return buildSelectSpec(target, { [desc.targetField]: [...seen] as (string | number)[] }, {}, undefined, strategy, dialect);
 }
 
 function mustGetEntity(root: MetaData, name: string): MetaData {

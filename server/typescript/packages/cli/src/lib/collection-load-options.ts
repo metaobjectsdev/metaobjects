@@ -12,6 +12,7 @@
 // `ERR_DEPENDENCY_PACKAGE_NOT_OWNED` refusal, so a node declared into a
 // dependency's package is silently excluded from that command's output instead
 // of being refused by name.
+import { DEFAULT_ENUM_DEFAULTS } from "@metaobjectsdev/metadata";
 import type { Collection, LoadMemoryOptions } from "@metaobjectsdev/sdk";
 
 /**
@@ -26,7 +27,7 @@ import type { Collection, LoadMemoryOptions } from "@metaobjectsdev/sdk";
  */
 export function collectionLoadOptions(
   collection: Collection,
-): Required<Pick<LoadMemoryOptions, "files" | "fileIds" | "importedPackages" | "importedNodes" | "libraries" | "physicalNaming" | "wireFormat">> {
+): Required<Pick<LoadMemoryOptions, "files" | "fileIds" | "importedPackages" | "importedNodes" | "libraries" | "physicalNaming" | "wireFormat" | "enumDefaults">> {
   return {
     files: collection.files,
     fileIds: collection.fileIds,
@@ -40,5 +41,8 @@ export function collectionLoadOptions(
     libraries: collection.libraries,
     physicalNaming: collection.physicalNaming,
     wireFormat: collection.wireFormat,
+    enumDefaults: collection.enumDefaults ?? DEFAULT_ENUM_DEFAULTS,
+    // The collection's migrate settings (`migrate.conventions`, `migrate.checks`) are not load
+    // options: they reach the expected-schema builds through `schemaBuildOptions`.
   };
 }

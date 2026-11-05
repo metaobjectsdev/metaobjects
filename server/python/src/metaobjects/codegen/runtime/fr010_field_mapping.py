@@ -109,6 +109,8 @@ def scalar_kind(sub_type: str) -> str | None:
         # ADR-0036/0037 Wave 3: uri/inet are string scalars on the wire.
         fc.FIELD_SUBTYPE_URI,
         fc.FIELD_SUBTYPE_INET,
+        # field.duration: an ISO-8601 duration string on the wire.
+        fc.FIELD_SUBTYPE_DURATION,
     ):
         return "STRING"
     if sub_type == fc.FIELD_SUBTYPE_INT:

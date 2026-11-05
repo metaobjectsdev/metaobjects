@@ -52,6 +52,7 @@
 import { DEFAULT_DB_SCHEMA_POSTGRES } from "@metaobjectsdev/metadata";
 import type { DiffArgs } from "./diff/index.js";
 import type { ExpectedSchemaWithProvenance } from "./expected-schema.js";
+import { FkTargetNotUniqueError, type FkTargetViolation } from "./errors.js";
 import { qualifiedDbName } from "./qualified-name.js";
 import type { SchemaSnapshot } from "./types.js";
 
@@ -96,6 +97,17 @@ export interface ScopedExpectedSchema {
    * declares no dependencies.
    */
   importedOutOfScope?: string[];
+  /**
+   * FKs whose target is not a unique key, on tables this run does NOT govern (imported, or
+   * outside `migrate.scope`): never emitted by this project, so reported rather than
+   * refused. The ones on governed tables are refused by `scopeExpectedSchema` itself.
+   */
+  ungovernedFkTargetViolations?: FkTargetViolation[];
+  /**
+   * SQLite only: FKs whose target is not a unique key, on any table. SQLite accepts the DDL
+   * and checks foreign keys only with `PRAGMA foreign_keys` on, so they are reported, not refused.
+   */
+  unenforcedFkTargetViolations?: FkTargetViolation[];
 }
 
 /**
@@ -277,7 +289,7 @@ export function scopeExpectedSchema(
 ): ScopedExpectedSchema {
   const imported = opts?.imported;
   if (inScope === undefined && imported === undefined) {
-    return { snapshot: built.snapshot, outOfScope: [] };
+    return withFkTargetVerdict(built, { snapshot: built.snapshot, outOfScope: [] });
   }
 
   // PASS 1 — the import partition. An imported object survives only when the
@@ -321,7 +333,7 @@ export function scopeExpectedSchema(
     return false;
   };
 
-  return {
+  return withFkTargetVerdict(built, {
     snapshot: {
       ...remainder,
       tables: remainder.tables.filter(governed),
@@ -332,5 +344,19 @@ export function scopeExpectedSchema(
     outOfScope: [...importedOutOfScope, ...scopeOutOfScope],
     ...(declared.length > 0 ? { declaredSchemas: declared } : {}),
     ...(imported !== undefined ? { importedOutOfScope } : {}),
-  };
+  });
+}
+
+/**
+ * Refuse every FK-target violation on a table the scoped run governs (its FK would be
+ * emitted and fail at apply), and return the others for the caller to report.
+ */
+function withFkTargetVerdict(built: ExpectedSchemaWithProvenance, scoped: ScopedExpectedSchema): ScopedExpectedSchema {
+  const violations = built.fkTargetViolations ?? [];
+  if (violations.length === 0) return scoped;
+  if (built.fkTargetsUnenforced !== undefined) return { ...scoped, unenforcedFkTargetViolations: violations };
+  const governedTables = new Set(scoped.snapshot.tables.map(qualifiedDbName));
+  const governed = violations.filter((v) => governedTables.has(v.table));
+  if (governed.length > 0) throw new FkTargetNotUniqueError(governed);
+  return { ...scoped, ungovernedFkTargetViolations: violations };
 }

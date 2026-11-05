@@ -38,6 +38,7 @@ byte equality check.
 | `TIMESTAMP`         | string `"YYYY-MM-DDTHH:MM:SS[.fff]"`      | `"2026-05-25T10:30:00"` (no Z)        |
 | `TIMESTAMPTZ`       | string `"YYYY-MM-DDTHH:MM:SS[.fff]Z"`     | `"2026-05-25T14:30:00Z"` (UTC always) |
 | `UUID`              | string (lowercase canonical)              | `"550e8400-e29b-41d4-a716-446655440000"` |
+| `INTERVAL` (`field.duration`) | string (canonical ISO-8601 duration, [`fixtures/duration-wire`](../duration-wire/)) | `"PT24H0.5S"` |
 | `JSON`, `JSONB`     | re-serialized with **sorted keys**        | `{"a": 1, "b": 2}` not `{"b": 2, "a": 1}` |
 | `BYTEA`             | base64 string                             | `"aGVsbG8="`                          |
 | `NULL`              | JSON `null`                               |                                       |

@@ -858,6 +858,85 @@
             }
           },
           {
+            "name": "filter[holdFor]",
+            "in": "query",
+            "description": "Sugar for the eq operator.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[-+]?P(([0-9]+W([0-9]+D)?|[0-9]+D)(T([0-9]+H([0-9]+M)?([0-9]+(\\.[0-9]+)?S)?|[0-9]+M([0-9]+(\\.[0-9]+)?S)?|[0-9]+(\\.[0-9]+)?S))?|T([0-9]+H([0-9]+M)?([0-9]+(\\.[0-9]+)?S)?|[0-9]+M([0-9]+(\\.[0-9]+)?S)?|[0-9]+(\\.[0-9]+)?S))$",
+              "description": "An ISO-8601 duration: weeks, days, hours, minutes and seconds (no years or months)."
+            }
+          },
+          {
+            "name": "filter[holdFor][eq]",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "pattern": "^[-+]?P(([0-9]+W([0-9]+D)?|[0-9]+D)(T([0-9]+H([0-9]+M)?([0-9]+(\\.[0-9]+)?S)?|[0-9]+M([0-9]+(\\.[0-9]+)?S)?|[0-9]+(\\.[0-9]+)?S))?|T([0-9]+H([0-9]+M)?([0-9]+(\\.[0-9]+)?S)?|[0-9]+M([0-9]+(\\.[0-9]+)?S)?|[0-9]+(\\.[0-9]+)?S))$",
+              "description": "An ISO-8601 duration: weeks, days, hours, minutes and seconds (no years or months)."
+            }
+          },
+          {
+            "name": "filter[holdFor][ne]",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "pattern": "^[-+]?P(([0-9]+W([0-9]+D)?|[0-9]+D)(T([0-9]+H([0-9]+M)?([0-9]+(\\.[0-9]+)?S)?|[0-9]+M([0-9]+(\\.[0-9]+)?S)?|[0-9]+(\\.[0-9]+)?S))?|T([0-9]+H([0-9]+M)?([0-9]+(\\.[0-9]+)?S)?|[0-9]+M([0-9]+(\\.[0-9]+)?S)?|[0-9]+(\\.[0-9]+)?S))$",
+              "description": "An ISO-8601 duration: weeks, days, hours, minutes and seconds (no years or months)."
+            }
+          },
+          {
+            "name": "filter[holdFor][gt]",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "pattern": "^[-+]?P(([0-9]+W([0-9]+D)?|[0-9]+D)(T([0-9]+H([0-9]+M)?([0-9]+(\\.[0-9]+)?S)?|[0-9]+M([0-9]+(\\.[0-9]+)?S)?|[0-9]+(\\.[0-9]+)?S))?|T([0-9]+H([0-9]+M)?([0-9]+(\\.[0-9]+)?S)?|[0-9]+M([0-9]+(\\.[0-9]+)?S)?|[0-9]+(\\.[0-9]+)?S))$",
+              "description": "An ISO-8601 duration: weeks, days, hours, minutes and seconds (no years or months)."
+            }
+          },
+          {
+            "name": "filter[holdFor][gte]",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "pattern": "^[-+]?P(([0-9]+W([0-9]+D)?|[0-9]+D)(T([0-9]+H([0-9]+M)?([0-9]+(\\.[0-9]+)?S)?|[0-9]+M([0-9]+(\\.[0-9]+)?S)?|[0-9]+(\\.[0-9]+)?S))?|T([0-9]+H([0-9]+M)?([0-9]+(\\.[0-9]+)?S)?|[0-9]+M([0-9]+(\\.[0-9]+)?S)?|[0-9]+(\\.[0-9]+)?S))$",
+              "description": "An ISO-8601 duration: weeks, days, hours, minutes and seconds (no years or months)."
+            }
+          },
+          {
+            "name": "filter[holdFor][lt]",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "pattern": "^[-+]?P(([0-9]+W([0-9]+D)?|[0-9]+D)(T([0-9]+H([0-9]+M)?([0-9]+(\\.[0-9]+)?S)?|[0-9]+M([0-9]+(\\.[0-9]+)?S)?|[0-9]+(\\.[0-9]+)?S))?|T([0-9]+H([0-9]+M)?([0-9]+(\\.[0-9]+)?S)?|[0-9]+M([0-9]+(\\.[0-9]+)?S)?|[0-9]+(\\.[0-9]+)?S))$",
+              "description": "An ISO-8601 duration: weeks, days, hours, minutes and seconds (no years or months)."
+            }
+          },
+          {
+            "name": "filter[holdFor][lte]",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "pattern": "^[-+]?P(([0-9]+W([0-9]+D)?|[0-9]+D)(T([0-9]+H([0-9]+M)?([0-9]+(\\.[0-9]+)?S)?|[0-9]+M([0-9]+(\\.[0-9]+)?S)?|[0-9]+(\\.[0-9]+)?S))?|T([0-9]+H([0-9]+M)?([0-9]+(\\.[0-9]+)?S)?|[0-9]+M([0-9]+(\\.[0-9]+)?S)?|[0-9]+(\\.[0-9]+)?S))$",
+              "description": "An ISO-8601 duration: weeks, days, hours, minutes and seconds (no years or months)."
+            }
+          },
+          {
+            "name": "filter[holdFor][in]",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated values."
+            }
+          },
+          {
+            "name": "filter[holdFor][isNull]",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
             "name": "sort",
             "in": "query",
             "schema": {
@@ -904,7 +983,10 @@
                 "status:desc",
                 "stage",
                 "stage:asc",
-                "stage:desc"
+                "stage:desc",
+                "holdFor",
+                "holdFor:asc",
+                "holdFor:desc"
               ]
             }
           },
@@ -1716,6 +1798,14 @@
               }
             ]
           },
+          "holdFor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[-+]?P(([0-9]+W([0-9]+D)?|[0-9]+D)(T([0-9]+H([0-9]+M)?([0-9]+(\\.[0-9]+)?S)?|[0-9]+M([0-9]+(\\.[0-9]+)?S)?|[0-9]+(\\.[0-9]+)?S))?|T([0-9]+H([0-9]+M)?([0-9]+(\\.[0-9]+)?S)?|[0-9]+M([0-9]+(\\.[0-9]+)?S)?|[0-9]+(\\.[0-9]+)?S))$",
+            "description": "An ISO-8601 duration: weeks, days, hours, minutes and seconds (no years or months)."
+          },
           "shipTo": {
             "anyOf": [
               {
@@ -1800,6 +1890,7 @@
           "homepage",
           "looseLink",
           "address",
+          "holdFor",
           "shipTo",
           "stops",
           "tags",
@@ -1912,6 +2003,11 @@
                 "format": "ipv6"
               }
             ]
+          },
+          "holdFor": {
+            "type": "string",
+            "pattern": "^[-+]?P(([0-9]+W([0-9]+D)?|[0-9]+D)(T([0-9]+H([0-9]+M)?([0-9]+(\\.[0-9]+)?S)?|[0-9]+M([0-9]+(\\.[0-9]+)?S)?|[0-9]+(\\.[0-9]+)?S))?|T([0-9]+H([0-9]+M)?([0-9]+(\\.[0-9]+)?S)?|[0-9]+M([0-9]+(\\.[0-9]+)?S)?|[0-9]+(\\.[0-9]+)?S))$",
+            "description": "An ISO-8601 duration: weeks, days, hours, minutes and seconds (no years or months)."
           },
           "shipTo": {
             "$ref": "#/components/schemas/AddressCreate"
@@ -2115,6 +2211,14 @@
                 "format": "ipv6"
               }
             ]
+          },
+          "holdFor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[-+]?P(([0-9]+W([0-9]+D)?|[0-9]+D)(T([0-9]+H([0-9]+M)?([0-9]+(\\.[0-9]+)?S)?|[0-9]+M([0-9]+(\\.[0-9]+)?S)?|[0-9]+(\\.[0-9]+)?S))?|T([0-9]+H([0-9]+M)?([0-9]+(\\.[0-9]+)?S)?|[0-9]+M([0-9]+(\\.[0-9]+)?S)?|[0-9]+(\\.[0-9]+)?S))$",
+            "description": "An ISO-8601 duration: weeks, days, hours, minutes and seconds (no years or months)."
           },
           "shipTo": {
             "anyOf": [

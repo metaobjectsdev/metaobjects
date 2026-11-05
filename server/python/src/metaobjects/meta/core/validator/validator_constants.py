@@ -16,6 +16,7 @@ VALIDATOR_SUBTYPE_COMPARISON = "comparison"
 VALIDATOR_SUBTYPE_REQUIRED_WHEN = "requiredWhen"
 VALIDATOR_SUBTYPE_PRESENT_IFF = "presentIff"
 VALIDATOR_SUBTYPE_AT_LEAST_ONE = "atLeastOne"
+VALIDATOR_SUBTYPE_EXACTLY_ONE = "exactlyOne"
 
 # Validator attr keys (read by codegen when lowering validator children).
 VALIDATOR_ATTR_MIN = "min"
@@ -29,3 +30,15 @@ VALIDATOR_ATTR_FIELD = "field"
 VALIDATOR_ATTR_WHEN = "when"
 VALIDATOR_ATTR_EQUALS = "equals"
 VALIDATOR_ATTR_FIELDS = "fields"
+# A cross-field validator's @condition: the rule applies only where this expression holds.
+VALIDATOR_ATTR_CONDITION = "condition"
+# The database name of the CHECK a CHECK-generating validator generates (db provider).
+VALIDATOR_ATTR_CONSTRAINT_NAME = "constraintName"
+# The cross-field validators (entity-scoped; the database enforces them as CHECKs).
+CROSS_FIELD_VALIDATOR_SUBTYPES = (
+    VALIDATOR_SUBTYPE_COMPARISON,
+    VALIDATOR_SUBTYPE_REQUIRED_WHEN,
+    VALIDATOR_SUBTYPE_PRESENT_IFF,
+    VALIDATOR_SUBTYPE_AT_LEAST_ONE,
+    VALIDATOR_SUBTYPE_EXACTLY_ONE,
+)

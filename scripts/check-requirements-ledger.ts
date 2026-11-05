@@ -48,7 +48,7 @@ const EXPECTED_WARNING = "WARN_REQUIREMENT_NOTHING_IMPLEMENTS";
  *  the neighbour — became `Number("metaobjects")`, i.e. NaN. Every comparison against
  *  NaN is unequal, so the gate failed reporting "expected NaN" and a remedy paragraph
  *  about updating the pin. */
-const DEFAULT_EXPECTED_WARNING_COUNT = 148;
+const DEFAULT_EXPECTED_WARNING_COUNT = 150;
 
 function expectedWarnings(argv: readonly string[]): number {
   const flag = argv.find((a) => a.startsWith("--expect-warnings="));

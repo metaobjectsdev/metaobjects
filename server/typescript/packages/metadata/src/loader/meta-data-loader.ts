@@ -25,7 +25,8 @@ import { ParseError } from "../errors.js";
 import type { LoaderWarning } from "../source.js";
 import { codeSource, resolvedSource } from "../source.js";
 import { parseJson } from "../parser-json.js";
-import { validateDataGridSortFields, validateFilterableHasIndex, validateFilterableHasSupportedOps, validateSortableHasSupportedSubtype, validateOriginPaths, validateDerivedFieldProvidability, validateDataGridFilterValues, validateFieldObjectStorage, validateFieldMap, validateTemplatePayloadRefs, validateFieldDefaults, validateRelationships, validateOneSideReferenceResolution, validateM2MJunctionPairing, validateIndexLookupFields, validateProjectionFilter, validateRetiredRequirementLinks, validateColumnNameCollisions } from "./validation-passes.js";
+import { validateDataGridSortFields, validateFilterableHasIndex, validateFilterableHasSupportedOps, validateSortableHasSupportedSubtype, validateOriginPaths, validateDerivedFieldProvidability, validateDataGridFilterValues, validateFieldObjectStorage, validateFieldMap,
+  validateEnumMaxLength, validateIdentitySequence, validateCrossFieldValidators, validateTemplatePayloadRefs, validateFieldDefaults, validateRelationships, validateOneSideReferenceResolution, validateM2MJunctionPairing, validateIndexLookupFields, validateProjectionFilter, validateRetiredRequirementLinks, validateColumnNameCollisions } from "./validation-passes.js";
 import { validateReporting } from "./reporting-validation.js";
 import { runRegisteredValidation } from "./validation-registry.js";
 import { validateSourceRoles } from "../persistence/source/validate-source-roles.js";
@@ -723,6 +724,15 @@ export class MetaDataLoader {
       // field.map — exactly one of @valueType (scalar) or @objectRef (VO), and
       // @valueType (when set) must name a known scalar subtype.
       errors.push(...validateFieldMap(root));
+
+      // field.enum @maxLength — every member fits; refused with @intValueMap.
+      errors.push(...validateEnumMaxLength(root));
+
+      // identity.primary @sequenceStart / @sequenceName need @generation "increment".
+      errors.push(...validateIdentitySequence(root));
+
+      // Cross-field validators: exactlyOne names two or more fields; @condition names real fields.
+      errors.push(...validateCrossFieldValidators(root));
 
       // Tenth pass: one-primary multi-source rule — if an object has ≥1 source,
       // exactly one must carry role "primary" (ERR_SOURCE_NO_PRIMARY /

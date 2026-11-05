@@ -170,6 +170,11 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         // `Column<BigDecimal>` builders), emitted in pass 3e.
         val packagesNeedingPortableHelper = sortedSetOf<String>()
 
+        // Packages that emit at least one table carrying a `field.duration` column. Each gets ONE
+        // shared `MetaDurationColumnType.kt` (the engine-aware `Column<Duration>` builders) plus the
+        // package's `MetaDurationWire.kt`, emitted in pass 3f.
+        val packagesNeedingDurationHelper = sortedSetOf<String>()
+
         // Pass 2: emit one Table per entity using its own metadata + the
         // inbound FKs accumulated in Pass 1.
         // FR-024 (ADR-0028): object.projection is emitted too — a projection with
@@ -204,6 +209,9 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             // owns only a read-only source (isWriteThrough() = false), so it stays on the single-
             // object path below.
             if (entity.subType == MetaObject.SUBTYPE_ENTITY && entity.isWriteThrough) {
+                if (entityNeedsDurationHelper(entity, loader)) {
+                    packagesNeedingDurationHelper += PackageMapping.splitFqn(entity.name).first
+                }
                 emitWriteThrough(
                     entity, outRoot, loader, fkMap, refDecorationMap,
                     packagesNeedingInstantTzHelper, packagesNeedingInetUriHelper, packagesNeedingJacksonMapper,
@@ -267,6 +275,9 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             if (entityNeedsPortableHelper(entity, loader)) {
                 packagesNeedingPortableHelper += PackageMapping.splitFqn(entity.name).first
             }
+            if (entityNeedsDurationHelper(entity, loader)) {
+                packagesNeedingDurationHelper += PackageMapping.splitFqn(entity.name).first
+            }
         }
 
         // Pass 3: emit ONE shared `MetaInstantWithTimeZoneColumnType.kt` per package
@@ -303,6 +314,11 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         // `field.decimal` column.
         for (pkg in packagesNeedingPortableHelper) {
             emitPortableSupportFile(pkg, outRoot)
+        }
+
+        // Pass 3f: ONE shared `MetaDurationColumnType.kt` per package that has a `field.duration` column.
+        for (pkg in packagesNeedingDurationHelper) {
+            emitDurationSupportFile(pkg, outRoot)
         }
     }
 
@@ -611,6 +627,35 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             if (target.metaFields.any { KotlinTypeMapper.usesPortableHelper(it) }) return true
         }
         return false
+    }
+
+    /**
+     * True iff [entity]'s table carries a `field.duration` column: a direct field, a TPH subtype's
+     * column on the base's union table, or a flattened `object.value` sub-field. Mirrors
+     * [entityNeedsPortableHelper]'s walk.
+     */
+    private fun entityNeedsDurationHelper(entity: MetaObject, loader: MetaDataLoader): Boolean {
+        if (entity.metaFields.any { KotlinTypeMapper.usesDurationHelper(it) }) return true
+        if (KotlinTphPlan.collectSubtypeFields(entity, loader).any { KotlinTypeMapper.usesDurationHelper(it) }) return true
+        for (field in entity.metaFields) {
+            if (field !is ObjectField) continue
+            if (readStorage(field) != STORAGE_FLATTENED) continue
+            val ref = readObjectRef(field) ?: continue
+            val target = KotlinGenUtil.lookupCanonicalObject(loader, ref) ?: continue
+            if (target.metaFields.any { KotlinTypeMapper.usesDurationHelper(it) }) return true
+        }
+        return false
+    }
+
+    /**
+     * Emit the per-package `MetaDurationColumnType.kt` support file: the `internal` engine-aware
+     * `Column<java.time.Duration>` column types ([durationSupportBlock]) and, beside it, the
+     * package's `MetaDurationWire.kt` they format and parse through.
+     */
+    private fun emitDurationSupportFile(pkg: String, outRoot: Path) {
+        KotlinDurationWireEmitter.write(pkg, outRoot)
+        val api = exposedApi()
+        emitSupportFile(pkg, outRoot, DURATION_SUPPORT_FILE_NAME, durationSupportFileImports(api), durationSupportBlock(api))
     }
 
     private fun entityNeedsUuidStringHelper(entity: MetaObject, loader: MetaDataLoader): Boolean =
@@ -1331,13 +1376,12 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 val target = KotlinGenUtil.lookupCanonicalObject(loader, ref) ?: continue
                 for (subField in target.metaFields) {
                     val propertyName = parentName + subField.name.replaceFirstChar { it.uppercase() }
-                    // Physical column name: the parent's resolved column + "_" + the
-                    // sub-field's. Both halves go through resolveColumnName, so an explicit
-                    // `@column` on either wins — the same rule as the TS reference's
-                    // flattenObjectField (`resolveColumnName(field, strategy) + "_" + inner.name`).
+                    // Physical column name: core naming's flattened rule
+                    // (ColumnNaming.resolveFlattened) — the parent's @flattenedColumnPrefix
+                    // verbatim, else its resolved column + "_", then the sub-field's resolved
+                    // column — the same function migrate-ts names these columns with.
                     // E.g. parent "homeAddress" + sub "streetLine1" → "home_address_street_line1".
-                    val colName = KotlinGenUtil.resolveColumnName(field) + "_" +
-                        KotlinGenUtil.resolveColumnName(subField)
+                    val colName = ColumnNaming.resolveFlattened(field, subField)
                     // Task 6 — out of scope: this composite name belongs to neither a
                     // single field of `entity` nor of `target` — <Entity>Names has no
                     // constant for it. Always literal; useNames() does not reach here.
@@ -1685,6 +1729,117 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             |/** Column builder for `field.inet`: a `Column<java.net.InetAddress>` over an `inet` column. */
             |internal fun Table.inetColumn(name: String): Column<InetAddress> =
             |    registerColumn(name, MetaInetColumnType())
+            |""".trimMargin()
+        }
+
+        /** File name (sans `.kt`) of the per-package support file for `field.duration` columns. */
+        const val DURATION_SUPPORT_FILE_NAME = "MetaDurationColumnType"
+
+        /** Imports for [durationSupportBlock], keyed by [ExposedApi] (1.x binds an array through the raw statement). */
+        fun durationSupportFileImports(api: ExposedApi): String = """
+            |import java.time.Duration
+            |import ${ExposedImports.core(api, "Column")}
+            |import ${ExposedImports.core(api, "ColumnType")}
+            |import ${ExposedImports.core(api, "Table")}
+            |import ${ExposedImports.statementsApi(api, "PreparedStatementApi")}
+            |import ${ExposedImports.vendors(api, "currentDialect")}
+            |${if (api == ExposedApi.V1) "import org.jetbrains.exposed.v1.jdbc.statements.jdbc.JdbcPreparedStatementImpl" else ""}
+            |""".trimMargin().replace("\n\n", "\n").trimEnd() + "\n"
+
+        /**
+         * Shared support body for [DURATION_SUPPORT_FILE_NAME].kt — the `field.duration` columns:
+         *
+         *  - `MetaDurationColumnType` — a `Column<java.time.Duration>` over the Postgres-native
+         *    `INTERVAL`, and elsewhere a BIGINT count of microseconds (so filters and sorts order it). Postgres refuses a signed
+         *    ISO-8601 duration as interval input, so the value binds in the interval spelling
+         *    `[-]HH:MM:SS[.f]`, as text under a `CAST(? AS INTERVAL)` parameter marker (a bare
+         *    varchar parameter is refused where an interval goes). A read takes the
+         *    driver's value — pgjdbc's `PGInterval` on Postgres, the microsecond count elsewhere —
+         *    through `MetaDurationWire.fromStored`, which refuses an interval with a year or month part.
+         *  - `MetaDurationArrayColumnType` — an `isArray` duration: `INTERVAL[]` on Postgres, a JSON
+         *    text array of microsecond counts on MySQL and SQLite.
+         *
+         * The text differs by [ExposedApi] only in the array bind (and the imports).
+         */
+        fun durationSupportBlock(api: ExposedApi): String {
+            // 0.x binds a typed array by element-type name; 1.x wants an ArrayColumnType there, so it
+            // binds through the raw JDBC statement, as MetaDecimalArrayColumnType does.
+            val arrayBind = if (api == ExposedApi.V1) {
+                "            @Suppress(\"UNCHECKED_CAST\")\n" +
+                    "            val raw = (stmt as JdbcPreparedStatementImpl).statement\n" +
+                    "            raw.setArray(index, raw.connection.createArrayOf(\"interval\", value as Array<Any?>))"
+            } else {
+                "            @Suppress(\"UNCHECKED_CAST\")\n" +
+                    "            stmt.setArray(index, \"interval\", value as Array<Any?>)"
+            }
+            return """
+            |private fun isPostgres(): Boolean = currentDialect.name.equals("postgresql", ignoreCase = true)
+            |
+            |private fun isMySql(): Boolean = currentDialect.name.let { it.equals("mysql", ignoreCase = true) || it.equals("mariadb", ignoreCase = true) }
+            |
+            |/** The stored form of a duration: the interval spelling on Postgres, a 64-bit microsecond count elsewhere. */
+            |private fun stored(value: Duration): Any =
+            |    if (isPostgres()) MetaDurationWire.formatPostgres(value) else MetaDurationWire.toMicros(value)
+            |
+            |/** A stored value: a microsecond count (SQLite, MySQL), or interval / ISO text. */
+            |private fun durationOf(value: Any): Duration = when (value) {
+            |    is Duration -> value
+            |    is Number -> MetaDurationWire.fromMicros(value.toLong())
+            |    else -> MetaDurationWire.fromStored(value.toString())
+            |}
+            |
+            |/**
+            | * GENERATED — do not hand-edit. A `java.time.Duration` column: native `INTERVAL` on Postgres, and
+            | * elsewhere a BIGINT count of microseconds, so a range filter and a sort order it as a number.
+            | */
+            |internal class MetaDurationColumnType : ColumnType<Duration>() {
+            |    override fun sqlType(): String = if (isPostgres()) "INTERVAL" else "BIGINT"
+            |    override fun valueFromDB(value: Any): Duration = durationOf(value)
+            |    override fun notNullValueToDB(value: Duration): Any = stored(value)
+            |    override fun nonNullValueToString(value: Duration): String =
+            |        if (isPostgres()) "'" + stored(value) + "'" else stored(value).toString()
+            |    // The value binds as text; Postgres will not take a varchar where an interval goes, so the
+            |    // marker casts it (an explicit cast from text to interval is always allowed).
+            |    override fun parameterMarker(value: Duration?): String = if (isPostgres()) "CAST(? AS INTERVAL)" else "?"
+            |}
+            |
+            |/** Column builder for `field.duration`: a `Column<java.time.Duration>`. */
+            |internal fun Table.durationColumn(name: String): Column<Duration> =
+            |    registerColumn(name, MetaDurationColumnType())
+            |
+            |/**
+            | * GENERATED — do not hand-edit. An `isArray` duration column: `INTERVAL[]` on Postgres, and elsewhere
+            | * a JSON text array of microsecond counts.
+            | */
+            |internal class MetaDurationArrayColumnType : ColumnType<List<Duration>>() {
+            |    private fun element(value: Any): Duration = durationOf(value)
+            |    private fun json(value: List<Duration>): String = value.joinToString(",", "[", "]") { MetaDurationWire.toMicros(it).toString() }
+            |    override fun sqlType(): String = if (isPostgres()) "INTERVAL[]" else if (isMySql()) "JSON" else "TEXT"
+            |    override fun valueFromDB(value: Any): List<Duration> = when (value) {
+            |        is java.sql.Array -> (value.array as Array<*>).map { element(it!!) }
+            |        is Array<*> -> value.map { element(it!!) }
+            |        is List<*> -> value.map { element(it!!) }
+            |        else -> com.fasterxml.jackson.databind.ObjectMapper().readTree(value.toString()).map {
+            |            if (it.isIntegralNumber) MetaDurationWire.fromMicros(it.longValue()) else MetaDurationWire.fromNode(it)
+            |        }
+            |    }
+            |    override fun notNullValueToDB(value: List<Duration>): Any =
+            |        if (isPostgres()) value.map { MetaDurationWire.formatPostgres(it) }.toTypedArray<Any?>() else json(value)
+            |    override fun nonNullValueToString(value: List<Duration>): String =
+            |        if (isPostgres()) value.joinToString(",", "ARRAY[", "]::interval[]") { "'" + MetaDurationWire.formatPostgres(it) + "'" }
+            |        else "'" + json(value) + "'"
+            |    override fun setParameter(stmt: PreparedStatementApi, index: Int, value: Any?) {
+            |        if (value is Array<*>) {
+            |$arrayBind
+            |        } else {
+            |            super.setParameter(stmt, index, value)
+            |        }
+            |    }
+            |}
+            |
+            |/** Column builder for an `isArray` `field.duration`: a `Column<List<java.time.Duration>>`. */
+            |internal fun Table.durationArrayColumn(name: String): Column<List<Duration>> =
+            |    registerColumn(name, MetaDurationArrayColumnType())
             |""".trimMargin()
         }
 
@@ -2438,7 +2593,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
      * Exposed column spec for a `field.enum`.
      *
      * String-backed (the default) → `enumerationByName`: a VARCHAR column holding the
-     * member symbol. Int-backed (`@intValueMap`) → `customEnumeration` over an INTEGER
+     * member symbol when a length is configured, else `customEnumeration` over a TEXT column. Int-backed (`@intValueMap`) → `customEnumeration` over an INTEGER
      * column, with the declared symbol↔int mapping inlined as `when` expressions.
      *
      * The mapping is emitted INLINE rather than through a generated lookup-map support
@@ -2461,7 +2616,11 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             ?: error("enumTypeName returned null for EnumField '${field.name}' on ${entity.name}")
         val simple = enumCn.simpleName
         val intMap = readIntValueMap(field)
-            ?: return "enumerationByName($colExpr, ${KotlinTypeMapper.ENUM_VARCHAR_LEN}, $simple::class)"
+            ?: return KotlinTypeMapper.enumVarcharLength(field)
+                ?.let { "enumerationByName($colExpr, $it, $simple::class)" }
+                // No length configured: `meta migrate` creates `text`, and `enumerationByName`
+                // needs a length, so store the member name over a TEXT column instead.
+                ?: "customEnumeration($colExpr, \"TEXT\", { v -> $simple.valueOf(v as String) }, { e -> e.name })"
 
         // `; ` separates the branches: this is a one-line `when`, and space-separated
         // branches do not parse (`Foo.DRAFT 5 -> ...`).

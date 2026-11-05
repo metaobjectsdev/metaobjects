@@ -153,6 +153,14 @@ export const ERROR_CODES = [
   "ERR_TEMPLATE_ENGINE_UNSUPPORTED",
   "ERR_BAD_ATTR_FILTER",
   "ERR_STORAGE_FLATTENED_ARRAY",
+  "ERR_FLATTENED_COLUMN_PREFIX_WITHOUT_FLATTENED_STORAGE",
+  // field.enum @maxLength: a member longer than the column, or a length on an int-stored enum.
+  "ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH",
+  "ERR_ENUM_MAX_LENGTH_WITH_INT_VALUE_MAP",
+  // identity.primary @sequenceStart / @sequenceName without @generation "increment".
+  "ERR_SEQUENCE_WITHOUT_INCREMENT",
+  // identity.primary @sequenceStart below 1, or past what its key field can hold.
+  "ERR_SEQUENCE_START_OUT_OF_RANGE",
   "ERR_STORAGE_WITHOUT_OBJECT_REF",
   // ADR-0013 — a field.object REQUIRES @objectRef (open/untyped JSON uses
   // the physical @dbColumnType: jsonb escape hatch on field.string instead).

@@ -75,7 +75,7 @@ from metaobjects.meta.persistence.source.source_constants import (
 from metaobjects.codegen.config import DEFAULT_API_PREFIX
 from metaobjects.naming import DEFAULT_COLUMN_NAMING
 from metaobjects.naming_refs import ref_target
-from metaobjects.wire import WIRE_NATIVE, WireFormat, wire_of
+from metaobjects.wire import WIRE_DURATIONS_ISO, WIRE_NATIVE, WireFormat, wire_of
 from metaobjects.shared.base_types import TYPE_IDENTITY
 
 from ..runtime.fr010_field_mapping import is_required
@@ -85,7 +85,12 @@ from ..runtime.m2m_codegen import (
     pk_field_name,
     resolve_m2m_descriptors,
 )
-from ..runtime.shared_predicates import emits_router, is_read_only_routed
+from ..runtime.shared_predicates import (
+    DURATION_WIRE_MODULE,
+    emits_router,
+    has_duration_field,
+    is_read_only_routed,
+)
 
 #: The repository ``Protocol`` declares a method named ``list`` (the cross-port contract keeps
 #: that name), and inside the class body a later bare ``list[...]`` annotation resolves to
@@ -217,6 +222,27 @@ def _decimal_field_names(entities: list[MetaObject]) -> list[str]:
     return list(seen)
 
 
+def _duration_field_names(entities: list[MetaObject]) -> list[str]:
+    """Names of the ``field.duration`` fields across *entities* (ADR-0039 resolving), in
+    declaration order, de-duplicated."""
+    seen: dict[str, None] = {}
+    for entity in entities:
+        for f in entity.fields():
+            if f.sub_type == fc.FIELD_SUBTYPE_DURATION:
+                seen.setdefault(f.name, None)
+    return list(seen)
+
+
+def _duration_fields_line(entities: list[MetaObject], wire: WireFormat) -> str:
+    """The ``_DURATION_FIELDS`` constant a list handler hands the filter coercion: each
+    duration field with the parser its filter operand goes through (D4: ISO-8601 only, a
+    malformed one is a 400). Under ``wire.durations: native`` there is no ISO rule to hold an
+    operand to, so the map is empty and the repository's own handling applies."""
+    names = _duration_field_names(entities) if wire.durations == WIRE_DURATIONS_ISO else []
+    body = ", ".join(f"{n!r}: parse_duration" for n in names)
+    return f"_DURATION_FIELDS: dict[str, object] = {{{body}}}"
+
+
 def _decimal_limits(entities: list[MetaObject]) -> dict[str, tuple[int, int]]:
     """``{name: (precision, scale)}`` for each decimal field declaring ``@precision``
     (ADR-0039 resolving; the first declaration of a name wins). The column's range (W3):
@@ -322,7 +348,33 @@ def _wire_lines(entities: list[MetaObject], wire: WireFormat, name: str = "_WIRE
         args += f", shapes={shapes!r}"
     if hidden := _hidden_names(entities):
         args += f", hidden={tuple(hidden)!r}"
+    if has_duration_field(entities):
+        args += f", {_DURATION_WIRE_ARG if wire.durations == WIRE_DURATIONS_ISO else _NATIVE_DURATION_ARG}"
     return ["", "", f"{name} = WireOutput({args})"]
+
+
+#: The ``WireOutput`` argument a response holding a ``field.duration`` is written with: its
+#: ``timedelta`` leaves as the canonical ISO-8601 duration, not FastAPI's float of seconds.
+_DURATION_WIRE_ARG = "duration=format_duration"
+
+
+#: Under ``wire.durations: native`` a ``timedelta`` leaves as Pydantic itself writes it, not as
+#: FastAPI's ``jsonable_encoder`` would (a float of seconds).
+_NATIVE_DURATION_ARG = "duration=to_jsonable_python"
+
+
+def _with_duration_import(parts: list[str]) -> list[str]:
+    """*parts* plus the import of the duration formatter, when a wire constant uses it. The
+    formatter is the generated package's own ``_duration_wire`` module, which the entity tier
+    emits beside any model with a ``field.duration``."""
+    if any(_NATIVE_DURATION_ARG in line for line in parts):
+        at = next(i for i, line in enumerate(parts) if line.startswith("from ."))
+        return [*parts[:at], "from pydantic_core import to_jsonable_python", *parts[at:]]
+    if not any(_DURATION_WIRE_ARG in line for line in parts):
+        return parts
+    at = next(i for i, line in enumerate(parts) if line.startswith("from ."))
+    names = "format_duration, parse_duration" if any("parse_duration}" in line for line in parts) else "format_duration"
+    return [*parts[:at], f"from .{DURATION_WIRE_MODULE} import {names}", *parts[at:]]
 
 
 def _m2m_wire_name(target: str) -> str:
@@ -902,7 +954,7 @@ class RouterGenerator:
             "    if filter_result.error_envelope is not None:",
             "        return JSONResponse(status_code=400, content=filter_result.error_envelope)",
             "    predicates, decimal_error = coerce_decimal_predicates(",
-            "        filter_result.predicates, _DECIMAL_FIELDS",
+            "        filter_result.predicates, _DECIMAL_FIELDS, _DURATION_FIELDS",
             "    )",
             "    if decimal_error is not None:",
             "        return JSONResponse(status_code=400, content=decimal_error)",
@@ -1015,7 +1067,7 @@ class RouterGenerator:
                 "    if filter_result.error_envelope is not None:",
                 "        return JSONResponse(status_code=400, content=filter_result.error_envelope)",
                 "    predicates, decimal_error = coerce_decimal_predicates(",
-                "        filter_result.predicates, _DECIMAL_FIELDS",
+                "        filter_result.predicates, _DECIMAL_FIELDS, _DURATION_FIELDS",
                 "    )",
                 "    if decimal_error is not None:",
                 "        return JSONResponse(status_code=400, content=decimal_error)",
@@ -1052,7 +1104,7 @@ class RouterGenerator:
                 "    if filter_result.error_envelope is not None:",
                 "        return JSONResponse(status_code=400, content=filter_result.error_envelope)",
                 "    predicates, decimal_error = coerce_decimal_predicates(",
-                "        filter_result.predicates, _DECIMAL_FIELDS",
+                "        filter_result.predicates, _DECIMAL_FIELDS, _DURATION_FIELDS",
                 "    )",
                 "    if decimal_error is not None:",
                 "        return JSONResponse(status_code=400, content=decimal_error)",
@@ -1248,7 +1300,7 @@ class RouterGenerator:
             "    if filter_result.error_envelope is not None:",
             "        return JSONResponse(status_code=400, content=filter_result.error_envelope)",
             "    predicates, decimal_error = coerce_decimal_predicates(",
-            "        filter_result.predicates, _DECIMAL_FIELDS",
+            "        filter_result.predicates, _DECIMAL_FIELDS, _DURATION_FIELDS",
             "    )",
             "    if decimal_error is not None:",
             "        return JSONResponse(status_code=400, content=decimal_error)",
@@ -1456,6 +1508,7 @@ class RouterGenerator:
         parts.append("")
         parts.append("")
         parts.append(f"_DECIMAL_FIELDS: frozenset[str] = {decimal_set_body}")
+        parts.append(_duration_fields_line([entity, *(st.entity for st in plan.subtypes)], wire))
         parts.extend(_decimal_limits_lines([entity, *(st.entity for st in plan.subtypes)]))
         parts.extend(_wire_lines([entity, *(st.entity for st in plan.subtypes)], wire))
         parts.extend(_m2m_wire_lines(
@@ -1670,7 +1723,7 @@ class RouterGenerator:
             ))
             parts.append("")
 
-        return "\n".join(parts)
+        return "\n".join(_with_duration_import(parts))
 
     def render_router(
         self,
@@ -1849,6 +1902,7 @@ class RouterGenerator:
         parts.append("")
         parts.append("")
         parts.append(f"_DECIMAL_FIELDS: frozenset[str] = {decimal_set_body}")
+        parts.append(_duration_fields_line([entity], wire))
         parts.extend(_decimal_limits_lines([entity]))
         parts.extend(_wire_lines([entity], wire))
         parts.extend(_m2m_wire_lines(m2m, object_index or {}, wire))
@@ -1914,7 +1968,7 @@ class RouterGenerator:
             parts.extend(self._emit_m2m_route(d, snake, pk_param, pk_type, repo_class))
             parts.append("")
 
-        return "\n".join(parts)
+        return "\n".join(_with_duration_import(parts))
 
     def _emit_readonly_reject_handlers(
         self,
@@ -2077,6 +2131,7 @@ class RouterGenerator:
             "_DECIMAL_FIELDS: frozenset[str] = "
             + _py_set_literal(_decimal_field_names([entity]), frozen=True)
         )
+        parts.append(_duration_fields_line([entity], wire))
         parts.extend(_wire_lines([entity], wire))
         parts.append("")
         parts.append("")
@@ -2136,7 +2191,7 @@ class RouterGenerator:
             )
         )
         parts.append("")
-        return "\n".join(parts)
+        return "\n".join(_with_duration_import(parts))
 
     def generate(self, ctx: GenContext) -> list[EmittedFile]:
         index = build_object_index(ctx.entities)

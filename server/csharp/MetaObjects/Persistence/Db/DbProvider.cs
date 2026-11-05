@@ -52,6 +52,27 @@ public sealed class DbMetaDataProvider : IMetaDataTypeProvider
             FieldConstants.FIELD_SUBTYPE_TIMESTAMP,
             attributes: [DbSchema.LocalTimeSchema]);
 
+        // @constraintName: the database name of the CHECK a field.enum's member list, and a
+        // CHECK-generating validator, generates — db.json's field.enum and validator extends blocks.
+        registry.Extend(
+            MetaObjects.Shared.BaseTypes.TYPE_FIELD,
+            FieldConstants.FIELD_SUBTYPE_ENUM,
+            attributes: [DbSchema.EnumConstraintNameSchema]);
+        foreach (string subType in Core.Validator.ValidatorConstants.CHECK_VALIDATOR_SUBTYPES)
+        {
+            registry.Extend(
+                MetaObjects.Shared.BaseTypes.TYPE_VALIDATOR,
+                subType,
+                attributes: [DbSchema.ValidatorConstraintNameSchema]);
+        }
+
+        // @flattenedColumnPrefix is field.object-ONLY (the flattened-member column prefix), mirroring
+        // db.json's field.object extends block.
+        registry.Extend(
+            MetaObjects.Shared.BaseTypes.TYPE_FIELD,
+            FieldConstants.FIELD_SUBTYPE_OBJECT,
+            attributes: [DbSchema.FlattenedColumnPrefixSchema]);
+
         // Physical RDB index/constraint attrs on identity subtypes — DB-domain
         // concerns (index ordering / partial predicate / FK constraint naming),
         // NOT core identity. Mirror the TS db.json identity extends.
@@ -62,6 +83,10 @@ public sealed class DbMetaDataProvider : IMetaDataTypeProvider
             MetaObjects.Shared.BaseTypes.TYPE_IDENTITY,
             IdentityConstants.IDENTITY_SUBTYPE_SECONDARY,
             attributes: [DbSchema.OrdersSchema, DbSchema.WhereSchema, DbSchema.ExprSchema, DbSchema.UsingSchema]);
+        registry.Extend(
+            MetaObjects.Shared.BaseTypes.TYPE_IDENTITY,
+            IdentityConstants.IDENTITY_SUBTYPE_PRIMARY,
+            attributes: [DbSchema.SequenceStartSchema, DbSchema.SequenceNameSchema]);
         registry.Extend(
             MetaObjects.Shared.BaseTypes.TYPE_IDENTITY,
             IdentityConstants.IDENTITY_SUBTYPE_REFERENCE,

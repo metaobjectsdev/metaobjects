@@ -1,3 +1,4 @@
+import type { SchemaBuildSettings } from "@metaobjectsdev/migrate-ts";
 import { join, relative, resolve, isAbsolute, dirname, sep } from "node:path";
 import { warnMissingPromptGenerators } from "./prompt-generator-gate.js";
 import { runEmitsEntityModule, runEmitsHonoRoutes, runEmitsQueries, runEmitsRestRoutes, runEmitsUiTier, runRoutesExpose, warnUnmarkedRoutesGenerators, warnUnmarkedUiGenerators } from "./ui-tier-gate.js";
@@ -158,6 +159,8 @@ export interface RunGenOpts {
    * asks (`ctx.docs.agentSchema`). Absent: `agentDocsFile()` writes no schema page.
    */
   agentSchema?: () => AgentSchemaInput | undefined;
+  /** Threaded onto `GenContext.schemaSettings`; see there. */
+  schemaSettings?: SchemaBuildSettings;
   /**
    * Narrow this run to the declared generators with these stable names (`meta gen
    * --generators docs,api-docs`). Only the generators named run; every run-level fact (the
@@ -967,6 +970,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
       ...(opts.sourceRoots !== undefined && { sourceRoots: opts.sourceRoots }),
       ...(config.providers !== undefined && { providers: config.providers }),
       docs: docsFactsFor(selfTarget.name),
+      ...(opts.schemaSettings !== undefined && { schemaSettings: opts.schemaSettings }),
       ...(selectedManifests !== undefined && { libraries: selectedManifests }),
       ...(generator.readsRunOutput === true && { runOutput: runOutputFiles }),
       ...(requirementLedger !== undefined && { requirementLedger }),

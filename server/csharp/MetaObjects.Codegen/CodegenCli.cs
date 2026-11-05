@@ -269,7 +269,7 @@ public static class CodegenCli
             // A bad template ref / wrong --template-root surfaces as a clean error, not a stack trace.
             return new GenOutcome([$"{RenderFailedPrefix}{ex.Message}"], null);
         }
-        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or MetaModelException)
         {
             // An output-pattern error or a duplicate output-path collision surfaces lazily
             // during the walk — a clean error, not a stack trace.
@@ -482,6 +482,7 @@ public static class CodegenCli
     {
         ColumnNamingStrategy.SnakeCase => "snake_case",
         ColumnNamingStrategy.KebabCase => "kebab-case",
+        ColumnNamingStrategy.UpperFirst => "upperFirst",
         _ => "literal",
     };
 
@@ -809,12 +810,12 @@ public static class CodegenCli
     /// Every naming other than <paramref name="used"/>, in the order verify probes them (the
     /// Python port probes the same order): the used table rule first, so a different column
     /// rule alone is tried before a different table rule; within each, the used column rule
-    /// first, then snake_case, literal, kebab-case.
+    /// first, then snake_case, literal, kebab-case, upperFirst.
     /// </summary>
     private static IEnumerable<PhysicalNaming> NamingCandidates(PhysicalNaming used)
     {
         ColumnNamingStrategy[] columns =
-            [ColumnNamingStrategy.SnakeCase, ColumnNamingStrategy.Literal, ColumnNamingStrategy.KebabCase];
+            [ColumnNamingStrategy.SnakeCase, ColumnNamingStrategy.Literal, ColumnNamingStrategy.KebabCase, ColumnNamingStrategy.UpperFirst];
         TableNamingRule[] tables = [TableNamingRule.SnakeCase, TableNamingRule.Literal];
         foreach (var t in tables.OrderBy(t => t == used.Tables ? 0 : 1))
             foreach (var c in columns.OrderBy(c => c == used.Columns ? 0 : 1))
@@ -844,7 +845,7 @@ public static class CodegenCli
 
     /// <summary>
     /// The other wire setting (ADR-0019 Amendment 2) that reproduces the committed output
-    /// exactly, or <c>null</c>. Candidates are every combination of the two keys other than
+    /// exactly, or <c>null</c>. Candidates are every combination of the three keys other than
     /// <paramref name="used"/>, native before string and native before emit before omit;
     /// <c>emit</c> is never offered, because in C# it generates what <c>native</c> does.
     /// </summary>
@@ -854,14 +855,15 @@ public static class CodegenCli
         var generated = used.NullMembers == NullMemberForm.Emit ? used with { NullMembers = NullMemberForm.Native } : used;
         foreach (var decimals in new[] { DecimalWireForm.Native, DecimalWireForm.String })
             foreach (var nulls in new[] { NullMemberForm.Native, NullMemberForm.Omit })
-            {
-                var candidate = new WireFormat(decimals, nulls);
-                if (candidate == generated) continue;
-                var root = load();
-                root.WireFormat = candidate;
-                var probe = CodegenDrift.Compute(config, root, suite, narrowed);
-                if (probe.Error is null && probe.Clean) return candidate;
-            }
+                foreach (var durations in new[] { DurationWireForm.Native, DurationWireForm.Iso })
+                {
+                    var candidate = new WireFormat(decimals, nulls, durations);
+                    if (candidate == generated) continue;
+                    var root = load();
+                    root.WireFormat = candidate;
+                    var probe = CodegenDrift.Compute(config, root, suite, narrowed);
+                    if (probe.Error is null && probe.Clean) return candidate;
+                }
         return null;
     }
 
@@ -871,7 +873,7 @@ public static class CodegenCli
     private static string WireDiffers(WireFormat committed, WireFormat used) =>
         $"The committed output was generated with {committed.Block()}; this run used {used.Block()} " +
         "(.metaobjects/config.json; each key defaults to native). Do not regenerate: that changes the " +
-        "JSON your API writes for decimals or for a value object's null members. Declare " +
+        "JSON your API writes for decimals, durations or a value object's null members. Declare " +
         $"{committed.Block()} in .metaobjects/config.json, and gen and verify --codegen both read it.";
 
     private static int RunVerifyArgs(string[] rest, IReadOnlyList<IGenerator> declared)

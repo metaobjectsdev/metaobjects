@@ -60,6 +60,16 @@ public static class FieldConstants
     /// </summary>
     public const string FIELD_SUBTYPE_INET      = "inet";
 
+    /// <summary>
+    /// <c>field.duration</c>: a fixed-length span of time (days, hours, minutes, seconds). A
+    /// concept with a native type + behavior, so a subtype. String-backed on the wire (an
+    /// ISO-8601 duration: every port writes <c>[-]PT[nH][nM][n[.f]S]</c>); native binding is
+    /// <c>System.TimeSpan</c> in entity codegen and a Postgres-native <c>interval</c> column
+    /// (a 64-bit microsecond count elsewhere). Weeks and days are exactly 7 days and 24 hours;
+    /// years and months are refused: a calendar span has no fixed length. The wire rule and its cross-port vectors are in <c>fixtures/duration-wire/</c>.
+    /// </summary>
+    public const string FIELD_SUBTYPE_DURATION  = "duration";
+
     public static readonly string[] FIELD_SUBTYPES =
     [
         BaseTypes.SUBTYPE_BASE,
@@ -80,6 +90,7 @@ public static class FieldConstants
         FIELD_SUBTYPE_UUID,
         FIELD_SUBTYPE_URI,
         FIELD_SUBTYPE_INET,
+        FIELD_SUBTYPE_DURATION,
     ];
 
     // -----------------------------------------------------------------------

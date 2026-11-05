@@ -93,6 +93,15 @@ internal static class ApiContractCorpusPaths
     public static readonly string DecimalSchemaSqliteSql = Path.Combine(DecimalDir, "schema.sqlite.sql");
     public static readonly string DecimalSchemaMysqlSql = Path.Combine(DecimalDir, "schema.mysql.sql");
 
+    // field.duration subcorpus — one writable Timer with a nullable duration, under duration/.
+    public static readonly string DurationDir = Path.Combine(Corpus, "duration");
+    public static readonly string DurationScenariosDir = Path.Combine(DurationDir, "scenarios");
+    public static readonly string DurationSeedFile = Path.Combine(DurationDir, "seed.json");
+    public static readonly string DurationMetaJson = Path.Combine(DurationDir, "meta.json");
+    public static readonly string DurationSchemaSql = Path.Combine(DurationDir, "schema.postgres.sql");
+    public static readonly string DurationSchemaSqliteSql = Path.Combine(DurationDir, "schema.sqlite.sql");
+    public static readonly string DurationSchemaMysqlSql = Path.Combine(DurationDir, "schema.mysql.sql");
+
     // #214 write-through read-your-writes subcorpus.
     public static readonly string WriteThroughDir = Path.Combine(Corpus, "write-through");
     public static readonly string WriteThroughScenariosDir = Path.Combine(WriteThroughDir, "scenarios");

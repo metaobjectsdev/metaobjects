@@ -63,6 +63,9 @@ public class EnumField extends PrimitiveField<String> {
      */
     public static final String ATTR_VALUES = "values";
 
+    /** The column length of a string-stored enum. Same name as {@link StringField#ATTR_MAX_LENGTH}. */
+    public static final String ATTR_MAX_LENGTH = StringField.ATTR_MAX_LENGTH;
+
     /**
      * Name of the optional off-vocabulary → canonical-member alias map (properties).
      * Consumed by FR-010 extract: maps raw input tokens to their canonical enum member.
@@ -219,6 +222,13 @@ public class EnumField extends PrimitiveField<String> {
                 // validated post-load in ValidationPhase (own-only, same as @values).
                 def.optionalAttributeWithConstraints(ATTR_INT_VALUE_MAP)
                    .ofType(com.metaobjects.attr.IntMapAttribute.SUBTYPE_INT_MAP)
+                   .asSingle();
+
+                // Optional @maxLength — the column length of a string-stored enum (VARCHAR(n)).
+                // Every member must fit, and it is refused beside @intValueMap; both checked
+                // post-load in ValidationPhase.validateEnumMaxLength.
+                def.optionalAttributeWithConstraints(ATTR_MAX_LENGTH)
+                   .ofType(com.metaobjects.attr.IntAttribute.SUBTYPE_INT)
                    .asSingle();
 
                 // FR-033: @enumDoc and @coerceDefault are re-homed to the
