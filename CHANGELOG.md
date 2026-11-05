@@ -70,6 +70,14 @@ here.**
 
 ### Fixed
 
+- **C#: concurrent reads of a loaded model no longer corrupt its cache.** `MetaData.Cached`
+  memoized derived reads (`Validators()`, `ResolvedIsArray()`, `OwnAttrs()`, …) in a plain
+  `Dictionary`, so two threads touching a frozen node for the first time could corrupt it, and
+  every later read in the process then failed with "Operations that change non-concurrent
+  collections must have exclusive access". A host that loads metadata once and serves requests
+  from it in parallel, or a parallel test run, hit this. The cache is now a
+  `ConcurrentDictionary`.
+
 - **TypeScript: every `meta` command now loads the providers in `metaobjects.config.ts`.**
   `meta export`, `meta deps`, `meta fmt`, `meta types` and `meta upgrade` loaded the core
   vocabulary only, so a project's own subtype or attribute failed there while `meta gen` accepted
