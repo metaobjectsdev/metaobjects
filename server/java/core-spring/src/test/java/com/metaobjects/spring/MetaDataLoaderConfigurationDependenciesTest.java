@@ -125,6 +125,23 @@ public class MetaDataLoaderConfigurationDependenciesTest {
     }
 
     @Test
+    public void anAppWithNoOwnMetadataStillLoadsTheClasspathSnapshot() throws Exception {
+        Path root = app(VIP, true, true, true);
+        Files.delete(root.resolve("metadata/app.json"));
+        ClassLoader previous = Thread.currentThread().getContextClassLoader();
+        try (URLClassLoader cl = new URLClassLoader(new URL[]{root.toUri().toURL()}, previous)) {
+            Thread.currentThread().setContextClassLoader(cl);
+            runner.run(ctx -> {
+                assertThat(ctx).hasNotFailed();
+                MetaDataLoader loader = ctx.getBean(MetaDataLoader.class);
+                assertThat(loader.getRoot().getDependencySet().imported("acme::common::Customer")).isTrue();
+            });
+        } finally {
+            Thread.currentThread().setContextClassLoader(previous);
+        }
+    }
+
+    @Test
     public void withNoLockOnTheClasspathNothingChanges() throws Exception {
         String plain = """
                 {"metadata.root":{"package":"app","children":[{"object.entity":{"name":"Order","children":[

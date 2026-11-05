@@ -120,8 +120,11 @@ public class MetaDataLoaderConfiguration {
             metadataSources = discoverDefaultMetadataSources();
         }
 
-        if (metadataSources.isEmpty()) {
-            // No metadata sources configured - return null so it's optional
+        NeutralConfig projectConfig = readProjectConfig();
+        DependencySet dependencies = resolveDependencies(projectConfig);
+
+        if (metadataSources.isEmpty() && dependencies.isEmpty()) {
+            // No metadata sources and no dependencies - return null so it's optional
             return null;
         }
 
@@ -141,10 +144,9 @@ public class MetaDataLoaderConfiguration {
         // ADR-0058: the naming is resolved BEFORE the load call so the loader's own
         // "no config found" WARN fires only when neither this property, the default
         // classpath:.metaobjects/config.json, nor the file: walk found a project config.
-        NeutralConfig projectConfig = readProjectConfig();
         PhysicalNaming naming = projectConfig == null ? null : projectConfig.getPhysicalNaming();
         return MetaDataLoader.fromUris("applicationLoader", sourceURIs, opts, naming,
-                resolveDependencies(projectConfig));
+                dependencies);
     }
 
     /** Where the committed dependency lock is read from (FR-023). Its presence is what turns the load on. */

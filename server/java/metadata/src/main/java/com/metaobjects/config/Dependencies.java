@@ -484,11 +484,9 @@ public final class Dependencies {
             LockEntry lockEntry = entries.get(name);
             try {
                 Path dir = resolveDependencyDir(configDir, spec);
-                JsonObject manifest = readManifest(dir);
-                String artifact = manifest.get("artifact").getAsString();
-                byte[] bytes = readArtifact(dir.resolve(artifact), artifact);
-                // Re-hash the bytes actually on disk; never take the manifest's own integrity on faith.
-                String installed = sha256Integrity(bytes);
+                ManifestRead read = readManifest(dir);
+                JsonObject manifest = read.manifest();
+                String installed = read.installedIntegrity();
                 String version = manifest.get("version").getAsString();
                 if (lockEntry == null) {
                     results.add(new CheckResult(name, CheckStatus.UNRESOLVED, null, null, version, installed,
@@ -506,6 +504,9 @@ public final class Dependencies {
         }
         return results;
     }
+
+    /** A validated manifest plus the integrity of the artifact bytes read from disk (never the manifest's own claim). */
+    private record ManifestRead(JsonObject manifest, String installedIntegrity) {}
 
     /** A dependency this check could not read; carries the reason. */
     private static final class CheckUnresolved extends RuntimeException {
@@ -536,7 +537,7 @@ public final class Dependencies {
     }
 
     /** Read and validate {@code <dir>/metaobjects.pkg.json} and confirm the artifact beside it hashes to its integrity. */
-    private static JsonObject readManifest(Path dir) {
+    private static ManifestRead readManifest(Path dir) {
         Path manifestPath = dir.resolve(MANIFEST_FILE);
         String text;
         try {
@@ -563,7 +564,7 @@ public final class Dependencies {
             throw new CheckUnresolved(dir.resolve(artifact) + " hashes to " + actual + ", but the manifest records "
                     + obj.get("integrity").getAsString());
         }
-        return obj;
+        return new ManifestRead(obj, actual);
     }
 
     /** The manifest schema (DESIGN §3.2): the same strict shape the Node tool validates. */
