@@ -27,6 +27,7 @@ import { routesFile } from "../src/reference/routes.js";
 import { buildOpenApiDocument } from "../src/contract/build-openapi.js";
 import { createFieldShapes, modelFieldShapes, updateFieldShapes } from "../src/generators/api-field-shape.js";
 import { writeDeniedFieldNames } from "../src/api-surface.js";
+import { renderAgentUiPage } from "../src/generators/agent-ui-page.js";
 
 const META = JSON.stringify({
   "metadata.root": { package: "acme", children: [
@@ -190,6 +191,16 @@ describe("flattened storage: a derived value-object member keeps its column", ()
     const table = source.slice(source.indexOf("Table(\"notes\""), source.indexOf("});", source.indexOf("Table(\"notes\"")));
     const bound = [...table.matchAll(/^\s+\w+: \w+\("([^"]+)"/gm)].map((m) => m[1]!).sort();
     expect(bound).toEqual(expected);
+  });
+});
+
+describe("flattened storage: agent/ui.md reports the flat keys with their flags", () => {
+  test("a filterable member's row is marked filterable and sortable", async () => {
+    const page = renderAgentUiPage(await load());
+    const row = page.split("\n").find((l) => l.startsWith("| `shipToCity`"));
+    expect(row).toBeDefined();
+    const cells = row!.split("|").map((c) => c.trim());
+    expect(cells.slice(-4, -1)).toEqual(["", "yes", "yes"]);
   });
 });
 
