@@ -281,17 +281,12 @@ public class ObjectFieldCodegenTests
 
         // A NESTED value object member: ONE json column at `<prefix>_<col>` (migrate's
         // subtypeToSqlType returns json for field.object — a nested VO does not flatten
-        // recursively), so it needs its own ToJson pinned to that column. The nested builder
-        // is `nb`: emitting `b.` here would not compile in the GENERATED file.
+        // recursively). It is one jsonb property converted whole: EF Core 8 refuses a nested
+        // owned ToJson inside a table-split owned type, which failed model validation.
         Assert.Contains(
-            """
-                        b.OwnsOne(p => p.Badge, nb =>
-                        {
-                            nb.ToJson("profile_badge");
-                            nb.Property(p => p.Tier).HasConversion<string>();
-                        });
-            """,
+            "b.Property(p => p.Badge).HasColumnName(\"profile_badge\").HasColumnType(\"jsonb\").HasConversion(MapJsonb.ObjectConverter<",
             dbContext);
+        Assert.DoesNotContain("nb.ToJson", dbContext);
     }
 
     // A field.map member USED to be the one member kind deliberately not named: the port

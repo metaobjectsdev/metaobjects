@@ -217,6 +217,15 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
 
 ### Fixed
 
+- **C#: a value object nested inside a flattened one maps to one jsonb value.** The flattened
+  owner configured it as a nested owned `ToJson`, which EF Core 8 refuses inside a table-split
+  owned type ("All owned types containing a JSON column must be mapped to a JSON column
+  themselves"), so the whole context failed model validation. It is now one jsonb property
+  converted whole through the generated `MapJsonb.ObjectConverter`/`ObjectComparer`, pinned to the
+  same `<prefix><column>` the migration creates; members keep their `[JsonPropertyName]` keys and
+  enums their symbols. Every other flattened member, scalar enums included, keeps its
+  `HasColumnName`.
+
 - **C#: a TPH subtype's own fields get their EF configuration.** The context configured the
   fields of the TPH root only, so a field a subtype declares itself got none: a `field.object`
   was left for EF to discover as an entity (model validation failed with "requires a primary

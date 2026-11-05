@@ -1633,22 +1633,23 @@ public sealed class DurationIntervalArrayMapping : Microsoft.EntityFrameworkCore
 
             // A NESTED value object: migrate gives it ONE json column at `<prefix><col>`
             // (subtypeToSqlType returns { kind: "json" } for field.object — a nested VO does
-            // not flatten recursively). EF models it as a nested owned type, so it needs its
-            // own ToJson pinned to that column, plus the enum conversions its own members
-            // need — the same rule one level down.
+            // not flatten recursively). It is one jsonb PROPERTY converted whole (the same
+            // ObjectConverter/ObjectComparer pair a map-holding value object takes), never a
+            // nested owned `ToJson`: EF Core 8 refuses a JSON column inside a table-split owned
+            // type ("All owned types containing a JSON column must be mapped to a JSON column
+            // themselves"), which failed model validation for the whole context. The document
+            // is keyed by each member's [JsonPropertyName] and enums are written as their
+            // symbols, the same document the owned-JSON mapping writes elsewhere.
             if (nf.SubType == FIELD_SUBTYPE_OBJECT
-                && ValueObjectNames.ResolveFieldRef(nf, ctx.Root) is { } nestedVo)
+                && ValueObjectNames.ResolveFieldRef(nf, ctx.Root) is not null)
             {
-                var ownsCall = nf.ResolvedIsArray() ? "OwnsMany" : "OwnsOne";
-                sb.AppendLine($"            b.{ownsCall}(p => p.{PropertyName(nf)}, nb =>");
-                sb.AppendLine("            {");
-                sb.AppendLine($"                nb.ToJson(\"{nestedColAny}\");");
-                // `nb`, not `b` — the nested builder shadows the outer one, and emitting `b.`
-                // here would compile-fail the GENERATED file (the outer builder is out of the
-                // nested lambda's intended scope and names the wrong entity type anyway).
-                foreach (var line in JsonEnumConversions(nestedVo, ctx, builder: "nb"))
-                    sb.AppendLine("    " + line);
-                sb.AppendLine("            });");
+                var nullable = CSharpNaming.IsRequired(vo, nf) ? "" : "?";
+                var nestedType = MapValueTypeRef(nf, ctx);
+                var clr = nf.ResolvedIsArray()
+                    ? $"System.Collections.Generic.ICollection<{nestedType}>{nullable}"
+                    : nestedType + nullable;
+                sb.AppendLine($"            b.Property(p => p.{PropertyName(nf)}).HasColumnName(\"{nestedColAny}\")"
+                    + $".HasColumnType(\"jsonb\").HasConversion({MapJsonbHelperName}.ObjectConverter<{clr}>(), {MapJsonbHelperName}.ObjectComparer<{clr}>());");
                 continue;
             }
 

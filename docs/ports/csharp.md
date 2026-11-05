@@ -372,6 +372,9 @@ caller's value, `0` included. An `identity.reference` relationship carries
 names target fields other than the primary key. Under `EmitAbstractShapes` a concrete entity
 extends its abstract shape class, which carries no EF attributes, so the key, column names and
 `@maxLength` of the fields it inherits from there are configured in the context instead.
+A `@storage: flattened` value object pins each member to its flattened column; a value object
+nested inside it is one jsonb column holding the whole document (EF Core 8 cannot own a JSON
+column inside a table-split owned type).
 
 ### Decimals and null members on the wire
 
