@@ -93,4 +93,86 @@ public sealed class EfModelGapsTests
         Assert.Equal(new object?[] { 0L, "zero" }, rows[0]);
         Assert.Equal(new object?[] { 42L, "answer" }, rows[1]);
     }
+
+    // ── D12 + D16: identity.reference @constraintName, and a reference to a non-PK key ──────
+
+    private const string ReferenceModel = """
+    { "metadata.root": { "package": "acme", "children": [
+      { "object.entity": { "name": "Customer", "children": [
+        { "source.rdb": { "@table": "customers" } },
+        { "field.long": { "name": "id" } },
+        { "identity.primary": { "@fields": "id", "@generation": "increment" } }
+      ]}},
+      { "object.entity": { "name": "Warehouse", "children": [
+        { "source.rdb": { "@table": "warehouses" } },
+        { "field.long":   { "name": "id" } },
+        { "field.string": { "name": "regionCode", "@required": true } },
+        { "field.int":    { "name": "siteNo", "@required": true } },
+        { "identity.primary":   { "@fields": "id", "@generation": "increment" } },
+        { "identity.secondary": { "name": "site", "@fields": ["regionCode", "siteNo"], "@unique": true } }
+      ]}},
+      { "object.entity": { "name": "Shipment", "children": [
+        { "source.rdb": { "@table": "shipments" } },
+        { "field.long":   { "name": "id" } },
+        { "field.long":   { "name": "customerId", "@required": true } },
+        { "field.string": { "name": "regionCode", "@required": true } },
+        { "field.int":    { "name": "siteNo", "@required": true } },
+        { "identity.primary":   { "@fields": "id", "@generation": "increment" } },
+        { "identity.reference": { "name": "refCustomer", "@fields": "customerId", "@references": "Customer",
+            "@constraintName": "shipment_customer_fk" } },
+        { "identity.reference": { "name": "refSite", "@fields": ["regionCode", "siteNo"],
+            "@references": "Warehouse.regionCode,siteNo", "@constraintName": "shipment_site_fk" } }
+      ]}}
+    ]}}
+    """;
+
+    private static IForeignKey ForeignKey(IEntityType t, params string[] props) =>
+        Assert.Single(t.GetForeignKeys(), fk => fk.Properties.Select(p => p.Name).SequenceEqual(props));
+
+    [Fact]
+    public void A_reference_carries_its_constraint_name_and_its_principal_key_into_the_model()
+    {
+        var gen = GeneratedEfModel.Compile(ReferenceModel, "Acme.References");
+        using var db = gen.ModelOnlyContext();
+        var shipment = EntityType(db, "Shipment");
+
+        var customer = ForeignKey(shipment, "CustomerId");
+        Assert.Equal("shipment_customer_fk", customer.GetConstraintName());
+        Assert.True(customer.PrincipalKey.IsPrimaryKey());
+
+        // The target fields are not Warehouse's primary key, so EF must pair the FK with them —
+        // without HasPrincipalKey it pairs a two-column FK with the one-column PK and fails.
+        var site = ForeignKey(shipment, "RegionCode", "SiteNo");
+        Assert.Equal("shipment_site_fk", site.GetConstraintName());
+        Assert.Equal(new[] { "RegionCode", "SiteNo" }, site.PrincipalKey.Properties.Select(p => p.Name));
+    }
+
+    [Fact]
+    public async Task The_database_EF_creates_names_the_constraints_and_enforces_the_alternate_key()
+    {
+        var gen = GeneratedEfModel.Compile(ReferenceModel, "Acme.References");
+        await using var pg = await PostgresContainer.StartAsync();
+        using (var db = gen.NewContext(o => o.UseNpgsql(pg.ConnectionString)))
+            db.Database.EnsureCreated();
+
+        var names = (await Rows(pg.ConnectionString,
+                "SELECT conname FROM pg_constraint WHERE contype = 'f' ORDER BY conname"))
+            .Select(r => (string)r[0]!).ToList();
+        Assert.Equal(new[] { "shipment_customer_fk", "shipment_site_fk" }, names);
+
+        using (var db = gen.NewContext(o => o.UseNpgsql(pg.ConnectionString)))
+        {
+            db.Add(gen.New("Customer"));
+            db.Add(gen.New("Warehouse", ("RegionCode", "NE"), ("SiteNo", 7)));
+            db.SaveChanges();
+            db.Add(gen.New("Shipment", ("CustomerId", 1L), ("RegionCode", "NE"), ("SiteNo", 7)));
+            db.SaveChanges();
+        }
+        using (var db = gen.NewContext(o => o.UseNpgsql(pg.ConnectionString)))
+        {
+            db.Add(gen.New("Shipment", ("CustomerId", 1L), ("RegionCode", "NE"), ("SiteNo", 8)));
+            var ex = Assert.Throws<DbUpdateException>(() => db.SaveChanges());
+            Assert.Contains("shipment_site_fk", ex.InnerException!.Message);
+        }
+    }
 }

@@ -35,7 +35,9 @@ public sealed record ReverseFk(
     /// <summary>The bare target entity name the FK references (e.g. "Scene"); a display name only.</summary>
     string TargetEntity,
     /// <summary>The entity the loader bound the reference to (null when it did not resolve).</summary>
-    MetaObject? Target = null);
+    MetaObject? Target = null,
+    /// <summary>The target field the FK pairs with when <c>@references</c> names one; null for the target's primary key.</summary>
+    string? TargetField = null);
 
 /// <summary>
 /// Builds <see cref="ReverseFk"/> descriptors and renders the reverse finders for
@@ -58,7 +60,8 @@ public static class ReverseFinderBuilder
             var target = reference.TargetEntity;
             if (string.IsNullOrEmpty(fkField) || string.IsNullOrEmpty(target)) continue;
             var bound = global::MetaObjects.NamingRefs.RefTarget(reference, IDENTITY_REFERENCE_ATTR_REFERENCES) as MetaObject;
-            result.Add(new ReverseFk(fkField!, bound?.Name ?? CSharpNaming.StripPkg(target!), bound));
+            result.Add(new ReverseFk(fkField!, bound?.Name ?? CSharpNaming.StripPkg(target!), bound,
+                reference.TargetFields.Count > 0 ? reference.TargetFields[0] : null));
         }
         return result;
     }
@@ -74,9 +77,13 @@ public static class ReverseFinderBuilder
     private static string FkValueType(MetaObject entity, ReverseFk fk, MetaRoot root)
     {
         var target = fk.Target;
-        var targetPkField = target?.PrimaryIdentity()?.Fields is { Count: 1 } pk
-            ? target.FindField(pk[0])
-            : null;
+        // The column the FK pairs with: the reference's first named target field, else the
+        // target's single-column primary key (the bare `@references` form).
+        var targetPkField = fk.TargetField is { } named
+            ? target?.FindField(named)
+            : target?.PrimaryIdentity()?.Fields is { Count: 1 } pk
+                ? target.FindField(pk[0])
+                : null;
 
         string baseType =
             (targetPkField is not null ? CSharpNaming.ScalarFor(targetPkField.SubType) : null)

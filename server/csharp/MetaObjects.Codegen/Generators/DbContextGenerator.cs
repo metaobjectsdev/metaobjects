@@ -559,8 +559,41 @@ public class DbContextGenerator : IGenerator
         var actions = ReferentialActions.Resolve(entity, reference);
         return $"        modelBuilder.Entity<{owner}>().HasOne<{CSharpNaming.Pascal(target.Name)}>()"
              + $".WithMany().HasForeignKey({ForeignKeyExpression("e", props)})"
-             + $"{OnDeleteCall(entity, fkFields, actions.OnDelete, ctx)};";
+             + PrincipalKeyCall(reference, target)
+             + $"{OnDeleteCall(entity, fkFields, actions.OnDelete, ctx)}"
+             + ConstraintNameCall(reference) + ";";
     }
+
+    /// <summary>
+    /// <c>.HasPrincipalKey(...)</c> when <c>@references</c> names target fields that are not the
+    /// target's primary key (<c>"Warehouse.regionCode,siteNo"</c>), else <c>""</c>. Without it EF
+    /// pairs the foreign key with the primary key: a composite FK then fails model validation
+    /// ("cannot target the primary key ... because it is not compatible"), and a single column of
+    /// the PK's type is silently joined to the wrong column. EF makes the named fields an
+    /// alternate key, which is the unique constraint such a reference needs anyway.
+    /// </summary>
+    private string PrincipalKeyCall(MetaReferenceIdentity reference, MetaObject target)
+    {
+        var targetFields = reference.TargetFields;
+        if (targetFields.Count == 0) return string.Empty;
+        if (target.PrimaryIdentity()?.Fields is { } pk && pk.SequenceEqual(targetFields, StringComparer.Ordinal))
+            return string.Empty;
+        var props = new List<string>(targetFields.Count);
+        foreach (var name in targetFields)
+        {
+            if (target.FindField(name) is not { } field) return string.Empty;
+            props.Add(PropertyName(field));
+        }
+        return $".HasPrincipalKey({ForeignKeyExpression("p", props)})";
+    }
+
+    /// <summary><c>.HasConstraintName("...")</c> from the reference's <c>@constraintName</c>, so the
+    /// model (and a database EF creates from it) names the FK the way the schema does; else <c>""</c>.</summary>
+    private static string ConstraintNameCall(MetaReferenceIdentity reference) =>
+        // ADR-0039: resolving — an inherited reference keeps its declared name.
+        reference.Attr(DbConstants.IDENTITY_ATTR_CONSTRAINT_NAME) is string name && name.Length > 0
+            ? $".HasConstraintName(\"{CSharpNaming.CSharpStringLiteral(name)}\")"
+            : string.Empty;
 
     /// <summary>
     /// The <c>HasForeignKey</c> argument naming <paramref name="props"/> on the dependent:
@@ -652,8 +685,9 @@ public class DbContextGenerator : IGenerator
         // delete, a behaviour change for every existing M:N adopter that has nothing to do
         // with #294. The 1:N path defaults precisely because those relationships are NEW
         // here: there is no prior behaviour to preserve, only EF's convention to prevent.
-        if (resolved is null) return string.Empty;
-        return OnDeleteCall(junction, [fkField], resolved, ctx);
+        var constraint = ConstraintNameCall(reference);
+        if (resolved is null) return constraint;
+        return OnDeleteCall(junction, [fkField], resolved, ctx) + constraint;
     }
 
     // A junction FK column's C# property, through the same resolver its entity class used.

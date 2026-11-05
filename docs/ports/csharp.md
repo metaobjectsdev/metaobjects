@@ -367,7 +367,9 @@ false }` emits none, for a project that writes its own.
 
 **What the context configures beyond the column types.** A single-column
 `identity.primary @generation: assigned` key is `ValueGeneratedNever()`, so EF always sends the
-caller's value, `0` included.
+caller's value, `0` included. An `identity.reference` relationship carries
+`.HasConstraintName(...)` from `@constraintName`, and `.HasPrincipalKey(...)` when `@references`
+names target fields other than the primary key.
 
 ### Decimals and null members on the wire
 

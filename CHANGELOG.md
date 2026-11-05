@@ -217,6 +217,16 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
 
 ### Fixed
 
+- **C#: a reference's `@constraintName` and non-primary-key target reach the EF model.** The
+  relationship line now ends in `.HasConstraintName("...")` when the `identity.reference` declares
+  `@constraintName` (the junction sides of an M:N too), so a database EF creates names its foreign
+  keys as the schema does. When `@references` names target fields that are not the target's
+  primary key (`"Warehouse.regionCode,siteNo"`), it carries `.HasPrincipalKey(...)`; EF paired
+  the FK with the primary key instead, which failed model validation for a composite FK and
+  joined the wrong column for a single one. The reverse finder for such a reference now types its
+  value by the named target field, where it used the target's primary key type and did not
+  compile.
+
 - **C#: `identity.primary @generation: assigned` configures the key `ValueGeneratedNever()`.**
   EF's convention made a single integer or Guid key generated on add, so a caller-supplied key
   equal to the CLR default (`0`) was left out of the INSERT and the row refused, and
