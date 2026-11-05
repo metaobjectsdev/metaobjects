@@ -355,7 +355,7 @@ public static class CSharpNaming
     /// See <c>fixtures/api-contract-conformance/m2m/</c> for the gating scenario.
     /// </para>
     /// </summary>
-    public static string RoutePath(MetaObject entity) => Pluralize(ToSnakeCase(entity.Name));
+    public static string RoutePath(MetaObject entity) => PluralizeCrossPort(ToSnakeCase(entity.Name));
 
     /// <summary>The DbSet property name for an entity: <c>Pluralize(Pascal(name))</c>.</summary>
     public static string DbSetName(MetaObject entity) => Pluralize(Pascal(entity.Name));
@@ -1084,12 +1084,28 @@ public static class CSharpNaming
     /// existing adopter database never sees a proposed rename. Adds already-plural
     /// detection (<see cref="IsAlreadyPlural"/>) on top of the historical suffix rule
     /// (<see cref="PluralizeLegacySuffixOnly"/>).</para>
+    ///
+    /// <para>A Greek <c>-sis</c> noun takes <c>-ses</c> (<c>Diagnosis</c> -&gt; <c>Diagnoses</c>,
+    /// <c>Analysis</c> -&gt; <c>Analyses</c>) instead of the sibilant <c>+es</c> rule's
+    /// <c>Diagnosises</c>. Every name this spells is a C# identifier (DbSet properties, reverse
+    /// finders); the REST collection segment, which IS a cross-port wire contract, keeps
+    /// <see cref="PluralizeCrossPort"/> until every port adopts the rule together.</para>
     /// </summary>
     public static string Pluralize(string name)
     {
         if (IsAlreadyPlural(name)) return name;
+        if (name.Length > 3 && name.EndsWith("sis", StringComparison.OrdinalIgnoreCase))
+            return name[..^2] + (char.IsUpper(name[^1]) ? "ES" : "es");
         return PluralizeLegacySuffixOnly(name);
     }
+
+    /// <summary>
+    /// The pluralization every port shares for the REST collection segment
+    /// (<c>fixtures/naming-conformance</c>): <see cref="Pluralize"/> without the C#-only
+    /// <c>-sis</c> rule.
+    /// </summary>
+    private static string PluralizeCrossPort(string name) =>
+        IsAlreadyPlural(name) ? name : PluralizeLegacySuffixOnly(name);
 
     /// <summary>
     /// Whether a field is non-nullable in the generated entity: required (the @required attr

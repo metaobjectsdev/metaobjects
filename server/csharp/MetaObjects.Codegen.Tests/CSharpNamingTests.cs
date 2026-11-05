@@ -108,11 +108,45 @@ public class CSharpNamingTests
     [InlineData("Bonus", "Bonuses")]
     [InlineData("Alias", "Aliases")]
     [InlineData("Gas", "Gases")]
-    // Documented pre-existing imperfection, explicitly out of scope — not "Analyses".
-    [InlineData("Analysis", "Analysises")]
     public void Pluralize_keeps_existing_behavior_for_s_u_i_a_plus_s_endings(string input, string expected)
     {
         Assert.Equal(expected, CSharpNaming.Pluralize(input));
+    }
+
+    // A Greek "-sis" noun takes "-ses" (Diagnosis -> Diagnoses), not the sibilant "+es" that
+    // produced "Diagnosises" in every DbSet and finder name. The other common endings are pinned
+    // beside it so the new rule cannot widen past "-sis".
+    [Theory]
+    [InlineData("Diagnosis", "Diagnoses")]
+    [InlineData("Analysis", "Analyses")]
+    [InlineData("Basis", "Bases")]
+    [InlineData("OrderAnalysis", "OrderAnalyses")]
+    [InlineData("Notification", "Notifications")]
+    [InlineData("Reservation", "Reservations")]
+    [InlineData("Category", "Categories")]
+    [InlineData("Day", "Days")]
+    [InlineData("Key", "Keys")]
+    [InlineData("Status", "Statuses")]
+    [InlineData("Bus", "Buses")]
+    public void Pluralize_handles_sis_tion_y_and_s_endings(string input, string expected)
+    {
+        Assert.Equal(expected, CSharpNaming.Pluralize(input));
+    }
+
+    [Fact]
+    public void DbSetName_and_reverse_finder_name_use_the_sis_plural()
+    {
+        Assert.Equal("Diagnoses", CSharpNaming.DbSetName(Entity("Diagnosis")));
+        Assert.Equal("FindDiagnosesByPatient", CSharpNaming.ReverseFinderName(Entity("Diagnosis"), "patientId"));
+    }
+
+    [Fact]
+    public void RoutePath_keeps_the_cross_port_rule_for_a_sis_noun()
+    {
+        // The REST collection segment is a wire contract every port spells the same way
+        // (fixtures/naming-conformance); the "-sis" rule is a C# identifier fix only, so the
+        // route does not move until every port moves with it.
+        Assert.Equal("diagnosises", CSharpNaming.RoutePath(Entity("Diagnosis")));
     }
 
     [Fact]

@@ -204,6 +204,13 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
 
 ### Fixed
 
+- **C#: a "-sis" entity name pluralizes to "-ses" in DbSet and finder names.** `Diagnosis` gave
+  `DbSet<Diagnosis> Diagnosises` and `FindDiagnosisesByPatient`; it now gives `Diagnoses` and
+  `FindDiagnosesByPatient` (`Analysis` → `Analyses`, `Basis` → `Bases`). The `-tion`, `-y` and
+  `-s` endings were already right and are now pinned by tests. The REST collection segment is a
+  cross-port wire contract and keeps the shared rule (`/api/diagnosises`) until every port
+  changes together. An adopter that aliased the old DbSet name can drop the alias.
+
 - **Postgres introspection reads a composite foreign key's columns once each, in order.** It joined
   `information_schema.key_column_usage` to `constraint_column_usage`, which has no column position, so
   every FK column was paired with every referenced column: a two-column FK read back as four columns and
