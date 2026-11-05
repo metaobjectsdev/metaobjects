@@ -54,6 +54,7 @@ import {
   toSnakeCase,
 } from "@metaobjectsdev/metadata";
 import { inferViewKind, currencyMetaFor, labelFor, humanize, valueObjectFor, numericInputControl } from "./field-meta.js";
+import { flatSurfaceFields } from "../flattened.js";
 import { VIEW_CONTEXT_FORM } from "../view-context.js";
 import { enumValues } from "../enum-meta.js";
 // `restPath` lives HERE rather than in api-surface.ts, which is where it used to sit and
@@ -334,6 +335,6 @@ export function buildEntityUiDescriptor(obj: MetaObject, root?: MetaRoot): Entit
     path: restPath(obj),
     // ADR-0039: resolving `fields()` so inherited fields appear, exactly as the emitted
     // descriptor has always done.
-    fields: obj.fields().map((f) => buildUiFieldDescriptor(f, root)),
+    fields: flatSurfaceFields(obj).map((f) => buildUiFieldDescriptor(f, root)),
   };
 }

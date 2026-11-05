@@ -245,7 +245,7 @@ function shapeOf(field: MetaData, vo: MetaData, path: readonly MetaData[]): Valu
 /** The jsonb columns of `entity` that hold a value object (or an array / map of them), with their declared shape. */
 export function valueObjectShapes(entity: MetaObject): Record<string, ValueObjectShapeData> {
   const out: Record<string, ValueObjectShapeData> = {};
-  for (const f of entity.fields()) {
+  for (const f of flatSurfaceFields(entity)) {
     const vo = valueObjectOf(f);
     if (vo !== undefined) out[f.name] = shapeOf(f, vo, [vo]);
   }

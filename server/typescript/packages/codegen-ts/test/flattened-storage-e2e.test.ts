@@ -24,6 +24,8 @@ import { entityFile } from "../src/reference/entity.js";
 import { queriesFile } from "../src/reference/queries.js";
 import { routesFileHono } from "../src/reference/routes-hono.js";
 import { routesFile } from "../src/reference/routes.js";
+import { buildOpenApiDocument } from "../src/contract/build-openapi.js";
+import { createFieldShapes, modelFieldShapes } from "../src/generators/api-field-shape.js";
 
 const META = JSON.stringify({
   "metadata.root": { package: "acme", children: [
@@ -93,6 +95,34 @@ describe("flattened storage: generated Drizzle columns match migrate's expected 
       expect(table).not.toMatch(/jsonb\(/);
     });
   }
+});
+
+describe("flattened storage: the API contract and documented shapes use the flat keys", () => {
+  const MEMBER_KEYS = ["shipToCity", "shipToFloor", "shipToStreet"];
+
+  test("OpenAPI read, create and update schemas list the members, never the nested field", async () => {
+    const root = await load();
+    const shipment = root.findObject("Shipment")!;
+    const doc = buildOpenApiDocument({ root, objects: [shipment], apiPrefix: "", relationMap: new Map(), reportExport: false }) as {
+      components: { schemas: Record<string, { properties: Record<string, unknown> }> };
+    };
+    for (const name of ["Shipment", "ShipmentCreate", "ShipmentUpdate"]) {
+      const keys = Object.keys(doc.components.schemas[name]!.properties);
+      expect(keys).toEqual(expect.arrayContaining([...MEMBER_KEYS, "billToStreet"]));
+      expect(keys).not.toContain("shipTo");
+      expect(keys).not.toContain("billTo");
+    }
+  });
+
+  test("documented model and create shapes carry the members with their real types", async () => {
+    const shipment = (await load()).findObject("Shipment")!;
+    for (const shapes of [modelFieldShapes(shipment), createFieldShapes(shipment)]) {
+      const byName = new Map(shapes.map((f) => [f.name, f.type]));
+      expect(byName.has("shipTo")).toBe(false);
+      expect(byName.get("shipToStreet")).toContain("string");
+      expect(byName.get("shipToFloor")).toContain("number");
+    }
+  });
 });
 
 describe("flattened storage: a TPH subtype's own flattened field keeps migrate's single column", () => {
