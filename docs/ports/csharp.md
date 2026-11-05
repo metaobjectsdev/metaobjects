@@ -365,6 +365,11 @@ attribute without re-implementing `EmitClassHeader`.
 `GenConfig.ContextTypeName` (default `AppDbContext`). `new EntityGenerator { EmitsReverseFinders =
 false }` emits none, for a project that writes its own.
 
+**Scoping value objects.** `Include` scopes the entities and value objects an entry emits, but a
+value object an emitted entity points at is still emitted, so the output compiles. Set
+`ScopesValueObjectClosure = true` beside `Include` to drop those too, when you provide the type
+yourself.
+
 **What the context configures beyond the column types.** A single-column
 `identity.primary @generation: assigned` key is `ValueGeneratedNever()`, so EF always sends the
 caller's value, `0` included. An `identity.reference` relationship carries

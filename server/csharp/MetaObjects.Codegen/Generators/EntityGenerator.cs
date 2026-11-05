@@ -61,6 +61,13 @@ public class EntityGenerator : IGenerator
     /// object. See <see cref="GenContext.Narrow"/>.</summary>
     public Func<MetaObject, bool>? Include { get; init; }
 
+    /// <summary>When <c>true</c>, <see cref="Include"/> also applies to the value objects this run
+    /// reaches through the model root (an emitted entity's object fields, callable arguments,
+    /// template payloads, and their nested value objects): one it rejects gets no POCO even when
+    /// an emitted type references it, and the adopter supplies that type. <c>false</c>, the
+    /// default, emits every reached value object so the output compiles on its own.</summary>
+    public bool ScopesValueObjectClosure { get; init; }
+
     // The run's wire setting (ADR-0019 Amendment 2), read from the loaded root when Generate
     // starts. Read from the run, not from each field's own root: a report's row model is a
     // synthesized tree that belongs to no root.
@@ -109,6 +116,8 @@ public class EntityGenerator : IGenerator
         // abstract value object an entity object-field does reach (its owned-type navigation
         // needs the class).
         var valueObjects = ValueShapes(ReferencedValueObjects([.. mapped, .. unmappedShapes], ctx), ctx);
+        if (ScopesValueObjectClosure && ctx.Scope is { } scope)
+            valueObjects = valueObjects.Where(scope).ToList();
 
         var files = new List<EmittedFile>();
 

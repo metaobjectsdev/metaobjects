@@ -176,6 +176,11 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
 - **C#: `EntityGenerator.EmitClassAttributes`,** a seam for class-level attributes of your own,
   called for every class kind after the framework's attributes and before the declaration, so a
   subclass no longer copies `EmitClassHeader` to add one.
+- **C#: `EntityGenerator.ScopesValueObjectClosure`** (default `false`). With it set, `Include`
+  also applies to the value objects reached through the model root (an emitted entity's object
+  fields, callable arguments, template payloads), so a value object `Include` rejects gets no
+  POCO even when an emitted type references it, and the adopter supplies the type. The default
+  still emits every reached value object, so the output compiles on its own.
 - **C#: `EntityGenerator.EmitsReverseFinders`** (default `true`) turns the ADR-0038
   `<Entity>Queries.g.cs` finders off.
 
