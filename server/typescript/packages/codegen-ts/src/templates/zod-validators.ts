@@ -122,7 +122,7 @@ export function hasAutoSetFields(obj: MetaObject): boolean {
 function isTphBaseOwnField(obj: MetaObject, field: MetaField): boolean {
   const base = tphDiscriminatorBase(obj);
   if (base === undefined) return false;
-  return base.fields().some((f) => f.name === field.name);
+  return flatSurfaceFields(base).some((f) => f.name === field.name);
 }
 
 /**

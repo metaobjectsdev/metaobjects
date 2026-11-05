@@ -27,6 +27,8 @@ import { routesFile } from "../src/reference/routes.js";
 import { buildOpenApiDocument } from "../src/contract/build-openapi.js";
 import { createFieldShapes, modelFieldShapes, updateFieldShapes } from "../src/generators/api-field-shape.js";
 import { writeDeniedFieldNames } from "../src/api-surface.js";
+import { isTphReadNullTolerant } from "../src/templates/zod-validators.js";
+import { flatSurfaceFields } from "../src/flattened.js";
 import { renderAgentUiPage } from "../src/generators/agent-ui-page.js";
 
 const META = JSON.stringify({
@@ -201,6 +203,32 @@ describe("flattened storage: agent/ui.md reports the flat keys with their flags"
     expect(row).toBeDefined();
     const cells = row!.split("|").map((c) => c.trim());
     expect(cells.slice(-4, -1)).toEqual(["", "yes", "yes"]);
+  });
+});
+
+describe("flattened storage: a TPH subtype's read nullability follows the column", () => {
+  test("a required member of a base-declared flattened field is not nullable; a subtype-only column is", async () => {
+    const TPH = JSON.stringify({
+      "metadata.root": { package: "acme", children: [
+        { "object.value": { name: "Address", children: [{ "field.string": { name: "street", "@required": true } }] } },
+        { "object.entity": { name: "Party", "@discriminator": "kind", children: [
+          { "source.rdb": { "@table": "parties" } },
+          { "field.long": { name: "id" } },
+          { "field.string": { name: "kind", "@required": true } },
+          { "field.object": { name: "hq", "@objectRef": "Address", "@storage": "flattened" } },
+          { "identity.primary": { name: "pk", "@fields": "id", "@generation": "increment" } },
+        ] } },
+        { "object.entity": { name: "Org", extends: "Party", "@discriminatorValue": "org", children: [
+          { "field.string": { name: "motto" } },
+        ] } },
+      ] },
+    });
+    const { root, errors } = await new MetaDataLoader({ strict: true }).load([new InMemoryStringSource(TPH, { id: "tph2.json" })]);
+    expect(errors).toEqual([]);
+    const org = root.findObject("Org")!;
+    const byName = new Map(flatSurfaceFields(org).map((f) => [f.name, isTphReadNullTolerant(org, f)]));
+    expect(byName.get("hqStreet")).toBe(false);
+    expect(byName.get("motto")).toBe(true);
   });
 });
 
