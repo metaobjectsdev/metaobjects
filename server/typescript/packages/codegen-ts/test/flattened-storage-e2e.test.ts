@@ -206,6 +206,36 @@ describe("flattened storage: agent/ui.md reports the flat keys with their flags"
   });
 });
 
+describe("flattened storage: int-backed enum members keep their own codec", () => {
+  test("a flattened member and a top-level field both named status round-trip with their own member maps", async () => {
+    const ENUMS = JSON.stringify({
+      "metadata.root": { package: "acme", children: [
+        { "object.value": { name: "Address", children: [
+          { "field.enum": { name: "status", "@values": ["near", "far"], "@intValueMap": { near: 10, far: 20 } } },
+        ] } },
+        { "object.entity": { name: "Order", children: [
+          { "source.rdb": { "@table": "orders" } },
+          { "field.long": { name: "id" } },
+          { "field.enum": { name: "status", "@values": ["open", "closed"], "@intValueMap": { open: 1, closed: 2 } } },
+          { "field.object": { name: "shipTo", "@objectRef": "Address", "@storage": "flattened" } },
+          { "identity.primary": { name: "pk", "@fields": "id", "@generation": "increment" } },
+        ] } },
+      ] },
+    });
+    const { root, errors } = await new MetaDataLoader({ strict: true }).load([new InMemoryStringSource(ENUMS, { id: "e.json" })]);
+    expect(errors).toEqual([]);
+    const outDir = await generate(root, "sqlite", [entityFile(), queriesFile()], import.meta.dir);
+    const find = (suffix: string) => allTs(outDir).find((f) => f.endsWith(suffix))!;
+    const sqlite = new Database(":memory:");
+    sqlite.run("CREATE TABLE orders (id INTEGER PRIMARY KEY AUTOINCREMENT, status INTEGER, ship_to_status INTEGER)");
+    const db = drizzle(sqlite);
+    const queries = (await import(pathToFileURL(find("Order.queries.ts")).href)) as Record<string, (...a: unknown[]) => Promise<unknown>>;
+    const row = await queries["createOrder"]!(db, { status: "closed", shipToStatus: "far" });
+    expect(row).toMatchObject({ status: "closed", shipToStatus: "far" });
+    expect(sqlite.query("SELECT status, ship_to_status FROM orders").get()).toEqual({ status: 2, ship_to_status: 20 });
+  });
+});
+
 describe("flattened storage: a TPH subtype's read nullability follows the column", () => {
   test("a required member of a base-declared flattened field is not nullable; a subtype-only column is", async () => {
     const TPH = JSON.stringify({

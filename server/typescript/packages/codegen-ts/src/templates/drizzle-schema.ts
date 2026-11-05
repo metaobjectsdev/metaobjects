@@ -225,7 +225,7 @@ export function renderDrizzleSchema(
     members: NonNullable<ReturnType<typeof flattenedMembersOf>>,
   ): void => {
     for (const m of members) {
-      const base = mapColumnType(m.member, ctx.dialect, ctx.columnNamingStrategy, ctx.timestampMode);
+      const base = mapColumnType(m.flat, ctx.dialect, ctx.columnNamingStrategy, ctx.timestampMode);
       const spec: ColumnSpec = { ...base, dbName: m.column };
       if (spec.enumIntCustomType !== undefined) {
         enumIntTypes.set(spec.enumIntCustomType.fnConstName, spec.enumIntCustomType);

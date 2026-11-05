@@ -31,6 +31,8 @@ import { tphDiscriminatorBase, tphStorageObject } from "./tph.js";
 export interface FlattenedMember {
   /** The value object's own field. */
   readonly member: MetaField;
+  /** The member presented under its flat key: what the schemas, types and codec names are derived from. */
+  readonly flat: MetaField;
   /** The key of the member on the flat surface: `shipToStreet`. */
   readonly key: string;
   /** The member's column in the database: `ship_to_street`. */
@@ -52,11 +54,10 @@ export function flattenedMembersOf(field: MetaField, strategy: ColumnNamingStrat
   const valueObject = refTarget(field, FIELD_ATTR_OBJECT_REF);
   if (valueObject === undefined || !isMetaObject(valueObject)) return undefined;
   // ADR-0039: effective fields — members inherited via extends are columns too (as migrate does).
-  return valueObject.fields().map((member) => ({
-    member,
-    key: field.name + upperFirst(member.name),
-    column: resolveFlattenedColumnName(field, member, strategy),
-  }));
+  return valueObject.fields().map((member) => {
+    const key = field.name + upperFirst(member.name);
+    return { member, flat: asFlatKey(member, key, field), key, column: resolveFlattenedColumnName(field, member, strategy) };
+  });
 }
 
 const MUTABILITY_TIGHTNESS = [MUTABILITY_READ_ONLY, MUTABILITY_WRITE_ONCE] as const;
@@ -103,6 +104,6 @@ export function flatSurfaceFields(obj: MetaObject): MetaField[] {
   return obj.fields().flatMap((f) => {
     if (baseFieldNames !== undefined && !baseFieldNames.has(f.name)) return [f];
     const members = flattenedMembersOf(f, strategy);
-    return members === undefined ? [f] : members.map((m) => asFlatKey(m.member, m.key, f));
+    return members === undefined ? [f] : members.map((m) => m.flat);
   });
 }
