@@ -17,6 +17,7 @@ package com.metaobjects.config;
 
 import com.metaobjects.MetaRoot;
 import com.metaobjects.loader.FileSource;
+import com.metaobjects.loader.InMemoryStringSource;
 import com.metaobjects.loader.MetaDataSource;
 
 import java.nio.file.Path;
@@ -90,6 +91,32 @@ public final class DependencySet {
         return new DependencySet(resolved, include, migrate);
     }
 
+    /**
+     * Resolve the dependencies of a runtime that has no project directory — a Spring app whose
+     * {@code .metaobjects/} folder is on the classpath. The lock and the snapshot are read through
+     * {@code reader}; {@code config} is the project's {@code config.json} when that is on the classpath
+     * too. With it, the declared dependencies are checked against the lock exactly as at build time
+     * ({@link Dependencies#verifySnapshot}); without it the lock is the only record of what was declared.
+     *
+     * @param lock the parsed lock, empty when none is on the classpath
+     */
+    public static DependencySet ofSnapshot(Optional<NeutralConfig> config,
+                                           Optional<java.util.Map<String, Dependencies.LockEntry>> lock,
+                                           Dependencies.SnapshotReader reader) {
+        List<String> declared = new ArrayList<>();
+        if (config.isPresent()) {
+            for (java.util.Map<String, String> spec : config.get().getDependencies()) declared.add(spec.get("name"));
+        } else if (lock.isPresent()) {
+            declared.addAll(lock.get().keySet());
+        }
+        List<String> include = config.map(NeutralConfig::getScopeInclude).orElse(List.of());
+        List<String> migrate = config.map(NeutralConfig::getMigrateScope).orElse(null);
+        List<Dependencies.ResolvedDependency> resolved = declared.isEmpty() && lock.isEmpty()
+                ? List.of()
+                : Dependencies.verifySnapshot(declared, lock, reader);
+        return new DependencySet(resolved, include, migrate);
+    }
+
     /** The resolved dependencies, in dependency-NAME order. */
     public List<Dependencies.ResolvedDependency> dependencies() {
         return dependencies;
@@ -112,7 +139,11 @@ public final class DependencySet {
     /** The artifacts as load sources, in dependency-NAME order, each under its {@code dep:<name>/<artifact>} id. */
     public List<MetaDataSource> sources() {
         List<MetaDataSource> out = new ArrayList<>(dependencies.size());
-        for (Dependencies.ResolvedDependency d : dependencies) out.add(new FileSource(d.artifactPath(), d.sourceId()));
+        for (Dependencies.ResolvedDependency d : dependencies) {
+            out.add(d.content() != null
+                    ? new InMemoryStringSource(d.content(), d.sourceId())
+                    : new FileSource(d.artifactPath(), d.sourceId()));
+        }
         return out;
     }
 

@@ -117,7 +117,7 @@ public class DependencyConformanceTest {
             JsonObject c = el.getAsJsonObject();
             String name = c.get("name").getAsString();
             // Check-arm cases (`expectCheck`) pin the Node `meta deps check` verdict; the resolution
-            // arm run here has nothing to assert on them, and Java has no check of its own.
+            // arm run here has nothing to assert on them; DependencyCheckConformanceTest runs them.
             if (c.has("expectCheck")) continue;
             if (!c.has("config")) {
                 throw new IllegalStateException("corpus case \"" + name + "\" has no \"config\" key");

@@ -1,6 +1,7 @@
 package com.metaobjects.mojo;
 
 import com.metaobjects.MetaDataException;
+import com.metaobjects.config.Dependencies;
 import com.metaobjects.generator.Generator;
 import com.metaobjects.generator.GeneratorBase;
 import com.metaobjects.generator.util.GeneratedFileWriter;
@@ -8,6 +9,7 @@ import com.metaobjects.generator.util.HashManifest;
 import com.metaobjects.generator.util.OrphanSweep;
 import com.metaobjects.generator.util.RouteNaming;
 import com.metaobjects.loader.MetaDataLoader;
+import org.apache.maven.model.Resource;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
@@ -127,7 +129,43 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
         }
 
         registerGeneratedSourceRoots();
+        if (loader != null) {
+            registerDependencySnapshotResources(resolveProjectConfigDir(getSourceDir())
+                    .orElse(getProjectBaseDir().toPath().toAbsolutePath().normalize()));
+        }
     }
+
+    /**
+     * FR-023 — ship the committed dependency snapshot on the module's classpath. A Spring app loads
+     * its imported nodes at runtime from {@code .metaobjects/deps.lock.json} and
+     * {@code .metaobjects/deps/**}; neither lives under {@code src/main/resources}, so without this the
+     * app would boot with an unresolved {@code extends}. Adds them as a resource directory (target path
+     * {@code .metaobjects}) when the project has a lock and nothing already ships it.
+     *
+     * @param configDir the directory holding the project's {@code .metaobjects/} folder
+     */
+    void registerDependencySnapshotResources(Path configDir) {
+        if (project == null) return;
+        Path metaobjects = configDir.resolve(DEPENDENCY_RESOURCE_TARGET);
+        if (!Files.isRegularFile(metaobjects.resolve(Dependencies.LOCK_FILE))) return;
+        String directory = metaobjects.toAbsolutePath().normalize().toString();
+        List<Resource> existing = project.getResources();
+        if (existing != null) {
+            for (Resource r : existing) {
+                if (directory.equals(r.getDirectory()) && DEPENDENCY_RESOURCE_TARGET.equals(r.getTargetPath())) return;
+            }
+        }
+        Resource snapshot = new Resource();
+        snapshot.setDirectory(directory);
+        snapshot.setTargetPath(DEPENDENCY_RESOURCE_TARGET);
+        snapshot.setIncludes(List.of(Dependencies.LOCK_FILE, Dependencies.DEPS_DIR + "/**"));
+        project.addResource(snapshot);
+        getLog().info("MetaData Mojo > Shipping the dependency lock and snapshot (" + directory
+                + ") on the classpath at " + DEPENDENCY_RESOURCE_TARGET + "/");
+    }
+
+    /** Where the snapshot lands on the classpath, and the folder name it is read from. */
+    static final String DEPENDENCY_RESOURCE_TARGET = ".metaobjects";
 
     /**
      * One advisory line when an owned generator copy under {@code codegen/} is identical to the

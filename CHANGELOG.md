@@ -18,6 +18,20 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
 
 ### Added
 
+- **Java and Kotlin: a Spring app loads a shared model's committed snapshot at runtime, and
+  `metaobjects:verify` checks dependency drift.** `metaobjects:generate` now ships
+  `.metaobjects/deps.lock.json` and `.metaobjects/deps/**` as resources (target path `.metaobjects`)
+  when the project has a lock. When `classpath:.metaobjects/deps.lock.json` exists, the Spring
+  application loader loads each snapshot before `metaobjects.metadata-sources`, verified as the build
+  does (`ERR_DEPENDENCY_SNAPSHOT_STALE`, `ERR_DEPENDENCY_PACKAGE_NOT_OWNED`), so an entity that
+  `extends` an imported node boots; an imported node stays load-only. With no lock and nothing
+  declared, nothing changes. `mvn metaobjects:verify -Dmeta.verify.mode=deps` re-resolves each
+  declared `path` dependency, hashes its artifact against the lock and fails with
+  `ERR_DEPENDENCY_UPSTREAM_DRIFT` when it is `drifted` or `unresolved`, passing the shared
+  `expectCheck` corpus arm; it is opt-in and not part of the default gate set. New public API:
+  `Dependencies.check`, `Dependencies.SnapshotReader`, `DependencySet.ofSnapshot` and a
+  `MetaDataLoader.fromUris` overload that takes a `DependencySet`. See `docs/features/metadata-dependencies.md`.
+
 - **A model explorer site, built by `docsSiteFile()`.** The docs site now shows what the
   software does and how the model is designed: a main page with count tiles and the feature and
   quality cards with their roll-ups, a model map with slices (package, requirement subtree,

@@ -49,7 +49,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/provider-composition-conformance/`](../fixtures/provider-composition-conformance/) | 18 (11 error-shape + 4 compose-load + 3 attr-ownership) | ✓ | ✓ | — (JVM registry via Java) | ✓ | ✓ |
 | [`fixtures/source-resolution-conformance/`](../fixtures/source-resolution-conformance/) | 25 cases | ✓ (reference implementation) | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/scope-conformance/`](../fixtures/scope-conformance/) | 10 cases | ✓ (reference implementation) | ✓ | inherits via Java | ✓ | ✓ |
-| [`fixtures/dependency-conformance/`](../fixtures/dependency-conformance/) | 37 cases (26 resolution + 11 check) + 14 transport cases | ✓ (reference implementation; all three arms) | ✓ (resolution arm, all 26; no check, so the 11 check cases are not run) | inherits via Java | ✓ (resolution arm, all 26; no check, so the 11 check cases are not run) | ✓ (resolution arm, all 26 identically; no check yet, so the 11 check cases are not run; the transport arm is Node-only) |
+| [`fixtures/dependency-conformance/`](../fixtures/dependency-conformance/) | 37 cases (26 resolution + 11 check) + 14 transport cases | ✓ (reference implementation; all three arms) | ✓ (resolution arm, all 26; check arm, all 11) | inherits via Java | ✓ (resolution arm, all 26; no check, so the 11 check cases are not run) | ✓ (resolution arm, all 26 identically; no check yet, so the 11 check cases are not run; the transport arm is Node-only) |
 | [`fixtures/shared-model-conformance/`](../fixtures/shared-model-conformance/) | 11 cases (7 publish + 4 refusal) | ✓ (reference implementation) | — (Phase 2) | — (Phase 2) | — (Phase 2) | ✓ (serializer arm: the 7 publish cases' document bytes; no publisher) |
 | [`fixtures/agent-context-conformance/`](../fixtures/agent-context-conformance/) | 4 | ✓ (the emitter is TS-owned) | — | — | — | — |
 | [`fixtures/metamodel-docs/`](../fixtures/metamodel-docs/) | 1 | ✓ (docs emit is TS-owned) | — | — | — | — |
@@ -480,9 +480,10 @@ above: one committed `cases.json`, no per-port fixture, no ledger. The corpus ha
   for it. Kotlin inherits the Java run through the same loader and Maven plugin.
 - **Check (11 cases, `expectCheck`).** For each declared dependency, `current`, `drifted` or
   `unresolved` (a missing path, a bad manifest, a hash mismatch, or not yet in the lock). Run
-  by TypeScript only, in `cli/test/dependency-check-conformance.test.ts`; Python and Java have no
-  `deps check` yet and filter these cases out. The arm exists so that each port's check is
-  written against the same edge cases (Phase 2, #482).
+  by TypeScript, in `cli/test/dependency-check-conformance.test.ts`, and by Java in
+  `DependencyCheckConformanceTest` (the engine behind `metaobjects:verify -Dmeta.verify.mode=deps`;
+  Kotlin runs the same goal). Python has no `deps check` yet and filters these cases out. The arm
+  exists so that each port's check is written against the same edge cases (Phase 2, #482).
 - **Transport (14 cases, `transport-cases.json`).** The `npm` and `python` transports `meta deps sync`
   uses to find an installed package: npm packages under a temp `node_modules`, Python packages on a
   temp import path, the directory each resolves to, the exact lock written, and each refusal. Run by
