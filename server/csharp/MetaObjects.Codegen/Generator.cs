@@ -189,6 +189,17 @@ public sealed record GenConfig
     public string ContextTypeName { get; init; } = "AppDbContext";
 
     /// <summary>
+    /// The C# property name of a field, for every generator that names one: the entity and
+    /// value-object classes, the composite <c>[PrimaryKey]</c>, the DbContext's model
+    /// configuration, the reverse finders and the routes. <c>null</c>, the default, is the
+    /// PascalCased field name (<see cref="CSharpNaming.Pascal"/>). Set it to rename a property
+    /// (an acronym, say) once, so the class that declares it and every line that references it
+    /// agree. <c>EntityGenerator.PropertyName</c> and <c>DbContextGenerator.PropertyName</c> read
+    /// it by default; a subclass that overrides one of those hooks must override both.
+    /// </summary>
+    public Func<MetaField, string>? PropertyNaming { get; init; }
+
+    /// <summary>
     /// FR-019 — the C# namespace an externally-<c>@provided</c> shared enum is referenced
     /// from (ADR-0026: the namespace is per-port codegen config, never a metadata attr —
     /// ADR-0001). A consuming field of a <c>@provided</c> abstract <c>field.enum</c> emits

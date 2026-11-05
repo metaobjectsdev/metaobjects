@@ -328,6 +328,15 @@ public static class CSharpNaming
     public static string Pascal(string name) =>
         name.Length == 0 ? name : char.ToUpperInvariant(name[0]) + name[1..];
 
+    /// <summary>
+    /// The C# property name of <paramref name="field"/>: the run's
+    /// <see cref="GenConfig.PropertyNaming"/> resolver when one is set, else
+    /// <see cref="Pascal"/> of the field name. The one answer every generator uses, so a
+    /// renamed property is renamed everywhere it is referenced.
+    /// </summary>
+    public static string PropertyName(MetaField field, GenConfig? config) =>
+        config?.PropertyNaming?.Invoke(field) ?? Pascal(field.Name);
+
     // ----------------------------------------------------------------------------
     // Generated-SDK SYMBOL names — the single source of truth for the public C#
     // identifiers the generators emit. Each generator calls one of these instead of

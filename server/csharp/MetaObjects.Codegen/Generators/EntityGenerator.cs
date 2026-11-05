@@ -37,11 +37,23 @@ public class EntityGenerator : IGenerator
 {
     public virtual string Name => "entity-generator";
 
-    /// <summary>The C# property name for a field. Default: PascalCase the metadata
-    /// (camelCase) name. Extension seam (ADR-0002) — a subclass can override to honor
-    /// an explicit casing source (e.g. P3 preserves an all-caps acronym column casing
-    /// like NPI/PARequired that a plain PascalCase of the field name would mangle).</summary>
-    protected virtual string PropertyName(MetaField field) => CSharpNaming.Pascal(field.Name);
+    /// <summary>The C# property name for a field. Default: the run's
+    /// <see cref="GenConfig.PropertyNaming"/> resolver, else PascalCase of the metadata
+    /// (camelCase) name (<see cref="CSharpNaming.PropertyName"/>). Extension seam (ADR-0002) — a
+    /// subclass can override to honor an explicit casing source (an all-caps acronym a plain
+    /// PascalCase of the field name would mangle). Every name this generator emits for a field —
+    /// the property, the composite <c>[PrimaryKey]</c>, the reverse finders — goes through here.
+    /// The DbContext generator names the same properties: set the resolver on the config, or
+    /// override <c>DbContextGenerator.PropertyName</c> to match.</summary>
+    protected virtual string PropertyName(MetaField field) => CSharpNaming.PropertyName(field, _config);
+
+    // The run's config, for the PropertyName default. Set when Generate starts.
+    private GenConfig? _config;
+
+    /// <summary>Whether this entry emits the ADR-0038 reverse-FK finders
+    /// (<c>&lt;Entity&gt;Queries.g.cs</c>). <c>true</c> by default; an adopter that writes its own
+    /// finders turns them off here instead of dropping the files by name.</summary>
+    public bool EmitsReverseFinders { get; init; } = true;
 
     /// <summary>Scope this entry to some objects: only those it accepts are emitted (entities
     /// and value objects alike). A value object an emitted entity points at is still emitted,
@@ -58,6 +70,7 @@ public class EntityGenerator : IGenerator
     {
         ctx = ctx.Narrow(Include);
         _wire = ctx.Root.WireFormat;
+        _config = ctx.Config;
         // FR-044 — a view-backed report joins the set as its ROW MODEL (a keyless,
         // projection-shaped object carrying its derived fields); every other report node
         // is dropped. See ReportRows.
@@ -157,7 +170,7 @@ public class EntityGenerator : IGenerator
         // generated DbSet (framework-free, single-query LINQ). NOT a lazy collection.
         // TPH subtypes are folded into the base's DbSet, so finders hang off the base
         // entity's set — skip subtype-level emission (the base carries the FKs it owns).
-        foreach (var e in mapped)
+        foreach (var e in EmitsReverseFinders ? mapped : [])
         {
             if (InstanceArtifacts.IsAbstract(e)) continue;
             if (TphPlanBuilder.IsTphSubtype(e, ctx.Root)) continue;
@@ -171,7 +184,7 @@ public class EntityGenerator : IGenerator
                 rowOverride = CSharpNaming.ViewModelClassName(e);
                 dbSetOverride = CSharpNaming.ViewDbSetName(e);
             }
-            if (ReverseFinderBuilder.Generate(e, ctx, rowOverride, dbSetOverride) is { } queries)
+            if (ReverseFinderBuilder.Generate(e, ctx, rowOverride, dbSetOverride, PropertyName) is { } queries)
                 files.Add(queries);
         }
 
@@ -398,7 +411,8 @@ public class EntityGenerator : IGenerator
         // Composite primary key -> class-level [PrimaryKey(...)] (EF Core 7+).
         if (pkFields.Count > 1)
         {
-            var names = string.Join(", ", pkFields.Select(f => $"nameof({CSharpNaming.Pascal(f)})"));
+            var names = string.Join(", ", pkFields.Select(f =>
+                $"nameof({(entity.FindField(f) is { } pkField ? PropertyName(pkField) : CSharpNaming.Pascal(f))})"));
             sb.AppendLine($"[PrimaryKey({names})]");
         }
         // A6 -- CSharpNaming.NameRef gates this on TWO independent things, neither of
@@ -433,12 +447,24 @@ public class EntityGenerator : IGenerator
             foreach (var sub in tphPlan.Subtypes)
                 sb.AppendLine(
                     $"[System.Text.Json.Serialization.JsonDerivedType(typeof({CSharpNaming.Pascal(sub.Entity.Name)}))]");
+        EmitClassAttributes(sb, entity, className, ClassDeclarationKind.MappedEntity, ctx);
 
         // The `public [abstract] class <Name>[ : Base]` declaration line itself is routed
         // through the single overridable seam shared by all four emitted class kinds, so an
         // adopter's `partial`/marker-interface override applies uniformly. The EF mapping
         // attrs ([Table]/[PrimaryKey]) above stay here — they are mapped-entity-only.
         EmitClassDeclarationLine(sb, entity, className, ClassDeclarationKind.MappedEntity, ctx);
+    }
+
+    // Extension hook — class-level attributes of an adopter's own, emitted after the framework's
+    // (XML doc, [PrimaryKey], [Table], [JsonDerivedType]) and immediately before the declaration
+    // line, for every class kind. The default emits nothing, so default output is byte-identical.
+    // Override it to add an attribute without re-implementing EmitClassHeader; each line written
+    // should be a complete attribute line with no indent.
+    protected virtual void EmitClassAttributes(
+        StringBuilder sb, MetaObject entity, string className, ClassDeclarationKind kind, GenContext ctx)
+    {
+        // No-op by default.
     }
 
     // The four emitted class kinds — the declaration-line seam dispatches on this so an
@@ -561,6 +587,7 @@ public class EntityGenerator : IGenerator
         sb.AppendLine();
 
         XmlDocBuilder.AppendTo(sb, entity);
+        EmitClassAttributes(sb, entity, className, ClassDeclarationKind.TphSubtype, ctx);
         EmitClassDeclarationLine(sb, entity, className, ClassDeclarationKind.TphSubtype, ctx);
         sb.AppendLine("{");
 
@@ -786,6 +813,7 @@ public class EntityGenerator : IGenerator
         sb.AppendLine();
 
         XmlDocBuilder.AppendTo(sb, entity);
+        EmitClassAttributes(sb, entity, className, ClassDeclarationKind.AbstractShape, ctx);
         EmitClassDeclarationLine(sb, entity, className, ClassDeclarationKind.AbstractShape, ctx);
         sb.AppendLine("{");
 
@@ -864,6 +892,7 @@ public class EntityGenerator : IGenerator
         sb.AppendLine($"namespace {PackageBindingResolver.Resolve(ctx.Config, PackageBindingResolver.EffectivePackage(vo), vo.Name, fallbackContext: vo.Name)};");
         sb.AppendLine();
         XmlDocBuilder.AppendTo(sb, vo);
+        EmitClassAttributes(sb, vo, className, ClassDeclarationKind.ValueObject, ctx);
         EmitClassDeclarationLine(sb, vo, className, ClassDeclarationKind.ValueObject, ctx);
         sb.AppendLine("{");
 

@@ -345,6 +345,25 @@ The codegen emits:
 - `AuthorFilterAllowlist.g.cs` — the server-side filter/sort allowlist feeding the
   generated list handler.
 
+### Entity and DbContext generator options
+
+**Renaming a property.** A field's C# property is its PascalCased name. To spell some
+differently (an acronym, say), set one resolver on the config, `GenConfig.PropertyNaming`
+(`Func<MetaField, string>`, returning the name). The entity classes, the composite
+`[PrimaryKey(nameof(...))]`, every `AppDbContext` model line and the reverse finders all read it,
+so the declaration and every reference agree. The hooks `EntityGenerator.PropertyName` and
+`DbContextGenerator.PropertyName` default to it; a subclass that overrides one must override the
+other the same way. The routes generator and the filter runtime still use the PascalCased name.
+
+**Class attributes.** `EntityGenerator.EmitClassAttributes(sb, entity, className, kind, ctx)` is
+called for every class it emits (mapped entity, TPH subtype, abstract shape, value object), after
+the framework's own attributes and right before the declaration line. Override it to add an
+attribute without re-implementing `EmitClassHeader`.
+
+**Reverse finders.** `<Entity>Queries.g.cs` takes the context as its first parameter, typed
+`GenConfig.ContextTypeName` (default `AppDbContext`). `new EntityGenerator { EmitsReverseFinders =
+false }` emits none, for a project that writes its own.
+
 ### Decimals and null members on the wire
 
 What the generated API writes is the project setting `wire` in `.metaobjects/config.json`

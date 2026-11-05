@@ -166,6 +166,19 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
   new command. `examples/brownfield/` holds a runnable project for each, and the recipe ships in
   the `metaobjects-authoring` skill.
 
+- **C#: one property-name resolver for every generator that names a field's property.**
+  `GenConfig.PropertyNaming` (`Func<MetaField, string>`, default PascalCase) is read by the
+  entity classes, the composite `[PrimaryKey(nameof(...))]`, every `AppDbContext` model line and
+  the reverse finders. `DbContextGenerator` gains the `protected virtual PropertyName` hook
+  `EntityGenerator` already had; both default to the resolver. Before, an adopter that overrode
+  `EntityGenerator.PropertyName` got a context that configured the PascalCased name, which did
+  not compile.
+- **C#: `EntityGenerator.EmitClassAttributes`,** a seam for class-level attributes of your own,
+  called for every class kind after the framework's attributes and before the declaration, so a
+  subclass no longer copies `EmitClassHeader` to add one.
+- **C#: `EntityGenerator.EmitsReverseFinders`** (default `true`) turns the ADR-0038
+  `<Entity>Queries.g.cs` finders off.
+
 ### Changed
 
 - **`meta migrate` refuses a foreign key that references columns the target does not hold unique.**
@@ -203,6 +216,10 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
   (TypeScript `prompts.ts` and Python helpers gain a `verify` argument).
 
 ### Fixed
+
+- **C#: the reverse finders take `GenConfig.ContextTypeName`.** They hardcoded `AppDbContext`
+  as their first parameter's type, so a project that renamed its context got finders that did
+  not compile.
 
 - **C#: a "-sis" entity name pluralizes to "-ses" in DbSet and finder names.** `Diagnosis` gave
   `DbSet<Diagnosis> Diagnosises` and `FindDiagnosisesByPatient`; it now gives `Diagnoses` and

@@ -56,6 +56,16 @@ public class DbContextGenerator : IGenerator
     /// </summary>
     protected virtual bool EmitsReferenceForeignKeys => true;
 
+    /// <summary>The C# property name of a field, for every line of model configuration that
+    /// names one. Default: the run's <see cref="GenConfig.PropertyNaming"/> resolver, else
+    /// PascalCase of the field name — the same answer <c>EntityGenerator.PropertyName</c> gives
+    /// by default, so the two agree. A subclass that overrides the entity generator's hook
+    /// overrides this one the same way (or sets the resolver on the config instead).</summary>
+    protected virtual string PropertyName(MetaField field) => CSharpNaming.PropertyName(field, _config);
+
+    // The run's config, for the PropertyName default. Set when Generate starts.
+    private GenConfig? _config;
+
     /// <summary>
     /// True iff this object gets a DbSet on the generated AppDbContext: a persisted
     /// entity/projection (<c>IsEntity() || DbView != null</c>) that emits instance
@@ -75,6 +85,7 @@ public class DbContextGenerator : IGenerator
     public virtual IEnumerable<EmittedFile> Generate(GenContext ctx)
     {
         ctx = ctx.Narrow(Include);
+        _config = ctx.Config;
         // FR-017 TPH: a concrete subtype shares the base's single table — it gets NO
         // DbSet and no per-subtype model config; the hierarchy is reached via the base
         // DbSet (`.OfType<Sub>()`). Filter subtypes out of the emitted set entirely.
@@ -147,8 +158,8 @@ public class DbContextGenerator : IGenerator
             // silently name the wrong members, and a string-backed one would read text[] as int[].
             foreach (var f in p.Fields().Where(f => f.SubType == FIELD_SUBTYPE_ENUM))
                 modelLines.Add(f.ResolvedIsArray()
-                    ? $"        modelBuilder.Entity<{name}>().PrimitiveCollection(x => x.{CSharpNaming.Pascal(f.Name)}).ElementType().{EnumConversionCall(name, p, f, ctx.Config)};"
-                    : $"        modelBuilder.Entity<{name}>().Property(x => x.{CSharpNaming.Pascal(f.Name)}).{EnumConversionCall(name, p, f, ctx.Config)};");
+                    ? $"        modelBuilder.Entity<{name}>().PrimitiveCollection(x => x.{PropertyName(f)}).ElementType().{EnumConversionCall(name, p, f, ctx.Config)};"
+                    : $"        modelBuilder.Entity<{name}>().Property(x => x.{PropertyName(f)}).{EnumConversionCall(name, p, f, ctx.Config)};");
             // A field.map column on a view needs its jsonb mapping for the SAME reason:
             // EntityGenerator emits the Dictionary property for a projection too, so without
             // this loop the property carries no column type and no converter -- only an
@@ -188,7 +199,7 @@ public class DbContextGenerator : IGenerator
             foreach (var f in configFields.Where(f => !f.ResolvedIsArray()
                                                       && f.Mutability != MUTABILITY_READ_WRITE))
             {
-                var prop = CSharpNaming.Pascal(f.Name);
+                var prop = PropertyName(f);
                 modelLines.Add(
                     $"        modelBuilder.Entity<{owner}>().Property(x => x.{prop}).Metadata.SetAfterSaveBehavior(PropertySaveBehavior.Ignore);");
             }
@@ -380,9 +391,9 @@ public class DbContextGenerator : IGenerator
     //                                            raw JSON text ↔ string directly.
     // (ADR-0036 Wave 2: the retired timestamp_with_tz override is gone — timezone-awareness
     //  is the field.timestamp default, opted out of via @localTime; handled above.)
-    private static string? DbColumnTypeConfig(string owner, MetaField f)
+    private string? DbColumnTypeConfig(string owner, MetaField f)
     {
-        var prop = CSharpNaming.Pascal(f.Name);
+        var prop = PropertyName(f);
         var lhs = $"        modelBuilder.Entity<{owner}>().Property(x => x.{prop})";
         return f.DbColumnType switch
         {
@@ -406,10 +417,10 @@ public class DbContextGenerator : IGenerator
     // discriminator field is an enum (the canonical shape) the HasValue argument is the
     // enum literal (<EnumType>.<Value>), which round-trips through the enum's
     // HasConversion<string>() as the text symbol; otherwise the raw string value.
-    private static string HasDiscriminatorConfig(string owner, MetaObject baseEntity, TphPlan tph, GenConfig config)
+    private string HasDiscriminatorConfig(string owner, MetaObject baseEntity, TphPlan tph, GenConfig config)
     {
         var discField = baseEntity.FindField(tph.DiscriminatorField);
-        var discProp = CSharpNaming.Pascal(tph.DiscriminatorField);
+        var discProp = discField is not null ? PropertyName(discField) : CSharpNaming.Pascal(tph.DiscriminatorField);
         var isEnum = discField is not null && discField.SubType == FIELD_SUBTYPE_ENUM;
         // The enum type is nested in the base class, so qualify it (<Base>.<EnumType>)
         // when referenced from the DbContext (a sibling type) — global::-qualified
@@ -525,7 +536,7 @@ public class DbContextGenerator : IGenerator
             // declare (a compile error in the generated file).
             if (entity.FindField(name) is not { } field) return null;
             if (isWriteThrough && field.IsDerived()) return null;
-            props.Add(CSharpNaming.Pascal(name));
+            props.Add(PropertyName(field));
         }
 
         var actions = ReferentialActions.Resolve(entity, reference);
@@ -628,6 +639,10 @@ public class DbContextGenerator : IGenerator
         return OnDeleteCall(junction, [fkField], resolved, ctx);
     }
 
+    // A junction FK column's C# property, through the same resolver its entity class used.
+    private string JunctionFkProperty(MetaObject junction, string fkField) =>
+        junction.FindField(fkField) is { } f ? PropertyName(f) : CSharpNaming.Pascal(fkField);
+
     // FR-018 — EF skip-navigation config for a hetero M:N navigation through its
     // explicit junction entity. The junction's FK PROPERTIES are the PascalCased
     // junction FK field names (the EntityGenerator emits them as scalar properties on
@@ -650,8 +665,8 @@ public class DbContextGenerator : IGenerator
         var target = CSharpNaming.Pascal(nav.Target.Name);
         var through = CSharpNaming.Pascal(nav.Junction.Name);
         var navProp = CSharpNaming.Pascal(nav.Name);
-        var sourceFkProp = CSharpNaming.Pascal(nav.SourceField);
-        var targetFkProp = CSharpNaming.Pascal(nav.TargetField);
+        var sourceFkProp = JunctionFkProperty(nav.Junction, nav.SourceField);
+        var targetFkProp = JunctionFkProperty(nav.Junction, nav.TargetField);
         var targetOnDelete = JunctionSideOnDelete(nav.Junction, nav.TargetField, ctx);
         var sourceOnDelete = JunctionSideOnDelete(nav.Junction, nav.SourceField, ctx);
         // Typed lambdas for the same reason the 1:N path uses them (see ForeignKeyExpression):
@@ -709,8 +724,8 @@ public class DbContextGenerator : IGenerator
     /// (<see cref="EmitFieldTypeConfig"/>) and the read-only-projection path, which both emit
     /// a <c>Dictionary&lt;string, V&gt;</c> property and so both need the mapping.
     /// </summary>
-    private static string MapJsonbConfig(string className, MetaObject owner, MetaField f, GenContext ctx) =>
-        $"        modelBuilder.Entity<{className}>().Property(x => x.{CSharpNaming.Pascal(f.Name)})"
+    private string MapJsonbConfig(string className, MetaObject owner, MetaField f, GenContext ctx) =>
+        $"        modelBuilder.Entity<{className}>().Property(x => x.{PropertyName(f)})"
             + MapJsonbSuffix(owner, f, ctx) + ";";
 
     /// <summary>
@@ -1042,7 +1057,7 @@ public class DbContextGenerator : IGenerator
 
         foreach (var f in fieldList.Where(f => f.SubType == FIELD_SUBTYPE_ENUM))
         {
-            var prop = CSharpNaming.Pascal(f.Name);
+            var prop = PropertyName(f);
             // An int-backed enum (@intValueMap) persists the declared INTEGER instead of the
             // member symbol, so it needs a custom converter pair rather than HasConversion<string>().
             // The generated C# `enum` declaration is byte-identical either way — int-backing is a
@@ -1059,14 +1074,14 @@ public class DbContextGenerator : IGenerator
 
         foreach (var f in fieldList.Where(f => f.ResolvedIsArray() && CSharpNaming.ScalarFor(f.SubType) is not null))
         {
-            var prop = CSharpNaming.Pascal(f.Name);
+            var prop = PropertyName(f);
             modelLines.Add($"        modelBuilder.Entity<{className}>().PrimitiveCollection(x => x.{prop});");
         }
 
         foreach (var f in fieldList.Where(f =>
                      !f.ResolvedIsArray() && f.SubType == FIELD_SUBTYPE_DECIMAL && f.Precision is not null))
         {
-            var prop = CSharpNaming.Pascal(f.Name);
+            var prop = PropertyName(f);
             modelLines.Add(f.Scale is long sc
                 ? $"        modelBuilder.Entity<{className}>().Property(x => x.{prop}).HasPrecision({f.Precision}, {sc});"
                 : $"        modelBuilder.Entity<{className}>().Property(x => x.{prop}).HasPrecision({f.Precision});");
@@ -1074,7 +1089,7 @@ public class DbContextGenerator : IGenerator
 
         foreach (var f in fieldList.Where(f => !f.ResolvedIsArray() && f.SubType == FIELD_SUBTYPE_TIMESTAMP))
         {
-            var prop = CSharpNaming.Pascal(f.Name);
+            var prop = PropertyName(f);
             var colType = CSharpNaming.IsLocalTime(f)
                 ? "timestamp without time zone"
                 : "timestamp with time zone";
@@ -1086,7 +1101,7 @@ public class DbContextGenerator : IGenerator
         foreach (var f in fieldList.Where(f => !f.ResolvedIsArray()
                      && f.SubType == FIELD_SUBTYPE_URI && !CSharpNaming.IsLenientNet(f)))
         {
-            var prop = CSharpNaming.Pascal(f.Name);
+            var prop = PropertyName(f);
             // System.Uri is FULLY QUALIFIED: the emitted AppDbContext carries no `using System;`
             // (unlike the entity files), so an unqualified `new Uri(v)` in OnModelCreating fails
             // to compile except under a host's ImplicitUsings — the generated context must be
@@ -1098,7 +1113,7 @@ public class DbContextGenerator : IGenerator
         foreach (var f in fieldList.Where(f => !f.ResolvedIsArray()
                      && f.SubType == FIELD_SUBTYPE_INET && !CSharpNaming.IsLenientNet(f)))
         {
-            var prop = CSharpNaming.Pascal(f.Name);
+            var prop = PropertyName(f);
             modelLines.Add(
                 $"        modelBuilder.Entity<{className}>().Property(x => x.{prop}).HasColumnType(\"inet\");");
         }
@@ -1119,12 +1134,12 @@ public class DbContextGenerator : IGenerator
     // provider stores a 64-bit count of microseconds in an integer column (the TS-owned SQLite /
     // MySQL schemas), through the entity namespace's DurationWire; EF's own TimeSpan text
     // ("01:30:00") does not order as the span, and MySQL's `time` cannot hold more than 838 hours.
-    private static void AddDurationConfig(
+    private void AddDurationConfig(
         string className, MetaObject entity, IEnumerable<MetaField> fields, GenContext ctx, List<string> modelLines)
     {
         foreach (var f in fields.Where(f => f.SubType == FIELD_SUBTYPE_DURATION && f.DbColumnType is null))
             modelLines.Add(string.Join("\n",
-                DurationColumnLines($"modelBuilder.Entity<{className}>()", "x", CSharpNaming.Pascal(f.Name), f.ResolvedIsArray(), entity, ctx, "        ")));
+                DurationColumnLines($"modelBuilder.Entity<{className}>()", "x", PropertyName(f), f.ResolvedIsArray(), entity, ctx, "        ")));
     }
 
     // The provider-dependent mapping of one duration column (a top-level property, or a member of a
@@ -1349,7 +1364,7 @@ public sealed class DurationIntervalArrayMapping : Microsoft.EntityFrameworkCore
             return null;
         }
         var strategy = ctx.Config.ColumnNamingStrategy;
-        var nav = CSharpNaming.Pascal(field.Name);
+        var nav = PropertyName(field);
         // A6 -- the field itself belongs to `entity` (the JSON column's own physical
         // name, not the nested value object's), so it hits entity's own names artifact
         // unconditionally in practice — a lookup, not an assumption, per ColumnRef.
@@ -1444,7 +1459,7 @@ public sealed class DurationIntervalArrayMapping : Microsoft.EntityFrameworkCore
             // members persist as int ordinals inside the array.
             if (nf.SubType == FIELD_SUBTYPE_ENUM && nf.ResolvedIsArray())
             {
-                sb.AppendLine($"            b.PrimitiveCollection(p => p.{CSharpNaming.Pascal(nf.Name)})"
+                sb.AppendLine($"            b.PrimitiveCollection(p => p.{PropertyName(nf)})"
                     + $".HasColumnName(\"{nestedColAny}\").ElementType()"
                     + $".{EnumConversionCall(ValueObjectNames.TypeName(vo, ctx.Root), vo, nf, ctx.Config)};");
                 continue;
@@ -1459,7 +1474,7 @@ public sealed class DurationIntervalArrayMapping : Microsoft.EntityFrameworkCore
                 && ValueObjectNames.ResolveFieldRef(nf, ctx.Root) is { } nestedVo)
             {
                 var ownsCall = nf.ResolvedIsArray() ? "OwnsMany" : "OwnsOne";
-                sb.AppendLine($"            b.{ownsCall}(p => p.{CSharpNaming.Pascal(nf.Name)}, nb =>");
+                sb.AppendLine($"            b.{ownsCall}(p => p.{PropertyName(nf)}, nb =>");
                 sb.AppendLine("            {");
                 sb.AppendLine($"                nb.ToJson(\"{nestedColAny}\");");
                 // `nb`, not `b` — the nested builder shadows the outer one, and emitting `b.`
@@ -1479,7 +1494,7 @@ public sealed class DurationIntervalArrayMapping : Microsoft.EntityFrameworkCore
             // default: a column the migration never creates (42703 at the engine).
             if (nf.SubType == FIELD_SUBTYPE_MAP)
             {
-                sb.AppendLine($"            b.Property(p => p.{CSharpNaming.Pascal(nf.Name)})"
+                sb.AppendLine($"            b.Property(p => p.{PropertyName(nf)})"
                     + $".HasColumnName(\"{nestedColAny}\")" + MapJsonbSuffix(vo, nf, ctx) + ";");
                 continue;
             }
@@ -1490,7 +1505,7 @@ public sealed class DurationIntervalArrayMapping : Microsoft.EntityFrameworkCore
             // its own "01:30:00" text there and fail to read another port's count.
             if (nf.SubType == FIELD_SUBTYPE_DURATION && CSharpNaming.DbColumnTypeClrOverride(nf) is null)
             {
-                var dprop = CSharpNaming.Pascal(nf.Name);
+                var dprop = PropertyName(nf);
                 sb.AppendLine(nf.ResolvedIsArray()
                     ? $"            b.PrimitiveCollection(p => p.{dprop}).HasColumnName(\"{nestedColAny}\");"
                     : $"            b.Property(p => p.{dprop}).HasColumnName(\"{nestedColAny}\");");
@@ -1514,7 +1529,7 @@ public sealed class DurationIntervalArrayMapping : Microsoft.EntityFrameworkCore
             // The enum type nests in the value object's class (EntityGenerator's
             // EmitValueObjectPoco), so the VO is the `owner` the conversion qualifies it by.
             var conversion = isEnum ? $".{EnumConversionCall(ValueObjectNames.TypeName(vo, ctx.Root), vo, nf, ctx.Config)}" : "";
-            sb.AppendLine($"            b.Property(p => p.{CSharpNaming.Pascal(nf.Name)}).HasColumnName(\"{nestedCol}\"){conversion};");
+            sb.AppendLine($"            b.Property(p => p.{PropertyName(nf)}).HasColumnName(\"{nestedCol}\"){conversion};");
         }
         sb.Append("        });");
         return sb.ToString();
@@ -1540,12 +1555,12 @@ public sealed class DurationIntervalArrayMapping : Microsoft.EntityFrameworkCore
     /// with a per-element conversion); the two must not drift, because a VO member and a top-level
     /// field of the same declared subtype describe the same stored value.</para>
     /// </remarks>
-    private static List<string> JsonEnumConversions(MetaObject vo, GenContext ctx, string builder = "b")
+    private List<string> JsonEnumConversions(MetaObject vo, GenContext ctx, string builder = "b")
     {
         var lines = new List<string>();
         foreach (var nf in vo.Fields())
         {
-            var prop = CSharpNaming.Pascal(nf.Name);
+            var prop = PropertyName(nf);
             // A decimal member of a JSON document is stored as its CANONICAL STRING (the same text
             // the wire carries, ADR-0019 Amendment 1), not as EF's default JSON number: an exact
             // read-back, identical to every other port's stored form. Single members only.
