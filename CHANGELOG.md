@@ -222,6 +222,15 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
 
 ### Fixed
 
+- **C#: concurrent reads of a loaded model no longer corrupt its cache.** `MetaData.Cached`
+  memoized derived reads (`Validators()`, `ResolvedIsArray()`, `OwnAttrs()`, …) in a plain
+  `Dictionary`, so two threads touching a frozen node for the first time could corrupt it, and
+  every later read in the process then failed with "Operations that change non-concurrent
+  collections must have exclusive access". A host that loads metadata once and serves requests
+  from it in parallel, or a parallel test run, hit this. The cache is now a
+  `ConcurrentDictionary`.
+
+
 - **C#: a field's `@default` reaches the EF model.** The context configured no default at all,
   so a database EF creates (`EnsureCreated`, an EF migration) had none, and an insert that relied
   on one failed with a NOT NULL violation. A literal the property's CLR type holds (bool, string,
