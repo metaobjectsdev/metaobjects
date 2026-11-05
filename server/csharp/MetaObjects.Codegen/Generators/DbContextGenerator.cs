@@ -234,7 +234,10 @@ public class DbContextGenerator : IGenerator
             // own columns into the base table as nullable.
             var tph = TphPlanBuilder.For(e, ctx.Root);
             if (tph is not null)
+            {
                 modelLines.Add(HasDiscriminatorConfig(owner, e, tph, ctx.Config));
+                EmitTphSubtypeFieldConfig(e, tph, ctx, modelLines);
+            }
 
             // ADR-0047 / #294 — explicit 1:N relationship configuration, with the
             // referential action INLINE on the call that establishes the foreign key.
@@ -288,13 +291,19 @@ public class DbContextGenerator : IGenerator
         var needsMetadataUsing = objects
             .Where(o => o.IsEntity() && !o.IsReadOnlyProjection())
             .Any(o => o.Fields().Any(f => !f.ResolvedIsArray()
-                                          && f.Mutability != MUTABILITY_READ_WRITE));
+                                          && f.Mutability != MUTABILITY_READ_WRITE))
+            // A TPH subtype's own read-only field is configured too (EmitTphSubtypeFieldConfig).
+            || modelLines.Any(l => l.Contains("PropertySaveBehavior.", StringComparison.Ordinal));
 
         var sb = new StringBuilder();
         EmitUsings(sb, needsMetadataUsing, ctx);
         EmitDbSetDeclarations(sb, objects, ctx);
         EmitOnModelCreatingBody(sb, modelLines, ctx);
-        if (NeedsUnmappedEnumHelper(objects, ctx.Root)) EmitUnmappedEnumHelper(sb);
+        // The model lines are complete here, so the emitted text decides too: a TPH subtype's own
+        // int-backed enum is configured although the subtype is not in `objects`.
+        if (NeedsUnmappedEnumHelper(objects, ctx.Root)
+            || modelLines.Any(l => l.Contains(UnmappedEnumMemberHelperName + "(", StringComparison.Ordinal)))
+            EmitUnmappedEnumHelper(sb);
         // Gated on the EMITTED text, not on a second derivation of it. Every site that uses the
         // helper appends to modelLines (entity, read-only projection, and the flattened-VO member
         // block, which lands here as one OwnedTypeConfig string), and modelLines is complete by
@@ -513,6 +522,36 @@ public class DbContextGenerator : IGenerator
                 if (ReferenceConfig(CSharpNaming.Pascal(st.Entity.Name), st.Entity, reference, ctx) is { } line)
                     modelLines.Add(line);
             }
+        }
+    }
+
+    /// <summary>
+    /// FR-017 TPH — the per-field configuration of the fields a concrete SUBTYPE declares beyond
+    /// its TPH ancestors. A subtype gets no DbSet and is not in the emitted set, so the root's
+    /// pass (over the root's own fields) never reaches them: an owned value object was left for
+    /// EF to discover as an entity ("requires a primary key"), and a timestamp, enum, decimal,
+    /// array or map column lost the mapping the same field gets on the root. Configured on the
+    /// subtype's own builder, which EF applies to the shared table. A subtype that extends another
+    /// concrete subtype configures only what it adds, since the parent is in the model already.
+    /// </summary>
+    private void EmitTphSubtypeFieldConfig(MetaObject root, TphPlan tph, GenContext ctx, List<string> modelLines)
+    {
+        var concrete = new HashSet<MetaObject>(tph.Subtypes.Select(st => st.Entity));
+        foreach (var st in tph.Subtypes)
+        {
+            // The nearest ancestor already in the EF model: a concrete subtype, else the root.
+            var cursor = st.Entity.SuperData as MetaObject;
+            while (cursor is not null && cursor != root && !concrete.Contains(cursor))
+                cursor = cursor.SuperData as MetaObject;
+            var inherited = new HashSet<string>((cursor ?? root).Fields().Select(f => f.Name), StringComparer.Ordinal);
+            var own = st.Entity.Fields().Where(f => !inherited.Contains(f.Name)).ToList();
+            if (own.Count == 0) continue;
+
+            var cls = CSharpNaming.Pascal(st.Entity.Name);
+            EmitFieldTypeConfig(cls, st.Entity, own, ctx, modelLines, jsonbObjectsOnly: false);
+            foreach (var f in own.Where(f => !f.ResolvedIsArray() && f.Mutability != MUTABILITY_READ_WRITE))
+                modelLines.Add(
+                    $"        modelBuilder.Entity<{cls}>().Property(x => x.{PropertyName(f)}).Metadata.SetAfterSaveBehavior(PropertySaveBehavior.Ignore);");
         }
     }
 

@@ -217,6 +217,14 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
 
 ### Fixed
 
+- **C#: a TPH subtype's own fields get their EF configuration.** The context configured the
+  fields of the TPH root only, so a field a subtype declares itself got none: a `field.object`
+  was left for EF to discover as an entity (model validation failed with "requires a primary
+  key"), and a timestamp, enum, decimal precision, array, map, duration or `@readOnly` column
+  lost the mapping the same field gets on the root. Each concrete subtype now configures the
+  fields it adds, on its own builder. The integration corpus's `CopayAuth.copayAmount` gains its
+  `HasPrecision(10, 2)`.
+
 - **C#: under `EmitAbstractShapes`, a concrete entity extends its abstract shape and keeps the
   facets of the fields it inherits.** The entity class left out the fields its abstract parent
   declares, expecting the shape class to carry them, but never named the shape as its base, so
