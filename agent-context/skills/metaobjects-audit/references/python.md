@@ -40,7 +40,13 @@ metaobjects gen                       # run every target's generators (metaobjec
 metaobjects gen --generators entity   # narrow to declared entries
 metaobjects verify --codegen    # regenerate to temp, diff vs each committed outDir (bare default)
 metaobjects verify --templates  # {{field}} refs vs payload VO
+metaobjects deps check          # shared-model dependencies vs deps.lock.json (also: verify --deps)
 ```
+
+`deps check` applies when the project declares `dependencies` in `.metaobjects/config.json`: it
+hashes each `path` dependency against the lock and fails with `ERR_DEPENDENCY_UPSTREAM_DRIFT` on
+`drifted` or `unresolved` (a `maven`, `nuget`, `npm` or `python` dependency reports `unresolved`;
+run the Node `meta deps check` for those). Python consumes a shared model but cannot publish one.
 
 With no `metaobjects.config.yaml`, `gen` exits 2 and generates nothing. A target's
 `generators` takes stable generator names: `entity`, `routes`, `filter-allowlist`,

@@ -44,6 +44,13 @@ mvn metaobjects:verify -Dmeta.verify.mode=codegen     # regen to temp, diff vs c
 mvn metaobjects:verify -Dmeta.verify.mode=templates   # {{field}} refs vs payload VO
 ```
 
+If the project declares `dependencies` in `.metaobjects/config.json` (a model shared from another
+repository), also run `mvn metaobjects:verify -Dmeta.verify.mode=deps`: it hashes each `path`
+dependency against `.metaobjects/deps.lock.json` and fails with `ERR_DEPENDENCY_UPSTREAM_DRIFT` on
+`drifted` or `unresolved` (a `maven`, `nuget`, `npm` or `python` dependency reports `unresolved`;
+run the Node `meta deps check` for those). A project that publishes a model wires the
+`shared-model` generator; `verify --codegen` drift-gates its output.
+
 Kotlin generators run through the **same Maven plugin goal** as Java generators —
 both are SPI-discovered by the `metaobjects-maven-plugin`. Schema migration + live-DB
 drift run through the **Node `meta` CLI** regardless of server language — see the

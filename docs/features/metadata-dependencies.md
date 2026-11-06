@@ -685,38 +685,50 @@ manager. What's different: the artifact is **one flattened, generated file** rat
 than a directory of hand-placed sources, its manifest is generated rather than
 hand-written, and `meta deps sync` copies it into a **committed snapshot** rather
 than reading it live off the classpath at build time — the classpath-at-build-time
-read is recorded as a Phase 2 JVM option, not gone, but the committed snapshot is the
-cross-port contract every consumer gets today.
+read with no committed snapshot (`"commit": false`) is [deferred](#deferred), and the committed snapshot is the
+cross-port contract every consumer gets.
 
-## Phase 2: Java, Kotlin and C#
+## Phase 2: Java, Kotlin and C# (shipped)
 
-Tracked in [#482](https://github.com/metaobjectsdev/metaobjects/issues/482). Today TypeScript,
-Python, Java, Kotlin and C# consume a dependency (Java and Kotlin shipped in slice S3, C# in S6).
-A port that does not read the lock fails loudly on a model that references a node a dependency
-would supply (`ERR_UNRESOLVED_OBJECT_REF`), never silently. Phase 2 adds no new contract. The manifest, the
-lock, the committed snapshot and the 28-case resolution corpus are plain files that every port
-already has the pieces to read; what is missing is each port *loading* the snapshot.
+Phase 2 ([#482](https://github.com/metaobjectsdev/metaobjects/issues/482)) is built. It added no new
+contract: the manifest, the lock, the committed snapshot and the resolution corpus are plain files
+every port reads. What it added is each port *loading* the snapshot, *checking* it, and (for Java,
+Kotlin and C#) *publishing* one. A port that does not read the lock still fails loudly on a model
+that references a node a dependency would supply (`ERR_UNRESOLVED_OBJECT_REF`), never silently.
+
+| | TypeScript | Python | Java | Kotlin | C# |
+|---|---|---|---|---|---|
+| **Consume** (load the snapshot, scope, extend, overlay) | ✓ | ✓ | ✓ every rung of the Maven plugin's source ladder | ✓ through Java's loader and plugin | ✓ every rung of `dotnet meta`'s source ladder |
+| **Runtime load** | Node reads it | n/a (build-time) | ✓ Spring loads `.metaobjects/deps.lock.json` and `deps/**` from the classpath | ✓ same | n/a (build-time) |
+| **Check** | `meta deps check`, `meta verify --deps` | `metaobjects deps check`, `verify --deps` | `mvn metaobjects:verify -Dmeta.verify.mode=deps` | same goal | `dotnet meta verify --deps` |
+| **Publish** (`shared-model`, ejectable) | `sharedModelFile()` | no | ✓ `SharedModelGenerator` via `metaobjects:generate` | ✓ `KotlinSharedModelGenerator` | ✓ `SharedModelGenerator` via `dotnet meta gen` |
+| **Transports `sync` reads** | `path`, `npm`, `python`, `maven`, `nuget` (Node `meta deps sync` is the only writer, for every port) | | | | |
+| **Transports `check` resolves** | all five | `path` | `path` | `path` | `path` |
+
+Publishers in all three ports write the same artifact and manifest bytes as `sharedModelFile()`,
+gated by `fixtures/shared-model-conformance/`. See the port pages: [Java](../ports/java.md#consuming-a-shared-model-dependencies),
+[Kotlin](../ports/kotlin.md), [C#](../ports/csharp.md#publishing-a-shared-model-shared-model).
 
 Two rulings shape it:
 
 - **Node `meta deps sync` stays the only writer of the lock and the snapshot.** The other ports
-  load and check; a Java or C# project needs Node to sync, as a schema-owning project already
+  load, check and publish; a Java or C# project needs Node to sync, as a schema-owning project already
   needs it for `meta migrate`. Because the lock is then written by one tool, its byte format
   never becomes a cross-port contract.
 - **The Java Spring runtime loads the snapshot automatically** when
   `.metaobjects/deps.lock.json` is on the classpath, so a Spring app whose entity `extends` a
   dependency's node does not fail at boot for want of one line of configuration.
 
-**Java and Kotlin: runtime load and `verify` (shipped, S4 and S5).** A Spring app loads the committed
-snapshot at runtime: `metaobjects:generate` ships `.metaobjects/deps.lock.json` and
-`.metaobjects/deps/**` on the classpath, and the application loader reads them when the lock is
-there, with the build-time scoping and error codes. `mvn metaobjects:verify -Dmeta.verify.mode=deps`
-is the Java and Kotlin `meta deps check`: it resolves a `path` dependency, hashes its artifact against
-the lock and fails with `ERR_DEPENDENCY_UPSTREAM_DRIFT` on `drifted` or `unresolved`. It is opt-in, and
-an `npm`, `python`, `maven` or `nuget` dependency is `unresolved` there (run the Node `meta deps check` for those). See
+**Java and Kotlin: runtime load and `verify`.** `metaobjects:generate` ships
+`.metaobjects/deps.lock.json` and `.metaobjects/deps/**` on the classpath, and the application loader
+reads them when the lock is there, with the build-time scoping and error codes.
+`mvn metaobjects:verify -Dmeta.verify.mode=deps` is the Java and Kotlin `meta deps check`: it
+resolves a `path` dependency, hashes its artifact against the lock and fails with
+`ERR_DEPENDENCY_UPSTREAM_DRIFT` on `drifted` or `unresolved`. It is opt-in, and an `npm`, `python`,
+`maven` or `nuget` dependency is `unresolved` there (run the Node `meta deps check` for those). See
 [the Java port page](../ports/java.md#consuming-a-shared-model-dependencies).
 
-**`meta deps sync` and `check` on a Maven- or C#-shaped project (shipped).** Both commands read
+**`meta deps sync` and `check` on a Maven- or C#-shaped project.** Both commands read
 only `.metaobjects/config.json`, and finish with a proof that the dependency set loads. A project
 whose own metadata is in a build-tool directory (`src/main/resources/metadata`, a C# project's
 metadata directory) declares no neutral `sources`, and a project may use vocabulary only its own
@@ -729,19 +741,19 @@ same path, which is why the fallback is announced. A load that also has any othe
 an unresolved `extends` onto a removed dependency node, still fails the command and, for `sync`,
 rolls the lock and snapshot back.
 
-**Packaged transports: Maven and NuGet (shipped).** The `path` transport needs the
+**Packaged transports: Maven and NuGet.** The `path` transport needs the
 publisher's directory on disk. A JVM or .NET consumer that cannot reach it resolves a
 published model from the package manager's own store instead: a Maven artifact (a JAR in the
 local repository) or a NuGet package (in the global packages folder), each carrying the same
-`metaobjects.pkg.json` and artifact pair that `sharedModelFile()` writes (see
-[the transports](#declaring-a-dependency) above). Per the single-writer ruling it is Node `meta
+`metaobjects.pkg.json` and artifact pair that a publisher writes (see
+[the transports](#declaring-a-dependency) above). A publisher ships the pair inside its JAR (as
+`metaobjects/` resources) or its NuGet package (as `metaobjects/` content), declared as
+`{ "name": "x", "maven": "com.acme:acme-model", "version": "1.0.0" }` or
+`{ "name": "x", "nuget": "Acme.Model", "version": "1.0.0" }`. Per the single-writer ruling it is Node `meta
 deps sync` that reads the pair out of the JAR or the package and writes the same snapshot and
 lock entry a `path` sync writes, so everything downstream (`check`, load, scope, the corpus) is
-unchanged; nothing in a port's own build resolves a dependency, and the Java, Python and C#
-`check` report a `maven` or `nuget` dependency `unresolved` and name the Node `meta deps check`,
-as they do for `npm` and `python`. This generalizes the resources-JAR pattern described above. A
-JVM *classpath read with no committed snapshot* (the legacy behaviour) stays a separate, deferred
-option.
+unchanged; nothing in a port's own build resolves a dependency. This generalizes the resources-JAR
+pattern described above.
 
 ## Deferred
 
@@ -762,7 +774,10 @@ but **not** built yet — do not assume any of the following exists:
 - **A runtime `ObjectManager` scope predicate.** Nothing at runtime refuses to serve
   an imported entity — "what's imported" is a load-time/codegen concept today, not a
   runtime one.
-- **Python as a publisher** — Java, Kotlin and C# publish (S8 and S9); Python consumes only.
+- **Python as a publisher** — Java, Kotlin and C# publish; Python consumes only.
+- **A JVM classpath read with `"commit": false`** — a Java or Kotlin build reading a dependency's
+  artifact straight off the classpath with no committed snapshot. The committed snapshot is the only
+  shipped path.
 - **`npm`, `python`, `maven` and `nuget` transports in the Python, Java and C# check.** Those
   ports' check resolves `path` only; any other dependency reports `unresolved` and names the Node
   `meta deps check`, because resolving it needs the consumer's installed packages or local package
@@ -795,8 +810,8 @@ but **not** built yet — do not assume any of the following exists:
 - [`fixtures/shared-model-conformance/`](../../fixtures/shared-model-conformance/) — 11 cases
   pinning what a publisher writes: the exact artifact and manifest bytes for a source tree and
   `include` / `exclude` / `files`, and the refusals (an empty selection, a closure failure naming
-  every `referrer → target` pair, vocabulary a consumer's toolchain does not ship). TypeScript runs
-  all of it; Python runs the serializer arm.
+  every `referrer → target` pair, vocabulary a consumer's toolchain does not ship). TypeScript, Java
+  (Kotlin through the same engine) and C# run all of it; Python runs the serializer arm.
 
 ## See also
 

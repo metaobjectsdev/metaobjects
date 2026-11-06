@@ -161,7 +161,7 @@ Each dependency is `current`, `drifted` or `unresolved` (no directory, a bad man
 does not match, or no lock entry yet); anything but `current` exits 1 with
 `ERR_DEPENDENCY_UPSTREAM_DRIFT`, and a lock that cannot be read exits 2. `deps check` also loads
 the locked snapshots together once the hashes match. Neither writes anything, `--deps` is never
-part of a bare `verify`, and an `npm` or `python` dependency reports `unresolved` (run the Node
+part of a bare `verify`, and an `npm`, `python`, `maven` or `nuget` dependency reports `unresolved` (run the Node
 `meta deps check` for those). See [Metadata dependencies](../features/metadata-dependencies.md).
 
 `verify --codegen` regenerates exactly the list `gen` runs and compares, so the two can

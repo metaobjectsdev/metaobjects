@@ -292,6 +292,13 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
   `docs/features/extending-with-providers.md` now has a worked example per language, and the
   `metaobjects-authoring` skill teaches it, with a reference file per language.
 
+### Documentation
+
+- **Separate-repo model sharing (FR-023 Phase 2) close-out.** The feature page's Phase 2 section is now
+  the shipped per-port matrix (consume, check, publish, runtime load, transports), the deferred list
+  names what is still not built, and the verify, codegen, authoring, audit and capability-sheet skills
+  teach the Java, Kotlin and C# publish paths, the `deps` checks and the `maven` and `nuget` transports.
+
 ### Changed
 
 - **`docsSiteFile()` builds the model explorer by default.** A project that lists

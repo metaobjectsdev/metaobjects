@@ -485,7 +485,7 @@ above: one committed `cases.json`, no per-port fixture, no ledger. The corpus ha
   Kotlin runs the same goal), by **Python**, in `tests/conformance/test_dependency_conformance.py`
   (`metaobjects deps check` and `verify --deps`), and by **C#**, in `DependencyConformanceTests`
   (`dotnet meta verify --deps`). The arm exists so that each port's check is written against the
-  same edge cases (Phase 2, #482).
+  same edge cases (FR-023 Phase 2, #482, shipped).
 - **Transport (32 cases, `transport-cases.json`).** The `npm`, `python`, `maven` and `nuget` transports
   `meta deps sync` uses to find an installed package: npm packages under a temp `node_modules`, Python
   packages on a temp import path, jars in a temp local Maven repository, packages in a temp NuGet cache,
