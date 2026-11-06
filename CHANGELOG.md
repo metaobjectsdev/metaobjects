@@ -32,6 +32,19 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
   `Dependencies.check`, `Dependencies.SnapshotReader`, `DependencySet.ofSnapshot` and a
   `MetaDataLoader.fromUris` overload that takes a `DependencySet`. See `docs/features/metadata-dependencies.md`.
 
+- **Python and C# check a shared model against its publisher (FR-023 Phase 2).** `metaobjects deps
+  check`, `metaobjects verify --deps` (Python) and `dotnet meta verify --deps` (C#) re-resolve each
+  declared dependency's `path`, read the publisher's `metaobjects.pkg.json`, hash the artifact and
+  compare with `deps.lock.json`, with the same three states as `meta deps check` (`current`,
+  `drifted`, `unresolved`) and the same `ERR_DEPENDENCY_UPSTREAM_DRIFT` exit for anything else.
+  Both run the 11 `expectCheck` cases of `fixtures/dependency-conformance/`. The check writes
+  nothing, is never part of a bare `verify`, and resolves the `path` transport only: an `npm` or
+  `python` dependency reports `unresolved` and names the Node `meta deps check`. In C# it runs
+  before the metadata loads, so a dependency declared but not yet synced is reported `unresolved`
+  first (the check exits 1); the load that follows still refuses the missing or stale snapshot with
+  `ERR_DEPENDENCY_SNAPSHOT_STALE` and exit 2. The Node `meta deps sync` stays the only writer of the lock and the
+  snapshot. See [docs/features/metadata-dependencies.md](docs/features/metadata-dependencies.md).
+
 - **A model explorer site, built by `docsSiteFile()`.** The docs site now shows what the
   software does and how the model is designed: a main page with count tiles and the feature and
   quality cards with their roll-ups, a model map with slices (package, requirement subtree,

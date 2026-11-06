@@ -236,9 +236,11 @@ climbs out of the package, and a Python module that is not a package are
   (`sdk/test/dependency-conformance.test.ts`), the check arm
   (`cli/test/dependency-check-conformance.test.ts`), and the transport arm
   (`cli/test/dependency-transport-conformance.test.ts`).
-- **Python** — resolution, load-time failure, lock/snapshot integrity. Not the check arm: Python
-  has no `deps check` yet, so its runner filters the `expectCheck` cases out. Not the transport
-  arm: Python never syncs.
+- **Python** — resolution, load-time failure, lock/snapshot integrity, and the check arm
+  (`metaobjects deps check` and `metaobjects verify --deps`,
+  `tests/conformance/test_dependency_conformance.py`). Its check resolves the `path` transport
+  only; an `npm` / `python` dependency reports `unresolved` and points at the Node `meta deps
+  check`, which the corpus does not exercise. Not the transport arm: Python never syncs.
 - **Java** — resolution, load-time failure, lock/snapshot integrity
   (`DependencyConformanceTest`), the check arm (`DependencyCheckConformanceTest`, over
   `Dependencies.check`, the engine of `metaobjects:verify -Dmeta.verify.mode=deps`), and the
@@ -254,9 +256,9 @@ climbs out of the package, and a Python module that is not a package are
 - **C#** — the resolution arm: resolution, load-time failure, lock/snapshot integrity, on the
   neutral source ladder and again through the explicit metadata directory (C# has no native
   config surface, so `.metaobjects/config.json` is where a dependency is declared at every
-  rung). `inScope` is Python's formula, not TypeScript's. Not the check arm: C# has no
-  `deps check` yet (that is `verify --deps`), so its runner skips the `expectCheck` cases. Not the
-  transport arm: C# never syncs. The runner is
+  rung). `inScope` is Python's formula, not TypeScript's. Also the check arm
+  (`dotnet meta verify --deps`, through `DependencyResolver.CheckDependencies`), which like
+  Python's resolves the `path` transport only. Not the transport arm: C# never syncs. The runner is
   `server/csharp/MetaObjects.Conformance.Tests/DependencyConformanceTests.cs`.
 
 ## Reference implementation

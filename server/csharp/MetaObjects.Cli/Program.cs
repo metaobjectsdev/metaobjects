@@ -37,7 +37,7 @@ if (args.Length == 0 || helpRequested)
         "                                                     --strict rejects an unknown @attr before writing\n" +
         "                                                     (as verify does, ADR-0023; default is a warning)\n" +
         "    gen --list                                       list available generators (stable names) and exit\n" +
-        "    verify <metadataDir> [--templates [--prompts <dir>]] [--codegen --out <dir> [--namespace <ns>]] [--db] [--lax]\n" +
+        "    verify <metadataDir> [--templates [--prompts <dir>]] [--codegen --out <dir> [--namespace <ns>]] [--deps] [--db] [--lax]\n" +
         "                                                     drift gates (ADR-0021 D2 subverbs):\n" +
         "                                                       --templates  template/prompt drift (default); the\n" +
         "                                                                    directory is --prompts <dir> or the inline\n" +
@@ -48,6 +48,8 @@ if (args.Length == 0 || helpRequested)
         "                                                                    .metaobjects/config.json, as for gen)\n" +
         "                                                       --namespace  codegen regen namespace (default: csharp.namespace\n" +
         "                                                                    in .metaobjects/config.json, else the metadata package)\n" +
+        "                                                       --deps       dependency drift: each declared dependency's\n" +
+        "                                                                    artifact vs .metaobjects/deps.lock.json\n" +
         "                                                       --db         NOT supported in C# (migrate engine)\n" +
         "                                                       --lax        load lax (legacy); strict-by-default\n" +
         "                                                                    rejects an unregistered @attr (ADR-0023)\n" +
@@ -384,7 +386,7 @@ static int RunVerify(string[] rest)
     string? generatorsCsv = null;
     string? templateRoot = null;
     string? columnNamingRaw = null;
-    bool templates = false, codegen = false, db = false, lax = false, noFieldLint = false, requireImplementers = false;
+    bool templates = false, codegen = false, deps = false, db = false, lax = false, noFieldLint = false, requireImplementers = false;
 
     for (int i = 0; i < rest.Length; i++)
     {
@@ -405,6 +407,9 @@ static int RunVerify(string[] rest)
         // spelling is deprecated in 1.1 and removed no earlier than a major.
         else if (a == "--prompts" && i + 1 < rest.Length) templatesRoot = rest[++i];
         else if (a == "--codegen") codegen = true;
+        // FR-023 dependency drift: opt-in, never part of a bare verify (it needs each publisher's
+        // directory reachable, which CI may not have).
+        else if (a == "--deps") deps = true;
         else if (a == "--db") db = true;
         // --lax (#96 / ADR-0023): restore the legacy open-attr load. verify is
         // strict-by-default — an undeclared/typo'd own @attr is ERR_UNKNOWN_ATTR.
@@ -437,6 +442,12 @@ static int RunVerify(string[] rest)
         return 2;
     }
 
+    // The dependency gate runs BEFORE the metadata resolves: resolving verifies the committed snapshot
+    // against the lock and refuses a stale one, and a drift or a not-yet-synced dependency is exactly
+    // what this gate exists to report in its own words. It returns here, then the run goes on; the
+    // load that follows still refuses a missing or stale snapshot (ERR_DEPENDENCY_SNAPSHOT_STALE, exit 2).
+    var depsExit = deps ? RunDepsGate(metadataDir) : 0;
+
     // Rung 1 (explicit positional) is honored as-is; an omitted metadataDir
     // falls back to the port-neutral .metaobjects/config.json ladder.
     var resolvedMeta = ResolveMetadataDirOrExit(metadataDir);
@@ -447,7 +458,7 @@ static int RunVerify(string[] rest)
     // to verify clean, because nothing in an empty root can drift. With none named (bare
     // verify, or a bare --templates) it reads the same default `gen` does: prompts/ when that
     // directory exists, else templates/ — and neither existing fails the same way.
-    var bare = !templates && !codegen && !db;
+    var bare = !templates && !codegen && !deps && !db;
     var wantsTemplates = templates || bare;
     if (wantsTemplates)
     {
@@ -540,6 +551,7 @@ static int RunVerify(string[] rest)
         TemplateRoot = templateRoot,
         Templates = templates,
         Bare = bare,
+        Deps = deps,
         Codegen = codegen && !codegenHandedOff,
         CodegenHandedOff = codegenHandedOff,
         Db = db,
@@ -614,7 +626,51 @@ static int RunVerify(string[] rest)
     // fold its exit code into the aggregate the same way every other subverb does — max,
     // non-zero on any drift.
     var gatesExit = codegenHandedOff ? Math.Max(result.ExitCode, codegenHandoffExit) : result.ExitCode;
-    return Math.Max(gatesExit, requirementExit);
+    return Math.Max(Math.Max(gatesExit, requirementExit), depsExit);
+}
+
+// `dotnet meta verify --deps` (FR-023): re-resolve each declared dependency's `path` and compare its
+// artifact's hash with .metaobjects/deps.lock.json. Read-only. 0 current; 1 drifted or unresolved
+// (ERR_DEPENDENCY_UPSTREAM_DRIFT); 2 when the config or the lock cannot be read.
+static int RunDepsGate(string? metadataDir)
+{
+    const string command = "dotnet meta verify --deps";
+    IReadOnlyList<DependencySpec> specs;
+    IReadOnlyDictionary<string, DependencyLockEntry>? lockEntries;
+    string configDir;
+    try
+    {
+        var cwd = Directory.GetCurrentDirectory();
+        var cfg = MetadataLocation.ProjectConfig(metadataDir, cwd);
+        configDir = cfg?.ConfigDir ?? cwd;
+        specs = cfg?.Dependencies ?? [];
+        lockEntries = specs.Count == 0 ? null : DependencyResolver.ReadLock(configDir);
+    }
+    catch (MetaObjects.MetaModelException e)
+    {
+        Console.Error.WriteLine($"{command}: {e.Code}: {e.Message}");
+        return 2;
+    }
+
+    if (specs.Count == 0)
+    {
+        Console.WriteLine($"{command}: no dependencies declared — nothing to check.");
+        return 0;
+    }
+
+    var results = DependencyResolver.CheckDependencies(configDir, specs, lockEntries);
+    var failing = results.Count(r => r.Status != DependencyCheckStatus.Current);
+    foreach (var r in results)
+        (r.Status == DependencyCheckStatus.Current ? Console.Out : Console.Error).WriteLine(DependencyResolver.FormatCheckLine(r));
+    if (failing > 0)
+    {
+        Console.Error.WriteLine(
+            $"{command}: {failing} of {results.Count} dependenc{(results.Count == 1 ? "y" : "ies")} drifted or unresolved " +
+            $"({MetaObjects.ErrorCode.ERR_DEPENDENCY_UPSTREAM_DRIFT}).");
+        return 1;
+    }
+    Console.WriteLine($"{command}: every dependency's installed artifact matches the lock.");
+    return 0;
 }
 
 
@@ -627,7 +683,7 @@ partial class Program
     static readonly string[] GenBoolFlags = ["--list", "--emit-abstract-shapes", "--strict"];
     static readonly string[] VerifyValueFlags =
         ["--prompts", "--out", "--namespace", "--generators", "--template-root", "--column-naming"];
-    static readonly string[] VerifyBoolFlags = ["--templates", "--codegen", "--db", "--lax", "--no-field-lint", "--require-implementers"];
+    static readonly string[] VerifyBoolFlags = ["--templates", "--codegen", "--deps", "--db", "--lax", "--no-field-lint", "--require-implementers"];
 
     /// <summary>Each command's usage, printed by <c>dotnet meta &lt;command&gt; --help</c>.</summary>
     static readonly Dictionary<string, string> CommandUsage = new()
@@ -642,7 +698,7 @@ partial class Program
                   "  column/table naming: \"naming\" in .metaobjects/config.json (ADR-0058), not a flag here",
         ["init"] = "usage: dotnet meta init [--root <dir>] [--with-docs]\n" +
                   "  --with-docs lists the api-docs generator in codegen/Generators.cs (written to docs/csharp)",
-        ["verify"] = "usage: dotnet meta verify <metadataDir> [--templates [--prompts <dir>]] [--codegen --out <dir> [--namespace <ns>] [--generators <a,b,c>] [--template-root <dir>]] [--db] [--lax] [--no-field-lint] [--require-implementers]",
+        ["verify"] = "usage: dotnet meta verify <metadataDir> [--templates [--prompts <dir>]] [--codegen --out <dir> [--namespace <ns>] [--generators <a,b,c>] [--template-root <dir>]] [--deps] [--db] [--lax] [--no-field-lint] [--require-implementers]",
         ["fmt"] = "usage: dotnet meta fmt [<metadataDir>] [--check]",
         ["eject"] = "usage: dotnet meta eject <name>... [--force] [--root <dir>]\n" +
                     "       dotnet meta eject --undo [<name>...] [--force] [--root <dir>]\n" +

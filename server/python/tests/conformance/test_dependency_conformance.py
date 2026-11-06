@@ -17,7 +17,9 @@ from pathlib import Path
 import pytest
 
 from metaobjects.cli import _load_collection_result
-from metaobjects.config.dependencies import LOCK_FILE
+from metaobjects.config.dependencies import LOCK_FILE, read_lock
+from metaobjects.config.dependency_check import check_dependencies
+from metaobjects.config.neutral_config import read_neutral_config
 from metaobjects.config.source_resolver import resolve_collection_full
 from metaobjects.errors import ParseError
 from metaobjects.shared.base_types import TYPE_OBJECT
@@ -26,9 +28,11 @@ _CORPUS_DIR = (
     Path(__file__).resolve().parents[4] / "fixtures" / "dependency-conformance"
 )
 _CORPUS = _CORPUS_DIR / "cases.json"
-# The resolution arm only: a case carrying `expectCheck` belongs to the check arm, which
-# Python does not ship yet (it has no `deps check` yet; Phase 2, #482, adds it).
-_CASES = [c for c in json.loads(_CORPUS.read_text())["cases"] if "expectCheck" not in c]
+# The resolution arm: a case carrying `expectCheck` belongs to the check arm, run at the end
+# of this file.
+_ALL_CASES = json.loads(_CORPUS.read_text())["cases"]
+_CASES = [c for c in _ALL_CASES if "expectCheck" not in c]
+_CHECK_CASES = [c for c in _ALL_CASES if "expectCheck" in c]
 
 def test_corpus_is_non_empty() -> None:
     """A silent zero-case run is a failed gate, not a pass.
@@ -150,3 +154,19 @@ def test_dependency_conformance_case(case: dict, tmp_path: Path) -> None:
                     (first.source,) if first.source else ()
                 )
                 assert list(files) == case["expectErrorFiles"]
+
+
+def test_check_corpus_is_non_empty() -> None:
+    """A silent zero-case run is a failed gate (same guard as the resolution arm)."""
+    assert len(_CHECK_CASES) > 0
+
+
+@pytest.mark.parametrize("case", _CHECK_CASES, ids=[c["name"] for c in _CHECK_CASES])
+def test_dependency_check_case(case: dict, tmp_path: Path) -> None:
+    """The `expectCheck` arm: the status of every declared dependency, by name. The check is a
+    pure function of the config, the lock and the publisher's directory — no loader, no snapshot."""
+    resolve_dir = _materialize(case, tmp_path)
+    cfg = read_neutral_config(resolve_dir)
+    assert cfg is not None
+    results = check_dependencies(resolve_dir, cfg.dependencies, read_lock(resolve_dir))
+    assert {r.name: r.status for r in results} == case["expectCheck"]

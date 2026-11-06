@@ -153,6 +153,17 @@ metaobjects gen       # runs every target's generators into its outDir
 metaobjects verify    # drift gate; bare verify runs --codegen, which regenerates the same list, and --templates
 ```
 
+A model shared from another repository (`dependencies` in `.metaobjects/config.json`, synced by
+the Node `meta deps sync`) asks one more question: has the publisher moved since you synced?
+`metaobjects deps check` and `metaobjects verify --deps` re-resolve each dependency's `path`, hash
+the artifact beside its `metaobjects.pkg.json` and compare with `.metaobjects/deps.lock.json`.
+Each dependency is `current`, `drifted` or `unresolved` (no directory, a bad manifest, a hash that
+does not match, or no lock entry yet); anything but `current` exits 1 with
+`ERR_DEPENDENCY_UPSTREAM_DRIFT`, and a lock that cannot be read exits 2. `deps check` also loads
+the locked snapshots together once the hashes match. Neither writes anything, `--deps` is never
+part of a bare `verify`, and an `npm` or `python` dependency reports `unresolved` (run the Node
+`meta deps check` for those). See [Metadata dependencies](../features/metadata-dependencies.md).
+
 `verify --codegen` regenerates exactly the list `gen` runs and compares, so the two can
 never disagree about what was generated. A target whose `generators` is empty writes
 nothing and says so. With no `metaobjects.config.yaml` at all, `gen` and `verify --codegen`
