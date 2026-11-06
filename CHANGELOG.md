@@ -18,6 +18,19 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
 
 ### Added
 
+- **`maven` and `nuget` dependency transports (FR-023).** `meta deps sync` and `meta deps check` can
+  now read a shared model out of a published package that is already in the local cache, so a JVM or
+  .NET consumer no longer needs the publisher's directory on disk. `{ "name": "x", "maven":
+  "com.acme:model", "version": "1.0.0" }` reads the jar in the local Maven repository (honouring
+  `$MAVEN_REPO_LOCAL`, `-Dmaven.repo.local`, `settings.xml`'s `<localRepository>`, then
+  `~/.m2/repository`); `{ "name": "x", "nuget": "Acme.Model", "version": "1.0.0" }` reads the package
+  in the NuGet global packages folder (`$NUGET_PACKAGES`, else `~/.nuget/packages`). Both read the
+  manifest and artifact from the package's `metaobjects/` directory (`dir` changes it), write the same
+  snapshot and lock entry a `path` sync writes, and refuse a package that is not cached with the
+  coordinates and the command that fetches it (`mvn dependency:get`, `dotnet restore`); nothing is
+  downloaded. The config and lock readers in Java, Kotlin, Python and C# accept the new keys, and
+  their `check` reports such a dependency `unresolved` and names the Node `meta deps check`.
+  `dependency-conformance` gains 2 resolution cases and 18 transport cases.
 - **Java, Kotlin and C#: publish a shared model (FR-023).** A `shared-model` generator in every one
   of the three ports writes the artifact `<name>.metaobjects.json` and the manifest
   `metaobjects.pkg.json`, byte-identical to the TypeScript `sharedModelFile()` and gated by

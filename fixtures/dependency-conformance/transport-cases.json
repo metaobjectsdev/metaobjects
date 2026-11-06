@@ -517,6 +517,739 @@
         "site"
       ],
       "expectError": "ERR_DEPENDENCY_UNRESOLVED"
+    },
+    {
+      "name": "maven-reads-the-jar-resource-from-the-local-repository",
+      "tree": {
+        "app/metaobjects/meta.app.json": "{\"metadata.root\":{\"package\":\"app\",\"children\":[{\"object.entity\":{\"name\":\"Order\",\"children\":[{\"source.rdb\":{\"@table\":\"orders\"}},{\"field.long\":{\"name\":\"id\"}},{\"identity.primary\":{\"name\":\"pk\",\"@fields\":[\"id\"]}}]}}]}}"
+      },
+      "zipFiles": {
+        "m2/repository/com/acme/acme-common-model/1.0.0/acme-common-model-1.0.0.jar": {
+          "META-INF/MANIFEST.MF": {
+            "text": "Manifest-Version: 1.0\r\nCreated-By: Maven JAR Plugin\r\n\r\n"
+          },
+          "metaobjects/metaobjects.pkg.json": {
+            "text": "{\n  \"schema_version\": 1,\n  \"name\": \"acme-common\",\n  \"version\": \"1.0.0\",\n  \"metamodelVersion\": \"1.0\",\n  \"artifact\": \"acme-common.metaobjects.json\",\n  \"integrity\": \"sha256-10fbf886e22faceca32c56e5e647c3ff1c82f503e638cba3bd3aa9390f7c409d\",\n  \"packages\": [\n    \"acme::common\"\n  ],\n  \"nodes\": [\n    \"acme::common::Address\",\n    \"acme::common::Audited\",\n    \"acme::common::Customer\"\n  ]\n}\n"
+          },
+          "metaobjects/acme-common.metaobjects.json": {
+            "file": "artifacts/acme-common-v1.json"
+          },
+          "com/acme/Model.class": {
+            "text": "Êþº¾"
+          }
+        }
+      },
+      "env": {
+        "MAVEN_REPO_LOCAL": "m2/repository"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [],
+        "dependencies": [
+          {
+            "name": "acme-common",
+            "maven": "com.acme:acme-common-model",
+            "version": "1.0.0"
+          }
+        ]
+      },
+      "resolveFrom": "app",
+      "expectLock": {
+        "schema_version": 1,
+        "dependencies": {
+          "acme-common": {
+            "version": "1.0.0",
+            "metamodelVersion": "1.0",
+            "resolvedFrom": {
+              "maven": "com.acme:acme-common-model",
+              "version": "1.0.0"
+            },
+            "artifact": "acme-common.metaobjects.json",
+            "integrity": "sha256-10fbf886e22faceca32c56e5e647c3ff1c82f503e638cba3bd3aa9390f7c409d",
+            "packages": [
+              "acme::common"
+            ],
+            "nodes": [
+              "acme::common::Address",
+              "acme::common::Audited",
+              "acme::common::Customer"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "maven-applies-dir-inside-the-jar",
+      "tree": {
+        "app/metaobjects/meta.app.json": "{\"metadata.root\":{\"package\":\"app\",\"children\":[{\"object.entity\":{\"name\":\"Order\",\"children\":[{\"source.rdb\":{\"@table\":\"orders\"}},{\"field.long\":{\"name\":\"id\"}},{\"identity.primary\":{\"name\":\"pk\",\"@fields\":[\"id\"]}}]}}]}}"
+      },
+      "zipFiles": {
+        "m2/repository/com/acme/acme-common-model/1.0.0/acme-common-model-1.0.0.jar": {
+          "META-INF/MANIFEST.MF": {
+            "text": "Manifest-Version: 1.0\r\nCreated-By: Maven JAR Plugin\r\n\r\n"
+          },
+          "shared-model/metaobjects.pkg.json": {
+            "text": "{\n  \"schema_version\": 1,\n  \"name\": \"acme-common\",\n  \"version\": \"1.0.0\",\n  \"metamodelVersion\": \"1.0\",\n  \"artifact\": \"acme-common.metaobjects.json\",\n  \"integrity\": \"sha256-10fbf886e22faceca32c56e5e647c3ff1c82f503e638cba3bd3aa9390f7c409d\",\n  \"packages\": [\n    \"acme::common\"\n  ],\n  \"nodes\": [\n    \"acme::common::Address\",\n    \"acme::common::Audited\",\n    \"acme::common::Customer\"\n  ]\n}\n"
+          },
+          "shared-model/acme-common.metaobjects.json": {
+            "file": "artifacts/acme-common-v1.json"
+          }
+        }
+      },
+      "env": {
+        "MAVEN_REPO_LOCAL": "m2/repository"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [],
+        "dependencies": [
+          {
+            "name": "acme-common",
+            "maven": "com.acme:acme-common-model",
+            "version": "1.0.0",
+            "dir": "shared-model"
+          }
+        ]
+      },
+      "resolveFrom": "app",
+      "expectLock": {
+        "schema_version": 1,
+        "dependencies": {
+          "acme-common": {
+            "version": "1.0.0",
+            "metamodelVersion": "1.0",
+            "resolvedFrom": {
+              "maven": "com.acme:acme-common-model",
+              "version": "1.0.0",
+              "dir": "shared-model"
+            },
+            "artifact": "acme-common.metaobjects.json",
+            "integrity": "sha256-10fbf886e22faceca32c56e5e647c3ff1c82f503e638cba3bd3aa9390f7c409d",
+            "packages": [
+              "acme::common"
+            ],
+            "nodes": [
+              "acme::common::Address",
+              "acme::common::Audited",
+              "acme::common::Customer"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "maven-honours-the-local-repository-in-settings-xml",
+      "tree": {
+        "app/metaobjects/meta.app.json": "{\"metadata.root\":{\"package\":\"app\",\"children\":[{\"object.entity\":{\"name\":\"Order\",\"children\":[{\"source.rdb\":{\"@table\":\"orders\"}},{\"field.long\":{\"name\":\"id\"}},{\"identity.primary\":{\"name\":\"pk\",\"@fields\":[\"id\"]}}]}}]}}",
+        "home/.m2/settings.xml": "<settings>\n  <!-- <localRepository>/nowhere</localRepository> -->\n  <localRepository>${user.home}/cache/m2</localRepository>\n</settings>\n"
+      },
+      "zipFiles": {
+        "home/cache/m2/com/acme/acme-common-model/1.0.0/acme-common-model-1.0.0.jar": {
+          "metaobjects/metaobjects.pkg.json": {
+            "text": "{\n  \"schema_version\": 1,\n  \"name\": \"acme-common\",\n  \"version\": \"1.0.0\",\n  \"metamodelVersion\": \"1.0\",\n  \"artifact\": \"acme-common.metaobjects.json\",\n  \"integrity\": \"sha256-10fbf886e22faceca32c56e5e647c3ff1c82f503e638cba3bd3aa9390f7c409d\",\n  \"packages\": [\n    \"acme::common\"\n  ],\n  \"nodes\": [\n    \"acme::common::Address\",\n    \"acme::common::Audited\",\n    \"acme::common::Customer\"\n  ]\n}\n"
+          },
+          "metaobjects/acme-common.metaobjects.json": {
+            "file": "artifacts/acme-common-v1.json"
+          }
+        }
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [],
+        "dependencies": [
+          {
+            "name": "acme-common",
+            "maven": "com.acme:acme-common-model",
+            "version": "1.0.0"
+          }
+        ]
+      },
+      "resolveFrom": "app",
+      "expectLock": {
+        "schema_version": 1,
+        "dependencies": {
+          "acme-common": {
+            "version": "1.0.0",
+            "metamodelVersion": "1.0",
+            "resolvedFrom": {
+              "maven": "com.acme:acme-common-model",
+              "version": "1.0.0"
+            },
+            "artifact": "acme-common.metaobjects.json",
+            "integrity": "sha256-10fbf886e22faceca32c56e5e647c3ff1c82f503e638cba3bd3aa9390f7c409d",
+            "packages": [
+              "acme::common"
+            ],
+            "nodes": [
+              "acme::common::Address",
+              "acme::common::Audited",
+              "acme::common::Customer"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "maven-reads-the-default-local-repository-under-home",
+      "tree": {
+        "app/metaobjects/meta.app.json": "{\"metadata.root\":{\"package\":\"app\",\"children\":[{\"object.entity\":{\"name\":\"Order\",\"children\":[{\"source.rdb\":{\"@table\":\"orders\"}},{\"field.long\":{\"name\":\"id\"}},{\"identity.primary\":{\"name\":\"pk\",\"@fields\":[\"id\"]}}]}}]}}"
+      },
+      "zipFiles": {
+        "home/.m2/repository/com/acme/acme-common-model/1.0.0/acme-common-model-1.0.0.jar": {
+          "metaobjects/metaobjects.pkg.json": {
+            "text": "{\n  \"schema_version\": 1,\n  \"name\": \"acme-common\",\n  \"version\": \"1.0.0\",\n  \"metamodelVersion\": \"1.0\",\n  \"artifact\": \"acme-common.metaobjects.json\",\n  \"integrity\": \"sha256-10fbf886e22faceca32c56e5e647c3ff1c82f503e638cba3bd3aa9390f7c409d\",\n  \"packages\": [\n    \"acme::common\"\n  ],\n  \"nodes\": [\n    \"acme::common::Address\",\n    \"acme::common::Audited\",\n    \"acme::common::Customer\"\n  ]\n}\n"
+          },
+          "metaobjects/acme-common.metaobjects.json": {
+            "file": "artifacts/acme-common-v1.json"
+          }
+        }
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [],
+        "dependencies": [
+          {
+            "name": "acme-common",
+            "maven": "com.acme:acme-common-model",
+            "version": "1.0.0"
+          }
+        ]
+      },
+      "resolveFrom": "app",
+      "expectLock": {
+        "schema_version": 1,
+        "dependencies": {
+          "acme-common": {
+            "version": "1.0.0",
+            "metamodelVersion": "1.0",
+            "resolvedFrom": {
+              "maven": "com.acme:acme-common-model",
+              "version": "1.0.0"
+            },
+            "artifact": "acme-common.metaobjects.json",
+            "integrity": "sha256-10fbf886e22faceca32c56e5e647c3ff1c82f503e638cba3bd3aa9390f7c409d",
+            "packages": [
+              "acme::common"
+            ],
+            "nodes": [
+              "acme::common::Address",
+              "acme::common::Audited",
+              "acme::common::Customer"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "maven-an-artifact-that-is-not-in-the-local-repository-is-unresolved",
+      "tree": {
+        "app/metaobjects/meta.app.json": "{\"metadata.root\":{\"package\":\"app\",\"children\":[{\"object.entity\":{\"name\":\"Order\",\"children\":[{\"source.rdb\":{\"@table\":\"orders\"}},{\"field.long\":{\"name\":\"id\"}},{\"identity.primary\":{\"name\":\"pk\",\"@fields\":[\"id\"]}}]}}]}}"
+      },
+      "env": {
+        "MAVEN_REPO_LOCAL": "m2/repository"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [],
+        "dependencies": [
+          {
+            "name": "acme-common",
+            "maven": "com.acme:acme-common-model",
+            "version": "1.0.0"
+          }
+        ]
+      },
+      "resolveFrom": "app",
+      "expectError": "ERR_DEPENDENCY_UNRESOLVED"
+    },
+    {
+      "name": "maven-a-coordinate-that-carries-a-version-is-unresolved",
+      "tree": {
+        "app/metaobjects/meta.app.json": "{\"metadata.root\":{\"package\":\"app\",\"children\":[{\"object.entity\":{\"name\":\"Order\",\"children\":[{\"source.rdb\":{\"@table\":\"orders\"}},{\"field.long\":{\"name\":\"id\"}},{\"identity.primary\":{\"name\":\"pk\",\"@fields\":[\"id\"]}}]}}]}}"
+      },
+      "zipFiles": {
+        "m2/repository/com/acme/acme-common-model/1.0.0/acme-common-model-1.0.0.jar": {
+          "metaobjects/metaobjects.pkg.json": {
+            "text": "{\n  \"schema_version\": 1,\n  \"name\": \"acme-common\",\n  \"version\": \"1.0.0\",\n  \"metamodelVersion\": \"1.0\",\n  \"artifact\": \"acme-common.metaobjects.json\",\n  \"integrity\": \"sha256-10fbf886e22faceca32c56e5e647c3ff1c82f503e638cba3bd3aa9390f7c409d\",\n  \"packages\": [\n    \"acme::common\"\n  ],\n  \"nodes\": [\n    \"acme::common::Address\",\n    \"acme::common::Audited\",\n    \"acme::common::Customer\"\n  ]\n}\n"
+          },
+          "metaobjects/acme-common.metaobjects.json": {
+            "file": "artifacts/acme-common-v1.json"
+          }
+        }
+      },
+      "env": {
+        "MAVEN_REPO_LOCAL": "m2/repository"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [],
+        "dependencies": [
+          {
+            "name": "acme-common",
+            "maven": "com.acme:acme-common-model:1.0.0",
+            "version": "1.0.0"
+          }
+        ]
+      },
+      "resolveFrom": "app",
+      "expectError": "ERR_DEPENDENCY_UNRESOLVED"
+    },
+    {
+      "name": "maven-a-jar-without-the-model-directory-is-unresolved",
+      "tree": {
+        "app/metaobjects/meta.app.json": "{\"metadata.root\":{\"package\":\"app\",\"children\":[{\"object.entity\":{\"name\":\"Order\",\"children\":[{\"source.rdb\":{\"@table\":\"orders\"}},{\"field.long\":{\"name\":\"id\"}},{\"identity.primary\":{\"name\":\"pk\",\"@fields\":[\"id\"]}}]}}]}}"
+      },
+      "zipFiles": {
+        "m2/repository/com/acme/acme-common-model/1.0.0/acme-common-model-1.0.0.jar": {
+          "META-INF/MANIFEST.MF": {
+            "text": "Manifest-Version: 1.0\r\nCreated-By: Maven JAR Plugin\r\n\r\n"
+          }
+        }
+      },
+      "env": {
+        "MAVEN_REPO_LOCAL": "m2/repository"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [],
+        "dependencies": [
+          {
+            "name": "acme-common",
+            "maven": "com.acme:acme-common-model",
+            "version": "1.0.0"
+          }
+        ]
+      },
+      "resolveFrom": "app",
+      "expectError": "ERR_DEPENDENCY_UNRESOLVED"
+    },
+    {
+      "name": "maven-a-model-directory-without-a-manifest-is-an-invalid-manifest",
+      "tree": {
+        "app/metaobjects/meta.app.json": "{\"metadata.root\":{\"package\":\"app\",\"children\":[{\"object.entity\":{\"name\":\"Order\",\"children\":[{\"source.rdb\":{\"@table\":\"orders\"}},{\"field.long\":{\"name\":\"id\"}},{\"identity.primary\":{\"name\":\"pk\",\"@fields\":[\"id\"]}}]}}]}}"
+      },
+      "zipFiles": {
+        "m2/repository/com/acme/acme-common-model/1.0.0/acme-common-model-1.0.0.jar": {
+          "metaobjects/acme-common.metaobjects.json": {
+            "file": "artifacts/acme-common-v1.json"
+          }
+        }
+      },
+      "env": {
+        "MAVEN_REPO_LOCAL": "m2/repository"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [],
+        "dependencies": [
+          {
+            "name": "acme-common",
+            "maven": "com.acme:acme-common-model",
+            "version": "1.0.0"
+          }
+        ]
+      },
+      "resolveFrom": "app",
+      "expectError": "ERR_DEPENDENCY_MANIFEST_INVALID"
+    },
+    {
+      "name": "maven-a-dir-that-climbs-out-of-the-jar-is-unresolved",
+      "tree": {
+        "app/metaobjects/meta.app.json": "{\"metadata.root\":{\"package\":\"app\",\"children\":[{\"object.entity\":{\"name\":\"Order\",\"children\":[{\"source.rdb\":{\"@table\":\"orders\"}},{\"field.long\":{\"name\":\"id\"}},{\"identity.primary\":{\"name\":\"pk\",\"@fields\":[\"id\"]}}]}}]}}"
+      },
+      "zipFiles": {
+        "m2/repository/com/acme/acme-common-model/1.0.0/acme-common-model-1.0.0.jar": {
+          "metaobjects/metaobjects.pkg.json": {
+            "text": "{\n  \"schema_version\": 1,\n  \"name\": \"acme-common\",\n  \"version\": \"1.0.0\",\n  \"metamodelVersion\": \"1.0\",\n  \"artifact\": \"acme-common.metaobjects.json\",\n  \"integrity\": \"sha256-10fbf886e22faceca32c56e5e647c3ff1c82f503e638cba3bd3aa9390f7c409d\",\n  \"packages\": [\n    \"acme::common\"\n  ],\n  \"nodes\": [\n    \"acme::common::Address\",\n    \"acme::common::Audited\",\n    \"acme::common::Customer\"\n  ]\n}\n"
+          },
+          "metaobjects/acme-common.metaobjects.json": {
+            "file": "artifacts/acme-common-v1.json"
+          }
+        }
+      },
+      "env": {
+        "MAVEN_REPO_LOCAL": "m2/repository"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [],
+        "dependencies": [
+          {
+            "name": "acme-common",
+            "maven": "com.acme:acme-common-model",
+            "version": "1.0.0",
+            "dir": "../escape"
+          }
+        ]
+      },
+      "resolveFrom": "app",
+      "expectError": "ERR_DEPENDENCY_UNRESOLVED"
+    },
+    {
+      "name": "nuget-reads-the-extracted-package-from-the-global-packages-folder",
+      "tree": {
+        "app/metaobjects/meta.app.json": "{\"metadata.root\":{\"package\":\"app\",\"children\":[{\"object.entity\":{\"name\":\"Order\",\"children\":[{\"source.rdb\":{\"@table\":\"orders\"}},{\"field.long\":{\"name\":\"id\"}},{\"identity.primary\":{\"name\":\"pk\",\"@fields\":[\"id\"]}}]}}]}}",
+        "nuget/packages/acme.common.model/1.0.0/metaobjects/metaobjects.pkg.json": "{\n  \"schema_version\": 1,\n  \"name\": \"acme-common\",\n  \"version\": \"1.0.0\",\n  \"metamodelVersion\": \"1.0\",\n  \"artifact\": \"acme-common.metaobjects.json\",\n  \"integrity\": \"sha256-10fbf886e22faceca32c56e5e647c3ff1c82f503e638cba3bd3aa9390f7c409d\",\n  \"packages\": [\n    \"acme::common\"\n  ],\n  \"nodes\": [\n    \"acme::common::Address\",\n    \"acme::common::Audited\",\n    \"acme::common::Customer\"\n  ]\n}\n",
+        "nuget/packages/acme.common.model/1.0.0/acme.common.model.nuspec": "<package/>"
+      },
+      "treeFiles": {
+        "nuget/packages/acme.common.model/1.0.0/metaobjects/acme-common.metaobjects.json": "artifacts/acme-common-v1.json"
+      },
+      "zipFiles": {
+        "nuget/packages/acme.common.model/1.0.0/acme.common.model.1.0.0.nupkg": {
+          "Acme.Common.Model.nuspec": {
+            "text": "<package/>"
+          },
+          "metaobjects/metaobjects.pkg.json": {
+            "text": "{\n  \"schema_version\": 1,\n  \"name\": \"acme-common\",\n  \"version\": \"1.0.0\",\n  \"metamodelVersion\": \"1.0\",\n  \"artifact\": \"acme-common.metaobjects.json\",\n  \"integrity\": \"sha256-10fbf886e22faceca32c56e5e647c3ff1c82f503e638cba3bd3aa9390f7c409d\",\n  \"packages\": [\n    \"acme::common\"\n  ],\n  \"nodes\": [\n    \"acme::common::Address\",\n    \"acme::common::Audited\",\n    \"acme::common::Customer\"\n  ]\n}\n"
+          },
+          "metaobjects/acme-common.metaobjects.json": {
+            "file": "artifacts/acme-common-v1.json"
+          }
+        }
+      },
+      "env": {
+        "NUGET_PACKAGES": "nuget/packages"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [],
+        "dependencies": [
+          {
+            "name": "acme-common",
+            "nuget": "Acme.Common.Model",
+            "version": "1.0.0"
+          }
+        ]
+      },
+      "resolveFrom": "app",
+      "expectDirs": {
+        "acme-common": "nuget/packages/acme.common.model/1.0.0/metaobjects"
+      },
+      "expectLock": {
+        "schema_version": 1,
+        "dependencies": {
+          "acme-common": {
+            "version": "1.0.0",
+            "metamodelVersion": "1.0",
+            "resolvedFrom": {
+              "nuget": "Acme.Common.Model",
+              "version": "1.0.0"
+            },
+            "artifact": "acme-common.metaobjects.json",
+            "integrity": "sha256-10fbf886e22faceca32c56e5e647c3ff1c82f503e638cba3bd3aa9390f7c409d",
+            "packages": [
+              "acme::common"
+            ],
+            "nodes": [
+              "acme::common::Address",
+              "acme::common::Audited",
+              "acme::common::Customer"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "nuget-applies-dir-inside-the-package",
+      "tree": {
+        "app/metaobjects/meta.app.json": "{\"metadata.root\":{\"package\":\"app\",\"children\":[{\"object.entity\":{\"name\":\"Order\",\"children\":[{\"source.rdb\":{\"@table\":\"orders\"}},{\"field.long\":{\"name\":\"id\"}},{\"identity.primary\":{\"name\":\"pk\",\"@fields\":[\"id\"]}}]}}]}}",
+        "nuget/packages/acme.common.model/1.0.0/content/model/metaobjects.pkg.json": "{\n  \"schema_version\": 1,\n  \"name\": \"acme-common\",\n  \"version\": \"1.0.0\",\n  \"metamodelVersion\": \"1.0\",\n  \"artifact\": \"acme-common.metaobjects.json\",\n  \"integrity\": \"sha256-10fbf886e22faceca32c56e5e647c3ff1c82f503e638cba3bd3aa9390f7c409d\",\n  \"packages\": [\n    \"acme::common\"\n  ],\n  \"nodes\": [\n    \"acme::common::Address\",\n    \"acme::common::Audited\",\n    \"acme::common::Customer\"\n  ]\n}\n"
+      },
+      "treeFiles": {
+        "nuget/packages/acme.common.model/1.0.0/content/model/acme-common.metaobjects.json": "artifacts/acme-common-v1.json"
+      },
+      "env": {
+        "NUGET_PACKAGES": "nuget/packages"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [],
+        "dependencies": [
+          {
+            "name": "acme-common",
+            "nuget": "Acme.Common.Model",
+            "version": "1.0.0",
+            "dir": "content/model"
+          }
+        ]
+      },
+      "resolveFrom": "app",
+      "expectDirs": {
+        "acme-common": "nuget/packages/acme.common.model/1.0.0/content/model"
+      },
+      "expectLock": {
+        "schema_version": 1,
+        "dependencies": {
+          "acme-common": {
+            "version": "1.0.0",
+            "metamodelVersion": "1.0",
+            "resolvedFrom": {
+              "nuget": "Acme.Common.Model",
+              "version": "1.0.0",
+              "dir": "content/model"
+            },
+            "artifact": "acme-common.metaobjects.json",
+            "integrity": "sha256-10fbf886e22faceca32c56e5e647c3ff1c82f503e638cba3bd3aa9390f7c409d",
+            "packages": [
+              "acme::common"
+            ],
+            "nodes": [
+              "acme::common::Address",
+              "acme::common::Audited",
+              "acme::common::Customer"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "nuget-finds-the-normalized-version-folder",
+      "tree": {
+        "app/metaobjects/meta.app.json": "{\"metadata.root\":{\"package\":\"app\",\"children\":[{\"object.entity\":{\"name\":\"Order\",\"children\":[{\"source.rdb\":{\"@table\":\"orders\"}},{\"field.long\":{\"name\":\"id\"}},{\"identity.primary\":{\"name\":\"pk\",\"@fields\":[\"id\"]}}]}}]}}",
+        "nuget/packages/acme.common.model/1.0.0/metaobjects/metaobjects.pkg.json": "{\n  \"schema_version\": 1,\n  \"name\": \"acme-common\",\n  \"version\": \"1.0.0\",\n  \"metamodelVersion\": \"1.0\",\n  \"artifact\": \"acme-common.metaobjects.json\",\n  \"integrity\": \"sha256-10fbf886e22faceca32c56e5e647c3ff1c82f503e638cba3bd3aa9390f7c409d\",\n  \"packages\": [\n    \"acme::common\"\n  ],\n  \"nodes\": [\n    \"acme::common::Address\",\n    \"acme::common::Audited\",\n    \"acme::common::Customer\"\n  ]\n}\n"
+      },
+      "treeFiles": {
+        "nuget/packages/acme.common.model/1.0.0/metaobjects/acme-common.metaobjects.json": "artifacts/acme-common-v1.json"
+      },
+      "env": {
+        "NUGET_PACKAGES": "nuget/packages"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [],
+        "dependencies": [
+          {
+            "name": "acme-common",
+            "nuget": "Acme.Common.Model",
+            "version": "1.0"
+          }
+        ]
+      },
+      "resolveFrom": "app",
+      "expectDirs": {
+        "acme-common": "nuget/packages/acme.common.model/1.0.0/metaobjects"
+      },
+      "expectLock": {
+        "schema_version": 1,
+        "dependencies": {
+          "acme-common": {
+            "version": "1.0.0",
+            "metamodelVersion": "1.0",
+            "resolvedFrom": {
+              "nuget": "Acme.Common.Model",
+              "version": "1.0"
+            },
+            "artifact": "acme-common.metaobjects.json",
+            "integrity": "sha256-10fbf886e22faceca32c56e5e647c3ff1c82f503e638cba3bd3aa9390f7c409d",
+            "packages": [
+              "acme::common"
+            ],
+            "nodes": [
+              "acme::common::Address",
+              "acme::common::Audited",
+              "acme::common::Customer"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "nuget-reads-the-nupkg-when-the-cache-holds-no-extracted-files",
+      "tree": {
+        "app/metaobjects/meta.app.json": "{\"metadata.root\":{\"package\":\"app\",\"children\":[{\"object.entity\":{\"name\":\"Order\",\"children\":[{\"source.rdb\":{\"@table\":\"orders\"}},{\"field.long\":{\"name\":\"id\"}},{\"identity.primary\":{\"name\":\"pk\",\"@fields\":[\"id\"]}}]}}]}}"
+      },
+      "zipFiles": {
+        "nuget/packages/acme.common.model/1.0.0/acme.common.model.1.0.0.nupkg": {
+          "Acme.Common.Model.nuspec": {
+            "text": "<package/>"
+          },
+          "metaobjects/metaobjects.pkg.json": {
+            "text": "{\n  \"schema_version\": 1,\n  \"name\": \"acme-common\",\n  \"version\": \"1.0.0\",\n  \"metamodelVersion\": \"1.0\",\n  \"artifact\": \"acme-common.metaobjects.json\",\n  \"integrity\": \"sha256-10fbf886e22faceca32c56e5e647c3ff1c82f503e638cba3bd3aa9390f7c409d\",\n  \"packages\": [\n    \"acme::common\"\n  ],\n  \"nodes\": [\n    \"acme::common::Address\",\n    \"acme::common::Audited\",\n    \"acme::common::Customer\"\n  ]\n}\n"
+          },
+          "metaobjects/acme-common.metaobjects.json": {
+            "file": "artifacts/acme-common-v1.json"
+          }
+        }
+      },
+      "env": {
+        "NUGET_PACKAGES": "nuget/packages"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [],
+        "dependencies": [
+          {
+            "name": "acme-common",
+            "nuget": "Acme.Common.Model",
+            "version": "1.0.0"
+          }
+        ]
+      },
+      "resolveFrom": "app",
+      "expectLock": {
+        "schema_version": 1,
+        "dependencies": {
+          "acme-common": {
+            "version": "1.0.0",
+            "metamodelVersion": "1.0",
+            "resolvedFrom": {
+              "nuget": "Acme.Common.Model",
+              "version": "1.0.0"
+            },
+            "artifact": "acme-common.metaobjects.json",
+            "integrity": "sha256-10fbf886e22faceca32c56e5e647c3ff1c82f503e638cba3bd3aa9390f7c409d",
+            "packages": [
+              "acme::common"
+            ],
+            "nodes": [
+              "acme::common::Address",
+              "acme::common::Audited",
+              "acme::common::Customer"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "nuget-reads-the-default-global-packages-folder-under-home",
+      "tree": {
+        "app/metaobjects/meta.app.json": "{\"metadata.root\":{\"package\":\"app\",\"children\":[{\"object.entity\":{\"name\":\"Order\",\"children\":[{\"source.rdb\":{\"@table\":\"orders\"}},{\"field.long\":{\"name\":\"id\"}},{\"identity.primary\":{\"name\":\"pk\",\"@fields\":[\"id\"]}}]}}]}}",
+        "home/.nuget/packages/acme.common.model/1.0.0/metaobjects/metaobjects.pkg.json": "{\n  \"schema_version\": 1,\n  \"name\": \"acme-common\",\n  \"version\": \"1.0.0\",\n  \"metamodelVersion\": \"1.0\",\n  \"artifact\": \"acme-common.metaobjects.json\",\n  \"integrity\": \"sha256-10fbf886e22faceca32c56e5e647c3ff1c82f503e638cba3bd3aa9390f7c409d\",\n  \"packages\": [\n    \"acme::common\"\n  ],\n  \"nodes\": [\n    \"acme::common::Address\",\n    \"acme::common::Audited\",\n    \"acme::common::Customer\"\n  ]\n}\n"
+      },
+      "treeFiles": {
+        "home/.nuget/packages/acme.common.model/1.0.0/metaobjects/acme-common.metaobjects.json": "artifacts/acme-common-v1.json"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [],
+        "dependencies": [
+          {
+            "name": "acme-common",
+            "nuget": "Acme.Common.Model",
+            "version": "1.0.0"
+          }
+        ]
+      },
+      "resolveFrom": "app",
+      "expectDirs": {
+        "acme-common": "home/.nuget/packages/acme.common.model/1.0.0/metaobjects"
+      },
+      "expectLock": {
+        "schema_version": 1,
+        "dependencies": {
+          "acme-common": {
+            "version": "1.0.0",
+            "metamodelVersion": "1.0",
+            "resolvedFrom": {
+              "nuget": "Acme.Common.Model",
+              "version": "1.0.0"
+            },
+            "artifact": "acme-common.metaobjects.json",
+            "integrity": "sha256-10fbf886e22faceca32c56e5e647c3ff1c82f503e638cba3bd3aa9390f7c409d",
+            "packages": [
+              "acme::common"
+            ],
+            "nodes": [
+              "acme::common::Address",
+              "acme::common::Audited",
+              "acme::common::Customer"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "nuget-a-package-that-is-not-in-the-cache-is-unresolved",
+      "tree": {
+        "app/metaobjects/meta.app.json": "{\"metadata.root\":{\"package\":\"app\",\"children\":[{\"object.entity\":{\"name\":\"Order\",\"children\":[{\"source.rdb\":{\"@table\":\"orders\"}},{\"field.long\":{\"name\":\"id\"}},{\"identity.primary\":{\"name\":\"pk\",\"@fields\":[\"id\"]}}]}}]}}"
+      },
+      "env": {
+        "NUGET_PACKAGES": "nuget/packages"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [],
+        "dependencies": [
+          {
+            "name": "acme-common",
+            "nuget": "Acme.Common.Model",
+            "version": "1.0.0"
+          }
+        ]
+      },
+      "resolveFrom": "app",
+      "expectError": "ERR_DEPENDENCY_UNRESOLVED"
+    },
+    {
+      "name": "nuget-a-package-without-the-model-directory-is-unresolved",
+      "tree": {
+        "app/metaobjects/meta.app.json": "{\"metadata.root\":{\"package\":\"app\",\"children\":[{\"object.entity\":{\"name\":\"Order\",\"children\":[{\"source.rdb\":{\"@table\":\"orders\"}},{\"field.long\":{\"name\":\"id\"}},{\"identity.primary\":{\"name\":\"pk\",\"@fields\":[\"id\"]}}]}}]}}",
+        "nuget/packages/acme.common.model/1.0.0/lib/net8.0/placeholder.txt": "x"
+      },
+      "env": {
+        "NUGET_PACKAGES": "nuget/packages"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [],
+        "dependencies": [
+          {
+            "name": "acme-common",
+            "nuget": "Acme.Common.Model",
+            "version": "1.0.0"
+          }
+        ]
+      },
+      "resolveFrom": "app",
+      "expectError": "ERR_DEPENDENCY_UNRESOLVED"
+    },
+    {
+      "name": "nuget-a-model-directory-without-a-manifest-is-an-invalid-manifest",
+      "tree": {
+        "app/metaobjects/meta.app.json": "{\"metadata.root\":{\"package\":\"app\",\"children\":[{\"object.entity\":{\"name\":\"Order\",\"children\":[{\"source.rdb\":{\"@table\":\"orders\"}},{\"field.long\":{\"name\":\"id\"}},{\"identity.primary\":{\"name\":\"pk\",\"@fields\":[\"id\"]}}]}}]}}",
+        "nuget/packages/acme.common.model/1.0.0/metaobjects/readme.txt": "x"
+      },
+      "env": {
+        "NUGET_PACKAGES": "nuget/packages"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [],
+        "dependencies": [
+          {
+            "name": "acme-common",
+            "nuget": "Acme.Common.Model",
+            "version": "1.0.0"
+          }
+        ]
+      },
+      "resolveFrom": "app",
+      "expectError": "ERR_DEPENDENCY_MANIFEST_INVALID"
+    },
+    {
+      "name": "nuget-a-dir-that-climbs-out-of-the-package-is-unresolved",
+      "tree": {
+        "app/metaobjects/meta.app.json": "{\"metadata.root\":{\"package\":\"app\",\"children\":[{\"object.entity\":{\"name\":\"Order\",\"children\":[{\"source.rdb\":{\"@table\":\"orders\"}},{\"field.long\":{\"name\":\"id\"}},{\"identity.primary\":{\"name\":\"pk\",\"@fields\":[\"id\"]}}]}}]}}",
+        "nuget/packages/acme.common.model/1.0.0/metaobjects/metaobjects.pkg.json": "{\n  \"schema_version\": 1,\n  \"name\": \"acme-common\",\n  \"version\": \"1.0.0\",\n  \"metamodelVersion\": \"1.0\",\n  \"artifact\": \"acme-common.metaobjects.json\",\n  \"integrity\": \"sha256-10fbf886e22faceca32c56e5e647c3ff1c82f503e638cba3bd3aa9390f7c409d\",\n  \"packages\": [\n    \"acme::common\"\n  ],\n  \"nodes\": [\n    \"acme::common::Address\",\n    \"acme::common::Audited\",\n    \"acme::common::Customer\"\n  ]\n}\n"
+      },
+      "env": {
+        "NUGET_PACKAGES": "nuget/packages"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [],
+        "dependencies": [
+          {
+            "name": "acme-common",
+            "nuget": "Acme.Common.Model",
+            "version": "1.0.0",
+            "dir": "../escape"
+          }
+        ]
+      },
+      "resolveFrom": "app",
+      "expectError": "ERR_DEPENDENCY_UNRESOLVED"
     }
   ]
 }

@@ -21,7 +21,11 @@ _CONFIG_FILE = "config.json"
 _DEPENDENCY_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 
 #: The one transport key a dependency spec may carry.
-_DEPENDENCY_TRANSPORT_KEYS = ("path", "npm", "python")
+_DEPENDENCY_TRANSPORT_KEYS = ("path", "npm", "python", "maven", "nuget")
+
+#: The packaged transports name a package in a local cache that holds many versions, so they
+#: also carry the `version` to look up.
+_VERSIONED_TRANSPORTS = ("maven", "nuget")
 
 
 @dataclass(frozen=True)
@@ -32,8 +36,8 @@ class NeutralConfig:
     sources: list[dict[str, str]]
 
     #: Declared metadata dependencies (FR-023) — each dict already validated:
-    #: `name`, exactly one transport key (`path` / `npm` / `python`), optional
-    #: `dir` only beside `npm`/`python`.
+    #: `name`, exactly one transport key (`path` / `npm` / `python` / `maven` /
+    #: `nuget`), a `version` beside `maven`/`nuget`, optional `dir` beside any but `path`.
     dependencies: list[dict[str, str]]
 
     #: FR-023 §11.1 item 2 — the user's declared `scope.include` patterns, READ
@@ -400,7 +404,7 @@ def _validate_dependency_spec(dep: object, path: Path) -> dict[str, str]:
 
     transports = [k for k in _DEPENDENCY_TRANSPORT_KEYS if k in dep]
     if len(transports) != 1:
-        raise fail("exactly one of 'path' / 'npm' / 'python' is required")
+        raise fail("exactly one of 'path' / 'npm' / 'python' / 'maven' / 'nuget' is required")
     transport = transports[0]
 
     transport_value = dep[transport]
@@ -408,13 +412,21 @@ def _validate_dependency_spec(dep: object, path: Path) -> dict[str, str]:
         raise fail(f"'{transport}' must be a non-empty string")
 
     allowed_keys = {"name", transport}
-    if transport in ("npm", "python"):
+    if transport != "path":
         allowed_keys.add("dir")
+    if transport in _VERSIONED_TRANSPORTS:
+        allowed_keys.add("version")
     extra_keys = set(dep.keys()) - allowed_keys
     if extra_keys:
         raise fail(f"unknown key(s): {sorted(extra_keys)}")
 
     result: dict[str, str] = {"name": name, transport: transport_value}
+
+    if transport in _VERSIONED_TRANSPORTS:
+        version = dep.get("version")
+        if not isinstance(version, str) or not version.strip():
+            raise fail(f"'version' is required beside '{transport}' and must be a non-empty string")
+        result["version"] = version
 
     if "dir" in dep:
         dir_value = dep["dir"]

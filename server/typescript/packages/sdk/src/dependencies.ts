@@ -39,9 +39,13 @@ export const INTEGRITY_PREFIX = "sha256-";
 
 /**
  * A declared dependency: a `name` and exactly one transport (`path` | `npm` |
- * `python`). `npm`/`python` optionally carry `dir` — the subdirectory under
- * the resolved package holding `metaobjects.pkg.json`; `path` never does,
- * since the path itself already names that directory.
+ * `python` | `maven` | `nuget`). Every transport but `path` optionally carries
+ * `dir` — the subdirectory under the resolved package holding
+ * `metaobjects.pkg.json`; `path` never does, since the path itself already
+ * names that directory. `maven` (`groupId:artifactId`) and `nuget` (the package
+ * id) also carry the `version` to look up: unlike an npm or Python install, the
+ * local Maven repository and the NuGet cache hold many versions side by side, so
+ * the declaration is what picks one.
  *
  * Mirrors the hand-written union below in `DependencySpecSchema` — the same
  * two-direction parity guard `SourceSpec`/`SourceSpecSchema` carries (see
@@ -51,6 +55,8 @@ export type DependencySpec = { readonly name: string } & (
   | { readonly path: string }
   | { readonly npm: string; readonly dir?: string | undefined }
   | { readonly python: string; readonly dir?: string | undefined }
+  | { readonly maven: string; readonly version: string; readonly dir?: string | undefined }
+  | { readonly nuget: string; readonly version: string; readonly dir?: string | undefined }
 );
 
 /** `/^[a-z0-9][a-z0-9._-]*$/` — lowercase, digits, `.`/`_`/`-`, starting with
@@ -65,8 +71,8 @@ const DependencyName = z.string().regex(/^[a-z0-9][a-z0-9._-]*$/);
  * `config.ts`: a config schema that silently strips an unknown key would let
  * `{ name: "a", path: "x", pathh: "typo" }` parse clean instead of erroring
  * on the typo. A `z.union` (rather than a discriminated union) because the
- * three arms share no single literal discriminator key — the transport key
- * itself (`path`/`npm`/`python`) is what distinguishes them, and that is
+ * five arms share no single literal discriminator key — the transport key
+ * itself (`path`/`npm`/`python`/`maven`/`nuget`) is what distinguishes them, and that is
  * exactly what the "two transports in one spec" / "no transport" refusals
  * below exercise: neither shape matches any arm, so the union fails closed.
  * `mode` is REMOVED (FR-023 §11.3 — superseded by explicit `scope.include`).
@@ -75,9 +81,15 @@ export const DependencySpecSchema = z.union([
   z.object({ name: DependencyName, path: z.string().min(1) }).strict(),
   z.object({ name: DependencyName, npm: z.string().min(1), dir: z.string().min(1).optional() }).strict(),
   z.object({ name: DependencyName, python: z.string().min(1), dir: z.string().min(1).optional() }).strict(),
+  z
+    .object({ name: DependencyName, maven: z.string().min(1), version: z.string().min(1), dir: z.string().min(1).optional() })
+    .strict(),
+  z
+    .object({ name: DependencyName, nuget: z.string().min(1), version: z.string().min(1), dir: z.string().min(1).optional() })
+    .strict(),
 ]);
 
-/** The declared name of a dependency spec — `name` is common to all three
+/** The declared name of a dependency spec — `name` is common to all five
  *  transport arms, so this needs no narrowing. Exists so callers never
  *  inline `.name` and so later tasks (manifest/lock keying) have one place
  *  this projection is defined. */
@@ -162,13 +174,15 @@ export type DependencyManifest = z.infer<typeof DependencyManifestSchema>;
  * The one transport a lock entry's `resolvedFrom` carries — the declared
  * spec's transport, verbatim, minus `name` (a lock entry is already keyed by
  * name under `LockSchema.dependencies`). Mirrors `DependencySpecSchema`'s
- * three arms exactly, `name` aside, including the `.strict()` on every arm:
+ * five arms exactly, `name` aside, including the `.strict()` on every arm:
  * `{ path: "x", npm: "y" }` must match no arm, never silently pick one.
  */
 const ResolvedFromSchema = z.union([
   z.object({ path: z.string().min(1) }).strict(),
   z.object({ npm: z.string().min(1), dir: z.string().min(1).optional() }).strict(),
   z.object({ python: z.string().min(1), dir: z.string().min(1).optional() }).strict(),
+  z.object({ maven: z.string().min(1), version: z.string().min(1), dir: z.string().min(1).optional() }).strict(),
+  z.object({ nuget: z.string().min(1), version: z.string().min(1), dir: z.string().min(1).optional() }).strict(),
 ]);
 
 /**

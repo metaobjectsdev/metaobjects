@@ -112,8 +112,8 @@ def test_deps_check_with_nothing_declared_exits_zero(
 def test_deps_check_reports_a_non_path_transport_as_unresolved(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """The npm / python transports resolve through the installed packages, which only the Node
-    toolchain reads: a check that cannot check must not pass."""
+    """The npm / python / maven / nuget transports resolve through installed packages and local
+    package caches, which only the Node toolchain reads: a check that cannot check must not pass."""
     (tmp_path / ".metaobjects").mkdir()
     (tmp_path / ".metaobjects" / "config.json").write_text(
         json.dumps({"schema_version": 1, "dependencies": [{"name": "acme-common", "npm": "@acme/common"}]})
@@ -121,6 +121,26 @@ def test_deps_check_reports_a_non_path_transport_as_unresolved(
     assert _run(tmp_path, ["deps", "check"], monkeypatch) == 1
     err = capsys.readouterr().err
     assert "unresolved" in err and "meta deps check" in err
+
+
+@pytest.mark.parametrize(
+    "spec",
+    [
+        {"name": "acme-common", "maven": "com.acme:common", "version": "1.0.0"},
+        {"name": "acme-common", "nuget": "Acme.Common", "version": "1.0.0"},
+    ],
+)
+def test_deps_check_reports_a_packaged_transport_as_unresolved(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], spec: dict
+) -> None:
+    (tmp_path / ".metaobjects").mkdir()
+    (tmp_path / ".metaobjects" / "config.json").write_text(
+        json.dumps({"schema_version": 1, "dependencies": [spec]})
+    )
+    assert _run(tmp_path, ["deps", "check"], monkeypatch) == 1
+    err = capsys.readouterr().err
+    kind = "maven" if "maven" in spec else "nuget"
+    assert f'the "{kind}" transport' in err and "meta deps check" in err
 
 
 def test_deps_check_fails_when_the_locked_snapshot_is_missing(

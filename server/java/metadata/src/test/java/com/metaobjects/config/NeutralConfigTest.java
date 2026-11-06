@@ -151,4 +151,26 @@ public class NeutralConfigTest {
     public void refusesDirBesideAPathTransport() {
         assertBadAttr("[{\"name\":\"a\",\"path\":\"../a\",\"dir\":\"x\"}]");
     }
+
+    @Test
+    public void readsMavenAndNugetDependenciesWithTheirVersionAndDir() {
+        NeutralConfig cfg = dep("[{\"name\":\"a\",\"maven\":\"com.acme:model\",\"version\":\"1.0.0\",\"dir\":\"shared\"},"
+                + "{\"name\":\"b\",\"nuget\":\"Acme.Model\",\"version\":\"1.0\"}]");
+        assertEquals("com.acme:model", cfg.getDependencies().get(0).get("maven"));
+        assertEquals("1.0.0", cfg.getDependencies().get(0).get("version"));
+        assertEquals("shared", cfg.getDependencies().get(0).get("dir"));
+        assertEquals("Acme.Model", cfg.getDependencies().get(1).get("nuget"));
+        assertEquals("1.0", cfg.getDependencies().get(1).get("version"));
+    }
+
+    @Test
+    public void refusesAPackagedTransportWithoutAVersion() {
+        assertBadAttr("[{\"name\":\"a\",\"maven\":\"com.acme:model\"}]");
+        assertBadAttr("[{\"name\":\"a\",\"nuget\":\"Acme.Model\",\"version\":\"\"}]");
+    }
+
+    @Test
+    public void refusesAVersionBesideAnotherTransport() {
+        assertBadAttr("[{\"name\":\"a\",\"npm\":\"@x/y\",\"version\":\"1.0.0\"}]");
+    }
 }

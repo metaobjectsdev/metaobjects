@@ -9,8 +9,8 @@
 // loads nothing. The Node `meta deps sync` (the only writer of the lock and the snapshot) is what
 // repairs a drift this reports.
 //
-// Only the `path` transport is resolved here. An `npm` / `python` dependency is resolved through
-// the consumer's installed packages, which only the Node toolchain reads, so this port reports it
+// Only the `path` transport is resolved here. An `npm` / `python` / `maven` / `nuget` dependency is
+// resolved through installed packages and local package caches, which only the Node toolchain reads, so this port reports it
 // `Unresolved` and names `meta deps check`: a check that cannot check must not pass.
 using System.Text.Json;
 

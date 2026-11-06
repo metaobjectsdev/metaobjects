@@ -79,7 +79,8 @@ public final class Dependencies {
     private static final Set<String> LOCK_KEYS = Set.of("schema_version", "dependencies");
     private static final Set<String> LOCK_ENTRY_KEYS = Set.of(
             "version", "metamodelVersion", "artifact", "integrity", "packages", "nodes", "resolvedFrom");
-    private static final List<String> RESOLVED_FROM_TRANSPORTS = List.of("path", "npm", "python");
+    private static final List<String> RESOLVED_FROM_TRANSPORTS =
+            List.of("path", "npm", "python", "maven", "nuget");
 
     /** One lock entry, validated. */
     public record LockEntry(String version, String metamodelVersion, String artifact, String integrity,
@@ -297,7 +298,7 @@ public final class Dependencies {
         List<String> transports = new ArrayList<>();
         for (String t : RESOLVED_FROM_TRANSPORTS) if (obj.has(t)) transports.add(t);
         if (transports.size() != 1) {
-            throw lockInvalid(context + ": 'resolvedFrom' must have exactly one of 'path' / 'npm' / 'python'");
+            throw lockInvalid(context + ": 'resolvedFrom' must have exactly one of 'path' / 'npm' / 'python' / 'maven' / 'nuget'");
         }
         String transport = transports.get(0);
         JsonElement value = obj.get(transport);
@@ -306,8 +307,18 @@ public final class Dependencies {
         }
         Set<String> allowed = new HashSet<>(Set.of(transport));
         if (!transport.equals("path")) allowed.add("dir");
+        boolean versioned = transport.equals("maven") || transport.equals("nuget");
+        if (versioned) allowed.add("version");
         for (String key : obj.keySet()) {
             if (!allowed.contains(key)) throw lockInvalid(context + ": 'resolvedFrom' unknown key(s): [" + key + "]");
+        }
+        if (versioned) {
+            JsonElement version = obj.get("version");
+            if (version == null || !version.isJsonPrimitive() || !version.getAsJsonPrimitive().isString()
+                    || version.getAsString().isBlank()) {
+                throw lockInvalid(context + ": 'resolvedFrom.version' is required beside '" + transport
+                        + "' and must be a non-empty string");
+            }
         }
         if (obj.has("dir")) {
             JsonElement dir = obj.get("dir");
@@ -466,7 +477,7 @@ public final class Dependencies {
      * function of the config, the lock and the publisher's directory: it reads no snapshot and loads no
      * model, and writes nothing. Reference: {@code cli/src/lib/dependency-sync.ts} {@code checkDependencies}.
      *
-     * <p>Only the {@code path} transport is resolved here: an {@code npm} or {@code python} dependency
+     * <p>Only the {@code path} transport is resolved here: an {@code npm}, {@code python}, {@code maven} or {@code nuget} dependency
      * is found by the Node tool, so it reports {@link CheckStatus#UNRESOLVED} and names the command to
      * run. A check that cannot check must not pass. Results are in dependency-NAME order.
      *
@@ -517,7 +528,8 @@ public final class Dependencies {
 
     private static Path resolveDependencyDir(Path configDir, Map<String, String> spec) {
         if (!spec.containsKey("path")) {
-            String transport = spec.containsKey("npm") ? "npm" : "python";
+            String transport = List.of("npm", "python", "maven", "nuget").stream()
+                    .filter(spec::containsKey).findFirst().orElse("npm");
             throw new CheckUnresolved("the \"" + transport + "\" transport is resolved by the Node tool, not the Maven "
                     + "plugin; run `meta deps check`");
         }

@@ -10,8 +10,9 @@ The check is a pure function of the config, the lock and the publisher's directo
 nothing and needs no loader: ``sync`` (Node ``meta deps sync``, the only writer of the lock and
 the snapshot) is what repairs a drift this reports.
 
-Only the ``path`` transport is resolved here. An ``npm`` / ``python`` dependency is resolved by
-the Node toolchain (it needs the consumer's installed packages), so the Python check reports it
+Only the ``path`` transport is resolved here. An ``npm`` / ``python`` / ``maven`` / ``nuget``
+dependency is resolved by the Node toolchain (it needs the consumer's installed packages or local
+package caches), so the Python check reports it
 ``unresolved`` and names ``meta deps check``: a check that cannot check must not pass.
 """
 from __future__ import annotations
@@ -63,7 +64,7 @@ class _Unresolved(Exception):
 
 def _resolve_dir(config_dir: Path, spec: dict[str, str]) -> Path:
     if "path" not in spec:
-        transport = "npm" if "npm" in spec else "python"
+        transport = next(k for k in ("npm", "python", "maven", "nuget") if k in spec)
         raise _Unresolved(
             f'the "{transport}" transport is resolved by the Node toolchain; '
             "run `meta deps check` to check this dependency"

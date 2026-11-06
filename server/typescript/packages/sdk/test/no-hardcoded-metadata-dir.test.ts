@@ -92,6 +92,10 @@ const ALLOWED: ReadonlyMap<string, string> = new Map([
     "cli/src/commands/init.ts",
     "the scaffolder WRITING the default layout — creating that directory, never assuming one exists",
   ],
+  [
+    "cli/src/lib/dependency-transports.ts",
+    "PACKAGED_MODEL_DIR — the resource folder INSIDE a Maven jar / NuGet package where a published model sits (the maven and nuget transports' default `dir`). It is a packaging convention shared with the publishers, not this project's metadata collection, which stays resolveCollection's to name",
+  ],
 ]);
 
 // ---------------------------------------------------------------------------

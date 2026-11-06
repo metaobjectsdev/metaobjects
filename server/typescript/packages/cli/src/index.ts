@@ -5,6 +5,7 @@ import { resolveFormat, isValidFormat, VALID_FORMATS, type OutputFormat } from "
 import { resolveCollection } from "@metaobjectsdev/sdk";
 import { GENERATOR_HELP } from "./commands/generator-help.js";
 import { describeError } from "./lib/error-text.js";
+import { PACKAGED_MODEL_DIR } from "./lib/dependency-transports.js";
 export { defineConfig } from "@metaobjectsdev/codegen-ts";
 export type { MetaobjectsGenConfig } from "@metaobjectsdev/codegen-ts";
 
@@ -284,8 +285,8 @@ emit for your model.
   deps: `meta deps — sync a declared metadata dependency's committed snapshot
 
 USAGE:
-  meta deps sync [<name>...]   Resolve each declared dependency (path, npm or python
-                                transport), validate its manifest + artifact, copy it into .metaobjects/deps/<name>/,
+  meta deps sync [<name>...]   Resolve each declared dependency (path, npm, python, maven
+                                or nuget transport), validate its manifest + artifact, copy it into .metaobjects/deps/<name>/,
                                 and pin it in .metaobjects/deps.lock.json. Naming one or more
                                 <name>s syncs only those; bare 'sync' syncs everything
                                 declared. A dependency removed from config is PRUNED from
@@ -307,8 +308,14 @@ Transports: "path" is a directory relative to the config's directory; "npm" is a
 npm package, resolved from the config's directory the way Node resolves it; "python" is an
 installed Python package, found with importlib.util.find_spec by the project's interpreter
 ($METAOBJECTS_PYTHON, else $VIRTUAL_ENV, else ./.venv, else python3 — the interpreter used is
-printed). "dir" names the shared-model directory inside an npm or python package (default:
-the package root). Install the package with your package manager first; sync copies its
+printed); "maven" is a "groupId:artifactId" jar read from the local Maven repository
+($MAVEN_REPO_LOCAL, else -Dmaven.repo.local in $MAVEN_ARGS / $MAVEN_OPTS, else
+<localRepository> in ~/.m2/settings.xml, else ~/.m2/repository); "nuget" is a package id
+read from the NuGet global packages folder ($NUGET_PACKAGES, else ~/.nuget/packages).
+"maven" and "nuget" REQUIRE "version" (illegal beside the other transports) and are never
+downloaded: fetch first (mvn dependency:get, dotnet restore). "dir" names the shared-model
+directory inside the package (default: the package root for npm and python, "${PACKAGED_MODEL_DIR}"
+for maven and nuget). Install the package with your package manager first; sync copies its
 shared model into the committed snapshot, so nothing else needs it installed.
 
 The lock is the ONLY thing 'meta deps sync' writes to besides the snapshot directory —
