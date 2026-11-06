@@ -1,0 +1,26 @@
+metadata:
+  package: crm
+  children:
+    - object.entity:
+        name: Customer
+        children:
+          - source.rdb: { table: customers }
+          - field.long: { name: id }
+          - field.string: { name: email, maxLength: 320, required: true }
+          - field.string: { name: name, maxLength: 200 }
+          - field.enum: { name: plan, values: [free, pro], required: true, default: free }
+          - field.timestamp: { name: createdAt, required: true, autoSet: onCreate }
+          - identity.primary: { name: primary, fields: [id], generation: increment }
+
+    # The payload the LLM worker fills the welcome prompt with: bound to Customer's fields.
+    - object.value:
+        name: WelcomePayload
+        children:
+          - field.string: { name: name, extends: Customer.name }
+          - field.string: { name: email, extends: Customer.email }
+          - field.enum: { name: plan, extends: Customer.plan }
+
+    - template.prompt:
+        name: WelcomePrompt
+        payloadRef: WelcomePayload
+        textRef: welcome/greeting

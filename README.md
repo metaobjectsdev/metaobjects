@@ -311,7 +311,8 @@ metaobjects/
 │   ├── superpowers/specs/          # design specs
 │   └── RELEASING.md                # npm publish procedure
 ├── examples/
-│   └── advanced-modeling/          # a worked, runnable non-toy model
+│   ├── advanced-modeling/          # a worked, runnable non-toy model
+│   └── head-to-head/               # the same app set up twice (DIY stack vs MetaObjects), self-measured scorecard
 ├── library/                        # shipped libraries, opt-in per project via `libraries: [...]`
 │   ├── ai/                         #   the LLM-call trace envelope (stable)
 │   └── iam/                        #   users, groups, roles, grants (preview)
