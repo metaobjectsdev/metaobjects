@@ -197,7 +197,6 @@ Dependency drift (`--deps`) per port:
 | Python | `metaobjects deps check`, `metaobjects verify --deps` |
 | Java / Kotlin | `mvn metaobjects:verify -Dmeta.verify.mode=deps` |
 | C# | `dotnet meta verify --deps` |
-| Python | `metaobjects verify --codegen` | `metaobjects verify --templates` | Node `meta verify --db` only |
 
 Every non-TS port's `verify` rejects `--db` outright (exit 2, "schema verify is the
 migrate engine") — schema drift always runs through the Node `meta verify --db`,
