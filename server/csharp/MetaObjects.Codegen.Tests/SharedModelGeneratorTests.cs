@@ -2,6 +2,7 @@
 // (fixtures/shared-model-conformance/) pins, byte for byte, through the path `dotnet meta gen` takes (options
 // in, files out, version from the project). The artifact's bytes themselves are gated by
 // SharedModelConformanceTests in the core test assembly.
+using System.Text.Json;
 using MetaObjects.Codegen.Generators;
 using MetaObjects.Config;
 using MetaObjects.Loader;
@@ -43,6 +44,9 @@ public sealed class SharedModelGeneratorTests : IDisposable
         Version = version,
     };
 
+    private static string? VersionOf(string manifest) =>
+        JsonDocument.Parse(manifest).RootElement.GetProperty("version").GetString();
+
     [Fact]
     public void WritesTheArtifactAndManifestTheCorpusPins()
     {
@@ -70,7 +74,7 @@ public sealed class SharedModelGeneratorTests : IDisposable
 
         var manifest = Generator().Generate(Context()).Single(f => f.Path == "metaobjects.pkg.json").Content;
 
-        Assert.Contains("\"version\": \"2.3.4\"", manifest);
+        Assert.Equal("2.3.4", VersionOf(manifest));
     }
 
     [Fact]
@@ -79,6 +83,18 @@ public sealed class SharedModelGeneratorTests : IDisposable
         File.WriteAllText(Path.Combine(_project, "App.csproj"),
             "<Project><PropertyGroup><VersionPrefix>1.4.0</VersionPrefix></PropertyGroup>" +
             "<ItemGroup><PackageReference Include=\"Foo\"><Version>9.9.9</Version></PackageReference></ItemGroup></Project>");
+
+        var e = Assert.Throws<InvalidOperationException>(() => Generator().Generate(Context()).ToList());
+        Assert.Contains("no version available", e.Message);
+    }
+
+    [Fact]
+    public void AnUnevaluatedMsBuildExpressionIsNotAVersion()
+    {
+        File.WriteAllText(Path.Combine(_project, "App.csproj"),
+            "<Project><PropertyGroup><Version>$(VersionPrefix)-beta</Version></PropertyGroup></Project>");
+        File.WriteAllText(Path.Combine(_project, "Directory.Build.props"),
+            "<Project><PropertyGroup><Version>2.3.4</Version></PropertyGroup></Project>");
 
         var e = Assert.Throws<InvalidOperationException>(() => Generator().Generate(Context()).ToList());
         Assert.Contains("no version available", e.Message);
@@ -109,7 +125,7 @@ public sealed class SharedModelGeneratorTests : IDisposable
 
         var manifest = generator.Generate(ctx).Single(f => f.Path == "metaobjects.pkg.json").Content;
 
-        Assert.Contains("\"version\": \"1.0.0\"", manifest);
+        Assert.Equal("1.0.0", VersionOf(manifest));
     }
 
     [Fact]
@@ -120,7 +136,7 @@ public sealed class SharedModelGeneratorTests : IDisposable
 
         var manifest = Generator("1.0.0").Generate(Context()).Single(f => f.Path == "metaobjects.pkg.json").Content;
 
-        Assert.Contains("\"version\": \"1.0.0\"", manifest);
+        Assert.Equal("1.0.0", VersionOf(manifest));
     }
 
     [Fact]

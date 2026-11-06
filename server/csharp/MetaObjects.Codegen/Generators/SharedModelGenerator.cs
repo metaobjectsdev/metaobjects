@@ -94,8 +94,15 @@ public class SharedModelGenerator : IGenerator
         new($"shared-model: set {option} on the generator ({what}): new SharedModelGenerator {{ {option} = ... }}");
 
     /// <summary>The <c>&lt;Version&gt;</c> the project builds with: the project file in the root, then
-    /// <c>Directory.Build.props</c> in the root or the nearest directory above it. <c>null</c> when none declares one.</summary>
+    /// <c>Directory.Build.props</c> in the root or the nearest directory above it. <c>null</c> when none declares one,
+    /// or when the one that does is an MSBuild expression (<c>$(...)</c>) this generator does not evaluate.</summary>
     private static string? ProjectVersion(string projectRoot)
+    {
+        var declared = DeclaredVersion(projectRoot);
+        return declared is null || declared.Contains("$(", StringComparison.Ordinal) ? null : declared;
+    }
+
+    private static string? DeclaredVersion(string projectRoot)
     {
         foreach (var project in Directory.EnumerateFiles(projectRoot, "*.csproj").Order(StringComparer.Ordinal))
             if (VersionIn(project) is { } own) return own;

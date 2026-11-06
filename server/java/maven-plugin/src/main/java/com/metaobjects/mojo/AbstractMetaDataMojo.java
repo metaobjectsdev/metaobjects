@@ -596,7 +596,7 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
 
         Map<String,String> allargs = mergeArgs(globals, g.getArgs());
         // Maven's project version, as a default a generator's own `version` arg overrides.
-        if ( project != null && project.getVersion() != null ) allargs.putIfAbsent("version", project.getVersion());
+        if ( project != null && project.getVersion() != null ) allargs.putIfAbsent(SharedModelGenerator.ARG_VERSION, project.getVersion());
 
         // Dump the args to debug
         getLog().debug( "-- Generator ["+g.getClass().getSimpleName()+"] merged Args");

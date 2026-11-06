@@ -228,12 +228,12 @@ class EjectContractTest {
     private class Corpus(val label: String, model: String, templates: String? = null) {
         val model: Path = FIXTURES.resolve(model)
         val templates: Path? = templates?.let { FIXTURES.resolve(it) }
-        /** Loaded once and shared by both sides. A loader's name is an identifier. */
         /** The model's metadata files, comma-separated: every .json and .yaml under the directory. */
         fun modelFiles(): String = Files.walk(model).use { walk ->
             walk.filter { it.isRegularFile() && (it.toString().endsWith(".json") || it.toString().endsWith(".yaml")) }
                 .map { it.toString() }.sorted().toList().joinToString(",")
         }
+        /** Loaded once and shared by both sides. A loader's name is an identifier. */
         val loader by lazy { loadDirectory("ejectContract_" + label.replace('-', '_'), this.model) }
     }
 

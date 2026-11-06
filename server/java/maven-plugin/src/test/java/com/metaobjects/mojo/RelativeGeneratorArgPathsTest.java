@@ -1,6 +1,7 @@
 package com.metaobjects.mojo;
 
 import com.metaobjects.generator.GeneratorBase;
+import com.metaobjects.generator.SharedModelGenerator;
 import com.metaobjects.generator.kotlin.KotlinRenderHelperGenerator;
 import com.metaobjects.generator.spring.SpringRenderHelperGenerator;
 import com.metaobjects.generator.template.TemplateScopeGenerator;
@@ -75,6 +76,32 @@ public class RelativeGeneratorArgPathsTest {
 
         assertEquals(abs, args.get(GeneratorBase.ARG_OUTPUTDIR));
         assertEquals("acme.generated", args.get("packageName"));
+    }
+
+    @Test
+    public void eachEntryOfARelativeFilesListResolvesAgainstTheModuleBasedir() throws Exception {
+        String abs = tempFolder.newFile("elsewhere.json").getAbsolutePath();
+        Map<String, String> args = merged(Map.of(
+                SharedModelGenerator.ARG_FILES, "metaobjects/meta.base.json, ../shared/meta.customer.json," + abs));
+
+        assertEquals(String.join(",", underBasedir("metaobjects/meta.base.json"),
+                        underBasedir("../shared/meta.customer.json"), abs),
+                args.get(SharedModelGenerator.ARG_FILES));
+    }
+
+    @Test
+    public void theVersionArgDefaultsToTheProjectVersion() {
+        Mockito.when(mojo.project.getVersion()).thenReturn("2.3.4");
+
+        assertEquals("2.3.4", merged(Map.of()).get(SharedModelGenerator.ARG_VERSION));
+    }
+
+    @Test
+    public void anExplicitVersionArgBeatsTheProjectVersion() {
+        Mockito.when(mojo.project.getVersion()).thenReturn("2.3.4");
+
+        assertEquals("1.0.0", merged(Map.of(SharedModelGenerator.ARG_VERSION, "1.0.0"))
+                .get(SharedModelGenerator.ARG_VERSION));
     }
 
     /** PATH_ARGS lists the render helper's key once; both ports must keep reading that key. */
