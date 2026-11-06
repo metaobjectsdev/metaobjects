@@ -697,8 +697,8 @@ the breaking half at `1.1`.
 #### 1.x / later
 
 - **FR-023 — metadata dependencies, remaining phases** (Phase 1a — TS + Python —
-  shipped, Java/Kotlin consume (Phase 2 S3); Phase 1b bindings/docs-badge, and the rest of Phase 2 — C# + the
-  `npm`/`python`/`maven`/`nuget` transports — remain).
+  shipped, Java/Kotlin consume (Phase 2 S3); Phase 1b bindings/docs-badge, and the rest of Phase 2 — per-port sync
+  remains; the `maven`/`nuget` transports in Node `meta deps` are unreleased).
 - **FR-020 — `@inheritance` joined strategy** (additive; pairs with a persistence release).
 - **MCP exposure** (if not pulled earlier — see below).
 - **Database-source metadata loader** (currently Future).
