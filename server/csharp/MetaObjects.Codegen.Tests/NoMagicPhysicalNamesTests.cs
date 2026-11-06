@@ -409,7 +409,7 @@ public class NoMagicPhysicalNamesTests
     /// primitive with no default walk; neither can emit here.</para>
     /// </remarks>
     private static readonly IReadOnlyList<string> GeneratorNames =
-        [.. GeneratorRegistry.Entries.Keys.Where(n => n is not ("render-helper" or "template"))];
+        [.. GeneratorRegistry.Entries.Keys.Where(n => n is not ("render-helper" or "template" or "shared-model"))];
 
     /// <summary>Run the generator suite over the fixture.</summary>
     private static IReadOnlyList<EmittedFile> Generate()

@@ -9,6 +9,7 @@ import com.metaobjects.generator.Generator;
 import com.metaobjects.generator.GeneratorBase;
 import com.metaobjects.generator.ProjectClassLoaderAware;
 import com.metaobjects.generator.RunAware;
+import com.metaobjects.generator.SharedModelGenerator;
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase;
 import com.metaobjects.generator.spring.SpringRenderHelperGenerator;
 import com.metaobjects.generator.template.TemplateScopeGenerator;
@@ -587,9 +588,15 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
             // Kotlin's render helper reads the same key (KotlinRenderHelperGenerator.ARG_TEMPLATE_ROOT).
             SpringRenderHelperGenerator.ARG_TEMPLATE_ROOT);
 
+    /** Generator args holding a comma-separated list of filesystem paths, resolved like {@link #PATH_ARGS}
+     *  element by element (the shared-model generator's {@code files}). */
+    static final Set<String> PATH_LIST_ARGS = Set.of(SharedModelGenerator.ARG_FILES);
+
     public Map<String, String> mergeAndOverwriteArgs(GeneratorParam g) {
 
         Map<String,String> allargs = mergeArgs(globals, g.getArgs());
+        // Maven's project version, as a default a generator's own `version` arg overrides.
+        if ( project != null && project.getVersion() != null ) allargs.putIfAbsent(SharedModelGenerator.ARG_VERSION, project.getVersion());
 
         // Dump the args to debug
         getLog().debug( "-- Generator ["+g.getClass().getSimpleName()+"] merged Args");
@@ -612,11 +619,28 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
         if ( basedir != null ) {
             for ( String key : PATH_ARGS ) {
                 String value = allargs.get(key);
-                if ( value == null || value.isEmpty() || new File(value).isAbsolute() ) continue;
-                allargs.put(key, basedir.toPath().resolve(value).normalize().toString());
+                if ( value == null || value.isEmpty() ) continue;
+                allargs.put(key, resolveAgainstBasedir(basedir, value));
+            }
+            // Path LISTS (comma-separated): each element resolves the same way.
+            for ( String key : PATH_LIST_ARGS ) {
+                String value = allargs.get(key);
+                if ( value == null || value.isBlank() ) continue;
+                List<String> resolved = new ArrayList<>();
+                for ( String part : value.split(",") ) {
+                    String p = part.trim();
+                    if ( p.isEmpty() ) continue;
+                    resolved.add( resolveAgainstBasedir(basedir, p) );
+                }
+                allargs.put(key, String.join(",", resolved));
             }
         }
         return allargs;
+    }
+
+    /** {@code value} as-is when absolute, otherwise resolved against {@code basedir} and normalized. */
+    private static String resolveAgainstBasedir(File basedir, String value) {
+        return new File(value).isAbsolute() ? value : basedir.toPath().resolve(value).normalize().toString();
     }
 
     /**

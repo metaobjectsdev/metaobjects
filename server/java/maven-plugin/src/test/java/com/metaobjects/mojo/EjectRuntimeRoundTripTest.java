@@ -120,6 +120,11 @@ public class EjectRuntimeRoundTripTest {
         // Required by the entity generator (JavaObjectCodeGenerator), ignored by the rest.
         a.put("type", "class");
         a.put("flavor", "pojoAware");
+        // Required by shared-model, ignored by the rest.
+        a.put("name", "fitness");
+        a.put("include", "**");
+        a.put("version", "1.0.0");
+        a.put("files", canonical.resolve("meta.fitness.json").toString());
         return a;
     }
 

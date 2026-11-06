@@ -318,6 +318,21 @@ public static class GeneratorRegistry
                 // The modules are written over the report's row class and called from its routes file.
                 Requires = ["entity", "routes"],
             },
+            // FR-023 — publishes a shared model: the artifact and the manifest a consumer's `meta deps sync`
+            // copies. Its options (ModelName, Include, Exclude, Files, Version, Providers) are public init
+            // properties, set where the generator is declared in codegen/Generators.cs. The artifact bytes are
+            // MetaObjects.Config.SharedModel's, in the package, so an owned copy cannot change them.
+            ["shared-model"] = new()
+            {
+                Name = "shared-model",
+                Description = "FR-023: a publisher's flattened shared-model artifact + manifest for a consumer's `meta deps sync`.",
+                Tier = GeneratorTier.Native,
+                Layer = GeneratorLayer.Capability,
+                Factory = _ => new SharedModelGenerator(),
+                Options = "ModelName, Include, Files (required); Exclude, Version, Providers, OutDir (init properties on the entry in codegen/Generators.cs). Version defaults to the project's <Version>.",
+                Note = "Writes <ModelName>.metaobjects.json and metaobjects.pkg.json. A selection that is empty, not closed over extends and reference attributes, or that needs vocabulary outside the library's is refused with the reason and nothing is written. Give it an OutDir of its own.",
+                SourceFileName = "SharedModelGenerator.cs",
+            },
             // ADR-0057 — one xUnit test per declared requirement, calling a project-owned witness.
             // Its six options (TestNamespace, WitnessClass, Grain, Filter, Renderer, WarnUncovered) are
             // public init properties: this port has no per-generator option channel, and a project sets

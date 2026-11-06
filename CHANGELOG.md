@@ -18,6 +18,16 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
 
 ### Added
 
+- **Java, Kotlin and C#: publish a shared model (FR-023).** A `shared-model` generator in every one
+  of the three ports writes the artifact `<name>.metaobjects.json` and the manifest
+  `metaobjects.pkg.json`, byte-identical to the TypeScript `sharedModelFile()` and gated by
+  `fixtures/shared-model-conformance/` (the engine is `SharedModel` in the Java `metadata` module
+  and `MetaObjects.Config.SharedModel` in C#). Java and Kotlin run it through `metaobjects:generate`
+  (version from the project's `<version>`) and eject it with `mvn metaobjects:eject`; C# declares
+  `SharedModelGenerator` in `codegen/Generators.cs` (version from `<Version>`) and ejects it with
+  `dotnet meta eject shared-model`. `generator-registry-conformance` now lists `java`, `kotlin` and
+  `csharp` under `shared-model`. The Node `meta deps sync` remains the only writer of the lock and
+  the snapshot.
 - **Java and Kotlin: a Spring app loads a shared model's committed snapshot at runtime, and
   `metaobjects:verify` checks dependency drift.** `metaobjects:generate` now ships
   `.metaobjects/deps.lock.json` and `.metaobjects/deps/**` as resources (target path `.metaobjects`)

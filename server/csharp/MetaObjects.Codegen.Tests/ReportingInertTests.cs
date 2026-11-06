@@ -85,7 +85,7 @@ public class ReportingInertTests
     public static TheoryData<string> GeneratorNames()
     {
         var data = new TheoryData<string>();
-        foreach (var name in GeneratorRegistry.Entries.Keys) data.Add(name);
+        foreach (var name in GeneratorRegistry.Entries.Keys.Where(n => n != SharedModelTestSupport.Name)) data.Add(name);
         return data;
     }
 
@@ -290,7 +290,9 @@ public class ReportingInertTests
             .Select(e => e.Key)
             .OrderBy(n => n, StringComparer.Ordinal)
             .ToList();
-        Assert.Equal(new List<string>(), threw);
+        // shared-model publishes the metadata files its options name; a bare model names none, and it writes no
+        // code a report could leak into.
+        Assert.Equal(new List<string> { SharedModelTestSupport.Name }, threw);
     }
 
     [Fact]
@@ -311,7 +313,7 @@ public class ReportingInertTests
     [Fact]
     public void A_report_reaches_no_tier_but_its_row_its_mapping_its_allowlist_and_its_routes()
     {
-        var files = Emit(Load("with"), GeneratorRegistry.Entries.Values.Select(Build).ToList());
+        var files = Emit(Load("with"), GeneratorRegistry.Entries.Values.Where(e => e.Name != SharedModelTestSupport.Name).Select(Build).ToList());
         Assert.False(files.ContainsKey("<threw>"), files.GetValueOrDefault("<threw>"));
 
         // The view-backed report: its row, its allowlist and its routes file; nothing in the

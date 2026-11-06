@@ -228,6 +228,11 @@ class EjectContractTest {
     private class Corpus(val label: String, model: String, templates: String? = null) {
         val model: Path = FIXTURES.resolve(model)
         val templates: Path? = templates?.let { FIXTURES.resolve(it) }
+        /** The model's metadata files, comma-separated: every .json and .yaml under the directory. */
+        fun modelFiles(): String = Files.walk(model).use { walk ->
+            walk.filter { it.isRegularFile() && (it.toString().endsWith(".json") || it.toString().endsWith(".yaml")) }
+                .map { it.toString() }.sorted().toList().joinToString(",")
+        }
         /** Loaded once and shared by both sides. A loader's name is an identifier. */
         val loader by lazy { loadDirectory("ejectContract_" + label.replace('-', '_'), this.model) }
     }
@@ -241,6 +246,11 @@ class EjectContractTest {
                 "testPackage" to "com.example.requirements",
                 "witnessClass" to "com.example.Witnesses",
                 "warnUncovered" to "false",
+                // shared-model publishes the whole model, from the corpus's own metadata files.
+                "name" to "contract",
+                "include" to "**",
+                "version" to "1.0.0",
+                "files" to corpus.modelFiles(),
                 // Required by the generators that read template text, whatever the model holds.
                 "templateRoot" to (corpus.templates ?: CORPORA.first().templates).toString(),
             )

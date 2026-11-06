@@ -138,6 +138,14 @@
                                         <include>BaseObjectCodeWriter.java</include>
                                     </includes>
                                 </resource>
+                                <!-- "shared-model": the thin generator only; the artifact bytes (SharedModel)
+                                     stay in the metadata jar. -->
+                                <resource>
+                                    <directory>src/main/java/com/metaobjects/generator</directory>
+                                    <includes>
+                                        <include>SharedModelGenerator.java</include>
+                                    </includes>
+                                </resource>
                                 <!-- "html-docs", "ai-docs" and "json-schema": each a generator and
                                      the writer that emits its file. -->
                                 <resource>

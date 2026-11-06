@@ -228,6 +228,8 @@ public class ReportingInertTest extends SharedRegistryTestBase {
         // output. Pinned by name so a generator that starts throwing cannot drop out
         // silently; the list may only shrink.
         //   template   needs a `template` arg (no default template exists)
+        //   shared-model  publishes the metadata files its `files` arg names; a bare in-memory
+        //                 model has none, and it writes no code to leak a report into
         List<String> threw = new ArrayList<>();
         StringBuilder why = new StringBuilder();
         for (GeneratorInfo info : GeneratorRegistry.list().values()) {
@@ -238,7 +240,7 @@ public class ReportingInertTest extends SharedRegistryTestBase {
             }
         }
         threw.sort(null);
-        assertEquals(why.toString(), List.of("template"), threw);
+        assertEquals(why.toString(), List.of("shared-model", "template"), threw);
     }
 
     @Test

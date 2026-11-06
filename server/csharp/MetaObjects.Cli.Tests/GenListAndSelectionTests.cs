@@ -47,7 +47,7 @@ public sealed class GenListAndSelectionTests : IDisposable
     public void ListLines_prints_all_generators_with_stable_names_and_descriptions()
     {
         var lines = GenCommand.ListLines(_tmp);
-        Assert.Equal(14, lines.Count);
+        Assert.Equal(15, lines.Count);
         foreach (var name in new[]
         {
             "entity", "db-context", "routes", "output-parser", "extractor",

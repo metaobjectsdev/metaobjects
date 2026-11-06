@@ -423,6 +423,7 @@ name in every port.
 | `value-object` | `SpringValueObjectGenerator` | `metaobjects-codegen-spring` | One Java 21 `record` per concrete `object.value` and per sourceless `object.projection`, in the value object's own package. It carries jakarta bean-validation constraints plus `@Valid` on nested members, so a VO jsonb column POSTs and PATCHes with validation cascading to depth ≥ 2. It is THE Java type for the value object (ADR-0056): `<Entity>Dto` / `<Entity>Patch` bind to it, a render helper takes it, and a response parser returns it. The template tier declares no copy, so it needs this generator in the same run. |
 | `names` | `SpringNamesGenerator` | `metaobjects-codegen-spring` | One `<Entity>Names.java` per object with a declared/inherited primary `source.rdb` — `public static final` physical database name constants (table/view name, schema, per-field columns). See "`<Entity>Names`" below. |
 | `requirement-tests` | `JUnitRequirementTestsGenerator` | `metaobjects-codegen-spring` | Per metamodel package that holds a tested requirement, two files in `testPackage`: `Requirements_<pkgKey>_Witnesses.java` (an interface with one default member per non-skipped test, failing with `unimplemented requirement: ...`) and `Requirements_<pkgKey>_Test.java` (one JUnit Jupiter `@Test` per requirement, calling that member on your `witnessClass`; a planned or retired requirement is `@Disabled`). Args: `testPackage` and `witnessClass` (required), `grain` (`concern` or `member`), `filter` and `renderer` (class names on your project classpath), `warnUncovered`. Your test classpath needs `org.junit.jupiter:junit-jupiter-api`. A model with no requirement writes nothing. See "Requirement tests" below. |
+| `shared-model` | `SharedModelGenerator` | `metaobjects-codegen-base` | FR-023 publishing: writes `<name>.metaobjects.json` (the shared model artifact) and `metaobjects.pkg.json` (its manifest) into `outputDir`, from the top-level nodes your `include` (and optional `exclude`) scope selects out of `files`. Args: `outputDir`, `name`, `include` and `files` (comma-separated paths, resolved against the module basedir) are required; `version` is optional and defaults to the Maven project's `<version>`. A selection that is empty, not closed over `extends` and reference attributes, or that uses vocabulary outside the core set is refused with the reason, and nothing is written. See "Publishing a shared model" below. |
 | `entity` | `JavaObjectCodeGenerator` | `metaobjects-codegen-base` | Flavor-selected via the `flavor` generator arg (`com.metaobjects.generator.direct.object.javacode`). `flavor=pojoAware` emits `class <Name> extends PojoObject` — a concrete `MetaObjectAware` class whose inherited `getMetaData()` back-reference breaks a default Jackson/Gson mapper (see [Serializing generated objects](#serializing-generated-objects) below). `flavor=valueObject` emits a map-backed `class <Name> extends ValueObject` instead. Either flavor also emits a self-registering `ObjectClassBindingProvider`. It writes no `<Name>Extractor`: list `extractor` for those (8.0 wrote them from `entity` when no `extractor` was listed; see [the migration](../features/migrations/docs-are-generators.md#java-and-kotlin)). For a plain default-Jackson-friendly type, use the `codegen-spring` record surface instead — never `pojoAware`. |
 | `output-parser` | `SpringOutputParserGenerator` | `metaobjects-codegen-spring` | One `<Template>Parser` per **responding** `template.prompt` (ADR-0052: one carrying `@responseRef`) — a Jackson-backed throw-only parser returning the `@responseRef` value object's own record (ADR-0056). FR-006 / ADR-0010; the Java sibling of TS's `outputParser()`. See [FR-006 — response parsing](#fr-006--response-parsing) below. |
 | `output-prompt` | `SpringOutputPromptGenerator` | `metaobjects-codegen-spring` | One `<Template>ResponseFormat` per responding `template.prompt` — a static `renderFormat()` / `renderFormat(PromptOverrides)` pair emitting the output-format prompt fragment (FR-010). The reply's syntax comes from `@responseFormat`, never `@format` (which is the syntax of the rendered prompt BODY). |
@@ -781,6 +782,33 @@ project declares a dependency on exactly one of `metaobjects-codegen-spring` and
 The identity function, the digest and the hook types stay in the package, and the owned
 copy imports them. The model and the other ports' spelling are in
 [Generated requirement tests and witnesses](../features/requirements.md#generated-requirement-tests-and-witnesses).
+
+### Publishing a shared model
+
+`shared-model` (FR-023) publishes a slice of your model so another repository can depend on it.
+Wire it like any generator:
+
+```xml
+<generator>
+  <classname>com.metaobjects.generator.SharedModelGenerator</classname>
+  <args>
+    <outputDir>${project.basedir}/shared</outputDir>
+    <name>acme-common</name>
+    <include>acme::common::**</include>
+    <files>src/main/metaobjects/meta.common.json</files>
+  </args>
+</generator>
+```
+
+It writes the artifact and the manifest with the same bytes as the TypeScript `sharedModelFile()`:
+the shared corpus (`fixtures/shared-model-conformance/`) is the gate. The version comes from the
+module's `<version>` unless you pass `version`. Requirement and template nodes are never published.
+Moving the artifact into a registry, and recording a consumer's snapshot and lock, is the Node
+`meta deps sync`'s job; this generator only produces the files.
+
+To own it, `mvn metaobjects:eject -Dnames=shared-model -Dport=java` copies `SharedModelGenerator.java`
+into a `codegen/` module (`-Dport` because the name is ejectable on both JVM ports). The artifact
+engine, `com.metaobjects.config.SharedModel`, stays in the package, so the owned copy is thin.
 
 ### Authoring your own — two paths
 

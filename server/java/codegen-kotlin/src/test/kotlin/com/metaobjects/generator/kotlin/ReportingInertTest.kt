@@ -116,7 +116,9 @@ class ReportingInertTest {
      * held to the same inertness by [api docs gain exactly the view-backed report's page], which
      * compares its pages unit by unit.
      */
-    private val codeGenerators get() = GENERATOR_REGISTRY.values.filter { it.name != "api-docs" }
+    // shared-model writes no code: it publishes the model's own metadata files, named by its args,
+    // which a bare in-memory model does not have. Its bytes are gated by the shared-model corpus.
+    private val codeGenerators get() = GENERATOR_REGISTRY.values.filter { it.name != "api-docs" && it.name != "shared-model" }
 
     /** What a generator may add for the with-model: one file of the view-backed report, from five generators. */
     private fun allowedFor(info: GeneratorInfo): Set<String> = STORE_TOTALS_FILES[info.name]?.split('|')?.toSet() ?: emptySet()

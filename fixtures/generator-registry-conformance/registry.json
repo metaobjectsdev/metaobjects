@@ -195,7 +195,7 @@
       "tier": "native",
       "layer": "capability",
       "eject": "full",
-      "ports": ["typescript"]
+      "ports": ["typescript", "java", "kotlin", "csharp"]
     },
     "form": {
       "concept": "Per-entity React form component over the generated Zod schema.",
