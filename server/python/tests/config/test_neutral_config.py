@@ -114,6 +114,21 @@ def test_dependencies_parse(tmp_path: Path) -> None:
     assert cfg.dependencies == [{"name": "acme-common", "path": "../lib"}]
 
 
+@pytest.mark.parametrize(
+    "spec",
+    [
+        {"name": "a", "maven": "com.acme:model", "version": "1.0.0"},
+        {"name": "a", "maven": "com.acme:model", "version": "1.0.0", "dir": "shared"},
+        {"name": "a", "nuget": "Acme.Model", "version": "1.0"},
+    ],
+)
+def test_packaged_dependencies_parse(tmp_path: Path, spec: dict) -> None:
+    _write_config(tmp_path, {"schema_version": 1, "sources": [], "dependencies": [spec]})
+    cfg = read_neutral_config(tmp_path)
+    assert cfg is not None
+    assert cfg.dependencies == [spec]
+
+
 def test_dependencies_absent_is_empty(tmp_path: Path) -> None:
     _write_config(tmp_path, {"schema_version": 1, "sources": []})
     cfg = read_neutral_config(tmp_path)
@@ -132,6 +147,12 @@ def test_dependencies_absent_is_empty(tmp_path: Path) -> None:
         [{"name": "a", "path": "x"}, {"name": "a", "npm": "y"}],
         [{"name": "a", "path": "x", "dir": "y"}],
         [{"name": "a", "path": "x", "pathh": "t"}],
+        [{"name": "a", "maven": "com.acme:model"}],
+        [{"name": "a", "nuget": "Acme.Model"}],
+        [{"name": "a", "maven": "com.acme:model", "version": ""}],
+        [{"name": "a", "maven": "com.acme:model", "nuget": "Acme.Model", "version": "1.0.0"}],
+        [{"name": "a", "npm": "y", "version": "1.0.0"}],
+        [{"name": "a", "nuget": "Acme.Model", "version": "1.0.0", "classifier": "x"}],
     ],
 )
 def test_dependencies_shape_errors(tmp_path: Path, bad: object) -> None:

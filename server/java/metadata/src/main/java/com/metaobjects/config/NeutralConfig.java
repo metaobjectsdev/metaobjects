@@ -93,8 +93,9 @@ public final class NeutralConfig {
 
     /**
      * FR-023 — the declared {@code dependencies}, each already validated (DESIGN §3.1): a
-     * {@code name}, exactly one transport key ({@code path} | {@code npm} | {@code python}),
-     * and {@code dir} only beside {@code npm}/{@code python}. Empty when the key is absent.
+     * {@code name}, exactly one transport key ({@code path} | {@code npm} | {@code python} |
+     * {@code maven} | {@code nuget}), a {@code version} beside {@code maven}/{@code nuget}, and
+     * {@code dir} beside any transport but {@code path}. Empty when the key is absent.
      * Resolving a transport to bytes is the Node {@code meta deps sync}'s job; this port reads
      * the committed snapshot instead.
      */
@@ -375,7 +376,12 @@ public final class NeutralConfig {
     private static final java.util.regex.Pattern DEPENDENCY_NAME =
             java.util.regex.Pattern.compile("^[a-z0-9][a-z0-9._-]*$");
 
-    private static final List<String> DEPENDENCY_TRANSPORTS = List.of("path", "npm", "python");
+    private static final List<String> DEPENDENCY_TRANSPORTS = List.of("path", "npm", "python", "maven", "nuget");
+
+    /** The packaged transports name a package in a cache that holds many versions, so they carry a {@code version}. */
+    private static boolean isVersioned(String transport) {
+        return transport.equals("maven") || transport.equals("nuget");
+    }
 
     private static MetaDataException bad(String message) {
         return new MetaDataException(message, ErrorCode.ERR_BAD_ATTR_VALUE);
@@ -404,7 +410,7 @@ public final class NeutralConfig {
             List<String> transports = new ArrayList<>();
             for (String t : DEPENDENCY_TRANSPORTS) if (dep.has(t)) transports.add(t);
             if (transports.size() != 1) {
-                throw bad(ctx + "exactly one of 'path' / 'npm' / 'python' is required)");
+                throw bad(ctx + "exactly one of 'path' / 'npm' / 'python' / 'maven' / 'nuget' is required)");
             }
             String transport = transports.get(0);
             Map<String, String> spec = new LinkedHashMap<>();
@@ -413,11 +419,16 @@ public final class NeutralConfig {
 
             java.util.Set<String> allowed = new java.util.HashSet<>(List.of("name", transport));
             if (!transport.equals("path")) allowed.add("dir");
+            if (isVersioned(transport)) allowed.add("version");
             List<String> extra = new ArrayList<>();
             for (String k : dep.keySet()) if (!allowed.contains(k)) extra.add(k);
             if (!extra.isEmpty()) {
                 java.util.Collections.sort(extra);
                 throw bad(ctx + "unknown key(s): " + extra + ")");
+            }
+            if (isVersioned(transport)) {
+                spec.put("version", nonEmptyString(dep.get("version"),
+                        ctx + "'version' is required beside '" + transport + "' and must be a non-empty string)"));
             }
             if (dep.has("dir")) {
                 spec.put("dir", nonEmptyString(dep.get("dir"), ctx + "'dir' must be a non-empty string)"));

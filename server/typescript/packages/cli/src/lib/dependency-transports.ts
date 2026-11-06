@@ -10,16 +10,27 @@
 //            from the consumer's config directory, as Node does), then `dir`.
 //   python — the installed package's directory, as the consumer's own Python
 //            interpreter's `importlib.util.find_spec` reports it, then `dir`.
+//   maven  — a `groupId:artifactId` at `version` in the LOCAL Maven repository
+//            (`~/.m2/repository` layout, the location overridable): the jar's
+//            `dir` resource (default `metaobjects`), unpacked to a temp directory.
+//   nuget  — a package id at `version` in the NuGet global packages folder
+//            (`$NUGET_PACKAGES` or `~/.nuget/packages`): its `dir` content
+//            (default `metaobjects`).
+//
+// `maven` and `nuget` never download. A package missing from the local cache is
+// refused with the command that fetches it (`mvn dependency:get`, `dotnet restore`).
 //
 // A refusal names what was tried and the fix. All are `ERR_DEPENDENCY_UNRESOLVED`
 // (the package, the interpreter or the directory could not be found); a
 // directory that exists but holds no manifest is the manifest read's
 // `ERR_DEPENDENCY_MANIFEST_INVALID`, not this module's.
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { codeSource, ParseError } from "@metaobjectsdev/metadata";
 import { dependencyName, type DependencySpec } from "@metaobjectsdev/sdk";
+import { readZipEntries } from "./zip-read.js";
 
 /** Where a transport found the publisher's manifest directory. */
 export interface ResolvedTransport {
@@ -37,6 +48,16 @@ export interface ResolvedTransport {
 export const METAOBJECTS_PYTHON_ENV = "METAOBJECTS_PYTHON";
 const VIRTUAL_ENV_ENV = "VIRTUAL_ENV";
 
+/** Where a Maven jar / NuGet package carries the shared model, unless `dir` says otherwise. */
+export const PACKAGED_MODEL_DIR = "metaobjects";
+
+/** The env keys the maven and nuget transports read for an overridden cache. */
+export const MAVEN_REPO_LOCAL_ENV = "MAVEN_REPO_LOCAL";
+export const NUGET_PACKAGES_ENV = "NUGET_PACKAGES";
+
+const MAVEN_COORDINATE = /^[A-Za-z0-9_.-]+:[A-Za-z0-9_.-]+$/;
+const PACKAGE_VERSION = /^[A-Za-z0-9][A-Za-z0-9._+-]*$/;
+const NUGET_ID = /^[A-Za-z0-9_.-]+$/;
 const NPM_PACKAGE_NAME = /^(@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*$/;
 const PYTHON_MODULE_NAME = /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$/;
 const PYTHON_TIMEOUT_MS = 60_000;
@@ -266,6 +287,199 @@ function resolvePython(
   };
 }
 
+// ---------------------------------------------------------------------------
+// maven / nuget — read a published package out of the machine's local cache.
+// ---------------------------------------------------------------------------
+
+function homeDir(env: NodeJS.ProcessEnv): string {
+  const home = env.HOME ?? env.USERPROFILE;
+  return home !== undefined && home !== "" ? home : homedir();
+}
+
+/** The directories a packaged model is unpacked into; removed when the process exits. */
+const unpackedDirs: string[] = [];
+let cleanupRegistered = false;
+
+function newUnpackDir(): string {
+  const dir = mkdtempSync(join(tmpdir(), "mo-dep-pkg-"));
+  unpackedDirs.push(dir);
+  if (!cleanupRegistered) {
+    cleanupRegistered = true;
+    process.once("exit", () => {
+      for (const d of unpackedDirs) rmSync(d, { recursive: true, force: true });
+    });
+  }
+  return dir;
+}
+
+/** `dir` for a packaged model: the default `metaobjects`, same rules as {@link applyDir}'s `dir`. */
+function packagedDir(name: string, kind: string, dir: string | undefined): string {
+  const chosen = dir ?? PACKAGED_MODEL_DIR;
+  const normalized = chosen.split("\\").join("/").replace(/\/+$/, "");
+  if (isAbsolute(chosen) || normalized === "" || normalized.split("/").includes("..")) {
+    unresolved(name, `"dir": "${chosen}" must be a path inside the ${kind} package (relative, no "..")`);
+  }
+  return normalized;
+}
+
+/** Writes every entry of `zip` under `<dir>/` to a fresh temp directory (with `<dir>/` stripped);
+ *  returns it, or `undefined` when the archive has nothing there. */
+function unpackZipDir(zip: string, dir: string): string | undefined {
+  const prefix = `${dir}/`;
+  const entries = readZipEntries(zip, prefix);
+  if (entries.length === 0) return undefined;
+  const target = newUnpackDir();
+  for (const entry of entries) {
+    const dest = join(target, ...entry.name.slice(prefix.length).split("/"));
+    mkdirSync(dirname(dest), { recursive: true });
+    writeFileSync(dest, entry.data);
+  }
+  return target;
+}
+
+function readZipOrRefuse(name: string, what: string, zip: string, dir: string): string {
+  let unpacked: string | undefined;
+  try {
+    unpacked = unpackZipDir(zip, dir);
+  } catch (err) {
+    unresolved(name, `${what} (${zip}) could not be read: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  if (unpacked === undefined) {
+    unresolved(
+      name,
+      `${what} (${zip}) has no "${dir}/" directory. Check "dir" in .metaobjects/config.json, or ask the ` +
+        `publisher to ship the shared-model output (metaobjects.pkg.json and the artifact) under "${dir}/" in the package.`,
+    );
+  }
+  return unpacked;
+}
+
+/** `-Dmaven.repo.local=<path>` out of a `MAVEN_ARGS` / `MAVEN_OPTS` style string. */
+function repoLocalFromOptions(options: string | undefined): string | undefined {
+  if (options === undefined) return undefined;
+  const m = /(?:^|\s)-Dmaven\.repo\.local=(?:"([^"]+)"|'([^']+)'|(\S+))/.exec(options);
+  return m?.[1] ?? m?.[2] ?? m?.[3];
+}
+
+/** `<localRepository>` out of a Maven `settings.xml` (comments ignored); `${user.home}` / `${env.X}` expanded. */
+function repoLocalFromSettings(file: string, home: string, env: NodeJS.ProcessEnv): string | undefined {
+  if (!existsSync(file)) return undefined;
+  const xml = readFileSync(file, "utf8").replace(/<!--[\s\S]*?-->/g, "");
+  const raw = /<localRepository>\s*([^<]*?)\s*<\/localRepository>/.exec(xml)?.[1];
+  if (raw === undefined || raw === "") return undefined;
+  return raw
+    .replace(/\$\{user\.home\}/g, home)
+    .replace(/\$\{env\.([^}]+)\}/g, (_, key: string) => env[key] ?? "");
+}
+
+/** The local Maven repository and how it was chosen — Maven's own ladder, with `$MAVEN_REPO_LOCAL`
+ *  first: that, `-Dmaven.repo.local` in `$MAVEN_ARGS` / `$MAVEN_OPTS`, `<localRepository>` in
+ *  `~/.m2/settings.xml`, then `~/.m2/repository`. */
+export function mavenLocalRepository(env: NodeJS.ProcessEnv): { readonly dir: string; readonly from: string } {
+  const home = homeDir(env);
+  const explicit = env[MAVEN_REPO_LOCAL_ENV];
+  if (explicit !== undefined && explicit !== "") return { dir: resolve(explicit), from: `$${MAVEN_REPO_LOCAL_ENV}` };
+  for (const key of ["MAVEN_ARGS", "MAVEN_OPTS"]) {
+    const fromOptions = repoLocalFromOptions(env[key]);
+    if (fromOptions !== undefined) return { dir: resolve(fromOptions), from: `-Dmaven.repo.local in $${key}` };
+  }
+  const settings = join(home, ".m2", "settings.xml");
+  const fromSettings = repoLocalFromSettings(settings, home, env);
+  if (fromSettings !== undefined) return { dir: resolve(join(home, ".m2"), fromSettings), from: settings };
+  return { dir: join(home, ".m2", "repository"), from: "the default ~/.m2/repository" };
+}
+
+function resolveMaven(
+  name: string,
+  coordinate: string,
+  version: string,
+  dir: string | undefined,
+  env: NodeJS.ProcessEnv,
+): ResolvedTransport {
+  if (!MAVEN_COORDINATE.test(coordinate)) {
+    unresolved(
+      name,
+      `"maven": "${coordinate}" is not a groupId:artifactId pair (for example com.acme:acme-model); ` +
+        `the version goes in "version", not in this value`,
+    );
+  }
+  if (!PACKAGE_VERSION.test(version)) unresolved(name, `"version": "${version}" is not a Maven version`);
+  const inside = packagedDir(name, "Maven", dir);
+  const [groupId, artifactId] = coordinate.split(":") as [string, string];
+  const repo = mavenLocalRepository(env);
+  const jar = join(repo.dir, ...groupId.split("."), artifactId, version, `${artifactId}-${version}.jar`);
+  if (!existsSync(jar)) {
+    unresolved(
+      name,
+      `the Maven artifact ${coordinate}:${version} is not in the local repository ${repo.dir} (${repo.from}); ` +
+        `expected ${jar}. Fetch it with \`mvn dependency:get -Dartifact=${coordinate}:${version}\` ` +
+        `(add -DremoteRepositories=<url> for a repository other than Central), then re-run. ` +
+        `meta deps sync does not download.`,
+    );
+  }
+  const unpacked = readZipOrRefuse(name, `the jar of ${coordinate}:${version}`, jar, inside);
+  return { dir: unpacked, packageVersion: version, note: `maven: ${jar}` };
+}
+
+/** NuGet's normalized version (lower case; four-part `1.0.0.0` → `1.0.0`; `1.0` → `1.0.0`; the
+ *  `+build` metadata dropped) — the form the global packages folder names its directories by. */
+export function normalizeNuGetVersion(version: string): string {
+  const lower = version.trim().toLowerCase().replace(/\+.*$/, "");
+  const dash = lower.indexOf("-");
+  const core = dash < 0 ? lower : lower.slice(0, dash);
+  const pre = dash < 0 ? "" : lower.slice(dash);
+  const parts = core.split(".");
+  if (parts.length > 4 || !parts.every((p) => /^\d+$/.test(p))) return lower;
+  const numbers = parts.map((p) => String(Number(p)));
+  while (numbers.length < 3) numbers.push("0");
+  if (numbers.length === 4 && numbers[3] === "0") numbers.pop();
+  return numbers.join(".") + pre;
+}
+
+/** The NuGet global packages folder and how it was chosen: `$NUGET_PACKAGES`, else `~/.nuget/packages`. */
+export function nugetPackagesFolder(env: NodeJS.ProcessEnv): { readonly dir: string; readonly from: string } {
+  const explicit = env[NUGET_PACKAGES_ENV];
+  if (explicit !== undefined && explicit !== "") return { dir: resolve(explicit), from: `$${NUGET_PACKAGES_ENV}` };
+  return { dir: join(homeDir(env), ".nuget", "packages"), from: "the default ~/.nuget/packages" };
+}
+
+function resolveNuget(
+  name: string,
+  id: string,
+  version: string,
+  dir: string | undefined,
+  env: NodeJS.ProcessEnv,
+): ResolvedTransport {
+  if (!NUGET_ID.test(id)) unresolved(name, `"nuget": "${id}" is not a NuGet package id`);
+  if (!PACKAGE_VERSION.test(version)) unresolved(name, `"version": "${version}" is not a NuGet version`);
+  const inside = packagedDir(name, "NuGet", dir);
+  const cache = nugetPackagesFolder(env);
+  const normalized = normalizeNuGetVersion(version);
+  const folder = join(cache.dir, id.toLowerCase(), normalized);
+  if (!isDirectory(folder)) {
+    unresolved(
+      name,
+      `the NuGet package ${id} ${version} is not in the global packages folder ${cache.dir} (${cache.from}); ` +
+        `expected ${folder}. Fetch it with \`dotnet restore\` in a project that references ${id} ${version} ` +
+        `(or \`dotnet add package ${id} --version ${version}\`), then re-run. meta deps sync does not download.`,
+    );
+  }
+  const extracted = join(folder, ...inside.split("/"));
+  if (isDirectory(extracted)) return { dir: extracted, packageVersion: version };
+  // A cache that kept only the archive: read the shared model out of it.
+  const nupkg = join(folder, `${id.toLowerCase()}.${normalized}.nupkg`);
+  if (existsSync(nupkg)) {
+    const unpacked = readZipOrRefuse(name, `the package ${id} ${version}`, nupkg, inside);
+    return { dir: unpacked, packageVersion: version, note: `nuget: ${nupkg}` };
+  }
+  unresolved(
+    name,
+    `the NuGet package ${id} ${version} is in the cache at ${folder}, but has no "${inside}" directory. ` +
+      `Check "dir" in .metaobjects/config.json, or ask the publisher to pack the shared-model output ` +
+      `(metaobjects.pkg.json and the artifact) under "${inside}/" in the package.`,
+  );
+}
+
 /**
  * DESIGN §4.1 step 1 — resolve a dependency spec's transport to the directory
  * that should hold its `metaobjects.pkg.json`. Throws `ERR_DEPENDENCY_UNRESOLVED`
@@ -285,5 +499,7 @@ export function resolveTransport(
     return { dir };
   }
   if ("npm" in spec) return resolveNpm(configDir, name, spec.npm, spec.dir);
+  if ("maven" in spec) return resolveMaven(name, spec.maven, spec.version, spec.dir, env);
+  if ("nuget" in spec) return resolveNuget(name, spec.nuget, spec.version, spec.dir, env);
   return resolvePython(configDir, name, spec.python, spec.dir, env);
 }

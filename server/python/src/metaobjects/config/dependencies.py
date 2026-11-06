@@ -94,7 +94,7 @@ _LOCK_ENTRY_KEYS = {
 }
 
 #: The one transport key a lock entry's `resolvedFrom` carries.
-_RESOLVED_FROM_TRANSPORT_KEYS = ("path", "npm", "python")
+_RESOLVED_FROM_TRANSPORT_KEYS = ("path", "npm", "python", "maven", "nuget")
 
 
 def _is_sorted(values: list[str]) -> bool:
@@ -193,7 +193,7 @@ def _validate_resolved_from(obj: object, code: ErrorCode, context: str) -> dict[
     transports = [k for k in _RESOLVED_FROM_TRANSPORT_KEYS if k in obj]
     if len(transports) != 1:
         raise ParseError(
-            f"{context}: 'resolvedFrom' must have exactly one of 'path' / 'npm' / 'python'",
+            f"{context}: 'resolvedFrom' must have exactly one of 'path' / 'npm' / 'python' / 'maven' / 'nuget'",
             code=code,
         )
     transport = transports[0]
@@ -205,8 +205,10 @@ def _validate_resolved_from(obj: object, code: ErrorCode, context: str) -> dict[
         )
 
     allowed_keys = {transport}
-    if transport in ("npm", "python"):
+    if transport != "path":
         allowed_keys.add("dir")
+    if transport in ("maven", "nuget"):
+        allowed_keys.add("version")
     extra_keys = set(obj.keys()) - allowed_keys
     if extra_keys:
         raise ParseError(
@@ -214,6 +216,15 @@ def _validate_resolved_from(obj: object, code: ErrorCode, context: str) -> dict[
         )
 
     result: dict[str, str] = {transport: transport_value}
+    if transport in ("maven", "nuget"):
+        version = obj.get("version")
+        if not isinstance(version, str) or not version.strip():
+            raise ParseError(
+                f"{context}: 'resolvedFrom.version' is required beside '{transport}' "
+                "and must be a non-empty string",
+                code=code,
+            )
+        result["version"] = version
     if "dir" in obj:
         dir_value = obj["dir"]
         if not isinstance(dir_value, str) or not dir_value.strip():

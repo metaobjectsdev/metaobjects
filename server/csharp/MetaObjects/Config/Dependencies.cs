@@ -42,10 +42,11 @@ public static class DependencyFiles
 
 /// <summary>One validated entry of the config's <c>dependencies</c> array.</summary>
 /// <param name="Name">The LOCAL alias the config, lock and <c>.metaobjects/deps/&lt;name&gt;/</c> key on.</param>
-/// <param name="Transport">The one transport key: <c>path</c>, <c>npm</c> or <c>python</c>.</param>
+/// <param name="Transport">The one transport key: <c>path</c>, <c>npm</c>, <c>python</c>, <c>maven</c> or <c>nuget</c>.</param>
 /// <param name="Location">The transport key's value.</param>
-/// <param name="Dir">The optional <c>dir</c>, legal only beside <c>npm</c> / <c>python</c>.</param>
-public sealed record DependencySpec(string Name, string Transport, string Location, string? Dir);
+/// <param name="Dir">The optional <c>dir</c>, legal beside any transport but <c>path</c>.</param>
+/// <param name="Version">The <c>version</c> to look up, required beside <c>maven</c> / <c>nuget</c> and illegal elsewhere.</param>
+public sealed record DependencySpec(string Name, string Transport, string Location, string? Dir, string? Version = null);
 
 /// <summary>One validated entry of the lock's <c>dependencies</c> object.</summary>
 public sealed record DependencyLockEntry(
@@ -72,7 +73,10 @@ public static partial class DependencyResolver
     [GeneratedRegex("^sha256-[0-9a-f]{64}$")]
     private static partial Regex IntegrityRegex();
 
-    private static readonly string[] TransportKeys = ["path", "npm", "python"];
+    private static readonly string[] TransportKeys = ["path", "npm", "python", "maven", "nuget"];
+
+    /// <summary>The packaged transports name a package in a cache that holds many versions, so they carry a <c>version</c>.</summary>
+    private static bool IsVersioned(string transport) => transport is "maven" or "nuget";
     private static readonly string[] LockKeys = ["schema_version", "dependencies"];
     private static readonly string[] LockEntryKeys =
         ["version", "metamodelVersion", "artifact", "integrity", "packages", "nodes", "resolvedFrom"];
@@ -85,7 +89,8 @@ public static partial class DependencyResolver
 
     /// <summary>
     /// Validate one entry of <c>dependencies</c>: a <c>name</c>, exactly one transport key, an
-    /// optional <c>dir</c> legal only beside <c>npm</c> / <c>python</c>, and nothing else (a
+    /// optional <c>dir</c> legal beside any transport but <c>path</c>, a <c>version</c> required beside <c>maven</c> /
+    /// <c>nuget</c>, and nothing else (a
     /// <c>mode</c> key included — it was removed). Mirrors the TypeScript <c>DependencySpecSchema</c>.
     /// </summary>
     internal static DependencySpec ReadSpec(JsonElement dep, string configPath)
@@ -101,7 +106,7 @@ public static partial class DependencyResolver
         var name = nameEl.GetString()!;
 
         var transports = TransportKeys.Where(k => dep.TryGetProperty(k, out _)).ToList();
-        if (transports.Count != 1) throw Fail("exactly one of \"path\" / \"npm\" / \"python\" is required");
+        if (transports.Count != 1) throw Fail("exactly one of \"path\" / \"npm\" / \"python\" / \"maven\" / \"nuget\" is required");
         var transport = transports[0];
 
         var location = dep.GetProperty(transport);
@@ -109,7 +114,8 @@ public static partial class DependencyResolver
             throw Fail($"\"{transport}\" must be a non-empty string");
 
         var allowed = new HashSet<string>(StringComparer.Ordinal) { "name", transport };
-        if (transport is "npm" or "python") allowed.Add("dir");
+        if (transport != "path") allowed.Add("dir");
+        if (IsVersioned(transport)) allowed.Add("version");
         var extra = dep.EnumerateObject().Select(p => p.Name).Where(n => !allowed.Contains(n))
             .Order(StringComparer.Ordinal).ToList();
         if (extra.Count > 0) throw Fail($"unknown key(s): [{string.Join(", ", extra)}]");
@@ -122,7 +128,16 @@ public static partial class DependencyResolver
             dir = dirEl.GetString();
         }
 
-        return new DependencySpec(name, transport, location.GetString()!, dir);
+        string? version = null;
+        if (IsVersioned(transport))
+        {
+            if (!dep.TryGetProperty("version", out var versionEl) || versionEl.ValueKind != JsonValueKind.String ||
+                string.IsNullOrWhiteSpace(versionEl.GetString()))
+                throw Fail($"\"version\" is required beside \"{transport}\" and must be a non-empty string");
+            version = versionEl.GetString();
+        }
+
+        return new DependencySpec(name, transport, location.GetString()!, dir, version);
     }
 
     // ------------------------------------------------------------------
@@ -167,7 +182,7 @@ public static partial class DependencyResolver
 
         var transports = TransportKeys.Where(k => rf.TryGetProperty(k, out _)).ToList();
         if (transports.Count != 1)
-            throw Stale($"{context}: \"resolvedFrom\" must have exactly one of \"path\" / \"npm\" / \"python\"");
+            throw Stale($"{context}: \"resolvedFrom\" must have exactly one of \"path\" / \"npm\" / \"python\" / \"maven\" / \"nuget\"");
         var transport = transports[0];
 
         var value = rf.GetProperty(transport);
@@ -175,7 +190,8 @@ public static partial class DependencyResolver
             throw Stale($"{context}: \"resolvedFrom.{transport}\" must be a non-empty string");
 
         var allowed = new HashSet<string>(StringComparer.Ordinal) { transport };
-        if (transport is "npm" or "python") allowed.Add("dir");
+        if (transport != "path") allowed.Add("dir");
+        if (IsVersioned(transport)) allowed.Add("version");
         var extra = rf.EnumerateObject().Select(p => p.Name).Where(n => !allowed.Contains(n))
             .Order(StringComparer.Ordinal).ToList();
         if (extra.Count > 0) throw Stale($"{context}: \"resolvedFrom\" unknown key(s): [{string.Join(", ", extra)}]");
@@ -183,6 +199,11 @@ public static partial class DependencyResolver
         if (rf.TryGetProperty("dir", out var dir) &&
             (dir.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(dir.GetString())))
             throw Stale($"{context}: \"resolvedFrom.dir\" must be a non-empty string");
+
+        if (IsVersioned(transport) &&
+            (!rf.TryGetProperty("version", out var version) || version.ValueKind != JsonValueKind.String ||
+             string.IsNullOrWhiteSpace(version.GetString())))
+            throw Stale($"{context}: \"resolvedFrom.version\" is required beside \"{transport}\" and must be a non-empty string");
     }
 
     /// <summary>

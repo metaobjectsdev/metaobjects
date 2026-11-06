@@ -14,7 +14,7 @@ cases.json          # { cases: [ { name, tree, treeFiles?, config, lock?,
                      #             expectSelected?, expectMigrateGoverned?,
                      #             expectLoadError?, expectErrorFiles?, expectError?,
                      #             expectCheck? } ] }
-transport-cases.json # the npm / python transport arm (Node `meta deps sync` only — see below)
+transport-cases.json # the npm / python / maven / nuget transport arm (Node `meta deps sync` only — see below)
 README.md
 artifacts/           # pinned dependency artifacts, referenced by cases via `treeFiles`
   acme-common-v1.json
@@ -197,10 +197,10 @@ corpus expectation to update.
 
 `meta deps sync` / `check` find a dependency's manifest directory through its transport
 (DESIGN §2.1). Node `meta` is the only writer of snapshots and the lock, so only Node runs
-this arm; every port then loads the snapshot, and `cases.json` carries an `npm` and a
-`python` dependency (`an-npm-dependency-loads-from-its-committed-snapshot`,
-`a-python-dependency-loads-from-its-committed-snapshot`) to prove those load with nothing
-installed.
+this arm; every port then loads the snapshot, and `cases.json` carries an `npm`, a
+`python`, a `maven` and a `nuget` dependency (`an-npm-dependency-loads-from-its-committed-snapshot`,
+`a-python-dependency-…`, `a-maven-dependency-…`, `a-nuget-dependency-…`) to prove those load with
+nothing installed, and that every port's config and lock reader accepts them.
 
 ```jsonc
 { "cases": [ {
@@ -208,6 +208,12 @@ installed.
   "tree": { … }, "treeFiles": { … },   // as in cases.json: what an install leaves on disk
   "config": { … },                     // written to <resolveFrom>/.metaobjects/config.json
   "resolveFrom": "app",
+  "zipFiles": { "<path>": { "<entry>": { "text": "…" } | { "file": "artifacts/…" } } },
+                                       // OPTIONAL: archives (a `.jar`, a `.nupkg`) the runner
+                                       // writes, each entry inline text or a corpus file
+  "env": { "MAVEN_REPO_LOCAL": "m2" }, // OPTIONAL: environment variables that name a directory,
+                                       // mapped to project-root-relative paths. The runner always
+                                       // sets HOME to <root>/home and clears the others
   "pythonPath": ["site"],              // OPTIONAL: project-root-relative directories put on the
                                        // interpreter's import path (PYTHONPATH), standing in for
                                        // an installed site-packages
@@ -220,14 +226,20 @@ installed.
 
 Exactly one of `expectLock`, `expectError` per case. An `npm` package is laid out under a
 `node_modules` directory (beside the config, or hoisted above it); a `python` package under
-a `pythonPath` directory. The runner clears `$METAOBJECTS_PYTHON` and `$VIRTUAL_ENV`, so the
+a `pythonPath` directory; a `maven` jar under a local repository (`MAVEN_REPO_LOCAL`, a
+`settings.xml` under the case's `home/.m2`, or `home/.m2/repository`); a `nuget` package under a
+global packages folder (`NUGET_PACKAGES` or `home/.nuget/packages`), either extracted or as the
+`.nupkg` alone. The jar and the package hold the pair the S8/S9 publishers write
+(`metaobjects.pkg.json` and the artifact, byte-identical across publishers per
+`shared-model-conformance`), under `metaobjects/` or the declared `dir`. The runner clears `$METAOBJECTS_PYTHON` and `$VIRTUAL_ENV`, so the
 interpreter is `python3` on `PATH`; the interpreter ladder itself is a unit test
 (`cli/test/deps-sync-packages.test.ts`), because it depends on the machine. No case
 touches a network or a package manager.
 
-The refusals: a package not installed, a `dir` the package does not ship, a `dir` that
-climbs out of the package, and a Python module that is not a package are
-`ERR_DEPENDENCY_UNRESOLVED`; a `dir` that exists but holds no `metaobjects.pkg.json` is
+The refusals: a package not installed (or, for `maven` and `nuget`, not in the local cache),
+a `dir` the package does not ship, a `dir` that climbs out of the package, a jar with no model
+directory, a `maven` coordinate that carries a version, and a Python module that is not a
+package are `ERR_DEPENDENCY_UNRESOLVED`; a `dir` that exists but holds no `metaobjects.pkg.json` is
 `ERR_DEPENDENCY_MANIFEST_INVALID`.
 
 ## Which arms each port runs

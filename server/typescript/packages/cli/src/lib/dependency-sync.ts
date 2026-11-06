@@ -39,7 +39,7 @@ import {
   type LockEntry,
 } from "@metaobjectsdev/sdk";
 import { describeError } from "./error-text.js";
-import { resolveTransport } from "./dependency-transports.js";
+import { normalizeNuGetVersion, PACKAGED_MODEL_DIR, resolveTransport } from "./dependency-transports.js";
 
 /** `dependency-sync.ts`'s own `ParseError` factory for every
  *  `ERR_DEPENDENCY_MANIFEST_INVALID` case (DESIGN §4.1 step 2 and step 4):
@@ -77,22 +77,34 @@ function sameSortedArray(a: readonly string[], b: readonly string[]): boolean {
 }
 
 /**
- * DESIGN §4.1 step 1 — resolve a dependency spec's transport (`path`, `npm` or
- * `python`) to the directory that should hold its `metaobjects.pkg.json`. The
+ * DESIGN §4.1 step 1 — resolve a dependency spec's transport (`path`, `npm`,
+ * `python`, `maven` or `nuget`) to the directory that should hold its `metaobjects.pkg.json`. The
  * transports live in `dependency-transports.ts`; a failure is
  * `ERR_DEPENDENCY_UNRESOLVED` naming what was tried and the fix. The manifest
  * read is a separate step (`readManifestDir`) that only runs once a directory
  * is in hand.
  */
-export function resolveDependencyDir(configDir: string, spec: DependencySpec): string {
-  return resolveTransport(configDir, spec).dir;
+export function resolveDependencyDir(
+  configDir: string,
+  spec: DependencySpec,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  return resolveTransport(configDir, spec, env).dir;
 }
 
 /** The fix for an installed package that holds no manifest where `dir` points. */
 function missingManifestFix(spec: DependencySpec | undefined): string {
   if (spec === undefined || "path" in spec) return "";
-  const shipped = "npm" in spec ? `listed in package.json "files"` : "included as package data";
-  const where = spec.dir === undefined ? "the package root" : `"${spec.dir}"`;
+  const packaged = "maven" in spec || "nuget" in spec;
+  const shipped =
+    "npm" in spec
+      ? `listed in package.json "files"`
+      : "maven" in spec
+        ? "packaged as a jar resource"
+        : "nuget" in spec
+          ? "packed into the package"
+          : "included as package data";
+  const where = spec.dir === undefined ? (packaged ? `"${PACKAGED_MODEL_DIR}"` : "the package root") : `"${spec.dir}"`;
   return (
     `. The package is installed, but ${where} holds no shared model: set "dir" in ` +
     `.metaobjects/config.json to the directory the publisher's sharedModelFile() output ships in, ` +
@@ -251,6 +263,14 @@ export async function standaloneLoadCheck(manifest: DependencyManifest, artifact
 function resolvedFromOf(spec: DependencySpec): LockEntry["resolvedFrom"] {
   if ("path" in spec) return { path: spec.path };
   if ("npm" in spec) return spec.dir === undefined ? { npm: spec.npm } : { npm: spec.npm, dir: spec.dir };
+  if ("maven" in spec) {
+    const base = { maven: spec.maven, version: spec.version };
+    return spec.dir === undefined ? base : { ...base, dir: spec.dir };
+  }
+  if ("nuget" in spec) {
+    const base = { nuget: spec.nuget, version: spec.version };
+    return spec.dir === undefined ? base : { ...base, dir: spec.dir };
+  }
   return spec.dir === undefined ? { python: spec.python } : { python: spec.python, dir: spec.dir };
 }
 
@@ -313,11 +333,22 @@ export function packageVersionWarning(
   const same =
     "python" in spec
       ? pep440Equal(packageVersion, manifestVersion)
-      : packageVersion === manifestVersion;
+      : "nuget" in spec
+        ? normalizeNuGetVersion(packageVersion) === normalizeNuGetVersion(manifestVersion)
+        : packageVersion === manifestVersion;
   if (same) return undefined;
-  const pkg = "npm" in spec ? `npm package "${spec.npm}"` : "python" in spec ? `Python package "${spec.python}"` : "package";
+  const pkg =
+    "npm" in spec
+      ? `npm package "${spec.npm}"`
+      : "python" in spec
+        ? `Python package "${spec.python}"`
+        : "maven" in spec
+          ? `Maven artifact ${spec.maven}`
+          : "nuget" in spec
+            ? `NuGet package ${spec.nuget}`
+            : "package";
   return (
-    `dependency "${name}": the installed ${pkg} is ${packageVersion}, but its shared-model manifest ` +
+    `dependency "${name}": the ${"maven" in spec || "nuget" in spec ? "declared" : "installed"} ${pkg} is ${packageVersion}, but its shared-model manifest ` +
     `records ${manifestVersion} — the publisher likely released without regenerating the artifact. ` +
     `The lock records ${manifestVersion}.`
   );
@@ -672,6 +703,7 @@ export async function checkDependencies(
   configDir: string,
   specs: readonly DependencySpec[],
   lock: Lock | undefined,
+  env: NodeJS.ProcessEnv = process.env,
 ): Promise<DependencyCheckResult[]> {
   const entries = lock?.dependencies ?? {};
   const sorted = [...specs].sort((a, b) => dependencyName(a).localeCompare(dependencyName(b)));
@@ -682,7 +714,7 @@ export async function checkDependencies(
     const lockEntry = entries[name];
 
     try {
-      const dir = resolveDependencyDir(configDir, spec);
+      const dir = resolveDependencyDir(configDir, spec, env);
       const { manifest, artifactContent } = await readManifestDir(dir, name, spec);
       // Never trust the manifest's own `integrity` field for the comparison —
       // re-hash the bytes actually sitting on disk right now.

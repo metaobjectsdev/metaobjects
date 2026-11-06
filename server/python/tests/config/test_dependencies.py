@@ -97,6 +97,36 @@ def test_validate_lock_rejects_two_transports() -> None:
     assert e.value.code == ErrorCode.ERR_DEPENDENCY_SNAPSHOT_STALE
 
 
+@pytest.mark.parametrize(
+    "resolved_from",
+    [
+        {"maven": "com.acme:model", "version": "1.0.0"},
+        {"maven": "com.acme:model", "version": "1.0.0", "dir": "shared"},
+        {"nuget": "Acme.Model", "version": "1.0.0"},
+    ],
+)
+def test_validate_lock_accepts_packaged_transports(resolved_from: dict) -> None:
+    entry = _entry()
+    entry["resolvedFrom"] = resolved_from
+    validate_lock({"schema_version": 1, "dependencies": {"a": entry}})
+
+
+@pytest.mark.parametrize(
+    "resolved_from",
+    [
+        {"maven": "com.acme:model"},
+        {"nuget": "Acme.Model", "version": ""},
+        {"npm": "y", "version": "1.0.0"},
+    ],
+)
+def test_validate_lock_rejects_a_packaged_transport_without_its_version(resolved_from: dict) -> None:
+    entry = _entry()
+    entry["resolvedFrom"] = resolved_from
+    with pytest.raises(ParseError) as e:
+        validate_lock({"schema_version": 1, "dependencies": {"a": entry}})
+    assert e.value.code == ErrorCode.ERR_DEPENDENCY_SNAPSHOT_STALE
+
+
 def test_validate_lock_rejects_a_mode_key() -> None:
     entry = _entry()
     entry["mode"] = "own"
