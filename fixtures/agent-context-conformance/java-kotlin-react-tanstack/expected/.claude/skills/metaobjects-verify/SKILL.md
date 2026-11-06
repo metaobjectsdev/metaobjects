@@ -166,15 +166,14 @@ with `ERR_DEPENDENCY_SNAPSHOT_STALE` naming the fix: run `meta deps sync`.
   if any reference isn't on the payload VO. This is the build-time gate for the
   prompt-construction pillar.
 
-- **`--deps`** — dependency drift (FR-023, **Node `meta` only** — but **any
-  backend**, like `--db`: the check reads only `.metaobjects/config.json` and has
-  no backend dependency of its own). Re-resolves each declared dependency's `path`
+- **`--deps`** — dependency drift (FR-023). Re-resolves each declared dependency
   right now and compares its installed artifact's hash against
-  `.metaobjects/deps.lock.json` — the same comparison `meta deps check` runs. Only
-  TypeScript and Python additionally LOAD the resulting snapshot and honour the
-  default-exclusion it implies — a Java/Kotlin/C# project can run this gate today
-  even though its own codegen can't yet consume a dependency. Never part of the
-  bare-`verify` default: it
+  `.metaobjects/deps.lock.json` — the same comparison `meta deps check` runs. Node
+  `meta` resolves every transport (`path`, `npm`, `python`, `maven`, `nuget`); the
+  Python, Java/Kotlin and C# checks resolve `path` only and report any other
+  transport `unresolved`, naming Node `meta deps check` (a check that cannot check
+  must not pass). Every port also loads the committed snapshot and honours the
+  default-exclusion it implies. Never part of the bare-`verify` default: it
   needs the publisher's `path` reachable, which CI checking out only your own repo
   may not have. Reports `current` / `drifted` / `unresolved` per dependency;
   `drifted` or `unresolved` fails with `ERR_DEPENDENCY_UPSTREAM_DRIFT`, fix is
@@ -188,7 +187,16 @@ port's own build tool, not the Node `meta`:
 | TS | `meta verify --codegen` | `meta verify --templates` | `meta verify --db <url>` |
 | Java / Kotlin | `mvn metaobjects:verify -Dmeta.verify.mode=codegen` | `mvn metaobjects:verify -Dmeta.verify.mode=templates` | Node `meta verify --db` only |
 | C# | `dotnet meta verify --codegen` | `dotnet meta verify --templates` | Node `meta verify --db` only |
-| Python | `metaobjects verify --codegen` | `metaobjects verify --templates` | Node `meta verify --db` only |
+| Python | `metaobjects verify` (`--codegen` is in the default) | n/a | Node `meta verify --db` only |
+
+Dependency drift (`--deps`) per port:
+
+| Port | Dependency drift |
+|---|---|
+| TS | `meta deps check`, `meta verify --deps` |
+| Python | `metaobjects deps check`, `metaobjects verify --deps` |
+| Java / Kotlin | `mvn metaobjects:verify -Dmeta.verify.mode=deps` |
+| C# | `dotnet meta verify --deps` |
 
 Every non-TS port's `verify` rejects `--db` outright (exit 2, "schema verify is the
 migrate engine") — schema drift always runs through the Node `meta verify --db`,

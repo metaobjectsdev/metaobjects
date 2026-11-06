@@ -221,7 +221,7 @@ fails boot. If the lock is absent and nothing is declared, nothing changes.
 re-resolves each declared dependency's `path`, reads the publisher's `metaobjects.pkg.json`, hashes the
 artifact and reports `current`, `drifted` or `unresolved` per dependency; the last two fail the build
 with `ERR_DEPENDENCY_UPSTREAM_DRIFT`. It loads no model, writes nothing, and is not part of the default
-gate set because it needs the publisher reachable. An `npm` or `python` dependency is found by the Node
+gate set because it needs the publisher reachable. An `npm`, `python`, `maven` or `nuget` dependency is found by the Node
 tool, so it reports `unresolved` here: run `meta deps check` for it.
 
 ### Custom providers (optional)

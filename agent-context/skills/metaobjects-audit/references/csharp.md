@@ -42,7 +42,14 @@ dotnet meta gen metaobjects --out Generated --generators entity   # narrow to de
 
 dotnet meta verify --codegen    # regenerate to temp, diff vs committed output
 dotnet meta verify --templates  # check {{field}} refs vs payload VO (bare default)
+dotnet meta verify --deps       # shared-model dependencies vs deps.lock.json (opt-in)
 ```
+
+`verify --deps` applies when the project declares `dependencies` in `.metaobjects/config.json`: it
+hashes each `path` dependency against the lock and fails with `ERR_DEPENDENCY_UPSTREAM_DRIFT` on
+`drifted` or `unresolved` (a `maven`, `nuget`, `npm` or `python` dependency reports `unresolved`;
+run the Node `meta deps check` for those). A project that publishes a model wires the
+`SharedModelGenerator` in `codegen/Generators.cs`; `verify --codegen` drift-gates its output.
 
 Schema migration + live-DB drift run through the **Node `meta` CLI** regardless of
 server language — see the migration reference. `dotnet meta verify --db` is

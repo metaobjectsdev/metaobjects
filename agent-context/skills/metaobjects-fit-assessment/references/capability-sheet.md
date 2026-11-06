@@ -36,15 +36,18 @@ building block. Every generator is a reference helper an adopter selects, ejects
 - **Sharing a model** (`docs/features/metadata-dependencies.md`): in one repository, every port
   reads the same metadata directory (`sources`), so a TS service and a Java, C# or Python
   service can generate from one declaration today. **Across repositories**, a published model
-  with a hash-locked snapshot works for **TypeScript publishers only**; **TypeScript, Python,
-  Java, Kotlin and C# consume** it at build time (a committed `.metaobjects/deps/` snapshot loaded
-  ahead of the project's own files; `extends`/overlay onto a dependency's node resolves; imported
-  nodes are not generated unless `scope.include` names their package). The Node `meta deps sync`
-  is the only writer of the lock and snapshot, so a Java, Kotlin or C# consumer needs Node to
-  sync. Dependencies come from a `path`, an npm package or a Python package; the Maven and NuGet
-  transports are design only. Java, Kotlin, Python and C# cannot publish; the Spring runtime does
-  not yet auto-load the snapshot, and the Java/Kotlin `verify` does not yet check dependency
-  drift. Plain vendoring (`docs/features/metadata-sources.md`, "Vendoring") still works and
+  with a hash-locked snapshot works in every port: **TypeScript, Java, Kotlin and C# publish** it
+  (`sharedModelFile()`, or the `shared-model` generator through `metaobjects:generate` and
+  `dotnet meta gen`, all ejectable); **TypeScript, Python, Java, Kotlin and C# consume** it at
+  build time (a committed `.metaobjects/deps/` snapshot loaded ahead of the project's own files;
+  `extends`/overlay onto a dependency's node resolves; imported nodes are not generated unless
+  `scope.include` names their package), and the Spring runtime auto-loads the snapshot. Every port
+  can check drift (`meta deps check`, `metaobjects deps check`, `mvn metaobjects:verify
+  -Dmeta.verify.mode=deps`, `dotnet meta verify --deps`). The Node `meta deps sync` is the only
+  writer of the lock and snapshot, so a Java, Kotlin, C# or Python consumer needs Node to sync.
+  Dependencies come from a `path`, an npm or Python package, a Maven artifact (a JAR in the local
+  repository) or a NuGet package; only Node resolves the package transports in `check`. Python
+  cannot publish, and a JVM classpath read with no committed snapshot is not built. Plain vendoring (`docs/features/metadata-sources.md`, "Vendoring") still works and
   carries no upstream hash check. Source: `docs/features/metadata-dependencies.md`, "Phase 2".
 - **Libraries** (`docs/features/libraries.md`): `iam` (preview) and `ai` (stable) ship as
   declared designs; the core layer is sourceless and adds no tables. Mention one only when the
