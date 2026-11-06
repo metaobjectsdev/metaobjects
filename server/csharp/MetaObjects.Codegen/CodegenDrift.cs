@@ -91,7 +91,7 @@ public static class CodegenDrift
             var temps = roots.Select((_, i) => Path.Combine(tempRoot, i.ToString())).ToList();
             // No manifest and no sweep for the throwaway regen: it records nothing and deletes
             // nothing, and a fresh temp tree writes every file either way.
-            var tempConfig = config with { OutDir = temps[0], GenStateDir = null, ProjectRoot = null, SweepOrphans = false };
+            var tempConfig = config with { OutDir = temps[0], GenStateDir = null, ProjectRoot = null, InputRoot = config.InputRoot ?? config.ProjectRoot, SweepOrphans = false };
             CodegenRunner.RunResult regen;
             try
             {

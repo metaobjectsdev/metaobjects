@@ -61,7 +61,7 @@ public class SharedModelGenerator extends FileEmittingGenerator implements Proje
 
         // Resolved after the selection has passed every check, so a model that cannot be published
         // says so before a missing version does.
-        String version = hasArg(ARG_VERSION) ? getArg(ARG_VERSION).trim() : projectVersion;
+        String version = hasArg(ARG_VERSION) && !getArg(ARG_VERSION).isBlank() ? getArg(ARG_VERSION).trim() : projectVersion;
         if (version == null || version.isBlank()) {
             throw new GeneratorException("shared-model \"" + name + "\": no version available - set <args><"
                 + ARG_VERSION + ">...</" + ARG_VERSION + "></args>, or run through the Maven plugin, which supplies ${project.version}.");

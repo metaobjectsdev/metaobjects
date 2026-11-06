@@ -71,6 +71,15 @@ public class SharedModelGeneratorTest {
         assertTrue(Files.readString(out.resolve("metaobjects.pkg.json")).contains("\"version\": \"1.0.0\""));
     }
 
+    @Test public void aBlankVersionArgFallsBackToTheProjectVersion() throws Exception {
+        Path out = Files.createTempDirectory("shared-model-gen-");
+        SharedModelGenerator g = new SharedModelGenerator();
+        g.setProjectVersion("2.0.0");
+        g.setArgs(new java.util.HashMap<>(args(out)) {{ put("version", " "); }});
+        g.execute(loader());
+        assertTrue(Files.readString(out.resolve("metaobjects.pkg.json")).contains("\"version\": \"2.0.0\""));
+    }
+
     @Test public void noVersionAnywhereIsRefusedAfterTheSelectionPasses() throws Exception {
         Path out = Files.createTempDirectory("shared-model-gen-");
         SharedModelGenerator g = new SharedModelGenerator();

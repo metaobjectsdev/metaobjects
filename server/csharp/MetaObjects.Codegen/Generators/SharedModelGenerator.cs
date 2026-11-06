@@ -68,7 +68,7 @@ public class SharedModelGenerator : IGenerator
         if (Include.Count == 0) throw Missing(nameof(Include), "the scope patterns to publish, such as acme::common::**");
         if (Files.Count == 0) throw Missing(nameof(Files), "the metadata files that may contribute");
 
-        var projectRoot = ctx.Config.ProjectRoot ?? Directory.GetCurrentDirectory();
+        var projectRoot = ctx.Config.InputRoot ?? ctx.Config.ProjectRoot ?? Directory.GetCurrentDirectory();
         var model = SharedModel.Build(new SharedModelInput(
             name,
             Files.Select(f => Path.GetFullPath(f, projectRoot)).ToList(),
@@ -107,7 +107,12 @@ public class SharedModelGenerator : IGenerator
     private static string? VersionIn(string file)
     {
         if (!File.Exists(file)) return null;
-        var version = XDocument.Load(file).Descendants().FirstOrDefault(e => e.Name.LocalName == "Version")?.Value.Trim();
+        // The MSBuild property: <Version> directly under an unconditional <PropertyGroup>, never a
+        // <PackageReference>'s <Version> child.
+        var version = XDocument.Load(file).Root?.Elements()
+            .Where(g => g.Name.LocalName == "PropertyGroup" && g.Attribute("Condition") is null)
+            .SelectMany(g => g.Elements())
+            .FirstOrDefault(e => e.Name.LocalName == "Version" && e.Attribute("Condition") is null)?.Value.Trim();
         return string.IsNullOrEmpty(version) ? null : version;
     }
 }

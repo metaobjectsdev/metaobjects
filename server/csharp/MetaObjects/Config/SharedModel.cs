@@ -151,7 +151,7 @@ public static class SharedModel
         {
             Load(null, [new InMemoryStringSource(document, ArtifactFileName(input.Name))]);
         }
-        catch (Exception e) when (e is MetaModelException or InvalidOperationException)
+        catch (Exception e)
         {
             throw new SharedModelRefusal(SharedModelRefusalReason.NonCoreVocabulary,
                 $"shared-model \"{input.Name}\": the export needs a provider this toolchain does not " +
@@ -214,6 +214,7 @@ public static class SharedModel
     {
         var seen = new HashSet<SharedModelPair>();
         var pairs = new List<SharedModelPair>();
+        var refBearingNames = NamingRefs.RefBearingAttrNames.Order(StringComparer.Ordinal).ToList();
         foreach (var top in selected)
         {
             var referrerKey = top.ResolutionKey();
@@ -227,7 +228,7 @@ public static class SharedModel
                 if ((node.AuthoredSuperRef ?? node.SuperRef) is { } superRef) candidates.Add(superRef);
                 // ADR-0039 sanctioned own-only case: an INHERITED ref-bearing attr belongs to the base
                 // node's own layer and is checked when the base itself is walked.
-                foreach (var name in NamingRefs.RefBearingAttrNames.Order(StringComparer.Ordinal))
+                foreach (var name in refBearingNames)
                 {
                     if (node.OwnAttr(name) is string s) candidates.Add(s);
                 }

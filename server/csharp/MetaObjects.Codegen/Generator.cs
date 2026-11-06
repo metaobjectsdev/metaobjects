@@ -55,6 +55,13 @@ public sealed record GenConfig
     /// </summary>
     public string? ProjectRoot { get; init; }
     /// <summary>
+    /// The directory a generator resolves the input files it reads itself against (the
+    /// <c>shared-model</c> generator's <c>Files</c>). Defaults to <see cref="ProjectRoot"/>; it exists
+    /// because <c>verify --codegen</c> regenerates with no <see cref="ProjectRoot"/> (a throwaway tree
+    /// has no manifest) yet must read the same files <c>gen</c> read.
+    /// </summary>
+    public string? InputRoot { get; init; }
+    /// <summary>
     /// First-time-on-existing-file behaviour: <c>"default"</c> refuses a file that cannot
     /// be proved to be generated output; <c>"adopt"</c> records the file's CURRENT content
     /// as the baseline and writes nothing.

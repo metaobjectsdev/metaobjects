@@ -74,6 +74,45 @@ public sealed class SharedModelGeneratorTests : IDisposable
     }
 
     [Fact]
+    public void APackageReferencesVersionIsNotTheProjectVersion()
+    {
+        File.WriteAllText(Path.Combine(_project, "App.csproj"),
+            "<Project><PropertyGroup><VersionPrefix>1.4.0</VersionPrefix></PropertyGroup>" +
+            "<ItemGroup><PackageReference Include=\"Foo\"><Version>9.9.9</Version></PackageReference></ItemGroup></Project>");
+
+        var e = Assert.Throws<InvalidOperationException>(() => Generator().Generate(Context()).ToList());
+        Assert.Contains("no version available", e.Message);
+    }
+
+    [Fact]
+    public void FilesResolveAgainstTheInputRootWhenThereIsNoProjectRoot()
+    {
+        // verify --codegen regenerates with no ProjectRoot; the input root keeps relative Files meaningful.
+        File.WriteAllText(Path.Combine(_project, "App.csproj"),
+            "<Project><PropertyGroup><Version>1.0.0</Version></PropertyGroup></Project>");
+        Directory.CreateDirectory(Path.Combine(_project, "metaobjects"));
+        foreach (var f in new[] { "meta.base.json", "meta.customer.json" })
+            File.Copy(Path.Combine(Corpus, "source", f), Path.Combine(_project, "metaobjects", f));
+        var generator = new SharedModelGenerator
+        {
+            ModelName = "acme-common",
+            Include = ["acme::common::**"],
+            Exclude = ["acme::common::Secret"],
+            Files = ["metaobjects/meta.base.json", "metaobjects/meta.customer.json"],
+        };
+        var ctx = new GenContext
+        {
+            Entities = [],
+            Root = new MetaDataLoader().Load([]).Root,
+            Config = new GenConfig { OutDir = _out, ProjectRoot = null, InputRoot = _project },
+        };
+
+        var manifest = generator.Generate(ctx).Single(f => f.Path == "metaobjects.pkg.json").Content;
+
+        Assert.Contains("\"version\": \"1.0.0\"", manifest);
+    }
+
+    [Fact]
     public void AnExplicitVersionBeatsTheProjectVersion()
     {
         File.WriteAllText(Path.Combine(_project, "App.csproj"),

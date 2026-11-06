@@ -46,7 +46,7 @@ open class KotlinSharedModelGenerator : FileEmittingGenerator(), ProjectVersionA
 
         // Resolved after the selection has passed every check, so a model that cannot be published
         // says so before a missing version does.
-        val version = (if (hasArg(ARG_VERSION)) getArg(ARG_VERSION).trim() else projectVersion)
+        val version = (if (hasArg(ARG_VERSION) && !getArg(ARG_VERSION).isBlank()) getArg(ARG_VERSION).trim() else projectVersion)
         if (version.isNullOrBlank()) {
             throw GeneratorException(
                 "shared-model \"$name\": no version available - set <args><$ARG_VERSION>...</$ARG_VERSION></args>, " +
