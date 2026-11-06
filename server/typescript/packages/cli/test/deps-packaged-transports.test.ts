@@ -176,6 +176,24 @@ describe("maven transport — the local repository", () => {
     expect(resolveTransport(root, MAVEN, mavenEnv(root)).packageVersion).toBe("1.0.0");
   });
 
+  test("a dir written as ./shared or a/../shared names the jar's shared/ folder; one that climbs out is refused", () => {
+    const root = tempRoot();
+    put(
+      jarPath(root),
+      writeZip([
+        { name: `shared/${MANIFEST}`, data: manifestFor(V1) },
+        { name: `shared/${ARTIFACT}`, data: V1 },
+      ]),
+    );
+    for (const dir of ["./shared", "a/../shared", "shared/"]) {
+      const resolved = resolveTransport(root, { ...MAVEN, dir } as DependencySpec, mavenEnv(root));
+      expect(readFileSync(join(resolved.dir, ARTIFACT))).toEqual(V1);
+    }
+    for (const dir of ["shared/../..", "../shared", ".", "/shared"]) {
+      expect(() => resolveTransport(root, { ...MAVEN, dir } as DependencySpec, mavenEnv(root))).toThrow("inside the Maven package");
+    }
+  });
+
   test("a coordinate that carries a version, or a version with a path separator, is refused", () => {
     const root = tempRoot();
     const env = mavenEnv(root);
@@ -267,6 +285,26 @@ describe("zip reader", () => {
     expect(() => readZipEntries(join(root, "no.zip"))).toThrow(ZipError);
     put(join(root, "slip.zip"), writeZip([{ name: "metaobjects/../../escape.json", data: "{}" }]));
     expect(() => readZipEntries(join(root, "slip.zip"), "metaobjects/")).toThrow("escape");
+  });
+
+  test("refuses an entry whose name holds a backslash or a drive colon, which Windows reads as a path", () => {
+    const root = tempRoot();
+    put(join(root, "back.zip"), writeZip([{ name: "metaobjects/..\\..\\escape.json", data: "{}" }]));
+    expect(() => readZipEntries(join(root, "back.zip"), "metaobjects/")).toThrow("escape");
+    put(join(root, "drive.zip"), writeZip([{ name: "metaobjects/C:/escape.json", data: "{}" }]));
+    expect(() => readZipEntries(join(root, "drive.zip"), "metaobjects/")).toThrow("escape");
+  });
+
+  // Oracle independent of zip-write.ts: test/fixtures/real-archives/model.jar was built by the JDK 21
+  // `jar` tool (`jar --create --file model.jar metaobjects other`). Every file entry carries the
+  // data-descriptor flag (0x08) with zeroed sizes in its local header, and the first local header holds
+  // the 0xCAFE extra field, so a reader that trusted local-header sizes would read empty entries.
+  test("reads a jar built by the JDK jar tool (data descriptors, zeroed local sizes, 0xCAFE extra)", () => {
+    const entries = readZipEntries(join(import.meta.dirname, "fixtures", "real-archives", "model.jar"), "metaobjects/");
+    expect(entries.map((e) => [e.name, e.data.toString()])).toEqual([
+      ["metaobjects/metaobjects.pkg.json", '{"name":"acme-common","note":"built by the JDK jar tool"}\n'],
+      ["metaobjects/model.json", '{"metadata.root":{"package":"acme::common"}}\n'],
+    ]);
   });
 
   test("a damaged jar is unresolved, naming the jar", () => {

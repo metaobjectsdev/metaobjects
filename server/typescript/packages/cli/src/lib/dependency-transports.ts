@@ -27,7 +27,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, posix, relative, resolve, sep } from "node:path";
 import { codeSource, ParseError } from "@metaobjectsdev/metadata";
 import { dependencyName, type DependencySpec } from "@metaobjectsdev/sdk";
 import { readZipEntries } from "./zip-read.js";
@@ -312,11 +312,18 @@ function newUnpackDir(): string {
   return dir;
 }
 
-/** `dir` for a packaged model: the default `metaobjects`, same rules as {@link applyDir}'s `dir`. */
+/** `dir` for a packaged model: the default `metaobjects`, normalized and held inside the package as
+ *  {@link applyDir}'s `dir` is (`./shared` and `a/../shared` are `shared`). */
 function packagedDir(name: string, kind: string, dir: string | undefined): string {
   const chosen = dir ?? PACKAGED_MODEL_DIR;
-  const normalized = chosen.split("\\").join("/").replace(/\/+$/, "");
-  if (isAbsolute(chosen) || normalized === "" || normalized.split("/").includes("..")) {
+  const normalized = posix.normalize(chosen.split("\\").join("/")).replace(/\/+$/, "");
+  if (
+    isAbsolute(chosen) ||
+    posix.isAbsolute(normalized) ||
+    normalized === "." ||
+    normalized === ".." ||
+    normalized.startsWith("../")
+  ) {
     unresolved(name, `"dir": "${chosen}" must be a path inside the ${kind} package (relative, no "..")`);
   }
   return normalized;

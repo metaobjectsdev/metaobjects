@@ -38,8 +38,9 @@ function findEndOfCentralDirectory(buf: Buffer): number {
 /**
  * Every file entry whose name starts with `prefix` (use `""` for all), read from
  * the archive at `path`. Directory entries are skipped. Entry names are returned
- * as stored; a name that is absolute or climbs out with `..` is refused, since a
- * caller will write them under a directory of its own.
+ * as stored; a name that is absolute, climbs out with `..`, or holds a `\\` or `:`
+ * (a separator or drive on Windows) is refused, since a caller will write them
+ * under a directory of its own.
  */
 export function readZipEntries(path: string, prefix = ""): ZipEntry[] {
   const buf = readFileSync(path);
@@ -62,7 +63,7 @@ export function readZipEntries(path: string, prefix = ""): ZipEntry[] {
     offset += 46 + nameLength + extraLength + commentLength;
 
     if (name.endsWith("/") || !name.startsWith(prefix)) continue;
-    if (name.startsWith("/") || name.split("/").includes("..")) {
+    if (name.startsWith("/") || /[\\:]/.test(name) || name.split("/").includes("..")) {
       throw new ZipError(`entry "${name}" would escape the extraction directory`);
     }
     if ((flags & FLAG_ENCRYPTED) !== 0) throw new ZipError(`entry "${name}" is encrypted`);
