@@ -1,3 +1,4 @@
+import { flatSurfaceFields } from "@metaobjectsdev/codegen-ts/engine";
 import { code, type Code } from "@metaobjectsdev/codegen-ts/engine";
 import { MetaField, MetaObject } from "@metaobjectsdev/metadata";
 import {
@@ -114,8 +115,7 @@ function valueShape(f: MetaField): string {
 
 function filterableFields(entity: MetaObject, exclude?: string): MetaField[] {
   // fields() returns effective fields, so inherited fields (from extends:/super:) are included in allowlists.
-  return entity
-    .fields()
+  return flatSurfaceFields(entity)
     .filter((c) => c.attr(FIELD_ATTR_FILTERABLE) === true && c.name !== exclude);
 }
 

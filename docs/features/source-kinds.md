@@ -71,8 +71,9 @@ emitter, two hosts.
 > generated **reads** to the replica view and carries the derived fields on the entity read
 > **type** — a create/update re-reads the row through the view by primary key, so the returned
 > value carries the derived columns (read-your-writes). Writes still target the table and exclude
-> derived fields. (A flattened `field.object` on a write-through entity is a tracked
-> sub-limitation.)
+> derived fields. (A flattened `field.object` on a write-through entity is refused at `meta gen`
+> with a `CodegenError` in TypeScript: the replica view has no flattened-member form yet. Use
+> `@storage: jsonb` there. See [field-types.md](field-types.md).)
 
 ```json
 {

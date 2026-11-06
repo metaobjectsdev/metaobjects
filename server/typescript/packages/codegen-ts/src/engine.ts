@@ -22,6 +22,7 @@ export * from "./docs-run.js";
 export * from "./enum-import.js";
 export * from "./enum-meta.js";
 export * from "./enum-shared.js";
+export * from "./flattened.js";
 export * from "./format.js";
 export * from "./generator.js";
 export * from "./generators/agent-schema-input.js";

@@ -9,6 +9,7 @@
 // object-array field collapsed to z.array(z.string()) and the JSON Schema sent
 // downstream (e.g. to LLM tool_use input_schema) lost the nested object shape.
 
+import { flatSurfaceFields } from "../flattened.js";
 import { entityTypeNames } from "../entity-type-names.js";
 import { code, joinCode, imp, type Code } from "ts-poet";
 import { MetaObject, MetaField, type MetaRoot, stripPackage } from "@metaobjectsdev/metadata";
@@ -104,7 +105,7 @@ function durationHelperSince(since: number): string {
  *  a plain entity has nothing to preserve, so both are omitted. Resolving
  *  (ADR-0039): honors an @autoSet inherited via extends. */
 export function hasAutoSetFields(obj: MetaObject): boolean {
-  for (const child of obj.fields()) {
+  for (const child of flatSurfaceFields(obj)) {
     const autoSet = child.attr(FIELD_ATTR_AUTO_SET);
     if (autoSet === AUTO_SET_ON_CREATE || autoSet === AUTO_SET_ON_UPDATE) return true;
   }
@@ -121,7 +122,7 @@ export function hasAutoSetFields(obj: MetaObject): boolean {
 function isTphBaseOwnField(obj: MetaObject, field: MetaField): boolean {
   const base = tphDiscriminatorBase(obj);
   if (base === undefined) return false;
-  return base.fields().some((f) => f.name === field.name);
+  return flatSurfaceFields(base).some((f) => f.name === field.name);
 }
 
 /**
@@ -169,7 +170,7 @@ export function renderTphSubtypeReadSchema(obj: MetaObject, ctx?: RenderContext)
   const tphPin = tphDiscriminatorPin(obj);
 
   const fieldLines: Code[] = [];
-  for (const child of obj.fields()) {
+  for (const child of flatSurfaceFields(obj)) {
     if (tphPin !== undefined && child.name === tphPin.fieldName) {
       fieldLines.push(code`  ${child.name}: z.literal(${JSON.stringify(tphPin.value)})`);
       continue;
@@ -319,7 +320,7 @@ function crossComparable(left: MetaField, right: MetaField, opName: string): boo
 function insertSchemaFieldNameSet(obj: MetaObject): Set<string> {
   const autoGen = autoGenPkFieldNames(obj);
   const out = new Set<string>();
-  for (const f of obj.fields()) {
+  for (const f of flatSurfaceFields(obj)) {
     if (autoGen.has(f.name)) continue;
     if (isReadOnlyMutability(f) || f.isDerived()) continue;
     out.add(f.name);
@@ -385,7 +386,7 @@ interface RefinementBuild { blocks: string[]; helpers: Set<string> }
 
 function crossFieldRefinement(obj: MetaObject): RefinementBuild {
   const inSchema = insertSchemaFieldNameSet(obj);
-  const byName = new Map(obj.fields().map((f) => [f.name, f] as const));
+  const byName = new Map(flatSurfaceFields(obj).map((f) => [f.name, f] as const));
   // A reference must name a field that exists AND is in the insert schema; otherwise skip
   // the validator (migrate skips on a missing field; a readOnly/derived/auto-PK field is
   // never in the body, so enforcing on it would reject every create).
@@ -599,7 +600,7 @@ export function renderInsertSchemaOnly(obj: MetaObject, ctx?: RenderContext): Co
   const tphPin = tphDiscriminatorPin(obj);
 
   const insertFieldLines: Code[] = [];
-  for (const child of obj.fields()) {
+  for (const child of flatSurfaceFields(obj)) {
     if (autoGenPkFields.has(child.name)) continue;
     // FR-037 R1: an @mutability:"readOnly" field is populated by DB / replication /
     // external owner; the application has no path to write it. Exclude from the
@@ -684,7 +685,7 @@ export function insertSchemaFields(obj: MetaObject): SchemaFieldShape[] {
   const assignedPkFields = assignedPkFieldNames(obj);
   const tphPin = tphDiscriminatorPin(obj);
   const out: SchemaFieldShape[] = [];
-  for (const child of obj.fields()) {
+  for (const child of flatSurfaceFields(obj)) {
     if (autoGenPkFields.has(child.name)) continue;
     // #213 — a derived (origin-bearing) field is read-only (FR-024 §7 / ADR-0028):
     // excluded from the Insert/Update/preserving schemas, exactly like readOnly.
@@ -720,7 +721,7 @@ export function updateSchemaFields(obj: MetaObject): SchemaFieldShape[] {
   const autoGenPkFields = autoGenPkFieldNames(obj);
   const tphPin = tphDiscriminatorPin(obj);
   const out: SchemaFieldShape[] = [];
-  for (const child of obj.fields()) {
+  for (const child of flatSurfaceFields(obj)) {
     if (autoGenPkFields.has(child.name)) continue;
     // #213 — a derived (origin-bearing) field is read-only (FR-024 §7 / ADR-0028):
     // excluded from the Insert/Update/preserving schemas, exactly like readOnly.
@@ -767,7 +768,7 @@ export function renderZodValidators(obj: MetaObject, ctx?: RenderContext): Code 
   // transform). Only emitted when the entity declares @autoSet fields.
   const preservingFieldLines: Code[] = [];
   const emitPreserving = hasAutoSetFields(obj);
-  for (const child of obj.fields()) {
+  for (const child of flatSurfaceFields(obj)) {
     if (autoGenPkFields.has(child.name)) continue;
     // FR-037 R1: an @mutability:"readOnly" field appears in neither InsertSchema
     // nor UpdateSchema. The DB / trigger / replication owns the write path; the app

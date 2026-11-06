@@ -61,6 +61,7 @@ import {
   VIEW_CONTEXT_FORM,
   effectivePackage,
   isCredentialField,
+  flatSurfaceFields,
 } from "@metaobjectsdev/codegen-ts/engine";
 import { humanize, valueObjectFor, numericInputControl } from "@metaobjectsdev/codegen-ts/templates/field-meta";
 import { tphDiscriminatorPin } from "@metaobjectsdev/codegen-ts/engine";
@@ -96,7 +97,7 @@ function visibleFields(entity: MetaObject, discField?: string): MetaField[] {
   const pkNames = primaryFieldNames(entity);
   const out: MetaField[] = [];
   // fields() returns effective fields, so inherited fields (from extends:/super:) are included in forms.
-  for (const child of entity.fields()) {
+  for (const child of flatSurfaceFields(entity)) {
     // ADR-0039: resolving — a field may inherit @formExclude via extends.
     if (child.attr(FIELD_ATTR_FORM_EXCLUDE) === true) continue;
     // A credential is never edited through a generated form: the generated write route
