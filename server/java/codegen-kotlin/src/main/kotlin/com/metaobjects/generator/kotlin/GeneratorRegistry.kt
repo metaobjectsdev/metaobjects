@@ -14,7 +14,7 @@
 // Stable names mirror the canonical manifest exactly for the kotlin slice:
 //   entity, routes, output-parser, output-prompt, render-helper, extractor,
 //   filter-allowlist, names, exposed-table, relations, spring-config,
-//   stored-proc, validator, requirement-tests, report-export. (Kotlin has NO `template` generator — the manifest
+//   stored-proc, validator, requirement-tests, report-export, shared-model. (Kotlin has NO `template` generator — the manifest
 //   deliberately omits kotlin from it.)
 
 package com.metaobjects.generator.kotlin
@@ -310,6 +310,16 @@ val GENERATOR_REGISTRY: Map<String, GeneratorInfo> = linkedMapOf(
         factory = ::KotlinReportExportGenerator,
         ejectResourcePath = ejectPath("KotlinReportExportGenerator"),
         requires = listOf("entity"),
+    ),
+    "shared-model" to GeneratorInfo(
+        name = "shared-model",
+        description = "FR-023: a publisher's flattened shared-model artifact + manifest for a consumer's `meta deps sync`. " +
+            "[Args: outputDir, name, include, files; optional exclude and version, which defaults to the " +
+            "project's version.]",
+        tier = GeneratorTier.NATIVE,
+        layer = GeneratorLayer.CAPABILITY,
+        factory = ::KotlinSharedModelGenerator,
+        ejectResourcePath = ejectPath("KotlinSharedModelGenerator"),
     ),
     "requirement-tests" to GeneratorInfo(
         name = "requirement-tests",

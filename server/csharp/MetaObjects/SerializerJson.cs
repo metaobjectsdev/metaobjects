@@ -64,6 +64,55 @@ public static class SerializerJson
         return Stringify(sorted) + "\n";
     }
 
+    /// <summary>
+    /// The FR-023 shared-model artifact: one canonical-JSON <c>metadata.root</c> holding the given
+    /// top-level nodes, from any number of packages. The document has NO root <c>package</c>, and every
+    /// node carries its own explicit, RESOLVED <c>package</c> (a root-level child may name its package,
+    /// ADR-0029's addressing model), so the artifact re-loads to the same resolution keys in every port.
+    /// Each node is its <see cref="CanonicalSerialize"/> form: raw own layer, <c>extends</c> preserved
+    /// (never flattened), attribute keys alphabetized. Nodes are sorted by resolution key (ordinal);
+    /// each node's children keep their authored order. Body key order: <c>name</c>, <c>package</c>,
+    /// then the canonical rest. Byte-identical to the TypeScript <c>serializeSharedDocument</c>.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">A node has no package: a shared document carries
+    /// only packaged nodes.</exception>
+    public static string SerializeSharedDocument(IEnumerable<MetaData> nodes)
+    {
+        var children = new JsonArray();
+        foreach (var node in nodes.OrderBy(n => n.ResolutionKey(), StringComparer.Ordinal))
+        {
+            var key = node.ResolutionKey();
+            var sep = key.LastIndexOf(PACKAGE_SEPARATOR, StringComparison.Ordinal);
+            var pkg = sep == -1 ? "" : key[..sep];
+            if (pkg.Length == 0)
+                throw new InvalidOperationException(
+                    $"SerializeSharedDocument: {key} has no package; a shared document carries only packaged nodes");
+
+            var parsed = (JsonObject)JsonNode.Parse(CanonicalSerialize(node))!;
+            var (fused, bodyNode) = parsed.Single();
+            var body = (JsonObject)bodyNode!;
+            // The node's own `package` (if it declared one) is replaced by the RESOLVED one: a node
+            // inheriting its file's root package declares none of its own.
+            var ordered = new JsonObject();
+            var name = body[RESERVED_KEY_NAME];
+            body.Remove(RESERVED_KEY_NAME);
+            ordered.Add(RESERVED_KEY_NAME, name);
+            body.Remove(RESERVED_KEY_PACKAGE);
+            ordered.Add(RESERVED_KEY_PACKAGE, pkg);
+            foreach (var (k, v) in body.ToList())
+            {
+                body.Remove(k);
+                ordered.Add(k, v);
+            }
+            children.Add(new JsonObject { [fused] = ordered });
+        }
+        var doc = new JsonObject
+        {
+            [FusedKey(TYPE_METADATA, SUBTYPE_ROOT)] = new JsonObject { [RESERVED_KEY_CHILDREN] = children },
+        };
+        return Stringify(doc) + "\n";
+    }
+
     // ---------------------------------------------------------------------------
     // FR-016 / ADR-0018 — per-kind physical-name rewrite (pre-sort).
     //

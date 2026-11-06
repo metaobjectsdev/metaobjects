@@ -279,8 +279,9 @@ public class EjectContractTests
                     Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", IncludeNames = true },
                 }).OrderBy(f => f.Path, StringComparer.Ordinal).ToList();
 
-            var packaged = Run(GeneratorRegistry.Get(stableName)!.Factory(new GeneratorBuildContext(corpus.TemplateRoot)));
-            var owned = Run(Instantiate(copy.Assembly, corpus.TemplateRoot));
+            var packaged = Run(SharedModelTestSupport.Configure(
+                GeneratorRegistry.Get(stableName)!.Factory(new GeneratorBuildContext(corpus.TemplateRoot))));
+            var owned = Run(SharedModelTestSupport.Configure(Instantiate(copy.Assembly, corpus.TemplateRoot)));
             emitted += packaged.Count;
             Assert.Equal(packaged.Select(f => f.Path), owned.Select(f => f.Path));
             for (var i = 0; i < packaged.Count; i++)

@@ -8,7 +8,9 @@ import com.metaobjects.agentcontext.AgentContextScaffold;
 import com.metaobjects.generator.Generator;
 import com.metaobjects.generator.GeneratorBase;
 import com.metaobjects.generator.ProjectClassLoaderAware;
+import com.metaobjects.generator.ProjectVersionAware;
 import com.metaobjects.generator.RunAware;
+import com.metaobjects.generator.SharedModelGenerator;
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase;
 import com.metaobjects.generator.spring.SpringRenderHelperGenerator;
 import com.metaobjects.generator.template.TemplateScopeGenerator;
@@ -526,6 +528,11 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
                         ((ProjectClassLoaderAware) impl).setProjectClassLoader( projectClassLoader );
                     }
 
+                    // A generator that publishes the project's version gets Maven's, as a default.
+                    if ( impl instanceof ProjectVersionAware && project != null && project.getVersion() != null ) {
+                        ((ProjectVersionAware) impl).setProjectVersion( project.getVersion() );
+                    }
+
                     // Merge generator args and global args
                     Map<String, String> allargs = mergeAndOverwriteArgs(g);
 
@@ -587,6 +594,10 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
             // Kotlin's render helper reads the same key (KotlinRenderHelperGenerator.ARG_TEMPLATE_ROOT).
             SpringRenderHelperGenerator.ARG_TEMPLATE_ROOT);
 
+    /** Generator args holding a comma-separated list of filesystem paths, resolved like {@link #PATH_ARGS}
+     *  element by element (the shared-model generator's {@code files}). */
+    static final Set<String> PATH_LIST_ARGS = Set.of(SharedModelGenerator.ARG_FILES);
+
     public Map<String, String> mergeAndOverwriteArgs(GeneratorParam g) {
 
         Map<String,String> allargs = mergeArgs(globals, g.getArgs());
@@ -614,6 +625,18 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
                 String value = allargs.get(key);
                 if ( value == null || value.isEmpty() || new File(value).isAbsolute() ) continue;
                 allargs.put(key, basedir.toPath().resolve(value).normalize().toString());
+            }
+            // Path LISTS (comma-separated): each relative element resolves the same way.
+            for ( String key : PATH_LIST_ARGS ) {
+                String value = allargs.get(key);
+                if ( value == null || value.isBlank() ) continue;
+                List<String> resolved = new ArrayList<>();
+                for ( String part : value.split(",") ) {
+                    String p = part.trim();
+                    if ( p.isEmpty() ) continue;
+                    resolved.add( new File(p).isAbsolute() ? p : basedir.toPath().resolve(p).normalize().toString() );
+                }
+                allargs.put(key, String.join(",", resolved));
             }
         }
         return allargs;

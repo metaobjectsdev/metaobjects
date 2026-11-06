@@ -24,6 +24,8 @@ public sealed class GeneratorRegistryTests
         "names",
         // ADR-0057 — per-requirement xUnit tests calling a project-owned witness.
         "requirement-tests",
+        // FR-023 — publishes a shared model: the artifact and the manifest a consumer syncs.
+        "shared-model",
         // Report export — the CSV / JSON / XML download of a served report; standalone.
         "report-export",
         // ADR-0025 — the api reference, an entry in codegen/Generators.cs a project can own.

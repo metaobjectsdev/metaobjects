@@ -50,7 +50,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/source-resolution-conformance/`](../fixtures/source-resolution-conformance/) | 25 cases | ✓ (reference implementation) | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/scope-conformance/`](../fixtures/scope-conformance/) | 10 cases | ✓ (reference implementation) | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/dependency-conformance/`](../fixtures/dependency-conformance/) | 37 cases (26 resolution + 11 check) + 14 transport cases | ✓ (reference implementation; all three arms) | ✓ (resolution arm, all 26; check arm, all 11) | inherits via Java | ✓ (resolution arm, all 26; check arm, all 11, as `verify --deps`) | ✓ (resolution arm, all 26 identically; check arm, all 11, as `deps check` and `verify --deps`; the transport arm is Node-only) |
-| [`fixtures/shared-model-conformance/`](../fixtures/shared-model-conformance/) | 11 cases (7 publish + 4 refusal) | ✓ (reference implementation) | — (Phase 2) | — (Phase 2) | — (Phase 2) | ✓ (serializer arm: the 7 publish cases' document bytes; no publisher) |
+| [`fixtures/shared-model-conformance/`](../fixtures/shared-model-conformance/) | 11 cases (7 publish + 4 refusal) | ✓ (reference implementation) | ✓ (all 11; `SharedModelConformanceTest`) | inherits via Java (`KotlinSharedModelGeneratorTest` pins the generator) | ✓ (all 11; `SharedModelConformanceTests`) | ✓ (serializer arm: the 7 publish cases' document bytes; no publisher) |
 | [`fixtures/agent-context-conformance/`](../fixtures/agent-context-conformance/) | 4 | ✓ (the emitter is TS-owned) | — | — | — | — |
 | [`fixtures/metamodel-docs/`](../fixtures/metamodel-docs/) | 1 | ✓ (docs emit is TS-owned) | — | — | — | — |
 | [`fixtures/fmt-conformance/`](../fixtures/fmt-conformance/) (#304 — `meta fmt`) | 12 | ✓ (reference) | ✓ | inherits via Java | ✓ | ✓ |
@@ -514,7 +514,9 @@ the manifest records the toolchain's `metamodelVersion`, so they do not move wit
 the serializer arm**: for each publish case it loads `files`, takes the nodes the pinned manifest
 lists, and `serialize_shared_document` must reproduce the artifact byte for byte (and the sha256
 the manifest records). Python has no publisher, so selection and the refusals are TypeScript's.
-Java, Kotlin and C# have no runner (Phase 2).
+**Java runs all 11**, in `metadata`'s `SharedModelConformanceTest` against the `SharedModel` engine
+the `shared-model` generator calls; **Kotlin** runs through that same engine and Maven goals and adds
+only `KotlinSharedModelGeneratorTest`. **C# runs all 11**, in `SharedModelConformanceTests`.
 
 > **ADR-0055 (deferred overlay application) — SHIPPED in every port.** The nine cases added
 > for it (`overlay-mixed-file-base-in-later-file`, `overlay-mixed-file-base-in-earlier-file`,

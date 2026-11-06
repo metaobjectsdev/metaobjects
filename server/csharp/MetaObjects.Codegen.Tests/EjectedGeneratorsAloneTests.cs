@@ -288,7 +288,9 @@ public class EjectedGeneratorsAloneTests
     public void Ejected_alone_it_emits_what_the_packaged_generator_emits_byte_for_byte(string name)
     {
         var alone = EjectAlone(name);
-        var packaged = GeneratorRegistry.Get(name)!.Factory(new GeneratorBuildContext(CorpusPaths.FitnessTemplateRoot));
+        var packaged = SharedModelTestSupport.Configure(
+            GeneratorRegistry.Get(name)!.Factory(new GeneratorBuildContext(CorpusPaths.FitnessTemplateRoot)));
+        SharedModelTestSupport.Configure(alone.Generator);
         // The ONE documented difference: a generator whose output imports the helper runtime imports the
         // adopter's owned copy once ejected — `using Codegen.Runtime;` where the packaged output says
         // `using MetaObjects.Codegen.Runtime;`. Nothing else.

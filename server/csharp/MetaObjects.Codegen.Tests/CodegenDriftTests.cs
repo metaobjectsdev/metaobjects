@@ -48,7 +48,8 @@ public sealed class CodegenDriftTests : IDisposable
     // from a bare fixture rather than because it is uninteresting:
     //   render-helper -- requires --template-root for its build-time drift gate
     //   template      -- a PRIMITIVE; real use supplies name/walk/template via config
-    private static readonly IReadOnlyList<string> ExcludedFromDrift = ["render-helper", "template"];
+    //   shared-model  -- publishes the metadata files its options name; a bare fixture names none
+    private static readonly IReadOnlyList<string> ExcludedFromDrift = ["render-helper", "template", "shared-model"];
 
     private static readonly IReadOnlyList<string> DefaultNames =
         [.. GeneratorRegistry.Entries.Keys.Where(n => !ExcludedFromDrift.Contains(n))];

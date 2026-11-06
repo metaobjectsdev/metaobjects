@@ -439,6 +439,14 @@ public class NoMagicPhysicalNamesTest {
         args.put("template", "no-magic/probe");
         args.put("scope", "perEntity");
         args.put("outputPattern", "template-scope/{Name}.txt");
+        // Required by shared-model (it publishes the metadata files named here), ignored by the rest.
+        Path publishable = templateRoot.resolve("publishable.json");
+        Files.writeString(publishable, "{\"metadata.root\":{\"package\":\"acme\",\"children\":["
+            + "{\"object.value\":{\"name\":\"Probe\",\"children\":[{\"field.string\":{\"name\":\"a\"}}]}}]}}");
+        args.put("name", "no-magic");
+        args.put("include", "**");
+        args.put("version", "1.0.0");
+        args.put("files", publishable.toString());
 
         List<Generator> suite = new ArrayList<>();
         Set<String> notGenerators = new TreeSet<>();

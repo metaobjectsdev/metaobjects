@@ -283,6 +283,33 @@ the attribute, node and file, and gen generates anyway. `dotnet meta gen --stric
 `verify` does (ADR-0023): the same `ERR_UNKNOWN_ATTR` lines with a gen-specific hint (drop `--strict`), exit 1, before any file is
 written. `verify` itself stays strict unless you pass `--lax`.
 
+## Publishing a shared model (`shared-model`)
+
+A C# project can publish part of its model for another repository to consume (FR-023). The
+`shared-model` generator writes `<ModelName>.metaobjects.json` and the manifest
+`metaobjects.pkg.json` that pins it by `sha256`, byte-identical to what the TypeScript generator
+writes (`fixtures/shared-model-conformance/`). Declare it in `codegen/Generators.cs`:
+
+```csharp
+new SharedModelGenerator
+{
+    ModelName = "acme-common",
+    Include = ["acme::common::**"],
+    Files = ["metaobjects/meta.common.json"],
+    OutDir = "shared",
+}
+```
+
+`ModelName`, `Include` and `Files` are required; `Exclude` removes patterns from `Include`, and
+`Version` overrides the version recorded in the manifest, which otherwise is the project's
+`<Version>` (from the project file, else the nearest `Directory.Build.props`). It writes nothing and
+names the option to change when the selection is empty, is not closed over `extends` and reference
+attributes, or needs vocabulary outside the library's. Give `OutDir` a directory that holds nothing
+else. `requirement.*` and `template.*` nodes are never published. `dotnet meta eject shared-model`
+copies the generator into your project; the artifact bytes stay in the package, because a copy that
+changed them would publish a model a consumer's sync refuses. The consumer runs the Node `meta deps
+sync`, which stays the only writer of the lock and the snapshot.
+
 ## Write your own generator
 
 A generator is a class that implements `IGenerator` (`MetaObjects.Codegen/Generator.cs`): a

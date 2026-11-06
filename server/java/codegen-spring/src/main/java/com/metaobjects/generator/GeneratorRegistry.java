@@ -470,6 +470,13 @@ public final class GeneratorRegistry {
                     + "witness class through a generated interface; a live test with no witness fails and a "
                     + "planned or retired one is @Disabled.",
                 Tier.NATIVE, Layer.CAPABILITY, ejectPath(JUnitRequirementTestsGenerator.class));
+        // "shared-model" lives in codegen-base (language-neutral output: it publishes JSON), which ships
+        // its reference source. The artifact bytes are SharedModel's, in the metadata jar, so the owned
+        // copy decides the files and version and cannot change what a consumer checks.
+        register(m, "shared-model", SharedModelGenerator.class.getName(),
+                "FR-023: a publisher's flattened shared-model artifact + manifest for a consumer's `meta deps sync`. "
+                    + "[Args: outputDir, name, include, files; optional exclude and version, which defaults to the "
+                    + "project's version.]", Tier.NATIVE, Layer.CAPABILITY, ejectPath(SharedModelGenerator.class));
         register(m, "names", SpringNamesGenerator.class.getName(),
                 "Per-object physical database name constants (table/view/schema/column) "
                     + "for a hand-written consumer to reference instead of a string literal.", Tier.NATIVE, Layer.MODEL,

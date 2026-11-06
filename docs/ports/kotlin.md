@@ -297,6 +297,16 @@ doc](java.md#consuming-a-shared-model-dependencies): the committed snapshot load
 entities can extend and reference it, and no Kotlin generator emits a file for an imported
 object (a `codegen-kotlin` test pins that) unless `scope.include` names its package.
 
+### Publishing a shared model (`shared-model`)
+
+`com.metaobjects.generator.kotlin.KotlinSharedModelGenerator` writes the same artifact and
+manifest as the [Java generator](java.md#publishing-a-shared-model), under the same args
+(`outputDir`, `name`, `include`, `files`, optional `exclude` and `version`, which defaults to
+the module's `<version>`). Both call the one engine in `metaobjects-metadata`, so the bytes match
+the shared corpus (`fixtures/shared-model-conformance/`), and a `codegen-kotlin` test pins that
+by running a corpus case through this class. `mvn metaobjects:eject -Dnames=shared-model -Dport=kotlin`
+copies `KotlinSharedModelGenerator.kt` into a `codegen/` module under your package.
+
 ### Declarative template-codegen (`TemplateScopeGenerator`)
 
 The 17 generators above are a starting point, not the ceiling. When you need a shape

@@ -195,7 +195,7 @@
       "tier": "native",
       "layer": "capability",
       "eject": "full",
-      "ports": ["typescript"]
+      "ports": ["typescript", "java", "kotlin", "csharp"]
     },
     "form": {
       "concept": "Per-entity React form component over the generated Zod schema.",
@@ -440,6 +440,7 @@
           "com.metaobjects.generator.GeneratorIOWriter",
           "com.metaobjects.generator.MetaDataFilters",
           "com.metaobjects.generator.ProjectClassLoaderAware",
+          "com.metaobjects.generator.ProjectVersionAware",
           "com.metaobjects.generator.RunAware",
           "com.metaobjects.generator.apidocs.GeneratorApplicability",
           "com.metaobjects.generator.direct.FileDirectWriter",
@@ -477,6 +478,7 @@
           "com.metaobjects.generator.GeneratorException",
           "com.metaobjects.generator.GeneratorIOWriter",
           "com.metaobjects.generator.ProjectClassLoaderAware",
+          "com.metaobjects.generator.ProjectVersionAware",
           "com.metaobjects.generator.RunAware",
           "com.metaobjects.generator.direct.MultiFileDirectGeneratorBase",
           "com.metaobjects.generator.kotlin.ConfiguredRequires",

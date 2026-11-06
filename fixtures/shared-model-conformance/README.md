@@ -80,7 +80,12 @@ attribute `secretHandling` of type string, not required).
 - **Python** — the **serializer arm** only: load `files`, take exactly the nodes the pinned
   manifest lists, and `serialize_shared_document` must reproduce the artifact byte for byte (and the
   manifest's sha256). Python has no publisher (`server/python/tests/conformance/test_shared_model_conformance.py`).
-- **Java / Kotlin / C#** — Phase 2 publishing; each runs everything when it gains a publisher.
+- **Java** — all of it, in `server/java/metadata` (`SharedModelConformanceTest`, against the
+  `SharedModel` engine that the `shared-model` generator in `codegen-base` calls).
+- **Kotlin** — inherits the Java engine and the Maven goals; `KotlinSharedModelGeneratorTest` pins
+  that the Kotlin generator publishes the same bytes.
+- **C#** — all of it, in `MetaObjects.Conformance.Tests` (`SharedModelConformanceTests`, against
+  `MetaObjects.Config.SharedModel`).
 
 ## Reference implementation
 

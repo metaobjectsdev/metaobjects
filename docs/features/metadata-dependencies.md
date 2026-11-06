@@ -408,7 +408,8 @@ publisher reachable.
 
 ## Publishing a dependency: `sharedModelFile()`
 
-A publisher wires the `shared-model` generator (TypeScript only, in Phase 1a) to
+A publisher wires the `shared-model` generator (TypeScript, Java, Kotlin and C#; Python
+consumes only) to
 select a subset of its own metadata by the same include/exclude scope-pattern
 grammar `scope` already uses, and emit it as one canonical-JSON artifact plus a
 manifest:
@@ -580,16 +581,18 @@ Then `meta deps sync` as for any other installed package. Nothing about the regi
 reaches `.metaobjects/`: the lock records the transport (`npm`/`python` + `dir`), never a
 URL.
 
-**Only TypeScript publishes in Phase 1a — TypeScript, Python, Java, Kotlin and C# consume.**
+**TypeScript, Java, Kotlin and C# publish; TypeScript, Python, Java, Kotlin and C# consume.**
 TypeScript, Python, Java, Kotlin and C# can *consume* a dependency (load its snapshot, extend
 it, overlay it). Java reads it at every rung of the Maven plugin's source ladder
 (`<sourceDir>`/`<sources>`, the neutral config, the default directory), and Kotlin inherits that
 through the same plugin and loader, so a Spring or Kotlin build consumes a shared model with no
-extra configuration. Only the TypeScript toolchain can *publish*: it alone can generate the
-artifact a publisher ships, and the Node `meta deps sync` is the only writer of the lock and the
-snapshot. A Python, Java, Kotlin or C# project that wants to publish a shared model runs a
-TypeScript `sharedModelFile()` generator against its own metadata the same way any TypeScript
-consumer would.
+extra configuration. Java, Kotlin and C# can also *publish*: each ships a `shared-model`
+generator (Java and Kotlin through the Maven plugin's `metaobjects:generate`, C# through
+`dotnet meta gen`; all three ejectable) that writes the artifact and manifest, byte-identical to
+the TypeScript one and gated by `fixtures/shared-model-conformance/`. The Node `meta deps sync`
+stays the only writer of the lock and the snapshot, in every port. A Python project that wants
+to publish a shared model runs a TypeScript `sharedModelFile()` generator against its own
+metadata.
 
 **C#.** `dotnet meta` reads `dependencies` from `.metaobjects/config.json` at every rung of its
 source ladder — C# has no native config surface, so the explicit `<metadataDir>` form reads the
@@ -710,8 +713,7 @@ but **not** built yet — do not assume any of the following exists:
 - **A runtime `ObjectManager` scope predicate.** Nothing at runtime refuses to serve
   an imported entity — "what's imported" is a load-time/codegen concept today, not a
   runtime one.
-- **Java, Kotlin, Python and C# as publishers** — Java, Kotlin and C# consume (S3 and S6);
-  publishing is TypeScript only.
+- **Python as a publisher** — Java, Kotlin and C# publish (S8 and S9); Python consumes only.
 - **`npm` and `python` transports in the Python and C# check.** Both ports' check resolves
   `path` only; an `npm` or `python` dependency reports `unresolved` and names the Node `meta deps
   check`, because resolving it needs the consumer's installed packages (a check that cannot check
