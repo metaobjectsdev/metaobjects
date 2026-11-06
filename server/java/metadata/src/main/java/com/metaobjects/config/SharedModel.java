@@ -15,6 +15,7 @@
  */
 package com.metaobjects.config;
 
+import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
@@ -75,6 +76,8 @@ public final class SharedModel {
 
     /** The manifest schema's own version, distinct from {@code metamodelVersion}. */
     private static final int MANIFEST_SCHEMA_VERSION = 1;
+    /** Pretty-printed, unescaped-HTML Gson for the manifest; Gson instances are thread-safe, so one is shared. */
+    private static final Gson MANIFEST_GSON = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
 
     /** Why a publisher refused to publish; the corpus's {@code expectRefusal.reason}. */
     public enum Reason {
@@ -238,7 +241,7 @@ public final class SharedModel {
         manifest.addProperty("integrity", integrity);
         manifest.add("packages", array(model.packages()));
         manifest.add("nodes", array(model.nodes()));
-        String text = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create().toJson(manifest) + "\n";
+        String text = MANIFEST_GSON.toJson(manifest) + "\n";
         return new Files(artifactPath, model.document(), MANIFEST_FILE, text);
     }
 
@@ -287,7 +290,6 @@ public final class SharedModel {
             List<MetaData> walk = new ArrayList<>();
             walkOwn(top, walk);
             for (MetaData node : walk) {
-                String referrerPkg = References.effectivePackageOf(node);
                 List<String> candidates = new ArrayList<>();
                 String superRef = node.getAuthoredSuperRef();
                 if (superRef != null) candidates.add(superRef);
@@ -298,6 +300,8 @@ public final class SharedModel {
                     Object value = attr.getValue();
                     if (value instanceof String s) candidates.add(s);
                 }
+                if (candidates.isEmpty()) continue;
+                String referrerPkg = References.effectivePackageOf(node);
                 for (String raw : candidates) {
                     MetaData resolved = References.resolveObjectRef(root, References.splitChildTail(raw).owner(), referrerPkg).node();
                     if (resolved == null) continue; // already validated at load: defensive only

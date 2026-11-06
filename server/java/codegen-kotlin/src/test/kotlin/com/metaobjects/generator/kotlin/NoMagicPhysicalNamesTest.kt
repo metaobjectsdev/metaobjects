@@ -366,9 +366,9 @@ class NoMagicPhysicalNamesTest {
             // from the suite through the SHIPPED helper — the identical call the Maven
             // mojo makes in AbstractMetaDataMojo.buildGenerators. Re-implementing the
             // derivation here would leave the gate measuring the test's own logic.
-            val suite = // shared-model writes no code (it publishes metadata files named by its args), so it has no
+            // shared-model writes no code (it publishes metadata files named by its args), so it has no
             // physical name to leak.
-            list().filter { it.tier == GeneratorTier.NATIVE && it.name != "shared-model" }.map { it.factory() }
+            val suite = list().filter { it.tier == GeneratorTier.NATIVE && it.name != "shared-model" }.map { it.factory() }
             val runArgs = EmitsPhysicalNameConstants.deriveUseNames(args, suite)
             for (generator in suite) {
                 generator.apply { setArgs(runArgs) }.execute(loader)

@@ -3,7 +3,6 @@ package com.metaobjects.generator;
 import com.metaobjects.config.SharedModel;
 import com.metaobjects.generator.FileEmittingGenerator;
 import com.metaobjects.generator.GeneratorException;
-import com.metaobjects.generator.ProjectVersionAware;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.registry.MetaDataTypeProvider;
 
@@ -30,20 +29,13 @@ import java.util.List;
  * and optionally {@code exclude} (applied after {@code include}) and {@code version} (default: the
  * project's version).</p>
  */
-public class SharedModelGenerator extends FileEmittingGenerator implements ProjectVersionAware {
+public class SharedModelGenerator extends FileEmittingGenerator {
 
     public static final String ARG_NAME = "name";
     public static final String ARG_INCLUDE = "include";
     public static final String ARG_EXCLUDE = "exclude";
     public static final String ARG_FILES = "files";
     public static final String ARG_VERSION = "version";
-
-    private String projectVersion;
-
-    @Override
-    public void setProjectVersion(String projectVersion) {
-        this.projectVersion = projectVersion;
-    }
 
     @Override
     protected List<EmittedFile> generate(MetaDataLoader loader) {
@@ -61,7 +53,7 @@ public class SharedModelGenerator extends FileEmittingGenerator implements Proje
 
         // Resolved after the selection has passed every check, so a model that cannot be published
         // says so before a missing version does.
-        String version = hasArg(ARG_VERSION) && !getArg(ARG_VERSION).isBlank() ? getArg(ARG_VERSION).trim() : projectVersion;
+        String version = hasArg(ARG_VERSION) && !getArg(ARG_VERSION).isBlank() ? getArg(ARG_VERSION).trim() : null;
         if (version == null || version.isBlank()) {
             throw new GeneratorException("shared-model \"" + name + "\": no version available - set <args><"
                 + ARG_VERSION + ">...</" + ARG_VERSION + "></args>, or run through the Maven plugin, which supplies ${project.version}.");

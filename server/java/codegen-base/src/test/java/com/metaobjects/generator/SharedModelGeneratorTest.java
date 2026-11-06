@@ -39,6 +39,13 @@ public class SharedModelGeneratorTest {
         return l;
     }
 
+    /** {@code base} plus one override, as a fresh mutable copy so the shared {@link #args} map stays untouched. */
+    private static Map<String, String> with(Map<String, String> base, String key, String value) {
+        Map<String, String> copy = new java.util.HashMap<>(base);
+        copy.put(key, value);
+        return copy;
+    }
+
     private static Map<String, String> args(Path out) {
         return Map.of(
             "outputDir", out.toString(),
@@ -51,8 +58,7 @@ public class SharedModelGeneratorTest {
     @Test public void writesTheArtifactAndManifestTheCorpusPins() throws Exception {
         Path out = Files.createTempDirectory("shared-model-gen-");
         SharedModelGenerator g = new SharedModelGenerator();
-        g.setProjectVersion("1.0.0"); // what the Maven plugin supplies from ${project.version}
-        g.setArgs(args(out));
+        g.setArgs(with(args(out), "version", "1.0.0")); // what the Maven plugin supplies from ${project.version}
         g.execute(loader());
 
         String artifact = Files.readString(out.resolve("acme-common.metaobjects.json"), StandardCharsets.UTF_8);
@@ -62,22 +68,13 @@ public class SharedModelGeneratorTest {
             .replace("@@METAMODEL_VERSION@@", RegistryManifest.METAMODEL_VERSION), manifest);
     }
 
-    @Test public void anExplicitVersionArgBeatsTheProjectVersion() throws Exception {
+    @Test public void aBlankVersionArgIsRefused() throws Exception {
         Path out = Files.createTempDirectory("shared-model-gen-");
         SharedModelGenerator g = new SharedModelGenerator();
-        g.setProjectVersion("9.9.9");
-        g.setArgs(new java.util.HashMap<>(args(out)) {{ put("version", "1.0.0"); }});
-        g.execute(loader());
-        assertTrue(Files.readString(out.resolve("metaobjects.pkg.json")).contains("\"version\": \"1.0.0\""));
-    }
-
-    @Test public void aBlankVersionArgFallsBackToTheProjectVersion() throws Exception {
-        Path out = Files.createTempDirectory("shared-model-gen-");
-        SharedModelGenerator g = new SharedModelGenerator();
-        g.setProjectVersion("2.0.0");
-        g.setArgs(new java.util.HashMap<>(args(out)) {{ put("version", " "); }});
-        g.execute(loader());
-        assertTrue(Files.readString(out.resolve("metaobjects.pkg.json")).contains("\"version\": \"2.0.0\""));
+        g.setArgs(with(args(out), "version", " "));
+        GeneratorException e = assertThrows(GeneratorException.class, () -> g.execute(loader()));
+        assertTrue(e.getMessage(), e.getMessage().contains("no version available"));
+        assertFalse(Files.exists(out.resolve("metaobjects.pkg.json")));
     }
 
     @Test public void noVersionAnywhereIsRefusedAfterTheSelectionPasses() throws Exception {
@@ -92,8 +89,7 @@ public class SharedModelGeneratorTest {
     @Test public void aRefusedSelectionWritesNothing() throws Exception {
         Path out = Files.createTempDirectory("shared-model-gen-");
         SharedModelGenerator g = new SharedModelGenerator();
-        g.setProjectVersion("1.0.0");
-        g.setArgs(new java.util.HashMap<>(args(out)) {{ put("include", "nothing::**"); put("exclude", ""); }});
+        g.setArgs(with(with(args(out), "include", "nothing::**"), "exclude", ""));
         SharedModel.Refusal r = assertThrows(SharedModel.Refusal.class, () -> g.execute(loader()));
         assertEquals(SharedModel.Reason.EMPTY_SELECTION, r.reason());
         assertFalse(Files.exists(out.resolve("acme-common.metaobjects.json")));

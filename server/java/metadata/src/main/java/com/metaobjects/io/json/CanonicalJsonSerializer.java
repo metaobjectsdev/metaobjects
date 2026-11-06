@@ -171,7 +171,7 @@ public final class CanonicalJsonSerializer {
         JsonArray children = new JsonArray();
         for (MetaData node : sorted) {
             String key = node.getName();
-            int sep = key.lastIndexOf("::");
+            int sep = key.lastIndexOf(MetaData.PKG_SEPARATOR);
             String pkg = sep == -1 ? "" : key.substring(0, sep);
             if (pkg.isEmpty()) {
                 throw new IllegalArgumentException("serializeSharedDocument: " + key

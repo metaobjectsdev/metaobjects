@@ -8,7 +8,6 @@ import com.metaobjects.agentcontext.AgentContextScaffold;
 import com.metaobjects.generator.Generator;
 import com.metaobjects.generator.GeneratorBase;
 import com.metaobjects.generator.ProjectClassLoaderAware;
-import com.metaobjects.generator.ProjectVersionAware;
 import com.metaobjects.generator.RunAware;
 import com.metaobjects.generator.SharedModelGenerator;
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase;
@@ -528,11 +527,6 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
                         ((ProjectClassLoaderAware) impl).setProjectClassLoader( projectClassLoader );
                     }
 
-                    // A generator that publishes the project's version gets Maven's, as a default.
-                    if ( impl instanceof ProjectVersionAware && project != null && project.getVersion() != null ) {
-                        ((ProjectVersionAware) impl).setProjectVersion( project.getVersion() );
-                    }
-
                     // Merge generator args and global args
                     Map<String, String> allargs = mergeAndOverwriteArgs(g);
 
@@ -601,6 +595,8 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
     public Map<String, String> mergeAndOverwriteArgs(GeneratorParam g) {
 
         Map<String,String> allargs = mergeArgs(globals, g.getArgs());
+        // Maven's project version, as a default a generator's own `version` arg overrides.
+        if ( project != null && project.getVersion() != null ) allargs.putIfAbsent("version", project.getVersion());
 
         // Dump the args to debug
         getLog().debug( "-- Generator ["+g.getClass().getSimpleName()+"] merged Args");
@@ -623,10 +619,10 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
         if ( basedir != null ) {
             for ( String key : PATH_ARGS ) {
                 String value = allargs.get(key);
-                if ( value == null || value.isEmpty() || new File(value).isAbsolute() ) continue;
-                allargs.put(key, basedir.toPath().resolve(value).normalize().toString());
+                if ( value == null || value.isEmpty() ) continue;
+                allargs.put(key, resolveAgainstBasedir(basedir, value));
             }
-            // Path LISTS (comma-separated): each relative element resolves the same way.
+            // Path LISTS (comma-separated): each element resolves the same way.
             for ( String key : PATH_LIST_ARGS ) {
                 String value = allargs.get(key);
                 if ( value == null || value.isBlank() ) continue;
@@ -634,12 +630,17 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
                 for ( String part : value.split(",") ) {
                     String p = part.trim();
                     if ( p.isEmpty() ) continue;
-                    resolved.add( new File(p).isAbsolute() ? p : basedir.toPath().resolve(p).normalize().toString() );
+                    resolved.add( resolveAgainstBasedir(basedir, p) );
                 }
                 allargs.put(key, String.join(",", resolved));
             }
         }
         return allargs;
+    }
+
+    /** {@code value} as-is when absolute, otherwise resolved against {@code basedir} and normalized. */
+    private static String resolveAgainstBasedir(File basedir, String value) {
+        return new File(value).isAbsolute() ? value : basedir.toPath().resolve(value).normalize().toString();
     }
 
     /**

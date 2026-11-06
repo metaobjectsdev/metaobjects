@@ -1,6 +1,5 @@
 package com.metaobjects.generator.kotlin
 
-import com.metaobjects.generator.ProjectVersionAware
 import com.metaobjects.loader.LoaderOptions
 import com.metaobjects.loader.MetaDataLoader
 import com.metaobjects.registry.RegistryManifest
@@ -29,10 +28,10 @@ class KotlinSharedModelGeneratorTest {
         val out = Files.createTempDirectory("kshared-out-")
         try {
             val gen = GENERATOR_REGISTRY.getValue("shared-model").factory()
-            (gen as ProjectVersionAware).setProjectVersion("1.0.0")
             gen.setArgs(
                 mapOf(
                     "outputDir" to out.toString(),
+                    "version" to "1.0.0",
                     "name" to "acme-common",
                     "include" to "acme::common::**",
                     "exclude" to "acme::common::Secret",
