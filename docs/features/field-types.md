@@ -365,8 +365,9 @@ function `meta migrate` uses. The Row and Insert types, the Zod schemas, the fil
 allowlists, the OpenAPI parameters and the form and grid generators all expose those flat keys;
 a client reads and writes `addressStreet`, not a nested `address` object. A flattened field
 declared on a TPH subtype keeps one column named for the field, as `meta migrate` creates it.
-A flattened field on a write-through entity is refused at `meta gen`
-([source-kinds.md](source-kinds.md)).
+A flattened field that carries an `origin.*` is derived: it owns no columns, so it exposes no flat
+keys in any of those surfaces, and a write cannot set them. A flattened field on a write-through
+entity is refused at `meta gen` ([source-kinds.md](source-kinds.md)).
 
 ```ts
 // generated/acme/blog/Author.ts
