@@ -196,6 +196,51 @@ describe("flattened storage: a derived value-object member keeps its column", ()
   });
 });
 
+describe("flattened storage: a derived flattened parent has no member keys or columns", () => {
+  const DERIVED_PARENT = JSON.stringify({
+    "metadata.root": { package: "acme", children: [
+      { "object.value": { name: "Address", children: [
+        { "field.string": { name: "street" } },
+        { "field.string": { name: "city", "@filterable": true } },
+      ] } },
+      { "object.entity": { name: "Owner", children: [
+        { "source.rdb": { "@table": "owners" } },
+        { "field.long": { name: "id" } },
+        { "field.object": { name: "home", "@objectRef": "Address", "@storage": "flattened" } },
+        { "identity.primary": { name: "pk", "@fields": "id", "@generation": "increment" } },
+      ] } },
+      { "object.entity": { name: "Parcel", children: [
+        { "source.rdb": { "@table": "parcels", "@role": "primary" } },
+        { "source.rdb": { "@kind": "view", "@view": "v_parcels", "@role": "replica" } },
+        { "field.long": { name: "id" } },
+        { "field.string": { name: "ref" } },
+        { "field.long": { name: "ownerId" } },
+        { "field.object": { name: "shipTo", "@objectRef": "Address", "@storage": "flattened", children: [
+          { "origin.passthrough": { "@from": "Owner.home", "@via": "Parcel.owner" } },
+        ] } },
+        { "identity.primary": { name: "pk", "@fields": "id", "@generation": "increment" } },
+        { "identity.reference": { name: "ownerRef", "@fields": "ownerId", "@references": "Owner" } },
+        { "relationship.association": { name: "owner", "@cardinality": "one", "@objectRef": "Owner" } },
+      ] } },
+    ] },
+  });
+
+  test("no flat keys on the surface, in the schemas or allowlists, and no Drizzle member columns", async () => {
+    const { root, errors } = await new MetaDataLoader({ strict: true }).load([new InMemoryStringSource(DERIVED_PARENT, { id: "dp.json" })]);
+    expect(errors).toEqual([]);
+    const parcel = root.findObject("Parcel")!;
+    expect(flatSurfaceFields(parcel).map((f) => f.name)).toEqual(["id", "ref", "ownerId", "shipTo"]);
+
+    const outDir = await generate(root, "postgres", [entityFile(), queriesFile()], tmpdir());
+    const entity = readFileSync(allTs(outDir).find((f) => f.endsWith("Parcel.ts"))!, "utf8");
+    const table = entity.slice(entity.indexOf("Table(\"parcels\""), entity.indexOf("});", entity.indexOf("Table(\"parcels\"")));
+    expect([...table.matchAll(/^\s+\w+: \w+\("([^"]+)"/gm)].map((m) => m[1]!).sort()).toEqual(["id", "owner_id", "ref"]);
+    for (const file of allTs(outDir).filter((f) => /Parcel[.\w]*\.ts$/.test(f))) {
+      expect(readFileSync(file, "utf8")).not.toMatch(/shipTo(Street|City)|ship_to_/);
+    }
+  });
+});
+
 describe("flattened storage: agent/ui.md reports the flat keys with their flags", () => {
   test("a filterable member's row is marked filterable and sortable", async () => {
     const page = renderAgentUiPage(await load());

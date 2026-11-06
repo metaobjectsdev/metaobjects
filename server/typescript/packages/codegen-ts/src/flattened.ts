@@ -51,6 +51,9 @@ export function isFlattenedObjectField(field: MetaField): boolean {
 /** The members of a flattened field, or undefined when it is not flattened (or names no value object). */
 export function flattenedMembersOf(field: MetaField, strategy: ColumnNamingStrategy): FlattenedMember[] | undefined {
   if (!isFlattenedObjectField(field)) return undefined;
+  // A derived (origin-bearing) field is materialized on the read side and owns no column, so its
+  // members are no columns either; drizzle-schema and migrate's expected schema skip it too.
+  if (field.isDerived()) return undefined;
   const valueObject = refTarget(field, FIELD_ATTR_OBJECT_REF);
   if (valueObject === undefined || !isMetaObject(valueObject)) return undefined;
   // ADR-0039: effective fields — members inherited via extends are columns too (as migrate does).

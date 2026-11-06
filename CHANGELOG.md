@@ -333,6 +333,12 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
 
 ### Fixed
 
+- **TypeScript: a derived flattened `field.object` no longer produces flat member keys (#524
+  follow-up).** A flattened field that carries an `origin.*` owns no column (the Drizzle table and
+  `meta migrate` skip it), but the flat keys (`shipToStreet`) still appeared in the read, create and
+  update schemas, the filter and sort allowlists, the OpenAPI bodies and the form, so a write dropped
+  them silently. The flattened member expansion now skips a derived parent, so every generated
+  surface agrees with the table.
 - **TypeScript: Drizzle now binds a `field.object` with `@storage: flattened` to its member columns
   (#524).** The generator used to emit one `jsonb` column named for the field, while `meta migrate`
   creates one column per member of the value object and none for the field, so every generated
