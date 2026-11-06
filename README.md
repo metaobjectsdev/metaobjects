@@ -276,11 +276,11 @@ sixth ships two libraries at their own stability labels:
    into its `/db` layer (`["iam", "iam/db"]`). Copy one into your repo with
    `meta eject <library>`. See [`docs/features/libraries.md`](docs/features/libraries.md).
 
-**Sharing a model across your own projects** *(the TypeScript toolchain publishes;
-TypeScript, Python, Java, Kotlin and C# projects consume, from an installed npm or Python
-package or over a `path` dependency such as a sibling checkout)* — one project publishes
-part of its model (a common `Customer`, an audited base, a set of enums) with
-`sharedModelFile()`, and another declares it in `dependencies`, syncs it into a
+**Sharing a model across your own projects** *(TypeScript, Java, Kotlin and C# projects
+publish; TypeScript, Python, Java, Kotlin and C# projects consume, from an installed npm or
+Python package or over a `path` dependency such as a sibling checkout)* — one project publishes
+part of its model (a common `Customer`, an audited base, a set of enums) with its `shared-model`
+generator (`sharedModelFile()` in TypeScript), and another declares it in `dependencies`, syncs it into a
 committed, hash-locked snapshot and builds on it with `extends` and references. When the
 publisher's model moves, `meta verify --deps` says so, instead of two copies drifting
 apart. See [`docs/features/metadata-dependencies.md`](docs/features/metadata-dependencies.md).

@@ -358,6 +358,10 @@ import { sharedModelFile } from "./codegen/generators/shared-model.js";
 generators: [sharedModelFile({ name: "acme-common", include: ["acme::common::**"] })],
 ```
 
+Java, Kotlin and C# publish with the same generator and eject it with their own commands; see
+[Java and Kotlin](../ports/java.md#publishing-a-shared-model), [Kotlin](../ports/kotlin.md#publishing-a-shared-model-shared-model)
+and [C#](../ports/csharp.md#publishing-a-shared-model-shared-model).
+
 An unchanged copy publishes exactly what the packaged generator publishes, and a consumer's
 sync accepts it. The two functions are in your project now, so they are yours to change, and
 a consumer is the one that checks them: the selection, the closure, the bytes, the hash and

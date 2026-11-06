@@ -409,8 +409,7 @@ publisher reachable.
 ## Publishing a dependency: `sharedModelFile()`
 
 A publisher wires the `shared-model` generator (TypeScript, Java, Kotlin and C#; Python
-consumes only) to
-select a subset of its own metadata by the same include/exclude scope-pattern
+consumes only) to select a subset of its own metadata by the same include/exclude scope-pattern
 grammar `scope` already uses, and emit it as one canonical-JSON artifact plus a
 manifest:
 
