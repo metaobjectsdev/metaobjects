@@ -405,7 +405,7 @@ for the one-line change.
 | `field.timestamp` (`@localTime: true`) | string | Naive wall clock — `YYYY-MM-DDTHH:MM:SS[.fff]`, **no `Z`**. |
 | `field.currency` | **integer minor units** | Cents for USD, yen for JPY. Float arithmetic is forbidden. Server never formats. |
 | `field.object` (`@storage: jsonb`) | object | Nested per the sub-object schema. A null member is written per [the wire setting](#the-wire-setting) (`nullMembers`). |
-| `field.object` (`@storage: flattened`) | object | Same JSON shape — only the storage differs. |
+| `field.object` (`@storage: flattened`) | object | Same JSON shape in the contract — only the storage differs. The TypeScript generator exposes the members as flat keys instead (`shipToStreet`); see [field-types.md](field-types.md#what-each-port-generates). |
 
 The currency invariant is the load-bearing one: every port emits and
 expects integer minor units on the wire, and the

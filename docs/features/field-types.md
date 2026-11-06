@@ -359,6 +359,15 @@ The physical names the strategy above resolved are emitted **once**, into
 generated file references that constant rather than respelling it. So the table binding
 below names no column directly — to read the resolved spelling, open the names artifact.
 
+A `@storage: flattened` field binds one Drizzle column per member, keyed `<field><Member>` (for
+the `address` example above, `addressStreet`, `addressCity`, …) and named by the same core
+function `meta migrate` uses. The Row and Insert types, the Zod schemas, the filter and sort
+allowlists, the OpenAPI parameters and the form and grid generators all expose those flat keys;
+a client reads and writes `addressStreet`, not a nested `address` object. A flattened field
+declared on a TPH subtype keeps one column named for the field, as `meta migrate` creates it.
+A flattened field on a write-through entity is refused at `meta gen`
+([source-kinds.md](source-kinds.md)).
+
 ```ts
 // generated/acme/blog/Author.ts
 import { AuthorNames } from "./Author.names";
