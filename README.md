@@ -4,6 +4,7 @@
 [![Maven Central](https://img.shields.io/maven-central/v/com.metaobjects/metaobjects-metadata?label=maven%20central)](https://central.sonatype.com/artifact/com.metaobjects/metaobjects-metadata)
 [![PyPI](https://img.shields.io/pypi/v/metaobjects?label=pypi)](https://pypi.org/project/metaobjects/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![MetaObjects on StartupScores](https://startupscores.com/badge/metaobjects.svg?style=shield&v=combo&theme=dark)](https://startupscores.com/open-source/metaobjects)
 
 Coding agents get context — rules files, memories, MCP servers — and context is
 **advisory**: nothing fails when the code stops matching it. MetaObjects gives your
