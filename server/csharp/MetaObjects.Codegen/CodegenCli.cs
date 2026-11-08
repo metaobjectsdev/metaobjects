@@ -478,13 +478,7 @@ public static class CodegenCli
 
     /// <summary>The <c>--column-naming</c> spelling of <paramref name="strategy"/> — used only
     /// to format the ADR-0058 drift message below, never to parse a flag any more.</summary>
-    public static string ColumnNamingFlag(ColumnNamingStrategy strategy) => strategy switch
-    {
-        ColumnNamingStrategy.SnakeCase => "snake_case",
-        ColumnNamingStrategy.KebabCase => "kebab-case",
-        ColumnNamingStrategy.UpperFirst => "upperFirst",
-        _ => "literal",
-    };
+    public static string ColumnNamingFlag(ColumnNamingStrategy strategy) => strategy.Name;
 
     /// <summary>
     /// ADR-0058 — the 1.1 physical-naming migration guide, named once so every refusal below
@@ -810,13 +804,14 @@ public static class CodegenCli
     /// Every naming other than <paramref name="used"/>, in the order verify probes them (the
     /// Python port probes the same order): the used table rule first, so a different column
     /// rule alone is tried before a different table rule; within each, the used column rule
-    /// first, then snake_case, literal, kebab-case, upperFirst.
+    /// first, then snake_case, literal, kebab-case, pascal, then every strategy the application
+    /// registered, in registration order (ADR-0058 Amendment 1: the probe goes through the
+    /// registry, so a project on its own strategy is probed against it too).
     /// </summary>
     private static IEnumerable<PhysicalNaming> NamingCandidates(PhysicalNaming used)
     {
-        ColumnNamingStrategy[] columns =
-            [ColumnNamingStrategy.SnakeCase, ColumnNamingStrategy.Literal, ColumnNamingStrategy.KebabCase, ColumnNamingStrategy.UpperFirst];
-        TableNamingRule[] tables = [TableNamingRule.SnakeCase, TableNamingRule.Literal];
+        var columns = NamingStrategies.Columns;
+        var tables = NamingStrategies.Tables;
         foreach (var t in tables.OrderBy(t => t == used.Tables ? 0 : 1))
             foreach (var c in columns.OrderBy(c => c == used.Columns ? 0 : 1))
                 if (new PhysicalNaming(c, t) is var candidate && candidate != used)
@@ -825,8 +820,7 @@ public static class CodegenCli
 
     /// <summary>The <c>naming.tables</c> spelling of <paramref name="rule"/> in
     /// <c>.metaobjects/config.json</c>, for the ADR-0058 drift message below.</summary>
-    private static string TableNamingSpelling(TableNamingRule rule) =>
-        rule == TableNamingRule.Literal ? "literal" : "snake_case";
+    private static string TableNamingSpelling(TableNamingRule rule) => rule.Name;
 
     /// <summary>A naming as the <c>naming</c> block that declares it.</summary>
     private static string NamingBlock(PhysicalNaming naming) =>

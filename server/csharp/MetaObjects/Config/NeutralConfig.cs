@@ -252,17 +252,30 @@ public sealed class NeutralConfig
                 {
                     switch (p.Name)
                     {
+                        // ADR-0058 Amendment 1: a value is the NAME of a registered strategy, a
+                        // built-in or one the application registered (NamingStrategies) before
+                        // this read. A name nothing answers is refused here, naming it.
                         case "columns":
-                            if (p.Value.ValueKind != JsonValueKind.String || !TryParseColumnNaming(p.Value.GetString()!, out columns))
+                            if (p.Value.ValueKind != JsonValueKind.String)
                                 throw new MetaModelException(
-                                    $"{path}: \"naming.columns\" must be one of \"snake_case\", \"literal\", \"kebab-case\", \"upperFirst\"",
+                                    $"{path}: \"naming.columns\" must be a string naming a column-naming strategy",
                                     ErrorCode.ERR_BAD_ATTR_VALUE);
+                            if (!NamingStrategies.TryGetColumn(p.Value.GetString()!, out var column))
+                                throw new MetaModelException(
+                                    $"{path}: {NamingStrategies.UnknownMessage("columns", p.Value.GetString()!)}",
+                                    ErrorCode.ERR_BAD_ATTR_VALUE);
+                            columns = column;
                             break;
                         case "tables":
-                            if (p.Value.ValueKind != JsonValueKind.String || !TryParseTableNaming(p.Value.GetString()!, out tables))
+                            if (p.Value.ValueKind != JsonValueKind.String)
                                 throw new MetaModelException(
-                                    $"{path}: \"naming.tables\" must be one of \"snake_case\", \"literal\"",
+                                    $"{path}: \"naming.tables\" must be a string naming a table-naming strategy",
                                     ErrorCode.ERR_BAD_ATTR_VALUE);
+                            if (!NamingStrategies.TryGetTable(p.Value.GetString()!, out var table))
+                                throw new MetaModelException(
+                                    $"{path}: {NamingStrategies.UnknownMessage("tables", p.Value.GetString()!)}",
+                                    ErrorCode.ERR_BAD_ATTR_VALUE);
+                            tables = table;
                             break;
                         default:
                             throw new MetaModelException(
@@ -414,29 +427,5 @@ public sealed class NeutralConfig
             }
         }
         return new WireFormat(decimals, nullMembers);
-    }
-
-    /// The cross-port spellings (ADR-0058) — not .NET enum names, so the JSON value reads
-    /// the same in every port's config.
-    private static bool TryParseColumnNaming(string raw, out ColumnNamingStrategy strategy)
-    {
-        switch (raw)
-        {
-            case "literal":     strategy = ColumnNamingStrategy.Literal;   return true;
-            case "snake_case":  strategy = ColumnNamingStrategy.SnakeCase; return true;
-            case "kebab-case":  strategy = ColumnNamingStrategy.KebabCase; return true;
-            case "upperFirst":  strategy = ColumnNamingStrategy.UpperFirst; return true;
-            default:            strategy = ColumnNamingStrategy.Literal;   return false;
-        }
-    }
-
-    private static bool TryParseTableNaming(string raw, out TableNamingRule rule)
-    {
-        switch (raw)
-        {
-            case "literal":    rule = TableNamingRule.Literal;   return true;
-            case "snake_case": rule = TableNamingRule.SnakeCase; return true;
-            default:           rule = TableNamingRule.Literal;   return false;
-        }
     }
 }

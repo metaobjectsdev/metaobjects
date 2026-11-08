@@ -99,11 +99,11 @@ public class ReportRowCodegenTests
         return result.Root;
     }
 
-    private static GenConfig Config(ColumnNamingStrategy strategy = ColumnNamingStrategy.Literal, bool includeNames = true) => new()
+    private static GenConfig Config(ColumnNamingStrategy? strategy = null, bool includeNames = true) => new()
     {
         OutDir = "/unused",
         Namespace = Namespace,
-        ColumnNamingStrategy = strategy,
+        ColumnNamingStrategy = strategy ?? ColumnNamingStrategy.Literal,
         IncludeNames = includeNames,
     };
 

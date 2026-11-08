@@ -1972,7 +1972,7 @@ public sealed class DurationIntervalArrayMapping : Microsoft.EntityFrameworkCore
         // else `<parent field's column>_`, then the member's own column — the same function
         // migrate-ts names these columns with, and TS owns the schema (ADR-0015). It is NOT EF's
         // own owned-type default, `<Nav>_<Prop>`, which binds a column no migration creates
-        // (under the upperFirst column rule the two coincide). Under this generator's column
+        // (under the pascal column rule the two coincide). Under this generator's column
         // rule, so verify's probe of an alternate rule names these columns the way it names
         // every other.
 

@@ -2061,11 +2061,12 @@ public static class DurationWire
     // POCOs) never reaches ColumnRef at all, so the default is inert there.
     protected virtual string ScalarProperty(
         MetaObject owner, MetaField field, IReadOnlyList<string> pkFields,
-        bool withAttributes, ColumnNamingStrategy strategy = ColumnNamingStrategy.Literal,
+        bool withAttributes, ColumnNamingStrategy? strategy = null,
         bool includeNames = false,
         string? baseTypeOverride = null, bool? withValidationAttributes = null,
         bool valueObject = false)
     {
+        strategy ??= ColumnNamingStrategy.Literal;
         var emitValidation = withValidationAttributes ?? withAttributes;
         _site = new PropertySite(valueObject, TphSubtype: false, baseTypeOverride);
         // A @dbColumnType:jsonb open-bag shifts the CLR property to a parsed JSON value

@@ -455,18 +455,12 @@ public static class CSharpNaming
     /// field name run through <paramref name="strategy"/>. Shared so the schema
     /// DDL and the [Column] annotation agree.
     /// </summary>
-    public static string Column(MetaField field, ColumnNamingStrategy strategy = ColumnNamingStrategy.SnakeCase) =>
-        field.DbColumn ?? ApplyStrategy(field.Name, strategy);
+    public static string Column(MetaField field, ColumnNamingStrategy? strategy = null) =>
+        field.DbColumn ?? ApplyStrategy(field.Name, strategy ?? ColumnNamingStrategy.SnakeCase);
 
-    /// <summary>Apply <paramref name="strategy"/> to a raw field name.</summary>
-    public static string ApplyStrategy(string name, ColumnNamingStrategy strategy) => strategy switch
-    {
-        ColumnNamingStrategy.Literal    => name,
-        ColumnNamingStrategy.SnakeCase  => ToSnakeCase(name),
-        ColumnNamingStrategy.KebabCase  => ToSnakeCase(name).Replace('_', '-'),
-        ColumnNamingStrategy.UpperFirst => PhysicalNaming.ToUpperFirstColumn(name),
-        _ => name,
-    };
+    /// <summary>Apply <paramref name="strategy"/> — a built-in or an application-registered
+    /// strategy (ADR-0058 Amendment 1) — to a raw field name.</summary>
+    public static string ApplyStrategy(string name, ColumnNamingStrategy strategy) => strategy.Apply(name);
 
     // Insert _ between lower→upper (camelCase) and at the end of an acronym run
     // (UPPER followed by Upper+lower, e.g. URLHost → url_host).
@@ -517,8 +511,9 @@ public static class CSharpNaming
     /// the object subtype.
     /// </para>
     /// </summary>
-    public static ObjectNames? ResolveObjectNames(MetaObject obj, ColumnNamingStrategy strategy = ColumnNamingStrategy.SnakeCase)
+    public static ObjectNames? ResolveObjectNames(MetaObject obj, ColumnNamingStrategy? strategy = null)
     {
+        strategy ??= ColumnNamingStrategy.SnakeCase;
         // FR-044 — a report resolves no names artifact, so NamesGenerator emits none and
         // the report's generated row (ReportRows) spells its view and columns as literals
         // through the same fallback a sourceless object takes. One gate, here, so the
@@ -735,8 +730,9 @@ public static class CSharpNaming
     /// walk and the emit cannot disagree about which ancestors exist.</para>
     /// </summary>
     public static ObjectNames? ResolveSuperFragmentNames(
-        MetaObject obj, ColumnNamingStrategy strategy = ColumnNamingStrategy.SnakeCase)
+        MetaObject obj, ColumnNamingStrategy? strategy = null)
     {
+        strategy ??= ColumnNamingStrategy.SnakeCase;
         if (!DeclaresNamesContent(obj)) return null;
         var own = obj.OwnFields();
 
