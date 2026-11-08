@@ -17,6 +17,10 @@ import {
   resolveFlattenedColumnName,
   resolveTableName,
   FIELD_ATTR_OBJECT_REF,
+  columnNamingStrategy,
+  tableNamingRule,
+  registerColumnNamingStrategy,
+  registerTableNamingRule,
   type MetaRoot,
 } from "@metaobjectsdev/metadata";
 import { ConfigSchema, physicalNamingFromConfig } from "../src/config.js";
@@ -30,10 +34,28 @@ interface NamingCase {
   tables: Record<string, string>;
   columns: Record<string, string>;
 }
+interface AppStrategy {
+  name: string;
+  for: "columns" | "tables";
+  delegate: string;
+  upperCase?: string[];
+  prefix?: string;
+}
 const corpus = JSON.parse(readFileSync(join(CORPUS, "cases.json"), "utf8")) as {
+  strategies: AppStrategy[];
   cases: NamingCase[];
-  invalid: { name: string; naming: unknown }[];
+  invalid: { name: string; naming: unknown; messageIncludes?: string[] }[];
 };
+
+// The corpus's application-registered strategies, registered the way an application does:
+// through the registry, each delegating to a built-in it looks up by name.
+for (const s of corpus.strategies) {
+  const delegate = s.for === "columns" ? columnNamingStrategy(s.delegate) : tableNamingRule(s.delegate);
+  const upper = new Set(s.upperCase ?? []);
+  const apply = (n: string): string => (upper.has(n) ? n.toUpperCase() : (s.prefix ?? "") + delegate(n));
+  if (s.for === "columns") registerColumnNamingStrategy(s.name, apply);
+  else registerTableNamingRule(s.name, apply);
+}
 
 /** The config file a project would carry for this case. */
 function configFor(naming: unknown): Record<string, unknown> {
@@ -79,7 +101,13 @@ describe("physical-naming conformance (ADR-0058)", () => {
 
   for (const c of corpus.invalid) {
     test(`${c.name}: the config is refused when read`, () => {
-      expect(ConfigSchema.safeParse(configFor(c.naming)).success).toBe(false);
+      const parsed = ConfigSchema.safeParse(configFor(c.naming));
+      expect(parsed.success).toBe(false);
+      if (c.messageIncludes !== undefined && !parsed.success) {
+        const message = parsed.error.issues.map((i) => i.message).join("\n");
+        for (const part of c.messageIncludes) expect(message).toContain(part);
+        expect(message).toContain("TypeScript port");
+      }
     });
   }
 

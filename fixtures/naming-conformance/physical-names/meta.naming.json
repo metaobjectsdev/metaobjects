@@ -23,6 +23,8 @@
             { "field.long": { "name": "id" } },
             { "field.string": { "name": "firstName" } },
             { "field.string": { "name": "lastName", "@column": "family_name" } },
+            { "field.string": { "name": "npi", "@column": "NPI" } },
+            { "field.string": { "name": "ssn" } },
             { "identity.primary": { "name": "id", "@fields": "id" } }
           ]
         }

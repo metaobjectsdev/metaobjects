@@ -100,11 +100,12 @@ public class ObjectFieldCodegenTests
     // own columns), and the default prefix follows the project's column rule: the names
     // `meta migrate` creates for the same model (core naming's ResolveFlattenedColumnPrefix).
     [Theory]
-    [InlineData(ColumnNamingStrategy.Literal, "street", "Officestreet", "homeAddress_street")]
-    [InlineData(ColumnNamingStrategy.UpperFirst, "Street", "OfficeStreet", "HomeAddress_Street")]
+    [InlineData("literal", "street", "Officestreet", "homeAddress_street")]
+    [InlineData("pascal", "Street", "OfficeStreet", "HomeAddress_Street")]
     public void DbContext_flattened_columns_follow_column_prefix_and_the_column_rule(
-        ColumnNamingStrategy strategy, string plain, string prefixed, string byDefault)
+        string strategyName, string plain, string prefixed, string byDefault)
     {
+        var strategy = NamingStrategies.Column(strategyName);
         const string model = """
         { "metadata.root": { "package": "acme", "children": [
           { "object.value": { "name": "Address", "children": [ { "field.string": { "name": "street" } } ]}},

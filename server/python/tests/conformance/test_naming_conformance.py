@@ -23,6 +23,7 @@ from metaobjects.naming import resolve_column_name, resolve_flattened_column_nam
 from metaobjects.naming_refs import ref_target
 from metaobjects.shared.base_types import TYPE_OBJECT
 from metaobjects.source_resolution import primary_rdb_source
+from tests.conformance.naming_corpus import register_corpus_strategies
 
 REPO = Path(__file__).parents[4]
 CORPUS = REPO / "fixtures" / "naming-conformance" / "physical-names"
@@ -32,6 +33,9 @@ META_FILE = CORPUS / "meta.naming.json"
 _SPEC = json.loads(CASES_FILE.read_text())
 _CASES: list[dict[str, object]] = _SPEC["cases"]
 _INVALID: list[dict[str, object]] = _SPEC["invalid"]
+
+# The corpus's application-registered strategies, before any block is read.
+register_corpus_strategies()
 
 
 def _load_root() -> MetaObject:
@@ -99,5 +103,10 @@ def test_physical_names_case(case: dict[str, object], tmp_path: Path) -> None:
 @pytest.mark.parametrize("invalid", _INVALID, ids=lambda c: c["name"])
 def test_invalid_naming_block_is_refused(invalid: dict[str, object], tmp_path: Path) -> None:
     config_dir = _config_dir_for(tmp_path, invalid["naming"])
-    with pytest.raises(ParseError):
+    with pytest.raises(ParseError) as raised:
         read_neutral_config(config_dir)
+    includes: list[str] = invalid.get("messageIncludes", [])  # type: ignore[assignment]
+    for part in includes:
+        assert part in str(raised.value), str(raised.value)
+    if includes:
+        assert "Python port" in str(raised.value)

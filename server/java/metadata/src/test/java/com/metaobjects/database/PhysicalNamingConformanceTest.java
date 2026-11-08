@@ -68,7 +68,34 @@ public class PhysicalNamingConformanceTest extends SharedRegistryTestBase {
     private record Case(String name, JsonElement naming, Map<String, String> tables,
                          Map<String, String> columns) {}
 
-    private record InvalidCase(String name, JsonElement naming) {}
+    private record InvalidCase(String name, JsonElement naming, List<String> messageIncludes) {}
+
+    /**
+     * The corpus's application-registered strategies (ADR-0058 Amendment 1), registered the way
+     * an application does — through {@link NamingStrategies}, before any config is read — each
+     * delegating to the built-in it names. Idempotent: registering a name again replaces it.
+     */
+    static void registerCorpusStrategies() throws IOException {
+        for (JsonElement el : readCorpus().getAsJsonArray("strategies")) {
+            JsonObject s = el.getAsJsonObject();
+            String name = s.get("name").getAsString();
+            String delegate = s.get("delegate").getAsString();
+            String prefix = s.has("prefix") ? s.get("prefix").getAsString() : "";
+            java.util.Set<String> upper = new java.util.HashSet<>();
+            if (s.has("upperCase")) {
+                for (JsonElement u : s.getAsJsonArray("upperCase")) upper.add(u.getAsString());
+            }
+            if ("columns".equals(s.get("for").getAsString())) {
+                NamingStrategies.NamingFunction inner = NamingStrategies.column(delegate);
+                NamingStrategies.registerColumns(name,
+                    n -> upper.contains(n) ? n.toUpperCase(java.util.Locale.ROOT) : prefix + inner.apply(n));
+            } else {
+                NamingStrategies.NamingFunction inner = NamingStrategies.table(delegate);
+                NamingStrategies.registerTables(name,
+                    n -> upper.contains(n) ? n.toUpperCase(java.util.Locale.ROOT) : prefix + inner.apply(n));
+            }
+        }
+    }
 
     static Path corpusDir() {
         Path dir = Paths.get("").toAbsolutePath();
@@ -104,6 +131,7 @@ public class PhysicalNamingConformanceTest extends SharedRegistryTestBase {
 
     @Parameters(name = "{0}")
     public static Collection<Object[]> cases() throws IOException {
+        registerCorpusStrategies();
         JsonObject root = readCorpus();
         List<Object[]> rows = new ArrayList<>();
         for (JsonElement el : root.getAsJsonArray("cases")) {
@@ -187,12 +215,17 @@ public class PhysicalNamingConformanceTest extends SharedRegistryTestBase {
 
         @Parameters(name = "{0}")
         public static Collection<Object[]> invalidCases() throws IOException {
+            registerCorpusStrategies();
             JsonObject root = readCorpus();
             List<Object[]> rows = new ArrayList<>();
             for (JsonElement el : root.getAsJsonArray("invalid")) {
                 JsonObject c = el.getAsJsonObject();
                 String name = c.get("name").getAsString();
-                rows.add(new Object[]{name, new InvalidCase(name, c.get("naming"))});
+                List<String> includes = new ArrayList<>();
+                if (c.has("messageIncludes")) {
+                    for (JsonElement m : c.getAsJsonArray("messageIncludes")) includes.add(m.getAsString());
+                }
+                rows.add(new Object[]{name, new InvalidCase(name, c.get("naming"), includes)});
             }
             return rows;
         }
@@ -205,8 +238,15 @@ public class PhysicalNamingConformanceTest extends SharedRegistryTestBase {
 
         @Test
         public void isRefused() {
-            assertThrows(MetaDataException.class,
+            MetaDataException ex = assertThrows(MetaDataException.class,
                 () -> parseNaming(testCase.naming(), "invalid-case:" + caseName));
+            for (String part : testCase.messageIncludes()) {
+                org.junit.Assert.assertTrue(caseName + ": message should contain " + part + ": " + ex.getMessage(),
+                    ex.getMessage().contains(part));
+            }
+            if (!testCase.messageIncludes().isEmpty()) {
+                org.junit.Assert.assertTrue(ex.getMessage(), ex.getMessage().contains("Java port"));
+            }
         }
     }
 }

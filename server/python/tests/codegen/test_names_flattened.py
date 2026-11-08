@@ -21,9 +21,12 @@ from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.naming import to_snake_case
 from metaobjects.shared.base_types import TYPE_OBJECT
 
+from tests.conformance.naming_corpus import register_corpus_strategies
+
 REPO = Path(__file__).parents[4]
 CORPUS = REPO / "fixtures" / "naming-conformance" / "physical-names"
 _CASES: list[dict[str, object]] = json.loads((CORPUS / "cases.json").read_text())["cases"]
+register_corpus_strategies()
 
 _MODEL = {
     "metadata.root": {"package": "acme::ship", "children": [

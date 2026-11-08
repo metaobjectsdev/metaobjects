@@ -628,6 +628,7 @@ class KotlinNamesGeneratorTest {
         while (dir != null && !Files.isDirectory(dir.resolve("fixtures"))) dir = dir.parent
         val corpus = requireNotNull(dir) { "could not locate fixtures/" }.resolve("fixtures/naming-conformance/physical-names")
         val model = corpus.resolve("meta.naming.json").readText()
+        NamingCorpus.registerStrategies()
         val cases = com.fasterxml.jackson.databind.ObjectMapper().readTree(corpus.resolve("cases.json").toFile()).get("cases")
         for (c in cases) {
             val naming = c.get("naming")
