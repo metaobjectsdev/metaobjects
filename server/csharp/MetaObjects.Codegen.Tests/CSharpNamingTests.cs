@@ -410,6 +410,21 @@ public class CSharpNamingTests
         Assert.Contains("Payers { get; set; }", context);
     }
 
+    // A @dbSetName that is no C# identifier, or names a DbContext member, would fail at compile
+    // time (or hide Database / Model); codegen refuses it by name.
+    [Theory]
+    [InlineData("Payer Rows")]
+    [InlineData("1Payers")]
+    [InlineData("Database")]
+    [InlineData("Model")]
+    public void A_dbSetName_that_cannot_be_the_property_is_refused_at_codegen(string bad)
+    {
+        var root = PackagedObjects(new NamedObject("core", "Payer", false, true, DbSetName: bad));
+        var ex = Assert.Throws<InvalidOperationException>(() => Run(new DbContextGenerator(), root));
+        Assert.Contains("@dbSetName", ex.Message);
+        Assert.Contains($"\"{bad}\"", ex.Message);
+    }
+
     // R30, physical half: one context, one relation per (schema, name). Two objects that map to one
     // table would silently share it; the DbSet rule no longer catches them once @dbSetName splits
     // the property names.
