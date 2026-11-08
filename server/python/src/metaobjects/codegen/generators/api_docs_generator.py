@@ -24,7 +24,12 @@ from typing import Any
 from metaobjects.codegen.generator import DEFAULT_API_SUBDIR, EmittedFile, GenContext, Generator
 
 from ..runtime.api_docs_builder import PythonApiModelBuilder
-from ..runtime.api_docs_paths import Layout, doc_page_output_path, model_cross_href
+from ..runtime.api_docs_paths import (
+    Layout,
+    assert_no_duplicate_doc_paths,
+    doc_page_output_path,
+    model_cross_href,
+)
 from ..runtime.api_docs_renderer import PythonApiDocsRenderer
 
 
@@ -52,6 +57,14 @@ class ApiDocsGenerator:
         model = PythonApiModelBuilder(ctx.config.api_prefix).build(ctx.loaded_root, self.project_name)
         renderer = PythonApiDocsRenderer()
         layout = Layout.PACKAGE
+        # Refused before any page is built: two pages that are one file must not half-write.
+        assert_no_duplicate_doc_paths([
+            (
+                doc_page_output_path(layout, u.package, u.node),
+                f"{u.package}::{u.node}" if u.package else u.node,
+            )
+            for u in model.units
+        ])
 
         def page(path: str, content: str) -> EmittedFile:
             return EmittedFile(path=f"{self.api_subdir}/{path}", content=content)

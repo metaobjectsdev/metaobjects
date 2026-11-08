@@ -63,3 +63,45 @@ def test_pages_and_back_links_are_filed_under_each_package() -> None:
     assert "https://docs.example.test/alpha/lib/Widget.md" in files["api/alpha/lib/Widget.md"]
     assert "https://docs.example.test/beta/app/Order.md" in files["api/beta/app/Order.md"]
     assert "alpha" not in files["api/beta/app/Order.md"]
+
+
+# Keyed by package: two same-named nodes in two packages are two pages the index tells apart; two
+# names in one package that differ only in case are one file on a case-insensitive filesystem, so
+# they are refused by name rather than written as one page that replaces the other.
+
+def _pages(*files: tuple[str, str]) -> dict[str, str]:
+    with tempfile.TemporaryDirectory() as d:
+        for i, (package, name) in enumerate(files):
+            (Path(d) / f"meta.{i}.json").write_text(_entity_file(package, name), encoding="utf-8")
+        r = MetaDataLoader.from_directory(d)
+    assert not r.errors, r.errors
+    ctx = GenContext(
+        entities=[c for c in r.root.own_children() if c.type == TYPE_OBJECT],
+        loaded_root=r.root,
+        matches=lambda _e: True,
+        config=GenConfig(out_dir="/tmp/out"),
+        warn=lambda _m: None,
+    )
+    return {f.path: f.content for f in ApiDocsGenerator(api_subdir="api").generate(ctx)}
+
+
+def test_two_same_named_nodes_in_two_packages_are_two_pages_the_index_tells_apart() -> None:
+    files = _pages(("enterprise::party", "Address"), ("core::common", "Address"))
+    assert "api/enterprise/party/Address.md" in files
+    assert "api/core/common/Address.md" in files
+    index = files["api/README.md"]
+    assert "- [Address (core::common)](./core/common/Address.md)" in index
+    assert "- [Address (enterprise::party)](./enterprise/party/Address.md)" in index
+
+
+def test_a_unique_short_name_keeps_its_bare_label() -> None:
+    assert "- [Cart](./acme/shop/Cart.md)" in _pages(("acme::shop", "Cart"))["api/README.md"]
+
+
+def test_names_that_differ_only_in_case_in_one_package_are_refused() -> None:
+    import pytest
+
+    with pytest.raises(ValueError, match="case-insensitive") as err:
+        _pages(("acme::products", "ProductNdc"), ("acme::products", "ProductNDC"))
+    assert "acme::products::ProductNdc" in str(err.value)
+    assert "acme::products::ProductNDC" in str(err.value)

@@ -16,7 +16,7 @@ mirror the Java / C# renderers so the polyglot doc tree coheres.
 from __future__ import annotations
 
 from .api_docs_model import ApiModel, ApiSymbolKind, ApiUnit
-from .api_docs_paths import Layout, doc_page_output_path, surface_cross_href
+from .api_docs_paths import Layout, doc_page_output_path, index_label, surface_cross_href
 
 # Canonical section order per kind (a unit renders only the kinds it carries).
 _KIND_ORDER: tuple[ApiSymbolKind, ...] = (
@@ -116,20 +116,22 @@ def render_index(model: ApiModel, layout: Layout) -> str:
     if entities:
         out.append("\n## Entities\n\n")
         for u in entities:
-            out.append(_index_row(u, layout))
+            out.append(_index_row(u, layout, entities))
     if templates:
         out.append("\n## Templates\n\n")
         for u in templates:
-            out.append(_index_row(u, layout))
+            out.append(_index_row(u, layout, templates))
     return "".join(out)
 
 
-def _index_row(unit: ApiUnit, layout: Layout) -> str:
+def _index_row(unit: ApiUnit, layout: Layout, siblings: list[ApiUnit]) -> str:
     href = surface_cross_href(
         "README.md", doc_page_output_path(layout, unit.package, unit.node)
     )
+    # Readable when two units share a short name: the label carries the package.
+    label = index_label(unit.node, unit.package, [s.node for s in siblings])
     return (
-        f"- [{unit.node}]({href}) — {_summary(unit)} "
+        f"- [{label}]({href}) — {_summary(unit)} "
         f"({len(unit.symbols)} symbols)\n"
     )
 

@@ -39,6 +39,36 @@ def doc_page_output_path(layout: Layout, pkg: str | None, name: str) -> str:
     return file if not folder else f"{folder}/{file}"
 
 
+def index_label(name: str, pkg: str | None, siblings: list[str]) -> str:
+    """The index label of a page: its short name, or ``"<name> (<package>)"`` when another
+    unit in the same list shares that name (case-insensitively), so the index tells the two
+    apart. *siblings* is the whole list, this unit included. Mirrors the TS ``docIndexLabel``."""
+    shared = sum(1 for n in siblings if n.lower() == name.lower()) > 1
+    return f"{name} ({pkg})" if shared and pkg else name
+
+
+def assert_no_duplicate_doc_paths(placements: list[tuple[str, str]]) -> None:
+    """Refuse two pages that resolve to the same output path, compared case-insensitively:
+    macOS and Windows hold ``ProductNdc.md`` and ``ProductNDC.md`` as one file, so one page
+    would silently replace the other. Each placement is (path, the node's FQN). Mirrors the TS
+    ``assertNoDuplicateDocPaths``."""
+    seen: dict[str, tuple[str, str]] = {}
+    for path, fqn in placements:
+        prior = seen.get(path.lower())
+        if prior is not None:
+            if prior[0] == path:
+                raise ValueError(
+                    f'docs: duplicate output path "{path}" from nodes {prior[1]} and {fqn} — '
+                    "rename one of them."
+                )
+            raise ValueError(
+                f'docs: output paths "{prior[0]}" ({prior[1]}) and "{path}" ({fqn}) differ only '
+                "in case — one file on a case-insensitive filesystem (macOS, Windows), so one page "
+                "would replace the other. Rename one of them."
+            )
+        seen[path.lower()] = (path, fqn)
+
+
 def surface_cross_href(from_output_path: str, to_output_path: str) -> str:
     """Relative posix href from *from_output_path*'s directory to *to_output_path*
     (mirrors the TS ``surfaceCrossHref``)."""
