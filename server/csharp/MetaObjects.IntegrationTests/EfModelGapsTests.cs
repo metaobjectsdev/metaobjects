@@ -951,6 +951,39 @@ public sealed class EfModelGapsTests
         Assert.False(indexes.ContainsKey("ix_tickets_lower_email"));
     }
 
+    // A TPH subtype's own fields and indexes: the subtype gets no DbSet, so the root's pass never
+    // reaches them; they are configured on the subtype's builder, onto the shared table.
+    private const string TphIndexModel = """
+    { "metadata.root": { "package": "acme", "children": [
+      { "object.entity": { "name": "Vehicle", "@discriminator": "kind", "children": [
+        { "source.rdb": { "@table": "vehicles" } },
+        { "field.long": { "name": "id" } },
+        { "field.string": { "name": "kind", "@maxLength": 10 } },
+        { "identity.primary": { "@fields": "id", "@generation": "increment" } }
+      ]}},
+      { "object.entity": { "name": "Car", "extends": "Vehicle", "@discriminatorValue": "Car", "children": [
+        { "field.string": { "name": "vin", "@maxLength": 17, "@unique": true, "@description": "The vehicle id number." } },
+        { "field.int": { "name": "seats" } },
+        { "identity.secondary": { "name": "ux_vehicles_car_seats", "@fields": "seats", "@where": "seats > 0" } },
+        { "index.lookup": { "name": "ix_vehicles_car_vin_seats", "@fields": ["vin", "seats"], "@orders": ["asc", "desc"] } }
+      ]}}
+    ]}}
+    """;
+
+    [Fact]
+    public void A_tph_subtypes_own_fields_carry_their_indexes_and_comments()
+    {
+        var gen = GeneratedEfModel.Compile(TphIndexModel, "Acme.TphIndex");
+        using var db = gen.NewContext(o => o.UseNpgsql("Host=unused"));
+        var car = DesignEntityType(db, "Car");
+        var indexes = car.GetDeclaredIndexes().ToDictionary(i => i.GetDatabaseName()!);
+        Assert.True(indexes["vehicles_vin_unique"].IsUnique);
+        Assert.True(indexes["ux_vehicles_car_seats"].IsUnique);
+        Assert.Equal("seats > 0", indexes["ux_vehicles_car_seats"].GetFilter());
+        Assert.Equal(new[] { false, true }, indexes["ix_vehicles_car_vin_seats"].IsDescending);
+        Assert.Equal("The vehicle id number.", car.FindProperty("Vin")!.GetComment());
+    }
+
     [Fact]
     public void An_expression_index_is_an_sql_artifact()
     {

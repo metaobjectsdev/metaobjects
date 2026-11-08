@@ -1161,9 +1161,10 @@ public class DbContextGenerator : IGenerator
     /// on its column, read resolving. Set through the metadata API, which reaches every property
     /// kind; a flattened value object is not a column (its members are), so it gets none.
     /// </summary>
-    private void EmitCommentConfig(string owner, MetaObject entity, IEnumerable<MetaField> fields, List<string> modelLines)
+    private void EmitCommentConfig(string owner, MetaObject entity, IEnumerable<MetaField> fields, List<string> modelLines,
+        bool tableComment = true)
     {
-        if (entity.Attr(MetaObjects.Core.Documentation.DocumentationConstants.DOC_ATTR_DESCRIPTION) is string { Length: > 0 } table)
+        if (tableComment && entity.Attr(MetaObjects.Core.Documentation.DocumentationConstants.DOC_ATTR_DESCRIPTION) is string { Length: > 0 } table)
             modelLines.Add($"        modelBuilder.Entity<{owner}>().Metadata.SetComment(\"{CSharpNaming.CSharpStringLiteral(table)}\");");
         foreach (var f in fields)
         {
@@ -1182,10 +1183,12 @@ public class DbContextGenerator : IGenerator
     /// (<c>IsDescending</c>), under its resolved name. An <c>@expr</c> index is not one EF can
     /// model; <see cref="ExpressionIndexesGenerator"/> writes it as SQL.
     /// </summary>
-    private void EmitIndexConfig(string owner, MetaObject entity, GenContext ctx, List<string> modelLines)
+    private void EmitIndexConfig(string owner, MetaObject entity, GenContext ctx, List<string> modelLines,
+        IEnumerable<MetaField>? ownFields = null, Func<MetaData, bool>? declares = null)
     {
         var table = CSharpNaming.Table(entity);
-        foreach (var f in entity.Fields())
+        // A TPH subtype passes the fields and index nodes it adds beyond its ancestors in the model.
+        foreach (var f in ownFields ?? entity.Fields())
         {
             // ADR-0039: resolving — @unique may be inherited via extends.
             if (f.Attr(FIELD_ATTR_UNIQUE) is not true || f.ResolvedIsArray()) continue;
@@ -1195,6 +1198,7 @@ public class DbContextGenerator : IGenerator
         }
         var nodes = entity.SecondaryIdentities().Select(i => ((MetaData)i, i.Fields, true))
             .Concat(entity.LookupIndexes().Select(i => ((MetaData)i, i.Fields, false)))
+            .Where(n => declares is null || declares(n.Item1))
             .ToList();
         foreach (var (node, fields, unique) in nodes)
         {
@@ -1300,8 +1304,9 @@ public class DbContextGenerator : IGenerator
 
     /// <summary>
     /// Hook — the per-field configuration of one concrete TPH SUBTYPE (see the summary above):
-    /// the field-type lines, the column defaults and the <c>SetAfterSaveBehavior</c> lines for the
-    /// fields it declares beyond its TPH ancestors, on the subtype's own builder. Called once per
+    /// the field-type lines, the column defaults, the <c>SetAfterSaveBehavior</c> lines, the
+    /// column comments and the indexes (<c>@unique</c>, <c>identity.secondary</c>,
+    /// <c>index.lookup</c>) for what it declares beyond its TPH ancestors, on the subtype's own builder. Called once per
     /// subtype of each discriminator <paramref name="root"/>; empty for a subtype that adds no field.
     /// </summary>
     protected virtual IEnumerable<string> TphSubtypeFieldConfig(MetaObject root, MetaObject subtype, GenContext ctx)
@@ -1318,9 +1323,16 @@ public class DbContextGenerator : IGenerator
         {
             cursor = cursor.SuperData as MetaObject;
         }
-        var inherited = new HashSet<string>((cursor ?? root).Fields().Select(f => f.Name), StringComparer.Ordinal);
+        var ancestor = cursor ?? root;
+        var inherited = new HashSet<string>(ancestor.Fields().Select(f => f.Name), StringComparer.Ordinal);
         var own = subtype.Fields().Where(f => !inherited.Contains(f.Name)).ToList();
-        if (own.Count == 0)
+        // Resolving on both sides: an index node an abstract level between them declares is the
+        // subtype's to configure, one the ancestor already resolves is configured there.
+        var ancestorIndexes = new HashSet<string>(
+            ancestor.SecondaryIdentities().Select(i => i.Name).Concat(ancestor.LookupIndexes().Select(i => i.Name)), StringComparer.Ordinal);
+        var ownIndexes = subtype.SecondaryIdentities().Select(i => i.Name).Concat(subtype.LookupIndexes().Select(i => i.Name))
+            .Where(n => !ancestorIndexes.Contains(n)).ToHashSet(StringComparer.Ordinal);
+        if (own.Count == 0 && ownIndexes.Count == 0)
         {
             return [];
         }
@@ -1334,6 +1346,9 @@ public class DbContextGenerator : IGenerator
             lines.Add(
                 $"        modelBuilder.Entity<{cls}>().Property(x => x.{PropertyName(f)}).Metadata.SetAfterSaveBehavior(PropertySaveBehavior.Ignore);");
         }
+        // The shared table's comment is the root's; a subtype's own columns carry theirs.
+        EmitCommentConfig(cls, subtype, own, lines, tableComment: false);
+        EmitIndexConfig(cls, subtype, ctx, lines, own, n => ownIndexes.Contains(n.Name));
         return lines;
     }
 

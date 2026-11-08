@@ -28,9 +28,14 @@ public class ExpressionIndexesGenerator : IGenerator
         var statements = new SortedDictionary<string, string>(StringComparer.Ordinal);
         foreach (var o in ctx.Entities.Where(o => o.IsEntity() && InstanceArtifacts.EmitsInstanceArtifacts(o)))
         {
-            // ADR-0039: own — each declaration is written once, by the object that declares it;
-            // a TPH subtype's index lands on its root's table.
-            foreach (var node in o.OwnChildren())
+            // ADR-0039: resolving — an index an abstract base declares is each concrete child's, on
+            // its own table (the layered enterprise → core shape). A TPH subtype's lands on its
+            // root's table, and only what it adds beyond the nearest ancestor in the model.
+            var owner = TphPlanBuilder.IsTphSubtype(o, ctx.Root) ? TphPlanBuilder.DiscriminatorRoot(o) ?? o : o;
+            var inModel = ReferenceEquals(owner, o) ? null : NearestConcreteAncestor(o);
+            var inherited = inModel is null ? new HashSet<string>(StringComparer.Ordinal)
+                : new HashSet<string>(IndexNodes(inModel).Select(n => n.Name), StringComparer.Ordinal);
+            foreach (var node in IndexNodes(o).Where(n => !inherited.Contains(n.Name)))
             {
                 bool? unique = node switch
                 {
@@ -39,7 +44,6 @@ public class ExpressionIndexesGenerator : IGenerator
                     _ => null,
                 };
                 if (unique is null || node.Attr(IDENTITY_ATTR_EXPR) is not string { Length: > 0 } expr) continue;
-                var owner = TphPlanBuilder.IsTphSubtype(o, ctx.Root) ? TphPlanBuilder.DiscriminatorRoot(o) ?? o : o;
                 var table = CSharpNaming.Table(owner);
                 var schema = owner.Sources().FirstOrDefault(s => s.SubType == SOURCE_SUBTYPE_RDB)?.Schema;
                 var relation = string.IsNullOrEmpty(schema) ? Quote(table) : Quote(schema) + "." + Quote(table);
@@ -52,8 +56,14 @@ public class ExpressionIndexesGenerator : IGenerator
                 sql.Append(" (").Append(expr.Trim()).Append(')');
                 if (node.Attr(IDENTITY_ATTR_WHERE) is string where && where.Trim().Length > 0)
                     sql.Append(" WHERE ").Append(where.Trim());
-                if (!statements.TryAdd($"{schema}.{table}/{name}", sql.Append(';').ToString()))
-                    throw new InvalidOperationException($"expression index \"{name}\" on {table} is declared twice.");
+                // An index name is unique per schema, tables included (migrate's ERR_DUPLICATE_SQL_NAME):
+                // two tables claiming one would leave the second unbuilt under IF NOT EXISTS.
+                var statement = sql.Append(';').ToString();
+                if (statements.TryGetValue($"{schema}/{name}", out var existing) && existing != statement)
+                    throw new InvalidOperationException(
+                        $"expression index \"{name}\" is declared twice in one schema: {existing} / {statement} " +
+                        "— an index's name is used verbatim, so give each table its own (declare it on each concrete entity).");
+                statements[$"{schema}/{name}"] = statement;
             }
         }
         if (statements.Count == 0) yield break;
@@ -63,6 +73,17 @@ public class ExpressionIndexesGenerator : IGenerator
             .Append("-- The expression indexes (@expr) the EF model cannot carry; apply after the schema EF builds.\n\n");
         foreach (var statement in statements.Values) file.Append(statement).Append('\n');
         yield return new EmittedFile(FileName, file.ToString());
+    }
+
+    private static IEnumerable<MetaData> IndexNodes(MetaObject o) =>
+        o.SecondaryIdentities().Cast<MetaData>().Concat(o.LookupIndexes());
+
+    /// <summary>The nearest ancestor that is in the EF model itself (a concrete TPH level or the root).</summary>
+    private static MetaObject? NearestConcreteAncestor(MetaObject o)
+    {
+        for (var s = o.SuperData as MetaObject; s is not null; s = s.SuperData as MetaObject)
+            if (InstanceArtifacts.EmitsInstanceArtifacts(s)) return s;
+        return null;
     }
 
     private static string Quote(string name) => "\"" + name.Replace("\"", "\"\"") + "\"";
