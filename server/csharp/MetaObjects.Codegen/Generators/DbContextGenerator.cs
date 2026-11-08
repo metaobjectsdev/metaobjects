@@ -331,8 +331,11 @@ public class DbContextGenerator : IGenerator
     /// <summary>
     /// Extension hook — emits the file header, usings, namespace, and the opening of
     /// the <c>public class AppDbContext : DbContext</c> declaration through its primary
-    /// constructor (leaving the class body open for <see cref="EmitDbSetDeclarations"/>
-    /// + <see cref="EmitOnModelCreatingBody"/>; the caller emits the closing <c>}</c>).
+    /// constructor and any <see cref="ContextMemberLines"/> (leaving the class body open for
+    /// <see cref="EmitDbSetDeclarations"/> + <see cref="EmitOnModelCreatingBody"/>; the caller
+    /// emits the closing <c>}</c>). The shell is assembled from <see cref="ContextNamespace"/>,
+    /// <see cref="ContextIsPartial"/>, <see cref="ContextClassName"/>, <see cref="ContextBaseClass"/>
+    /// and <see cref="EmitContextConstructor"/>, so changing one of them needs no copy of this body.
     /// <paramref name="needsMetadataUsing"/> is true when a <c>@readOnly</c> field
     /// requires the <c>Microsoft.EntityFrameworkCore.Metadata</c> import. The default
     /// body reproduces the inline emission, so default output is byte-identical.
@@ -349,7 +352,7 @@ public class DbContextGenerator : IGenerator
         // Package-binding — pull in every per-package namespace the model uses. The DbContext
         // references EVERY entity by short name (DbSet<X>, modelBuilder.Entity<X>()),
         // so it needs a `using` for each distinct namespace the entities resolve to.
-        var dbCtxNs = ctx.Config.Namespace;
+        var dbCtxNs = ContextNamespace(ctx);
         var refNamespaces = ReportRows.WithReportRows(ctx)
             .Where(o => o.IsEntity() || o.DbView is not null)
             .Select(o => PackageBindingResolver.Resolve(ctx.Config, PackageBindingResolver.EffectivePackage(o), o.Name))
@@ -359,13 +362,62 @@ public class DbContextGenerator : IGenerator
         foreach (var ns in refNamespaces)
             sb.AppendLine($"using {ns};");
         sb.AppendLine();
-        sb.AppendLine($"namespace {ctx.Config.Namespace};");
+        sb.AppendLine($"namespace {dbCtxNs};");
         sb.AppendLine();
-        sb.AppendLine($"public class AppDbContext : {ContextBaseClass(ctx)}");
+        var name = ContextClassName(ctx);
+        sb.AppendLine($"public {(ContextIsPartial(ctx) ? "partial " : "")}class {name} : {ContextBaseClass(ctx)}");
         sb.AppendLine("{");
-        sb.AppendLine("    public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }");
-        sb.AppendLine();
+        if (EmitContextConstructor(ctx))
+        {
+            sb.AppendLine($"    public {name}(DbContextOptions<{name}> options) : base(options) {{ }}");
+            sb.AppendLine();
+        }
+        var members = ContextMemberLines(ctx).ToList();
+        foreach (var line in members)
+        {
+            sb.AppendLine(line);
+        }
+        if (members.Count > 0)
+        {
+            sb.AppendLine();
+        }
     }
+
+    /// <summary>
+    /// Hook — the generated context's class name, used for the declaration and its constructor.
+    /// Default: <see cref="GenConfig.ContextTypeName"/> (the name callable wrappers and reverse
+    /// finders already take), else <c>AppDbContext</c>. The file stays <c>AppDbContext.g.cs</c>.
+    /// </summary>
+    protected virtual string ContextClassName(GenContext ctx) =>
+        string.IsNullOrWhiteSpace(ctx.Config.ContextTypeName) ? "AppDbContext" : ctx.Config.ContextTypeName;
+
+    /// <summary>
+    /// Hook — the namespace the context is declared in. Default: <see cref="GenConfig.Namespace"/>.
+    /// Every entity namespace other than this one gets a <c>using</c>.
+    /// </summary>
+    protected virtual string ContextNamespace(GenContext ctx) => ctx.Config.Namespace;
+
+    /// <summary>
+    /// Hook — whether the context declares its <c>(DbContextOptions&lt;TContext&gt; options)</c>
+    /// constructor. Default <c>true</c>. Return <c>false</c> when a hand-written partial owns the
+    /// constructors (to inject services the generated one cannot know about).
+    /// </summary>
+    protected virtual bool EmitContextConstructor(GenContext ctx) => true;
+
+    /// <summary>
+    /// Hook — whether the context class is declared <c>partial</c>. Default <c>false</c>, the
+    /// declaration it has always had. Return <c>true</c> to pair it with a hand-written partial.
+    /// </summary>
+    protected virtual bool ContextIsPartial(GenContext ctx) => false;
+
+    /// <summary>
+    /// Hook — extra class members, as complete lines (4-space indent included), placed after the
+    /// constructor and before the <c>DbSet</c> declarations; a blank line follows them when there
+    /// are any. Default none. An adopter declares a partial method here
+    /// (<c>partial void OnModelCreatingExtensions(ModelBuilder modelBuilder);</c>) that its
+    /// <see cref="ContextTrailerLines"/> call, and its hand-written partial, implement.
+    /// </summary>
+    protected virtual IEnumerable<string> ContextMemberLines(GenContext ctx) => [];
 
     /// <summary>
     /// Extension hook — emits one <c>public DbSet&lt;Entity&gt; Plural { get; set; }</c>

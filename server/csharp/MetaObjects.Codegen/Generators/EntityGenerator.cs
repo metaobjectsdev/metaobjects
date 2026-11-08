@@ -480,10 +480,13 @@ public class EntityGenerator : IGenerator
         // contract. Deserialization into the BASE is not something the generated routes do —
         // an abstract base has no create/update handler, and each subtype's handler
         // deserializes that subtype directly.
-        if (TphPlanBuilder.For(entity, ctx.Root) is { } tphPlan)
-            foreach (var sub in tphPlan.Subtypes)
-                sb.AppendLine(
-                    $"[System.Text.Json.Serialization.JsonDerivedType(typeof({CSharpNaming.Pascal(sub.Entity.Name)}))]");
+        if (TphPlanBuilder.IsTphDiscriminatorBase(entity, ctx.Root))
+        {
+            foreach (var line in TphDerivedTypeAttributes(entity, ctx))
+            {
+                sb.AppendLine(line);
+            }
+        }
         EmitClassAttributes(sb, entity, className, ClassDeclarationKind.MappedEntity, ctx);
 
         // The `public [abstract] class <Name>[ : Base]` declaration line itself is routed
@@ -492,6 +495,22 @@ public class EntityGenerator : IGenerator
         // attrs ([Table]/[PrimaryKey]) above stay here — they are mapped-entity-only.
         EmitClassDeclarationLine(sb, entity, className, ClassDeclarationKind.MappedEntity, ctx);
     }
+
+    /// <summary>
+    /// Hook — the polymorphic-serialization attribute lines <see cref="EmitClassHeader"/> writes on a
+    /// TPH discriminator base, after its <c>[Table]</c> and before the adopter's
+    /// <see cref="EmitClassAttributes"/>: complete class-level lines, no indent. Called once per TPH
+    /// base (<paramref name="root"/>), and only for one. Default: one
+    /// <c>[System.Text.Json.Serialization.JsonDerivedType(typeof(&lt;Sub&gt;))]</c> per concrete
+    /// subtype, in the plan's order (see the comment in <see cref="EmitClassHeader"/> for why they are
+    /// there). Return none to keep a base-typed list serializing the declared type only, or add a
+    /// <c>[JsonPolymorphic]</c> line to configure a type discriminator.
+    /// </summary>
+    protected virtual IEnumerable<string> TphDerivedTypeAttributes(MetaObject root, GenContext ctx) =>
+        TphPlanBuilder.For(root, ctx.Root) is { } plan
+            ? plan.Subtypes.Select(sub =>
+                $"[System.Text.Json.Serialization.JsonDerivedType(typeof({CSharpNaming.Pascal(sub.Entity.Name)}))]")
+            : [];
 
     // Extension hook — class-level attributes of an adopter's own, emitted after the framework's
     // (XML doc, [PrimaryKey], [Table], [JsonDerivedType]) and immediately before the declaration
@@ -691,7 +710,10 @@ public class EntityGenerator : IGenerator
         if (field.ResolvedIsArray()) // ADR-0039: resolving — array-ness inheritable via extends
         {
             var arr = new StringBuilder();
-            arr.AppendLine($"    [Column({CSharpNaming.ColumnRef(entity, field, strategy, includeNames)})]");
+            if (ColumnAttributeLine(entity, field, strategy, includeNames) is { } arrColumn)
+            {
+                arr.AppendLine(arrColumn);
+            }
             AppendArrayValidatorAttributes(arr, field);
             AppendDecimalConverterAttribute(arr, field, nullable: false, _wire);
             AppendDurationConverterAttribute(arr, field);
@@ -702,7 +724,10 @@ public class EntityGenerator : IGenerator
         }
 
         var sb = new StringBuilder();
-        sb.AppendLine($"    [Column({CSharpNaming.ColumnRef(entity, field, strategy, includeNames)})]");
+        if (ColumnAttributeLine(entity, field, strategy, includeNames) is { } column)
+        {
+            sb.AppendLine(column);
+        }
         if (baseType == "string")
             AppendStringValidatorAttributes(sb, field);
         else
@@ -727,7 +752,7 @@ public class EntityGenerator : IGenerator
     {
         _site = new PropertySite(ValueObject: false, TphSubtype: true, null);
         var propName = PropertyName(field);
-        var colAttr = $"    [Column({CSharpNaming.ColumnRef(entity, field, strategy, config.IncludeNames)})]\n";
+        var colAttr = ColumnAttributeLine(entity, field, strategy, config.IncludeNames) is { } column ? column + "\n" : "";
         return colAttr + PropertyDeclaration(entity, field, propName, "get; set;");
     }
 
@@ -961,7 +986,7 @@ public class EntityGenerator : IGenerator
             // (double, DateTimeOffset, ...), so the condition is emitted for the nullable members alone.
             var nullableMember = _wire.NullMembers == NullMemberForm.Omit
                 && System.Text.RegularExpressions.Regex.IsMatch(member, @"^\s*public\s+[^=;{(]*\?\s+\w+", System.Text.RegularExpressions.RegexOptions.Multiline);
-            member = $"    [JsonPropertyName(\"{field.Name}\")]\n"
+            member = string.Concat(ValueObjectMemberAttributes(vo, field, ctx).Select(l => l + "\n"))
                 + (nullableMember ? "    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]\n" : "")
                 + member;
             member = ApplyPropertyAttributes(member, vo, field, ctx);
@@ -979,6 +1004,17 @@ public class EntityGenerator : IGenerator
         sb.AppendLine("}");
         return new EmittedFile($"{className}.g.cs", sb.ToString());
     }
+
+    /// <summary>
+    /// Hook — the attribute lines <see cref="EmitValueObjectPoco"/> writes before one value-object
+    /// member, ahead of the <c>[JsonIgnore]</c> a <c>wire.nullMembers: omit</c> run adds and of the
+    /// member's own attributes: complete lines, 4-space indent included. Called once per emitted
+    /// member. Default: <c>[JsonPropertyName("&lt;field&gt;")]</c>, which pins the member's jsonb
+    /// element and wire name to the metadata field name. Return none to let the serializer's naming
+    /// policy (or a document already keyed by the CLR name) decide instead.
+    /// </summary>
+    protected virtual IEnumerable<string> ValueObjectMemberAttributes(MetaObject vo, MetaField f, GenContext ctx) =>
+        [$"    [JsonPropertyName(\"{f.Name}\")]"];
 
     // Collects nested C# enum declarations for all enum-subtype fields on an object,
     // deduplicating by type name so two fields that extend the same abstract enum emit
@@ -2024,6 +2060,41 @@ public static class DurationWire
     private static bool EnumArrayIsNullable(MetaObject owner, MetaField field) =>
         field.Attr(FIELD_ATTR_INT_VALUE_MAP) is not null && !CSharpNaming.IsRequired(owner, field);
 
+    /// <summary>
+    /// Hook — the argument list of the one <c>[Column(...)]</c> attribute a mapped property carries
+    /// (an entity's, a TPH subtype's own, a map's), joined with <c>", "</c>. Called once per
+    /// <c>[Column]</c> emitted; never for a value object's members, which carry none. Default: the
+    /// physical column, as the <c>&lt;Entity&gt;Names</c> constant when that artifact is part of the
+    /// run, else the quoted literal. Append to it (<c>TypeName = "jsonb"</c>) to extend the attribute;
+    /// return none to leave the attribute out, for a column configured fluently instead.
+    /// </summary>
+    protected virtual IEnumerable<string> ColumnAttributeArguments(MetaObject owner, MetaField f, GenContext ctx) =>
+        [CSharpNaming.ColumnRef(
+            owner, f,
+            _columnSite?.Strategy ?? ctx.Config.ColumnNamingStrategy,
+            _columnSite?.IncludeNames ?? ctx.Config.IncludeNames)];
+
+    // The naming strategy and names-artifact gate of the member emitter now asking, which a
+    // subclass may pass differently from the run's config; read by ColumnAttributeArguments'
+    // default so it reproduces that emitter's own [Column] exactly.
+    private (ColumnNamingStrategy Strategy, bool IncludeNames)? _columnSite;
+
+    // The `    [Column(...)]` line (no newline), or null when ColumnAttributeArguments returns none.
+    private string? ColumnAttributeLine(
+        MetaObject owner, MetaField field, ColumnNamingStrategy strategy, bool includeNames, GenContext? ctx = null)
+    {
+        _columnSite = (strategy, includeNames);
+        try
+        {
+            var args = ColumnAttributeArguments(owner, field, ctx ?? HookContext()).ToList();
+            return args.Count == 0 ? null : $"    [Column({string.Join(", ", args)})]";
+        }
+        finally
+        {
+            _columnSite = null;
+        }
+    }
+
     // A property for an enum-subtype field. The property type is the nested enum name.
     // When the field is an array, see EnumArrayProperty.
     // withAttributes adds the EF [Column] mapping; abstract shape classes pass false
@@ -2036,7 +2107,9 @@ public static class DurationWire
         // the array initializer are the PropertyClrType / PropertyInitializer defaults.)
         _site = new PropertySite(ValueObject: false, TphSubtype: false, null);
         var propName = PropertyName(field);
-        var colAttr = withAttributes ? $"    [Column({CSharpNaming.ColumnRef(entity, field, strategy, config.IncludeNames)})]\n" : "";
+        var colAttr = withAttributes && ColumnAttributeLine(entity, field, strategy, config.IncludeNames) is { } column
+            ? column + "\n"
+            : "";
         return colAttr + PropertyDeclaration(entity, field, propName, "get; set;");
     }
 
@@ -2082,8 +2155,10 @@ public static class DurationWire
         if (field.ResolvedIsArray()) // ADR-0039: resolving — array-ness inheritable via extends
         {
             var arr = new StringBuilder();
-            if (withAttributes)
-                arr.AppendLine($"    [Column({CSharpNaming.ColumnRef(owner, field, strategy, includeNames)})]");
+            if (withAttributes && ColumnAttributeLine(owner, field, strategy, includeNames) is { } arrColumn)
+            {
+                arr.AppendLine(arrColumn);
+            }
             // validator.array @min/@max → element-count bounds on the collection.
             if (emitValidation)
                 AppendArrayValidatorAttributes(arr, field);
@@ -2115,7 +2190,10 @@ public static class DurationWire
         {
             if (pkFields.Count == 1 && pkFields[0] == field.Name)
                 sb.AppendLine("    [Key]");
-            sb.AppendLine($"    [Column({CSharpNaming.ColumnRef(owner, field, strategy, includeNames)})]");
+            if (ColumnAttributeLine(owner, field, strategy, includeNames) is { } column)
+            {
+                sb.AppendLine(column);
+            }
         }
         // Validation DataAnnotations — mapped entities AND value-object POCOs (a VO's
         // own members are validated on POST/PATCH; Program D), never an attribute-free
@@ -2440,7 +2518,10 @@ public static class DurationWire
     {
         _site = new PropertySite(ValueObject: false, TphSubtype: false, null);
         var propName = PropertyName(field);
-        var colAttr = withAttributes ? $"    [Column({CSharpNaming.ColumnRef(owner, field, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames)})]\n" : "";
+        var colAttr = withAttributes
+            && ColumnAttributeLine(owner, field, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames, ctx) is { } column
+            ? column + "\n"
+            : "";
         return colAttr + PropertyDeclaration(owner, field, propName, "get; set;", ctx);
     }
 
