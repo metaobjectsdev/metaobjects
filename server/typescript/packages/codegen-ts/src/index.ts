@@ -128,6 +128,8 @@ export {
   docPageNode,
   effectivePackage,
   assertNoDuplicateDocPaths,
+  DOCS_PAGE_LAYOUT,
+  docIndexLabel,
 } from "./docs-paths.js";
 export type { DocPageNode, DocPagePlacement } from "./docs-paths.js";
 

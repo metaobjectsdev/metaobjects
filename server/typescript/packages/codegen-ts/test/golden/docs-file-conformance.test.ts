@@ -91,7 +91,7 @@ describe("docsFile() conformance — expected/<Entity>.md byte-match", () => {
       // Match each expected .md file by filename.
       const expectedFiles = readdirSync(expectedDir).filter((f) => f.endsWith(".md"));
       for (const fname of expectedFiles) {
-        const emitted = out.find((f) => f.path === fname);
+        const emitted = out.find((f) => ("/" + f.path).endsWith("/" + fname));
         expect(emitted, `${fixtureName}: missing emitted file ${fname}`).toBeDefined();
         if (UPDATE) {
           writeFileSync(join(expectedDir, fname), emitted!.content);

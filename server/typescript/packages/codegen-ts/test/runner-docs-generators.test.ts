@@ -47,7 +47,7 @@ describe("documentation generators under meta gen (ADR-0034 Amendment 9)", () =>
     await runGen({ config: base([docsFile(), apiDocsFile(), requirementsFile(), metamodelDocsFile()]), metadata: root, projectRoot: tmp });
     const docs = filesUnder(join(tmp, "docs"));
     expect(docs).toContain("README.md");
-    expect(docs).toContain("Post.md");
+    expect(docs).toContain("demo/Post.md");
     expect(docs).toContain("api/README.md");
     expect(docs).toContain("api/AGENT-API.md");
     expect(docs).toContain("metamodel/INDEX.md");
@@ -62,18 +62,18 @@ describe("documentation generators under meta gen (ADR-0034 Amendment 9)", () =>
 
   test("model and api pages in one target link to each other", async () => {
     await runGen({ config: base([docsFile(), apiDocsFile()]), metadata: root, projectRoot: tmp });
-    const model = readFileSync(join(tmp, "docs", "Post.md"), "utf8");
-    const api = readFileSync(join(tmp, "docs", "api", "Post.md"), "utf8");
-    expect(model).toContain("api/Post.md");
-    expect(api).toContain("../Post.md");
+    const model = readFileSync(join(tmp, "docs", "demo", "Post.md"), "utf8");
+    const api = readFileSync(join(tmp, "docs", "api", "demo", "Post.md"), "utf8");
+    expect(model).toContain("api/demo/Post.md");
+    expect(api).toContain("../../demo/Post.md");
   });
 
   test("with only one of the two listed, neither links to pages nothing writes", async () => {
     await runGen({ config: base([docsFile()]), metadata: root, projectRoot: tmp });
-    expect(readFileSync(join(tmp, "docs", "Post.md"), "utf8")).not.toContain("api/Post.md");
+    expect(readFileSync(join(tmp, "docs", "demo", "Post.md"), "utf8")).not.toContain("api/demo/Post.md");
     rmSync(join(tmp, "docs"), { recursive: true, force: true });
     await runGen({ config: base([apiDocsFile()]), metadata: root, projectRoot: tmp });
-    expect(readFileSync(join(tmp, "docs", "api", "Post.md"), "utf8")).not.toContain("../Post.md");
+    expect(readFileSync(join(tmp, "docs", "api", "demo", "Post.md"), "utf8")).not.toContain("../../demo/Post.md");
   });
 
   test("apiSurfaces on docsFile() names the pages to link, another port's included", async () => {
@@ -82,14 +82,14 @@ describe("documentation generators under meta gen (ADR-0034 Amendment 9)", () =>
       metadata: root,
       projectRoot: tmp,
     });
-    const model = readFileSync(join(tmp, "docs", "Post.md"), "utf8");
+    const model = readFileSync(join(tmp, "docs", "demo", "Post.md"), "utf8");
     expect(model).toContain("Java");
-    expect(model).toContain("https://example.com/j/Post.md");
+    expect(model).toContain("https://example.com/j/demo/Post.md");
   });
 
   test("modelBaseUrl on apiDocsFile() links each api page to a hosted model page", async () => {
     await runGen({ config: base([apiDocsFile({ modelBaseUrl: "https://example.com/model/" })]), metadata: root, projectRoot: tmp });
-    expect(readFileSync(join(tmp, "docs", "api", "Post.md"), "utf8")).toContain("https://example.com/model/Post.md");
+    expect(readFileSync(join(tmp, "docs", "api", "demo", "Post.md"), "utf8")).toContain("https://example.com/model/demo/Post.md");
   });
 
   test("the agent schema is built once, and only when a generator asks for it", async () => {

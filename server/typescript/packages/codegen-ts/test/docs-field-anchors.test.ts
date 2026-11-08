@@ -44,7 +44,7 @@ async function renderDocs(json: string): Promise<Map<string, string>> {
   expect(res.errors).toEqual([]);
   const out = await docsFile().generate(makeCtx(res.root));
   const byName = new Map<string, string>();
-  for (const f of out) byName.set(f.path, f.content);
+  for (const f of out) byName.set(f.path.slice(f.path.lastIndexOf("/") + 1), f.content); // by page name: one package
   return byName;
 }
 

@@ -7,7 +7,7 @@ exports[`FR-044 no-churn: a model with no report renders every docs page as befo
 
 # Program
 
-**API reference:** [TypeScript](./api/ts/Program.md)
+**API reference:** [TypeScript](../../api/ts/acme/shop/Program.md)
 
 **Type:** \`object.entity\`
 **Source:** \`meta.shop.json\`
@@ -52,7 +52,7 @@ flowchart TB
 
 # Purchase
 
-**API reference:** [TypeScript](./api/ts/Purchase.md)
+**API reference:** [TypeScript](../../api/ts/acme/shop/Purchase.md)
 
 **Type:** \`object.entity\`
 **Source:** \`meta.shop.json\`
@@ -148,9 +148,9 @@ erDiagram
 
 ## Entities
 
-- [Program](./Program.md)
-- [Purchase](./Purchase.md)
-- [WorkoutEvent](./WorkoutEvent.md)
+- [Program](./acme/shop/Program.md)
+- [Purchase](./acme/shop/Purchase.md)
+- [WorkoutEvent](./acme/shop/WorkoutEvent.md)
 
 ## API reference
 
@@ -162,7 +162,7 @@ erDiagram
 
 # WorkoutEvent
 
-**API reference:** [TypeScript](./api/ts/WorkoutEvent.md)
+**API reference:** [TypeScript](../../api/ts/acme/shop/WorkoutEvent.md)
 
 **Type:** \`object.entity\`
 **Source:** \`meta.shop.json\`
@@ -321,7 +321,7 @@ const removed = await deleteWorkoutEventById(db, created.id);
 
 # Program API
 
-**Model / metadata:** [Program](../../Program.md)
+**Model / metadata:** [Program](../../../../acme/shop/Program.md)
 
 > Import paths are relative to your generated-output directory.
 
@@ -672,7 +672,7 @@ Accepted fields:
 
 # Purchase API
 
-**Model / metadata:** [Purchase](../../Purchase.md)
+**Model / metadata:** [Purchase](../../../../acme/shop/Purchase.md)
 
 > Import paths are relative to your generated-output directory.
 
@@ -1118,9 +1118,9 @@ Generated public API surface, one page per entity and output template.
 
 ## Entities
 
-- [Program](./Program.md) — model, 5 data access, 6 REST, 6 REST (Hono), 2 validation (20 symbols)
-- [Purchase](./Purchase.md) — model, relations, 5 data access, 6 REST, 6 REST (Hono), 2 validation (21 symbols)
-- [WorkoutEvent](./WorkoutEvent.md) — model, 5 data access, 6 REST, 6 REST (Hono), 2 validation (20 symbols)
+- [Program](./acme/shop/Program.md) — model, 5 data access, 6 REST, 6 REST (Hono), 2 validation (20 symbols)
+- [Purchase](./acme/shop/Purchase.md) — model, relations, 5 data access, 6 REST, 6 REST (Hono), 2 validation (21 symbols)
+- [WorkoutEvent](./acme/shop/WorkoutEvent.md) — model, 5 data access, 6 REST, 6 REST (Hono), 2 validation (20 symbols)
 "
 ,
   "api/ts/WorkoutEvent.md": 
@@ -1128,7 +1128,7 @@ Generated public API surface, one page per entity and output template.
 
 # WorkoutEvent API
 
-**Model / metadata:** [WorkoutEvent](../../WorkoutEvent.md)
+**Model / metadata:** [WorkoutEvent](../../../../acme/shop/WorkoutEvent.md)
 
 > Import paths are relative to your generated-output directory.
 

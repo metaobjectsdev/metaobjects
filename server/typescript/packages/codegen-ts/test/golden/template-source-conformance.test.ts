@@ -117,7 +117,21 @@ async function loadFixture(fixture: string = FIXTURE) {
 	return { root: res.root, inputDir };
 }
 
+// Sections 1-3 read FIXTURE, whose nodes share ONE package, so every page sits in that
+// package's directory and links its siblings `./<Page>.md`. They key pages by file name:
+// `emit()` hands back each page under its name in that directory (the overview README.md
+// stays at the docs root). Section 4 reads the real paths (`emitPlaced`).
 async function emit(
+	fixture: string = FIXTURE,
+	outputLayout: OutputLayout = "flat",
+): Promise<Emitted[]> {
+	const placed = await emitPlaced(fixture, outputLayout);
+	const dirs = new Set(placed.filter((f) => f.path.includes("/")).map((f) => f.path.slice(0, f.path.lastIndexOf("/"))));
+	expect(dirs.size, "FIXTURE's pages share one package directory").toBeLessThanOrEqual(1);
+	return placed.map((f) => ({ ...f, path: f.path.slice(f.path.lastIndexOf("/") + 1) }));
+}
+
+async function emitPlaced(
 	fixture: string = FIXTURE,
 	outputLayout: OutputLayout = "flat",
 ): Promise<Emitted[]> {
@@ -255,7 +269,7 @@ describe("template-source link integrity — every {{var}} link resolves to a re
 	it("the CROSS-VO link (Order template → Customer.md) resolves to a real anchor", async () => {
 		const files = await emit();
 		const index = buildAnchorIndex(files);
-		const orderPage = files.find((f) => f.path === "OrderPage.md")!;
+		const orderPage = files.find((f) => ("/" + f.path).endsWith("/" + "OrderPage.md"))!;
 		const links = parseFieldLinks(orderPage.content);
 
 		// At least one link must point at a DIFFERENT VO's page than Order.md.
@@ -366,12 +380,12 @@ describe("teeth — the integrity check fails on real drift", () => {
 		// Customer.md (the cross-VO target). The link on the template page still
 		// points at #field-name — now dangling.
 		const drifted = files.map((f) =>
-			f.path === "Customer.md"
+			("/" + f.path).endsWith("/" + "Customer.md")
 				? { ...f, content: f.content.replace(/<a id="field-name"><\/a>/g, "") }
 				: f,
 		);
 		const index = buildAnchorIndex(drifted);
-		const orderPage = drifted.find((f) => f.path === "OrderPage.md")!;
+		const orderPage = drifted.find((f) => ("/" + f.path).endsWith("/" + "OrderPage.md"))!;
 		const broken = findBrokenLinks(parseFieldLinks(orderPage.content), index);
 
 		// The gate MUST report the now-missing anchor (not silently accept it).

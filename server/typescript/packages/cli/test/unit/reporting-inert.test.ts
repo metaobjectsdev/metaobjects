@@ -549,13 +549,13 @@ export default defineConfig({
     const model = (files: Record<string, string>): string[] =>
       Object.keys(files).filter((p) => p.startsWith("out/"));
 
-    expect(model(actual).filter((p) => !(p in expected))).toEqual(REPORTS.map((n) => `out/${n}.md`));
+    expect(model(actual).filter((p) => !(p in expected))).toEqual(REPORTS.map((n) => `out/acme/shop/${n}.md`));
     expect(model(expected).filter((p) => !(p in actual))).toEqual([]);
 
     // A served report names its view; a sourceless one says it is not served (answer 7).
-    expect(actual["out/StoreTotals.md"]).toContain("**View:** `v_store_totals`");
+    expect(actual["out/acme/shop/StoreTotals.md"]).toContain("**View:** `v_store_totals`");
     for (const name of SOURCELESS_REPORTS) {
-      expect(actual[`out/${name}.md`]).toContain("**View:** Not served: declares no view source");
+      expect(actual[`out/acme/shop/${name}.md`]).toContain("**View:** Not served: declares no view source");
     }
 
     for (const path of model(expected)) {
@@ -564,8 +564,8 @@ export default defineConfig({
       if (path === "out/README.md") {
         // The index gains the Reports list and nothing else: no entity entry and no
         // diagram line moves.
-        expect(insertedLines(before, after)).toEqual(["## Reports", "", ...REPORTS.map((n) => `- [${n}](./${n}.md)`), ""]);
-      } else if (REPORTING_ENTITIES.some((e) => path === `out/${e}.md`)) {
+        expect(insertedLines(before, after)).toEqual(["## Reports", "", ...REPORTS.map((n) => `- [${n}](./acme/shop/${n}.md)`), ""]);
+      } else if (REPORTING_ENTITIES.some((e) => path === `out/acme/shop/${e}.md`)) {
         // The page is what it was, with the Reporting section appended.
         expect(after.startsWith(before + "\n## Reporting\n")).toBe(true);
       } else {
@@ -646,12 +646,12 @@ export default defineConfig({
     const actual = await api(withReporting);
 
     // One new page, and no page for a report that is not served (answer 7).
-    expect(Object.keys(actual).filter((p) => !(p in expected))).toEqual(["api/StoreTotals.md"]);
+    expect(Object.keys(actual).filter((p) => !(p in expected))).toEqual(["api/acme/shop/StoreTotals.md"]);
     expect(Object.keys(expected).filter((p) => !(p in actual))).toEqual([]);
 
     // Answer 6: the unit is the row model, the list query function and GET <served path>
     // (once per wired route surface). No by-id, no write, no schema, no hook.
-    const page = actual["api/StoreTotals.md"]!;
+    const page = actual["api/acme/shop/StoreTotals.md"]!;
     expect(page.split("\n").filter((l) => l.startsWith("### "))).toEqual([
       "### `interface StoreTotals`",
       "### `listStoreTotals(db: Db, opts?: { limit?: number; offset?: number }): Promise<StoreTotals[]>`",

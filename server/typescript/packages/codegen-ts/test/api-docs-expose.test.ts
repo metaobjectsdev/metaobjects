@@ -218,7 +218,7 @@ describe("through meta gen: the written api pages list only the mounted verbs", 
         }),
         metadata: root, projectRoot: tmp,
       });
-      return { product: readFileSync(join(tmp, "docs", "api", "Product.md"), "utf8"), warnings };
+      return { product: readFileSync(join(tmp, "docs", "api", "acme", "shop", "Product.md"), "utf8"), warnings };
     } finally { rmSync(tmp, { recursive: true, force: true }); }
   }
 
