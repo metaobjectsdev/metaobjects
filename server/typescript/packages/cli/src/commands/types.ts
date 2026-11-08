@@ -146,7 +146,7 @@ interface Entry {
 const MARK_BASE = "[base]";
 const LEGEND = `  ${MARK_BASE}     the type's shared root — its @attrs apply to every subtype of that type\n` +
   `  [<port>; pending elsewhere]  cross-port vocabulary only <port> implements so far (e.g. [ts; …]); every port loads and type-checks it, the others do not act on it yet\n` +
-  `  [<port>-only]  every port loads and type-checks it; only <port> acts on it`;
+  `  [<port>-only]  every port loads and type-checks it; only <port> acts on it ([java+kotlin]: only those ports)`;
 
 /** The short label a port name takes in a marker. */
 function portLabel(port: string): string {

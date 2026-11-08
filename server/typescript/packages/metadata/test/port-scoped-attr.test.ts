@@ -72,6 +72,6 @@ describe("kind-1 vocabulary (R40)", () => {
     expect(image.crossPort).toBe(true);
     const entity = catalog.types.find((t) => t.type === "object" && t.subType === "entity")!;
     expect(entity.attrs.find((a) => a.name === "object")?.implementedIn).toEqual(["java"]);
-    expect(entity.attrs.find((a) => a.name === "objectAdapter")?.ports).toEqual(["java"]);
+    expect(entity.attrs.find((a) => a.name === "objectAdapter")?.ports).toEqual(["java", "kotlin"]);
   });
 });

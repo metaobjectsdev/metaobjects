@@ -74,9 +74,10 @@ export const OBJECT_DEFINITION: ProviderDefinition = {
           "min": 0,
           "max": 1,
           "ports": [
-            "java"
+            "java",
+            "kotlin"
           ],
-          "description": "Java-only (ADR-0005): the fully-qualified name of an ObjectAdapter that takes over value access for this object's instances. Every port loads and type-checks it; only Java acts on it."
+          "description": "JVM-only (ADR-0005): the fully-qualified name of an ObjectAdapter that takes over value access for this object's instances. Every port loads and type-checks it; only Java and Kotlin act on it."
         }
       ]
     },

@@ -156,7 +156,7 @@ canonical (`fixtures/registry-conformance/expected-registry.json`).
   - *TODO, Python:* the same view-attr gap, plus `@object` and `@objectAdapter` are not
     registered (both loading fixtures fail), and registry-conformance fails.
 - *Kind 2, for comparison* (`ports`, language-specific by nature, never "pending"):
-  `@dbSetName` (`["csharp"]`) and `@objectAdapter` (`["java"]`).
+  `@dbSetName` (`["csharp"]`) and `@objectAdapter` (`["java", "kotlin"]`).
 
 **Generated paths keyed by package** (ruling R39 — decided, pending, next upstream batch).
 Every port's generated output will be keyed by the metadata package, so two packages that each

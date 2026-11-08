@@ -21,7 +21,7 @@ Abstract object base — the shared root subtype that concrete object subtypes (
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
 | --- | --- | --- | --- | --- | --- | --- |
 | `@object` | string | no |  |  | metaobjects-core-types | The native class an object binds to (ADR-0001), in place of its default runtime class: on the JVM, a fully-qualified class name. Cross-port vocabulary only Java implements so far; every port loads and type-checks it, and the others do not act on it yet. |
-| `@objectAdapter` | string | no |  |  | metaobjects-core-types | Java-only (ADR-0005): the fully-qualified name of an ObjectAdapter that takes over value access for this object's instances. Every port loads and type-checks it; only Java acts on it. |
+| `@objectAdapter` | string | no |  |  | metaobjects-core-types | JVM-only (ADR-0005): the fully-qualified name of an ObjectAdapter that takes over value access for this object's instances. Every port loads and type-checks it; only Java and Kotlin act on it. |
 
 **Allowed children**
 
@@ -50,7 +50,7 @@ An object that owns its data: own identity, writable sources, and lifecycle. The
 | `@discriminator` | string | no |  |  | metaobjects-core-types | FR-014: names the field on this entity (resolvable via extends:) that holds the subtype-discriminator value. Subtypes of this entity declare @discriminatorValue to bind their rows to a discriminator value. The discriminator field itself is an ordinary field declaration (typically field.enum or field.int / field.string). |
 | `@discriminatorValue` | string | no |  |  | metaobjects-core-types | FR-014: on a subtype of an entity with @discriminator — the value that identifies rows of this subtype in the shared discriminator field. Wire form is always a string; the underlying field's subtype (enum / int / string) controls codegen + storage coercion. Required on every concrete subtype of a discriminated entity. |
 | `@object` | string | no |  |  | metaobjects-core-types | The native class an object binds to (ADR-0001), in place of its default runtime class: on the JVM, a fully-qualified class name. Cross-port vocabulary only Java implements so far; every port loads and type-checks it, and the others do not act on it yet. |
-| `@objectAdapter` | string | no |  |  | metaobjects-core-types | Java-only (ADR-0005): the fully-qualified name of an ObjectAdapter that takes over value access for this object's instances. Every port loads and type-checks it; only Java acts on it. |
+| `@objectAdapter` | string | no |  |  | metaobjects-core-types | JVM-only (ADR-0005): the fully-qualified name of an ObjectAdapter that takes over value access for this object's instances. Every port loads and type-checks it; only Java and Kotlin act on it. |
 
 **Allowed children**
 
@@ -83,7 +83,7 @@ A derived read-only representation of entities. Its fields are extends-bound / o
 | `@dbSetName` | string | no |  |  | metaobjects-core-types | C#-only (EF Core): the DbSet property name the generated context gives this object, in place of the plural derived from its name. Set it when two objects in one generated context would otherwise claim the same property. Every port loads and type-checks it; only C# acts on it. |
 | `@filter` | filter | no |  |  | metaobjects-core-types | Optional row-scope predicate (a portable attr.filter object: eq/ne/gt/gte/lt/lte/like/in/isNull with and/or, desugared to { field: { op: value } } at parse time) selecting which rows the view returns — lowered to an outer SQL WHERE. Resolves against the projection's own declared fields; an aggregate-derived field is not addressable (fail-closed). |
 | `@object` | string | no |  |  | metaobjects-core-types | The native class an object binds to (ADR-0001), in place of its default runtime class: on the JVM, a fully-qualified class name. Cross-port vocabulary only Java implements so far; every port loads and type-checks it, and the others do not act on it yet. |
-| `@objectAdapter` | string | no |  |  | metaobjects-core-types | Java-only (ADR-0005): the fully-qualified name of an ObjectAdapter that takes over value access for this object's instances. Every port loads and type-checks it; only Java acts on it. |
+| `@objectAdapter` | string | no |  |  | metaobjects-core-types | JVM-only (ADR-0005): the fully-qualified name of an ObjectAdapter that takes over value access for this object's instances. Every port loads and type-checks it; only Java and Kotlin act on it. |
 
 **Allowed children**
 
@@ -112,7 +112,7 @@ A declared report (FR-044): a fixed combination of dimensions and measures of ON
 | `@from` | string | yes |  |  | metaobjects-core-types | The object.entity whose rows the report aggregates. |
 | `@measures` | string[] | yes |  |  | metaobjects-core-types | Measure names of @from. |
 | `@object` | string | no |  |  | metaobjects-core-types | The native class an object binds to (ADR-0001), in place of its default runtime class: on the JVM, a fully-qualified class name. Cross-port vocabulary only Java implements so far; every port loads and type-checks it, and the others do not act on it yet. |
-| `@objectAdapter` | string | no |  |  | metaobjects-core-types | Java-only (ADR-0005): the fully-qualified name of an ObjectAdapter that takes over value access for this object's instances. Every port loads and type-checks it; only Java acts on it. |
+| `@objectAdapter` | string | no |  |  | metaobjects-core-types | JVM-only (ADR-0005): the fully-qualified name of an ObjectAdapter that takes over value access for this object's instances. Every port loads and type-checks it; only Java and Kotlin act on it. |
 | `@segment` | string | no |  |  | metaobjects-core-types | Optional segment of @from scoping the rows. |
 | `@spine` | string | no |  |  | metaobjects-core-types | Optional to-one path from @from to the entity whose rows supply the report's rows (e.g. 'Purchase.program'), written like a dimension's @via. With it the report has one row per distinct dimension tuple among THAT entity's rows, including the ones no row of @from refers to: a count there is 0 and any other measure is null unless it declares @default. Every listed dimension must be reached through this path. @segment and @filter still scope the rows of @from and never remove a row. A row of @from whose reference is null or matches nothing is in no row of the report. |
 
@@ -141,7 +141,7 @@ A value object — pure shape with NO identity and NO source, ever. Constructed 
 | --- | --- | --- | --- | --- | --- | --- |
 | `@normalize` | string | no | `strip` | `none`, `collapse`, `strip` | metaobjects-prompt | ASCII normalization mode for tolerant enum extract (none\|collapse\|strip, default strip). On field.enum it is per-field; on object.value it is the default for the object's enum fields. |
 | `@object` | string | no |  |  | metaobjects-core-types | The native class an object binds to (ADR-0001), in place of its default runtime class: on the JVM, a fully-qualified class name. Cross-port vocabulary only Java implements so far; every port loads and type-checks it, and the others do not act on it yet. |
-| `@objectAdapter` | string | no |  |  | metaobjects-core-types | Java-only (ADR-0005): the fully-qualified name of an ObjectAdapter that takes over value access for this object's instances. Every port loads and type-checks it; only Java acts on it. |
+| `@objectAdapter` | string | no |  |  | metaobjects-core-types | JVM-only (ADR-0005): the fully-qualified name of an ObjectAdapter that takes over value access for this object's instances. Every port loads and type-checks it; only Java and Kotlin act on it. |
 
 **Allowed children**
 

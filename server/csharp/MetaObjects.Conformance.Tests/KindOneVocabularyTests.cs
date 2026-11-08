@@ -65,6 +65,6 @@ public sealed class KindOneVocabularyTests
         Assert.Contains(registry.Find("view", "textarea")!.Attributes, a => a.Name == "rows");
         Assert.Empty(registry.Find("view", "currency")!.ImplementedIn);
         Assert.Equal(new[] { "java" }, registry.Find("object", "entity")!.Attributes.Single(a => a.Name == "object").ImplementedIn);
-        Assert.Equal(new[] { "java" }, registry.Find("object", "entity")!.Attributes.Single(a => a.Name == "objectAdapter").Ports);
+        Assert.Equal(new[] { "java", "kotlin" }, registry.Find("object", "entity")!.Attributes.Single(a => a.Name == "objectAdapter").Ports);
     }
 }

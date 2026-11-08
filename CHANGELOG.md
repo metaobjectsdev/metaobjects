@@ -16,7 +16,8 @@ here.**
 that loaded before stops loading. The registry gains two fields on a type or attr entry, carried
 into the registry manifest: `implementedIn` (kind 1: cross-port vocabulary only the named ports
 implement so far, e.g. the `view.*` controls, `["typescript"]`) and `ports` (kind 2: vocabulary
-only the named ports ever act on, e.g. `@dbSetName`, `["csharp"]`). The manifest's row set grows by
+only the named ports ever act on, e.g. `@dbSetName`, `["csharp"]`, and `@objectAdapter`,
+`["java", "kotlin"]`: the JVM runtime both share acts on it). The manifest's row set grows by
 the kind-1 rows that used to be carved out. A port that reports `1.2` does not know that
 vocabulary; upgrade every port together.
 
@@ -42,7 +43,7 @@ vocabulary; upgrade every port together.
   grows by those rows. `meta types` marks them `[ts; pending elsewhere]` / `[java; pending
   elsewhere]` (it used to say `[ts-only]`, "the cross-port contract does not carry it"; its JSON
   change is under Changed), and the metamodel docs now cover the view controls.
-  `@objectAdapter` joins `@dbSetName` as kind 2 (`"ports": ["java"]`). C# now registers the
+  `@objectAdapter` joins `@dbSetName` as kind 2 (`"ports": ["java", "kotlin"]`). C# now registers the
   `metaobjects-ui-web` attrs and `@object` / `@objectAdapter`. Java, Kotlin and Python do not yet,
   so their registry-conformance and the new `view-kind1-controls` fixture fail there until they
   catch up (tracked in `docs/CONFORMANCE.md`).
@@ -283,7 +284,8 @@ vocabulary; upgrade every port together.
   port-scoped attr carries `ports`; `tsOnly` is gone, because the vocabulary it marked is now
   cross-port. **Upgrade note:** a script that read `tsOnly` reads `implementedIn` instead
   (`tsOnly: true` was `implementedIn: ["typescript"]`). The text output's `[ts-only]` marker is
-  `[ts; pending elsewhere]`, and a port-scoped attr shows `[<port>-only]`.
+  `[ts; pending elsewhere]`, and a port-scoped attr shows `[<port>-only]` (`[java+kotlin]` for
+  `@objectAdapter`, which names two).
 - **C#, upgrade note: the next EF migration scaffolds your indexes and comments.** The generated
   context now declares every `@unique`, `identity.secondary` and `index.lookup` as an EF index
   (named as `meta migrate` names them) and every `@description` as a table or column comment, which
