@@ -55,14 +55,19 @@ and is `pascal` otherwise:
 | Port | Register it |
 |---|---|
 | TypeScript | `namingStrategies` in `metaobjects.config.ts`: `{ columns: { "pascal-acronyms": (n) => (ACRONYMS.has(n) ? n.toUpperCase() : columnNamingStrategy("pascal")(n)) } }`. Every `meta` command registers it before it reads `.metaobjects/config.json`. A program that loads the model itself calls `registerColumnNamingStrategy` from `@metaobjectsdev/metadata` first |
-| C# | `NamingStrategies.RegisterColumns("pascal-acronyms", n => Acronyms.Contains(n) ? n.ToUpperInvariant() : ColumnNamingStrategy.Pascal.Apply(n));` before the load or the codegen run, in the host that runs it. The stock `dotnet meta` tool knows only the built-ins |
+| C# | `NamingStrategies.RegisterColumns("pascal-acronyms", n => Acronyms.Contains(n) ? n.ToUpperInvariant() : ColumnNamingStrategy.Pascal.Apply(n));` before the load or the codegen run, in the host that runs it (`codegen/Program.cs`). The stock `dotnet meta` tool knows only the built-ins; its `verify --codegen` hands off to that runner before it checks the name |
 | Java and Kotlin | `NamingStrategies.registerColumns("pascal-acronyms", n -> ACRONYMS.contains(n) ? n.toUpperCase(Locale.ROOT) : NamingStrategies.column("pascal").apply(n));` (`com.metaobjects.database`) before the load, in the application or the host that runs codegen |
-| Python | `register_column_naming_strategy("pascal-acronyms", lambda n: n.upper() if n in ACRONYMS else column_naming_strategy("pascal")(n))` (`metaobjects.naming`) before the load, in the application or the host that runs codegen |
+| Python | `register_column_naming_strategy("pascal-acronyms", lambda n: n.upper() if n in ACRONYMS else column_naming_strategy("pascal")(n))` (`metaobjects.naming`) before the load, in the application or the host that runs codegen. For the stock `metaobjects` command, register it at import time in a provider module listed under `providers:` in `metaobjects.config.yaml`: the command imports providers before it reads `.metaobjects/config.json` |
 
 Table rules register the same way (`namingStrategies.tables`, `RegisterTables`, `registerTables`,
 `register_table_naming_rule`) and name a source with no physical name; the entity-name fallback
 is still made plural after the rule. A built-in name cannot be replaced. Register the same
 strategy in every port that reads the database, because each port resolves the names itself.
+Every port looks a strategy up by name each time it applies one, so registering again under the
+same name replaces it for everything that runs afterwards. A test that registers its own calls
+the port's reset when it is done (`resetNamingStrategiesForTesting()`,
+`NamingStrategies.ResetForTesting()`, `NamingStrategies.resetForTesting()`,
+`reset_naming_strategies_for_testing()`), which leaves only the built-ins.
 
 A name nothing registered fails when the file is read, naming the setting, the name, the port,
 and what is registered:

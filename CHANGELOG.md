@@ -152,15 +152,12 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
   and `@table` still win. A name no registered strategy answers is refused when the config is
   read, with one message in every port naming the setting, the name, the port and what is
   registered. A built-in cannot be replaced. The shared naming corpus registers the same two
-  application strategies in every port and resolves the same names.
-  **C# source change:** `ColumnNamingStrategy` and `TableNamingRule` are classes compared by
-  name instead of enums. `ColumnNamingStrategy.SnakeCase` and the other built-ins keep their
-  names (`Pascal` is new); a `switch` on one, a constant default parameter
-  (`= ColumnNamingStrategy.Literal`) or an `[InlineData]` argument moves to `strategy.Apply(name)`,
-  a nullable parameter, or the name string. `EntityGenerator.ScalarProperty`'s `strategy`
-  parameter is now `ColumnNamingStrategy?` (default `Literal`), so an override changes its
-  signature to match. Java's `ColumnNaming.apply` throws `MetaDataException` for an unknown name
-  where it threw `IllegalArgumentException`.
+  application strategies in every port and resolves the same names. Every port resolves a
+  strategy by name each time it applies, so a strategy registered or replaced after the config was
+  read is the one used. A Python provider module (`providers:` in `metaobjects.config.yaml`) that
+  registers a strategy when it is imported is in time for the stock `metaobjects` console script,
+  which imports providers before it reads the config. The C# type change and Java's new exception
+  are under Changed.
 - **Schema conventions for the database objects no code addresses.** `migrate.conventions` in
   `.metaobjects/config.json` picks how `meta migrate` names primary-key and foreign-key
   constraints, whether each foreign key gets an index, and whether a unique key an FK references
@@ -220,9 +217,42 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
   member), and `EmitValueObjectPoco`, which may now return `null` to drop a value object's file and is
   asked about every one. The preamble comes first in `OnModelCreating`, the trailer last, and a split
   model keeps its `ConfigureModelNN` calls between them. The default output is byte-identical.
+- **C#: more of the generated output is one hook away.** `EntityGenerator.ValueObjectMemberAttributes`
+  (the `[JsonPropertyName]` line before each value-object member), `ColumnAttributeArguments` (the
+  argument list of a mapped property's one `[Column(...)]`; append `TypeName = "jsonb"`, or return
+  none to leave the attribute out) and `TphDerivedTypeAttributes` (the `[JsonDerivedType]` lines on a
+  TPH base). The DbContext's class shell, which `EmitUsings` hard-coded, is built from
+  `ContextClassName` (default `GenConfig.ContextTypeName`, so a set name now names the context),
+  `ContextNamespace`, `EmitContextConstructor`, `ContextIsPartial` and `ContextMemberLines` (extra
+  members, after the constructor). `NamesGenerator` is no longer `sealed`, and its per-object emit,
+  `Render`, is `protected virtual`; a `null` from it emits no file. The default output is
+  byte-identical.
+- **A test-only reset of the naming registry, in every port.** `resetNamingStrategiesForTesting()`
+  (TypeScript), `NamingStrategies.ResetForTesting()` (C#), `NamingStrategies.resetForTesting()` (Java
+  and Kotlin) and `reset_naming_strategies_for_testing()` (Python) forget the strategies the
+  application registered and keep the built-ins.
 
 ### Changed
 
+- **Breaking, C#: `ColumnNamingStrategy` and `TableNamingRule` are classes, not enums**
+  (ADR-0058 Amendment 1). They are compared by name. `ColumnNamingStrategy.SnakeCase` and the other
+  built-ins keep their names (`Pascal` is new). Code that switches on one, uses one as a constant
+  default parameter (`= ColumnNamingStrategy.Literal`) or as an `[InlineData]` argument has to
+  change: call `strategy.Apply(name)`, take a nullable parameter, or pass the name string.
+  `Apply` is an extension method, so `default(ColumnNamingStrategy)` (now `null`) applies as the
+  enum's default did, `Literal`, rather than throwing `NullReferenceException`; the same holds for
+  `TableNamingRule`. `EntityGenerator.ScalarProperty`'s `strategy` parameter is now
+  `ColumnNamingStrategy?` (default `Literal`), so an override changes its signature to match.
+  `NeutralConfig.Read` and `MetadataLocation.Resolve` gain a `validateNaming` overload that keeps a
+  name this process has not registered (`ColumnNamingStrategy.ByName`) for resolution to refuse.
+- **Java: `ColumnNaming.apply` throws `MetaDataException` for an unknown strategy name** where it
+  threw `IllegalArgumentException`.
+- **TypeScript: an entity's docs page names the column the naming strategy resolves.** The Fields
+  table's Column cell, a field's Column detail and the Storage payload printed only an explicit
+  `@column`, so a project that names its columns by rule (`pascal`, `snake_case`) instead of a
+  `@column` on every field lost them. They now print the resolved column wherever it differs from
+  the field name; a value object's members still show only an explicit `@column`, since each owner
+  maps them. A default (`snake_case`) page gains the column of each multi-word field.
 - **`meta migrate` refuses a foreign key that references columns the target does not hold unique.**
   Behaviour change: an `identity.reference` whose dotted `@references` names target fields that are
   not the target's primary key, a plain `identity.secondary` (no `@where`, no `@expr`) or a single
@@ -259,6 +289,29 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
 
 ### Fixed
 
+- **C#: a `<Entity>Names` whose base lives in another namespace compiles.** The names artifact
+  extends its base's (`<Entity>Names : <Base>Names`), and the base's file is emitted in the base's
+  own namespace, but the subtype's file carried no `using` for it: one CS0246 per artifact for a
+  model whose abstract bases bind to another namespace. It now writes that `using`.
+- **C#: a reference declared on an abstract TPH intermediate is configured.** The DbContext's TPH
+  pass read only the concrete subtypes' own references, so one declared on an abstract level
+  between the base and its leaves reached no `ReferenceConfig` call: EF built no relationship over
+  the column, and its `@onDelete` and `@constraintName` were lost. Each intermediate is now
+  configured once: on its own builder when it is a class (`EmitAbstractShapes`), else on each
+  concrete subtype its fields are folded into.
+- **C#: `dotnet meta verify --codegen` accepts a naming strategy only the project's codegen runner
+  registers.** Stock verify refused the config's `naming` value before it handed the `--codegen`
+  gate to `codegen/Program.cs`, which is where an application registers its strategy, so verify
+  failed where `gen` succeeded. It now hands off first and refuses an unknown name in its own process
+  only when no runner ran.
+- **TypeScript: `viewNameFromProjection` reads the separator from the strategy.** It switched on
+  the name `"kebab-case"`; the separator after `v` is now the one the strategy writes between two
+  words, else `_`. Every built-in keeps its view name, and an application strategy gets the same
+  rule.
+- **TypeScript: a `metaobjects.config.ts` that fails to load while the naming preload needs it is
+  reported.** The preload swallowed the error, and the command went on to refuse the strategy's
+  name as unregistered. It now stops and names the failed load and the strategy it would have
+  registered.
 - **C#: a large model's `OnModelCreating` no longer overflows the stack.** The DbContext generator put
   every configuration line in one method; on a model with hundreds of converters and owned types its
   stack frame was too large for a thread-pool thread in a Debug build, so a test host crashed with a

@@ -361,6 +361,17 @@ called for every class it emits (mapped entity, TPH subtype, abstract shape, val
 the framework's own attributes and right before the declaration line. Override it to add an
 attribute without re-implementing `EmitClassHeader`.
 
+**One line at a time.** Each of these is a `protected virtual` hook whose default is the line it
+replaces; override it, call base, and adjust. On `EntityGenerator`: `ValueObjectMemberAttributes`
+(the `[JsonPropertyName]` before each value-object member), `ColumnAttributeArguments` (the
+arguments of a mapped property's `[Column(...)]`; none leaves the attribute out) and
+`TphDerivedTypeAttributes` (the `[JsonDerivedType]` lines on a TPH base). On `DbContextGenerator`,
+the class shell: `ContextClassName` (default `GenConfig.ContextTypeName`), `ContextNamespace`,
+`ContextBaseClass`, `ContextIsPartial`, `EmitContextConstructor` and `ContextMemberLines` (members
+after the constructor, such as a `partial void` declaration a `ContextTrailerLines` call
+implements). The file is `AppDbContext.g.cs` whatever the class is called. `NamesGenerator.Render`
+emits one `<Entity>Names.g.cs`; a `null` from it emits none.
+
 **Reverse finders.** `<Entity>Queries.g.cs` takes the context as its first parameter, typed
 `GenConfig.ContextTypeName` (default `AppDbContext`). `new EntityGenerator { EmitsReverseFinders =
 false }` emits none, for a project that writes its own.

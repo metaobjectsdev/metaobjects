@@ -144,10 +144,14 @@ letter upper-cased, no word split). `upperFirst` was never released and has no a
 **Consequences.**
 
 - A port's stock CLI knows only the built-ins unless the host registers more: TypeScript's
-  `meta` reads them from `metaobjects.config.ts`; `dotnet meta`, the Maven plugin and the
-  Python console script have no hook of their own, so an application with its own strategy runs
-  codegen from a host that registers it first (its own codegen runner). A hook for those tools
-  is not part of this amendment.
+  `meta` reads them from `metaobjects.config.ts`. The Python console script imports the project's
+  providers (`providers:` in `metaobjects.config.yaml`) before it reads `.metaobjects/config.json`,
+  so a provider module that registers a strategy when it is imported is in time; no host runner is
+  needed. (This bullet first said the console script had no hook; it had one all along.)
+  `dotnet meta` and the Maven plugin have no hook of their own, so an application with its own
+  strategy runs codegen from a host that registers it first (its own codegen runner). `dotnet meta
+  verify --codegen` hands its gate to that runner before it checks the name, so verify passes
+  where gen does. A hook for those tools is not part of this amendment.
 - An estate that reads one database from several ports registers the same strategy in each:
   each port resolves names itself, and the corpus case is the check that they agree.
 - C#'s `ColumnNamingStrategy` and `TableNamingRule` change from enums to classes compared by
@@ -156,3 +160,19 @@ letter upper-cased, no word split). `upperFirst` was never released and has no a
   default parameter or attribute argument, moves to `strategy.Apply(name)`, a nullable parameter,
   or the name string.
 - Registers no metamodel vocabulary: `metamodelVersion` does not move.
+
+**Addendum (2026-11-08).**
+
+- **Resolved by name, in every port.** A strategy is looked up in the registry each time it
+  applies a name, not captured when the config is read, so a registration made or replaced after
+  the read is the one used. TypeScript, Java and Python did this from the start; C# held the
+  object it read and now resolves by name too. A C# caller that hands the config to another
+  process to resolve (stock `dotnet meta verify` handing `--codegen` to the codegen runner) reads
+  it with `validateNaming: false`, which keeps an unregistered name for resolution to refuse.
+- **C#: `default(ColumnNamingStrategy)` applies as `Literal`.** `Apply` is an extension method,
+  so the `null` a defaulted value holds since the enum became a class applies as the enum's
+  default member did, instead of throwing.
+- **A test-only reset in every port** (`resetNamingStrategiesForTesting`, `ResetForTesting`,
+  `resetForTesting`, `reset_naming_strategies_for_testing`) forgets the application's strategies
+  and keeps the built-ins, so a test that registers one can leave the process-wide registry as it
+  found it.
