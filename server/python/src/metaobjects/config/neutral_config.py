@@ -6,7 +6,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from metaobjects.errors import ErrorCode, ParseError
-from metaobjects.naming import COLUMN_NAMING_STRATEGIES, TABLE_NAMING_RULES, NamingRules
+from metaobjects.naming import (
+    NamingRules,
+    registered_column_naming_strategies,
+    registered_table_naming_rules,
+    unknown_naming_strategy_message,
+)
 from metaobjects.wire import WIRE_DECIMALS, WIRE_NULL_MEMBERS, WireFormat
 
 #: The DEFAULT value of `sources` when the key is absent or empty — never a
@@ -272,7 +277,7 @@ def _read_naming(raw: dict[str, object], path: Path) -> NamingRules:
     """ADR-0058 — the `naming` block: one project physical-naming setting, read by
     every port. Absent ⇒ both rules default (`snake_case`/`snake_case`); `{}` is
     the SAME as absent (every key optional). Refuses a non-object `naming`, an
-    unknown key inside it, or a value outside the closed set each key accepts —
+    unknown key inside it, or a name no registered strategy answers —
     never falls back to the default on a mistake, which would silently rename
     every column or table the next time metadata is read.
     """
@@ -290,17 +295,18 @@ def _read_naming(raw: dict[str, object], path: Path) -> NamingRules:
             f"{path}: 'naming' has unknown key(s) {unknown}; accepted: {list(_NAMING_KEYS)}",
             code=ErrorCode.ERR_COLLECTION_NOT_FOUND,
         )
+    # ADR-0058 Amendment 1: a value is the NAME of a registered strategy, a built-in or one
+    # the application registered before this read. A name nothing answers is refused here.
     columns = naming.get("columns", NamingRules.columns)
-    if columns not in COLUMN_NAMING_STRATEGIES:
+    if not isinstance(columns, str) or columns not in registered_column_naming_strategies():
         raise ParseError(
-            f"{path}: 'naming.columns' must be one of {list(COLUMN_NAMING_STRATEGIES)}, "
-            f"got {columns!r}",
+            f"{path}: {unknown_naming_strategy_message('columns', str(columns))}",
             code=ErrorCode.ERR_COLLECTION_NOT_FOUND,
         )
     tables = naming.get("tables", NamingRules.tables)
-    if tables not in TABLE_NAMING_RULES:
+    if not isinstance(tables, str) or tables not in registered_table_naming_rules():
         raise ParseError(
-            f"{path}: 'naming.tables' must be one of {list(TABLE_NAMING_RULES)}, got {tables!r}",
+            f"{path}: {unknown_naming_strategy_message('tables', str(tables))}",
             code=ErrorCode.ERR_COLLECTION_NOT_FOUND,
         )
     return NamingRules(columns=columns, tables=tables)

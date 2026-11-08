@@ -24,7 +24,7 @@ second config key. Every other place a rule used to be configured REFUSES; see
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.core.field.meta_field import MetaField
@@ -37,27 +37,34 @@ if TYPE_CHECKING:
 COLUMN_NAMING_SNAKE_CASE = "snake_case"
 COLUMN_NAMING_LITERAL = "literal"
 COLUMN_NAMING_KEBAB_CASE = "kebab-case"
-#: The first letter upper-cased, nothing else changed (``requestURL`` → ``RequestURL``), so
-#: a camelCase model maps with no ``@column`` onto a schema whose columns are spelled that
-#: way. Not a word split.
-COLUMN_NAMING_UPPER_FIRST = "upperFirst"
+#: ``pascal``: the first letter upper-cased, nothing else changed (``requestURL`` →
+#: ``RequestURL``, ``npi`` → ``Npi``), so a camelCase model maps with no ``@column`` onto a
+#: schema whose columns are spelled that way (EF Core's default). Not a word split.
+COLUMN_NAMING_PASCAL = "pascal"
 
-COLUMN_NAMING_STRATEGIES = (
+#: The column rules every port builds in, in the order the conformance corpus lists them.
+#: ADR-0058 Amendment 1: the registry (:func:`registered_column_naming_strategies`) is the
+#: full set a config may name — these plus the application's.
+BUILTIN_COLUMN_NAMING_STRATEGIES = (
     COLUMN_NAMING_SNAKE_CASE,
     COLUMN_NAMING_LITERAL,
     COLUMN_NAMING_KEBAB_CASE,
-    COLUMN_NAMING_UPPER_FIRST,
+    COLUMN_NAMING_PASCAL,
 )
+#: The built-in column rules (kept under its historical name).
+COLUMN_NAMING_STRATEGIES = BUILTIN_COLUMN_NAMING_STRATEGIES
 
 #: ADR-0058 — the project default, in every port: what ``meta migrate`` has always
 #: created. FLIPPED in 1.1.0 (was ``literal`` in this port only).
 DEFAULT_COLUMN_NAMING = COLUMN_NAMING_SNAKE_CASE
 
-#: ADR-0058 — ``tables`` accepts only these two: no ``kebab-case`` or ``upperFirst`` table rule.
+#: ADR-0058 — the built-in table rules: no ``kebab-case`` or ``pascal`` table rule.
 TABLE_NAMING_SNAKE_CASE = "snake_case"
 TABLE_NAMING_LITERAL = "literal"
 
-TABLE_NAMING_RULES = (TABLE_NAMING_SNAKE_CASE, TABLE_NAMING_LITERAL)
+BUILTIN_TABLE_NAMING_RULES = (TABLE_NAMING_SNAKE_CASE, TABLE_NAMING_LITERAL)
+#: The built-in table rules (kept under its historical name).
+TABLE_NAMING_RULES = BUILTIN_TABLE_NAMING_RULES
 
 #: ADR-0058 — the project default, in every port.
 DEFAULT_TABLE_NAMING = TABLE_NAMING_SNAKE_CASE
@@ -137,8 +144,8 @@ def to_snake_case(name: str) -> str:
     return "".join(out)
 
 
-def to_upper_first_column(name: str) -> str:
-    """The ``upperFirst`` column rule: the first letter upper-cased, the rest verbatim.
+def to_pascal_column(name: str) -> str:
+    """The ``pascal`` column rule: the first letter upper-cased, the rest verbatim.
 
     One UTF-16 unit in, one out, as C#'s ``char.ToUpperInvariant`` and Java's
     ``Character.toUpperCase`` do: a first character whose upper case is not one character
@@ -152,24 +159,150 @@ def to_upper_first_column(name: str) -> str:
     return upper + name[1:]
 
 
+def _to_table_snake_case(s: str) -> str:
+    """The built-in ``snake_case`` TABLE rule: ``MyName`` → ``my_name``; ``HTTPServer`` →
+    ``http_server`` (mirrors TS ``toSnakeCase`` regex pair, ASCII-only — what this port's
+    source naming has always used, kept byte-for-byte when it moved behind the registry)."""
+    if not s:
+        return s
+    # Run 1: split between an uppercase-run and an upper+lower head.
+    out: list[str] = []
+    n = len(s)
+    for i, ch in enumerate(s):
+        is_upper = "A" <= ch <= "Z"
+        if is_upper and i > 0:
+            prev = s[i - 1]
+            prev_upper = "A" <= prev <= "Z"
+            prev_alnum_lower = ("a" <= prev <= "z") or ("0" <= prev <= "9")
+            nxt = s[i + 1] if i + 1 < n else ""
+            nxt_lower = "a" <= nxt <= "z"
+            if prev_alnum_lower:
+                out.append("_")
+            elif prev_upper and nxt_lower:
+                out.append("_")
+        out.append(ch.lower())
+    return "".join(out)
+
+
+#: A naming strategy: a bare metadata name in, a physical name out.
+NamingFunction = Callable[[str], str]
+
+#: The port this registry belongs to, as every port's unknown-strategy message names it.
+_NAMING_PORT = "Python"
+
+_COLUMN_STRATEGIES: dict[str, NamingFunction] = {
+    COLUMN_NAMING_SNAKE_CASE: to_snake_case,
+    COLUMN_NAMING_LITERAL: lambda n: n,
+    COLUMN_NAMING_KEBAB_CASE: lambda n: to_snake_case(n).replace("_", "-"),
+    COLUMN_NAMING_PASCAL: to_pascal_column,
+}
+_TABLE_RULES: dict[str, NamingFunction] = {
+    TABLE_NAMING_SNAKE_CASE: _to_table_snake_case,
+    TABLE_NAMING_LITERAL: lambda n: n,
+}
+
+
+class UnknownNamingStrategyError(ValueError):
+    """A name no registered naming strategy answers (ADR-0058 Amendment 1)."""
+
+
+def _kind_label(kind: str) -> str:
+    return "column-naming" if kind == "columns" else "table-naming"
+
+
+def _register(kind: str, name: str, apply: NamingFunction) -> None:
+    builtins = BUILTIN_COLUMN_NAMING_STRATEGIES if kind == "columns" else BUILTIN_TABLE_NAMING_RULES
+    if not isinstance(name, str) or not name:
+        raise ValueError(f"a {_kind_label(kind)} strategy needs a non-empty name")
+    if name in builtins:
+        raise ValueError(
+            f'"{name}" is a built in {_kind_label(kind)} strategy and cannot be replaced; '
+            "register yours under another name"
+        )
+    if not callable(apply):
+        raise ValueError(f'{_kind_label(kind)} strategy "{name}" must be a function from a name to a name')
+    # Registering a name again replaces it: an application registers once at startup.
+    (_COLUMN_STRATEGIES if kind == "columns" else _TABLE_RULES)[name] = apply
+
+
+def register_column_naming_strategy(name: str, apply: NamingFunction) -> None:
+    """ADR-0058 Amendment 1 — register a named column strategy, which
+    ``"naming": {"columns": "<name>"}`` in ``.metaobjects/config.json`` then selects exactly as
+    it selects a built-in. Register BEFORE the config is read (an application's startup, or the
+    module a ``metaobjects`` command imports first). Wrapping a built-in is one line::
+
+        register_column_naming_strategy(
+            "pascal-acronyms", lambda n: "NPI" if n == "npi" else column_naming_strategy("pascal")(n))
+
+    A built-in name cannot be replaced; registering a name of your own again replaces it.
+    """
+    _register("columns", name, apply)
+
+
+def register_table_naming_rule(name: str, apply: NamingFunction) -> None:
+    """Register a named table rule; see :func:`register_column_naming_strategy`."""
+    _register("tables", name, apply)
+
+
+def registered_column_naming_strategies() -> tuple[str, ...]:
+    """Every registered column strategy: the built-ins in corpus order, then the application's."""
+    return tuple(_COLUMN_STRATEGIES)
+
+
+def registered_table_naming_rules() -> tuple[str, ...]:
+    """Every registered table rule: the built-ins, then the application's."""
+    return tuple(_TABLE_RULES)
+
+
+def unknown_naming_strategy_message(kind: str, name: str) -> str:
+    """What every port says when a config names a strategy no registered strategy answers:
+    the same words in every port, with that port's name. *kind* is ``columns`` or ``tables``.
+    """
+    builtins = BUILTIN_COLUMN_NAMING_STRATEGIES if kind == "columns" else BUILTIN_TABLE_NAMING_RULES
+    registered = [
+        n
+        for n in (registered_column_naming_strategies() if kind == "columns" else registered_table_naming_rules())
+        if n not in builtins
+    ]
+    return (
+        f'"naming.{kind}" names "{name}", which no {_kind_label(kind)} strategy registered in the '
+        f"{_NAMING_PORT} port answers (built in: {', '.join(builtins)}; registered by the "
+        f"application: {', '.join(registered) if registered else 'none'}). Register it before "
+        ".metaobjects/config.json is read, or correct the name."
+    )
+
+
+def column_naming_strategy(name: str) -> NamingFunction:
+    """The column strategy registered as *name*; raises :class:`UnknownNamingStrategyError`
+    naming it when nothing answers it."""
+    fn = _COLUMN_STRATEGIES.get(name)
+    if fn is None:
+        raise UnknownNamingStrategyError(unknown_naming_strategy_message("columns", name))
+    return fn
+
+
+def table_naming_rule(name: str) -> NamingFunction:
+    """The table rule registered as *name*; raises like :func:`column_naming_strategy`."""
+    fn = _TABLE_RULES.get(name)
+    if fn is None:
+        raise UnknownNamingStrategyError(unknown_naming_strategy_message("tables", name))
+    return fn
+
+
 def apply_column_naming_strategy(name: str, strategy: str = DEFAULT_COLUMN_NAMING) -> str:
-    """Apply a strategy to a bare name.
+    """Apply a strategy — a built-in or an application-registered one — to a bare name: the
+    one door every column resolution in this port goes through.
 
     An unknown strategy RAISES rather than falling back to the default: a typo would
     otherwise bind a whole schema to the wrong columns and report success.
     """
-    if strategy == COLUMN_NAMING_LITERAL:
-        return name
-    if strategy == COLUMN_NAMING_SNAKE_CASE:
-        return to_snake_case(name)
-    if strategy == COLUMN_NAMING_KEBAB_CASE:
-        return to_snake_case(name).replace("_", "-")
-    if strategy == COLUMN_NAMING_UPPER_FIRST:
-        return to_upper_first_column(name)
-    raise ValueError(
-        f"unknown column-naming strategy {strategy!r}; "
-        f"expected one of: {', '.join(COLUMN_NAMING_STRATEGIES)}"
-    )
+    return column_naming_strategy(strategy)(name)
+
+
+def apply_table_naming_rule(name: str, rule: str = DEFAULT_TABLE_NAMING) -> str:
+    """*name* cased by the table rule registered as *rule* (never pluralized — that is a
+    separate, frozen step). Raises on a name nothing registered."""
+    return table_naming_rule(rule)(name)
 
 
 def resolve_column_name(field: MetaField, strategy: str | None = None) -> str:

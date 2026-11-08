@@ -136,9 +136,10 @@ from metaobjects.meta.template import template_constants as tc
 from metaobjects.naming import (
     COLUMN_NAMING_STRATEGIES,
     DEFAULT_COLUMN_NAMING,
-    TABLE_NAMING_RULES,
     NamingRules,
     package_of_resolution_key,
+    registered_column_naming_strategies,
+    registered_table_naming_rules,
     removed_naming_source_message,
 )
 from metaobjects.render.engine import template_engine_of
@@ -2277,9 +2278,10 @@ def naming_candidates(used: NamingRules) -> list[NamingRules]:
     """Every naming other than ``used``, in the order ``verify --codegen`` probes them (the C#
     port probes the same order): the used table rule first, so a different column rule alone
     is tried before a different table rule; within each, the used column rule first, then
-    snake_case, literal, kebab-case, upperFirst."""
-    tables = sorted(TABLE_NAMING_RULES, key=lambda t: t != used.tables)
-    columns = sorted(COLUMN_NAMING_STRATEGIES, key=lambda c: c != used.columns)
+    snake_case, literal, kebab-case, pascal, then every strategy the application registered,
+    in registration order (ADR-0058 Amendment 1: the probe goes through the registry)."""
+    tables = sorted(registered_table_naming_rules(), key=lambda t: t != used.tables)
+    columns = sorted(registered_column_naming_strategies(), key=lambda c: c != used.columns)
     return [
         candidate
         for t in tables
