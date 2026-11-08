@@ -147,7 +147,7 @@ them only if you ran those flags.
 | 1.0 (`meta docs` flag or `docs` key) | 1.1.0 |
 |---|---|
 | `docs.outDir`, `--out` (default `./docs/generated`) | `targets.docs.outDir` |
-| `docs.layout`, `--layout` | `targets.docs.outputLayout` (falls back to the top-level `outputLayout`, as 1.0 did) |
+| `docs.layout`, `--layout` | `targets.docs.outputLayout` (falls back to the top-level `outputLayout`, as 1.0 did). From 1.2.1-rc.17 it no longer places the pages: `docsFile()` and `apiDocsFile()` always write a page under its package path, so it cannot collide with a same-named node of another package |
 | `docs.surfaces`, `--model` / `--api` / `--requirements` / `--agent` | which factories you list: `docsFile()`, `apiDocsFile()`, `requirementsFile()`, `agentDocsFile()`. `--agent` wrote all three agent pages unconditionally; `agentDocsFile()` writes `agent/ui.md` only when the run also lists a client UI generator (a form, a hook, a grid or its columns) or the config sets `includeUiTier: true`; with `includeUiTier` unset it warns when it skips the page, and `includeUiTier: false` (no UI anywhere) skips it quietly — see "Things that are different in 1.1.0" |
 | `docs.apiSurfaces` | `docsFile({ apiSurfaces })`, same shape. Leave it out when the only api pages are this project's own: the model pages then link to whatever `apiDocsFile()` writes to the same target |
 | the `subDir` of the `ts` entry in `docs.apiSurfaces` (default `api`) | `apiDocsFile({ subDir })`, same default |
@@ -624,7 +624,7 @@ to the same paths as the 8.0 pom above:
 | `<outputDirectory>` (default `${project.build.directory}/docs`) | `outputDir`, required |
 | `<language>` (default `java`) | which entries you list: `JavaApiDocsGenerator` for `java`, `KotlinApiDocsGenerator` for `kotlin` |
 | `<apiSubDir>` (default `api/<language>`) | `apiSubDir`, same default per generator |
-| `<layout>` (default `flat`) | `layout`, same default |
+| `<layout>` (default `flat`) | `layout`, same default through 8.2.x; from 8.2.1-rc.17 the default is `package`, so a page never collides with a same-named node of another package (`flat` is still accepted) |
 | `<modelBaseUrl>` | `modelBaseUrl` |
 | the page header's project label, which was the module's `artifactId` | `projectName`, default `project`; set `${project.artifactId}` to keep 8.0's pages byte for byte |
 | `-Dmetaobjects.docs.*` properties | none; use Maven properties inside `<args>` if you need to override from the command line |

@@ -218,7 +218,9 @@ public final class JavaApiDocsRenderer {
             String href = DocsPaths.surfaceCrossHref(
                 "README.md", DocsPaths.docPageOutputPath(layout, u.pkg(), u.node()));
             Map<String, Object> row = new LinkedHashMap<>();
-            row.put("node", u.node());
+            // Readable when two units share a short name: the label carries the package.
+            row.put("node", DocsPaths.indexLabel(u.node(), u.pkg(),
+                units.stream().map(ApiUnit::node).collect(java.util.stream.Collectors.toList())));
             row.put("href", href);
             row.put("summary", summary(u));
             row.put("symbolCount", u.symbols().size());

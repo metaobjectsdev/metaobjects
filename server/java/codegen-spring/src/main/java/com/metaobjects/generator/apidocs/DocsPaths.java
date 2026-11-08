@@ -20,6 +20,14 @@ public final class DocsPaths {
     return dir.isEmpty() ? file : dir + "/" + file;
   }
 
+  /** The index label of a page: its short name, or "<name> (<package>)" when another unit in the
+   *  same list shares that name (case-insensitively), so the index tells the two apart. {@code
+   *  siblings} is the whole list, this unit included. Mirrors the TS docIndexLabel. */
+  public static String indexLabel(String name, String pkg, java.util.List<String> siblings) {
+    long same = siblings.stream().filter(n -> n.equalsIgnoreCase(name)).count();
+    return same > 1 && pkg != null && !pkg.isEmpty() ? name + " (" + pkg + ")" : name;
+  }
+
   /** Relative posix href from fromOutputPath's directory to toOutputPath (mirrors TS surfaceCrossHref). */
   public static String surfaceCrossHref(String fromOutputPath, String toOutputPath) {
     String fromDir = fromOutputPath.contains("/")
