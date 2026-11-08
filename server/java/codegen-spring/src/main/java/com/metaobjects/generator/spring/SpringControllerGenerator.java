@@ -340,10 +340,31 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         // validate it EXPLICITLY with the injected Validator, emitting {"error":"validation"} on
         // any field-constraint violation BEFORE persisting.
         src.append("    @PostMapping\n");
-        src.append("    public ResponseEntity<?> create(@RequestBody ").append(dtoName).append(" dto) {\n");
+        // R35: a create body that omits a field with a literal @default binds @default, as every
+        // other port's create shape does. The DTO is a record, which cannot default a component,
+        // so the handler binds the raw body, fills the absent defaulted fields, and then binds the
+        // DTO (an explicit value, null included, is kept). An entity with no such field keeps the
+        // direct DTO binding, byte-identical.
+        List<MetaField> components = SpringGeneratorSupport.dtoComponentFields(entity);
+        List<String> defaultPuts = createDefaultPuts(entity, components);
+        if (defaultPuts.isEmpty()) {
+            src.append("    public ResponseEntity<?> create(@RequestBody ").append(dtoName).append(" dto) {\n");
+        } else {
+            src.append("    public ResponseEntity<?> create(@RequestBody JsonNode body) {\n");
+            src.append("        if (!(body instanceof com.fasterxml.jackson.databind.node.ObjectNode given)) {\n");
+            src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", \"validation\"));\n");
+            src.append("        }\n");
+            src.append("        com.fasterxml.jackson.databind.node.ObjectNode filled = given.deepCopy();\n");
+            for (String put : defaultPuts) src.append("        ").append(put).append("\n");
+            src.append("        ").append(dtoName).append(" dto;\n");
+            src.append("        try {\n");
+            src.append("            dto = objectMapper.treeToValue(filled, ").append(dtoName).append(".class);\n");
+            src.append("        } catch (com.fasterxml.jackson.core.JsonProcessingException | IllegalArgumentException e) {\n");
+            src.append("            return ResponseEntity.badRequest().body(UnreadableBody.envelope(e));\n");
+            src.append("        }\n");
+        }
         // #484: a @formExclude / credential value is IGNORED (never rejected): the DTO is rebuilt
         // without it, so the column is left to the repository's default.
-        List<MetaField> components = SpringGeneratorSupport.dtoComponentFields(entity);
         appendStripWriteDenied(src, dtoName, components, SpringGeneratorSupport.writeDeniedNames(components));
         // A caller does not supply server-owned columns, so a @NotNull on one must not reject
         // the request. The DTO is BOTH the request and the response body, so `id` carries
@@ -1650,6 +1671,48 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
     }
 
     /** The fields of a create body that a generated write route ignores (#484). */
+    /**
+     * R35 — one {@code filled.put(...)} statement per DTO component with a literal {@code @default}
+     * this can spell (an enum member, a boolean, a number, a string), guarded by its absence from
+     * the body. A SQL-expression default is the database's, an array or a temporal default has no
+     * literal here, and a server-owned or {@code @autoSet} column is never the caller's to send.
+     */
+    private static List<String> createDefaultPuts(MetaObject entity, List<MetaField> components) {
+        List<String> out = new ArrayList<>();
+        List<String> serverOwned = serverOwnedOnCreate(entity);
+        for (MetaField f : components) {
+            if (f.isArrayType() || serverOwned.contains(f.getName()) || AutoSetSupport.isAutoSet(f)) continue;
+            if (f.isDerived()) continue;
+            // ADR-0039: resolving — @default may be inherited via extends.
+            if (!f.hasMetaAttr(MetaField.ATTR_DEFAULT)) continue;
+            Object raw = f.getMetaAttr(MetaField.ATTR_DEFAULT).getValue();
+            if (raw == null) continue;
+            String text = raw.toString();
+            String value = switch (f.getSubType()) {
+                case "enum" -> {
+                    Object values = f.hasMetaAttr(com.metaobjects.field.EnumField.ATTR_VALUES)
+                        ? f.getMetaAttr(com.metaobjects.field.EnumField.ATTR_VALUES).getValue() : null;
+                    yield values instanceof List<?> l && l.stream().anyMatch(v -> text.equals(String.valueOf(v))) ? javaString(text) : null;
+                }
+                case "boolean" -> "true".equalsIgnoreCase(text) || "false".equalsIgnoreCase(text) ? text.toLowerCase() : null;
+                case "int", "long" -> text.matches("-?\\d+") ? text + "L" : null;
+                case "double", "float" -> text.matches("-?\\d+(\\.\\d+)?([eE][-+]?\\d+)?") ? text + "d" : null;
+                case "decimal" -> text.matches("-?\\d+(\\.\\d+)?") ? "new java.math.BigDecimal(\"" + text + "\")" : null;
+                case "string" -> text.contains("(") || text.equalsIgnoreCase("now") || text.equalsIgnoreCase("current_timestamp")
+                    ? null : javaString(text);
+                default -> null;
+            };
+            if (value == null) continue;
+            String key = javaString(f.getName());
+            out.add("if (!filled.has(" + key + ")) filled.put(" + key + ", " + value + ");");
+        }
+        return out;
+    }
+
+    private static String javaString(String text) {
+        return "\"" + text.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+    }
+
     private static void appendStripWriteDenied(StringBuilder src, String dtoName, List<MetaField> components,
                                                Set<String> writeDenied) {
         if (components.stream().noneMatch(f -> writeDenied.contains(f.getName()))) return;

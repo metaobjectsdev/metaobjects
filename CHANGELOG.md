@@ -307,7 +307,10 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
   `@default` member, as a scalar does. Kotlin: the generated data class gave a defaulted field no
   ctor default, so a create body omitting a required one answered 400 and a nullable one was
   written as an explicit NULL; a literal `@default` (enum member, Boolean, String, Int, Long,
-  Double) is now the ctor default. TypeScript and Python were already right (a create that omits
+  Double) is now the ctor default. Java (ruling R35): the DTO is a record, which cannot default a
+  component, so a generated create handler for an entity with a literal `@default` binds the raw
+  body, fills the absent defaulted fields (an explicit value, null included, is kept) and then
+  binds the DTO; an entity with none keeps the direct binding. TypeScript and Python were already right (a create that omits
   the field leaves it out of the INSERT, and the Python model starts at `@default`); live tests
   now prove it.
 - **A generated name collides only in the scope that carries it** (rc.17). The run-wide
