@@ -244,6 +244,16 @@ def register_table_naming_rule(name: str, apply: NamingFunction) -> None:
     _register("tables", name, apply)
 
 
+def reset_naming_strategies_for_testing() -> None:
+    """TEST-ONLY: forget every strategy the application registered, leaving the built-ins. The
+    registry is process-wide, so a test that registers one resets it when it is done rather than
+    leaving it for the next test to find. Not for production code."""
+    for name in [n for n in _COLUMN_STRATEGIES if n not in BUILTIN_COLUMN_NAMING_STRATEGIES]:
+        del _COLUMN_STRATEGIES[name]
+    for name in [n for n in _TABLE_RULES if n not in BUILTIN_TABLE_NAMING_RULES]:
+        del _TABLE_RULES[name]
+
+
 def registered_column_naming_strategies() -> tuple[str, ...]:
     """Every registered column strategy: the built-ins in corpus order, then the application's."""
     return tuple(_COLUMN_STRATEGIES)

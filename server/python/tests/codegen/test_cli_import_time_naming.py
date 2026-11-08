@@ -60,7 +60,7 @@ def test_a_provider_module_registers_a_naming_strategy_at_import_time(tmp_path: 
         targets:
           models:
             outDir: gen
-            generators: [entity]
+            generators: [entity, names]
         """
     )
     try:
@@ -71,5 +71,6 @@ def test_a_provider_module_registers_a_naming_strategy_at_import_time(tmp_path: 
         sys.modules.pop("acme_naming_prov", None)
         reset_naming_strategies_for_testing()
     assert rc == 0
-    generated = (tmp_path / "gen" / "Patient.py").read_text()
-    assert "col_firstName" in generated
+    # The names artifact spells the column the app strategy resolved.
+    generated = "\n".join(p.read_text() for p in (tmp_path / "gen").rglob("*.py"))
+    assert '"col_firstName"' in generated

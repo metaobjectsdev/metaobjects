@@ -87,6 +87,16 @@ public final class NamingStrategies {
         }
     }
 
+    /**
+     * TEST-ONLY: forget every strategy the application registered, leaving the built-ins. The
+     * registry is process-wide, so a test that registers one resets it when it is done rather than
+     * leaving it for the next test to find. Not for production code.
+     */
+    public static synchronized void resetForTesting() {
+        COLUMNS.keySet().retainAll(BUILT_IN_COLUMNS);
+        TABLES.keySet().retainAll(BUILT_IN_TABLES);
+    }
+
     /** True when {@code name} is a registered column strategy, built in or the application's. */
     public static synchronized boolean isColumn(String name) {
         return COLUMNS.containsKey(name);
