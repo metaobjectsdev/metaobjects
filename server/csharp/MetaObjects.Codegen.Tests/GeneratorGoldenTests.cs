@@ -1,0 +1,110 @@
+// GeneratorGoldenTests — the output of DbContextGenerator and EntityGenerator for one model that
+// exercises every kind of field-type configuration, compared byte for byte against files captured
+// from the generators BEFORE the fine-grained hooks existed (5e897fd86). The hooks must not move a
+// single line of default output; a refactor that did would fail here, not in an adopter's diff.
+//
+// Capture (only ever against a checkout that predates the hooks): GOLDEN_WRITE=1 dotnet test
+// --filter GeneratorGoldenTests. Compare mode is the default.
+
+using System.Runtime.CompilerServices;
+using MetaObjects.Codegen;
+using MetaObjects.Codegen.Generators;
+using MetaObjects.Loader;
+using Xunit;
+
+namespace MetaObjects.Codegen.Tests;
+
+public class GeneratorGoldenTests
+{
+    // A scalar duration declared BEFORE an array duration, then decimal/timestamp/uri/inet/map/enum
+    // array fields, a TPH hierarchy, flattened and jsonb value objects, a self-reference and a
+    // write-through entity (Invoice) with its InvoiceView read model.
+    private const string Model = """
+    { "metadata.root": { "package": "acme", "children": [
+      { "object.value": { "name": "Address", "children": [
+        { "field.string": { "name": "street", "@required": true, "@maxLength": 120 } },
+        { "field.enum":   { "name": "kind",   "@values": ["HOME", "WORK"] } },
+        { "field.duration": { "name": "window" } },
+        { "field.map":    { "name": "hints",  "@valueType": "string" } }
+      ]}},
+      { "object.entity": { "name": "Auth", "@discriminator": "type", "children": [
+        { "source.rdb": { "@table": "auths" } },
+        { "field.long":   { "name": "id" } },
+        { "field.enum":   { "name": "type", "@values": ["Bridge", "Plain"] } },
+        { "field.duration": { "name": "ttl" } },
+        { "field.duration": { "name": "slots", "isArray": true } },
+        { "field.decimal": { "name": "amount", "@precision": 10, "@scale": 2 } },
+        { "field.timestamp": { "name": "createdAt" } },
+        { "field.uri":    { "name": "homepage" } },
+        { "field.inet":   { "name": "addr" } },
+        { "field.string": { "name": "tags", "isArray": true } },
+        { "field.enum":   { "name": "statuses", "isArray": true, "@values": ["DRAFT", "LIVE"] } },
+        { "field.object": { "name": "home", "@objectRef": "Address", "@storage": "flattened" } },
+        { "field.object": { "name": "config", "@objectRef": "Address", "@storage": "jsonb" } },
+        { "field.map":    { "name": "labels", "@valueType": "string" } },
+        { "field.boolean": { "name": "active", "@default": true } },
+        { "field.long":   { "name": "parentId" } },
+        { "identity.primary": { "@fields": "id" } },
+        { "identity.reference": { "name": "refParent", "@fields": "parentId", "@references": "Auth" } }
+      ]}},
+      { "object.entity": { "name": "BridgeAuth", "extends": "Auth", "@discriminatorValue": "Bridge", "children": [
+        { "field.int":  { "name": "quantity", "@required": true, "@default": 3 } },
+        { "field.duration": { "name": "grace" } },
+        { "field.duration": { "name": "retries", "isArray": true } },
+        { "field.decimal": { "name": "fee", "@precision": 8, "@scale": 2 } }
+      ]}},
+      { "object.entity": { "name": "Client", "children": [
+        { "source.rdb": { "@kind": "table", "@table": "clients" } },
+        { "field.long":   { "name": "id" } },
+        { "field.string": { "name": "name", "@required": true } },
+        { "identity.primary": { "name": "pk", "@fields": "id" } }
+      ]}},
+      { "object.entity": { "name": "Invoice", "children": [
+        { "source.rdb": { "@role": "primary", "@kind": "table", "@table": "invoices" } },
+        { "source.rdb": { "@role": "replica", "@kind": "view", "@view": "v_invoice_with_client" } },
+        { "field.long":   { "name": "id" } },
+        { "field.long":   { "name": "clientId", "@required": true } },
+        { "field.duration": { "name": "term" } },
+        { "field.duration": { "name": "reminders", "isArray": true } },
+        { "field.decimal": { "name": "total", "@precision": 12, "@scale": 2 } },
+        { "field.uri":    { "name": "docUrl" } },
+        { "field.object": { "name": "billingAddress", "@objectRef": "Address", "@storage": "jsonb" } },
+        { "field.string": { "name": "clientName", "extends": "Client.name", "children": [
+          { "origin.passthrough": { "@from": "Client.name" } }
+        ]}},
+        { "relationship.association": { "name": "client", "@cardinality": "one", "@objectRef": "Client" } },
+        { "identity.primary":   { "name": "pk", "@fields": "id" } },
+        { "identity.reference": { "name": "refClient", "@fields": "clientId", "@references": "Client" } }
+      ]}}
+    ]}}
+    """;
+
+    private static string GoldenDir([CallerFilePath] string here = "") =>
+        Path.Combine(Path.GetDirectoryName(here)!, "Golden", "pre-hooks");
+
+    [Fact]
+    public void Default_output_matches_the_output_captured_before_the_hooks()
+    {
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(Model, id: "golden.json")]);
+        Assert.Empty(r.Errors);
+        var ctx = new GenContext
+        {
+            Entities = r.Root.Objects(), Root = r.Root,
+            Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated" },
+        };
+        var files = new DbContextGenerator().Generate(ctx).Concat(new EntityGenerator().Generate(ctx)).ToList();
+        Assert.Contains(files, f => f.Path == "InvoiceView.g.cs");
+
+        var dir = GoldenDir();
+        if (Environment.GetEnvironmentVariable("GOLDEN_WRITE") == "1")
+        {
+            Directory.CreateDirectory(dir);
+            foreach (var f in files) File.WriteAllText(Path.Combine(dir, f.Path), f.Content);
+            return;
+        }
+        var expected = Directory.GetFiles(dir).Select(Path.GetFileName).Order().ToList();
+        Assert.Equal(expected, files.Select(f => f.Path).Order().ToList());
+        foreach (var f in files)
+            Assert.Equal(File.ReadAllText(Path.Combine(dir, f.Path)), f.Content);
+    }
+}
