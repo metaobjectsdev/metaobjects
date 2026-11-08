@@ -32,9 +32,11 @@ def assert_no_collection_name_collisions(entities: list[MetaObject]) -> None:
     """Refuse a generation run in which two DISTINCT entities/projections pluralize
     to the same API-surface collection name.
 
-    Scope: every object EXCEPT ``object.value`` (a value object never gets a route,
-    router module, or finder name — it is pure shape, so it cannot collide on any of
-    those). A TPH subtype IS included: it gets its own generated names against the
+    Scope: the objects that emit a collection (:func:`_emits_collection`). A value object,
+    an abstract object and a sourceless one never get a route, router module, or finder
+    name, so they cannot collide on any of those — a layered model's abstract
+    ``enterprise::Payer`` beside a concrete ``core::Payer`` is not a collision. A TPH
+    subtype IS included: it gets its own generated names against the
     shared base table, so two subtypes (or a subtype and an unrelated top-level
     entity) sharing a pluralized name collide on those generated symbols exactly as
     two top-level entities would.
@@ -45,7 +47,7 @@ def assert_no_collection_name_collisions(entities: list[MetaObject]) -> None:
     """
     owner_of_plural: dict[str, MetaObject] = {}
     for obj in entities:
-        if obj.sub_type == OBJECT_SUBTYPE_VALUE:
+        if not _emits_collection(obj):
             continue
         plural = pluralize(obj.name)
         existing = owner_of_plural.get(plural)
@@ -63,6 +65,15 @@ def assert_no_collection_name_collisions(entities: list[MetaObject]) -> None:
     _assert_no_route_segment_collisions(entities)
 
 
+def _emits_collection(obj: MetaObject) -> bool:
+    """Whether *obj* gets a collection (a router, its finders): not a value object, not
+    abstract, and backed by a source."""
+    if obj.sub_type == OBJECT_SUBTYPE_VALUE or is_abstract(obj):
+        return False
+    # ADR-0039: children() resolves — an inherited source still gets a route.
+    return any(isinstance(c, MetaSource) for c in obj.children())
+
+
 def _assert_no_route_segment_collisions(entities: list[MetaObject]) -> None:
     """The route half. The REST segment is the entity NAME snake_cased and then
     pluralized (:func:`route_path`), so ``ApiKey`` and ``APIKey`` both serve
@@ -71,12 +82,7 @@ def _assert_no_route_segment_collisions(entities: list[MetaObject]) -> None:
     not sourceless, not a TPH subtype (folded into its base and served under it)."""
     owner_of_segment: dict[str, MetaObject] = {}
     for obj in entities:
-        if obj.sub_type == OBJECT_SUBTYPE_VALUE or is_abstract(obj):
-            continue
-        # ADR-0039: children() resolves — an inherited source still gets a route.
-        if not any(isinstance(c, MetaSource) for c in obj.children()):
-            continue
-        if tph_subtype_of(obj) is not None:
+        if not _emits_collection(obj) or tph_subtype_of(obj) is not None:
             continue
         segment = route_path(obj.name)
         existing = owner_of_segment.get(segment)
