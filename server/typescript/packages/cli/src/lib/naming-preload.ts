@@ -61,10 +61,12 @@ export async function registerProjectNamingStrategies(cwd: string): Promise<stri
       typeof tables === "string" && !isRegisteredTableNamingRule(tables) ? `"${tables}" (naming.tables)` : undefined,
     ].filter((n): n is string => n !== undefined);
     const cause = e instanceof Error ? e.message : String(e);
+    const where = `${join(projectRoot, TS_CONFIG_FILE)}: ${TS_CONFIG_FILE} did not load (${cause})`;
+    // It may have registered the strategy before it failed: then only the failed load is news.
+    if (names.length === 0) return `${where}.`;
     return (
-      `${join(projectRoot, TS_CONFIG_FILE)}: ${TS_CONFIG_FILE} did not load (${cause}), so the naming strategy ` +
-      `${names.join(" and ")} that .metaobjects/config.json names was not registered. Fix the load error: ` +
-      `its namingStrategies register the strategy.`
+      `${where}, so the naming strategy ${names.join(" and ")} that .metaobjects/config.json names ` +
+      `was not registered. Fix the load error: its namingStrategies register the strategy.`
     );
   }
   return undefined;

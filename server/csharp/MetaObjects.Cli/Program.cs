@@ -525,6 +525,18 @@ static int RunVerify(string[] rest)
     // No runner registered anything for this verify: refuse a naming value nothing in THIS
     // process answers, exactly as the config read always has (the same message, exit 2).
     if (!ownedRunnerRan) ResolveMetadataDirOrExit(metadataDir);
+    // A runner ran --codegen with the strategy registered, but --templates and --db run HERE,
+    // which never registered it: refuse it the same way, saying why, before a gate resolves a name.
+    else if ((templates || db)
+             && !(MetaObjects.Meta.NamingStrategies.TryGetColumn(resolvedMeta.Naming.Columns.Name, out _)
+                  && MetaObjects.Meta.NamingStrategies.TryGetTable(resolvedMeta.Naming.Tables.Name, out _)))
+    {
+        Console.Error.WriteLine(
+            "dotnet meta verify: --codegen ran in codegen/Generators.cs's runner, but --templates and --db " +
+            "run in this process, which has not registered the naming strategy .metaobjects/config.json names. " +
+            "Run those gates from a host that registers it.");
+        ResolveMetadataDirOrExit(metadataDir);
+    }
 
     var opts = new VerifyCommand.Options
     {
@@ -557,7 +569,18 @@ static int RunVerify(string[] rest)
         Strict = !lax,
     };
 
-    var result = VerifyCommand.RunSubverbs(opts);
+    VerifyCommand.SubverbResult result;
+    try
+    {
+        result = VerifyCommand.RunSubverbs(opts);
+    }
+    catch (MetaObjects.MetaModelException e)
+    {
+        // A gate resolved a name through a naming strategy this process has not registered (a
+        // bare verify's templates gate after the hand-off, say): the refusal the config read gives.
+        Console.Error.WriteLine($"error: {e.Code}: {e.Message}");
+        return 2;
+    }
 
     if (result.EmittedDefaultNote) Console.WriteLine(VerifyCommand.SUBVERB_NOTE);
 

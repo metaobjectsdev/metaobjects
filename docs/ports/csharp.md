@@ -366,10 +366,12 @@ replaces; override it, call base, and adjust. On `EntityGenerator`: `ValueObject
 (the `[JsonPropertyName]` before each value-object member), `ColumnAttributeArguments` (the
 arguments of a mapped property's `[Column(...)]`; none leaves the attribute out) and
 `TphDerivedTypeAttributes` (the `[JsonDerivedType]` lines on a TPH base). On `DbContextGenerator`,
-the class shell: `ContextClassName` (default `GenConfig.ContextTypeName`), `ContextNamespace`,
-`ContextBaseClass`, `ContextIsPartial`, `EmitContextConstructor` and `ContextMemberLines` (members
-after the constructor, such as a `partial void` declaration a `ContextTrailerLines` call
-implements). The file is `AppDbContext.g.cs` whatever the class is called. `NamesGenerator.Render`
+the head of the file: `ContextUsings` (the `using` lines), `ContextNamespace`, `ContextClassName`
+(default `AppDbContext`; `GenConfig.ContextTypeName` does not change it), `ContextBaseClass`,
+`ContextIsPartial`, `EmitContextConstructor` and `ContextMemberLines` (members after the
+constructor, such as a `partial void` declaration a `ContextTrailerLines` call implements). The
+file is `AppDbContext.g.cs` whatever the class is called, and the routes generator still names
+`AppDbContext`: rename the class and you keep the routes consistent yourself. `NamesGenerator.Render`
 emits one `<Entity>Names.g.cs`; a `null` from it emits none.
 
 **Reverse finders.** `<Entity>Queries.g.cs` takes the context as its first parameter, typed

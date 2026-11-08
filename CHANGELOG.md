@@ -221,10 +221,11 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
   (the `[JsonPropertyName]` line before each value-object member), `ColumnAttributeArguments` (the
   argument list of a mapped property's one `[Column(...)]`; append `TypeName = "jsonb"`, or return
   none to leave the attribute out) and `TphDerivedTypeAttributes` (the `[JsonDerivedType]` lines on a
-  TPH base). The DbContext's class shell, which `EmitUsings` hard-coded, is built from
-  `ContextClassName` (default `GenConfig.ContextTypeName`, so a set name now names the context),
-  `ContextNamespace`, `EmitContextConstructor`, `ContextIsPartial` and `ContextMemberLines` (extra
-  members, after the constructor). `NamesGenerator` is no longer `sealed`, and its per-object emit,
+  TPH base). The DbContext's head, which `EmitUsings` hard-coded, is built from `ContextUsings`
+  (the `using` lines), `ContextNamespace`, `ContextClassName` (default `AppDbContext`; a set
+  `GenConfig.ContextTypeName` still names only the type callables and finders take, and an override
+  leaves the routes generator naming `AppDbContext`), `EmitContextConstructor`, `ContextIsPartial`
+  and `ContextMemberLines` (extra members, after the constructor). `NamesGenerator` is no longer `sealed`, and its per-object emit,
   `Render`, is `protected virtual`; a `null` from it emits no file. The default output is
   byte-identical.
 - **A test-only reset of the naming registry, in every port.** `resetNamingStrategiesForTesting()`
@@ -298,20 +299,22 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
   between the base and its leaves reached no `ReferenceConfig` call: EF built no relationship over
   the column, and its `@onDelete` and `@constraintName` were lost. Each intermediate is now
   configured once: on its own builder when it is a class (`EmitAbstractShapes`), else on each
-  concrete subtype its fields are folded into.
+  topmost concrete subtype its fields are folded into (a concrete subtype under one of those
+  inherits its foreign key).
 - **C#: `dotnet meta verify --codegen` accepts a naming strategy only the project's codegen runner
   registers.** Stock verify refused the config's `naming` value before it handed the `--codegen`
   gate to `codegen/Program.cs`, which is where an application registers its strategy, so verify
   failed where `gen` succeeded. It now hands off first and refuses an unknown name in its own process
-  only when no runner ran.
+  only when no runner ran, or when `--templates` or `--db` (which run in that process) are asked for
+  too; either way it is exit 2 with the standard message, never an unhandled exception.
 - **TypeScript: `viewNameFromProjection` reads the separator from the strategy.** It switched on
   the name `"kebab-case"`; the separator after `v` is now the one the strategy writes between two
   words, else `_`. Every built-in keeps its view name, and an application strategy gets the same
   rule.
 - **TypeScript: a `metaobjects.config.ts` that fails to load while the naming preload needs it is
   reported.** The preload swallowed the error, and the command went on to refuse the strategy's
-  name as unregistered. It now stops and names the failed load and the strategy it would have
-  registered.
+  name as unregistered. It now stops and names the failed load, and the strategy it would have
+  registered when that is still missing.
 - **C#: a large model's `OnModelCreating` no longer overflows the stack.** The DbContext generator put
   every configuration line in one method; on a model with hundreds of converters and owned types its
   stack frame was too large for a thread-pool thread in a Debug build, so a test host crashed with a
