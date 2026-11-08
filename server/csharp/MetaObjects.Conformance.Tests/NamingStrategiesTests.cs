@@ -72,4 +72,72 @@ public class NamingStrategiesTests
             Directory.Delete(dir, recursive: true);
         }
     }
+
+    // The enums these were before ADR-0058 Amendment 1 defaulted to their first member, Literal;
+    // default(...) of the class is null, and calling Apply on it threw NullReferenceException.
+    [Fact]
+    public void A_default_strategy_applies_as_the_enum_default_did()
+    {
+        Assert.Equal("fooBar", default(ColumnNamingStrategy).Apply("fooBar"));
+        Assert.Equal("OrderItem", default(TableNamingRule).Apply("OrderItem"));
+    }
+
+    // Like the TypeScript, Java and Python ports, a strategy is looked up by NAME each time it
+    // resolves a name, so a registration made (or replaced) after the value was read is the one used.
+    [Fact]
+    public void A_strategy_resolves_by_name_each_time()
+    {
+        NamingStrategies.RegisterColumns("cs-test-reregister", n => "A_" + n);
+        var held = NamingStrategies.Column("cs-test-reregister");
+        Assert.Equal("A_id", held.Apply("id"));
+        NamingStrategies.RegisterColumns("cs-test-reregister", n => "B_" + n);
+        Assert.Equal("B_id", held.Apply("id"));
+    }
+
+    [Fact]
+    public void ResetForTesting_forgets_the_application_strategies_and_keeps_the_built_ins()
+    {
+        NamingStrategies.RegisterColumns("cs-test-reset", n => n.ToUpperInvariant());
+        NamingStrategies.RegisterTables("cs-test-reset-tables", n => n.ToUpperInvariant());
+        var held = NamingStrategies.Column("cs-test-reset");
+
+        NamingStrategies.ResetForTesting();
+
+        Assert.False(NamingStrategies.TryGetColumn("cs-test-reset", out _));
+        Assert.False(NamingStrategies.TryGetTable("cs-test-reset-tables", out _));
+        var ex = Assert.Throws<MetaModelException>(() => held.Apply("id"));
+        Assert.Contains("\"naming.columns\" names \"cs-test-reset\"", ex.Message);
+        Assert.Equal(NamingStrategies.BuiltInColumns, NamingStrategies.Columns);
+        Assert.Equal(NamingStrategies.BuiltInTables, NamingStrategies.Tables);
+        Assert.Equal("request_url", ColumnNamingStrategy.SnakeCase.Apply("requestURL"));
+    }
+
+    // A caller that hands the config to a process which registers the strategy (dotnet meta verify
+    // handing --codegen to the project's codegen runner) reads it without refusing a name it does
+    // not know; resolving a name through it then fails as loudly as the read would have.
+    [Fact]
+    public void The_config_reader_can_leave_an_unknown_name_to_resolution()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "mo-naming-deferred-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(dir, ".metaobjects"));
+        try
+        {
+            File.WriteAllText(Path.Combine(dir, ".metaobjects", "config.json"),
+                """{ "schema_version": 1, "naming": { "columns": "cs-test-later", "tables": "cs-test-later-tables" } }""");
+            Assert.Throws<MetaModelException>(() => NeutralConfig.Read(dir));
+
+            var naming = NeutralConfig.Read(dir, validateNaming: false)!.Naming;
+            Assert.Equal("cs-test-later", naming.Columns.Name);
+            Assert.Equal("cs-test-later-tables", naming.Tables.Name);
+            var ex = Assert.Throws<MetaModelException>(() => naming.Columns.Apply("id"));
+            Assert.Contains("\"naming.columns\" names \"cs-test-later\"", ex.Message);
+
+            NamingStrategies.RegisterColumns("cs-test-later", n => "c_" + n);
+            Assert.Equal("c_id", naming.Columns.Apply("id"));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
 }
