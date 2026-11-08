@@ -22,6 +22,8 @@ public sealed class GeneratorRegistryTests
         "callable",
         // Program A / §A5 — per-object physical database name constants.
         "names",
+        // The @expr indexes the EF model cannot carry, as SQL (C#-only).
+        "expression-indexes",
         // ADR-0057 — per-requirement xUnit tests calling a project-owned witness.
         "requirement-tests",
         // Report export — the CSV / JSON / XML download of a served report; standalone.

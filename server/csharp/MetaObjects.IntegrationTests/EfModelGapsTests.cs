@@ -678,4 +678,88 @@ public sealed class EfModelGapsTests
             """SELECT "mode", "optMode", "rank", "band", "tier", "optTier" FROM "settings" """)).Single();
         Assert.Equal(new object?[] { "AUTO", null, 0, 1, 1, null }, row);
     }
+
+    // ── R33: native vocabulary the EF model must carry ─────────────────────────────────────
+    //
+    // identity.primary @sequenceStart, @description and the index vocabulary (identity.secondary,
+    // index.lookup, field @unique, with @where / @using / @orders and the resolved index name).
+    // Without them a database EF builds differs from the one `meta migrate` builds, and an EF
+    // migration over the model would drop the indexes.
+
+    private const string NativeVocabularyModel = """
+    { "metadata.root": { "package": "acme", "children": [
+      { "object.entity": { "name": "Ticket", "@description": "A support ticket.", "children": [
+        { "source.rdb": { "@table": "tickets" } },
+        { "field.long":   { "name": "id" } },
+        { "field.string": { "name": "code", "@maxLength": 20, "@unique": true, "@description": "The public code." } },
+        { "field.string": { "name": "status", "@maxLength": 20 } },
+        { "field.timestamp": { "name": "openedAt" } },
+        { "field.string": { "name": "email", "@maxLength": 80 } },
+        { "identity.primary": { "@fields": "id", "@generation": "increment", "@sequenceStart": 1000000000 } },
+        { "identity.secondary": { "name": "ux_tickets_open_email", "@fields": "email", "@where": "status = 'open'" } },
+        { "index.lookup": { "name": "ix_tickets_opened", "@fields": ["status", "openedAt"], "@orders": ["asc", "desc"], "@using": "btree" } },
+        { "index.lookup": { "name": "ix_tickets_email_trgm", "@fields": "email", "@using": "gin" } },
+        { "index.lookup": { "name": "ix_tickets_lower_email", "@expr": "lower(email)" } }
+      ]}}
+    ]}}
+    """;
+
+    // The design-time model: the runtime one drops annotations (comments, identity options) EF
+    // needs only to build or migrate a schema.
+    private static IEntityType DesignEntityType(DbContext db, string name) =>
+        Assert.Single(Microsoft.EntityFrameworkCore.Infrastructure.AccessorExtensions
+            .GetService<IDesignTimeModel>(db).Model.GetEntityTypes(), t => t.ClrType.Name == name);
+
+    [Fact]
+    public void A_changed_identity_start_is_a_RESTART_under_Npgsql_so_the_start_is_not_emitted_yet()
+    {
+        // Npgsql scaffolds a changed identity START as `ALTER COLUMN ... RESTART WITH n`, which
+        // would hand out ids live rows already hold. Until a migration path that cannot restart
+        // exists, @sequenceStart stays out of the EF model (meta migrate still creates it).
+        var gen = GeneratedEfModel.Compile(NativeVocabularyModel, "Acme.Native");
+        using var db = gen.NewContext(o => o.UseNpgsql("Host=unused"));
+        var id = DesignEntityType(db, "Ticket").FindProperty("Id")!;
+        Assert.Null(id.FindAnnotation("Npgsql:IdentitySequenceOptions"));
+    }
+
+    [Fact]
+    public void Descriptions_reach_the_model_as_comments()
+    {
+        var gen = GeneratedEfModel.Compile(NativeVocabularyModel, "Acme.Native");
+        using var db = gen.NewContext(o => o.UseNpgsql("Host=unused"));
+        var t = DesignEntityType(db, "Ticket");
+        Assert.Contains("SetComment(\"A support ticket.\")", gen.Sources.Single(kv => kv.Key.EndsWith("AppDbContext.g.cs")).Value);
+        Assert.Equal("A support ticket.", t.GetComment());
+        Assert.Equal("The public code.", t.FindProperty("Code")!.GetComment());
+    }
+
+    [Fact]
+    public void The_index_vocabulary_reaches_the_model()
+    {
+        var gen = GeneratedEfModel.Compile(NativeVocabularyModel, "Acme.Native");
+        using var db = gen.NewContext(o => o.UseNpgsql("Host=unused"));
+        var indexes = DesignEntityType(db, "Ticket").GetIndexes().ToDictionary(i => i.GetDatabaseName()!);
+        Assert.True(indexes["tickets_code_unique"].IsUnique);
+        var open = indexes["ux_tickets_open_email"];
+        Assert.True(open.IsUnique);
+        Assert.Equal("status = 'open'", open.GetFilter());
+        var opened = indexes["ix_tickets_opened"];
+        Assert.False(opened.IsUnique);
+        Assert.Equal(new[] { "Status", "OpenedAt" }, opened.Properties.Select(p => p.Name));
+        Assert.Equal(new[] { false, true }, opened.IsDescending);
+        Assert.Equal("gin", Microsoft.EntityFrameworkCore.NpgsqlIndexExtensions.GetMethod(indexes["ix_tickets_email_trgm"]));
+        // An expression index is not an EF index: the expression-indexes artifact carries it.
+        Assert.False(indexes.ContainsKey("ix_tickets_lower_email"));
+    }
+
+    [Fact]
+    public void An_expression_index_is_an_sql_artifact()
+    {
+        // EF's HasIndex takes properties only, so an @expr index is written as SQL, applied after
+        // the schema EF builds (IF NOT EXISTS, so the file re-applies).
+        var sql = Assert.Single(new MetaObjects.Codegen.Generators.ExpressionIndexesGenerator()
+            .Generate(GeneratedEfModel.Context(NativeVocabularyModel, "Acme.Native"))).Content;
+        Assert.Contains("CREATE INDEX IF NOT EXISTS \"ix_tickets_lower_email\" ON \"tickets\" (lower(email));", sql);
+        Assert.DoesNotContain("ix_tickets_opened", sql);
+    }
 }

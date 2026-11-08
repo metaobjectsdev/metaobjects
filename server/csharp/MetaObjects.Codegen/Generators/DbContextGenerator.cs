@@ -206,6 +206,8 @@ public class DbContextGenerator : IGenerator
             EmitFieldTypeConfig(owner, e, configFields, ctx, modelLines, jsonbObjectsOnly: false);
             EmitShapeInheritedFacets(owner, e, configFields, ctx, modelLines);
             EmitDefaultValueConfig(e, configFields, ctx, modelLines);
+            EmitCommentConfig(owner, e, configFields, modelLines);
+            EmitIndexConfig(owner, e, ctx, modelLines);
 
             // identity.primary @generation: assigned — the caller supplies the key. EF's
             // convention makes a single integer or Guid key generated on add, which leaves a key
@@ -842,6 +844,83 @@ public class DbContextGenerator : IGenerator
             return [];
         }
         return [$"{lhs}.HasDefaultValueSql(\"{CSharpNaming.CSharpStringLiteral(sql)}\");"];
+    }
+
+    /// <summary>
+    /// Core <c>@description</c> as the database comment, as <c>meta migrate</c> writes it
+    /// (<c>COMMENT ON TABLE</c> / <c>COMMENT ON COLUMN</c>): an entity's on its table, a field's
+    /// on its column, read resolving. Set through the metadata API, which reaches every property
+    /// kind; a flattened value object is not a column (its members are), so it gets none.
+    /// </summary>
+    private void EmitCommentConfig(string owner, MetaObject entity, IEnumerable<MetaField> fields, List<string> modelLines)
+    {
+        if (entity.Attr(MetaObjects.Core.Documentation.DocumentationConstants.DOC_ATTR_DESCRIPTION) is string { Length: > 0 } table)
+            modelLines.Add($"        modelBuilder.Entity<{owner}>().Metadata.SetComment(\"{CSharpNaming.CSharpStringLiteral(table)}\");");
+        foreach (var f in fields)
+        {
+            if (f.Attr(MetaObjects.Core.Documentation.DocumentationConstants.DOC_ATTR_DESCRIPTION) is not string { Length: > 0 } text) continue;
+            if (f.SubType == FIELD_SUBTYPE_OBJECT || f.SubType == FIELD_SUBTYPE_MAP) continue;
+            modelLines.Add($"        modelBuilder.Entity<{owner}>().Metadata.FindProperty(\"{PropertyName(f)}\")?.SetComment(\"{CSharpNaming.CSharpStringLiteral(text)}\");");
+        }
+    }
+
+    /// <summary>
+    /// The index vocabulary as EF indexes, named as <c>meta migrate</c> names them, so a model
+    /// over the migrated database declares the indexes it has (an EF migration would otherwise
+    /// drop them): a field's <c>@unique</c> (<c>&lt;table&gt;_&lt;column&gt;_unique</c>), an
+    /// <c>identity.secondary</c> (unique) and an <c>index.lookup</c>, each with <c>@where</c>
+    /// (<c>HasFilter</c>), <c>@using</c> (<c>HasMethod</c>) and <c>@orders</c>
+    /// (<c>IsDescending</c>), under its resolved name. An <c>@expr</c> index is not one EF can
+    /// model; <see cref="ExpressionIndexesGenerator"/> writes it as SQL.
+    /// </summary>
+    private void EmitIndexConfig(string owner, MetaObject entity, GenContext ctx, List<string> modelLines)
+    {
+        var table = CSharpNaming.Table(entity);
+        foreach (var f in entity.Fields())
+        {
+            // ADR-0039: resolving — @unique may be inherited via extends.
+            if (f.Attr(FIELD_ATTR_UNIQUE) is not true || f.ResolvedIsArray()) continue;
+            var column = CSharpNaming.Column(f, ctx.Config.ColumnNamingStrategy);
+            modelLines.Add($"        modelBuilder.Entity<{owner}>().HasIndex(x => x.{PropertyName(f)}).IsUnique()" +
+                $".HasDatabaseName(\"{CSharpNaming.CSharpStringLiteral($"{table}_{column}_unique")}\");");
+        }
+        var nodes = entity.SecondaryIdentities().Select(i => ((MetaData)i, i.Fields, true))
+            .Concat(entity.LookupIndexes().Select(i => ((MetaData)i, i.Fields, false)))
+            .ToList();
+        foreach (var (node, fields, unique) in nodes)
+        {
+            if (node.Attr(DbConstants.IDENTITY_ATTR_EXPR) is string { Length: > 0 } || fields.Count == 0) continue;
+            var props = new List<string>();
+            foreach (var name in fields)
+            {
+                if (entity.FindField(name) is not { } mf) { props.Clear(); break; }
+                props.Add(PropertyName(mf));
+            }
+            if (props.Count == 0) continue;
+            var indexName = CSharpNaming.IndexRef(entity, node, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames);
+            var selector = props.Count == 1 ? $"x => x.{props[0]}" : $"x => new {{ {string.Join(", ", props.Select(p => "x." + p))} }}";
+            // The NAMED overload: two indexes over one column list (a partial one beside a plain
+            // one) are two EF indexes only when each carries its own name.
+            var line = new StringBuilder($"        modelBuilder.Entity<{owner}>().HasIndex({selector}, {indexName})");
+            if (unique) line.Append(".IsUnique()");
+            if (node.Attr(DbConstants.IDENTITY_ATTR_WHERE) is string where && where.Trim().Length > 0)
+                line.Append($".HasFilter(\"{CSharpNaming.CSharpStringLiteral(where.Trim())}\")");
+            if (node.Attr(DbConstants.IDENTITY_ATTR_ORDERS) is System.Collections.IEnumerable orderList and not string)
+            {
+                var desc = orderList.Cast<object?>().Select(o => string.Equals(o?.ToString(), "desc", StringComparison.OrdinalIgnoreCase)).ToList();
+                if (desc.Any(d => d))
+                    line.Append(".IsDescending(").Append(string.Join(", ", props.Select((_, i) => i < desc.Count && desc[i] ? "true" : "false"))).Append(')');
+            }
+            line.Append($".HasDatabaseName({indexName});");
+            modelLines.Add(line.ToString());
+            // @using: the access method, an Npgsql annotation (btree is the default and is left out).
+            if (node.Attr(DbConstants.IDENTITY_ATTR_USING) is string method && method.Trim().Length > 0 && method.Trim() != "btree")
+            {
+                modelLines.Add($"        if (Database.ProviderName == \"{NpgsqlProviderName}\")");
+                modelLines.Add($"            modelBuilder.Entity<{owner}>().HasIndex({selector}, {indexName})" +
+                    $".HasAnnotation(\"Npgsql:IndexMethod\", \"{CSharpNaming.CSharpStringLiteral(method.Trim())}\");");
+            }
+        }
     }
 
     // The SQL expressions migrate treats as an expression default (expected-schema.ts

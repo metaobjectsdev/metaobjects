@@ -29,6 +29,19 @@ internal sealed class GeneratedEfModel
         Sources = sources;
     }
 
+    /// <summary>The GenContext <see cref="Compile"/> generates from, for a generator called directly.</summary>
+    public static GenContext Context(string model, string ns)
+    {
+        var load = new MetaDataLoader().Load([new InMemoryStringSource(model, id: ns + ".json")]);
+        if (load.Errors.Count != 0)
+            throw new InvalidOperationException("model failed to load: " + string.Join("; ", load.Errors));
+        return new GenContext
+        {
+            Entities = load.Root.Objects(), Root = load.Root,
+            Config = new GenConfig { OutDir = "/unused", Namespace = ns, ColumnNamingStrategy = ColumnNamingStrategy.Literal },
+        };
+    }
+
     public static GeneratedEfModel Compile(
         string model, string ns, Func<GenConfig, GenConfig>? configure = null,
         EntityGenerator? entities = null, DbContextGenerator? dbContext = null,

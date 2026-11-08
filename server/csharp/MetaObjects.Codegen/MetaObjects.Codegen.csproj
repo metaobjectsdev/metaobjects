@@ -47,6 +47,7 @@
   <ItemGroup>
     <EmbeddedResource Include="Generators/EntityGenerator.cs" />
     <EmbeddedResource Include="Generators/DbContextGenerator.cs" />
+    <EmbeddedResource Include="Generators/ExpressionIndexesGenerator.cs" />
     <EmbeddedResource Include="Generators/RoutesGenerator.cs" />
     <EmbeddedResource Include="Generators/OutputParserGenerator.cs" />
     <EmbeddedResource Include="Generators/ExtractorGenerator.cs" />

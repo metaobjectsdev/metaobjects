@@ -127,6 +127,8 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Post>().HasMany(x => x.Referrals).WithMany().UsingEntity<PostReferral>(l => l.HasOne<ReferralAuth>().WithMany().HasForeignKey(j => j.ReferralId), r => r.HasOne<Post>().WithMany().HasForeignKey(j => j.PostId));
         modelBuilder.Entity<Program>().Property(x => x.Status).HasConversion<string>();
         modelBuilder.Entity<Program>().Property(x => x.CreatedAt).HasColumnType("timestamp without time zone");
+        modelBuilder.Entity<Program>().HasIndex(x => x.Title, ProgramNames.IdentityByTitleIndex).IsUnique().HasDatabaseName(ProgramNames.IdentityByTitleIndex);
+        modelBuilder.Entity<Program>().HasIndex(x => new { x.Title, x.Status }, ProgramNames.IndexIdxProgramsTitleStatusIndex).HasDatabaseName(ProgramNames.IndexIdxProgramsTitleStatusIndex);
         modelBuilder.Entity<Session>().HasOne<Week>().WithMany().HasForeignKey(e => e.WeekId).OnDelete(DeleteBehavior.NoAction);
         modelBuilder.Entity<Week>().HasOne<Program>().WithMany().HasForeignKey(e => e.ProgramId).OnDelete(DeleteBehavior.Cascade);
     }

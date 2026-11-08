@@ -225,22 +225,12 @@ public class NoMagicPhysicalNamesTests
         (Proc,        "ProcOutNames.SourcePrimaryProc", Reach.Constant, ""),
         (ProcOutCol,  "ProcOutNames.TotalColumn",      Reach.Constant, ""),
 
-        // --- index names: carried by the artifact, read by no C# generator ----------------
-        (SecIndex, "WidgetNames.IdentityZzPhysIdxSecIndex", Reach.Dropped,
-            "Dropped, not KnownLiteral, and the distinction is the whole point of the row. The 0.25.0 " +
-            "restructure gave the artifact `identities` and `indexes` members, so the constant EXISTS " +
-            "here — IdentityZzPhysIdxSecIndex, resolved through the same IndexNaming.ResolveIndexName " +
-            "door the TS port's codegen and migrate share. Nothing in MetaObjects.Codegen reads it, " +
-            "because this port emits no index DDL at all (schema is TS-owned, ADR-0015): there is no " +
-            "HasIndex / IsUnique call anywhere in the assembly. That is CORRECT today and is exactly " +
-            "why it is pinned rather than left unlisted — the row asserts BOTH halves, so the day C# " +
-            "emits an index through the constant it fails and demands promotion to Constant, instead " +
-            "of the wiring landing with nothing to notice it. Its old absence from this ledger asserted " +
-            "neither half."),
-        (LkpIndex, "WidgetNames.IndexZzPhysIdxLkpIndex", Reach.Dropped,
-            "As SecIndex. Kept as its own row rather than folded in: ADR-0040 put uniqueness in the " +
-            "TYPE, so a secondary identity and a lookup index live in different artifact members and " +
-            "are reached by different paths. One row cannot fail for both."),
+        // --- index names: the DbContext's HasIndex(..., name).HasDatabaseName(name) ---------
+        // Promoted from Dropped by the rows doing what they were pinned to do: the context now
+        // emits the index vocabulary (identity.secondary, index.lookup) as EF indexes, named
+        // through these constants, so a model over the migrated database declares its indexes.
+        (SecIndex, "WidgetNames.IdentityZzPhysIdxSecIndex", Reach.Constant, ""),
+        (LkpIndex, "WidgetNames.IndexZzPhysIdxLkpIndex", Reach.Constant, ""),
 
         // --- a field.enum ON the value object ---------------------------------------------
         // VoEnumCol has NO row: a VO POCO member carries no [Column(...)] at all — the enum arm

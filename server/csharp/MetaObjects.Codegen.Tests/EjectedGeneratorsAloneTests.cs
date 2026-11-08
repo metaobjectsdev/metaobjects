@@ -265,6 +265,9 @@ public class EjectedGeneratorsAloneTests
         // it also runs over the model its own codegen tests use.
         if (generator is "callable")
             yield return ("callable", LoadInline(Fr015CodegenTests.Model, "fr015.json"));
+        // `expression-indexes` emits only for an @expr index, which neither shared corpus has.
+        if (generator is "expression-indexes")
+            yield return ("expression-indexes", LoadInline(ExpressionIndexesGeneratorTests.Model, "expr.json"));
         yield return ("fitness", EjectedGeneratorCompileTests.LoadCorpus());
         var worked = MetaDataLoader.FromDirectory(
             Path.Combine(CorpusPaths.RepoRoot(), "fixtures", "requirement-test-identity-conformance", "worked-example", "input"), strict: true);

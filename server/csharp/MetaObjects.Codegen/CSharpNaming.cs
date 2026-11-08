@@ -912,6 +912,20 @@ public static class CSharpNaming
     }
 
     /// <summary>
+    /// The database name of an <c>identity.secondary</c> or <c>index.lookup</c> as the
+    /// <c>&lt;Owner&gt;Names</c> constant (<c>IdentityUqCustEmailIndex</c>) when this run emits
+    /// the names artifact and it declares the key, else the resolved name as a literal.
+    /// </summary>
+    public static string IndexRef(MetaObject owner, MetaData key, ColumnNamingStrategy strategy, bool includeNames)
+    {
+        var names = includeNames ? ResolveObjectNames(owner, strategy) : null;
+        var keys = key.Type == TYPE_INDEX ? names?.Indexes : names?.Identities;
+        return keys is not null && keys.TryGetValue(key.Name, out var k) && k.Index is not null
+            ? $"{NamesClassName(owner)}.{KeyMemberName(key.Type, key.Name, MEMBER_INDEX)}"
+            : $"\"{CSharpStringLiteral(IndexNaming.ResolveIndexName(key))}\"";
+    }
+
+    /// <summary>
     /// I1/§A6 — the <c>&lt;Owner&gt;Names.Source&lt;Role&gt;&lt;Alias&gt;</c> constant reference for <paramref
     /// name="obj"/>'s physical table/view/proc name, when BOTH C1 (<paramref
     /// name="includeNames"/> — is the <c>names</c> generator part of THIS run, same as
