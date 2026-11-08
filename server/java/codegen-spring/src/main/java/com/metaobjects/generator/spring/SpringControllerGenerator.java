@@ -351,17 +351,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             src.append("    public ResponseEntity<?> create(@RequestBody ").append(dtoName).append(" dto) {\n");
         } else {
             src.append("    public ResponseEntity<?> create(@RequestBody JsonNode body) {\n");
-            src.append("        if (!(body instanceof com.fasterxml.jackson.databind.node.ObjectNode given)) {\n");
-            src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", \"validation\"));\n");
-            src.append("        }\n");
-            src.append("        com.fasterxml.jackson.databind.node.ObjectNode filled = given.deepCopy();\n");
-            for (String put : defaultPuts) src.append("        ").append(put).append("\n");
-            src.append("        ").append(dtoName).append(" dto;\n");
-            src.append("        try {\n");
-            src.append("            dto = objectMapper.treeToValue(filled, ").append(dtoName).append(".class);\n");
-            src.append("        } catch (com.fasterxml.jackson.core.JsonProcessingException | IllegalArgumentException e) {\n");
-            src.append("            return ResponseEntity.badRequest().body(UnreadableBody.envelope(e));\n");
-            src.append("        }\n");
+            appendFillDefaults(src, dtoName, defaultPuts);
         }
         // #484: a @formExclude / credential value is IGNORED (never rejected): the DTO is rebuilt
         // without it, so the column is left to the repository's default.
@@ -1355,8 +1345,16 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             List<MetaField> createValidated =
                 SpringGeneratorSupport.settableFields(st.entity(), TphPlan.discriminatorFieldOf(st.entity()));
             src.append("    @PostMapping(\"/").append(seg).append("\")\n");
-            src.append("    public ResponseEntity<?> create").append(suffix)
-               .append("(@RequestBody ").append(dtoName).append(" dto) {\n");
+            // R35: as the vanilla create — fill the subtype's omitted literal @default fields into
+            // the raw body, then bind the union DTO. No such field: the direct binding, byte-identical.
+            List<String> subDefaultPuts = createDefaultPuts(st.entity(), SpringGeneratorSupport.dtoComponentFields(st.entity()));
+            if (subDefaultPuts.isEmpty()) {
+                src.append("    public ResponseEntity<?> create").append(suffix)
+                   .append("(@RequestBody ").append(dtoName).append(" dto) {\n");
+            } else {
+                src.append("    public ResponseEntity<?> create").append(suffix).append("(@RequestBody JsonNode body) {\n");
+                appendFillDefaults(src, dtoName, subDefaultPuts);
+            }
             for (MetaField vf : createValidated) {
                 // Both the property STRING and the accessor take the escaped component name:
                 // Bean Validation resolves a record's property by its COMPONENT, and
@@ -1707,6 +1705,23 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             out.add("if (!filled.has(" + key + ")) filled.put(" + key + ", " + value + ");");
         }
         return out;
+    }
+
+    /** R35 — the body of a create handler bound to the raw {@code JsonNode body}: refuse a
+     *  non-object body, fill the absent defaulted fields ({@link #createDefaultPuts}), bind
+     *  {@code dto}. */
+    private static void appendFillDefaults(StringBuilder src, String dtoName, List<String> puts) {
+        src.append("        if (!(body instanceof com.fasterxml.jackson.databind.node.ObjectNode given)) {\n");
+        src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", \"validation\"));\n");
+        src.append("        }\n");
+        src.append("        com.fasterxml.jackson.databind.node.ObjectNode filled = given.deepCopy();\n");
+        for (String put : puts) src.append("        ").append(put).append("\n");
+        src.append("        ").append(dtoName).append(" dto;\n");
+        src.append("        try {\n");
+        src.append("            dto = objectMapper.treeToValue(filled, ").append(dtoName).append(".class);\n");
+        src.append("        } catch (com.fasterxml.jackson.core.JsonProcessingException | IllegalArgumentException e) {\n");
+        src.append("            return ResponseEntity.badRequest().body(UnreadableBody.envelope(e));\n");
+        src.append("        }\n");
     }
 
     private static String javaString(String text) {

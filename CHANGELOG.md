@@ -310,7 +310,8 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
   Double) is now the ctor default. Java (ruling R35): the DTO is a record, which cannot default a
   component, so a generated create handler for an entity with a literal `@default` binds the raw
   body, fills the absent defaulted fields (an explicit value, null included, is kept) and then
-  binds the DTO; an entity with none keeps the direct binding. TypeScript and Python were already right (a create that omits
+  binds the DTO, on the vanilla and the TPH per-subtype create alike; an entity with none keeps the
+  direct binding. TypeScript and Python were already right (a create that omits
   the field leaves it out of the INSERT, and the Python model starts at `@default`); live tests
   now prove it.
 - **A generated name collides only in the scope that carries it** (rc.17). The run-wide
@@ -342,7 +343,8 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
   are emitted only for a project whose `migrate.dialect` is `postgres`; any other project gets a
   warning and needs no Npgsql package), which writes a start-only change as `SET START WITH n`: Npgsql's own
   generator writes `RESTART WITH n`, which hands out ids live rows already hold. The current value
-  never moves. Not yet in the other ports; see `docs/CONFORMANCE.md`, "Split coverage".
+  never moves. Not yet in the other ports ([#544](https://github.com/metaobjectsdev/metaobjects/issues/544));
+  see `docs/CONFORMANCE.md`, "Split coverage".
 - **C#: the EF model carries the index vocabulary and `@description`.** A field's `@unique`, an
   `identity.secondary` and an `index.lookup` are EF indexes under the names `meta migrate` gives
   them, with `@where` (`HasFilter`), `@orders` (`IsDescending`) and `@using` (the Npgsql index

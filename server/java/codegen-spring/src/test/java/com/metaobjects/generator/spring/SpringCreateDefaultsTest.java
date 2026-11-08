@@ -109,9 +109,14 @@ public class SpringCreateDefaultsTest {
     }
 
     private Object build() throws Exception {
-        Path work = tmp.newFolder("work").toPath();
-        MetaDataLoader loader = SpringTestFixtures.loadFixture(work, "create-defaults", META);
-        Path gen = tmp.newFolder("gen").toPath();
+        return build(META, "create-defaults", "acme.setting.SettingRepository", "acme.setting.SettingController", "create", 0);
+    }
+
+    private Object build(String meta, String name, String repoFqn, String controllerFqn, String createMethod, int dtoArg)
+            throws Exception {
+        Path work = tmp.newFolder("work-" + name).toPath();
+        MetaDataLoader loader = SpringTestFixtures.loadFixture(work, name, meta);
+        Path gen = tmp.newFolder("gen-" + name).toPath();
         for (var g : List.of(new SpringControllerGenerator(), new SpringDtoGenerator(),
                 new SpringRepositoryGenerator(), new SpringFilterAllowlistGenerator())) {
             g.setArgs(Map.of("outputDir", gen.toString()));
@@ -122,7 +127,7 @@ public class SpringCreateDefaultsTest {
             sources = s.filter(p -> p.toString().endsWith(".java")).map(Path::toFile).collect(Collectors.toList());
         }
         JavaCompiler javac = ToolProvider.getSystemJavaCompiler();
-        Path classes = tmp.newFolder("classes").toPath();
+        Path classes = tmp.newFolder("classes-" + name).toPath();
         DiagnosticCollector<JavaFileObject> diags = new DiagnosticCollector<>();
         var fm = javac.getStandardFileManager(diags, null, null);
         boolean ok = javac.getTask(null, fm, diags,
@@ -130,14 +135,42 @@ public class SpringCreateDefaultsTest {
             null, fm.getJavaFileObjectsFromFiles(sources)).call();
         assertTrue(diags.getDiagnostics().toString(), ok);
         URLClassLoader cl = new URLClassLoader(new URL[]{ classes.toUri().toURL() }, getClass().getClassLoader());
-        Class<?> repo = cl.loadClass("acme.setting.SettingRepository");
+        Class<?> repo = cl.loadClass(repoFqn);
         Object proxy = Proxy.newProxyInstance(cl, new Class<?>[]{ repo }, (p, m, args) -> {
-            if (m.getName().equals("create")) { created.set(args[0]); return args[0]; }
+            if (m.getName().equals(createMethod)) { created.set(args[dtoArg]); return args[dtoArg]; }
             throw new UnsupportedOperationException(m.getName());
         });
         ValidatorFactory vf = Validation.buildDefaultValidatorFactory();
         Validator validator = vf.getValidator();
-        return cl.loadClass("acme.setting.SettingController")
+        return cl.loadClass(controllerFqn)
             .getConstructor(repo, ObjectMapper.class, Validator.class).newInstance(proxy, MAPPER, validator);
+    }
+
+    // ---- the TPH per-subtype create path -------------------------------------------------
+
+    private static final String TPH_META = """
+        { "metadata.root": { "package": "acme::auth", "children": [
+          { "object.entity": { "name": "Auth", "@discriminator": "type", "children": [
+            { "source.rdb": { "@table": "auths" } },
+            { "field.enum": { "name": "type", "@values": ["Bridge", "Copay"] } },
+            { "field.long": { "name": "id" } },
+            { "field.enum": { "name": "status", "@values": ["OPEN", "SHUT"], "@default": "SHUT" } },
+            { "identity.primary": { "@fields": "id", "@generation": "increment" } }
+          ] } },
+          { "object.entity": { "name": "BridgeAuth", "extends": "acme::auth::Auth", "@discriminatorValue": "Bridge",
+            "children": [ { "field.int": { "name": "quantity", "@default": 3 } } ] } },
+          { "object.entity": { "name": "CopayAuth", "extends": "acme::auth::Auth", "@discriminatorValue": "Copay",
+            "children": [ { "field.int": { "name": "amount" } } ] } }
+        ] } }
+        """;
+
+    @Test
+    public void aTphSubtypeCreateThatOmitsADefaultedFieldBindsItsDefault() throws Exception {
+        Object tph = build(TPH_META, "tph", "acme.auth.AuthRepository", "acme.auth.AuthController", "createWithType", 1);
+        Method create = tph.getClass().getMethod("createBridge", JsonNode.class);
+        ResponseEntity<?> res = (ResponseEntity<?>) create.invoke(tph, MAPPER.readTree("{}"));
+        assertEquals(res.getBody() + "", 201, res.getStatusCode().value());
+        assertEquals("SHUT", component("status"));
+        assertEquals("3", component("quantity"));
     }
 }

@@ -113,7 +113,8 @@ are recorded here instead.
 **`identity.primary @sequenceStart`** (ruling R36, one semantic in every port): on a fresh
 database the identity or sequence begins at `@sequenceStart`; when the start changes on an
 existing database, the change sets `START WITH` only. It never `RESTART`s and never moves the
-current value, because live rows already hold the ids it has handed out.
+current value, because live rows already hold the ids it has handed out. The port TODOs below
+are tracked in [#544](https://github.com/metaobjectsdev/metaobjects/issues/544).
 
 - *Honoured and pinned:* C#. The generated context carries the start on Npgsql, and its
   generated `IdentityStartMigrationsSqlGenerator` writes a start-only change as
