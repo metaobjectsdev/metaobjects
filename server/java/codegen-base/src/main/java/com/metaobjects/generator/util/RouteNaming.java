@@ -139,7 +139,11 @@ public final class RouteNaming {
      * ({@code MetaDataGeneratorMojo#executeGenerators}) — the single choke point shared
      * by every JVM generator (Java's {@code codegen-spring} AND Kotlin's
      * {@code codegen-kotlin}, both invoked through the same {@code metaobjects:generate}
-     * Maven goal). Scoped to the objects that emit a collection ({@link #emitsCollection}):
+     * Maven goal). The scope is the whole run because the name it compares is a served path:
+     * one Spring app mounts every generated controller under the same prefix, so two objects
+     * whose segments match serve one route whatever their packages (their classes and
+     * repositories are in their own Java packages and never collide). Counted over the objects
+     * that emit a collection ({@link #emitsCollection}):
      * a value object, an abstract object and one with no {@code source.rdb} never get a
      * controller, repository or route, so they cannot collide on one — a layered model's
      * abstract {@code enterprise::Payer} beside a concrete {@code core::Payer} is not a
