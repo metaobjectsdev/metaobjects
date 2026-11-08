@@ -26,7 +26,13 @@ from tests.conformance.naming_corpus import register_corpus_strategies
 REPO = Path(__file__).parents[4]
 CORPUS = REPO / "fixtures" / "naming-conformance" / "physical-names"
 _CASES: list[dict[str, object]] = json.loads((CORPUS / "cases.json").read_text())["cases"]
-register_corpus_strategies()
+
+
+@pytest.fixture(autouse=True)
+def _corpus_strategies() -> None:
+    # Per test, not once at import: the registry is process-wide, and a test elsewhere in the
+    # session may reset it (reset_naming_strategies_for_testing) after this module is collected.
+    register_corpus_strategies()
 
 _MODEL = {
     "metadata.root": {"package": "acme::ship", "children": [

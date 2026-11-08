@@ -35,7 +35,12 @@ _CASES: list[dict[str, object]] = _SPEC["cases"]
 _INVALID: list[dict[str, object]] = _SPEC["invalid"]
 
 # The corpus's application-registered strategies, before any block is read.
-register_corpus_strategies()
+
+@pytest.fixture(autouse=True)
+def _corpus_strategies() -> None:
+    # Per test, not once at import: the registry is process-wide, and a test elsewhere in the
+    # session may reset it (reset_naming_strategies_for_testing) after this module is collected.
+    register_corpus_strategies()
 
 
 def _load_root() -> MetaObject:

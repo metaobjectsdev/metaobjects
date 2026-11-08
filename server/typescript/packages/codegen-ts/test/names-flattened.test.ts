@@ -9,7 +9,7 @@
 // a flattened column, and the artifact must name each one exactly as `meta migrate` does,
 // under every naming rule.
 
-import { describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import ts from "typescript";
@@ -42,13 +42,18 @@ const corpus = JSON.parse(readFileSync(join(CORPUS, "cases.json"), "utf8")) as {
 
 // The corpus's application-registered strategies (ADR-0058 Amendment 1), registered through
 // the registry the way an application does, each delegating to the built-in it names.
-for (const s of corpus.strategies) {
-  const inner = s.for === "columns" ? columnNamingStrategy(s.delegate) : tableNamingRule(s.delegate);
-  const upper = new Set(s.upperCase ?? []);
-  const apply = (n: string): string => (upper.has(n) ? n.toUpperCase() : (s.prefix ?? "") + inner(n));
-  if (s.for === "columns") registerColumnNamingStrategy(s.name, apply);
-  else registerTableNamingRule(s.name, apply);
+// Before each test, not once at load: the registry is process-wide, and a test in another file
+// may reset it (resetNamingStrategiesForTesting) after this one is loaded.
+function registerCorpusStrategies(): void {
+  for (const s of corpus.strategies) {
+    const inner = s.for === "columns" ? columnNamingStrategy(s.delegate) : tableNamingRule(s.delegate);
+    const upper = new Set(s.upperCase ?? []);
+    const apply = (n: string): string => (upper.has(n) ? n.toUpperCase() : (s.prefix ?? "") + inner(n));
+    if (s.for === "columns") registerColumnNamingStrategy(s.name, apply);
+    else registerTableNamingRule(s.name, apply);
+  }
 }
+beforeEach(registerCorpusStrategies);
 
 async function loadCorpusModel(c: NamingCase): Promise<MetaRoot> {
   const result = await new MetaDataLoader().load([new FileSource(join(CORPUS, "meta.naming.json"))]);
