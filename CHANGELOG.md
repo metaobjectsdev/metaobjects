@@ -12,8 +12,13 @@ here.**
 
 **`metamodelVersion` moves to `1.3`.** This release adds vocabulary (`field.duration`,
 `@constraintName`, `@condition`, `atLeastOne @max`, `@sequenceStart`, `@sequenceName`,
-`@flattenedColumnPrefix`, the `pascal` column rule) and nothing that loaded before stops
-loading. A port that reports `1.2` does not know that vocabulary; upgrade every port together.
+`@flattenedColumnPrefix`, the `pascal` column rule, and `@dbSetName`, a C#-only attr) and nothing
+that loaded before stops loading. The registry gains two fields on a type or attr entry, carried
+into the registry manifest: `implementedIn` (kind 1: cross-port vocabulary only the named ports
+implement so far, e.g. the `view.*` controls, `["typescript"]`) and `ports` (kind 2: vocabulary
+only the named ports ever act on, e.g. `@dbSetName`, `["csharp"]`). The manifest's row set grows by
+the kind-1 rows that used to be carved out. A port that reports `1.2` does not know that
+vocabulary; upgrade every port together.
 
 ### Next (decided, not in this release)
 
@@ -35,8 +40,8 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
   `["typescript"]`; `object.* @object` is `["java"]`. They were carved out of the manifest
   (`PRESENTATION_ONLY`, `NATIVE_BINDING`); both carve-outs are gone, and the registry canonical
   grows by those rows. `meta types` marks them `[ts; pending elsewhere]` / `[java; pending
-  elsewhere]` (it used to say `[ts-only]`, "the cross-port contract does not carry it"), its JSON
-  carries `implementedIn` in place of `tsOnly`, and the metamodel docs now cover the view controls.
+  elsewhere]` (it used to say `[ts-only]`, "the cross-port contract does not carry it"; its JSON
+  change is under Changed), and the metamodel docs now cover the view controls.
   `@objectAdapter` joins `@dbSetName` as kind 2 (`"ports": ["java"]`). C# now registers the
   `metaobjects-ui-web` attrs and `@object` / `@objectAdapter`. Java, Kotlin and Python do not yet,
   so their registry-conformance and the new `view-kind1-controls` fixture fail there until they
@@ -273,6 +278,54 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
 
 ### Changed
 
+- **Breaking, CLI: `meta types --format json` carries `implementedIn` in place of `tsOnly`.** Each
+  row and attr names the ports that implement it so far (`"implementedIn": ["typescript"]`), and a
+  port-scoped attr carries `ports`; `tsOnly` is gone, because the vocabulary it marked is now
+  cross-port. **Upgrade note:** a script that read `tsOnly` reads `implementedIn` instead
+  (`tsOnly: true` was `implementedIn: ["typescript"]`). The text output's `[ts-only]` marker is
+  `[ts; pending elsewhere]`, and a port-scoped attr shows `[<port>-only]`.
+- **C#, upgrade note: the next EF migration scaffolds your indexes and comments.** The generated
+  context now declares every `@unique`, `identity.secondary` and `index.lookup` as an EF index
+  (named as `meta migrate` names them) and every `@description` as a table or column comment, which
+  the model never carried before. So the first `dotnet ef migrations add` after upgrading scaffolds a
+  `CreateIndex` for each index and an `AlterColumn`/`AlterTable` comment for each description, as
+  if they were new. On a database `meta migrate` (or your own SQL) already built, the indexes exist
+  and the migration fails on "relation already exists". If they exist under the same names, empty
+  the migration's `Up` and `Down` (keep the snapshot change) so EF records them as present; if they
+  exist under other names, rename them in the database or in the metadata first. Comments re-apply
+  harmlessly. A database built from the model (`EnsureCreated`, or a fresh migration chain) is
+  unaffected. An `@expr` index is never an EF index: apply the `expression-indexes` SQL.
+- **C#, upgrade note: identity starts never RESTART, and need one registration call.** A Postgres
+  project's context now carries `identity.primary @sequenceStart` in its model, and every start-only
+  change — a start added, changed or removed — is written `SET START WITH n` (a removed start goes
+  back to the identity default), never `RESTART`, so the current value never moves under ids live
+  rows hold. The first migration after upgrading shows, for each table that declares a start, an
+  `AlterColumn` (or, when scaffolded through the rewrite, a `Sql("ALTER TABLE … SET START WITH n")`)
+  that records the start and changes nothing else; it is safe to apply. Register the rewrite where
+  the context is configured, after `UseNpgsql(...)`: `options.UseNpgsql(cs).UseIdentityStartMigrations()`
+  (pooled or not, in an `IDesignTimeDbContextFactory`, or in a partial context's own
+  `OnConfiguring`). A context that declares a start throws as its model is built on Npgsql without
+  it, naming the call; rc.17's generated `OnConfiguring` is gone (it threw under DbContext pooling,
+  collided with a partial context's own, and shadowed a base context's).
+- **C#, upgrade note: a self-hosted codegen runner sets `GenConfig.Dialect`.** `@sequenceStart` and
+  the identity-start rewrite are emitted only when the dialect is `postgres`. `CodegenCli` reads it
+  from `.metaobjects/config.json` `migrate.dialect`; a runner that builds its own `GenConfig` must
+  set `Dialect = "postgres"`, or it gets a warning and no start in the model.
+- **C#, upgrade note: an unset nullable enum with `@default` starts at `@default`, not NULL** (ruling
+  R43: the same rule as a nullable scalar with `@default`, which already started at it). An entity
+  created without setting the field now stores the default member; an explicit `null` is still
+  stored as NULL. To keep NULL as the starting value, do not declare `@default` on the field. The
+  same holds for a value object's enum member: a stored JSON document that lacks the member reads
+  as `@default`, not null.
+- **C#: one generated context maps each relation to one object** (R30, physical half). Two concrete
+  objects of one context that resolve to the same table, view, procedure or function in the same
+  `@schema` are refused with `ERR_DUPLICATE_SQL_NAME`, naming both; before, they silently shared it
+  once `@dbSetName` split their DbSet names. The same name in two schemas is two relations, and an
+  object that extends another and inherits its source is one EF hierarchy. A `@dbSetName` that is not
+  a C# identifier, or names `Database`, `Model`, `ChangeTracker` or `ContextId`, is refused by name.
+- **TypeScript: the collision refusal checks only the names the run emits.** The pluralized module
+  names are checked when entity modules, queries or a UI tier are wired, and the REST segments when
+  a routes generator is, so a docs-only run never refuses names no generator writes.
 - **Breaking, C#: `ColumnNamingStrategy` and `TableNamingRule` are classes, not enums**
   (ADR-0058 Amendment 1). They are compared by name. `ColumnNamingStrategy.SnakeCase` and the other
   built-ins keep their names (`Pascal` is new). Code that switches on one, uses one as a constant
@@ -341,7 +394,8 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
   binds the DTO, on the vanilla and the TPH per-subtype create alike; an entity with none keeps the
   direct binding. TypeScript and Python were already right (a create that omits
   the field leaves it out of the INSERT, and the Python model starts at `@default`); live tests
-  now prove it.
+  now prove it. A nullable C# enum with `@default` now starts at it too: see the upgrade note under
+  Changed.
 - **A generated name collides only in the scope that carries it** (rc.17). The run-wide
   refusal of two objects whose short names pluralize alike is gone. C#: DbSet names are unique
   within one generated context (the error says "rename one, or set @dbSetName"), route segments
@@ -364,20 +418,25 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
   `[Table]` already carried its schema. Python: the ObjectManager addressed a bare table name, so
   an entity in `@schema: sales` was read and written in whatever `search_path` resolved; every
   read and write now qualifies the relation (SQLite, which has no schemas, keeps bare names).
-- **C#: `identity.primary @sequenceStart` reaches the EF model, and a changed start never
-  restarts** (ruling R36). On Npgsql a fresh database's identity begins at `@sequenceStart`.
-  A context that declares one routes Npgsql migrations through a generated
-  `IdentityStartMigrationsSqlGenerator` (it references Npgsql at compile time, so it and the start
-  are emitted only for a project whose `migrate.dialect` is `postgres`; any other project gets a
-  warning and needs no Npgsql package), which writes a start-only change as `SET START WITH n`: Npgsql's own
-  generator writes `RESTART WITH n`, which hands out ids live rows already hold. The current value
-  never moves. Not yet in the other ports ([#544](https://github.com/metaobjectsdev/metaobjects/issues/544));
-  see `docs/CONFORMANCE.md`, "Split coverage".
+- **C#: `identity.primary @sequenceStart` reaches the EF model, and no start-only change ever
+  restarts** (ruling R36). On Npgsql a fresh database's identity begins at `@sequenceStart`. A
+  Postgres context with an increment key gets a generated rewrite, registered with
+  `UseIdentityStartMigrations()` (see Changed), that writes a start added, changed or removed as
+  `SET START WITH n`, both when the migration is scaffolded and when its SQL is generated: Npgsql's
+  own generator writes `RESTART WITH n` (or `RESTART WITH 1` for a removed start), which hands out
+  ids live rows already hold. It references Npgsql at compile time, so it and the start are emitted
+  only for a project whose `migrate.dialect` is `postgres`; any other project gets a warning and
+  needs no Npgsql package. Not yet in the other ports
+  ([#544](https://github.com/metaobjectsdev/metaobjects/issues/544)); see `docs/CONFORMANCE.md`,
+  "Split coverage".
 - **C#: the EF model carries the index vocabulary and `@description`.** A field's `@unique`, an
   `identity.secondary` and an `index.lookup` are EF indexes under the names `meta migrate` gives
   them, with `@where` (`HasFilter`), `@orders` (`IsDescending`) and `@using` (the Npgsql index
-  method); `@description` is the table and column comment. A model over the migrated database
-  now declares its indexes, where an EF migration would have dropped them. Kotlin's Exposed
+  method); `@description` is the table and column comment, on a TPH subtype's own fields too. A model over
+  the migrated database now declares its indexes, so a database EF builds has them (EF never
+  dropped them: an index its snapshot never knew is invisible to it); see Changed for the first
+  migration after upgrading. An `@expr` index an abstract base declares reaches each concrete
+  child's table. Kotlin's Exposed
   table now carries an index's `@using` (`indexType`) and `@where` (`filterCondition`); what
   Exposed and Drizzle cannot express is listed in `docs/CONFORMANCE.md`, "Split coverage".
 
