@@ -28,11 +28,17 @@ const MODEL = JSON.stringify({
           ],
         },
       },
+      {
+        "object.value": {
+          name: "Address",
+          children: [{ "field.string": { name: "streetName", "@maxLength": 80 } }],
+        },
+      },
     ],
   },
 });
 
-async function page(strategy: ColumnNamingStrategy): Promise<string> {
+async function page(strategy: ColumnNamingStrategy, name = "Patient"): Promise<string> {
   const res = await new MetaDataLoader().load([new InMemoryStringSource(MODEL, { id: "m.json", format: "json" })]);
   expect(res.errors).toEqual([]);
   const root = res.root;
@@ -53,7 +59,7 @@ async function page(strategy: ColumnNamingStrategy): Promise<string> {
     warn: () => {},
   };
   const out = await docsFile().generate(ctx);
-  const file = out.find((f) => f.path.endsWith("Patient.md"));
+  const file = out.find((f) => f.path.endsWith(`/${name}.md`) || f.path === `${name}.md`);
   expect(file).toBeDefined();
   return file!.content;
 }
@@ -79,6 +85,11 @@ describe("docsFile — the resolved physical column", () => {
     const md = await page("literal");
     expect(fieldRow(md, "firstName")).toContain("| `string` |  |  | maxLength: 40 |");
     expect(detail(md, "firstName")).not.toContain("**Column:**");
+  });
+
+  it("leaves a value object's members alone: their owners map them", async () => {
+    const md = await page("pascal", "Address");
+    expect(fieldRow(md, "streetName")).toContain("| `string` |  |  | maxLength: 80 |");
   });
 
   it("follows snake_case too", async () => {

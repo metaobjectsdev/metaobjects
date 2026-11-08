@@ -47,6 +47,8 @@ import {
   DOC_ATTR_SUMMARY,
   FIELD_ATTR_DB_COLUMN_TYPE,
   stripPackage,
+  physicalNamingOf,
+  resolveColumnName,
 } from "@metaobjectsdev/metadata";
 import type { Dialect } from "../column-mapper.js";
 import type { ColumnNamingStrategy } from "../metaobjects-config.js";
@@ -245,8 +247,8 @@ function buildConstraintRow(
 /** Build one row of the unified Fields table — collapses the per-field facts
  *  the old Storage + Constraints tables split between into a single Markdown
  *  row. PK/FK key role becomes a glyph prefix on the Field cell, the FK
- *  target becomes a `→ \`Target\`` suffix on the Type cell, the @column
- *  override (only when interesting) lands in the Storage cell, everything
+ *  target becomes a `→ \`Target\`` suffix on the Type cell, the physical
+ *  column (only when it is not the field name) lands in the Storage cell, everything
  *  else (validators, defaults, enum CHECK-sets, references, unique, extends)
  *  goes into the Rules cell joined by " · ".
  *
@@ -258,6 +260,7 @@ function buildFieldRow(
   field: MetaField,
   pkFieldNames: Set<string>,
   fkMap: Map<string, { targetEntity: string; targetField: string }>,
+  columnOf: (field: MetaField) => string,
 ): FieldDoc {
   const isPk = pkFieldNames.has(field.name);
   const fk = fkMap.get(field.name);
@@ -276,13 +279,14 @@ function buildFieldRow(
   }
 
   // Storage cell — only populated when interesting:
-  //   - @column override that differs from the field name, OR
+  //   - the physical column differs from the field name — the explicit @column, else
+  //     the name the configured column-naming strategy resolves (so a project that
+  //     names its columns by rule, not by a @column on every field, still sees them), OR
   //   - @dbColumnType physical override set
-  // Otherwise empty. Keeps the column noise-free for the 90% case where
-  // field name and column name agree.
-  const columnName = field.column;
+  // Otherwise empty. Keeps the column noise-free when field name and column agree.
+  const columnName = columnOf(field);
   const dbColumnType = field.attr(FIELD_ATTR_DB_COLUMN_TYPE);
-  const columnDiffers = typeof columnName === "string" && columnName !== field.name;
+  const columnDiffers = columnName !== field.name;
   const hasPhysicalOverride = typeof dbColumnType === "string" && dbColumnType.length > 0;
   let storageCell = "";
   if (columnDiffers && hasPhysicalOverride) {
@@ -343,6 +347,7 @@ function buildFieldDetail(
   field: MetaField,
   pkFieldNames: Set<string>,
   fkMap: Map<string, { targetEntity: string; targetField: string }>,
+  columnOf: (field: MetaField) => string,
 ): FieldDetailDoc | undefined {
   const desc = field.attr(DOC_ATTR_DESCRIPTION);
   const summary = field.attr(DOC_ATTR_SUMMARY);
@@ -351,7 +356,8 @@ function buildFieldDetail(
   const sup = field.resolveSuper();
   const fk = fkMap.get(field.name);
   const def = field.attr(FIELD_ATTR_DEFAULT);
-  const columnName = field.column;
+  // The physical column, as the Fields table's Storage cell resolves it.
+  const columnName = columnOf(field);
   const dbColumnType = field.attr(FIELD_ATTR_DB_COLUMN_TYPE);
   const isUnique = field.attr(FIELD_ATTR_UNIQUE) === true;
   const isEnum = field.subType === FIELD_SUBTYPE_ENUM && !field.resolvedIsArray();
@@ -370,9 +376,9 @@ function buildFieldDetail(
   //
   // Deliberately NOT counted as "interesting":
   //   - PK / required-ness (already a column in the table)
-  //   - mechanical @column overrides (adopters typically set
-  //     @column: PascalCase(name) wholesale; surfacing every field for
-  //     that alone would defeat the section's purpose)
+  //   - mechanical @column overrides or a naming strategy's columns
+  //     (adopters typically name every column by one rule; surfacing every
+  //     field for that alone would defeat the section's purpose)
   // The detail section's value is surfacing AUTHORED docs + validators +
   // business rules, not physical column mapping.
   const isInteresting =
@@ -411,7 +417,7 @@ function buildFieldDetail(
   } else if (isFieldRequired(field)) {
     bullets.push("**Required**");
   }
-  if (typeof columnName === "string" && columnName !== field.name) {
+  if (columnName !== field.name) {
     bullets.push(`**Column:** \`${columnName}\``);
   }
   if (typeof dbColumnType === "string" && dbColumnType.length > 0) {
@@ -582,6 +588,12 @@ export function buildEntityDocData(
 ): EntityDocData {
   const root = opts.loadedRoot;
   const layout = opts.layout ?? "flat";
+  const strategy = opts.columnNamingStrategy ?? physicalNamingOf(root).columns;
+  // A field's physical column: its `@column`, else the configured naming strategy's name. A
+  // value object's members have no column of their own (each owner maps them: a jsonb key is the
+  // field name, a flattened column is prefixed), so for them only an explicit `@column` counts.
+  const columnOf = (field: MetaField): string =>
+    entity.subType === OBJECT_SUBTYPE_VALUE ? (field.column ?? field.name) : resolveColumnName(field, strategy);
   const primary = entity.primaryIdentity();
   const pkFields = primary?.fields ?? [];
   const pkFieldNames = new Set<string>(pkFields);
@@ -596,9 +608,9 @@ export function buildEntityDocData(
   const storageRows: StorageFieldDoc[] = entity.fields().map((field) => {
     const isPk = pkFieldNames.has(field.name);
     // Physical column name: the field's `@column` override if set, else the
-    // field name. (The Storage section shows the RAW declared mapping; column
-    // naming-strategy folding stays a codegen concern, not a docs fact.)
-    const columnName = field.column ?? field.name;
+    // name the configured column-naming strategy resolves — the column the
+    // migration creates.
+    const columnName = columnOf(field);
     const columnCell = `\`${columnName}\``;
     const typeCell = storageTypeCell(field);
     // Nullable iff not required and not the PK (matches the Constraints table's
@@ -655,7 +667,7 @@ export function buildEntityDocData(
   // legacy tables, just folded into one row.
   const fieldRows: FieldDoc[] = entity
     .fields()
-    .map((field) => buildFieldRow(entity, field, pkFieldNames, fkMap));
+    .map((field) => buildFieldRow(entity, field, pkFieldNames, fkMap, columnOf));
   const fields = {
     hasFields: fieldRows.length > 0,
     rows: fieldRows,
@@ -667,7 +679,7 @@ export function buildEntityDocData(
   // table tight, surface authoring + validation depth below.
   const fieldDetailRows: FieldDetailDoc[] = [];
   for (const field of entity.fields()) {
-    const detail = buildFieldDetail(field, pkFieldNames, fkMap);
+    const detail = buildFieldDetail(field, pkFieldNames, fkMap, columnOf);
     if (detail !== undefined) fieldDetailRows.push(detail);
   }
   const fieldDetails = {

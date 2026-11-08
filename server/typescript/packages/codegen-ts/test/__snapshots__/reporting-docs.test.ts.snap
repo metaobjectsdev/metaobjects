@@ -40,7 +40,7 @@ flowchart TB
 |---|---|---|---|---|
 | <a id="field-id"></a>🔑 \`id\` | \`long\` | yes |  |  |
 | <a id="field-title"></a>\`title\` | \`string\` |  |  |  |
-| <a id="field-createdAt"></a>\`createdAt\` | \`timestamp\` |  |  |  |
+| <a id="field-createdAt"></a>\`createdAt\` | \`timestamp\` |  | \`created_at\` |  |
 
 ## Relationships
 
@@ -85,13 +85,13 @@ flowchart TB
 | Field | Type | Required | Column | Rules |
 |---|---|---|---|---|
 | <a id="field-id"></a>🔑 \`id\` | \`long\` | yes |  |  |
-| <a id="field-programId"></a>🔗 \`programId\` | \`long\` → \`Program\` |  |  |  |
-| <a id="field-customerEmail"></a>\`customerEmail\` | \`string\` |  |  |  |
-| <a id="field-amountCents"></a>\`amountCents\` | \`currency\` |  |  |  |
+| <a id="field-programId"></a>🔗 \`programId\` | \`long\` → \`Program\` |  | \`program_id\` |  |
+| <a id="field-customerEmail"></a>\`customerEmail\` | \`string\` |  | \`customer_email\` |  |
+| <a id="field-amountCents"></a>\`amountCents\` | \`currency\` |  | \`amount_cents\` |  |
 | <a id="field-status"></a>\`status\` | \`string\` |  |  |  |
 | <a id="field-refunded"></a>\`refunded\` | \`boolean\` |  |  |  |
-| <a id="field-purchasedAt"></a>\`purchasedAt\` | \`timestamp\` |  |  |  |
-| <a id="field-purchasedOn"></a>\`purchasedOn\` | \`date\` |  |  |  |
+| <a id="field-purchasedAt"></a>\`purchasedAt\` | \`timestamp\` |  | \`purchased_at\` |  |
+| <a id="field-purchasedOn"></a>\`purchasedOn\` | \`date\` |  | \`purchased_on\` |  |
 
 ## Field details
 
@@ -99,6 +99,7 @@ flowchart TB
 
 - **Type:** \`long\`
 - **References:** [\`Program.id\`](Program.md)
+- **Column:** \`program_id\`
 
 
 ## Relationships
@@ -176,12 +177,12 @@ erDiagram
 | Field | Type | Required | Column | Rules |
 |---|---|---|---|---|
 | <a id="field-id"></a>🔑 \`id\` | \`long\` | yes |  |  |
-| <a id="field-programId"></a>\`programId\` | \`long\` |  |  |  |
-| <a id="field-customerEmail"></a>\`customerEmail\` | \`string\` |  |  |  |
-| <a id="field-weekNumber"></a>\`weekNumber\` | \`int\` |  |  |  |
-| <a id="field-dayNumber"></a>\`dayNumber\` | \`int\` |  |  |  |
-| <a id="field-eventType"></a>\`eventType\` | \`string\` |  |  |  |
-| <a id="field-occurredAt"></a>\`occurredAt\` | \`timestamp\` |  |  |  |
+| <a id="field-programId"></a>\`programId\` | \`long\` |  | \`program_id\` |  |
+| <a id="field-customerEmail"></a>\`customerEmail\` | \`string\` |  | \`customer_email\` |  |
+| <a id="field-weekNumber"></a>\`weekNumber\` | \`int\` |  | \`week_number\` |  |
+| <a id="field-dayNumber"></a>\`dayNumber\` | \`int\` |  | \`day_number\` |  |
+| <a id="field-eventType"></a>\`eventType\` | \`string\` |  | \`event_type\` |  |
+| <a id="field-occurredAt"></a>\`occurredAt\` | \`timestamp\` |  | \`occurred_at\` |  |
 "
 ,
 }
