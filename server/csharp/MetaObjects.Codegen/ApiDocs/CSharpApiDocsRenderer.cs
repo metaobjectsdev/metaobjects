@@ -131,20 +131,22 @@ public sealed class CSharpApiDocsRenderer
         if (entities.Count > 0)
         {
             sb.Append("\n## Entities\n\n");
-            foreach (var u in entities) AppendIndexRow(sb, u, layout);
+            foreach (var u in entities) AppendIndexRow(sb, u, layout, entities);
         }
         if (templates.Count > 0)
         {
             sb.Append("\n## Templates\n\n");
-            foreach (var u in templates) AppendIndexRow(sb, u, layout);
+            foreach (var u in templates) AppendIndexRow(sb, u, layout, templates);
         }
         return sb.ToString();
     }
 
-    private void AppendIndexRow(StringBuilder sb, ApiUnit u, DocsPaths.Layout layout)
+    private void AppendIndexRow(StringBuilder sb, ApiUnit u, DocsPaths.Layout layout, IReadOnlyList<ApiUnit> siblings)
     {
         var href = DocsPaths.SurfaceCrossHref("README.md", DocsPaths.DocPageOutputPath(layout, u.Package, u.Node));
-        sb.Append("- [").Append(u.Node).Append("](").Append(href).Append(") — ")
+        // Readable when two units share a short name: the label carries the package.
+        var label = DocsPaths.IndexLabel(u.Node, u.Package, siblings.Select(s => s.Node));
+        sb.Append("- [").Append(label).Append("](").Append(href).Append(") — ")
           .Append(Summary(u)).Append(" (").Append(u.Symbols.Count).Append(" symbols)\n");
     }
 
