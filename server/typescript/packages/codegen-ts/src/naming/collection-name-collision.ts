@@ -30,9 +30,11 @@ export const ERR_COLLECTION_NAME_COLLISION = "ERR_COLLECTION_NAME_COLLISION" sat
  * Refuse a generation run in which two DISTINCT entities/projections pluralize to
  * the same API-surface collection name.
  *
- * Scope: every object EXCEPT `object.value` (a value object never gets a route,
- * hook, or collection variable — it is pure shape, so it cannot collide on any of
- * those). A TPH subtype IS included: it gets its own `list<Plural>`/`find<Plural>`-
+ * Scope: the objects that emit a collection (`emitsInstanceArtifacts`). A value object,
+ * an abstract object and a sourceless one never get a route, hook, or collection
+ * variable, so they cannot collide on any of those — a layered model's abstract
+ * `enterprise::Payer` beside a concrete `core::Payer` is not a collision. A TPH subtype
+ * IS included: it gets its own `list<Plural>`/`find<Plural>`-
  * style generated names against the shared base table, so two subtypes (or a
  * subtype and an unrelated top-level entity) sharing a pluralized name collide on
  * those generated symbols exactly as two top-level entities would.
@@ -47,7 +49,7 @@ export const ERR_COLLECTION_NAME_COLLISION = "ERR_COLLECTION_NAME_COLLISION" sat
 export function assertNoCollectionNameCollisions(entities: readonly MetaObject[]): void {
   const ownerOfPlural = new Map<string, MetaObject>();
   for (const obj of entities) {
-    if (obj.subType === OBJECT_SUBTYPE_VALUE) continue;
+    if (obj.subType === OBJECT_SUBTYPE_VALUE || !emitsInstanceArtifacts(obj)) continue;
     const plural = pluralize(obj.name);
     const existing = ownerOfPlural.get(plural);
     if (existing !== undefined && existing.resolutionKey() !== obj.resolutionKey()) {
