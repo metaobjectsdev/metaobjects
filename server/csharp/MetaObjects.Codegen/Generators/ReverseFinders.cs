@@ -141,6 +141,13 @@ public static class ReverseFinderBuilder
         sb.AppendLine($"public static class {queriesCls}");
         sb.AppendLine("{");
 
+        // The finders are members of one class: two FKs whose segments fold to one name collide.
+        CSharpNaming.AssertUniqueInScope(
+            fks.SelectMany(fk => new[] {
+                (CSharpNaming.ReverseFinderName(entity, fk.FkField), $"{entity.ResolutionKey()}.{fk.FkField}"),
+                (CSharpNaming.ReverseFinderInName(entity, fk.FkField), $"{entity.ResolutionKey()}.{fk.FkField}") }),
+            "reverse finder", $"the class {queriesCls}", "rename one of the foreign-key fields");
+
         var first = true;
         foreach (var fk in fks)
         {

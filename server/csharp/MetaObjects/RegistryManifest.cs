@@ -100,6 +100,10 @@ public static class RegistryManifest
             [AttrNameIsInterface] = ExclusionReason.StructuralKeyword,
             [AttrNameObject] = ExclusionReason.NativeBinding,
             [AttrNameObjectAdapter] = ExclusionReason.NativeBinding,
+            // C#-only: the EF Core DbSet property name (ObjectSchema.DbSetNameAttr). A binding
+            // of this port's ORM mapping, like Java's @object / @objectAdapter, not vocabulary the
+            // other ports implement; no other port registers it.
+            [Core.Object.ObjectConstants.OBJECT_ATTR_DB_SET_NAME] = ExclusionReason.NativeBinding,
             [DocumentationConstants.DOC_ATTR_DESCRIPTION] = ExclusionReason.CommonAttrDup,
         };
 

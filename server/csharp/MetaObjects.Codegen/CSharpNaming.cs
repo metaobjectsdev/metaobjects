@@ -366,8 +366,17 @@ public static class CSharpNaming
     /// </summary>
     public static string RoutePath(MetaObject entity) => PluralizeCrossPort(ToSnakeCase(entity.Name));
 
-    /// <summary>The DbSet property name for an entity: <c>Pluralize(Pascal(name))</c>.</summary>
-    public static string DbSetName(MetaObject entity) => Pluralize(Pascal(entity.Name));
+    /// <summary>
+    /// The DbSet property name for an object: its <c>@dbSetName</c> when it declares one, else
+    /// <c>Pluralize(Pascal(name))</c>. Every site that names the property (the context, the
+    /// routes, the reverse finders, the api reference) reads it here, so they always agree.
+    /// </summary>
+    public static string DbSetName(MetaObject entity) =>
+        // ADR-0039: own — @dbSetName names THIS object's property; an abstract base's value
+        // inherited by every subtype would hand them all one name.
+        entity.OwnAttr(OBJECT_ATTR_DB_SET_NAME) is string { Length: > 0 } declared
+            ? declared
+            : Pluralize(Pascal(entity.Name));
 
     /// <summary>
     /// #214 — the view read-model class name for a write-through entity: <c>&lt;EntityPascal&gt;View</c>.
@@ -1006,6 +1015,24 @@ public static class CSharpNaming
     }
 
     /// <summary>
+    /// The schema argument for an EF <c>.ToView(name, schema)</c> call (<c>, "sales"</c>, or the
+    /// names constant), or the empty string when the source in <paramref name="role"/> declares
+    /// no <c>@schema</c>. The view counterpart of <see cref="TableSchemaArg"/>: migrate-ts
+    /// creates a view in its declared schema, so an unqualified mapping reads whatever the
+    /// connection's search_path resolves to.
+    /// </summary>
+    public static string ViewSchemaArg(
+        MetaObject obj, ColumnNamingStrategy strategy, bool includeNames,
+        string role = SOURCE_ROLE_PRIMARY)
+    {
+        var src = ResolveObjectNames(obj, strategy)?.Sources.GetValueOrDefault(role);
+        if (string.IsNullOrEmpty(src?.Schema)) return "";
+        return SourceSchemaMember(obj, strategy, includeNames, role) is { } member
+            ? $", {member}"
+            : $", \"{src.Schema}\"";
+    }
+
+    /// <summary>
     /// The <c>&lt;Owner&gt;Names</c> class a consumption site may reference for
     /// <paramref name="obj"/> — when both of <see cref="NameRef"/>'s gates hold (C1: the
     /// <c>names</c> generator is part of THIS run; the object resolves a names artifact at
@@ -1177,10 +1204,9 @@ public static class CSharpNaming
     /// hardening pass over every DbContext reference. The OLDER cross-entity variant of
     /// this hazard (<c>Pluralize("Address") == "Addresses"</c>, a DIFFERENT entity's
     /// DbSet) predates this fix and is out of scope HERE — <c>ForeignKeyExpression</c>'s
-    /// lambda is what keeps THAT reference safe to compile. <see cref="AssertNoCollectionNameCollisions"/>
-    /// now refuses the model outright before any of this runs when two entities share a
-    /// pluralized name at all (so a model that reaches this method never has that pair
-    /// in the first place) — the two are complementary, not redundant: this method's
+    /// lambda is what keeps THAT reference safe to compile. The context's DbSet-name check
+    /// (<see cref="AssertUniqueInScope"/>) refuses two entities of one context that share a
+    /// DbSet name (so a context that reaches this method never has that pair) — the two are complementary, not redundant: this method's
     /// job is a bare reference staying correct even for an owner that collides only
     /// with ITSELF (the self-collision case), which the refusal does not and should not
     /// forbid.</para>
@@ -1189,86 +1215,30 @@ public static class CSharpNaming
         Pluralize(owner) == owner ? $"global::{ValueObjectNames.Namespace(ownerObject, config)}.{owner}" : owner;
 
     /// <summary>
-    /// Refuse a generation run in which two DISTINCT entities/projections pluralize to
-    /// the same API-surface collection name (<see cref="DbSetName"/> / <see cref="RoutePath"/>
-    /// / a generated finder name) — e.g. "Address" and "Addresses" both resolving to
-    /// "Addresses". Reachable from stock metadata now that <see cref="Pluralize"/> no
-    /// longer doubles an already-plural word: before that fix "Addresses" legacy-
-    /// pluralized to "Addresseses", so the pair never collided; it is the SAME
-    /// mechanism as the pre-existing Address/Addresses nameof-vs-DbSet-property hazard
-    /// (see <c>DbContextForeignKeyConfigTests</c>), but this is the cross-ENTITY
-    /// collision on the DbSet NAME itself (CS0102 duplicate member), not the
-    /// bare-identifier-inside-OnModelCreating hazard <c>ForeignKeyExpression</c> guards.
-    ///
-    /// <para>Called ONCE, over the full entity set, before any generator runs
-    /// (<see cref="CodegenRunner.Run"/>) — the single choke point every DbSet/route/
-    /// finder-emitting generator reads its entity list from. Scoped to the objects that
-    /// emit a collection (<see cref="InstanceArtifacts.EmitsInstanceArtifacts"/>): a value
-    /// object, an abstract object and a sourceless one never get a DbSet, route or finder
-    /// name, so they cannot collide on any of them — a layered model's abstract
-    /// <c>enterprise::Payer</c> beside a concrete <c>core::Payer</c> is not a collision.
-    /// A TPH subtype IS included: a subtype's own pluralized name feeds subtype-scoped
-    /// generated names too, so two subtypes (or a subtype and an unrelated top-level
-    /// entity) sharing a pluralized name collide exactly as two top-level entities
-    /// would.</para>
-    ///
-    /// <para>A PURE function of the entity set, never of traversal order: the reported
-    /// pair is deterministic (first-seen-by-input-order "owner" of a plural; thrown as
-    /// soon as a second, different entity claims the same plural).</para>
+    /// Refuse two objects that claim one generated name inside ONE scope: the DbSet properties
+    /// of one context, the route segments of one routes entry, the finders of one class. Each
+    /// generator calls this over the names it actually emits, so an object that emits nothing
+    /// (abstract, sourceless) never takes part, and the same short name in two scopes (two
+    /// packages, two contexts, two route groups) is not a collision. There is deliberately no
+    /// run-wide check: a name collides only where the artifact that carries it lives.
+    /// <para>Deterministic: the first object to claim a name owns it, and the error names the
+    /// first second claimant, by its full name, with the colliding name and the scope.</para>
     /// </summary>
-    public static void AssertNoCollectionNameCollisions(IReadOnlyList<MetaObject> entities)
+    public static void AssertUniqueInScope(
+        IEnumerable<(string Name, string Claimant)> claims, string what, string scope, string remedy)
     {
-        var ownerOfPlural = new Dictionary<string, MetaObject>(StringComparer.Ordinal);
-        foreach (var obj in entities)
+        var claimantOf = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (name, claimant) in claims)
         {
-            if (obj.IsValue() || !InstanceArtifacts.EmitsInstanceArtifacts(obj)) continue;
-            var plural = Pluralize(obj.Name);
-            if (ownerOfPlural.TryGetValue(plural, out var existing))
+            if (!claimantOf.TryGetValue(name, out var existing))
             {
-                if (existing.ResolutionKey() != obj.ResolutionKey())
-                    throw new InvalidOperationException(
-                        $"\"{existing.Name}\" and \"{obj.Name}\" both pluralize to the API-surface " +
-                        $"collection name \"{plural}\" (DbSet property name, route collection segment, " +
-                        $"generated reverse-finder name) — rename one entity so its pluralized name is " +
-                        $"distinct. Default PHYSICAL table names are unaffected by this rule and are not " +
-                        $"involved in the collision.");
+                claimantOf[name] = claimant;
+                continue;
             }
-            else
-            {
-                ownerOfPlural[plural] = obj;
-            }
-        }
-        AssertNoRouteSegmentCollisions(entities);
-    }
-
-    /// <summary>
-    /// The route half. <see cref="RoutePath"/> is the entity NAME snake_cased then
-    /// pluralized, so "ApiKey" and "APIKey" both serve "/api_keys" while their pluralized
-    /// PascalCase names differ and pass the DbSet-name check above. Counts only objects that
-    /// actually get a route: not a value object, not abstract, not sourceless, and not a
-    /// TPH subtype (folded into its base's table and served under the base's route).
-    /// </summary>
-    private static void AssertNoRouteSegmentCollisions(IReadOnlyList<MetaObject> entities)
-    {
-        var ownerOfSegment = new Dictionary<string, MetaObject>(StringComparer.Ordinal);
-        foreach (var obj in entities)
-        {
-            if (obj.IsValue() || !InstanceArtifacts.EmitsInstanceArtifacts(obj)) continue;
-            // ADR-0039: OwnAttr is REQUIRED — a TPH subtype declares @discriminatorValue itself.
-            if (obj.OwnAttr(OBJECT_ATTR_DISCRIMINATOR_VALUE) is string { Length: > 0 }) continue;
-            var segment = RoutePath(obj);
-            if (ownerOfSegment.TryGetValue(segment, out var existing))
-            {
-                if (existing.ResolutionKey() != obj.ResolutionKey())
-                    throw new InvalidOperationException(
-                        $"\"{existing.Name}\" and \"{obj.Name}\" both resolve " +
-                        $"to the REST collection segment \"{segment}\" — rename one entity so its " +
-                        $"snake_cased, pluralized route segment is distinct.");
-            }
-            else
-            {
-                ownerOfSegment[segment] = obj;
-            }
+            if (existing == claimant) continue;
+            throw new InvalidOperationException(
+                $"\"{existing}\" and \"{claimant}\" both generate the {what} \"{name}\" in {scope} — " +
+                $"{remedy}. Default PHYSICAL table names are unaffected by this rule.");
         }
     }
 

@@ -16,7 +16,7 @@
 //    collision in its own right: Pluralize("Addresses") == "Addresses" too (it is already-
 //    plural, so it is left unchanged), so the "Addresses" entity's OWN DbSet would collide with
 //    the "Address" entity's DbSet (CS0102 duplicate member) — a SEPARATE defect from the nameof
-//    hazard above, caught earlier and refused outright by `CSharpNaming.AssertNoCollectionNameCollisions`
+//    hazard above, caught earlier and refused by the generated context's DbSet-name check (`CSharpNaming.AssertUniqueInScope`)
 //    (called from `CodegenRunner.Run`, see `Address_and_Addresses_is_refused_as_a_collection_name_collision`
 //    below) before `DbContextGenerator` ever runs. `Fk_property_is_named_by_typed_lambda_not_nameof`
 //    below still exercises `DbContextGenerator` directly (bypassing that runner-level gate, as an
@@ -49,7 +49,7 @@ public sealed class DbContextForeignKeyConfigTests
     /// `Address` + `Addresses`, both persisted, with `Addresses` carrying the reference.
     /// Pluralize("Address") == "Addresses", so the context declares `DbSet&lt;Address&gt; Addresses`
     /// — the exact identifier the FK line for entity `Addresses` has to name. This model is
-    /// ALSO now refused outright by `CSharpNaming.AssertNoCollectionNameCollisions` (see the
+    /// ALSO now refused by the generated context's DbSet-name check (`CSharpNaming.AssertUniqueInScope`) (see the
     /// class-level comment above) — only `Fk_property_is_named_by_typed_lambda_not_nameof`
     /// below still exercises it, by calling `DbContextGenerator` directly rather than through
     /// the runner-level gate.
@@ -138,10 +138,12 @@ public sealed class DbContextForeignKeyConfigTests
     [Fact]
     public void Fk_property_is_named_by_typed_lambda_not_nameof()
     {
-        // Calls DbContextGenerator directly — bypassing CodegenRunner's collision gate,
-        // as an ejected/embedded generator legitimately can (ADR-0034) — to pin the
-        // nameof-vs-lambda fix on its own merits, independent of the gate.
-        var src = Assert.Single(new DbContextGenerator().Generate(Ctx(Load(DbSetNameCollisionModel)))).Content;
+        // The pair shares one context only once @dbSetName gives Address another DbSet; the
+        // entity type Addresses still meets a DbSet property of its own name, which is the
+        // hazard the typed lambda pins.
+        var renamed = DbSetNameCollisionModel.Replace(
+            "\"name\": \"Address\", \"children\"", "\"name\": \"Address\", \"@dbSetName\": \"AddressRows\", \"children\"");
+        var src = Assert.Single(new DbContextGenerator().Generate(Ctx(Load(renamed)))).Content;
 
         Assert.Contains(
             "modelBuilder.Entity<Addresses>().HasOne<Address>().WithMany()"
@@ -161,21 +163,18 @@ public sealed class DbContextForeignKeyConfigTests
     [Fact]
     public void Address_and_Addresses_is_refused_as_a_collection_name_collision()
     {
-        // The expected-error replacement for the old "...still_compiles" test: this
-        // model never reaches DbContextGenerator in real usage any more — it is
-        // refused at the CodegenRunner choke point first.
-        var root = Load(DbSetNameCollisionModel);
+        // The expected-error replacement for the old "...still_compiles" test: the two
+        // land in one context, which refuses the DbSet name they share.
         var ex = Assert.Throws<InvalidOperationException>(
-            () => CSharpNaming.AssertNoCollectionNameCollisions(root.Objects()));
+            () => new DbContextGenerator().Generate(Ctx(Load(DbSetNameCollisionModel))).ToList());
         Assert.Contains("Address", ex.Message);
-        Assert.Contains("Addresses", ex.Message);
+        Assert.Contains("DbSet property \"Addresses\"", ex.Message);
     }
 
     [Fact]
-    public void CodegenRunner_refuses_the_Address_and_Addresses_model_before_any_generator_runs()
+    public void CodegenRunner_refuses_the_Address_and_Addresses_model()
     {
-        // Integration-level: proves the gate is actually WIRED into the real entry
-        // point (CodegenRunner.Run), not just callable as a standalone function.
+        // Integration-level: the context's check runs on the real entry point (CodegenRunner.Run).
         var root = Load(DbSetNameCollisionModel);
         var config = new GenConfig { OutDir = Path.Combine(Path.GetTempPath(), "mo-" + Guid.NewGuid().ToString("N")), Namespace = "Acme.Generated" };
         Assert.Throws<InvalidOperationException>(

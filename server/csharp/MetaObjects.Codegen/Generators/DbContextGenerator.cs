@@ -97,6 +97,14 @@ public class DbContextGenerator : IGenerator
             .OrderBy(o => o.Name, StringComparer.Ordinal)
             .ToList();
         if (objects.Count == 0) return [];
+        // One context, one property per name (CS0102 otherwise). Compared on the names this
+        // context emits, so an object that gets no DbSet here never takes part.
+        CSharpNaming.AssertUniqueInScope(
+            objects.SelectMany(o => o.IsWriteThrough()
+                ? new[] { (DbSetPropertyName(o, ctx), o.ResolutionKey()), (CSharpNaming.ViewDbSetName(o), o.ResolutionKey()) }
+                : new[] { (DbSetPropertyName(o, ctx), o.ResolutionKey()) }),
+            "DbSet property", "one generated context",
+            "rename one, or set @dbSetName on one of them");
 
         // OnModelCreating body lines (8-space indented), in a stable order.
         var modelLines = new List<string>();
@@ -143,7 +151,7 @@ public class DbContextGenerator : IGenerator
             // narrowed --generators selection. Falls back to the bare literal view name
             // (p.DbView, non-null in this branch) otherwise -- exactly what this line
             // emitted before Program A added the constant.
-            modelLines.Add($"        modelBuilder.Entity<{name}>(){noKey}.ToView({CSharpNaming.NameRef(p, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames, p.DbView!)});");
+            modelLines.Add($"        modelBuilder.Entity<{name}>(){noKey}.ToView({CSharpNaming.NameRef(p, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames, p.DbView!)}{CSharpNaming.ViewSchemaArg(p, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames)});");
             // Enum-typed projection columns persist as their string symbol in the view
             // (string-backed enums, CHECK-constrained varchar/text). Without an explicit
             // string conversion EF defaults to the int-ordinal mapping and reads the text
@@ -284,7 +292,7 @@ public class DbContextGenerator : IGenerator
             var replicaRole = wt.ReplicaSource!.Role;
             var viewRef = CSharpNaming.NameRef(
                 wt, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames, wt.ReplicaViewName!, replicaRole);
-            modelLines.Add($"        modelBuilder.Entity<{view}>().ToView({viewRef});");
+            modelLines.Add($"        modelBuilder.Entity<{view}>().ToView({viewRef}{CSharpNaming.ViewSchemaArg(wt, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames, replicaRole)});");
             // #214 [0] — the read model exposes ALL fields (incl. the derived origin.* fields),
             // so it needs the SAME per-field TYPE converters the write entity gets, or EF Core
             // fails model finalization (a field.uri / @dbColumnType:uuid / decimal-precision /
@@ -578,8 +586,15 @@ public class DbContextGenerator : IGenerator
     protected virtual string DbSetLine(MetaObject entity, GenContext ctx)
     {
         var name = CSharpNaming.Pascal(entity.Name);
-        return $"    public DbSet<{name}> {CSharpNaming.Pluralize(name)} {{ get; set; }} = default!;";
+        return $"    public DbSet<{name}> {DbSetPropertyName(entity, ctx)} {{ get; set; }} = default!;";
     }
+
+    /// <summary>
+    /// Hook — the DbSet property name for an object: its <c>@dbSetName</c>, else the derived
+    /// plural (<see cref="CSharpNaming.DbSetName"/>). The context's collision check compares
+    /// this name, so an override that renames the property is checked as it emits it.
+    /// </summary>
+    protected virtual string DbSetPropertyName(MetaObject entity, GenContext ctx) => CSharpNaming.DbSetName(entity);
 
     /// <summary>
     /// Hook — extra configuration lines appended after everything else an entity is configured

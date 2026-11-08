@@ -84,14 +84,15 @@ physical table name) axis: that rule still always lengthens its input, so it
 cannot produce this collision — only the API-surface axis can, and only the
 API-surface axis is checked here.
 
-## Shape-only cases
+## Shape-only cases, and names that collide only in one scope
 
-`shapeOnlyCases` (same file) pins the other side of that refusal: only an object
-that EMITS a collection claims a collection name. An abstract object, and one that
-declares and inherits no `source.rdb`, gets no DbSet-equivalent, route or finder in
-any port, so a same-named emitting entity in another package is not a collision.
-This is the shape a layered model produces: a library declares an abstract
-`enterprise::Payer`, and the application declares its own concrete `core::Payer`.
+There is no run-wide "two short names pluralize the same" rule: a name collides only
+inside the scope where the generated artifact lives — the DbSet properties of one
+generated context, the route segments of one routes entry, the members of one module
+or class. An object that emits nothing (abstract, or declaring and inheriting no
+`source.rdb`) is in no scope. A layered model's abstract `enterprise::Payer` beside the
+application's concrete `core::Payer` is therefore never a collision, and two concrete
+`Payer`s in two packages are one only where a port puts both in one scope.
 
 ```jsonc
 {
@@ -107,17 +108,18 @@ This is the shape a layered model produces: a library declares an abstract
 ```
 
 Each port builds both objects in their own packages (each with an `id` primary
-identity; `emitting` always declares a source), runs its collision check over them
-in both orders, and must ACCEPT every `shapeOnlyCases` entry and REFUSE every
-`crossPackageCollisionCases` entry: two emitting entities with one short name still
-collide, whatever their packages.
+identity; `emitting` always declares a source), runs its scoped checks in both
+orders, and must ACCEPT every `shapeOnlyCases` entry. A `crossPackageCollisionCases`
+pair is REFUSED when the port puts both in one scope, naming the colliding name.
+Physical names are not this corpus's concern: `(schema, name)` uniqueness belongs to
+the schema layer (`meta migrate`'s `ERR_DUPLICATE_SQL_NAME`).
 
 ## Per-port runner
 
 Each port's existing naming unit-test file reads this JSON and asserts both
 `cases` columns against its own two pluralizers, asserts each
-`collisionCases` and `crossPackageCollisionCases` pair is REFUSED by that port's
-collision check, and asserts each `shapeOnlyCases` pair is ACCEPTED:
+`collisionCases` pair (one package, so one scope) is REFUSED by that port's scoped
+checks, and asserts each `shapeOnlyCases` pair is ACCEPTED:
 
 | Port | Test file |
 |---|---|

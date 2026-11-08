@@ -7,6 +7,7 @@
 using System.IO;
 using System.Text.Json;
 using MetaObjects.Codegen;
+using MetaObjects.Codegen.Generators;
 using MetaObjects.Loader;
 using MetaObjects.Meta;
 using static MetaObjects.Core.Field.FieldConstants;
@@ -222,9 +223,13 @@ public class CSharpNamingTests
         Assert.Equal(c.LegacyPlural.ToLowerInvariant(), source.PhysicalName);
     }
 
-    // -- AssertNoCollectionNameCollisions --------------------------
+    // -- collection names collide only inside the scope that carries them -------------------
+    //
+    // There is no run-wide check: the generated context refuses two DbSets of one name, a routes
+    // entry two objects that serve one segment. An object that emits nothing never takes part.
+    // fixtures/naming-conformance/already-plural-pluralize.json drives the shared cases.
 
-    private static IReadOnlyList<MetaObject> MultiEntityRoot(params (string Name, bool IsValue)[] specs)
+    private static MetaRoot MultiEntityRoot(params (string Name, bool IsValue)[] specs)
     {
         var children = string.Join(",\n", specs.Select(s => s.IsValue
             ? $@"{{ ""object.value"": {{ ""name"": ""{s.Name}"", ""children"": [
@@ -238,88 +243,10 @@ public class CSharpNamingTests
         var json = $@"{{ ""metadata.root"": {{ ""package"": ""acme"", ""children"": [{children}] }} }}";
         var r = new MetaDataLoader().Load([new InMemoryStringSource(json, id: "multi.json")]);
         Assert.Empty(r.Errors);
-        return r.Root.Objects();
+        return r.Root;
     }
 
-    [Fact]
-    public void AssertNoCollectionNameCollisions_doesNotThrow_forDistinctPlurals()
-    {
-        var entities = MultiEntityRoot(("Post", false), ("Author", false), ("Category", false));
-        CSharpNaming.AssertNoCollectionNameCollisions(entities); // does not throw
-    }
-
-    [Fact]
-    public void AssertNoCollectionNameCollisions_throws_forAddressAndAddresses()
-    {
-        var entities = MultiEntityRoot(("Address", false), ("Addresses", false));
-        var ex = Assert.Throws<InvalidOperationException>(
-            () => CSharpNaming.AssertNoCollectionNameCollisions(entities));
-        Assert.Contains("Address", ex.Message);
-        Assert.Contains("Addresses", ex.Message);
-    }
-
-    [Fact]
-    public void AssertNoCollectionNameCollisions_throws_forOrderAndOrders()
-    {
-        var entities = MultiEntityRoot(("Order", false), ("Orders", false));
-        Assert.Throws<InvalidOperationException>(
-            () => CSharpNaming.AssertNoCollectionNameCollisions(entities));
-    }
-
-    [Fact]
-    public void AssertNoCollectionNameCollisions_excludesValueObjects()
-    {
-        // "Address" (entity) legacy-pluralizes to "Addresses"; an unrelated object.value
-        // named "Addresses" never gets a DbSet/route/finder, so it must not trip this.
-        var entities = MultiEntityRoot(("Address", false), ("Addresses", true));
-        CSharpNaming.AssertNoCollectionNameCollisions(entities); // does not throw
-    }
-
-    public sealed record CollisionCase(string EntityA, string EntityB);
-
-    public static TheoryData<CollisionCase> NamingConformanceCollisionCases()
-    {
-        var path = Path.Combine(
-            CorpusPaths.RepoRoot(), "fixtures", "naming-conformance", "already-plural-pluralize.json");
-        using var doc = JsonDocument.Parse(File.ReadAllText(path));
-        var data = new TheoryData<CollisionCase>();
-        foreach (var c in doc.RootElement.GetProperty("collisionCases").EnumerateArray())
-        {
-            data.Add(new CollisionCase(
-                c.GetProperty("entityA").GetString()!,
-                c.GetProperty("entityB").GetString()!));
-        }
-        return data;
-    }
-
-    [Theory]
-    [MemberData(nameof(NamingConformanceCollisionCases))]
-    public void NamingConformance_collisionCasesAreRefused(CollisionCase c)
-    {
-        var entities = MultiEntityRoot((c.EntityA, false), (c.EntityB, false));
-        Assert.Throws<InvalidOperationException>(
-            () => CSharpNaming.AssertNoCollectionNameCollisions(entities));
-    }
-
-    [Fact]
-    public void AssertNoCollectionNameCollisions_throws_forRouteSegmentTwins()
-    {
-        // ApiKey / APIKey pluralize to different names but both snake_case to /api_keys.
-        var entities = MultiEntityRoot(("ApiKey", false), ("APIKey", false));
-        var ex = Assert.Throws<InvalidOperationException>(
-            () => CSharpNaming.AssertNoCollectionNameCollisions(entities));
-        Assert.Contains("\"ApiKey\"", ex.Message);
-        Assert.Contains("\"APIKey\"", ex.Message);
-        Assert.Contains("api_keys", ex.Message);
-    }
-
-    // -- An object that emits no collection never claims a collection name ----------------
-    //
-    // fixtures/naming-conformance/already-plural-pluralize.json → shapeOnlyCases: an abstract
-    // or sourceless object gets no DbSet, route or finder, so a same-named concrete entity in
-    // another package is not a collision. crossPackageCollisionCases is the control.
-
-    public sealed record NamedObject(string Package, string Name, bool Abstract, bool Source);
+    public sealed record NamedObject(string Package, string Name, bool Abstract, bool Source, string? Schema = null, string? DbSetName = null);
 
     private static JsonElement NamingCorpus(string section)
     {
@@ -336,26 +263,82 @@ public class CSharpNamingTests
         !o.TryGetProperty("source", out var s) || s.GetBoolean());
 
     // Each object in its own package (one source file per package), declaring an `id` key.
-    private static IReadOnlyList<MetaObject> PackagedObjects(params NamedObject[] objects)
+    private static MetaRoot PackagedObjects(params NamedObject[] objects)
     {
         var sources = objects.Select((o, i) =>
         {
-            var abstractAttr = o.Abstract ? "\"abstract\": true, " : "";
+            var objAttrs = (o.Abstract ? "\"abstract\": true, " : "") + (o.DbSetName is { } d ? $"\"@dbSetName\": \"{d}\", " : "");
+            var schema = o.Schema is { } sc ? $@", ""@schema"": ""{sc}""" : "";
             var source = o.Source
-                ? $@"{{ ""source.rdb"": {{ ""@table"": ""{o.Package}_{o.Name.ToLowerInvariant()}"" }} }},"
+                ? $@"{{ ""source.rdb"": {{ ""@table"": ""{o.Name.ToLowerInvariant()}s""{schema} }} }},"
                 : "";
             var json = $@"{{ ""metadata.root"": {{ ""package"": ""{o.Package}"", ""children"": [
-                {{ ""object.entity"": {{ ""name"": ""{o.Name}"", {abstractAttr}""children"": [
+                {{ ""object.entity"": {{ ""name"": ""{o.Name}"", {objAttrs}""children"": [
                     {source}
                     {{ ""field.long"": {{ ""name"": ""id"" }} }},
                     {{ ""identity.primary"": {{ ""@fields"": ""id"" }} }}
                 ] }} }}
             ] }} }}";
-            return (MetaObjects.Loader.IMetaDataSource)new InMemoryStringSource(json, id: $"{o.Package}-{i}.json");
+            return (IMetaDataSource)new InMemoryStringSource(json, id: $"{o.Package}-{i}.json");
         }).ToList();
         var r = new MetaDataLoader().Load(sources);
-        Assert.Empty(r.Errors);
-        return r.Root.Objects();
+        Assert.Empty(r.Errors.Select(e => e.Code + ": " + e.Message));
+        return r.Root;
+    }
+
+    private static GenContext Ctx(MetaRoot root) => new()
+    {
+        Entities = root.Objects(),
+        Root = root,
+        Config = new GenConfig
+        {
+            OutDir = "/unused", Namespace = "Acme.Generated",
+            PackageNamespaces = new() { ["enterprise"] = "Acme.Enterprise", ["core"] = "Acme.Core" },
+        },
+    };
+
+    private static List<EmittedFile> Run(IGenerator g, MetaRoot root) => g.Generate(Ctx(root)).ToList();
+
+    private static Func<MetaObject, bool> InPackage(string pkg) =>
+        o => o.ResolutionKey().StartsWith(pkg + "::", StringComparison.Ordinal);
+
+    [Fact]
+    public void Distinct_plurals_share_one_context_and_one_routes_entry()
+    {
+        var root = MultiEntityRoot(("Post", false), ("Author", false), ("Category", false));
+        Run(new DbContextGenerator(), root);
+        Run(new RoutesGenerator(), root);
+    }
+
+    [Fact]
+    public void A_value_object_named_like_an_entitys_plural_claims_no_DbSet()
+    {
+        var root = MultiEntityRoot(("Address", false), ("Addresses", true));
+        Run(new DbContextGenerator(), root);
+        Run(new RoutesGenerator(), root);
+    }
+
+    public sealed record CollisionCase(string EntityA, string EntityB, string CollidesOn);
+
+    public static TheoryData<CollisionCase> NamingConformanceCollisionCases()
+    {
+        var data = new TheoryData<CollisionCase>();
+        foreach (var c in NamingCorpus("collisionCases").EnumerateArray())
+            data.Add(new CollisionCase(c.GetProperty("entityA").GetString()!, c.GetProperty("entityB").GetString()!,
+                c.GetProperty("collidesOn").GetString()!));
+        return data;
+    }
+
+    [Theory]
+    [MemberData(nameof(NamingConformanceCollisionCases))]
+    public void NamingConformance_collisionCases_are_refused_in_the_scope_they_share(CollisionCase c)
+    {
+        // One package, so one context and one routes entry: each pair collides on its DbSet
+        // name (Address/Addresses) or its route segment (ApiKey/APIKey).
+        var root = MultiEntityRoot((c.EntityA, false), (c.EntityB, false));
+        var ex = Record.Exception(() => { Run(new DbContextGenerator(), root); Run(new RoutesGenerator(), root); });
+        var refusal = Assert.IsType<InvalidOperationException>(ex);
+        Assert.Contains($"\"{c.CollidesOn}\"", refusal.Message);
     }
 
     public static TheoryData<string> ShapeOnlyCaseNotes()
@@ -368,25 +351,95 @@ public class CSharpNamingTests
 
     [Theory]
     [MemberData(nameof(ShapeOnlyCaseNotes))]
-    public void NamingConformance_anObjectThatEmitsNoCollectionClaimsNoName(string note)
+    public void NamingConformance_an_object_that_emits_nothing_claims_no_name(string note)
     {
         var c = NamingCorpus("shapeOnlyCases").EnumerateArray().Single(x => x.GetProperty("note").GetString() == note);
-        var shapeOnly = ReadObject(c.GetProperty("shapeOnly"));
-        var emitting = ReadObject(c.GetProperty("emitting"));
-        // In both orders: the first-seen object owns a name, so order must not matter.
-        CSharpNaming.AssertNoCollectionNameCollisions(PackagedObjects(shapeOnly, emitting));
-        CSharpNaming.AssertNoCollectionNameCollisions(PackagedObjects(emitting, shapeOnly));
+        foreach (var root in new[] {
+            PackagedObjects(ReadObject(c.GetProperty("shapeOnly")), ReadObject(c.GetProperty("emitting"))),
+            PackagedObjects(ReadObject(c.GetProperty("emitting")), ReadObject(c.GetProperty("shapeOnly"))) })
+        {
+            Run(new DbContextGenerator(), root);
+            Run(new RoutesGenerator(), root);
+        }
     }
 
     [Fact]
-    public void NamingConformance_twoEmittingEntitiesInTwoPackagesStillCollide()
+    public void NamingConformance_two_emitting_entities_in_one_context_are_refused_by_DbSet_name()
     {
         foreach (var c in NamingCorpus("crossPackageCollisionCases").EnumerateArray())
         {
-            var entities = PackagedObjects(ReadObject(c.GetProperty("entityA")), ReadObject(c.GetProperty("entityB")));
-            var ex = Assert.Throws<InvalidOperationException>(
-                () => CSharpNaming.AssertNoCollectionNameCollisions(entities));
-            Assert.Contains(c.GetProperty("collidesOn").GetString()!, ex.Message);
+            var root = PackagedObjects(ReadObject(c.GetProperty("entityA")), ReadObject(c.GetProperty("entityB")));
+            var ex = Assert.Throws<InvalidOperationException>(() => Run(new DbContextGenerator(), root));
+            Assert.Contains($"DbSet property \"{c.GetProperty("collidesOn").GetString()}\"", ex.Message);
+            Assert.Contains("@dbSetName", ex.Message);
         }
+    }
+
+    [Fact]
+    public void Two_emitting_entities_in_one_routes_entry_are_refused_by_segment()
+    {
+        var root = PackagedObjects(new("enterprise", "Payer", false, true, "enterprise"), new("core", "Payer", false, true, "core"));
+        var ex = Assert.Throws<InvalidOperationException>(() => Run(new RoutesGenerator(), root));
+        Assert.Contains("REST collection segment \"payers\"", ex.Message);
+    }
+
+    [Fact]
+    public void One_name_in_two_packages_two_schemas_two_contexts_and_two_route_entries_passes_schema_qualified()
+    {
+        var root = PackagedObjects(new("enterprise", "Payer", false, true, "enterprise"), new("core", "Payer", false, true, "core"));
+        foreach (var pkg in new[] { "enterprise", "core" })
+        {
+            var context = Assert.Single(Run(new DbContextGenerator { Include = InPackage(pkg) }, root)).Content;
+            Assert.Contains("DbSet<Payer> Payers", context);
+            Assert.NotEmpty(Run(new RoutesGenerator { Include = InPackage(pkg) }, root));
+        }
+        var entities = Run(new EntityGenerator(), root).Select(f => f.Content).ToList();
+        Assert.Contains(entities, c => c.Contains("[Table(\"payers\", Schema = \"enterprise\")]") && c.Contains("namespace Acme.Enterprise"));
+        Assert.Contains(entities, c => c.Contains("[Table(\"payers\", Schema = \"core\")]") && c.Contains("namespace Acme.Core"));
+    }
+
+    [Fact]
+    public void DbSetName_names_the_property_and_resolves_a_same_context_collision()
+    {
+        var root = PackagedObjects(
+            new("enterprise", "Payer", false, true, "enterprise", DbSetName: "EnterprisePayers"),
+            new("core", "Payer", false, true, "core"));
+        var context = Assert.Single(Run(new DbContextGenerator(), root)).Content;
+        Assert.Contains("EnterprisePayers { get; set; }", context);
+        Assert.Contains("Payers { get; set; }", context);
+    }
+
+    [Fact]
+    public void An_abstract_sourceless_shape_beside_a_concrete_entity_runs_end_to_end()
+    {
+        // The layered-model shape: enterprise::Payer is abstract and sourceless, core::Payer
+        // concrete. Through the real entry point, with the stock generators.
+        var root = PackagedObjects(new("enterprise", "Payer", true, false), new("core", "Payer", false, true, "core"));
+        var config = new GenConfig { OutDir = Path.Combine(Path.GetTempPath(), "mo-" + Guid.NewGuid().ToString("N")), Namespace = "Acme.Generated" };
+        try
+        {
+            CodegenRunner.Run(config, root, [new EntityGenerator(), new DbContextGenerator(), new RoutesGenerator(), new NamesGenerator()]);
+        }
+        finally
+        {
+            if (Directory.Exists(config.OutDir)) Directory.Delete(config.OutDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void A_view_mapping_carries_its_schema()
+    {
+        const string json = """
+            { "metadata.root": { "package": "acme", "children": [
+              { "object.projection": { "name": "PayerSummary", "children": [
+                { "source.rdb": { "@kind": "view", "@view": "v_payer_summary", "@schema": "reporting" } },
+                { "field.long": { "name": "id" } }
+              ] } }
+            ] } }
+            """;
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(json, id: "view.json")]);
+        Assert.Empty(r.Errors);
+        var context = Assert.Single(Run(new DbContextGenerator(), r.Root)).Content;
+        Assert.Contains(".ToView(\"v_payer_summary\", \"reporting\")", context);
     }
 }
