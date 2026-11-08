@@ -161,13 +161,22 @@ public class GeneratorGoldenTests
 
     internal static List<EmittedFile> GenerateRound2(bool shapes)
     {
+        var ctx = Round2Context(shapes);
+        return new DbContextGenerator().Generate(ctx)
+            .Concat(new EntityGenerator().Generate(ctx))
+            .Concat(new NamesGenerator().Generate(ctx))
+            .ToList();
+    }
+
+    internal static GenContext Round2Context(bool shapes)
+    {
         var r = new MetaDataLoader().Load(
         [
             new InMemoryStringSource(BasePackage, id: "golden-base.json"),
             new InMemoryStringSource(WorkPackage, id: "golden-work.json"),
         ]);
         Assert.Empty(r.Errors);
-        var ctx = new GenContext
+        return new GenContext
         {
             Entities = r.Root.Objects(), Root = r.Root,
             Config = new GenConfig
@@ -176,10 +185,6 @@ public class GeneratorGoldenTests
                 PackageNamespaces = new() { ["acme::base"] = "Acme.Base", ["acme::work"] = "Acme.Work" },
             },
         };
-        return new DbContextGenerator().Generate(ctx)
-            .Concat(new EntityGenerator().Generate(ctx))
-            .Concat(new NamesGenerator().Generate(ctx))
-            .ToList();
     }
 
     [Theory]

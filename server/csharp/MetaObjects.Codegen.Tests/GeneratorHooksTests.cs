@@ -18,6 +18,8 @@
 // the generator keeps them in, so a hook's result can be added to the body as it stands.
 
 using System.Text;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using MetaObjects.Codegen;
 using MetaObjects.Codegen.Generators;
 using MetaObjects.Loader;
@@ -129,6 +131,11 @@ public class GeneratorHooksTests
         protected override string? OwnedTypeConfig(string owner, MetaObject entity, MetaField field, GenContext ctx) { Calls.Add($"OwnedTypeConfig:{entity.Name}.{field.Name}"); return base.OwnedTypeConfig(owner, entity, field, ctx); }
         protected override IEnumerable<string> TphSubtypeFieldConfig(MetaObject root, MetaObject subtype, GenContext ctx) { Calls.Add($"TphSubtypeFieldConfig:{root.Name}>{subtype.Name}"); return base.TphSubtypeFieldConfig(root, subtype, ctx); }
         protected override IEnumerable<string> EntityConfigTrailer(MetaObject entity, GenContext ctx) { Calls.Add($"EntityConfigTrailer:{entity.Name}"); return base.EntityConfigTrailer(entity, ctx); }
+        protected override string ContextClassName(GenContext ctx) { Calls.Add("ContextClassName"); return base.ContextClassName(ctx); }
+        protected override string ContextNamespace(GenContext ctx) { Calls.Add("ContextNamespace"); return base.ContextNamespace(ctx); }
+        protected override bool EmitContextConstructor(GenContext ctx) { Calls.Add("EmitContextConstructor"); return base.EmitContextConstructor(ctx); }
+        protected override bool ContextIsPartial(GenContext ctx) { Calls.Add("ContextIsPartial"); return base.ContextIsPartial(ctx); }
+        protected override IEnumerable<string> ContextMemberLines(GenContext ctx) { Calls.Add("ContextMemberLines"); return base.ContextMemberLines(ctx); }
     }
 
     private sealed class RecordingEntity : EntityGenerator
@@ -138,6 +145,16 @@ public class GeneratorHooksTests
         protected override string PropertyClrType(MetaObject owner, MetaField field, GenContext ctx) { Calls.Add($"PropertyClrType:{owner.Name}.{field.Name}"); return base.PropertyClrType(owner, field, ctx); }
         protected override string? PropertyInitializer(MetaObject owner, MetaField field, GenContext ctx) { Calls.Add($"PropertyInitializer:{owner.Name}.{field.Name}"); return base.PropertyInitializer(owner, field, ctx); }
         protected override EmittedFile? EmitValueObjectPoco(MetaObject vo, GenContext ctx) { Calls.Add($"EmitValueObjectPoco:{vo.Name}"); return base.EmitValueObjectPoco(vo, ctx); }
+        protected override IEnumerable<string> ValueObjectMemberAttributes(MetaObject vo, MetaField f, GenContext ctx) { Calls.Add($"ValueObjectMemberAttributes:{vo.Name}.{f.Name}"); return base.ValueObjectMemberAttributes(vo, f, ctx); }
+        protected override IEnumerable<string> ColumnAttributeArguments(MetaObject owner, MetaField f, GenContext ctx) { Calls.Add($"ColumnAttributeArguments:{owner.Name}.{f.Name}"); return base.ColumnAttributeArguments(owner, f, ctx); }
+        protected override IEnumerable<string> TphDerivedTypeAttributes(MetaObject root, GenContext ctx) { Calls.Add($"TphDerivedTypeAttributes:{root.Name}"); return base.TphDerivedTypeAttributes(root, ctx); }
+    }
+
+    private sealed class RecordingNames : NamesGenerator
+    {
+        public readonly List<string> Calls = [];
+
+        protected override EmittedFile? Render(MetaObject entity, GenContext ctx, bool fragment) { Calls.Add($"Render:{entity.Name}:{fragment}"); return base.Render(entity, ctx, fragment); }
     }
 
     // ------------------------------------------------------------ default output
@@ -152,6 +169,10 @@ public class GeneratorHooksTests
         var hooked = Entities(new RecordingEntity(), root);
         Assert.Equal(stock.Select(f => f.Path), hooked.Select(f => f.Path));
         Assert.Equal(stock.Select(f => f.Content), hooked.Select(f => f.Content));
+
+        var names = new NamesGenerator().Generate(Ctx(root)).ToList();
+        var hookedNames = new RecordingNames().Generate(Ctx(root)).ToList();
+        Assert.Equal(names.Select(f => (f.Path, f.Content)), hookedNames.Select(f => (f.Path, f.Content)));
     }
 
     // ------------------------------------------------------------ is_called_for_every
@@ -630,5 +651,351 @@ public class GeneratorHooksTests
         Assert.Equal(calls.Length, defs.Count);
         for (var i = 0; i < defs.Count; i++)
             Assert.Equal($"    private void ConfigureModel{i + 1:D2}(ModelBuilder modelBuilder)", defs[i]);
+    }
+
+    // ============================================================ the second round of hooks
+
+    // ------------------------------------------------------------ is_called_for_every
+
+    [Fact]
+    public void ValueObjectMemberAttributes_is_called_for_every_value_object_member()
+    {
+        var g = new RecordingEntity();
+        Entities(g, Load());
+        Assert.Equal(
+            ["ValueObjectMemberAttributes:Address.street", "ValueObjectMemberAttributes:Address.kind"],
+            g.Calls.Where(c => c.StartsWith("ValueObjectMemberAttributes:")));
+    }
+
+    [Fact]
+    public void ColumnAttributeArguments_is_called_for_every_column_attribute()
+    {
+        var root = Load();
+        var g = new RecordingEntity();
+        var files = Entities(g, root);
+        var calls = g.Calls.Where(c => c.StartsWith("ColumnAttributeArguments:")).ToList();
+        // One call per [Column(...)] the stock output carries, entity, TPH subtype and map alike.
+        var columns = files.Sum(f => Lines(f.Content).Count(l => l.TrimStart().StartsWith("[Column(")));
+        Assert.Equal(columns, calls.Count);
+        foreach (var expected in new[] { "Auth.id", "Auth.type", "Auth.uid", "Auth.statuses", "Auth.labels", "BridgeAuth.quantity", "BridgeAuth.tiers" })
+            Assert.Contains($"ColumnAttributeArguments:{expected}", calls);
+        // A value object's members carry no [Column], so none is asked about.
+        Assert.DoesNotContain(calls, c => c.StartsWith("ColumnAttributeArguments:Address."));
+    }
+
+    [Fact]
+    public void TphDerivedTypeAttributes_is_called_for_every_tph_base()
+    {
+        var g = new RecordingEntity();
+        Entities(g, Load());
+        Assert.Equal(["TphDerivedTypeAttributes:Auth"], g.Calls.Where(c => c.StartsWith("TphDerivedTypeAttributes:")));
+    }
+
+    [Fact]
+    public void ContextClassName_is_called_for_every_context()
+    {
+        var g = new RecordingDb();
+        Db(g, Load());
+        Assert.Single(g.Calls, c => c == "ContextClassName");
+    }
+
+    [Fact]
+    public void ContextNamespace_is_called_for_every_context()
+    {
+        var g = new RecordingDb();
+        Db(g, Load());
+        Assert.Single(g.Calls, c => c == "ContextNamespace");
+    }
+
+    [Fact]
+    public void EmitContextConstructor_is_called_for_every_context()
+    {
+        var g = new RecordingDb();
+        Db(g, Load());
+        Assert.Single(g.Calls, c => c == "EmitContextConstructor");
+    }
+
+    [Fact]
+    public void ContextIsPartial_is_called_for_every_context()
+    {
+        var g = new RecordingDb();
+        Db(g, Load());
+        Assert.Single(g.Calls, c => c == "ContextIsPartial");
+    }
+
+    [Fact]
+    public void ContextMemberLines_is_called_for_every_context()
+    {
+        var g = new RecordingDb();
+        Db(g, Load());
+        Assert.Single(g.Calls, c => c == "ContextMemberLines");
+    }
+
+    [Fact]
+    public void Render_is_called_for_every_names_artifact()
+    {
+        var files = GeneratorGoldenTests.GenerateRound2(shapes: true);
+        var g = new RecordingNames();
+        var emitted = g.Generate(GeneratorGoldenTests.Round2Context(shapes: true)).ToList();
+        Assert.Equal(files.Where(f => f.Path.EndsWith("Names.g.cs")).Select(f => f.Path).Order(), emitted.Select(f => f.Path).Order());
+        // Pass 1 (the participants) and pass 2 (the bases they extend, as fragments).
+        Assert.Contains("Render:Workflow:False", g.Calls);
+        Assert.Contains("Render:BaseEntity:True", g.Calls);
+        Assert.Equal(emitted.Count, g.Calls.Count);
+    }
+
+    // ------------------------------------------------------------ Override_..._changes_only_its_lines
+
+    private sealed class NoVoAttributesEntity : EntityGenerator
+    {
+        protected override IEnumerable<string> ValueObjectMemberAttributes(MetaObject vo, MetaField f, GenContext ctx) => [];
+    }
+
+    [Fact]
+    public void Override_of_ValueObjectMemberAttributes_changes_only_its_lines()
+    {
+        var root = Load();
+        var stock = Entities(new EntityGenerator(), root);
+        var hooked = Entities(new NoVoAttributesEntity(), root);
+        var (removed, added) = Diff(
+            stock.Single(f => f.Path == "Address.g.cs").Content,
+            hooked.Single(f => f.Path == "Address.g.cs").Content);
+        Assert.Empty(added);
+        Assert.Equal(["    [JsonPropertyName(\"street\")]", "    [JsonPropertyName(\"kind\")]"], removed);
+        foreach (var f in stock.Where(f => f.Path != "Address.g.cs"))
+            Assert.Equal(f.Content, hooked.Single(x => x.Path == f.Path).Content);
+    }
+
+    private sealed class TypeNameEntity : EntityGenerator
+    {
+        protected override IEnumerable<string> ColumnAttributeArguments(MetaObject owner, MetaField f, GenContext ctx) =>
+            f.Attr("dbColumnType") is string t
+                ? base.ColumnAttributeArguments(owner, f, ctx).Append($"TypeName = \"{t}\"")
+                : base.ColumnAttributeArguments(owner, f, ctx);
+    }
+
+    [Fact]
+    public void Override_of_ColumnAttributeArguments_changes_only_its_lines()
+    {
+        var root = Load();
+        var stock = Entities(new EntityGenerator(), root);
+        var hooked = Entities(new TypeNameEntity(), root);
+        var (removed, added) = Diff(
+            stock.Single(f => f.Path == "Auth.g.cs").Content,
+            hooked.Single(f => f.Path == "Auth.g.cs").Content);
+        Assert.Equal(["    [Column(\"uid\")]"], removed);
+        Assert.Equal(["    [Column(\"uid\", TypeName = \"uuid\")]"], added);
+        foreach (var f in stock.Where(f => f.Path != "Auth.g.cs"))
+            Assert.Equal(f.Content, hooked.Single(x => x.Path == f.Path).Content);
+    }
+
+    private sealed class NoColumnEntity : EntityGenerator
+    {
+        protected override IEnumerable<string> ColumnAttributeArguments(MetaObject owner, MetaField f, GenContext ctx) =>
+            f.Name == "note" ? [] : base.ColumnAttributeArguments(owner, f, ctx);
+    }
+
+    [Fact]
+    public void ColumnAttributeArguments_returning_none_leaves_the_attribute_out()
+    {
+        var root = Load();
+        var (removed, added) = Diff(
+            Entities(new EntityGenerator(), root).Single(f => f.Path == "Auth.g.cs").Content,
+            Entities(new NoColumnEntity(), root).Single(f => f.Path == "Auth.g.cs").Content);
+        Assert.Empty(added);
+        Assert.Equal(["    [Column(\"note\")]"], removed);
+    }
+
+    private sealed class NoDerivedTypesEntity : EntityGenerator
+    {
+        protected override IEnumerable<string> TphDerivedTypeAttributes(MetaObject root, GenContext ctx) => [];
+    }
+
+    [Fact]
+    public void Override_of_TphDerivedTypeAttributes_changes_only_its_lines()
+    {
+        var root = Load();
+        var stock = Entities(new EntityGenerator(), root);
+        var hooked = Entities(new NoDerivedTypesEntity(), root);
+        var (removed, added) = Diff(
+            stock.Single(f => f.Path == "Auth.g.cs").Content,
+            hooked.Single(f => f.Path == "Auth.g.cs").Content);
+        Assert.Empty(added);
+        Assert.Equal(["[System.Text.Json.Serialization.JsonDerivedType(typeof(BridgeAuth))]"], removed);
+        foreach (var f in stock.Where(f => f.Path != "Auth.g.cs"))
+            Assert.Equal(f.Content, hooked.Single(x => x.Path == f.Path).Content);
+    }
+
+    private sealed class NamedDb : DbContextGenerator
+    {
+        protected override string ContextClassName(GenContext ctx) => "DefaultContext";
+    }
+
+    [Fact]
+    public void Override_of_ContextClassName_changes_only_its_lines()
+    {
+        var root = Load();
+        var (removed, added) = Diff(Db(new DbContextGenerator(), root), Db(new NamedDb(), root));
+        Assert.Equal(
+            ["public class AppDbContext : DbContext", "    public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }"],
+            removed);
+        Assert.Equal(
+            ["public class DefaultContext : DbContext", "    public DefaultContext(DbContextOptions<DefaultContext> options) : base(options) { }"],
+            added);
+    }
+
+    [Fact]
+    public void A_set_ContextTypeName_names_the_context()
+    {
+        var root = Load();
+        var ctx = new GenContext
+        {
+            Entities = root.Objects(), Root = root,
+            Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", ContextTypeName = "ShopContext" },
+        };
+        var src = Assert.Single(new DbContextGenerator().Generate(ctx)).Content;
+        Assert.Contains("public class ShopContext : DbContext", src);
+        Assert.Contains("    public ShopContext(DbContextOptions<ShopContext> options) : base(options) { }", src);
+        Assert.DoesNotContain("AppDbContext", src);
+    }
+
+    private sealed class NamespaceDb : DbContextGenerator
+    {
+        protected override string ContextNamespace(GenContext ctx) => "Acme.Data";
+    }
+
+    [Fact]
+    public void Override_of_ContextNamespace_changes_only_its_lines()
+    {
+        var root = Load();
+        var (removed, added) = Diff(Db(new DbContextGenerator(), root), Db(new NamespaceDb(), root));
+        Assert.Equal(["namespace Acme.Generated;"], removed);
+        // The entities stay where they are, so the context now needs their namespace.
+        Assert.Equal(["using Acme.Generated;", "namespace Acme.Data;"], added);
+    }
+
+    private sealed class NoCtorDb : DbContextGenerator
+    {
+        protected override bool EmitContextConstructor(GenContext ctx) => false;
+    }
+
+    [Fact]
+    public void Override_of_EmitContextConstructor_changes_only_its_lines()
+    {
+        var root = Load();
+        var stock = Db(new DbContextGenerator(), root);
+        var src = Db(new NoCtorDb(), root);
+        var (removed, added) = Diff(stock, src);
+        Assert.Empty(added);
+        Assert.Equal(["    public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }", ""], removed);
+        var body = Lines(src);
+        var open = Array.IndexOf(body, "public class AppDbContext : DbContext");
+        Assert.Equal("{", body[open + 1]);
+        Assert.StartsWith("    public DbSet<", body[open + 2]);
+    }
+
+    private sealed class PartialDb : DbContextGenerator
+    {
+        protected override bool ContextIsPartial(GenContext ctx) => true;
+    }
+
+    [Fact]
+    public void Override_of_ContextIsPartial_changes_only_its_lines()
+    {
+        var root = Load();
+        var (removed, added) = Diff(Db(new DbContextGenerator(), root), Db(new PartialDb(), root));
+        Assert.Equal(["public class AppDbContext : DbContext"], removed);
+        Assert.Equal(["public partial class AppDbContext : DbContext"], added);
+    }
+
+    private sealed class MembersDb : DbContextGenerator
+    {
+        protected override IEnumerable<string> ContextMemberLines(GenContext ctx) =>
+            ["    partial void OnModelCreatingExtensions(ModelBuilder modelBuilder);"];
+    }
+
+    [Fact]
+    public void Override_of_ContextMemberLines_changes_only_its_lines()
+    {
+        var root = Load();
+        var stock = Db(new DbContextGenerator(), root);
+        var src = Db(new MembersDb(), root);
+        var (removed, added) = Diff(stock, src);
+        Assert.Empty(removed);
+        Assert.Equal(["    partial void OnModelCreatingExtensions(ModelBuilder modelBuilder);", ""], added);
+        // After the constructor and its blank line, before the DbSets.
+        var body = Lines(src);
+        var member = Array.IndexOf(body, "    partial void OnModelCreatingExtensions(ModelBuilder modelBuilder);");
+        Assert.StartsWith("    public AppDbContext(", body[member - 2]);
+        Assert.Equal("", body[member + 1]);
+        Assert.StartsWith("    public DbSet<", body[member + 2]);
+    }
+
+    private sealed class NoWorkflowNames : NamesGenerator
+    {
+        protected override EmittedFile? Render(MetaObject entity, GenContext ctx, bool fragment) =>
+            entity.Name == "Workflow" ? null : base.Render(entity, ctx, fragment);
+    }
+
+    [Fact]
+    public void Override_of_Render_changes_only_its_lines()
+    {
+        var ctx = GeneratorGoldenTests.Round2Context(shapes: true);
+        var stock = new NamesGenerator().Generate(ctx).ToList();
+        var hooked = new NoWorkflowNames().Generate(ctx).ToList();
+        Assert.Contains(stock, f => f.Path == "WorkflowNames.g.cs");
+        Assert.DoesNotContain(hooked, f => f.Path == "WorkflowNames.g.cs");
+        Assert.Equal(
+            stock.Where(f => f.Path != "WorkflowNames.g.cs").Select(f => (f.Path, f.Content)),
+            hooked.Select(f => (f.Path, f.Content)));
+    }
+
+    // ------------------------------------------------------------ the two fixes
+
+    // <Entity>Names extends <Base>Names, and the base's artifact lands in the BASE's namespace. With
+    // no `using` for it the subtype's file did not compile (CS0246 on the base class name).
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Names_for_cross_namespace_base_compiles(bool shapes)
+    {
+        var files = GeneratorGoldenTests.GenerateRound2(shapes);
+        var workflow = files.Single(f => f.Path == "WorkflowNames.g.cs").Content;
+        Assert.Contains("public abstract class WorkflowNames : BaseEntityNames", workflow);
+        Assert.Contains("using Acme.Base;", workflow);
+        Assert.Contains("namespace Acme.Base;", files.Single(f => f.Path == "BaseEntityNames.g.cs").Content);
+        // A base in the SAME namespace needs none.
+        Assert.DoesNotContain("using Acme.Work;", files.Single(f => f.Path == "CallJobNames.g.cs").Content);
+
+        var comp = CSharpCompilation.Create(
+            "names_xns_" + Guid.NewGuid().ToString("N"),
+            files.Select(f => CSharpSyntaxTree.ParseText(f.Content, new CSharpParseOptions(LanguageVersion.CSharp12))),
+            DbContextCompileTests.BuildReferences(),
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        var errors = comp.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error)
+            .Select(d => $"{d.Id}: {d.GetMessage()}").ToList();
+        Assert.True(errors.Count == 0, string.Join("\n", errors));
+    }
+
+    // The TPH pass read only the concrete subtypes' own identities, so a reference an abstract
+    // intermediate declares was never configured. It is, once, on the intermediate's own builder
+    // when the intermediate is a class, else on each concrete subtype it was folded into.
+    [Fact]
+    public void Reference_on_abstract_tph_intermediate_is_configured()
+    {
+        const string onCaseJob = "        modelBuilder.Entity<CaseJob>().HasOne<Workflow>().WithMany().HasForeignKey(e => e.WorkflowId).OnDelete(DeleteBehavior.NoAction);";
+        var shapes = Lines(GeneratorGoldenTests.GenerateRound2(shapes: true).Single(f => f.Path == "AppDbContext.g.cs").Content);
+        Assert.Single(shapes, l => l == onCaseJob);
+        Assert.DoesNotContain(shapes, l => l.Contains("Entity<CallJob>().HasOne<Workflow>()"));
+
+        var folded = Lines(GeneratorGoldenTests.GenerateRound2(shapes: false).Single(f => f.Path == "AppDbContext.g.cs").Content);
+        Assert.DoesNotContain(folded, l => l.Contains("Entity<CaseJob>()"));
+        foreach (var leaf in new[] { "CallJob", "MailJob" })
+            Assert.Single(folded, l => l == onCaseJob.Replace("Entity<CaseJob>", $"Entity<{leaf}>"));
+        Assert.DoesNotContain(folded, l => l.Contains("Entity<PlainJob>().HasOne<Workflow>().WithMany().HasForeignKey(e => e.WorkflowId)"));
+
+        var g = new RecordingDb();
+        g.Generate(GeneratorGoldenTests.Round2Context(shapes: true)).ToList();
+        Assert.Single(g.Calls, c => c == "ReferenceConfig:CaseJob.refWorkflow");
     }
 }
