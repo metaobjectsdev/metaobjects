@@ -257,6 +257,7 @@ public static class CodegenCli
             // type, in a different assembly, once ejected — still satisfies the gate.
             IncludeNames = includeNames ?? generators.Any(g => g.Name == "names"),
             SweepOrphans = sweepOrphans,
+            Dialect = MetaObjects.Config.NeutralConfig.Read(root, validateNaming: false)?.MigrateDialect,
         };
 
         CodegenRunner.RunResult result;

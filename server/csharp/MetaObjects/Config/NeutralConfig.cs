@@ -72,6 +72,9 @@ public sealed class NeutralConfig
     /// <summary>FR-023 — <c>migrate.scope</c>, or null when the project declares none.</summary>
     public IReadOnlyList<string>? MigrateScope { get; }
 
+    /// <summary>`migrate.dialect`: the SQL dialect the project's schema is built for, or null.</summary>
+    public string? MigrateDialect { get; private init; }
+
     /// <summary>
     /// The directory holding the <c>.metaobjects/</c> folder this config was read from — where the lock and
     /// the committed dependency snapshots live beside it.
@@ -128,6 +131,13 @@ public sealed class NeutralConfig
     /// raise-don't-degrade behavior is), so callers should match on message,
     /// not code, for this path.
     public static NeutralConfig? Read(string configDir) => Read(configDir, validateNaming: true);
+
+    /// `migrate.dialect`, as the TypeScript `meta migrate` reads it; null when absent or not a string.
+    private static string? ReadMigrateDialect(JsonElement root) =>
+        root.TryGetProperty("migrate", out var migrate) && migrate.ValueKind == JsonValueKind.Object
+        && migrate.TryGetProperty("dialect", out var d) && d.ValueKind == JsonValueKind.String
+            ? d.GetString()
+            : null;
 
     /// <summary>
     /// As <see cref="Read(string)"/>; with <paramref name="validateNaming"/> false a
@@ -307,7 +317,7 @@ public sealed class NeutralConfig
             // lists read above, are IGNORED by design — see the file header.
             return new NeutralConfig(specs, libraries, new PhysicalNaming(columns, tables), ReadWire(root, path),
                 ReadCSharp(root, path, configDir), dependencies, scopeInclude, migrateScope,
-                Path.GetFullPath(configDir)) { Enums = ReadEnums(root, path) };
+                Path.GetFullPath(configDir)) { Enums = ReadEnums(root, path), MigrateDialect = ReadMigrateDialect(root) };
         }
     }
 

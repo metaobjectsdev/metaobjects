@@ -409,7 +409,9 @@ Npgsql (a fresh database begins there). A context that declares one also gets
 is wired in `OnConfiguring` when the provider is Npgsql: a start-only change is written as
 `ALTER TABLE … ALTER COLUMN … SET START WITH n`, never `RESTART`, so the current value does not
 move under ids live rows hold. That file references `Npgsql.EntityFrameworkCore.PostgreSQL` at
-compile time.
+compile time, so it (and the start in the model) is emitted only for a project whose
+`.metaobjects/config.json` names `"migrate": { "dialect": "postgres" }`. Any other project gets
+neither, with a warning, and never needs the Npgsql package.
 
 ### Decimals and null members on the wire
 

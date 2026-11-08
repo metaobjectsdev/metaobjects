@@ -338,8 +338,9 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
 - **C#: `identity.primary @sequenceStart` reaches the EF model, and a changed start never
   restarts** (ruling R36). On Npgsql a fresh database's identity begins at `@sequenceStart`.
   A context that declares one routes Npgsql migrations through a generated
-  `IdentityStartMigrationsSqlGenerator` (it references Npgsql at compile time, and is emitted
-  only for such a model), which writes a start-only change as `SET START WITH n`: Npgsql's own
+  `IdentityStartMigrationsSqlGenerator` (it references Npgsql at compile time, so it and the start
+  are emitted only for a project whose `migrate.dialect` is `postgres`; any other project gets a
+  warning and needs no Npgsql package), which writes a start-only change as `SET START WITH n`: Npgsql's own
   generator writes `RESTART WITH n`, which hands out ids live rows already hold. The current value
   never moves. Not yet in the other ports; see `docs/CONFORMANCE.md`, "Split coverage".
 - **C#: the EF model carries the index vocabulary and `@description`.** A field's `@unique`, an

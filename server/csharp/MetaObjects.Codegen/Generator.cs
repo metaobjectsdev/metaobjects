@@ -189,6 +189,15 @@ public sealed record GenConfig
     public string ContextTypeName { get; init; } = "AppDbContext";
 
     /// <summary>
+    /// The project's SQL dialect (<c>.metaobjects/config.json</c> <c>migrate.dialect</c>:
+    /// <c>postgres</c>, <c>sqlite</c>, <c>mysql</c>, <c>d1</c>), or <c>null</c> when it names none.
+    /// Read only where generated code must bind one provider at compile time: the
+    /// <c>@sequenceStart</c> migrations generator subclasses Npgsql's, so it is emitted for
+    /// <c>postgres</c> alone.
+    /// </summary>
+    public string? Dialect { get; init; }
+
+    /// <summary>
     /// The C# property name of a field, for every generator that names one: the entity and
     /// value-object classes, the composite <c>[PrimaryKey]</c>, the DbContext's model
     /// configuration, the reverse finders and the routes. <c>null</c>, the default, is the

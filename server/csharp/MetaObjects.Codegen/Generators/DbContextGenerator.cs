@@ -206,7 +206,7 @@ public class DbContextGenerator : IGenerator
             EmitFieldTypeConfig(owner, e, configFields, ctx, modelLines, jsonbObjectsOnly: false);
             EmitShapeInheritedFacets(owner, e, configFields, ctx, modelLines);
             EmitDefaultValueConfig(e, configFields, ctx, modelLines);
-            EmitIdentityStartConfig(owner, e, modelLines);
+            if (IdentityStartOn(ctx)) EmitIdentityStartConfig(owner, e, modelLines);
             EmitCommentConfig(owner, e, configFields, modelLines);
             EmitIndexConfig(owner, e, ctx, modelLines);
 
@@ -334,7 +334,12 @@ public class DbContextGenerator : IGenerator
         // three emission sites, and had already been wrong twice: it undercounted them, and it
         // did not model jsonbObjectsOnly suppressing the flattened arm on a read model.
         if (modelLines.Any(l => l.Contains(MapJsonbHelperName))) EmitMapJsonbHelper(sb);
-        var identityStart = objects.Any(o => IdentityStartOf(o) is not null);
+        var declaresStart = objects.Any(o => IdentityStartOf(o) is not null);
+        var identityStart = declaresStart && IdentityStartOn(ctx);
+        if (declaresStart && !identityStart)
+            ctx.Warn($"{Name}: @sequenceStart is not in the EF model: the project names no Postgres " +
+                "dialect (.metaobjects/config.json migrate.dialect: \"postgres\"), and the generator that keeps a " +
+                "changed start from restarting the sequence binds Npgsql. meta migrate still creates the start.");
         if (identityStart)
         {
             // Npgsql's migrations go through the generator that never restarts an identity.
@@ -880,6 +885,14 @@ public class DbContextGenerator : IGenerator
 
     private const string NpgsqlIdentityOptionsAnnotation = "Npgsql:IdentitySequenceOptions";
     private const string IdentityStartGeneratorName = "IdentityStartMigrationsSqlGenerator";
+
+    /// <summary>
+    /// Whether this run emits <c>@sequenceStart</c>: the project's dialect is Postgres. The
+    /// no-restart generator subclasses Npgsql's, so a project on any other dialect, or naming
+    /// none, gets neither it nor the start in its model, and a migration can never RESTART.
+    /// </summary>
+    private static bool IdentityStartOn(GenContext ctx) =>
+        string.Equals(ctx.Config.Dialect, "postgres", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>The <c>@sequenceStart</c> of an entity's single-field increment key, or null.</summary>
     private static (MetaField Field, long Value)? IdentityStartOf(MetaObject entity)

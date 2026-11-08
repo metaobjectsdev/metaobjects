@@ -727,7 +727,8 @@ public sealed class EfModelGapsTests
     """;
 
     private static GeneratedEfModel StartModel(long start) =>
-        GeneratedEfModel.Compile(StartVocabularyModel.Replace("__START__", start.ToString()), "Acme.Start" + start);
+        GeneratedEfModel.Compile(StartVocabularyModel.Replace("__START__", start.ToString()), "Acme.Start" + start,
+            c => c with { Dialect = "postgres" });
 
     private static string MigrationSql(GeneratedEfModel from, GeneratedEfModel to)
     {
