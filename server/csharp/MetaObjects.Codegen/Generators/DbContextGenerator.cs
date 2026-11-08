@@ -157,9 +157,16 @@ public class DbContextGenerator : IGenerator
             // ordinal default, an int-backed array would read its stored ints as ORDINALS and
             // silently name the wrong members, and a string-backed one would read text[] as int[].
             foreach (var f in p.Fields().Where(f => f.SubType == FIELD_SUBTYPE_ENUM))
+            {
+                // An override that returns null for a field leaves it unconverted: no line.
+                if (EnumConversionCall(name, p, f, ctx) is not { } conversion)
+                {
+                    continue;
+                }
                 modelLines.Add(f.ResolvedIsArray()
-                    ? $"        modelBuilder.Entity<{name}>().PrimitiveCollection(x => x.{PropertyName(f)}).ElementType().{EnumConversionCall(name, p, f, ctx)};"
-                    : $"        modelBuilder.Entity<{name}>().Property(x => x.{PropertyName(f)}).{EnumConversionCall(name, p, f, ctx)};");
+                    ? $"        modelBuilder.Entity<{name}>().PrimitiveCollection(x => x.{PropertyName(f)}).ElementType().{conversion};"
+                    : $"        modelBuilder.Entity<{name}>().Property(x => x.{PropertyName(f)}).{conversion};");
+            }
             // A field.map column on a view needs its jsonb mapping for the SAME reason:
             // EntityGenerator emits the Dictionary property for a projection too, so without
             // this loop the property carries no column type and no converter -- only an
@@ -403,17 +410,26 @@ public class DbContextGenerator : IGenerator
         // Materialized once: a hook may enumerate lazily, and each is asked exactly once per context.
         var preamble = ContextPreambleLines(ctx).ToList();
         var trailer = ContextTrailerLines(ctx).ToList();
-        if (modelLines.Count == 0 && preamble.Count == 0 && trailer.Count == 0 && !AlwaysEmitOnModelCreating(ctx)) return;
+        if (modelLines.Count == 0 && preamble.Count == 0 && trailer.Count == 0 && !AlwaysEmitOnModelCreating(ctx))
+        {
+            return;
+        }
         sb.AppendLine();
         sb.AppendLine("    protected override void OnModelCreating(ModelBuilder modelBuilder)");
         sb.AppendLine("    {");
         // Order is part of the contract: preamble first, the model lines (or the ConfigureModelNN
         // calls that stand for them) in order, trailer last.
-        foreach (var line in preamble) sb.AppendLine(line);
+        foreach (var line in preamble)
+        {
+            sb.AppendLine(line);
+        }
         if (modelLines.Count <= ModelConfigChunkSize)
         {
             foreach (var line in modelLines) sb.AppendLine(line);
-            foreach (var line in trailer) sb.AppendLine(line);
+            foreach (var line in trailer)
+            {
+                sb.AppendLine(line);
+            }
             sb.AppendLine("    }");
             return;
         }
@@ -422,7 +438,10 @@ public class DbContextGenerator : IGenerator
         {
             sb.AppendLine($"        ConfigureModel{i + 1:D2}(modelBuilder);");
         }
-        foreach (var line in trailer) sb.AppendLine(line);
+        foreach (var line in trailer)
+        {
+            sb.AppendLine(line);
+        }
         sb.AppendLine("    }");
         for (var i = 0; i < chunks.Count; i++)
         {
@@ -444,6 +463,9 @@ public class DbContextGenerator : IGenerator
     /// Hook — complete lines (8-space indent included, as <c>modelLines</c> are) placed FIRST in
     /// <c>OnModelCreating</c>, before any model configuration or <c>ConfigureModelNN</c> call.
     /// Default none. An adopter returns <c>base.OnModelCreating(modelBuilder);</c> here.
+    /// These lines are NOT scanned when the file decides whether it needs the <c>PropertySaveBehavior</c>
+    /// using or the <c>MapJsonb</c>, <c>UnmappedEnum</c> and <c>DurationInterval</c> helpers: that decision reads the
+    /// entity model lines only, so a line here that depends on one of them must bring it itself.
     /// </summary>
     protected virtual IEnumerable<string> ContextPreambleLines(GenContext ctx) => [];
 
@@ -451,6 +473,7 @@ public class DbContextGenerator : IGenerator
     /// Hook — complete lines placed LAST in <c>OnModelCreating</c>, after the model configuration
     /// (or after the <c>ConfigureModelNN</c> calls when the model is split). Default none. An
     /// adopter returns a partial extension hook call here.
+    /// Like the preamble, these lines are not scanned for using / helper gating.
     /// </summary>
     protected virtual IEnumerable<string> ContextTrailerLines(GenContext ctx) => [];
 
@@ -631,7 +654,9 @@ public class DbContextGenerator : IGenerator
         MetaObject entity, IEnumerable<MetaField> fields, GenContext ctx, List<string> modelLines)
     {
         foreach (var f in fields)
+        {
             modelLines.AddRange(DefaultValueConfig(entity, f, ctx));
+        }
     }
 
     /// <summary>
@@ -645,12 +670,23 @@ public class DbContextGenerator : IGenerator
     {
         var className = CSharpNaming.Pascal(entity.Name);
         var pk = entity.PrimaryIdentity()?.Fields ?? [];
-        if (f.Default is not { } raw || f.ResolvedIsArray() || pk.Contains(f.Name)) return [];
-        if (CSharpNaming.DbColumnTypeClrOverride(f) is not null) return [];
+        if (f.Default is not { } raw || f.ResolvedIsArray() || pk.Contains(f.Name))
+        {
+            return [];
+        }
+        if (CSharpNaming.DbColumnTypeClrOverride(f) is not null)
+        {
+            return [];
+        }
         var lhs = $"        modelBuilder.Entity<{className}>().Property(x => x.{PropertyName(f)})";
         if (DefaultLiteral(className, entity, f, raw, ctx.Config) is { } literal)
+        {
             return [$"{lhs}.HasDefaultValue({literal}).HasSentinel({literal});"];
-        if (!CSharpNaming.IsRequired(entity, f) || DefaultSql(f, raw) is not { } sql) return [];
+        }
+        if (!CSharpNaming.IsRequired(entity, f) || DefaultSql(f, raw) is not { } sql)
+        {
+            return [];
+        }
         return [$"{lhs}.HasDefaultValueSql(\"{CSharpNaming.CSharpStringLiteral(sql)}\");"];
     }
 
@@ -729,23 +765,33 @@ public class DbContextGenerator : IGenerator
     protected virtual IEnumerable<string> TphSubtypeFieldConfig(MetaObject root, MetaObject subtype, GenContext ctx)
     {
         var tph = TphPlanBuilder.For(root, ctx.Root);
-        if (tph is null) return [];
+        if (tph is null)
+        {
+            return [];
+        }
         var concrete = new HashSet<MetaObject>(tph.Subtypes.Select(st => st.Entity));
         // The nearest ancestor already in the EF model: a concrete subtype, else the root.
         var cursor = subtype.SuperData as MetaObject;
         while (cursor is not null && cursor != root && !concrete.Contains(cursor))
+        {
             cursor = cursor.SuperData as MetaObject;
+        }
         var inherited = new HashSet<string>((cursor ?? root).Fields().Select(f => f.Name), StringComparer.Ordinal);
         var own = subtype.Fields().Where(f => !inherited.Contains(f.Name)).ToList();
-        if (own.Count == 0) return [];
+        if (own.Count == 0)
+        {
+            return [];
+        }
 
         var lines = new List<string>();
         var cls = CSharpNaming.Pascal(subtype.Name);
         EmitFieldTypeConfig(cls, subtype, own, ctx, lines, jsonbObjectsOnly: false);
         EmitDefaultValueConfig(subtype, own, ctx, lines);
         foreach (var f in own.Where(f => !f.ResolvedIsArray() && f.Mutability != MUTABILITY_READ_WRITE))
+        {
             lines.Add(
                 $"        modelBuilder.Entity<{cls}>().Property(x => x.{PropertyName(f)}).Metadata.SetAfterSaveBehavior(PropertySaveBehavior.Ignore);");
+        }
         return lines;
     }
 
@@ -827,13 +873,19 @@ public class DbContextGenerator : IGenerator
         MetaObject entity, MetaReferenceIdentity reference, GenContext ctx)
     {
         var owner = CSharpNaming.Pascal(entity.Name);
-        if (reference.TargetEntity is null) return [];
+        if (reference.TargetEntity is null)
+        {
+            return [];
+        }
         var target = NamingRefs.RefTarget(reference, IDENTITY_REFERENCE_ATTR_REFERENCES) as MetaObject;
         if (target is null || !target.IsEntity() || !InstanceArtifacts.EmitsInstanceArtifacts(target))
             return [];
 
         var fkFields = ReferentialActions.ReadIdentityFields(reference);
-        if (fkFields.Count == 0) return [];
+        if (fkFields.Count == 0)
+        {
+            return [];
+        }
 
         var props = new List<string>(fkFields.Count);
         var isWriteThrough = entity.IsWriteThrough();
@@ -842,8 +894,14 @@ public class DbContextGenerator : IGenerator
             // #214 — a write-through entity's WRITE class omits the derived (origin.*)
             // fields, so naming one here would reference a property the class does not
             // declare (a compile error in the generated file).
-            if (entity.FindField(name) is not { } field) return [];
-            if (isWriteThrough && field.IsDerived()) return [];
+            if (entity.FindField(name) is not { } field)
+            {
+                return [];
+            }
+            if (isWriteThrough && field.IsDerived())
+            {
+                return [];
+            }
             props.Add(PropertyName(field));
         }
 
@@ -1399,36 +1457,94 @@ public class DbContextGenerator : IGenerator
 
         foreach (var f in fieldList.Where(f => f.SubType == FIELD_SUBTYPE_OBJECT
                      && (!jsonbObjectsOnly || f.Storage != STORAGE_FLATTENED)))
-            if (OwnedTypeConfig(className, entity, f, ctx) is { } cfg) modelLines.Add(cfg);
+        {
+            if (OwnedTypeConfig(className, entity, f, ctx) is { } cfg)
+            {
+                modelLines.Add(cfg);
+            }
+        }
 
         // Every other kind of field, in FieldTypeRank order: all maps, then all enums, then primitive
         // collections, decimals, timestamps, uri, inet, durations. The order is the one this method
         // has always emitted in (OrderBy is stable, so fields keep their declared order within a
-        // kind); FieldTypeConfig is asked about every field, in that order.
-        foreach (var f in fieldList.OrderBy(FieldTypeRank))
+        // kind); FieldTypeConfig is asked about every field, once, in that order. An ARRAY of
+        // durations belongs to two kinds, a primitive collection and a duration, and the old passes
+        // wrote its two halves apart: its duration half is set aside by the hook (see
+        // FieldTypeConfig) and written here at its declared place among the durations.
+        var items = new List<(int Rank, MetaField Field, bool DurationHalf)>();
+        foreach (var f in fieldList)
         {
-            if (f.SubType == FIELD_SUBTYPE_ENUM)
+            items.Add((FieldTypeRank(f), f, false));
+            if (IsDurationArray(f))
             {
-                var prop = PropertyName(f);
-                // An int-backed enum (@intValueMap) persists the declared INTEGER instead of the
-                // member symbol, so it needs a custom converter pair rather than HasConversion<string>().
-                // The generated C# `enum` declaration is byte-identical either way — int-backing is a
-                // persistence concern, invisible in the entity's API.
-                var conversion = EnumConversionCall(className, entity, f, ctx);
-                // ADR-0039: resolving — array-ness inheritable via extends. Array-of-enum uses the
-                // EF Core 8 primitive collection with a per-element conversion so members persist as
-                // symbols (["DRAFT"]) — or as their declared ints — not as int ordinals ([0]).
-                if (f.ResolvedIsArray())
-                    modelLines.Add($"        modelBuilder.Entity<{className}>().PrimitiveCollection(x => x.{prop}).ElementType().{conversion};");
-                else
-                    modelLines.Add($"        modelBuilder.Entity<{className}>().Property(x => x.{prop}).{conversion};");
+                items.Add((FieldTypeRankDuration, f, true));
             }
-            modelLines.AddRange(FieldTypeConfig(className, entity, f, ctx));
+        }
+        var outerDeferred = _deferredDurationLines;
+        var deferred = new Dictionary<MetaField, List<string>>();
+        _deferredDurationLines = deferred;
+        try
+        {
+            foreach (var (_, f, durationHalf) in items.OrderBy(i => i.Rank))
+            {
+                if (durationHalf)
+                {
+                    if (deferred.TryGetValue(f, out var half))
+                    {
+                        modelLines.AddRange(half);
+                    }
+                    continue;
+                }
+                if (f.SubType == FIELD_SUBTYPE_ENUM)
+                {
+                    // An override that returns null leaves the field unconverted: no line.
+                    if (EnumConversionCall(className, entity, f, ctx) is { } conversion)
+                    {
+                        var prop = PropertyName(f);
+                        // An int-backed enum (@intValueMap) persists the declared INTEGER instead of the
+                        // member symbol, so it needs a custom converter pair rather than HasConversion<string>().
+                        // The generated C# `enum` declaration is byte-identical either way — int-backing is a
+                        // persistence concern, invisible in the entity's API.
+                        // ADR-0039: resolving — array-ness inheritable via extends. Array-of-enum uses the
+                        // EF Core 8 primitive collection with a per-element conversion so members persist as
+                        // symbols (["DRAFT"]) — or as their declared ints — not as int ordinals ([0]).
+                        if (f.ResolvedIsArray())
+                        {
+                            modelLines.Add($"        modelBuilder.Entity<{className}>().PrimitiveCollection(x => x.{prop}).ElementType().{conversion};");
+                        }
+                        else
+                        {
+                            modelLines.Add($"        modelBuilder.Entity<{className}>().Property(x => x.{prop}).{conversion};");
+                        }
+                    }
+                }
+                modelLines.AddRange(FieldTypeConfig(className, entity, f, ctx));
+            }
+        }
+        finally
+        {
+            _deferredDurationLines = outerDeferred;
         }
 
         foreach (var f in fieldList.Where(f => !f.ResolvedIsArray() && f.DbColumnType is not null))
-            if (DbColumnTypeConfig(className, f) is { } cfg) modelLines.Add(cfg);
+        {
+            // An override that returns null leaves the field with no column-type line.
+            if (DbColumnTypeConfig(className, f) is { } cfg)
+            {
+                modelLines.Add(cfg);
+            }
+        }
     }
+
+    // The duration half of an ARRAY-of-durations field's lines, set aside by the default
+    // FieldTypeConfig while EmitFieldTypeConfig is running, so the driver can write it where the
+    // duration pass always wrote it. Null outside that run, when the hook returns everything at once.
+    private Dictionary<MetaField, List<string>>? _deferredDurationLines;
+
+    private const int FieldTypeRankDuration = 8;
+
+    private static bool IsDurationArray(MetaField f) =>
+        f.ResolvedIsArray() && f.SubType == FIELD_SUBTYPE_DURATION && f.DbColumnType is null;
 
     // The place of a field's type configuration among the others, so a model's lines keep the
     // order they have always had: maps, enums, primitive collections, decimals, timestamps, uri,
@@ -1438,14 +1554,38 @@ public class DbContextGenerator : IGenerator
     private static int FieldTypeRank(MetaField f)
     {
         var array = f.ResolvedIsArray();
-        if (f.SubType == FIELD_SUBTYPE_MAP) return 1;
-        if (f.SubType == FIELD_SUBTYPE_ENUM) return 2;
-        if (array && CSharpNaming.ScalarFor(f.SubType) is not null) return 3;
-        if (!array && f.SubType == FIELD_SUBTYPE_DECIMAL && f.Precision is not null) return 4;
-        if (!array && f.SubType == FIELD_SUBTYPE_TIMESTAMP) return 5;
-        if (!array && f.SubType == FIELD_SUBTYPE_URI && !CSharpNaming.IsLenientNet(f)) return 6;
-        if (!array && f.SubType == FIELD_SUBTYPE_INET && !CSharpNaming.IsLenientNet(f)) return 7;
-        if (f.SubType == FIELD_SUBTYPE_DURATION && f.DbColumnType is null) return 8;
+        if (f.SubType == FIELD_SUBTYPE_MAP)
+        {
+            return 1;
+        }
+        if (f.SubType == FIELD_SUBTYPE_ENUM)
+        {
+            return 2;
+        }
+        if (array && CSharpNaming.ScalarFor(f.SubType) is not null)
+        {
+            return 3;
+        }
+        if (!array && f.SubType == FIELD_SUBTYPE_DECIMAL && f.Precision is not null)
+        {
+            return 4;
+        }
+        if (!array && f.SubType == FIELD_SUBTYPE_TIMESTAMP)
+        {
+            return 5;
+        }
+        if (!array && f.SubType == FIELD_SUBTYPE_URI && !CSharpNaming.IsLenientNet(f))
+        {
+            return 6;
+        }
+        if (!array && f.SubType == FIELD_SUBTYPE_INET && !CSharpNaming.IsLenientNet(f))
+        {
+            return 7;
+        }
+        if (f.SubType == FIELD_SUBTYPE_DURATION && f.DbColumnType is null)
+        {
+            return 8;
+        }
         return 99;
     }
 
@@ -1480,15 +1620,21 @@ public class DbContextGenerator : IGenerator
         // the generated code cannot make on a consumer's behalf. The COMPARER is not optional --
         // see EmitMapJsonbHelper.
         if (f.SubType == FIELD_SUBTYPE_MAP)
+        {
             lines.Add(MapJsonbConfig(owner, entity, f, ctx));
+        }
 
         if (array && CSharpNaming.ScalarFor(f.SubType) is not null)
+        {
             lines.Add($"        modelBuilder.Entity<{owner}>().PrimitiveCollection(x => x.{prop});");
+        }
 
         if (!array && f.SubType == FIELD_SUBTYPE_DECIMAL && f.Precision is not null)
+        {
             lines.Add(f.Scale is long sc
                 ? $"        modelBuilder.Entity<{owner}>().Property(x => x.{prop}).HasPrecision({f.Precision}, {sc});"
                 : $"        modelBuilder.Entity<{owner}>().Property(x => x.{prop}).HasPrecision({f.Precision});");
+        }
 
         if (!array && f.SubType == FIELD_SUBTYPE_TIMESTAMP)
         {
@@ -1501,16 +1647,20 @@ public class DbContextGenerator : IGenerator
         // #234: a @lenient field.uri / field.inet is a plain string mapped to a plain `text`
         // column (EF's string default) — no System.Uri HasConversion, no native `inet` type.
         if (!array && f.SubType == FIELD_SUBTYPE_URI && !CSharpNaming.IsLenientNet(f))
+        {
             // System.Uri is FULLY QUALIFIED: the emitted AppDbContext carries no `using System;`
             // (unlike the entity files), so an unqualified `new Uri(v)` in OnModelCreating fails
             // to compile except under a host's ImplicitUsings — the generated context must be
             // self-contained (this is also on the #214 write-through read-model path now).
             lines.Add(
                 $"        modelBuilder.Entity<{owner}>().Property(x => x.{prop}).HasColumnType(\"text\").HasConversion(v => v!.ToString(), v => new System.Uri(v));");
+        }
 
         if (!array && f.SubType == FIELD_SUBTYPE_INET && !CSharpNaming.IsLenientNet(f))
+        {
             lines.Add(
                 $"        modelBuilder.Entity<{owner}>().Property(x => x.{prop}).HasColumnType(\"inet\");");
+        }
 
         // field.duration — a System.TimeSpan. Npgsql maps it to the native `interval` (and an array
         // to `interval[]`), reading an interval with a month or year part as an error. Every other
@@ -1518,7 +1668,20 @@ public class DbContextGenerator : IGenerator
         // schemas), through the entity namespace's DurationWire; EF's own TimeSpan text ("01:30:00")
         // would not be the cross-port form, and MySQL's `time` cannot hold more than 838 hours.
         if (f.SubType == FIELD_SUBTYPE_DURATION && f.DbColumnType is null)
-            AddDurationConfig(owner, entity, [f], ctx, lines);
+        {
+            if (_deferredDurationLines is { } deferred && IsDurationArray(f))
+            {
+                // Under EmitFieldTypeConfig the duration half of an array waits for its pass; the
+                // lines are still this hook's to produce, the driver only moves them.
+                var half = new List<string>();
+                AddDurationConfig(owner, entity, [f], ctx, half);
+                deferred[f] = half;
+            }
+            else
+            {
+                AddDurationConfig(owner, entity, [f], ctx, lines);
+            }
+        }
 
         return lines;
     }
@@ -1853,9 +2016,13 @@ public sealed class DurationIntervalArrayMapping : Microsoft.EntityFrameworkCore
             // members persist as int ordinals inside the array.
             if (nf.SubType == FIELD_SUBTYPE_ENUM && nf.ResolvedIsArray())
             {
-                sb.AppendLine($"            b.PrimitiveCollection(p => p.{PropertyName(nf)})"
-                    + $".HasColumnName(\"{nestedColAny}\").ElementType()"
-                    + $".{EnumConversionCall(ValueObjectNames.TypeName(vo, ctx.Root), vo, nf, ctx)};");
+                // An override returning null leaves the member unconverted: no line for it.
+                if (EnumConversionCall(ValueObjectNames.TypeName(vo, ctx.Root), vo, nf, ctx) is { } elementConversion)
+                {
+                    sb.AppendLine($"            b.PrimitiveCollection(p => p.{PropertyName(nf)})"
+                        + $".HasColumnName(\"{nestedColAny}\").ElementType()"
+                        + $".{elementConversion};");
+                }
                 continue;
             }
 
@@ -1923,7 +2090,9 @@ public sealed class DurationIntervalArrayMapping : Microsoft.EntityFrameworkCore
             var nestedCol = nestedColAny;
             // The enum type nests in the value object's class (EntityGenerator's
             // EmitValueObjectPoco), so the VO is the `owner` the conversion qualifies it by.
-            var conversion = isEnum ? $".{EnumConversionCall(ValueObjectNames.TypeName(vo, ctx.Root), vo, nf, ctx)}" : "";
+            var conversion = isEnum && EnumConversionCall(ValueObjectNames.TypeName(vo, ctx.Root), vo, nf, ctx) is { } call
+                ? $".{call}"
+                : "";
             sb.AppendLine($"            b.Property(p => p.{PropertyName(nf)}).HasColumnName(\"{nestedCol}\"){conversion};");
         }
         sb.Append("        });");

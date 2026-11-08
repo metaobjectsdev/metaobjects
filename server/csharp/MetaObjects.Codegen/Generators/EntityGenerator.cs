@@ -191,9 +191,15 @@ public class EntityGenerator : IGenerator
         // POCO with the validation DataAnnotations and none of the EF mapping attributes.
         // Asked about EVERY one of them: a null from an override drops that object's file.
         foreach (var o in unmappedShapes)
-            if (EmitValueObjectPoco(o, ctx) is { } poco) files.Add(poco);
+            if (EmitValueObjectPoco(o, ctx) is { } poco)
+            {
+                files.Add(poco);
+            }
         foreach (var vo in valueObjects)
-            if (EmitValueObjectPoco(vo, ctx) is { } poco) files.Add(poco);
+            if (EmitValueObjectPoco(vo, ctx) is { } poco)
+            {
+                files.Add(poco);
+            }
 
         // ADR-0038 — reverse-relationship navigation as explicit FK finders. For each
         // concrete, table-mapped entity holding ≥1 FK (identity.reference), emit a
@@ -1898,14 +1904,18 @@ public static class DurationWire
         {
             var baseType = ScalarBaseType(field);
             if (field.ResolvedIsArray()) // ADR-0039: resolving — array-ness inheritable via extends
-                return $"IList<{baseType}>" + (ArrayIsNullable(owner, field) ? "?" : string.Empty);
+            {
+                    return $"IList<{baseType}>" + (ArrayIsNullable(owner, field) ? "?" : string.Empty);
+            }
             return ScalarIsNonNull(owner, field) ? baseType : baseType + "?";
         }
         if (field.SubType == FIELD_SUBTYPE_ENUM)
         {
             var typeName = EnumPropertyTypeName(owner, field, ctx.Config);
             if (field.ResolvedIsArray())
-                return $"IList<{typeName}>" + (EnumArrayIsNullable(owner, field) ? "?" : string.Empty);
+            {
+                    return $"IList<{typeName}>" + (EnumArrayIsNullable(owner, field) ? "?" : string.Empty);
+            }
             return required ? typeName : typeName + "?";
         }
         if (field.SubType == FIELD_SUBTYPE_OBJECT)
@@ -1914,11 +1924,15 @@ public static class DurationWire
                 ? ValueObjectNames.TypeName(target, ctx.Root)
                 : CSharpNaming.Pascal(CSharpNaming.StripPkg(field.ObjectRef ?? field.Name));
             if (field.ResolvedIsArray())
-                return $"ICollection<{typeName}>" + (required ? string.Empty : "?");
+            {
+                    return $"ICollection<{typeName}>" + (required ? string.Empty : "?");
+            }
             return required ? typeName : typeName + "?";
         }
         if (field.SubType == FIELD_SUBTYPE_MAP)
-            return $"Dictionary<string, {CSharpNaming.MapValueType(field, ctx.Root)}>" + (required ? string.Empty : "?");
+        {
+                return $"Dictionary<string, {CSharpNaming.MapValueType(field, ctx.Root)}>" + (required ? string.Empty : "?");
+        }
         return CSharpNaming.ScalarForField(field) ?? "object";
     }
 
@@ -1937,7 +1951,9 @@ public static class DurationWire
         {
             var baseType = ScalarBaseType(field);
             if (field.ResolvedIsArray())
-                return ArrayIsNullable(owner, field) ? null : $"new List<{baseType}>()";
+            {
+                    return ArrayIsNullable(owner, field) ? null : $"new List<{baseType}>()";
+            }
             // A literal-safe @default (bool / integer / floating / string) takes precedence over
             // the `default!` filler for required reference types. @default is a cross-port metadata concept.
             return DefaultInitializerValue(field, baseType)
@@ -1945,7 +1961,10 @@ public static class DurationWire
         }
         if (field.SubType == FIELD_SUBTYPE_ENUM)
         {
-            if (!field.ResolvedIsArray()) return null;
+            if (!field.ResolvedIsArray())
+            {
+                return null;
+            }
             var typeName = EnumPropertyTypeName(owner, field, ctx.Config);
             return EnumArrayIsNullable(owner, field) ? null : $"new List<{typeName}>()";
         }
@@ -1956,8 +1975,13 @@ public static class DurationWire
                 ? ValueObjectNames.TypeName(target, ctx.Root)
                 : CSharpNaming.Pascal(CSharpNaming.StripPkg(field.ObjectRef ?? field.Name));
             if (field.ResolvedIsArray())
-                return required ? $"new List<{typeName}>()" : null;
-            if (!required) return null;
+            {
+                    return required ? $"new List<{typeName}>()" : null;
+            }
+            if (!required)
+            {
+                return null;
+            }
             // A REQUIRED member of a value object starts as an instance rather than `= default!`,
             // so a document that omits it deserializes with it present instead of null behind a
             // non-nullable type. An abstract target cannot be constructed and keeps the filler; an
@@ -1965,7 +1989,9 @@ public static class DurationWire
             return _site.ValueObject && target is { IsAbstract: false } ? $"new {typeName}()" : "default!";
         }
         if (field.SubType == FIELD_SUBTYPE_MAP)
-            return required ? "new()" : null;
+        {
+                return required ? "new()" : null;
+        }
         return null;
     }
 
@@ -2282,7 +2308,10 @@ public static class DurationWire
     private static string? DefaultInitializerValue(MetaField field, string baseType)
     {
         var raw = field.Default;
-        if (raw is null) return null;
+        if (raw is null)
+        {
+            return null;
+        }
         switch (baseType)
         {
             case "bool":
