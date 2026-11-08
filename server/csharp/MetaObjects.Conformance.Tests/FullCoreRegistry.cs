@@ -25,6 +25,7 @@ internal static class FullCoreRegistry
         MetaObjects.Persistence.Db.DbMetaDataProvider.Instance,
         DocumentationTypes.DocTypesProvider,
         MetaObjects.Presentation.Ui.UiMetaDataProvider.Instance,
+        MetaObjects.Presentation.Ui.UiWebMetaDataProvider.Instance,
         MetaObjects.Template.PromptMetaDataProvider.Instance,
     };
 

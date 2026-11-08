@@ -26,9 +26,9 @@
  * Two denominators exist in this repository and they are NOT interchangeable:
  * `fixtures/registry-conformance/expected-registry.json` carries the cross-port
  * contract, and `spec/metamodel/*.json` carries what the providers declare. The gap
- * is exactly `metadata.root` (core, no spec file) on one side and the 13 generic
- * `view.*` controls (TS-web presentation-only, carved out of the manifest) on the
- * other.
+ * is exactly `metadata.root` (core, no spec file). The 13 generic `view.*` controls
+ * were once carved out of the manifest; ruling R40 put them back as kind-1 vocabulary
+ * (`implementedIn: ["typescript"]`), so both artifacts carry them now.
  *
  * The population here is their UNION: every concrete subtype the loader can accept,
  * whichever artifact records it. A carve-out from the cross-port manifest is a

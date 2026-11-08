@@ -12,11 +12,10 @@ namespace MetaObjects.Presentation.View;
 /// Every port REGISTERS the full view vocabulary, so one metadata document
 /// loads in every port. The generic web-presentation control kinds (text/
 /// textarea/date/month/hotlink/dropdown/radio/checkbox/number/password/hidden/
-/// web/image) are still TS-web-PRESENTATION-ONLY: they have no backend / codegen /
-/// render consumer in C#, and the registry manifest excludes them
-/// (<c>RegistryManifest</c>, PRESENTATION_ONLY). Registration here is for LOADING
-/// only. <c>base</c> + <c>currency</c> (the cross-port currency <c>@locale</c>
-/// wire contract) are the two rows in the cross-port manifest.
+/// web/image) are R40 kind-1 vocabulary: cross-port, in the registry manifest with
+/// <c>implementedIn: ["typescript"]</c>, and implemented only in TypeScript so far.
+/// C# loads them strictly (their attrs come from <c>UiWebMetaDataProvider</c>) and
+/// does not act on them.
 /// </summary>
 public static class ViewConstants
 {

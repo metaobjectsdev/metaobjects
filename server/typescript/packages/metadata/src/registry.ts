@@ -83,6 +83,12 @@ export interface AttrSchema {
    * loads it and does nothing with it. Absent = every port acts on it.
    */
   ports?: readonly string[];
+  /**
+   * R40 kind 1 — the ports that implement this attribute so far (`["java"]`), when it is
+   * cross-port vocabulary the others have not implemented yet. Every port registers and
+   * type-checks it. Absent = every port implements it.
+   */
+  implementedIn?: readonly string[];
   /** Human/AI-facing description of what the attribute means. */
   description: string;
   /** FR-033 — prose documenting the complex rules enforced in code. Optional. */
@@ -114,6 +120,12 @@ export interface TypeDefinition {
   example?: string;
   /** FR-033 — guidance on when to reach for this type/subType. Optional. */
   whenToUse?: string;
+  /**
+   * R40 kind 1 — the ports that implement this type so far, when the other ports have
+   * not yet (`["typescript"]`). It is cross-port vocabulary: every port registers it
+   * and loads it strictly. Absent = every port implements it.
+   */
+  implementedIn?: readonly string[];
   /** Max children of this type.subType per parent (`1` = singleton). Loader-enforced. */
   maxOccurs?: number;
   /** Default name for a singleton (`maxOccurs===1`) child declared with no name. */

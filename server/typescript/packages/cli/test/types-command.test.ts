@@ -69,12 +69,13 @@ describe("#357 every registered view subtype is findable", () => {
     expect(await run(["view.bogusxyz"])).toContain("No vocabulary matches");
   });
 
-  test("TS-only vocabulary is marked rather than hidden", async () => {
+  test("kind-1 vocabulary is marked as pending elsewhere, not as outside the contract (R40)", async () => {
     const out = await run(["--type", "view", "--kind", "subtype", "--limit", "0"]);
-    // `view.currency` is in the cross-port contract; `view.text` is not.
-    expect(out).toMatch(/view\.text .*\[ts-only\]/);
-    expect(out).not.toMatch(/view\.currency .*\[ts-only\]/);
-    expect(out).toContain("cross-port metamodel contract does not carry it");
+    // Both are cross-port; only TypeScript implements `view.text` so far.
+    expect(out).toMatch(/view\.text .*\[ts; pending elsewhere\]/);
+    expect(out).not.toMatch(/view\.currency .*pending elsewhere/);
+    expect(out).toContain("every port loads and type-checks it, the others do not act on it yet");
+    expect(out).not.toContain("does not carry it");
   });
 
   test("a type's shared root is marked, so the concrete list is not mistaken for it", async () => {
@@ -232,11 +233,29 @@ describe("meta types --format", () => {
   test("the legend's markers become FIELDS, not text appended to a name", async () => {
     const doc = await json(["--type", "view", "--kind", "subtype", "--limit", "0"]);
     const byName = (n: string) => doc.matches.find((m: any) => m.name === n);
-    expect(byName("view.text").tsOnly).toBe(true);
-    expect(byName("view.currency").tsOnly).toBe(false);
+    // R40 kind 1 — cross-port vocabulary only TypeScript implements so far.
+    expect(byName("view.text").implementedIn).toEqual(["typescript"]);
+    expect(byName("view.currency").implementedIn).toBeUndefined();
     expect(byName("view.base").sharedRoot).toBe(true);
+    // The retired "TypeScript-only, not in the contract" field is gone.
+    expect("tsOnly" in byName("view.text")).toBe(false);
     // And no row smuggles the text rendering's markers into its name.
-    for (const m of doc.matches) expect(m.name).not.toContain("[ts-only]");
+    for (const m of doc.matches) expect(m.name).not.toContain("pending elsewhere");
+  });
+
+  test("kind-1 and kind-2 vocabulary are marked in text and carried in JSON (R40)", async () => {
+    const text = await run(["object.entity", "--limit", "0"]);
+    expect(text).toContain("[java; pending elsewhere]");
+    expect(text).toContain("[java-only]");
+    expect(text).toContain("[csharp-only]");
+    expect(text).not.toContain("[ts-only]");
+    const doc = await json(["object.entity", "--kind", "attr", "--limit", "0"]);
+    const attr = (n: string) => doc.matches.find((m: any) => m.name === `object.entity @${n}`);
+    expect(attr("object").implementedIn).toEqual(["java"]);
+    expect(attr("objectAdapter").ports).toEqual(["java"]);
+    // A view's attr inherits its type's kind-1 marking.
+    const img = await json(["view.image", "--kind", "attr", "--limit", "0"]);
+    expect(img.matches.find((m: any) => m.name === "view.image @accept").implementedIn).toEqual(["typescript"]);
   });
 
   test("a closed-enum attr carries its allowed values", async () => {

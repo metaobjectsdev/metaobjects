@@ -153,6 +153,11 @@ function subtypeSection(
   const parts: string[] = [`### ${type}.${subType}\n`];
   parts.push(`${def.description}\n`);
   if (owner !== undefined) parts.push(`**Owning provider:** ${owner}\n`);
+  if (def.implementedIn !== undefined && def.implementedIn.length > 0) {
+    // R40 kind 1 — cross-port vocabulary only these ports implement so far.
+    const ports = [...def.implementedIn].sort(compare).join(", ");
+    parts.push(`**Implemented in:** ${ports} so far — every port loads and type-checks it; the others do not act on it yet.\n`);
+  }
   if (def.rules !== undefined) parts.push(`**Rules:** ${def.rules}\n`);
   if (def.whenToUse !== undefined) parts.push(`**When to use:** ${def.whenToUse}\n`);
   if (def.example !== undefined) parts.push(`**Example:**\n\n\`\`\`\n${def.example}\n\`\`\`\n`);
@@ -173,8 +178,8 @@ function subtypeSection(
 /**
  * The registered (type, subType) definitions the metamodel docs cover — every
  * registered pair EXCEPT the ones the registry-conformance manifest carves out
- * (TS-web-presentation `view.*` controls + the `metadata.base` inheritance
- * anchor) so the docs describe exactly the agreed cross-port vocabulary.
+ * (the `metadata.base` inheritance anchor) so the docs describe exactly the agreed
+ * cross-port vocabulary. Kind-1 rows (R40) are covered and marked "Implemented in".
  */
 function coveredDefs(registry: TypeRegistry): TypeDefinition[] {
   return registry

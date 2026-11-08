@@ -70,8 +70,9 @@ construct.
 
 --format toon / --format json emit ONE machine-readable document and nothing else. It
 carries every match with its full record, so --limit, --detail and --no-headers — all
-three TEXT display controls — do not change it. The terse line's [base] / [ts-only]
-markers are the sharedRoot / tsOnly fields there, a closed-enum attr carries its
+three TEXT display controls — do not change it. The terse line's [base] / [ts; pending
+elsewhere] / [<port>-only] markers are the sharedRoot / implementedIn / ports fields there,
+a closed-enum attr carries its
 allowedValues, and no match is an empty matches list rather than a prose hint.`;
 
 /** The flags `parse` below accepts, for the unknown-flag refusal. */
@@ -129,8 +130,11 @@ interface Entry {
   attrNames: string[]; // attr-name hints (for subtype terse lines)
   /** Accepted on EVERY node, so no `--type` scope excludes it (#357). */
   common: boolean;
-  /** Registered here but carved out of the cross-port manifest — TS-only vocabulary. */
-  tsOnly: boolean;
+  /**
+   * R40 kind 1 — the ports that implement it so far (`["typescript"]`); absent = every
+   * port. An attr carries its owning type's. Every port loads it strictly either way.
+   */
+  implementedIn?: readonly string[];
   /** A type's shared root (`<type>.base`): its attrs apply to every subtype. */
   sharedRoot: boolean;
   /** R40 — the ports that act on a language-specific attr; absent = every port. */
@@ -139,11 +143,27 @@ interface Entry {
 }
 
 /** Compact markers appended to a terse line, and the legend that explains them. */
-const MARK_TS_ONLY = "[ts-only]";
 const MARK_BASE = "[base]";
 const LEGEND = `  ${MARK_BASE}     the type's shared root — its @attrs apply to every subtype of that type\n` +
-  `  ${MARK_TS_ONLY}  registered in TypeScript only; the cross-port metamodel contract does not carry it\n` +
+  `  [<port>; pending elsewhere]  cross-port vocabulary only <port> implements so far (e.g. [ts; …]); every port loads and type-checks it, the others do not act on it yet\n` +
   `  [<port>-only]  every port loads and type-checks it; only <port> acts on it`;
+
+/** The short label a port name takes in a marker. */
+function portLabel(port: string): string {
+  return port === "typescript" ? "ts" : port;
+}
+
+/** `[ts; pending elsewhere]` for vocabulary only TypeScript implements so far. */
+function implementedInMark(implementedIn: readonly string[] | undefined): string {
+  if (implementedIn === undefined || implementedIn.length === 0) return "";
+  return `[${implementedIn.map(portLabel).join("+")}; pending elsewhere]`;
+}
+
+/** The --detail sentence for the same thing. */
+function implementedInSentence(implementedIn: readonly string[]): string {
+  return `  Implemented in ${implementedIn.join(", ")} so far; pending in the other ports. ` +
+    "Every port loads and type-checks it.";
+}
 
 /** `[csharp-only]` for an attr only C# acts on; `[csharp+java]` style for several. */
 function portsMark(ports: readonly string[] | undefined): string {
@@ -152,7 +172,7 @@ function portsMark(ports: readonly string[] | undefined): string {
 }
 
 function marks(e: Entry): string {
-  const m = [e.sharedRoot ? MARK_BASE : "", e.tsOnly ? MARK_TS_ONLY : "", portsMark(e.ports)].filter(Boolean);
+  const m = [e.sharedRoot ? MARK_BASE : "", implementedInMark(e.implementedIn), portsMark(e.ports)].filter(Boolean);
   return m.length > 0 ? `  ${m.join(" ")}` : "";
 }
 
@@ -164,6 +184,7 @@ interface RawAttr {
   required: boolean;
   allowedValues?: readonly string[];
   ports?: readonly string[];
+  implementedIn?: readonly string[];
   description: string;
   whenToUse?: string;
 }
@@ -175,6 +196,7 @@ function attrRecord(at: RawAttr): Record<string, unknown> {
     isArray: at.isArray,
     required: at.required,
     ...(at.allowedValues !== undefined ? { allowedValues: at.allowedValues } : {}),
+    ...(at.implementedIn !== undefined ? { implementedIn: at.implementedIn } : {}),
     ...(at.ports !== undefined ? { ports: at.ports } : {}),
     description: at.description,
     ...(at.whenToUse !== undefined ? { whenToUse: at.whenToUse } : {}),
@@ -191,7 +213,7 @@ function payloadMatch(e: Entry): Record<string, unknown> {
     type: e.common || e.type === "" ? null : e.type,
     owner: e.common ? null : e.owner,
     common: e.common,
-    tsOnly: e.tsOnly,
+    ...(e.implementedIn !== undefined ? { implementedIn: e.implementedIn } : {}),
     sharedRoot: e.sharedRoot,
     ...(e.ports !== undefined ? { ports: e.ports } : {}),
     description: e.description,
@@ -280,14 +302,18 @@ export async function typesCommand(args: string[], fmt: OutputFormat = "text"): 
       kind: "subtype", name: tsName, owner: tsName, type: mt.type,
       description: mt.description, whenToUse: mt.whenToUse,
       attrNames: mt.attrs.map((a) => `@${a.name}`),
-      common: false, tsOnly: !mt.crossPort, sharedRoot: mt.sharedRoot, raw: mt,
+      common: false, sharedRoot: mt.sharedRoot,
+      ...(mt.implementedIn !== undefined ? { implementedIn: mt.implementedIn } : {}), raw: mt,
     });
     for (const at of mt.attrs) {
       entries.push({
         kind: "attr", name: `${tsName} @${at.name}`, owner: tsName, type: mt.type,
         description: at.description, whenToUse: at.whenToUse, attrNames: [],
-        common: false, tsOnly: !mt.crossPort, sharedRoot: false,
-        ...((at as { ports?: readonly string[] }).ports !== undefined ? { ports: (at as { ports?: readonly string[] }).ports } : {}), raw: at,
+        common: false, sharedRoot: false,
+        // An attr's own kind-1 marking, else its owning type's.
+        ...((at.implementedIn ?? mt.implementedIn) !== undefined
+          ? { implementedIn: at.implementedIn ?? mt.implementedIn } : {}),
+        ...(at.ports !== undefined ? { ports: at.ports } : {}), raw: at,
       });
     }
   }
@@ -300,7 +326,7 @@ export async function typesCommand(args: string[], fmt: OutputFormat = "text"): 
     entries.push({
       kind: "attr", name: `@${at.name}`, owner: "(any node)", type: "",
       description: at.description, whenToUse: at.whenToUse, attrNames: [],
-      common: true, tsOnly: false, sharedRoot: false, raw: at,
+      common: true, sharedRoot: false, raw: at,
     });
   }
 
@@ -356,8 +382,8 @@ export async function typesCommand(args: string[], fmt: OutputFormat = "text"): 
       if (e.description) log.info(`  ${e.description}`);
       if (e.sharedRoot)
         log.info(`  shared root: @attrs registered here apply to every ${e.type}.* subtype.`);
-      if (e.tsOnly)
-        log.info("  TypeScript-only: registered here, but not part of the cross-port metamodel contract.");
+      if (e.implementedIn !== undefined && e.implementedIn.length > 0)
+        log.info(implementedInSentence(e.implementedIn));
       if (e.whenToUse) log.info(`  → reach for it when: ${e.whenToUse}`);
       if (e.kind === "subtype") {
         const mt = e.raw as { attrs: { name: string; valueType: string | null; required: boolean; description: string }[] };

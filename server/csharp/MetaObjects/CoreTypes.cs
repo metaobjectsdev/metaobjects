@@ -74,6 +74,9 @@ public static class CoreTypes
         // a required attr must never live in a provider that can be composed out. Mirrors
         // the TS ui/prompt provider split (and Java/Python).
         MetaObjects.Presentation.Ui.UiMetaDataProvider.Instance,
+        // R40 kind 1 — view.textarea @rows and the view.image attrs (ui-web.json): cross-port
+        // vocabulary only TypeScript implements so far. C# loads them strictly and ignores them.
+        MetaObjects.Presentation.Ui.UiWebMetaDataProvider.Instance,
         MetaObjects.Template.PromptMetaDataProvider.Instance,
     ];
 

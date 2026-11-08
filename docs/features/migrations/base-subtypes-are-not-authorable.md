@@ -71,9 +71,8 @@ the owning field's subtype, so a boolean default stays a boolean rather than bei
 concrete view subtypes while the non-TS ports registered only `view.base` and `view.currency` — so
 a backend port rejected `view.text` with `ERR_UNKNOWN_SUBTYPE`. That asymmetry is since gone: every
 port now registers the generic `view.*` controls (`view.text`, `view.textarea`, `view.checkbox`,
-`view.radio`, `view.image`, …) for LOADING, still excluded from the cross-port manifest as
-PRESENTATION_ONLY (`fixtures/registry-conformance/README.md`), while the attrs ON those controls
-remain registered only by the TypeScript UI provider. The removal stands unchanged: `view.base`
+`view.radio`, `view.image`, …), which are cross-port vocabulary only TypeScript implements so far
+(ruling R40 kind 1; `fixtures/registry-conformance/README.md`). The removal stands unchanged: `view.base`
 itself is refused in every port.
 
 Nothing is lost that carried information — a `view.base` node declared no kind and no attrs, and

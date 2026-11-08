@@ -1,23 +1,15 @@
 // #357 — "what can I author HERE?", which is NOT the question the registry manifest answers.
 //
 // `buildRegistryManifest` answers "what must all five ports byte-match?" and deliberately
-// carves rows OUT of its answer: the `metadata.base` inheritance anchor, and the 13
-// TS-web-presentation `view.*` controls, which are REGISTERED in every port (the loader
-// must accept an authored `view.dropdown`) but consumed only by TypeScript, and so are
-// excluded from the shared canonical everywhere. That carve-out is correct and documented
-// (fixtures/registry-conformance/README.md, B-2).
+// carves rows OUT of its answer: the `metadata.base` inheritance anchor, which only the
+// JVM registers. This catalog enumerates every (type, subType) the registry accepts and
+// MARKS the rows the cross-port manifest omits, so a carve-out reads as "not cross-port"
+// rather than "missing".
 //
-// `meta types` — the vocabulary search the generated `AGENTS.md` and the
-// `metaobjects-authoring` skill both make STEP 1 of the authoring procedure — was built on
-// that same function, so the answer it gave an author was the cross-port contract with
-// this port's own vocabulary removed: 2 of the 15 registered `view.*` subtypes, with the
-// other 13 reported exactly as a genuine typo is. Following the documented procedure, an
-// author correctly concluded `view.text` does not exist.
-//
-// One function cannot answer both questions, so there are two. This one enumerates every
-// (type, subType) the registry accepts and MARKS the rows the cross-port manifest omits,
-// which is the honest way to surface what the carve-out means: not "missing" but
-// "TypeScript-only".
+// History: the 13 generic `view.*` controls used to be such a carve-out, and `meta types`
+// once reported them exactly as a genuine typo is. Ruling R40 put them back in the
+// manifest as kind-1 vocabulary: cross-port, every port loads them strictly, and
+// `implementedIn: ["typescript"]` says which ports act on them so far.
 
 import type { TypeDefinition, TypeRegistry } from "./registry.js";
 import {
@@ -44,6 +36,11 @@ export interface VocabularyType {
   attrs: ManifestAttr[];
   children: ManifestChild[];
   parents?: string[];
+  /**
+   * R40 kind 1 — the ports that implement this type so far (`["typescript"]`); absent =
+   * every port. Cross-port vocabulary either way: every port loads it strictly.
+   */
+  implementedIn?: readonly string[];
   /**
    * False when the cross-port manifest carves this row out — vocabulary THIS port
    * accepts that the shared five-port contract does not carry. An author can use it
@@ -90,6 +87,9 @@ function toVocabularyType(def: TypeDefinition): VocabularyType {
     // THIS registry requires of an author right now.
     attrs: sortedAttrs(def.attributes.filter((a) => classifyPerTypeAttr(a.name) === INCLUDED)),
     children: sortedChildren(def.childRules),
+    ...(def.implementedIn !== undefined && def.implementedIn.length > 0
+      ? { implementedIn: [...def.implementedIn].sort(compareStrings) }
+      : {}),
     crossPort: reason === undefined,
     ...(reason !== undefined ? { portPrivateReason: reason } : {}),
     sharedRoot: subType === SUBTYPE_BASE,

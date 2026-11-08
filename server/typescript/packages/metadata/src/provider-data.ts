@@ -70,6 +70,8 @@ export interface ChildDef {
   isArray?: boolean;
   /** The ports that act on a language-specific attr (`["csharp"]`); absent = every port. */
   ports?: readonly string[];
+  /** R40 kind 1 — the ports that implement this cross-port attr so far (`["java"]`); absent = every port. */
+  implementedIn?: readonly string[];
 }
 
 /**
@@ -85,6 +87,12 @@ export interface TypeDef {
   rules?: string;
   example?: string;
   whenToUse?: string;
+  /**
+   * R40 kind 1 — the ports that IMPLEMENT this type so far (`["typescript"]`), when it
+   * is cross-port vocabulary the other ports have not implemented yet. Every port
+   * registers it and loads it strictly; the rest ignore it. Absent = every port.
+   */
+  implementedIn?: readonly string[];
   /** Unified children list: attrs (`type: "attr"`) + structural children. */
   children?: ChildDef[];
   /** Child-side placement: the `type.subType`s under which this type is allowed. */
@@ -257,6 +265,7 @@ export function defineProviderFromData(
       ...(t.rules !== undefined ? { rules: t.rules } : {}),
       ...(t.example !== undefined ? { example: t.example } : {}),
       ...(t.whenToUse !== undefined ? { whenToUse: t.whenToUse } : {}),
+      ...(t.implementedIn !== undefined ? { implementedIn: t.implementedIn } : {}),
       ...(t.maxOccurs !== undefined ? { maxOccurs: t.maxOccurs } : {}),
       ...(t.defaultName !== undefined ? { defaultName: t.defaultName } : {}),
     };
@@ -444,6 +453,7 @@ function toAttrSchema(provider: string, typeKey: string, child: ChildDef): AttrS
       ? { allowedValues: child.allowedValues as readonly AttrValue[] }
       : {}),
     ...(child.ports !== undefined ? { ports: child.ports } : {}),
+    ...(child.implementedIn !== undefined ? { implementedIn: child.implementedIn } : {}),
     description: child.description ?? "",
     ...(child.rules !== undefined ? { rules: child.rules } : {}),
     ...(child.example !== undefined ? { example: child.example } : {}),

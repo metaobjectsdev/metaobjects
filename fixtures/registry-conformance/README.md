@@ -139,12 +139,11 @@ per-type facet the emitter encounters resolves to **exactly one** of:
   real axis is **cross-port-CONTRACT vs port-PRIVATE-mechanism**, not
   abstract-vs-physical.
 - An **`ExclusionReason`** — carved OUT of the contract *for a declared category*,
-  never a bare name. The categories are: `NATIVE_BINDING` (factories / native type
-  classes / ADR-0001 `@object` / ADR-0005 `@objectAdapter`), `STRUCTURAL_KEYWORD`
+  never a bare name. The categories are: `STRUCTURAL_KEYWORD`
   (`isArray`/`isAbstract`/`extends`/`implements`/`isInterface`), `COMMON_ATTR_DUP`
   (`description` re-registered per-type — it lives in the `commonAttrs` block),
-  `INHERITANCE_ANCHOR` (`metadata.base`), `PRESENTATION_ONLY` (the generic
-  `view.*` controls).
+  `INHERITANCE_ANCHOR` (`metadata.base`). (`NATIVE_BINDING` and `PRESENTATION_ONLY`
+  are retired: see "Not carved out" below.)
 
 The classification is **total** — there is no "unclassified" third state that
 silently defaults to IN, so a port can never let an unreasoned facet through
@@ -224,20 +223,12 @@ Each bullet below is one of the `ExclusionReason` categories above. They are
 per-port mechanism rather than cross-port contract, and the emitter classifies
 them as such with a declared reason.
 
-- **`NATIVE_BINDING`** — Node factory / `NodeConstructor` / Java `Class`; native
-  type bindings (Java `DataTypes` value-class, TS native TS-type, EF/CLR types,
-  the coarse `DataType` classification); **and the per-port type-binding facets
-  `@object` + `@objectAdapter`** — `@object` is the ADR-0001 class-FQN type
-  binding for OO ports (the Java runtime resolves an object's native class from
-  this attr) and `@objectAdapter` is the ADR-0005 hybrid value-access seam. All
-  are per-port BINDING mechanisms, not cross-port logical vocabulary. Java
-  registers `@object`/`@objectAdapter` as per-type attrs on `object.*`
-  (load-bearing runtime mechanisms read by the value-access representation, IO
-  readers, and OMDB — kept registered in Java); the classification carves them out
-  of the manifest (uniform across all four emitters; a no-op for TS/C#/Python,
-  which never register them). See SP-G Unit 6b-finish.
-- Codegen targets/options; the TS-only `D1` dialect and any other documented
-  port-unique surface; ordering (we sort everything) — all out of scope.
+- Native type bindings (Node factory / `NodeConstructor` / Java `Class`, the Java
+  `DataTypes` value-class, EF/CLR types, the coarse `DataType` classification) are not
+  attrs and never reach the manifest. The `NATIVE_BINDING` attr category that used to
+  carve `@object` / `@objectAdapter` out is retired by ruling R40: both are in the
+  contract now (see "Not carved out" below). Java's own registration and behaviour are
+  unchanged.
 - **`STRUCTURAL_KEYWORD`** (`isArray`, `isAbstract`, `extends`, `implements`,
   `isInterface`) — bare structural / OO-shape body keywords (peers of
   `name`/`children`), not attributes. Java additionally registers them as ordinary
@@ -253,21 +244,24 @@ them as such with a declared reason.
   only the concrete tree root (`metadata.root`). It is the not-universally-tracked
   `inheritsFrom` anchor this manifest already defers, so the `(metadata, base)`
   row is carved out. See SP-G analysis C-5.
-- **`PRESENTATION_ONLY`** — the 13 generic `view.*` controls (`checkbox`, `date`,
-  `dropdown`, `hidden`, `hotlink`, `image`, `month`, `number`, `password`, `radio`,
-  `text`, `textarea`, `web`) — a TS-web-PRESENTATION facet, like the TS-only `D1`
-  dialect. They have zero backend / codegen / render consumers; only the TS web
-  client (`client/web/packages/{tanstack,angular}/src/`) + TS form codegen
-  (`server/typescript/packages/codegen-ts/src/templates/field-meta.ts`) consume
-  them. They are **registered in every port** — TypeScript, C#, Java (so Kotlin)
-  and Python — so one metadata document loads everywhere (an authored
-  `view.dropdown` is not an `ERR_UNKNOWN_SUBTYPE` in a backend port; gated by the
-  `view-text-basic` conformance fixture), and **excluded from the manifest** by
-  all four emitters, because registration there is for LOADING only. Only
-  `view.base` + `view.currency` (the cross-port currency `@locale` wire
-  contract) are manifest rows. See SP-G analysis B-2; C#, Java and Python
-  originally left them unregistered, which made a document shared between a TS
-  web client and a backend port unloadable in the backend.
+### Not carved out: vocabulary only some ports act on (ruling R40)
+
+Vocabulary that only some ports act on is still cross-port vocabulary. It is IN the
+manifest, marked rather than removed, and every port registers it and loads it
+strictly; a port not named loads it and does nothing with it. An unregistered name
+still fails everywhere.
+
+- **Kind 1 — implemented in some ports so far.** The `(type, subType)` entry or the attr
+  carries `"implementedIn": [...]` in `spec/metamodel/*.json`, and the manifest carries it
+  (sorted; on a type right after `subType`, on an attr after `allowedValues`). The 13
+  generic `view.*` controls (`checkbox`, `date`, `dropdown`, `hidden`, `hotlink`, `image`,
+  `month`, `number`, `password`, `radio`, `text`, `textarea`, `web`) and their attrs
+  (`view.textarea @rows`, `view.image @accept/@aspectRatio/@maxBytes/@maxEdge/@store`) are
+  `["typescript"]`; `object.* @object` (ADR-0001) is `["java"]`. They used to be carved out
+  as `PRESENTATION_ONLY` / `NATIVE_BINDING`; both reasons are retired. The parity gaps are
+  listed in `docs/CONFORMANCE.md`, "Split coverage".
+- **Kind 2 — language-specific by nature.** The attr carries `"ports": [...]`:
+  `@dbSetName` (`["csharp"]`) and `@objectAdapter` (`["java"]`, ADR-0005).
 
 ### EXCLUDED from v1 — deferred follow-ons (documented, not silent)
 

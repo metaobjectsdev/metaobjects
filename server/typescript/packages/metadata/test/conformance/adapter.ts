@@ -20,6 +20,7 @@ import { dbProvider } from "../../src/persistence/db/db-provider.js";
 import { docProvider } from "../../src/core/documentation/doc-provider.js";
 import { promptProvider } from "../../src/template/prompt-provider.js";
 import { uiProvider } from "../../src/presentation/ui/ui-provider.js";
+import { uiWebProvider } from "../../src/presentation/ui-web/ui-web-provider.js";
 import { MetaDataLoader } from "../../src/loader/meta-data-loader.js";
 import type { MetaData } from "../../src/shared/meta-data.js";
 import { canonicalSerialize, canonicalSerializeEffective } from "../../src/serializer-json.js";
@@ -124,6 +125,7 @@ export const PROVIDERS: Readonly<Record<string, MetaDataTypeProvider>> = {
   // the TS adapter keeps an alias to the renamed promptProvider for those fixtures.
   "metaobjects-template": promptProvider,
   [uiProvider.id]: uiProvider,               // "metaobjects-ui" (filter/sort field markers)
+  [uiWebProvider.id]: uiWebProvider,         // "metaobjects-ui-web" (R40 kind 1 view control attrs)
   // Test-only — provider-extension-* fixtures.
   "example-template-briefing": exampleTemplateBriefingProvider,
   "cycle-a": cycleAProvider,

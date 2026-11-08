@@ -130,6 +130,47 @@ are tracked in [#544](https://github.com/metaobjectsdev/metaobjects/issues/544).
 - *TODO, Python:* the vocabulary loads; the runtime has no DDL path. If it gains one, the same
   semantic and pin apply.
 
+**Kind-1 vocabulary: cross-port, implemented in some ports so far** (ruling R40). Each entry
+below is in the shared registry and the registry manifest, marked `implementedIn`. A port that
+has not implemented it must still register it and load it strictly (and then ignore it); an
+unregistered attr on it still fails. Gated by the conformance fixtures `view-kind1-controls`,
+`object-kind1-jvm-binding-attrs` and `error-kind1-view-unregistered-attr`, and by the registry
+canonical (`fixtures/registry-conformance/expected-registry.json`).
+
+- *Implemented in TypeScript only* (`implementedIn: ["typescript"]`). The TS web client and TS
+  form codegen act on them; no other port does yet.
+  - `view.checkbox`, `view.date`, `view.dropdown`, `view.hidden`, `view.hotlink`, `view.month`,
+    `view.number`, `view.password`, `view.radio`, `view.text`, `view.web` (types, no attrs)
+  - `view.textarea`, and its `@rows`
+  - `view.image`, and its `@accept`, `@aspectRatio`, `@maxBytes`, `@maxEdge`, `@store`
+- *Implemented in Java only* (`implementedIn: ["java"]`): `object.* @object` (ADR-0001), the
+  native class an object binds to. Java's runtime acts on it; Java's own behaviour is unchanged.
+- *Loads strictly, per port:*
+  - TypeScript and C#: every entry above loads strictly, and the manifest byte-matches
+    (`KindOneVocabularyTests` in C#; `registry-conformance.test.ts` and the fixtures in TS).
+  - *TODO, Java and Kotlin:* the view controls load, but `view.textarea @rows` and the
+    `view.image` attrs are not registered (`view-kind1-controls` fails with
+    `ERR_UNKNOWN_ATTR`), and the manifest still carves out the views, `@object` and
+    `@objectAdapter`, so registry-conformance fails. `object-kind1-jvm-binding-attrs` passes.
+  - *TODO, Python:* the same view-attr gap, plus `@object` and `@objectAdapter` are not
+    registered (both loading fixtures fail), and registry-conformance fails.
+- *Kind 2, for comparison* (`ports`, language-specific by nature, never "pending"):
+  `@dbSetName` (`["csharp"]`) and `@objectAdapter` (`["java"]`).
+
+**Generated paths keyed by package** (ruling R39 — decided, pending, next upstream batch).
+Every port's generated output will be keyed by the metadata package, so two packages that each
+declare an object of the same name never collide on an output path. Not built yet; the current
+state per port:
+
+- *C#:* the per-object generators write a flat `<Class>.g.cs`. They will route through one
+  `<package>/<file>` helper. The path follows the metadata package, not `PackageNamespaces`.
+- *TypeScript:* `outputLayout` defaults to `flat`. The default flips to package-keyed, which
+  moves every relative import and many goldens.
+- *Python:* only the flat layout exists. A package layout is new work.
+- *Java and Kotlin:* files land in the mapped Java package directories, so two metadata
+  packages mapped to one Java package would collide.
+- Every port gets a two-packages test.
+
 **Native index vocabulary and `@description` in the ORM models** (R33). `meta migrate` creates
 every index (`identity.secondary`, `index.lookup`, a field's `@unique`, with `@where`, `@using`,
 `@orders`, `@expr` and the resolved name) and writes `@description` as `COMMENT ON`. What each

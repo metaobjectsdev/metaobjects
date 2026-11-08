@@ -86,13 +86,25 @@ const REPORT_ATTRS: Record<string, ExpectedAttr> = {
   spine: { valueType: "string", required: false },
 };
 
+// R40 kind 2 — language-specific attrs every port loads: @dbSetName (C#) on entity /
+// projection / report, and the JVM's @object / @objectAdapter on object.base, which
+// every subtype composes.
+const DB_SET_NAME: Record<string, ExpectedAttr> = {
+  dbSetName: { valueType: "string", required: false },
+};
+
+const JVM_BINDING: Record<string, ExpectedAttr> = {
+  object: { valueType: "string", required: false },
+  objectAdapter: { valueType: "string", required: false },
+};
+
 function expectedAttrsFor(subType: string): Record<string, ExpectedAttr> {
-  if (subType === OBJECT_SUBTYPE_ENTITY) return { ...DISCRIMINATOR };
-  if (subType === OBJECT_SUBTYPE_VALUE) return { ...NORMALIZE };
-  if (subType === OBJECT_SUBTYPE_PROJECTION) return { ...PROJECTION_FILTER };
-  if (subType === OBJECT_SUBTYPE_REPORT) return { ...REPORT_ATTRS };
-  // base carries NO attrs (discriminator moved to entity only).
-  return {};
+  if (subType === OBJECT_SUBTYPE_ENTITY) return { ...DISCRIMINATOR, ...DB_SET_NAME, ...JVM_BINDING };
+  if (subType === OBJECT_SUBTYPE_VALUE) return { ...NORMALIZE, ...JVM_BINDING };
+  if (subType === OBJECT_SUBTYPE_PROJECTION) return { ...PROJECTION_FILTER, ...DB_SET_NAME, ...JVM_BINDING };
+  if (subType === OBJECT_SUBTYPE_REPORT) return { ...REPORT_ATTRS, ...DB_SET_NAME, ...JVM_BINDING };
+  // base carries only the JVM bindings (discriminator moved to entity only).
+  return { ...JVM_BINDING };
 }
 
 // The EXACT composed structural childRule childType set per subtype (the critical

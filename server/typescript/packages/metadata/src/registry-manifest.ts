@@ -52,7 +52,9 @@ export interface ManifestAttr {
    * value-set drifting between ports (the failure mode the dbColumnType slim hit).
    */
   allowedValues?: readonly string[];
-  /** R40 — the ports that act on a language-specific attr, sorted. Emitted ONLY when the attr names them. */
+  /** R40 kind 1 — the ports that implement this cross-port attr so far, sorted. Emitted ONLY when named. */
+  implementedIn?: readonly string[];
+  /** R40 kind 2 — the ports that act on a language-specific attr, sorted. Emitted ONLY when the attr names them. */
   ports?: readonly string[];
   /** FR-033 — human/AI-facing description of the attribute (required, non-empty). */
   description: string;
@@ -84,6 +86,11 @@ export interface ManifestChild {
 export interface ManifestType {
   type: string;
   subType: string;
+  /**
+   * R40 kind 1 — the ports that implement this type so far, sorted. Emitted ONLY when
+   * the type names them; absent = every port implements it.
+   */
+  implementedIn?: readonly string[];
   /** FR-033 — human/AI-facing description of the type/subType (required, non-empty). */
   description: string;
   /** FR-033 — prose documenting the complex rules enforced in code. Emitted only when present. */
@@ -163,7 +170,10 @@ function toManifestAttr(attr: AttrSchema): ManifestAttr {
     isArray,
     required: attr.required,
     ...(hasAllowed ? { allowedValues: attr.allowedValues!.map((v) => String(v)) } : {}),
-    ...(attr.ports !== undefined && attr.ports.length > 0 ? { ports: [...attr.ports].sort() } : {}),
+    ...(attr.implementedIn !== undefined && attr.implementedIn.length > 0
+      ? { implementedIn: [...attr.implementedIn].sort(compareStrings) }
+      : {}),
+    ...(attr.ports !== undefined && attr.ports.length > 0 ? { ports: [...attr.ports].sort(compareStrings) } : {}),
     description: attr.description,
   };
   if (attr.rules !== undefined) out.rules = attr.rules;
@@ -285,6 +295,9 @@ function toManifestType(def: TypeDefinition): ManifestType {
   const out: ManifestType = {
     type: def.typeId.type,
     subType: def.typeId.subType,
+    ...(def.implementedIn !== undefined && def.implementedIn.length > 0
+      ? { implementedIn: [...def.implementedIn].sort(compareStrings) }
+      : {}),
     description: def.description,
     ...(def.rules !== undefined ? { rules: def.rules } : {}),
     ...(def.example !== undefined ? { example: def.example } : {}),
@@ -311,7 +324,7 @@ export function buildRegistryManifest(registry: TypeRegistry): RegistryManifest 
   const types: ManifestType[] = registry
     .allTypes()
     // Skip excluded (type, subType) rows: the `metadata.base` inheritance
-    // anchor (C-5) + the generic TS-presentation `view.*` controls (B-2).
+    // anchor (C-5).
     .filter((typeId) => !isExcludedTypeSubType(typeId.type, typeId.subType))
     .map((typeId) =>
       toManifestType(
@@ -353,9 +366,11 @@ export function buildRegistryManifest(registry: TypeRegistry): RegistryManifest 
  *    header), then `types`, `commonAttrs`, `defaultSubTypes`.
  *    - Each attr: `name`, `valueType`, `isArray`, `required`, then optional
  *      `allowedValues` (omitted unless the attr declares a non-empty closed set —
- *      decision 5), then `description`, then optional `rules`, `example`,
+ *      decision 5), then optional `implementedIn` (R40 kind 1) and `ports` (R40 kind 2),
+ *      each sorted, then `description`, then optional `rules`, `example`,
  *      `whenToUse` (each omitted when absent).
- *    - Each type: `type`, `subType`, `description`, then optional `rules`,
+ *    - Each type: `type`, `subType`, then optional `implementedIn` (R40 kind 1,
+ *      sorted, omitted unless the type names it), `description`, then optional `rules`,
  *      `example`, `whenToUse` (omitted when absent), then `attrs`, `children`,
  *      then optional `parents` (omitted when absent/empty).
  *    - Each child (FR-033 constraint graph): `childType`, `childSubType`,

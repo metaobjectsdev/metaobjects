@@ -15,8 +15,32 @@ here.**
 `@flattenedColumnPrefix`, the `pascal` column rule) and nothing that loaded before stops
 loading. A port that reports `1.2` does not know that vocabulary; upgrade every port together.
 
+### Next (decided, not in this release)
+
+- **Generated paths keyed by package (ruling R39), in every port.** Every port's generated
+  output will be keyed by the metadata package, so same-named objects in two packages never
+  collide on a path. It moves every adopter's generated files once: C#'s flat `<Class>.g.cs`
+  moves under `<package>/`, TypeScript's default `outputLayout` flips from `flat`, Python gains a
+  package layout, and the JVM ports key by metadata package rather than the mapped Java package.
+  Scheduled for the next upstream batch; see `docs/CONFORMANCE.md`, "Generated paths keyed by
+  package".
+
 ### Added
 
+- **Kind-1 vocabulary: cross-port, implemented in some ports so far (ruling R40).** A registry
+  type or attr may name the ports that implement it so far (`"implementedIn": ["typescript"]` on
+  its `spec/metamodel` entry, carried into the registry manifest). It is cross-port vocabulary:
+  every port registers it and loads it strictly, and a port that has not implemented it ignores
+  it. The 13 generic `view.*` controls, `view.textarea @rows` and the five `view.image` attrs are
+  `["typescript"]`; `object.* @object` is `["java"]`. They were carved out of the manifest
+  (`PRESENTATION_ONLY`, `NATIVE_BINDING`); both carve-outs are gone, and the registry canonical
+  grows by those rows. `meta types` marks them `[ts; pending elsewhere]` / `[java; pending
+  elsewhere]` (it used to say `[ts-only]`, "the cross-port contract does not carry it"), its JSON
+  carries `implementedIn` in place of `tsOnly`, and the metamodel docs now cover the view controls.
+  `@objectAdapter` joins `@dbSetName` as kind 2 (`"ports": ["java"]`). C# now registers the
+  `metaobjects-ui-web` attrs and `@object` / `@objectAdapter`. Java, Kotlin and Python do not yet,
+  so their registry-conformance and the new `view-kind1-controls` fixture fail there until they
+  catch up (tracked in `docs/CONFORMANCE.md`).
 - **Port-scoped vocabulary, and `@dbSetName` (ruling R40).** A registry attr may name the ports
   that act on it (`"ports": ["csharp"]` on its `spec/metamodel` entry, carried into the registry
   manifest). Every port registers and type-checks it, so a model that carries it loads under every

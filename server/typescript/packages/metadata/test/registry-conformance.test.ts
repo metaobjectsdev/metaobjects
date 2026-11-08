@@ -67,13 +67,33 @@ test("manifest excludes the metadata.base inheritance anchor (keeps metadata.roo
   expect(metadataSubTypes).toContain("root");
 });
 
-test("manifest cuts the 13 generic view.* controls, keeps view.base + view.currency", () => {
+// R40 kind 1 — the generic view.* controls are cross-port vocabulary only TypeScript
+// implements so far: IN the manifest, marked `implementedIn: ["typescript"]`.
+const KIND1_VIEW_SUBTYPES = [
+  "checkbox", "date", "dropdown", "hidden", "hotlink", "image", "month",
+  "number", "password", "radio", "text", "textarea", "web",
+];
+
+test("manifest carries the 13 generic view.* controls as kind 1, implemented in TypeScript", () => {
   const manifest = buildRegistryManifest(composeRegistry(coreProviders));
-  const viewSubTypes = manifest.types
-    .filter((t) => t.type === "view")
-    .map((t) => t.subType)
-    .sort();
-  expect(viewSubTypes).toEqual(["base", "currency"]);
+  const views = manifest.types.filter((t) => t.type === "view");
+  expect(views.map((t) => t.subType).sort()).toEqual(["base", "currency", ...KIND1_VIEW_SUBTYPES].sort());
+  for (const t of views) {
+    if (KIND1_VIEW_SUBTYPES.includes(t.subType)) expect(t.implementedIn).toEqual(["typescript"]);
+    else expect(t.implementedIn).toBeUndefined();
+  }
+  // Their attrs are in the contract too, so every port must register them.
+  const image = views.find((t) => t.subType === "image")!;
+  expect(image.attrs.map((a) => a.name)).toEqual(["accept", "aspectRatio", "maxBytes", "maxEdge", "store"]);
+  const textarea = views.find((t) => t.subType === "textarea")!;
+  expect(textarea.attrs.map((a) => a.name)).toEqual(["rows"]);
+});
+
+test("implementedIn sits after subType and before description in the serialized manifest", () => {
+  const json = emitRegistryManifest(composeRegistry(coreProviders));
+  expect(json).toContain(
+    '"subType": "image",\n      "implementedIn": [\n        "typescript"\n      ],\n      "description":',
+  );
 });
 
 // Wave 3b — the in/out boundary is an EXPLICIT classification (a reason category
@@ -98,12 +118,13 @@ test("every carved-out per-type attr name carries a declared ExclusionReason", (
     expect(validReasons.has(reason)).toBe(true);
     expect(classifyPerTypeAttr(name)).toBe(reason);
   }
-  // The structural/OO-shape keywords are classified StructuralKeyword; the
-  // ADR-0001/0005 bindings NativeBinding; the per-type description CommonAttrDup.
+  // The structural/OO-shape keywords are classified StructuralKeyword; the per-type
+  // description CommonAttrDup. The JVM's ADR-0001/0005 bindings are NOT carved out
+  // (R40 kind 2): they are in the contract with `ports: ["java", "kotlin"]`.
   expect(classifyPerTypeAttr("extends")).toBe(ExclusionReason.StructuralKeyword);
   expect(classifyPerTypeAttr("isArray")).toBe(ExclusionReason.StructuralKeyword);
-  expect(classifyPerTypeAttr("object")).toBe(ExclusionReason.NativeBinding);
-  expect(classifyPerTypeAttr("objectAdapter")).toBe(ExclusionReason.NativeBinding);
+  expect(classifyPerTypeAttr("object")).toBe("included");
+  expect(classifyPerTypeAttr("objectAdapter")).toBe("included");
   expect(classifyPerTypeAttr("description")).toBe(ExclusionReason.CommonAttrDup);
   // A genuinely logical attr is INCLUDED.
   expect(classifyPerTypeAttr("column")).toBe("included");

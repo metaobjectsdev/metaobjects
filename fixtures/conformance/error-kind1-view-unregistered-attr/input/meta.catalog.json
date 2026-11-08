@@ -1,0 +1,40 @@
+{
+  "metadata.root": {
+    "package": "acme::catalog",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Product",
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "coverKey",
+                "children": [
+                  {
+                    "view.image": {
+                      "name": "form",
+                      "@cropShape": "circle"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
