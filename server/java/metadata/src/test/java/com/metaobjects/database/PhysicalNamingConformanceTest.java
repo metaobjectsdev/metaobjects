@@ -68,7 +68,7 @@ public class PhysicalNamingConformanceTest extends SharedRegistryTestBase {
     private record Case(String name, JsonElement naming, Map<String, String> tables,
                          Map<String, String> columns) {}
 
-    private record InvalidCase(String name, JsonElement naming, List<String> messageIncludes) {}
+    record InvalidCase(String name, JsonElement naming, List<String> messageIncludes) {}
 
     /**
      * The corpus's application-registered strategies (ADR-0058 Amendment 1), registered the way
@@ -107,7 +107,7 @@ public class PhysicalNamingConformanceTest extends SharedRegistryTestBase {
         return dir.resolve("fixtures/naming-conformance/physical-names");
     }
 
-    private static JsonObject readCorpus() throws IOException {
+    static JsonObject readCorpus() throws IOException {
         String content = new String(
             Files.readAllBytes(corpusDir().resolve("cases.json")), StandardCharsets.UTF_8);
         return JsonParser.parseString(content).getAsJsonObject();
@@ -120,7 +120,7 @@ public class PhysicalNamingConformanceTest extends SharedRegistryTestBase {
      * {@code null} means the whole {@code "naming"} key is ABSENT (the "default" case), never a
      * literal {@code "naming": null} (which {@code NeutralConfig} refuses as non-an-object).
      */
-    private static PhysicalNaming parseNaming(JsonElement naming, String origin) {
+    static PhysicalNaming parseNaming(JsonElement naming, String origin) {
         JsonObject doc = new JsonObject();
         doc.addProperty("schema_version", 1);
         if (naming != null && !naming.isJsonNull()) {
@@ -206,47 +206,6 @@ public class PhysicalNamingConformanceTest extends SharedRegistryTestBase {
                 actual = ColumnNaming.resolveFlattened(field, member);
             }
             assertEquals(caseName + ": column name for " + e.getKey(), e.getValue(), actual);
-        }
-    }
-
-    /** Separate suite over the corpus's {@code invalid} array — each must be refused. */
-    @RunWith(Parameterized.class)
-    public static class Invalid {
-
-        @Parameters(name = "{0}")
-        public static Collection<Object[]> invalidCases() throws IOException {
-            registerCorpusStrategies();
-            JsonObject root = readCorpus();
-            List<Object[]> rows = new ArrayList<>();
-            for (JsonElement el : root.getAsJsonArray("invalid")) {
-                JsonObject c = el.getAsJsonObject();
-                String name = c.get("name").getAsString();
-                List<String> includes = new ArrayList<>();
-                if (c.has("messageIncludes")) {
-                    for (JsonElement m : c.getAsJsonArray("messageIncludes")) includes.add(m.getAsString());
-                }
-                rows.add(new Object[]{name, new InvalidCase(name, c.get("naming"), includes)});
-            }
-            return rows;
-        }
-
-        @Parameter(0)
-        public String caseName;
-
-        @Parameter(1)
-        public InvalidCase testCase;
-
-        @Test
-        public void isRefused() {
-            MetaDataException ex = assertThrows(MetaDataException.class,
-                () -> parseNaming(testCase.naming(), "invalid-case:" + caseName));
-            for (String part : testCase.messageIncludes()) {
-                org.junit.Assert.assertTrue(caseName + ": message should contain " + part + ": " + ex.getMessage(),
-                    ex.getMessage().contains(part));
-            }
-            if (!testCase.messageIncludes().isEmpty()) {
-                org.junit.Assert.assertTrue(ex.getMessage(), ex.getMessage().contains("Java port"));
-            }
         }
     }
 }

@@ -327,7 +327,8 @@ public final class NeutralConfig {
                 tables = tablesEl.getAsString();
             }
         }
-        // PhysicalNaming.of validates the values themselves (unknown columns/tables rule).
+        // PhysicalNaming.of validates the values against the NamingStrategies registry (a
+        // built-in or an application-registered name; ADR-0058 Amendment 1).
         PhysicalNaming physicalNaming = PhysicalNaming.of(columns, tables);
 
         WireFormat wireFormat = parseWire(root.get("wire"), origin);
