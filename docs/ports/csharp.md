@@ -556,7 +556,9 @@ Column names come from the project's `naming` setting in `.metaobjects/config.js
 database whose columns are named exactly like the fields declares
 `"naming": { "columns": "literal" }`; through 1.0 that was this port's default. One whose columns
 are the field names with the first letter upper-cased (`requestURL` → `RequestURL`) declares
-`"upperFirst"`. `dotnet meta gen`
+`"pascal"`. A host that needs its own rule (an acronym list, a prefix) registers it with
+`NamingStrategies.RegisterColumns(name, n => ...)` before it reads the config, and names it there;
+the stock `dotnet meta` tool knows only the built-ins. `dotnet meta gen`
 and `dotnet meta verify --codegen` both read the setting, so a plain run and the drift gate
 resolve the identical column strings; `--column-naming` is refused
 ([physical-naming.md](../features/migrations/physical-naming.md)). `verify --codegen` says so

@@ -25,17 +25,53 @@ every runtime `ObjectManager` and `verify` read it, so they always produce the s
 
 | Key | Values | Applies to | Default |
 |---|---|---|---|
-| `columns` | `snake_case`, `literal`, `kebab-case`, `upperFirst` | a field with no `@column` | `snake_case` |
-| `tables` | `snake_case`, `literal` | a source with no `@table`/`@view`/`@proc`/`@function`: its `name`, else the object's name made plural | `snake_case` |
+| `columns` | `snake_case`, `literal`, `kebab-case`, `pascal`, or a name your application registered | a field with no `@column` | `snake_case` |
+| `tables` | `snake_case`, `literal`, or a name your application registered | a source with no `@table`/`@view`/`@proc`/`@function`: its `name`, else the object's name made plural | `snake_case` |
 
-An unknown key or value fails when the file is read. Index and constraint names are unchanged.
+An unknown key fails when the file is read, and so does a name no registered strategy answers.
+Index and constraint names are unchanged.
 
-`upperFirst` upper-cases the field name's first letter and changes nothing
-else: `createdAt` becomes `CreatedAt`, `requestURL` becomes `RequestURL` and `address_line1`
-becomes `Address_line1`. It is not a word split, so it is not PascalCase. A schema whose columns
-are the field names with a capital first letter (EF Core's default, for one) then needs `@column`
-only where the database spells a name differently. It is a column rule only; `literal` tables
-already keep an object name verbatim.
+`pascal` upper-cases the field name's first letter and changes nothing
+else: `createdAt` becomes `CreatedAt`, `requestURL` becomes `RequestURL`, `npi` becomes `Npi` and
+`address_line1` becomes `Address_line1`. It does not split words, so an acronym keeps the case
+it was written in. A schema whose columns are the field names with a capital first letter (EF
+Core's default, for one) then needs `@column` only where the database spells a name differently,
+such as `@column: "NPI"`. It is a column rule only; `literal` tables already keep an object name
+verbatim.
+
+### Your own naming strategies
+
+Each rule above is a registered strategy: a function from a bare metadata name to a physical
+name, selected by name. An application registers its own in the same registry, under a name of
+its own, and `.metaobjects/config.json` names it exactly as it names a built-in:
+
+```json
+"naming": { "columns": "pascal-acronyms" }
+```
+
+A strategy can wrap a built-in. This one upper-cases the acronyms the database spells in capitals
+and is `pascal` otherwise:
+
+| Port | Register it |
+|---|---|
+| TypeScript | `namingStrategies` in `metaobjects.config.ts`: `{ columns: { "pascal-acronyms": (n) => (ACRONYMS.has(n) ? n.toUpperCase() : columnNamingStrategy("pascal")(n)) } }`. Every `meta` command registers it before it reads `.metaobjects/config.json`. A program that loads the model itself calls `registerColumnNamingStrategy` from `@metaobjectsdev/metadata` first |
+| C# | `NamingStrategies.RegisterColumns("pascal-acronyms", n => Acronyms.Contains(n) ? n.ToUpperInvariant() : ColumnNamingStrategy.Pascal.Apply(n));` before the load or the codegen run, in the host that runs it. The stock `dotnet meta` tool knows only the built-ins |
+| Java and Kotlin | `NamingStrategies.registerColumns("pascal-acronyms", n -> ACRONYMS.contains(n) ? n.toUpperCase(Locale.ROOT) : NamingStrategies.column("pascal").apply(n));` (`com.metaobjects.database`) before the load, in the application or the host that runs codegen |
+| Python | `register_column_naming_strategy("pascal-acronyms", lambda n: n.upper() if n in ACRONYMS else column_naming_strategy("pascal")(n))` (`metaobjects.naming`) before the load, in the application or the host that runs codegen |
+
+Table rules register the same way (`namingStrategies.tables`, `RegisterTables`, `registerTables`,
+`register_table_naming_rule`) and name a source with no physical name; the entity-name fallback
+is still made plural after the rule. A built-in name cannot be replaced. Register the same
+strategy in every port that reads the database, because each port resolves the names itself.
+
+A name nothing registered fails when the file is read, naming the setting, the name, the port,
+and what is registered:
+
+```
+"naming.columns" names "pascal-acronym", which no column-naming strategy registered in the C# port answers (built in: snake_case, literal, kebab-case, pascal; registered by the application: pascal-acronyms). Register it before .metaobjects/config.json is read, or correct the name.
+```
+
+An explicit `@column` or `@table` still wins over every strategy.
 
 **Upgrade every port of an estate together.** A 1.0.x TypeScript tool refuses the new `naming` key,
 but a 1.0.x C#, Java or Python tool ignores an unknown top-level key silently and keeps the old

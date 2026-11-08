@@ -129,7 +129,8 @@ database calls it. `@column` sets the second. It never changes the first.
 
 With no `@column`, the physical name comes from the project's **column rule**:
 `snake_case` (the default), `literal` (the field name verbatim), `kebab-case` or
-`upperFirst` (the first letter upper-cased, the rest verbatim). That
+`pascal` (the first letter upper-cased, the rest verbatim), or a rule your application
+registers under a name of its own (see [physical-naming.md](migrations/physical-naming.md)). That
 is CONFIG, not metadata, on purpose: the same model has to be able to drive a
 snake_case Postgres schema and a literal-column one. It is ONE setting for the whole
 project, `naming` in `.metaobjects/config.json` (ADR-0058):
@@ -316,7 +317,7 @@ For `flattened`, the generated table gets `address_street`, `address_city`,
 
 Each member's column is a **prefix** followed by the member's own column (its `@column`, else
 its name under the project's column rule). The prefix defaults to the embedding field's column
-and `_` (`address_`; with `@column: "bill"`, `bill_`; under the `upperFirst` rule, `Address_`,
+and `_` (`address_`; with `@column: "bill"`, `bill_`; under the `pascal` rule, `Address_`,
 EF Core's own default). **`@flattenedColumnPrefix`** on the embedding field replaces it,
 verbatim:
 

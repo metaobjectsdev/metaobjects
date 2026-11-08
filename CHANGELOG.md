@@ -12,7 +12,7 @@ here.**
 
 **`metamodelVersion` moves to `1.3`.** This release adds vocabulary (`field.duration`,
 `@constraintName`, `@condition`, `atLeastOne @max`, `@sequenceStart`, `@sequenceName`,
-`@flattenedColumnPrefix`, the `upperFirst` column rule) and nothing that loaded before stops
+`@flattenedColumnPrefix`, the `pascal` column rule) and nothing that loaded before stops
 loading. A port that reports `1.2` does not know that vocabulary; upgrade every port together.
 
 ### Added
@@ -129,13 +129,38 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
   the project default, which `meta migrate` and `meta verify` report by name. `@maxLength` beside
   `@intValueMap` is refused at load (`ERR_ENUM_MAX_LENGTH_WITH_INT_VALUE_MAP`). A new shared
   corpus, `fixtures/enum-length-conformance/`, pins the resolution in those ports.
-- **An `upperFirst` column rule.** `"naming": { "columns": "upperFirst" }` in
+- **A `pascal` column rule.** `"naming": { "columns": "pascal" }` in
   `.metaobjects/config.json` upper-cases a field name's first letter and changes nothing else
-  (`createdAt` → `CreatedAt`, `requestURL` → `RequestURL`, `address_line1` → `Address_line1`), in
-  every port. A schema whose columns are the field names with a capital first letter (EF Core's
-  default, for one) then needs `@column` only where the database spells a name differently. A
-  column rule only; `literal` tables keep an object name verbatim.
-  See `docs/features/migrations/physical-naming.md`.
+  (`createdAt` → `CreatedAt`, `requestURL` → `RequestURL`, `npi` → `Npi`, `address_line1` →
+  `Address_line1`), in every port. A schema whose columns are the field names with a capital
+  first letter (EF Core's default, for one) then needs `@column` only where the database spells
+  a name differently (`@column: "NPI"`). A column rule only; `literal` tables keep an object name
+  verbatim. (Spelled `upperFirst` on an unreleased branch; that spelling was never released and
+  is not accepted.) See `docs/features/migrations/physical-naming.md`.
+- **Your own naming strategies, in every port (ADR-0058 Amendment 1).** The column and table
+  rules are now named strategies in a registry each port's application extends, and
+  `.metaobjects/config.json` selects a registered strategy by name exactly as it selects a
+  built-in: `"naming": { "columns": "pascal-acronyms" }`. A strategy is a function from a name
+  to a name and may wrap a built-in in one line. Register it with `namingStrategies` in
+  `metaobjects.config.ts` (every `meta` command registers it before reading the config) or
+  `registerColumnNamingStrategy` / `registerTableNamingRule` (TypeScript),
+  `NamingStrategies.RegisterColumns` / `RegisterTables` (C#),
+  `NamingStrategies.registerColumns` / `registerTables` (Java and Kotlin), or
+  `register_column_naming_strategy` / `register_table_naming_rule` (Python). Codegen, the
+  runtime, `verify` (its naming probe tries registered strategies after the built-ins),
+  `meta migrate` and the view and docs generators all resolve through the registry; `@column`
+  and `@table` still win. A name no registered strategy answers is refused when the config is
+  read, with one message in every port naming the setting, the name, the port and what is
+  registered. A built-in cannot be replaced. The shared naming corpus registers the same two
+  application strategies in every port and resolves the same names.
+  **C# source change:** `ColumnNamingStrategy` and `TableNamingRule` are classes compared by
+  name instead of enums. `ColumnNamingStrategy.SnakeCase` and the other built-ins keep their
+  names (`Pascal` is new); a `switch` on one, a constant default parameter
+  (`= ColumnNamingStrategy.Literal`) or an `[InlineData]` argument moves to `strategy.Apply(name)`,
+  a nullable parameter, or the name string. `EntityGenerator.ScalarProperty`'s `strategy`
+  parameter is now `ColumnNamingStrategy?` (default `Literal`), so an override changes its
+  signature to match. Java's `ColumnNaming.apply` throws `MetaDataException` for an unknown name
+  where it threw `IllegalArgumentException`.
 - **Schema conventions for the database objects no code addresses.** `migrate.conventions` in
   `.metaobjects/config.json` picks how `meta migrate` names primary-key and foreign-key
   constraints, whether each foreign key gets an index, and whether a unique key an FK references
