@@ -17,6 +17,16 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
 
 ### Added
 
+- **`@dbSetName` (C# only).** The EF Core DbSet property name the generated context gives an
+  `object.entity`, `object.projection` or `object.report`, in place of the derived plural
+  (`"@dbSetName": "Diagnosis"`). It is a port binding (`ExclusionReason.NativeBinding`), carved
+  out of the cross-port registry manifest as Java's `@object` is: no other port registers it, and
+  their strict loaders refuse a document that carries it. The routes, the reverse finders and the
+  api reference read the property name through it.
+- **C#: `expression-indexes` generator.** The `@expr` indexes EF Core cannot model, written as one
+  SQL file (`CREATE [UNIQUE] INDEX IF NOT EXISTS`, in the source's `@schema`, with `@using` and
+  `@where`) to apply after the schema EF builds. C#-only; ejectable.
+
 - **An int-backed enum can be an array.** `@intValueMap` together with `isArray: true` (the
   map on the field, or inherited from a shared enum) now loads in every port instead of
   failing with `ERR_ENUM_INT_VALUE_MAP_ARRAY`, which is removed. Each element is stored as its
@@ -289,6 +299,44 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
   (TypeScript `prompts.ts` and Python helpers gain a `verify` argument).
 
 ### Fixed
+
+- **An enum's `@default` is what an untouched record stores** (rc.17). C#: a scalar enum
+  started at `default(TEnum)`, not at `@default`, while the EF sentinel was `@default`, so EF
+  wrote it: a string-stored or int-mapped enum stored its first member, a nullable one NULL, and
+  a `@provided` int-backed enum with no 0 member threw `cannot write 0`. It now starts at its
+  `@default` member, as a scalar does. Kotlin: the generated data class gave a defaulted field no
+  ctor default, so a create body omitting a required one answered 400 and a nullable one was
+  written as an explicit NULL; a literal `@default` (enum member, Boolean, String, Int, Long,
+  Double) is now the ctor default. TypeScript and Python were already right (a create that omits
+  the field leaves it out of the INSERT, and the Python model starts at `@default`); live tests
+  now prove it.
+- **A generated name collides only in the scope that carries it** (rc.17). The run-wide
+  refusal of two objects whose short names pluralize alike is gone. C#: DbSet names are unique
+  within one generated context (the error says "rename one, or set @dbSetName"), route segments
+  within one routes entry, reverse finders within their class. TypeScript: the pluralized names
+  within the entity modules' scope (one directory under the flat layout, one per package under
+  the package layout), REST segments across the app. Python and JVM keep one run-wide scope,
+  which is theirs (one flat module package; one Spring app). An abstract or sourceless object
+  emits nothing, so it never collides: a layered model's abstract `enterprise::Payer` beside a
+  concrete `core::Payer` generates. The naming-conformance corpus gains `shapeOnlyCases` and
+  `crossPackageCollisionCases`.
+- **Doc pages are keyed by package** (rc.17). TypeScript's `docsFile()` and `apiDocsFile()` now
+  place every page under its package path whatever the docs target's `outputLayout` (which still
+  places code), and Java's and Kotlin's api-docs `layout` defaults to `package` (`flat` is still
+  honoured). Two same-named nodes in two packages are two pages, and an index entry that shares
+  its short name carries its package. In every port, two page paths that differ only in case
+  (`ProductNdc.md`, `ProductNDC.md`: one file on macOS and Windows) are refused by name instead of
+  one page silently replacing the other. **Upgrade note:** a TypeScript project on the flat
+  default sees its doc pages move under package directories on the next `meta gen`.
+- **`@schema` reaches every mapping.** C#: a view mapping is `.ToView(name, schema)`, as a table's
+  `[Table]` already carried its schema. Python: the ObjectManager addressed a bare table name, so
+  an entity in `@schema: sales` was read and written in whatever `search_path` resolved; every
+  read and write now qualifies the relation (SQLite, which has no schemas, keeps bare names).
+- **C#: the EF model carries the index vocabulary and `@description`.** A field's `@unique`, an
+  `identity.secondary` and an `index.lookup` are EF indexes under the names `meta migrate` gives
+  them, with `@where` (`HasFilter`), `@orders` (`IsDescending`) and `@using` (the Npgsql index
+  method); `@description` is the table and column comment. A model over the migrated database
+  now declares its indexes, where an EF migration would have dropped them.
 
 - **C#: a `<Entity>Names` whose base lives in another namespace compiles.** The names artifact
   extends its base's (`<Entity>Names : <Base>Names`), and the base's file is emitted in the base's
