@@ -231,12 +231,13 @@ public class CSharpNamingTests
 
     private static MetaRoot MultiEntityRoot(params (string Name, bool IsValue)[] specs)
     {
-        var children = string.Join(",\n", specs.Select(s => s.IsValue
+        // Each entity its own table: the pairs below collide on a generated name, not on a relation.
+        var children = string.Join(",\n", specs.Select((s, i) => s.IsValue
             ? $@"{{ ""object.value"": {{ ""name"": ""{s.Name}"", ""children"": [
                     {{ ""field.string"": {{ ""name"": ""text"" }} }}
                 ] }} }}"
             : $@"{{ ""object.entity"": {{ ""name"": ""{s.Name}"", ""children"": [
-                    {{ ""source.rdb"": {{ ""@table"": ""{s.Name.ToLowerInvariant()}"" }} }},
+                    {{ ""source.rdb"": {{ ""@table"": ""{s.Name.ToLowerInvariant()}_{i}"" }} }},
                     {{ ""field.long"": {{ ""name"": ""id"" }} }},
                     {{ ""identity.primary"": {{ ""@fields"": ""id"" }} }}
                 ] }} }}"));
@@ -407,6 +408,36 @@ public class CSharpNamingTests
         var context = Assert.Single(Run(new DbContextGenerator(), root)).Content;
         Assert.Contains("EnterprisePayers { get; set; }", context);
         Assert.Contains("Payers { get; set; }", context);
+    }
+
+    // R30, physical half: one context, one relation per (schema, name). Two objects that map to one
+    // table would silently share it; the DbSet rule no longer catches them once @dbSetName splits
+    // the property names.
+    [Theory]
+    [InlineData("billing")]
+    [InlineData(null)]
+    public void Two_objects_mapping_one_relation_in_one_context_are_refused_naming_both(string? schema)
+    {
+        var root = PackagedObjects(
+            new("enterprise", "Payer", false, true, schema, DbSetName: "EnterprisePayers"),
+            new("core", "Payer", false, true, schema));
+        var ex = Assert.Throws<InvalidOperationException>(() => Run(new DbContextGenerator(), root));
+        Assert.Contains("ERR_DUPLICATE_SQL_NAME", ex.Message);
+        Assert.Contains("\"enterprise::Payer\"", ex.Message);
+        Assert.Contains("\"core::Payer\"", ex.Message);
+        Assert.Contains(schema is null ? "\"payers\"" : "\"billing\".\"payers\"", ex.Message);
+    }
+
+    [Fact]
+    public void One_table_name_in_two_schemas_in_one_context_passes_schema_qualified()
+    {
+        var root = PackagedObjects(
+            new("enterprise", "Payer", false, true, "enterprise", DbSetName: "EnterprisePayers"),
+            new("core", "Payer", false, true, "core"));
+        Assert.Single(Run(new DbContextGenerator(), root));
+        var entities = Run(new EntityGenerator(), root).Select(f => f.Content).ToList();
+        Assert.Contains(entities, c => c.Contains("[Table(\"payers\", Schema = \"enterprise\")]"));
+        Assert.Contains(entities, c => c.Contains("[Table(\"payers\", Schema = \"core\")]"));
     }
 
     [Fact]

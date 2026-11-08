@@ -105,6 +105,9 @@ public class DbContextGenerator : IGenerator
                 : new[] { (DbSetPropertyName(o, ctx), o.ResolutionKey()) }),
             "DbSet property", "one generated context",
             "rename one, or set @dbSetName on one of them");
+        // R30, physical half: in one context each relation (or routine) is one object's. Two objects
+        // that resolve to one (schema, name) would silently read and write one table.
+        AssertOnePhysicalAddress(objects, ctx);
 
         // OnModelCreating body lines (8-space indented), in a stable order.
         var modelLines = new List<string>();
@@ -863,6 +866,49 @@ public class DbContextGenerator : IGenerator
             return [];
         }
         return [$"{lhs}.HasDefaultValueSql(\"{CSharpNaming.CSharpStringLiteral(sql)}\");"];
+    }
+
+    /// <summary>
+    /// Refuse two objects of one context that resolve to one physical address: the same name
+    /// in the same <c>@schema</c> (no schema is the dialect's default, one address too). Tables,
+    /// views and materialized views share one namespace, as PostgreSQL's relations do; stored
+    /// procedures and table functions share another. The same name in two schemas is two
+    /// addresses. Keyed on every source the object maps (a write-through's table and view),
+    /// resolved through the names artifact's own resolution, so a default table name counts.
+    /// An object that extends another and inherits its source is one EF hierarchy over that
+    /// table, not a second claim on it.
+    /// </summary>
+    private static void AssertOnePhysicalAddress(IReadOnlyList<MetaObject> objects, GenContext ctx)
+    {
+        var owners = new Dictionary<string, (MetaObject Claimant, string Kind)>(StringComparer.Ordinal);
+        static bool Extends(MetaObject sub, MetaObject super)
+        {
+            for (var s = sub.SuperData; s is not null; s = s.SuperData)
+                if (ReferenceEquals(s, super)) return true;
+            return false;
+        }
+        foreach (var o in objects)
+        {
+            if (CSharpNaming.ResolveObjectNames(o, ctx.Config.ColumnNamingStrategy) is not { } names) continue;
+            foreach (var src in names.Sources.Values)
+            {
+                if (src.PhysicalName is not { Length: > 0 } physical) continue;
+                var routine = src.Kind is MetaObjects.Persistence.Source.SourceConstants.SOURCE_KIND_STORED_PROC
+                    or MetaObjects.Persistence.Source.SourceConstants.SOURCE_KIND_TABLE_FUNCTION;
+                var address = (src.Schema is { Length: > 0 } schema ? $"\"{schema}\"." : "") + $"\"{physical}\"";
+                var key = (routine ? "routine " : "relation ") + address;
+                if (!owners.TryGetValue(key, out var existing))
+                {
+                    owners[key] = (o, src.Kind);
+                    continue;
+                }
+                if (ReferenceEquals(existing.Claimant, o) || Extends(o, existing.Claimant) || Extends(existing.Claimant, o)) continue;
+                throw new InvalidOperationException(
+                    $"ERR_DUPLICATE_SQL_NAME: \"{existing.Claimant.ResolutionKey()}\" ({existing.Kind}) and \"{o.ResolutionKey()}\" ({src.Kind}) both map to " +
+                    $"{address} in one generated context — rename one (its source @table / @view / physical name), " +
+                    "or give one its own @schema.");
+            }
+        }
     }
 
     /// <summary>
