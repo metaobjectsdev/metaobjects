@@ -1183,11 +1183,13 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 append("\n    init {\n")
                 for (sec in emittableSecondaries) {
                     val cols = sec.fields.joinToString(", ") { KotlinNaming.safeColumnProperty(it, exposedApi()) }
-                    append("        uniqueIndex(${indexNameExpr(sec, shortName)}, $cols)\n")
+                    val options = indexOptions(sec)
+                    if (options.isEmpty()) append("        uniqueIndex(${indexNameExpr(sec, shortName)}, $cols)\n")
+                    else append("        index(${indexNameExpr(sec, shortName)}, true, $cols$options)\n")
                 }
                 for (idx in lookupIndexes) {
                     val cols = idx.fields.joinToString(", ") { KotlinNaming.safeColumnProperty(it, exposedApi()) }
-                    append("        index(${indexNameExpr(idx, shortName)}, false, $cols)\n")
+                    append("        index(${indexNameExpr(idx, shortName)}, false, $cols${indexOptions(idx)})\n")
                 }
                 append("    }\n")
             }
@@ -1273,6 +1275,33 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
      * artifact re-exports it. No declaring-entity redirect is needed, unlike [columnExpr] —
      * the TPH fold folds a subtype's COLUMNS into the base's table, never its indexes.
      */
+    /**
+     * R33 — the Exposed index arguments for the vocabulary Exposed can express: `@using` as
+     * `indexType` (the access method; `btree` is the default and is left out, as migrate does)
+     * and `@where` as `filterCondition`, the predicate exactly as written. Empty when the index
+     * declares neither, so its call is unchanged. `@orders` and `@expr` have no Exposed form;
+     * docs/CONFORMANCE.md "Split coverage" records them.
+     */
+    private fun indexOptions(node: MetaData): String {
+        // ADR-0039: resolving — an index's attrs may be inherited via extends.
+        fun str(name: String): String? =
+            (if (node.hasMetaAttr(name)) node.getMetaAttr(name).value as? String else null)?.trim()?.takeIf { it.isNotEmpty() }
+        val out = StringBuilder()
+        str(com.metaobjects.identity.SecondaryIdentity.ATTR_USING)?.takeIf { it != "btree" }?.let {
+            out.append(", indexType = ").append(kotlinString(it))
+        }
+        str(com.metaobjects.identity.SecondaryIdentity.ATTR_WHERE)?.let {
+            val op = ExposedImports.core(exposedApi(), "Op")
+            val qb = ExposedImports.core(exposedApi(), "QueryBuilder")
+            out.append(", filterCondition = { object : $op<Boolean>() { override fun toQueryBuilder(queryBuilder: $qb) { ")
+                .append("queryBuilder.append(").append(kotlinString(it)).append(") } } }")
+        }
+        return out.toString()
+    }
+
+    private fun kotlinString(text: String): String =
+        "\"" + text.replace("\\", "\\\\").replace("\"", "\\\"").replace("$", "\\$") + "\""
+
     protected fun indexNameExpr(node: MetaData, shortName: String): String {
         val name = IndexNaming.resolve(node)
         if (!useNames()) return "\"$name\""

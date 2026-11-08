@@ -130,6 +130,23 @@ are tracked in [#544](https://github.com/metaobjectsdev/metaobjects/issues/544).
 - *TODO, Python:* the vocabulary loads; the runtime has no DDL path. If it gains one, the same
   semantic and pin apply.
 
+**Native index vocabulary and `@description` in the ORM models** (R33). `meta migrate` creates
+every index (`identity.secondary`, `index.lookup`, a field's `@unique`, with `@where`, `@using`,
+`@orders`, `@expr` and the resolved name) and writes `@description` as `COMMENT ON`. What each
+port's ORM model carries beside it:
+
+- *C# (EF Core):* every index, with `@where`, `@orders`, `@using` and its name, and the table and
+  column comments. An `@expr` index is not an EF index: the `expression-indexes` generator writes it
+  as SQL. Pinned by `EfModelGapsTests` and `ExpressionIndexesGeneratorTests`.
+- *TypeScript (Drizzle):* every index, with `@where`, `@orders`, `@using`, `@expr` and its name
+  (`templates/drizzle-schema.ts`). Not expressible: `@description`, which Drizzle has no API for;
+  an `@expr` index on SQLite (Drizzle's `.on()` there takes columns only).
+- *Kotlin (Exposed 0.55):* each index's name, `@using` (`indexType`) and `@where`
+  (`filterCondition`). Pinned by `KotlinExposedIndexVocabularyTest`. Not expressible: `@orders`
+  (an Exposed index has no per-column direction), `@expr` (it indexes columns or typed
+  functions, not a raw expression) and `@description` (no comment API).
+- *Java, Python:* no ORM model or DDL emitter; nothing to carry.
+
 **The eject contract** ([ADR-0034](../spec/decisions/ADR-0034-codegen-scaffold-and-own.md)
 Amendment 8). A gate, not a corpus: it has no fixtures of its own, and reads
 `generator-registry-conformance/registry.json`.

@@ -349,7 +349,9 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
   `identity.secondary` and an `index.lookup` are EF indexes under the names `meta migrate` gives
   them, with `@where` (`HasFilter`), `@orders` (`IsDescending`) and `@using` (the Npgsql index
   method); `@description` is the table and column comment. A model over the migrated database
-  now declares its indexes, where an EF migration would have dropped them.
+  now declares its indexes, where an EF migration would have dropped them. Kotlin's Exposed
+  table now carries an index's `@using` (`indexType`) and `@where` (`filterCondition`); what
+  Exposed and Drizzle cannot express is listed in `docs/CONFORMANCE.md`, "Split coverage".
 
 - **C#: a `<Entity>Names` whose base lives in another namespace compiles.** The names artifact
   extends its base's (`<Entity>Names : <Base>Names`), and the base's file is emitted in the base's
