@@ -332,6 +332,13 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
   `[Table]` already carried its schema. Python: the ObjectManager addressed a bare table name, so
   an entity in `@schema: sales` was read and written in whatever `search_path` resolved; every
   read and write now qualifies the relation (SQLite, which has no schemas, keeps bare names).
+- **C#: `identity.primary @sequenceStart` reaches the EF model, and a changed start never
+  restarts** (ruling R36). On Npgsql a fresh database's identity begins at `@sequenceStart`.
+  A context that declares one routes Npgsql migrations through a generated
+  `IdentityStartMigrationsSqlGenerator` (it references Npgsql at compile time, and is emitted
+  only for such a model), which writes a start-only change as `SET START WITH n`: Npgsql's own
+  generator writes `RESTART WITH n`, which hands out ids live rows already hold. The current value
+  never moves. Not yet in the other ports; see `docs/CONFORMANCE.md`, "Split coverage".
 - **C#: the EF model carries the index vocabulary and `@description`.** A field's `@unique`, an
   `identity.secondary` and an `index.lookup` are EF indexes under the names `meta migrate` gives
   them, with `@where` (`HasFilter`), `@orders` (`IsDescending`) and `@using` (the Npgsql index

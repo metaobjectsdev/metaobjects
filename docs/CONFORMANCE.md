@@ -110,6 +110,25 @@ corpora, or between its *vocabulary* and its *behaviour* — never gets a row of
 own, and its boundary ends up discoverable only from the feature doc. The split ones
 are recorded here instead.
 
+**`identity.primary @sequenceStart`** (ruling R36, one semantic in every port): on a fresh
+database the identity or sequence begins at `@sequenceStart`; when the start changes on an
+existing database, the change sets `START WITH` only. It never `RESTART`s and never moves the
+current value, because live rows already hold the ids it has handed out.
+
+- *Honoured and pinned:* C#. The generated context carries the start on Npgsql, and its
+  generated `IdentityStartMigrationsSqlGenerator` writes a start-only change as
+  `ALTER TABLE … ALTER COLUMN … SET START WITH n` (Npgsql's own generator writes `RESTART WITH
+  n`). `EfModelGapsTests` pins both, on live Postgres, including that the next id after the
+  change is the one after the last row.
+- *TODO, TypeScript (`meta migrate`, Drizzle):* a fresh table is created `START WITH n`, but a
+  changed start also runs `setval(seq, n, false)` when the counter is below it
+  (`emit/postgres.ts` `renderAlterSequence`), which moves the current value. Bring it to
+  `START WITH` only, and pin "the current value doesn't move".
+- *TODO, Java (OMDB) and Kotlin (Exposed):* the vocabulary loads; neither emits or honours the
+  start in its DDL or mapping. Add it with the same semantic and the same pin.
+- *TODO, Python:* the vocabulary loads; the runtime has no DDL path. If it gains one, the same
+  semantic and pin apply.
+
 **The eject contract** ([ADR-0034](../spec/decisions/ADR-0034-codegen-scaffold-and-own.md)
 Amendment 8). A gate, not a corpus: it has no fixtures of its own, and reads
 `generator-registry-conformance/registry.json`.

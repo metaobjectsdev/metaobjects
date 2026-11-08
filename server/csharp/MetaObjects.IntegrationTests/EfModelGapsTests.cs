@@ -710,16 +710,73 @@ public sealed class EfModelGapsTests
         Assert.Single(Microsoft.EntityFrameworkCore.Infrastructure.AccessorExtensions
             .GetService<IDesignTimeModel>(db).Model.GetEntityTypes(), t => t.ClrType.Name == name);
 
-    [Fact]
-    public void A_changed_identity_start_is_a_RESTART_under_Npgsql_so_the_start_is_not_emitted_yet()
+    // R36 — @sequenceStart: a fresh database's identity begins at it; a CHANGED start is
+    // `SET START WITH` only, so the current value never moves under ids live rows hold.
+
+    private const string StartVocabularyModel = """
+    { "metadata.root": { "package": "acme", "children": [
+      { "object.entity": { "name": "Ticket", "children": [
+        { "source.rdb": { "@table": "tickets" } },
+        { "field.long":   { "name": "id" } },
+        { "field.string": { "name": "code", "@maxLength": 20 } },
+        { "field.string": { "name": "status", "@maxLength": 20 } },
+        { "field.string": { "name": "email", "@maxLength": 80 } },
+        { "identity.primary": { "@fields": "id", "@generation": "increment", "@sequenceStart": __START__ } }
+      ]}}
+    ]}}
+    """;
+
+    private static GeneratedEfModel StartModel(long start) =>
+        GeneratedEfModel.Compile(StartVocabularyModel.Replace("__START__", start.ToString()), "Acme.Start" + start);
+
+    private static string MigrationSql(GeneratedEfModel from, GeneratedEfModel to)
     {
-        // Npgsql scaffolds a changed identity START as `ALTER COLUMN ... RESTART WITH n`, which
-        // would hand out ids live rows already hold. Until a migration path that cannot restart
-        // exists, @sequenceStart stays out of the EF model (meta migrate still creates it).
-        var gen = GeneratedEfModel.Compile(NativeVocabularyModel, "Acme.Native");
-        using var db = gen.NewContext(o => o.UseNpgsql("Host=unused"));
+        using var a = from.NewContext(o => o.UseNpgsql("Host=unused"));
+        using var b = to.NewContext(o => o.UseNpgsql("Host=unused"));
+        var ops = Microsoft.EntityFrameworkCore.Infrastructure.AccessorExtensions
+            .GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrationsModelDiffer>(b).GetDifferences(
+                Microsoft.EntityFrameworkCore.Infrastructure.AccessorExtensions.GetService<IDesignTimeModel>(a).Model.GetRelationalModel(),
+                Microsoft.EntityFrameworkCore.Infrastructure.AccessorExtensions.GetService<IDesignTimeModel>(b).Model.GetRelationalModel());
+        Assert.NotEmpty(ops);
+        return string.Join("\n", Microsoft.EntityFrameworkCore.Infrastructure.AccessorExtensions
+            .GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrationsSqlGenerator>(b).Generate(ops).Select(c => c.CommandText));
+    }
+
+    [Fact]
+    public void The_identity_start_reaches_the_model()
+    {
+        using var db = StartModel(1000000000).NewContext(o => o.UseNpgsql("Host=unused"));
         var id = DesignEntityType(db, "Ticket").FindProperty("Id")!;
-        Assert.Null(id.FindAnnotation("Npgsql:IdentitySequenceOptions"));
+        Assert.Equal(1000000000L, Microsoft.EntityFrameworkCore.NpgsqlPropertyExtensions.GetIdentityStartValue(id));
+    }
+
+    [Fact]
+    public void A_changed_identity_start_is_set_start_with_never_restart()
+    {
+        // Npgsql's own generator writes `RESTART WITH 200` here.
+        var sql = MigrationSql(StartModel(100), StartModel(200));
+        Assert.Contains("ALTER COLUMN id SET START WITH 200;", sql);
+        Assert.DoesNotContain("RESTART", sql, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task A_fresh_database_begins_at_the_start_and_a_changed_start_never_moves_the_current_value()
+    {
+        await using var pg = await PostgresContainer.StartAsync();
+        var before = StartModel(100);
+        using (var db = before.NewContext(o => o.UseNpgsql(pg.ConnectionString)))
+        {
+            await db.Database.EnsureCreatedAsync();
+            db.Add(before.New("Ticket", ("Code", "a"), ("Status", "open"), ("Email", "a@x")));
+            db.Add(before.New("Ticket", ("Code", "b"), ("Status", "open"), ("Email", "b@x")));
+            db.SaveChanges();
+        }
+        // The migration from start 100 to start 200, applied to the live database.
+        await Exec(pg.ConnectionString, MigrationSql(before, StartModel(200)));
+        await Exec(pg.ConnectionString, "INSERT INTO tickets (code, status, email) VALUES ('c', 'open', 'c@x')");
+        var ids = (await Rows(pg.ConnectionString, "SELECT id FROM tickets ORDER BY id")).Select(r => (long)r[0]!).ToList();
+        // A fresh database began at 100; the change did not move the current value (no 200, no reuse).
+        Assert.Equal(new[] { 100L, 101L, 102L }, ids);
     }
 
     [Fact]

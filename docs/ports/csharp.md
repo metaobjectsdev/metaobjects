@@ -403,6 +403,14 @@ tell a deliberate NULL from "not supplied". A scalar or enum property starts at 
 column default applies. A timestamp or uuid property has no C# initializer from its `@default`,
 so a new entity carries the CLR default and EF sends it.
 
+`identity.primary @sequenceStart` on a single-field `increment` key is the identity's START on
+Npgsql (a fresh database begins there). A context that declares one also gets
+`IdentityStartMigrationsSqlGenerator.g.cs`, which subclasses Npgsql's migrations SQL generator and
+is wired in `OnConfiguring` when the provider is Npgsql: a start-only change is written as
+`ALTER TABLE … ALTER COLUMN … SET START WITH n`, never `RESTART`, so the current value does not
+move under ids live rows hold. That file references `Npgsql.EntityFrameworkCore.PostgreSQL` at
+compile time.
+
 ### Decimals and null members on the wire
 
 What the generated API writes is the project setting `wire` in `.metaobjects/config.json`
