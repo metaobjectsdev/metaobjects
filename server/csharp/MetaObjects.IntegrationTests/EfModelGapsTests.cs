@@ -710,8 +710,12 @@ public sealed class EfModelGapsTests
         Assert.Single(Microsoft.EntityFrameworkCore.Infrastructure.AccessorExtensions
             .GetService<IDesignTimeModel>(db).Model.GetEntityTypes(), t => t.ClrType.Name == name);
 
-    // R36 — @sequenceStart: a fresh database's identity begins at it; a CHANGED start is
-    // `SET START WITH` only, so the current value never moves under ids live rows hold.
+    // R36 — @sequenceStart: a fresh database's identity begins at it, and NO start-only change
+    // ever restarts the sequence. Npgsql writes all three as RESTART: none → n as `RESTART WITH n`,
+    // n → none as `RESTART WITH 1`, n → m as `RESTART WITH m`, each handing out ids live rows may
+    // hold. Each is `SET START WITH` only, whether the migration is scaffolded through the
+    // rewrite (the differ) or its SQL is generated through it (the SQL generator). The adopter
+    // wires both with the generated `UseIdentityStartMigrations()` at registration.
 
     private const string StartVocabularyModel = """
     { "metadata.root": { "package": "acme", "children": [
@@ -721,63 +725,200 @@ public sealed class EfModelGapsTests
         { "field.string": { "name": "code", "@maxLength": 20 } },
         { "field.string": { "name": "status", "@maxLength": 20 } },
         { "field.string": { "name": "email", "@maxLength": 80 } },
-        { "identity.primary": { "@fields": "id", "@generation": "increment", "@sequenceStart": __START__ } }
+        { "identity.primary": { "@fields": "id", "@generation": "increment"__START__ } }
       ]}}
     ]}}
     """;
 
-    private static GeneratedEfModel StartModel(long start) =>
-        GeneratedEfModel.Compile(StartVocabularyModel.Replace("__START__", start.ToString()), "Acme.Start" + start,
-            c => c with { Dialect = "postgres" });
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, GeneratedEfModel> StartModels = new();
 
-    private static string MigrationSql(GeneratedEfModel from, GeneratedEfModel to)
+    private static GeneratedEfModel StartModel(long? start) =>
+        StartModels.GetOrAdd(start?.ToString() ?? "None", key => GeneratedEfModel.Compile(
+            StartVocabularyModel.Replace("__START__", start is { } s ? $", \"@sequenceStart\": {s}" : ""),
+            "Acme.Start" + key, c => c with { Dialect = "postgres" }));
+
+    /// <summary>The generated <c>UseIdentityStartMigrations()</c>, as an adopter calls it at registration.</summary>
+    private static DbContextOptionsBuilder UseIdentityStartMigrations(GeneratedEfModel gen, DbContextOptionsBuilder o) =>
+        (DbContextOptionsBuilder)gen.Type("IdentityStartMigrations")
+            .GetMethod("UseIdentityStartMigrations", [typeof(DbContextOptionsBuilder)])!.Invoke(null, [o])!;
+
+    private static DbContext Rewritten(GeneratedEfModel gen, string cs = "Host=unused") =>
+        gen.NewContext(o => UseIdentityStartMigrations(gen, o.UseNpgsql(cs)));
+
+    /// <summary>Npgsql's own differ and SQL generator, with no rewrite.</summary>
+    private static DbContext Stock() => new(new DbContextOptionsBuilder().UseNpgsql("Host=unused").Options);
+
+    private static Microsoft.EntityFrameworkCore.Metadata.IRelationalModel DesignModel(DbContext db) =>
+        Microsoft.EntityFrameworkCore.Infrastructure.AccessorExtensions.GetService<IDesignTimeModel>(db).Model.GetRelationalModel();
+
+    private static IReadOnlyList<Microsoft.EntityFrameworkCore.Migrations.Operations.MigrationOperation> Diff(
+        DbContext differ, GeneratedEfModel from, GeneratedEfModel to)
     {
-        using var a = from.NewContext(o => o.UseNpgsql("Host=unused"));
-        using var b = to.NewContext(o => o.UseNpgsql("Host=unused"));
+        using var a = Rewritten(from);
+        using var b = Rewritten(to);
         var ops = Microsoft.EntityFrameworkCore.Infrastructure.AccessorExtensions
-            .GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrationsModelDiffer>(b).GetDifferences(
-                Microsoft.EntityFrameworkCore.Infrastructure.AccessorExtensions.GetService<IDesignTimeModel>(a).Model.GetRelationalModel(),
-                Microsoft.EntityFrameworkCore.Infrastructure.AccessorExtensions.GetService<IDesignTimeModel>(b).Model.GetRelationalModel());
+            .GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrationsModelDiffer>(differ).GetDifferences(DesignModel(a), DesignModel(b));
         Assert.NotEmpty(ops);
-        return string.Join("\n", Microsoft.EntityFrameworkCore.Infrastructure.AccessorExtensions
-            .GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrationsSqlGenerator>(b).Generate(ops).Select(c => c.CommandText));
+        return ops;
+    }
+
+    private static string Sql(DbContext generator, IReadOnlyList<Microsoft.EntityFrameworkCore.Migrations.Operations.MigrationOperation> ops) =>
+        string.Join("\n", Microsoft.EntityFrameworkCore.Infrastructure.AccessorExtensions
+            .GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrationsSqlGenerator>(generator).Generate(ops).Select(c => c.CommandText));
+
+    /// <summary>
+    /// The migration from one start to another as SQL. <paramref name="scaffolded"/>: the rewrite
+    /// scaffolds it (its differ) and Npgsql's own generator writes the SQL, as for a migration
+    /// added through the rewrite and applied without it. Otherwise Npgsql's differ scaffolds it
+    /// and the rewrite's generator writes the SQL, as for a migration scaffolded before it.
+    /// </summary>
+    private static string MigrationSql(long? from, long? to, bool scaffolded)
+    {
+        using var rewritten = Rewritten(StartModel(to));
+        using var stock = Stock();
+        return scaffolded
+            ? Sql(stock, Diff(rewritten, StartModel(from), StartModel(to)))
+            : Sql(rewritten, Diff(stock, StartModel(from), StartModel(to)));
     }
 
     [Fact]
     public void The_identity_start_reaches_the_model()
     {
-        using var db = StartModel(1000000000).NewContext(o => o.UseNpgsql("Host=unused"));
+        using var db = Rewritten(StartModel(1000000000));
         var id = DesignEntityType(db, "Ticket").FindProperty("Id")!;
         Assert.Equal(1000000000L, Microsoft.EntityFrameworkCore.NpgsqlPropertyExtensions.GetIdentityStartValue(id));
     }
 
-    [Fact]
-    public void A_changed_identity_start_is_set_start_with_never_restart()
+    // Removing the start sets it back to the identity default (1), and leaves the current value.
+    [Theory]
+    [InlineData(null, 200L, 200L, true)]
+    [InlineData(null, 200L, 200L, false)]
+    [InlineData(100L, 200L, 200L, true)]
+    [InlineData(100L, 200L, 200L, false)]
+    [InlineData(200L, null, 1L, true)]
+    [InlineData(200L, null, 1L, false)]
+    public void A_start_only_change_is_set_start_with_never_restart(long? from, long? to, long expected, bool scaffolded)
     {
-        // Npgsql's own generator writes `RESTART WITH 200` here.
-        var sql = MigrationSql(StartModel(100), StartModel(200));
-        Assert.Contains("ALTER COLUMN id SET START WITH 200;", sql);
+        var sql = MigrationSql(from, to, scaffolded);
+        Assert.Contains($"ALTER COLUMN id SET START WITH {expected};", sql);
         Assert.DoesNotContain("RESTART", sql, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public async Task A_fresh_database_begins_at_the_start_and_a_changed_start_never_moves_the_current_value()
+    public void A_scaffolded_start_change_carries_no_identity_diff_npgsql_could_restart()
+    {
+        using var rewritten = Rewritten(StartModel(200));
+        var ops = Diff(rewritten, StartModel(null), StartModel(200));
+        var sqlOp = Assert.Single(ops.OfType<Microsoft.EntityFrameworkCore.Migrations.Operations.SqlOperation>());
+        Assert.Contains("SET START WITH 200", sqlOp.Sql);
+        // The start was the only change, so no AlterColumn is left for Npgsql to write.
+        Assert.Empty(ops.OfType<Microsoft.EntityFrameworkCore.Migrations.Operations.AlterColumnOperation>());
+    }
+
+    [Theory]
+    [InlineData(null, 2L, true)]    // the table's current value (3) is above the new start
+    [InlineData(null, 2L, false)]
+    [InlineData(100L, 200L, true)]
+    [InlineData(100L, 200L, false)]
+    [InlineData(200L, null, true)]
+    [InlineData(200L, null, false)]
+    public async Task A_start_change_on_a_live_table_never_moves_the_current_value(long? from, long? to, bool scaffolded)
     {
         await using var pg = await PostgresContainer.StartAsync();
-        var before = StartModel(100);
-        using (var db = before.NewContext(o => o.UseNpgsql(pg.ConnectionString)))
+        var before = StartModel(from);
+        using (var db = Rewritten(before, pg.ConnectionString))
         {
             await db.Database.EnsureCreatedAsync();
-            db.Add(before.New("Ticket", ("Code", "a"), ("Status", "open"), ("Email", "a@x")));
-            db.Add(before.New("Ticket", ("Code", "b"), ("Status", "open"), ("Email", "b@x")));
+            foreach (var code in new[] { "a", "b", "c" })
+                db.Add(before.New("Ticket", ("Code", code), ("Status", "open"), ("Email", code + "@x")));
             db.SaveChanges();
         }
-        // The migration from start 100 to start 200, applied to the live database.
-        await Exec(pg.ConnectionString, MigrationSql(before, StartModel(200)));
-        await Exec(pg.ConnectionString, "INSERT INTO tickets (code, status, email) VALUES ('c', 'open', 'c@x')");
+        var first = from ?? 1;
+        await Exec(pg.ConnectionString, MigrationSql(from, to, scaffolded));
+        await Exec(pg.ConnectionString, "INSERT INTO tickets (code, status, email) VALUES ('d', 'open', 'd@x')");
         var ids = (await Rows(pg.ConnectionString, "SELECT id FROM tickets ORDER BY id")).Select(r => (long)r[0]!).ToList();
-        // A fresh database began at 100; the change did not move the current value (no 200, no reuse).
-        Assert.Equal(new[] { 100L, 101L, 102L }, ids);
+        // A fresh database began at the old start; the next id follows the last row.
+        Assert.Equal(new[] { first, first + 1, first + 2, first + 3 }, ids);
+    }
+
+    [Fact]
+    public void A_context_that_declares_a_start_without_the_rewrite_fails_loudly()
+    {
+        using var db = StartModel(200).NewContext(o => o.UseNpgsql("Host=unused"));
+        var e = Assert.Throws<InvalidOperationException>(() => db.Model);
+        Assert.Contains("UseIdentityStartMigrations()", e.Message);
+        // A model that declares none has nothing to restart.
+        using var none = StartModel(null).NewContext(o => o.UseNpgsql("Host=unused"));
+        Assert.NotNull(none.Model);
+    }
+
+    [Fact]
+    public void A_pooled_context_takes_the_rewrite_from_its_registration()
+    {
+        // EF refuses an OnConfiguring that changes options under pooling; registration may.
+        var gen = StartModel(200);
+        var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
+        var addPool = typeof(Microsoft.Extensions.DependencyInjection.EntityFrameworkServiceCollectionExtensions).GetMethods()
+            .Single(m => m.Name == "AddDbContextPool" && m.GetGenericArguments().Length == 1
+                && m.GetParameters().Select(p => p.ParameterType).SequenceEqual(
+                    [typeof(Microsoft.Extensions.DependencyInjection.IServiceCollection), typeof(Action<DbContextOptionsBuilder>), typeof(int)]))
+            .MakeGenericMethod(gen.Type("AppDbContext"));
+        addPool.Invoke(null, [services, (Action<DbContextOptionsBuilder>)(o => UseIdentityStartMigrations(gen, o.UseNpgsql("Host=unused"))), 8]);
+        using var provider = Microsoft.Extensions.DependencyInjection.ServiceCollectionContainerBuilderExtensions.BuildServiceProvider(services);
+        using var scope = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.CreateScope(provider);
+        var db = (DbContext)Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions
+            .GetRequiredService(scope.ServiceProvider, gen.Type("AppDbContext"));
+        Assert.NotNull(db.Model);
+        Assert.Equal("IdentityStartMigrationsSqlGenerator", Microsoft.EntityFrameworkCore.Infrastructure.AccessorExtensions
+            .GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrationsSqlGenerator>(db).GetType().Name);
+    }
+
+    private sealed class PartialContextGenerator : MetaObjects.Codegen.Generators.DbContextGenerator
+    {
+        protected override bool ContextIsPartial(MetaObjects.Codegen.GenContext ctx) => true;
+    }
+
+    private sealed class BasedContextGenerator : MetaObjects.Codegen.Generators.DbContextGenerator
+    {
+        protected override string ContextBaseClass(MetaObjects.Codegen.GenContext ctx) => "AuditingContext";
+    }
+
+    [Fact]
+    public void A_partial_context_configures_itself_in_its_own_OnConfiguring()
+    {
+        var gen = GeneratedEfModel.Compile(StartVocabularyModel.Replace("__START__", ", \"@sequenceStart\": 200"), "Acme.StartPartial",
+            c => c with { Dialect = "postgres" }, dbContext: new PartialContextGenerator(), handWritten: ["""
+                using Microsoft.EntityFrameworkCore;
+                namespace Acme.StartPartial;
+                public partial class AppDbContext
+                {
+                    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
+                        optionsBuilder.UseNpgsql("Host=unused").UseIdentityStartMigrations();
+                }
+                """]);
+        using var db = gen.NewContext(_ => { });
+        Assert.NotNull(db.Model);
+        Assert.Equal("IdentityStartMigrationsSqlGenerator", Microsoft.EntityFrameworkCore.Infrastructure.AccessorExtensions
+            .GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrationsSqlGenerator>(db).GetType().Name);
+    }
+
+    [Fact]
+    public void A_context_base_class_keeps_its_own_OnConfiguring()
+    {
+        var gen = GeneratedEfModel.Compile(StartVocabularyModel.Replace("__START__", ", \"@sequenceStart\": 200"), "Acme.StartBased",
+            c => c with { Dialect = "postgres" }, dbContext: new BasedContextGenerator(), handWritten: ["""
+                using Microsoft.EntityFrameworkCore;
+                namespace Acme.StartBased;
+                public abstract class AuditingContext(DbContextOptions options) : DbContext(options)
+                {
+                    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
+                        optionsBuilder.UseNpgsql("Host=unused").UseIdentityStartMigrations();
+                }
+                """]);
+        using var db = gen.NewContext(_ => { });
+        Assert.NotNull(db.Model);
+        Assert.Equal("IdentityStartMigrationsSqlGenerator", Microsoft.EntityFrameworkCore.Infrastructure.AccessorExtensions
+            .GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrationsSqlGenerator>(db).GetType().Name);
     }
 
     [Fact]

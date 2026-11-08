@@ -116,11 +116,12 @@ existing database, the change sets `START WITH` only. It never `RESTART`s and ne
 current value, because live rows already hold the ids it has handed out. The port TODOs below
 are tracked in [#544](https://github.com/metaobjectsdev/metaobjects/issues/544).
 
-- *Honoured and pinned:* C#. The generated context carries the start on Npgsql, and its
-  generated `IdentityStartMigrationsSqlGenerator` writes a start-only change as
-  `ALTER TABLE … ALTER COLUMN … SET START WITH n` (Npgsql's own generator writes `RESTART WITH
-  n`). `EfModelGapsTests` pins both, on live Postgres, including that the next id after the
-  change is the one after the last row.
+- *Honoured and pinned:* C#. The generated context carries the start on Npgsql, and the generated
+  rewrite (`UseIdentityStartMigrations()`) writes every start-only change — added, changed or
+  removed — as `ALTER TABLE … ALTER COLUMN … SET START WITH n`, whether the migration is scaffolded
+  through it or its SQL is generated through it (Npgsql alone writes `RESTART WITH n`, or
+  `RESTART WITH 1` for a removed start). `EfModelGapsTests` pins all three transitions on both
+  paths, and on live Postgres that the next id after the change follows the last row.
 - *TODO, TypeScript (`meta migrate`, Drizzle):* a fresh table is created `START WITH n`, but a
   changed start also runs `setval(seq, n, false)` when the counter is below it
   (`emit/postgres.ts` `renderAlterSequence`), which moves the current value. Bring it to

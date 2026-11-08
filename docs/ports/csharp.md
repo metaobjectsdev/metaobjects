@@ -404,14 +404,28 @@ column default applies. A timestamp or uuid property has no C# initializer from 
 so a new entity carries the CLR default and EF sends it.
 
 `identity.primary @sequenceStart` on a single-field `increment` key is the identity's START on
-Npgsql (a fresh database begins there). A context that declares one also gets
-`IdentityStartMigrationsSqlGenerator.g.cs`, which subclasses Npgsql's migrations SQL generator and
-is wired in `OnConfiguring` when the provider is Npgsql: a start-only change is written as
-`ALTER TABLE … ALTER COLUMN … SET START WITH n`, never `RESTART`, so the current value does not
-move under ids live rows hold. That file references `Npgsql.EntityFrameworkCore.PostgreSQL` at
-compile time, so it (and the start in the model) is emitted only for a project whose
-`.metaobjects/config.json` names `"migrate": { "dialect": "postgres" }`. Any other project gets
-neither, with a warning, and never needs the Npgsql package.
+Npgsql (a fresh database begins there). No start-only change ever restarts the sequence: Npgsql
+alone writes a start added as `RESTART WITH n`, a changed one as `RESTART WITH m`, and a removed one
+as `RESTART WITH 1`, each handing out ids live rows may hold. A Postgres context with an increment
+key gets `IdentityStartMigrationsSqlGenerator.g.cs`, which carries the rewrite: every start-only
+change is `ALTER TABLE … ALTER COLUMN … SET START WITH n` (a removed start is set back to the
+identity default), and the current value never moves. Register it after `UseNpgsql(...)`, wherever
+the context is configured — the app's registration (pooled or not), an
+`IDesignTimeDbContextFactory`, or the context's own `OnConfiguring`:
+
+```csharp
+services.AddDbContextPool<AppDbContext>(o => o.UseNpgsql(cs).UseIdentityStartMigrations());
+```
+
+It applies at both ends: the differ scaffolds the change as that SQL, so a migration added through
+it is safe wherever it runs, and the SQL generator rewrites a migration scaffolded without it. A
+context that declares a start refuses to build its model on Npgsql when the rewrite is not
+registered (an `InvalidOperationException` that names the call), so a missing registration fails at
+`dotnet ef migrations add`, never as a silent RESTART. The file references
+`Npgsql.EntityFrameworkCore.PostgreSQL` at compile time, so it (and the start in the model) is
+emitted only for a project whose `.metaobjects/config.json` names
+`"migrate": { "dialect": "postgres" }` (a self-hosted runner sets `GenConfig.Dialect`). Any other
+project gets neither, with a warning, and never needs the Npgsql package.
 
 ### Decimals and null members on the wire
 
