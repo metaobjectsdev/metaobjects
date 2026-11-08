@@ -5,6 +5,7 @@ import { resolveFormat, isValidFormat, VALID_FORMATS, type OutputFormat } from "
 import { resolveCollection } from "@metaobjectsdev/sdk";
 import { GENERATOR_HELP } from "./commands/generator-help.js";
 import { describeError } from "./lib/error-text.js";
+import { registerProjectNamingStrategies } from "./lib/naming-preload.js";
 export { defineConfig } from "@metaobjectsdev/codegen-ts";
 export type { MetaobjectsGenConfig } from "@metaobjectsdev/codegen-ts";
 
@@ -635,6 +636,13 @@ export async function run(argv: string[]): Promise<number> {
       }
       // Unknown command with --help → fall through to the default: branch below.
     }
+  }
+
+  // ADR-0058 Amendment 1: an application's naming strategies are registered before any
+  // command reads .metaobjects/config.json, so its `naming` block can select one by name.
+  // A no-op unless that block names a strategy nothing has registered yet.
+  if (cmd !== undefined && cmd !== "--help" && cmd !== "-h" && !isVersionFlag(cmd) && cmd !== "init") {
+    await registerProjectNamingStrategies(cwd);
   }
 
   switch (cmd) {

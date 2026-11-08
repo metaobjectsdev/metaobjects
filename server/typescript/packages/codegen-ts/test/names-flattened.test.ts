@@ -22,6 +22,10 @@ import {
   type MetaObject,
   type MetaRoot,
   type TableNamingRule,
+  columnNamingStrategy,
+  tableNamingRule,
+  registerColumnNamingStrategy,
+  registerTableNamingRule,
 } from "@metaobjectsdev/metadata";
 import { resolveObjectNames, type FieldNames } from "../src/names.js";
 import { renderNamesDecl } from "../src/templates/names-decl.js";
@@ -33,7 +37,18 @@ interface NamingCase {
   naming: { columns?: ColumnNamingStrategy; tables?: TableNamingRule } | null;
   columns: Record<string, string>;
 }
-const corpus = JSON.parse(readFileSync(join(CORPUS, "cases.json"), "utf8")) as { cases: NamingCase[] };
+interface AppStrategy { name: string; for: "columns" | "tables"; delegate: string; upperCase?: string[]; prefix?: string }
+const corpus = JSON.parse(readFileSync(join(CORPUS, "cases.json"), "utf8")) as { cases: NamingCase[]; strategies: AppStrategy[] };
+
+// The corpus's application-registered strategies (ADR-0058 Amendment 1), registered through
+// the registry the way an application does, each delegating to the built-in it names.
+for (const s of corpus.strategies) {
+  const inner = s.for === "columns" ? columnNamingStrategy(s.delegate) : tableNamingRule(s.delegate);
+  const upper = new Set(s.upperCase ?? []);
+  const apply = (n: string): string => (upper.has(n) ? n.toUpperCase() : (s.prefix ?? "") + inner(n));
+  if (s.for === "columns") registerColumnNamingStrategy(s.name, apply);
+  else registerTableNamingRule(s.name, apply);
+}
 
 async function loadCorpusModel(c: NamingCase): Promise<MetaRoot> {
   const result = await new MetaDataLoader().load([new FileSource(join(CORPUS, "meta.naming.json"))]);

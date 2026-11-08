@@ -71,7 +71,7 @@ beforeEach(() => {
 afterEach(() => { for (const s of spies) s.mockRestore(); });
 
 const dryRun = (root: string) =>
-  run(["migrate", "--from-db", "--db", `file:${join(root, "t.db")}`, "--dialect", "sqlite", "--dry-run", "--cwd", root]);
+  run(["migrate", "--from-db", "--db", `file:${join(root, "t.db")}`, "--dialect", "sqlite", "--dry-run", "--cwd", root, "--format", "text"]);
 
 describe("namingStrategies in metaobjects.config.ts", () => {
   test("meta migrate names columns through the registered strategy", async () => {

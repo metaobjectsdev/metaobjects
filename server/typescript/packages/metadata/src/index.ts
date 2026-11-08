@@ -370,8 +370,12 @@ export {
 // Naming — hoisted from runtime-ts in v0.2.3 so multiple consumers (runtime-ts, migrate-ts, codegen-ts)
 // share identical name resolution. See spec §4.1.
 export {
-  toSnakeCase, toKebabCase, toUpperFirstColumn, pluralize, pluralizeTableNameLegacy,
+  toSnakeCase, toKebabCase, toPascalColumn, pluralize, pluralizeTableNameLegacy,
   applyColumnNamingStrategy, DEFAULT_COLUMN_NAMING_STRATEGY, COLUMN_NAMING_STRATEGIES,
+  BUILTIN_COLUMN_NAMING_STRATEGIES, BUILTIN_TABLE_NAMING_RULES,
+  registerColumnNamingStrategy, registerTableNamingRule, columnNamingStrategy, tableNamingRule,
+  registeredColumnNamingStrategies, registeredTableNamingRules,
+  isRegisteredColumnNamingStrategy, isRegisteredTableNamingRule, unknownNamingStrategyMessage,
   TABLE_NAMING_RULES, DEFAULT_PHYSICAL_NAMING, physicalNamingOf, applyTableNamingRule,
   PHYSICAL_NAMING_MIGRATION_GUIDE, PHYSICAL_NAMING_MIGRATION_GUIDE_PATH, physicalNamingRemovedMessage,
   resolveTableName, resolveColumnName, resolveFlattenedColumnPrefix, resolveFlattenedColumnName,
@@ -380,7 +384,10 @@ export {
   buildNameMap,
   stripPackage, packageOfResolutionKey,
 } from "./naming.js";
-export type { EntityNameMap, ColumnNamingStrategy, PhysicalNaming, TableNamingRule } from "./naming.js";
+export type {
+  EntityNameMap, ColumnNamingStrategy, PhysicalNaming, TableNamingRule, NamingFunction,
+  BuiltinColumnNamingStrategy, BuiltinTableNamingRule,
+} from "./naming.js";
 export { resolveEnumMaxLength, enumDefaultsOf, DEFAULT_ENUM_DEFAULTS, ENUMS_KEY_MAX_LENGTH } from "./enum-length.js";
 export type { EnumDefaults } from "./enum-length.js";
 

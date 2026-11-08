@@ -54,7 +54,7 @@ export {
   stableNameIndex,
 } from "./catalog-gates.js";
 
-export type { MetaobjectsGenConfig, NormalizedMetaobjectsGenConfig, ResolvedGenConfig, Dialect, ExtStyle, ColumnNamingStrategy, MetaDataTypeProvider, GeneratorSpec, ApiSurface, VerifyConfig, Orm } from "./metaobjects-config.js";
+export type { MetaobjectsGenConfig, NormalizedMetaobjectsGenConfig, ResolvedGenConfig, Dialect, ExtStyle, ColumnNamingStrategy, MetaDataTypeProvider, NamingStrategies, GeneratorSpec, ApiSurface, VerifyConfig, Orm } from "./metaobjects-config.js";
 export { defineConfig, normalizeConfig, resolveGenerators, removedGeneratorMessage, resolveOrm, ORMS, ORM_DRIZZLE, ORM_PRISMA, DRIZZLE_BOUND_GENERATORS } from "./metaobjects-config.js";
 // The dialect every generator falls back to when a config declares none, and where a
 // project's documentation goes when it has not chosen (`targets.docs`).
