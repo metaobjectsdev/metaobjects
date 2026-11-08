@@ -63,6 +63,10 @@ public sealed class TphIntermediateReferenceEfModelTests
             Assert.Equal("Workflow", fk.PrincipalEntityType.ClrType.Name);
             Assert.Equal(DeleteBehavior.Cascade, fk.DeleteBehavior);
             Assert.Equal("fk_jobs_workflow", fk.GetConstraintName());
+            // The intermediate's other fields keep the configuration the leaves' builders give them,
+            // whether or not the intermediate is now part of the EF hierarchy.
+            Assert.Equal(typeof(string), type.FindProperty("Stage")!.GetTypeMapping().Converter?.ProviderClrType);
+            Assert.Equal(8, type.FindProperty("Fee")!.GetPrecision());
         }
         // A leaf outside the intermediate does not carry it.
         var plain = Assert.Single(db.Model.GetEntityTypes(), t => t.ClrType.Name == "PlainJob");

@@ -680,6 +680,44 @@ public class DbContextGenerator : IGenerator
                 modelLines.AddRange(ReferenceConfig(st.Entity, reference, ctx));
             }
         }
+
+        // The abstract levels between the base and its concrete subtypes, once each, in the order
+        // the subtypes reach them (nearest first). Their own references were on no type at all:
+        // the column existed, and EF knew no relationship over it. An intermediate that is a class
+        // (EmitAbstractShapes) is configured on its own builder, which makes it part of the EF
+        // hierarchy and the foreign key one for all its leaves; one that is not (its fields are
+        // folded into each concrete subtype) is configured on each of those subtypes.
+        var concrete = new HashSet<MetaObject>(tph.Subtypes.Select(s => s.Entity));
+        var seen = new HashSet<MetaObject>();
+        foreach (var st in tph.Subtypes)
+        {
+            for (var mid = st.Entity.SuperData as MetaObject;
+                 mid is not null && !ReferenceEquals(mid, entity);
+                 mid = mid.SuperData as MetaObject)
+            {
+                if (concrete.Contains(mid)) continue; // a concrete subtype: the pass above
+                if (!seen.Add(mid)) break;            // reached before, and so was everything above it
+                var references = mid.OwnIdentities().OfType<MetaReferenceIdentity>().Where(r => r.Enforce).ToList();
+                if (references.Count == 0) continue;
+                var isClass = !InstanceArtifacts.IsAbstract(mid) || ctx.Config.EmitAbstractShapes;
+                var leaves = isClass
+                    ? [mid]
+                    : tph.Subtypes.Select(s => s.Entity).Where(e => DescendsFrom(e, mid)).ToList();
+                foreach (var reference in references)
+                {
+                    if (!emitted.Add(FkKey(reference))) continue;
+                    foreach (var leaf in leaves)
+                        modelLines.AddRange(ReferenceConfig(leaf, reference, ctx));
+                }
+            }
+        }
+    }
+
+    private static bool DescendsFrom(MetaObject obj, MetaObject ancestor)
+    {
+        for (var cursor = obj.SuperData; cursor is not null; cursor = cursor.SuperData)
+            if (ReferenceEquals(cursor, ancestor)) return true;
+        return false;
     }
 
     /// <summary>

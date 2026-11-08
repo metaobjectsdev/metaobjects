@@ -24,6 +24,8 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Job>().Property(x => x.Kind).HasConversion<string>();
         modelBuilder.Entity<Job>().HasDiscriminator(e => e.Kind).HasValue<CallJob>(Job.JobKind.Call).HasValue<MailJob>(Job.JobKind.Mail).HasValue<PlainJob>(Job.JobKind.Plain);
         modelBuilder.Entity<PlainJob>().HasOne<Workflow>().WithMany().HasForeignKey(e => e.OwnerId).OnDelete(DeleteBehavior.NoAction);
+        modelBuilder.Entity<CallJob>().HasOne<Workflow>().WithMany().HasForeignKey(e => e.WorkflowId).OnDelete(DeleteBehavior.NoAction);
+        modelBuilder.Entity<MailJob>().HasOne<Workflow>().WithMany().HasForeignKey(e => e.WorkflowId).OnDelete(DeleteBehavior.NoAction);
         modelBuilder.Entity<Workflow>().Property(x => x.CreatedAt).HasColumnType("timestamp with time zone");
     }
 }
