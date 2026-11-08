@@ -66,4 +66,20 @@ public class NamingStrategiesTest {
         assertEquals("java-test-config", naming.columns());
         assertEquals(PhysicalNaming.TABLE_SNAKE_CASE, naming.tables());
     }
+
+    @Test
+    public void resetForTestingForgetsTheApplicationStrategiesAndKeepsTheBuiltIns() {
+        NamingStrategies.registerColumns("java-test-reset", n -> n.toUpperCase(java.util.Locale.ROOT));
+        NamingStrategies.registerTables("java-test-reset-tables", n -> n.toUpperCase(java.util.Locale.ROOT));
+        assertTrue(NamingStrategies.isColumn("java-test-reset"));
+
+        NamingStrategies.resetForTesting();
+
+        assertFalse(NamingStrategies.isColumn("java-test-reset"));
+        assertFalse(NamingStrategies.isTable("java-test-reset-tables"));
+        assertEquals(NamingStrategies.BUILT_IN_COLUMNS, NamingStrategies.registeredColumns());
+        assertEquals(NamingStrategies.BUILT_IN_TABLES, NamingStrategies.registeredTables());
+        assertThrows(MetaDataException.class, () -> ColumnNaming.apply("id", "java-test-reset"));
+        assertEquals("request_url", ColumnNaming.apply("requestURL", ColumnNaming.SNAKE_CASE));
+    }
 }

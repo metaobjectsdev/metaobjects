@@ -192,3 +192,29 @@ def test_an_unknown_name_fails_loud_naming_the_strategy_and_the_port() -> None:
     assert "built in: snake_case, literal, kebab-case, pascal" in message
     with pytest.raises(UnknownNamingStrategyError):
         table_naming_rule("pascal")
+
+
+def test_reset_for_testing_forgets_the_application_strategies_and_keeps_the_built_ins() -> None:
+    from metaobjects.naming import (
+        BUILTIN_COLUMN_NAMING_STRATEGIES,
+        BUILTIN_TABLE_NAMING_RULES,
+        UnknownNamingStrategyError,
+        apply_column_naming_strategy,
+        register_column_naming_strategy,
+        register_table_naming_rule,
+        registered_column_naming_strategies,
+        registered_table_naming_rules,
+        reset_naming_strategies_for_testing,
+    )
+
+    register_column_naming_strategy("py-test-reset", lambda n: n.upper())
+    register_table_naming_rule("py-test-reset-tables", lambda n: n.upper())
+    assert "py-test-reset" in registered_column_naming_strategies()
+
+    reset_naming_strategies_for_testing()
+
+    assert registered_column_naming_strategies() == tuple(BUILTIN_COLUMN_NAMING_STRATEGIES)
+    assert registered_table_naming_rules() == tuple(BUILTIN_TABLE_NAMING_RULES)
+    with pytest.raises(UnknownNamingStrategyError, match='"naming.columns" names "py-test-reset"'):
+        apply_column_naming_strategy("id", "py-test-reset")
+    assert apply_column_naming_strategy("requestURL", "snake_case") == "request_url"
