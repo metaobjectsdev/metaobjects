@@ -57,16 +57,29 @@ export function columnNameFromField(
 }
 
 /**
- * PascalCase projection name → "v_" prefix + strategy applied (not pluralized).
- * E.g. "ProgramSummary" + snake_case → "v_program_summary".
- * With kebab-case the separator prefix is "v-" to stay consistent.
+ * PascalCase projection name → "v" + separator + strategy applied (not pluralized).
+ * E.g. "ProgramSummary" + snake_case → "v_program_summary". The separator is the one the
+ * strategy puts between words ("v-program-summary" under kebab-case), else "_" (a strategy that
+ * joins words with nothing: "v_ProgramSummary" under literal and pascal). It is read from the
+ * strategy itself, never from its name, so an application's strategy gets the same treatment.
  */
 export function viewNameFromProjection(
   projectionName: string,
   strategy: ColumnNamingStrategy,
 ): string {
-  const sep = strategy === "kebab-case" ? "-" : "_";
-  return "v" + sep + applyColumnNamingStrategy(projectionName, strategy);
+  return "v" + wordSeparatorOf(strategy) + applyColumnNamingStrategy(projectionName, strategy);
+}
+
+/** What `strategy` writes between two words: the middle of its answer for the two-word probe
+ *  "aB" when that is one non-alphanumeric character ("a_b", "a-b"), else "_". */
+function wordSeparatorOf(strategy: ColumnNamingStrategy): string {
+  const probe = applyColumnNamingStrategy("aB", strategy);
+  return probe.length === 3
+    && probe[0]!.toLowerCase() === "a"
+    && probe[2]!.toLowerCase() === "b"
+    && !/[\p{L}\p{N}]/u.test(probe[1]!)
+    ? probe[1]!
+    : "_";
 }
 
 /** Codegen control over how an entity name lowers to its collection (table)

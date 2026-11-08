@@ -223,6 +223,18 @@ export function tableNamingRule(name: string): NamingFunction {
   return fn;
 }
 
+/**
+ * TEST-ONLY: forget every strategy the application registered, leaving the built-ins. The
+ * registry is process-wide (and shared by every copy of this package), so a test that registers
+ * one resets it when it is done rather than leaving it for the next test to find. Not for
+ * production code.
+ */
+export function resetNamingStrategiesForTesting(): void {
+  const r = registry();
+  for (const name of [...r.columns.keys()]) if (!BUILTIN_COLUMN_FUNCTIONS.has(name)) r.columns.delete(name);
+  for (const name of [...r.tables.keys()]) if (!BUILTIN_TABLE_FUNCTIONS.has(name)) r.tables.delete(name);
+}
+
 /** True when `name` is a registered column strategy, built in or the application's. */
 export function isRegisteredColumnNamingStrategy(name: string): boolean {
   return registry().columns.has(name);

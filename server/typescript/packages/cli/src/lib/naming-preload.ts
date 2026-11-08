@@ -22,10 +22,14 @@ const TS_CONFIG_FILE = "metaobjects.config.ts";
  * and loads nothing — unless the `naming` block names a strategy no registered strategy
  * answers yet: a project on the built-ins pays one small file read. When it does name one,
  * the nearest `metaobjects.config.ts` is loaded, which registers its `namingStrategies`.
- * A failure to load it is left to the command that loads it for real, which reports it in
- * its own words; if the strategy is still missing, the config reader's refusal names it.
+ *
+ * Resolves to an error message when that file exists and FAILS to load: the strategy it would
+ * have registered is then certainly missing, and the config reader's refusal ("no strategy
+ * registered answers it") would send the reader looking for a typo in the name. The caller
+ * reports the message, which names both the failed load and the strategy, and stops. Resolves to
+ * undefined otherwise; a strategy still missing after a clean load is the reader's to refuse.
  */
-export async function registerProjectNamingStrategies(cwd: string): Promise<void> {
+export async function registerProjectNamingStrategies(cwd: string): Promise<string | undefined> {
   let configDir: string;
   try {
     const found = await discoverCollectionRoot(cwd);
@@ -51,7 +55,17 @@ export async function registerProjectNamingStrategies(cwd: string): Promise<void
   if (!existsSync(join(projectRoot, TS_CONFIG_FILE))) return;
   try {
     await loadMetaobjectsConfig(projectRoot);
-  } catch {
-    // Reported by the command's own load; the reader names the strategy if it is still missing.
+  } catch (e) {
+    const names = [
+      typeof columns === "string" && !isRegisteredColumnNamingStrategy(columns) ? `"${columns}" (naming.columns)` : undefined,
+      typeof tables === "string" && !isRegisteredTableNamingRule(tables) ? `"${tables}" (naming.tables)` : undefined,
+    ].filter((n): n is string => n !== undefined);
+    const cause = e instanceof Error ? e.message : String(e);
+    return (
+      `${join(projectRoot, TS_CONFIG_FILE)}: ${TS_CONFIG_FILE} did not load (${cause}), so the naming strategy ` +
+      `${names.join(" and ")} that .metaobjects/config.json names was not registered. Fix the load error: ` +
+      `its namingStrategies register the strategy.`
+    );
   }
+  return undefined;
 }

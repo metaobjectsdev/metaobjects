@@ -376,6 +376,7 @@ export {
   registerColumnNamingStrategy, registerTableNamingRule, columnNamingStrategy, tableNamingRule,
   registeredColumnNamingStrategies, registeredTableNamingRules,
   isRegisteredColumnNamingStrategy, isRegisteredTableNamingRule, unknownNamingStrategyMessage,
+  resetNamingStrategiesForTesting,
   TABLE_NAMING_RULES, DEFAULT_PHYSICAL_NAMING, physicalNamingOf, applyTableNamingRule,
   PHYSICAL_NAMING_MIGRATION_GUIDE, PHYSICAL_NAMING_MIGRATION_GUIDE_PATH, physicalNamingRemovedMessage,
   resolveTableName, resolveColumnName, resolveFlattenedColumnPrefix, resolveFlattenedColumnName,

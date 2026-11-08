@@ -642,7 +642,11 @@ export async function run(argv: string[]): Promise<number> {
   // command reads .metaobjects/config.json, so its `naming` block can select one by name.
   // A no-op unless that block names a strategy nothing has registered yet.
   if (cmd !== undefined && cmd !== "--help" && cmd !== "-h" && !isVersionFlag(cmd) && cmd !== "init") {
-    await registerProjectNamingStrategies(cwd);
+    const failure = await registerProjectNamingStrategies(cwd);
+    if (failure !== undefined) {
+      log.error(failure);
+      return 1;
+    }
   }
 
   switch (cmd) {
