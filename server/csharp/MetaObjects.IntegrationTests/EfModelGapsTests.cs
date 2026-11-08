@@ -584,4 +584,98 @@ public sealed class EfModelGapsTests
             """SELECT "enabled", "optIn", "label", "retries", "price", "createdAt" > now() - interval '1 hour' FROM "preferences" """)).Single();
         Assert.Equal(new object?[] { true, true, "n/a", 5, 9.99m, true }, row);
     }
+
+    // ── An enum's @default is its initial value, as a scalar's is ──────────────────────────
+    //
+    // A literal @default is HasDefaultValue(v).HasSentinel(v): EF omits the property from the
+    // INSERT only when it holds v. A scalar starts at v (its property initializer), so an
+    // untouched one is omitted and the column default applies. An enum used to start at
+    // default(TEnum) — the first generated member, or 0 for a @provided enum — which is not
+    // the sentinel, so EF wrote it: a string-stored or int-mapped enum stored its FIRST member
+    // instead of @default, a nullable one stored NULL, and a @provided int-backed enum with
+    // no 0 member threw ("cannot write 0").
+
+    private const string EnumDefaultsModel = """
+    { "metadata.root": { "package": "acme", "children": [
+      { "field.enum": { "name": "Tier", "abstract": true, "@provided": true,
+          "@values": ["BASIC", "GOLD"], "@intValueMap": { "BASIC": 1, "GOLD": 2 } } },
+      { "object.entity": { "name": "Setting", "children": [
+        { "source.rdb": { "@table": "settings" } },
+        { "field.long": { "name": "id" } },
+        { "field.enum": { "name": "mode", "@values": ["AUTO", "MANUAL"], "@required": true, "@default": "MANUAL" } },
+        { "field.enum": { "name": "optMode", "@values": ["AUTO", "MANUAL"], "@default": "MANUAL" } },
+        { "field.enum": { "name": "rank", "@values": ["LOW", "HIGH"], "@intValueMap": { "LOW": 0, "HIGH": 1 },
+            "@required": true, "@default": "HIGH" } },
+        { "field.enum": { "name": "band", "@values": ["LOW", "HIGH"], "@intValueMap": { "LOW": 1, "HIGH": 2 },
+            "@required": true, "@default": "HIGH" } },
+        { "field.enum": { "name": "tier", "extends": "acme::Tier", "@required": true, "@default": "GOLD" } },
+        { "field.enum": { "name": "optTier", "extends": "acme::Tier", "@default": "GOLD" } },
+        { "identity.primary": { "@fields": "id", "@generation": "increment" } }
+      ]}}
+    ]}}
+    """;
+
+    // The adopter's own enum, as a @provided one is: its members carry the mapped integers,
+    // so default(Tier) is 0 — a value with no member.
+    private const string ProvidedTier = "namespace Acme.Provided { public enum Tier { BASIC = 1, GOLD = 2 } }";
+
+    private static async Task<GeneratedEfModel> EnumDefaultsDatabase(PostgresContainer pg)
+    {
+        var gen = GeneratedEfModel.Compile(EnumDefaultsModel, "Acme.EnumDefaults",
+            c => c with { ProvidedEnumNamespace = "Acme.Provided" }, handWritten: [ProvidedTier]);
+        using var db = gen.NewContext(o => o.UseNpgsql(pg.ConnectionString));
+        await db.Database.EnsureCreatedAsync();
+        return gen;
+    }
+
+    [Fact]
+    public void An_enum_with_a_default_starts_at_it()
+    {
+        var gen = GeneratedEfModel.Compile(EnumDefaultsModel, "Acme.EnumDefaults",
+            c => c with { ProvidedEnumNamespace = "Acme.Provided" }, handWritten: [ProvidedTier]);
+        var s = gen.New("Setting");
+        Assert.Equal("MANUAL", GeneratedEfModel.Get(s, "Mode")!.ToString());
+        Assert.Equal("MANUAL", GeneratedEfModel.Get(s, "OptMode")!.ToString());
+        Assert.Equal("HIGH", GeneratedEfModel.Get(s, "Rank")!.ToString());
+        Assert.Equal("HIGH", GeneratedEfModel.Get(s, "Band")!.ToString());
+        Assert.Equal("GOLD", GeneratedEfModel.Get(s, "Tier")!.ToString());
+        Assert.Equal("GOLD", GeneratedEfModel.Get(s, "OptTier")!.ToString());
+    }
+
+    [Fact]
+    public async Task An_untouched_enum_is_stored_as_its_default()
+    {
+        await using var pg = await PostgresContainer.StartAsync();
+        var gen = await EnumDefaultsDatabase(pg);
+        using (var db = gen.NewContext(o => o.UseNpgsql(pg.ConnectionString)))
+        {
+            db.Add(gen.New("Setting"));
+            db.SaveChanges();
+        }
+        var row = (await Rows(pg.ConnectionString,
+            """SELECT "mode", "optMode", "rank", "band", "tier", "optTier" FROM "settings" """)).Single();
+        // string-stored (required, nullable); int map with a 0 member; int map with none;
+        // a @provided int-backed enum (required, nullable).
+        Assert.Equal(new object?[] { "MANUAL", "MANUAL", 1, 2, 2, 2 }, row);
+    }
+
+    [Fact]
+    public async Task An_enum_the_app_sets_is_stored_even_when_it_is_the_first_member()
+    {
+        // The sentinel still guards an explicit value: the first member, and an explicit NULL.
+        await using var pg = await PostgresContainer.StartAsync();
+        var gen = await EnumDefaultsDatabase(pg);
+        var tier = gen.Assembly.GetType("Acme.Provided.Tier")!;
+        using (var db = gen.NewContext(o => o.UseNpgsql(pg.ConnectionString)))
+        {
+            db.Add(gen.New("Setting",
+                ("Mode", gen.Enum("Setting+SettingMode", "AUTO")), ("OptMode", null),
+                ("Rank", gen.Enum("Setting+SettingRank", "LOW")), ("Band", gen.Enum("Setting+SettingBand", "LOW")),
+                ("Tier", System.Enum.Parse(tier, "BASIC")), ("OptTier", null)));
+            db.SaveChanges();
+        }
+        var row = (await Rows(pg.ConnectionString,
+            """SELECT "mode", "optMode", "rank", "band", "tier", "optTier" FROM "settings" """)).Single();
+        Assert.Equal(new object?[] { "AUTO", null, 0, 1, 1, null }, row);
+    }
 }

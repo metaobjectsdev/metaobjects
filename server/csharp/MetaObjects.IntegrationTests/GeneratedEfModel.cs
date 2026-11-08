@@ -31,7 +31,8 @@ internal sealed class GeneratedEfModel
 
     public static GeneratedEfModel Compile(
         string model, string ns, Func<GenConfig, GenConfig>? configure = null,
-        EntityGenerator? entities = null, DbContextGenerator? dbContext = null)
+        EntityGenerator? entities = null, DbContextGenerator? dbContext = null,
+        IEnumerable<string>? handWritten = null)
     {
         var load = new MetaDataLoader().Load([new InMemoryStringSource(model, id: ns + ".json")]);
         if (load.Errors.Count != 0)
@@ -52,8 +53,9 @@ internal sealed class GeneratedEfModel
             .Concat(new NamesGenerator().Generate(ctx))
             .ToList();
 
-        var trees = files
-            .Select(f => CSharpSyntaxTree.ParseText(f.Content, new CSharpParseOptions(LanguageVersion.CSharp12)))
+        // handWritten: source the adopter owns beside the generated code (a @provided enum).
+        var trees = files.Select(f => f.Content).Concat(handWritten ?? [])
+            .Select(c => CSharpSyntaxTree.ParseText(c, new CSharpParseOptions(LanguageVersion.CSharp12)))
             .ToArray();
         var byFileName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var path in ((string?)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") ?? "").Split(Path.PathSeparator))

@@ -398,8 +398,10 @@ property's type (bool, string, number, enum member): EF then leaves the column o
 only when the value is the default anyway, so an explicit `false`, `0` or NULL is stored as set. A
 SQL expression (`now()`, anything function-like; a bare `now` is `now()`) or a timestamp, date or
 uuid literal is `HasDefaultValueSql(...)`, and only on a `@required` property, because EF cannot
-tell a deliberate NULL from "not supplied". An enum, timestamp or uuid property has no C#
-initializer from its `@default`, so a new entity carries the CLR default and EF sends it.
+tell a deliberate NULL from "not supplied". A scalar or enum property starts at its literal
+`@default` (its C# initializer), so a new entity the app never touches holds the sentinel and the
+column default applies. A timestamp or uuid property has no C# initializer from its `@default`,
+so a new entity carries the CLR default and EF sends it.
 
 ### Decimals and null members on the wire
 

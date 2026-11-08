@@ -1997,11 +1997,16 @@ public static class DurationWire
         }
         if (field.SubType == FIELD_SUBTYPE_ENUM)
         {
+            var typeName = EnumPropertyTypeName(owner, field, ctx.Config);
             if (!field.ResolvedIsArray())
             {
-                return null;
+                // A scalar enum starts at its @default, as a scalar does. The DbContext makes
+                // that member the EF sentinel (HasDefaultValue(v).HasSentinel(v)), so an
+                // untouched enum must hold it: default(TEnum) — the first member, or 0 for a
+                // @provided enum — is written instead of the column default, and 0 has no
+                // integer under @intValueMap.
+                return EnumDefaultInitializerValue(field, typeName);
             }
-            var typeName = EnumPropertyTypeName(owner, field, ctx.Config);
             return EnumArrayIsNullable(owner, field) ? null : $"new List<{typeName}>()";
         }
         if (field.SubType == FIELD_SUBTYPE_OBJECT)
@@ -2382,6 +2387,22 @@ public static class DurationWire
     // compiles for long / float / decimal targets.
     protected static string DefaultInitializer(MetaField field, string baseType) =>
         DefaultInitializerValue(field, baseType) is { } value ? $" = {value};" : string.Empty;
+
+    // A scalar enum's @default as its member (`<TEnum>.<member>`), or null when there is no
+    // @default or it names no member of the field's effective @values (the loader refuses
+    // that; the guard keeps the emit compilable regardless). The member set is the one the
+    // DbContext's HasDefaultValue/HasSentinel literal reads, so the two always agree.
+    private static string? EnumDefaultInitializerValue(MetaField field, string enumTypeName)
+    {
+        if (field.Default is not { } raw)
+        {
+            return null;
+        }
+        var member = Convert.ToString(raw, System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty;
+        return field.EffectiveEnumValues is { } members && members.Contains(member)
+            ? $"{enumTypeName}.{member}"
+            : null;
+    }
 
     // The expression of that initializer (the text after `=`), or null for none.
     private static string? DefaultInitializerValue(MetaField field, string baseType)
