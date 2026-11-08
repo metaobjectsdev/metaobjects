@@ -828,7 +828,7 @@ public class GeneratorHooksTests
 
     private sealed class NamedDb : DbContextGenerator
     {
-        protected override string ContextClassName(GenContext ctx) => "DefaultContext";
+        protected override string ContextClassName(GenContext ctx) => "StoreContext";
     }
 
     [Fact]
@@ -840,7 +840,7 @@ public class GeneratorHooksTests
             ["public class AppDbContext : DbContext", "    public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }"],
             removed);
         Assert.Equal(
-            ["public class DefaultContext : DbContext", "    public DefaultContext(DbContextOptions<DefaultContext> options) : base(options) { }"],
+            ["public class StoreContext : DbContext", "    public StoreContext(DbContextOptions<StoreContext> options) : base(options) { }"],
             added);
     }
 
