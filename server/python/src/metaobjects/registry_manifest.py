@@ -152,6 +152,9 @@ def _to_manifest_attr(attr: AttrSchema) -> dict[str, object]:
     # is stringified for a stable cross-port surface.
     if attr.allowed_values is not None and len(attr.allowed_values) > 0:
         out["allowedValues"] = [str(v) for v in attr.allowed_values]
+    # R40 — the ports that act on a language-specific attr, sorted, only when named.
+    if attr.ports:
+        out["ports"] = sorted(attr.ports)
     out["description"] = attr.description
     if attr.rules is not None:
         out["rules"] = attr.rules

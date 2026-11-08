@@ -72,7 +72,8 @@ public sealed record AttrSchema(
     bool IsArray = false,
     string? Rules = null,
     string? Example = null,
-    string? WhenToUse = null);
+    string? WhenToUse = null,
+    IReadOnlyList<string>? Ports = null);
 
 // ---------------------------------------------------------------------------
 // TypeDefinition
@@ -645,6 +646,8 @@ public sealed class TypeRegistry
                         Rules = a.Rules,
                         Example = a.Example,
                         WhenToUse = a.WhenToUse,
+                        // R40 — the ports that act on a language-specific attr.
+                        Ports = a.Ports,
                     };
             }).ToList();
 

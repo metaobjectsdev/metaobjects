@@ -59,6 +59,7 @@ from .meta.core.object.meta_object import MetaObject
 from .meta.core.object.object_constants import (
     OBJECT_ATTR_DISCRIMINATOR,
     OBJECT_ATTR_DISCRIMINATOR_VALUE,
+    OBJECT_ATTR_DB_SET_NAME,
     OBJECT_PROJECTION_ATTR_FILTER,
     OBJECT_REPORT_ATTR_DIMENSIONS,
     OBJECT_REPORT_ATTR_FILTER,
@@ -294,6 +295,10 @@ _OBJECT_COMMON_ATTRS = [
         value_type=ATTR_SUBTYPE_STRING,
         required=False,
     ),
+    # R40 — @dbSetName, C#-only vocabulary every port loads and type-checks. object.json
+    # declares it on entity / projection / report; the strict per-subtype scoping
+    # (apply_spec_descriptions) prunes it from the others.
+    AttrSchema(name=OBJECT_ATTR_DB_SET_NAME, value_type=ATTR_SUBTYPE_STRING, required=False),
 ]
 # FR-011: @normalize is an object-level default for the enum fields of a payload
 # value-object — registered on object.value ONLY (not entity/base). FR-033 re-homes

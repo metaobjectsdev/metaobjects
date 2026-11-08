@@ -77,6 +77,12 @@ export interface AttrSchema {
   default?: AttrValue;
   /** When set, the attribute's value must be one of these (a closed enum). Optional. */
   allowedValues?: readonly AttrValue[];
+  /**
+   * The ports that ACT on this attribute (`["csharp"]`), when it is language-specific
+   * vocabulary (ruling R40). Every port registers and type-checks it; a port not named
+   * loads it and does nothing with it. Absent = every port acts on it.
+   */
+  ports?: readonly string[];
   /** Human/AI-facing description of what the attribute means. */
   description: string;
   /** FR-033 — prose documenting the complex rules enforced in code. Optional. */

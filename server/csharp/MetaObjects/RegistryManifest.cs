@@ -100,10 +100,6 @@ public static class RegistryManifest
             [AttrNameIsInterface] = ExclusionReason.StructuralKeyword,
             [AttrNameObject] = ExclusionReason.NativeBinding,
             [AttrNameObjectAdapter] = ExclusionReason.NativeBinding,
-            // C#-only: the EF Core DbSet property name (ObjectSchema.DbSetNameAttr). A binding
-            // of this port's ORM mapping, like Java's @object / @objectAdapter, not vocabulary the
-            // other ports implement; no other port registers it.
-            [Core.Object.ObjectConstants.OBJECT_ATTR_DB_SET_NAME] = ExclusionReason.NativeBinding,
             [DocumentationConstants.DOC_ATTR_DESCRIPTION] = ExclusionReason.CommonAttrDup,
         };
 
@@ -171,6 +167,7 @@ public static class RegistryManifest
         bool IsArray,
         bool Required,
         IReadOnlyList<string>? AllowedValues,
+        IReadOnlyList<string>? Ports,
         string Description,
         string? Rules,
         string? Example,
@@ -293,7 +290,10 @@ public static class RegistryManifest
         // FR-033 — the documentation surface follows the existing facets, in fixed
         // key order: name, valueType, isArray, required, allowedValues?, description,
         // then the optional rules/example/whenToUse (emitted only when present).
-        return new ManifestAttr(a.Name, valueType, isArray, a.Required, allowedValues, a.Description, a.Rules, a.Example, a.WhenToUse);
+        IReadOnlyList<string>? ports = a.Ports is { Count: > 0 } p
+            ? p.OrderBy(x => x, StringComparer.Ordinal).ToList()
+            : null;
+        return new ManifestAttr(a.Name, valueType, isArray, a.Required, allowedValues, ports, a.Description, a.Rules, a.Example, a.WhenToUse);
     }
 
     // ------------------------------------------------------------------
@@ -509,6 +509,16 @@ public static class RegistryManifest
             foreach (string value in allowed)
             {
                 writer.WriteStringValue(value);
+            }
+            writer.WriteEndArray();
+        }
+        // R40 — the ports that act on a language-specific attr, sorted, only when named.
+        if (a.Ports is { Count: > 0 } ports)
+        {
+            writer.WriteStartArray("ports");
+            foreach (string port in ports)
+            {
+                writer.WriteStringValue(port);
             }
             writer.WriteEndArray();
         }

@@ -74,6 +74,11 @@ import java.util.stream.Collectors;
  */
 public final class RegistryManifest {
 
+    /** R40 — the embedded spec, read for each attr's {@code ports}. */
+    private static final com.metaobjects.registry.spec.SpecMetamodelReader SPEC =
+            com.metaobjects.registry.spec.SpecMetamodelReader.load();
+
+
     private RegistryManifest() {
         // Utility class — no instantiation.
     }
@@ -406,7 +411,7 @@ public final class RegistryManifest {
      * {@code rules}/{@code example}/{@code whenToUse} doc facets (null = omitted).
      */
     private record ManifestAttr(String name, String valueType, boolean isArray, boolean required,
-                                List<String> allowedValues,
+                                List<String> allowedValues, List<String> ports,
                                 String description, String rules, String example, String whenToUse) {}
 
     /**
@@ -490,7 +495,11 @@ public final class RegistryManifest {
             }
             // rules/example/whenToUse have no Java attr-level source today → null
             // (omitted by the serializer). Sub-step B may source them.
-            byName.put(name, new ManifestAttr(name, valueType, isArray, required, allowedValues,
+            // R40 — the ports that act on a language-specific attr, from the spec, sorted.
+            var doc = SPEC.attrDoc(type, subType, name);
+            List<String> ports = doc != null && doc.ports() != null && !doc.ports().isEmpty()
+                    ? doc.ports().stream().sorted().toList() : null;
+            byName.put(name, new ManifestAttr(name, valueType, isArray, required, allowedValues, ports,
                     description, null, null, null));
         }
 
@@ -719,7 +728,7 @@ public final class RegistryManifest {
             // ADR-0036 Wave 1 — no common attr declares a closed value-set today
             // (null → the allowedValues key is omitted by the serializer).
             commonAttrs.add(new ManifestAttr(def.name(), def.valueType(), def.isArray(), false,
-                null, def.description() != null ? def.description() : "", null, null, null));
+                null, null, def.description() != null ? def.description() : "", null, null, null));
         }
         commonAttrs.sort(Comparator.comparing(ManifestAttr::name));
 
@@ -844,6 +853,12 @@ public final class RegistryManifest {
             if (a.allowedValues() != null && !a.allowedValues().isEmpty()) {
                 sb.append(fieldIndent).append("\"allowedValues\": ");
                 appendStringArray(sb, a.allowedValues(), fieldIndent);
+                sb.append(",\n");
+            }
+            // R40 — the ports that act on a language-specific attr, only when named.
+            if (a.ports() != null && !a.ports().isEmpty()) {
+                sb.append(fieldIndent).append("\"ports\": ");
+                appendStringArray(sb, a.ports(), fieldIndent);
                 sb.append(",\n");
             }
             // FR-033: `description` (required) follows `required`; the optional

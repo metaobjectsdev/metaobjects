@@ -102,6 +102,8 @@ class AttrEntry:
     when_to_use: str | None = None
     allowed_values: tuple[str, ...] | None = None
     default: object | None = None
+    # R40 — the ports that act on a language-specific attr; None = every port.
+    ports: tuple[str, ...] | None = None
 
     @property
     def required(self) -> bool:
@@ -252,6 +254,7 @@ class SpecMetamodelReader:
                     when_to_use=c.get("whenToUse"),
                     allowed_values=tuple(allowed) if allowed is not None else None,
                     default=c.get("default"),
+                    ports=tuple(c["ports"]) if c.get("ports") is not None else None,
                 )
             )
         return out
@@ -498,6 +501,7 @@ def apply_spec_descriptions(registry) -> None:
                         rules=a.rules,
                         example=a.example,
                         when_to_use=a.when_to_use,
+                        ports=a.ports,
                     )
                 )
             else:

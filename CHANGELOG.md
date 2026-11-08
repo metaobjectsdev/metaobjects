@@ -17,12 +17,16 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
 
 ### Added
 
-- **`@dbSetName` (C# only).** The EF Core DbSet property name the generated context gives an
-  `object.entity`, `object.projection` or `object.report`, in place of the derived plural
-  (`"@dbSetName": "Diagnosis"`). It is a port binding (`ExclusionReason.NativeBinding`), carved
-  out of the cross-port registry manifest as Java's `@object` is: no other port registers it, and
-  their strict loaders refuse a document that carries it. The routes, the reverse finders and the
-  api reference read the property name through it.
+- **Port-scoped vocabulary, and `@dbSetName` (ruling R40).** A registry attr may name the ports
+  that act on it (`"ports": ["csharp"]` on its `spec/metamodel` entry, carried into the registry
+  manifest). Every port registers and type-checks it, so a model that carries it loads under every
+  port's strict loader; a port not named does nothing with it. An attr the registry does not carry
+  still fails, and a wrong value type fails in every port (Java now refuses a list given to a scalar
+  string attr, as the other ports did). `meta types` marks such an attr `[csharp-only]` and its JSON
+  carries `ports`. The first one is `@dbSetName`: the EF Core DbSet property name the generated C#
+  context gives an `object.entity`, `object.projection` or `object.report` (`"@dbSetName":
+  "Diagnosis"`), in place of the derived plural; the routes, the reverse finders and the api
+  reference read the property name through it.
 - **C#: `expression-indexes` generator.** The `@expr` indexes EF Core cannot model, written as one
   SQL file (`CREATE [UNIQUE] INDEX IF NOT EXISTS`, in the source's `@schema`, with `@using` and
   `@where`) to apply after the schema EF builds. C#-only; ejectable.

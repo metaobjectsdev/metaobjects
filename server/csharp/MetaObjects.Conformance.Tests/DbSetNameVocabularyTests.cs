@@ -1,8 +1,7 @@
-// @dbSetName is C#-only vocabulary: the EF Core DbSet property name the generated context gives
-// an object. It loads under the strict loader on object.entity / projection / report, and it is a
-// per-port binding (ExclusionReason.NativeBinding), carved out of the cross-port registry manifest
-// the way Java's @object / @objectAdapter are, so it never reads as vocabulary the other ports
-// are expected to implement.
+// @dbSetName is C#-only vocabulary (ruling R40): the EF Core DbSet property name the generated
+// context gives an object. It is in the shared registry with `ports: ["csharp"]`, so every port
+// loads and type-checks it and only C# acts on it. It loads under the strict loader on
+// object.entity / projection / report.
 
 using MetaObjects;
 using MetaObjects.Loader;
@@ -32,8 +31,11 @@ public sealed class DbSetNameVocabularyTests
     }
 
     [Fact]
-    public void It_is_a_port_binding_not_cross_port_vocabulary()
+    public void It_is_shared_vocabulary_scoped_to_csharp()
     {
-        Assert.Equal(RegistryManifest.ExclusionReason.NativeBinding, RegistryManifest.ClassifyPerTypeAttr("dbSetName"));
+        Assert.Equal(RegistryManifest.ExclusionReason.Included, RegistryManifest.ClassifyPerTypeAttr("dbSetName"));
+        var registry = Provider.ComposeRegistry(CoreTypes.LibraryProviders);
+        var attr = registry.Find("object", "entity")!.Attributes.Single(a => a.Name == "dbSetName");
+        Assert.Equal(new[] { "csharp" }, attr.Ports);
     }
 }

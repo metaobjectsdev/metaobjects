@@ -3483,6 +3483,16 @@
       "whenToUse": "The thing owns its own data and lifecycle — a table you create/read/update/delete. The default for any persisted resource.",
       "attrs": [
         {
+          "name": "dbSetName",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "ports": [
+            "csharp"
+          ],
+          "description": "C#-only (EF Core): the DbSet property name the generated context gives this object, in place of the plural derived from its name. Set it when two objects in one generated context would otherwise claim the same property. Every port loads and type-checks it; only C# acts on it."
+        },
+        {
           "name": "discriminator",
           "valueType": "string",
           "isArray": false,
@@ -3585,6 +3595,16 @@
       "whenToUse": "You need a derived, read-only view over entities — a report, summary, or joined/aggregated read model. Declare it (with origin.* children) instead of hand-writing the SELECT/joins; it stays read-only and regenerates.",
       "attrs": [
         {
+          "name": "dbSetName",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "ports": [
+            "csharp"
+          ],
+          "description": "C#-only (EF Core): the DbSet property name the generated context gives this object, in place of the plural derived from its name. Set it when two objects in one generated context would otherwise claim the same property. Every port loads and type-checks it; only C# acts on it."
+        },
+        {
           "name": "filter",
           "valueType": "filter",
           "isArray": false,
@@ -3643,6 +3663,16 @@
       "description": "A declared report (FR-044): a fixed combination of dimensions and measures of ONE entity (@from), compiled to a read-only view. One row per distinct dimension tuple; no dimensions means exactly one row. Fields are DERIVED, not declared: one per dimension (a time dimension's field is <dimension><Grain>, e.g. purchasedAtDay) and one per measure. Every measure must belong to @from (two fact tables are two reports). @filter and @segment scope rows before grouping and combine by AND. Read-only: no writes, no get-by-id.",
       "whenToUse": "Dashboard totals, per-day series and per-group summaries that would otherwise be hand-written GROUP BY queries.",
       "attrs": [
+        {
+          "name": "dbSetName",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "ports": [
+            "csharp"
+          ],
+          "description": "C#-only (EF Core): the DbSet property name the generated context gives this object, in place of the plural derived from its name. Set it when two objects in one generated context would otherwise claim the same property. Every port loads and type-checks it; only C# acts on it."
+        },
         {
           "name": "dimensions",
           "valueType": "string",

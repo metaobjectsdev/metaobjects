@@ -68,6 +68,8 @@ export interface ChildDef {
   allowedValues?: readonly unknown[];
   /** Whether the attr is array-valued (the only way an attr's `max` may be > 1). */
   isArray?: boolean;
+  /** The ports that act on a language-specific attr (`["csharp"]`); absent = every port. */
+  ports?: readonly string[];
 }
 
 /**
@@ -441,6 +443,7 @@ function toAttrSchema(provider: string, typeKey: string, child: ChildDef): AttrS
     ...(child.allowedValues !== undefined
       ? { allowedValues: child.allowedValues as readonly AttrValue[] }
       : {}),
+    ...(child.ports !== undefined ? { ports: child.ports } : {}),
     description: child.description ?? "",
     ...(child.rules !== undefined ? { rules: child.rules } : {}),
     ...(child.example !== undefined ? { example: child.example } : {}),
