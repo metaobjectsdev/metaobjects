@@ -42,7 +42,7 @@ describe("assertNoCollectionNameCollisions", () => {
     // already-plural and stays "Addresses" — both land on the same collection name.
     const objects = await loadObjects([entity("Address"), entity("Addresses")]);
     expect(() => assertNoCollectionNameCollisions(objects)).toThrow(
-      new RegExp(`${ERR_COLLECTION_NAME_COLLISION}.*"Address".*"Addresses".*"Addresses"`),
+      new RegExp(`${ERR_COLLECTION_NAME_COLLISION}.*"acme::Address".*"acme::Addresses".*"Addresses"`),
     );
   });
 
@@ -109,7 +109,7 @@ describe("assertNoCollectionNameCollisions", () => {
   test("ApiKey and APIKey collide on the snake_cased route segment", async () => {
     const objects = await loadObjects([entity("ApiKey"), entity("APIKey")]);
     expect(() => assertNoCollectionNameCollisions(objects)).toThrow(
-      new RegExp(`${ERR_COLLECTION_NAME_COLLISION}.*"ApiKey".*"APIKey".*"api_keys"`),
+      new RegExp(`${ERR_COLLECTION_NAME_COLLISION}.*"acme::ApiKey".*"acme::APIKey".*"api_keys"`),
     );
   });
 
@@ -174,12 +174,23 @@ describe("assertNoCollectionNameCollisions", () => {
       });
     }
 
-    test("two emitting entities with one name in two packages are still refused", async () => {
+    test("two emitting entities with one name in two packages share one module scope under the flat layout", async () => {
       for (const c of corpus.crossPackageCollisionCases) {
         const objects = await packagedObjects(c.entityA, c.entityB);
-        expect(() => assertNoCollectionNameCollisions(objects)).toThrow(
+        expect(() => assertNoCollectionNameCollisions(objects, { layout: "flat" })).toThrow(
           new RegExp(`${ERR_COLLECTION_NAME_COLLISION}.*"${c.collidesOn}"`),
         );
+      }
+    });
+
+    test("under the package layout their modules are two scopes, but one app still serves one route", async () => {
+      for (const c of corpus.crossPackageCollisionCases) {
+        const objects = await packagedObjects(c.entityA, c.entityB);
+        // The pluralized names live in two package modules; the REST segment is one path.
+        expect(() => assertNoCollectionNameCollisions(objects, { layout: "package" })).toThrow(
+          /REST collection segment "payers"/,
+        );
+        expect(() => assertNoCollectionNameCollisions(objects, { layout: "package", routes: false })).not.toThrow();
       }
     });
   });

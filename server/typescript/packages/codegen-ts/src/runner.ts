@@ -496,9 +496,6 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
     return { files: [], warnings, conflicts: [] };
   }
 
-  // Refuse before any generator runs — the one choke point that sees the WHOLE
-  // set every route/hook/collection-variable generator below reads from.
-  assertNoCollectionNameCollisions(safeEntities);
 
   // #194 — dbImport / dialect are optional config, BUT a model that declares a
   // source.rdb genuinely needs `dialect`. Only a sourced object emits database
@@ -605,6 +602,10 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
 
   const entityGen = config.generators.find((g) => g.emitsEntityModule);
   const entityModuleTarget = entityGen ? targetOf(entityGen) : targets[DEFAULT_TARGET_NAME]!;
+
+  // Refuse before any generator runs: a name two objects claim in the scope it lives in
+  // (the entity modules' directory, by the layout they are written in; the one app's routes).
+  assertNoCollectionNameCollisions(safeEntities, { layout: entityModuleTarget.outputLayout });
 
   // NO eager importBase check here, deliberately.
   //
