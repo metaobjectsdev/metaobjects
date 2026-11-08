@@ -76,6 +76,9 @@ class Dialect:
     #: engine takes an ``OFFSET`` alone).
     unbounded_limit = ""
 
+    #: Whether a relation is qualified by its ``@schema`` (SQLite has no schemas).
+    qualifies_schemas: bool = True
+
     def quote(self, ident: str) -> str:
         if '"' in ident:
             raise ValueError(f"unsafe identifier: {ident}")
@@ -236,6 +239,7 @@ class SqliteDialect(Dialect):
 
     name = "sqlite"
     placeholder = "?"
+    qualifies_schemas = False
     synthesizes_type_codes = True
     unbounded_limit = "-1"
 

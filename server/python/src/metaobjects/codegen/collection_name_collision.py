@@ -32,7 +32,9 @@ def assert_no_collection_name_collisions(entities: list[MetaObject]) -> None:
     """Refuse a generation run in which two DISTINCT entities/projections pluralize
     to the same API-surface collection name.
 
-    Scope: the objects that emit a collection (:func:`_emits_collection`). A value object,
+    Scope: this port writes every module into one flat package (``output_layout`` is flat
+    only) served by one app, so its scope is the whole run. Counted over the objects that
+    emit a collection (:func:`_emits_collection`). A value object,
     an abstract object and a sourceless one never get a route, router module, or finder
     name, so they cannot collide on any of those — a layered model's abstract
     ``enterprise::Payer`` beside a concrete ``core::Payer`` is not a collision. A TPH
