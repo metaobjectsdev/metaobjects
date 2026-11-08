@@ -312,4 +312,81 @@ public class CSharpNamingTests
         Assert.Contains("\"APIKey\"", ex.Message);
         Assert.Contains("api_keys", ex.Message);
     }
+
+    // -- An object that emits no collection never claims a collection name ----------------
+    //
+    // fixtures/naming-conformance/already-plural-pluralize.json → shapeOnlyCases: an abstract
+    // or sourceless object gets no DbSet, route or finder, so a same-named concrete entity in
+    // another package is not a collision. crossPackageCollisionCases is the control.
+
+    public sealed record NamedObject(string Package, string Name, bool Abstract, bool Source);
+
+    private static JsonElement NamingCorpus(string section)
+    {
+        var path = Path.Combine(
+            CorpusPaths.RepoRoot(), "fixtures", "naming-conformance", "already-plural-pluralize.json");
+        using var doc = JsonDocument.Parse(File.ReadAllText(path));
+        return doc.RootElement.GetProperty(section).Clone();
+    }
+
+    private static NamedObject ReadObject(JsonElement o) => new(
+        o.GetProperty("package").GetString()!,
+        o.GetProperty("name").GetString()!,
+        o.TryGetProperty("abstract", out var a) && a.GetBoolean(),
+        !o.TryGetProperty("source", out var s) || s.GetBoolean());
+
+    // Each object in its own package (one source file per package), declaring an `id` key.
+    private static IReadOnlyList<MetaObject> PackagedObjects(params NamedObject[] objects)
+    {
+        var sources = objects.Select((o, i) =>
+        {
+            var abstractAttr = o.Abstract ? "\"abstract\": true, " : "";
+            var source = o.Source
+                ? $@"{{ ""source.rdb"": {{ ""@table"": ""{o.Package}_{o.Name.ToLowerInvariant()}"" }} }},"
+                : "";
+            var json = $@"{{ ""metadata.root"": {{ ""package"": ""{o.Package}"", ""children"": [
+                {{ ""object.entity"": {{ ""name"": ""{o.Name}"", {abstractAttr}""children"": [
+                    {source}
+                    {{ ""field.long"": {{ ""name"": ""id"" }} }},
+                    {{ ""identity.primary"": {{ ""@fields"": ""id"" }} }}
+                ] }} }}
+            ] }} }}";
+            return (MetaObjects.Loader.IMetaDataSource)new InMemoryStringSource(json, id: $"{o.Package}-{i}.json");
+        }).ToList();
+        var r = new MetaDataLoader().Load(sources);
+        Assert.Empty(r.Errors);
+        return r.Root.Objects();
+    }
+
+    public static TheoryData<string> ShapeOnlyCaseNotes()
+    {
+        var data = new TheoryData<string>();
+        foreach (var c in NamingCorpus("shapeOnlyCases").EnumerateArray())
+            data.Add(c.GetProperty("note").GetString()!);
+        return data;
+    }
+
+    [Theory]
+    [MemberData(nameof(ShapeOnlyCaseNotes))]
+    public void NamingConformance_anObjectThatEmitsNoCollectionClaimsNoName(string note)
+    {
+        var c = NamingCorpus("shapeOnlyCases").EnumerateArray().Single(x => x.GetProperty("note").GetString() == note);
+        var shapeOnly = ReadObject(c.GetProperty("shapeOnly"));
+        var emitting = ReadObject(c.GetProperty("emitting"));
+        // In both orders: the first-seen object owns a name, so order must not matter.
+        CSharpNaming.AssertNoCollectionNameCollisions(PackagedObjects(shapeOnly, emitting));
+        CSharpNaming.AssertNoCollectionNameCollisions(PackagedObjects(emitting, shapeOnly));
+    }
+
+    [Fact]
+    public void NamingConformance_twoEmittingEntitiesInTwoPackagesStillCollide()
+    {
+        foreach (var c in NamingCorpus("crossPackageCollisionCases").EnumerateArray())
+        {
+            var entities = PackagedObjects(ReadObject(c.GetProperty("entityA")), ReadObject(c.GetProperty("entityB")));
+            var ex = Assert.Throws<InvalidOperationException>(
+                () => CSharpNaming.AssertNoCollectionNameCollisions(entities));
+            Assert.Contains(c.GetProperty("collidesOn").GetString()!, ex.Message);
+        }
+    }
 }

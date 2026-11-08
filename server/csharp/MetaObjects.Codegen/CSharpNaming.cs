@@ -1202,9 +1202,11 @@ public static class CSharpNaming
     ///
     /// <para>Called ONCE, over the full entity set, before any generator runs
     /// (<see cref="CodegenRunner.Run"/>) — the single choke point every DbSet/route/
-    /// finder-emitting generator reads its entity list from. Scoped to every object
-    /// EXCEPT <c>object.value</c> (<see cref="MetaObject.IsValue"/>) — a value object
-    /// never gets a DbSet, route, or finder name, so it cannot collide on any of them.
+    /// finder-emitting generator reads its entity list from. Scoped to the objects that
+    /// emit a collection (<see cref="InstanceArtifacts.EmitsInstanceArtifacts"/>): a value
+    /// object, an abstract object and a sourceless one never get a DbSet, route or finder
+    /// name, so they cannot collide on any of them — a layered model's abstract
+    /// <c>enterprise::Payer</c> beside a concrete <c>core::Payer</c> is not a collision.
     /// A TPH subtype IS included: a subtype's own pluralized name feeds subtype-scoped
     /// generated names too, so two subtypes (or a subtype and an unrelated top-level
     /// entity) sharing a pluralized name collide exactly as two top-level entities
@@ -1219,7 +1221,7 @@ public static class CSharpNaming
         var ownerOfPlural = new Dictionary<string, MetaObject>(StringComparer.Ordinal);
         foreach (var obj in entities)
         {
-            if (obj.IsValue()) continue;
+            if (obj.IsValue() || !InstanceArtifacts.EmitsInstanceArtifacts(obj)) continue;
             var plural = Pluralize(obj.Name);
             if (ownerOfPlural.TryGetValue(plural, out var existing))
             {
