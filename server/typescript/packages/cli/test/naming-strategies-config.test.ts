@@ -43,7 +43,7 @@ export default {
 };
 `;
 
-async function project(columns: string, withTsConfig: boolean): Promise<string> {
+async function project(columns: string, withTsConfig: boolean, tsConfig = TS_CONFIG): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "naming-strategies-"));
   dirs.push(root);
   await mkdir(join(root, "metaobjects"), { recursive: true });
@@ -51,7 +51,7 @@ async function project(columns: string, withTsConfig: boolean): Promise<string> 
   await mkdir(join(root, ".metaobjects", "migrations"), { recursive: true });
   await writeFile(join(root, ".metaobjects", "config.json"),
     JSON.stringify({ schema_version: 1, naming: { columns }, migrate: { dialect: "sqlite" } }), "utf8");
-  if (withTsConfig) await writeFile(join(root, "metaobjects.config.ts"), TS_CONFIG, "utf8");
+  if (withTsConfig) await writeFile(join(root, "metaobjects.config.ts"), tsConfig, "utf8");
   return root;
 }
 
@@ -89,5 +89,19 @@ describe("namingStrategies in metaobjects.config.ts", () => {
     const text = out.join("\n");
     expect(text).toContain('"naming.columns" names "pascal-acronyms-typo"');
     expect(text).toContain("TypeScript port");
+  });
+
+  // The strategy the config names lives in metaobjects.config.ts, and that file does not load. The
+  // refusal that used to follow ("no strategy registered answers it") sent the reader looking for
+  // a typo; the cause is the failed load, so that is what is reported.
+  test("a metaobjects.config.ts that fails to load is reported, not swallowed", async () => {
+    const root = await project("pascal-acronyms-broken", true, 'throw new Error("boom while loading the config");\nexport default {};\n');
+    expect(await dryRun(root)).not.toBe(0);
+    const text = out.join("\n");
+    expect(text).toContain("metaobjects.config.ts did not load");
+    expect(text).toContain("boom while loading the config");
+    expect(text).toContain('so the naming strategy "pascal-acronyms-broken"');
+    // Not followed by the refusal that blames the name.
+    expect(text).not.toContain("Register it before .metaobjects/config.json is read");
   });
 });

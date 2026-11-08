@@ -9,6 +9,9 @@ import {
   registerTableNamingRule,
   registeredColumnNamingStrategies,
   registeredTableNamingRules,
+  resetNamingStrategiesForTesting,
+  isRegisteredColumnNamingStrategy,
+  isRegisteredTableNamingRule,
   unknownNamingStrategyMessage,
   BUILTIN_COLUMN_NAMING_STRATEGIES,
   BUILTIN_TABLE_NAMING_RULES,
@@ -436,5 +439,20 @@ describe("naming strategy registry", () => {
     const message = unknownNamingStrategyMessage("columns", "no-such-rule");
     expect(message).toContain("TypeScript port");
     expect(message).toContain("built in: snake_case, literal, kebab-case, pascal");
+  });
+
+  it("resetNamingStrategiesForTesting forgets the application's strategies and keeps the built-ins", () => {
+    registerColumnNamingStrategy("test-reset", (n) => n.toUpperCase());
+    registerTableNamingRule("test-reset-tables", (n) => n.toUpperCase());
+    expect(isRegisteredColumnNamingStrategy("test-reset")).toBe(true);
+
+    resetNamingStrategiesForTesting();
+
+    expect(isRegisteredColumnNamingStrategy("test-reset")).toBe(false);
+    expect(isRegisteredTableNamingRule("test-reset-tables")).toBe(false);
+    expect([...registeredColumnNamingStrategies()]).toEqual([...BUILTIN_COLUMN_NAMING_STRATEGIES]);
+    expect([...registeredTableNamingRules()]).toEqual([...BUILTIN_TABLE_NAMING_RULES]);
+    expect(() => applyColumnNamingStrategy("id", "test-reset")).toThrow(/"naming.columns" names "test-reset"/);
+    expect(applyColumnNamingStrategy("requestURL", "snake_case")).toBe("request_url");
   });
 });
