@@ -23,6 +23,12 @@
     <ProjectReference Include="../MetaObjects.Cli/MetaObjects.Cli.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <!-- Golden/ holds generated output captured for byte-for-byte comparison (GeneratorGoldenTests):
+         data, not code. Two captures of one model declare the same types, so it is never compiled. -->
+    <Compile Remove="Golden/**" />
+    <None Include="Golden/**" />
+  </ItemGroup>
+  <ItemGroup>
     <!-- The example generators the docs tell adopters to copy, compiled here verbatim so they
          cannot rot against the public API (RecipeGeneratorTests runs them end to end). -->
     <Compile Include="../../../docs/recipes/generators/csharp/*.cs" Link="Recipes/%(Filename)%(Extension)" />

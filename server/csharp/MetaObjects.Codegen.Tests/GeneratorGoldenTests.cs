@@ -107,4 +107,99 @@ public class GeneratorGoldenTests
         foreach (var f in files)
             Assert.Equal(File.ReadAllText(Path.Combine(dir, f.Path)), f.Content);
     }
+
+    // The constructs the second round of hooks reaches, captured from 01c571c6f (before them):
+    // an abstract base in ANOTHER package's namespace (its <Base>Names lives there too), a TPH
+    // base with an abstract intermediate that declares a reference, a concrete subtype with its
+    // own reference, a jsonb value object, and the names artifact itself. Run twice: with
+    // abstract shapes emitted (the intermediate is a class) and without (it is folded into its
+    // subtypes).
+    private const string BasePackage = """
+    { "metadata.root": { "package": "acme::base", "children": [
+      { "object.entity": { "name": "BaseEntity", "abstract": true, "children": [
+        { "field.long":      { "name": "id" } },
+        { "field.timestamp": { "name": "createdAt" } }
+      ]}}
+    ]}}
+    """;
+
+    private const string WorkPackage = """
+    { "metadata.root": { "package": "acme::work", "children": [
+      { "object.value": { "name": "Note", "children": [
+        { "field.string": { "name": "text", "@maxLength": 200 } },
+        { "field.enum":   { "name": "level", "@values": ["LOW", "HIGH"] } }
+      ]}},
+      { "object.entity": { "name": "Workflow", "extends": "acme::base::BaseEntity", "children": [
+        { "source.rdb": { "@table": "workflows" } },
+        { "field.string": { "name": "title", "@maxLength": 80 } },
+        { "identity.primary": { "@fields": "id" } }
+      ]}},
+      { "object.entity": { "name": "Job", "@discriminator": "kind", "children": [
+        { "source.rdb": { "@table": "jobs" } },
+        { "field.long":   { "name": "id" } },
+        { "field.enum":   { "name": "kind", "@values": ["Call", "Mail", "Plain"] } },
+        { "field.object": { "name": "note", "@objectRef": "Note", "@storage": "jsonb" } },
+        { "identity.primary": { "@fields": "id" } }
+      ]}},
+      { "object.entity": { "name": "CaseJob", "extends": "Job", "abstract": true, "children": [
+        { "field.long":   { "name": "workflowId" } },
+        { "field.string": { "name": "subject", "@maxLength": 120 } },
+        { "identity.reference": { "name": "refWorkflow", "@fields": "workflowId", "@references": "Workflow" } }
+      ]}},
+      { "object.entity": { "name": "CallJob", "extends": "CaseJob", "@discriminatorValue": "Call", "children": [
+        { "field.string": { "name": "phone", "@maxLength": 20 } }
+      ]}},
+      { "object.entity": { "name": "MailJob", "extends": "CaseJob", "@discriminatorValue": "Mail", "children": [
+        { "field.string": { "name": "address", "@maxLength": 120 } }
+      ]}},
+      { "object.entity": { "name": "PlainJob", "extends": "Job", "@discriminatorValue": "Plain", "children": [
+        { "field.long": { "name": "ownerId" } },
+        { "identity.reference": { "name": "refOwner", "@fields": "ownerId", "@references": "Workflow" } }
+      ]}}
+    ]}}
+    """;
+
+    internal static List<EmittedFile> GenerateRound2(bool shapes)
+    {
+        var r = new MetaDataLoader().Load(
+        [
+            new InMemoryStringSource(BasePackage, id: "golden-base.json"),
+            new InMemoryStringSource(WorkPackage, id: "golden-work.json"),
+        ]);
+        Assert.Empty(r.Errors);
+        var ctx = new GenContext
+        {
+            Entities = r.Root.Objects(), Root = r.Root,
+            Config = new GenConfig
+            {
+                OutDir = "/tmp", Namespace = "Acme", IncludeNames = true, EmitAbstractShapes = shapes,
+                PackageNamespaces = new() { ["acme::base"] = "Acme.Base", ["acme::work"] = "Acme.Work" },
+            },
+        };
+        return new DbContextGenerator().Generate(ctx)
+            .Concat(new EntityGenerator().Generate(ctx))
+            .Concat(new NamesGenerator().Generate(ctx))
+            .ToList();
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Round_2_output_matches_the_output_captured_before_the_second_hooks(bool shapes)
+    {
+        var files = GenerateRound2(shapes);
+        Assert.Contains(files, f => f.Path == "WorkflowNames.g.cs");
+
+        var dir = Path.Combine(GoldenDir(), "..", "pre-hooks-2", shapes ? "shapes" : "no-shapes");
+        if (Environment.GetEnvironmentVariable("GOLDEN_WRITE") == "1")
+        {
+            Directory.CreateDirectory(dir);
+            foreach (var f in files) File.WriteAllText(Path.Combine(dir, f.Path), f.Content);
+            return;
+        }
+        var expected = Directory.GetFiles(dir).Select(Path.GetFileName).Order().ToList();
+        Assert.Equal(expected, files.Select(f => f.Path).Order().ToList());
+        foreach (var f in files)
+            Assert.Equal(File.ReadAllText(Path.Combine(dir, f.Path)), f.Content);
+    }
 }
