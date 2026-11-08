@@ -136,6 +136,7 @@ public class GeneratorHooksTests
         protected override bool EmitContextConstructor(GenContext ctx) { Calls.Add("EmitContextConstructor"); return base.EmitContextConstructor(ctx); }
         protected override bool ContextIsPartial(GenContext ctx) { Calls.Add("ContextIsPartial"); return base.ContextIsPartial(ctx); }
         protected override IEnumerable<string> ContextMemberLines(GenContext ctx) { Calls.Add("ContextMemberLines"); return base.ContextMemberLines(ctx); }
+        protected override IEnumerable<string> ContextUsings(GenContext ctx) { Calls.Add("ContextUsings"); return base.ContextUsings(ctx); }
     }
 
     private sealed class RecordingEntity : EntityGenerator
@@ -732,6 +733,14 @@ public class GeneratorHooksTests
     }
 
     [Fact]
+    public void ContextUsings_is_called_for_every_context()
+    {
+        var g = new RecordingDb();
+        Db(g, Load());
+        Assert.Single(g.Calls, c => c == "ContextUsings");
+    }
+
+    [Fact]
     public void Render_is_called_for_every_names_artifact()
     {
         var files = GeneratorGoldenTests.GenerateRound2(shapes: true);
@@ -845,7 +854,10 @@ public class GeneratorHooksTests
     }
 
     [Fact]
-    public void A_set_ContextTypeName_names_the_context()
+    // GenConfig.ContextTypeName names the type callables and reverse finders TAKE; an adopter who
+    // sets it owns that type (often `ShopContext : AppDbContext`). It never named the generated
+    // class, and does not now: the output is the stock output, byte for byte.
+    public void A_set_ContextTypeName_leaves_the_generated_class_AppDbContext()
     {
         var root = Load();
         var ctx = new GenContext
@@ -854,9 +866,9 @@ public class GeneratorHooksTests
             Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", ContextTypeName = "ShopContext" },
         };
         var src = Assert.Single(new DbContextGenerator().Generate(ctx)).Content;
-        Assert.Contains("public class ShopContext : DbContext", src);
-        Assert.Contains("    public ShopContext(DbContextOptions<ShopContext> options) : base(options) { }", src);
-        Assert.DoesNotContain("AppDbContext", src);
+        Assert.Equal(Db(new DbContextGenerator(), root), src);
+        Assert.Contains("public class AppDbContext : DbContext", src);
+        Assert.DoesNotContain("ShopContext", src);
     }
 
     private sealed class NamespaceDb : DbContextGenerator
@@ -931,6 +943,41 @@ public class GeneratorHooksTests
         Assert.StartsWith("    public DbSet<", body[member + 2]);
     }
 
+    private sealed class UsingsDb : DbContextGenerator
+    {
+        protected override IEnumerable<string> ContextUsings(GenContext ctx) =>
+            base.ContextUsings(ctx).Where(l => l != "using Acme.Base;").Append("using Audit.EntityFramework;");
+    }
+
+    [Fact]
+    public void Override_of_ContextUsings_changes_only_its_lines()
+    {
+        var ctx = GeneratorGoldenTests.Round2Context(shapes: true);
+        var stock = Assert.Single(new DbContextGenerator().Generate(ctx)).Content;
+        var src = Assert.Single(new UsingsDb().Generate(ctx)).Content;
+        var (removed, added) = Diff(stock, src);
+        Assert.Equal(["using Acme.Base;"], removed);
+        Assert.Equal(["using Audit.EntityFramework;"], added);
+        // Still in the using block: the line after it is the blank before the namespace.
+        var body = Lines(src);
+        var at = Array.IndexOf(body, "using Audit.EntityFramework;");
+        Assert.Equal("using Acme.Work;", body[at - 1]);
+        Assert.Equal("", body[at + 1]);
+        Assert.Equal("namespace Acme;", body[at + 2]);
+    }
+
+    // The default is the using block the context has always had: EF Core, the Metadata namespace
+    // when a read-only field needs it, then every other entity namespace, ordinal order.
+    [Fact]
+    public void ContextUsings_default_is_the_using_block()
+    {
+        var ctx = GeneratorGoldenTests.Round2Context(shapes: true);
+        var lines = Lines(Assert.Single(new DbContextGenerator().Generate(ctx)).Content);
+        Assert.Equal(
+            ["using Microsoft.EntityFrameworkCore;", "using Acme.Base;", "using Acme.Work;"],
+            lines.Where(l => l.StartsWith("using ")));
+    }
+
     private sealed class NoWorkflowNames : NamesGenerator
     {
         protected override EmittedFile? Render(MetaObject entity, GenContext ctx, bool fragment) =>
@@ -980,6 +1027,41 @@ public class GeneratorHooksTests
     // The TPH pass read only the concrete subtypes' own identities, so a reference an abstract
     // intermediate declares was never configured. It is, once, on the intermediate's own builder
     // when the intermediate is a class, else on each concrete subtype it was folded into.
+    // A concrete subtype UNDER a concrete subtype below the intermediate inherits its parent's
+    // foreign key, so only the topmost concrete level is configured: once per FK, not per leaf.
+    [Fact]
+    public void Reference_on_abstract_tph_intermediate_is_configured_once_down_a_concrete_chain()
+    {
+        const string model = """
+        { "metadata.root": { "package": "acme", "children": [
+          { "object.entity": { "name": "Workflow", "children": [
+            { "source.rdb": { "@table": "workflows" } },
+            { "field.long": { "name": "id" } },
+            { "identity.primary": { "@fields": "id" } }
+          ]}},
+          { "object.entity": { "name": "Job", "@discriminator": "kind", "children": [
+            { "source.rdb": { "@table": "jobs" } },
+            { "field.long": { "name": "id" } },
+            { "field.enum": { "name": "kind", "@values": ["Call", "Urgent", "Mail"] } },
+            { "identity.primary": { "@fields": "id" } }
+          ]}},
+          { "object.entity": { "name": "CaseJob", "extends": "Job", "abstract": true, "children": [
+            { "field.long": { "name": "workflowId" } },
+            { "identity.reference": { "name": "refWorkflow", "@fields": "workflowId", "@references": "Workflow" } }
+          ]}},
+          { "object.entity": { "name": "CallJob", "extends": "CaseJob", "@discriminatorValue": "Call" } },
+          { "object.entity": { "name": "UrgentCallJob", "extends": "CallJob", "@discriminatorValue": "Urgent" } },
+          { "object.entity": { "name": "MailJob", "extends": "CaseJob", "@discriminatorValue": "Mail" } }
+        ]}}
+        """;
+        var lines = Lines(Db(new DbContextGenerator(), Load(model)));
+        var fks = lines.Where(l => l.Contains(".HasOne<Workflow>()")).ToList();
+        Assert.Equal(2, fks.Count);
+        Assert.Single(fks, l => l.Contains("Entity<CallJob>()"));
+        Assert.Single(fks, l => l.Contains("Entity<MailJob>()"));
+        Assert.DoesNotContain(fks, l => l.Contains("Entity<UrgentCallJob>()"));
+    }
+
     [Fact]
     public void Reference_on_abstract_tph_intermediate_is_configured()
     {

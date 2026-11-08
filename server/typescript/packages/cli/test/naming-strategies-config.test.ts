@@ -104,4 +104,22 @@ describe("namingStrategies in metaobjects.config.ts", () => {
     // Not followed by the refusal that blames the name.
     expect(text).not.toContain("Register it before .metaobjects/config.json is read");
   });
+
+  // The config registered the strategy and THEN failed: the strategy is there, so the report is
+  // the failed load alone, never "the naming strategy  that ... was not registered".
+  test("a load that fails after it registered the strategy reports the load only", async () => {
+    const tsConfig = `
+import { registerColumnNamingStrategy } from "@metaobjectsdev/metadata";
+registerColumnNamingStrategy("pascal-acronyms-late", (n: string) => n.toUpperCase());
+throw new Error("boom after registering");
+export default {};
+`;
+    const root = await project("pascal-acronyms-late", true, tsConfig);
+    expect(await dryRun(root)).not.toBe(0);
+    const text = out.join("\n");
+    expect(text).toContain("metaobjects.config.ts did not load");
+    expect(text).toContain("boom after registering");
+    expect(text).not.toContain("naming strategy  that");
+    expect(text).not.toContain("was not registered");
+  });
 });

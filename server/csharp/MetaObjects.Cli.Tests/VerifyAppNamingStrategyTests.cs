@@ -81,4 +81,23 @@ public sealed class VerifyAppNamingStrategyTests : IDisposable
         Assert.Contains("\"naming.columns\" names \"acme-app-columns\"", stderr);
         Assert.DoesNotContain("stand-in runner", stdout);
     }
+
+    // The --templates and --db gates run in THIS process after the hand-off, and this process never
+    // registered the strategy: refused as the config read refuses it (exit 2, the standard message,
+    // and why), never an unhandled exception from the first name a gate resolves.
+    [Theory]
+    [InlineData("--templates", "--prompts", "prompts")]
+    [InlineData("--db")]
+    public void A_gate_this_process_runs_refuses_the_app_strategy_cleanly_after_the_hand_off(params string[] gate)
+    {
+        WriteStandInRunner();
+
+        var (exit, stdout, stderr) = CliProcess.Run(_tmp, ["verify", "--codegen", "--out", "gen", .. gate]);
+
+        Assert.Contains("stand-in runner: verify --codegen --out", stdout);
+        Assert.Equal(2, exit);
+        Assert.Contains("\"naming.columns\" names \"acme-app-columns\"", stderr);
+        Assert.Contains("run in this process", stderr);
+        Assert.DoesNotContain("Unhandled exception", stderr);
+    }
 }

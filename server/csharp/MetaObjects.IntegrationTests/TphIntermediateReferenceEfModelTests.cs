@@ -25,7 +25,7 @@ public sealed class TphIntermediateReferenceEfModelTests
       { "object.entity": { "name": "Job", "@discriminator": "kind", "children": [
         { "source.rdb": { "@table": "jobs" } },
         { "field.long":   { "name": "id" } },
-        { "field.enum":   { "name": "kind", "@values": ["Call", "Mail", "Plain"] } },
+        { "field.enum":   { "name": "kind", "@values": ["Call", "Urgent", "Mail", "Plain"] } },
         { "identity.primary": { "@fields": "id", "@generation": "increment" } }
       ]}},
       { "object.entity": { "name": "CaseJob", "extends": "Job", "abstract": true, "children": [
@@ -37,6 +37,9 @@ public sealed class TphIntermediateReferenceEfModelTests
       ]}},
       { "object.entity": { "name": "CallJob", "extends": "CaseJob", "@discriminatorValue": "Call", "children": [
         { "field.string": { "name": "phone", "@maxLength": 20 } }
+      ]}},
+      { "object.entity": { "name": "UrgentCallJob", "extends": "CallJob", "@discriminatorValue": "Urgent", "children": [
+        { "field.int": { "name": "priority" } }
       ]}},
       { "object.entity": { "name": "MailJob", "extends": "CaseJob", "@discriminatorValue": "Mail", "children": [
         { "field.string": { "name": "address", "@maxLength": 120 } }
@@ -56,7 +59,9 @@ public sealed class TphIntermediateReferenceEfModelTests
             c => c with { EmitAbstractShapes = shapes });
         using var db = gen.ModelOnlyContext();
 
-        foreach (var leaf in new[] { "CallJob", "MailJob" })
+        // UrgentCallJob is concrete under concrete CallJob: it inherits CallJob's foreign key, and
+        // must not get a second one of its own.
+        foreach (var leaf in new[] { "CallJob", "UrgentCallJob", "MailJob" })
         {
             var type = Assert.Single(db.Model.GetEntityTypes(), t => t.ClrType.Name == leaf);
             var fk = Assert.Single(type.GetForeignKeys(), k => k.Properties.Select(p => p.Name).SequenceEqual(["WorkflowId"]));

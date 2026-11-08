@@ -102,7 +102,7 @@ public class GeneratorGoldenTests
             foreach (var f in files) File.WriteAllText(Path.Combine(dir, f.Path), f.Content);
             return;
         }
-        var expected = Directory.GetFiles(dir).Select(Path.GetFileName).Order().ToList();
+        var expected = Directory.GetFiles(dir).Select(p => Path.GetFileName(p)).Order().ToList();
         Assert.Equal(expected, files.Select(f => f.Path).Order().ToList());
         foreach (var f in files)
             Assert.Equal(File.ReadAllText(Path.Combine(dir, f.Path)), f.Content);
@@ -202,7 +202,7 @@ public class GeneratorGoldenTests
             foreach (var f in files) File.WriteAllText(Path.Combine(dir, f.Path), f.Content);
             return;
         }
-        var expected = Directory.GetFiles(dir).Select(Path.GetFileName).Order().ToList();
+        var expected = Directory.GetFiles(dir).Select(p => Path.GetFileName(p)).Order().ToList();
         Assert.Equal(expected, files.Select(f => f.Path).Order().ToList());
         foreach (var f in files)
             Assert.Equal(File.ReadAllText(Path.Combine(dir, f.Path)), f.Content);
