@@ -127,7 +127,17 @@ public sealed class NeutralConfig
     /// used here is deliberately NOT part of the cross-port contract (only the
     /// raise-don't-degrade behavior is), so callers should match on message,
     /// not code, for this path.
-    public static NeutralConfig? Read(string configDir)
+    public static NeutralConfig? Read(string configDir) => Read(configDir, validateNaming: true);
+
+    /// <summary>
+    /// As <see cref="Read(string)"/>; with <paramref name="validateNaming"/> false a
+    /// <c>naming</c> value no strategy registered in THIS process answers is kept by name
+    /// (<see cref="ColumnNamingStrategy.ByName"/>) instead of refused, and refused when it is
+    /// applied. For a caller that hands the config to another process that registers it — stock
+    /// <c>dotnet meta verify</c> handing <c>--codegen</c> to the project's codegen runner. A wrong
+    /// SHAPE is still refused.
+    /// </summary>
+    public static NeutralConfig? Read(string configDir, bool validateNaming)
     {
         var path = Path.Combine(configDir, MetaObjectsDir, ConfigFile);
         if (!File.Exists(path)) return null;
@@ -261,9 +271,13 @@ public sealed class NeutralConfig
                                     $"{path}: \"naming.columns\" must be a string naming a column-naming strategy",
                                     ErrorCode.ERR_BAD_ATTR_VALUE);
                             if (!NamingStrategies.TryGetColumn(p.Value.GetString()!, out var column))
-                                throw new MetaModelException(
-                                    $"{path}: {NamingStrategies.UnknownMessage("columns", p.Value.GetString()!)}",
-                                    ErrorCode.ERR_BAD_ATTR_VALUE);
+                            {
+                                if (validateNaming)
+                                    throw new MetaModelException(
+                                        $"{path}: {NamingStrategies.UnknownMessage("columns", p.Value.GetString()!)}",
+                                        ErrorCode.ERR_BAD_ATTR_VALUE);
+                                column = ColumnNamingStrategy.ByName(p.Value.GetString()!);
+                            }
                             columns = column;
                             break;
                         case "tables":
@@ -272,9 +286,13 @@ public sealed class NeutralConfig
                                     $"{path}: \"naming.tables\" must be a string naming a table-naming strategy",
                                     ErrorCode.ERR_BAD_ATTR_VALUE);
                             if (!NamingStrategies.TryGetTable(p.Value.GetString()!, out var table))
-                                throw new MetaModelException(
-                                    $"{path}: {NamingStrategies.UnknownMessage("tables", p.Value.GetString()!)}",
-                                    ErrorCode.ERR_BAD_ATTR_VALUE);
+                            {
+                                if (validateNaming)
+                                    throw new MetaModelException(
+                                        $"{path}: {NamingStrategies.UnknownMessage("tables", p.Value.GetString()!)}",
+                                        ErrorCode.ERR_BAD_ATTR_VALUE);
+                                table = TableNamingRule.ByName(p.Value.GetString()!);
+                            }
                             tables = table;
                             break;
                         default:

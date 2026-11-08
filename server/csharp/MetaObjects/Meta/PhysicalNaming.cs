@@ -17,23 +17,29 @@ namespace MetaObjects.Meta;
 /// <see cref="Pascal"/>; an application registers its own with
 /// <see cref="NamingStrategies.RegisterColumns"/> (ADR-0058 Amendment 1). Not a metadata attr:
 /// <c>@column</c> is the per-field override, this is the rule for the rest. Two strategies are
-/// equal when their names are.
+/// equal when their names are, and a strategy is resolved BY NAME each time it applies
+/// (<see cref="NamingStrategyExtensions.Apply(ColumnNamingStrategy?, string)"/>), as in every
+/// other port: a registration made or replaced after the value was read is the one used.
 /// </summary>
 public sealed class ColumnNamingStrategy : IEquatable<ColumnNamingStrategy>
 {
-    private readonly Func<string, string> _apply;
-
-    internal ColumnNamingStrategy(string name, Func<string, string> apply)
+    internal ColumnNamingStrategy(string name, Func<string, string>? apply)
     {
         Name = name;
-        _apply = apply;
+        Function = apply;
     }
 
     /// <summary>The name <c>naming.columns</c> selects it by.</summary>
     public string Name { get; }
 
-    /// <summary><paramref name="name"/> (a field name) as a column name under this strategy.</summary>
-    public string Apply(string name) => _apply(name);
+    /// <summary>The function this instance was registered with; null for a name read from a
+    /// config and left to resolution (<see cref="ByName"/>).</summary>
+    internal Func<string, string>? Function { get; }
+
+    /// <summary>A strategy known only by its name, resolved through the registry when it applies
+    /// (which refuses the name then if nothing registered it).</summary>
+    public static ColumnNamingStrategy ByName(string name) =>
+        NamingStrategies.TryGetColumn(name, out var registered) ? registered : new ColumnNamingStrategy(name, null);
 
     /// <summary>Field name verbatim.</summary>
     public static readonly ColumnNamingStrategy Literal = new("literal", n => n);
@@ -71,24 +77,26 @@ public sealed class ColumnNamingStrategy : IEquatable<ColumnNamingStrategy>
 /// registered in <see cref="NamingStrategies"/>. The entity-name fallback keeps the frozen
 /// legacy pluralizer under every rule (<see cref="SourceNaming.Pluralize"/>). The built-ins are
 /// <see cref="SnakeCase"/> and <see cref="Literal"/>; an application registers its own with
-/// <see cref="NamingStrategies.RegisterTables"/>. Two rules are equal when their names are.
+/// <see cref="NamingStrategies.RegisterTables"/>. Two rules are equal when their names are, and
+/// a rule is resolved by name each time it applies, like <see cref="ColumnNamingStrategy"/>.
 /// </summary>
 public sealed class TableNamingRule : IEquatable<TableNamingRule>
 {
-    private readonly Func<string, string> _apply;
-
-    internal TableNamingRule(string name, Func<string, string> apply)
+    internal TableNamingRule(string name, Func<string, string>? apply)
     {
         Name = name;
-        _apply = apply;
+        Function = apply;
     }
 
     /// <summary>The name <c>naming.tables</c> selects it by.</summary>
     public string Name { get; }
 
-    /// <summary><paramref name="name"/> cased by this rule — never pluralized (that is a
-    /// separate, frozen step; see <see cref="MetaSource.PhysicalName"/>).</summary>
-    public string Apply(string name) => _apply(name);
+    /// <summary>The function this instance was registered with; null for <see cref="ByName"/>.</summary>
+    internal Func<string, string>? Function { get; }
+
+    /// <summary>A rule known only by its name, resolved through the registry when it applies.</summary>
+    public static TableNamingRule ByName(string name) =>
+        NamingStrategies.TryGetTable(name, out var registered) ? registered : new TableNamingRule(name, null);
 
     /// <summary>Casing verbatim; the entity-name fallback is still pluralized (see <see cref="MetaSource.PhysicalName"/>).</summary>
     public static readonly TableNamingRule Literal = new("literal", n => n);
@@ -109,6 +117,28 @@ public sealed class TableNamingRule : IEquatable<TableNamingRule>
     public static bool operator ==(TableNamingRule? a, TableNamingRule? b) => a is null ? b is null : a.Equals(b);
     /// <summary>Different when the names are.</summary>
     public static bool operator !=(TableNamingRule? a, TableNamingRule? b) => !(a == b);
+}
+
+/// <summary>
+/// Applying a naming strategy or table rule. Extension methods, so that
+/// <c>default(ColumnNamingStrategy)</c> — null, now that these are classes — applies as the enum
+/// they replaced defaulted to (its first member, <see cref="ColumnNamingStrategy.Literal"/>)
+/// instead of throwing <see cref="NullReferenceException"/>.
+/// </summary>
+public static class NamingStrategyExtensions
+{
+    /// <summary><paramref name="name"/> (a field name) as a column name under
+    /// <paramref name="strategy"/>: the function registered under its name NOW, so a
+    /// re-registration is honoured. Throws (<c>ERR_BAD_ATTR_VALUE</c>), naming it, when nothing
+    /// is registered under that name. Null is <see cref="ColumnNamingStrategy.Literal"/>.</summary>
+    public static string Apply(this ColumnNamingStrategy? strategy, string name) =>
+        NamingStrategies.Column((strategy ?? ColumnNamingStrategy.Literal).Name).Function!(name);
+
+    /// <summary><paramref name="name"/> cased by <paramref name="rule"/>, resolved by name as for a
+    /// column strategy — never pluralized (that is a separate, frozen step; see
+    /// <see cref="MetaSource.PhysicalName"/>). Null is <see cref="TableNamingRule.Literal"/>.</summary>
+    public static string Apply(this TableNamingRule? rule, string name) =>
+        NamingStrategies.Table((rule ?? TableNamingRule.Literal).Name).Function!(name);
 }
 
 /// <summary>
@@ -198,6 +228,23 @@ public static class NamingStrategies
     /// <summary>The table rule registered as <paramref name="name"/>. Throws, naming it, when nothing answers it.</summary>
     public static TableNamingRule Table(string name) =>
         TryGetTable(name, out var r) ? r : throw new MetaModelException(UnknownMessage("tables", name), ErrorCode.ERR_BAD_ATTR_VALUE);
+
+    /// <summary>
+    /// TEST-ONLY: forget every strategy the application registered, leaving the built-ins. The
+    /// registry is process-wide, so a test that registers one resets it when it is done rather
+    /// than leaving it for the next test to find. Not for production code.
+    /// </summary>
+    [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+    public static void ResetForTesting()
+    {
+        lock (Gate)
+        {
+            ColumnList.Clear();
+            ColumnList.AddRange(BuiltInColumns);
+            TableList.Clear();
+            TableList.AddRange(BuiltInTables);
+        }
+    }
 
     /// <summary>
     /// What every port says when a config names a strategy no registered strategy answers:

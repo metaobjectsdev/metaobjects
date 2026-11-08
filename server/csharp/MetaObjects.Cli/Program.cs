@@ -316,13 +316,13 @@ static int RunEject(string[] rest)
 //
 // Never exits without a usable result: either hands back the resolved location or
 // prints a diagnostic and terminates the process.
-static ResolvedMetadata ResolveMetadataDirOrExit(string? metadataDir)
+static ResolvedMetadata ResolveMetadataDirOrExit(string? metadataDir, bool validateNaming = true)
 {
     // The ladder itself lives in MetaObjects.Config.MetadataLocation, shared with an
     // ejected codegen/Program.cs; this wrapper only turns its refusals into exit 2.
     try
     {
-        return MetadataLocation.Resolve(metadataDir, Directory.GetCurrentDirectory());
+        return MetadataLocation.Resolve(metadataDir, Directory.GetCurrentDirectory(), validateNaming);
     }
     catch (MetaObjects.MetaModelException e)
     {
@@ -439,7 +439,12 @@ static int RunVerify(string[] rest)
 
     // Rung 1 (explicit positional) is honored as-is; an omitted metadataDir
     // falls back to the port-neutral .metaobjects/config.json ladder.
-    var resolvedMeta = ResolveMetadataDirOrExit(metadataDir);
+    //
+    // ADR-0058 Amendment 1: a `naming` strategy may be one only the project's codegen runner
+    // registers (codegen/Program.cs), and the --codegen gate below is handed to that runner. So
+    // the name is not refused here; it is checked after the hand-off, by this process only when
+    // no runner ran (the runner reads the same file and refuses it there).
+    var resolvedMeta = ResolveMetadataDirOrExit(metadataDir, validateNaming: false);
     // --out wins; otherwise the project's declared `csharp.outDir`, the directory gen writes.
     outDir ??= resolvedMeta.OutDir;
 
@@ -475,6 +480,7 @@ static int RunVerify(string[] rest)
     // "no --out" usage message unchanged).
     var codegenHandedOff = false;
     var codegenHandoffExit = 0;
+    var ownedRunnerRan = false;
     var projectRoot = metadataDir is not null
         ? GenCommand.ProjectRootFor(metadataDir)
         : Directory.GetCurrentDirectory();
@@ -512,8 +518,13 @@ static int RunVerify(string[] rest)
             if (templateRoot is not null) codegenArgs.AddRange(["--template-root", templateRoot]);
             if (lax) codegenArgs.Add("--lax");
             codegenHandedOff = CodegenHandoff.TryRun(projectRoot, codegenArgs.ToArray(), out codegenHandoffExit);
+            ownedRunnerRan = codegenHandedOff;
         }
     }
+
+    // No runner registered anything for this verify: refuse a naming value nothing in THIS
+    // process answers, exactly as the config read always has (the same message, exit 2).
+    if (!ownedRunnerRan) ResolveMetadataDirOrExit(metadataDir);
 
     var opts = new VerifyCommand.Options
     {

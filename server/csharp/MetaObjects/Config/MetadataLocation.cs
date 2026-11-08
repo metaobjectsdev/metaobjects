@@ -93,11 +93,11 @@ public static class MetadataLocation
     /// <c>dotnet meta gen /repo/model/catalog</c> reads <c>/repo/.metaobjects/config.json</c>,
     /// as the Maven plugin does. Null when no such ancestor exists.
     /// </summary>
-    internal static NeutralConfig? ConfigFor(string metadataDir)
+    internal static NeutralConfig? ConfigFor(string metadataDir, bool validateNaming = true)
     {
         for (var dir = new DirectoryInfo(ProjectRootFor(metadataDir)); dir is not null; dir = dir.Parent)
         {
-            if (NeutralConfig.Read(dir.FullName) is { } cfg) return cfg;
+            if (NeutralConfig.Read(dir.FullName, validateNaming) is { } cfg) return cfg;
             var git = Path.Combine(dir.FullName, ".git");
             if (System.IO.Directory.Exists(git) || File.Exists(git)) break;
         }
@@ -113,11 +113,16 @@ public static class MetadataLocation
     /// unresolvable source, and <see cref="MetadataLocationException"/> for a source shape
     /// this port's loader cannot take (several sources, or a file).
     /// </summary>
-    public static ResolvedMetadata Resolve(string? metadataDir, string cwd)
+    public static ResolvedMetadata Resolve(string? metadataDir, string cwd) => Resolve(metadataDir, cwd, validateNaming: true);
+
+    /// <summary>As <see cref="Resolve(string?, string)"/>, leaving a <c>naming</c> value this
+    /// process has no strategy for to resolution when <paramref name="validateNaming"/> is false
+    /// (see <see cref="NeutralConfig.Read(string, bool)"/>).</summary>
+    public static ResolvedMetadata Resolve(string? metadataDir, string cwd, bool validateNaming)
     {
         if (metadataDir is not null)
         {
-            var explicitCfg = ConfigFor(metadataDir);
+            var explicitCfg = ConfigFor(metadataDir, validateNaming);
             var explicitLibs = explicitCfg?.Libraries ?? Array.Empty<string>();
             var explicitNaming = explicitCfg?.Naming ?? PhysicalNaming.Default;
             // No config found means no project to read a lock from: nothing is imported.
@@ -126,7 +131,7 @@ public static class MetadataLocation
                 metadataDir, null, explicitLibs, explicitNaming, explicitCfg?.Wire, explicitCfg?.OutDir, explicitImports, explicitCfg?.Namespace) { Enums = explicitCfg?.Enums };
         }
 
-        var cfg = NeutralConfig.Read(cwd);
+        var cfg = NeutralConfig.Read(cwd, validateNaming);
         var specs = cfg?.Sources ?? Array.Empty<IReadOnlyDictionary<string, string>>();
         var libraries = cfg?.Libraries ?? Array.Empty<string>();
         var naming = cfg?.Naming ?? PhysicalNaming.Default;

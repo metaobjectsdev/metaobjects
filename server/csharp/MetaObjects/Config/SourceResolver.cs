@@ -106,7 +106,9 @@ public static class SourceResolver
     public static IReadOnlyList<string> ResolveCollection(string root)
     {
         root = Path.GetFullPath(root);
-        var cfg = NeutralConfig.Read(root);
+        // Only `sources` is read here; `naming` is the caller's to check (MetadataLocation reads
+        // the same file and refuses an unknown strategy unless it was asked to defer it).
+        var cfg = NeutralConfig.Read(root, validateNaming: false);
         var specs = cfg?.Sources ?? Array.Empty<IReadOnlyDictionary<string, string>>();
 
         if (specs.Count == 0)
