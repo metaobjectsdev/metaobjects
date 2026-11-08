@@ -604,8 +604,14 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   const entityModuleTarget = entityGen ? targetOf(entityGen) : targets[DEFAULT_TARGET_NAME]!;
 
   // Refuse before any generator runs: a name two objects claim in the scope it lives in
-  // (the entity modules' directory, by the layout they are written in; the one app's routes).
-  assertNoCollectionNameCollisions(safeEntities, { layout: entityModuleTarget.outputLayout });
+  // (the entity modules' directory, by the layout they are written in; the one app's routes),
+  // and only for the names this run emits. A docs-only run emits neither set, so it refuses
+  // neither: a rule over names nothing writes is the run-wide rule R30 retired.
+  assertNoCollectionNameCollisions(safeEntities, {
+    layout: entityModuleTarget.outputLayout,
+    modules: runEmitsEntityModule(config.generators) || runEmitsQueries(config.generators) || runEmitsUiTier(config.generators),
+    routes: runEmitsRestRoutes(config.generators) || runEmitsHonoRoutes(config.generators),
+  });
 
   // NO eager importBase check here, deliberately.
   //

@@ -28,11 +28,14 @@ import type { OutputLayout } from "../import-path.js";
 // (ADR-0044) went through, the sibling case this one is modeled on.
 export const ERR_COLLECTION_NAME_COLLISION = "ERR_COLLECTION_NAME_COLLISION" satisfies ErrorCode;
 
-/** Where the names live: the layout the entity modules are written in, and whether the run
- *  serves routes. */
+/** Where the names live: the layout the entity modules are written in, and which of the two
+ *  name sets the run emits at all. */
 export interface CollectionNameScopes {
   /** `flat` (one module directory) or `package` (a directory per metadata package). */
   layout?: OutputLayout;
+  /** Whether the pluralized module names are checked (the run writes entity modules, queries or
+   *  a UI tier, which export them). Default true. */
+  modules?: boolean;
   /** Whether the REST segments are checked (one app serves every route). Default true. */
   routes?: boolean;
 }
@@ -57,7 +60,12 @@ export function assertNoCollectionNameCollisions(
   entities: readonly MetaObject[],
   scopes: CollectionNameScopes = {},
 ): void {
-  const layout = scopes.layout ?? "flat";
+  if (scopes.modules !== false) assertNoModuleNameCollisions(entities, scopes.layout ?? "flat");
+  if (scopes.routes !== false) assertNoRouteSegmentCollisions(entities);
+}
+
+/** The module half: the pluralized names, in the entity modules' scope by layout. */
+function assertNoModuleNameCollisions(entities: readonly MetaObject[], layout: OutputLayout): void {
   const ownerOfPlural = new Map<string, MetaObject>();
   for (const obj of entities) {
     if (obj.subType === OBJECT_SUBTYPE_VALUE || !emitsInstanceArtifacts(obj)) continue;
@@ -76,7 +84,6 @@ export function assertNoCollectionNameCollisions(
     }
     if (existing === undefined) ownerOfPlural.set(key, obj);
   }
-  if (scopes.routes !== false) assertNoRouteSegmentCollisions(entities);
 }
 
 /**
