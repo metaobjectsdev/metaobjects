@@ -184,6 +184,18 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
 - **C#: `EntityGenerator.EmitsReverseFinders`** (default `true`) turns the ADR-0038
   `<Entity>Queries.g.cs` finders off.
 
+- **C#: the DbContext and entity generators are overridable one line at a time.** An adopter that
+  needs one line of generated output different overrides one `protected virtual` hook, calls base and
+  adjusts what it returns, instead of rewriting the finished file or re-emitting a whole body. On
+  `DbContextGenerator`: `ContextBaseClass`, `ContextPreambleLines`, `ContextTrailerLines`,
+  `AlwaysEmitOnModelCreating`, `DbSetLine`, `DbColumnTypeConfig`, `ReferenceConfig`,
+  `DefaultValueConfig`, `EnumConversionCall` (now an instance method taking the `GenContext`),
+  `FieldTypeConfig`, `OwnedTypeConfig`, `TphSubtypeFieldConfig` and `EntityConfigTrailer` (new). On
+  `EntityGenerator`: `PropertyClrType` and `PropertyInitializer` (every scalar, enum, object and map
+  member), and `EmitValueObjectPoco`, which may now return `null` to drop a value object's file and is
+  asked about every one. The preamble comes first in `OnModelCreating`, the trailer last, and a split
+  model keeps its `ConfigureModelNN` calls between them. The default output is byte-identical.
+
 ### Changed
 
 - **`meta migrate` refuses a foreign key that references columns the target does not hold unique.**

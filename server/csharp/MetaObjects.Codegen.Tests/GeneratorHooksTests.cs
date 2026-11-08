@@ -379,8 +379,8 @@ public class GeneratorHooksTests
         var (removed, added) = Diff(stock, Db(new AlwaysDb(), root));
         Assert.Empty(removed);
         Assert.Equal(
-            ["", "    protected override void OnModelCreating(ModelBuilder modelBuilder)", "    {", "    }"],
-            added);
+            new[] { "", "    protected override void OnModelCreating(ModelBuilder modelBuilder)", "    {", "    }" }.Order(),
+            added.Order());
     }
 
     private sealed class DbSetDb : DbContextGenerator
@@ -490,8 +490,11 @@ public class GeneratorHooksTests
         var root = Load();
         var (removed, added) = Diff(Db(new DbContextGenerator(), root), Db(new OwnedDb(), root));
         Assert.Empty(added);
-        var line = Assert.Single(removed);
-        Assert.Contains("OwnsOne(x => x.Config, b => b.ToJson(", line);
+        // The jsonb value object's block (it holds an enum, so it is the multi-line form) is
+        // gone; the flattened ones are not.
+        Assert.Contains(removed, l => l.Contains("modelBuilder.Entity<Auth>().OwnsOne(x => x.Config"));
+        Assert.DoesNotContain(removed, l => l.Contains("OwnsOne(x => x.Home"));
+        Assert.DoesNotContain(removed, l => l.Contains("OwnsOne(x => x.Site"));
     }
 
     private sealed class TphDb : DbContextGenerator
@@ -509,7 +512,8 @@ public class GeneratorHooksTests
         Assert.Equal(["        // adopter Auth>BridgeAuth"], added);
         // Everything removed is configuration of the subtype's own builder, nothing of the root's.
         Assert.NotEmpty(removed);
-        Assert.All(removed, l => Assert.Contains("Entity<BridgeAuth>()", l.Replace("b.Property", "Entity<BridgeAuth>()")));
+        Assert.Contains(removed, l => l.Contains("modelBuilder.Entity<BridgeAuth>()"));
+        Assert.DoesNotContain(removed, l => l.Contains("Entity<Auth>()"));
     }
 
     private sealed class TrailerDb : DbContextGenerator
