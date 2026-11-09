@@ -482,6 +482,11 @@ vocabulary; upgrade every port together.
 
 ### Fixed
 
+- **An origin `@filter` keeps every operator of a field clause** (rc.19 Phase 5, bug
+  multi-op). `{ ordinal: { gte: 1, lte: 5 } }` on an `origin.aggregate` or `origin.first` kept
+  only `gte`, so the aggregate spanned a wider row set than declared, silently; each operator is
+  now its own comparison, AND-composed, as the projection-level `@filter` already did.
+  **Upgrade note:** a view with such a filter changes body and is re-proposed once.
 - **A view over a TPH subtype carries its discriminator** (rc.19 Phase 5, bug TPH-scope). A
   subtype shares its base's table, so a projection whose base is a subtype read every row of the
   table, and a join or `origin.first` that landed on a subtype matched rows of its siblings. A

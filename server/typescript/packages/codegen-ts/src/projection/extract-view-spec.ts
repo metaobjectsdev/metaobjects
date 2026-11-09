@@ -168,10 +168,9 @@ function resolveAggregateFilter(
     }
     const field = entity.fields().find((f) => f.name === key);
     if (!field) continue;
-    const opObj = desugarClause(val);
-    const op = Object.keys(opObj)[0];
-    if (!op) continue;
-    clauses.push({
+    // multi-op: a field clause may carry several ops (a range { gte: 1, lte: 5 }); each is its own
+    // comparison, AND-composed. Keeping only the first widened the row set silently.
+    const fieldClauses: ViewFilterClause[] = Object.entries(desugarClause(val)).map(([op, raw]) => ({
       kind: "cmp",
       ref: `${alias}.${sourceColumnNameFor(field, ctx)}`,
       op,
@@ -179,13 +178,15 @@ function resolveAggregateFilter(
       // filter renders as a SQL literal too (FILTER (WHERE …) / CASE WHEN), so a
       // member symbol would land unencoded in an integer comparison.
       value: encodeIntEnumFilterValue(
-        opObj[op],
+        raw,
         op,
         field.subType === FIELD_SUBTYPE_ENUM ? intValueMapOf(field) : undefined,
         key,
         `origin.aggregate @filter over ${entity.name}`,
       ),
-    });
+    }));
+    if (fieldClauses.length === 1) clauses.push(fieldClauses[0]!);
+    else if (fieldClauses.length > 1) clauses.push({ kind: "and", clauses: fieldClauses });
   }
   if (clauses.length === 0) return undefined;
   return clauses.length === 1 ? clauses[0]! : { kind: "and", clauses };
