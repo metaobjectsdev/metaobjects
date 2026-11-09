@@ -258,6 +258,7 @@ public static class CodegenCli
             IncludeNames = includeNames ?? generators.Any(g => g.Name == "names"),
             SweepOrphans = sweepOrphans,
             Dialect = MetaObjects.Config.NeutralConfig.Read(root, validateNaming: false)?.MigrateDialect,
+        SkipRedundantChecks = MetaObjects.Config.NeutralConfig.Read(root, validateNaming: false)?.MigrateSkipRedundantChecks ?? false,
         };
 
         CodegenRunner.RunResult result;
@@ -958,6 +959,7 @@ public static class CodegenCli
             // The dialect gen read: without it a Postgres project's identity start and its design-time
             // services read as drift.
             Dialect = MetaObjects.Config.NeutralConfig.Read(projectRoot, validateNaming: false)?.MigrateDialect,
+        SkipRedundantChecks = MetaObjects.Config.NeutralConfig.Read(projectRoot, validateNaming: false)?.MigrateSkipRedundantChecks ?? false,
         };
         var result = CodegenDrift.Compute(config, load.Root, suite, narrowed: a.Selection is { Count: > 0 });
         if (result.Error is not null)

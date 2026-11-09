@@ -269,6 +269,20 @@ vocabulary; upgrade every port together.
 
 ### Changed
 
+- **C#: the generated EF context declares the CHECKs `meta migrate` creates** (rc.19 item 13,
+  ruling R55). Every validator that can carry one (`numeric`, `length`, `regex`, and the
+  cross-field `comparison`, `requiredWhen`, `presentIff`, `atLeastOne`, with `@condition`) and
+  every scalar `field.enum` is a `ToTable(t => t.HasCheckConstraint(name, sql))` line, with
+  migrate's names (`<table>_<column>_numeric_chk`, …, or `@constraintName`) and migrate's
+  expression text, so an EF migration and `meta migrate` build the same table. Declared only for
+  `migrate.dialect` `postgres`, `sqlite` or `d1` (the text is dialect-specific); a self-hosted
+  runner sets `GenConfig.Dialect`, and `GenConfig.SkipRedundantChecks` follows
+  `migrate.checks.skipRedundant`. Pinned by the shared corpus
+  `fixtures/check-constraint-conformance/`, which `meta migrate` passes too. **Upgrade note:** the
+  next `dotnet ef migrations add` scaffolds an `AddCheckConstraint` for every such CHECK. On a
+  database `meta migrate` built, they already exist under the same names: empty those operations
+  from the migration. On a database built some other way, existing rows may violate one; add it
+  `NOT VALID` and `VALIDATE` it once the data is clean.
 - **C#: each shared enum is its own file, with its integers and its docs** (rc.19 item 12). A
   materialized shared enum (a root-level abstract `field.enum`) was one line in a single
   `Enums.g.cs`; it is now `<package>/<Enum>.g.cs`, placed like every other per-object file

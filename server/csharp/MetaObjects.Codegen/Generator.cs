@@ -198,6 +198,15 @@ public sealed record GenConfig
     public string? Dialect { get; init; }
 
     /// <summary>
+    /// <c>.metaobjects/config.json</c> <c>migrate.checks.skipRedundant</c>: leave out a validator CHECK
+    /// the column already guarantees (a <c>validator.length</c> maximum its <c>VARCHAR(n)</c> enforces,
+    /// a length minimum of 0 or less), exactly as <c>meta migrate</c> does, so the generated model and
+    /// the migrated database declare the same CHECKs. A validator with <c>@constraintName</c> keeps its
+    /// CHECK regardless. Default false.
+    /// </summary>
+    public bool SkipRedundantChecks { get; init; }
+
+    /// <summary>
     /// The name of the assembly the generated context is compiled into. A Postgres context's
     /// design-time services (<c>&lt;Context&gt;DesignTimeServices</c>) are found through
     /// <c>[assembly: DesignTimeServicesReference("&lt;type&gt;, &lt;assembly&gt;")]</c>, and EF resolves

@@ -1,0 +1,47 @@
+{
+  "metadata.root": {
+    "package": "acme::checks",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Gadget",
+          "children": [
+            { "source.rdb": { "@table": "gadgets" } },
+            { "field.long": { "name": "id" } },
+            { "field.enum": { "name": "status", "@values": ["DRAFT", "LIVE"] } },
+            { "field.enum": { "name": "level", "@values": ["LOW", "HIGH"], "@intValueMap": { "LOW": 1, "HIGH": 2 } } },
+            { "field.enum": { "name": "tags", "isArray": true, "@values": ["A", "B"] } },
+            { "field.string": { "name": "kind", "@required": true } },
+            { "field.int": { "name": "score", "children": [ { "validator.numeric": { "@min": 1, "@max": 5 } } ] } },
+            { "field.int": { "name": "floor", "children": [ { "validator.numeric": { "@min": 0 } } ] } },
+            { "field.string": { "name": "code", "@maxLength": 10, "children": [ { "validator.length": { "@min": 2, "@max": 20 } } ] } },
+            { "field.string": { "name": "label", "@maxLength": 40, "children": [ { "validator.length": { "@min": 0, "@max": 30 } } ] } },
+            { "field.string": { "name": "sku", "children": [ { "validator.regex": { "@pattern": "^[A-Z]{3}-'\\d+$", "@constraintName": "gadgets_sku_shape" } } ] } },
+            { "field.string": { "name": "notes" } },
+            { "field.boolean": { "name": "shipped" } },
+            { "field.timestamp": { "name": "shippedAt" } },
+            { "field.timestamp": { "name": "startsAt" } },
+            { "field.timestamp": { "name": "endsAt" } },
+            { "field.duration": { "name": "timeout" } },
+            { "field.string": { "name": "reason" } },
+            { "field.string": { "name": "email" } },
+            { "field.string": { "name": "phone" } },
+            { "field.string": { "name": "fax" } },
+            { "identity.primary": { "@fields": "id", "@generation": "increment" } },
+            { "validator.comparison": { "name": "window", "@left": "startsAt", "@op": "lte", "@right": "endsAt" } },
+            { "validator.comparison": { "name": "liveWindow", "@left": "endsAt", "@op": "gt", "@right": "startsAt",
+                "@condition": { "op": "and", "args": [
+                  { "op": "eq", "left": { "field": "status" }, "right": { "value": "LIVE" } },
+                  { "op": "isNotNull", "arg": { "field": "level" } } ] } } },
+            { "validator.requiredWhen": { "name": "customNotes", "@field": "notes", "@when": "kind", "@equals": "custom" } },
+            { "validator.requiredWhen": { "name": "slowReason", "@field": "reason", "@when": "timeout", "@equals": "PT1H30M" } },
+            { "validator.presentIff": { "name": "shippedAtIff", "@field": "shippedAt", "@when": "shipped", "@equals": true } },
+            { "validator.atLeastOne": { "name": "contact", "@fields": ["email", "phone"], "@max": 1 } },
+            { "validator.atLeastOne": { "name": "anyContact", "@fields": ["phone", "fax"],
+                "@condition": { "op": "eq", "left": { "field": "level" }, "right": { "value": "HIGH" } } } }
+          ]
+        }
+      }
+    ]
+  }
+}

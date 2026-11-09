@@ -446,6 +446,17 @@ The start, and the services, are emitted only for a project whose `.metaobjects/
 names `"migrate": { "dialect": "postgres" }` (a self-hosted runner sets `GenConfig.Dialect`). Any
 other project gets neither, with a warning, and never needs the Npgsql package.
 
+**CHECK constraints** are the ones `meta migrate` creates (ruling R55): each scalar `field.enum`
+and each validator that can carry one (`numeric`, `length`, `regex`, `comparison`,
+`requiredWhen`, `presentIff`, `atLeastOne`, with `@condition`) is a
+`modelBuilder.Entity<T>().ToTable(t => t.HasCheckConstraint(name, sql))` line, with migrate's name
+(`<table>_<column>_numeric_chk`, … or the validator's `@constraintName`) and its expression text,
+so a table built by an EF migration and one built by `meta migrate` carry the same constraints.
+They are declared for `migrate.dialect` `postgres`, `sqlite` or `d1` only, because the text is
+dialect-specific (`~`, `IS DISTINCT FROM`, `num_nonnulls` on Postgres); `migrate.checks.skipRedundant`
+(`GenConfig.SkipRedundantChecks`) leaves out the ones the column already enforces, as migrate does.
+The shared corpus `fixtures/check-constraint-conformance/` pins the names and text in both ports.
+
 ### Decimals and null members on the wire
 
 What the generated API writes is the project setting `wire` in `.metaobjects/config.json`

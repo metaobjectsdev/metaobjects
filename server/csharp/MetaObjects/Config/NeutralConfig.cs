@@ -75,6 +75,9 @@ public sealed class NeutralConfig
     /// <summary>`migrate.dialect`: the SQL dialect the project's schema is built for, or null.</summary>
     public string? MigrateDialect { get; private init; }
 
+    /// <summary>`migrate.checks.skipRedundant`: true leaves out a CHECK the column already enforces. Default false.</summary>
+    public bool MigrateSkipRedundantChecks { get; private init; }
+
     /// <summary>
     /// The directory holding the <c>.metaobjects/</c> folder this config was read from — where the lock and
     /// the committed dependency snapshots live beside it.
@@ -131,6 +134,12 @@ public sealed class NeutralConfig
     /// raise-don't-degrade behavior is), so callers should match on message,
     /// not code, for this path.
     public static NeutralConfig? Read(string configDir) => Read(configDir, validateNaming: true);
+
+    /// `migrate.checks.skipRedundant`, as the TypeScript `meta migrate` reads it; false when absent or not a boolean.
+    private static bool ReadMigrateSkipRedundant(JsonElement root) =>
+        root.TryGetProperty("migrate", out var migrate) && migrate.ValueKind == JsonValueKind.Object
+        && migrate.TryGetProperty("checks", out var checks) && checks.ValueKind == JsonValueKind.Object
+        && checks.TryGetProperty("skipRedundant", out var skip) && skip.ValueKind == JsonValueKind.True;
 
     /// `migrate.dialect`, as the TypeScript `meta migrate` reads it; null when absent or not a string.
     private static string? ReadMigrateDialect(JsonElement root) =>
@@ -317,7 +326,7 @@ public sealed class NeutralConfig
             // lists read above, are IGNORED by design — see the file header.
             return new NeutralConfig(specs, libraries, new PhysicalNaming(columns, tables), ReadWire(root, path),
                 ReadCSharp(root, path, configDir), dependencies, scopeInclude, migrateScope,
-                Path.GetFullPath(configDir)) { Enums = ReadEnums(root, path), MigrateDialect = ReadMigrateDialect(root) };
+                Path.GetFullPath(configDir)) { Enums = ReadEnums(root, path), MigrateDialect = ReadMigrateDialect(root), MigrateSkipRedundantChecks = ReadMigrateSkipRedundant(root) };
         }
     }
 

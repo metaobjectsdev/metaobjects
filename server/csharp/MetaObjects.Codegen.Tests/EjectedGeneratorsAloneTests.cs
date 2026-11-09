@@ -55,6 +55,8 @@ public class EjectedGeneratorsAloneTests
         // package exports, so it has no entry here any more.
         // Naming, type mapping and binding: tables, ruled engine.
         ["MetaObjects.Codegen.CSharpNaming"] = "the naming and type-mapping tables",
+        ["MetaObjects.Codegen.Generators.CheckConstraints"] = "the CHECKs meta migrate derives: a schema contract both delivery paths must agree on, not emitted code an owned copy should change",
+        ["MetaObjects.Codegen.Generators.CheckConstraint"] = "one of those CHECKs, a name and an expression",
         ["MetaObjects.Codegen.ValueObjectNames"] = "the one answer to what a value object's type is called and where it lives",
         ["MetaObjects.Codegen.PackageBindingResolver"] = "package -> namespace binding",
         ["MetaObjects.Codegen.OutputPaths"] = "package -> output directory (R39): where a per-object file is written",

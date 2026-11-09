@@ -450,6 +450,7 @@ public static class VerifyCommand
             // The dialect gen read: without it a Postgres project's identity start and its design-time
             // services read as drift.
             Dialect = MetaObjects.Config.NeutralConfig.Read(GenCommand.ProjectRootFor(opts.MetadataDir), validateNaming: false)?.MigrateDialect,
+        SkipRedundantChecks = MetaObjects.Config.NeutralConfig.Read(GenCommand.ProjectRootFor(opts.MetadataDir), validateNaming: false)?.MigrateSkipRedundantChecks ?? false,
         };
         return Codegen.CodegenDrift.Compute(config, load.Root, generators);
     }

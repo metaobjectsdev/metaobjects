@@ -213,6 +213,7 @@ public class DbContextGenerator : IGenerator
             if (IdentityStartOn(ctx)) EmitIdentityStartConfig(owner, e, modelLines);
             EmitCommentConfig(owner, e, configFields, modelLines, ctx);
             EmitIndexConfig(owner, e, ctx, modelLines);
+            EmitCheckConfig(owner, e, ctx, modelLines);
 
             // identity.primary @generation: assigned — the caller supplies the key. EF's
             // convention makes a single integer or Guid key generated on add, which leaves a key
@@ -893,6 +894,21 @@ public class DbContextGenerator : IGenerator
         // One entry, one statement: the guard and its body never split across a chunk boundary.
         modelLines.Add($"        if (Database.ProviderName == \"{NpgsqlProviderName}\") modelBuilder.Entity<{owner}>().Property(x => x.{CSharpNaming.Pascal(start.Field.Name)}).HasAnnotation(" +
             $"\"{NpgsqlIdentityOptionsAnnotation}\", \"'{start.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}', '1', '', '', 'False', '1'\");");
+    }
+
+    /// <summary>
+    /// The table's CHECK constraints (item 13, rulings R55): every validator that can carry one and
+    /// every scalar <c>field.enum</c>, with <c>meta migrate</c>'s names and expression text
+    /// (<see cref="CheckConstraints"/>), so an EF migration and <c>meta migrate</c> build the same
+    /// table. Declared only on a dialect migrate builds (<c>postgres</c>, <c>sqlite</c>, <c>d1</c>):
+    /// the text is dialect-specific and EF hands it to the provider verbatim. One statement per entry.
+    /// </summary>
+    protected virtual void EmitCheckConfig(string owner, MetaObject entity, GenContext ctx, List<string> modelLines)
+    {
+        if (entity.DbTable is null) return;
+        foreach (var check in CheckConstraints.For(entity, ctx.Config))
+            modelLines.Add($"        modelBuilder.Entity<{owner}>().ToTable(t => t.HasCheckConstraint(\"{CSharpNaming.CSharpStringLiteral(check.Name)}\", " +
+                $"\"{CSharpNaming.CSharpStringLiteral(check.Expression)}\"));");
     }
 
     private const string NpgsqlIdentityOptionsAnnotation = "Npgsql:IdentitySequenceOptions";

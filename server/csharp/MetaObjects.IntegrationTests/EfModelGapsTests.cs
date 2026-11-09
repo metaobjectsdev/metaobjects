@@ -1121,4 +1121,30 @@ public sealed class EfModelGapsTests
         await Exec(pg.ConnectionString, Sql(ScaffoldComment(CommentModel(null), CommentModel("The ticket's metadata.")).Down));
         Assert.Null((await Rows(pg.ConnectionString, read))[0][0]);
     }
+
+    // ---- item 13: the CHECKs meta migrate derives, declared by the EF model ----
+
+    [Fact]
+    public async Task The_checks_the_model_declares_are_the_ones_meta_migrate_creates()
+    {
+        var corpus = Path.Combine(CorpusPaths.Repo, "fixtures", "check-constraint-conformance");
+        var model = File.ReadAllText(Path.Combine(corpus, "input", "meta.checks.json"));
+        var gen = GeneratedEfModel.Compile(model, "Acme.Checks",
+            c => c with { Dialect = "postgres", ColumnNamingStrategy = MetaObjects.Meta.ColumnNamingStrategy.SnakeCase });
+        await using var pg = await PostgresContainer.StartAsync();
+        using (var db = gen.NewContext(o => o.UseNpgsql(pg.ConnectionString)))
+            await db.Database.EnsureCreatedAsync();
+
+        using var expected = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(corpus, "expected.postgres.json")));
+        var names = expected.RootElement.GetProperty("gadgets").EnumerateArray().Select(c => c.GetProperty("name").GetString()!).OrderBy(n => n, StringComparer.Ordinal);
+        var live = (await Rows(pg.ConnectionString, """
+                SELECT conname FROM pg_constraint WHERE conrelid = 'gadgets'::regclass AND contype = 'c' ORDER BY conname COLLATE "C"
+                """)).Select(r => (string)r[0]!);
+        Assert.Equal(names, live);
+
+        // The database enforces them: a score outside 1..5 is refused by its CHECK.
+        var ex = await Assert.ThrowsAsync<PostgresException>(() => Exec(pg.ConnectionString,
+            "INSERT INTO gadgets (kind, tags, email, score) VALUES ('plain', '{}', 'a@b.c', 9)"));
+        Assert.True(ex.ConstraintName == "gadgets_score_numeric_chk", ex.MessageText);
+    }
 }
