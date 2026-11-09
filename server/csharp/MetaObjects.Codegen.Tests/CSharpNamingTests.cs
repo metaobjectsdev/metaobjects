@@ -494,19 +494,14 @@ public class CSharpNamingTests
     [Fact]
     public void An_application_registers_its_own_pluralizer_and_an_unknown_name_fails_loudly()
     {
-        try
-        {
-            MetaObjects.Meta.NamingStrategies.RegisterPluralizer("latin", n => n.EndsWith("History") ? n[..^1] + "ies" : n + "s");
-            Assert.Equal("CaseHistories", CSharpNaming.DbSetName(HistoryOf(History("", pluralizer: "latin"))));
-            Assert.Throws<ArgumentException>(() => MetaObjects.Meta.NamingStrategies.RegisterPluralizer("standard", n => n));
-            var ex = Assert.Throws<MetaModelException>(() => MetaObjects.Meta.NamingStrategies.Pluralizer("klingon"));
-            Assert.Contains("\"naming.collections\" names \"klingon\"", ex.Message);
-            Assert.Contains("built in: standard, none", ex.Message);
-        }
-        finally
-        {
-            MetaObjects.Meta.NamingStrategies.ResetForTesting();
-        }
+        // The registry is process-wide and other test classes register strategies in it, so this
+        // one is left registered (registering a name again replaces it) rather than reset.
+        MetaObjects.Meta.NamingStrategies.RegisterPluralizer("cs-test-latin", n => n.EndsWith("History") ? n[..^1] + "ies" : n + "s");
+        Assert.Equal("CaseHistories", CSharpNaming.DbSetName(HistoryOf(History("", pluralizer: "cs-test-latin"))));
+        Assert.Throws<ArgumentException>(() => MetaObjects.Meta.NamingStrategies.RegisterPluralizer("standard", n => n));
+        var ex = Assert.Throws<MetaModelException>(() => MetaObjects.Meta.NamingStrategies.Pluralizer("klingon"));
+        Assert.Contains("\"naming.collections\" names \"klingon\"", ex.Message);
+        Assert.Contains("built in: standard, none", ex.Message);
     }
 
     // A @dbSetName that is no C# identifier, or names a DbContext member, would fail at compile
