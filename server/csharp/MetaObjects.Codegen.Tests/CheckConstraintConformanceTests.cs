@@ -42,6 +42,8 @@ public class CheckConstraintConformanceTests
         { "expected.postgres.json", "postgres", false },
         { "expected.postgres.skip-redundant.json", "postgres", true },
         { "expected.sqlite.json", "sqlite", false },
+        { "expected.d1.json", "d1", false },
+        { "expected.sqlite.skip-redundant.json", "sqlite", true },
     };
 
     private static Dictionary<string, List<(string Name, string Expression)>> Expected(string file)

@@ -489,6 +489,14 @@ vocabulary; upgrade every port together.
   entity, and its view carries the effective fields and their origins, base first. An extender
   that would inherit its base's source is still refused at load: it declares its own. Pinned by
   `fixtures/conformance/projection-extends-abstract-projection`.
+- **No CHECK for a derived field** (rc.19 fix round, I5). `meta migrate` and the C# EF context
+  built a CHECK from a derived (origin-bearing) field's enum values or validators, and a
+  cross-field CHECK naming one, though such a field has no column — so `CREATE TABLE` and the EF
+  migration failed. rc.19 made it reachable: an entity may now host an `origin.first` or
+  `origin.computed` field a projection reaches. Both ports skip such a field. Pinned by `band` in
+  `fixtures/check-constraint-conformance`, which now also covers D1, SQLite with
+  `skipRedundant`, a string-stored enum with a `validator.length`, and a `@constraintName`
+  validator under `skipRedundant`.
 - **An extender keeps its base projection's `@filter`** (rc.19 fix round, C1). Codegen read only
   the extender's own `@filter`, so a projection extending a gated projection (a consent or HIPAA
   gate on an abstract base) emitted an ungated view, with no error. A projection's effective

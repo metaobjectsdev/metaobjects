@@ -49,6 +49,9 @@ public static class CheckConstraints
         {
             // No field-level CHECK on an array column: every expression below is scalar-shaped.
             if (field.ResolvedIsArray()) continue;
+            // A derived (origin-bearing) field is no column of the table: a CHECK on it fails the
+            // migration. Its validators apply where it is read.
+            if (field.IsDerived()) continue;
             var col = CSharpNaming.Column(field, strategy);
             var qcol = Quote(col);
             if (field.SubType == FIELD_SUBTYPE_ENUM && field.EffectiveEnumValues is { Count: > 0 } values)
@@ -137,7 +140,8 @@ public static class CheckConstraints
     {
         if (name is not string { Length: > 0 } n) return null;
         var field = entity.Fields().FirstOrDefault(f => f.Name == n);
-        return field is null ? null : (Quote(CSharpNaming.Column(field, strategy)), field);
+        // A derived field has no column, so a cross-field CHECK naming it is skipped like a missing one.
+        return field is null || field.IsDerived() ? null : (Quote(CSharpNaming.Column(field, strategy)), field);
     }
 
     private static CheckConstraint? CrossFieldCheck(MetaValidator v, MetaObject entity, string table, ColumnNamingStrategy strategy, string? dialect)

@@ -19,6 +19,8 @@ const CASES = [
   { file: "expected.postgres.json", dialect: "postgres", skipRedundantChecks: false },
   { file: "expected.postgres.skip-redundant.json", dialect: "postgres", skipRedundantChecks: true },
   { file: "expected.sqlite.json", dialect: "sqlite", skipRedundantChecks: false },
+  { file: "expected.d1.json", dialect: "d1", skipRedundantChecks: false },
+  { file: "expected.sqlite.skip-redundant.json", dialect: "sqlite", skipRedundantChecks: true },
 ] as const;
 
 async function load() {

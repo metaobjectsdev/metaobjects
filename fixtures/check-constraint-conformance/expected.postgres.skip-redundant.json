@@ -29,6 +29,18 @@
       "expression": "\"sku\" ~ '^[A-Z]{3}-''\\d+$'"
     },
     {
+      "name": "gadgets_channel_chk",
+      "expression": "\"channel\" IN ('EMAIL', 'SMS')"
+    },
+    {
+      "name": "gadgets_channel_length_chk",
+      "expression": "length(\"channel\") >= 1 AND length(\"channel\") <= 5"
+    },
+    {
+      "name": "gadgets_ref_fits",
+      "expression": "length(\"ref\") <= 10"
+    },
+    {
       "name": "gadgets_starts_at_cmp_chk",
       "expression": "\"starts_at\" <= \"ends_at\""
     },

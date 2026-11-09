@@ -11,7 +11,9 @@ and an expression (the text inside `CHECK (…)`, as written, never Postgres's n
 |---|---|---|
 | `expected.postgres.json` | `postgres` | false |
 | `expected.postgres.skip-redundant.json` | `postgres` | true |
-| `expected.sqlite.json` | `sqlite` (D1 is the same) | false |
+| `expected.sqlite.json` | `sqlite` | false |
+| `expected.sqlite.skip-redundant.json` | `sqlite` | true (a no-op: SQLite stores past a declared length) |
+| `expected.d1.json` | `d1` (the same as SQLite) | false |
 
 The rules the corpus pins (ruling R55, which follows `meta migrate`):
 
@@ -20,7 +22,11 @@ The rules the corpus pins (ruling R55, which follows `meta migrate`):
   name and is kept even where `skipRedundant` would leave the CHECK out;
 - comparisons, not `BETWEEN`; columns double-quoted; an int-backed enum lists its integers; a
   duration literal is the interval text on Postgres and microseconds on SQLite;
-- no CHECK on an array column; no regex CHECK on SQLite; `IS DISTINCT FROM` on Postgres, `IS NOT`
+- no CHECK on an array column, and none on a derived (origin-bearing) field — it has no column —
+  nor a cross-field CHECK naming one (`band`, an `origin.computed` reached by the `HighGadgets`
+  projection's `@filter`);
+- a string-stored enum gets its membership CHECK and its `validator.length` CHECK, under
+  `skipRedundant` too (`channel`); no regex CHECK on SQLite; `IS DISTINCT FROM` on Postgres, `IS NOT`
   on SQLite; `num_nonnulls` on Postgres, a sum of presence tests on SQLite.
 
 Run by TypeScript (`migrate-ts/test/check-constraint-conformance.test.ts`, the reference; it

@@ -901,6 +901,9 @@ function buildChecks(
     // the enum literal-union for isArray columns.
     // ADR-0039: resolving — array-ness may be inherited via extends.
     if (field.resolvedIsArray()) continue;
+    // A derived (origin-bearing) field is no column of the table (the column builder skips it
+    // too): a CHECK on it fails CREATE TABLE. Its validators apply where it is read.
+    if (field.isDerived()) continue;
     const col = resolveColumnName(field, strategy);
     const qcol = quoteCheckCol(col);
     // Enum membership check. An INT-BACKED enum (@intValueMap, design D5) stores
@@ -987,7 +990,8 @@ function resolveRef(
 ): { qcol: string; field: ReturnType<MetaObject["fields"]>[number] } | null {
   if (typeof name !== "string" || name.length === 0) return null;
   const field = entity.fields().find((f) => f.name === name);
-  if (!field) return null;
+  // A derived field has no column, so a cross-field CHECK naming it is skipped like a missing one.
+  if (!field || field.isDerived()) return null;
   return { qcol: quoteCheckCol(resolveColumnName(field, strategy)), field };
 }
 

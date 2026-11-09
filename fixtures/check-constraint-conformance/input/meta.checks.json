@@ -27,7 +27,13 @@
             { "field.string": { "name": "email" } },
             { "field.string": { "name": "phone" } },
             { "field.string": { "name": "fax" } },
-            { "identity.primary": { "@fields": "id", "@generation": "increment" } },
+            { "field.enum": { "name": "channel", "@values": ["EMAIL", "SMS"], "children": [ { "validator.length": { "@min": 1, "@max": 5 } } ] } },
+            { "field.string": { "name": "ref", "@maxLength": 10, "children": [ { "validator.length": { "@max": 10, "@constraintName": "gadgets_ref_fits" } } ] } },
+            { "field.string": { "name": "band", "children": [
+                { "validator.length": { "@max": 4 } },
+                { "origin.computed": { "@expr": { "case": [ { "when": { "op": "gte", "left": { "field": "score" }, "right": { "value": 4 } }, "then": { "value": "HIGH" } } ],
+                    "else": { "value": "LOW" } } } } ] } },
+            { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
             { "validator.comparison": { "name": "window", "@left": "startsAt", "@op": "lte", "@right": "endsAt" } },
             { "validator.comparison": { "name": "liveWindow", "@left": "endsAt", "@op": "gt", "@right": "startsAt",
                 "@condition": { "op": "and", "args": [
@@ -38,7 +44,19 @@
             { "validator.presentIff": { "name": "shippedAtIff", "@field": "shippedAt", "@when": "shipped", "@equals": true } },
             { "validator.atLeastOne": { "name": "contact", "@fields": ["email", "phone"], "@max": 1 } },
             { "validator.atLeastOne": { "name": "anyContact", "@fields": ["phone", "fax"],
-                "@condition": { "op": "eq", "left": { "field": "level" }, "right": { "value": "HIGH" } } } }
+                "@condition": { "op": "eq", "left": { "field": "level" }, "right": { "value": "HIGH" } } } },
+            { "validator.requiredWhen": { "name": "bandFax", "@field": "fax", "@when": "band", "@equals": "HIGH" } }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "HighGadgets",
+          "@filter": { "band": "HIGH" },
+          "children": [
+            { "source.rdb": { "@kind": "view", "@view": "v_high_gadgets" } },
+            { "field.long": { "name": "id", "extends": "Gadget.id" } },
+            { "identity.primary": { "name": "id", "extends": "Gadget.id" } }
           ]
         }
       }
