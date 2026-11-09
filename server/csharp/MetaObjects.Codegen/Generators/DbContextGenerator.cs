@@ -365,8 +365,8 @@ public class DbContextGenerator : IGenerator
         // The design-time services also scaffold a JSON column's comment (ruling R59).
         identityStart |= IdentityStartOn(ctx) && modelLines.Any(l => l.Contains(JsonColumnCommentAnnotation, StringComparison.Ordinal));
         if (!identityStart) return [new EmittedFile("AppDbContext.g.cs", sb.ToString())];
-        var services = ContextClassName(ctx) + IdentityStartServicesSuffix;
-        return [new EmittedFile("AppDbContext.g.cs", sb.ToString()), new EmittedFile($"{services}.g.cs", IdentityStartDesignTimeServicesFile(ctx, services))];
+        var services = ContextClassName(ctx) + DesignTimeServicesSuffix;
+        return [new EmittedFile("AppDbContext.g.cs", sb.ToString()), new EmittedFile($"{services}.g.cs", DesignTimeServicesFile(ctx, services))];
     }
 
     /// <summary>
@@ -885,7 +885,7 @@ public class DbContextGenerator : IGenerator
     /// no Npgsql reference. A start-only change never restarts the sequence: Npgsql alone would
     /// write <c>RESTART WITH n</c> (or <c>RESTART WITH 1</c> when the start is removed), handing
     /// out ids live rows hold, so the generated design-time services
-    /// (<see cref="IdentityStartDesignTimeServicesFile"/>) scaffold it as SQL instead.
+    /// (<see cref="DesignTimeServicesFile"/>) scaffold it as SQL instead.
     /// </summary>
     private static void EmitIdentityStartConfig(string owner, MetaObject entity, List<string> modelLines)
     {
@@ -896,7 +896,7 @@ public class DbContextGenerator : IGenerator
     }
 
     private const string NpgsqlIdentityOptionsAnnotation = "Npgsql:IdentitySequenceOptions";
-    private const string IdentityStartServicesSuffix = "IdentityStartDesignTimeServices";
+    private const string DesignTimeServicesSuffix = "DesignTimeServices";
 
     /// <summary>
     /// Whether this run emits <c>@sequenceStart</c> and the design-time services: the project's
@@ -920,7 +920,8 @@ public class DbContextGenerator : IGenerator
     }
 
     /// <summary>
-    /// The identity-start design-time services of a Postgres context (rulings R50, R51): an
+    /// The design-time services of a Postgres context, <c>&lt;Context&gt;DesignTimeServices</c> (rulings R50,
+    /// R51, R59, R60; one class for every design-time concern): an
     /// <c>IDesignTimeServices</c> that wraps the model differ the context already has, so
     /// <c>dotnet ef migrations add</c> scaffolds every start-only identity change — a start added,
     /// changed or removed — as SQL, Up and Down, and never as the <c>AlterColumn</c> Npgsql would
@@ -942,7 +943,7 @@ public class DbContextGenerator : IGenerator
     /// (<see cref="GenConfig.ContextAssemblyName"/>), so EF's default layout, where the migrations
     /// live in the context's assembly, needs no adopter code.</para>
     /// </summary>
-    private string IdentityStartDesignTimeServicesFile(GenContext ctx, string className)
+    private string DesignTimeServicesFile(GenContext ctx, string className)
     {
         var ns = ContextNamespace(ctx);
         var assembly = ctx.Config.ContextAssemblyName;

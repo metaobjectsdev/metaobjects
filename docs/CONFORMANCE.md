@@ -137,7 +137,7 @@ rebuilt by replaying migrations then begins at the start, as a fresh one does. T
 below are tracked in [#544](https://github.com/metaobjectsdev/metaobjects/issues/544).
 
 - *Honoured and pinned:* C#. The generated context carries the start on Npgsql, and the generated
-  design-time services (`<Context>IdentityStartDesignTimeServices`, ruling R50) scaffold every
+  design-time services (`<Context>DesignTimeServices`, ruling R50) scaffold every
   start-only change — added, changed or removed — as SQL, Up and Down (Npgsql alone writes
   `RESTART WITH n`, or `RESTART WITH 1` for a removed start). `EfModelGapsTests` pins the
   transitions, the adopter's own differ being kept, and, on live Postgres, a replayed database

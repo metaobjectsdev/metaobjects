@@ -24,7 +24,7 @@ public sealed class IdentityStartDialectTests
         ] } }
         """;
 
-    private const string ServicesFile = "AppDbContextIdentityStartDesignTimeServices.g.cs";
+    private const string ServicesFile = "AppDbContextDesignTimeServices.g.cs";
 
     private static (List<EmittedFile> Files, List<string> Warnings) Run(
         string? dialect, string model = Model, string? assembly = "Acme.Data", string outDir = "/unused")
@@ -53,9 +53,9 @@ public sealed class IdentityStartDialectTests
         Assert.DoesNotContain(files, f => f.Path == "IdentityStartMigrationsSqlGenerator.g.cs");
 
         var services = files.Single(f => f.Path == ServicesFile).Content;
-        Assert.Contains("public sealed class AppDbContextIdentityStartDesignTimeServices : IDesignTimeServices", services);
+        Assert.Contains("public sealed class AppDbContextDesignTimeServices : IDesignTimeServices", services);
         Assert.Contains(
-            "[assembly: DesignTimeServicesReference(\"Acme.AppDbContextIdentityStartDesignTimeServices, Acme.Data\", \"Npgsql.EntityFrameworkCore.PostgreSQL\")]",
+            "[assembly: DesignTimeServicesReference(\"Acme.AppDbContextDesignTimeServices, Acme.Data\", \"Npgsql.EntityFrameworkCore.PostgreSQL\")]",
             services);
         // Public EF types only: no Npgsql reference, no EF-internal differ.
         Assert.DoesNotContain("Npgsql.EntityFrameworkCore.PostgreSQL.", services.Replace("\"Npgsql.EntityFrameworkCore.PostgreSQL\"", ""));
@@ -91,7 +91,7 @@ public sealed class IdentityStartDialectTests
         var services = files.Single(f => f.Path == ServicesFile).Content;
         Assert.DoesNotContain("[assembly:", services);
         var warning = Assert.Single(warnings);
-        Assert.Contains("[assembly: DesignTimeServicesReference(\"Acme.AppDbContextIdentityStartDesignTimeServices, <assembly>\")]", warning);
+        Assert.Contains("[assembly: DesignTimeServicesReference(\"Acme.AppDbContextDesignTimeServices, <assembly>\")]", warning);
         Assert.Contains("GenConfig.ContextAssemblyName", warning);
     }
 
@@ -107,7 +107,7 @@ public sealed class IdentityStartDialectTests
             var outDir = Path.Combine(project, "Generated");
             var (files, warnings) = Run("postgres", assembly: null, outDir: outDir);
             Assert.Empty(warnings);
-            Assert.Contains($"\"Acme.AppDbContextIdentityStartDesignTimeServices, {expected}\"",
+            Assert.Contains($"\"Acme.AppDbContextDesignTimeServices, {expected}\"",
                 files.Single(f => f.Path == ServicesFile).Content);
         }
         finally

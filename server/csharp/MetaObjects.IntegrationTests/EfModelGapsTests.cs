@@ -850,8 +850,8 @@ public sealed class EfModelGapsTests
         var name = "gen_dts_" + Guid.NewGuid().ToString("N");
         var gen = GeneratedEfModel.Compile(StartVocabularyModel.Replace("__START__", ", \"@sequenceStart\": 200"), "Acme.StartRef",
             c => c with { Dialect = "postgres", ContextAssemblyName = name }, assemblyName: name);
-        Assert.Contains($"[assembly: DesignTimeServicesReference(\"Acme.StartRef.AppDbContextIdentityStartDesignTimeServices, {name}\", " +
-            "\"Npgsql.EntityFrameworkCore.PostgreSQL\")]", gen.Sources["AppDbContextIdentityStartDesignTimeServices.g.cs"]);
+        Assert.Contains($"[assembly: DesignTimeServicesReference(\"Acme.StartRef.AppDbContextDesignTimeServices, {name}\", " +
+            "\"Npgsql.EntityFrameworkCore.PostgreSQL\")]", gen.Sources["AppDbContextDesignTimeServices.g.cs"]);
         System.Reflection.Assembly? Resolve(object? _, ResolveEventArgs e) => e.Name.StartsWith(name, StringComparison.Ordinal) ? gen.Assembly : null;
         AppDomain.CurrentDomain.AssemblyResolve += Resolve;
         try

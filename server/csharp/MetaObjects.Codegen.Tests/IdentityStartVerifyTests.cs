@@ -49,7 +49,7 @@ public sealed class IdentityStartVerifyTests : IDisposable
         {
             var (gen, genText) = Run("gen", Meta, "--out", Out, "--namespace", "Acme.Generated");
             Assert.True(gen == 0, genText);
-            Assert.True(File.Exists(Path.Combine(Out, "AppDbContextIdentityStartDesignTimeServices.g.cs")), genText);
+            Assert.True(File.Exists(Path.Combine(Out, "AppDbContextDesignTimeServices.g.cs")), genText);
             var (verify, verifyText) = Run("verify", "--codegen", Meta, "--out", Out, "--namespace", "Acme.Generated");
             Assert.True(verify == 0, verifyText);
         }

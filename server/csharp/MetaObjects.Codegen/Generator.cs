@@ -199,7 +199,7 @@ public sealed record GenConfig
 
     /// <summary>
     /// The name of the assembly the generated context is compiled into. A Postgres context's
-    /// identity-start design-time services are found through
+    /// design-time services (<c>&lt;Context&gt;DesignTimeServices</c>) are found through
     /// <c>[assembly: DesignTimeServicesReference("&lt;type&gt;, &lt;assembly&gt;")]</c>, and EF resolves
     /// that name with <c>Type.GetType</c>, which needs the assembly. <c>null</c>, the default, reads it
     /// from the one <c>.csproj</c> in <see cref="OutDir"/> or the nearest directory above it (its

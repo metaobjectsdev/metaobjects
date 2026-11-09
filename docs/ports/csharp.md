@@ -409,8 +409,9 @@ alone writes a start added as `RESTART WITH n`, a changed one as `RESTART WITH m
 as `RESTART WITH 1`, each handing out ids live rows may hold.
 
 The fix is at design time, where the change is scaffolded (rulings R50, R51). A Postgres context
-with an increment key gets `AppDbContextIdentityStartDesignTimeServices.g.cs` (named after the
-context class): an `IDesignTimeServices` that wraps the model differ the context already has, so
+with an increment key gets `AppDbContextDesignTimeServices.g.cs` (named after the
+context class; ruling R60: the one class for every design-time concern, which also scaffolds a
+JSON column's comment): an `IDesignTimeServices` that wraps the model differ the context already has, so
 `dotnet ef migrations add` writes every start-only change as SQL, in `Up` and in `Down`:
 
 - `ALTER TABLE … ALTER COLUMN … SET START WITH n` records the start (a removed start goes back to
@@ -434,7 +435,7 @@ line there:
 
 ```csharp
 [assembly: Microsoft.EntityFrameworkCore.Design.DesignTimeServicesReference(
-    "MyApp.Data.AppDbContextIdentityStartDesignTimeServices, MyApp.Data")]
+    "MyApp.Data.AppDbContextDesignTimeServices, MyApp.Data")]
 ```
 
 That is the accepted residual risk: without it, a changed start still scaffolds as RESTART.

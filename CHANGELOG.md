@@ -359,7 +359,8 @@ vocabulary; upgrade every port together.
 - **C#, upgrade note: identity starts never RESTART, and the fix is design-time only** (rulings
   R50, R51). A Postgres project's context now carries `identity.primary @sequenceStart` in its
   model, and a Postgres context with an increment key gets
-  `<Context>IdentityStartDesignTimeServices.g.cs`: an `IDesignTimeServices` that wraps the
+  `<Context>DesignTimeServices.g.cs` (ruling R60: one class for every design-time concern,
+  identity starts and JSON-column comments): an `IDesignTimeServices` that wraps the
   context's own model differ, so `dotnet ef migrations add` scaffolds every start-only change — a
   start added, changed or removed — as SQL, Up and Down, never as Npgsql's `RESTART`. The SQL is
   `SET START WITH n` (a removed start goes back to the identity default) and, for a declared start,
@@ -376,7 +377,7 @@ vocabulary; upgrade every port together.
   RESTART, which is the accepted residual risk. An adopter's own differ is kept: the services wrap
   it.
 - **C#, upgrade note: a self-hosted codegen runner sets `GenConfig.Dialect`.** `@sequenceStart` and
-  the identity-start design-time services are emitted only when the dialect is `postgres`. `CodegenCli` reads it
+  the design-time services are emitted only when the dialect is `postgres`. `CodegenCli` reads it
   from `.metaobjects/config.json` `migrate.dialect`; a runner that builds its own `GenConfig` must
   set `Dialect = "postgres"`, or it gets a warning and no start in the model.
 - **C#, upgrade note: an unset nullable enum with `@default` starts at `@default`, not NULL** (ruling
