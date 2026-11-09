@@ -43,6 +43,6 @@ describe("G7 — a view @filter on a base field the view does not output", () =>
 
   test("a name neither the projection nor its base declares is still refused", async () => {
     const { errors } = await load({ archived: false });
-    expect(errors.map((e) => e.code)).toEqual(["ERR_BAD_ATTR_FILTER"]);
+    expect(errors.map((e) => (e as { code?: string }).code)).toEqual(["ERR_BAD_ATTR_FILTER"]);
   });
 });

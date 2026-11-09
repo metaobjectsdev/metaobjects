@@ -1,6 +1,6 @@
 # Conformance coverage
 
-The MetaObjects standard ships **37 shared conformance corpora** under
+The MetaObjects standard ships **38 shared conformance corpora** under
 [`fixtures/`](../fixtures/). Every port runs every corpus that is *applicable to
 it* and asserts the same expected behaviour against the same fixtures. **This page
 is the inverse index**: fixture → feature doc + per-port pass status, and it is the
@@ -390,7 +390,7 @@ unit-test runners (`bun test`, `dotnet test`, `pytest`, `mvn test`) pull Docker.
 
 ## Fixture-to-doc mapping
 
-### `fixtures/conformance/` — metamodel loader + canonical serializer (442)
+### `fixtures/conformance/` — metamodel loader + canonical serializer (447)
 
 | Fixture prefix | Feature doc |
 |---|---|
@@ -716,7 +716,7 @@ files into a real Cube.
 
 ## Orphaned fixtures (tested but not yet documented)
 
-The fixtures in the nine corpora mapped above (metamodel 442 + yaml 16 + verify 45
+The fixtures in the nine corpora mapped above (metamodel 447 + yaml 16 + verify 45
 + render 18 + persistence 59 + api-contract 119 + source-resolution 25 + scope 10 +
 dependency 37) each map to a feature doc, and so do the two requirement corpora, `shared-model-conformance` and the
 `cube-model` corpus, whose case lists live in their own READMEs. None are orphaned today. The remaining

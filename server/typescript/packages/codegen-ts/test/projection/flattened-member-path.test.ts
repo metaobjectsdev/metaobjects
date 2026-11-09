@@ -61,6 +61,6 @@ describe("G6 — a passthrough from a flattened value-object member", () => {
 
   test("a member the value object does not declare is refused", async () => {
     const { errors } = await load("Plan.address.zip");
-    expect(errors.map((e) => e.code)).toEqual(["ERR_INVALID_ORIGIN"]);
+    expect(errors.map((e) => (e as { code?: string }).code)).toEqual(["ERR_INVALID_ORIGIN"]);
   });
 });

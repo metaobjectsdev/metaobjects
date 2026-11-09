@@ -82,7 +82,7 @@ describe("R-walk — a @via hop over the reverse of an identity.reference", () =
   test("two references from the holder make the reverse hop ambiguous, named", async () => {
     const { errors } = await load(twoReferences());
     expect(errors.length).toBeGreaterThan(0);
-    expect(errors[0]!.code).toBe("ERR_AMBIGUOUS_PATH");
+    expect((errors[0] as { code?: string }).code).toBe("ERR_AMBIGUOUS_PATH");
     expect(String(errors[0]!.message)).toContain('"patient", "witness"');
   });
 });
