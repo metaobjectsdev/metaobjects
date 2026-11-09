@@ -999,6 +999,23 @@ public sealed class EfModelGapsTests
         }
     }
 
+    // rc.19 fix round (M3): EF applies every DesignTimeServicesReference it reads, so two contexts'
+    // services in one assembly both run. They wrap the differ once between them, not once each
+    // (each JSON-column COMMENT ON would otherwise be scaffolded twice).
+    [Fact]
+    public void Two_contexts_services_wrap_the_differ_once_between_them()
+    {
+        var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
+        Microsoft.Extensions.DependencyInjection.ServiceCollectionServiceExtensions.AddTransient<
+            Microsoft.EntityFrameworkCore.Migrations.IMigrationsModelDiffer>(services, _ => throw new InvalidOperationException("unused"));
+        foreach (var gen in new[] { StartModel(100), StartModel(200) })
+        {
+            var type = gen.Type("AppDbContextDesignTimeServices");
+            ((Microsoft.EntityFrameworkCore.Design.IDesignTimeServices)Activator.CreateInstance(type)!).ConfigureDesignTimeServices(services);
+        }
+        Assert.Equal(2, services.Count(d => d.ServiceType == typeof(Microsoft.EntityFrameworkCore.Migrations.IMigrationsModelDiffer)));
+    }
+
     /// <summary>An adopter's own differ, registered on its context: it appends a marker operation.</summary>
 #pragma warning disable EF1001 // An adopter's differ subclasses EF's.
     private sealed class AdopterDiffer(

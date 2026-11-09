@@ -493,6 +493,10 @@ vocabulary; upgrade every port together.
   entity, and its view carries the effective fields and their origins, base first. An extender
   that would inherit its base's source is still refused at load: it declares its own. Pinned by
   `fixtures/conformance/projection-extends-abstract-projection`.
+- **C#: two contexts' design-time services wrap the model differ once** (rc.19 fix round, M3).
+  EF applies every `DesignTimeServicesReference` it reads, so two Postgres contexts in one
+  assembly each wrapped the differ and every JSON-column `COMMENT ON` was scaffolded twice. The
+  generated services now recognise one another's marker and wrap once between them.
 - **C#: every generator that emits a class claims its name** (rc.19 fix round, I2). With
   package-keyed paths two same-named objects no longer collide on one output file, so only a
   claim stopped a duplicate type — and `<X>FilterAllowlist`, `<X>Names`, `<Report>Export` and

@@ -1017,16 +1017,18 @@ public class DbContextGenerator : IGenerator
                 /// <summary>Wraps the differ already registered (the context's own, by default), once.</summary>
                 public void ConfigureDesignTimeServices(IServiceCollection services)
                 {
-                    // Found by the startup scan and by the reference both: wrap once.
-                    if (services.Any(d => d.ServiceType == typeof(Applied))) return;
-                    services.AddSingleton<Applied>();
+                    // Found by the startup scan and by the reference both, or one such class per
+                    // context in one assembly (EF applies every reference): wrap once. The marker is
+                    // matched by name, so another context's services class counts too.
+                    if (services.Any(d => d.ServiceType.Name == nameof(MetaObjectsDesignTimeApplied))) return;
+                    services.AddSingleton<MetaObjectsDesignTimeApplied>();
                     var inner = services.LastOrDefault(d => d.ServiceType == typeof(IMigrationsModelDiffer) && d.ServiceKey is null);
                     services.Add(new ServiceDescriptor(typeof(IMigrationsModelDiffer),
                         sp => new Differ(Resolve(inner, sp), sp.GetRequiredService<ICurrentDbContext>().Context.GetService<ISqlGenerationHelper>()),
                         inner?.Lifetime ?? ServiceLifetime.Transient));
                 }
 
-                private sealed class Applied { }
+                private sealed class MetaObjectsDesignTimeApplied { }
 
                 private static IMigrationsModelDiffer Resolve(ServiceDescriptor? inner, IServiceProvider sp) => inner switch
                 {
