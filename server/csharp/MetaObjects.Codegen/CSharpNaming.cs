@@ -1229,7 +1229,7 @@ public static class CSharpNaming
     /// this hazard (<c>Pluralize("Address") == "Addresses"</c>, a DIFFERENT entity's
     /// DbSet) predates this fix and is out of scope HERE — <c>ForeignKeyExpression</c>'s
     /// lambda is what keeps THAT reference safe to compile. The context's DbSet-name check
-    /// (<see cref="AssertUniqueInScope"/>) refuses two entities of one context that share a
+    /// (a claim, <see cref="GenContext.Claim"/>) refuses two entities of one context that share a
     /// DbSet name (so a context that reaches this method never has that pair) — the two are complementary, not redundant: this method's
     /// job is a bare reference staying correct even for an owner that collides only
     /// with ITSELF (the self-collision case), which the refusal does not and should not
@@ -1237,34 +1237,6 @@ public static class CSharpNaming
     /// </summary>
     public static string QualifiedOwnerTypeRef(string owner, MetaObject ownerObject, GenConfig config) =>
         Pluralize(owner) == owner ? $"global::{ValueObjectNames.Namespace(ownerObject, config)}.{owner}" : owner;
-
-    /// <summary>
-    /// Refuse two objects that claim one generated name inside ONE scope: the DbSet properties
-    /// of one context, the route segments of one routes entry, the finders of one class. Each
-    /// generator calls this over the names it actually emits, so an object that emits nothing
-    /// (abstract, sourceless) never takes part, and the same short name in two scopes (two
-    /// packages, two contexts, two route groups) is not a collision. There is deliberately no
-    /// run-wide check: a name collides only where the artifact that carries it lives.
-    /// <para>Deterministic: the first object to claim a name owns it, and the error names the
-    /// first second claimant, by its full name, with the colliding name and the scope.</para>
-    /// </summary>
-    public static void AssertUniqueInScope(
-        IEnumerable<(string Name, string Claimant)> claims, string what, string scope, string remedy)
-    {
-        var claimantOf = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var (name, claimant) in claims)
-        {
-            if (!claimantOf.TryGetValue(name, out var existing))
-            {
-                claimantOf[name] = claimant;
-                continue;
-            }
-            if (existing == claimant) continue;
-            throw new InvalidOperationException(
-                $"\"{existing}\" and \"{claimant}\" both generate the {what} \"{name}\" in {scope} — " +
-                $"{remedy}. Default PHYSICAL table names are unaffected by this rule.");
-        }
-    }
 
     private static readonly char[] CSharpEscapeChars = { '\\', '"', '\t', '\n', '\r' };
 

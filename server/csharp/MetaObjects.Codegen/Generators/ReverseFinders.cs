@@ -142,11 +142,15 @@ public static class ReverseFinderBuilder
         sb.AppendLine("{");
 
         // The finders are members of one class: two FKs whose segments fold to one name collide.
-        CSharpNaming.AssertUniqueInScope(
-            fks.SelectMany(fk => new[] {
-                (CSharpNaming.ReverseFinderName(entity, fk.FkField), $"{entity.ResolutionKey()}.{fk.FkField}"),
-                (CSharpNaming.ReverseFinderInName(entity, fk.FkField), $"{entity.ResolutionKey()}.{fk.FkField}") }),
-            "reverse finder", $"the class {queriesCls}", "rename one of the foreign-key fields");
+        ctx.Claim($"the C# namespace {ctx.Config.Namespace}", queriesCls, entity.ResolutionKey(),
+            "map the packages to distinct namespaces (GenConfig.PackageNamespaces), or rename one");
+        foreach (var fk in fks)
+        {
+            ctx.Claim($"the reverse finders of {ctx.Config.Namespace}.{queriesCls}", CSharpNaming.ReverseFinderName(entity, fk.FkField),
+                $"{entity.ResolutionKey()}.{fk.FkField}", "rename one of the foreign-key fields");
+            ctx.Claim($"the reverse finders of {ctx.Config.Namespace}.{queriesCls}", CSharpNaming.ReverseFinderInName(entity, fk.FkField),
+                $"{entity.ResolutionKey()}.{fk.FkField}", "rename one of the foreign-key fields");
+        }
 
         var first = true;
         foreach (var fk in fks)

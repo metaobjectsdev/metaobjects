@@ -74,7 +74,7 @@ public static class ExtractDelegateEmitter
 
     /// <summary>The mapper-method name for a value object (<c>From&lt;TypeName&gt;Extracted</c>).</summary>
     private static string MapperName(MetaData vo, MetaData root) =>
-        $"From{ValueObjectNames.TypeName(vo, root)}Extracted";
+        $"From{ValueObjectNames.MemberKey(vo, root)}Extracted";
 
     /// <summary>Every value object a mirror of <paramref name="vo"/> reaches — itself, then each
     /// nested <c>@objectRef</c> target, depth-first — deduped by FQN (cycle-safe).</summary>

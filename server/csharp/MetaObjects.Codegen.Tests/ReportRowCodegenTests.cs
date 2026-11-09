@@ -723,7 +723,7 @@ public class ReportRowCodegenTests
         {
             var ex = Assert.Throws<InvalidOperationException>(() =>
                 CodegenRunner.Run(Config() with { OutDir = outDir }, root, [new DbContextGenerator()]));
-            Assert.Contains("DbSet property \"Sales\"", ex.Message);
+            Assert.Contains("\"Sales\" in the DbSet properties", ex.Message);
         }
         finally
         {

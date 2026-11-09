@@ -7,8 +7,8 @@
 // (extract-tier-collision.test.ts) and Python (test_extract_tier_collision.py) #228 tasks load.
 //
 // Design invariant (ADR-0056): each port's extractor STRICT type is the value object's own
-// type. For C# that is the POCO EntityGenerator emits — AcmeAlphaNote / AcmeBetaNote, because
-// the two value objects share a short name — and every tier asks ValueObjectNames for the
+// type. For C# that is the POCO EntityGenerator emits — `Note` in each package's own namespace
+// (PackageNamespaces), never renamed (ruling R52) — and every tier asks ValueObjectNames for the
 // name, so none can disagree with the declaration. The mirrors are the value objects' too:
 // each is emitted once per run, in its own file.
 //
@@ -58,7 +58,13 @@ public sealed class ExtractTierCollisionTests
     {
         Entities = root.Objects(),
         Root = root,
-        Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated" },
+        // Two value objects named Note are one type per namespace each (ruling R52): the packages are
+        // mapped apart, as the claim registry's remedy says.
+        Config = new GenConfig
+        {
+            OutDir = "/tmp", Namespace = "Acme.Generated",
+            PackageNamespaces = new() { ["acme::alpha"] = "Acme.Alpha", ["acme::beta"] = "Acme.Beta" },
+        },
     };
 
     [Fact]
@@ -77,30 +83,30 @@ public sealed class ExtractTierCollisionTests
         Assert.Equal("DigestPromptExtractor.cs", extractorFile.Path);
         Assert.Contains("public static class DigestPromptExtractor", extractorSrc);
 
-        // ---- mirrors: one file per value object, BOTH collision members present, qualified
-        //      (never bare/dropped — the #219-class dedupe-by-name defect) ----
+        // ---- mirrors: one per value object, BOTH collision members present, each in its own
+        //      value object's namespace (never dropped — the #219-class dedupe-by-name defect) ----
         Assert.Equal(
-            ["AcmeAlphaNoteExtracted.g.cs", "AcmeBetaNoteExtracted.g.cs", "DigestExtracted.g.cs", "DigestPrompt.response.cs"],
-            parserFiles.Select(f => f.Path).OrderBy(p => p, StringComparer.Ordinal));
-        var digestMirror = Assert.Single(parserFiles, f => f.Path == "DigestExtracted.g.cs").Content;
-        // The root Digest mirror's fields reference the qualified nested mirror types.
-        Assert.Contains("AcmeAlphaNoteExtracted? fromAlpha { get; init; }", digestMirror);
-        Assert.Contains("AcmeBetaNoteExtracted? fromBeta { get; init; }", digestMirror);
+            ["DigestExtracted.g.cs", "DigestPrompt.response.cs", "NoteExtracted.g.cs", "NoteExtracted.g.cs"],
+            parserFiles.Select(f => Path.GetFileName(f.Path)).OrderBy(p => p, StringComparer.Ordinal));
+        Assert.Contains(parserFiles, f => f.Path.EndsWith("NoteExtracted.g.cs") && f.Content.Contains("namespace Acme.Alpha"));
+        Assert.Contains(parserFiles, f => f.Path.EndsWith("NoteExtracted.g.cs") && f.Content.Contains("namespace Acme.Beta"));
+        var digestMirror = Assert.Single(parserFiles, f => f.Path.EndsWith("DigestExtracted.g.cs")).Content;
+        Assert.Contains("Acme.Alpha.NoteExtracted? fromAlpha { get; init; }", digestMirror);
+        Assert.Contains("Acme.Beta.NoteExtracted? fromBeta { get; init; }", digestMirror);
 
-        // ---- parser: mappers for both, collision-scoped ----
+        // ---- parser and extractor: a mapper for each ----
+        Assert.Contains("Acme.Alpha.NoteExtracted", parserSrc);
+        Assert.Contains("Acme.Beta.NoteExtracted", parserSrc);
+        Assert.Contains("Acme.Alpha.Note", extractorSrc);
+        Assert.Contains("Acme.Beta.Note", extractorSrc);
+        // No type is renamed (only the private mappers' names carry the package).
+        foreach (var src in parserFiles.Select(f => f.Content).Append(extractorSrc))
+        {
+            Assert.DoesNotContain("class AcmeAlphaNote", src);
+            Assert.DoesNotContain("AcmeAlphaNoteExtracted?", src);
+        }
         Assert.Contains("FromAcmeAlphaNoteExtracted(", parserSrc);
-        Assert.Contains("FromAcmeBetaNoteExtracted(", parserSrc);
-        Assert.DoesNotContain("FromNoteExtracted(", parserSrc);
-
-        // ---- extractor: mappers onto BOTH qualified POCOs ----
-        Assert.Contains("ToStrict_AcmeAlphaNote(", extractorSrc);
         Assert.Contains("ToStrict_AcmeBetaNote(", extractorSrc);
-        Assert.DoesNotContain("ToStrict_Note(", extractorSrc);
-
-        // No bare "Note" identifier/type token anywhere in the generated files (word-boundary
-        // — "AcmeAlphaNote"/"AcmeBetaNote" do NOT match \bNote\b since "a"/"N" share no boundary).
-        foreach (var f in parserFiles) Assert.DoesNotMatch(@"\bNote\b", f.Content);
-        Assert.DoesNotMatch(@"\bNote\b", extractorSrc);
     }
 
     // Compile + RUN — the strongest proof: each nested VO extracts into ITS OWN shape, never the
@@ -115,7 +121,7 @@ public sealed class ExtractTierCollisionTests
         var asm = Compile([
             .. new OutputParserGenerator().Generate(ctx).Select(f => f.Content),
             Assert.Single(new ExtractorGenerator().Generate(ctx)).Content,
-            .. GeneratedValueObjects.Sources(root),
+            .. GeneratedValueObjects.Sources(root, ctx.Config),
         ]);
 
         var extractorType = asm.GetType("Acme.Generated.DigestPromptExtractor")!;
@@ -128,13 +134,13 @@ public sealed class ExtractTierCollisionTests
         var digest = extract.Invoke(null, new object?[] { digestMo, text })!;
 
         var fromAlpha = digest.GetType().GetProperty("FromAlpha")!.GetValue(digest)!;
-        Assert.Equal("AcmeAlphaNote", fromAlpha.GetType().Name);
+        Assert.Equal("Acme.Alpha.Note", fromAlpha.GetType().FullName);
         Assert.Equal("AA", fromAlpha.GetType().GetProperty("AlphaText")!.GetValue(fromAlpha));
         // Proves no wrong-node cross-wire: alpha's POCO has NO BetaText property at all.
         Assert.Null(fromAlpha.GetType().GetProperty("BetaText"));
 
         var fromBeta = digest.GetType().GetProperty("FromBeta")!.GetValue(digest)!;
-        Assert.Equal("AcmeBetaNote", fromBeta.GetType().Name);
+        Assert.Equal("Acme.Beta.Note", fromBeta.GetType().FullName);
         Assert.Equal("BB", fromBeta.GetType().GetProperty("BetaText")!.GetValue(fromBeta));
         Assert.Null(fromBeta.GetType().GetProperty("AlphaText"));
     }
@@ -233,12 +239,11 @@ public sealed class ExtractTierCollisionTests
         };
         var ctx = new GenContext { Entities = root.Objects(), Root = root, Config = config };
 
-        // EntityGenerator emits BOTH: the entity, and the value object's POCO. The POCO takes the
-        // package-qualified name AcmeBetaReport, because the entity shares its short name
-        // (ValueObjectNames) — two `Report.g.cs` files would collide in the output directory.
+        // EntityGenerator emits BOTH: the entity, and the value object's POCO, each named Report in
+        // its own namespace (ruling R52: never renamed).
         var entityFiles = new EntityGenerator().Generate(ctx).ToList();
-        var entitySrc = Assert.Single(entityFiles, f => f.Path == "Report.g.cs").Content;
-        Assert.Contains("public class AcmeBetaReport", Assert.Single(entityFiles, f => f.Path == "AcmeBetaReport.g.cs").Content);
+        var entitySrc = Assert.Single(entityFiles, f => f.Content.Contains("namespace Acme.Alpha;")).Content;
+        Assert.Contains("public class Report", Assert.Single(entityFiles, f => f.Content.Contains("namespace Acme.Generated;")).Content);
         // §A6 (task 4) — GenConfig.IncludeNames is not set here (defaults to false),
         // so the Report entity below does NOT reference ReportNames; this compiles
         // ReportNames in alongside it as an unreferenced sibling class only.

@@ -210,9 +210,9 @@ public sealed class RenderHelperConformanceTests
     // The payload TYPES for this fixture must be GENERATOR-emitted
     // (fixtures/template-output-render-conformance/README.md, xpkg-collision section) — never
     // hand-authored by the port runner. ADR-0056: they are the value objects' own POCOs, which
-    // EntityGenerator emits; two value objects sharing the short name `Note` emit under their
-    // package-qualified names (AcmeAlphaNote / AcmeBetaNote), each with only its OWN field —
-    // not one merged/first-wins shape.
+    // EntityGenerator emits; two value objects sharing the short name `Note` are each `Note` in
+    // their own package's namespace (PackageNamespaces; ruling R52, never renamed), each with only
+    // its OWN field — not one merged/first-wins shape.
     // ---------------------------------------------------------------------
 
     [Fact]
@@ -226,20 +226,29 @@ public sealed class RenderHelperConformanceTests
             Path.Combine(dir, "meta.app.json"));
         var templates = Path.Combine(corpus, "templates");
 
+        var ctx = new GenContext
+        {
+            Entities = root.Objects(), Root = root,
+            Config = new GenConfig
+            {
+                OutDir = "/tmp", Namespace = "Acme.Generated",
+                PackageNamespaces = new() { ["acme::alpha"] = "Acme.Alpha", ["acme::beta"] = "Acme.Beta", ["acme::app"] = "Acme.Generated" },
+            },
+        };
+
         // Must NOT throw: the FQN refs resolve to their own package's Note.
-        var file = Assert.Single(new RenderHelperGenerator(templates).Generate(Ctx(root)), f => f.Path == "DigestDoc.render.cs");
+        var file = Assert.Single(new RenderHelperGenerator(templates).Generate(ctx), f => f.Path.EndsWith("DigestDoc.render.cs"));
 
         // GENERATOR-emitted payload types (not hand-authored) — the corpus contract.
-        var files = new EntityGenerator().Generate(Ctx(root)).ToList();
-        var alpha = Assert.Single(files, f => f.Path == "AcmeAlphaNote.g.cs").Content;
-        var beta = Assert.Single(files, f => f.Path == "AcmeBetaNote.g.cs").Content;
-        var digestSrc = Assert.Single(files, f => f.Path == "Digest.g.cs").Content;
-        Assert.DoesNotContain(files, f => f.Path == "Note.g.cs");
+        var files = new EntityGenerator().Generate(ctx).ToList();
+        var alpha = Assert.Single(files, f => f.Content.Contains("namespace Acme.Alpha;")).Content;
+        var beta = Assert.Single(files, f => f.Content.Contains("namespace Acme.Beta;")).Content;
+        var digestSrc = Assert.Single(files, f => f.Path.EndsWith("Digest.g.cs")).Content;
 
         // Proof of fix: two DISTINCT emitted types, each carrying only its OWN VO's field — not
-        // a merged `{ alphaText; betaText }` shape.
-        Assert.Contains("public class AcmeAlphaNote", alpha);
-        Assert.Contains("public class AcmeBetaNote", beta);
+        // a merged `{ alphaText; betaText }` shape — and neither renamed.
+        Assert.Contains("public class Note", alpha);
+        Assert.Contains("public class Note", beta);
         // #309 — this fixture carries BOTH arms, which is what makes it the payload tier's
         // optionality oracle as well as its collision oracle: the shared corpus declares
         // `alphaText`/`betaText` as `@required: true` (meta.alpha.json / meta.beta.json)
@@ -248,14 +257,14 @@ public sealed class RenderHelperConformanceTests
         Assert.Contains("public string AlphaText { get; set; } = default!;", alpha);
         Assert.DoesNotContain("BetaText", alpha);
         Assert.Contains("public string BetaText { get; set; } = default!;", beta);
-        // Digest's own fields point at the qualified names, and are optional.
-        Assert.Contains("public AcmeAlphaNote? FromAlpha { get; set; }", digestSrc);
-        Assert.Contains("public AcmeBetaNote? FromBeta { get; set; }", digestSrc);
+        // Digest's own fields point at each package's Note, and are optional.
+        Assert.Contains("global::Acme.Alpha.Note? FromAlpha { get; set; }", digestSrc);
+        Assert.Contains("global::Acme.Beta.Note? FromBeta { get; set; }", digestSrc);
 
         var asm = CompileToAssembly([file.Content, .. files.Select(f => f.Content)]);
 
-        var alphaNoteType = asm.GetType("Acme.Generated.AcmeAlphaNote")!;
-        var betaNoteType = asm.GetType("Acme.Generated.AcmeBetaNote")!;
+        var alphaNoteType = asm.GetType("Acme.Alpha.Note")!;
+        var betaNoteType = asm.GetType("Acme.Beta.Note")!;
         var digestType = asm.GetType("Acme.Generated.Digest")!;
         var fromAlpha = Activator.CreateInstance(alphaNoteType)!;
         alphaNoteType.GetProperty("AlphaText")!.SetValue(fromAlpha, "AA");

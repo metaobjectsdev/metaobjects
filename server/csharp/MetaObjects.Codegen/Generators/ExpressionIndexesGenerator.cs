@@ -58,12 +58,9 @@ public class ExpressionIndexesGenerator : IGenerator
                     sql.Append(" WHERE ").Append(where.Trim());
                 // An index name is unique per schema, tables included (migrate's ERR_DUPLICATE_SQL_NAME):
                 // two tables claiming one would leave the second unbuilt under IF NOT EXISTS.
-                var statement = sql.Append(';').ToString();
-                if (statements.TryGetValue($"{schema}/{name}", out var existing) && existing != statement)
-                    throw new InvalidOperationException(
-                        $"expression index \"{name}\" is declared twice in one schema: {existing} / {statement} " +
-                        "— an index's name is used verbatim, so give each table its own (declare it on each concrete entity).");
-                statements[$"{schema}/{name}"] = statement;
+                ctx.Claim($"the indexes of schema \"{(string.IsNullOrEmpty(schema) ? "(default)" : schema)}\"", name, owner.ResolutionKey(),
+                    "an index's name is used verbatim, so give each table its own (declare it on each concrete entity)");
+                statements[$"{schema}/{name}"] = sql.Append(';').ToString();
             }
         }
         if (statements.Count == 0) yield break;

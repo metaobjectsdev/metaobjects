@@ -86,11 +86,11 @@ public class RoutesGenerator : PerEntityGenerator
             .ToList();
         // One routes entry is mounted under one prefix, so two objects whose segments match
         // serve one path. A TPH subtype is served under its base's segment and claims none.
-        CSharpNaming.AssertUniqueInScope(
-            served.Where(e => e.OwnAttr(OBJECT_ATTR_DISCRIMINATOR_VALUE) is not string { Length: > 0 })
-                .Select(e => (CSharpNaming.RoutePath(e), e.ResolutionKey())),
-            "REST collection segment", "one routes entry",
-            "rename one, or generate them with two routes entries mounted under different prefixes");
+        // Each entry of the run is its own scope: two entries mount under two prefixes.
+        var entry = ctx.EntryLabel(this);
+        foreach (var e in served.Where(e => e.OwnAttr(OBJECT_ATTR_DISCRIMINATOR_VALUE) is not string { Length: > 0 }))
+            ctx.Claim($"the REST collection segments of routes entry {entry}", CSharpNaming.RoutePath(e), e.ResolutionKey(),
+                "rename one, or generate them with two routes entries mounted under different prefixes");
         return served.Select(e => GenerateOne(e, ctx));
     }
 

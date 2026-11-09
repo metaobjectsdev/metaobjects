@@ -117,7 +117,13 @@ public class CrossPackageBindingConformanceTests
         {
             Entities = root.Objects(),
             Root = root,
-            Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Gen" },
+            // The fixture's same-short-named objects (Tag in a and b, Customer and Label at the root
+            // and in acme) are one type per namespace each: mapped apart, as the claim registry asks.
+            Config = new GenConfig
+            {
+                OutDir = "/tmp", Namespace = "Acme.Gen",
+                PackageNamespaces = new() { ["a"] = "Acme.Gen.A", ["b"] = "Acme.Gen.B", ["acme"] = "Acme.Gen.Acme" },
+            },
         };
         var files = new Dictionary<string, string>();
         foreach (var gen in new IGenerator[] { new EntityGenerator(), new DbContextGenerator(), new RoutesGenerator() })

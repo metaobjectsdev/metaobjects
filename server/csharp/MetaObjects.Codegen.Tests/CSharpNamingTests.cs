@@ -371,7 +371,7 @@ public class CSharpNamingTests
         {
             var root = PackagedObjects(ReadObject(c.GetProperty("entityA")), ReadObject(c.GetProperty("entityB")));
             var ex = Assert.Throws<InvalidOperationException>(() => Run(new DbContextGenerator(), root));
-            Assert.Contains($"DbSet property \"{c.GetProperty("collidesOn").GetString()}\"", ex.Message);
+            Assert.Contains($"\"{c.GetProperty("collidesOn").GetString()}\" in the DbSet properties", ex.Message);
             Assert.Contains("@dbSetName", ex.Message);
         }
     }
@@ -381,7 +381,7 @@ public class CSharpNamingTests
     {
         var root = PackagedObjects(new("enterprise", "Payer", false, true, "enterprise"), new("core", "Payer", false, true, "core"));
         var ex = Assert.Throws<InvalidOperationException>(() => Run(new RoutesGenerator(), root));
-        Assert.Contains("REST collection segment \"payers\"", ex.Message);
+        Assert.Contains("\"payers\" in the REST collection segments", ex.Message);
     }
 
     [Fact]
@@ -425,23 +425,9 @@ public class CSharpNamingTests
         Assert.Contains($"\"{bad}\"", ex.Message);
     }
 
-    // R30, physical half: one context, one relation per (schema, name). Two objects that map to one
-    // table would silently share it; the DbSet rule no longer catches them once @dbSetName splits
-    // the property names.
-    [Theory]
-    [InlineData("billing")]
-    [InlineData(null)]
-    public void Two_objects_mapping_one_relation_in_one_context_are_refused_naming_both(string? schema)
-    {
-        var root = PackagedObjects(
-            new("enterprise", "Payer", false, true, schema, DbSetName: "EnterprisePayers"),
-            new("core", "Payer", false, true, schema));
-        var ex = Assert.Throws<InvalidOperationException>(() => Run(new DbContextGenerator(), root));
-        Assert.Contains("ERR_DUPLICATE_SQL_NAME", ex.Message);
-        Assert.Contains("\"enterprise::Payer\"", ex.Message);
-        Assert.Contains("\"core::Payer\"", ex.Message);
-        Assert.Contains(schema is null ? "\"payers\"" : "\"billing\".\"payers\"", ex.Message);
-    }
+    // R30's physical half is EF's (ruling R52): two entity types on one table fail EF's own model
+    // build ("Cannot use table … since it is being used for entity type …"), so codegen does not
+    // repeat it. The same table name in two schemas is two tables.
 
     [Fact]
     public void One_table_name_in_two_schemas_in_one_context_passes_schema_qualified()

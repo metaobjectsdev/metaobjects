@@ -168,7 +168,7 @@ public sealed class DbContextForeignKeyConfigTests
         var ex = Assert.Throws<InvalidOperationException>(
             () => new DbContextGenerator().Generate(Ctx(Load(DbSetNameCollisionModel))).ToList());
         Assert.Contains("Address", ex.Message);
-        Assert.Contains("DbSet property \"Addresses\"", ex.Message);
+        Assert.Contains("\"Addresses\" in the DbSet properties", ex.Message);
     }
 
     [Fact]

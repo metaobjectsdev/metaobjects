@@ -285,8 +285,13 @@ public class EjectContractTests
                 {
                     Entities = corpus.Root.Objects(),
                     Root = corpus.Root,
-                    Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", IncludeNames = true },
-                }).OrderBy(f => f.Path, StringComparer.Ordinal).ToList();
+                    // xpkg-collision-json's two Notes are one type per namespace each (ruling R52).
+                    Config = new GenConfig
+                    {
+                        OutDir = "/tmp", Namespace = "Acme.Generated", IncludeNames = true,
+                        PackageNamespaces = new() { ["acme::alpha"] = "Acme.Alpha", ["acme::beta"] = "Acme.Beta" },
+                    },
+                }).OrderBy(f => f.Path, StringComparer.Ordinal).ThenBy(f => f.Content, StringComparer.Ordinal).ToList();
 
             var packaged = Run(GeneratorRegistry.Get(stableName)!.Factory(new GeneratorBuildContext(corpus.TemplateRoot)));
             var owned = Run(Instantiate(copy.Assembly, corpus.TemplateRoot));

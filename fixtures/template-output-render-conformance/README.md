@@ -153,7 +153,10 @@ for it, in addition to gating the `@objectRef` **resolver** above:
    flat namespace or directory (TypeScript's flat layout, C#'s default package
    binding, Python's flat generated package), a value object whose short name
    collides emits under its package-qualified derived name — PascalCase each
-   `::`-segment of its package, concatenate, append the bare short name.
+   `::`-segment of its package, concatenate, append the bare short name. **C# no longer
+   renames (ruling R52):** a value object keeps its name, a same-namespace collision is refused
+   (`ERR_NAME_COLLISION`), and the C# runner maps the two packages to distinct namespaces
+   (`PackageNamespaces`).
    TypeScript counts a collision among value objects; C# and Python count it against
    every top-level object, because an entity shares their namespace or module
    directory. A still-colliding derived name is a hard generator error,
@@ -164,7 +167,7 @@ for it, in addition to gating the `@objectRef` **resolver** above:
    | Port | `acme::alpha::Note` | `acme::beta::Note` |
    |---|---|---|
    | TypeScript (`interface`) | `AcmeAlphaNote` | `AcmeBetaNote` |
-   | C# (POCO) | `AcmeAlphaNote` | `AcmeBetaNote` |
+   | C# (POCO, packages mapped by `PackageNamespaces`) | `Acme.Alpha.Note` | `Acme.Beta.Note` |
    | Java (`record`) | `acme.alpha.Note` | `acme.beta.Note` |
    | Kotlin (data class) | `acme.alpha.Note` | `acme.beta.Note` |
    | Python (Pydantic model, `<Name>.py`) | `AcmeAlphaNote` | `AcmeBetaNote` |

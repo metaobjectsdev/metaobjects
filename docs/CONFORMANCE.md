@@ -110,6 +110,19 @@ corpora, or between its *vocabulary* and its *behaviour* — never gets a row of
 own, and its boundary ends up discoverable only from the feature doc. The split ones
 are recorded here instead.
 
+**Value-object names and the claim registry** (ruling R52): no port renames a value object to
+avoid a collision; a real collision (two objects emitting one name into one scope) is refused by
+the run's claim registry with `ERR_NAME_COLLISION`, naming both and the remedy.
+
+- *Done:* C# (`GenContext.Claim`: types per namespace, DbSets per context, route segments per
+  routes entry, finders per class, expression indexes per schema). The `xpkg-collision` runners
+  map the two packages to distinct namespaces (`PackageNamespaces`).
+- *TODO, TypeScript:* remove `assignEmittedNames` and `collection-name-collision.ts`; claim per
+  module directory once the package output layout is the default.
+- *TODO, Python:* still renames (`collision_names.py`, `ERR_PAYLOAD_NAME_COLLISION`) in its flat
+  generated package. Java and Kotlin never renamed (the Java package disambiguates). Tracked in
+  [#544](https://github.com/metaobjectsdev/metaobjects/issues/544)–#549.
+
 **`identity.primary @sequenceStart`** (rulings R36, R51, one semantic in every port): on a fresh
 database the identity or sequence begins at `@sequenceStart`. When the start changes on an
 existing database, the change records the new start, and, for a declared start, moves the

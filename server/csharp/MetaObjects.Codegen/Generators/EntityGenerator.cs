@@ -93,6 +93,21 @@ public class EntityGenerator : IGenerator
     // synthesized tree that belongs to no root.
     private WireFormat _wire = WireFormat.Default;
 
+    /// <summary>
+    /// Adds a type's file, claiming its type name in its namespace first (ruling R52): two objects
+    /// that emit one type into one namespace are refused, naming both, and neither is renamed. The
+    /// name is the emitted file's (<c>&lt;Type&gt;.g.cs</c>), so an override that renames a class
+    /// claims the name it actually emits.
+    /// </summary>
+    private static void Claimed(List<EmittedFile> files, EmittedFile file, MetaObject owner, GenContext ctx)
+    {
+        var fileName = Path.GetFileName(file.Path);
+        var typeName = fileName.EndsWith(".g.cs", StringComparison.Ordinal) ? fileName[..^".g.cs".Length] : fileName;
+        ctx.Claim($"the C# namespace {ValueObjectNames.Namespace(owner, ctx.Config)}", typeName, owner.ResolutionKey(),
+            "map the packages to distinct namespaces (GenConfig.PackageNamespaces), or rename one");
+        files.Add(file);
+    }
+
     public virtual IEnumerable<EmittedFile> Generate(GenContext ctx)
     {
         ctx = ctx.Narrow(Include);
@@ -166,9 +181,9 @@ public class EntityGenerator : IGenerator
                 // which carry no @discriminatorValue — are included. A standalone abstract
                 // (not in a TPH) stays a baseless shape.
                 if (TphPlanBuilder.IsTphMember(e, ctx.Root))
-                    files.Add(EmitTphSubtypeClass(e, ctx));
+                    Claimed(files, EmitTphSubtypeClass(e, ctx), e, ctx);
                 else
-                    files.Add(EmitAbstractShapeClass(e, ctx));
+                    Claimed(files, EmitAbstractShapeClass(e, ctx), e, ctx);
                 continue;
             }
             // FR-017 TPH: a subtype of a @discriminator base is NOT a standalone table — it
@@ -177,15 +192,15 @@ public class EntityGenerator : IGenerator
             // chain mirrors the metadata `extends` chain (abstract intermediates preserved).
             if (TphPlanBuilder.IsTphSubtype(e, ctx.Root))
             {
-                files.Add(EmitTphSubtypeClass(e, ctx));
+                Claimed(files, EmitTphSubtypeClass(e, ctx), e, ctx);
                 continue;
             }
-            files.Add(EmitMappedClass(e, ctx));
+            Claimed(files, EmitMappedClass(e, ctx), e, ctx);
             // #214 (FR-024 §7) — a write-through entity additionally emits a view-mapped
             // read model carrying the derived (origin.*) fields the write table omits.
             // Reads return this type; the DbContext maps it to the replica view.
             if (e.IsWriteThrough())
-                files.Add(EmitWriteThroughReadModel(e, ctx));
+                Claimed(files, EmitWriteThroughReadModel(e, ctx), e, ctx);
         }
         // A concrete sourceless object (#248) shares the value object's emission: a plain
         // POCO with the validation DataAnnotations and none of the EF mapping attributes.
@@ -193,12 +208,12 @@ public class EntityGenerator : IGenerator
         foreach (var o in unmappedShapes)
             if (EmitValueObjectPoco(o, ctx) is { } poco)
             {
-                files.Add(poco);
+                Claimed(files, poco, o, ctx);
             }
         foreach (var vo in valueObjects)
             if (EmitValueObjectPoco(vo, ctx) is { } poco)
             {
-                files.Add(poco);
+                Claimed(files, poco, vo, ctx);
             }
 
         // ADR-0038 — reverse-relationship navigation as explicit FK finders. For each
@@ -1957,7 +1972,7 @@ public static class DurationWire
         if (field.SubType == FIELD_SUBTYPE_OBJECT)
         {
             var typeName = ValueObjectNames.ResolveFieldRef(field, ctx.Root) is { } target
-                ? ValueObjectNames.TypeName(target, ctx.Root)
+                ? ValueObjectNames.ShortRef(target, ctx.Root, ctx.Config, ValueObjectNames.Namespace(owner, ctx.Config))
                 : CSharpNaming.Pascal(CSharpNaming.StripPkg(field.ObjectRef ?? field.Name));
             if (field.ResolvedIsArray())
             {
@@ -2013,7 +2028,7 @@ public static class DurationWire
         {
             var target = ValueObjectNames.ResolveFieldRef(field, ctx.Root);
             var typeName = target is not null
-                ? ValueObjectNames.TypeName(target, ctx.Root)
+                ? ValueObjectNames.ShortRef(target, ctx.Root, ctx.Config, ValueObjectNames.Namespace(owner, ctx.Config))
                 : CSharpNaming.Pascal(CSharpNaming.StripPkg(field.ObjectRef ?? field.Name));
             if (field.ResolvedIsArray())
             {

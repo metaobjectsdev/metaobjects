@@ -70,10 +70,10 @@ public static class CodegenRunner
             Generators = generators,
         };
 
-        // No run-wide name-collision check: each generator refuses a name two objects claim in
-        // the scope it emits into (DbSet names per context, route segments per routes entry,
-        // finders per class; CSharpNaming.AssertUniqueInScope). The same short name in two
-        // packages is two names until both land in one of those scopes.
+        // One claim registry for the run (ctx.Claims, ruling R52): each generator claims a name in
+        // the scope it emits it into (a type per namespace, DbSet names per context, route
+        // segments per routes entry, finders per class, indexes per schema), when it emits it.
+        // The same short name in two packages is two names until both land in one scope.
 
         Directory.CreateDirectory(config.OutDir);
         var results = new List<WriteResult>();

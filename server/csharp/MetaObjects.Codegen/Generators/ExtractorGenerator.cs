@@ -131,7 +131,7 @@ public class ExtractorGenerator : IGenerator
         return new EmittedFile($"{extractorClass}.cs", sb.ToString());
     }
 
-    private static string MapperName(MetaData vo, MetaData root) => $"ToStrict_{ValueObjectNames.TypeName(vo, root)}";
+    private static string MapperName(MetaData vo, MetaData root) => $"ToStrict_{ValueObjectNames.MemberKey(vo, root)}";
 
     private static void EmitMapper(StringBuilder sb, MetaData vo, GenContext ctx)
     {

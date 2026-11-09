@@ -355,6 +355,33 @@ public sealed class GenContext
     public Action<string> Warn { get; init; } = _ => { };
 
     /// <summary>
+    /// The run's one claim registry (ruling R52): every name a generator emits into a shared scope
+    /// is claimed here, at the point it is emitted. Shared by every generator of the run and by
+    /// every <see cref="Narrow"/>ed copy of this context.
+    /// </summary>
+    public NameClaims Claims { get; init; } = new();
+
+    /// <summary>
+    /// Claim <paramref name="name"/> in <paramref name="scope"/> for <paramref name="claimant"/>, as
+    /// it is emitted. The first claimant owns the name; another claimant of the same name in the
+    /// same scope is refused (<c>ERR_NAME_COLLISION</c>), naming both and <paramref name="remedy"/>.
+    /// The same claimant claiming again is not a collision, and the same name in two scopes is two
+    /// names. A generator that is not wired claims nothing, so the check follows the wiring.
+    /// </summary>
+    public void Claim(string scope, string name, string claimant, string remedy) =>
+        Claims.Claim(scope, name, claimant, remedy);
+
+    /// <summary>
+    /// A label for <paramref name="generator"/>'s entry in this run, for a scope that is one entry's
+    /// own (a routes entry's segments, a context's DbSets): <c>"#n"</c>, its position in
+    /// <see cref="Generators"/>, or a per-instance label when the run does not list it.
+    /// </summary>
+    public string EntryLabel(IGenerator generator) =>
+        Generators.ToList().FindIndex(g => ReferenceEquals(g, generator)) is var i and >= 0
+            ? $"#{i + 1}"
+            : $"@{System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(generator):x}";
+
+    /// <summary>
     /// The generators of this run, in list order. A generator whose output depends on another
     /// being listed asks here (see <see cref="ReportExportMaxRows"/>). Empty for a context nobody
     /// filled in, which is what a hand-built context in a test gets.
@@ -398,10 +425,38 @@ public sealed class GenContext
             Root = Root,
             Config = Config,
             Warn = Warn,
+            Claims = Claims,
             Generators = Generators,
             Applicability = Applicability,
             Scope = Scope is null ? include : o => Scope(o) && include(o),
         };
+}
+
+/// <summary>
+/// The names one run's generators have emitted, by scope (ruling R52). The one mechanism that
+/// refuses a real duplicate — a C# type in one namespace, a DbSet property in one context, a route
+/// segment in one routes entry, a finder in one class, an index in one schema — replacing the
+/// per-generator checks. A name is never rewritten to avoid a collision.
+/// </summary>
+public sealed class NameClaims
+{
+    /// <summary>The error code a refused claim carries.</summary>
+    public const string ERR_NAME_COLLISION = "ERR_NAME_COLLISION";
+
+    private readonly Dictionary<(string Scope, string Name), string> _owners = new();
+
+    /// <inheritdoc cref="GenContext.Claim"/>
+    public void Claim(string scope, string name, string claimant, string remedy)
+    {
+        lock (_owners)
+        {
+            if (_owners.TryAdd((scope, name), claimant)) return;
+            var existing = _owners[(scope, name)];
+            if (existing == claimant) return;
+            throw new InvalidOperationException(
+                $"{ERR_NAME_COLLISION}: \"{existing}\" and \"{claimant}\" both generate \"{name}\" in {scope} — {remedy}.");
+        }
+    }
 }
 
 /// <summary>A codegen unit. Kebab-case <see cref="Name"/> surfaces in diagnostics.</summary>

@@ -297,6 +297,20 @@ vocabulary; upgrade every port together.
   exist under other names, rename them in the database or in the metadata first. Comments re-apply
   harmlessly. A database built from the model (`EnsureCreated`, or a fresh migration chain) is
   unaffected. An `@expr` index is never an EF index: apply the `expression-indexes` SQL.
+- **Breaking, C#: a value object is never renamed; one claim registry refuses real collisions**
+  (ruling R52, amending ADR-0044 and ADR-0056). The package-qualified derived name
+  (`acme::alpha::Note` emitted as `AcmeAlphaNote` when another object shared `Note`) is gone: the
+  type is `Note`, in its package's namespace. Two objects that emit one type into one namespace
+  now fail with `ERR_NAME_COLLISION`, naming both and the remedy. Every generator claims each name
+  as it emits it (`GenContext.Claim(scope, name, claimant, remedy)`): a type per namespace, a
+  DbSet per context, a route segment per routes entry, a finder per class, an expression index
+  per schema. An object that emits nothing (abstract, sourceless) claims nothing, and an
+  adopter's own generator can claim too. `CSharpNaming.AssertUniqueInScope`,
+  `ValueObjectNames.Names` and the C# `ERR_DUPLICATE_SQL_NAME` check (two entities on one table,
+  which EF refuses itself at model build) are removed. **Upgrade note:** a model whose value
+  objects were renamed now gets the collision error; map the packages apart
+  (`GenConfig.PackageNamespaces`) or rename one object, and update the references to the old
+  `AcmeAlphaNote`-style names.
 - **C#, upgrade note: identity starts never RESTART, and the fix is design-time only** (rulings
   R50, R51). A Postgres project's context now carries `identity.primary @sequenceStart` in its
   model, and a Postgres context with an increment key gets
