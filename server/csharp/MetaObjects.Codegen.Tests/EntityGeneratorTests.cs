@@ -43,7 +43,7 @@ public class EntityGeneratorTests
     {
         var ctx = Ctx(Load());
         var file = Assert.Single(new EntityGenerator().Generate(ctx));
-        Assert.Equal("Subscriber.g.cs", file.Path);
+        Assert.Equal("Subscriber.g.cs", System.IO.Path.GetFileName(file.Path));
         var src = file.Content;
 
         Assert.Contains("namespace Acme.Generated;", src);
@@ -94,7 +94,7 @@ public class EntityGeneratorTests
     {
         var ctx = Ctx(Load());
         var file = Assert.Single(new DbContextGenerator().Generate(ctx));
-        Assert.Equal("AppDbContext.g.cs", file.Path);
+        Assert.Equal("AppDbContext.g.cs", System.IO.Path.GetFileName(file.Path));
         Assert.Contains("public class AppDbContext : DbContext", file.Content);
         Assert.Contains("public DbSet<Subscriber> Subscribers { get; set; } = default!;", file.Content);
     }
@@ -104,7 +104,7 @@ public class EntityGeneratorTests
     {
         var ctx = Ctx(Load());
         var file = Assert.Single(new RoutesGenerator().Generate(ctx));
-        Assert.Equal("SubscriberRoutes.g.cs", file.Path);
+        Assert.Equal("SubscriberRoutes.g.cs", System.IO.Path.GetFileName(file.Path));
         var src = file.Content;
 
         Assert.Contains("public static class SubscriberRoutes", src);
@@ -171,7 +171,7 @@ public class EntityGeneratorTests
         // can unconditionally reference them).
         var ctx = Ctx(Load());
         var file = Assert.Single(new FilterAllowlistGenerator().Generate(ctx));
-        Assert.Equal("SubscriberFilterAllowlist.g.cs", file.Path);
+        Assert.Equal("SubscriberFilterAllowlist.g.cs", System.IO.Path.GetFileName(file.Path));
         var src = file.Content;
         Assert.Contains("namespace Acme.Generated;", src);
         Assert.Contains("public static class SubscriberFilterAllowlist", src);
@@ -303,11 +303,11 @@ public class EntityGeneratorTests
         var files = new EntityGenerator().Generate(ctx).ToList();
 
         // Shared enum materialized once in Enums.g.cs (type name is the super's "Status").
-        var enums = Assert.Single(files, f => f.Path == "Enums.g.cs");
+        var enums = Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "Enums.g.cs");
         Assert.Contains("public enum Status { DRAFT, PUBLISHED }", enums.Content);
 
         // The entity references the shared type — no nested redeclaration.
-        var order = Assert.Single(files, f => f.Path == "Order.g.cs");
+        var order = Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "Order.g.cs");
         Assert.DoesNotContain("public enum Status", order.Content);
         Assert.Contains("public Status? Status { get; set; }", order.Content);
     }
@@ -375,10 +375,10 @@ public class EntityGeneratorTests
             System.Text.RegularExpressions.Regex.Matches(f.Content, @"public enum OrderStatus\b").Count);
         Assert.Equal(1, occurrences);
         Assert.Contains("public enum OrderStatus { DRAFT, PUBLISHED }",
-            Assert.Single(files, f => f.Path == "Enums.g.cs").Content);
+            Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "Enums.g.cs").Content);
 
         // Both properties exist on the entity, typed by the shared enum (no nested decl).
-        var order = Assert.Single(files, f => f.Path == "Order.g.cs");
+        var order = Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "Order.g.cs");
         Assert.DoesNotContain("public enum OrderStatus", order.Content);
         Assert.Contains("public OrderStatus? CurrentStatus { get; set; }", order.Content);
         Assert.Contains("public OrderStatus? PreviousStatus { get; set; }", order.Content);
@@ -406,18 +406,18 @@ public class EntityGeneratorTests
         {
             var config = new GenConfig { OutDir = dir, Namespace = "Acme.Generated" };
             var r1 = CodegenRunner.Run(config, Load(), [new EntityGenerator()]);
-            Assert.Contains(r1.Files, f => f.Path == "Subscriber.g.cs" && f.Status == "written");
-            Assert.True(File.Exists(Path.Combine(dir, "Subscriber.g.cs")));
+            Assert.Contains(r1.Files, f => System.IO.Path.GetFileName(f.Path) == "Subscriber.g.cs" && f.Status == "written");
+            Assert.True(File.Exists(Path.Combine(dir, "acme", "Subscriber.g.cs")));
 
             // Re-run overwrites the @generated file.
             var r2 = CodegenRunner.Run(config, Load(), [new EntityGenerator()]);
-            Assert.Contains(r2.Files, f => f.Path == "Subscriber.g.cs" && f.Status == "written");
+            Assert.Contains(r2.Files, f => System.IO.Path.GetFileName(f.Path) == "Subscriber.g.cs" && f.Status == "written");
 
             // A hand-written file (no marker) is refused.
-            File.WriteAllText(Path.Combine(dir, "Subscriber.g.cs"), "// my hand-written file\n");
+            File.WriteAllText(Path.Combine(dir, "acme", "Subscriber.g.cs"), "// my hand-written file\n");
             var r3 = CodegenRunner.Run(config, Load(), [new EntityGenerator()]);
-            Assert.Contains(r3.Files, f => f.Path == "Subscriber.g.cs" && f.Status == "skipped-handwritten");
-            Assert.Equal("// my hand-written file\n", File.ReadAllText(Path.Combine(dir, "Subscriber.g.cs")));
+            Assert.Contains(r3.Files, f => System.IO.Path.GetFileName(f.Path) == "Subscriber.g.cs" && f.Status == "skipped-handwritten");
+            Assert.Equal("// my hand-written file\n", File.ReadAllText(Path.Combine(dir, "acme", "Subscriber.g.cs")));
         }
         finally { try { Directory.Delete(dir, true); } catch { } }
     }

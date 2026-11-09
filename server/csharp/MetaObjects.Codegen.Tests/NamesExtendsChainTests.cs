@@ -65,7 +65,7 @@ public class NamesExtendsChainTests
                 ColumnNamingStrategy = ColumnNamingStrategy.SnakeCase, IncludeNames = true,
             },
         };
-        return new NamesGenerator().Generate(ctx).ToDictionary(f => f.Path, f => f.Content);
+        return new NamesGenerator().Generate(ctx).ToDictionary(f => System.IO.Path.GetFileName(f.Path), f => f.Content);
     }
 
     [Fact]
@@ -155,7 +155,7 @@ public class NamesExtendsChainTests
                 ColumnNamingStrategy = ColumnNamingStrategy.SnakeCase, IncludeNames = true,
             },
         };
-        var files = new NamesGenerator().Generate(ctx).ToDictionary(f => f.Path, f => f.Content);
+        var files = new NamesGenerator().Generate(ctx).ToDictionary(f => System.IO.Path.GetFileName(f.Path), f => f.Content);
 
         // The intermediate has something to contribute, so it gets a class of its own...
         Assert.True(files.ContainsKey("AuditedNames.g.cs"), string.Join(", ", files.Keys));

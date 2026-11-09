@@ -103,7 +103,7 @@ public sealed class DependencyCodegenTests : IDisposable
         // The project's own package `app` and the imported `acme::common` share no root; only the
         // project's own package is generated, so only it names the home namespace.
         Assert.Contains("namespace App;", output["AppDbContext.g.cs"]);
-        Assert.Contains("namespace App;", output["Order.g.cs"]);
+        Assert.Contains("namespace App;", output["app/Order.g.cs"]);
     }
 
     [Fact]

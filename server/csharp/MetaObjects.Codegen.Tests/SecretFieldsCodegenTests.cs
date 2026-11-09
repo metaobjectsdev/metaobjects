@@ -84,7 +84,7 @@ public class SecretFieldsCodegenTests
             Root = r.Root,
             Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", ColumnNamingStrategy = ColumnNamingStrategy.Literal },
         };
-        return new RoutesGenerator().Generate(ctx).Single(f => f.Path == file).Content;
+        return new RoutesGenerator().Generate(ctx).Single(f => System.IO.Path.GetFileName(f.Path) == file).Content;
     }
 
     [Fact]

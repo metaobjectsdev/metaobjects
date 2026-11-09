@@ -48,7 +48,7 @@ public sealed class ValueObjectReuseTests
         ]}}
         """);
 
-        var paths = new EntityGenerator().Generate(Ctx(root)).Select(f => f.Path).ToList();
+        var paths = new EntityGenerator().Generate(Ctx(root)).Select(f => System.IO.Path.GetFileName(f.Path)).ToList();
 
         // The concrete value object and the sourceless projection; not the unreached abstract.
         Assert.Equal(["Brief.g.cs", "Note.g.cs"], paths.OrderBy(p => p, StringComparer.Ordinal));
@@ -126,7 +126,7 @@ public sealed class ValueObjectReuseTests
           { "object.value": { "name": "Note", "abstract": true, "children": [ { "field.string": { "name": "x" } } ] } } ] } }
         """);
         var file = Assert.Single(new EntityGenerator().Generate(Ctx(root)));
-        Assert.Equal("Note.g.cs", file.Path);
+        Assert.Equal("Note.g.cs", System.IO.Path.GetFileName(file.Path));
         Assert.Contains("public class Note", file.Content);
     }
 
@@ -134,7 +134,7 @@ public sealed class ValueObjectReuseTests
     public void A_unique_short_name_stays_bare()
     {
         var root = Load(Alpha);
-        Assert.Equal("Note.g.cs", Assert.Single(new EntityGenerator().Generate(Ctx(root))).Path);
+        Assert.Equal("Note.g.cs", System.IO.Path.GetFileName(Assert.Single(new EntityGenerator().Generate(Ctx(root))).Path));
     }
 
     [Fact]
@@ -179,7 +179,7 @@ public sealed class ValueObjectReuseTests
         // declare `AnswerExtracted` twice in one namespace (CS0101).
         Assert.Equal(
             ["AnswerExtracted.g.cs", "AskA.response.cs", "AskB.response.cs", "DetailExtracted.g.cs"],
-            parserFiles.Select(f => f.Path).OrderBy(p => p, StringComparer.Ordinal));
+            parserFiles.Select(f => System.IO.Path.GetFileName(f.Path)).OrderBy(p => p, StringComparer.Ordinal));
         // The parsers declare no type for the shape.
         foreach (var f in parserFiles.Where(f => f.Path.EndsWith(".response.cs")))
         {

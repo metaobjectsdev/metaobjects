@@ -165,10 +165,10 @@ public class CodegenCompileConformanceTests
                      "ProgramsEmptyScope", "WeekShapes", "SessionsByProgram", "ProgramSessions", "NodesByParent", "AuthsByKind",
                  })
         {
-            Assert.True(files.Any(f => f.Path == report + ".g.cs"), $"no row class was generated for report {report}");
-            Assert.True(files.Any(f => f.Path == report + "FilterAllowlist.g.cs"),
+            Assert.True(files.Any(f => System.IO.Path.GetFileName(f.Path) == report + ".g.cs"), $"no row class was generated for report {report}");
+            Assert.True(files.Any(f => System.IO.Path.GetFileName(f.Path) == report + "FilterAllowlist.g.cs"),
                 $"no filter allowlist was generated for report {report}");
-            Assert.False(files.Any(f => f.Path.StartsWith(report + "Names", StringComparison.Ordinal)),
+            Assert.False(files.Any(f => System.IO.Path.GetFileName(f.Path).StartsWith(report + "Names", StringComparison.Ordinal)),
                 $"report {report} leaked into the names tier");
         }
 

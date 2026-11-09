@@ -54,10 +54,10 @@ public class ReportCredentialCodegenTests
     };
 
     private static string Routes(GenContext ctx, string report) =>
-        new RoutesGenerator().Generate(ctx).Single(f => f.Path == report + "Routes.g.cs").Content;
+        new RoutesGenerator().Generate(ctx).Single(f => System.IO.Path.GetFileName(f.Path) == report + "Routes.g.cs").Content;
 
     private static string Export(GenContext ctx, string report) =>
-        new ReportExportGenerator { MaxRows = 60 }.Generate(ctx).Single(f => f.Path == report + "Export.g.cs").Content;
+        new ReportExportGenerator { MaxRows = 60 }.Generate(ctx).Single(f => System.IO.Path.GetFileName(f.Path) == report + "Export.g.cs").Content;
 
     [Fact]
     public void The_row_model_marks_a_derived_credential()
@@ -107,7 +107,7 @@ public class ReportCredentialCodegenTests
     public void A_credential_column_is_neither_filterable_nor_sortable(string report, string column, string kept)
     {
         var ctx = Ctx(Load());
-        var allowlist = new FilterAllowlistGenerator().Generate(ctx).Single(f => f.Path == report + "FilterAllowlist.g.cs").Content;
+        var allowlist = new FilterAllowlistGenerator().Generate(ctx).Single(f => System.IO.Path.GetFileName(f.Path) == report + "FilterAllowlist.g.cs").Content;
         Assert.DoesNotContain($"\"{column}\"", allowlist);
         Assert.Contains($"\"{kept}\"", allowlist);
 
@@ -121,7 +121,7 @@ public class ReportCredentialCodegenTests
     public void A_plain_reports_allowlists_keep_every_column()
     {
         var ctx = Ctx(Load());
-        var allowlist = new FilterAllowlistGenerator().Generate(ctx).Single(f => f.Path == "AccountsByNameFilterAllowlist.g.cs").Content;
+        var allowlist = new FilterAllowlistGenerator().Generate(ctx).Single(f => System.IO.Path.GetFileName(f.Path) == "AccountsByNameFilterAllowlist.g.cs").Content;
         Assert.Contains("\"name\"", allowlist);
         Assert.Contains("\"accounts\"", allowlist);
         var routes = Routes(ctx, "AccountsByName");

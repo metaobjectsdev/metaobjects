@@ -82,7 +82,7 @@ public class Fr015CodegenTests
         => new CallableGenerator().Generate(Ctx(Load())).ToList();
 
     private static string Content(IEnumerable<EmittedFile> files, string path) =>
-        files.Single(f => f.Path == path).Content;
+        files.Single(f => System.IO.Path.GetFileName(f.Path) == path).Content;
 
     [Fact]
     public void Source_ParameterRef_and_IsCallable_reflect_attrs()
@@ -101,7 +101,7 @@ public class Fr015CodegenTests
     public void Only_callable_entities_emit_a_callable_file()
     {
         var files = Files();
-        var paths = files.Select(f => f.Path).OrderBy(p => p, StringComparer.Ordinal).ToList();
+        var paths = files.Select(f => System.IO.Path.GetFileName(f.Path)).OrderBy(p => p, StringComparer.Ordinal).ToList();
         Assert.Equal(
             ["ActivePhases.callable.g.cs", "AllPhases.callable.g.cs", "PhaseSummary.callable.g.cs"],
             paths);

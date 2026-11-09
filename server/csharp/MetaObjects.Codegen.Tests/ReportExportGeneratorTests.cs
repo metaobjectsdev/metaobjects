@@ -67,7 +67,7 @@ public class ReportExportGeneratorTests
     };
 
     private static string Routes(GenContext ctx) =>
-        new RoutesGenerator().Generate(ctx).Single(f => f.Path == "LineTotalsRoutes.g.cs").Content;
+        new RoutesGenerator().Generate(ctx).Single(f => System.IO.Path.GetFileName(f.Path) == "LineTotalsRoutes.g.cs").Content;
 
     [Fact]
     public void Routes_are_unchanged_when_no_export_generator_is_wired()
@@ -99,7 +99,7 @@ public class ReportExportGeneratorTests
     [Fact]
     public void It_writes_one_shared_writer_and_one_module_per_served_report_only()
     {
-        var files = new ReportExportGenerator().Generate(Ctx(Load())).ToDictionary(f => f.Path, f => f.Content);
+        var files = new ReportExportGenerator().Generate(Ctx(Load())).ToDictionary(f => System.IO.Path.GetFileName(f.Path), f => f.Content);
         Assert.Equal(["LineTotalsExport.g.cs", "ReportExportWriter.g.cs"], files.Keys.OrderBy(k => k, StringComparer.Ordinal));
         var module = files["LineTotalsExport.g.cs"];
         Assert.Contains("Root = \"LineTotals\"", module);
@@ -112,7 +112,7 @@ public class ReportExportGeneratorTests
     public void Options_reach_the_shared_writer()
     {
         var writer = new ReportExportGenerator { CsvBom = true, XmlNulls = ReportExportXmlNulls.Empty }
-            .Generate(Ctx(Load())).Single(f => f.Path == "ReportExportWriter.g.cs").Content;
+            .Generate(Ctx(Load())).Single(f => System.IO.Path.GetFileName(f.Path) == "ReportExportWriter.g.cs").Content;
         Assert.Contains("ExportCsvBom = true;", writer);
         Assert.Contains("XmlNil = false;", writer);
     }
@@ -150,7 +150,7 @@ public class ReportExportGeneratorTests
     {
         var root = Load(model);
         if (decimals == "string") root.WireFormat = new WireFormat(DecimalWireForm.String, NullMemberForm.Native);
-        var writer = gen.Generate(Ctx(root)).Single(f => f.Path == "ReportExportWriter.g.cs").Content;
+        var writer = gen.Generate(Ctx(root)).Single(f => System.IO.Path.GetFileName(f.Path) == "ReportExportWriter.g.cs").Content;
         var tpa = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!).Split(Path.PathSeparator)
             .Select(p => (MetadataReference)MetadataReference.CreateFromFile(p));
         var comp = CSharpCompilation.Create("export_writer_" + Guid.NewGuid().ToString("N"),
@@ -167,7 +167,7 @@ public class ReportExportGeneratorTests
     private static string Xml(MethodInfo[] h, object?[][] rows, params string[] cols) => (string)h[1].Invoke(null, [rows, cols])!;
 
     private static string Writer(string model) =>
-        new ReportExportGenerator().Generate(Ctx(Load(model))).Single(f => f.Path == "ReportExportWriter.g.cs").Content;
+        new ReportExportGenerator().Generate(Ctx(Load(model))).Single(f => System.IO.Path.GetFileName(f.Path) == "ReportExportWriter.g.cs").Content;
 
     // field.duration: the writer of a model with no duration column is the writer from before
     // durations existed, byte for byte (the hash of that writer for this model, pinned).

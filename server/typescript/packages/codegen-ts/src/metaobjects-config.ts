@@ -4,7 +4,7 @@ import { physicalNamingGuideUrl } from "@metaobjectsdev/metadata/release-docs";
 import type { RoutesExpose } from "./routes-expose.js";
 import type { Generator } from "./generator.js";
 import type { ExtStyle } from "./render-context.js";
-import type { OutputLayout, ResolvedTarget } from "./import-path.js";
+import { DEFAULT_OUTPUT_LAYOUT, type OutputLayout, type ResolvedTarget } from "./import-path.js";
 import { generatorRegistry } from "./generator-registry.js";
 import { normalizeTimestampMode } from "./dialect-module.js";
 
@@ -94,7 +94,7 @@ export interface ResolvedGenConfig {
   extStyle: ExtStyle;
   dbImport: string;
   dialect: Dialect;
-  /** "flat" (default) — all files in outDir; "package" — files placed in a sub-path derived from each entity's metadata package. */
+  /** "flat" (default) — all files in outDir; "package" — files placed in a sub-path derived from each object's metadata package. */
   outputLayout?: OutputLayout;
   /** Whether the OPT-IN Hono routes generator (routesFileHono) is active in the
    *  run — aggregated by the runner from the suite's `emitsHonoRoutes` markers.
@@ -374,7 +374,7 @@ export function defineConfig(config: MetaobjectsGenConfig): MetaobjectsGenConfig
  *  each named target (outputLayout + dbImport fall back to top-level;
  *  importBase does NOT inherit — it is a per-target identity). */
 export function resolveTargets(config: MetaobjectsGenConfig): Record<string, ResolvedTarget> {
-  const layout: OutputLayout = config.outputLayout ?? "flat";
+  const layout: OutputLayout = config.outputLayout ?? DEFAULT_OUTPUT_LAYOUT;
   // Under Prisma no target carries Drizzle bindings: Prisma owns the client and the schema.
   const runtime = resolveOrm(config) !== ORM_PRISMA;
   const out: Record<string, ResolvedTarget> = {
@@ -518,7 +518,7 @@ export function normalizeConfig(config: MetaobjectsGenConfig): NormalizedMetaobj
     clientDirective: config.clientDirective ?? false,
     apiPrefix: config.apiPrefix ?? "",
     emitAbstractShapes: config.emitAbstractShapes ?? true,
-    outputLayout: config.outputLayout ?? "flat",
+    outputLayout: config.outputLayout ?? DEFAULT_OUTPUT_LAYOUT,
     targets: resolveTargets(config),
   };
 }

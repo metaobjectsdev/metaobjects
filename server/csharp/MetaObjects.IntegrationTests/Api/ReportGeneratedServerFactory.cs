@@ -205,7 +205,9 @@ internal sealed class ReportGeneratedServerFactory : IAsyncDisposable
         var comp = CSharpCompilation.Create(
             "apicontract_report_generated_" + Guid.NewGuid().ToString("N"),
             trees, refs,
-            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            // Item 14: a concurrent Roslyn build inside a test host that is already running the
+            // other api-contract servers' builds flaked; one thread per compilation is deterministic.
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, concurrentBuild: false));
 
         using var ms = new MemoryStream();
         var emit = comp.Emit(ms);

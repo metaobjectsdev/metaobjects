@@ -143,7 +143,7 @@ public class SourcelessEntityGatesTests
         var ctx = Ctx();
         var files = new EntityGenerator().Generate(ctx).ToList();
 
-        var ledger = Assert.Single(files, f => f.Path == "Ledger.g.cs").Content;
+        var ledger = Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "Ledger.g.cs").Content;
         // The type still exists — an adopter names it, and an object-field may nest it.
         Assert.Contains("public class Ledger", ledger);
         Assert.Contains("public string? Note", ledger);
@@ -153,7 +153,7 @@ public class SourcelessEntityGatesTests
         Assert.DoesNotContain("[Column(", ledger);
 
         // Control: the sourced entity keeps all of it.
-        var booking = Assert.Single(files, f => f.Path == "Booking.g.cs").Content;
+        var booking = Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "Booking.g.cs").Content;
         Assert.Contains("[Table(\"bookings\")]", booking);
         Assert.Contains("[Key]", booking);
     }
@@ -166,7 +166,7 @@ public class SourcelessEntityGatesTests
         var ctx = Ctx(emitAbstractShapes: true);
         var files = new EntityGenerator().Generate(ctx).ToList();
 
-        var @base = Assert.Single(files, f => f.Path == "AbstractBase.g.cs").Content;
+        var @base = Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "AbstractBase.g.cs").Content;
         Assert.Contains("public abstract class AbstractBase", @base);
     }
 
@@ -187,7 +187,7 @@ public class SourcelessEntityGatesTests
         var ctx = Ctx();
         var files = new EntityGenerator().Generate(ctx).ToList();
 
-        var sourceless = Assert.Single(files, f => f.Path == "Sourceless.g.cs").Content;
+        var sourceless = Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "Sourceless.g.cs").Content;
         Assert.Contains("MetaNetValidation", sourceless);
         Assert.Contains(files, f => f.Path.EndsWith("MetaNetValidation.g.cs", StringComparison.Ordinal));
 
@@ -218,7 +218,7 @@ public class SourcelessEntityGatesTests
         Assert.False(RoutesGenerator.AppliesTo(Obj(ctx, "Ledger"), ctx.Root));
         Assert.True(RoutesGenerator.AppliesTo(Obj(ctx, "Booking"), ctx.Root));
 
-        var paths = new RoutesGenerator().Generate(ctx).Select(f => f.Path).ToList();
+        var paths = new RoutesGenerator().Generate(ctx).Select(f => System.IO.Path.GetFileName(f.Path)).ToList();
         Assert.DoesNotContain(paths, p => p.StartsWith("Ledger", StringComparison.Ordinal));
         Assert.Contains(paths, p => p.StartsWith("Booking", StringComparison.Ordinal));
     }
@@ -248,9 +248,9 @@ public class SourcelessEntityGatesTests
         Assert.True(FilterAllowlistGenerator.AppliesTo(Obj(ctx, "Booking")));
 
         var files = new FilterAllowlistGenerator().Generate(ctx).ToList();
-        var ledger = Assert.Single(files, f => f.Path.StartsWith("Ledger", StringComparison.Ordinal)).Content;
+        var ledger = Assert.Single(files, f => System.IO.Path.GetFileName(f.Path).StartsWith("Ledger", StringComparison.Ordinal)).Content;
         Assert.Contains("\"note\"", ledger);
-        Assert.DoesNotContain(files, f => f.Path.StartsWith("Sourceless", StringComparison.Ordinal));
+        Assert.DoesNotContain(files, f => System.IO.Path.GetFileName(f.Path).StartsWith("Sourceless", StringComparison.Ordinal));
 
         var errors = CompileTogether(files);
         Assert.True(errors.Count == 0, "generated allowlists must compile:\n" + string.Join("\n", errors));

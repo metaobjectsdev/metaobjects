@@ -228,7 +228,7 @@ public class OutputParserGenerator : IGenerator
 
         // ADR-0052 D4: the artifact name follows the DIRECTION axis. A parser file named
         // `.output.cs` generated from a prompt reproduces the confusion being removed.
-        return new EmittedFile($"{templateName}.response.cs", sb.ToString());
+        return new EmittedFile(OutputPaths.Of(tmpl, $"{templateName}.response.cs"), sb.ToString());
     }
 
     /// <summary>

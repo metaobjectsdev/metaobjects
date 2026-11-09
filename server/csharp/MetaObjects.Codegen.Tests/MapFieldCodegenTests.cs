@@ -54,7 +54,7 @@ public class MapFieldCodegenTests
     public void Scalar_valued_map_emits_a_string_value_dictionary()
     {
         var files = new EntityGenerator().Generate(Ctx(Load())).ToList();
-        var customer = files.Single(f => f.Path == "Customer.g.cs").Content;
+        var customer = files.Single(f => System.IO.Path.GetFileName(f.Path) == "Customer.g.cs").Content;
 
         // @valueType:string → Dictionary<string, string>, [Column]-mapped. NULLABILITY
         // FOLLOWS THE COLUMN (ObjectNavProperty's rule): the migration creates a map
@@ -73,13 +73,13 @@ public class MapFieldCodegenTests
     public void Object_valued_map_emits_a_value_object_value_dictionary()
     {
         var files = new EntityGenerator().Generate(Ctx(Load())).ToList();
-        var customer = files.Single(f => f.Path == "Customer.g.cs").Content;
+        var customer = files.Single(f => System.IO.Path.GetFileName(f.Path) == "Customer.g.cs").Content;
 
         // @objectRef:Address → Dictionary<string, Address> (nullable — see the scalar test
         // for the column-following rule); the VO is emitted as a POCO.
         Assert.Contains("[Column(CustomerNames.AddressesColumn)]", customer); // §A6 (task 4)
         Assert.Contains("public Dictionary<string, Address>? Addresses { get; set; }", customer);
-        Assert.Contains("public class Address", files.Single(f => f.Path == "Address.g.cs").Content);
+        Assert.Contains("public class Address", files.Single(f => System.IO.Path.GetFileName(f.Path) == "Address.g.cs").Content);
     }
 
     [Fact]
@@ -312,7 +312,7 @@ public class MapFieldCodegenTests
         // running the value-object graph validation. So a map of invalid value objects was
         // written on BOTH write surfaces — silently, as a 201/200, never an error.
         var routes = new RoutesGenerator().Generate(Ctx(Load()))
-            .Single(f => f.Path == "CustomerRoutes.g.cs").Content;
+            .Single(f => System.IO.Path.GetFileName(f.Path) == "CustomerRoutes.g.cs").Content;
 
         // Create: the map column joins the field.object columns in the validation preamble.
         Assert.Contains("ValueObjectValidator.Validate(input.Addresses)", routes);

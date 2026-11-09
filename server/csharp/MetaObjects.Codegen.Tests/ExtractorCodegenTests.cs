@@ -365,7 +365,7 @@ public sealed class ExtractorCodegenTests
         var root = Load(Model);
 
         // The POCO (EntityGenerator): enum scalar -> nested enum type; enum array -> a collection of it.
-        var poco = Assert.Single(new EntityGenerator().Generate(Ctx(root)), f => f.Path == "Order.g.cs").Content;
+        var poco = Assert.Single(new EntityGenerator().Generate(Ctx(root)), f => System.IO.Path.GetFileName(f.Path) == "Order.g.cs").Content;
         Assert.Contains("public enum OrderPriority { LOW, HIGH }", poco);
         Assert.Contains("public enum OrderLabels { A, B }", poco);
         Assert.Contains("public OrderPriority Priority { get; set; }", poco);
@@ -377,7 +377,7 @@ public sealed class ExtractorCodegenTests
         Assert.Contains("System.Enum.Parse<Order.OrderLabels>(", extractorSrc);
 
         // LENIENT mirror: the enum leaf stays string-backed (scalar string?, array string list).
-        var mirror = Assert.Single(new OutputParserGenerator().Generate(Ctx(root)), f => f.Path == "OrderExtracted.g.cs").Content;
+        var mirror = Assert.Single(new OutputParserGenerator().Generate(Ctx(root)), f => System.IO.Path.GetFileName(f.Path) == "OrderExtracted.g.cs").Content;
         Assert.Contains("string? priority { get; init; }", mirror);
         Assert.Contains("IReadOnlyList<string?>? labels { get; init; }", mirror);
         // No nested enum type bleeds into the lenient mirror.

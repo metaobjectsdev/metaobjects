@@ -125,7 +125,7 @@ async function gen(
 ) {
   await runGen({
     // The documentation generators write to the `docs` target, which a run must declare.
-    config: defineConfig({
+    config: defineConfig({ outputLayout: "flat",
       outDir: dir, extStyle: "none", dbImport: "~/server/db", dialect: "sqlite", generators,
       targets: { docs: { outDir: join(dir, "_docs") } },
     }),
@@ -595,7 +595,7 @@ describe("ADR-0034 — the requirement-tests reference over a ledger that declar
         const dir = mkdtempSync(join(tmpdir(), "codegen-req-"));
         try {
           const result = await runGen({
-            config: defineConfig({ outDir: join(dir, "out"), extStyle: "none", dbImport: "~/server/db", dialect: "sqlite", generators: [generator] }),
+            config: defineConfig({ outputLayout: "flat", outDir: join(dir, "out"), extStyle: "none", dbImport: "~/server/db", dialect: "sqlite", generators: [generator] }),
             metadata: loaded.root,
             projectRoot: dir,
           });
@@ -894,7 +894,7 @@ describe("ADR-0034 — the cube-model reference is byte-identical to the built-i
     const dir = mkdtempSync(join(tmpdir(), "cube-ref-run-"));
     try {
       await runGen({
-        config: defineConfig({ outDir: join(dir, "out"), dialect: config.dialect, generators: [make()] }),
+        config: defineConfig({ outputLayout: "flat", outDir: join(dir, "out"), dialect: config.dialect, generators: [make()] }),
         metadata: root,
         projectRoot: dir,
         ...extra,
@@ -1152,7 +1152,7 @@ describe("ADR-0034 Amendment 7 — the shared-model reference publishes the same
       const root = await loadFiles([run.model]);
       return await outcomeOf(async () => {
         await runGen({
-          config: defineConfig({ outDir, extStyle: "none", dbImport: "~/db", dialect: "sqlite", generators: [make(opts)] }),
+          config: defineConfig({ outputLayout: "flat", outDir, extStyle: "none", dbImport: "~/db", dialect: "sqlite", generators: [make(opts)] }),
           metadata: root,
           projectRoot: project,
           ...(run.sourceFiles !== undefined ? { sourceFiles: run.sourceFiles } : {}),

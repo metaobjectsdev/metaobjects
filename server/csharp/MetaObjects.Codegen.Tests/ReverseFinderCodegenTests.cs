@@ -56,7 +56,7 @@ public class ReverseFinderCodegenTests
 
     private static string Queries(MetaRoot root, string entity) =>
         new EntityGenerator().Generate(Context(root))
-            .Single(f => f.Path == $"{entity}Queries.g.cs").Content;
+            .Single(f => System.IO.Path.GetFileName(f.Path) == $"{entity}Queries.g.cs").Content;
 
     // ---- Descriptor: GameSession derives its 4 reverse FKs (3 to Scene, 1 to Player) ----
     [Fact]
@@ -141,7 +141,7 @@ public class ReverseFinderCodegenTests
     [Fact]
     public void No_queries_file_for_entity_without_fks()
     {
-        var files = new EntityGenerator().Generate(Context(LoadFixture())).Select(f => f.Path).ToList();
+        var files = new EntityGenerator().Generate(Context(LoadFixture())).Select(f => System.IO.Path.GetFileName(f.Path)).ToList();
         Assert.DoesNotContain("SceneQueries.g.cs", files);
         Assert.DoesNotContain("PlayerQueries.g.cs", files);
         Assert.Contains("GameSessionQueries.g.cs", files);
@@ -153,8 +153,8 @@ public class ReverseFinderCodegenTests
     public void No_lazy_reverse_collection_on_scene_or_player()
     {
         var files = new EntityGenerator().Generate(Context(LoadFixture())).ToList();
-        var scene = files.Single(f => f.Path == "Scene.g.cs").Content;
-        var player = files.Single(f => f.Path == "Player.g.cs").Content;
+        var scene = files.Single(f => System.IO.Path.GetFileName(f.Path) == "Scene.g.cs").Content;
+        var player = files.Single(f => System.IO.Path.GetFileName(f.Path) == "Player.g.cs").Content;
         // No lazy reverse collection of the referencing entity hangs off the referenced entity.
         Assert.DoesNotContain("ICollection<GameSession>", scene);
         Assert.DoesNotContain("ICollection<GameSession>", player);

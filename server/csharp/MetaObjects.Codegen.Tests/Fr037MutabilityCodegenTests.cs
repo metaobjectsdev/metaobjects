@@ -63,7 +63,7 @@ public class Fr037MutabilityCodegenTests
     }
 
     private static string FileContent(IEnumerable<EmittedFile> files, string path) =>
-        files.Single(f => f.Path == path).Content;
+        files.Single(f => System.IO.Path.GetFileName(f.Path) == path).Content;
 
     [Fact]
     public void MetaField_Mutability_reflects_attr()

@@ -40,6 +40,9 @@ const isPersisted = (e: MetaObject): boolean =>
 
 export default defineConfig({
   outDir: "src/generated",
+  // The modules sit in one directory, which this example's own code imports from; the
+  // package layout would put them in a directory per package.
+  outputLayout: "flat",
   extStyle: "none",
   dbImport: "../db",
   dialect: "postgres",

@@ -72,7 +72,7 @@ public class ObjectFieldCodegenTests
     public void Entity_gets_owned_type_navigation_properties()
     {
         var files = new EntityGenerator().Generate(Ctx(Load())).ToList();
-        var customer = files.Single(f => f.Path == "Customer.g.cs").Content;
+        var customer = files.Single(f => System.IO.Path.GetFileName(f.Path) == "Customer.g.cs").Content;
 
         Assert.Contains("public string Name { get; set; } = default!;", customer);
         // Object fields -> nullable owned-type navigations (no [Column] on the nav).
@@ -85,7 +85,7 @@ public class ObjectFieldCodegenTests
     public void Referenced_value_object_is_emitted_as_a_plain_poco()
     {
         var files = new EntityGenerator().Generate(Ctx(Load())).ToList();
-        var address = files.Single(f => f.Path == "Address.g.cs").Content;
+        var address = files.Single(f => System.IO.Path.GetFileName(f.Path) == "Address.g.cs").Content;
 
         Assert.Contains("public class Address", address);
         Assert.Contains("public string Street { get; set; } = default!;", address); // required
@@ -226,7 +226,7 @@ public class ObjectFieldCodegenTests
     public void Routes_array_null_clear_composes_its_identifiers_from_the_names_constants()
     {
         var routes = new RoutesGenerator().Generate(Ctx(Load()))
-            .Single(f => f.Path == "CustomerRoutes.g.cs").Content;
+            .Single(f => System.IO.Path.GetFileName(f.Path) == "CustomerRoutes.g.cs").Content;
         // `tags` is the THIRD value-object field (after homeAddress and config), hence __clearVo2.
         Assert.Contains(
             "if (__clearVo2) await db.Database.ExecuteSqlRawAsync(\"UPDATE \\\"\" + CustomerNames.SourcePrimaryTable + " +
@@ -249,7 +249,7 @@ public class ObjectFieldCodegenTests
             Entities = root.Objects(), Root = root,
             Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", IncludeNames = false },
         };
-        var routes = new RoutesGenerator().Generate(ctx).Single(f => f.Path == "CustomerRoutes.g.cs").Content;
+        var routes = new RoutesGenerator().Generate(ctx).Single(f => System.IO.Path.GetFileName(f.Path) == "CustomerRoutes.g.cs").Content;
         Assert.Contains(
             "if (__clearVo2) await db.Database.ExecuteSqlRawAsync(\"UPDATE \\\"customers\\\" SET \\\"tags\\\" = NULL WHERE \\\"id\\\" = {0}\", id);",
             routes);

@@ -134,7 +134,7 @@ const OPT_IN = (e: MetaObject) => e.name === "CopayAuth";
 
 function ctxFor(root: MetaRoot) {
   return makeRenderContext({
-    dialect: "postgres",
+    outputLayout: "flat" as const, dialect: "postgres",
     loadedRoot: root,
     outDir: "/x",
     dbImport: "../db",
@@ -204,7 +204,7 @@ describe("FR-017 Tier 3 — TPH TanStack grid", () => {
     try {
       await runGen({
         config: defineConfig({
-          outDir: tmp, extStyle: "none", dbImport: "../db", dialect: "postgres",
+          outDir: tmp, extStyle: "none", dbImport: "../db", outputLayout: "flat" as const, dialect: "postgres",
           generators: [
             entityFile(),
             tanstackGrid({ tphSubtypeGrids: OPT_IN }),
@@ -233,7 +233,7 @@ describe("FR-017 Tier 3 — TPH TanStack grid", () => {
     try {
       await runGen({
         config: defineConfig({
-          outDir: tmp, extStyle: "none", dbImport: "../db", dialect: "postgres",
+          outDir: tmp, extStyle: "none", dbImport: "../db", outputLayout: "flat" as const, dialect: "postgres",
           generators: [
             entityFile(),
             tanstackGrid({ tphSubtypeGrids: OPT_IN }),

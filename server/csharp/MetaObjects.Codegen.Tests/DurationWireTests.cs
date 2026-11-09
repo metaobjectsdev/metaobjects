@@ -251,7 +251,7 @@ public class DurationWireTests
     [Fact]
     public void The_emitted_helper_is_the_production_helper_with_only_the_namespace_changed()
     {
-        var emitted = Emit().Single(f => f.Path == "DurationWire.g.cs");
+        var emitted = Emit().Single(f => System.IO.Path.GetFileName(f.Path) == "DurationWire.g.cs");
         var production = File.ReadAllText(Path.Combine(
             CorpusPaths.RepoRoot(), "server", "csharp", "MetaObjects.Codegen", "Runtime", "DurationWire.cs")).Replace("\r\n", "\n");
         Assert.Equal(production.Replace("namespace MetaObjects.Codegen.Runtime;", "namespace Acme.Ops;"), emitted.Content.Replace("\r\n", "\n"));
@@ -261,16 +261,16 @@ public class DurationWireTests
     public void A_duration_is_a_TimeSpan_with_the_wire_converter_an_interval_on_Postgres_and_text_elsewhere()
     {
         var files = Emit();
-        var timer = files.Single(f => f.Path == "Timer.g.cs").Content;
+        var timer = files.Single(f => System.IO.Path.GetFileName(f.Path) == "Timer.g.cs").Content;
         Assert.Contains("    [DurationWire.Iso]\n    public TimeSpan Timeout { get; set; } = DurationWire.Parse(\"PT90M\");", timer.Replace("\r\n", "\n"));
         Assert.Contains("public TimeSpan? Grace { get; set; }", timer);
         Assert.Contains("public IList<TimeSpan> Backoff { get; set; } = new List<TimeSpan>();", timer);
         Assert.DoesNotContain("using MetaObjects", timer);
 
-        var window = files.Single(f => f.Path == "Window.g.cs").Content;
+        var window = files.Single(f => System.IO.Path.GetFileName(f.Path) == "Window.g.cs").Content;
         Assert.Contains("[DurationWire.Iso]", window);
 
-        var ctx = files.Single(f => f.Path == "AppDbContext.g.cs").Content.Replace("\r\n", "\n");
+        var ctx = files.Single(f => System.IO.Path.GetFileName(f.Path) == "AppDbContext.g.cs").Content.Replace("\r\n", "\n");
         const string Npgsql = "if (Database.ProviderName == \"Npgsql.EntityFrameworkCore.PostgreSQL\")";
         const string Micros = "new Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<System.TimeSpan, long>(" +
             "v => global::Acme.Ops.DurationWire.ToMicros(v), v => global::Acme.Ops.DurationWire.FromMicros(v))";
@@ -303,11 +303,11 @@ public class DurationWireTests
             ctx);
         Assert.Contains($"                b.PrimitiveCollection(p => p.Marks).ElementType().HasConversion({Micros});", ctx);
 
-        var allowlist = files.Single(f => f.Path == "TimerFilterAllowlist.g.cs").Content;
+        var allowlist = files.Single(f => System.IO.Path.GetFileName(f.Path) == "TimerFilterAllowlist.g.cs").Content;
         Assert.Contains("[\"grace\"] = new(System.StringComparer.Ordinal) { \"eq\", \"ne\", \"gt\", \"gte\", \"lt\", \"lte\", \"in\", \"isNull\" },", allowlist);
 
         // The PATCH merge reads a duration through the wire helper, not System.Text.Json's own form.
-        var routes = files.Single(f => f.Path == "TimerRoutes.g.cs").Content;
+        var routes = files.Single(f => System.IO.Path.GetFileName(f.Path) == "TimerRoutes.g.cs").Content;
         Assert.Contains("if (clr == typeof(System.TimeSpan))", routes);
         Assert.Contains("DurationWire.TryParseElement(prop.Value, out var __dur)", routes);
     }

@@ -89,7 +89,7 @@ public sealed class CodegenDriftTests : IDisposable
         Gen();
 
         // Hand-edit a committed generated file — must surface as content drift.
-        var entity = Path.Combine(OutDir, "Subscriber.g.cs");
+        var entity = Path.Combine(OutDir, "acme", "Subscriber.g.cs");
         File.AppendAllText(entity, "\n// hand edit\n");
 
         var drift = RunDrift();
@@ -102,7 +102,7 @@ public sealed class CodegenDriftTests : IDisposable
     public void Missing_committed_file_is_drift()
     {
         Gen();
-        File.Delete(Path.Combine(OutDir, "Subscriber.g.cs"));
+        File.Delete(Path.Combine(OutDir, "acme", "Subscriber.g.cs"));
 
         var drift = RunDrift();
         Assert.False(drift.Clean);
@@ -140,7 +140,7 @@ public sealed class CodegenDriftTests : IDisposable
         var before = SnapshotDir(OutDir);
 
         // A drift run (with a mutation present) must touch ONLY temp, never OutDir.
-        File.AppendAllText(Path.Combine(OutDir, "Subscriber.g.cs"), "\n// edit\n");
+        File.AppendAllText(Path.Combine(OutDir, "acme", "Subscriber.g.cs"), "\n// edit\n");
         var afterMutation = SnapshotDir(OutDir);
         RunDrift();
         var afterDrift = SnapshotDir(OutDir);

@@ -99,7 +99,7 @@ public sealed class GenListAndSelectionTests : IDisposable
 
         Assert.True(outcome.Ok, string.Join("; ", outcome.LoadErrors));
         Assert.Contains(outcome.Result!.Files, f => f.Status == "written");
-        Assert.True(File.Exists(Path.Combine(OutDir, "Alpha.responseFormat.cs")));
+        Assert.True(File.Exists(Path.Combine(OutDir, "acme", "ai", "Alpha.responseFormat.cs")));
     }
 
     [Fact]
@@ -151,6 +151,6 @@ public sealed class GenListAndSelectionTests : IDisposable
             generatorNames: ["entity", "output-parser"], templateRoot: null);
 
         Assert.True(outcome.Ok, string.Join("; ", outcome.LoadErrors));
-        Assert.True(File.Exists(Path.Combine(OutDir, "Alpha.response.cs")));
+        Assert.True(File.Exists(Path.Combine(OutDir, "acme", "ai", "Alpha.response.cs")));
     }
 }

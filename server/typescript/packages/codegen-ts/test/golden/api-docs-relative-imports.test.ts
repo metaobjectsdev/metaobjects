@@ -173,6 +173,7 @@ async function runGenerator(
   configExtra?: Record<string, unknown>,
 ): Promise<EmittedFile[]> {
   const renderContext = makeRenderContext({
+    outputLayout: "flat",
     dialect: "sqlite",
     loadedRoot: root,
     outDir: "/tmp",
@@ -189,6 +190,7 @@ async function runGenerator(
       outDir: "/tmp",
       extStyle: "none",
       dbImport: "~/db",
+      outputLayout: "flat",
       dialect: "sqlite",
       ...(configExtra ?? {}),
     } as never,
@@ -398,6 +400,7 @@ describe("Fix 2: api-docs documents Hono routes when the Hono generator is in th
         outDir,
         extStyle: "none",
         dbImport: "~/db",
+        outputLayout: "flat",
         dialect: "sqlite",
         targets: { docs: { outDir: docsDir } },
         generators: [entityFile(), queriesFile(), routesFile(), routesFileHono(), apiDocsFile()],

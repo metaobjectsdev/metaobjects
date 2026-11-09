@@ -168,7 +168,7 @@ public class GeneratorHooksTests
 
         var stock = Entities(new EntityGenerator(), root);
         var hooked = Entities(new RecordingEntity(), root);
-        Assert.Equal(stock.Select(f => f.Path), hooked.Select(f => f.Path));
+        Assert.Equal(stock.Select(f => System.IO.Path.GetFileName(f.Path)), hooked.Select(f => System.IO.Path.GetFileName(f.Path)));
         Assert.Equal(stock.Select(f => f.Content), hooked.Select(f => f.Content));
 
         var names = new NamesGenerator().Generate(Ctx(root)).ToList();
@@ -565,12 +565,12 @@ public class GeneratorHooksTests
         var root = Load();
         var stock = Entities(new EntityGenerator(), root);
         var hooked = Entities(new PropTypeEntity(), root);
-        var s = stock.Single(f => f.Path == "Auth.g.cs").Content;
-        var h = hooked.Single(f => f.Path == "Auth.g.cs").Content;
+        var s = stock.Single(f => System.IO.Path.GetFileName(f.Path) == "Auth.g.cs").Content;
+        var h = hooked.Single(f => System.IO.Path.GetFileName(f.Path) == "Auth.g.cs").Content;
         var (removed, added) = Diff(s, h);
         Assert.Equal(["    public string? Note { get; set; }"], removed);
         Assert.Equal(["    public global::System.Text.StringBuilder? Note { get; set; }"], added);
-        foreach (var f in stock.Where(f => f.Path != "Auth.g.cs"))
+        foreach (var f in stock.Where(f => System.IO.Path.GetFileName(f.Path) != "Auth.g.cs"))
             Assert.Equal(f.Content, hooked.Single(x => x.Path == f.Path).Content);
     }
 
@@ -584,8 +584,8 @@ public class GeneratorHooksTests
     public void Override_of_PropertyInitializer_changes_only_its_lines()
     {
         var root = Load();
-        var s = Entities(new EntityGenerator(), root).Single(f => f.Path == "Auth.g.cs").Content;
-        var h = Entities(new PropInitEntity(), root).Single(f => f.Path == "Auth.g.cs").Content;
+        var s = Entities(new EntityGenerator(), root).Single(f => System.IO.Path.GetFileName(f.Path) == "Auth.g.cs").Content;
+        var h = Entities(new PropInitEntity(), root).Single(f => System.IO.Path.GetFileName(f.Path) == "Auth.g.cs").Content;
         var (removed, added) = Diff(s, h);
         Assert.Equal(["    public string? Note { get; set; }"], removed);
         Assert.Equal(["    public string? Note { get; set; } = \"n/a\";"], added);
@@ -603,10 +603,10 @@ public class GeneratorHooksTests
         var root = Load();
         var stock = Entities(new EntityGenerator(), root);
         var hooked = Entities(new DropAddressEntity(), root);
-        Assert.Contains(stock, f => f.Path == "Address.g.cs");
-        Assert.DoesNotContain(hooked, f => f.Path == "Address.g.cs");
+        Assert.Contains(stock, f => System.IO.Path.GetFileName(f.Path) == "Address.g.cs");
+        Assert.DoesNotContain(hooked, f => System.IO.Path.GetFileName(f.Path) == "Address.g.cs");
         Assert.Equal(
-            stock.Where(f => f.Path != "Address.g.cs").Select(f => (f.Path, f.Content)),
+            stock.Where(f => System.IO.Path.GetFileName(f.Path) != "Address.g.cs").Select(f => (f.Path, f.Content)),
             hooked.Select(f => (f.Path, f.Content)));
     }
 
@@ -746,7 +746,7 @@ public class GeneratorHooksTests
         var files = GeneratorGoldenTests.GenerateRound2(shapes: true);
         var g = new RecordingNames();
         var emitted = g.Generate(GeneratorGoldenTests.Round2Context(shapes: true)).ToList();
-        Assert.Equal(files.Where(f => f.Path.EndsWith("Names.g.cs")).Select(f => f.Path).Order(), emitted.Select(f => f.Path).Order());
+        Assert.Equal(files.Where(f => f.Path.EndsWith("Names.g.cs")).Select(f => System.IO.Path.GetFileName(f.Path)).Order(), emitted.Select(f => System.IO.Path.GetFileName(f.Path)).Order());
         // Pass 1 (the participants) and pass 2 (the bases they extend, as fragments).
         Assert.Contains("Render:Workflow:False", g.Calls);
         Assert.Contains("Render:BaseEntity:True", g.Calls);
@@ -767,11 +767,11 @@ public class GeneratorHooksTests
         var stock = Entities(new EntityGenerator(), root);
         var hooked = Entities(new NoVoAttributesEntity(), root);
         var (removed, added) = Diff(
-            stock.Single(f => f.Path == "Address.g.cs").Content,
-            hooked.Single(f => f.Path == "Address.g.cs").Content);
+            stock.Single(f => System.IO.Path.GetFileName(f.Path) == "Address.g.cs").Content,
+            hooked.Single(f => System.IO.Path.GetFileName(f.Path) == "Address.g.cs").Content);
         Assert.Empty(added);
         Assert.Equal(["    [JsonPropertyName(\"street\")]", "    [JsonPropertyName(\"kind\")]"], removed);
-        foreach (var f in stock.Where(f => f.Path != "Address.g.cs"))
+        foreach (var f in stock.Where(f => System.IO.Path.GetFileName(f.Path) != "Address.g.cs"))
             Assert.Equal(f.Content, hooked.Single(x => x.Path == f.Path).Content);
     }
 
@@ -790,11 +790,11 @@ public class GeneratorHooksTests
         var stock = Entities(new EntityGenerator(), root);
         var hooked = Entities(new TypeNameEntity(), root);
         var (removed, added) = Diff(
-            stock.Single(f => f.Path == "Auth.g.cs").Content,
-            hooked.Single(f => f.Path == "Auth.g.cs").Content);
+            stock.Single(f => System.IO.Path.GetFileName(f.Path) == "Auth.g.cs").Content,
+            hooked.Single(f => System.IO.Path.GetFileName(f.Path) == "Auth.g.cs").Content);
         Assert.Equal(["    [Column(\"uid\")]"], removed);
         Assert.Equal(["    [Column(\"uid\", TypeName = \"uuid\")]"], added);
-        foreach (var f in stock.Where(f => f.Path != "Auth.g.cs"))
+        foreach (var f in stock.Where(f => System.IO.Path.GetFileName(f.Path) != "Auth.g.cs"))
             Assert.Equal(f.Content, hooked.Single(x => x.Path == f.Path).Content);
     }
 
@@ -809,8 +809,8 @@ public class GeneratorHooksTests
     {
         var root = Load();
         var (removed, added) = Diff(
-            Entities(new EntityGenerator(), root).Single(f => f.Path == "Auth.g.cs").Content,
-            Entities(new NoColumnEntity(), root).Single(f => f.Path == "Auth.g.cs").Content);
+            Entities(new EntityGenerator(), root).Single(f => System.IO.Path.GetFileName(f.Path) == "Auth.g.cs").Content,
+            Entities(new NoColumnEntity(), root).Single(f => System.IO.Path.GetFileName(f.Path) == "Auth.g.cs").Content);
         Assert.Empty(added);
         Assert.Equal(["    [Column(\"note\")]"], removed);
     }
@@ -827,11 +827,11 @@ public class GeneratorHooksTests
         var stock = Entities(new EntityGenerator(), root);
         var hooked = Entities(new NoDerivedTypesEntity(), root);
         var (removed, added) = Diff(
-            stock.Single(f => f.Path == "Auth.g.cs").Content,
-            hooked.Single(f => f.Path == "Auth.g.cs").Content);
+            stock.Single(f => System.IO.Path.GetFileName(f.Path) == "Auth.g.cs").Content,
+            hooked.Single(f => System.IO.Path.GetFileName(f.Path) == "Auth.g.cs").Content);
         Assert.Empty(added);
         Assert.Equal(["[System.Text.Json.Serialization.JsonDerivedType(typeof(BridgeAuth))]"], removed);
-        foreach (var f in stock.Where(f => f.Path != "Auth.g.cs"))
+        foreach (var f in stock.Where(f => System.IO.Path.GetFileName(f.Path) != "Auth.g.cs"))
             Assert.Equal(f.Content, hooked.Single(x => x.Path == f.Path).Content);
     }
 
@@ -990,10 +990,10 @@ public class GeneratorHooksTests
         var ctx = GeneratorGoldenTests.Round2Context(shapes: true);
         var stock = new NamesGenerator().Generate(ctx).ToList();
         var hooked = new NoWorkflowNames().Generate(ctx).ToList();
-        Assert.Contains(stock, f => f.Path == "WorkflowNames.g.cs");
-        Assert.DoesNotContain(hooked, f => f.Path == "WorkflowNames.g.cs");
+        Assert.Contains(stock, f => System.IO.Path.GetFileName(f.Path) == "WorkflowNames.g.cs");
+        Assert.DoesNotContain(hooked, f => System.IO.Path.GetFileName(f.Path) == "WorkflowNames.g.cs");
         Assert.Equal(
-            stock.Where(f => f.Path != "WorkflowNames.g.cs").Select(f => (f.Path, f.Content)),
+            stock.Where(f => System.IO.Path.GetFileName(f.Path) != "WorkflowNames.g.cs").Select(f => (f.Path, f.Content)),
             hooked.Select(f => (f.Path, f.Content)));
     }
 
@@ -1007,12 +1007,12 @@ public class GeneratorHooksTests
     public void Names_for_cross_namespace_base_compiles(bool shapes)
     {
         var files = GeneratorGoldenTests.GenerateRound2(shapes);
-        var workflow = files.Single(f => f.Path == "WorkflowNames.g.cs").Content;
+        var workflow = files.Single(f => System.IO.Path.GetFileName(f.Path) == "WorkflowNames.g.cs").Content;
         Assert.Contains("public abstract class WorkflowNames : BaseEntityNames", workflow);
         Assert.Contains("using Acme.Base;", workflow);
-        Assert.Contains("namespace Acme.Base;", files.Single(f => f.Path == "BaseEntityNames.g.cs").Content);
+        Assert.Contains("namespace Acme.Base;", files.Single(f => System.IO.Path.GetFileName(f.Path) == "BaseEntityNames.g.cs").Content);
         // A base in the SAME namespace needs none.
-        Assert.DoesNotContain("using Acme.Work;", files.Single(f => f.Path == "CallJobNames.g.cs").Content);
+        Assert.DoesNotContain("using Acme.Work;", files.Single(f => System.IO.Path.GetFileName(f.Path) == "CallJobNames.g.cs").Content);
 
         var comp = CSharpCompilation.Create(
             "names_xns_" + Guid.NewGuid().ToString("N"),
@@ -1066,11 +1066,11 @@ public class GeneratorHooksTests
     public void Reference_on_abstract_tph_intermediate_is_configured()
     {
         const string onCaseJob = "        modelBuilder.Entity<CaseJob>().HasOne<Workflow>().WithMany().HasForeignKey(e => e.WorkflowId).OnDelete(DeleteBehavior.NoAction);";
-        var shapes = Lines(GeneratorGoldenTests.GenerateRound2(shapes: true).Single(f => f.Path == "AppDbContext.g.cs").Content);
+        var shapes = Lines(GeneratorGoldenTests.GenerateRound2(shapes: true).Single(f => System.IO.Path.GetFileName(f.Path) == "AppDbContext.g.cs").Content);
         Assert.Single(shapes, l => l == onCaseJob);
         Assert.DoesNotContain(shapes, l => l.Contains("Entity<CallJob>().HasOne<Workflow>()"));
 
-        var folded = Lines(GeneratorGoldenTests.GenerateRound2(shapes: false).Single(f => f.Path == "AppDbContext.g.cs").Content);
+        var folded = Lines(GeneratorGoldenTests.GenerateRound2(shapes: false).Single(f => System.IO.Path.GetFileName(f.Path) == "AppDbContext.g.cs").Content);
         Assert.DoesNotContain(folded, l => l.Contains("Entity<CaseJob>()"));
         foreach (var leaf in new[] { "CallJob", "MailJob" })
             Assert.Single(folded, l => l == onCaseJob.Replace("Entity<CaseJob>", $"Entity<{leaf}>"));

@@ -119,7 +119,7 @@ describe("`<Entity>.extra.ts` is a convention, not a mechanism", () => {
       outDir: tmp,
       extStyle: "js",
       dbImport: "~/server/db",
-      dialect: "sqlite",
+      outputLayout: "flat" as const, dialect: "sqlite",
       generators: [entityFile(), barrel()],
     });
     await runGen({ config, metadata: root, projectRoot: tmp });
@@ -183,7 +183,7 @@ describe("regenerating a hand-written requirement stub", () => {
     const config = defineConfig({
       outDir: tmp,
       extStyle: "js",
-      dialect: "sqlite",
+      outputLayout: "flat" as const, dialect: "sqlite",
       generators: [requirementTests()],
     });
 
@@ -230,7 +230,7 @@ describe("regenerating a hand-written requirement stub", () => {
     const config = defineConfig({
       outDir: tmp,
       extStyle: "js",
-      dialect: "sqlite",
+      outputLayout: "flat" as const, dialect: "sqlite",
       generators: [requirementTests()],
     });
 

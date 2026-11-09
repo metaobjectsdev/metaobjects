@@ -49,7 +49,7 @@ public sealed class CodegenNamespaceTests : IDisposable
         return (exit, stdout + stderr);
     }
 
-    private string EntityFile() => File.ReadAllText(Path.Combine(OutDir, "Subscriber.g.cs"));
+    private string EntityFile() => File.ReadAllText(Path.Combine(OutDir, "acme", "shop", "Subscriber.g.cs"));
 
     [Fact]
     public void A_config_namespace_is_used_by_gen_and_a_bare_verify_is_clean()
@@ -112,6 +112,6 @@ public sealed class CodegenNamespaceTests : IDisposable
         var gen = Run("gen");
         Assert.NotEqual(0, gen.Exit);
         Assert.Contains($"\"{ns}\" is not a C# namespace", gen.Output);
-        Assert.False(File.Exists(Path.Combine(OutDir, "Subscriber.g.cs")));
+        Assert.False(File.Exists(Path.Combine(OutDir, "acme", "shop", "Subscriber.g.cs")));
     }
 }

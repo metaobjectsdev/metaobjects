@@ -172,6 +172,6 @@ public class CallableGenerator : PerEntityGenerator
         sb.AppendLine("    }");
         sb.AppendLine("}");
 
-        return new EmittedFile($"{cls}.callable.g.cs", sb.ToString());
+        return new EmittedFile(OutputPaths.Of(entity, $"{cls}.callable.g.cs"), sb.ToString());
     }
 }

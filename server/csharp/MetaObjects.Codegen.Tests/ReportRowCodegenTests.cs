@@ -118,7 +118,7 @@ public class ReportRowCodegenTests
     };
 
     private static Dictionary<string, string> Emit(GenContext ctx, params IGenerator[] generators) =>
-        generators.SelectMany(g => g.Generate(ctx)).ToDictionary(f => f.Path, f => f.Content, StringComparer.Ordinal);
+        generators.SelectMany(g => g.Generate(ctx)).ToDictionary(f => System.IO.Path.GetFileName(f.Path), f => f.Content, StringComparer.Ordinal);
 
     private static Dictionary<string, string> EmitAll(GenContext ctx) =>
         Emit(ctx, new EntityGenerator(), new DbContextGenerator(), new NamesGenerator(),
@@ -308,7 +308,7 @@ public class ReportRowCodegenTests
         };
         var files = new RoutesGenerator().Generate(ctx).ToList();
 
-        Assert.Contains(files, f => f.Path == "StoreTotalsRoutes.g.cs");
+        Assert.Contains(files, f => System.IO.Path.GetFileName(f.Path) == "StoreTotalsRoutes.g.cs");
         Assert.DoesNotContain(warnings, w => w.Contains("StoreTotals", StringComparison.Ordinal));
     }
 
@@ -388,7 +388,7 @@ public class ReportRowCodegenTests
                 new FilterAllowlistGenerator(), new RoutesGenerator(),
             }
             .SelectMany(g => g.Generate(ctx)).ToList();
-        Assert.Contains(files, f => f.Path == "SalesCubeRoutes.g.cs");
+        Assert.Contains(files, f => System.IO.Path.GetFileName(f.Path) == "SalesCubeRoutes.g.cs");
 
         var paths = DbContextCompileTests.BuildReferences()
             .OfType<PortableExecutableReference>().Select(r => r.FilePath!)
@@ -509,7 +509,7 @@ public class ReportRowCodegenTests
                 new EntityGenerator(), new DbContextGenerator(), new FilterAllowlistGenerator(), new NamesGenerator(),
             }
             .SelectMany(g => g.Generate(ctx)).ToList();
-        Assert.Contains(files, f => f.Path == "CallTotals.g.cs");
+        Assert.Contains(files, f => System.IO.Path.GetFileName(f.Path) == "CallTotals.g.cs");
         var trees = files
             .Select(f => CSharpSyntaxTree.ParseText(f.Content, new CSharpParseOptions(LanguageVersion.CSharp12), path: f.Path))
             .ToList();
@@ -619,7 +619,7 @@ public class ReportRowCodegenTests
                 new EntityGenerator(), new DbContextGenerator(), new FilterAllowlistGenerator(), new NamesGenerator(),
             }
             .SelectMany(g => g.Generate(ctx)).ToList();
-        Assert.Contains(files, f => f.Path == "StoreSales.g.cs");
+        Assert.Contains(files, f => System.IO.Path.GetFileName(f.Path) == "StoreSales.g.cs");
         var trees = files
             .Select(f => CSharpSyntaxTree.ParseText(f.Content, new CSharpParseOptions(LanguageVersion.CSharp12), path: f.Path))
             .ToList();
@@ -777,7 +777,7 @@ public class ReportRowCodegenTests
         try
         {
             var result = CodegenRunner.Run(Config() with { OutDir = outDir }, root, [new EntityGenerator(), new DbContextGenerator()]);
-            Assert.DoesNotContain(result.Files, f => f.Path == "Sales.g.cs");
+            Assert.DoesNotContain(result.Files, f => System.IO.Path.GetFileName(f.Path) == "Sales.g.cs");
         }
         finally
         {

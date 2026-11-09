@@ -50,7 +50,7 @@ public class Fr019SharedProvidedConformanceTests
     {
         var files = new EntityGenerator().Generate(Ctx(LoadFixture(), providedNs: "Acme.External")).ToList();
 
-        var enums = Assert.Single(files, f => f.Path == "Enums.g.cs");
+        var enums = Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "Enums.g.cs");
         Assert.Contains("public enum Priority { LOW, MEDIUM, HIGH }", enums.Content);
         // Exactly one declaration across the whole output.
         var decls = files.Sum(f => Regex.Matches(f.Content, @"public enum Priority\b").Count);
@@ -58,7 +58,7 @@ public class Fr019SharedProvidedConformanceTests
 
         foreach (var path in new[] { "Ticket.g.cs", "Order.g.cs" })
         {
-            var ef = Assert.Single(files, f => f.Path == path);
+            var ef = Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == path);
             Assert.DoesNotContain("public enum Priority", ef.Content);
             Assert.Contains("public Priority? Priority", ef.Content);
         }
@@ -73,7 +73,7 @@ public class Fr019SharedProvidedConformanceTests
         // their own per-object nested enum (rule (b)) — the fixture now exercises both in one
         // object, so the assertion below is scoped to the SHARED type, not "any nested enum".
         var files = new EntityGenerator().Generate(Ctx(LoadFixture(), providedNs: "Acme.External")).ToList();
-        var task = Assert.Single(files, f => f.Path == "Task.g.cs");
+        var task = Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "Task.g.cs");
         Assert.DoesNotContain("public enum Priority", task.Content);
         Assert.Contains("public Priority? Urgency", task.Content);
         Assert.Contains("public Priority? Importance", task.Content);
@@ -90,7 +90,7 @@ public class Fr019SharedProvidedConformanceTests
         // Nothing emitted for the provided Currency type.
         Assert.All(files, f => Assert.DoesNotContain("public enum Currency", f.Content));
 
-        var ticket = Assert.Single(files, f => f.Path == "Ticket.g.cs");
+        var ticket = Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "Ticket.g.cs");
         Assert.Contains("public Acme.External.Currency? Currency", ticket.Content);
     }
 
@@ -179,24 +179,24 @@ public class Fr019SharedProvidedConformanceTests
         }
 
         // Multi-hop consumers reference the shared Priority type and nest nothing.
-        var task = Assert.Single(files, f => f.Path == "Task.g.cs");
+        var task = Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "Task.g.cs");
         Assert.Contains("public Priority? Importance", task.Content); // Task.importance -> Ticket.severity -> Priority
 
-        var subtask = Assert.Single(files, f => f.Path == "Subtask.g.cs");
+        var subtask = Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "Subtask.g.cs");
         Assert.Contains("public Priority? Rank", subtask.Content); // Subtask.rank: three hops to Priority
         Assert.DoesNotContain("public enum Priority", subtask.Content);
 
-        var ticketSummary = Assert.Single(files, f => f.Path == "TicketSummary.g.cs"); // projection, view source
+        var ticketSummary = Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "TicketSummary.g.cs"); // projection, view source
         Assert.Contains("public Priority? Level", ticketSummary.Content);
         Assert.DoesNotContain("public enum", ticketSummary.Content);
 
-        var ticketBadge = Assert.Single(files, f => f.Path == "TicketBadge.g.cs"); // value object
+        var ticketBadge = Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "TicketBadge.g.cs"); // value object
         Assert.Contains("public Priority? Badge", ticketBadge.Content);
         Assert.DoesNotContain("public enum", ticketBadge.Content);
 
         // Refund: two fields whose immediate supers are same-named fields of different
         // objects, resolving to two different shared declarations.
-        var refund = Assert.Single(files, f => f.Path == "Refund.g.cs");
+        var refund = Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "Refund.g.cs");
         Assert.Contains("public Priority? TicketTier", refund.Content);   // Refund.ticketTier -> Ticket.tier -> Priority
         Assert.Contains("public Money? InvoiceTier", refund.Content);    // Refund.invoiceTier -> Invoice.tier -> Money
         Assert.Contains("public Money? Unit", refund.Content);           // Refund.unit -> Invoice.money -> Money (materialized)
@@ -225,7 +225,7 @@ public class Fr019SharedProvidedConformanceTests
         };
 
         var files = new EntityGenerator().Generate(ctx).ToList();
-        var enums = Assert.Single(files, f => f.Path == "Enums.g.cs");
+        var enums = Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "Enums.g.cs");
         Assert.Contains("public enum Priority { LOW, MEDIUM, HIGH }", enums.Content);
     }
 }

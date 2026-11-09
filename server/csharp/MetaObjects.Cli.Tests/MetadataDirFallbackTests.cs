@@ -45,7 +45,7 @@ public sealed class MetadataDirFallbackTests : IDisposable
         var (exitCode, stdout, stderr) = OwnedRunner.Run(_tmp, ["entity"], "gen", "--out", outDir, "--namespace", "Acme.Generated");
 
         Assert.True(exitCode == 0, $"exit={exitCode}\nstdout={stdout}\nstderr={stderr}");
-        Assert.True(File.Exists(Path.Combine(outDir, "Subscriber.g.cs")), stdout + stderr);
+        Assert.True(File.Exists(Path.Combine(outDir, "acme", "Subscriber.g.cs")), stdout + stderr);
     }
 
     [Fact]
@@ -163,8 +163,8 @@ public sealed class MetadataDirFallbackTests : IDisposable
         var (exitCode, stdout, stderr) = OwnedRunner.Run(_tmp, ["entity"], "gen", "--out", outDir, "--namespace", "Acme.Generated");
 
         Assert.True(exitCode == 0, $"exit={exitCode}\nstdout={stdout}\nstderr={stderr}");
-        Assert.True(File.Exists(Path.Combine(outDir, "Subscriber.g.cs")), stdout + stderr);
-        Assert.False(File.Exists(Path.Combine(outDir, "DraftWidget.g.cs")),
+        Assert.True(File.Exists(Path.Combine(outDir, "acme", "Subscriber.g.cs")), stdout + stderr);
+        Assert.False(File.Exists(Path.Combine(outDir, "acme", "DraftWidget.g.cs")),
             "a _pending/ draft must never reach generated output: " + stdout + stderr);
     }
 
@@ -182,6 +182,6 @@ public sealed class MetadataDirFallbackTests : IDisposable
         var (exitCode, stdout, stderr) = OwnedRunner.Run(_tmp, ["entity"], "gen", modelDir, "--out", outDir, "--namespace", "Acme.Generated");
 
         Assert.True(exitCode == 0, $"exit={exitCode}\nstdout={stdout}\nstderr={stderr}");
-        Assert.True(File.Exists(Path.Combine(outDir, "Subscriber.g.cs")), stdout + stderr);
+        Assert.True(File.Exists(Path.Combine(outDir, "acme", "Subscriber.g.cs")), stdout + stderr);
     }
 }

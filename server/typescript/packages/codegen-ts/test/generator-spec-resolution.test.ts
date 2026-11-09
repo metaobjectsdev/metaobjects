@@ -122,14 +122,14 @@ describe('runGen — string selection produces identical output to the factory',
 
     const byString = await runGen({
       config: defineConfig({
-        outDir: join(tmp, "s"), extStyle: "none", dbImport: "../db", dialect: "sqlite",
+        outDir: join(tmp, "s"), extStyle: "none", dbImport: "../db", outputLayout: "flat" as const, dialect: "sqlite",
         generators: ["entity"],
       }),
       metadata: root,
     });
     const byFactory = await runGen({
       config: defineConfig({
-        outDir: join(tmp, "f"), extStyle: "none", dbImport: "../db", dialect: "sqlite",
+        outDir: join(tmp, "f"), extStyle: "none", dbImport: "../db", outputLayout: "flat" as const, dialect: "sqlite",
         generators: [entityFile()],
       }),
       metadata: root,
@@ -152,7 +152,7 @@ describe('runGen — string selection produces identical output to the factory',
     const root = await loadRoot();
     const result = await runGen({
       config: defineConfig({
-        outDir: tmp, extStyle: "none", dbImport: "../db", dialect: "sqlite",
+        outDir: tmp, extStyle: "none", dbImport: "../db", outputLayout: "flat" as const, dialect: "sqlite",
         generators: ["entity", routesFile()],
       }),
       metadata: root,
@@ -168,7 +168,7 @@ describe('runGen — string selection produces identical output to the factory',
     const root = await loadRoot();
     await expect(runGen({
       config: defineConfig({
-        outDir: tmp, extStyle: "none", dbImport: "../db", dialect: "sqlite",
+        outDir: tmp, extStyle: "none", dbImport: "../db", outputLayout: "flat" as const, dialect: "sqlite",
         generators: ["bogus"],
       }),
       metadata: root,
@@ -179,7 +179,7 @@ describe('runGen — string selection produces identical output to the factory',
     const root = await loadRoot();
     await expect(runGen({
       config: defineConfig({
-        outDir: tmp, extStyle: "none", dbImport: "../db", dialect: "sqlite",
+        outDir: tmp, extStyle: "none", dbImport: "../db", outputLayout: "flat" as const, dialect: "sqlite",
         generators: ["docs"],
       }),
       metadata: root,

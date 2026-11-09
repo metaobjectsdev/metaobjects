@@ -65,7 +65,7 @@ public class TphCodegenTests
     }
 
     private static string FileContent(IEnumerable<EmittedFile> files, string path) =>
-        files.Single(f => f.Path == path).Content;
+        files.Single(f => System.IO.Path.GetFileName(f.Path) == path).Content;
 
     [Fact]
     public void Plan_resolves_base_and_subtypes_in_stable_order()
@@ -212,9 +212,9 @@ public class TphCodegenTests
         var files = new RoutesGenerator().Generate(ctx).ToList();
 
         // Subtypes emit NO routes file (they are folded into the base).
-        Assert.DoesNotContain(files, f => f.Path == "BridgeAuthRoutes.g.cs");
-        Assert.DoesNotContain(files, f => f.Path == "CopayAuthRoutes.g.cs");
-        Assert.DoesNotContain(files, f => f.Path == "PriorAuthAuthRoutes.g.cs");
+        Assert.DoesNotContain(files, f => System.IO.Path.GetFileName(f.Path) == "BridgeAuthRoutes.g.cs");
+        Assert.DoesNotContain(files, f => System.IO.Path.GetFileName(f.Path) == "CopayAuthRoutes.g.cs");
+        Assert.DoesNotContain(files, f => System.IO.Path.GetFileName(f.Path) == "PriorAuthAuthRoutes.g.cs");
 
         var auth = FileContent(files, "AuthRoutes.g.cs");
         // Polymorphic list + get at the base path; NO base POST (can't create an abstract base).

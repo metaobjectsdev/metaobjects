@@ -58,7 +58,7 @@ public sealed class Fr010CodegenTests
         var files = new OutputParserGenerator().Generate(Ctx(Load(Model))).ToList();
         var src = Assert.Single(files, f => f.Path.EndsWith(".response.cs")).Content;
         // ADR-0056 rule 3: the mirror is the value object's, in its own file.
-        var mirror = Assert.Single(files, f => f.Path == "AnswerPayloadExtracted.g.cs").Content;
+        var mirror = Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "AnswerPayloadExtracted.g.cs").Content;
 
         Assert.Contains("using MetaObjects.Render.Extract;", src);
         // The single (loader-delegating) extract path — no baked snapshot.
@@ -107,7 +107,7 @@ public sealed class Fr010CodegenTests
     public void Prompt_generator_emits_render_format_pair()
     {
         var file = Assert.Single(new OutputPromptGenerator().Generate(Ctx(Load(Model))));
-        Assert.Equal("AnswerOutput.responseFormat.cs", file.Path);
+        Assert.Equal("AnswerOutput.responseFormat.cs", System.IO.Path.GetFileName(file.Path));
         var src = file.Content;
         Assert.Contains("public static class AnswerOutputResponseFormat", src);
         Assert.Contains("private static readonly OutputFormatSpec Spec = new OutputFormatSpec(Format.Json, \"AnswerPayload\", PromptStyle.Guide,", src);
@@ -131,7 +131,7 @@ public sealed class Fr010CodegenTests
         ]}}
         """;
         var file = Assert.Single(new OutputPromptGenerator().Generate(Ctx(Load(m))));
-        Assert.Equal("TextOut.responseFormat.cs", file.Path);
+        Assert.Equal("TextOut.responseFormat.cs", System.IO.Path.GetFileName(file.Path));
         Assert.Contains("Format.Json", file.Content);
     }
 

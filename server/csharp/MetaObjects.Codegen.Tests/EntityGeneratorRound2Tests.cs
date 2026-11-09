@@ -31,7 +31,7 @@ public class EntityGeneratorRound2Tests
     };
 
     private static string File(System.Collections.Generic.IEnumerable<EmittedFile> files, string path) =>
-        files.Single(f => f.Path == path).Content;
+        files.Single(f => System.IO.Path.GetFileName(f.Path) == path).Content;
 
     // ----------------------------------------------------------------- items 2 + 3
 

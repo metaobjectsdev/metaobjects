@@ -38,7 +38,7 @@ async function gen(root: MetaRoot, providedEnumModule?: string): Promise<RunOut>
         outDir: tmp,
         extStyle: "none",
         dbImport: "~/db",
-        dialect: "sqlite",
+        outputLayout: "flat" as const, dialect: "sqlite",
         generators: [entityFile(), queriesFile(), barrel()],
         ...(providedEnumModule !== undefined && { providedEnumModule }),
       }),
@@ -135,7 +135,7 @@ describe("#266 shared enums across multiple entityFile() instances", () => {
           outDir: tmp,
           extStyle: "none",
           dbImport: "~/db",
-          dialect: "sqlite",
+          outputLayout: "flat" as const, dialect: "sqlite",
           generators: [
             entityFile({ filter: (e) => e.name === "Order" }),
             entityFile({ filter: (e) => e.name === "Article" }),

@@ -421,6 +421,6 @@ public class NamesGenerator : PerEntityGenerator
         sb.AppendLine("    };");
         sb.AppendLine("}");
 
-        return new EmittedFile($"{cls}.g.cs", sb.ToString());
+        return new EmittedFile(OutputPaths.Of(entity, $"{cls}.g.cs"), sb.ToString());
     }
 }

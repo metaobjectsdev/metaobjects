@@ -82,7 +82,7 @@ public class ReportExportGenerator : IGenerator
 
         yield return new EmittedFile("ReportExportWriter.g.cs", SharedWriter(ctx, HasDurationColumn(served)));
         foreach (var report in served)
-            yield return new EmittedFile(CSharpNaming.Pascal(report.Name) + "Export.g.cs", ReportModule(report, ctx));
+            yield return new EmittedFile(OutputPaths.Of(report, CSharpNaming.Pascal(report.Name) + "Export.g.cs"), ReportModule(report, ctx));
     }
 
     private static string Literal(bool b) => b ? "true" : "false";

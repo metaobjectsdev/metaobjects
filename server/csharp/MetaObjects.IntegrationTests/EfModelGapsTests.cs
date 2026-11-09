@@ -1040,4 +1040,85 @@ public sealed class EfModelGapsTests
         Assert.Contains("CREATE INDEX IF NOT EXISTS \"ix_tickets_lower_email\" ON \"tickets\" (lower(email));", sql);
         Assert.DoesNotContain("ix_tickets_opened", sql);
     }
+
+    // Ruling R59 — a JSON column's comment. EF 8's JsonColumn carries no comment, so the generated
+    // model puts the text (the field's @description, else its value object's) on the owned type as
+    // an annotation, and the generated design-time differ scaffolds it as COMMENT ON COLUMN, Up and Down.
+
+    private const string JsonCommentModel = """
+    { "metadata.root": { "package": "acme", "children": [
+      { "object.value": { "name": "Meta", "children": [ { "field.string": { "name": "tag" } } ]__VO_DOC__ } },
+      { "object.entity": { "name": "Ticket", "children": [
+        { "source.rdb": { "@table": "tickets" } },
+        { "field.long":   { "name": "id" } },
+        { "field.object": { "name": "meta", "@objectRef": "Meta", "@storage": "jsonb"__FIELD_DOC__ } },
+        { "identity.primary": { "@fields": "id", "@generation": "increment" } }
+      ]}}
+    ]}}
+    """;
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, GeneratedEfModel> CommentModels = new();
+
+    private static GeneratedEfModel CommentModel(string? fieldDoc, string? voDoc = null) =>
+        CommentModels.GetOrAdd($"{fieldDoc}|{voDoc}", key => GeneratedEfModel.Compile(
+            JsonCommentModel
+                .Replace("__FIELD_DOC__", fieldDoc is null ? "" : $", \"@description\": \"{fieldDoc}\"")
+                .Replace("__VO_DOC__", voDoc is null ? "" : $", \"@description\": \"{voDoc}\""),
+            "Acme.Comment" + CommentModels.Count, c => c with { Dialect = "postgres" }));
+
+    private static (IReadOnlyList<MigrationOperation> Up, IReadOnlyList<MigrationOperation> Down) ScaffoldComment(GeneratedEfModel from, GeneratedEfModel to)
+    {
+        using var a = Stock(from);
+        using var b = Stock(to);
+        var differ = Differ(DesignTime(b, to.Assembly));
+        return (differ.GetDifferences(DesignModel(a), DesignModel(b)), differ.GetDifferences(DesignModel(b), DesignModel(a)));
+    }
+
+    [Fact]
+    public void A_json_column_comment_scaffolds_as_sql_up_and_down()
+    {
+        var (up, down) = ScaffoldComment(CommentModel(null), CommentModel("The ticket's metadata."));
+        Assert.Contains(up.OfType<SqlOperation>(), o => o.Sql == "COMMENT ON COLUMN tickets.meta IS 'The ticket''s metadata.';"
+            || o.Sql == "COMMENT ON COLUMN \"tickets\".\"meta\" IS 'The ticket''s metadata.';");
+        Assert.Contains(down.OfType<SqlOperation>(), o => o.Sql.StartsWith("COMMENT ON COLUMN", StringComparison.Ordinal) && o.Sql.EndsWith(" IS NULL;", StringComparison.Ordinal));
+        // A changed comment is one statement; an unchanged one is none.
+        var (changed, _) = ScaffoldComment(CommentModel("A"), CommentModel("B"));
+        Assert.Single(changed.OfType<SqlOperation>(), o => o.Sql.EndsWith(" IS 'B';", StringComparison.Ordinal));
+        var (same, _) = ScaffoldComment(CommentModel("A"), CommentModel("A"));
+        Assert.DoesNotContain(same.OfType<SqlOperation>(), o => o.Sql.StartsWith("COMMENT ON COLUMN", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void A_json_column_without_its_own_description_takes_its_value_objects()
+    {
+        var (up, _) = ScaffoldComment(CommentModel(null), CommentModel(null, voDoc: "Free-form tags."));
+        Assert.Contains(up.OfType<SqlOperation>(), o => o.Sql.EndsWith(" IS 'Free-form tags.';", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void The_snapshot_records_the_json_column_comment()
+    {
+        // The next migration diffs against the snapshot, so the annotation must survive into it.
+        var gen = CommentModel("Snap.");
+        using var db = Stock(gen);
+        var services = DesignTime(db, gen.Assembly);
+        var code = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions
+            .GetRequiredService<Microsoft.EntityFrameworkCore.Migrations.Design.IMigrationsCodeGeneratorSelector>(services)
+            .Select("C#")
+            .GenerateSnapshot("Acme.Migrations", db.GetType(), "AppDbContextModelSnapshot",
+                Microsoft.EntityFrameworkCore.Infrastructure.AccessorExtensions.GetService<IDesignTimeModel>(db).Model);
+        Assert.Contains("\"MetaObjects:JsonColumnComment\", \"Snap.\"", code);
+    }
+
+    [Fact]
+    public async Task A_scaffolded_json_column_comment_lands_on_the_live_column()
+    {
+        await using var pg = await PostgresContainer.StartAsync();
+        using (var db = Stock(CommentModel(null), pg.ConnectionString)) await db.Database.EnsureCreatedAsync();
+        await Exec(pg.ConnectionString, Sql(ScaffoldComment(CommentModel(null), CommentModel("The ticket's metadata.")).Up));
+        const string read = "SELECT col_description('tickets'::regclass, (SELECT attnum FROM pg_attribute WHERE attrelid = 'tickets'::regclass AND attname = 'meta'))";
+        Assert.Equal("The ticket's metadata.", (string)(await Rows(pg.ConnectionString, read))[0][0]!);
+        await Exec(pg.ConnectionString, Sql(ScaffoldComment(CommentModel(null), CommentModel("The ticket's metadata.")).Down));
+        Assert.Null((await Rows(pg.ConnectionString, read))[0][0]);
+    }
 }

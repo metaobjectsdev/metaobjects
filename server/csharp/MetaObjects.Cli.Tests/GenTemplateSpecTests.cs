@@ -51,7 +51,7 @@ public sealed class GenTemplateSpecTests : IDisposable
         Assert.True(File.Exists(summary), "template-spec output Widget.summary.txt should exist");
         Assert.Equal("name=Widget pkg=acme\n", File.ReadAllText(summary));
         // The default EF suite still runs.
-        Assert.True(File.Exists(Path.Combine(OutDir, "Widget.g.cs")));
+        Assert.True(File.Exists(Path.Combine(OutDir, "acme", "Widget.g.cs")));
     }
 
     [Fact]

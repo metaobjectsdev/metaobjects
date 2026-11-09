@@ -155,7 +155,7 @@ public class TphM2mRoutesTests
     }
 
     private static string FileContent(IEnumerable<EmittedFile> files, string path) =>
-        files.Single(f => f.Path == path).Content;
+        files.Single(f => System.IO.Path.GetFileName(f.Path) == path).Content;
 
     /// <summary>
     /// The full text of one `app.MapGet(prefix + "&lt;urlLiteral&gt;", ...` registration,
@@ -258,7 +258,7 @@ public class TphM2mRoutesTests
         //      fixing only the base-class clause would have left behind: the compile error
         //      at least announces itself.
         var files = new EntityGenerator().Generate(Ctx(Load())).ToList();
-        Assert.DoesNotContain(files, f => f.Path == "ScopedAuth.g.cs");
+        Assert.DoesNotContain(files, f => System.IO.Path.GetFileName(f.Path) == "ScopedAuth.g.cs");
 
         var priorAuth = FileContent(files, "PriorAuthAuth.g.cs");
         Assert.Contains("public class PriorAuthAuth : Auth", priorAuth);
@@ -290,10 +290,10 @@ public class TphM2mRoutesTests
     public void Subtypes_still_emit_no_standalone_routes_file()
     {
         var files = new RoutesGenerator().Generate(Ctx(Load())).ToList();
-        Assert.DoesNotContain(files, f => f.Path == "BridgeAuthRoutes.g.cs");
-        Assert.DoesNotContain(files, f => f.Path == "CopayAuthRoutes.g.cs");
-        Assert.DoesNotContain(files, f => f.Path == "PriorAuthAuthRoutes.g.cs");
-        Assert.DoesNotContain(files, f => f.Path == "ScopedAuthRoutes.g.cs");
+        Assert.DoesNotContain(files, f => System.IO.Path.GetFileName(f.Path) == "BridgeAuthRoutes.g.cs");
+        Assert.DoesNotContain(files, f => System.IO.Path.GetFileName(f.Path) == "CopayAuthRoutes.g.cs");
+        Assert.DoesNotContain(files, f => System.IO.Path.GetFileName(f.Path) == "PriorAuthAuthRoutes.g.cs");
+        Assert.DoesNotContain(files, f => System.IO.Path.GetFileName(f.Path) == "ScopedAuthRoutes.g.cs");
     }
 
     [Fact]

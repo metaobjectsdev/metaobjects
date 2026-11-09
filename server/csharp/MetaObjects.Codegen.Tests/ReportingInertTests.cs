@@ -104,9 +104,9 @@ public class ReportingInertTests
     private const string DbContextGeneratorName = "db-context";
     private const string FilterAllowlistGeneratorName = "filter-allowlist";
     private const string RoutesGeneratorName = "routes";
-    private const string RowFile = "StoreTotals.g.cs";
-    private const string AllowlistFile = "StoreTotalsFilterAllowlist.g.cs";
-    private const string RoutesFile = "StoreTotalsRoutes.g.cs";
+    private const string RowFile = "acme/shop/StoreTotals.g.cs";
+    private const string AllowlistFile = "acme/shop/StoreTotalsFilterAllowlist.g.cs";
+    private const string RoutesFile = "acme/shop/StoreTotalsRoutes.g.cs";
     private const string DbContextFile = "AppDbContext.g.cs";
 
     /// <summary>The file each report-aware generator adds for the view-backed report.</summary>
@@ -125,7 +125,7 @@ public class ReportingInertTests
     ];
 
     private const string ExportWriterFile = "ReportExportWriter.g.cs";
-    private const string ExportModuleFile = "StoreTotalsExport.g.cs";
+    private const string ExportModuleFile = "acme/shop/StoreTotalsExport.g.cs";
 
     private const string ApiDocsGeneratorName = "api-docs";
     private const string ApiDocsReportPage = "api/csharp/acme/shop/StoreTotals.md";

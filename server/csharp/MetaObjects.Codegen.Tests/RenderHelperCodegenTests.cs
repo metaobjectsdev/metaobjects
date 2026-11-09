@@ -67,7 +67,7 @@ public sealed class RenderHelperCodegenTests
         var templateRoot = TemplateRoot(("pages/welcome", "Hello {{name}}"));
 
         var file = Assert.Single(new RenderHelperGenerator(templateRoot).Generate(Ctx(root)));
-        Assert.Equal("WelcomePage.render.cs", file.Path);
+        Assert.Equal("WelcomePage.render.cs", System.IO.Path.GetFileName(file.Path));
         Assert.Contains("public static class WelcomePageRenderHelper", file.Content);
         Assert.Contains("public static string Render(Welcome payload, global::MetaObjects.Render.IProvider provider)", file.Content);
 
@@ -149,7 +149,7 @@ public sealed class RenderHelperCodegenTests
             ("email/text", "Hello {{name}}"));
 
         var file = Assert.Single(new RenderHelperGenerator(templateRoot).Generate(Ctx(root)));
-        Assert.Equal("WelcomeEmail.render.cs", file.Path);
+        Assert.Equal("WelcomeEmail.render.cs", System.IO.Path.GetFileName(file.Path));
         Assert.Contains("public static global::MetaObjects.Render.EmailDocument Render(Welcome payload", file.Content);
 
         var asm = CompileToAssembly([file.Content, .. GeneratedValueObjects.Sources(root)]);

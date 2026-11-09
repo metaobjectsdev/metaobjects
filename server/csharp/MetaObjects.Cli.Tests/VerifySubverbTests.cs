@@ -210,7 +210,7 @@ public sealed class VerifySubverbTests : IDisposable
     {
         File.WriteAllText(Path.Combine(MetaDir, "meta.ai.json"), EntityMetadata);
         GenSuite.Run(MetaDir, OutDir, "Acme.Generated");
-        File.AppendAllText(Path.Combine(OutDir, "Subscriber.g.cs"), "\n// drift\n");
+        File.AppendAllText(Path.Combine(OutDir, "acme", "Subscriber.g.cs"), "\n// drift\n");
 
         var r = VerifyCommand.RunSubverbs(TemplatesOpts(templates: false, codegen: true));
         Assert.NotEqual(0, r.ExitCode);
@@ -222,7 +222,7 @@ public sealed class VerifySubverbTests : IDisposable
     {
         File.WriteAllText(Path.Combine(MetaDir, "meta.ai.json"), EntityMetadata);
         GenSuite.Run(MetaDir, OutDir, "Acme.Generated");
-        File.AppendAllText(Path.Combine(OutDir, "Subscriber.g.cs"), "\n// drift\n");
+        File.AppendAllText(Path.Combine(OutDir, "acme", "Subscriber.g.cs"), "\n// drift\n");
 
         var before = SnapshotDir(OutDir);
         VerifyCommand.RunSubverbs(TemplatesOpts(templates: false, codegen: true));

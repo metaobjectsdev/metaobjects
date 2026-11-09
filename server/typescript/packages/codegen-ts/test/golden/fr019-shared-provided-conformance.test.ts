@@ -62,7 +62,7 @@ async function gen(
         outDir: tmp,
         extStyle: "none",
         dbImport: "~/db",
-        dialect: "postgres",
+        outputLayout: "flat" as const, dialect: "postgres",
         generators:
           only !== undefined ? [entityFile({ filter: only })] : [entityFile(), queriesFile(), barrel()],
         ...(providedEnumModule !== undefined && { providedEnumModule }),

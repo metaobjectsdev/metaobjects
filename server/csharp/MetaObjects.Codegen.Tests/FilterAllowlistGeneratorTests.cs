@@ -45,7 +45,7 @@ public class FilterAllowlistGeneratorTests
         ]}}
         """;
         var file = Assert.Single(new FilterAllowlistGenerator().Generate(Ctx(Load(model))));
-        Assert.Equal("AuthorFilterAllowlist.g.cs", file.Path);
+        Assert.Equal("AuthorFilterAllowlist.g.cs", System.IO.Path.GetFileName(file.Path));
         var src = file.Content;
         // Field set is the empty initializer block.
         Assert.Contains("public static readonly HashSet<string> Fields = new(System.StringComparer.Ordinal)", src);
@@ -139,11 +139,11 @@ public class FilterAllowlistGeneratorTests
         var files = new FilterAllowlistGenerator().Generate(Ctx(Load(ProjectionModel))).ToList();
         Assert.Equal(
             new[] { "AuthorFilterAllowlist.g.cs", "AuthorViewFilterAllowlist.g.cs" },
-            files.Select(f => f.Path).OrderBy(p => p, StringComparer.Ordinal).ToArray());
+            files.Select(f => System.IO.Path.GetFileName(f.Path)).OrderBy(p => p, StringComparer.Ordinal).ToArray());
 
         // The projection's own @filterable field is in its allowlist, not merely an
         // empty stub emitted to satisfy the reference.
-        var view = Assert.Single(files, f => f.Path == "AuthorViewFilterAllowlist.g.cs");
+        var view = Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "AuthorViewFilterAllowlist.g.cs");
         Assert.Contains("\"name\"", view.Content);
     }
 
@@ -157,7 +157,7 @@ public class FilterAllowlistGeneratorTests
         var ctx = Ctx(Load(ProjectionModel));
         var routes = new RoutesGenerator().Generate(ctx).ToList();
         var emitted = new FilterAllowlistGenerator().Generate(ctx)
-            .Select(f => f.Path).ToHashSet(StringComparer.Ordinal);
+            .Select(f => System.IO.Path.GetFileName(f.Path)).ToHashSet(StringComparer.Ordinal);
 
         var referenced = routes
             .SelectMany(f => System.Text.RegularExpressions.Regex

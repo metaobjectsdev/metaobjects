@@ -52,11 +52,11 @@ public sealed class LibrariesConfigTests : IDisposable
         var (exitCode, stdout, stderr) = OwnedRunner.Run(_tmp, ["entity"], "gen", "--out", outDir, "--namespace", "Acme.Generated");
 
         Assert.True(exitCode == 0, $"exit={exitCode}\nstdout={stdout}\nstderr={stderr}");
-        Assert.True(File.Exists(Path.Combine(outDir, "AgentCall.g.cs")), stdout + stderr);
+        Assert.True(File.Exists(Path.Combine(outDir, "acme", "trace", "AgentCall.g.cs")), stdout + stderr);
         // The inherited field from the library's LlmCallBase must be on the generated
         // class — proof the library's base actually resolved, not merely that the
         // load didn't error.
-        Assert.Contains("TraceId", File.ReadAllText(Path.Combine(outDir, "AgentCall.g.cs")));
+        Assert.Contains("TraceId", File.ReadAllText(Path.Combine(outDir, "acme", "trace", "AgentCall.g.cs")));
     }
 
     [Fact]
@@ -82,8 +82,8 @@ public sealed class LibrariesConfigTests : IDisposable
         var (exitCode, stdout, stderr) = OwnedRunner.Run(_tmp, ["entity"], "gen", modelDir, "--out", outDir, "--namespace", "Acme.Generated");
 
         Assert.True(exitCode == 0, $"exit={exitCode}\nstdout={stdout}\nstderr={stderr}");
-        Assert.True(File.Exists(Path.Combine(outDir, "AgentCall.g.cs")), stdout + stderr);
-        Assert.Contains("TraceId", File.ReadAllText(Path.Combine(outDir, "AgentCall.g.cs")));
+        Assert.True(File.Exists(Path.Combine(outDir, "acme", "trace", "AgentCall.g.cs")), stdout + stderr);
+        Assert.Contains("TraceId", File.ReadAllText(Path.Combine(outDir, "acme", "trace", "AgentCall.g.cs")));
     }
 
     [Fact]

@@ -115,7 +115,7 @@ public class FilterAllowlistGenerator : PerEntityGenerator
         sb.AppendLine("    };");
         sb.AppendLine("}");
 
-        return new EmittedFile($"{cls}FilterAllowlist.g.cs", sb.ToString());
+        return new EmittedFile(OutputPaths.Of(entity, $"{cls}FilterAllowlist.g.cs"), sb.ToString());
     }
 
     /// <summary>

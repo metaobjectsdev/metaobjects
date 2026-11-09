@@ -541,7 +541,7 @@ public class RoutesGenerator : PerEntityGenerator
         AppendOmitResultClass(sb);
         sb.AppendLine("}");
 
-        return new EmittedFile($"{cls}Routes.g.cs", sb.ToString());
+        return new EmittedFile(OutputPaths.Of(entity, $"{cls}Routes.g.cs"), sb.ToString());
     }
 
     // F22 — the write verbs on a read-only projection, each answering the cross-port
@@ -750,7 +750,7 @@ public class RoutesGenerator : PerEntityGenerator
         AppendOmitResultClass(sb);
         sb.AppendLine("}");
 
-        return new EmittedFile($"{baseCls}Routes.g.cs", sb.ToString());
+        return new EmittedFile(OutputPaths.Of(baseEntity, $"{baseCls}Routes.g.cs"), sb.ToString());
     }
 
     // FR-036 #4 — the wire keys of the @required fields whose keys must be PRESENT (and

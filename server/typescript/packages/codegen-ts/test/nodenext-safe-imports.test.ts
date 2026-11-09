@@ -60,7 +60,7 @@ async function genTo(dir: string, extStyle: "js" | "none" = "js"): Promise<void>
     config: defineConfig({
       outDir: dir,
       dbImport: "../db",
-      dialect: "sqlite",
+      outputLayout: "flat" as const, dialect: "sqlite",
       extStyle,
       // The list must stay equal to `meta init`'s SCAFFOLDED_GENERATOR_NAMES — this gate's
       // whole claim is about the output a stock scaffold produces, so a generator that

@@ -65,8 +65,8 @@ public sealed class WireSettingCliTests : IDisposable
     public void With_no_setting_gen_writes_the_language_standard_form()
     {
         var outDir = Generate("generated-native");
-        var item = File.ReadAllText(Path.Combine(outDir, "Item.g.cs"));
-        var price = File.ReadAllText(Path.Combine(outDir, "Price.g.cs"));
+        var item = File.ReadAllText(Path.Combine(outDir, "acme", "Item.g.cs"));
+        var price = File.ReadAllText(Path.Combine(outDir, "acme", "Price.g.cs"));
         Assert.Contains("[DecimalWire.Number(10, 2)]", item);
         Assert.Contains("[DecimalWire.Number(12, 2)]", price);
         Assert.DoesNotContain("WhenWritingNull", price);
@@ -77,8 +77,8 @@ public sealed class WireSettingCliTests : IDisposable
     {
         WriteConfig("\"decimals\": \"string\", \"nullMembers\": \"omit\"");
         var outDir = Generate("generated-portable");
-        var item = File.ReadAllText(Path.Combine(outDir, "Item.g.cs"));
-        var price = File.ReadAllText(Path.Combine(outDir, "Price.g.cs"));
+        var item = File.ReadAllText(Path.Combine(outDir, "acme", "Item.g.cs"));
+        var price = File.ReadAllText(Path.Combine(outDir, "acme", "Price.g.cs"));
         Assert.Contains("[DecimalWire.Declared(10, 2)]", item);
         Assert.Contains("[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]", price);
     }

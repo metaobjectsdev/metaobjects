@@ -39,7 +39,7 @@ async function emittedPaths(generators: Generator[]): Promise<string[]> {
   const dir = mkdtempSync(join(tmpdir(), "report-no-ui-"));
   try {
     const result = await runGen({
-      config: defineConfig({ outDir: dir, extStyle: "none", dbImport: "../db", dialect: "postgres", generators }),
+      config: defineConfig({ outDir: dir, extStyle: "none", dbImport: "../db", outputLayout: "flat" as const, dialect: "postgres", generators }),
       metadata: await loadWith(),
       dryRun: true,
     });
@@ -95,7 +95,7 @@ describe("a served report gets a list hook and no other UI-tier file", () => {
       const dir = mkdtempSync(join(tmpdir(), "report-hooks-"));
       try {
         await runGen({
-          config: defineConfig({ outDir: dir, extStyle: "none", dbImport: "../db", dialect: "postgres", generators: [make()] }),
+          config: defineConfig({ outDir: dir, extStyle: "none", dbImport: "../db", outputLayout: "flat" as const, dialect: "postgres", generators: [make()] }),
           metadata: await loadWith(),
         });
         const out = readFileSync(join(dir, "StoreTotals.hooks.ts"), "utf8");
@@ -157,7 +157,7 @@ describe("a keyless projection gets a list hook and no detail hook", () => {
     const obj = root.findObject("TagLabel");
     if (!obj) throw new Error("TagLabel not found");
     const ctx = makeRenderContext({
-      dialect: "sqlite", loadedRoot: root, outDir: "/x", dbImport: "~/db",
+      outputLayout: "flat" as const, dialect: "sqlite", loadedRoot: root, outDir: "/x", dbImport: "~/db",
       pkMap: buildPkMap(root), relationMap: buildRelationMap(root),
     });
     return { obj, out: renderHooksFile(obj, ctx) };

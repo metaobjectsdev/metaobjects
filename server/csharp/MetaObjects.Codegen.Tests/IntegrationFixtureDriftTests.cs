@@ -98,9 +98,10 @@ public class IntegrationFixtureDriftTests
     {
         var generated = Regenerate();
 
+        // Paths are package-keyed (R39): compare the relative paths, subdirectories included.
         var generatedPaths = generated.Select(f => f.Path).OrderBy(p => p, StringComparer.Ordinal).ToList();
-        var committedPaths = Directory.EnumerateFiles(CommittedGeneratedDir, "*.g.cs")
-            .Select(Path.GetFileName)
+        var committedPaths = Directory.EnumerateFiles(CommittedGeneratedDir, "*.g.cs", SearchOption.AllDirectories)
+            .Select(p => Path.GetRelativePath(CommittedGeneratedDir, p).Replace(Path.DirectorySeparatorChar, '/'))
             .OrderBy(p => p, StringComparer.Ordinal)
             .ToList();
 
@@ -135,6 +136,10 @@ public class IntegrationFixtureDriftTests
     public void Regenerate_committed_fixtures()
     {
         foreach (var file in Regenerate())
-            File.WriteAllText(Path.Combine(CommittedGeneratedDir, file.Path), file.Content);
+        {
+            var path = Path.Combine(CommittedGeneratedDir, file.Path);
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path, file.Content);
+        }
     }
 }

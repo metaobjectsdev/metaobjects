@@ -296,7 +296,7 @@ public class EjectContractTests
             var packaged = Run(GeneratorRegistry.Get(stableName)!.Factory(new GeneratorBuildContext(corpus.TemplateRoot)));
             var owned = Run(Instantiate(copy.Assembly, corpus.TemplateRoot));
             emitted += packaged.Count;
-            Assert.Equal(packaged.Select(f => f.Path), owned.Select(f => f.Path));
+            Assert.Equal(packaged.Select(f => System.IO.Path.GetFileName(f.Path)), owned.Select(f => System.IO.Path.GetFileName(f.Path)));
             for (var i = 0; i < packaged.Count; i++)
                 Assert.Equal(Expected(packaged[i].Content), owned[i].Content);
 

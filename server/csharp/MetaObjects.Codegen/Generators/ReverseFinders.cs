@@ -180,6 +180,6 @@ public static class ReverseFinderBuilder
         }
 
         sb.AppendLine("}");
-        return new EmittedFile($"{queriesCls}.g.cs", sb.ToString());
+        return new EmittedFile(OutputPaths.Of(entity, $"{queriesCls}.g.cs"), sb.ToString());
     }
 }

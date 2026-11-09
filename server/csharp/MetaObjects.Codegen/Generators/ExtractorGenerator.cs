@@ -128,7 +128,7 @@ public class ExtractorGenerator : IGenerator
 
         sb.AppendLine("}");
 
-        return new EmittedFile($"{extractorClass}.cs", sb.ToString());
+        return new EmittedFile(OutputPaths.Of(tmpl, $"{extractorClass}.cs"), sb.ToString());
     }
 
     private static string MapperName(MetaData vo, MetaData root) => $"ToStrict_{ValueObjectNames.MemberKey(vo, root)}";

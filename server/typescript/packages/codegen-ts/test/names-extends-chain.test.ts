@@ -84,7 +84,7 @@ async function generate(
   const dir = mkdtempSync(join(import.meta.dir, "tmp-names-extends-"));
   await runGen({
     config: defineConfig({
-      outDir: dir, extStyle: "none", dbImport: "~/server/db", dialect: "sqlite",
+      outDir: dir, extStyle: "none", dbImport: "~/server/db", outputLayout: "flat" as const, dialect: "sqlite",
       generators: [namesFile(namesOpts), entityFile()],
     }),
     metadata: root,
@@ -323,7 +323,7 @@ describe("a scoped run still names the shared table", () => {
     try {
       await runGen({
         config: defineConfig({
-          outDir: dir, extStyle: "none", dbImport: "~/server/db", dialect: "sqlite",
+          outDir: dir, extStyle: "none", dbImport: "~/server/db", outputLayout: "flat" as const, dialect: "sqlite",
           generators: [namesFile(), entityFile()],
         }),
         metadata: root,

@@ -128,4 +128,16 @@ public sealed class IdentityStartDialectTests
         Assert.DoesNotContain("Npgsql:IdentitySequenceOptions", context);
         Assert.Contains(warnings, w => w.Contains("@sequenceStart") && w.Contains("migrate.dialect") && w.Contains("GenConfig.Dialect"));
     }
+
+    // Ruling R56 (item 3): @sequenceName is not refused — it describes an adopted database whose
+    // sequence kept its name, which EF cannot express — and it is said once, naming the objects.
+    [Fact]
+    public void A_sequence_name_warns_once_and_generates()
+    {
+        var model = Model.Replace("\"@sequenceStart\": 100", "\"@sequenceStart\": 100, \"@sequenceName\": \"tickets_seq\"");
+        var (files, warnings) = Run("postgres", model);
+        Assert.Contains(files, f => f.Path == "AppDbContext.g.cs");
+        var warning = Assert.Single(warnings);
+        Assert.Contains("@sequenceName is not in the EF model (acme::Ticket)", warning);
+    }
 }

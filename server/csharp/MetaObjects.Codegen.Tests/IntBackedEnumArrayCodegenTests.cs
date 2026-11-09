@@ -174,10 +174,10 @@ public class IntBackedEnumArrayCodegenTests
         """));
 
         var files = new EntityGenerator().Generate(ctx).ToList();
-        var doc = files.Single(f => f.Path == "Doc.g.cs").Content;
+        var doc = files.Single(f => System.IO.Path.GetFileName(f.Path) == "Doc.g.cs").Content;
         Assert.Contains("public IList<Status>? History { get; set; }\n", doc.Replace("\r\n", "\n"));
         Assert.Contains("public IList<Status> Trail { get; set; } = new List<Status>();", doc);
-        var address = files.Single(f => f.Path == "Address.g.cs").Content;
+        var address = files.Single(f => System.IO.Path.GetFileName(f.Path) == "Address.g.cs").Content;
         Assert.Contains("public IList<Status>? Tags { get; set; }", address);
 
         var errors = CompileErrors(ctx);

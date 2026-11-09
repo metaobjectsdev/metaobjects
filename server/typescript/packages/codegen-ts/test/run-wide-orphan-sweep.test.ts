@@ -48,7 +48,7 @@ async function gen(
   extra: { generators?: Generator[]; entityFilter?: string[]; generatorNames?: string[]; dryRun?: boolean } = {},
 ) {
   return runGen({
-    config: { outDir: OUT, extStyle: "js", generators: extra.generators ?? [entityFile()] },
+    config: { outDir: OUT, extStyle: "js", outputLayout: "flat", generators: extra.generators ?? [entityFile()] },
     metadata: await model(...names),
     projectRoot,
     ...(extra.entityFilter !== undefined && { entityFilter: extra.entityFilter }),
@@ -177,7 +177,7 @@ describe("nested output directories", () => {
   async function nested(generators: Generator[]) {
     return runGen({
       config: {
-        outDir: OUT,
+        outDir: OUT, outputLayout: "flat",
         extStyle: "js",
         targets: { inner: { outDir: `${OUT}/inner` } },
         generators,

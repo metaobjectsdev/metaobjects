@@ -222,7 +222,7 @@ public class RenderHelperGenerator : IGenerator
         }
 
         sb.AppendLine("}");
-        return new EmittedFile($"{templateName}.render.cs", sb.ToString());
+        return new EmittedFile(OutputPaths.Of(tmpl, $"{templateName}.render.cs"), sb.ToString());
     }
 
     // -------------------------------------------------------------------------

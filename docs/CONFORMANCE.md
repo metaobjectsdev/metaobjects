@@ -1,6 +1,6 @@
 # Conformance coverage
 
-The MetaObjects standard ships **36 shared conformance corpora** under
+The MetaObjects standard ships **37 shared conformance corpora** under
 [`fixtures/`](../fixtures/). Every port runs every corpus that is *applicable to
 it* and asserts the same expected behaviour against the same fixtures. **This page
 is the inverse index**: fixture → feature doc + per-port pass status, and it is the
@@ -42,7 +42,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/validation-conformance/`](../fixtures/validation-conformance/) | 42 cases | ✓ (generated Zod + run-time `runValidators`) | ✓ | ✓ | ✓ | ✓ (generated Pydantic + run-time `run_validators`) |
 | [`fixtures/registry-conformance/`](../fixtures/registry-conformance/) | 1 canonical manifest | ✓ (reference emitter) | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/object-model-conformance/`](../fixtures/object-model-conformance/) | 1 shared metadata fixture (per-port scenarios) | ✓ | ✓ | ✓ | ✓ | ✓ |
-| [`fixtures/codegen-conformance/`](../fixtures/codegen-conformance/) | 6 shared inputs; `shared-provided-enum` carries the enum-type decision table and `cross-package-binding` the reference-binding decision table (ADR-0059) every port answers | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [`fixtures/codegen-conformance/`](../fixtures/codegen-conformance/) | 7 shared inputs; `shared-provided-enum` carries the enum-type decision table and `cross-package-binding` the reference-binding decision table (ADR-0059) every port answers; `xpkg-value-object-refs` (ruling R52) is run by C# and TypeScript only so far — Java, Kotlin and Python in [#544](https://github.com/metaobjectsdev/metaobjects/issues/544)–#549 | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/template-codegen-conformance/`](../fixtures/template-codegen-conformance/) | 3 | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/template-output-render-conformance/`](../fixtures/template-output-render-conformance/) | 5 | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/generator-registry-conformance/`](../fixtures/generator-registry-conformance/) | 1 canonical manifest | ✓ | ✓ | ✓ | ✓ | ✓ |
@@ -180,19 +180,20 @@ canonical (`fixtures/registry-conformance/expected-registry.json`).
 - *Kind 2, for comparison* (`ports`, language-specific by nature, never "pending"):
   `@dbSetName` (`["csharp"]`) and `@objectAdapter` (`["java", "kotlin"]`).
 
-**Generated paths keyed by package** (ruling R39 — decided, pending, next upstream batch).
-Every port's generated output will be keyed by the metadata package, so two packages that each
-declare an object of the same name never collide on an output path. Not built yet; the current
-state per port:
+**Generated paths keyed by package** (ruling R39). Every port's generated output is keyed by
+the metadata package, so two packages that each declare an object of the same name never
+collide on an output path. State per port:
 
-- *C#:* the per-object generators write a flat `<Class>.g.cs`. They will route through one
-  `<package>/<file>` helper. The path follows the metadata package, not `PackageNamespaces`.
-- *TypeScript:* `outputLayout` defaults to `flat`. The default flips to package-keyed, which
-  moves every relative import and many goldens.
-- *Python:* only the flat layout exists. A package layout is new work.
-- *Java and Kotlin:* files land in the mapped Java package directories, so two metadata
+- *Done, C#:* every per-object generator writes through `OutputPaths.Of`
+  (`<package segments>/<file>`; root-level objects at the root). The path follows the metadata
+  package, not `PackageNamespaces`; namespaces are unchanged. Test: `OutputPathsTests`.
+- *TODO, TypeScript:* `outputLayout` still defaults to `"flat"` (`DEFAULT_OUTPUT_LAYOUT`); the
+  `"package"` layout exists and keeps two same-named objects apart. The flip moves the documented
+  quickstart's imports and the CLI fixtures that read flat paths.
+- *TODO, Python:* only the flat layout exists. A package layout is new work.
+- *TODO, Java and Kotlin:* files land in the mapped Java package directories, so two metadata
   packages mapped to one Java package would collide.
-- Every port gets a two-packages test.
+- Tracked in [#544](https://github.com/metaobjectsdev/metaobjects/issues/544)–#549.
 
 **Native index vocabulary and `@description` in the ORM models** (R33). `meta migrate` creates
 every index (`identity.secondary`, `index.lookup`, a field's `@unique`, with `@where`, `@using`,

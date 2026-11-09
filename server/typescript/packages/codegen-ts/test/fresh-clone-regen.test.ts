@@ -38,7 +38,7 @@ async function gen(opts: { baselineFresh?: boolean } = {}) {
       outDir: join(projectRoot, "generated"),
       extStyle: "none",
       dbImport: "~/server/db",
-      dialect: "sqlite",
+      outputLayout: "flat" as const, dialect: "sqlite",
       generators: [entityFile()],
     }),
     metadata: root,

@@ -128,7 +128,10 @@ public class CrossPackageBindingConformanceTests
         var files = new Dictionary<string, string>();
         foreach (var gen in new IGenerator[] { new EntityGenerator(), new DbContextGenerator(), new RoutesGenerator() })
             foreach (var file in gen.Generate(ctx))
+            {
                 files.TryAdd(file.Path, file.Content);
+                files.TryAdd(System.IO.Path.GetFileName(file.Path), file.Content);
+            }
         return files;
     }
 

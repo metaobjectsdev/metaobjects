@@ -441,7 +441,7 @@ public class EntityGenerator : IGenerator
         sb.AppendLine();
         EmitClassBodyTrailer(sb, entity, ctx);
         sb.AppendLine("}");
-        return new EmittedFile($"{className}.g.cs", sb.ToString());
+        return new EmittedFile(OutputPaths.Of(entity, $"{className}.g.cs"), sb.ToString());
     }
 
     // Extension hook — owns the per-class header for a mapped entity/projection: the
@@ -704,7 +704,7 @@ public class EntityGenerator : IGenerator
         sb.AppendLine();
         EmitClassBodyTrailer(sb, entity, ctx);
         sb.AppendLine("}");
-        return new EmittedFile($"{className}.g.cs", sb.ToString());
+        return new EmittedFile(OutputPaths.Of(entity, $"{className}.g.cs"), sb.ToString());
     }
 
     // A subtype-only scalar property: [Column]-mapped, with the field's validator
@@ -922,7 +922,7 @@ public class EntityGenerator : IGenerator
         sb.AppendLine();
         EmitClassBodyTrailer(sb, entity, ctx);
         sb.AppendLine("}");
-        return new EmittedFile($"{className}.g.cs", sb.ToString());
+        return new EmittedFile(OutputPaths.Of(entity, $"{className}.g.cs"), sb.ToString());
     }
 
     // Plain POCO for a value object nested by an owned-type navigation. No [Table] /
@@ -1017,7 +1017,7 @@ public class EntityGenerator : IGenerator
         sb.AppendLine();
         EmitClassBodyTrailer(sb, vo, ctx);
         sb.AppendLine("}");
-        return new EmittedFile($"{className}.g.cs", sb.ToString());
+        return new EmittedFile(OutputPaths.Of(vo, $"{className}.g.cs"), sb.ToString());
     }
 
     /// <summary>

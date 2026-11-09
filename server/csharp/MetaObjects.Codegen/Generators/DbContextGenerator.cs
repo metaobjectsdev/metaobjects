@@ -108,7 +108,9 @@ public class DbContextGenerator : IGenerator
                 ctx.Claim(dbSets, CSharpNaming.ViewDbSetName(o), o.ResolutionKey(), "rename one, or set @dbSetName on one of them");
         }
 
-        // OnModelCreating body lines (8-space indented), in a stable order.
+        // OnModelCreating body lines (8-space indented), in a stable order. INVARIANT: each entry is
+        // one complete C# statement — a guard and the statement it guards are ONE entry — because a
+        // large model is split into ConfigureModelNN methods at any entry boundary.
         var modelLines = new List<string>();
 
         // The M:N navigations, derived ONCE. M2MNavigationBuilder.For re-walks the
@@ -209,7 +211,7 @@ public class DbContextGenerator : IGenerator
             EmitShapeInheritedFacets(owner, e, configFields, ctx, modelLines);
             EmitDefaultValueConfig(e, configFields, ctx, modelLines);
             if (IdentityStartOn(ctx)) EmitIdentityStartConfig(owner, e, modelLines);
-            EmitCommentConfig(owner, e, configFields, modelLines);
+            EmitCommentConfig(owner, e, configFields, modelLines, ctx);
             EmitIndexConfig(owner, e, ctx, modelLines);
 
             // identity.primary @generation: assigned — the caller supplies the key. EF's
@@ -331,6 +333,16 @@ public class DbContextGenerator : IGenerator
             ctx.Warn($"{Name}: @sequenceStart is not in the EF model: the project names no Postgres " +
                 "dialect (.metaobjects/config.json migrate.dialect: \"postgres\"; a self-hosted runner sets GenConfig.Dialect), " +
                 "and the design-time services that keep a changed start from restarting the sequence are Npgsql's concern. meta migrate still creates the start.");
+        // Ruling R56 (item 3): @sequenceName describes an adopted database whose sequence kept its name.
+        // EF never names an identity's sequence and Npgsql cannot express it, so it is not in the model;
+        // that is not an error. Said once per run, naming every object that declares it.
+        var namedSequences = written
+            .Where(o => o.PrimaryIdentity()?.Attr(DbConstants.IDENTITY_ATTR_SEQUENCE_NAME) is string { Length: > 0 })
+            .Select(o => o.ResolutionKey())
+            .ToList();
+        if (namedSequences.Count > 0)
+            ctx.Warn($"{Name}: @sequenceName is not in the EF model ({string.Join(", ", namedSequences)}): EF never names an " +
+                "identity's sequence and Npgsql cannot express it. The database keeps the name it has, and meta migrate uses it.");
 
         var sb = new StringBuilder();
         EmitUsings(sb, needsMetadataUsing, ctx);
@@ -350,6 +362,8 @@ public class DbContextGenerator : IGenerator
         if (modelLines.Any(l => l.Contains(MapJsonbHelperName))) EmitMapJsonbHelper(sb);
         sb.AppendLine("}");
         if (modelLines.Any(l => l.Contains(DurationIntervalHelperName + "."))) EmitDurationIntervalHelper(sb);
+        // The design-time services also scaffold a JSON column's comment (ruling R59).
+        identityStart |= IdentityStartOn(ctx) && modelLines.Any(l => l.Contains(JsonColumnCommentAnnotation, StringComparison.Ordinal));
         if (!identityStart) return [new EmittedFile("AppDbContext.g.cs", sb.ToString())];
         var services = ContextClassName(ctx) + IdentityStartServicesSuffix;
         return [new EmittedFile("AppDbContext.g.cs", sb.ToString()), new EmittedFile($"{services}.g.cs", IdentityStartDesignTimeServicesFile(ctx, services))];
@@ -957,7 +971,8 @@ public class DbContextGenerator : IGenerator
             namespace {{ns}};
 
             /// <summary>Design-time only: a start-only identity change scaffolds as SQL that records the
-            /// start and moves the counter forward to it, never back, instead of Npgsql's RESTART. EF runs
+            /// start and moves the counter forward to it, never back, instead of Npgsql's RESTART; and a
+            /// JSON column's comment, which EF 8 cannot carry, scaffolds as COMMENT ON COLUMN. EF runs
             /// it for <c>dotnet ef migrations add</c>; nothing is registered at runtime.</summary>
             public sealed class {{className}} : IDesignTimeServices
             {
@@ -1006,9 +1021,42 @@ public class DbContextGenerator : IGenerator
                             alter.OldColumn[Options] = change.OldOptions;
                             result.Add(alter);
                         }
+                        result.AddRange(JsonColumnComments(source, target, sql).Select(s => new SqlOperation { Sql = s }));
                         return result;
                     }
                 }
+
+                // Ruling R59: EF 8's JsonColumn carries no comment, so a JSON column's comment rides on
+                // its owned type as an annotation and is scaffolded here, after every other operation
+                // (a new table's column exists by then). Down is the same diff the other way.
+                private const string JsonComment = "{{JsonColumnCommentAnnotation}}";
+
+                private static IEnumerable<string> JsonColumnComments(IRelationalModel? source, IRelationalModel? target, ISqlGenerationHelper sql)
+                {
+                    var from = JsonCommentsOf(source);
+                    foreach (var (column, text) in JsonCommentsOf(target))
+                        if (!from.TryGetValue(column, out var old) || old != text)
+                            yield return CommentOn(column, text, sql);
+                    foreach (var (column, _) in from)
+                        if (!JsonCommentsOf(target).ContainsKey(column)
+                            && target?.FindTable(column.Table, column.Schema)?.FindColumn(column.Column) is not null)
+                            yield return CommentOn(column, null, sql);
+                }
+
+                private static Dictionary<(string? Schema, string Table, string Column), string> JsonCommentsOf(IRelationalModel? model)
+                {
+                    var comments = new Dictionary<(string? Schema, string Table, string Column), string>();
+                    if (model is null) return comments;
+                    foreach (var type in model.Model.GetEntityTypes())
+                        if (type.FindAnnotation(JsonComment)?.Value is string text
+                            && type.GetContainerColumnName() is { } column && type.GetTableName() is { } table)
+                            comments[(type.GetSchema(), table, column)] = text;
+                    return comments;
+                }
+
+                private static string CommentOn((string? Schema, string Table, string Column) c, string? text, ISqlGenerationHelper sql) =>
+                    "COMMENT ON COLUMN " + sql.DelimitIdentifier(c.Table, c.Schema) + "." + sql.DelimitIdentifier(c.Column)
+                    + " IS " + (text is null ? "NULL" : Literal(text)) + sql.StatementTerminator;
 
                 // The serialized options are "'start', 'increment', 'min', 'max', 'cyclic', 'cache'";
                 // a missing annotation is Npgsql's defaults, and an empty start is no start.
@@ -1093,17 +1141,47 @@ public class DbContextGenerator : IGenerator
     /// kind; a flattened value object is not a column (its members are), so it gets none.
     /// </summary>
     private void EmitCommentConfig(string owner, MetaObject entity, IEnumerable<MetaField> fields, List<string> modelLines,
-        bool tableComment = true)
+        GenContext ctx, bool tableComment = true)
     {
         if (tableComment && entity.Attr(MetaObjects.Core.Documentation.DocumentationConstants.DOC_ATTR_DESCRIPTION) is string { Length: > 0 } table)
             modelLines.Add($"        modelBuilder.Entity<{owner}>().Metadata.SetComment(\"{CSharpNaming.CSharpStringLiteral(table)}\");");
         foreach (var f in fields)
         {
-            if (f.Attr(MetaObjects.Core.Documentation.DocumentationConstants.DOC_ATTR_DESCRIPTION) is not string { Length: > 0 } text) continue;
-            if (f.SubType == FIELD_SUBTYPE_OBJECT || f.SubType == FIELD_SUBTYPE_MAP) continue;
-            modelLines.Add($"        modelBuilder.Entity<{owner}>().Metadata.FindProperty(\"{PropertyName(f)}\")?.SetComment(\"{CSharpNaming.CSharpStringLiteral(text)}\");");
+            var vo = f.SubType == FIELD_SUBTYPE_OBJECT ? ValueObjectNames.ResolveFieldRef(f, ctx.Root) as MetaObject : null;
+            // A JSON column's comment falls back to its value object's description (ruling R59).
+            var text = f.Attr(MetaObjects.Core.Documentation.DocumentationConstants.DOC_ATTR_DESCRIPTION) as string;
+            if (string.IsNullOrEmpty(text) && vo is not null)
+                text = vo.Attr(MetaObjects.Core.Documentation.DocumentationConstants.DOC_ATTR_DESCRIPTION) as string;
+            if (string.IsNullOrEmpty(text)) continue;
+            var literal = CSharpNaming.CSharpStringLiteral(text);
+            if (f.SubType == FIELD_SUBTYPE_OBJECT)
+            {
+                // Flattened: the members are the columns, and the object is none.
+                if (f.Storage == STORAGE_FLATTENED || vo is null) continue;
+                // An owned JSON column (ToJson): EF 8's JsonColumn carries no comment, so the comment
+                // rides on the owned type as an annotation, and the design-time differ scaffolds it as
+                // COMMENT ON COLUMN (ruling R59). A value object holding a map is a plain converted
+                // property instead, and takes the comment as any column does.
+                if (!HoldsMap(vo, ctx.Root, new HashSet<MetaObject>()))
+                {
+                    if (!IdentityStartOn(ctx))
+                    {
+                        ctx.Warn($"{Name}: the @description of {entity.Name}.{f.Name} is not in the EF model: a JSON column carries " +
+                            "no comment in EF 8, and only a Postgres project's design-time services scaffold one. meta migrate still writes it.");
+                        continue;
+                    }
+                    modelLines.Add($"        modelBuilder.Entity<{owner}>().Metadata.FindNavigation(\"{PropertyName(f)}\")!.TargetEntityType" +
+                        $".SetAnnotation(\"{JsonColumnCommentAnnotation}\", \"{literal}\");");
+                    continue;
+                }
+            }
+            // GetProperty, not FindProperty?.: a property this generator configures and cannot find is a bug, said loudly.
+            modelLines.Add($"        modelBuilder.Entity<{owner}>().Metadata.GetProperty(\"{PropertyName(f)}\").SetComment(\"{literal}\");");
         }
     }
+
+    /// <summary>The owned-type annotation carrying a JSON column's comment (ruling R59).</summary>
+    internal const string JsonColumnCommentAnnotation = "MetaObjects:JsonColumnComment";
 
     /// <summary>
     /// The index vocabulary as EF indexes, named as <c>meta migrate</c> names them, so a model
@@ -1160,8 +1238,8 @@ public class DbContextGenerator : IGenerator
             // @using: the access method, an Npgsql annotation (btree is the default and is left out).
             if (node.Attr(DbConstants.IDENTITY_ATTR_USING) is string method && method.Trim().Length > 0 && method.Trim() != "btree")
             {
-                modelLines.Add($"        if (Database.ProviderName == \"{NpgsqlProviderName}\")");
-                modelLines.Add($"            modelBuilder.Entity<{owner}>().HasIndex({selector}, {indexName})" +
+                // One entry per statement (the modelLines invariant): the guard and its statement are one line.
+                modelLines.Add($"        if (Database.ProviderName == \"{NpgsqlProviderName}\") modelBuilder.Entity<{owner}>().HasIndex({selector}, {indexName})" +
                     $".HasAnnotation(\"Npgsql:IndexMethod\", \"{CSharpNaming.CSharpStringLiteral(method.Trim())}\");");
             }
         }
@@ -1278,7 +1356,7 @@ public class DbContextGenerator : IGenerator
                 $"        modelBuilder.Entity<{cls}>().Property(x => x.{PropertyName(f)}).Metadata.SetAfterSaveBehavior(PropertySaveBehavior.Ignore);");
         }
         // The shared table's comment is the root's; a subtype's own columns carry theirs.
-        EmitCommentConfig(cls, subtype, own, lines, tableComment: false);
+        EmitCommentConfig(cls, subtype, own, lines, ctx, tableComment: false);
         EmitIndexConfig(cls, subtype, ctx, lines, own, n => ownIndexes.Contains(n.Name));
         return lines;
     }

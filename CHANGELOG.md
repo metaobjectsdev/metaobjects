@@ -21,16 +21,6 @@ only the named ports ever act on, e.g. `@dbSetName`, `["csharp"]`, and `@objectA
 the kind-1 rows that used to be carved out. A port that reports `1.2` does not know that
 vocabulary; upgrade every port together.
 
-### Next (decided, not in this release)
-
-- **Generated paths keyed by package (ruling R39), in every port.** Every port's generated
-  output will be keyed by the metadata package, so same-named objects in two packages never
-  collide on a path. It moves every adopter's generated files once: C#'s flat `<Class>.g.cs`
-  moves under `<package>/`, TypeScript's default `outputLayout` flips from `flat`, Python gains a
-  package layout, and the JVM ports key by metadata package rather than the mapped Java package.
-  Scheduled for the next upstream batch; see `docs/CONFORMANCE.md`, "Generated paths keyed by
-  package".
-
 ### Added
 
 - **Kind-1 vocabulary: cross-port, implemented in some ports so far (ruling R40).** A registry
@@ -311,6 +301,35 @@ vocabulary; upgrade every port together.
   objects were renamed now gets the collision error; map the packages apart
   (`GenConfig.PackageNamespaces`) or rename one object, and update the references to the old
   `AcmeAlphaNote`-style names.
+- **C#: a JSON column's comment reaches the database through the design-time differ (ruling
+  R59).** EF 8's `JsonColumn` carries no comment, so a `field.object` stored as JSON (`ToJson`)
+  never got its `@description`. The generated model now puts the text — the field's
+  `@description`, else its value object's — on the owned type as the
+  `MetaObjects:JsonColumnComment` annotation, and the generated design-time services (emitted for
+  a Postgres context with an increment key or such a comment) scaffold a change of it as
+  `COMMENT ON COLUMN … IS …` / `IS NULL`, Up and Down; the snapshot records it. Off Postgres the
+  run warns and leaves the comment to `meta migrate`. A `field.map` now takes its comment like any
+  column, and comments are set through `Metadata.GetProperty` (it throws), not `FindProperty?.`.
+  **Upgrade note:** the next migration scaffolds a comment for each described JSON column and map.
+  A database built by `EnsureCreated` gets no JSON-column comment (it runs the runtime differ).
+- **C#: `@sequenceName` warns once instead of being silently dropped** (ruling R56): EF never names
+  an identity's sequence and Npgsql cannot express it; the run names the objects that declare it.
+- **Fix, C#: every `OnModelCreating` entry is one statement** (item 8). The `@using` index method
+  was emitted as a provider guard and its statement as two entries, so a `ConfigureModelNN` split
+  could fall between them; the guard and statement are one entry now, and the invariant is
+  documented on the model-line list.
+- **Breaking, C# and TypeScript: generated paths are keyed by the metadata package (ruling
+  R39).** C#: every per-object generator (entity, names, filter-allowlist, routes, callable,
+  reverse finders, report export, the extract mirrors and the template tier) writes
+  `<package segments>/<File>.g.cs` through one helper, `OutputPaths.Of`
+  (`acme::alpha::Note` → `acme/alpha/Note.g.cs`); a root-level object, the context, the shared
+  enums and the run-wide helpers stay at the root. Namespaces are unchanged (the package binding
+  decides them, `GenConfig.PackageNamespaces`), so two same-named types in one namespace are still
+  refused by the claim registry. TypeScript's default `outputLayout` flip is not in this build
+  yet; Python and the JVM ports follow in #544–#549 (`docs/CONFORMANCE.md`, "Generated paths keyed
+  by package"). **Upgrade note:** the next C# `gen` writes every generated file under its package
+  directory and sweeps the old flat copies; update any build globs or `<Compile>` items that named
+  the flat files. The shipped TypeScript examples now declare `outputLayout: "flat"` explicitly.
 - **Breaking, TypeScript: a value object is never renamed; one claim registry refuses real
   collisions** (ruling R52, amending ADR-0044 and ADR-0056). `acme::alpha::Note` is declared as
   `Note` in its own module; the `AcmeAlphaNote` derived name is gone, and so are

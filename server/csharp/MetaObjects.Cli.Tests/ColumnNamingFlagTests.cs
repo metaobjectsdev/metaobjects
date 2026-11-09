@@ -84,8 +84,8 @@ public sealed class ColumnNamingFlagTests : IDisposable
         args.AddRange(extraArgs);
         var (exit, stdout, stderr) = OwnedRunner.Run(_tmp, ["entity", "names"], args.ToArray());
         Assert.True(exit == 0, $"exit={exit}\n{stdout}{stderr}");
-        var entity = File.ReadAllText(Path.Combine(outDir, "Subscriber.g.cs"));
-        var names = File.ReadAllText(Path.Combine(outDir, "SubscriberNames.g.cs"));
+        var entity = File.ReadAllText(Path.Combine(outDir, "acme", "Subscriber.g.cs"));
+        var names = File.ReadAllText(Path.Combine(outDir, "acme", "SubscriberNames.g.cs"));
         return (entity, names);
     }
 
@@ -185,7 +185,7 @@ public sealed class ColumnNamingFlagTests : IDisposable
         var outDir = Path.Combine(_tmp, "generated-literal-tables");
         WriteConfig("\"tables\": \"literal\"");
         Assert.Equal(0, OwnedRunner.Run(_tmp, ["entity", "names"], "gen", MetaDir, "--out", outDir, "--namespace", "Acme.Generated").ExitCode);
-        Assert.Contains("\"OrderItems\"", File.ReadAllText(Path.Combine(outDir, "OrderItemNames.g.cs")));
+        Assert.Contains("\"OrderItems\"", File.ReadAllText(Path.Combine(outDir, "acme", "OrderItemNames.g.cs")));
 
         WriteConfig(null);
         var (exit, stdout, stderr) = OwnedRunner.Run(_tmp, ["entity", "names"], "verify", "--codegen", MetaDir, "--out", outDir, "--namespace", "Acme.Generated");
@@ -209,7 +209,7 @@ public sealed class ColumnNamingFlagTests : IDisposable
         var outDir = Path.Combine(_tmp, "generated-entity-only");
         WriteConfig("\"tables\": \"literal\"");
         Assert.Equal(0, OwnedRunner.Run(_tmp, ["entity"], "gen", MetaDir, "--out", outDir, "--namespace", "Acme.Generated").ExitCode);
-        Assert.Contains("[Table(\"OrderItems\")]", File.ReadAllText(Path.Combine(outDir, "OrderItem.g.cs")));
+        Assert.Contains("[Table(\"OrderItems\")]", File.ReadAllText(Path.Combine(outDir, "acme", "OrderItem.g.cs")));
 
         WriteConfig(null);
         var (exit, stdout, stderr) = OwnedRunner.Run(_tmp, ["entity"], "verify", "--codegen", MetaDir, "--out", outDir, "--namespace", "Acme.Generated");
@@ -246,7 +246,7 @@ public sealed class ColumnNamingFlagTests : IDisposable
         var outDir = Path.Combine(_tmp, "generated-edited");
         WriteConfig("\"columns\": \"snake_case\"");
         Assert.Equal(0, OwnedRunner.Run(_tmp, ["entity", "names"], "gen", MetaDir, "--out", outDir, "--namespace", "Acme.Generated").ExitCode);
-        File.AppendAllText(Path.Combine(outDir, "SubscriberNames.g.cs"), "// edited\n");
+        File.AppendAllText(Path.Combine(outDir, "acme", "SubscriberNames.g.cs"), "// edited\n");
 
         var (exit, stdout, stderr) = OwnedRunner.Run(_tmp, ["entity", "names"], "verify", "--codegen", MetaDir, "--out", outDir, "--namespace", "Acme.Generated");
         var output = stdout + stderr;

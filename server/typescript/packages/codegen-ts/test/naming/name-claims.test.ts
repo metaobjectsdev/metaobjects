@@ -53,13 +53,14 @@ async function load(...packages: { pkg: string; children: Json[] }[]) {
 async function run(
   root: Awaited<ReturnType<typeof load>>,
   generators: Generator[],
-  outputLayout: OutputLayout = "flat",
+  outputLayout: OutputLayout | "default" = "flat",
 ): Promise<Map<string, string>> {
   const tmp = mkdtempSync(join(tmpdir(), "name-claims-"));
   try {
     await runGen({
       config: defineConfig({
-        outDir: join(tmp, "src"), extStyle: "js", dbImport: "../db", dialect: "sqlite", outputLayout,
+        outDir: join(tmp, "src"), extStyle: "js", dbImport: "../db", dialect: "sqlite",
+        ...(outputLayout !== "default" && { outputLayout }),
         targets: { docs: { outDir: join(tmp, "docs") } }, generators,
       }),
       metadata: root, projectRoot: tmp,
@@ -218,6 +219,10 @@ describe("a value object is never renamed", () => {
       expect(content).not.toContain("interface AcmeAlphaNote");
       expect(content).not.toContain("interface AcmeBetaNote");
     }
+  });
+
+  test("with no outputLayout declared they share one directory (the default is still flat) and are refused", async () => {
+    await expect(run(await twoNotes(), [entityFile()], "default")).rejects.toThrow(ERR_NAME_COLLISION);
   });
 
   test("under the flat layout they share one module directory, and the collision is refused naming both", async () => {

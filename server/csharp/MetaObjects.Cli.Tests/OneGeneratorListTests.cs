@@ -93,7 +93,7 @@ public sealed class OneGeneratorListTests : IDisposable
         var (exit, stdout, stderr) = OwnedRunner.Run(_tmp, ["entity"], "gen", MetaDir, "--out", OutDir, "--namespace", "Acme.Generated");
 
         Assert.True(exit == 0, $"exit={exit}\nstdout={stdout}\nstderr={stderr}");
-        Assert.Equal(["Subscriber.g.cs"], FilesUnder(OutDir));
+        Assert.Equal(["acme/Subscriber.g.cs"], FilesUnder(OutDir));
         Assert.False(Directory.Exists(DocsDir));
     }
 
@@ -118,7 +118,7 @@ public sealed class OneGeneratorListTests : IDisposable
             "gen", MetaDir, "--out", OutDir, "--generators", "names", "--namespace", "Acme.Generated");
 
         Assert.True(exit == 0, $"exit={exit}\nstdout={stdout}\nstderr={stderr}");
-        Assert.Equal(["SubscriberNames.g.cs"], FilesUnder(OutDir));
+        Assert.Equal(["acme/SubscriberNames.g.cs"], FilesUnder(OutDir));
         Assert.False(Directory.Exists(DocsDir));
     }
 
@@ -127,7 +127,7 @@ public sealed class OneGeneratorListTests : IDisposable
     {
         IReadOnlyList<IGenerator> declared = OwnedRunner.Declared(_tmp, "entity", "names");
         Assert.Equal(0, OwnedRunner.Run(_tmp, declared, "gen", MetaDir, "--out", OutDir, "--namespace", "Acme.Generated").ExitCode);
-        var entity = Path.Combine(OutDir, "Subscriber.g.cs");
+        var entity = Path.Combine(OutDir, "acme", "Subscriber.g.cs");
         var whole = File.ReadAllText(entity);
         Assert.Contains("SubscriberNames.", whole);
 
@@ -359,7 +359,7 @@ public sealed class OneGeneratorListTests : IDisposable
         var gen = OwnedRunner.Run(_tmp, declared, "gen", MetaDir, "--out", OutDir, "--namespace", "Acme.Generated");
 
         Assert.True(gen.ExitCode == 0, $"exit={gen.ExitCode}\nstdout={gen.Stdout}\nstderr={gen.Stderr}");
-        Assert.Equal(["Subscriber.g.cs"], FilesUnder(OutDir));
+        Assert.Equal(["acme/Subscriber.g.cs"], FilesUnder(OutDir));
         Assert.Equal(["Requirements_acme_Tests.g.cs", "Requirements_acme_Witnesses.g.cs"], FilesUnder(testsDir));
 
         var clean = OwnedRunner.Run(_tmp, declared, "verify", MetaDir, "--codegen", "--out", OutDir, "--namespace", "Acme.Generated");
@@ -383,12 +383,12 @@ public sealed class OneGeneratorListTests : IDisposable
 
         var gen = OwnedRunner.Run(_tmp, declared, "gen", "--namespace", "Acme.Generated");
         Assert.True(gen.ExitCode == 0, $"exit={gen.ExitCode}\nstdout={gen.Stdout}\nstderr={gen.Stderr}");
-        Assert.Equal(["Subscriber.g.cs"], FilesUnder(OutDir));
+        Assert.Equal(["acme/Subscriber.g.cs"], FilesUnder(OutDir));
 
         var clean = OwnedRunner.Run(_tmp, declared, "verify", "--codegen", "--namespace", "Acme.Generated");
         Assert.True(clean.ExitCode == 0, $"exit={clean.ExitCode}\nstdout={clean.Stdout}\nstderr={clean.Stderr}");
 
-        File.AppendAllText(Path.Combine(OutDir, "Subscriber.g.cs"), "// edited\n");
+        File.AppendAllText(Path.Combine(OutDir, "acme", "Subscriber.g.cs"), "// edited\n");
         var drift = OwnedRunner.Run(_tmp, declared, "verify", "--codegen", "--namespace", "Acme.Generated");
         Assert.Equal(1, drift.ExitCode);
         Assert.Contains("Subscriber.g.cs", drift.Stderr);
@@ -397,7 +397,7 @@ public sealed class OneGeneratorListTests : IDisposable
         var other = Path.Combine(_tmp, "elsewhere");
         var genOther = OwnedRunner.Run(_tmp, declared, "gen", "--out", other, "--namespace", "Acme.Generated");
         Assert.True(genOther.ExitCode == 0, $"exit={genOther.ExitCode}\n{genOther.Stdout}{genOther.Stderr}");
-        Assert.Equal(["Subscriber.g.cs"], FilesUnder(other));
+        Assert.Equal(["acme/Subscriber.g.cs"], FilesUnder(other));
         var cleanOther = OwnedRunner.Run(_tmp, declared, "verify", "--codegen", "--out", other, "--namespace", "Acme.Generated");
         Assert.True(cleanOther.ExitCode == 0, $"exit={cleanOther.ExitCode}\n{cleanOther.Stdout}{cleanOther.Stderr}");
     }

@@ -170,7 +170,7 @@ public static class ExtractDelegateEmitter
         foreach (var f in Fr010FieldMapping.Fields(vo))
             sb.AppendLine($"    public {NestedMirrorType(f, root, config, ns)} {f.Name} {{ get; init; }}");
         sb.AppendLine("}");
-        return new EmittedFile($"{name}.g.cs", sb.ToString());
+        return new EmittedFile(OutputPaths.Of(vo, $"{name}.g.cs"), sb.ToString());
     }
 
     // =========================================================================

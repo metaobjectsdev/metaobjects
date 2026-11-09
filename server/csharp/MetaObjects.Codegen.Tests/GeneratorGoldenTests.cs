@@ -93,19 +93,19 @@ public class GeneratorGoldenTests
             Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated" },
         };
         var files = new DbContextGenerator().Generate(ctx).Concat(new EntityGenerator().Generate(ctx)).ToList();
-        Assert.Contains(files, f => f.Path == "InvoiceView.g.cs");
+        Assert.Contains(files, f => System.IO.Path.GetFileName(f.Path) == "InvoiceView.g.cs");
 
         var dir = GoldenDir();
         if (Environment.GetEnvironmentVariable("GOLDEN_WRITE") == "1")
         {
             Directory.CreateDirectory(dir);
-            foreach (var f in files) File.WriteAllText(Path.Combine(dir, f.Path), f.Content);
+            foreach (var f in files) File.WriteAllText(Path.Combine(dir, System.IO.Path.GetFileName(f.Path)), f.Content);
             return;
         }
         var expected = Directory.GetFiles(dir).Select(p => Path.GetFileName(p)).Order().ToList();
-        Assert.Equal(expected, files.Select(f => f.Path).Order().ToList());
+        Assert.Equal(expected, files.Select(f => System.IO.Path.GetFileName(f.Path)).Order().ToList());
         foreach (var f in files)
-            Assert.Equal(File.ReadAllText(Path.Combine(dir, f.Path)), f.Content);
+            Assert.Equal(File.ReadAllText(Path.Combine(dir, System.IO.Path.GetFileName(f.Path))), f.Content);
     }
 
     // The constructs the second round of hooks reaches, captured from 01c571c6f (before them):
@@ -193,18 +193,18 @@ public class GeneratorGoldenTests
     public void Round_2_output_matches_the_output_captured_before_the_second_hooks(bool shapes)
     {
         var files = GenerateRound2(shapes);
-        Assert.Contains(files, f => f.Path == "WorkflowNames.g.cs");
+        Assert.Contains(files, f => System.IO.Path.GetFileName(f.Path) == "WorkflowNames.g.cs");
 
         var dir = Path.Combine(GoldenDir(), "..", "pre-hooks-2", shapes ? "shapes" : "no-shapes");
         if (Environment.GetEnvironmentVariable("GOLDEN_WRITE") == "1")
         {
             Directory.CreateDirectory(dir);
-            foreach (var f in files) File.WriteAllText(Path.Combine(dir, f.Path), f.Content);
+            foreach (var f in files) File.WriteAllText(Path.Combine(dir, System.IO.Path.GetFileName(f.Path)), f.Content);
             return;
         }
         var expected = Directory.GetFiles(dir).Select(p => Path.GetFileName(p)).Order().ToList();
-        Assert.Equal(expected, files.Select(f => f.Path).Order().ToList());
+        Assert.Equal(expected, files.Select(f => System.IO.Path.GetFileName(f.Path)).Order().ToList());
         foreach (var f in files)
-            Assert.Equal(File.ReadAllText(Path.Combine(dir, f.Path)), f.Content);
+            Assert.Equal(File.ReadAllText(Path.Combine(dir, System.IO.Path.GetFileName(f.Path))), f.Content);
     }
 }

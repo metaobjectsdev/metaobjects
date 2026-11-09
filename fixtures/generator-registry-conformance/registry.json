@@ -422,6 +422,7 @@
           "MetaObjects.Codegen.InstanceArtifacts",
           "MetaObjects.Codegen.KeyNames",
           "MetaObjects.Codegen.ObjectNames",
+          "MetaObjects.Codegen.OutputPaths",
           "MetaObjects.Codegen.PackageBindingResolver",
           "MetaObjects.Codegen.PerEntityGenerator",
           "MetaObjects.Codegen.RenderedTest",

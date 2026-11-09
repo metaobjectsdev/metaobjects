@@ -59,7 +59,7 @@ public class WriteThroughTests
     };
 
     private static string Src(IEnumerable<EmittedFile> files, string path) =>
-        files.Single(f => f.Path == path).Content;
+        files.Single(f => System.IO.Path.GetFileName(f.Path) == path).Content;
 
     // ---- Predicates -------------------------------------------------------------
 
@@ -188,7 +188,7 @@ public class WriteThroughTests
         var customer = Src(files, "Customer.g.cs");
         Assert.Contains("[Table(CustomerNames.SourcePrimaryTable)]", customer); // §A6 (task 4)
         // No view read model is emitted for a plain entity.
-        Assert.DoesNotContain(files, f => f.Path == "CustomerView.g.cs");
+        Assert.DoesNotContain(files, f => System.IO.Path.GetFileName(f.Path) == "CustomerView.g.cs");
         var dbctx = Assert.Single(new DbContextGenerator().Generate(Ctx(Load()))).Content;
         Assert.DoesNotContain("CustomerView", dbctx);
     }

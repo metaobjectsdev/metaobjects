@@ -74,13 +74,13 @@ public sealed class ExtractTierCollisionTests
         var ctx = Ctx(root);
 
         var parserFiles = new OutputParserGenerator().Generate(ctx).ToList();
-        var parserSrc = Assert.Single(parserFiles, f => f.Path == "DigestPrompt.response.cs").Content;
+        var parserSrc = Assert.Single(parserFiles, f => System.IO.Path.GetFileName(f.Path) == "DigestPrompt.response.cs").Content;
         var extractorFile = Assert.Single(new ExtractorGenerator().Generate(ctx));
         var extractorSrc = extractorFile.Content;
 
         // The extractor class + file are named off the PROMPT, like its parser (ADR-0056 rule 4)
         // — never off the colliding NESTED Note.
-        Assert.Equal("DigestPromptExtractor.cs", extractorFile.Path);
+        Assert.Equal("DigestPromptExtractor.cs", System.IO.Path.GetFileName(extractorFile.Path));
         Assert.Contains("public static class DigestPromptExtractor", extractorSrc);
 
         // ---- mirrors: one per value object, BOTH collision members present, each in its own
@@ -172,7 +172,7 @@ public sealed class ExtractTierCollisionTests
         var parserSrc = Assert.Single(new OutputParserGenerator().Generate(ctx), f => f.Path.EndsWith(".response.cs")).Content;
         var extractorFile = Assert.Single(new ExtractorGenerator().Generate(ctx));
 
-        Assert.Equal("WidgetOutExtractor.cs", extractorFile.Path);
+        Assert.Equal("WidgetOutExtractor.cs", System.IO.Path.GetFileName(extractorFile.Path));
         Assert.Contains("public static Widget Parse(string text)", parserSrc);
         Assert.Contains("public static class WidgetOutExtractor", extractorFile.Content);
         Assert.DoesNotContain("AcmeDemo", parserSrc);
@@ -249,7 +249,7 @@ public sealed class ExtractTierCollisionTests
         // ReportNames in alongside it as an unreferenced sibling class only.
         var namesSrc = Assert.Single(new NamesGenerator().Generate(ctx)).Content;
         var parserFiles = new OutputParserGenerator().Generate(ctx).ToList();
-        var parserSrc = Assert.Single(parserFiles, f => f.Path == "ReportDoc.response.cs").Content;
+        var parserSrc = Assert.Single(parserFiles, f => System.IO.Path.GetFileName(f.Path) == "ReportDoc.response.cs").Content;
 
         // The entity lands in its OWN per-package namespace, distinct from the flat
         // payload namespace — proves the "no compile collision" premise this bug relies on.

@@ -10,6 +10,11 @@ import { withExt, withExtIfRelative, type ExtStyle, type RenderContext } from ".
 
 export type OutputLayout = "flat" | "package";
 
+/** The layout a target writes in when none is declared. R39 flips it to `"package"` (a directory
+ *  per metadata package); that flip is pending — it moves the documented quickstart's imports
+ *  and every CLI fixture that reads flat paths (task-rc19-report.md, "Remaining"). */
+export const DEFAULT_OUTPUT_LAYOUT: OutputLayout = "flat";
+
 /** "a::b::c" → "a/b/c"; undefined / "" → "". */
 export function packageToPath(pkg: string | undefined): string {
   if (pkg === undefined || pkg === "") return "";

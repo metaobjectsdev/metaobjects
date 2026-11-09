@@ -115,15 +115,15 @@ public class PropertyNamingCodegenTests
         var files = Generate(ctx, new EntityGenerator(), new DbContextGenerator());
 
         Assert.Empty(CompileErrors(files));
-        var line = files.Single(f => f.Path == "OrderLine.g.cs").Content;
+        var line = files.Single(f => System.IO.Path.GetFileName(f.Path) == "OrderLine.g.cs").Content;
         Assert.Contains("[PrimaryKey(nameof(OrderNo), nameof(LineNO))]", line);
         Assert.Contains("public long CustomerID { get; set; }", line);
-        var context = files.Single(f => f.Path == "AppDbContext.g.cs").Content;
+        var context = files.Single(f => System.IO.Path.GetFileName(f.Path) == "AppDbContext.g.cs").Content;
         Assert.Contains("HasForeignKey(e => e.CustomerID)", context);
         Assert.Contains("Property(x => x.STATUS)", context);
         Assert.Contains("HasDiscriminator(e => e.KIND)", context);
         Assert.Contains("b.Property(p => p.ZIPCode)", context);
-        var finders = files.Single(f => f.Path == "OrderLineQueries.g.cs").Content;
+        var finders = files.Single(f => System.IO.Path.GetFileName(f.Path) == "OrderLineQueries.g.cs").Content;
         Assert.Contains("e.CustomerID ==", finders);
     }
 
@@ -145,7 +145,7 @@ public class PropertyNamingCodegenTests
         var files = Generate(ctx, new AcronymEntities(), new AcronymContext());
 
         Assert.Empty(CompileErrors(files));
-        Assert.Contains("e.CustomerID ==", files.Single(f => f.Path == "OrderLineQueries.g.cs").Content);
+        Assert.Contains("e.CustomerID ==", files.Single(f => System.IO.Path.GetFileName(f.Path) == "OrderLineQueries.g.cs").Content);
     }
 
     [Fact]
@@ -161,7 +161,7 @@ public class PropertyNamingCodegenTests
     public void Reverse_finders_take_the_configured_context_type()
     {
         var files = new EntityGenerator().Generate(Ctx(Load(), contextType: "ShopContext")).ToList();
-        var finders = files.Single(f => f.Path == "OrderLineQueries.g.cs").Content;
+        var finders = files.Single(f => System.IO.Path.GetFileName(f.Path) == "OrderLineQueries.g.cs").Content;
         Assert.Contains("(ShopContext db, long customerId)", finders);
         Assert.DoesNotContain("AppDbContext", finders);
     }
@@ -171,7 +171,7 @@ public class PropertyNamingCodegenTests
     {
         var files = new EntityGenerator { EmitsReverseFinders = false }.Generate(Ctx(Load())).ToList();
         Assert.DoesNotContain(files, f => f.Path.EndsWith("Queries.g.cs", StringComparison.Ordinal));
-        Assert.Contains(files, f => f.Path == "OrderLine.g.cs");
+        Assert.Contains(files, f => System.IO.Path.GetFileName(f.Path) == "OrderLine.g.cs");
     }
 
     // E17: a class-level attribute added through the seam, without re-implementing the header.
@@ -189,13 +189,13 @@ public class PropertyNamingCodegenTests
     public void A_subclass_adds_a_class_attribute_through_the_seam()
     {
         var files = new MarkedEntities().Generate(Ctx(Load())).ToList();
-        var customer = files.Single(f => f.Path == "Customer.g.cs").Content.Replace("\r\n", "\n");
+        var customer = files.Single(f => System.IO.Path.GetFileName(f.Path) == "Customer.g.cs").Content.Replace("\r\n", "\n");
         Assert.Contains("[System.Serializable]\npublic class Customer", customer);
         Assert.True(customer.IndexOf("[Table(", StringComparison.Ordinal) < customer.IndexOf("[System.Serializable]", StringComparison.Ordinal));
-        var vehicle = files.Single(f => f.Path == "Vehicle.g.cs").Content.Replace("\r\n", "\n");
+        var vehicle = files.Single(f => System.IO.Path.GetFileName(f.Path) == "Vehicle.g.cs").Content.Replace("\r\n", "\n");
         // After the framework's own class attributes, immediately before the declaration.
         Assert.Contains("[System.Text.Json.Serialization.JsonDerivedType(typeof(Van))]\n[System.Serializable]\npublic abstract class Vehicle", vehicle);
-        Assert.Contains("[System.Serializable]\npublic class Car : Vehicle", files.Single(f => f.Path == "Car.g.cs").Content.Replace("\r\n", "\n"));
-        Assert.DoesNotContain("[System.Serializable]", files.Single(f => f.Path == "PostalAddress.g.cs").Content);
+        Assert.Contains("[System.Serializable]\npublic class Car : Vehicle", files.Single(f => System.IO.Path.GetFileName(f.Path) == "Car.g.cs").Content.Replace("\r\n", "\n"));
+        Assert.DoesNotContain("[System.Serializable]", files.Single(f => System.IO.Path.GetFileName(f.Path) == "PostalAddress.g.cs").Content);
     }
 }

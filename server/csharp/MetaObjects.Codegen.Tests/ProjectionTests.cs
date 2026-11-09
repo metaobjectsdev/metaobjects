@@ -54,7 +54,7 @@ public class ProjectionTests
     };
 
     private static string EntitySrc(GenContext ctx, string name) =>
-        new EntityGenerator().Generate(ctx).Single(f => f.Path == name + ".g.cs").Content;
+        new EntityGenerator().Generate(ctx).Single(f => System.IO.Path.GetFileName(f.Path) == name + ".g.cs").Content;
 
     [Fact]
     public void Keyed_projection_maps_to_view_not_table()
@@ -93,7 +93,7 @@ public class ProjectionTests
     {
         var ctx = Ctx(Load());
         var src = new RoutesGenerator().Generate(ctx)
-            .Single(f => f.Path == "ProgramSummaryRoutes.g.cs").Content;
+            .Single(f => System.IO.Path.GetFileName(f.Path) == "ProgramSummaryRoutes.g.cs").Content;
         // GET list takes HttpContext (qs handling per api-contract.md).
         Assert.Contains("app.MapGet(prefix + \"/program_summaries\", async (HttpContext http, AppDbContext db) =>", src);
         Assert.Contains("app.MapGet(prefix + \"/program_summaries/{id}\"", src); // keyed -> readable by id
@@ -113,7 +113,7 @@ public class ProjectionTests
     {
         var ctx = Ctx(Load());
         var src = new RoutesGenerator().Generate(ctx)
-            .Single(f => f.Path == "ProgramSummaryRoutes.g.cs").Content;
+            .Single(f => System.IO.Path.GetFileName(f.Path) == "ProgramSummaryRoutes.g.cs").Content;
         Assert.Contains("app.MapPost(prefix + \"/program_summaries\", () =>", src);
         Assert.Contains("app.MapPatch(prefix + \"/program_summaries/{id}\", (long id) =>", src);
         Assert.Contains("app.MapPut(prefix + \"/program_summaries/{id}\", (long id) =>", src);
@@ -130,7 +130,7 @@ public class ProjectionTests
     {
         var ctx = Ctx(Load());
         var src = new RoutesGenerator().Generate(ctx)
-            .Single(f => f.Path == "TagCountRoutes.g.cs").Content;
+            .Single(f => System.IO.Path.GetFileName(f.Path) == "TagCountRoutes.g.cs").Content;
         Assert.DoesNotContain("app.MapGet(prefix + \"/tag_counts/{id}\"", src);
         Assert.Contains("app.MapPost(prefix + \"/tag_counts\", () =>", src);
         Assert.DoesNotContain("app.MapPatch", src);

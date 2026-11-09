@@ -191,7 +191,7 @@ public class Issue203AutoSetStampingTests
         // Note inherits createdAt/updatedAt (+ @autoSet) from BaseEntity via extends.
         var src = Assert.Single(
             new RoutesGenerator().Generate(Ctx(Load(InheritedModel)))
-                .Where(f => f.Path == "NoteRoutes.g.cs"));
+                .Where(f => System.IO.Path.GetFileName(f.Path) == "NoteRoutes.g.cs"));
         var body = src.Content;
         Assert.Contains("input.CreatedAt = System.DateTimeOffset.UtcNow;", body);
         Assert.Contains("input.UpdatedAt = System.DateTimeOffset.UtcNow;", body);

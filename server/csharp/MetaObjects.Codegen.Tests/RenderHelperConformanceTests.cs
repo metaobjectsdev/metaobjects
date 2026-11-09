@@ -80,7 +80,7 @@ public sealed class RenderHelperConformanceTests
         var root = LoadFromFile(Path.Combine(corpus, "meta.json"));
         var templates = Path.Combine(corpus, "templates");
 
-        var file = Assert.Single(new RenderHelperGenerator(templates).Generate(Ctx(root)), f => f.Path == "WelcomePage.render.cs");
+        var file = Assert.Single(new RenderHelperGenerator(templates).Generate(Ctx(root)), f => System.IO.Path.GetFileName(f.Path) == "WelcomePage.render.cs");
 
         var asm = CompileToAssembly([file.Content, .. GeneratedValueObjects.Sources(root)]);
 
@@ -102,7 +102,7 @@ public sealed class RenderHelperConformanceTests
         var root = LoadFromFile(Path.Combine(corpus, "meta.json"));
         var templates = Path.Combine(corpus, "templates");
 
-        var file = Assert.Single(new RenderHelperGenerator(templates).Generate(Ctx(root)), f => f.Path == "WelcomeEmail.render.cs");
+        var file = Assert.Single(new RenderHelperGenerator(templates).Generate(Ctx(root)), f => System.IO.Path.GetFileName(f.Path) == "WelcomeEmail.render.cs");
 
         var asm = CompileToAssembly([file.Content, .. GeneratedValueObjects.Sources(root)]);
 
@@ -126,7 +126,7 @@ public sealed class RenderHelperConformanceTests
         var root = LoadFromFile(Path.Combine(corpus, "meta.json"));
         var templates = Path.Combine(corpus, "templates");
 
-        var file = Assert.Single(new RenderHelperGenerator(templates).Generate(Ctx(root)), f => f.Path == "WelcomeEmail.render.cs");
+        var file = Assert.Single(new RenderHelperGenerator(templates).Generate(Ctx(root)), f => System.IO.Path.GetFileName(f.Path) == "WelcomeEmail.render.cs");
 
         var asm = CompileToAssembly([file.Content, .. GeneratedValueObjects.Sources(root)]);
 
@@ -157,7 +157,7 @@ public sealed class RenderHelperConformanceTests
         var templates = Path.Combine(corpus, "templates");
 
         // The clean nested template must pass the build-time drift gate (no throw).
-        var file = Assert.Single(new RenderHelperGenerator(templates).Generate(Ctx(root)), f => f.Path == "OrderEmail.render.cs");
+        var file = Assert.Single(new RenderHelperGenerator(templates).Generate(Ctx(root)), f => System.IO.Path.GetFileName(f.Path) == "OrderEmail.render.cs");
 
         // ADR-0056: the payload types are the value objects' own POCOs — Order, Customer and
         // Item — which EntityGenerator emits.
@@ -317,7 +317,7 @@ public sealed class RenderHelperConformanceTests
         var clean = Path.Combine(corpus, "templates");
         var drifted = Path.Combine(corpus, "runtime-drift", "templates");
 
-        var file = Assert.Single(new RenderHelperGenerator(clean).Generate(Ctx(root)), f => f.Path == template + ".render.cs");
+        var file = Assert.Single(new RenderHelperGenerator(clean).Generate(Ctx(root)), f => System.IO.Path.GetFileName(f.Path) == template + ".render.cs");
         var asm = CompileToAssembly([file.Content, .. GeneratedValueObjects.Sources(root)]);
 
         var render = asm.GetType(helperType)!.GetMethod("Render")!;

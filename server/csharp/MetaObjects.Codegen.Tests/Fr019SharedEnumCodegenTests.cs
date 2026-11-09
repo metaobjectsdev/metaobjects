@@ -76,7 +76,7 @@ public class Fr019SharedEnumCodegenTests
         var files = new EntityGenerator().Generate(Ctx(Load(SharedModel))).ToList();
 
         // A dedicated shared-enums file is emitted, holding the single materialized enum.
-        var enumsFile = Assert.Single(files, f => f.Path == "Enums.g.cs");
+        var enumsFile = Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "Enums.g.cs");
         Assert.Contains("public enum OrderStatus { DRAFT, PUBLISHED }", enumsFile.Content);
 
         // The enum is materialized EXACTLY ONCE across the whole emitted set.
@@ -84,8 +84,8 @@ public class Fr019SharedEnumCodegenTests
         Assert.Equal(1, totalDecls);
 
         // BOTH entity files reference the shared type (no nested redeclaration).
-        var order = Assert.Single(files, f => f.Path == "Order.g.cs");
-        var shipment = Assert.Single(files, f => f.Path == "Shipment.g.cs");
+        var order = Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "Order.g.cs");
+        var shipment = Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "Shipment.g.cs");
         foreach (var ef in new[] { order, shipment })
         {
             Assert.DoesNotContain("public enum OrderStatus", ef.Content);
@@ -162,7 +162,7 @@ public class Fr019SharedEnumCodegenTests
     public void A_field_extending_another_entitys_enum_keeps_the_entity_qualified_type_name()
     {
         var files = new EntityGenerator().Generate(Ctx(Load(ProjectionModel))).ToList();
-        var summary = Assert.Single(files, f => f.Path == "ShipmentSummary.g.cs");
+        var summary = Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "ShipmentSummary.g.cs");
 
         // Entity-qualified, so it cannot collide with the property of the same name.
         Assert.Contains("public enum ShipmentSummaryStatus", summary.Content);
@@ -171,7 +171,7 @@ public class Fr019SharedEnumCodegenTests
         Assert.DoesNotContain("public enum Status ", summary.Content);
 
         // Nothing is shared, so nothing is materialized centrally either.
-        Assert.DoesNotContain(files, f => f.Path == "Enums.g.cs");
+        Assert.DoesNotContain(files, f => System.IO.Path.GetFileName(f.Path) == "Enums.g.cs");
     }
 
     [Fact]
@@ -201,11 +201,11 @@ public class Fr019SharedEnumCodegenTests
         var files = new EntityGenerator().Generate(Ctx(Load(ProvidedModel), providedNs: "Acme.External.Enums")).ToList();
 
         // NOTHING is emitted for the provided type: no shared file, no nested decl.
-        Assert.DoesNotContain(files, f => f.Path == "Enums.g.cs");
+        Assert.DoesNotContain(files, f => System.IO.Path.GetFileName(f.Path) == "Enums.g.cs");
         Assert.All(files, f => Assert.DoesNotContain("public enum ContactMethod", f.Content));
 
         // The consuming entity references the externally-provided type at the configured namespace.
-        var customer = Assert.Single(files, f => f.Path == "Customer.g.cs");
+        var customer = Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "Customer.g.cs");
         Assert.Contains("public Acme.External.Enums.ContactMethod? Preferred { get; set; }", customer.Content);
     }
 
@@ -248,8 +248,8 @@ public class Fr019SharedEnumCodegenTests
         var files = new EntityGenerator().Generate(
             Ctx(root, packageNamespaces: new() { ["acme::ext::auth"] = "Acme.External.Auth" })).ToList();
 
-        Assert.DoesNotContain(files, f => f.Path == "Enums.g.cs");
-        var customer = Assert.Single(files, f => f.Path == "Customer.g.cs");
+        Assert.DoesNotContain(files, f => System.IO.Path.GetFileName(f.Path) == "Enums.g.cs");
+        var customer = Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "Customer.g.cs");
         Assert.Contains("public Acme.External.Auth.ContactMethod? Preferred { get; set; }", customer.Content);
     }
 
@@ -262,7 +262,7 @@ public class Fr019SharedEnumCodegenTests
                 providedNs: "Acme.Fallback",
                 packageNamespaces: new() { ["acme::ext::auth"] = "Acme.External.Auth" })).ToList();
 
-        var customer = Assert.Single(files, f => f.Path == "Customer.g.cs");
+        var customer = Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "Customer.g.cs");
         Assert.Contains("public Acme.External.Auth.ContactMethod? Preferred { get; set; }", customer.Content);
         Assert.DoesNotContain("Acme.Fallback", customer.Content);
     }
@@ -274,7 +274,7 @@ public class Fr019SharedEnumCodegenTests
         var files = new EntityGenerator().Generate(
             Ctx(root, providedNs: "Acme.Fallback")).ToList(); // no PackageNamespaces entry
 
-        var customer = Assert.Single(files, f => f.Path == "Customer.g.cs");
+        var customer = Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "Customer.g.cs");
         Assert.Contains("public Acme.Fallback.ContactMethod? Preferred { get; set; }", customer.Content);
     }
 
@@ -305,8 +305,8 @@ public class Fr019SharedEnumCodegenTests
         var files = new EntityGenerator().Generate(Ctx(Load(inlineModel))).ToList();
 
         // No shared file for an inline enum.
-        Assert.DoesNotContain(files, f => f.Path == "Enums.g.cs");
-        var order = Assert.Single(files, f => f.Path == "Order.g.cs");
+        Assert.DoesNotContain(files, f => System.IO.Path.GetFileName(f.Path) == "Enums.g.cs");
+        var order = Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "Order.g.cs");
         // Nested, per-entity enum type name (<Entity><Field>) — exactly as before FR-019.
         Assert.Contains("public enum OrderStatus { DRAFT, PUBLISHED, ARCHIVED }", order.Content);
         Assert.Contains("public OrderStatus? Status { get; set; }", order.Content);

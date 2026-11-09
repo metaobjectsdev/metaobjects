@@ -57,6 +57,7 @@ public class EjectedGeneratorsAloneTests
         ["MetaObjects.Codegen.CSharpNaming"] = "the naming and type-mapping tables",
         ["MetaObjects.Codegen.ValueObjectNames"] = "the one answer to what a value object's type is called and where it lives",
         ["MetaObjects.Codegen.PackageBindingResolver"] = "package -> namespace binding",
+        ["MetaObjects.Codegen.OutputPaths"] = "package -> output directory (R39): where a per-object file is written",
         // Questions about the model.
         ["MetaObjects.Codegen.InstanceArtifacts"] = "the predicate: does this object produce instance artifacts",
         ["MetaObjects.Codegen.ReportRows"] = "the row model a view-backed report is generated from: a model derivation",

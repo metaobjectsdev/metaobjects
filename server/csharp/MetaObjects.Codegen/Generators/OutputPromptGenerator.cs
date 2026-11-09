@@ -80,6 +80,6 @@ public class OutputPromptGenerator : IGenerator
         sb.AppendLine("}");
         // ADR-0052 D4: the artifact name follows the DIRECTION axis. A file named
         // `<Prompt>.prompt.cs` generated from a prompt reproduces the confusion being removed.
-        return new EmittedFile($"{templateName}.responseFormat.cs", sb.ToString());
+        return new EmittedFile(OutputPaths.Of(tmpl, $"{templateName}.responseFormat.cs"), sb.ToString());
     }
 }
