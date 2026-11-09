@@ -55,6 +55,8 @@ import {
   OBJECT_PROJECTION_ATTR_FILTER,
   findReferencesBetween,
   findReverseReferenceHops,
+  resolveFlattenedMember,
+  resolveFlattenedColumnName,
   isMetaRoot,
   resolveRelationshipReference,
   resolveObjectRef,
@@ -1150,13 +1152,17 @@ function buildSelectSpec(
       // (e.g. created_at/updated_at/created_by from an audited base), which
       // ownChildren() would miss.
       const targetField = targetEntity.fields().find((f) => f.name === fieldName);
-      if (!targetField) continue;
+      // G6: a member of a flattened value object reads the owning table's prefixed column.
+      const flattened = targetField === undefined ? resolveFlattenedMember(targetEntity, fieldName) : undefined;
+      if (!targetField && !flattened) continue;
       columns.push({
         kind: "passthrough",
         fieldName: field.name,
         dbColAlias: dbCol,
         sourceAlias,
-        sourceColumn: sourceColumnNameFor(targetField, ctx),
+        sourceColumn: targetField !== undefined
+          ? sourceColumnNameFor(targetField, ctx)
+          : resolveFlattenedColumnName(flattened!.embedding, flattened!.member, ctx.columnNamingStrategy),
       });
     } else if (origin.subType === ORIGIN_SUBTYPE_AGGREGATE) {
       // ADR-0039: own (category 4) — origin.* never inherits (ADR-0029).

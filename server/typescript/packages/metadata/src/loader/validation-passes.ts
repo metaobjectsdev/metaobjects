@@ -21,6 +21,7 @@ import {
 import type { MetaData } from "../shared/meta-data.js";
 import type { MetaObject } from "../core/object/meta-object.js";
 import { findReverseReferenceHops } from "../core/relationship/find-reference.js";
+import { resolveFlattenedMember } from "../core/field/flattened-member.js";
 import type { MetaReferenceIdentity } from "../core/identity/meta-identity.js";
 import { contradictionHint, contradictionsFor } from "../attr-contradictions.js";
 import { ParseError, type ErrorCode } from "../errors.js";
@@ -662,7 +663,9 @@ function _validateFromPath(
     );
     return undefined;
   }
-  const sourceField = _findField(sourceObj, targetFieldName);
+  // G6: a member of a flattened value object (`Plan.address.city`) is a column of the owning table.
+  const sourceField = _findField(sourceObj, targetFieldName)
+    ?? resolveFlattenedMember(sourceObj, targetFieldName)?.member;
   if (!sourceField) {
     // FR5d — entity resolved, field on it did not. target = full ref.
     errors.push(

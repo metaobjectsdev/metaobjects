@@ -482,6 +482,12 @@ vocabulary; upgrade every port together.
 
 ### Fixed
 
+- **A passthrough reads a member of a flattened value object** (rc.19 Phase 5, bug G6).
+  `@from: Plan.address.city`, where `address` is a `field.object` with `@storage: flattened`,
+  reads the owning table's `address_city` column (an empty `@flattenedColumnPrefix` reads the
+  bare member column). The loader refused the path in TypeScript and C# ("no such field").
+  Pinned by `fixtures/conformance/origin-passthrough-flattened-member`. An `identity.reference`
+  whose `@fields` names a flattened member (`address.countryId`) is not covered yet.
 - **An origin's `@via` walks the reverse of a reference** (rc.19 Phase 5, bug R-walk). A hop
   named by the referencing entity's collection name (`Patient.consents` for
   `Consent.patient`) walks that identity.reference backwards, to-many, with no relationship

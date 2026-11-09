@@ -1065,7 +1065,8 @@ public static partial class ValidationPasses
             return null;
         }
 
-        var sourceField = FindField(sourceObj, targetFieldName);
+        // G6: a member of a flattened value object (`Plan.address.city`) is a column of the owning table.
+        var sourceField = FindField(sourceObj, targetFieldName) ?? FlattenedMembers.Resolve(sourceObj, targetFieldName)?.Member;
         if (sourceField is null)
         {
             // FR5d — entity resolved, field on it did not. target = full ref.
