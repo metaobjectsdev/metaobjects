@@ -568,6 +568,16 @@ vocabulary; upgrade every port together.
     expression leaf. **Changed:** the loader no longer refuses them there (rule F1); the corpus
     fixtures `error-relative-date-wrong-host` and `error-relative-date-origin-host` became
     `projection-filter-relative-now` and `origin-filter-relative-now`.
+    **Upgrade note: `now` is the UTC clock, not the session time zone.** A relative value is
+    evaluated when the view is queried, on the UTC wall clock, in the compared field's kind (the
+    report rule): against a `field.date` or a naive timestamp, today is the UTC date, and a
+    `startOf: day` boundary is UTC midnight; a `timestamptz` instant compares with `now()` itself.
+    SQL that compares with `CURRENT_DATE` or `CURRENT_TIMESTAMP` reads the session zone instead,
+    so near midnight the two disagree by a day: in a session at UTC−5, from 19:00 local time the
+    view's "today" is already tomorrow's date. A hand-written function you replace with a
+    `now` filter (a consent or eligibility window, say) can include or exclude a row for those
+    hours that it did not before. Keep the session zone UTC, or compare a `timestamptz`
+    instant, if the two must agree.
   - *correlated-filter*: `{ field: "<base field>" }` operands in an origin `@filter`, with the
     null-safe `isDistinctFrom` / `isNotDistinctFrom`.
   - *computed-over-joined*: `origin.computed` refs name the projection's own fields first.
