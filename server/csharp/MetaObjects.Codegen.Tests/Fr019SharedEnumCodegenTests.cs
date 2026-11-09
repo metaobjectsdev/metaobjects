@@ -2,7 +2,7 @@
 //
 // Mirrors the TS reference (codegen-ts enum-shared / enum-import / enums-file):
 //   • shared-materialized-once — a ROOT-level abstract field.enum extended by TWO
-//     entities is emitted ONCE (a shared Enums.g.cs, namespace-level `public enum E`),
+//     entities is emitted ONCE (its own <package>/<E>.g.cs, namespace-level `public enum E`),
 //     and BOTH entity files REFERENCE it (no nested `public enum E`).
 //   • @provided — `@provided: true` emits NOTHING for the type; consuming entities
 //     reference `<ProvidedEnumNamespace>.E`; a missing namespace config is a clear
@@ -52,6 +52,9 @@ public class Fr019SharedEnumCodegenTests
         },
     };
 
+    /// <summary>The header line of a materialized shared enum's own file (item 12).</summary>
+    private const string SharedEnumFileMarker = "(FR-019 shared enum)";
+
     private const string SharedModel = """
     { "metadata.root": { "package": "acme", "children": [
       { "field.enum": { "name": "OrderStatus", "abstract": true, "@values": ["DRAFT", "PUBLISHED"] } },
@@ -75,8 +78,8 @@ public class Fr019SharedEnumCodegenTests
     {
         var files = new EntityGenerator().Generate(Ctx(Load(SharedModel))).ToList();
 
-        // A dedicated shared-enums file is emitted, holding the single materialized enum.
-        var enumsFile = Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "Enums.g.cs");
+        // The enum's own file is emitted, holding the single materialized enum.
+        var enumsFile = Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "OrderStatus.g.cs");
         Assert.Contains("public enum OrderStatus { DRAFT, PUBLISHED }", enumsFile.Content);
 
         // The enum is materialized EXACTLY ONCE across the whole emitted set.
@@ -134,7 +137,7 @@ public class Fr019SharedEnumCodegenTests
     // (ResolveSharedEnumDecl requires both). A field that extends another ENTITY's
     // concrete field — the ordinary way a projection restates a column it reads, e.g.
     // `ShipmentSummary.status extends "Shipment.status"` — resolves a super but shares
-    // nothing: no Enums.g.cs entry is emitted for it and no type of that name exists.
+    // nothing: no shared-enum file is emitted for it and no type of that name exists.
     //
     // EnumTypeName used to take the super's simple name unconditionally, so such a field
     // nested `public enum Status` inside a class that also declares `public Status Status
@@ -171,7 +174,7 @@ public class Fr019SharedEnumCodegenTests
         Assert.DoesNotContain("public enum Status ", summary.Content);
 
         // Nothing is shared, so nothing is materialized centrally either.
-        Assert.DoesNotContain(files, f => System.IO.Path.GetFileName(f.Path) == "Enums.g.cs");
+        Assert.DoesNotContain(files, f => f.Content.Contains(SharedEnumFileMarker));
     }
 
     [Fact]
@@ -201,7 +204,7 @@ public class Fr019SharedEnumCodegenTests
         var files = new EntityGenerator().Generate(Ctx(Load(ProvidedModel), providedNs: "Acme.External.Enums")).ToList();
 
         // NOTHING is emitted for the provided type: no shared file, no nested decl.
-        Assert.DoesNotContain(files, f => System.IO.Path.GetFileName(f.Path) == "Enums.g.cs");
+        Assert.DoesNotContain(files, f => f.Content.Contains(SharedEnumFileMarker));
         Assert.All(files, f => Assert.DoesNotContain("public enum ContactMethod", f.Content));
 
         // The consuming entity references the externally-provided type at the configured namespace.
@@ -248,7 +251,7 @@ public class Fr019SharedEnumCodegenTests
         var files = new EntityGenerator().Generate(
             Ctx(root, packageNamespaces: new() { ["acme::ext::auth"] = "Acme.External.Auth" })).ToList();
 
-        Assert.DoesNotContain(files, f => System.IO.Path.GetFileName(f.Path) == "Enums.g.cs");
+        Assert.DoesNotContain(files, f => f.Content.Contains(SharedEnumFileMarker));
         var customer = Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "Customer.g.cs");
         Assert.Contains("public Acme.External.Auth.ContactMethod? Preferred { get; set; }", customer.Content);
     }
@@ -305,10 +308,65 @@ public class Fr019SharedEnumCodegenTests
         var files = new EntityGenerator().Generate(Ctx(Load(inlineModel))).ToList();
 
         // No shared file for an inline enum.
-        Assert.DoesNotContain(files, f => System.IO.Path.GetFileName(f.Path) == "Enums.g.cs");
+        Assert.DoesNotContain(files, f => f.Content.Contains(SharedEnumFileMarker));
         var order = Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "Order.g.cs");
         // Nested, per-entity enum type name (<Entity><Field>) — exactly as before FR-019.
         Assert.Contains("public enum OrderStatus { DRAFT, PUBLISHED, ARCHIVED }", order.Content);
         Assert.Contains("public OrderStatus? Status { get; set; }", order.Content);
+    }
+
+    // ---- item 12: a shared enum is a type like any other ----
+    //
+    // One <package>/<Enum>.g.cs per materialized enum (OutputPaths.Of, ruling R39), in the
+    // namespace shared enums already land in (Config.Namespace; Q6 leaves namespaces alone).
+    // Its members carry their @intValueMap integers, and @enumDoc / @description become XML docs.
+
+    private const string DocumentedModel = """
+    { "metadata.root": { "package": "acme::billing", "children": [
+      { "field.enum": { "name": "Priority", "abstract": true, "@values": ["LOW", "HIGH"],
+          "@intValueMap": { "LOW": 10, "HIGH": 20 },
+          "@description": "How urgent a ticket is.",
+          "@enumDoc": { "LOW": "Handle when convenient.", "HIGH": "Handle <now> & first." } } },
+      { "field.enum": { "name": "Channel", "abstract": true, "@values": ["EMAIL", "PHONE"] } },
+      { "object.entity": { "name": "Ticket", "children": [
+        { "source.rdb": { "@table": "tickets" } },
+        { "field.long": { "name": "id" } },
+        { "field.enum": { "name": "priority", "extends": "Priority" } },
+        { "field.enum": { "name": "channel", "extends": "Channel" } },
+        { "identity.primary": { "@fields": "id" } }
+      ]}}
+    ]}}
+    """;
+
+    [Fact]
+    public void Each_shared_enum_is_its_own_file_under_its_package()
+    {
+        var files = new EntityGenerator().Generate(Ctx(Load(DocumentedModel))).ToList();
+        Assert.DoesNotContain(files, f => System.IO.Path.GetFileName(f.Path) == "Enums.g.cs");
+        var priority = Assert.Single(files, f => f.Path == "acme/billing/Priority.g.cs");
+        var channel = Assert.Single(files, f => f.Path == "acme/billing/Channel.g.cs");
+        Assert.Contains("namespace Acme.Generated;", priority.Content);
+        Assert.Contains("namespace Acme.Generated;", channel.Content);
+        Assert.Contains("public enum Channel { EMAIL, PHONE }", channel.Content);
+    }
+
+    [Fact]
+    public void A_shared_enum_carries_its_int_values_and_its_docs()
+    {
+        var files = new EntityGenerator().Generate(Ctx(Load(DocumentedModel))).ToList();
+        var priority = Assert.Single(files, f => f.Path == "acme/billing/Priority.g.cs").Content;
+        Assert.Contains("/// <summary>How urgent a ticket is.</summary>\npublic enum Priority", priority.Replace("\r\n", "\n"));
+        Assert.Contains("    /// <summary>Handle when convenient.</summary>\n    LOW = 10,", priority.Replace("\r\n", "\n"));
+        Assert.Contains("    /// <summary>Handle &lt;now&gt; &amp; first.</summary>\n    HIGH = 20,", priority.Replace("\r\n", "\n"));
+    }
+
+    [Fact]
+    public void The_documented_enum_set_compiles()
+    {
+        var ctx = Ctx(Load(DocumentedModel));
+        var files = new EntityGenerator().Generate(ctx)
+            .Concat(new NamesGenerator().Generate(ctx))
+            .Concat(new DbContextGenerator().Generate(ctx)).ToList();
+        AssertCompiles(files, "documented");
     }
 }

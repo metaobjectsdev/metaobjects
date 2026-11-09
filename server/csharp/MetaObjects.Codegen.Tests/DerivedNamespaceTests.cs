@@ -168,7 +168,7 @@ public class DerivedNamespaceTests
         var files = Generate(Load(Billing(), Crm, Ops), Bare());
         foreach (var expected in new[]
                  {
-                     "Enums.g.cs", "TicketSummary.callable.g.cs", "triage.render.cs", "triage.response.cs",
+                     "Grade.g.cs", "TicketSummary.callable.g.cs", "triage.render.cs", "triage.response.cs",
                      "triage.responseFormat.cs", "TicketVerdictExtracted.g.cs", "InvoiceTotalsExport.g.cs",
                  })
             Assert.Contains(files, f => System.IO.Path.GetFileName(f.Path) == expected);

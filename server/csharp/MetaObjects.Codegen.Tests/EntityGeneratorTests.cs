@@ -284,7 +284,7 @@ public class EntityGeneratorTests
     public void Enum_abstract_extends_uses_super_name_as_enum_type_name()
     {
         // FR-019: a ROOT-level abstract field.enum is a SHARED enum — materialized ONCE
-        // in a dedicated Enums.g.cs (namespace-level), and the entity REFERENCES it (no
+        // in its own <Enum>.g.cs (namespace-level), and the entity REFERENCES it (no
         // nested redeclaration). The type name is the super's name ("Status").
         const string model = """
         { "metadata.root": { "package": "acme", "children": [
@@ -302,8 +302,8 @@ public class EntityGeneratorTests
         var ctx = EnumCtx(r.Root);
         var files = new EntityGenerator().Generate(ctx).ToList();
 
-        // Shared enum materialized once in Enums.g.cs (type name is the super's "Status").
-        var enums = Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "Enums.g.cs");
+        // Shared enum materialized once in Status.g.cs (type name is the super's "Status").
+        var enums = Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "Status.g.cs");
         Assert.Contains("public enum Status { DRAFT, PUBLISHED }", enums.Content);
 
         // The entity references the shared type — no nested redeclaration.
@@ -351,7 +351,7 @@ public class EntityGeneratorTests
     public void Two_fields_extending_same_abstract_enum_emit_declaration_exactly_once()
     {
         // FR-019: two fields both resolving to the ROOT-level abstract "OrderStatus" share
-        // ONE materialized type in Enums.g.cs (the entity references it from both props, no
+        // ONE materialized type in OrderStatus.g.cs (the entity references it from both props, no
         // nested redeclaration). Regression guard against a duplicate-type (CS0102) emit.
         const string model = """
         { "metadata.root": { "package": "acme", "children": [
@@ -375,7 +375,7 @@ public class EntityGeneratorTests
             System.Text.RegularExpressions.Regex.Matches(f.Content, @"public enum OrderStatus\b").Count);
         Assert.Equal(1, occurrences);
         Assert.Contains("public enum OrderStatus { DRAFT, PUBLISHED }",
-            Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "Enums.g.cs").Content);
+            Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "OrderStatus.g.cs").Content);
 
         // Both properties exist on the entity, typed by the shared enum (no nested decl).
         var order = Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "Order.g.cs");

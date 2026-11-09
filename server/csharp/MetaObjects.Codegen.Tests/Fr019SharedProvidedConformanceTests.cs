@@ -50,7 +50,7 @@ public class Fr019SharedProvidedConformanceTests
     {
         var files = new EntityGenerator().Generate(Ctx(LoadFixture(), providedNs: "Acme.External")).ToList();
 
-        var enums = Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "Enums.g.cs");
+        var enums = Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "Priority.g.cs");
         Assert.Contains("public enum Priority { LOW, MEDIUM, HIGH }", enums.Content);
         // Exactly one declaration across the whole output.
         var decls = files.Sum(f => Regex.Matches(f.Content, @"public enum Priority\b").Count);
@@ -225,7 +225,7 @@ public class Fr019SharedProvidedConformanceTests
         };
 
         var files = new EntityGenerator().Generate(ctx).ToList();
-        var enums = Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "Enums.g.cs");
+        var enums = Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "Priority.g.cs");
         Assert.Contains("public enum Priority { LOW, MEDIUM, HIGH }", enums.Content);
     }
 }

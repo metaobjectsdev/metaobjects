@@ -269,6 +269,16 @@ vocabulary; upgrade every port together.
 
 ### Changed
 
+- **C#: each shared enum is its own file, with its integers and its docs** (rc.19 item 12). A
+  materialized shared enum (a root-level abstract `field.enum`) was one line in a single
+  `Enums.g.cs`; it is now `<package>/<Enum>.g.cs`, placed like every other per-object file
+  (ruling R39), in the same namespace as before (`GenConfig.Namespace`; namespaces are unchanged).
+  Its members carry their `@intValueMap` integers (`DRAFT = 0, PUBLISHED = 5`), and the
+  declaration's `@description` and each member's `@enumDoc` become XML doc comments. The EF
+  conversion still maps member by member, so stored values do not change. **Upgrade note:** the
+  next `dotnet meta gen` removes `Enums.g.cs` (the orphan sweep) and writes one file per enum;
+  code that cast an int-mapped shared enum to `int` now gets its mapped integer, not its
+  position. A nested per-entity enum is unchanged.
 - **Postgres view SQL qualifies every relation it reads** (ruling R54). A generated projection,
   write-through or report view names each table as `<@schema>.<table>`, `public` when no
   `@schema` is declared, in its `FROM`, every `JOIN` and every `origin.first` subquery. A bare

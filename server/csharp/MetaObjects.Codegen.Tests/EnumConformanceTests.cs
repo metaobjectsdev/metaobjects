@@ -14,7 +14,7 @@ namespace MetaObjects.Codegen.Tests;
 /// generator represents enum fields as C# <c>enum</c>s: an INLINE enum (<c>status</c>)
 /// emits a nested <c>public enum &lt;Entity&gt;&lt;Field&gt;</c> in the entity file, while a
 /// field that <c>extends</c> the abstract root <c>Priority</c> enum collapses onto one shared
-/// <c>Enums.g.cs</c> declaration the entity references.
+/// <c>&lt;Enum&gt;.g.cs</c> declaration the entity references.
 /// </summary>
 public class EnumConformanceTests
 {
@@ -57,7 +57,7 @@ public class EnumConformanceTests
     public void Extends_abstract_root_enum_is_materialized_once_in_shared_enums_file()
     {
         var files = new EntityGenerator().Generate(Context(LoadFixture())).ToList();
-        var enums = Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "Enums.g.cs");
+        var enums = Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "Priority.g.cs");
         Assert.Contains("public enum Priority { LOW, MEDIUM, HIGH }", enums.Content);
 
         // The entity references the shared enum without redeclaring it.

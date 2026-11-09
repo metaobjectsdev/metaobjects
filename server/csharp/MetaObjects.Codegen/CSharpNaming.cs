@@ -1180,7 +1180,7 @@ public static class CSharpNaming
     /// <list type="bullet">
     ///   <item>When the field extends a SHARED declaration — a root-level abstract
     ///   <c>field.enum</c> (FR-019) — use the PascalCased super name, the one type
-    ///   materialized in <c>Enums.g.cs</c> (or provided externally) and shared by every
+    ///   materialized in its own <c>&lt;package&gt;/&lt;Enum&gt;.g.cs</c> (or provided externally) and shared by every
     ///   field that extends it.</item>
     ///   <item>Otherwise use <c>&lt;EntityPascal&gt;&lt;FieldPascal&gt;</c>.</item>
     /// </list>

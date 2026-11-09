@@ -9,7 +9,7 @@
 //
 // Two cases on the abstract declaration:
 //   • non-@provided → metaobjects MATERIALIZES the type once (a shared file,
-//     Enums.g.cs, a namespace-level `public enum E { A, B }`), and consuming
+//     <package>/<E>.g.cs, a namespace-level `public enum E { A, B }`), and consuming
 //     fields reference it (same namespace ⇒ a bare `E`).
 //   • @provided: true → metaobjects emits NOTHING for the type; consuming fields
 //     reference an existing hand-written/third-party type, resolved via per-port
@@ -34,7 +34,14 @@ namespace MetaObjects.Codegen.Generators;
 /// file-default package), used to resolve a <c>@provided</c> enum's C# namespace via
 /// <see cref="GenConfig.PackageNamespaces"/> (ADR-0001: bind the namespace to the
 /// metadata package, never an FQN in metadata).</summary>
-public sealed record SharedEnum(string Name, IReadOnlyList<string> Values, bool Provided, string Package);
+public sealed record SharedEnum(string Name, IReadOnlyList<string> Values, bool Provided, string Package)
+{
+    /// <summary>The root-level abstract <c>field.enum</c> this enum is materialized from: its
+    /// package places the file (<see cref="OutputPaths.Of"/>), and its <c>@intValueMap</c>,
+    /// <c>@enumDoc</c> and doc attrs are the type's member values and XML docs (item 12). Null for
+    /// a descriptor built by hand (an adopter's own provided-enum generator).</summary>
+    public MetaField? Declaration { get; init; }
+}
 
 /// <summary>
 /// FR-019 — resolves the shared/provided status of an enum field and collects the
@@ -71,7 +78,10 @@ public static class Fr019SharedEnum
             // reported provided and emit a reference to a hand-written B the adopter never
             // declared, instead of materializing B. Matches the JVM ports.
             Provided: decl.OwnAttr(FIELD_ATTR_PROVIDED) is true,
-            Package: PackageOf(decl));
+            Package: PackageOf(decl))
+        {
+            Declaration = decl,
+        };
     }
 
     /// <summary>

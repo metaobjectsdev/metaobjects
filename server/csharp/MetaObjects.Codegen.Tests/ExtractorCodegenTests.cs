@@ -404,7 +404,7 @@ public sealed class ExtractorCodegenTests
         var root = Load(SharedEnumModel);
         var all = string.Concat(new EntityGenerator().Generate(Ctx(root)).Select(f => f.Content));
 
-        // Exactly ONE enum declaration (FR-019's shared-enums file), named for the super.
+        // Exactly ONE enum declaration (FR-019's shared-enum file), named for the super.
         int enumDeclCount = System.Text.RegularExpressions.Regex.Matches(all, @"public enum Priority \{").Count;
         Assert.True(enumDeclCount == 1, $"expected exactly one enum Priority, got {enumDeclCount}");
 
