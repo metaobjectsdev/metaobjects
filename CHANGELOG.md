@@ -482,6 +482,13 @@ vocabulary; upgrade every port together.
 
 ### Fixed
 
+- **A projection that extends another projection gets a view with the inherited fields**
+  (rc.19 Phase 5, bug G13). The loader could not derive the base entity of an extender that
+  anchors nothing of its own (TypeScript and C#), and view codegen read only the extender's own
+  fields, so the inherited columns and joins were dropped. The extender now has its super's base
+  entity, and its view carries the effective fields and their origins, base first. An extender
+  that would inherit its base's source is still refused at load: it declares its own. Pinned by
+  `fixtures/conformance/projection-extends-abstract-projection`.
 - **An origin `@filter` keeps every operator of a field clause** (rc.19 Phase 5, bug
   multi-op). `{ ordinal: { gte: 1, lte: 5 } }` on an `origin.aggregate` or `origin.first` kept
   only `gte`, so the aggregate spanned a wider row set than declared, silently; each operator is

@@ -940,6 +940,12 @@ function _deriveBaseEntity(
     }
   }
   if (targets.size === 1) return [...targets][0];
+  // G13: a projection that extends another projection, and anchors nothing of its own, has the
+  // base entity its super has (its inherited identity and fields are anchored there).
+  const sup = obj.superResolved;
+  if (targets.size === 0 && sup !== undefined && sup.type === TYPE_OBJECT && sup.subType === OBJECT_SUBTYPE_PROJECTION) {
+    return _deriveBaseEntity(sup, root, fieldName, originSource, errors);
+  }
   if (targets.size > 1) {
     const names = [...targets].map((t) => `"${t.name}"`).join(", ");
     errors.push(

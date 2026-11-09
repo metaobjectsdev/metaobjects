@@ -56,6 +56,7 @@ import {
   OBJECT_PROJECTION_ATTR_FILTER,
   findReferencesBetween,
   findReverseReferenceHops,
+  OBJECT_SUBTYPE_PROJECTION,
   resolveFlattenedMember,
   resolveFlattenedColumnName,
   isMetaRoot,
@@ -635,6 +636,12 @@ function baseEntityFor(
     if (named !== undefined && named !== projection) targets.add(named);
   }
   if (targets.size === 1) return [...targets][0]!;
+  // G13: a projection extending another projection, anchoring nothing of its own, has its
+  // super's base entity (mirrors the loader's _deriveBaseEntity).
+  const sup = projection.superResolved;
+  if (targets.size === 0 && sup !== undefined && isMetaObject(sup) && sup.subType === OBJECT_SUBTYPE_PROJECTION) {
+    return baseEntityFor(sup, root);
+  }
   throw new Error(
     `Projection ${projection.name}: cannot derive the base entity — declare an ` +
       `extends-bound identity (identity.primary { name, extends: "<Entity>.<identity>" }) ` +
@@ -1067,8 +1074,9 @@ function buildJoinTree(
   // ADR-0028, inclusive + fail-closed); iterate the projection's own fields and
   // each field's own origin. origin.* NEVER inherits (ADR-0029), so origin reads
   // below are own by policy (category 4).
-  for (const field of projection.ownChildren()) {
-    if (field.type !== TYPE_FIELD) continue;
+  // G13: the EFFECTIVE fields — a projection that extends another projection inherits its
+  // fields and their origins (base first), so its view joins what they need.
+  for (const field of projection.fields()) {
     for (const origin of field.ownChildren()) {
       if (origin.type !== TYPE_ORIGIN) continue;
       // ADR-0039: own (category 4) — origin.* never inherits (ADR-0029).
@@ -1151,7 +1159,8 @@ function buildSelectSpec(
   const isReadViewHost = base === projection;
   const declaredFields: MetaField[] = isReadViewHost
     ? base.fields()
-    : projection.ownChildren().filter((c): c is MetaField => c.type === TYPE_FIELD);
+    // G13: effective — an extending projection's view carries the inherited fields, base first.
+    : projection.fields();
   for (const field of declaredFields) {
     const origin = field.ownChildren().find((c) => c.type === TYPE_ORIGIN);
     const dbCol = sourceColumnNameFor(field, ctx);

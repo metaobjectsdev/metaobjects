@@ -1293,6 +1293,10 @@ public static partial class ValidationPasses
             }
         }
         if (targets.Count == 1) return targets.First();
+        // G13: a projection that extends another projection, and anchors nothing of its own, has
+        // the base entity its super has.
+        if (targets.Count == 0 && obj.SuperData is { Type: TYPE_OBJECT, SubType: OBJECT_SUBTYPE_PROJECTION } superProjection)
+            return DeriveBaseEntity(superProjection, root, fieldName, originSource, errors);
         if (targets.Count > 1)
         {
             string names = string.Join(", ", targets.Select(t => $"\"{t.Name}\""));
