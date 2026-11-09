@@ -458,6 +458,11 @@ vocabulary; upgrade every port together.
 
 ### Fixed
 
+- **TypeScript docs: a field's "References" link reaches the target's page** (rc.19 item 11).
+  Docs pages sit under their package path, but the foreign-key link was the bare
+  `<Target>.md`, which resolved only beside the page. It now goes through `docPageHref`, as the
+  index and template links do: `../crm/Customer.md` from `acme/sales/Order.md`, and
+  `./Order.md` within one package.
 - **An enum's `@default` is what an untouched record stores** (rc.17). C#: a scalar enum
   started at `default(TEnum)`, not at `@default`, while the EF sentinel was `@default`, so EF
   wrote it: a string-stored or int-mapped enum stored its first member, a nullable one NULL, and
