@@ -482,6 +482,13 @@ vocabulary; upgrade every port together.
 
 ### Fixed
 
+- **A Postgres view column takes its declared type** (rc.19 Phase 5, bug `cast`). A bare
+  `NULL` (`origin.computed { @expr: { value: null } }`) is `text` in a view, so a `field.int` or
+  `field.timestamp` declared that way became a text column; an `@convert: true` passthrough read
+  the source column unconverted. Both are now `CAST(… AS <type>)`, with the type `meta migrate`
+  gives the field's column (`fieldSqlType`, `pgType`, now exported from
+  `@metaobjectsdev/migrate-ts/expected`). A text NULL stays bare; SQLite views are untyped and
+  are not cast. **Upgrade note:** a view with such a column is re-proposed once as `replace-view`.
 - **A multi-hop `origin.first @via` is lowered along its path** (rc.19 Phase 5, bug
   first-multihop). The loader accepted it, but view codegen never read `origin.first`'s `@via`:
   it correlated the base directly to the `@of` entity and, with no direct reference, dropped the

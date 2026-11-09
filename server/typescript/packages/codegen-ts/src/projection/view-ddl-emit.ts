@@ -1,4 +1,5 @@
 import { DEFAULT_DB_SCHEMA_POSTGRES } from "@metaobjectsdev/metadata";
+import { pgType, type SqlType } from "@metaobjectsdev/migrate-ts/expected";
 import type {
   JoinNode, ViewSpec, ViewFilterClause, ViewExprNode, ViewOrderKey, SelectColumn,
 } from "./view-spec.js";
@@ -267,12 +268,17 @@ function sqliteCollectOuter(c: CollectColumn): string {
 const isCollect = (c: SelectColumn): c is CollectColumn =>
   c.kind === "collectAgg" || c.kind === "collectObjectAgg";
 
+/** bug `cast`: a column the declared type must win over, cast to it on Postgres (SQLite views are untyped). */
+function cast(sql: string, to: SqlType | undefined, dialect: EmitOptions["dialect"]): string {
+  return to === undefined || dialect !== "postgres" ? sql : `CAST(${sql} AS ${pgType(to)})`;
+}
+
 function renderColumn(c: SelectColumn, options: EmitOptions, baseAlias: string): string {
   const dialect = options.dialect;
   const alias = quoteIfNeeded(c.dbColAlias);
 
   if (c.kind === "passthrough") {
-    return `${c.sourceAlias}.${quoteIfNeeded(c.sourceColumn)} AS ${alias}`;
+    return `${cast(`${c.sourceAlias}.${quoteIfNeeded(c.sourceColumn)}`, c.castTo, dialect)} AS ${alias}`;
   }
 
   if (c.kind === "aggregate") {
@@ -357,7 +363,7 @@ function renderColumn(c: SelectColumn, options: EmitOptions, baseAlias: string):
   }
 
   if (c.kind === "computed") {
-    return `${renderExpr(c.expr, dialect)} AS ${alias}`;
+    return `${cast(renderExpr(c.expr, dialect), c.castTo, dialect)} AS ${alias}`;
   }
 
   // first — a correlated scalar subquery keyed on the base alias.

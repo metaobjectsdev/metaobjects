@@ -1572,6 +1572,14 @@ function arrayElementSqlType(field: MetaData): SqlType | undefined {
   }
 }
 
+/**
+ * The SQL type `meta migrate` gives a field's column. Exported so a generated view can cast a
+ * column to the type the field declares (rc.19 bug `cast`) with the one type rule.
+ */
+export function fieldSqlType(field: MetaData): SqlType {
+  return subtypeToSqlType(field);
+}
+
 function subtypeToSqlType(field: MetaData): SqlType {
   // R6 Plan 2b: a physical @dbColumnType override selects the DB column type
   // instead of the subtype default (the loader has already validated the

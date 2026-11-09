@@ -24,6 +24,7 @@ import {
   ORIGIN_ATTR_DISTINCT,
   ORIGIN_ATTR_ORDER_BY,
   ORIGIN_COMPUTED_ATTR_EXPR,
+  ORIGIN_PASSTHROUGH_ATTR_CONVERT,
   ORIGIN_FIRST_ATTR_OF,
   ORIGIN_FIRST_ATTR_VIA,
   ORIGIN_FIRST_ATTR_FILTER,
@@ -77,6 +78,7 @@ import { isWriteThrough } from "./projection-detector.js";
 // whether a belongs-to join is INNER (required FK) vs LEFT OUTER (nullable FK).
 import { isRequired } from "../column-mapper.js";
 import type { ColumnNamingStrategy } from "../metaobjects-config.js";
+import { fieldSqlType } from "@metaobjectsdev/migrate-ts/expected";
 import type {
   JoinNode, JoinTree, SelectColumn, SelectSpec, ViewSpec, ViewFilterClause,
   ViewExprNode, ViewExprLiteral, ViewOrderKey, FirstInnerJoin,
@@ -1163,6 +1165,9 @@ function buildSelectSpec(
         sourceColumn: targetField !== undefined
           ? sourceColumnNameFor(targetField, ctx)
           : resolveFlattenedColumnName(flattened!.embedding, flattened!.member, ctx.columnNamingStrategy),
+        // bug `cast`: @convert acknowledges the declared type differs from the source's; the view
+        // must yield the declared one. ADR-0039: own — origin.* never inherits (ADR-0029).
+        ...(origin.ownAttr(ORIGIN_PASSTHROUGH_ATTR_CONVERT) === true ? { castTo: fieldSqlType(field) } : {}),
       });
     } else if (origin.subType === ORIGIN_SUBTYPE_AGGREGATE) {
       // ADR-0039: own (category 4) — origin.* never inherits (ADR-0029).
@@ -1301,7 +1306,10 @@ function buildSelectSpec(
       const rawExpr = origin.ownAttr(ORIGIN_COMPUTED_ATTR_EXPR);
       const expr = resolveExprNode(rawExpr, base, joinTree.baseAlias, ctx);
       if (expr === undefined) continue;
-      columns.push({ kind: "computed", fieldName: field.name, dbColAlias: dbCol, expr });
+      // bug `cast`: a bare NULL in a view is text, so any other declared type needs the cast.
+      const declared = fieldSqlType(field);
+      const castNull = expr.kind === "lit" && expr.value === null && !(declared.kind === "text" && declared.maxLength === undefined);
+      columns.push({ kind: "computed", fieldName: field.name, dbColAlias: dbCol, expr, ...(castNull ? { castTo: declared } : {}) });
     } else if (origin.subType === ORIGIN_SUBTYPE_FIRST) {
       // #195 correlated latest-row — argmax-then-project. Resolves to a correlated
       // subquery (NOT a join). ADR-0039: own — origin.* never inherits (ADR-0029).

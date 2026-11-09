@@ -1,4 +1,5 @@
 import type { AggregateFunction } from "@metaobjectsdev/metadata";
+import type { SqlType } from "@metaobjectsdev/migrate-ts/expected";
 
 /** One node in the JOIN tree. `alias` is an auto-generated unique short alias. */
 export interface JoinNode {
@@ -85,6 +86,8 @@ export type SelectColumn =
       readonly dbColAlias: string;       // SQL output column name
       readonly sourceAlias: string;      // join alias of the source
       readonly sourceColumn: string;     // source table's column name (already strategy-applied)
+      /** bug `cast`: the declared field's column type when it differs from the source's (`@convert`). Postgres casts to it. */
+      readonly castTo?: SqlType;
     }
   | {
       readonly kind: "aggregate";
@@ -157,6 +160,8 @@ export type SelectColumn =
       readonly fieldName: string;
       readonly dbColAlias: string;
       readonly expr: ViewExprNode;
+      /** bug `cast`: the declared field's column type, for a bare NULL that would otherwise read as text. Postgres casts to it. */
+      readonly castTo?: SqlType;
     }
   | {
       // #195 — origin.first — argmax-then-project: the single related row selected by
