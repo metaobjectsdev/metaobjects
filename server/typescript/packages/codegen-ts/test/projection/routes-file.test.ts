@@ -16,7 +16,7 @@ import { servedReport } from "../../src/source-detect.js";
 import { hasUiSurface } from "../../src/generators/agent-ui-page.js";
 import { runGen } from "../../src/runner.js";
 import { routesFile } from "../../src/generators/routes-file.js";
-import { ERR_COLLECTION_NAME_COLLISION } from "../../src/naming/collection-name-collision.js";
+import { ERR_NAME_COLLISION } from "../../src/naming/name-claims.js";
 import { makeRenderContext } from "../../src/render-context.js";
 import { buildPkMap } from "../../src/pk-resolver.js";
 import { buildRelationMap } from "../../src/relation-resolver.js";
@@ -798,7 +798,7 @@ describe("renderRoutesFile — a served report (FR-044 Plan 3)", () => {
       metadata: root,
       dryRun: true,
     });
-    await expect(run).rejects.toThrow(ERR_COLLECTION_NAME_COLLISION);
+    await expect(run).rejects.toThrow(ERR_NAME_COLLISION);
     await expect(run).rejects.toThrow(/Invoice" and ".*Invoices"/);
   });
 });

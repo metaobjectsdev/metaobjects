@@ -39,7 +39,7 @@ import { mirrorName } from "./extract-delegate-emitter.js";
 import { enumUnionAliasName } from "./inferred-types.js";
 import { enumValues } from "../enum-meta.js";
 import type { RenderContext } from "../render-context.js";
-import { emittedVoName, valueObjectImport } from "./value-object-import.js";
+import { emittedVoName, importBinding, valueObjectImport } from "./value-object-import.js";
 
 // ADR-0039: resolving — root has no super (children()==ownChildren()); a top-level object/template may itself extend, so resolve rather than work-by-accident.
 function findTemplate(root: MetaData, name: string): MetaData | undefined {
@@ -82,10 +82,9 @@ function isFieldRequired(field: MetaData): boolean {
   return field.attr(FIELD_ATTR_REQUIRED) === true;
 }
 
-/** The mirror→strict mapper name for a value-object (`toStrict<Name>`). ADR-0044/#228: `ctx`
- *  (optional) resolves the collision-scoped entity-domain emitted name (matches Task 3's
- *  entity module), so the mapper name agrees with the strict payload type it targets under a
- *  cross-package short-name collision (`toStrictAcmeAlphaNote`). Omitted → bare `vo.name`. */
+/** The mirror→strict mapper name for a value-object (`toStrict<Name>`). `ctx` (optional)
+ *  resolves the local name the strict type is bound under, so two same-short-name value
+ *  objects get two mappers (`toStrictAcmeAlphaNote`). Omitted → bare `vo.name`. */
 function mapperName(vo: MetaData, ctx?: RenderContext): string {
   const name = emittedVoName(ctx, vo);
   return `toStrict${name}`;
@@ -238,17 +237,16 @@ function reachablePayloadGroups(
     // second VO as "already seen" and drop its own import group entirely.
     if (seenVo.has(cur.resolutionKey())) return;
     seenVo.add(cur.resolutionKey());
-    // The VO interface + its OWN enum aliases share the VO's entity module. The module target
-    // is the ADR-0044/#228 entity-domain EMITTED name (Task 3's entityFile() writes `<emitted>.ts`),
-    // so a cross-package short-name collision imports from the SAME qualified module the entity
-    // tier emits (e.g. `AcmeAlphaNote` from `./AcmeAlphaNote.js`, never bare `Note`).
-    const { name: emittedName, specifier } = valueObjectImport(ctx, cur, outPath);
-    const types: string[] = [emittedName];
+    // The VO interface + its OWN enum aliases share the VO's entity module, which declares them
+    // under the value object's own name. They are bound under its local name, aliased when
+    // another object shares the short name (`Note as AcmeAlphaNote`; ruling R52).
+    const { name: localName, exported, specifier } = valueObjectImport(ctx, cur, outPath);
+    const types: string[] = [importBinding(exported, localName)];
     for (const f of fields(cur)) {
-      const alias = enumAlias(f, emittedName);
+      const alias = enumAlias(f, localName);
       if (alias !== undefined && !seenAlias.has(alias)) {
         seenAlias.add(alias);
-        types.push(alias);
+        types.push(importBinding(enumAlias(f, exported)!, alias));
       }
     }
     groups.push({ specifier, types });
@@ -318,9 +316,8 @@ export function renderExtractor(
   }
   const { vo } = shape;
 
-  // ADR-0044/#228: the strict payload TYPE name is the entity-domain EMITTED name (Task 3's
-  // `valueObjectEmittedName`) — the SAME name entityFile() declared the interface under, so a
-  // cross-package short-name collision emits e.g. `AcmeAlphaNote`, matching `./AcmeAlphaNote.js`.
+  // The strict payload type, bound under its local name (the declared name, aliased when another
+  // object shares the short name; ruling R52).
   const strictType = emittedVoName(ctx, vo);
   // Every template-derived SYMBOL goes through templateSymbolBase(); only prose keeps the
   // authored name. output-parser.ts EXPORTS extractLenient<Base>WithLoader, so interpolating

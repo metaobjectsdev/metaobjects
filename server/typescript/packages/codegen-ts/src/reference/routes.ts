@@ -91,6 +91,7 @@ import {
   isTphSubtype,
   tphDiscriminatorPin,
   tphStorageObject,
+  claimRouteSegment,
 } from "@metaobjectsdev/codegen-ts/engine";
 import { renderRoutesIndex, routesIndexFileName } from "../templates/routes-index.js";
 import { isTphDiscriminatorBase, tphPlan } from "../templates/tph-discriminator.js";
@@ -752,6 +753,7 @@ export const routesFile = function routesFile(opts?: RoutesFileOpts): Generator 
     if (!ctx.renderContext) {
       throw new Error("routes-file: renderContext is required (provided by runGen)");
     }
+    claimRouteSegment(ctx, entity);
     const renderContext: RenderContext = {
       ...ctx.renderContext,
       httpRuntimeImport: opts?.runtimeImport

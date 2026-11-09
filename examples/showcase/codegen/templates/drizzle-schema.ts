@@ -16,7 +16,7 @@ import {
   refTarget,
 } from "@metaobjectsdev/metadata";
 import type { RenderContext } from "@metaobjectsdev/codegen-ts/engine";
-import { crossEntitySpecifier, valueObjectModuleSpecifier } from "@metaobjectsdev/codegen-ts/engine";
+import { crossEntitySpecifier, valueObjectFieldImport, valueObjectModuleSpecifier } from "@metaobjectsdev/codegen-ts/engine";
 import {
   mapColumnType, PG_IDENTITY_CAPABLE_FNS, DURATION_COLUMN_FN,
   type ColumnSpec, type EnumIntCustomType,
@@ -708,19 +708,14 @@ function renderColumn(
   // immediately after the baseCall so the chain reads `.text(...).$type<...>().notNull()...`
   // which Drizzle accepts in any order but is conventional for "type narrowing
   // first."
-  // Resolve a VO name → an imported type symbol (shared layout/package/extStyle-aware
-  // helper, so the .$type<VO> import matches the field's TS type + Zod schema).
-  // ADR-0044/#228 — resolve the field's @objectRef to the value object's EMITTED
-  // name (bare when unique in the run, package-qualified on a cross-package
-  // short-name collision), resolved package-locally from the FIELD's declaring
-  // package. `name` (the bare dollarTypeRef name) is the byte-identical fallback
-  // when the ref doesn't resolve to an emitted value object.
+  // The field's `@objectRef` → an imported type symbol, through the shared
+  // layout/package/extStyle-aware helper so the .$type<VO> import matches the field's TS type
+  // + Zod schema. An unresolved ref falls back to the bare dollarTypeRef `name` in this package.
   const voSym = (name: string) => {
     const refRaw = field.attr(FIELD_ATTR_OBJECT_REF);
-    const emitted = typeof refRaw === "string"
-      ? ctx.resolveValueObjectName(field)
-      : name;
-    return imp(`t:${emitted}@${valueObjectModuleSpecifier(emitted, ctx.packageOf, entityPackage, ctx.outputLayout, ctx.extStyle)}`);
+    return typeof refRaw === "string"
+      ? valueObjectFieldImport(ctx, field, entityPackage, "", true)
+      : imp(`t:${name}@${valueObjectModuleSpecifier(undefined, name, entityPackage, ctx.outputLayout, ctx.extStyle)}`);
   };
 
   let dollarTypeSegment: Code | string = "";

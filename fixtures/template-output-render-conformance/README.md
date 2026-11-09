@@ -156,8 +156,10 @@ for it, in addition to gating the `@objectRef` **resolver** above:
    `::`-segment of its package, concatenate, append the bare short name. **C# no longer
    renames (ruling R52):** a value object keeps its name, a same-namespace collision is refused
    (`ERR_NAME_COLLISION`), and the C# runner maps the two packages to distinct namespaces
-   (`PackageNamespaces`).
-   TypeScript counts a collision among value objects; C# and Python count it against
+   (`PackageNamespaces`). **Nor does TypeScript:** each `Note` is its own package's module
+   (the package output layout); a file that meets both binds them under package-qualified
+   local aliases (`Note as AcmeAlphaNote`), and under the flat layout the collision is refused.
+   TypeScript counted a collision among value objects; C# and Python count it against
    every top-level object, because an entity shares their namespace or module
    directory. A still-colliding derived name is a hard generator error,
    `ERR_PAYLOAD_NAME_COLLISION`.
@@ -166,7 +168,7 @@ for it, in addition to gating the `@objectRef` **resolver** above:
 
    | Port | `acme::alpha::Note` | `acme::beta::Note` |
    |---|---|---|
-   | TypeScript (`interface`) | `AcmeAlphaNote` | `AcmeBetaNote` |
+   | TypeScript (`interface`, package layout) | `acme/alpha/Note.ts` `Note` | `acme/beta/Note.ts` `Note` |
    | C# (POCO, packages mapped by `PackageNamespaces`) | `Acme.Alpha.Note` | `Acme.Beta.Note` |
    | Java (`record`) | `acme.alpha.Note` | `acme.beta.Note` |
    | Kotlin (data class) | `acme.alpha.Note` | `acme.beta.Note` |
@@ -204,9 +206,10 @@ The generated render helper, collision-aware value-object naming, and render out
 remain identical — see
 [Cross-package short-name collision](#cross-package-short-name-collision--xpkg-collision-digestdoc)
 above for the full contract and expected names (`AcmeAlphaNote`/`AcmeBetaNote` for
-TS/C#/Python; `acme.alpha.Note`/`acme.beta.Note` for Java/Kotlin). The inbound tier's
-lenient mirrors follow the same names (`AcmeAlphaNoteExtracted` in the flat ports),
-keyed by the value object rather than the template (ADR-0056 rule 3).
+Python; `Note` in its own package for TS, C#, Java and Kotlin). The inbound tier's
+lenient mirrors are keyed by the value object rather than the template (ADR-0056 rule 3):
+in TypeScript, declarations of one module named by the value object's local alias
+(`AcmeAlphaNoteExtracted`).
 
 ## Expected build-time drift FAILURE — `drift/`
 

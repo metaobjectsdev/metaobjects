@@ -311,6 +311,23 @@ vocabulary; upgrade every port together.
   objects were renamed now gets the collision error; map the packages apart
   (`GenConfig.PackageNamespaces`) or rename one object, and update the references to the old
   `AcmeAlphaNote`-style names.
+- **Breaking, TypeScript: a value object is never renamed; one claim registry refuses real
+  collisions** (ruling R52, amending ADR-0044 and ADR-0056). `acme::alpha::Note` is declared as
+  `Note` in its own module; the `AcmeAlphaNote` derived name is gone, and so are
+  `assignEmittedNames`, `RenderContext.valueObjectNames`, `RenderContext.packageOf` and the run-wide
+  `ERR_COLLECTION_NAME_COLLISION` pre-pass (`naming/collection-name-collision.ts`). Each generator
+  claims what it emits through `ctx.claim(scope, name, claimant, remedy)`: `entityFile()` and
+  `queriesFile()` a module's type and collection names in its directory, `barrel()` its
+  re-exports, the routes generators their REST segments per entry. A second claimant fails with
+  `ERR_NAME_COLLISION`, naming both. A file that meets two same-named value objects binds each
+  under a package-qualified local alias (`import type { Note as AcmeAlphaNote } from
+  "../alpha/Note.js"`); the extract tier's mirrors and mappers, declarations of one module, are
+  named by that alias (`AcmeAlphaNoteExtracted`). `valueObjectModuleSpecifier` takes the value
+  object's node. **Upgrade note:** two same-named value objects in two packages under the flat
+  layout (or behind a barrel) now fail with the collision error; set `outputLayout: "package"`
+  (and drop the barrel, or rename one), and update imports of the old `AcmeAlphaNote` names. An
+  owned generator copy that read `valueObjectNames` or `packageOf` must be re-ejected
+  (`meta eject --list`).
 - **C#, upgrade note: identity starts never RESTART, and the fix is design-time only** (rulings
   R50, R51). A Postgres project's context now carries `identity.primary @sequenceStart` in its
   model, and a Postgres context with an increment key gets

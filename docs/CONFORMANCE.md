@@ -117,8 +117,13 @@ the run's claim registry with `ERR_NAME_COLLISION`, naming both and the remedy.
 - *Done:* C# (`GenContext.Claim`: types per namespace, DbSets per context, route segments per
   routes entry, finders per class, expression indexes per schema). The `xpkg-collision` runners
   map the two packages to distinct namespaces (`PackageNamespaces`).
-- *TODO, TypeScript:* remove `assignEmittedNames` and `collection-name-collision.ts`; claim per
-  module directory once the package output layout is the default.
+- *Done:* TypeScript (`ctx.claim`, helpers in `codegen-ts/src/naming/name-claims.ts`: a module's
+  type and collection names per module directory, the barrel's re-exports per barrel, REST
+  segments per routes entry). The `xpkg-collision` tests use the package output layout; a file
+  that meets both `Note`s binds each under a package-qualified local alias
+  (`import type { Note as AcmeAlphaNote }`), which names no type. The UI tier
+  (`codegen-ts-tanstack`, `-react`, `-angular`) claims nothing yet: its hooks import the entity
+  modules, whose claims cover the same names.
 - *TODO, Python:* still renames (`collision_names.py`, `ERR_PAYLOAD_NAME_COLLISION`) in its flat
   generated package. Java and Kotlin never renamed (the Java package disambiguates). Tracked in
   [#544](https://github.com/metaobjectsdev/metaobjects/issues/544)–#549.

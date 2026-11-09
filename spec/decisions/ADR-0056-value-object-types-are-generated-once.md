@@ -161,6 +161,10 @@ references that name. Two objects that would emit one type into one namespace ar
 run's claim registry (`ERR_NAME_COLLISION`), with the remedy of mapping the packages apart. A
 private member of a generated class that is keyed by a value object (C#'s extract-tier mappers)
 may still carry the package to stay unique inside that class; that is a member name, never a type.
+Likewise a TypeScript file that meets two same-named value objects binds them under local import
+aliases (`import type { Note as AcmeAlphaNote }`), and the extract tier's mirrors and mappers —
+declarations of that one module — take the alias (`AcmeAlphaNoteExtracted`). No module declares
+a renamed type.
 
 ## Alternatives considered
 

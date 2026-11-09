@@ -302,8 +302,7 @@ describe("the filter option is the build's universe", () => {
       children: [entity("Order", [{ "source.rdb": { "@table": `${pkg.replace("::", "_")}_orders` } }, longId, pk, { "measure.aggregate": { name: "orders", "@agg": "count", "@of": "Order.id" } }])],
     });
     const root = await load(counted("acme::a"), counted("acme::b"));
-    // The runner refuses two same-named entities in one run (ERR_COLLECTION_NAME_COLLISION), so
-    // the run is scoped to one package. Scope narrows what is written, not the build: acme::b's
+    // Scoped to one package, as an adopter whose modules share one directory would be. Scope narrows what is written, not the build: acme::b's
     // Order is still in the Cube model, and still collides.
     const inA = (fqn: string): boolean => fqn.startsWith("acme::a::");
     await expect(gen(root, { generators: [cubeModel()] }, { scope: inA })).rejects.toThrow("ERR_CUBE_NAME_COLLISION");

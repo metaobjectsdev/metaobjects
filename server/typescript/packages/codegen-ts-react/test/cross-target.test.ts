@@ -18,7 +18,6 @@ async function ctxFor(self: ResolvedTarget, em: ResolvedTarget) {
     dialect: "sqlite", loadedRoot: root, outDir: self.outDir, dbImport: self.dbImport,
     extStyle: "none", outputLayout: self.outputLayout,
     pkMap: buildPkMap(root), relationMap: buildRelationMap(root),
-    packageOf: new Map(root.objects().map((o) => [o.name, o.package])),
     selfTarget: self, entityModuleTarget: em,
   });
   return { entity, ctx };

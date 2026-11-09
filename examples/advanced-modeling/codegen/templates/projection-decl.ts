@@ -10,7 +10,7 @@
 //   - Zod Insert/Update schemas
 //   - Insert/Update types
 
-import { code, imp, joinCode, type Code } from "@metaobjectsdev/codegen-ts/engine";
+import { code, imp, joinCode, type Code, type Import } from "@metaobjectsdev/codegen-ts/engine";
 import {
   MetaField, MetaObject, type MetaRoot, isMetaObject,
   FIELD_ATTR_OBJECT_REF, stripPackage, resolveColumnName, resolveTableSchema,
@@ -19,7 +19,7 @@ import { projectionViewName } from "@metaobjectsdev/codegen-ts/engine";
 import { GENERATED_HEADER, GENERATED_EDIT_NOTE } from "@metaobjectsdev/codegen-ts/engine";
 import type { ColumnNamingStrategy } from "@metaobjectsdev/codegen-ts/engine";
 import type { RenderContext } from "@metaobjectsdev/codegen-ts/engine";
-import { valueObjectModuleSpecifier } from "@metaobjectsdev/codegen-ts/engine";
+import { valueObjectFieldImport } from "@metaobjectsdev/codegen-ts/engine";
 import type { Dialect } from "@metaobjectsdev/codegen-ts/engine";
 import { physicalNameExpr, sourceSchemaExpr, type ObjectNames } from "@metaobjectsdev/codegen-ts/engine";
 import { renderFilterAllowlist, renderSortAllowlist } from "./filter-allowlist.js";
@@ -103,22 +103,15 @@ export function renderProjectionDecl(
 ): string {
   const { dialect, columnNamingStrategy, timestampMode = "string", allowlists = true, ctx, includeViewDecl = true, names } = opts;
 
-  // ADR-0044/#228 — resolve a projection field's `@objectRef` to the value object's
-  // EMITTED name + module TOGETHER (lock-step): bare when unique in the run,
-  // package-qualified on a cross-package short-name collision, so the projection's
-  // VO import matches the entity's. Layout/package/extStyle-aware when a render
-  // context is present, else a flat same-dir import (zodFieldExpr's fallback).
+  // A projection field's `@objectRef`: the bound value object's import, under its local name,
+  // so the projection's VO import matches the entity's. Layout/package/extStyle-aware when a
+  // render context is present, else a flat same-dir import (zodFieldExpr's fallback).
   const projectionPkg = effectivePackage(projection);
-  const voRef = (field: MetaField): { name: string; module: string } => {
+  const voRef = (field: MetaField, suffix: string, typeOnly: boolean): Import => {
+    if (ctx) return valueObjectFieldImport(ctx, field, projectionPkg, suffix, typeOnly);
     const ref = field.attr(FIELD_ATTR_OBJECT_REF);
-    const rawRef = typeof ref === "string" ? ref : "";
-    const name = ctx
-      ? ctx.resolveValueObjectName(field)
-      : stripPackage(rawRef);
-    const module = ctx
-      ? valueObjectModuleSpecifier(name, ctx.packageOf, projectionPkg, ctx.outputLayout, ctx.extStyle)
-      : `./${name}.js`;
-    return { name, module };
+    const name = stripPackage(typeof ref === "string" ? ref : "");
+    return imp(`${typeOnly ? "t:" : ""}${name}${suffix}@./${name}.js`);
   };
 
   const z = imp("z@zod");
