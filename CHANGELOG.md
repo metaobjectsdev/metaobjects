@@ -535,6 +535,19 @@ vocabulary; upgrade every port together.
   reads the owning table's `address_city` column (an empty `@flattenedColumnPrefix` reads the
   bare member column). The loader refused the path in TypeScript and C# ("no such field").
   Pinned by `fixtures/conformance/origin-passthrough-flattened-member`.
+- **`@collectionName`, and a pluggable pluralizer** (rc.19 Phase 6, ruling R57; C# and
+  TypeScript, kind 1). An object's collection name — the C# DbSet, the REST segment
+  (snake_cased), the TS `list<X>` / `find<X>By…` exports and Drizzle collection variable, and the
+  reverse `@via` hop — is its `@collectionName`, else the project's pluralizer over its name.
+  `naming.collections` in `.metaobjects/config.json` selects the pluralizer by name (built in:
+  `standard`, the default, and `none`); an application registers its own (`registerPluralizer`,
+  `namingStrategies.collections`; C# `NamingStrategies.RegisterPluralizer`); an unknown name is
+  refused when the config is read. **`@dbSetName` is deprecated**: an alias of `@collectionName`
+  for one release (codegen warns; declaring both is refused). Because it is now an alias, a
+  `@dbSetName` also renames that object's REST segment, TS exports and C# reverse finders. With
+  no pluralizer configured, C# DbSet names and every REST segment are unchanged. C#'s M:N route
+  joins now read the target's and junction's DbSet name instead of re-pluralizing. Pinned by
+  `fixtures/conformance/object-collection-name`.
 - **A reference over a flattened value-object member** (rc.19 Phase 5, bug G6, reference half).
   `identity.reference { @fields: address.countryId, @references: Country }` declares the foreign
   key a flattened `Address` carries: a `@via` hop over it joins on `address_country_id`,

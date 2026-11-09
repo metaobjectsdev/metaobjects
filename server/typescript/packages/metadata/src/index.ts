@@ -382,6 +382,8 @@ export {
   registeredColumnNamingStrategies, registeredTableNamingRules,
   isRegisteredColumnNamingStrategy, isRegisteredTableNamingRule, unknownNamingStrategyMessage,
   resetNamingStrategiesForTesting,
+  registerPluralizer, registeredPluralizers, isRegisteredPluralizer, pluralizer,
+  BUILTIN_PLURALIZER_NAMES, DEFAULT_PLURALIZER, collectionNameOf, declaredCollectionName,
   TABLE_NAMING_RULES, DEFAULT_PHYSICAL_NAMING, physicalNamingOf, applyTableNamingRule,
   PHYSICAL_NAMING_MIGRATION_GUIDE, PHYSICAL_NAMING_MIGRATION_GUIDE_PATH, physicalNamingRemovedMessage,
   resolveTableName, resolveColumnName, resolveFlattenedColumnPrefix, resolveFlattenedColumnName,
@@ -392,7 +394,7 @@ export {
 } from "./naming.js";
 export type {
   EntityNameMap, ColumnNamingStrategy, PhysicalNaming, TableNamingRule, NamingFunction,
-  BuiltinColumnNamingStrategy, BuiltinTableNamingRule,
+  BuiltinColumnNamingStrategy, BuiltinTableNamingRule, NamingKind,
 } from "./naming.js";
 export { resolveEnumMaxLength, enumDefaultsOf, DEFAULT_ENUM_DEFAULTS, ENUMS_KEY_MAX_LENGTH } from "./enum-length.js";
 export type { EnumDefaults } from "./enum-length.js";

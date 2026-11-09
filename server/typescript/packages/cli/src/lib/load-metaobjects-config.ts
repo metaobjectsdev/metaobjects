@@ -11,7 +11,7 @@ import { resolveCollection, type Collection } from "@metaobjectsdev/sdk";
 import {
   physicalNamingRemovedMessage,
   registerColumnNamingStrategy,
-  registerTableNamingRule,
+  registerTableNamingRule, registerPluralizer,
 } from "@metaobjectsdev/metadata";
 
 const CONFIG_FILE = "metaobjects.config.ts";
@@ -563,6 +563,7 @@ function registerNamingStrategies(cfg: MetaobjectsGenConfig, fullPath: string): 
   try {
     for (const [name, fn] of Object.entries(strategies.columns ?? {})) registerColumnNamingStrategy(name, fn);
     for (const [name, fn] of Object.entries(strategies.tables ?? {})) registerTableNamingRule(name, fn);
+    for (const [name, fn] of Object.entries(strategies.collections ?? {})) registerPluralizer(name, fn);
   } catch (err) {
     throw new Error(`metaobjects.config.ts at ${fullPath}: namingStrategies: ${err instanceof Error ? err.message : String(err)}`);
   }

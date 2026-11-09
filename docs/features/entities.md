@@ -127,6 +127,35 @@ you don't own (rather than extending it) must say `overlay: true`, so its remova
 upstream fails loudly instead of silently becoming a new, disconnected object — see
 [`abstracts-and-inheritance.md`](abstracts-and-inheritance.md#the-same-rule-across-a-repository-boundary).
 
+## Collection names (`@collectionName`)
+
+An object's **collection name** is what a port calls "the set of these": the C# `DbSet`
+property, the REST collection segment (snake_cased: `CaseHistory` → `/case_history`), the
+TypeScript collection exports (`listCaseHistory`, `findCaseHistoryByCase`, the Drizzle
+collection variable `caseHistory`) and the reverse `@via` hop another object walks to reach its
+rows (`Case.caseHistory`). Declare it in the object's own casing; it need not be a grammatical
+plural:
+
+```yaml
+- object.entity:
+    name: CaseHistory
+    "@collectionName": CaseHistory
+```
+
+Absent, the project's **pluralizer** derives it from the object's name. One setting,
+`naming.collections` in `.metaobjects/config.json`, selects it by name, exactly as `naming.columns`
+selects a column rule. Built in: `standard` (the default — the rule every port shares: an
+already-plural name stays, else `-s`/`-es`/`-ies`) and `none` (the name as it is). An application
+registers its own (`namingStrategies.collections` in `metaobjects.config.ts` or
+`registerPluralizer` in TypeScript; `NamingStrategies.RegisterPluralizer` in C#), and a name
+nothing answers is refused when the config is read. An object's own `@collectionName` always wins.
+
+`@collectionName` is implemented in C# and TypeScript (ruling R40 kind 1); Java, Kotlin and
+Python load it and do nothing with it yet. `@dbSetName` is its deprecated alias for one release:
+it means the same thing, code generation warns where it reads it, and an object declaring both is
+refused. In C#, a project that configures no pluralizer keeps its historical DbSet names (which
+add C#'s `-sis` → `-ses` rule).
+
 ## What each port generates
 
 ### TypeScript

@@ -69,6 +69,20 @@ public static class ObjectSchema
                 "(the C# EF Core DbSet property), in place of the plural derived from its name.");
 
     /// <summary>
+    /// rc.19 (R57) — @collectionName, the name of the object's collection in its own casing (the DbSet
+    /// property, the REST segment, the reverse @via hop). Registered beside @dbSetName, its
+    /// deprecated alias; the description is single-sourced from spec/metamodel/object.json.
+    /// </summary>
+    public static readonly AttrSchema CollectionNameAttr =
+        new AttrSchema(
+            Name: ObjectConstants.OBJECT_ATTR_COLLECTION_NAME,
+            ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
+            Required: false,
+            Description:
+                "The name of this object's collection, in the object's own casing: the DbSet property, the REST " +
+                "collection segment, the collection exports and the reverse @via hop.");
+
+    /// <summary>
     /// #207 — the optional row-scope @filter on an object.projection (a portable
     /// attr.filter object, the same subType origin.aggregate's @filter uses). Selects
     /// which rows the derived view returns; lowered to an outer SQL WHERE. Registered

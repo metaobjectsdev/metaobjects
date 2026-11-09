@@ -50,7 +50,7 @@ import {
   VALIDATOR_ATTR_PATTERN,
   FIELD_ATTR_MAX_LENGTH,
   FIELD_ATTR_REQUIRED,
-  pluralize,
+  collectionNameOf,
   toSnakeCase,
 } from "@metaobjectsdev/metadata";
 import { inferViewKind, currencyMetaFor, labelFor, humanize, valueObjectFor, numericInputControl } from "./field-meta.js";
@@ -138,8 +138,9 @@ export interface EntityUiDescriptor {
  * when you specifically want an object's own pluralized name, never to build an address.
  */
 export function resourcePath(entity: MetaData): string {
-  // One rule, every object kind and every port: snake_case, then pluralize.
-  return `/${pluralize(toSnakeCase(entity.name))}`;
+  // One rule, every object kind and every port: the collection name (its @collectionName, else
+  // the project's pluralizer over its name), snake_cased (rc.19, R57).
+  return `/${toSnakeCase(collectionNameOf(entity))}`;
 }
 
 /**

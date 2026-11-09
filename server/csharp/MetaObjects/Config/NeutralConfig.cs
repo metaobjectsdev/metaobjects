@@ -270,6 +270,7 @@ public sealed class NeutralConfig
 
             var columns = ColumnNamingStrategy.SnakeCase;
             var tables = TableNamingRule.SnakeCase;
+            string? collections = null;
             if (root.TryGetProperty("naming", out var naming))
             {
                 // Present but not an object — the same "wrong-shaped raises" rule as
@@ -314,9 +315,22 @@ public sealed class NeutralConfig
                             }
                             tables = table;
                             break;
+                        // rc.19 (R57): the pluralizer an object without @collectionName takes its
+                        // collection name from; refused here when nothing answers it.
+                        case "collections":
+                            if (p.Value.ValueKind != JsonValueKind.String)
+                                throw new MetaModelException(
+                                    $"{path}: \"naming.collections\" must be a string naming a pluralizer",
+                                    ErrorCode.ERR_BAD_ATTR_VALUE);
+                            collections = p.Value.GetString()!;
+                            if (validateNaming && !NamingStrategies.TryGetPluralizer(collections, out _))
+                                throw new MetaModelException(
+                                    $"{path}: {NamingStrategies.UnknownMessage("collections", collections)}",
+                                    ErrorCode.ERR_BAD_ATTR_VALUE);
+                            break;
                         default:
                             throw new MetaModelException(
-                                $"{path}: \"naming\" has an unknown key \"{p.Name}\" (expected \"columns\" and/or \"tables\")",
+                                $"{path}: \"naming\" has an unknown key \"{p.Name}\" (expected \"columns\", \"tables\" and/or \"collections\")",
                                 ErrorCode.ERR_BAD_ATTR_VALUE);
                     }
                 }
@@ -324,7 +338,7 @@ public sealed class NeutralConfig
 
             // Unknown top-level keys, and every key of `scope` / `migrate` but the two pattern
             // lists read above, are IGNORED by design — see the file header.
-            return new NeutralConfig(specs, libraries, new PhysicalNaming(columns, tables), ReadWire(root, path),
+            return new NeutralConfig(specs, libraries, new PhysicalNaming(columns, tables) { Collections = collections }, ReadWire(root, path),
                 ReadCSharp(root, path, configDir), dependencies, scopeInclude, migrateScope,
                 Path.GetFullPath(configDir)) { Enums = ReadEnums(root, path), MigrateDialect = ReadMigrateDialect(root), MigrateSkipRedundantChecks = ReadMigrateSkipRedundant(root) };
         }

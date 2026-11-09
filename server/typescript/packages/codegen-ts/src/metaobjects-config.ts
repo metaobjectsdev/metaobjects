@@ -172,6 +172,8 @@ export const DEFAULT_EXT_STYLE: ExtStyle = "js";
 export interface NamingStrategies {
   readonly columns?: Readonly<Record<string, NamingFunction>>;
   readonly tables?: Readonly<Record<string, NamingFunction>>;
+  /** rc.19 (R57): pluralizers by name, selected by `naming.collections`. */
+  readonly collections?: Readonly<Record<string, NamingFunction>>;
 }
 
 export interface MetaobjectsGenConfig extends Omit<ResolvedGenConfig, "dbImport" | "dialect" | "extStyle" | "routesExpose" | "reportExportInRun" | "includeUiTierExplicit"> {

@@ -10,7 +10,7 @@ import type { MetaObject } from "../object/meta-object.js";
 import type { MetaReferenceIdentity } from "../identity/meta-identity.js";
 import { refTarget } from "../../naming-refs.js";
 import { IDENTITY_REFERENCE_ATTR_REFERENCES } from "../identity/identity-constants.js";
-import { pluralize } from "../../naming.js";
+import { collectionNameOf } from "../../naming.js";
 
 export interface ReferenceLookup {
   /** The entity whose identity.reference points at `other`. */
@@ -72,11 +72,12 @@ export function findReferenceBetween(
 /**
  * Phase 5 bug R-walk — the name a `@via` hop takes when it walks the REVERSE of an
  * identity.reference, from the referenced entity back to the one that declares it:
- * the holder's collection name, lowerFirst(pluralize(<Holder>)) — `consents` for
+ * the holder's collection name, lowerFirst(<Holder's collection name>) — its @collectionName, else the project's pluralizer — `consents` for
  * `Consent`, so `Patient.consents` walks Consent.patient backwards. One rule for every port.
  */
 export function reverseHopName(holder: MetaObject): string {
-  const plural = pluralize(holder.name);
+  // rc.19 (R57): the holder's collection name — its @collectionName, else the project's pluralizer.
+  const plural = collectionNameOf(holder);
   return plural.charAt(0).toLowerCase() + plural.slice(1);
 }
 

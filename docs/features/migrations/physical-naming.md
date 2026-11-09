@@ -105,6 +105,14 @@ example:
 It never falls back to the default, because the old value may be the one that matches your
 database, and the default would rename every column.
 
+### Collection names (`naming.collections`)
+
+`naming.collections` selects the **pluralizer** an object without `@collectionName` takes its
+collection name from (rc.19): `standard` (the default) or `none`, or one the application
+registers — `namingStrategies: { collections: { … } }` / `registerPluralizer` (TypeScript),
+`NamingStrategies.RegisterPluralizer` (C#). It is not a physical name; it lives under `naming`
+because it is chosen and validated the same way. See [entities](../entities.md#collection-names-collectionname).
+
 ## TypeScript
 
 Default unchanged (`snake_case`).

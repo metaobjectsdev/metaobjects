@@ -53,6 +53,9 @@ public static class ObjectConstants
     /// view-backed object.projection / object.report that get a DbSet.
     /// </summary>
     public const string OBJECT_ATTR_DB_SET_NAME = "dbSetName";
+    /// <summary>rc.19 (R57) — the object's collection name (DbSet, REST segment, TS exports, reverse hop);
+    /// <c>@dbSetName</c> is its deprecated alias for one release.</summary>
+    public const string OBJECT_ATTR_COLLECTION_NAME = "collectionName";
 
     /// <summary>
     /// R40 kind 1 — the native class an object binds to (ADR-0001). Cross-port vocabulary only

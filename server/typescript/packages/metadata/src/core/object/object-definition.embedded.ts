@@ -143,13 +143,25 @@ export const OBJECT_DEFINITION: ProviderDefinition = {
         {
           "type": "attr",
           "subType": "string",
+          "name": "collectionName",
+          "min": 0,
+          "max": 1,
+          "implementedIn": [
+            "csharp",
+            "typescript"
+          ],
+          "description": "The name of this object's collection, in the object's own casing (e.g. 'CaseHistory', 'Queues'): the C# DbSet property, the REST collection segment (snake_cased: case_history), the TypeScript collection exports and finders (list<Name>), and the reverse @via hop other objects walk to reach it. It need not be a grammatical plural. Absent, the project's pluralizer derives it from the object's name (naming.collections in .metaobjects/config.json; built in: standard, none; an application may register its own)."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
           "name": "dbSetName",
           "min": 0,
           "max": 1,
           "ports": [
             "csharp"
           ],
-          "description": "C#-only (EF Core): the DbSet property name the generated context gives this object, in place of the plural derived from its name. Set it when two objects in one generated context would otherwise claim the same property. Every port loads and type-checks it; only C# acts on it."
+          "description": "DEPRECATED (rc.19): use @collectionName, which this is an alias of for one release; code generation warns where it reads it, and refuses an object declaring both. Every port loads and type-checks it."
         }
       ]
     },
@@ -189,13 +201,25 @@ export const OBJECT_DEFINITION: ProviderDefinition = {
         {
           "type": "attr",
           "subType": "string",
+          "name": "collectionName",
+          "min": 0,
+          "max": 1,
+          "implementedIn": [
+            "csharp",
+            "typescript"
+          ],
+          "description": "The name of this object's collection, in the object's own casing (e.g. 'CaseHistory', 'Queues'): the C# DbSet property, the REST collection segment (snake_cased: case_history), the TypeScript collection exports and finders (list<Name>), and the reverse @via hop other objects walk to reach it. It need not be a grammatical plural. Absent, the project's pluralizer derives it from the object's name (naming.collections in .metaobjects/config.json; built in: standard, none; an application may register its own)."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
           "name": "dbSetName",
           "min": 0,
           "max": 1,
           "ports": [
             "csharp"
           ],
-          "description": "C#-only (EF Core): the DbSet property name the generated context gives this object, in place of the plural derived from its name. Set it when two objects in one generated context would otherwise claim the same property. Every port loads and type-checks it; only C# acts on it."
+          "description": "DEPRECATED (rc.19): use @collectionName, which this is an alias of for one release; code generation warns where it reads it, and refuses an object declaring both. Every port loads and type-checks it."
         }
       ]
     },
@@ -259,13 +283,25 @@ export const OBJECT_DEFINITION: ProviderDefinition = {
         {
           "type": "attr",
           "subType": "string",
+          "name": "collectionName",
+          "min": 0,
+          "max": 1,
+          "implementedIn": [
+            "csharp",
+            "typescript"
+          ],
+          "description": "The name of this object's collection, in the object's own casing (e.g. 'CaseHistory', 'Queues'): the C# DbSet property, the REST collection segment (snake_cased: case_history), the TypeScript collection exports and finders (list<Name>), and the reverse @via hop other objects walk to reach it. It need not be a grammatical plural. Absent, the project's pluralizer derives it from the object's name (naming.collections in .metaobjects/config.json; built in: standard, none; an application may register its own)."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
           "name": "dbSetName",
           "min": 0,
           "max": 1,
           "ports": [
             "csharp"
           ],
-          "description": "C#-only (EF Core): the DbSet property name the generated context gives this object, in place of the plural derived from its name. Set it when two objects in one generated context would otherwise claim the same property. Every port loads and type-checks it; only C# acts on it."
+          "description": "DEPRECATED (rc.19): use @collectionName, which this is an alias of for one release; code generation warns where it reads it, and refuses an object declaring both. Every port loads and type-checks it."
         }
       ]
     }

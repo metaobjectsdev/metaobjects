@@ -42,6 +42,10 @@ export const OBJECT_ATTR_DISCRIMINATOR = "discriminator";
 /** FR-014: on a subtype of an entity with @discriminator: the value that
  *  identifies rows of this subtype in the shared discriminator field. */
 export const OBJECT_ATTR_DISCRIMINATOR_VALUE = "discriminatorValue";
+/** rc.19 (R57) — an object's collection name (DbSet, REST segment, TS exports, reverse hop). */
+export const OBJECT_ATTR_COLLECTION_NAME = "collectionName";
+/** Deprecated alias of {@link OBJECT_ATTR_COLLECTION_NAME} for one release (was C#-only). */
+export const OBJECT_ATTR_DB_SET_NAME = "dbSetName";
 
 // ---------------------------------------------------------------------------
 // #207 — projection row-scope @filter (view-level WHERE)

@@ -7,6 +7,7 @@ import {
   DEFAULT_PHYSICAL_NAMING,
   isRegisteredColumnNamingStrategy,
   isRegisteredTableNamingRule,
+  isRegisteredPluralizer,
   unknownNamingStrategyMessage,
   DEFAULT_WIRE_FORMAT,
   DEFAULT_ENUM_DEFAULTS,
@@ -229,6 +230,13 @@ export const ConfigSchema = z.object({
           if (!isRegisteredTableNamingRule(n)) ctx.addIssue({ code: "custom", message: unknownNamingStrategyMessage("tables", n) });
         })
         .optional(),
+      // rc.19 (R57): the pluralizer an object without @collectionName takes its collection name
+      // from (built in: standard, none; or one `namingStrategies.collections` registers).
+      collections: z.string()
+        .superRefine((n, ctx) => {
+          if (!isRegisteredPluralizer(n)) ctx.addIssue({ code: "custom", message: unknownNamingStrategyMessage("collections", n) });
+        })
+        .optional(),
     })
     .strict()
     .optional(),
@@ -283,6 +291,7 @@ export function physicalNamingFromConfig(cfg: Pick<Config, "naming">): PhysicalN
   return {
     columns: cfg.naming?.columns ?? DEFAULT_PHYSICAL_NAMING.columns,
     tables: cfg.naming?.tables ?? DEFAULT_PHYSICAL_NAMING.tables,
+    ...(cfg.naming?.collections !== undefined ? { collections: cfg.naming.collections } : {}),
   };
 }
 

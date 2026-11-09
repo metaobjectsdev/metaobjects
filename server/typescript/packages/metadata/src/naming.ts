@@ -17,6 +17,7 @@ import type { MetaSource } from "./persistence/source/meta-source.js";
 // also make the divergence refusal see no primaries at all, and say nothing.)
 import { isMetaSource } from "./shared/node-guards.js";
 import { MetaModelError } from "./errors.js";
+import { OBJECT_ATTR_COLLECTION_NAME, OBJECT_ATTR_DB_SET_NAME } from "./core/object/object-constants.js";
 
 /**
  * Strip the package prefix from a metadata-qualified name
@@ -103,7 +104,12 @@ export type TableNamingRule = BuiltinTableNamingRule | (string & {});
 interface NamingRegistry {
   readonly columns: Map<string, NamingFunction>;
   readonly tables: Map<string, NamingFunction>;
+  /** rc.19 (R57) — pluralizers, by name: an object name in, its collection name out. */
+  collections?: Map<string, NamingFunction>;
 }
+
+/** The kinds of naming strategy a project selects in `naming` (ADR-0058; `collections`, R57). */
+export type NamingKind = "columns" | "tables" | "collections";
 
 /**
  * One registry per PROCESS, not per module copy. A globally-installed CLI and a project-local
@@ -114,18 +120,21 @@ interface NamingRegistry {
  */
 const REGISTRY_KEY = Symbol.for("@metaobjectsdev/metadata/naming-strategies");
 
-function registry(): NamingRegistry {
+function registry(): Required<NamingRegistry> {
   const holder = globalThis as { [REGISTRY_KEY]?: NamingRegistry };
   let r = holder[REGISTRY_KEY];
   if (r === undefined) {
     r = { columns: new Map(), tables: new Map() };
     holder[REGISTRY_KEY] = r;
   }
+  // A registry an older copy of this package created has no pluralizers yet.
+  r.collections ??= new Map();
   // Built-ins are re-seeded on every read, so a registry an older copy of this package
   // created still answers them, and nothing can have replaced one.
   for (const [name, fn] of BUILTIN_COLUMN_FUNCTIONS) if (!r.columns.has(name)) r.columns.set(name, fn);
   for (const [name, fn] of BUILTIN_TABLE_FUNCTIONS) if (!r.tables.has(name)) r.tables.set(name, fn);
-  return r;
+  for (const [name, fn] of BUILTIN_PLURALIZERS) if (!r.collections.has(name)) r.collections.set(name, fn);
+  return r as Required<NamingRegistry>;
 }
 
 const BUILTIN_COLUMN_FUNCTIONS: ReadonlyMap<string, NamingFunction> = new Map<string, NamingFunction>([
@@ -140,11 +149,30 @@ const BUILTIN_TABLE_FUNCTIONS: ReadonlyMap<string, NamingFunction> = new Map<str
   ["literal", (name) => name],
 ]);
 
+/**
+ * rc.19 (R57) — the pluralizers every port builds in. `standard` is the cross-port rule
+ * ({@link pluralize}: already-plural detection, then the suffix rule) every port already applies
+ * to REST segments and generated function names; `none` keeps the name as it is (a project whose
+ * collections are named like its objects).
+ */
+export const BUILTIN_PLURALIZER_NAMES = ["standard", "none"] as const;
+/** The pluralizer a project gets when `naming.collections` is absent. */
+export const DEFAULT_PLURALIZER = "standard";
+
+const BUILTIN_PLURALIZERS: ReadonlyMap<string, NamingFunction> = new Map<string, NamingFunction>([
+  ["standard", (name) => pluralize(name)],
+  ["none", (name) => name],
+]);
+
 /** The port this registry belongs to, as every port's unknown-strategy message names it. */
 const NAMING_PORT = "TypeScript";
 
-function register(kind: "columns" | "tables", name: string, apply: NamingFunction): void {
-  const builtIns = kind === "columns" ? BUILTIN_COLUMN_FUNCTIONS : BUILTIN_TABLE_FUNCTIONS;
+function builtInsOf(kind: NamingKind): ReadonlyMap<string, NamingFunction> {
+  return kind === "columns" ? BUILTIN_COLUMN_FUNCTIONS : kind === "tables" ? BUILTIN_TABLE_FUNCTIONS : BUILTIN_PLURALIZERS;
+}
+
+function register(kind: NamingKind, name: string, apply: NamingFunction): void {
+  const builtIns = builtInsOf(kind);
   if (typeof name !== "string" || name === "") {
     throw new MetaModelError(`a ${kindLabel(kind)} strategy needs a non-empty name`);
   }
@@ -161,8 +189,8 @@ function register(kind: "columns" | "tables", name: string, apply: NamingFunctio
   registry()[kind].set(name, apply);
 }
 
-function kindLabel(kind: "columns" | "tables"): string {
-  return kind === "columns" ? "column-naming" : "table-naming";
+function kindLabel(kind: NamingKind): string {
+  return kind === "columns" ? "column-naming" : kind === "tables" ? "table-naming" : "collection-naming (pluralizer)";
 }
 
 /**
@@ -182,6 +210,33 @@ export function registerTableNamingRule(name: string, apply: NamingFunction): vo
   register("tables", name, apply);
 }
 
+/**
+ * Register a named pluralizer (rc.19, R57): an object name (Pascal, as declared) in, its
+ * collection name out. `.metaobjects/config.json` selects it as `"naming": { "collections":
+ * "<name>" }`; an object's own `@collectionName` always wins over it. A built-in (`standard`,
+ * `none`) cannot be replaced; registering a name of your own again replaces it.
+ */
+export function registerPluralizer(name: string, apply: NamingFunction): void {
+  register("collections", name, apply);
+}
+
+/** Every registered pluralizer's name: the built-ins, then the application's. */
+export function registeredPluralizers(): readonly string[] {
+  return [...registry().collections.keys()];
+}
+
+/** True when `name` is a registered pluralizer, built in or the application's. */
+export function isRegisteredPluralizer(name: string): boolean {
+  return registry().collections.has(name);
+}
+
+/** The pluralizer registered as `name`. Throws, naming it, when nothing answers it. */
+export function pluralizer(name: string): NamingFunction {
+  const fn = registry().collections.get(name);
+  if (fn === undefined) throw new MetaModelError(unknownNamingStrategyMessage("collections", name));
+  return fn;
+}
+
 /** Every registered column strategy's name: the built-ins in corpus order, then the application's. */
 export function registeredColumnNamingStrategies(): readonly string[] {
   return [...registry().columns.keys()];
@@ -197,10 +252,9 @@ export function registeredTableNamingRules(): readonly string[] {
  * answers. Same words in every port, with that port's name, so an estate running several
  * ports sees one message and knows which port's registry lacked it.
  */
-export function unknownNamingStrategyMessage(kind: "columns" | "tables", name: string): string {
-  const builtIns: readonly string[] = kind === "columns" ? BUILTIN_COLUMN_NAMING_STRATEGIES : BUILTIN_TABLE_NAMING_RULES;
-  const registered = (kind === "columns" ? registeredColumnNamingStrategies() : registeredTableNamingRules())
-    .filter((n) => !builtIns.includes(n));
+export function unknownNamingStrategyMessage(kind: NamingKind, name: string): string {
+  const builtIns: readonly string[] = [...builtInsOf(kind).keys()];
+  const registered = [...registry()[kind].keys()].filter((n) => !builtIns.includes(n));
   return (
     `"naming.${kind}" names "${name}", which no ${kindLabel(kind)} strategy registered in the ` +
     `${NAMING_PORT} port answers (built in: ${builtIns.join(", ")}; registered by the application: ` +
@@ -233,6 +287,7 @@ export function resetNamingStrategiesForTesting(): void {
   const r = registry();
   for (const name of [...r.columns.keys()]) if (!BUILTIN_COLUMN_FUNCTIONS.has(name)) r.columns.delete(name);
   for (const name of [...r.tables.keys()]) if (!BUILTIN_TABLE_FUNCTIONS.has(name)) r.tables.delete(name);
+  for (const name of [...r.collections.keys()]) if (!BUILTIN_PLURALIZERS.has(name)) r.collections.delete(name);
 }
 
 /** True when `name` is a registered column strategy, built in or the application's. */
@@ -261,6 +316,10 @@ export const TABLE_NAMING_RULES: readonly TableNamingRule[] = BUILTIN_TABLE_NAMI
 export interface PhysicalNaming {
   readonly columns: ColumnNamingStrategy;
   readonly tables: TableNamingRule;
+  /** rc.19 (R57) — the pluralizer an object without `@collectionName` takes its collection name
+   *  from (`naming.collections`). Not a physical name; it rides here because it is the same
+   *  project setting, read the same way. Absent is {@link DEFAULT_PLURALIZER}. */
+  readonly collections?: string;
 }
 
 /** The default in every port, equal to what `meta migrate` has always created. */
@@ -377,6 +436,40 @@ export function pluralizeTableNameLegacy(s: string): string {
 export function pluralize(s: string): string {
   if (isAlreadyPlural(s)) return s;
   return pluralizeTableNameLegacy(s);
+}
+
+/**
+ * rc.19 (R57) — an object's collection name, in the object's own casing: its own
+ * `@collectionName` (or the deprecated `@dbSetName` alias), else the project's pluralizer
+ * (`naming.collections`, {@link physicalNamingOf}) over its name. Each artifact then applies its
+ * own casing (REST: snake_case; a TS export: as is; a Drizzle variable: lowerFirst). Own, not
+ * resolving: a name inherited from an abstract base would give every subtype one collection.
+ * Throws when an object declares both attrs — the caller reports it.
+ */
+export function collectionNameOf(obj: MetaData): string {
+  const declared = declaredCollectionName(obj);
+  if (declared !== undefined) return declared.name;
+  return pluralizer(physicalNamingOf(obj).collections ?? DEFAULT_PLURALIZER)(obj.name);
+}
+
+/**
+ * The collection name an object declares itself, and through which attr; undefined when it
+ * declares none. Refuses both at once: an alias and its replacement disagreeing has no answer.
+ */
+export function declaredCollectionName(obj: MetaData): { name: string; deprecatedAlias: boolean } | undefined {
+  const own = obj.ownAttr(OBJECT_ATTR_COLLECTION_NAME);
+  const alias = obj.ownAttr(OBJECT_ATTR_DB_SET_NAME);
+  const hasOwn = typeof own === "string" && own !== "";
+  const hasAlias = typeof alias === "string" && alias !== "";
+  if (hasOwn && hasAlias) {
+    throw new MetaModelError(
+      `${obj.resolutionKey()}: declares both @${OBJECT_ATTR_COLLECTION_NAME} and @${OBJECT_ATTR_DB_SET_NAME}; ` +
+        `@${OBJECT_ATTR_DB_SET_NAME} is a deprecated alias of @${OBJECT_ATTR_COLLECTION_NAME} — keep only @${OBJECT_ATTR_COLLECTION_NAME}.`,
+    );
+  }
+  if (hasOwn) return { name: own as string, deprecatedAlias: false };
+  if (hasAlias) return { name: alias as string, deprecatedAlias: true };
+  return undefined;
 }
 
 /**

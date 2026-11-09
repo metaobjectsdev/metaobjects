@@ -319,9 +319,9 @@ public static class CoreTypes
             // declare; its structural child graph also comes from the spec.
             List<AttrSchema> objectAttrs = subType switch
             {
-                OBJECT_SUBTYPE_PROJECTION => [.. ObjectSchema.ObjectAttrs, ObjectSchema.ProjectionFilterAttr, ObjectSchema.DbSetNameAttr],
-                OBJECT_SUBTYPE_REPORT     => [.. ObjectSchema.ObjectAttrs, .. ReportingSchema.ReportAttrs, ObjectSchema.DbSetNameAttr],
-                OBJECT_SUBTYPE_ENTITY     => [.. ObjectSchema.ObjectAttrs, ObjectSchema.DbSetNameAttr],
+                OBJECT_SUBTYPE_PROJECTION => [.. ObjectSchema.ObjectAttrs, ObjectSchema.ProjectionFilterAttr, ObjectSchema.CollectionNameAttr, ObjectSchema.DbSetNameAttr],
+                OBJECT_SUBTYPE_REPORT     => [.. ObjectSchema.ObjectAttrs, .. ReportingSchema.ReportAttrs, ObjectSchema.CollectionNameAttr, ObjectSchema.DbSetNameAttr],
+                OBJECT_SUBTYPE_ENTITY     => [.. ObjectSchema.ObjectAttrs, ObjectSchema.CollectionNameAttr, ObjectSchema.DbSetNameAttr],
                 _                         => ObjectSchema.ObjectAttrs.ToList(),
             };
 

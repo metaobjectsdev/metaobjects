@@ -103,9 +103,13 @@ public class DbContextGenerator : IGenerator
         var dbSets = $"the DbSet properties of the context of {Name} entry {ctx.EntryLabel(this)}";
         foreach (var o in objects)
         {
-            ctx.Claim(dbSets, DbSetPropertyName(o, ctx), o.ResolutionKey(), "rename one, or set @dbSetName on one of them");
+            // rc.19 (R57): @dbSetName is @collectionName's deprecated alias for one release.
+            if (CollectionNames.Declared(o) is { DeprecatedAlias: true })
+                ctx.Warn($"{Name}: {o.ResolutionKey()}: @dbSetName is deprecated and will be removed in the next release; " +
+                         "rename it to @collectionName (same value — it names the collection in every port now).");
+            ctx.Claim(dbSets, DbSetPropertyName(o, ctx), o.ResolutionKey(), "rename one, or set @collectionName on one of them");
             if (o.IsWriteThrough())
-                ctx.Claim(dbSets, CSharpNaming.ViewDbSetName(o), o.ResolutionKey(), "rename one, or set @dbSetName on one of them");
+                ctx.Claim(dbSets, CSharpNaming.ViewDbSetName(o), o.ResolutionKey(), "rename one, or set @collectionName on one of them");
         }
 
         // OnModelCreating body lines (8-space indented), in a stable order. INVARIANT: each entry is

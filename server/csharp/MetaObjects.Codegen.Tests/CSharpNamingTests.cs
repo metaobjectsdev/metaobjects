@@ -372,7 +372,7 @@ public class CSharpNamingTests
             var root = PackagedObjects(ReadObject(c.GetProperty("entityA")), ReadObject(c.GetProperty("entityB")));
             var ex = Assert.Throws<InvalidOperationException>(() => Run(new DbContextGenerator(), root));
             Assert.Contains($"\"{c.GetProperty("collidesOn").GetString()}\" in the DbSet properties", ex.Message);
-            Assert.Contains("@dbSetName", ex.Message);
+            Assert.Contains("@collectionName", ex.Message);
         }
     }
 
@@ -408,6 +408,105 @@ public class CSharpNamingTests
         var context = Assert.Single(Run(new DbContextGenerator(), root)).Content;
         Assert.Contains("EnterprisePayers { get; set; }", context);
         Assert.Contains("Payers { get; set; }", context);
+    }
+
+    // ── rc.19 (R57): @collectionName, its deprecated alias, and the pluggable pluralizer ─────────
+
+    private const string HistoryModel = """
+        { "metadata.root": { "package": "core", "children": [
+          { "object.entity": { "name": "Case", "children": [
+            { "source.rdb": { "@table": "cases" } },
+            { "field.long": { "name": "id" } },
+            { "identity.primary": { "@fields": "id" } }
+          ] } },
+          { "object.entity": { "name": "CaseHistory", ATTRS "children": [
+            { "source.rdb": { "@table": "case_history" } },
+            { "field.long": { "name": "id" } },
+            { "field.long": { "name": "caseId" } },
+            { "identity.primary": { "@fields": "id" } },
+            { "identity.reference": { "name": "caseId", "@fields": "caseId", "@references": "Case" } }
+          ] } }
+        ] } }
+        """;
+
+    private static MetaRoot History(string attrs, string? pluralizer = null)
+    {
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(HistoryModel.Replace("ATTRS", attrs), id: "h.json")]);
+        Assert.Empty(r.Errors.Select(e => e.Code + ": " + e.Message));
+        if (pluralizer is not null) r.Root.PhysicalNaming = r.Root.PhysicalNaming with { Collections = pluralizer };
+        return r.Root;
+    }
+
+    private static GenContext CtxWarn(MetaRoot root, List<string> warnings) => new()
+    {
+        Entities = root.Objects(), Root = root, Warn = warnings.Add,
+        Config = new GenConfig { OutDir = "/unused", Namespace = "Acme.Generated" },
+    };
+
+    private static MetaObject HistoryOf(MetaRoot root) => root.Objects().Single(o => o.Name == "CaseHistory");
+
+    [Fact]
+    public void CollectionName_names_the_DbSet_the_route_the_finder_and_the_reverse_hop()
+    {
+        var root = History("\"@collectionName\": \"CaseHistory\",");
+        var history = HistoryOf(root);
+        Assert.Equal("CaseHistory", CSharpNaming.DbSetName(history));
+        Assert.Equal("case_history", CSharpNaming.RoutePath(history));
+        Assert.Equal("FindCaseHistoryByCase", CSharpNaming.ReverseFinderName(history, "caseId"));
+        Assert.Equal("caseHistory", MetaObjects.Meta.ReverseReferenceHops.HopName(history));
+        var warnings = new List<string>();
+        var context = Assert.Single(new DbContextGenerator().Generate(CtxWarn(root, warnings))).Content;
+        Assert.Contains("DbSet<CaseHistory> CaseHistory { get; set; }", context);
+        Assert.DoesNotContain(warnings, w => w.Contains("deprecated"));
+    }
+
+    [Fact]
+    public void DbSetName_is_a_deprecated_alias_that_warns()
+    {
+        var root = History("\"@dbSetName\": \"CaseHistory\",");
+        Assert.Equal("case_history", CSharpNaming.RoutePath(HistoryOf(root)));
+        var warnings = new List<string>();
+        Assert.Contains("DbSet<CaseHistory> CaseHistory { get; set; }", Assert.Single(new DbContextGenerator().Generate(CtxWarn(root, warnings))).Content);
+        Assert.Contains(warnings, w => w.Contains("@dbSetName is deprecated") && w.Contains("@collectionName"));
+    }
+
+    [Fact]
+    public void Declaring_both_is_refused()
+    {
+        var root = History("\"@collectionName\": \"CaseHistory\", \"@dbSetName\": \"Histories\",");
+        var ex = Assert.Throws<MetaModelException>(() => CSharpNaming.DbSetName(HistoryOf(root)));
+        Assert.Contains("declares both @collectionName and @dbSetName", ex.Message);
+    }
+
+    [Fact]
+    public void Absent_the_configured_pluralizer_names_the_collection_and_unconfigured_output_is_unchanged()
+    {
+        var unconfigured = HistoryOf(History(""));
+        Assert.Equal("CaseHistories", CSharpNaming.DbSetName(unconfigured));
+        Assert.Equal("case_histories", CSharpNaming.RoutePath(unconfigured));
+
+        var none = HistoryOf(History("", pluralizer: "none"));
+        Assert.Equal("CaseHistory", CSharpNaming.DbSetName(none));
+        Assert.Equal("case_history", CSharpNaming.RoutePath(none));
+        Assert.Equal("caseHistory", MetaObjects.Meta.ReverseReferenceHops.HopName(none));
+    }
+
+    [Fact]
+    public void An_application_registers_its_own_pluralizer_and_an_unknown_name_fails_loudly()
+    {
+        try
+        {
+            MetaObjects.Meta.NamingStrategies.RegisterPluralizer("latin", n => n.EndsWith("History") ? n[..^1] + "ies" : n + "s");
+            Assert.Equal("CaseHistories", CSharpNaming.DbSetName(HistoryOf(History("", pluralizer: "latin"))));
+            Assert.Throws<ArgumentException>(() => MetaObjects.Meta.NamingStrategies.RegisterPluralizer("standard", n => n));
+            var ex = Assert.Throws<MetaModelException>(() => MetaObjects.Meta.NamingStrategies.Pluralizer("klingon"));
+            Assert.Contains("\"naming.collections\" names \"klingon\"", ex.Message);
+            Assert.Contains("built in: standard, none", ex.Message);
+        }
+        finally
+        {
+            MetaObjects.Meta.NamingStrategies.ResetForTesting();
+        }
     }
 
     // A @dbSetName that is no C# identifier, or names a DbContext member, would fail at compile

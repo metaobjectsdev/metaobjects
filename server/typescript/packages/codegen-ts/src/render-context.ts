@@ -1,14 +1,14 @@
 // RenderContext — cross-cutting state passed to every template.
 
 import type { MetaRoot, MetaData } from "@metaobjectsdev/metadata";
-import { FIELD_ATTR_OBJECT_REF, PACKAGE_SEPARATOR, TYPE_OBJECT, physicalNamingOf, refTarget, stripPackage } from "@metaobjectsdev/metadata";
+import { FIELD_ATTR_OBJECT_REF, PACKAGE_SEPARATOR, TYPE_OBJECT, collectionNameOf, declaredCollectionName, physicalNamingOf, refTarget, stripPackage } from "@metaobjectsdev/metadata";
 import type { Dialect } from "./column-mapper.js";
 import { normalizeTimestampMode } from "./dialect-module.js";
 import type { PkInfo } from "./pk-resolver.js";
 import type { RelationMap } from "./relation-resolver.js";
 import type { ColumnNamingStrategy } from "./metaobjects-config.js";
 import type { OutputLayout, ResolvedTarget } from "./import-path.js";
-import { variableNameFromEntity } from "./naming.js";
+import { toCamelCase, variableNameFromEntity } from "./naming.js";
 
 /**
  * The local name a file uses for `obj` when it imports it: `obj.name`, or — when another
@@ -189,9 +189,20 @@ export function makeRenderContext(opts: RenderContextInput): RenderContext {
     dbImport: opts.dbImport,
     runtime: true,
   };
+  // rc.19 (R57): an object's collection name (@collectionName, or a configured pluralizer) names
+  // its Drizzle collection variable too, lowerFirst; the TS config's own overrides still win.
+  const modelCollections: Record<string, string> = {};
+  if (opts.pluralizeCollections !== false) {
+    const configured = physicalNamingOf(opts.loadedRoot).collections;
+    for (const obj of opts.loadedRoot.objects()) {
+      if (configured === undefined && declaredCollectionName(obj) === undefined) continue;
+      const name = collectionNameOf(obj);
+      modelCollections[obj.name] = toCamelCase(name.charAt(0).toLowerCase() + name.slice(1));
+    }
+  }
   const collectionNameOpts = {
     pluralize: opts.pluralizeCollections ?? true,
-    overrides: opts.collectionNameOverrides ?? {},
+    overrides: { ...modelCollections, ...(opts.collectionNameOverrides ?? {}) },
   };
   const resolveValueObject = (field: MetaData): MetaData | undefined => refTarget(field, FIELD_ATTR_OBJECT_REF);
   return {

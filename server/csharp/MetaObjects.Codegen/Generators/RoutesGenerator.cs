@@ -1615,8 +1615,9 @@ public class RoutesGenerator : PerEntityGenerator
         // other target keeps binding to its own pluralized DbSet, byte-identical to before.
         var targetFrom = TphPlanBuilder.IsTphSubtype(nav.Target, root)
             ? $"db.{CSharpNaming.DbSetName(TphPlanBuilder.DiscriminatorRoot(nav.Target)!)}.OfType<{targetCls}>()"
-            : $"db.{CSharpNaming.Pluralize(targetCls)}";
-        var junctionDbSet = CSharpNaming.Pluralize(CSharpNaming.Pascal(nav.Junction.Name));
+            : $"db.{CSharpNaming.DbSetName(nav.Target)}";
+        // The DbSet the context declares for the junction, @collectionName included (item 17).
+        var junctionDbSet = CSharpNaming.DbSetName(nav.Junction);
         var srcFkProp = CSharpNaming.Pascal(nav.SourceField);
         var tgtFkProp = CSharpNaming.Pascal(nav.TargetField);
 

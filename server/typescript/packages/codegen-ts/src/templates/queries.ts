@@ -49,7 +49,7 @@ export function renderListFn(entity: MetaObject, ctx: RenderContext, readVar?: s
   const entityName = entity.name;
   // Pluralize the PascalCase entity name, preserving capitalization
   // (e.g., "Category" -> "Categories", not "Categorys").
-  const fnName = listFnName(entityName);
+  const fnName = listFnName(entity);
 
   return code`
 export async function ${fnName}(db: Db, opts?: { limit?: number; offset?: number }): Promise<${entityName}[]> {
@@ -258,8 +258,8 @@ export function renderReverseFinderFns(entity: MetaObject, fk: ReverseFk, ctx: R
   const ownField = entity.findField(fk.fkField);
   const valueType = subTypeToTsType(targetPk?.fieldSubType ?? ownField?.subType ?? "long");
 
-  const singleName = reverseFinderFnName(entityName, fk.fkField);
-  const batchName = reverseFinderInFnName(entityName, fk.fkField);
+  const singleName = reverseFinderFnName(entity, fk.fkField);
+  const batchName = reverseFinderInFnName(entity, fk.fkField);
   const eqSym = imp("eq@drizzle-orm");
   const inArraySym = imp("inArray@drizzle-orm");
 

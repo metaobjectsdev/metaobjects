@@ -12,7 +12,10 @@
 // what was wired. An adopter's own generator can claim through `ctx.claim` too. A name is never
 // rewritten to avoid a collision.
 
-import { OBJECT_SUBTYPE_VALUE, pluralize, toSnakeCase, type MetaObject } from "@metaobjectsdev/metadata";
+import {
+  OBJECT_SUBTYPE_VALUE, OBJECT_ATTR_COLLECTION_NAME, OBJECT_ATTR_DB_SET_NAME, collectionNameOf, declaredCollectionName, toSnakeCase,
+  type MetaObject,
+} from "@metaobjectsdev/metadata";
 import type { GenContext } from "../generator.js";
 import { packageToPath } from "../import-path.js";
 import { effectivePackage } from "../docs-paths.js";
@@ -75,10 +78,23 @@ function hasCollection(obj: MetaObject): boolean {
  * Called by the entity and queries generators as they emit.
  */
 export function claimModuleNames(ctx: GenContext, obj: MetaObject): void {
+  warnDeprecatedCollectionAlias(ctx, obj);
   if (ctx.claim === undefined) return;
   const scope = moduleScope(ctx, obj);
   ctx.claim(scope, obj.name, obj.resolutionKey(), MODULE_REMEDY);
-  if (hasCollection(obj)) ctx.claim(`the collection names of ${scope}`, pluralize(obj.name), obj.resolutionKey(), MODULE_REMEDY);
+  if (hasCollection(obj)) ctx.claim(`the collection names of ${scope}`, collectionNameOf(obj), obj.resolutionKey(), MODULE_REMEDY);
+}
+
+const warnedAliases = new WeakSet<MetaObject>();
+
+/** rc.19 (R57): `@dbSetName` is a deprecated alias of `@collectionName` for one release. Once per object. */
+function warnDeprecatedCollectionAlias(ctx: GenContext, obj: MetaObject): void {
+  if (warnedAliases.has(obj) || declaredCollectionName(obj)?.deprecatedAlias !== true) return;
+  warnedAliases.add(obj);
+  ctx.warn(
+    `${obj.resolutionKey()}: @${OBJECT_ATTR_DB_SET_NAME} is deprecated and will be removed in the next release; ` +
+      `rename it to @${OBJECT_ATTR_COLLECTION_NAME} (same value — it names the collection in every port now).`,
+  );
 }
 
 /** Claim, for the barrel at the target root, the names it re-exports from `obj`'s module. */
@@ -87,13 +103,13 @@ export function claimBarrelNames(ctx: GenContext, obj: MetaObject): void {
   const target = ctx.renderContext?.selfTarget.name ?? "default";
   const scope = `the barrel (index.ts) of target "${target}"`;
   ctx.claim(scope, obj.name, obj.resolutionKey(), BARREL_REMEDY);
-  if (hasCollection(obj)) ctx.claim(`the collection names of ${scope}`, pluralize(obj.name), obj.resolutionKey(), BARREL_REMEDY);
+  if (hasCollection(obj)) ctx.claim(`the collection names of ${scope}`, collectionNameOf(obj), obj.resolutionKey(), BARREL_REMEDY);
 }
 
 /** The REST collection segment an object is served under: its name snake_cased, then
  *  pluralized (`entity-ui-descriptor.ts` `resourcePath`). */
 export function routeSegment(obj: MetaObject): string {
-  return pluralize(toSnakeCase(obj.name));
+  return toSnakeCase(collectionNameOf(obj));
 }
 
 /** Claim an object's REST collection segment in this routes entry. */

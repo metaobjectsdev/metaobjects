@@ -167,6 +167,12 @@ canonical (`fixtures/registry-conformance/expected-registry.json`).
     `view.number`, `view.password`, `view.radio`, `view.text`, `view.web` (types, no attrs)
   - `view.textarea`, and its `@rows`
   - `view.image`, and its `@accept`, `@aspectRatio`, `@maxBytes`, `@maxEdge`, `@store`
+- *Implemented in C# and TypeScript* (`implementedIn: ["csharp", "typescript"]`, rc.19 R57):
+  `object.entity` / `object.projection` / `object.report` `@collectionName`, with the pluggable
+  pluralizer (`naming.collections`). *TODO, Java, Kotlin and Python:* register the attr (the
+  manifest is spec-driven; Python's spec copy is synced) and derive their collection names
+  (REST segment, finders) from it; the loader fixture `object-collection-name` names its
+  reverse hop `Case.caseHistory` by it, so it is red in those ports until they do (#544–#549).
 - *Implemented in Java only* (`implementedIn: ["java"]`): `object.* @object` (ADR-0001), the
   native class an object binds to. Java's runtime acts on it; Java's own behaviour is unchanged.
 - *Loads strictly, per port:*
@@ -179,7 +185,8 @@ canonical (`fixtures/registry-conformance/expected-registry.json`).
   - *TODO, Python:* the same view-attr gap, plus `@object` and `@objectAdapter` are not
     registered (both loading fixtures fail), and registry-conformance fails.
 - *Kind 2, for comparison* (`ports`, language-specific by nature, never "pending"):
-  `@dbSetName` (`["csharp"]`) and `@objectAdapter` (`["java", "kotlin"]`).
+  `@dbSetName` (`["csharp"]`; deprecated in rc.19 as an alias of `@collectionName`) and
+  `@objectAdapter` (`["java", "kotlin"]`).
 
 **Generated paths keyed by package** (ruling R39). Every port's generated output is keyed by
 the metadata package, so two packages that each declare an object of the same name never

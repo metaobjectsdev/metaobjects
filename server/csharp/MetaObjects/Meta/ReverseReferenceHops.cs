@@ -13,31 +13,16 @@ public sealed record ReverseReferenceHop(MetaObject Holder, MetaReferenceIdentit
 
 public static class ReverseReferenceHops
 {
-    private static readonly char[] AlreadyPluralExcludedPrecedingChars = ['s', 'u', 'i', 'a'];
-
     /// <summary>
-    /// The name a reverse hop takes: the holder's collection name, lowerFirst(pluralize(name)) —
+    /// The name a reverse hop takes: the holder's collection name (its @collectionName, else the project's pluralizer), lowerFirst —
     /// <c>consents</c> for <c>Consent</c>. The pluralization is the one every port shares
     /// (already-plural names stay; else the suffix rule), as <c>fixtures/naming-conformance</c> pins it.
     /// </summary>
     public static string HopName(MetaObject holder)
     {
-        var plural = Pluralize(holder.Name);
+        // rc.19 (R57): the holder's collection name — its @collectionName, else the project's pluralizer.
+        var plural = CollectionNames.Of(holder);
         return plural.Length == 0 ? plural : char.ToLowerInvariant(plural[0]) + plural[1..];
-    }
-
-    private static string Pluralize(string s)
-    {
-        if (s.Length >= 2 && s.EndsWith("s", StringComparison.OrdinalIgnoreCase)
-            && Array.IndexOf(AlreadyPluralExcludedPrecedingChars, char.ToLowerInvariant(s[^2])) < 0)
-            return s;
-        if (s.EndsWith("s", StringComparison.Ordinal) || s.EndsWith("x", StringComparison.Ordinal) ||
-            s.EndsWith("z", StringComparison.Ordinal) || s.EndsWith("ch", StringComparison.Ordinal) ||
-            s.EndsWith("sh", StringComparison.Ordinal))
-            return s + "es";
-        if (s.Length > 1 && s.EndsWith("y", StringComparison.Ordinal) && !"aeiou".Contains(s[^2]))
-            return s[..^1] + "ies";
-        return s + "s";
     }
 
     /// <summary>
