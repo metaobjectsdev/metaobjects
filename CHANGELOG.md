@@ -482,6 +482,13 @@ vocabulary; upgrade every port together.
 
 ### Fixed
 
+- **A multi-hop `origin.first @via` is lowered along its path** (rc.19 Phase 5, bug
+  first-multihop). The loader accepted it, but view codegen never read `origin.first`'s `@via`:
+  it correlated the base directly to the `@of` entity and, with no direct reference, dropped the
+  column from the view without a word. A `@via` of two or more hops is now a subquery whose first
+  hop is correlated to the base row and whose later hops are `INNER JOIN`s inside it; the
+  ordering, `@filter` and tie-breaker are the `@of` entity's, and the view depends on every table
+  on the path. A path that does not reach the `@of` entity is refused. One hop is unchanged.
 - **A passthrough reads a member of a flattened value object** (rc.19 Phase 5, bug G6).
   `@from: Plan.address.city`, where `address` is a `field.object` with `@storage: flattened`,
   reads the owning table's `address_city` column (an empty `@flattenedColumnPrefix` reads the

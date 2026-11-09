@@ -142,7 +142,20 @@ function renderFirst(
   if (!childTable) {
     throw new Error(`view-ddl-emit: no table name registered for origin.first child entity "${c.childEntity}".`);
   }
-  const of = `${c.childAlias}.${quoteIfNeeded(c.sourceColumn)}`;
+  // first-multihop: the selected row is the LAST join's; the first hop is the correlated one.
+  const term = c.innerJoins !== undefined && c.innerJoins.length > 0 ? c.innerJoins[c.innerJoins.length - 1]!.alias : c.childAlias;
+  const of = `${term}.${quoteIfNeeded(c.sourceColumn)}`;
+  let prev = c.childAlias;
+  let joins = "";
+  for (const j of c.innerJoins ?? []) {
+    const table = options.joinTables[j.entity];
+    if (!table) throw new Error(`view-ddl-emit: no table name registered for origin.first hop entity "${j.entity}".`);
+    const on = j.referenceHolder === "source"
+      ? `${j.alias}.${quoteIfNeeded(j.pkColumn)} = ${prev}.${quoteIfNeeded(j.fkColumn)}`
+      : `${j.alias}.${quoteIfNeeded(j.fkColumn)} = ${prev}.${quoteIfNeeded(j.pkColumn)}`;
+    joins += ` INNER JOIN ${viewRelation(j.entity, table, options)} ${j.alias} ON ${on}`;
+    prev = j.alias;
+  }
   const fk = quoteIfNeeded(c.fkColumn);
   const pk = quoteIfNeeded(c.pkColumn);
   // Mirror renderJoin's ON clause, with the child in the subquery and the base outside.
@@ -155,12 +168,12 @@ function renderFirst(
   // The @orderBy keys carry the nulls-last pin; the appended PK tie-breaker never does
   // (a primary key is non-null, so NULLS LAST would be noise). Its ASC direction makes
   // equal-order rows byte-deterministic.
-  const tieBreak = `${c.childAlias}.${quoteIfNeeded(c.childPkColumn)} ASC`;
+  const tieBreak = `${term}.${quoteIfNeeded(c.childPkColumn)} ASC`;
   const orderKeys = c.orderBy.length > 0
-    ? `${renderOrderKeys(c.orderBy, c.childAlias)}, ${tieBreak}`
+    ? `${renderOrderKeys(c.orderBy, term)}, ${tieBreak}`
     : tieBreak;
   return (
-    `(SELECT ${of} FROM ${viewRelation(c.childEntity, childTable, options)} ${c.childAlias}` +
+    `(SELECT ${of} FROM ${viewRelation(c.childEntity, childTable, options)} ${c.childAlias}${joins}` +
     ` WHERE ${correlation}${filterClause} ORDER BY ${orderKeys} LIMIT 1) AS ${quoteIfNeeded(c.dbColAlias)}`
   );
 }

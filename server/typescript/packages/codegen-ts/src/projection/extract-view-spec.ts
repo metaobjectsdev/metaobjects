@@ -79,7 +79,7 @@ import { isRequired } from "../column-mapper.js";
 import type { ColumnNamingStrategy } from "../metaobjects-config.js";
 import type {
   JoinNode, JoinTree, SelectColumn, SelectSpec, ViewSpec, ViewFilterClause,
-  ViewExprNode, ViewExprLiteral, ViewOrderKey,
+  ViewExprNode, ViewExprLiteral, ViewOrderKey, FirstInnerJoin,
 } from "./view-spec.js";
 
 /** Compose keys in the attr.filter shape. */
@@ -1327,6 +1327,14 @@ function buildSelectSpec(
       // a separate, larger change (wiring @via/single-hop-unique inference into this
       // branch to match _validateViaPath/_inferViaSingleHop) — out of scope for #368's
       // silent-first-match fix; the message below reflects the real, narrower remedy.
+      // first-multihop: a @via of two or more hops is lowered along that path — the first hop
+      // correlated to the base, the rest INNER-joined inside the subquery. One hop (or none)
+      // keeps the direct correlation below, so its SQL is unchanged.
+      const firstVia = origin.ownAttr(ORIGIN_FIRST_ATTR_VIA);
+      if (typeof firstVia === "string" && firstVia.split(".").length > 2) {
+        columns.push(firstAlongPath(field.name, dbCol, firstVia, ofField, childEntity, origin, root, projPkg, usedAliases, ctx));
+        continue;
+      }
       const refs = findReferencesBetween(base, childEntity);
       // findReferencesBetween walks BOTH directions ([base,child] then [child,base]),
       // so ">1 entry" is not by itself #368 ambiguity: a mutual 1:1 —
@@ -1388,6 +1396,66 @@ function buildSelectSpec(
   }
 
   return { columns };
+}
+
+/**
+ * first-multihop: an `origin.first` whose `@via` has two or more hops. The first hop is the
+ * correlation to the base row; every later hop is an INNER JOIN inside the subquery, and the
+ * selected row, its ordering, filter and tie-breaker are the last hop's (the `@of` entity). A
+ * path that does not walk to the `@of` entity is refused here rather than dropped.
+ */
+function firstAlongPath(
+  fieldName: string,
+  dbCol: string,
+  via: string,
+  ofField: MetaData,
+  ofEntity: MetaObject,
+  origin: MetaData,
+  root: MetaRoot,
+  projPkg: string,
+  usedAliases: Set<string>,
+  ctx: ExtractContext,
+): SelectColumn {
+  const path = walkViaPath(via, root, projPkg, ctx);
+  const hops = via.split(".").length - 1;
+  const last = path[path.length - 1];
+  if (path.length !== hops || last === undefined || last.targetEntity !== ofEntity.resolutionKey()) {
+    throw new Error(
+      `origin.first @via "${via}" (field "${fieldName}"): the path does not walk to the @of entity ` +
+        `"${ofEntity.name}", so the column cannot be lowered.`,
+    );
+  }
+  const childPk = primaryKeyColumn(ofEntity, ctx);
+  if (childPk === undefined) {
+    throw new Error(`origin.first @via "${via}" (field "${fieldName}"): "${ofEntity.name}" has no primary key column.`);
+  }
+  const [first, ...rest] = path as [PathStep, ...PathStep[]];
+  const childAlias = shortAliasFor(first.targetEntity, usedAliases);
+  const innerJoins: FirstInnerJoin[] = rest.map((step) => ({
+    entity: step.targetEntity,
+    alias: shortAliasFor(step.targetEntity, usedAliases),
+    referenceHolder: step.referenceHolder,
+    fkColumn: step.fkColumn,
+    pkColumn: step.pkColumn,
+  }));
+  const termAlias = innerJoins[innerJoins.length - 1]!.alias;
+  const filterAttr = origin.ownAttr(ORIGIN_FIRST_ATTR_FILTER);
+  const filter = filterAttr !== undefined ? resolveAggregateFilter(filterAttr, ofEntity, termAlias, ctx) : undefined;
+  return {
+    kind: "first",
+    fieldName,
+    dbColAlias: dbCol,
+    childEntity: first.targetEntity,
+    childAlias,
+    sourceColumn: sourceColumnNameFor(ofField, ctx),
+    referenceHolder: first.referenceHolder,
+    fkColumn: first.fkColumn,
+    pkColumn: first.pkColumn,
+    childPkColumn: childPk,
+    orderBy: resolveOrderByKeys(origin.ownAttr(ORIGIN_ATTR_ORDER_BY), ofEntity, ctx),
+    ...(filter !== undefined ? { filter } : {}),
+    innerJoins,
+  };
 }
 
 /** The inflation-sensitive aggregate kinds: a non-distinct row multiplication corrupts

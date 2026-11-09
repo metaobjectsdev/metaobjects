@@ -176,7 +176,23 @@ export type SelectColumn =
       readonly orderBy: readonly ViewOrderKey[]; // row-selection ordering over the child entity
       /** Optional scoping filter over the child entity (refs use `childAlias`). */
       readonly filter?: ViewFilterClause;
+      /**
+       * first-multihop: the hops of a multi-hop `@via` after the first, INNER-joined inside the
+       * subquery (the selected row must exist along the whole path). `childEntity`/`childAlias`
+       * are then the FIRST hop's (the one correlated to the base), and `sourceColumn`,
+       * `childPkColumn`, `orderBy` and `filter` are over the LAST join's alias. Absent for one hop.
+       */
+      readonly innerJoins?: readonly FirstInnerJoin[];
     };
+
+/** One inner join of a multi-hop `origin.first` subquery, from the alias before it. */
+export interface FirstInnerJoin {
+  readonly entity: string;            // entity key of the joined relation (for table lookup)
+  readonly alias: string;
+  readonly referenceHolder: "source" | "target"; // which side holds the FK: the previous alias, or this one
+  readonly fkColumn: string;
+  readonly pkColumn: string;
+}
 
 export interface SelectSpec {
   readonly columns: readonly SelectColumn[];

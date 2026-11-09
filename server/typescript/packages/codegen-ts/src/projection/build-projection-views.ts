@@ -443,6 +443,11 @@ function collectDependsOn(
     if (c.kind === "first") {
       const t = joinTables[c.childEntity];
       if (t) tables.add(t);
+      // first-multihop: every table the subquery joins along its @via.
+      for (const j of c.innerJoins ?? []) {
+        const jt = joinTables[j.entity];
+        if (jt) tables.add(jt);
+      }
     }
   }
   return [...tables];
