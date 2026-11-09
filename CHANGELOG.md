@@ -482,6 +482,13 @@ vocabulary; upgrade every port together.
 
 ### Fixed
 
+- **A view over a TPH subtype carries its discriminator** (rc.19 Phase 5, bug TPH-scope). A
+  subtype shares its base's table, so a projection whose base is a subtype read every row of the
+  table, and a join or `origin.first` that landed on a subtype matched rows of its siblings. A
+  subtype base now adds `WHERE <alias>.<discriminator> = <value>`; a join onto one adds it to the
+  `ON` clause (a base row with no match survives), and an `origin.first` to its subquery's
+  `WHERE`. An int-backed discriminator stores its integer. Report joins follow the same rule.
+  **Upgrade note:** such a view's body changes, and it is re-proposed once as `replace-view`.
 - **A projection `@filter` reads a base-entity field the view does not output** (rc.19 Phase
   5, bug G7). `@filter: { deleted: false }` on a projection that exposes no `deleted` column
   lowers to `WHERE t.deleted = FALSE` on the base row; the loader refused it in TypeScript and C#

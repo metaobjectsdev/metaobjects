@@ -74,6 +74,7 @@ import {
 // #213 — a write-through ENTITY (FR-024 §7 read-view) hosts its own view; the base
 // is the entity itself, not an extends-anchored projection.
 import { isWriteThrough } from "./projection-detector.js";
+import { tphDiscriminatorPin } from "../tph.js";
 // #209 — the SAME NOT-NULL predicate that drives a column's `.notNull()` decides
 // whether a belongs-to join is INNER (required FK) vs LEFT OUTER (nullable FK).
 import { isRequired } from "../column-mapper.js";
@@ -81,7 +82,7 @@ import type { ColumnNamingStrategy } from "../metaobjects-config.js";
 import { fieldSqlType } from "@metaobjectsdev/migrate-ts/expected";
 import type {
   JoinNode, JoinTree, SelectColumn, SelectSpec, ViewSpec, ViewFilterClause,
-  ViewExprNode, ViewExprLiteral, ViewOrderKey, FirstInnerJoin,
+  ViewExprNode, ViewExprLiteral, ViewOrderKey, FirstInnerJoin, TphScope,
 } from "./view-spec.js";
 
 /** Compose keys in the attr.filter shape. */
@@ -848,9 +849,37 @@ export interface PathStep {
   /** #209 — derived join type: `inner` for a required belongs-to FK, else `left`. */
   joinType: "inner" | "left";
   targetEntity: string;
+  /** TPH-scope: the target subtype's discriminator pin, when the target is a TPH subtype. */
+  tphScope?: TphScope;
 }
 
 export type Path = PathStep[];
+
+/**
+ * TPH-scope: a TPH subtype's rows on its base's shared table — the discriminator column and the
+ * value it stores for the subtype (an int-backed discriminator enum stores its integer).
+ * Undefined for anything that is not a concrete TPH subtype.
+ */
+export function tphScopeOf(entity: MetaObject, ctx: ExtractContext): TphScope | undefined {
+  const pin = tphDiscriminatorPin(entity);
+  if (pin === undefined) return undefined;
+  const field = entity.fields().find((f) => f.name === pin.fieldName);
+  if (field === undefined) return undefined;
+  const map = field.subType === FIELD_SUBTYPE_ENUM ? intValueMapOf(field) : undefined;
+  return { column: sourceColumnNameFor(field, ctx), value: map?.[pin.value] ?? pin.value };
+}
+
+/** A TPH scope as a filter clause over `alias`. */
+function tphScopeClause(scope: TphScope, alias: string): ViewFilterClause {
+  return { kind: "cmp", ref: `${alias}.${scope.column}`, op: "eq", value: scope.value };
+}
+
+/** `a AND b`, where either may be absent. */
+function andClauses(a: ViewFilterClause | undefined, b: ViewFilterClause | undefined): ViewFilterClause | undefined {
+  if (a === undefined) return b;
+  if (b === undefined) return a;
+  return { kind: "and", clauses: [a, b] };
+}
 
 interface TrieNode {
   children: Map<string, TrieNode>;
@@ -978,6 +1007,7 @@ export function walkViaPath(via: string, root: MetaRoot, referrerPkg: string, ct
       referenceHolder,
       joinType,
       targetEntity: target.resolutionKey(),
+      ...(tphScopeOf(target, ctx) !== undefined ? { tphScope: tphScopeOf(target, ctx)! } : {}),
     });
     currentObj = target;
   }
@@ -1011,6 +1041,7 @@ export function pathsToJoins(paths: readonly Path[], usedAliases: Set<string>): 
       pkColumn: step.pkColumn,
       referenceHolder: step.referenceHolder,
       joinType: step.joinType,
+      ...(step.tphScope !== undefined ? { tphScope: step.tphScope } : {}),
       children: Array.from(node.children.values()).map(toJoinNode),
     };
   }
@@ -1382,9 +1413,11 @@ function buildSelectSpec(
       const childAlias = shortAliasFor(childEntity.name, usedAliases);
       const orderBy = resolveOrderByKeys(origin.ownAttr(ORIGIN_ATTR_ORDER_BY), childEntity, ctx);
       const filterAttr = origin.ownAttr(ORIGIN_FIRST_ATTR_FILTER);
-      const filter = filterAttr !== undefined
-        ? resolveAggregateFilter(filterAttr, childEntity, childAlias, ctx)
-        : undefined;
+      const childScope = tphScopeOf(childEntity, ctx);
+      const filter = andClauses(
+        filterAttr !== undefined ? resolveAggregateFilter(filterAttr, childEntity, childAlias, ctx) : undefined,
+        childScope !== undefined ? tphScopeClause(childScope, childAlias) : undefined,
+      );
       columns.push({
         kind: "first",
         // FQN so it lines up with the resolutionKey()-keyed joinTables in build-projection-views (#244).
@@ -1448,7 +1481,11 @@ function firstAlongPath(
   }));
   const termAlias = innerJoins[innerJoins.length - 1]!.alias;
   const filterAttr = origin.ownAttr(ORIGIN_FIRST_ATTR_FILTER);
-  const filter = filterAttr !== undefined ? resolveAggregateFilter(filterAttr, ofEntity, termAlias, ctx) : undefined;
+  const ofScope = tphScopeOf(ofEntity, ctx);
+  const filter = andClauses(
+    filterAttr !== undefined ? resolveAggregateFilter(filterAttr, ofEntity, termAlias, ctx) : undefined,
+    ofScope !== undefined ? tphScopeClause(ofScope, termAlias) : undefined,
+  );
   return {
     kind: "first",
     fieldName,
@@ -1561,6 +1598,10 @@ export function extractViewSpec(
       where = resolveViewFilter(rawFilter, columnsByField, projection.name, intMaps);
     }
   }
+
+  // TPH-scope: a subtype base reads only its rows of the shared table.
+  const baseScope = writeThrough ? undefined : tphScopeOf(base, ctx);
+  if (baseScope !== undefined) where = andClauses(where, tphScopeClause(baseScope, joinTree.baseAlias));
 
   return {
     viewName: view,

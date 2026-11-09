@@ -23,8 +23,17 @@ export interface JoinNode {
    *  a nullable belongs-to FK, or ANY has-many (inverse-FK) hop, where a base row with
    *  no match must survive (aggregates COALESCE to 0, not drop the row). */
   readonly joinType: "inner" | "left";
+  /** TPH-scope: the target is a TPH subtype sharing its base's table, so the join keeps only
+   *  its rows (`AND <alias>.<column> = <value>` on the ON clause). */
+  readonly tphScope?: TphScope;
   /** Child joins. */
   readonly children: readonly JoinNode[];
+}
+
+/** A TPH subtype's discriminator pin: the shared table's discriminator column and the stored value. */
+export interface TphScope {
+  readonly column: string;
+  readonly value: string | number;
 }
 
 /** Tree of JOINs rooted at the projection's base entity. */

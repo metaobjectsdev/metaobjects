@@ -154,7 +154,11 @@ function renderJoin(node: JoinNode, parentAlias: string, options: ReportEmitOpti
   const table = tableOf(node.targetEntity, options);
   const d = options.dialect;
   const kw = node.joinType === "inner" ? "INNER JOIN" : "LEFT OUTER JOIN";
-  let sql = `  ${kw} ${relation(node.targetEntity, table, options)} ${node.alias} ON ${onPredicate(node, parentAlias, d)}`;
+  // TPH-scope: a join onto a TPH subtype keeps only its rows of the shared table.
+  const scope = node.tphScope !== undefined
+    ? ` AND ${node.alias}.${q(node.tphScope.column, d)} = ${typeof node.tphScope.value === "number" ? String(node.tphScope.value) : `'${node.tphScope.value.replace(/'/g, "''")}'`}`
+    : "";
+  let sql = `  ${kw} ${relation(node.targetEntity, table, options)} ${node.alias} ON ${onPredicate(node, parentAlias, d)}${scope}`;
   for (const child of node.children) sql += "\n" + renderJoin(child, node.alias, options);
   return sql;
 }
