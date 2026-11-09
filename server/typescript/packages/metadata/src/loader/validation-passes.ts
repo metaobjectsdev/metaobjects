@@ -2891,6 +2891,15 @@ export function validateProjectionFilter(root: MetaData): ParseError[] {
       // stores as an integer, so `like` is not in its band.
       fields.set(f.name, { derived, ops: opsForField(f) });
     }
+    // G7: a field of the BASE entity the view does not output is filterable too (a WHERE reads
+    // the base row); a projection field of the same name wins. No base, no fallback: the
+    // origin passes report why one cannot be derived.
+    const base = _deriveBaseEntity(obj, root, "@filter", obj.source, []);
+    if (base !== undefined && base !== obj) {
+      for (const f of base.children().filter((c) => c.type === TYPE_FIELD)) {
+        if (!fields.has(f.name)) fields.set(f.name, { derived: false, ops: opsForField(f) });
+      }
+    }
     checkProjectionFilterRefs(filter as Record<string, unknown>, fields, obj.name, obj.source, errors);
   }
   return errors;
@@ -2933,7 +2942,7 @@ function checkProjectionFilterRefs(
     if (field === undefined) {
       err(
         `projection "${projectionName}" @filter references "${key}", which is not a declared field of the ` +
-          `projection. A view-level @filter may only reference the projection's own declared fields.`,
+          `projection or of its base entity. A view-level @filter may only reference those fields.`,
       );
       continue;
     }

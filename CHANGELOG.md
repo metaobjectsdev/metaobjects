@@ -482,6 +482,12 @@ vocabulary; upgrade every port together.
 
 ### Fixed
 
+- **A projection `@filter` reads a base-entity field the view does not output** (rc.19 Phase
+  5, bug G7). `@filter: { deleted: false }` on a projection that exposes no `deleted` column
+  lowers to `WHERE t.deleted = FALSE` on the base row; the loader refused it in TypeScript and C#
+  ("not a declared field of the projection"). A projection field of the same name wins; a joined
+  field the view does not output is not covered. Pinned by
+  `fixtures/conformance/projection-filter-unprojected-base-field`.
 - **A Postgres view column takes its declared type** (rc.19 Phase 5, bug `cast`). A bare
   `NULL` (`origin.computed { @expr: { value: null } }`) is `text` in a view, so a `field.int` or
   `field.timestamp` declared that way became a text column; an `@convert: true` passthrough read

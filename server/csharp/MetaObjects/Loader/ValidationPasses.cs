@@ -1827,6 +1827,12 @@ public static partial class ValidationPasses
                 }
             }
 
+            // G7: a field of the BASE entity the view does not output is filterable too (a WHERE
+            // reads the base row); a projection field of the same name wins.
+            if (DeriveBaseEntity(obj, root, "@filter", obj.Source, []) is { } baseEntity && !ReferenceEquals(baseEntity, obj))
+                foreach (var f in baseEntity.Children().Where(c => c.Type == TYPE_FIELD))
+                    declared.Add(f.Name);
+
             CheckProjectionFilterRefs(filter, declared, aggregateDerived, obj.Name, obj.Source, errors);
         }
 
@@ -1865,8 +1871,7 @@ public static partial class ValidationPasses
             {
                 errors.Add(new MetaError(
                     $"projection \"{projectionName}\" @filter references \"{key}\", which is not a declared " +
-                    "field of the projection. A view-level @filter may only reference the projection's own " +
-                    "declared fields.",
+                    "field of the projection or of its base entity. A view-level @filter may only reference those fields.",
                     ErrorCode.ERR_BAD_ATTR_FILTER,
                     Envelope: source));
                 continue;

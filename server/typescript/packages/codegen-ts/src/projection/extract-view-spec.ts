@@ -1546,9 +1546,19 @@ export function extractViewSpec(
       const columnsByField = new Map<string, SelectColumn>(
         selectSpec.columns.map((c) => [c.fieldName, c] as const),
       );
-      where = resolveViewFilter(
-        rawFilter, columnsByField, projection.name, intEnumMapsOf(projection),
-      );
+      // G7: a base-entity field the view does not output is filtered on its base column; a
+      // projection field of the same name wins. Its int-backed enum map comes from the base field.
+      const intMaps = new Map(intEnumMapsOf(projection));
+      for (const f of base.fields()) {
+        if (columnsByField.has(f.name)) continue;
+        columnsByField.set(f.name, {
+          kind: "passthrough", fieldName: f.name, dbColAlias: f.name,
+          sourceAlias: joinTree.baseAlias, sourceColumn: sourceColumnNameFor(f, ctx),
+        });
+        const map = f.subType === FIELD_SUBTYPE_ENUM ? intValueMapOf(f) : undefined;
+        if (map !== undefined) intMaps.set(f.name, map);
+      }
+      where = resolveViewFilter(rawFilter, columnsByField, projection.name, intMaps);
     }
   }
 
