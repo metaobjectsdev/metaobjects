@@ -427,18 +427,32 @@ public EF types only (no Npgsql reference). An adopter's own differ, registered 
 
 EF finds the services in two ways. It scans the **startup** project for `IDesignTimeServices`
 implementations, and it reads `[assembly: DesignTimeServicesReference]` from the startup and
-**migrations** assemblies. The generated file carries that reference when it knows the context's
-assembly name: `GenConfig.ContextAssemblyName`, else the one `.csproj` in the output directory or
-above it. EF's default layout, migrations in the context's assembly, then needs no adopter code.
-When the migrations live in another project that is not the startup project either, add the one
-line there:
+**migrations** assemblies, and from no other. The generated file carries that reference in the
+context's own assembly when it knows that assembly's name (`GenConfig.ContextAssemblyName`, else
+the one `.csproj` in the output directory or above it), so it is read only when the context's
+assembly is the startup or the migrations assembly. EF's default layout, migrations in the
+context's assembly, needs no adopter code.
+
+**Whenever the context's assembly is neither the startup nor the migrations assembly, add the
+line to the migrations project** (any `.cs` file in it). That includes the common layout of a
+context in a class library (`MyApp.Data`) with its migrations in a project of their own
+(`MyApp.Migrations`), which is also the startup project for `dotnet ef`: the reference generated
+into `MyApp.Data` is never read there.
 
 ```csharp
 [assembly: Microsoft.EntityFrameworkCore.Design.DesignTimeServicesReference(
-    "MyApp.Data.AppDbContextDesignTimeServices, MyApp.Data")]
+    "MyApp.Data.AppDbContextDesignTimeServices, MyApp.Data", "Npgsql.EntityFrameworkCore.PostgreSQL")]
 ```
 
-That is the accepted residual risk: without it, a changed start still scaffolds as RESTART.
+`dotnet meta gen` warns, with that exact line, whenever it cannot show the line is unnecessary. It
+looks for the model snapshot EF writes beside the migrations (`<Context>ModelSnapshot.cs`) in the
+repository (the nearest directory above the project holding `.git`, else the farthest holding a
+`.sln`): in the context's own project, nothing is needed; in another project, that project must
+carry the line, and the run is quiet once it does; found nowhere (a project with no migrations
+yet, or an output directory that is no project on disk), it cannot tell, and says so.
+
+That is the accepted residual risk: without the line, a changed start still scaffolds as RESTART,
+and a JSON column's comment is not scaffolded.
 `dotnet ef migrations add --verbose` prints "Using design-time services from assembly …" when
 the services are found; review a start change's migration before applying it.
 

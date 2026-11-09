@@ -52,7 +52,8 @@ public sealed class ColumnCommentCodegenTests
     public void A_json_column_takes_its_value_objects_description_as_an_annotation_the_design_time_differ_scaffolds()
     {
         var (files, warnings) = Run("postgres");
-        Assert.Empty(warnings);
+        // Its outDir is no project on disk, so only the I4 "cannot tell" reference warning is expected.
+        Assert.Empty(warnings.Where(w => !w.Contains("cannot tell whether EF reads the DesignTimeServicesReference", StringComparison.Ordinal)));
         var context = files.Single(f => f.Path == "AppDbContext.g.cs").Content;
         Assert.Contains("modelBuilder.Entity<Ticket>().Metadata.FindNavigation(\"Meta\")!.TargetEntityType" +
             ".SetAnnotation(\"MetaObjects:JsonColumnComment\", \"Free-form tags.\");", context);

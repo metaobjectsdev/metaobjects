@@ -212,9 +212,12 @@ public sealed record GenConfig
     /// <c>[assembly: DesignTimeServicesReference("&lt;type&gt;, &lt;assembly&gt;")]</c>, and EF resolves
     /// that name with <c>Type.GetType</c>, which needs the assembly. <c>null</c>, the default, reads it
     /// from the one <c>.csproj</c> in <see cref="OutDir"/> or the nearest directory above it (its
-    /// <c>&lt;AssemblyName&gt;</c>, else its file name) when it is read. When neither gives a name the reference is
-    /// left out, the run warns, and EF finds the services only when the context's project is the
-    /// startup project.
+    /// <c>&lt;AssemblyName&gt;</c>, else its file name; not one set in <c>Directory.Build.props</c> or
+    /// conditionally) when it is read. When neither gives a name the reference is left out, the run
+    /// warns, and EF finds the services only when the context's project is the startup project. EF
+    /// reads the reference only from the startup and migrations assemblies, so a context in a third
+    /// assembly needs the line in its migrations project; the run warns, with the line, whenever it
+    /// cannot show the line is unnecessary (rc.19 I4, <see cref="DesignTimeServicesReferences"/>).
     /// </summary>
     public string? ContextAssemblyName
     {

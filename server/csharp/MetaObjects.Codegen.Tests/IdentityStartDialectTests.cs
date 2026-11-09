@@ -26,6 +26,13 @@ public sealed class IdentityStartDialectTests
 
     private const string ServicesFile = "AppDbContextDesignTimeServices.g.cs";
 
+    /// <summary>
+    /// The warnings but the one a project with no migrations on disk always gets ("cannot tell whether
+    /// EF reads the DesignTimeServicesReference"), which the I4 tests below pin.
+    /// </summary>
+    private static List<string> Others(List<string> warnings) =>
+        warnings.Where(w => !w.Contains("cannot tell whether EF reads the DesignTimeServicesReference", StringComparison.Ordinal)).ToList();
+
     private static (List<EmittedFile> Files, List<string> Warnings) Run(
         string? dialect, string model = Model, string? assembly = "Acme.Data", string outDir = "/unused")
     {
@@ -44,7 +51,7 @@ public sealed class IdentityStartDialectTests
     public void A_postgres_project_gets_the_design_time_services_and_the_start()
     {
         var (files, warnings) = Run("postgres");
-        Assert.Empty(warnings);
+        Assert.Empty(Others(warnings));
         var context = files.Single(f => f.Path == "AppDbContext.g.cs").Content;
         Assert.Contains("Npgsql:IdentitySequenceOptions", context);
         // Nothing at runtime: no registration to call, no guard as the model is built.
@@ -81,7 +88,7 @@ public sealed class IdentityStartDialectTests
         var (files, warnings) = Run("postgres", Model.Replace(", \"@sequenceStart\": 100", ""));
         Assert.Contains(files, f => f.Path == ServicesFile);
         Assert.DoesNotContain("Npgsql:IdentitySequenceOptions", files.Single(f => f.Path == "AppDbContext.g.cs").Content);
-        Assert.Empty(warnings);
+        Assert.Empty(Others(warnings));
     }
 
     [Fact]
@@ -106,7 +113,7 @@ public sealed class IdentityStartDialectTests
             File.WriteAllText(Path.Combine(project, "Acme.Data.csproj"), csproj);
             var outDir = Path.Combine(project, "Generated");
             var (files, warnings) = Run("postgres", assembly: null, outDir: outDir);
-            Assert.Empty(warnings);
+            Assert.Empty(Others(warnings));
             Assert.Contains($"\"Acme.AppDbContextDesignTimeServices, {expected}\"",
                 files.Single(f => f.Path == ServicesFile).Content);
         }
@@ -114,6 +121,82 @@ public sealed class IdentityStartDialectTests
         {
             Directory.Delete(project, recursive: true);
         }
+    }
+
+    // rc.19 fix round (I4): EF reads [assembly: DesignTimeServicesReference] only from the startup and
+    // migrations assemblies, so the reference generated into the context's assembly is read only when
+    // that assembly holds the migrations. The run proves it from the model snapshot EF writes beside
+    // the migrations (<Context>ModelSnapshot.cs), and otherwise warns with the exact line to add.
+
+    private const string Line =
+        "[assembly: Microsoft.EntityFrameworkCore.Design.DesignTimeServicesReference(\"Acme.AppDbContextDesignTimeServices, Acme.Data\", \"Npgsql.EntityFrameworkCore.PostgreSQL\")]";
+
+    /// <summary>A repository with the context's project (Acme.Data) and, optionally, a migrations project.</summary>
+    private static string Repo(string? snapshotIn, string? migrationsSource = null)
+    {
+        var repo = Directory.CreateTempSubdirectory("mo-dts-repo-").FullName;
+        Directory.CreateDirectory(Path.Combine(repo, ".git"));
+        Directory.CreateDirectory(Path.Combine(repo, "Acme.Data"));
+        File.WriteAllText(Path.Combine(repo, "Acme.Data", "Acme.Data.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\"></Project>");
+        Directory.CreateDirectory(Path.Combine(repo, "Acme.Migrations"));
+        File.WriteAllText(Path.Combine(repo, "Acme.Migrations", "Acme.Migrations.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\"></Project>");
+        if (snapshotIn is not null)
+        {
+            var dir = Path.Combine(repo, snapshotIn, "Migrations");
+            Directory.CreateDirectory(dir);
+            File.WriteAllText(Path.Combine(dir, "AppDbContextModelSnapshot.cs"), "// snapshot");
+            // A migration is never read for the line, even one that quotes it.
+            File.WriteAllText(Path.Combine(dir, "20260101000000_Init.cs"), "// " + Line);
+        }
+        if (migrationsSource is not null) File.WriteAllText(Path.Combine(repo, "Acme.Migrations", "DesignTime.cs"), migrationsSource);
+        return repo;
+    }
+
+    private static List<string> DesignTimeWarnings(string repo) =>
+        Run("postgres", assembly: null, outDir: Path.Combine(repo, "Acme.Data", "Generated")).Warnings
+            .Where(w => w.Contains("DesignTimeServicesReference")).ToList();
+
+    [Fact]
+    public void Migrations_in_the_contexts_project_need_no_line()
+    {
+        var repo = Repo(snapshotIn: "Acme.Data");
+        try { Assert.Empty(DesignTimeWarnings(repo)); }
+        finally { Directory.Delete(repo, recursive: true); }
+    }
+
+    [Fact]
+    public void Migrations_in_another_project_without_the_line_warn_with_the_line_and_the_project()
+    {
+        var repo = Repo(snapshotIn: "Acme.Migrations");
+        try
+        {
+            var warning = Assert.Single(DesignTimeWarnings(repo));
+            Assert.Contains(Line, warning);
+            Assert.Contains("Acme.Migrations.csproj", warning);
+            Assert.Contains("RESTART", warning);
+        }
+        finally { Directory.Delete(repo, recursive: true); }
+    }
+
+    [Fact]
+    public void Migrations_in_another_project_that_carries_the_line_are_quiet()
+    {
+        var repo = Repo(snapshotIn: "Acme.Migrations", migrationsSource: Line + "\n");
+        try { Assert.Empty(DesignTimeWarnings(repo)); }
+        finally { Directory.Delete(repo, recursive: true); }
+    }
+
+    [Fact]
+    public void With_no_migrations_found_the_run_cannot_prove_it_and_warns_with_the_line()
+    {
+        var repo = Repo(snapshotIn: null);
+        try
+        {
+            var warning = Assert.Single(DesignTimeWarnings(repo));
+            Assert.Contains(Line, warning);
+            Assert.Contains("AppDbContextModelSnapshot.cs", warning);
+        }
+        finally { Directory.Delete(repo, recursive: true); }
     }
 
     [Theory]
@@ -137,7 +220,7 @@ public sealed class IdentityStartDialectTests
         var model = Model.Replace("\"@sequenceStart\": 100", "\"@sequenceStart\": 100, \"@sequenceName\": \"tickets_seq\"");
         var (files, warnings) = Run("postgres", model);
         Assert.Contains(files, f => f.Path == "AppDbContext.g.cs");
-        var warning = Assert.Single(warnings);
+        var warning = Assert.Single(Others(warnings));
         Assert.Contains("@sequenceName is not in the EF model (acme::Ticket)", warning);
     }
 }

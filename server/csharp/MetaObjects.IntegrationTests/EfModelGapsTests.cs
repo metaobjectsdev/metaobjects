@@ -944,6 +944,61 @@ public sealed class EfModelGapsTests
         }
     }
 
+    /// <summary>A separate migrations assembly: empty, or carrying the one line the docs ask for.</summary>
+    private static System.Reflection.Assembly MigrationsAssembly(string? line)
+    {
+        var refs = ((string?)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") ?? "").Split(Path.PathSeparator)
+            .Where(p => p.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+            .GroupBy(Path.GetFileName, StringComparer.OrdinalIgnoreCase).Select(g => g.First())
+            .Select(p => (Microsoft.CodeAnalysis.MetadataReference)Microsoft.CodeAnalysis.MetadataReference.CreateFromFile(p));
+        var source = (line ?? "") + "\nnamespace Acme.Migrations { internal static class Marker { } }";
+        var comp = Microsoft.CodeAnalysis.CSharp.CSharpCompilation.Create("mig_" + Guid.NewGuid().ToString("N"),
+            [Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(source)], refs,
+            new Microsoft.CodeAnalysis.CSharp.CSharpCompilationOptions(Microsoft.CodeAnalysis.OutputKind.DynamicallyLinkedLibrary));
+        using var ms = new MemoryStream();
+        var emit = comp.Emit(ms);
+        Assert.True(emit.Success, string.Join("\n", emit.Diagnostics));
+        return System.Reflection.Assembly.Load(ms.ToArray());
+    }
+
+    // rc.19 fix round (I4): EF reads [assembly: DesignTimeServicesReference] only from the startup and
+    // migrations assemblies. With the context in a third assembly (a library, as P3's Core) the
+    // reference generated beside it is never read: the migrations project needs the line itself.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_context_outside_the_startup_and_migrations_assemblies_needs_the_line_in_the_migrations_project(bool withLine)
+    {
+        var name = "gen_lib_" + Guid.NewGuid().ToString("N");
+        var gen = GeneratedEfModel.Compile(StartVocabularyModel.Replace("__START__", ", \"@sequenceStart\": 200"), "Acme.StartLib",
+            c => c with { Dialect = "postgres", ContextAssemblyName = name }, assemblyName: name);
+        var migrations = MigrationsAssembly(withLine
+            ? $"[assembly: Microsoft.EntityFrameworkCore.Design.DesignTimeServicesReference(\"Acme.StartLib.AppDbContextDesignTimeServices, {name}\", \"Npgsql.EntityFrameworkCore.PostgreSQL\")]"
+            : null);
+        System.Reflection.Assembly? Resolve(object? _, ResolveEventArgs e) => e.Name.StartsWith(name, StringComparison.Ordinal) ? gen.Assembly : null;
+        AppDomain.CurrentDomain.AssemblyResolve += Resolve;
+        try
+        {
+            using var a = Stock(StartModel(null));
+            using var b = Stock(gen);
+            var ops = Differ(DesignTime(b, startup: typeof(EfModelGapsTests).Assembly, migrations: migrations))
+                .GetDifferences(DesignModel(a), DesignModel(b));
+            if (withLine)
+            {
+                Assert.Contains("SET START WITH 200", Assert.Single(ops.OfType<SqlOperation>(), o => o.Sql.Contains("SET START")).Sql);
+                Assert.DoesNotContain("RESTART", Sql(ops), StringComparison.OrdinalIgnoreCase);
+            }
+            else
+            {
+                Assert.Contains("RESTART WITH 200", Sql(ops));
+            }
+        }
+        finally
+        {
+            AppDomain.CurrentDomain.AssemblyResolve -= Resolve;
+        }
+    }
+
     /// <summary>An adopter's own differ, registered on its context: it appends a marker operation.</summary>
 #pragma warning disable EF1001 // An adopter's differ subclasses EF's.
     private sealed class AdopterDiffer(

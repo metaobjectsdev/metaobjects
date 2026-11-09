@@ -403,11 +403,15 @@ vocabulary; upgrade every port together.
   check that demanded it, and the generated SQL-generator subclass are gone: delete every
   `.UseIdentityStartMigrations()` call. EF finds the services in the startup project, and through
   the `[assembly: DesignTimeServicesReference]` the file carries when it knows the context's
-  assembly name (`GenConfig.ContextAssemblyName`, else the `.csproj` it is written into). When the
-  migrations live in a project that is neither the context's nor the startup project, add that
-  one attribute there (`docs/ports/csharp.md`); without it a changed start still scaffolds as
-  RESTART, which is the accepted residual risk. An adopter's own differ is kept: the services wrap
-  it.
+  assembly name (`GenConfig.ContextAssemblyName`, else the `.csproj` it is written into). EF
+  reads that attribute only from the startup and migrations assemblies, so **whenever the
+  context's assembly is neither, add the attribute to the migrations project**
+  (`docs/ports/csharp.md`) — including a context in a class library whose migrations project is
+  also the `dotnet ef` startup project. `dotnet meta gen` warns with the exact line whenever it
+  cannot show the line is unnecessary (it looks for `<Context>ModelSnapshot.cs` in the context's
+  project, or a migrations project that already carries the line). Without the line a changed
+  start still scaffolds as RESTART, which is the accepted residual risk. An adopter's own differ
+  is kept: the services wrap it.
 - **C#, upgrade note: a self-hosted codegen runner sets `GenConfig.Dialect`.** `@sequenceStart` and
   the design-time services are emitted only when the dialect is `postgres`. `CodegenCli` reads it
   from `.metaobjects/config.json` `migrate.dialect`; a runner that builds its own `GenConfig` must

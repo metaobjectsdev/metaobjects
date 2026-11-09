@@ -57,6 +57,7 @@ public class EjectedGeneratorsAloneTests
         ["MetaObjects.Codegen.CSharpNaming"] = "the naming and type-mapping tables",
         ["MetaObjects.Codegen.Generators.CheckConstraints"] = "the CHECKs meta migrate derives: a schema contract both delivery paths must agree on, not emitted code an owned copy should change",
         ["MetaObjects.Codegen.Generators.CheckConstraint"] = "one of those CHECKs, a name and an expression",
+        ["MetaObjects.Codegen.DesignTimeServicesReferences"] = "whether EF reads the generated design-time services reference: a question about the adopter's project layout, not emitted code",
         ["MetaObjects.Codegen.ValueObjectNames"] = "the one answer to what a value object's type is called and where it lives",
         ["MetaObjects.Codegen.PackageBindingResolver"] = "package -> namespace binding",
         ["MetaObjects.Codegen.OutputPaths"] = "package -> output directory (R39): where a per-object file is written",
