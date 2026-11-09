@@ -111,7 +111,7 @@ CREATE VIEW `v_sales_by_category` AS
     MAX(s.`amountCents`) AS `maxCents`,
     COUNT(CASE WHEN s.`amountCents` >= 10000 THEN s.`id` END) AS `largeSales`
   FROM `sales` s
-  INNER JOIN `products` p ON p.`id` = s.`productId`
+  LEFT OUTER JOIN `products` p ON p.`id` = s.`productId`
   LEFT OUTER JOIN `categories` c ON c.`id` = p.`categoryId`
   GROUP BY c.`name`;
 
@@ -121,7 +121,7 @@ CREATE VIEW `v_sales_by_sku` AS
     COUNT(s.`id`) AS `sales`,
     CAST(SUM(s.`amountCents`) AS SIGNED) AS `revenueCents`
   FROM `sales` s
-  INNER JOIN `products` p ON p.`id` = s.`productId`
+  LEFT OUTER JOIN `products` p ON p.`id` = s.`productId`
   GROUP BY p.`sku`;
 
 CREATE VIEW `v_product_refunds` AS

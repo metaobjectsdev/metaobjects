@@ -215,14 +215,15 @@ public static class ReportShapes
     }
 
     /// <summary>
-    /// True when every hop of <paramref name="hops"/>, walked from <paramref name="from"/>, is a
-    /// belongs-to hop over a required foreign key: the hops the view joins INNER, so every row
-    /// of the report has a match. This is the join-type rule of the view lowering (TypeScript
-    /// <c>walkViaPath</c>, #209): the reference is held by the entity the hop leaves, its first
-    /// FK field is required, and every earlier hop is INNER too. <c>@enforce: false</c> does not
-    /// change it. A hop that does not resolve, an ambiguous reference or a has-many hop is not INNER.
+    /// rc.19 R62 — true when every hop of <paramref name="hops"/>, walked from <paramref name="from"/>,
+    /// is certain to match: a belongs-to hop (the reference is held by the entity the hop leaves)
+    /// whose first FK field is required, whose reference is enforced (not <c>@enforce: false</c>,
+    /// which can name a row that does not exist), onto a target that hides no rows (not a TPH
+    /// subtype, whose join carries the discriminator). That is exactly when the view's LEFT OUTER
+    /// joins return what INNER would. Every generated view join is LEFT OUTER; this reads the model,
+    /// never the join type. Ported from report-shape.ts <c>viaAlwaysMatches</c>.
     /// </summary>
-    private static bool ViaJoinsInner(IReadOnlyList<string> hops, MetaObject from, MetaRoot root)
+    private static bool ViaAlwaysMatches(IReadOnlyList<string> hops, MetaObject from, MetaRoot root)
     {
         var current = from;
         foreach (string hopName in hops)
@@ -239,20 +240,36 @@ public static class ReportShapes
             // sits on the child, matches none of the current entity's own references.
             var reference = refNode
                 ?? RelationshipReferences.ResolveRelationshipReference(current, hopName, target, rel!.SourceRefField);
-            if (reference is null) return false;
+            if (reference is null || !reference.Enforce) return false;
             string? fkName = RelationshipReferences.RefFkField(reference);
             var fk = fkName is null ? null : current.FindField(fkName);
             if (fk is null || !fk.IsRequired) return false;
+            if (HidesRows(target)) return false;
             current = target;
         }
         return true;
     }
 
     /// <summary>
+    /// True when a join onto <paramref name="obj"/> carries a row scope of its own: a TPH subtype, or
+    /// an abstract level beneath a TPH base, both scoped by the discriminator. The model has no
+    /// soft-delete or query-filter vocabulary, so this is the only row-hiding scope.
+    /// </summary>
+    private static bool HidesRows(MetaObject obj)
+    {
+        // ADR-0039: own — the discriminator is declared on the level that owns it.
+        if (obj.OwnAttr(OBJECT_ATTR_DISCRIMINATOR) is not null) return false;
+        var seen = new HashSet<MetaData>(ReferenceEqualityComparer.Instance) { obj };
+        for (var s = obj.SuperData; s is not null && seen.Add(s); s = s.SuperData)
+            if (s.OwnAttr(OBJECT_ATTR_DISCRIMINATOR) is not null) return true;
+        return false;
+    }
+
+    /// <summary>
     /// Table C (<c>required</c> of a dimension). Without <c>@spine</c>: only a dimension over an
     /// <c>@of</c> field that is effectively required (<c>@required</c> or a <c>validator.required</c> child)
     /// and, when it has a <c>@via</c>, only when every hop is a required belongs-to reference, the
-    /// hops the view joins INNER (<see cref="ViaJoinsInner"/>). With
+    /// hops certain to match (<see cref="ViaAlwaysMatches"/>). With
     /// <c>@spine</c>: only a dimension whose <c>@via</c> hops equal the spine's (a column of
     /// the spine entity itself, whose rows are the report's rows) over an <c>@of</c> field that
     /// is required (same rule) or a primary-key column of the entity <c>@of</c> names. A dimension
@@ -271,7 +288,7 @@ public static class ReportShapes
             if (!ofRequired) return false;
             var viaHops = ReportingViaHops(via, ReportingMemberOwner(dim, from), from, root)
                 ?? throw Unresolved(reportName, $"dimension '{dim.Name}' @via '{via}'");
-            return ViaJoinsInner(viaHops, from, root);
+            return ViaAlwaysMatches(viaHops, from, root);
         }
         if (via is null) return false; // a column of @from: null in a spine row with no facts
         var hops = ReportingViaHops(via, ReportingMemberOwner(dim, from), from, root)

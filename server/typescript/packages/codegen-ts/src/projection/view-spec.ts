@@ -18,12 +18,9 @@ export interface JoinNode {
   readonly pkColumn: string;
   /** Which side of this hop physically holds the FK: the parent (source) or the child (target). */
   readonly referenceHolder: "source" | "target";
-  /** #209 — `inner` when this is a belongs-to hop whose FK is NOT NULL (required):
-   *  the join can neither drop nor NULL-fill a base row, so it is semantically INNER
-   *  and matches the hand-written INNER-join view it stands in for. `left` otherwise —
-   *  a nullable belongs-to FK, or ANY has-many (inverse-FK) hop, where a base row with
-   *  no match must survive (aggregates COALESCE to 0, not drop the row). */
-  readonly joinType: "inner" | "left";
+  /** rc.19 R62 — always `left`: a generated view join never drops a base row. A view that
+   *  requires the related row filters on it (`@filter: { "<hop>.id": { isNull: false } }`). */
+  readonly joinType: "left";
   /** TPH-scope: the target is a TPH subtype sharing its base's table, so the join keeps only
    *  its rows (`AND <alias>.<column> = <value>` on the ON clause). */
   readonly tphScope?: TphScope;

@@ -1,15 +1,14 @@
-// A report dimension's `required` and the join type of its `@via` path are one rule stated in
-// two packages (adopter report D5): `reportShape` in `@metaobjectsdev/metadata` decides whether
-// the generated row type is nullable, and the view lowering here decides INNER or LEFT OUTER
-// (#209). Nothing shares code between them, so a change to one can leave the other behind, and
-// that failure is silent: a row type that says non-null over a column the view null-extends.
+// A report dimension's `required` and the joins of its `@via` path (adopter report D5; rc.19 R62).
+// Every generated view join is LEFT OUTER (R62), so `required` can no longer be read off "every
+// join is INNER": `reportShape` in `@metaobjectsdev/metadata` derives it from the model. A joined
+// dimension is required only when its @of field is, and every hop on the path is a belongs-to
+// reference over a required foreign key, enforced (not `@enforce: false`), onto a target that
+// hides no rows (not a TPH subtype). That is exactly when LEFT and INNER return the same rows, so
+// the non-null row type never sits over a null-extended column.
 //
-// This reads the join types out of the view SQL the lowering emits and holds `reportShape` to
-// them. The expected table is derived by hand from the #209 rule: a hop is INNER when the
-// entity it leaves holds a required foreign key and every hop before it is INNER.
-// A dimension's `@via` crosses only identity.reference and `@cardinality: one` hops (a to-many
-// hop does not load), so the hop that is LEFT OUTER for a reason other than a nullable key is
-// the to-one relationship whose foreign key sits on the entity it reaches.
+// This reads the join types out of the view SQL the lowering emits (all LEFT OUTER) and holds
+// `reportShape` to the hand-derived table. A dimension's `@via` crosses only identity.reference
+// and `@cardinality: one` hops (a to-many hop does not load).
 
 import { describe, test, expect } from "bun:test";
 import { MetaDataLoader, InMemoryStringSource, reportShape, type MetaObject, type MetaRoot } from "@metaobjectsdev/metadata";
@@ -56,30 +55,49 @@ const stamp = entity("Stamp", "stamps", [
 ]);
 
 /** Each dimension: its `@of`, its `@via`, the joins its path must render, and its `required`. */
+const L = "LEFT OUTER" as const;
 const DIMENSIONS: Record<string, { of: string; via?: string; joins: JoinKeyword[]; required: boolean }> = {
   // No @via: a column of the @from entity itself.
   sessionKey: { of: "Snap.sessionId", joins: [], required: true },
-  // identity.reference hops.
-  sessionRealmId: { of: "Session.realmId", via: "Snap.fkSession", joins: ["INNER"], required: true },
-  realmName: { of: "Realm.name", via: "Snap.fkSession.fkRealm", joins: ["INNER", "INNER"], required: true },
-  looseRealmName: { of: "Realm.name", via: "Snap.fkLoose.fkRealm", joins: ["INNER", "INNER"], required: true },
-  maybeRealmName: { of: "Realm.name", via: "Snap.fkSession.fkMaybeRealm", joins: ["INNER", "LEFT OUTER"], required: false },
-  // INNER all the way, over a field that is itself optional.
-  realmMotto: { of: "Realm.motto", via: "Snap.fkSession.fkRealm", joins: ["INNER", "INNER"], required: false },
+  // identity.reference hops: required and enforced all the way stays required.
+  sessionRealmId: { of: "Session.realmId", via: "Snap.fkSession", joins: [L], required: true },
+  realmName: { of: "Realm.name", via: "Snap.fkSession.fkRealm", joins: [L, L], required: true },
+  // An @enforce: false hop can name a row that does not exist: nullable.
+  looseRealmName: { of: "Realm.name", via: "Snap.fkLoose.fkRealm", joins: [L, L], required: false },
+  // A nullable hop, last or first on a multi-hop path: nullable.
+  maybeRealmName: { of: "Realm.name", via: "Snap.fkSession.fkMaybeRealm", joins: [L, L], required: false },
+  optionalFirstRealmName: { of: "Realm.name", via: "Snap.fkMaybeSession.fkRealm", joins: [L, L], required: false },
+  // A required, enforced path over a field that is itself optional.
+  realmMotto: { of: "Realm.motto", via: "Snap.fkSession.fkRealm", joins: [L, L], required: false },
+  // A TPH-subtype target: its join carries the discriminator, so a row of a sibling subtype has no match.
+  orgName: { of: "Org.orgName", via: "Snap.fkOrg", joins: [L], required: false },
   // @cardinality: one relationship hops, and one path that mixes the two hop kinds.
-  relSessionRealmId: { of: "Session.realmId", via: "Snap.session", joins: ["INNER"], required: true },
-  relRealmName: { of: "Realm.name", via: "Snap.session.realm", joins: ["INNER", "INNER"], required: true },
-  mixedRealmName: { of: "Realm.name", via: "Snap.session.fkRealm", joins: ["INNER", "INNER"], required: true },
-  relMaybeRealmName: { of: "Realm.name", via: "Snap.session.maybeRealm", joins: ["INNER", "LEFT OUTER"], required: false },
-  // A to-one relationship whose foreign key the OTHER entity holds: a Snap with no Stamp has no
-  // match, so the hop is LEFT OUTER whatever the far side's key and the target field require.
-  stampLabel: { of: "Stamp.label", via: "Snap.stamp", joins: ["LEFT OUTER"], required: false },
+  relSessionRealmId: { of: "Session.realmId", via: "Snap.session", joins: [L], required: true },
+  relRealmName: { of: "Realm.name", via: "Snap.session.realm", joins: [L, L], required: true },
+  mixedRealmName: { of: "Realm.name", via: "Snap.session.fkRealm", joins: [L, L], required: true },
+  relMaybeRealmName: { of: "Realm.name", via: "Snap.session.maybeRealm", joins: [L, L], required: false },
+  // A to-one relationship whose foreign key the OTHER entity holds: a Snap with no Stamp has no match.
+  stampLabel: { of: "Stamp.label", via: "Snap.stamp", joins: [L], required: false },
 };
+
+const party = { "object.entity": { name: "Party", "@discriminator": "kind", children: [
+  { "source.rdb": { "@table": "parties" } },
+  { "field.long": { name: "id" } },
+  { "field.string": { name: "kind", "@required": true } },
+  { "identity.primary": { name: "pk", "@fields": ["id"] } },
+] } };
+const org = { "object.entity": { name: "Org", extends: "Party", "@discriminatorValue": "ORG", children: [
+  { "field.string": { name: "orgName", "@required": true } },
+] } };
 
 const snap = entity("Snap", "snaps", [
   { "field.long": { name: "sessionId", "@required": true } },
   { "field.long": { name: "unenforcedSessionId", "@required": true } },
+  { "field.long": { name: "maybeSessionId" } },
+  { "field.long": { name: "orgId", "@required": true } },
   { "identity.reference": { name: "fkSession", "@fields": ["sessionId"], "@references": "Session" } },
+  { "identity.reference": { name: "fkMaybeSession", "@fields": ["maybeSessionId"], "@references": "Session" } },
+  { "identity.reference": { name: "fkOrg", "@fields": ["orgId"], "@references": "Org" } },
   {
     "identity.reference": {
       name: "fkLoose", "@fields": ["unenforcedSessionId"], "@references": "Session", "@enforce": false,
@@ -106,7 +124,7 @@ const report = {
 
 async function load(): Promise<{ root: MetaRoot; report: MetaObject }> {
   const { root, errors } = await new MetaDataLoader().load([
-    new InMemoryStringSource(JSON.stringify({ "metadata.root": { package: "a", children: [realm, session, snap, stamp, report] } })),
+    new InMemoryStringSource(JSON.stringify({ "metadata.root": { package: "a", children: [realm, session, snap, stamp, party, org, report] } })),
   ]);
   expect(errors).toEqual([]);
   return { root, report: root.objects().find((o) => o.name === "SnapRealms")! };
@@ -129,8 +147,8 @@ function aliasPath(joins: readonly JoinNode[], alias: string): string[] | undefi
   return undefined;
 }
 
-describe("a report dimension's required agrees with the joins its view renders", () => {
-  test("every dimension: the emitted joins, and required only over an all-INNER path", async () => {
+describe("a report dimension's required comes from the model, over joins that are all LEFT OUTER", () => {
+  test("every dimension: the emitted joins, and required only over a required, enforced, unscoped path", async () => {
     const { root, report: snapRealms } = await load();
     const views = buildProjectionViews(root, { dialect: "postgres" });
     const sql = views.find((v) => v.name === VIEW)!.sql!;
@@ -146,10 +164,8 @@ describe("a report dimension's required agrees with the joins its view renders",
       expect([column.fieldName, path === undefined ? "no join path" : "join path"]).toEqual([column.fieldName, "join path"]);
       const joins = path!.map((a) => keywords.get(a));
       seen[column.fieldName] = { joins, required: required[column.fieldName] };
-      // The direction that fails silently: non-null typed over a join that can null-extend.
-      if (required[column.fieldName] === true) {
-        expect([column.fieldName, joins.every((j) => j === "INNER")]).toEqual([column.fieldName, true]);
-      }
+      // R62: no generated view join is INNER.
+      expect([column.fieldName, joins.every((j) => j === "LEFT OUTER")]).toEqual([column.fieldName, true]);
     }
     expect(seen).toEqual(
       Object.fromEntries(Object.entries(DIMENSIONS).map(([name, d]) => [name, { joins: d.joins, required: d.required }])),

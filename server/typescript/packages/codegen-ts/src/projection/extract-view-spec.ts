@@ -88,7 +88,6 @@ import { isWriteThrough } from "./projection-detector.js";
 import { tphDiscriminatorBase, tphDiscriminatorPin } from "../tph.js";
 // #209 — the SAME NOT-NULL predicate that drives a column's `.notNull()` decides
 // whether a belongs-to join is INNER (required FK) vs LEFT OUTER (nullable FK).
-import { isRequired } from "../column-mapper.js";
 import type { ColumnNamingStrategy } from "../metaobjects-config.js";
 import { fieldSqlType } from "@metaobjectsdev/migrate-ts/expected";
 import { segmentClause, temporalOf } from "./report-sql.js";
@@ -1007,7 +1006,7 @@ export interface PathStep {
   pkColumn: string;
   referenceHolder: "source" | "target";
   /** #209 — derived join type: `inner` for a required belongs-to FK, else `left`. */
-  joinType: "inner" | "left";
+  joinType: "left";
   targetEntity: string;
   /** TPH-scope: the target subtype's discriminator pin, when the target is a TPH subtype. */
   tphScope?: TphScope;
@@ -1158,28 +1157,13 @@ export function walkViaPath(via: string, root: MetaRoot, referrerPkg: string, ct
     const fkHolder = referenceHolder === "source" ? currentObj : target;
     const pkHolder = referenceHolder === "source" ? target : currentObj;
 
-    // #209 — a belongs-to hop (FK on the parent) whose FK is NOT NULL is
-    // semantically INNER: every base row has a match, so INNER and LEFT OUTER
-    // return the same set, and INNER matches the hand-written view it stands in
-    // for (and keeps `verify --db` fingerprints aligned). A nullable belongs-to
-    // FK, or ANY has-many hop (FK on the child — a base row may have zero
-    // children), stays LEFT OUTER so no base row is dropped.
-    // `@enforce: false` does NOT change this. An unenforced NOT NULL reference can name a
-    // row that does not exist, so INNER filters that base row out — and that filter is
-    // what the hand-written view did: a legacy account view joins `ref_id` INNER to the
-    // user table precisely to exclude the accounts whose `ref_id` holds a group id. Making
-    // the hop LEFT OUTER (tried, then reverted before release) silently changed which rows
-    // such views return. To keep unmatched rows, make the FK field nullable.
-    const fkFieldObj = (fkHolder as MetaObject).findField(fkField);
-    const selfInner =
-      referenceHolder === "source" && fkFieldObj !== undefined && isRequired(fkFieldObj);
-    // Nested-chain safety: joins render flat + left-associative, so an INNER hop
-    // BELOW any LEFT ancestor drops the base row (its ON references a column the
-    // LEFT ancestor NULLed). An INNER only survives when the ENTIRE ancestor chain
-    // is INNER; otherwise demote to LEFT (lossless — under a LEFT ancestor, LEFT is
-    // the correct type). `path` holds this chain's ancestor hops accumulated so far.
-    const joinType: "inner" | "left" =
-      selfInner && path.every((prior) => prior.joinType === "inner") ? "inner" : "left";
+    // rc.19 R62 (review item 9): every generated view join is LEFT OUTER. #209 made a belongs-to
+    // hop over a NOT NULL key INNER, which silently dropped a base row whose reference names no
+    // row — an `@enforce: false` reference, or a TPH-subtype target whose discriminator the join
+    // carries. A view that must require the related row says so: `@filter: { "<hop>.id":
+    // { isNull: false } }`. A report dimension's `required` reads the model (report-shape.ts
+    // `viaAlwaysMatches`), never the join type.
+    const joinType = "left" as const;
 
     path.push({
       entity: currentObj,

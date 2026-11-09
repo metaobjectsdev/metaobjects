@@ -436,8 +436,8 @@ function renderJoin(
     ? `${childAlias}.${pkCol} = ${parentAlias}.${fkCol}`
     : `${childAlias}.${fkCol} = ${parentAlias}.${pkCol}`;
   // #209 — join type derived from FK optionality (extract-view-spec): a required
-  // belongs-to FK → INNER (matches the hand-written INNER-join view); else LEFT OUTER.
-  const joinKw = node.joinType === "inner" ? "INNER JOIN" : "LEFT OUTER JOIN";
+  // rc.19 R62: every generated view join is LEFT OUTER.
+  const joinKw = "LEFT OUTER JOIN";
   // TPH-scope: a join onto a TPH subtype keeps only its rows of the shared table.
   const scope = node.tphScope !== undefined
     ? ` AND ${childAlias}.${quoteIfNeeded(node.tphScope.column)}${tphScopeSql(node.tphScope.values, (v) => sqlLiteral(v, options.dialect))}`

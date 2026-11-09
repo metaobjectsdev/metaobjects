@@ -92,8 +92,8 @@ describe("the HIPAA gate: an entity-derived boolean over a segment, used in othe
   test("the path filter inlines the patient's correlated subquery on the joined patient", async () => {
     const views = buildProjectionViews(await load(), { dialect: "postgres" });
     const auth = views.find((v) => v.name === "v_authorization_extract")!;
-    expect(auth.sql).toContain("INNER JOIN public.cases c ON c.id = a.case_id");
-    expect(auth.sql).toContain("INNER JOIN public.patients p ON p.id = c.patient_id");
+    expect(auth.sql).toContain("LEFT OUTER JOIN public.cases c ON c.id = a.case_id");
+    expect(auth.sql).toContain("LEFT OUTER JOIN public.patients p ON p.id = c.patient_id");
     // The segment's predicate (with `now` of the date kind) scopes the subquery; it is ordered id:desc.
     expect(auth.sql).toMatch(/WHERE \(\(SELECT (\w+)\.consent_is_on_file FROM public\.consents \1 WHERE \1\.patient_id = p\.id AND \(\1\.consent_type_id = 1 AND/);
     expect(auth.sql).toContain(".date_received <= CAST(((now() AT TIME ZONE 'UTC') + INTERVAL 'P0D') AS DATE)");

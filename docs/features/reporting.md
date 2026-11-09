@@ -266,7 +266,7 @@ physical column name is your naming strategy applied to the **derived field name
 
 | Item | Column | Type | Never null? |
 |---|---|---|---|
-| `dimension.attribute` | the dimension's name | the `@of` field's type | only when the `@of` field is required (`@required: true` or a `validator.required` child) and the dimension has no `@via`, or every hop of its `@via` is a required reference the view joins `INNER` (below) |
+| `dimension.attribute` | the dimension's name | the `@of` field's type | only when the `@of` field is required (`@required: true` or a `validator.required` child) and the dimension has no `@via`, or every hop of its `@via` is a required, enforced reference onto a target that hides no rows (below) |
 | `dimension.time` at `hour` | `<name>Hour` | `timestamp` | same rule |
 | `dimension.time` at `day`, `week`, `month`, `quarter`, `year` | `<name><Grain>` | `date`, the first day of the bucket | same rule |
 | `count` (with or without `@distinct`) | the measure's name | `long` | yes: a count is never null |
@@ -282,17 +282,19 @@ physical column name is your naming strategy applied to the **derived field name
 | any measure above except `count`, declaring `@default` | the measure's name | as above | yes: it reads its `@default` instead of null |
 | in a `@spine` report, a dimension over a column of the spine entity | the dimension's name | the `@of` field's type | yes when the `@of` field is required (`@required` or a `validator.required` child) or one of the spine entity's `identity.primary` `@fields`; no for a dimension reached beyond the spine entity |
 
-The last two rows, and the `INNER` rule above, are the only ways a measure other than `count`,
+The last two rows, and the path rule above, are the only ways a measure other than `count`,
 or a dimension reached through `@via`, is never null. The key clause applies only under
 `@spine`, where the key is the row's own.
 
 Without `@spine`, a dimension reached through `@via` is never null when its `@of` field is
-required and **every hop is a belongs-to reference over a required foreign key**: the entity the
-hop leaves holds the `identity.reference`, and its first `@fields` entry is required. The view
-joins such a hop `INNER`, so every row has a match, whatever the reference's `@enforce` says (an
-unenforced required reference still joins `INNER`; make its field optional to keep unmatched
-rows). A hop over an optional foreign key, a to-one relationship whose foreign key the other
-entity holds, or any hop under `@spine` is joined `LEFT OUTER`, and the dimension stays nullable. Every port derives the same answer
+required and **every hop is certain to match**: the entity the hop leaves holds the
+`identity.reference`, its first `@fields` entry is required, the reference is enforced (not
+`@enforce: false`, which can name a row that does not exist), and the target hides no rows (it
+is not a TPH subtype, whose join carries the discriminator). Every join is `LEFT OUTER` (rc.19),
+and over such a path it returns exactly what `INNER` would, so the column is never
+null-extended. A hop over an optional or unenforced foreign key, onto a TPH subtype, a to-one
+relationship whose foreign key the other entity holds, or any hop under `@spine` leaves the
+dimension nullable. Every port derives the same answer
 (`fixtures/persistence-conformance/report-shapes.json`).
 
 A derived column carries the type-shaping attributes of its `@of` field where they apply
@@ -331,12 +333,9 @@ still exists: counts are `0`, sums and ratios are null, or their `@default`.
 
 - **`@via`** reaches a column of a to-one related entity, through a join. Every hop is joined
   through an `identity.reference` the model declares between the two entities; a hop without one
-  loads, and then fails `meta migrate` naming the hop. The join type is the
-  projection rule, unchanged: a required belongs-to foreign key joins `INNER`, anything else
-  `LEFT OUTER`, and an `INNER` survives only when every join above it is `INNER`. The
-  consequence to know: **a dimension reached through a required reference drops a fact row
-  whose reference matches no row, from that report.** A dimension that is not listed in
-  `@dimensions` adds no join. In a `@spine` report every join is `LEFT OUTER`.
+  loads, and then fails `meta migrate` naming the hop. **Every join is `LEFT OUTER`** (rc.19,
+  the projection rule too): a fact row whose reference matches no row stays in the report, in a
+  null group. A dimension that is not listed in `@dimensions` adds no join.
 - **Grains** are `hour, day, week, month, quarter, year`. A bucket is the first instant (for
   `hour`) or first day (for the rest) of the period. **Weeks start on Monday (ISO-8601)** on
   every engine: the week of Sunday 2026-05-17 starts 2026-05-11, and Monday 2026-06-01 starts
@@ -388,8 +387,8 @@ program.
   count of `0`. Both still name fields of `@from`.
 - **A fact row with no spine row is in no row.** A purchase whose `programId` is null, or
   matches no program, has no spine row to sit in. Without `@spine`, such a row still counts: it
-  falls in a null group through a nullable reference (`LEFT OUTER` join) and is dropped through
-  a required one (`INNER` join; see [Dimensions, time grains and joins](#dimensions-time-grains-and-joins)).
+  falls in a null group (every join is `LEFT OUTER`; see
+  [Dimensions, time grains and joins](#dimensions-time-grains-and-joins)).
 - **A row with no facts** reads `0` for a `count`, and null for a `sum`, `avg`, `min`, `max`
   and a ratio, unless the measure declares `@default` (next section). This holds even for a
   measure whose `@filter` is `isNull: true` on a fact column: the empty row's `@of` column is

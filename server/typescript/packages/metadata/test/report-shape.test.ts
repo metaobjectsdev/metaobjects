@@ -642,7 +642,7 @@ describe("reportShape required of a dimension reached through @via", () => {
     const req = requiredOf(root, "Plain");
     expect(req["realmName"]).toBe(true);        // two required hops over a required field
     expect(req["sessionRealmId"]).toBe(true);   // one required hop
-    expect(req["looseRealmName"]).toBe(true);   // @enforce: false does not change the join type
+    expect(req["looseRealmName"]).toBe(false);  // R62: an @enforce: false hop can name a missing row
     expect(req["realmMotto"]).toBe(false);      // the target field is optional
     expect(req["maybeRealmName"]).toBe(false);  // a hop over a nullable foreign key is a LEFT join
   });

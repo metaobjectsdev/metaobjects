@@ -107,7 +107,7 @@ describe("extractReportSpec", () => {
     expect(join.alias).not.toBe(s.joinTree.baseAlias);
   });
 
-  test("a required belongs-to FK joins INNER", async () => {
+  test("a required belongs-to FK joins LEFT OUTER (R62)", async () => {
     const model = shopModel((children) => {
       const purchase = children.find((c) => (c["object.entity"] as Json | undefined)?.name === "Purchase")!;
       const fields = (purchase["object.entity"] as { children: Json[] }).children;
@@ -115,7 +115,7 @@ describe("extractReportSpec", () => {
       (programId["field.long"] as Json)["@required"] = true;
     });
     const s = await spec("ProgramTitles", { model });
-    expect(s.joinTree.joins[0]!.joinType).toBe("inner");
+    expect(s.joinTree.joins[0]!.joinType).toBe("left");
   });
 
   test("an unlisted @via dimension adds no join", async () => {
@@ -705,15 +705,15 @@ describe("extractReportSpec: @spine (Table D)", () => {
     const s = extractReportSpec(root.findObject("OwnerRoster")!, root, CTX);
     expect(s.spineDepth).toBe(1);
     expect(joinsOfTree(s.joinTree.joins)).toEqual([["fkProgram", "p", [["ownerRef", "o", []]]]]);
-    // Both foreign keys are @required: without @spine both hops are INNER (#209), with it neither.
+    // Both foreign keys are @required; every hop is LEFT OUTER with or without @spine (R62).
     expect(joinTypes(s.joinTree.joins)).toEqual(["left", "left"]);
   });
 
-  test("without @spine the same report has no spineDepth and keeps the #209 join types", async () => {
+  test("without @spine the same report has no spineDepth, and its joins are LEFT OUTER too", async () => {
     const root = await loadFiles([roster([ownerRoster(false)])]);
     const s = extractReportSpec(root.findObject("OwnerRoster")!, root, CTX);
     expect("spineDepth" in s).toBe(false);
-    expect(joinTypes(s.joinTree.joins)).toEqual(["inner", "inner"]);
+    expect(joinTypes(s.joinTree.joins)).toEqual(["left", "left"]);
   });
 
   test("aliases equal those of the same report with @spine removed, and the scope is the same clause", async () => {

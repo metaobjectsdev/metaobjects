@@ -493,6 +493,25 @@ vocabulary; upgrade every port together.
   entity, and its view carries the effective fields and their origins, base first. An extender
   that would inherit its base's source is still refused at load: it declares its own. Pinned by
   `fixtures/conformance/projection-extends-abstract-projection`.
+- **Every generated view join is `LEFT OUTER`** (rc.19 ruling R62, review item 9). #209 joined a
+  belongs-to hop over a required foreign key `INNER`, which silently dropped a base row whose
+  reference names no row — possible for an `@enforce: false` reference, and for a TPH-subtype
+  target whose join carries its discriminator. Every view and report join is now `LEFT OUTER`,
+  in every case. To require the related row, say so:
+  `@filter: { "<hop>.id": { isNull: false } }` on the projection (no new vocabulary). A report
+  dimension's `required` no longer reads "every join is INNER"; it comes from the model, in
+  TypeScript and C# (`ReportShape`): the `@of` field is required, and every hop is a belongs-to
+  reference over a required, enforced foreign key onto a target that hides no rows (not a TPH
+  subtype) — exactly when `LEFT` and `INNER` return the same rows. Pinned by
+  `fixtures/conformance/report-dimension-required-by-model`. The inner joins of a multi-hop
+  `origin.first` subquery stay `INNER`: they choose which related row is first and cannot drop
+  or add a view row. **Upgrade notes:** every generated view that had an `INNER JOIN` changes
+  body, so the next `meta migrate` re-proposes it once as `replace-view`; where the foreign keys
+  are enforced the rows are unchanged. A report row type is unchanged where every hop is
+  required and enforced; a dimension reached through an `@enforce: false` hop or onto a TPH
+  subtype becomes nullable. A view that relied on an unenforced `INNER` join to exclude rows
+  (a legacy column holding ids of two kinds) now includes them until it declares the `isNull`
+  filter.
 - **C#: two contexts' design-time services wrap the model differ once** (rc.19 fix round, M3).
   EF applies every `DesignTimeServicesReference` it reads, so two Postgres contexts in one
   assembly each wrapped the differ and every JSON-column `COMMENT ON` was scaffolded twice. The

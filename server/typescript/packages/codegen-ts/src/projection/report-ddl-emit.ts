@@ -154,7 +154,8 @@ function onPredicate(node: JoinNode, parentAlias: string, d: ReportDialect): str
 function renderJoin(node: JoinNode, parentAlias: string, options: ReportEmitOptions): string {
   const table = tableOf(node.targetEntity, options);
   const d = options.dialect;
-  const kw = node.joinType === "inner" ? "INNER JOIN" : "LEFT OUTER JOIN";
+  // rc.19 R62: every generated join is LEFT OUTER.
+  const kw = "LEFT OUTER JOIN";
   // TPH-scope: a join onto a TPH subtype keeps only its rows of the shared table.
   const scope = node.tphScope !== undefined
     ? ` AND ${node.alias}.${q(node.tphScope.column, d)}${tphScopeSql(node.tphScope.values, (v) => typeof v === "number" ? String(v) : `'${v.replace(/'/g, "''")}'`)}`

@@ -164,12 +164,6 @@ function spinePathOf(
   return path;
 }
 
-/** Table D: under `@spine` every join is LEFT OUTER (the #209 INNER rule is not applied), so no
- *  join can drop a spine row. */
-function allLeft(nodes: readonly JoinNode[]): JoinNode[] {
-  return nodes.map((n) => ({ ...n, joinType: "left", children: allLeft(n.children) }));
-}
-
 export function extractReportSpec(report: MetaObject, root: MetaRoot, ctx: ExtractContext): ReportViewSpec {
   const shape = reportShape(report, root);
   const from = shape.from;
@@ -233,7 +227,8 @@ export function extractReportSpec(report: MetaObject, root: MetaRoot, ctx: Extra
   // moves. The emitter still checks the chain is single (spineFrom) rather than trust the order.
   const dimensionPaths = [...pathOf.values()];
   const tree = pathsToJoins(spinePath === undefined ? dimensionPaths : [spinePath, ...dimensionPaths], used);
-  const joins = spinePath === undefined ? tree : allLeft(tree);
+  // rc.19 R62: every join is LEFT OUTER, with or without @spine (Table D's rule is now the rule).
+  const joins = tree;
 
   const columns = shape.fields.map((f): ReportColumn => {
     const dbColAlias = columnNameFromField(f.name, ctx.columnNamingStrategy);
