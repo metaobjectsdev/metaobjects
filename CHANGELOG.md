@@ -297,20 +297,27 @@ vocabulary; upgrade every port together.
   exist under other names, rename them in the database or in the metadata first. Comments re-apply
   harmlessly. A database built from the model (`EnsureCreated`, or a fresh migration chain) is
   unaffected. An `@expr` index is never an EF index: apply the `expression-indexes` SQL.
-- **C#, upgrade note: identity starts never RESTART, and need one registration call.** A Postgres
-  project's context now carries `identity.primary @sequenceStart` in its model, and every start-only
-  change — a start added, changed or removed — is written `SET START WITH n` (a removed start goes
-  back to the identity default), never `RESTART`, so the current value never moves under ids live
-  rows hold. The first migration after upgrading shows, for each table that declares a start, an
-  `AlterColumn` (or, when scaffolded through the rewrite, a `Sql("ALTER TABLE … SET START WITH n")`)
-  that records the start and changes nothing else; it is safe to apply. Register the rewrite where
-  the context is configured, after `UseNpgsql(...)`: `options.UseNpgsql(cs).UseIdentityStartMigrations()`
-  (pooled or not, in an `IDesignTimeDbContextFactory`, or in a partial context's own
-  `OnConfiguring`). A context that declares a start throws as its model is built on Npgsql without
-  it, naming the call; rc.17's generated `OnConfiguring` is gone (it threw under DbContext pooling,
-  collided with a partial context's own, and shadowed a base context's).
+- **C#, upgrade note: identity starts never RESTART, and the fix is design-time only** (rulings
+  R50, R51). A Postgres project's context now carries `identity.primary @sequenceStart` in its
+  model, and a Postgres context with an increment key gets
+  `<Context>IdentityStartDesignTimeServices.g.cs`: an `IDesignTimeServices` that wraps the
+  context's own model differ, so `dotnet ef migrations add` scaffolds every start-only change — a
+  start added, changed or removed — as SQL, Up and Down, never as Npgsql's `RESTART`. The SQL is
+  `SET START WITH n` (a removed start goes back to the identity default) and, for a declared start,
+  moves the counter forward to `GREATEST(n, max(id) + 1)` when it is below that, never back. The
+  first migration after upgrading shows, for each table that declares a start, that SQL (or, from a
+  project that does not find the services, an `AlterColumn`); review it before applying.
+  **Nothing is registered at runtime.** rc.18's `UseIdentityStartMigrations()`, the model-build
+  check that demanded it, and the generated SQL-generator subclass are gone: delete every
+  `.UseIdentityStartMigrations()` call. EF finds the services in the startup project, and through
+  the `[assembly: DesignTimeServicesReference]` the file carries when it knows the context's
+  assembly name (`GenConfig.ContextAssemblyName`, else the `.csproj` it is written into). When the
+  migrations live in a project that is neither the context's nor the startup project, add that
+  one attribute there (`docs/ports/csharp.md`); without it a changed start still scaffolds as
+  RESTART, which is the accepted residual risk. An adopter's own differ is kept: the services wrap
+  it.
 - **C#, upgrade note: a self-hosted codegen runner sets `GenConfig.Dialect`.** `@sequenceStart` and
-  the identity-start rewrite are emitted only when the dialect is `postgres`. `CodegenCli` reads it
+  the identity-start design-time services are emitted only when the dialect is `postgres`. `CodegenCli` reads it
   from `.metaobjects/config.json` `migrate.dialect`; a runner that builds its own `GenConfig` must
   set `Dialect = "postgres"`, or it gets a warning and no start in the model.
 - **C#, upgrade note: an unset nullable enum with `@default` starts at `@default`, not NULL** (ruling
@@ -421,14 +428,13 @@ vocabulary; upgrade every port together.
   an entity in `@schema: sales` was read and written in whatever `search_path` resolved; every
   read and write now qualifies the relation (SQLite, which has no schemas, keeps bare names).
 - **C#: `identity.primary @sequenceStart` reaches the EF model, and no start-only change ever
-  restarts** (ruling R36). On Npgsql a fresh database's identity begins at `@sequenceStart`. A
-  Postgres context with an increment key gets a generated rewrite, registered with
-  `UseIdentityStartMigrations()` (see Changed), that writes a start added, changed or removed as
-  `SET START WITH n`, both when the migration is scaffolded and when its SQL is generated: Npgsql's
-  own generator writes `RESTART WITH n` (or `RESTART WITH 1` for a removed start), which hands out
-  ids live rows already hold. It references Npgsql at compile time, so it and the start are emitted
-  only for a project whose `migrate.dialect` is `postgres`; any other project gets a warning and
-  needs no Npgsql package. Not yet in the other ports
+  restarts** (rulings R36, R50, R51). On Npgsql a fresh database's identity begins at
+  `@sequenceStart`. A Postgres context with an increment key gets generated design-time services
+  (see Changed) that scaffold a start added, changed or removed as `SET START WITH n` plus an
+  advance-only `setval`: Npgsql's own differ writes `RESTART WITH n` (or `RESTART WITH 1` for a
+  removed start), which hands out ids live rows already hold. The start is Npgsql's annotation, so
+  it and the services are emitted only for a project whose `migrate.dialect` is `postgres`; any
+  other project gets a warning and needs no Npgsql package. Not yet in the other ports
   ([#544](https://github.com/metaobjectsdev/metaobjects/issues/544)); see `docs/CONFORMANCE.md`,
   "Split coverage".
 - **C#: the EF model carries the index vocabulary and `@description`.** A field's `@unique`, an

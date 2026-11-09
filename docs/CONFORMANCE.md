@@ -110,22 +110,26 @@ corpora, or between its *vocabulary* and its *behaviour* — never gets a row of
 own, and its boundary ends up discoverable only from the feature doc. The split ones
 are recorded here instead.
 
-**`identity.primary @sequenceStart`** (ruling R36, one semantic in every port): on a fresh
-database the identity or sequence begins at `@sequenceStart`; when the start changes on an
-existing database, the change sets `START WITH` only. It never `RESTART`s and never moves the
-current value, because live rows already hold the ids it has handed out. The port TODOs below
-are tracked in [#544](https://github.com/metaobjectsdev/metaobjects/issues/544).
+**`identity.primary @sequenceStart`** (rulings R36, R51, one semantic in every port): on a fresh
+database the identity or sequence begins at `@sequenceStart`. When the start changes on an
+existing database, the change records the new start, and, for a declared start, moves the
+counter forward to `GREATEST(n, max(id) + 1)` when it is below that. It never `RESTART`s and never
+moves the counter back, because live rows already hold the ids it has handed out. A database
+rebuilt by replaying migrations then begins at the start, as a fresh one does. The port TODOs
+below are tracked in [#544](https://github.com/metaobjectsdev/metaobjects/issues/544).
 
 - *Honoured and pinned:* C#. The generated context carries the start on Npgsql, and the generated
-  rewrite (`UseIdentityStartMigrations()`) writes every start-only change — added, changed or
-  removed — as `ALTER TABLE … ALTER COLUMN … SET START WITH n`, whether the migration is scaffolded
-  through it or its SQL is generated through it (Npgsql alone writes `RESTART WITH n`, or
-  `RESTART WITH 1` for a removed start). `EfModelGapsTests` pins all three transitions on both
-  paths, and on live Postgres that the next id after the change follows the last row.
-- *TODO, TypeScript (`meta migrate`, Drizzle):* a fresh table is created `START WITH n`, but a
-  changed start also runs `setval(seq, n, false)` when the counter is below it
-  (`emit/postgres.ts` `renderAlterSequence`), which moves the current value. Bring it to
-  `START WITH` only, and pin "the current value doesn't move".
+  design-time services (`<Context>IdentityStartDesignTimeServices`, ruling R50) scaffold every
+  start-only change — added, changed or removed — as SQL, Up and Down (Npgsql alone writes
+  `RESTART WITH n`, or `RESTART WITH 1` for a removed start). `EfModelGapsTests` pins the
+  transitions, the adopter's own differ being kept, and, on live Postgres, a replayed database
+  beginning at the start, a populated table advancing to it, an explicit id above the counter,
+  and a lowered or removed start leaving the counter where it was.
+- *TODO, TypeScript (`meta migrate`, Drizzle):* a fresh table is created `START WITH n`, and a
+  changed start runs `setval(seq, n, false)` when `last_value` is below it
+  (`emit/postgres.ts` `renderAlterSequence`). That is the semantic, except that it compares with
+  the counter only: bring it to `GREATEST(n, max(id) + 1)`, so an explicit id above the counter is
+  not handed out again, and pin it.
 - *TODO, Java (OMDB) and Kotlin (Exposed):* the vocabulary loads; neither emits or honours the
   start in its DDL or mapping. Add it with the same semantic and the same pin.
 - *TODO, Python:* the vocabulary loads; the runtime has no DDL path. If it gains one, the same

@@ -955,6 +955,9 @@ public static class CodegenCli
             // The manifest gen keeps: an extra file is classified by what gen recorded writing.
             GenStateDir = Path.Combine(projectRoot, ".metaobjects", ".gen-state"),
             ProjectRoot = projectRoot,
+            // The dialect gen read: without it a Postgres project's identity start and its design-time
+            // services read as drift.
+            Dialect = MetaObjects.Config.NeutralConfig.Read(projectRoot, validateNaming: false)?.MigrateDialect,
         };
         var result = CodegenDrift.Compute(config, load.Root, suite, narrowed: a.Selection is { Count: > 0 });
         if (result.Error is not null)

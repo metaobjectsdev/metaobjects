@@ -198,6 +198,23 @@ public sealed record GenConfig
     public string? Dialect { get; init; }
 
     /// <summary>
+    /// The name of the assembly the generated context is compiled into. A Postgres context's
+    /// identity-start design-time services are found through
+    /// <c>[assembly: DesignTimeServicesReference("&lt;type&gt;, &lt;assembly&gt;")]</c>, and EF resolves
+    /// that name with <c>Type.GetType</c>, which needs the assembly. <c>null</c>, the default, reads it
+    /// from the one <c>.csproj</c> in <see cref="OutDir"/> or the nearest directory above it (its
+    /// <c>&lt;AssemblyName&gt;</c>, else its file name) when it is read. When neither gives a name the reference is
+    /// left out, the run warns, and EF finds the services only when the context's project is the
+    /// startup project.
+    /// </summary>
+    public string? ContextAssemblyName
+    {
+        get => _contextAssemblyName ?? CSharpProjectAssembly.Find(OutDir);
+        init => _contextAssemblyName = value;
+    }
+    private readonly string? _contextAssemblyName;
+
+    /// <summary>
     /// The C# property name of a field, for every generator that names one: the entity and
     /// value-object classes, the composite <c>[PrimaryKey]</c>, the DbContext's model
     /// configuration, the reverse finders and the routes. <c>null</c>, the default, is the

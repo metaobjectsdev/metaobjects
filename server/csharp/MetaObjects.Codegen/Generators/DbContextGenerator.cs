@@ -321,21 +321,17 @@ public class DbContextGenerator : IGenerator
             // A TPH subtype's own read-only field is configured too (EmitTphSubtypeFieldConfig).
             || modelLines.Any(l => l.Contains("PropertySaveBehavior.", StringComparison.Ordinal));
 
-        // R36 — the identity-start rewrite. A Postgres context with an increment key gets the
-        // generated rewrite (and its UseIdentityStartMigrations() options extension) whether or not
-        // a start is declared today, so removing the last @sequenceStart still goes through it
-        // and the adopter's registration keeps compiling. A context that DECLARES a start refuses
-        // to build its model on Npgsql without the rewrite: Npgsql alone writes every start-only
-        // change as RESTART.
+        // R36, R50 — the identity start. A Postgres context with an increment key gets the
+        // generated design-time services whether or not a start is declared today, so removing the
+        // last @sequenceStart still scaffolds through them. Nothing is registered at runtime: the
+        // rewrite matters only when a migration is scaffolded, and Migrate() runs what it says.
         var written = objects.Where(o => o.IsEntity() && !o.IsReadOnlyProjection()).ToList();
         var declaresStart = written.Any(o => IdentityStartOf(o) is not null);
         var identityStart = IdentityStartOn(ctx) && written.Any(o => IncrementKeyOf(o) is not null);
         if (declaresStart && !IdentityStartOn(ctx))
             ctx.Warn($"{Name}: @sequenceStart is not in the EF model: the project names no Postgres " +
                 "dialect (.metaobjects/config.json migrate.dialect: \"postgres\"; a self-hosted runner sets GenConfig.Dialect), " +
-                "and the rewrite that keeps a changed start from restarting the sequence binds Npgsql. meta migrate still creates the start.");
-        if (declaresStart && identityStart)
-            modelLines.Insert(0, $"        if (Database.ProviderName == \"{NpgsqlProviderName}\") global::{ctx.Config.Namespace}.{IdentityStartExtensionsName}.EnsureConfigured(this);");
+                "and the design-time services that keep a changed start from restarting the sequence are Npgsql's concern. meta migrate still creates the start.");
 
         var sb = new StringBuilder();
         EmitUsings(sb, needsMetadataUsing, ctx);
@@ -355,9 +351,9 @@ public class DbContextGenerator : IGenerator
         if (modelLines.Any(l => l.Contains(MapJsonbHelperName))) EmitMapJsonbHelper(sb);
         sb.AppendLine("}");
         if (modelLines.Any(l => l.Contains(DurationIntervalHelperName + "."))) EmitDurationIntervalHelper(sb);
-        return identityStart
-            ? [new EmittedFile("AppDbContext.g.cs", sb.ToString()), new EmittedFile($"{IdentityStartGeneratorName}.g.cs", IdentityStartMigrationsFile(ctx))]
-            : [new EmittedFile("AppDbContext.g.cs", sb.ToString())];
+        if (!identityStart) return [new EmittedFile("AppDbContext.g.cs", sb.ToString())];
+        var services = ContextClassName(ctx) + IdentityStartServicesSuffix;
+        return [new EmittedFile("AppDbContext.g.cs", sb.ToString()), new EmittedFile($"{services}.g.cs", IdentityStartDesignTimeServicesFile(ctx, services))];
     }
 
     /// <summary>
@@ -918,27 +914,24 @@ public class DbContextGenerator : IGenerator
     /// <c>HasIdentityOptions</c> writes, inside the provider check, so the context itself needs
     /// no Npgsql reference. A start-only change never restarts the sequence: Npgsql alone would
     /// write <c>RESTART WITH n</c> (or <c>RESTART WITH 1</c> when the start is removed), handing
-    /// out ids live rows hold, so the adopter registers the generated rewrite
-    /// (<see cref="IdentityStartMigrationsFile"/>), and the context refuses to build its model
-    /// on Npgsql without it.
+    /// out ids live rows hold, so the generated design-time services
+    /// (<see cref="IdentityStartDesignTimeServicesFile"/>) scaffold it as SQL instead.
     /// </summary>
     private static void EmitIdentityStartConfig(string owner, MetaObject entity, List<string> modelLines)
     {
         if (IdentityStartOf(entity) is not { } start) return;
-        modelLines.Add($"        if (Database.ProviderName == \"{NpgsqlProviderName}\")");
-        modelLines.Add($"            modelBuilder.Entity<{owner}>().Property(x => x.{CSharpNaming.Pascal(start.Field.Name)}).HasAnnotation(" +
+        // One entry, one statement: the guard and its body never split across a chunk boundary.
+        modelLines.Add($"        if (Database.ProviderName == \"{NpgsqlProviderName}\") modelBuilder.Entity<{owner}>().Property(x => x.{CSharpNaming.Pascal(start.Field.Name)}).HasAnnotation(" +
             $"\"{NpgsqlIdentityOptionsAnnotation}\", \"'{start.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}', '1', '', '', 'False', '1'\");");
     }
 
     private const string NpgsqlIdentityOptionsAnnotation = "Npgsql:IdentitySequenceOptions";
-    private const string IdentityStartGeneratorName = "IdentityStartMigrationsSqlGenerator";
-    private const string IdentityStartDifferName = "IdentityStartMigrationsModelDiffer";
-    private const string IdentityStartExtensionsName = "IdentityStartMigrations";
+    private const string IdentityStartServicesSuffix = "IdentityStartDesignTimeServices";
 
     /// <summary>
-    /// Whether this run emits <c>@sequenceStart</c> and the rewrite: the project's dialect is
-    /// Postgres. The rewrite subclasses Npgsql's generator, so a project on any other dialect, or
-    /// naming none, gets neither it nor the start in its model, and a migration can never RESTART.
+    /// Whether this run emits <c>@sequenceStart</c> and the design-time services: the project's
+    /// dialect is Postgres. The start is Npgsql's annotation, so a project on any other dialect, or
+    /// naming none, gets neither it nor the services, and a migration can never RESTART.
     /// </summary>
     private static bool IdentityStartOn(GenContext ctx) =>
         string.Equals(ctx.Config.Dialect, "postgres", StringComparison.OrdinalIgnoreCase);
@@ -957,85 +950,109 @@ public class DbContextGenerator : IGenerator
     }
 
     /// <summary>
-    /// The identity-start rewrite a Postgres context's adopter registers with
-    /// <c>UseIdentityStartMigrations()</c>, after <c>UseNpgsql(...)</c>. Every start-only identity
-    /// change — a start added, changed or removed — is
-    /// <c>ALTER TABLE … ALTER COLUMN … SET START WITH n</c>, which records where a fresh sequence
-    /// (or a deliberate restart) begins and leaves the current value where live rows put it; a
-    /// removed start is set back to the identity default. Npgsql alone writes <c>RESTART</c>
-    /// for all three. It applies at both ends: the differ scaffolds the change as that SQL (so a
-    /// migration added through it is safe wherever it runs), and the SQL generator rewrites a
-    /// migration scaffolded without it.
-    /// <para>Ruling: registration, not the context's <c>OnConfiguring</c> — EF refuses an
-    /// <c>OnConfiguring</c> that replaces services under pooling, a partial context could not
-    /// declare its own, and a base context's would be shadowed. A context that declares a start
-    /// therefore checks, as its model is built, that the rewrite is registered, and throws if not.</para>
-    /// <para>Ruling: this file references Npgsql at compile time (it subclasses
-    /// <c>NpgsqlMigrationsSqlGenerator</c>), and it is emitted only for a Postgres project.
-    /// Reflection would keep the project free of the reference, but a decorator built by
-    /// reflection over Npgsql's generator is the runtime binding ADR-0001 rules out. The differ
-    /// wraps EF's own, which DI constructs with whatever that EF version's constructor needs.</para>
+    /// The identity-start design-time services of a Postgres context (rulings R50, R51): an
+    /// <c>IDesignTimeServices</c> that wraps the model differ the context already has, so
+    /// <c>dotnet ef migrations add</c> scaffolds every start-only identity change — a start added,
+    /// changed or removed — as SQL, Up and Down, and never as the <c>AlterColumn</c> Npgsql would
+    /// write as <c>RESTART</c>. The SQL records the start
+    /// (<c>ALTER TABLE … ALTER COLUMN … SET START WITH n</c>; a removed start goes back to the
+    /// identity default) and, for a declared start, moves the counter forward to
+    /// <c>GREATEST(n, max(id) + 1)</c> when it is below that, and never back. That makes a database
+    /// rebuilt by replaying migrations begin at <c>n</c> as a fresh one does, and never hands out an
+    /// id a live row holds.
+    /// <para>Ruling: design time only. The rewrite matters only when a migration is scaffolded;
+    /// <c>Migrate()</c> executes the operations a migration already holds. Nothing is registered at
+    /// runtime, and the file uses public EF types only (no Npgsql reference, no EF-internal type).
+    /// The accepted residual risk: a migrations or startup project that neither is the context's
+    /// project nor carries the reference still scaffolds a RESTART. <c>--verbose</c> prints "Using
+    /// design-time services from assembly …" when the services are found.</para>
+    /// <para>EF looks for <c>IDesignTimeServices</c> implementations in the startup assembly, and
+    /// for <c>[assembly: DesignTimeServicesReference]</c> in the startup and migrations assemblies.
+    /// The reference is generated beside the class when the context's assembly name is known
+    /// (<see cref="GenConfig.ContextAssemblyName"/>), so EF's default layout, where the migrations
+    /// live in the context's assembly, needs no adopter code.</para>
     /// </summary>
-    private string IdentityStartMigrationsFile(GenContext ctx)
+    private string IdentityStartDesignTimeServicesFile(GenContext ctx, string className)
     {
-        var ns = ctx.Config.Namespace;
+        var ns = ContextNamespace(ctx);
+        var assembly = ctx.Config.ContextAssemblyName;
+        var reference = $"[assembly: DesignTimeServicesReference(\"{ns}.{className}, {assembly ?? "<assembly>"}\", \"{NpgsqlProviderName}\")]";
+        if (assembly is null)
+            ctx.Warn($"{Name}: {className}.g.cs carries no DesignTimeServicesReference: the context's assembly name is unknown " +
+                "(no single .csproj in the output directory or above it; set GenConfig.ContextAssemblyName). EF finds the services " +
+                "only when the context's project is the startup project; otherwise a changed @sequenceStart scaffolds as RESTART. " +
+                $"Add [assembly: DesignTimeServicesReference(\"{ns}.{className}, <assembly>\")] to the migrations or startup project.");
         return $$"""
             // <auto-generated/>
             // Generated by MetaObjects db-context. Do not edit by hand.
             #nullable enable
-            #pragma warning disable EF1001 // Npgsql's options interface and EF's differ live in Internal namespaces.
             using System;
             using System.Collections.Generic;
             using System.Linq;
             using Microsoft.EntityFrameworkCore;
+            using Microsoft.EntityFrameworkCore.Design;
             using Microsoft.EntityFrameworkCore.Infrastructure;
             using Microsoft.EntityFrameworkCore.Metadata;
             using Microsoft.EntityFrameworkCore.Migrations;
-            using Microsoft.EntityFrameworkCore.Migrations.Internal;
             using Microsoft.EntityFrameworkCore.Migrations.Operations;
             using Microsoft.EntityFrameworkCore.Storage;
             using Microsoft.Extensions.DependencyInjection;
-            using Npgsql.EntityFrameworkCore.PostgreSQL.Infrastructure.Internal;
-            using Npgsql.EntityFrameworkCore.PostgreSQL.Migrations;
-
+            {{(assembly is null ? "" : "\n" + reference + "\n")}}
             namespace {{ns}};
 
-            /// <summary>Registers the identity-start rewrite: no start-only identity change ever
-            /// restarts the sequence.</summary>
-            public static class {{IdentityStartExtensionsName}}
+            /// <summary>Design-time only: a start-only identity change scaffolds as SQL that records the
+            /// start and moves the counter forward to it, never back, instead of Npgsql's RESTART. EF runs
+            /// it for <c>dotnet ef migrations add</c>; nothing is registered at runtime.</summary>
+            public sealed class {{className}} : IDesignTimeServices
             {
-                /// <summary>Call after <c>UseNpgsql(...)</c>, wherever the context is configured: the
-                /// app's registration (pooled or not), an <c>IDesignTimeDbContextFactory</c>, or the
-                /// context's own <c>OnConfiguring</c>. Without Npgsql it does nothing.</summary>
-                public static DbContextOptionsBuilder UseIdentityStartMigrations(this DbContextOptionsBuilder options)
-                {
-                    if (options.Options.FindExtension<NpgsqlOptionsExtension>() is null) return options;
-                    return options
-                        .ReplaceService<IMigrationsSqlGenerator, {{IdentityStartGeneratorName}}>()
-                        .ReplaceService<IMigrationsModelDiffer, {{IdentityStartDifferName}}>();
-                }
-
-                /// <inheritdoc cref="UseIdentityStartMigrations(DbContextOptionsBuilder)"/>
-                public static DbContextOptionsBuilder<TContext> UseIdentityStartMigrations<TContext>(this DbContextOptionsBuilder<TContext> options)
-                    where TContext : DbContext =>
-                    (DbContextOptionsBuilder<TContext>)UseIdentityStartMigrations((DbContextOptionsBuilder)options);
-
-                /// <summary>Throws unless the rewrite is registered. A context that declares an
-                /// identity start calls it as its model is built on Npgsql.</summary>
-                public static void EnsureConfigured(DbContext context)
-                {
-                    var replaced = context.GetService<IDbContextOptions>().FindExtension<CoreOptionsExtension>()?.ReplacedServices;
-                    if (replaced is not null && replaced.TryGetValue((typeof(IMigrationsSqlGenerator), null), out var generator)
-                        && generator == typeof({{IdentityStartGeneratorName}}))
-                        return;
-                    throw new InvalidOperationException(
-                        $"{context.GetType().Name} declares an identity start (@sequenceStart), and Npgsql alone writes a changed start as RESTART, " +
-                        "which hands out ids live rows hold. Call UseIdentityStartMigrations() after UseNpgsql(...) where the context is " +
-                        "configured (its registration, an IDesignTimeDbContextFactory, or its OnConfiguring).");
-                }
-
                 private const string Options = "{{NpgsqlIdentityOptionsAnnotation}}";
                 private const string Strategy = "Npgsql:ValueGenerationStrategy";
+
+                /// <summary>Wraps the differ already registered (the context's own, by default), once.</summary>
+                public void ConfigureDesignTimeServices(IServiceCollection services)
+                {
+                    // Found by the startup scan and by the reference both: wrap once.
+                    if (services.Any(d => d.ServiceType == typeof(Applied))) return;
+                    services.AddSingleton<Applied>();
+                    var inner = services.LastOrDefault(d => d.ServiceType == typeof(IMigrationsModelDiffer) && d.ServiceKey is null);
+                    services.Add(new ServiceDescriptor(typeof(IMigrationsModelDiffer),
+                        sp => new Differ(Resolve(inner, sp), sp.GetRequiredService<ICurrentDbContext>().Context.GetService<ISqlGenerationHelper>()),
+                        inner?.Lifetime ?? ServiceLifetime.Transient));
+                }
+
+                private sealed class Applied { }
+
+                private static IMigrationsModelDiffer Resolve(ServiceDescriptor? inner, IServiceProvider sp) => inner switch
+                {
+                    { ImplementationInstance: IMigrationsModelDiffer differ } => differ,
+                    { ImplementationFactory: { } factory } => (IMigrationsModelDiffer)factory(sp),
+                    { ImplementationType: { } type } => (IMigrationsModelDiffer)ActivatorUtilities.CreateInstance(sp, type),
+                    _ => sp.GetRequiredService<ICurrentDbContext>().Context.GetService<IMigrationsModelDiffer>(),
+                };
+
+                private sealed class Differ(IMigrationsModelDiffer inner, ISqlGenerationHelper sql) : IMigrationsModelDiffer
+                {
+                    public bool HasDifferences(IRelationalModel? source, IRelationalModel? target) => inner.HasDifferences(source, target);
+
+                    public IReadOnlyList<MigrationOperation> GetDifferences(IRelationalModel? source, IRelationalModel? target)
+                    {
+                        var result = new List<MigrationOperation>();
+                        foreach (var operation in inner.GetDifferences(source, target))
+                        {
+                            if (operation is not AlterColumnOperation alter || StartChange(alter, sql) is not { } change)
+                            {
+                                result.Add(operation);
+                                continue;
+                            }
+                            result.AddRange(change.Statements.Select(s => new SqlOperation { Sql = s }));
+                            if (OnlyTheStart(alter, change.OldOptions)) continue;
+                            // The rest of the change, with the old start made the new one: no start change is left in it.
+                            alter.OldColumn[Options] = change.OldOptions;
+                            result.Add(alter);
+                        }
+                        return result;
+                    }
+                }
 
                 // The serialized options are "'start', 'increment', 'min', 'max', 'cyclic', 'cache'";
                 // a missing annotation is Npgsql's defaults, and an empty start is no start.
@@ -1048,33 +1065,53 @@ public class DbContextGenerator : IGenerator
                 private static string WithStart(string? options, string? start) =>
                     "'" + (start ?? "") + "'" + (options ?? Defaults)[(options ?? Defaults).IndexOf(',')..];
 
+                private static bool Descending(string? options) => long.TryParse(Parts(options)[1], out var increment) && increment < 0;
+
                 /// <summary>Where an identity without a start begins: its minimum ascending, its
                 /// maximum descending (PostgreSQL's default).</summary>
                 private static string DefaultStart(string? options)
                 {
                     var p = Parts(options);
-                    var descending = long.TryParse(p[1], out var increment) && increment < 0;
-                    return descending ? (p[3] is { Length: > 0 } max ? max : "-1") : (p[2] is { Length: > 0 } min ? min : "1");
+                    return Descending(options) ? (p[3] is { Length: > 0 } max ? max : "-1") : (p[2] is { Length: > 0 } min ? min : "1");
                 }
 
                 private static bool IsIdentity(object? strategy) => strategy?.ToString()?.StartsWith("Identity", StringComparison.Ordinal) == true;
 
-                /// <summary>The start-only change an alter carries: the start it moves to, or null
-                /// when it moves none.</summary>
-                internal static (string Sql, string OldOptions)? StartChange(AlterColumnOperation operation, ISqlGenerationHelper sql)
+                private static string Literal(string text) => "'" + text.Replace("'", "''") + "'";
+
+                /// <summary>The SQL of the start-only change an alter carries, or null when it moves no start.</summary>
+                private static (IReadOnlyList<string> Statements, string OldOptions)? StartChange(AlterColumnOperation operation, ISqlGenerationHelper sql)
                 {
                     if (!IsIdentity(operation[Strategy]) || !IsIdentity(operation.OldColumn[Strategy])) return null;
                     var to = operation[Options] as string;
                     var from = operation.OldColumn[Options] as string;
                     if (Start(to) == Start(from)) return null;
-                    var statement = "ALTER TABLE " + sql.DelimitIdentifier(operation.Table, operation.Schema)
-                        + " ALTER COLUMN " + sql.DelimitIdentifier(operation.Name)
-                        + " SET START WITH " + (Start(to) ?? DefaultStart(to)) + sql.StatementTerminator;
-                    return (statement, WithStart(from, Start(to)));
+                    var table = sql.DelimitIdentifier(operation.Table, operation.Schema);
+                    var column = sql.DelimitIdentifier(operation.Name);
+                    var statements = new List<string>
+                    {
+                        "ALTER TABLE " + table + " ALTER COLUMN " + column + " SET START WITH " + (Start(to) ?? DefaultStart(to)) + sql.StatementTerminator,
+                    };
+                    // A declared start also moves the counter forward to it, or past the highest id, and
+                    // never back. A removed start, or a descending identity, records the start only.
+                    if (Start(to) is { } start && !Descending(to))
+                        statements.Add(
+                            "DO $$\n" +
+                            "DECLARE\n" +
+                            "    mo_seq regclass := pg_get_serial_sequence(" + Literal(table) + ", " + Literal(operation.Name) + ")::regclass;\n" +
+                            "    mo_target bigint;\n" +
+                            "    mo_next bigint;\n" +
+                            "BEGIN\n" +
+                            "    SELECT GREATEST(" + start + ", COALESCE(MAX(" + column + "), 0) + 1) INTO mo_target FROM " + table + ";\n" +
+                            "    EXECUTE 'SELECT CASE WHEN is_called THEN last_value + ' || (SELECT seqincrement FROM pg_sequence WHERE seqrelid = mo_seq)\n" +
+                            "        || ' ELSE last_value END FROM ' || mo_seq INTO mo_next;\n" +
+                            "    IF mo_next < mo_target THEN PERFORM setval(mo_seq, mo_target, false); END IF;\n" +
+                            "END $$;");
+                    return (statements, WithStart(from, Start(to)));
                 }
 
                 /// <summary>Whether the alter changes nothing but its identity start.</summary>
-                internal static bool OnlyTheStart(AlterColumnOperation operation, string oldOptions)
+                private static bool OnlyTheStart(AlterColumnOperation operation, string oldOptions)
                 {
                     var o = operation.OldColumn;
                     if (operation.ClrType != o.ClrType || operation.ColumnType != o.ColumnType || operation.IsNullable != o.IsNullable
@@ -1088,68 +1125,6 @@ public class DbContextGenerator : IGenerator
                     return names.All(n => n == Options
                         ? Parts(operation[n] as string).SequenceEqual(Parts(oldOptions))
                         : Equals(operation[n], o[n]));
-                }
-            }
-
-            /// <summary>Npgsql's migrations SQL, except that a start-only identity change is
-            /// <c>SET START WITH</c> only: the current value never moves (no RESTART), because
-            /// live rows already hold the ids below it.</summary>
-            public class {{IdentityStartGeneratorName}}(
-                MigrationsSqlGeneratorDependencies dependencies, INpgsqlSingletonOptions npgsqlOptions)
-                : NpgsqlMigrationsSqlGenerator(dependencies, npgsqlOptions)
-            {
-                private const string Options = "{{NpgsqlIdentityOptionsAnnotation}}";
-
-                protected override void Generate(AlterColumnOperation operation, IModel? model, MigrationCommandListBuilder builder)
-                {
-                    if ({{IdentityStartExtensionsName}}.StartChange(operation, Dependencies.SqlGenerationHelper) is not { } change)
-                    {
-                        base.Generate(operation, model, builder);
-                        return;
-                    }
-                    builder.AppendLine(change.Sql);
-                    builder.EndCommand();
-                    // The rest of the column change, with the old start made the new one, so Npgsql
-                    // sees no start change; restored after, as a migration's operations are reused.
-                    var old = operation.OldColumn[Options];
-                    operation.OldColumn[Options] = change.OldOptions;
-                    try
-                    {
-                        base.Generate(operation, model, builder);
-                    }
-                    finally
-                    {
-                        operation.OldColumn[Options] = old;
-                    }
-                }
-            }
-
-            /// <summary>EF's model differ, except that a start-only identity change is scaffolded
-            /// as <c>SET START WITH</c> SQL, so the migration never restarts the sequence even where
-            /// it runs without this rewrite.</summary>
-            public sealed class {{IdentityStartDifferName}}(IServiceProvider services, ISqlGenerationHelper sql) : IMigrationsModelDiffer
-            {
-                private const string Options = "{{NpgsqlIdentityOptionsAnnotation}}";
-                private readonly IMigrationsModelDiffer _inner = ActivatorUtilities.CreateInstance<MigrationsModelDiffer>(services);
-
-                public bool HasDifferences(IRelationalModel? source, IRelationalModel? target) => _inner.HasDifferences(source, target);
-
-                public IReadOnlyList<MigrationOperation> GetDifferences(IRelationalModel? source, IRelationalModel? target)
-                {
-                    var result = new List<MigrationOperation>();
-                    foreach (var operation in _inner.GetDifferences(source, target))
-                    {
-                        if (operation is not AlterColumnOperation alter || {{IdentityStartExtensionsName}}.StartChange(alter, sql) is not { } change)
-                        {
-                            result.Add(operation);
-                            continue;
-                        }
-                        result.Add(new SqlOperation { Sql = change.Sql });
-                        if ({{IdentityStartExtensionsName}}.OnlyTheStart(alter, change.OldOptions)) continue;
-                        alter.OldColumn[Options] = change.OldOptions;
-                        result.Add(alter);
-                    }
-                    return result;
                 }
             }
             """ + "\n";

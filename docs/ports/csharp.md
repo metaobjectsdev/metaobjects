@@ -406,26 +406,44 @@ so a new entity carries the CLR default and EF sends it.
 `identity.primary @sequenceStart` on a single-field `increment` key is the identity's START on
 Npgsql (a fresh database begins there). No start-only change ever restarts the sequence: Npgsql
 alone writes a start added as `RESTART WITH n`, a changed one as `RESTART WITH m`, and a removed one
-as `RESTART WITH 1`, each handing out ids live rows may hold. A Postgres context with an increment
-key gets `IdentityStartMigrationsSqlGenerator.g.cs`, which carries the rewrite: every start-only
-change is `ALTER TABLE … ALTER COLUMN … SET START WITH n` (a removed start is set back to the
-identity default), and the current value never moves. Register it after `UseNpgsql(...)`, wherever
-the context is configured — the app's registration (pooled or not), an
-`IDesignTimeDbContextFactory`, or the context's own `OnConfiguring`:
+as `RESTART WITH 1`, each handing out ids live rows may hold.
+
+The fix is at design time, where the change is scaffolded (rulings R50, R51). A Postgres context
+with an increment key gets `AppDbContextIdentityStartDesignTimeServices.g.cs` (named after the
+context class): an `IDesignTimeServices` that wraps the model differ the context already has, so
+`dotnet ef migrations add` writes every start-only change as SQL, in `Up` and in `Down`:
+
+- `ALTER TABLE … ALTER COLUMN … SET START WITH n` records the start (a removed start goes back to
+  the identity default);
+- for a declared start, the counter then moves forward to `GREATEST(n, max(id) + 1)` when it is
+  below that, and never back. A database rebuilt by replaying migrations therefore begins at `n`,
+  as a fresh one does (`SET START WITH` alone would leave its first id at 1), and an explicit id
+  above the counter is never handed out again.
+
+Nothing is registered at runtime: `Migrate()` runs what the migration says, and the file uses
+public EF types only (no Npgsql reference). An adopter's own differ, registered with
+`ReplaceService`, is kept: the services wrap it.
+
+EF finds the services in two ways. It scans the **startup** project for `IDesignTimeServices`
+implementations, and it reads `[assembly: DesignTimeServicesReference]` from the startup and
+**migrations** assemblies. The generated file carries that reference when it knows the context's
+assembly name: `GenConfig.ContextAssemblyName`, else the one `.csproj` in the output directory or
+above it. EF's default layout, migrations in the context's assembly, then needs no adopter code.
+When the migrations live in another project that is not the startup project either, add the one
+line there:
 
 ```csharp
-services.AddDbContextPool<AppDbContext>(o => o.UseNpgsql(cs).UseIdentityStartMigrations());
+[assembly: Microsoft.EntityFrameworkCore.Design.DesignTimeServicesReference(
+    "MyApp.Data.AppDbContextIdentityStartDesignTimeServices, MyApp.Data")]
 ```
 
-It applies at both ends: the differ scaffolds the change as that SQL, so a migration added through
-it is safe wherever it runs, and the SQL generator rewrites a migration scaffolded without it. A
-context that declares a start refuses to build its model on Npgsql when the rewrite is not
-registered (an `InvalidOperationException` that names the call), so a missing registration fails at
-`dotnet ef migrations add`, never as a silent RESTART. The file references
-`Npgsql.EntityFrameworkCore.PostgreSQL` at compile time, so it (and the start in the model) is
-emitted only for a project whose `.metaobjects/config.json` names
-`"migrate": { "dialect": "postgres" }` (a self-hosted runner sets `GenConfig.Dialect`). Any other
-project gets neither, with a warning, and never needs the Npgsql package.
+That is the accepted residual risk: without it, a changed start still scaffolds as RESTART.
+`dotnet ef migrations add --verbose` prints "Using design-time services from assembly …" when
+the services are found; review a start change's migration before applying it.
+
+The start, and the services, are emitted only for a project whose `.metaobjects/config.json`
+names `"migrate": { "dialect": "postgres" }` (a self-hosted runner sets `GenConfig.Dialect`). Any
+other project gets neither, with a warning, and never needs the Npgsql package.
 
 ### Decimals and null members on the wire
 
