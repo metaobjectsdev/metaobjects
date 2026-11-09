@@ -1982,7 +1982,7 @@ public static class DurationWire
         }
         if (field.SubType == FIELD_SUBTYPE_MAP)
         {
-                return $"Dictionary<string, {CSharpNaming.MapValueType(field, ctx.Root)}>" + (required ? string.Empty : "?");
+                return $"Dictionary<string, {MapValueTypeRef(field, owner, ctx)}>" + (required ? string.Empty : "?");
         }
         return CSharpNaming.ScalarForField(field) ?? "object";
     }
@@ -2670,4 +2670,10 @@ public static class DurationWire
             .OrderBy(o => ValueObjectNames.TypeName(o, ctx.Root), StringComparer.Ordinal)
             .ToList();
     }
+    // A map's value object is named as the owner's file sees it: global::-qualified when another
+    // object shares its short name (both namespaces' `using`s are in scope; CS0104 otherwise).
+    private static string MapValueTypeRef(MetaField field, MetaData owner, GenContext ctx) =>
+        field.ObjectRef is { Length: > 0 } && ValueObjectNames.ResolveFieldRef(field, ctx.Root) is { } vo
+            ? ValueObjectNames.ShortRef(vo, ctx.Root, ctx.Config, ValueObjectNames.Namespace(owner, ctx.Config))
+            : CSharpNaming.MapValueType(field, ctx.Root);
 }

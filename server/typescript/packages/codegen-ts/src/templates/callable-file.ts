@@ -33,7 +33,8 @@ import {
   refTarget,
 } from "@metaobjectsdev/metadata";
 import { GENERATED_HEADER } from "../constants.js";
-import { crossEntitySpecifier } from "../import-path.js";
+import { crossEntitySpecifier, entityOutputPath } from "../import-path.js";
+import { importBinding, valueObjectImport } from "./value-object-import.js";
 import { resolveObjectNames } from "../names.js";
 import type { RenderContext } from "../render-context.js";
 import { effectivePackage } from "../docs-paths.js";
@@ -145,9 +146,18 @@ export function renderCallableFile(entity: MetaObject, ctx?: RenderContext): str
 
   // Imports: entity (Zod schema + type) + drizzle sql + the args value-object
   // when applicable.
-  const argsImport = argsObject
-    ? `import type { ${argsObjectName} } from "./${argsObjectName}.js";\n`
-    : "";
+  // The args type lives in its own value object's module, which may be another package's: with a
+  // render context it is imported from there, under its local name (aliased when another object
+  // shares the short name — the result type can be one; ruling R52).
+  const argsVo = argsObject !== undefined && ctx !== undefined
+    ? valueObjectImport(ctx, argsObject, entityOutputPath(ctx.selfTarget.outputLayout, effectivePackage(entity), `${entity.name}.callable.ts`))
+    : undefined;
+  const argsTypeName = argsVo?.name ?? argsObjectName;
+  const argsImport = argsVo !== undefined
+    ? `import type { ${importBinding(argsVo.exported, argsVo.name)} } from ${JSON.stringify(argsVo.specifier)};\n`
+    : argsObject
+      ? `import type { ${argsObjectName} } from "./${argsObjectName}.js";\n`
+      : "";
 
   // The `db` parameter type carries the same open-type-argument rule as the queries
   // file's `Db` alias (see templates/queries-file.ts `dbTypeBlock`): `PgDatabase` is the
@@ -157,7 +167,7 @@ export function renderCallableFile(entity: MetaObject, ctx?: RenderContext): str
   // uninvokable. Uncompilable generated code is indistinguishable from unused generated
   // code, so this parameter must never be narrowed back.
   const signature = argsObject
-    ? `db: PgDatabase<PgQueryResultHKT, Record<string, unknown>>, args: ${argsObjectName}`
+    ? `db: PgDatabase<PgQueryResultHKT, Record<string, unknown>>, args: ${argsTypeName}`
     : `db: PgDatabase<PgQueryResultHKT, Record<string, unknown>>`;
 
   return `// ${GENERATED_HEADER}

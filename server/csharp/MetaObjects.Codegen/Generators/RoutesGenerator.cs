@@ -89,8 +89,13 @@ public class RoutesGenerator : PerEntityGenerator
         // Each entry of the run is its own scope: two entries mount under two prefixes.
         var entry = ctx.EntryLabel(this);
         foreach (var e in served.Where(e => e.OwnAttr(OBJECT_ATTR_DISCRIMINATOR_VALUE) is not string { Length: > 0 }))
+        {
             ctx.Claim($"the REST collection segments of routes entry {entry}", CSharpNaming.RoutePath(e), e.ResolutionKey(),
                 "rename one, or generate them with two routes entries mounted under different prefixes");
+            // Every routes class is declared in Config.Namespace, whatever the object's package.
+            ctx.Claim($"the C# namespace {ctx.Config.Namespace}", $"{CSharpNaming.Pascal(e.Name)}Routes", e.ResolutionKey(),
+                "rename one");
+        }
         return served.Select(e => GenerateOne(e, ctx));
     }
 
@@ -248,11 +253,11 @@ public class RoutesGenerator : PerEntityGenerator
         // the generic PATCH merge loop's FindProperty misses them; the create handler's
         // top-level TryValidateObject also does NOT recurse into them. The generator emits
         // typed per-field merge arms + per-field POST validation for each.
-        var voFields = ValueObjectFields(entity, ctx.Root, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames);
+        var voFields = ValueObjectFields(entity, ctx.Root, ctx.Config);
         // #362 — the map analog. Separate from voFields (see MapValueObjectFields): a map is a
         // plain jsonb-converted property, but its VALUES are value objects and need the same
         // graph validation on create and on a present PATCH key.
-        var mapVoFields = MapValueObjectFields(entity, ctx.Root);
+        var mapVoFields = MapValueObjectFields(entity, ctx.Root, ctx.Config);
         // Issue #203 — @autoSet timestamp columns the generated CRUD stamps with now()
         // (insert stamps all; update stamps onUpdate; the merge loop skips them; an
         // InsertPreserving escape hatch is emitted when any exist).
@@ -717,7 +722,7 @@ public class RoutesGenerator : PerEntityGenerator
             // --- Per-subtype CRUD sets ---
             var hierarchy = tph.Subtypes.Select(s => s.Entity).Prepend(baseEntity).ToList();
             foreach (var st in tph.Subtypes)
-                AppendTphSubtypeRoutes(sb, st, hierarchy, ctx.Root, baseRoute, baseCls, dbSet, pkType!, pkProp!, discProp, ctx.Warn);
+                AppendTphSubtypeRoutes(sb, st, hierarchy, ctx.Root, ctx.Config, baseRoute, baseCls, dbSet, pkType!, pkProp!, discProp, ctx.Warn);
         }
 
         sb.AppendLine();
@@ -944,7 +949,10 @@ public class RoutesGenerator : PerEntityGenerator
     // map reached neither, so its values were written unchecked on every write path.
     private sealed record MapVoField(string WireName, string Nav, string DeserType);
 
-    private static List<MapVoField> MapValueObjectFields(MetaObject entity, MetaRoot root)
+    // A value object is named as the routes file (in Config.Namespace) sees it: bare, or
+    // global::-qualified when another object shares its short name — the file has a `using` for
+    // each package namespace it reaches, so a bare shared name is ambiguous (CS0104).
+    private static List<MapVoField> MapValueObjectFields(MetaObject entity, MetaRoot root, GenConfig config)
     {
         var list = new List<MapVoField>();
         foreach (var f in entity.Fields())
@@ -956,12 +964,12 @@ public class RoutesGenerator : PerEntityGenerator
             list.Add(new MapVoField(
                 WireName: f.Name,
                 Nav: CSharpNaming.Pascal(f.Name),
-                DeserType: $"System.Collections.Generic.Dictionary<string, {ValueObjectNames.TypeName(target, root)}>"));
+                DeserType: $"System.Collections.Generic.Dictionary<string, {ValueObjectNames.ShortRef(target, root, config, config.Namespace)}>"));
         }
         return list;
     }
 
-    private static List<VoField> ValueObjectFields(MetaObject entity, MetaRoot root, ColumnNamingStrategy strategy, bool includeNames)
+    private static List<VoField> ValueObjectFields(MetaObject entity, MetaRoot root, GenConfig config)
     {
         var list = new List<VoField>();
         foreach (var f in entity.Fields())
@@ -970,13 +978,13 @@ public class RoutesGenerator : PerEntityGenerator
             if (f.IsDerived()) continue;   // #214 — derived VO fields are view-only, not writable
             var target = ValueObjectNames.ResolveFieldRef(f, root);
             if (target is null || !target.IsValue()) continue;   // value objects only (jsonb-stored)
-            var voType = ValueObjectNames.TypeName(target, root);
+            var voType = ValueObjectNames.ShortRef(target, root, config, config.Namespace);
             var isArray = f.ResolvedIsArray();                    // ADR-0039: resolving array-ness
             list.Add(new VoField(
                 WireName: f.Name,
                 Nav: CSharpNaming.Pascal(f.Name),
                 DeserType: isArray ? $"System.Collections.Generic.List<{voType}>" : voType,
-                JsonColumnRef: CSharpNaming.ColumnRef(entity, f, strategy, includeNames),
+                JsonColumnRef: CSharpNaming.ColumnRef(entity, f, config.ColumnNamingStrategy, config.IncludeNames),
                 IsArray: isArray,
                 Required: f.IsRequired));
         }
@@ -1418,13 +1426,13 @@ public class RoutesGenerator : PerEntityGenerator
     // subtype CLR type (discriminator injected by EF on Add); update is a partial merge
     // that never touches the PK or the discriminator.
     private static void AppendTphSubtypeRoutes(
-        StringBuilder sb, TphSubtypePlan st, IReadOnlyList<MetaObject> hierarchy, MetaRoot root, string baseRoute, string baseCls, string dbSet,
+        StringBuilder sb, TphSubtypePlan st, IReadOnlyList<MetaObject> hierarchy, MetaRoot root, GenConfig config, string baseRoute, string baseCls, string dbSet,
         string pkType, string pkProp, string discProp, Action<string> onWarn)
     {
         // #362 — field.object columns on a TPH subtype stay out of scope (Program D §6), but a
         // field.map @objectRef is NOT: it reaches the settable set, so its value objects reach
         // both write paths and must be validated on each.
-        var mapVoFields = MapValueObjectFields(st.Entity, root);
+        var mapVoFields = MapValueObjectFields(st.Entity, root, config);
         var subCls = CSharpNaming.Pascal(st.Entity.Name);
         var seg = st.RouteSegment;
         var subRoute = baseRoute + "/" + seg;

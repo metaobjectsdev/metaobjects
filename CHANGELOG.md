@@ -328,6 +328,15 @@ vocabulary; upgrade every port together.
   (and drop the barrel, or rename one), and update imports of the old `AcmeAlphaNote` names. An
   owned generator copy that read `valueObjectNames` or `packageOf` must be re-ejected
   (`meta eject --list`).
+- **Fix, C# and TypeScript: a file that meets two same-named types from two packages names each
+  unambiguously.** C#: the routes (`List<Note>` / `Dictionary<string, Note>` deserialization
+  types), the callable wrapper (its result and its arguments object) and an entity's `field.map`
+  property named a value object bare under `using`s of both namespaces (`CS0104`); each is now
+  `global::`-qualified when another object shares the short name, and the routes and callable
+  classes are claimed in `Config.Namespace`. TypeScript: the callable wrapper imported its
+  arguments object from `./<Args>.js` whatever the layout, and bare — a duplicate identifier when
+  the result shared its name; it is now imported from its own module under a local alias. Pinned
+  by the shared corpus `fixtures/codegen-conformance/xpkg-value-object-refs/`.
 - **C#, upgrade note: identity starts never RESTART, and the fix is design-time only** (rulings
   R50, R51). A Postgres project's context now carries `identity.primary @sequenceStart` in its
   model, and a Postgres context with an increment key gets
