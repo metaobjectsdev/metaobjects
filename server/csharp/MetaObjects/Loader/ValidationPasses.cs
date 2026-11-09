@@ -528,7 +528,7 @@ public static partial class ValidationPasses
                         {
                             var walked = ValidateViaPath(via, root, obj, field.Name, errors, origin.Source);
                             if (walked is WalkedViaPath wp)
-                                CheckPassthroughCardinality(wp.Hops, obj, field.Name, origin.Source, errors);
+                                CheckPassthroughCardinality(wp.Hops, obj, field.Name, origin.Source, errors, wp.Reverse);
                         }
                         else if (fromTarget is ResolvedFromTarget ft2 && !isValueHost)
                         {
@@ -610,7 +610,7 @@ public static partial class ValidationPasses
                             else
                             {
                                 var predWalked = ValidateViaPath(predVia, root, obj, field.Name, errors, src);
-                                if (predWalked is WalkedViaPath pw) CheckAggregateCardinality(pw.Hops, obj, field.Name, src, errors);
+                                if (predWalked is WalkedViaPath pw) CheckAggregateCardinality(pw.Hops, obj, field.Name, src, errors, pw.Reverse);
                             }
                             continue;
                         }
@@ -689,7 +689,7 @@ public static partial class ValidationPasses
                             var woWalked = ValidateViaPath(woVia, root, obj, field.Name, errors, src);
                             if (woWalked is WalkedViaPath ww)
                             {
-                                CheckAggregateCardinality(ww.Hops, obj, field.Name, src, errors);
+                                CheckAggregateCardinality(ww.Hops, obj, field.Name, src, errors, ww.Reverse);
                                 // @orderBy keys resolve against the @via TERMINAL entity, not @of.
                                 ValidateOrderByKeys(orderBy, ww.Terminal, obj, field.Name,
                                     "origin.aggregate @agg:collect", src, errors,
@@ -720,7 +720,7 @@ public static partial class ValidationPasses
                         {
                             var walked = ValidateViaPath(via, root, obj, field.Name, errors, src);
                             if (walked is WalkedViaPath aw)
-                                CheckAggregateCardinality(aw.Hops, obj, field.Name, src, errors);
+                                CheckAggregateCardinality(aw.Hops, obj, field.Name, src, errors, aw.Reverse);
                             continue;
                         }
                         // FR-024 §6 — no @via on an aggregate: inference applies only
@@ -815,7 +815,7 @@ public static partial class ValidationPasses
                         if (viaObj is string via && via != "")
                         {
                             var walked = ValidateViaPath(via, root, obj, field.Name, errors, src);
-                            if (walked is WalkedViaPath fw) CheckAggregateCardinality(fw.Hops, obj, field.Name, src, errors);
+                            if (walked is WalkedViaPath fw) CheckAggregateCardinality(fw.Hops, obj, field.Name, src, errors, fw.Reverse);
                         }
                         else if (ofTarget is ResolvedFromTarget inferTarget)
                         {
@@ -1091,7 +1091,7 @@ public static partial class ValidationPasses
     /// entity they terminate at. Returned as a pair (rather than re-walking for the terminal)
     /// because a second walk means a second copy of the ADR-0042 package-resolution rule —
     /// mirrors the TS <c>WalkedViaPath</c>.
-    private readonly record struct WalkedViaPath(List<MetaData> Hops, MetaData Terminal);
+    private readonly record struct WalkedViaPath(List<MetaData> Hops, MetaData Terminal, IReadOnlySet<MetaData> Reverse);
 
     private static WalkedViaPath? ValidateViaPath(
         string viaAttr,
@@ -1138,6 +1138,7 @@ public static partial class ValidationPasses
         // entity name; each successful relationship hop appends a segment.
         var validSegments = new List<string> { entityName };
         var hops = new List<MetaData>();
+        var reverse = new HashSet<MetaData>(ReferenceEqualityComparer.Instance);
 
         foreach (var relName in relSegments)
         {
@@ -1146,6 +1147,31 @@ public static partial class ValidationPasses
             var rel = FindRelationship(currentObj, relName) ?? FindReference(currentObj, relName);
             if (rel is null)
             {
+                // R-walk: a hop may walk an identity.reference BACKWARDS, from the entity it targets
+                // to the entity that declares it, named by that entity's collection name
+                // (`Patient.consents` for Consent.patient). A declared relationship or reference wins.
+                var reversed = currentObj is MetaObject walkedFrom && root is MetaRoot metaRoot
+                    ? ReverseReferenceHops.Find(walkedFrom, relName, metaRoot.Objects())
+                    : [];
+                if (reversed.Count == 1)
+                {
+                    validSegments.Add(relName);
+                    hops.Add(reversed[0].Reference);
+                    reverse.Add(reversed[0].Reference);
+                    currentObj = reversed[0].Holder;
+                    continue;
+                }
+                if (reversed.Count > 1)
+                {
+                    string candidates = string.Join(", ", reversed.Select(r => $"\"{r.Reference.Name}\""));
+                    errors.Add(new MetaError(
+                        $"origin.@via \"{viaAttr}\" on {projectionName}.{fieldName}: the reverse hop \"{relName}\" from {currentObj.Name} " +
+                        $"matches {reversed.Count} identity.reference nodes onto it ({candidates}) — ambiguous. Declare a relationship on " +
+                        $"{currentObj.Name} for this hop, or keep one reference.",
+                        ErrorCode.ERR_AMBIGUOUS_PATH,
+                        Envelope: ResolvedSource.From(originSource, referrer, viaAttr)));
+                    return null;
+                }
                 string prefix = string.Join('.', validSegments);
                 errors.Add(new MetaError(
                     $"origin.@via \"{viaAttr}\" on {projectionName}.{fieldName}: " +
@@ -1192,7 +1218,7 @@ public static partial class ValidationPasses
         }
 
         // currentObj is the terminal: every earlier exit returned null.
-        return new WalkedViaPath(hops, currentObj);
+        return new WalkedViaPath(hops, currentObj, reverse);
     }
 
     // -------------------------------------------------------------------------
@@ -1202,10 +1228,12 @@ public static partial class ValidationPasses
 
     /// A hop's effective @cardinality, or null when not declared. A reference hop
     /// (a forward FK) is inherently to-one — a child names the parent it points at.
-    private static string? HopCardinality(MetaData rel)
-        => IsReferenceHop(rel)
-            ? CARDINALITY_ONE
-            : rel.Attr(RELATIONSHIP_ATTR_CARDINALITY) as string;
+    private static string? HopCardinality(MetaData rel, IReadOnlySet<MetaData>? reverse = null)
+        => reverse is not null && reverse.Contains(rel)
+            ? CARDINALITY_MANY // R-walk: a reference walked backwards reaches every row that references the walked-from one
+            : IsReferenceHop(rel)
+                ? CARDINALITY_ONE
+                : rel.Attr(RELATIONSHIP_ATTR_CARDINALITY) as string;
 
     /// FR-024: the entity NAMED by a node's dotted extends ref — the OWNER part
     /// of `<owner>.<child>...` resolved as an object. Differs from
@@ -1331,11 +1359,12 @@ public static partial class ValidationPasses
     /// ADR-0029 decision 6 — a passthrough via-path must be effectively to-one at
     /// EVERY hop. A hop is to-many only when it DECLARES @cardinality "many".
     private static void CheckPassthroughCardinality(
-        IReadOnlyList<MetaData> hops, MetaData obj, string fieldName, ErrorSource originSource, List<MetaError> errors)
+        IReadOnlyList<MetaData> hops, MetaData obj, string fieldName, ErrorSource originSource, List<MetaError> errors,
+        IReadOnlySet<MetaData>? reverse = null)
     {
         foreach (var rel in hops)
         {
-            if (HopCardinality(rel) == CARDINALITY_MANY)
+            if (HopCardinality(rel, reverse) == CARDINALITY_MANY)
             {
                 errors.Add(new MetaError(
                     $"origin.passthrough on {obj.Name}.{fieldName}: @via hop \"{rel.Name}\" is to-many " +
@@ -1351,10 +1380,11 @@ public static partial class ValidationPasses
     /// to-many hop. The error fires only when the path is PROVABLY to-one
     /// (every hop declares @cardinality "one").
     private static void CheckAggregateCardinality(
-        IReadOnlyList<MetaData> hops, MetaData obj, string fieldName, ErrorSource originSource, List<MetaError> errors)
+        IReadOnlyList<MetaData> hops, MetaData obj, string fieldName, ErrorSource originSource, List<MetaError> errors,
+        IReadOnlySet<MetaData>? reverse = null)
     {
         if (hops.Count == 0) return;
-        bool provablyToOne = hops.All(rel => HopCardinality(rel) == CARDINALITY_ONE);
+        bool provablyToOne = hops.All(rel => HopCardinality(rel, reverse) == CARDINALITY_ONE);
         if (provablyToOne)
         {
             errors.Add(new MetaError(

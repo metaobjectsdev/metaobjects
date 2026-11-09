@@ -482,6 +482,14 @@ vocabulary; upgrade every port together.
 
 ### Fixed
 
+- **An origin's `@via` walks the reverse of a reference** (rc.19 Phase 5, bug R-walk). A hop
+  named by the referencing entity's collection name (`Patient.consents` for
+  `Consent.patient`) walks that identity.reference backwards, to-many, with no relationship
+  declared; the loader refused it ("no such relationship or reference") in TypeScript and C#,
+  and TypeScript view codegen silently dropped the join. A declared relationship or reference of
+  the same name wins; two references onto the parent make the hop `ERR_AMBIGUOUS_PATH`. Pinned
+  by `fixtures/conformance/origin-reverse-reference-hop` and
+  `error-origin-reverse-hop-ambiguous` (Java, Kotlin and Python follow in #544–#549).
 - **TypeScript docs: a field's "References" link reaches the target's page** (rc.19 item 11).
   Docs pages sit under their package path, but the foreign-key link was the bare
   `<Target>.md`, which resolved only beside the page. It now goes through `docPageHref`, as the

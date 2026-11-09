@@ -54,6 +54,8 @@ import {
   FIELD_ATTR_COLUMN,
   OBJECT_PROJECTION_ATTR_FILTER,
   findReferencesBetween,
+  findReverseReferenceHops,
+  isMetaRoot,
   resolveRelationshipReference,
   resolveObjectRef,
   refTarget,
@@ -377,6 +379,15 @@ function resolveHop(
     const target = refTarget(ref, IDENTITY_REFERENCE_ATTR_REFERENCES);
     return { hop: ref, target: isMetaObject(target) ? target : undefined, cardinality: "one" };
   }
+  // R-walk: the reverse of another entity's identity.reference, named by that entity's
+  // collection name (the loader resolves the same hop the same way, and refuses an ambiguous one).
+  if (isMetaObject(obj)) {
+    const root = obj.root();
+    const reversed = findReverseReferenceHops(obj, name, isMetaRoot(root) ? root.objects() : []);
+    if (reversed.length === 1) {
+      return { hop: reversed[0]!.referenceIdentity, target: reversed[0]!.holder, cardinality: "many" };
+    }
+  }
   return undefined;
 }
 
@@ -406,7 +417,11 @@ function resolveHopReference(
   target: MetaObject,
 ): ReferenceLookup | ReferenceLookup[] {
   if (hop.type === TYPE_IDENTITY && hop.subType === IDENTITY_SUBTYPE_REFERENCE) {
-    return { holder, other: target, referenceIdentity: hop as unknown as MetaReferenceIdentity };
+    // R-walk: a reference hop walked backwards is held by the hop's target, not by `holder`.
+    const reversed = resolveHop(holder, hopName)?.cardinality === "many";
+    return reversed
+      ? { holder: target, other: holder, referenceIdentity: hop as unknown as MetaReferenceIdentity }
+      : { holder, other: target, referenceIdentity: hop as unknown as MetaReferenceIdentity };
   }
   // ADR-0039: resolving — @sourceRefField may be inherited via extends.
   const sourceRefField = hop.attr(RELATIONSHIP_ATTR_SOURCE_REF_FIELD) as string | undefined;

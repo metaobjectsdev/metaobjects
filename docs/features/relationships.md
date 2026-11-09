@@ -173,10 +173,22 @@ reverse-engineered model can `@via` its reference directly:
 ```
 
 A reference hop is inherently **to-one** (a child names the parent it points at), so it
-is valid in a `passthrough` and rejected in an `aggregate`. Inverse navigation
-(parent → many children) still needs a `relationship.composition` on the parent — a bare
-FK has no inverse edge. Explicit `@via` resolves either kind; single-hop-unique
-inference stays relationship-only.
+is valid in a `passthrough` and rejected in an `aggregate`.
+
+The same reference can be walked **backwards**, parent → many children, with no relationship
+declared for it: the hop is named by the referencing entity's collection name,
+lowerFirst(pluralize(name)) (`consents` for `Consent`), and it is to-many, so it is valid in an
+`aggregate` or `first` and rejected in a `passthrough`:
+
+```yaml
+# Consent has `identity.reference: { name: patient, references: Patient }`; Patient declares nothing:
+- origin.aggregate: { agg: count, of: "Consent.id", via: "Patient.consents" }
+```
+
+A relationship or reference of that name on the parent wins. Two references from `Consent`
+to `Patient` make `Patient.consents` ambiguous, and the loader refuses it naming both
+(`ERR_AMBIGUOUS_PATH`); declare a relationship for the hop instead. Explicit `@via` resolves
+every kind; single-hop-unique inference stays relationship-only.
 
 ## When one entity has two references to the same target
 

@@ -20,6 +20,7 @@ import {
 } from "../core/validator/validator-constants.js";
 import type { MetaData } from "../shared/meta-data.js";
 import type { MetaObject } from "../core/object/meta-object.js";
+import { findReverseReferenceHops } from "../core/relationship/find-reference.js";
 import type { MetaReferenceIdentity } from "../core/identity/meta-identity.js";
 import { contradictionHint, contradictionsFor } from "../attr-contradictions.js";
 import { ParseError, type ErrorCode } from "../errors.js";
@@ -64,7 +65,7 @@ import {
 } from "../core/object/object-constants.js";
 import { MetaSource } from "../persistence/source/meta-source.js";
 import { resolveColumnName } from "../naming.js";
-import { isMetaField } from "../shared/node-guards.js";
+import { isMetaField, isMetaRoot } from "../shared/node-guards.js";
 import {
   LAYOUT_SUBTYPE_DATA_GRID,
   LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_FIELD,
@@ -687,6 +688,9 @@ function _validateFromPath(
 interface WalkedViaPath {
   hops: MetaData[];
   terminal: MetaData;
+  /** The hops walked BACKWARDS (R-walk): an identity.reference of the next entity, walked from
+   *  the entity it targets, so the hop is to-many. */
+  reverse: ReadonlySet<MetaData>;
 }
 
 /**
@@ -745,11 +749,38 @@ function _validateViaPath(
   // entity name; each successful relationship hop appends a segment.
   const validSegments: string[] = [entityName];
   const hops: MetaData[] = [];
+  const reverse = new Set<MetaData>();
   for (const relName of relSegments) {
     // FR-024: a hop may name a relationship OR a reference-only FK
     // (identity.reference) — the reference IS a navigable many-to-one edge.
     const rel = _findRelationship(currentObj, relName) ?? _findReference(currentObj, relName);
     if (!rel) {
+      // R-walk: a hop may walk an identity.reference BACKWARDS, from the entity it targets to the
+      // entity that declares it, named by that entity's collection name (`Patient.consents` for
+      // Consent.patient). A declared relationship or reference of the same name wins (above).
+      const reversed = findReverseReferenceHops(currentObj as MetaObject, relName, isMetaRoot(root) ? root.objects() : []);
+      if (reversed.length === 1) {
+        validSegments.push(relName);
+        hops.push(reversed[0]!.referenceIdentity);
+        reverse.add(reversed[0]!.referenceIdentity);
+        currentObj = reversed[0]!.holder;
+        continue;
+      }
+      if (reversed.length > 1) {
+        const names = reversed.map((r) => `"${r.referenceIdentity.name}"`).join(", ");
+        errors.push(
+          new ParseError(
+            `origin.@via "${viaAttr}" on ${projectionName}.${fieldName}: the reverse hop "${relName}" from ${currentObj.name} ` +
+            `matches ${reversed.length} identity.reference nodes onto it (${names}) — ambiguous. Declare a relationship on ` +
+            `${currentObj.name} for this hop, or keep one reference.`,
+            {
+              code: "ERR_AMBIGUOUS_PATH",
+              source: resolvedSource(originSource, referrer, viaAttr),
+            },
+          ),
+        );
+        return undefined;
+      }
       const prefix = validSegments.join(".");
       errors.push(
         new ParseError(
@@ -808,7 +839,7 @@ function _validateViaPath(
     currentObj = nextObj;
   }
   // currentObj is the terminal: every earlier exit returned undefined.
-  return { hops, terminal: currentObj };
+  return { hops, terminal: currentObj, reverse };
 }
 
 // ---------------------------------------------------------------------------
@@ -818,7 +849,9 @@ function _validateViaPath(
 
 /** A hop's effective @cardinality, or undefined when not declared. A reference
  *  hop (a forward FK) is inherently to-one — a child names the parent it points at. */
-function _hopCardinality(rel: MetaData): string | undefined {
+function _hopCardinality(rel: MetaData, reverse?: ReadonlySet<MetaData>): string | undefined {
+  // R-walk: a reference walked backwards reaches every row that references the walked-from one.
+  if (reverse?.has(rel) === true) return CARDINALITY_MANY;
   if (_isReferenceHop(rel)) return CARDINALITY_ONE;
   const v = rel.attr(RELATIONSHIP_ATTR_CARDINALITY);
   return typeof v === "string" ? v : undefined;
@@ -1017,9 +1050,10 @@ function _checkPassthroughCardinality(
   fieldName: string,
   originSource: ErrorSource,
   errors: ParseError[],
+  reverse?: ReadonlySet<MetaData>,
 ): void {
   for (const rel of hops) {
-    if (_hopCardinality(rel) === CARDINALITY_MANY) {
+    if (_hopCardinality(rel, reverse) === CARDINALITY_MANY) {
       errors.push(
         new ParseError(
           `origin.passthrough on ${obj.name}.${fieldName}: @via hop "${rel.name}" is to-many ` +
@@ -1044,9 +1078,10 @@ function _checkAggregateCardinality(
   fieldName: string,
   originSource: ErrorSource,
   errors: ParseError[],
+  reverse?: ReadonlySet<MetaData>,
 ): void {
   if (hops.length === 0) return;
-  const provablyToOne = hops.every((rel) => _hopCardinality(rel) === CARDINALITY_ONE);
+  const provablyToOne = hops.every((rel) => _hopCardinality(rel, reverse) === CARDINALITY_ONE);
   if (provablyToOne) {
     errors.push(
       new ParseError(
@@ -1325,7 +1360,7 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
           if (typeof via === "string" && via !== "") {
             const walked = _validateViaPath(via, root, obj, field.name, origin.source, errors);
             if (walked !== undefined) {
-              _checkPassthroughCardinality(walked.hops, obj, field.name, origin.source, errors);
+              _checkPassthroughCardinality(walked.hops, obj, field.name, origin.source, errors, walked.reverse);
             }
           } else if (fromTarget !== undefined && !isValueHost) {
             // FR-024 §6 — no @via: derive the base entity; a @from targeting
@@ -1411,7 +1446,7 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
                 { code: "ERR_INVALID_ORIGIN", source: src }));
             } else {
               const walked = _validateViaPath(via, root, obj, field.name, src, errors);
-              if (walked !== undefined) _checkAggregateCardinality(walked.hops, obj, field.name, src, errors);
+              if (walked !== undefined) _checkAggregateCardinality(walked.hops, obj, field.name, src, errors, walked.reverse);
             }
             continue;
           }
@@ -1485,7 +1520,7 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
             // no second, misleadingly-scoped error is emitted.
             const via = _validateViaPath(viaAttr, root, obj, field.name, src, errors);
             if (via !== undefined) {
-              _checkAggregateCardinality(via.hops, obj, field.name, src, errors);
+              _checkAggregateCardinality(via.hops, obj, field.name, src, errors, via.reverse);
               // @orderBy keys resolve against the @via TERMINAL entity, not @of.
               _validateOrderByKeys(orderBy, via.terminal, obj, field.name, "origin.aggregate @agg:collect", src, errors,
                 "ERR_COLLECT_WHOLE_OBJECT");
@@ -1515,7 +1550,7 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
           if (typeof via === "string" && via !== "") {
             const walked = _validateViaPath(via, root, obj, field.name, src, errors);
             if (walked !== undefined) {
-              _checkAggregateCardinality(walked.hops, obj, field.name, src, errors);
+              _checkAggregateCardinality(walked.hops, obj, field.name, src, errors, walked.reverse);
             }
             continue;
           }
@@ -1609,7 +1644,7 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
           const via = origin.ownAttr(ORIGIN_FIRST_ATTR_VIA);
           if (typeof via === "string" && via !== "") {
             const walked = _validateViaPath(via, root, obj, field.name, src, errors);
-            if (walked !== undefined) _checkAggregateCardinality(walked.hops, obj, field.name, src, errors);
+            if (walked !== undefined) _checkAggregateCardinality(walked.hops, obj, field.name, src, errors, walked.reverse);
           } else if (ofTarget !== undefined) {
             // (A value host never reaches here — the #210 assembly-origin
             // check above already rejected origin.first on a value.)

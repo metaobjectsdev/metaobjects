@@ -10,6 +10,7 @@ import type { MetaObject } from "../object/meta-object.js";
 import type { MetaReferenceIdentity } from "../identity/meta-identity.js";
 import { refTarget } from "../../naming-refs.js";
 import { IDENTITY_REFERENCE_ATTR_REFERENCES } from "../identity/identity-constants.js";
+import { pluralize } from "../../naming.js";
 
 export interface ReferenceLookup {
   /** The entity whose identity.reference points at `other`. */
@@ -66,4 +67,45 @@ export function findReferenceBetween(
   b: MetaObject,
 ): ReferenceLookup | undefined {
   return findReferencesBetween(a, b)[0];
+}
+
+/**
+ * Phase 5 bug R-walk — the name a `@via` hop takes when it walks the REVERSE of an
+ * identity.reference, from the referenced entity back to the one that declares it:
+ * the holder's collection name, lowerFirst(pluralize(<Holder>)) — `consents` for
+ * `Consent`, so `Patient.consents` walks Consent.patient backwards. One rule for every port.
+ */
+export function reverseHopName(holder: MetaObject): string {
+  const plural = pluralize(holder.name);
+  return plural.charAt(0).toLowerCase() + plural.slice(1);
+}
+
+/** A reverse `@via` hop: the reference walked backwards and the entity that declares it. */
+export interface ReverseReferenceHop {
+  /** The concrete object whose identity.reference targets the walked-from entity. */
+  readonly holder: MetaObject;
+  readonly referenceIdentity: MetaReferenceIdentity;
+}
+
+/**
+ * Every identity.reference that targets `target` from a concrete object whose
+ * {@link reverseHopName} is `hopName` — the candidates a reverse hop `Target.hopName` names.
+ * One is the hop; none means the hop is not a reverse; more than one is ambiguous, and the
+ * caller refuses it naming them. A declared relationship or reference of the same name on
+ * `target` always wins; callers look those up first.
+ */
+export function findReverseReferenceHops(
+  target: MetaObject,
+  hopName: string,
+  objects: readonly MetaObject[],
+): ReverseReferenceHop[] {
+  const found: ReverseReferenceHop[] = [];
+  for (const holder of objects) {
+    if (holder.isAbstract || reverseHopName(holder) !== hopName) continue;
+    for (const ref of holder.referenceIdentities()) {
+      // ADR-0059 R7: compare the bound target, never a short name.
+      if (refTarget(ref, IDENTITY_REFERENCE_ATTR_REFERENCES) === target) found.push({ holder, referenceIdentity: ref });
+    }
+  }
+  return found;
 }
