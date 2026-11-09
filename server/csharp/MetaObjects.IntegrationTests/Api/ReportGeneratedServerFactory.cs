@@ -181,13 +181,13 @@ internal sealed class ReportGeneratedServerFactory : IAsyncDisposable
         // The emitted tree itself: a routes file for each expected name, and no file at
         // all for the sourceless report.
         foreach (var name in ExpectedRoutedNames)
-            if (!files.Any(f => f.Path == name + "Routes.g.cs"))
+            if (!files.Any(f => Path.GetFileName(f.Path) == name + "Routes.g.cs"))
                 throw new InvalidOperationException($"no {name}Routes.g.cs was generated");
         // ...and an export module for each served report (the shared writer once), none for the sourceless one.
         var servedReports = root.Objects().Where(o => o.IsReport() && RoutesGenerator.AppliesTo(o, root))
             .Select(o => CSharpNaming.Pascal(o.Name)).ToList();
-        var exportFiles = files.Where(f => f.Path.EndsWith("Export.g.cs", StringComparison.Ordinal) || f.Path == "ReportExportWriter.g.cs")
-            .Select(f => f.Path).OrderBy(p => p, StringComparer.Ordinal).ToList();
+        var exportFiles = files.Where(f => f.Path.EndsWith("Export.g.cs", StringComparison.Ordinal) || Path.GetFileName(f.Path) == "ReportExportWriter.g.cs")
+            .Select(f => Path.GetFileName(f.Path)).OrderBy(p => p, StringComparer.Ordinal).ToList();
         var wantExport = servedReports.Select(n => n + "Export.g.cs").Append("ReportExportWriter.g.cs")
             .OrderBy(p => p, StringComparer.Ordinal).ToList();
         if (!exportFiles.SequenceEqual(wantExport))
