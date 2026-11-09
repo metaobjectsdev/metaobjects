@@ -453,6 +453,40 @@ export function collectionNameOf(obj: MetaData): string {
 }
 
 /**
+ * rc.19 fix round (I3) — the REST collection segment an object is served under: {@link
+ * collectionSegmentOf} over its name, its declared collection name and the project's
+ * `naming.collections`. Every port's routes, `$path`, OpenAPI and docs REST paths read it.
+ */
+export function collectionSegment(obj: MetaData): string {
+  return collectionSegmentOf(obj.name, declaredCollectionName(obj)?.name, physicalNamingOf(obj).collections);
+}
+
+/**
+ * The REST collection segment for an object named `name` (`fixtures/naming-conformance/
+ * collection-segments.json`, shared with C#):
+ *   - a declared `@collectionName` wins, snake_cased ({@link snakeCollectionName});
+ *   - else a configured pluralizer's output over the name, snake_cased the same way;
+ *   - else the historical rule, byte-identical to rc.18: snake_case, then {@link pluralize}.
+ * A pluralizer is applied only when the project configures one, so an unconfigured project's
+ * segments never move (`FAQ` stays `faqs`, never `fa_qs`).
+ */
+export function collectionSegmentOf(name: string, declared?: string, configuredPluralizer?: string): string {
+  if (declared !== undefined) return snakeCollectionName(declared);
+  if (configuredPluralizer !== undefined) return snakeCollectionName(pluralizer(configuredPluralizer)(name));
+  return pluralize(toSnakeCase(name));
+}
+
+/**
+ * snake_case a collection name with an acronym-aware split: a trailing plural `s` / `es` after a
+ * capital is a suffix of the acronym, not a word of its own (`FAQs` -> `faqs`, `TaxIDs` ->
+ * `tax_ids`, `PDFBoxes` -> `pdf_boxes`). Any other name is {@link toSnakeCase}.
+ */
+export function snakeCollectionName(s: string): string {
+  const m = /^(.*[A-Z])(e?s)$/.exec(s);
+  return m !== null ? toSnakeCase(m[1]!) + m[2]! : toSnakeCase(s);
+}
+
+/**
  * The collection name an object declares itself, and through which attr; undefined when it
  * declares none. Refuses both at once: an alias and its replacement disagreeing has no answer.
  */

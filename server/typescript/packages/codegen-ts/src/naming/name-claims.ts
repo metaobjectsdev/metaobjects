@@ -13,7 +13,7 @@
 // rewritten to avoid a collision.
 
 import {
-  OBJECT_SUBTYPE_VALUE, OBJECT_ATTR_COLLECTION_NAME, OBJECT_ATTR_DB_SET_NAME, collectionNameOf, declaredCollectionName, toSnakeCase,
+  OBJECT_SUBTYPE_VALUE, OBJECT_ATTR_COLLECTION_NAME, OBJECT_ATTR_DB_SET_NAME, collectionNameOf, collectionSegment, declaredCollectionName,
   type MetaObject,
 } from "@metaobjectsdev/metadata";
 import type { GenContext } from "../generator.js";
@@ -106,10 +106,10 @@ export function claimBarrelNames(ctx: GenContext, obj: MetaObject): void {
   if (hasCollection(obj)) ctx.claim(`the collection names of ${scope}`, collectionNameOf(obj), obj.resolutionKey(), BARREL_REMEDY);
 }
 
-/** The REST collection segment an object is served under: its name snake_cased, then
- *  pluralized (`entity-ui-descriptor.ts` `resourcePath`). */
+/** The REST collection segment an object is served under (`collectionSegment`, the rule
+ *  `entity-ui-descriptor.ts` `resourcePath` serves). */
 export function routeSegment(obj: MetaObject): string {
-  return toSnakeCase(collectionNameOf(obj));
+  return collectionSegment(obj);
 }
 
 /** Claim an object's REST collection segment in this routes entry. */

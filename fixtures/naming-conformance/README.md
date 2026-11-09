@@ -114,6 +114,18 @@ pair is REFUSED when the port puts both in one scope, naming the colliding name.
 Physical names are not this corpus's concern: `(schema, name)` uniqueness belongs to
 the schema layer (`meta migrate`'s `ERR_DUPLICATE_SQL_NAME`).
 
+## REST collection segments (rc.19)
+
+[`collection-segments.json`](./collection-segments.json) pins the REST collection segment
+an object is served under, given its name, the `@collectionName` it declares and the
+project's `naming.collections`. With neither configured the segment is the historical
+rule, byte-identical to rc.18: snake_case the name, then pluralize (`FAQ` → `faqs`,
+`TaxID` → `tax_ids`). A declared name, or a configured pluralizer's output over the name,
+is snake_cased keeping a trailing plural `s` / `es` on a preceding capital (`FAQs` →
+`faqs`, never `fa_qs`). Run by TypeScript (`metadata/test/naming.test.ts`,
+`collectionSegmentOf`) and C# (`CSharpNamingTests.The_REST_segment_is_the_cross_port_one`,
+through `CSharpNaming.RoutePath`); Java, Kotlin and Python until #544–#549.
+
 ## Per-port runner
 
 Each port's existing naming unit-test file reads this JSON and asserts both

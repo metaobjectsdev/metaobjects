@@ -21,6 +21,32 @@ public static class CollectionNames
     public static string Of(MetaObject obj) =>
         Declared(obj)?.Name ?? NamingStrategies.Pluralizer(ConfiguredPluralizer(obj) ?? NamingStrategies.DefaultPluralizer)(obj.Name);
 
+    /// <summary>
+    /// rc.19 fix round (I3) — the REST collection segment, shared with TypeScript
+    /// (<c>fixtures/naming-conformance/collection-segments.json</c>): a declared name wins, else a
+    /// configured pluralizer's output over the name, each snake_cased by <see cref="SnakeCollectionName"/>;
+    /// with neither, <paramref name="unconfigured"/> (the historical rule, byte-identical) over the name.
+    /// </summary>
+    public static string Segment(MetaObject obj, Func<string, string> unconfigured)
+    {
+        if (Declared(obj)?.Name is { } declared) return SnakeCollectionName(declared);
+        if (ConfiguredPluralizer(obj) is { } configured) return SnakeCollectionName(NamingStrategies.Pluralizer(configured)(obj.Name));
+        return unconfigured(obj.Name);
+    }
+
+    /// <summary>
+    /// snake_case a collection name with an acronym-aware split: a trailing plural <c>s</c> /
+    /// <c>es</c> after a capital is a suffix of the acronym, not a word of its own (<c>FAQs</c> →
+    /// <c>faqs</c>, <c>TaxIDs</c> → <c>tax_ids</c>). Mirrors TS <c>snakeCollectionName</c>.
+    /// </summary>
+    public static string SnakeCollectionName(string s)
+    {
+        var m = System.Text.RegularExpressions.Regex.Match(s, "^(.*[A-Z])(e?s)$");
+        return m.Success
+            ? Persistence.Source.SourceNaming.ToSnakeCase(m.Groups[1].Value) + m.Groups[2].Value
+            : Persistence.Source.SourceNaming.ToSnakeCase(s);
+    }
+
     /// <summary>The pluralizer the project configures (<c>naming.collections</c>), or null when it names none.</summary>
     public static string? ConfiguredPluralizer(MetaData node) => PhysicalNaming.Of(node).Collections;
 

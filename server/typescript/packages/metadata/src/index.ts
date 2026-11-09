@@ -385,6 +385,7 @@ export {
   resetNamingStrategiesForTesting,
   registerPluralizer, registeredPluralizers, isRegisteredPluralizer, pluralizer,
   BUILTIN_PLURALIZER_NAMES, DEFAULT_PLURALIZER, collectionNameOf, declaredCollectionName,
+  collectionSegment, collectionSegmentOf, snakeCollectionName,
   TABLE_NAMING_RULES, DEFAULT_PHYSICAL_NAMING, physicalNamingOf, applyTableNamingRule,
   PHYSICAL_NAMING_MIGRATION_GUIDE, PHYSICAL_NAMING_MIGRATION_GUIDE_PATH, physicalNamingRemovedMessage,
   resolveTableName, resolveColumnName, resolveFlattenedColumnPrefix, resolveFlattenedColumnName,

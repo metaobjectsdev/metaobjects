@@ -410,6 +410,48 @@ public class CSharpNamingTests
         Assert.Contains("Payers { get; set; }", context);
     }
 
+    // ── rc.19 fix round (I3): fixtures/naming-conformance/collection-segments.json ──────────────
+    // The REST segment, shared with TypeScript: nothing configured is rc.18's rule byte for byte;
+    // a declared name or a configured pluralizer is snake_cased keeping an acronym's plural suffix.
+
+    public sealed record SegmentCase(string Name, string? CollectionName, string? Pluralizer, string Segment)
+    {
+        public override string ToString() => $"{Name} (declared {CollectionName ?? "-"}, pluralizer {Pluralizer ?? "-"}) -> {Segment}";
+    }
+
+    public static TheoryData<SegmentCase> SegmentCases()
+    {
+        var path = Path.Combine(CorpusPaths.RepoRoot(), "fixtures", "naming-conformance", "collection-segments.json");
+        using var doc = JsonDocument.Parse(File.ReadAllText(path));
+        var data = new TheoryData<SegmentCase>();
+        foreach (var c in doc.RootElement.GetProperty("cases").EnumerateArray())
+        {
+            data.Add(new SegmentCase(
+                c.GetProperty("name").GetString()!,
+                c.TryGetProperty("collectionName", out var d) ? d.GetString() : null,
+                c.TryGetProperty("pluralizer", out var p) ? p.GetString() : null,
+                c.GetProperty("segment").GetString()!));
+        }
+        return data;
+    }
+
+    [Theory]
+    [MemberData(nameof(SegmentCases))]
+    public void The_REST_segment_is_the_cross_port_one(SegmentCase c)
+    {
+        var declared = c.CollectionName is null ? "" : $@"""@collectionName"": ""{c.CollectionName}"", ";
+        var json = $@"{{ ""metadata.root"": {{ ""package"": ""test"", ""children"": [
+            {{ ""object.entity"": {{ ""name"": ""{c.Name}"", {declared}""children"": [
+                {{ ""source.rdb"": {{ ""@table"": ""t"" }} }},
+                {{ ""field.long"": {{ ""name"": ""id"" }} }},
+                {{ ""identity.primary"": {{ ""name"": ""pk"", ""@fields"": ""id"" }} }}
+            ] }} }} ] }} }}";
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(json, id: "seg.json")]);
+        Assert.Empty(r.Errors);
+        if (c.Pluralizer is not null) r.Root.PhysicalNaming = r.Root.PhysicalNaming with { Collections = c.Pluralizer };
+        Assert.Equal(c.Segment, CSharpNaming.RoutePath(r.Root.Objects().Single()));
+    }
+
     // ── rc.19 (R57): @collectionName, its deprecated alias, and the pluggable pluralizer ─────────
 
     private const string HistoryModel = """

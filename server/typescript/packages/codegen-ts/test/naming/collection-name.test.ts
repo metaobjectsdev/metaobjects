@@ -16,6 +16,7 @@ import { defineConfig } from "../../src/metaobjects-config.js";
 import { entityFile } from "../../src/generators/entity-file.js";
 import { queriesFile } from "../../src/generators/queries-file.js";
 import { routesFile } from "../../src/generators/routes-file.js";
+import { resourcePath } from "../../src/templates/entity-ui-descriptor.js";
 
 type Json = Record<string, unknown>;
 
@@ -105,6 +106,47 @@ describe("@collectionName", () => {
   });
 });
 
+// rc.19 fix round (I3): a project that configures nothing serves every object at its rc.18
+// segment — snake_case, then pluralize — so an acronym-ending name keeps `faqs`, never `fa_qs`.
+const acronyms = (attrs: Record<string, Json> = {}): Json => ({
+  "metadata.root": {
+    package: "acme",
+    children: ["FAQ", "TaxID", "PDF"].map((name) => ({ "object.entity": { name, ...(attrs[name] ?? {}), children: [
+      { "source.rdb": { "@table": name.toLowerCase() } },
+      { "field.long": { name: "id" } },
+      { "identity.primary": { "@fields": "id", "@generation": "increment" } },
+    ] } })),
+  },
+});
+
+async function loadAcronyms(attrs: Record<string, Json> = {}): Promise<MetaRoot> {
+  const res = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify(acronyms(attrs)), { id: "a.json", format: "json" })]);
+  expect(res.errors).toEqual([]);
+  return res.root;
+}
+
+describe("REST segments of a project that configures nothing (byte-identical to rc.18)", () => {
+  test("an acronym-ending name is snake_cased before it is pluralized", async () => {
+    const root = await loadAcronyms();
+    expect(root.objects().map((o) => resourcePath(o))).toEqual(["/faqs", "/tax_ids", "/pdfs"]);
+    const { files } = await gen(root);
+    const out = [...files.values()].join("\n");
+    for (const segment of ["faqs", "tax_ids", "pdfs"]) expect(out).toContain(`"/${segment}"`);
+    for (const broken of ["fa_qs", "tax_i_ds", "pd_fs"]) expect(out).not.toContain(broken);
+  });
+
+  test("a declared @collectionName is snake_cased with its plural suffix kept on the acronym", async () => {
+    const root = await loadAcronyms({ FAQ: { "@collectionName": "FAQs" }, TaxID: { "@collectionName": "TaxIDs" } });
+    expect(root.objects().map((o) => resourcePath(o))).toEqual(["/faqs", "/tax_ids", "/pdfs"]);
+  });
+
+  test("a configured pluralizer applies, and is snake_cased the same way", async () => {
+    const root = await loadAcronyms();
+    Object.assign(root, { physicalNaming: { ...root.physicalNaming, collections: "none" } });
+    expect(root.objects().map((o) => resourcePath(o))).toEqual(["/faq", "/tax_id", "/pdf"]);
+  });
+});
+
 describe("the pluggable pluralizer (naming.collections)", () => {
   test("the built-ins: standard and none", () => {
     expect(pluralizer("standard")("Category")).toBe("Categories");
@@ -119,11 +161,17 @@ describe("the pluggable pluralizer (naming.collections)", () => {
     expect(files.get("Case.queries.ts")!).toContain("export async function listCase(");
   });
 
-  test("an application registers its own", async () => {
-    registerPluralizer("latin", (n) => (n.endsWith("History") ? n.slice(0, -1) + "ies" : n + "s"));
+  test("an application registers its own, and every artifact follows it", async () => {
+    // Distinguishable from `standard` (CaseHistories) on purpose: a test whose pluralizer agrees
+    // with the default cannot tell the two apart.
+    registerPluralizer("latin", (n) => (n.endsWith("History") ? n.slice(0, -1) + "ae" : n + "a"));
     const root = await load();
     Object.assign(root, { physicalNaming: { ...root.physicalNaming, collections: "latin" } });
-    expect(collectionNameOf(history(root))).toBe("CaseHistories");
+    expect(collectionNameOf(history(root))).toBe("CaseHistorae");
+    expect(reverseHopName(history(root))).toBe("caseHistorae");
+    const { files } = await gen(root);
+    expect(files.get("CaseHistory.queries.ts")!).toContain("export async function listCaseHistorae(");
+    expect([...files.values()].join("\n")).toContain('"/case_historae"');
   });
 
   test("an unknown name fails loudly, naming the built-ins", () => {

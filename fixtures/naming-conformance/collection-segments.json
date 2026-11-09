@@ -1,0 +1,28 @@
+{
+  "_comment": "Cross-port REST collection segments (rc.19, R57; fix round I3). For each case, `segment` is the REST collection segment every port serves the object under, given its name, the @collectionName it declares (`collectionName`, absent when none) and the project's `naming.collections` (`pluralizer`, absent when none). With neither, the segment is the historical rule, byte-identical to rc.18: snake_case the name, then pluralize. A declared name, or a configured pluralizer's output over the name, is snake_cased with an acronym-aware split: a trailing plural `s`/`es` after a capital is a suffix, not a word (`FAQs` -> `faqs`, not `fa_qs`). Run by TypeScript (metadata/test/naming.test.ts) and C# (MetaObjects.Codegen.Tests/CSharpNamingTests.cs); Java, Kotlin and Python until #544-#549.",
+  "cases": [
+    { "name": "Author", "segment": "authors" },
+    { "name": "PostCategory", "segment": "post_categories" },
+    { "name": "Stats", "segment": "stats" },
+    { "name": "Analysis", "segment": "analysises", "note": "the cross-port rule has no -sis case; C#'s DbSet keeps its own (Analyses)" },
+    { "name": "FAQ", "segment": "faqs" },
+    { "name": "PDF", "segment": "pdfs" },
+    { "name": "TaxID", "segment": "tax_ids" },
+    { "name": "SKU", "segment": "skus" },
+    { "name": "SSN", "segment": "ssns" },
+    { "name": "PA", "segment": "pas" },
+    { "name": "URLHost", "segment": "url_hosts" },
+    { "name": "CaseHistory", "collectionName": "CaseHistory", "segment": "case_history" },
+    { "name": "Faq", "collectionName": "FAQs", "segment": "faqs" },
+    { "name": "TaxId", "collectionName": "TaxIDs", "segment": "tax_ids" },
+    { "name": "Box", "collectionName": "PDFBoxes", "segment": "pdf_boxes" },
+    { "name": "Queue", "collectionName": "queues", "segment": "queues" },
+    { "name": "FAQ", "pluralizer": "standard", "segment": "faqs" },
+    { "name": "TaxID", "pluralizer": "standard", "segment": "tax_ids" },
+    { "name": "PostCategory", "pluralizer": "standard", "segment": "post_categories" },
+    { "name": "Analysis", "pluralizer": "standard", "segment": "analysises" },
+    { "name": "FAQ", "pluralizer": "none", "segment": "faq" },
+    { "name": "TaxID", "pluralizer": "none", "segment": "tax_id" },
+    { "name": "Faq", "collectionName": "FAQs", "pluralizer": "none", "segment": "faqs", "note": "a declared name beats the configured pluralizer" }
+  ]
+}

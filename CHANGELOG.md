@@ -595,8 +595,13 @@ vocabulary; upgrade every port together.
   `namingStrategies.collections`; C# `NamingStrategies.RegisterPluralizer`); an unknown name is
   refused when the config is read. **`@dbSetName` is deprecated**: an alias of `@collectionName`
   for one release (codegen warns; declaring both is refused). Because it is now an alias, a
-  `@dbSetName` also renames that object's REST segment, TS exports and C# reverse finders. With
-  no pluralizer configured, C# DbSet names and every REST segment are unchanged. C#'s M:N route
+  `@dbSetName` also renames that object's REST segment, TS exports and C# reverse finders. The
+  REST segment is the declared name, else the configured pluralizer's output, snake_cased with an
+  acronym-aware split (a trailing plural `s` after a capital stays on the acronym: `FAQs` →
+  `faqs`, `TaxIDs` → `tax_ids`). With neither — no `@collectionName` and no `naming.collections`
+  — nothing moves: C# DbSet names are unchanged, and every REST segment is rc.18's (snake_case
+  the name, then pluralize: `FAQ` → `faqs`), byte-identical in both ports. Pinned by
+  `fixtures/naming-conformance/collection-segments.json`. C#'s M:N route
   joins now read the target's and junction's DbSet name instead of re-pluralizing. Pinned by
   `fixtures/conformance/object-collection-name`.
 - **A reference over a flattened value-object member** (rc.19 Phase 5, bug G6, reference half).

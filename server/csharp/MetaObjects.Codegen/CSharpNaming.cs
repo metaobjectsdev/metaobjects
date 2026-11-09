@@ -365,11 +365,10 @@ public static class CSharpNaming
     /// </para>
     /// </summary>
     public static string RoutePath(MetaObject entity) =>
-        // rc.19 (R57): a declared @collectionName, or a configured pluralizer, names the segment
-        // (snake_cased); otherwise the historical rule, byte-identical.
-        CollectionNames.Declared(entity) is not null || CollectionNames.ConfiguredPluralizer(entity) is not null
-            ? ToSnakeCase(CollectionNames.Of(entity))
-            : PluralizeCrossPort(ToSnakeCase(entity.Name));
+        // rc.19 (R57, fix round I3): a declared @collectionName, or a configured pluralizer, names
+        // the segment (snake_cased, acronym-aware); otherwise the historical rule, byte-identical.
+        // One rule with TypeScript: fixtures/naming-conformance/collection-segments.json.
+        CollectionNames.Segment(entity, name => PluralizeCrossPort(ToSnakeCase(name)));
 
     /// <summary>
     /// The DbSet property name for an object: its collection name (rc.19, R57) — its own
