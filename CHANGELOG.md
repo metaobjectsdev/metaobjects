@@ -544,7 +544,9 @@ vocabulary; upgrade every port together.
   **Upgrade note:** such a view's body changes, and it is re-proposed once as `replace-view`.
   An abstract level between the base and its concrete subtypes reads the rows of every concrete
   subtype beneath it (`<discriminator> IN (…)`), and a concrete subtype with concrete subtypes of
-  its own reads theirs too.
+  its own reads theirs too. **Not yet:** inside a multi-hop `origin.first @via`, only the `@of`
+  entity is scoped; an intermediate hop that lands on a TPH subtype is not, so the path can read
+  a sibling subtype's rows.
 - **A projection `@filter` reads a base-entity field the view does not output** (rc.19 Phase
   5, bug G7). `@filter: { deleted: false }` on a projection that exposes no `deleted` column
   lowers to `WHERE t.deleted = FALSE` on the base row; the loader refused it in TypeScript and C#
