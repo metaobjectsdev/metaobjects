@@ -5,6 +5,7 @@
 import type { MetaData } from "../../shared/meta-data.js";
 import { TYPE_FIELD } from "../../shared/base-types.js";
 import { refTarget } from "../../naming-refs.js";
+import { resolveColumnName, resolveFlattenedColumnName, type ColumnNamingStrategy } from "../../naming.js";
 import { FIELD_ATTR_OBJECT_REF, FIELD_ATTR_STORAGE, FIELD_SUBTYPE_OBJECT, STORAGE_FLATTENED } from "./field-constants.js";
 
 /** A flattened member path, resolved: the embedding field on the entity and the member on its value object. */
@@ -33,4 +34,22 @@ export function resolveFlattenedMember(entity: MetaData, path: string): Flattene
   if (vo === undefined) return undefined;
   const member = vo.children().find((c) => c.type === TYPE_FIELD && c.name === tail);
   return member === undefined ? undefined : { embedding, member };
+}
+
+/**
+ * G6 (reference half): the physical column a field PATH names on `entity` — a plain field
+ * (`countryId`, effective) or a flattened member (`address.countryId`, the embedding's prefix
+ * plus the member's column). An `identity.reference @fields` entry may be either, so every
+ * consumer of reference columns (view joins, `meta migrate`'s foreign keys) resolves through
+ * here. Undefined when the path names neither.
+ */
+export function resolveFieldPathColumn(
+  entity: MetaData,
+  path: string,
+  strategy?: ColumnNamingStrategy,
+): string | undefined {
+  const field = entity.children().find((c) => c.type === TYPE_FIELD && c.name === path);
+  if (field !== undefined) return resolveColumnName(field, strategy);
+  const flattened = resolveFlattenedMember(entity, path);
+  return flattened === undefined ? undefined : resolveFlattenedColumnName(flattened.embedding, flattened.member, strategy);
 }

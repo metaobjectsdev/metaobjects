@@ -59,6 +59,9 @@ public static class ReverseFinderBuilder
             var fkField = reference.Fields.Count > 0 ? reference.Fields[0] : null;
             var target = reference.TargetEntity;
             if (string.IsNullOrEmpty(fkField) || string.IsNullOrEmpty(target)) continue;
+            // G6: a reference over a flattened value-object member (`address.countryId`) is no
+            // property of the entity class, so it gets no finder (the EF foreign key still holds).
+            if (fkField!.Contains('.')) continue;
             var bound = global::MetaObjects.NamingRefs.RefTarget(reference, IDENTITY_REFERENCE_ATTR_REFERENCES) as MetaObject;
             result.Add(new ReverseFk(fkField!, bound?.Name ?? CSharpNaming.StripPkg(target!), bound,
                 reference.TargetFields.Count > 0 ? reference.TargetFields[0] : null));

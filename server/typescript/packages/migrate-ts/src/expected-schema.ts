@@ -68,6 +68,7 @@ import {
   DOC_ATTR_DESCRIPTION,
   applyColumnNamingStrategy, physicalNamingOf,
   resolveTableName, resolveColumnName, resolveFlattenedColumnPrefix, resolveTableSchema, resolveIndexName,
+  resolveFieldPathColumn,
   resolveEnumMaxLength,
   IDENTITY_ATTR_SEQUENCE_NAME,
   IDENTITY_ATTR_SEQUENCE_START,
@@ -1228,7 +1229,9 @@ function buildForeignKeys(
 
     const fkCols = fkFieldJsNames.map((jsName) => {
       const fkField = findField(holder, jsName);
-      return fkField ? resolveColumnName(fkField, strategy) : applyColumnNamingStrategy(jsName, strategy);
+      if (fkField) return resolveColumnName(fkField, strategy);
+      // G6: a reference over a flattened value-object member (`address.countryId`).
+      return resolveFieldPathColumn(holder, jsName, strategy) ?? applyColumnNamingStrategy(jsName, strategy);
     });
 
     // Target columns: prefer explicit multi-field dotted form, else delegate

@@ -525,8 +525,15 @@ vocabulary; upgrade every port together.
   `@from: Plan.address.city`, where `address` is a `field.object` with `@storage: flattened`,
   reads the owning table's `address_city` column (an empty `@flattenedColumnPrefix` reads the
   bare member column). The loader refused the path in TypeScript and C# ("no such field").
-  Pinned by `fixtures/conformance/origin-passthrough-flattened-member`. An `identity.reference`
-  whose `@fields` names a flattened member (`address.countryId`) is not covered yet.
+  Pinned by `fixtures/conformance/origin-passthrough-flattened-member`.
+- **A reference over a flattened value-object member** (rc.19 Phase 5, bug G6, reference half).
+  `identity.reference { @fields: address.countryId, @references: Country }` declares the foreign
+  key a flattened `Address` carries: a `@via` hop over it joins on `address_country_id`,
+  `meta migrate` puts the foreign key on that column, and C# configures it on the owned type
+  (`OwnsOne(x => x.Address).HasOne<Country>().WithMany().HasForeignKey(e => e.CountryId)`).
+  Neither port generates a reverse finder for such a reference. Fields spread over the entity and
+  a value object have no EF mapping; C# warns and configures none. Pinned by
+  `fixtures/conformance/reference-flattened-member`.
 - **An origin's `@via` walks the reverse of a reference** (rc.19 Phase 5, bug R-walk). A hop
   named by the referencing entity's collection name (`Patient.consents` for
   `Consent.patient`) walks that identity.reference backwards, to-many, with no relationship

@@ -59,6 +59,7 @@ import {
   OBJECT_SUBTYPE_PROJECTION,
   resolveFlattenedMember,
   resolveFlattenedColumnName,
+  resolveFieldPathColumn,
   isMetaRoot,
   resolveRelationshipReference,
   resolveObjectRef,
@@ -710,7 +711,11 @@ function baseColumnNameFor(
  */
 export function joinColumnFor(entity: MetaObject, fieldName: string, ctx: ExtractContext): string {
   const f = entity.fields().find((x) => x.name === fieldName);
-  return f ? sourceColumnNameFor(f, ctx) : columnNameFromField(fieldName, ctx.columnNamingStrategy);
+  if (f) return sourceColumnNameFor(f, ctx);
+  // G6: a reference over a flattened value-object member (`address.countryId`) joins on the
+  // member's prefixed column of the owning table.
+  return resolveFieldPathColumn(entity, fieldName, ctx.columnNamingStrategy)
+    ?? columnNameFromField(fieldName, ctx.columnNamingStrategy);
 }
 
 /** The physical column of an entity's primary-key field — the LEFT-JOIN phantom guard

@@ -130,6 +130,43 @@ public sealed class EfModelGapsTests
     private static IForeignKey ForeignKey(IEntityType t, params string[] props) =>
         Assert.Single(t.GetForeignKeys(), fk => fk.Properties.Select(p => p.Name).SequenceEqual(props));
 
+    // ── G6 (reference half): an identity.reference over a flattened value-object member ──────
+
+    private const string FlattenedReferenceModel = """
+    { "metadata.root": { "package": "acme", "children": [
+      { "object.entity": { "name": "Country", "children": [
+        { "source.rdb": { "@table": "countries" } },
+        { "field.long":   { "name": "id" } },
+        { "identity.primary": { "@fields": "id" } }
+      ]}},
+      { "object.value": { "name": "Address", "children": [
+        { "field.string": { "name": "city" } },
+        { "field.long":   { "name": "countryId" } }
+      ]}},
+      { "object.entity": { "name": "Plan", "children": [
+        { "source.rdb": { "@table": "plans" } },
+        { "field.long":   { "name": "id" } },
+        { "field.object": { "name": "address", "@objectRef": "Address", "@storage": "flattened" } },
+        { "identity.primary": { "@fields": "id" } },
+        { "identity.reference": { "name": "countryId", "@fields": "address.countryId", "@references": "Country",
+            "@onDelete": "restrict" } }
+      ]}}
+    ]}}
+    """;
+
+    [Fact]
+    public void A_reference_over_a_flattened_member_is_a_foreign_key_of_the_owned_type()
+    {
+        var gen = GeneratedEfModel.Compile(FlattenedReferenceModel, "Acme.FlatRef");
+        using var db = gen.ModelOnlyContext();
+        var address = EntityType(db, "Plan").FindNavigation("Address")!.TargetEntityType;
+        // The harness names columns `literal`: the prefix `address_`, then the member as written.
+        Assert.Equal("address_countryId", address.FindProperty("CountryId")!.GetColumnName());
+        var fk = Assert.Single(address.GetForeignKeys(), f => f.PrincipalEntityType.ClrType.Name == "Country");
+        Assert.Equal(new[] { "CountryId" }, fk.Properties.Select(p => p.Name));
+        Assert.Equal(DeleteBehavior.Restrict, fk.DeleteBehavior);
+    }
+
     [Fact]
     public void A_reference_carries_its_constraint_name_and_its_principal_key_into_the_model()
     {

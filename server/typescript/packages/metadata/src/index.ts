@@ -162,7 +162,7 @@ export type { IdentityPassthroughResolution } from "./core/identity/validate-ide
 // Relationship
 export { MetaRelationship } from "./core/relationship/meta-relationship.js";
 // Cross-entity reference lookup
-export { resolveFlattenedMember, type FlattenedMember } from "./core/field/flattened-member.js";
+export { resolveFlattenedMember, resolveFieldPathColumn, type FlattenedMember } from "./core/field/flattened-member.js";
 export {
   findReferenceBetween, findReferencesBetween, findReverseReferenceHops, reverseHopName,
   type ReverseReferenceHop,

@@ -1470,6 +1470,11 @@ public class DbContextGenerator : IGenerator
             return [];
         }
 
+        // G6: a reference whose fields are members of ONE flattened value object
+        // (`address.countryId`) is a foreign key of that owned type, configured on its builder.
+        if (fkFields.Any(f => f.Contains('.')))
+            return FlattenedMemberReferenceConfig(entity, reference, target, fkFields, ctx);
+
         var props = new List<string>(fkFields.Count);
         var isWriteThrough = entity.IsWriteThrough();
         foreach (var name in fkFields)
@@ -1490,6 +1495,34 @@ public class DbContextGenerator : IGenerator
 
         var actions = ReferentialActions.Resolve(entity, reference);
         return [$"        modelBuilder.Entity<{owner}>().HasOne<{CSharpNaming.Pascal(target.Name)}>()"
+             + $".WithMany().HasForeignKey({ForeignKeyExpression("e", props)})"
+             + PrincipalKeyCall(reference, target)
+             + $"{OnDeleteCall(entity, fkFields, actions.OnDelete, ctx)}"
+             + ConstraintNameCall(reference) + ";"];
+    }
+
+    /// <summary>
+    /// G6 (reference half): the relationship for a reference whose <c>@fields</c> are members of
+    /// one flattened value object. The member properties live on the owned type, so the foreign
+    /// key is configured on its builder, one statement:
+    /// <c>modelBuilder.Entity&lt;Plan&gt;().OwnsOne(x =&gt; x.Address).HasOne&lt;Country&gt;().WithMany().HasForeignKey(e =&gt; e.CountryId)</c>.
+    /// Fields spread over the entity and a value object, or over two value objects, have no EF
+    /// mapping: the run warns and configures none.
+    /// </summary>
+    private IEnumerable<string> FlattenedMemberReferenceConfig(
+        MetaObject entity, MetaReferenceIdentity reference, MetaObject target, IReadOnlyList<string> fkFields, GenContext ctx)
+    {
+        var members = fkFields.Select(f => FlattenedMembers.Resolve(entity, f)).ToList();
+        if (members.Any(m => m is null) || members.Select(m => m!.Embedding).Distinct().Count() != 1)
+        {
+            ctx.Warn($"{Name}: identity.reference \"{entity.Name}.{reference.Name}\" names fields that are not all members of one flattened value object ({string.Join(", ", fkFields)}); no foreign key is configured for it.");
+            return [];
+        }
+        var owner = CSharpNaming.Pascal(entity.Name);
+        var nav = PropertyName((MetaField)members[0]!.Embedding);
+        var props = members.Select(m => PropertyName((MetaField)m!.Member)).ToList();
+        var actions = ReferentialActions.Resolve(entity, reference);
+        return [$"        modelBuilder.Entity<{owner}>().OwnsOne(x => x.{nav}).HasOne<{CSharpNaming.Pascal(target.Name)}>()"
              + $".WithMany().HasForeignKey({ForeignKeyExpression("e", props)})"
              + PrincipalKeyCall(reference, target)
              + $"{OnDeleteCall(entity, fkFields, actions.OnDelete, ctx)}"
