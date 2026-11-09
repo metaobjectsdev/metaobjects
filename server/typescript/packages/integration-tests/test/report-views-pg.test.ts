@@ -209,7 +209,7 @@ describe("report views — canonical model on real Postgres", () => {
 
   test("JOIN TYPE: Week.fkProgram is a required belongs-to, so v_program_minutes joins programs INNER", () => {
     const body = viewSql(canonical, "v_program_minutes");
-    expect(body).toContain(`INNER JOIN "programs" p ON p."id" = w."programId"`);
+    expect(body).toContain(`INNER JOIN "public"."programs" p ON p."id" = w."programId"`);
     expect(body).not.toContain("LEFT OUTER JOIN");
   });
 
@@ -586,7 +586,7 @@ describe("report views — inline models on real Postgres", () => {
   test("JOIN TYPE: a NULLABLE @via FK lowers to LEFT OUTER JOIN, and a fact with a NULL FK lands in a NULL group", async () => {
     const root = await loadInline(FACT_MODEL);
     const body = viewSql(root, "v_facts_by_prog");
-    expect(body).toContain(`LEFT OUTER JOIN "progs"`);
+    expect(body).toContain(`LEFT OUTER JOIN "public"."progs"`);
     expect(body).not.toContain("INNER JOIN");
 
     const { expected, unmanagedNames } = await migrate(root);
@@ -603,7 +603,7 @@ describe("report views — inline models on real Postgres", () => {
   test("with @spine a fact whose reference is null is in no row", async () => {
     // The twin of the NULL-group test above: the same model and rows, with @spine added.
     const root = await loadInline(factModel({ "@spine": "Fact.fkProg" }));
-    expect(viewSql(root, "v_facts_by_prog")).toContain(`FROM "progs"`);
+    expect(viewSql(root, "v_facts_by_prog")).toContain(`FROM "public"."progs"`);
     const { expected, unmanagedNames } = await migrate(root);
     await assertConverged(expected, unmanagedNames);
 
@@ -633,9 +633,9 @@ describe("report views — inline models on real Postgres", () => {
   test("a two-hop spine: every program has a row, whether it has no weeks or only scoped-out sessions", async () => {
     const root = await loadInline(SESSION_MODEL);
     expect(viewSql(root, "v_sessions_by_program")).toContain([
-      `  FROM "programs" p`,
-      `  LEFT OUTER JOIN "weeks" w ON p."id" = w."programId"`,
-      `  LEFT OUTER JOIN "sessions" s ON w."id" = s."weekId" AND s."minutes" >= 10`,
+      `  FROM "public"."programs" p`,
+      `  LEFT OUTER JOIN "public"."weeks" w ON p."id" = w."programId"`,
+      `  LEFT OUTER JOIN "public"."sessions" s ON w."id" = s."weekId" AND s."minutes" >= 10`,
     ].join("\n"));
     const { expected, unmanagedNames } = await migrate(root);
     await assertConverged(expected, unmanagedNames);

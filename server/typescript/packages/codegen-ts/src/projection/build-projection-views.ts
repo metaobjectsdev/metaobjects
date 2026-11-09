@@ -87,6 +87,7 @@ export function buildProjectionViews(
   // one (#244). Keying by bare name let a cross-package same-name entity overwrite the map.
   const joinTables: Record<string, string> = {};
   for (const obj of root.objects()) joinTables[obj.resolutionKey()] = resolveTableName(obj);
+  const tableSchemas = tableSchemasOf(root);
 
   const out: ExpectedView[] = [];
   // A view-backed object.report satisfies isProjection (a read-only source, no writable one)
@@ -109,7 +110,7 @@ export function buildProjectionViews(
     // for the whole model). Codegen already treats this shape as intended in
     // projection-decl.ts ("standalone views hand-author their SQL").
     if (!viewIsDerived(projection)) continue;
-    emitViewFor(projection, root, joinTables, dialect, columnNamingStrategy, out);
+    emitViewFor(projection, root, joinTables, tableSchemas, dialect, columnNamingStrategy, out);
   }
 
   // #213 hole 2 — a write-through ENTITY (FR-024 §7 read-view: a writable table
@@ -131,12 +132,19 @@ export function buildProjectionViews(
       emitSqlView(entity, cls.source, root, joinTables, out);
       continue;
     }
-    emitViewFor(entity, root, joinTables, dialect, columnNamingStrategy, out);
+    emitViewFor(entity, root, joinTables, tableSchemas, dialect, columnNamingStrategy, out);
   }
 
   // FR-044 — the view of every view-backed object.report, appended AFTER the two loops
   // above so the views a report-free model returns keep their order.
   out.push(...buildReportViews(root, { dialect: opts.dialect }));
+  return out;
+}
+
+/** Every object's declared `@schema`, keyed like `joinTables` (FQN): Postgres qualifies each relation a view reads with it (ruling R54). */
+function tableSchemasOf(root: MetaRoot): Record<string, string | undefined> {
+  const out: Record<string, string | undefined> = {};
+  for (const obj of root.objects()) out[obj.resolutionKey()] = resolveTableSchema(obj);
   return out;
 }
 
@@ -166,6 +174,7 @@ export function buildReportViews(root: MetaData, opts: BuildReportViewsOptions):
   const columnNamingStrategy = physicalNamingOf(root).columns;
   const joinTables: Record<string, string> = {};
   for (const obj of root.objects()) joinTables[obj.resolutionKey()] = resolveTableName(obj);
+  const tableSchemas = tableSchemasOf(root);
 
   const out: ExpectedView[] = [];
   for (const report of root.objects().filter(isReport)) {
@@ -192,7 +201,7 @@ export function buildReportViews(root: MetaData, opts: BuildReportViewsOptions):
     const schema = resolveTableSchema(report);
     out.push({
       name: spec.viewName,
-      sql: emitReportViewDdl(spec, { dialect, baseTableName, joinTables, bodyOnly: true }),
+      sql: emitReportViewDdl(spec, { dialect, baseTableName, joinTables, tableSchemas, bodyOnly: true }),
       dependsOn: reportDependsOn(spec, baseTableName, joinTables),
       fqn: report.resolutionKey(),
       ...(schema !== undefined ? { schema } : {}),
@@ -260,6 +269,7 @@ function emitViewFor(
   host: MetaObject,
   root: MetaRoot,
   joinTables: Record<string, string>,
+  tableSchemas: Readonly<Record<string, string | undefined>>,
   dialect: "postgres" | "sqlite",
   columnNamingStrategy: ColumnNamingStrategy,
   out: ExpectedView[],
@@ -267,7 +277,7 @@ function emitViewFor(
   const spec = extractViewSpec(host, root, { columnNamingStrategy });
   const baseTableName = joinTables[spec.joinTree.baseEntity];
   if (!baseTableName) return; // unresolved base — skip (loader/codegen surface the error elsewhere)
-  const body = emitViewDdl(spec, { dialect, baseTableName, joinTables, bodyOnly: true });
+  const body = emitViewDdl(spec, { dialect, baseTableName, joinTables, tableSchemas, bodyOnly: true });
   const schema = resolveTableSchema(host);
   const dependsOn = collectDependsOn(spec, baseTableName, joinTables);
   out.push({

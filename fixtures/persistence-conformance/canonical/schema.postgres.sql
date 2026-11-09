@@ -201,8 +201,8 @@ CREATE VIEW "v_program" AS
     p.id AS id,
     p.title AS title,
     p.status AS status
-  FROM programs p;
-COMMENT ON VIEW "v_program" IS 'metaobjects:v1:sha256:0338b5e7329eb5d951e6d2311bde8d4c95d71204cac6aa895a903d7b7b5cbab4';
+  FROM public.programs p;
+COMMENT ON VIEW "v_program" IS 'metaobjects:v1:sha256:bdcf21c2927e6ce99f9f1bfb132410ff707844d2e76fc43d4eaa75a281304320';
 
 CREATE VIEW "v_program_stat" AS
   SELECT
@@ -212,10 +212,10 @@ CREATE VIEW "v_program_stat" AS
     AVG(w."durationMinutes") AS "avgMinutes",
     MIN(w."durationMinutes") AS "minMinutes",
     MAX(w."durationMinutes") AS "maxMinutes"
-  FROM programs p
-  LEFT OUTER JOIN weeks w ON w."programId" = p.id
+  FROM public.programs p
+  LEFT OUTER JOIN public.weeks w ON w."programId" = p.id
   GROUP BY p.id;
-COMMENT ON VIEW "v_program_stat" IS 'metaobjects:v1:sha256:9120c9f8899e257b52a087c4841b8e55f679d7f9c7a6e58d8823912855f2ab57';
+COMMENT ON VIEW "v_program_stat" IS 'metaobjects:v1:sha256:12483ef5897f7de4490be63b43088daa3074fa46a74658a38d081ff5cefb5afb';
 
 CREATE VIEW "v_program_minutes" AS
   SELECT
@@ -230,18 +230,18 @@ CREATE VIEW "v_program_minutes" AS
     MIN(w."durationMinutes") AS "minMinutes",
     MAX(w."durationMinutes") AS "maxMinutes",
     CAST(COUNT(w."id") FILTER (WHERE w."durationMinutes" >= 60) AS NUMERIC) / NULLIF(COUNT(w."id"), 0) AS "longShare"
-  FROM "weeks" w
-  INNER JOIN "programs" p ON p."id" = w."programId"
+  FROM "public"."weeks" w
+  INNER JOIN "public"."programs" p ON p."id" = w."programId"
   GROUP BY w."programId", p."title";
-COMMENT ON VIEW "v_program_minutes" IS 'metaobjects:v1:sha256:06b54e731e0221acab4b6e0a7cb7f5914662eff39af6ca57031a7df69cbbec93';
+COMMENT ON VIEW "v_program_minutes" IS 'metaobjects:v1:sha256:c01873678673d7d0aefdfba04c92c3774b39ada993ac6d3b36467da5a72b72d4';
 
 CREATE VIEW "v_fitness_totals" AS
   SELECT
     COUNT(w."id") AS "weeks",
     CAST(SUM(w."durationMinutes") AS BIGINT) AS "totalMinutes",
     CAST(COUNT(w."id") FILTER (WHERE w."durationMinutes" >= 60) AS NUMERIC) / NULLIF(COUNT(w."id"), 0) AS "longShare"
-  FROM "weeks" w;
-COMMENT ON VIEW "v_fitness_totals" IS 'metaobjects:v1:sha256:92ac554bcb44ee0bc7f3ddab40cf64c52fd964865dfe155104621babdd766e80';
+  FROM "public"."weeks" w;
+COMMENT ON VIEW "v_fitness_totals" IS 'metaobjects:v1:sha256:db0e59449b7748efd394cc5d62b66ce436ffd04f0ec21bfaa4ace3615312b5f6';
 
 CREATE VIEW "v_programs_by_month" AS
   SELECT
@@ -249,34 +249,34 @@ CREATE VIEW "v_programs_by_month" AS
     p."status" AS "status",
     COUNT(p."id") AS "programs",
     CAST(SUM(p."priceCents") FILTER (WHERE p."status" = 'PUBLISHED') AS BIGINT) AS "listValue"
-  FROM "programs" p
+  FROM "public"."programs" p
   GROUP BY CAST(date_trunc('month', p."created_ts") AS DATE), p."status";
-COMMENT ON VIEW "v_programs_by_month" IS 'metaobjects:v1:sha256:8310fbae2f38c07296f2c22297c5e83ef2fbd12faaed5f90bd4211dbc8b45935';
+COMMENT ON VIEW "v_programs_by_month" IS 'metaobjects:v1:sha256:e0da84ad916428142949728811a9b44e816e7868e8914a80527642bb76cb9c7e';
 
 CREATE VIEW "v_programs_by_week" AS
   SELECT
     CAST(date_trunc('week', p."created_ts") AS DATE) AS "createdAtWeek",
     COUNT(p."id") AS "programs"
-  FROM "programs" p
+  FROM "public"."programs" p
   WHERE p."status" = 'PUBLISHED'
   GROUP BY CAST(date_trunc('week', p."created_ts") AS DATE);
-COMMENT ON VIEW "v_programs_by_week" IS 'metaobjects:v1:sha256:656478aaf3e58443a6123f4f016bd61fbebfe2b0122175260155fb92d754e5ae';
+COMMENT ON VIEW "v_programs_by_week" IS 'metaobjects:v1:sha256:a85408eba413ddca3c43086ec938076708653d78aa317d38bbdef291dfdcaeb9';
 
 CREATE VIEW "v_recent_programs" AS
   SELECT
     COUNT(p."id") AS "programs"
-  FROM "programs" p
+  FROM "public"."programs" p
   WHERE p."created_ts" >= date_trunc('day', ((now() AT TIME ZONE 'UTC') - INTERVAL 'P30D'));
-COMMENT ON VIEW "v_recent_programs" IS 'metaobjects:v1:sha256:c003a47e4cfe2bde4be608547553408adbd261fb1b2ccadccaf523073d30aeb7';
+COMMENT ON VIEW "v_recent_programs" IS 'metaobjects:v1:sha256:f6c38fb0a0f11095c4d6919ce99917b99bca1f8e5d70b4aaf798e328d8c743ae';
 
 CREATE VIEW "v_asset_activity" AS
   SELECT
     date_trunc('hour', a."recordedAt", 'UTC') AS "recordedAtHour",
     CAST(date_trunc('week', CAST(a."asOfDate" AS TIMESTAMP)) AS DATE) AS "asOfDateWeek",
     COUNT(a."id") AS "assets"
-  FROM "assets" a
+  FROM "public"."assets" a
   GROUP BY date_trunc('hour', a."recordedAt", 'UTC'), CAST(date_trunc('week', CAST(a."asOfDate" AS TIMESTAMP)) AS DATE);
-COMMENT ON VIEW "v_asset_activity" IS 'metaobjects:v1:sha256:02b68a9ec0c67e11c6e505a47591c24e8dece737a46161549167c2cafece0a26';
+COMMENT ON VIEW "v_asset_activity" IS 'metaobjects:v1:sha256:0dcc9a2db52fc41318b40ec3008284c0153b521fbfc9c0e1e961ca30c589c7d1';
 
 CREATE VIEW "v_program_roster" AS
   SELECT
@@ -287,20 +287,20 @@ CREATE VIEW "v_program_roster" AS
     COALESCE(CAST(SUM(w."durationMinutes") AS BIGINT), 0) AS "totalMinutesOrZero",
     CAST(COUNT(w."id") FILTER (WHERE w."durationMinutes" >= 60) AS NUMERIC) / NULLIF(COUNT(w."id"), 0) AS "longShare",
     COALESCE(CAST(COUNT(w."id") FILTER (WHERE w."durationMinutes" >= 60) AS NUMERIC) / NULLIF(COUNT(w."id"), 0), 0) AS "longShareOrZero"
-  FROM "programs" p
-  LEFT OUTER JOIN "weeks" w ON p."id" = w."programId"
+  FROM "public"."programs" p
+  LEFT OUTER JOIN "public"."weeks" w ON p."id" = w."programId"
   GROUP BY p."id", p."title";
-COMMENT ON VIEW "v_program_roster" IS 'metaobjects:v1:sha256:7f6860157cb86898940ea877ae4874138a0053f1aa1f6e848e2b853ad6478b47';
+COMMENT ON VIEW "v_program_roster" IS 'metaobjects:v1:sha256:5026ac19e609655904473655c2cc3b3554bdbd902587de86aa9e7591afda7b9d';
 
 CREATE VIEW "v_program_long_weeks" AS
   SELECT
     p."id" AS "programKey",
     COUNT(w."id") AS "weeks",
     COALESCE(CAST(SUM(w."durationMinutes") AS BIGINT), 0) AS "totalMinutesOrZero"
-  FROM "programs" p
-  LEFT OUTER JOIN "weeks" w ON p."id" = w."programId" AND w."durationMinutes" >= 60
+  FROM "public"."programs" p
+  LEFT OUTER JOIN "public"."weeks" w ON p."id" = w."programId" AND w."durationMinutes" >= 60
   GROUP BY p."id";
-COMMENT ON VIEW "v_program_long_weeks" IS 'metaobjects:v1:sha256:f9eaf671509f579d4d4f0345947ff383c8192707d66b1fb24a2ece5580aaa86e';
+COMMENT ON VIEW "v_program_long_weeks" IS 'metaobjects:v1:sha256:d5dd66d6d10797db7c4c7c9790f5753c76188b09284219d236fa1f4e7b6452fd';
 
 CREATE VIEW "v_program_flags" AS
   SELECT
@@ -309,9 +309,9 @@ CREATE VIEW "v_program_flags" AS
     bool_or(w."deload") AS "anyDeload",
     bool_and(w."deload") AS "allDeload",
     bool_or(w."deload") FILTER (WHERE w."durationMinutes" >= 60) AS "anyLongDeload"
-  FROM "weeks" w
+  FROM "public"."weeks" w
   GROUP BY w."programId";
-COMMENT ON VIEW "v_program_flags" IS 'metaobjects:v1:sha256:ef0870b423472f2745be95f1ff25da1cc9cce58bd2ed3bc5927472378831643c';
+COMMENT ON VIEW "v_program_flags" IS 'metaobjects:v1:sha256:bb9b335999831a97395947d8134916f0a506d48ef88ace19fdf11806c155aeee';
 
 CREATE VIEW "v_program_flag_roster" AS
   SELECT
@@ -320,18 +320,18 @@ CREATE VIEW "v_program_flag_roster" AS
     bool_or(w."deload") AS "anyDeload",
     COALESCE(bool_or(w."deload"), FALSE) AS "anyDeloadOrFalse",
     COALESCE(bool_and(w."deload"), TRUE) AS "allDeloadOrTrue"
-  FROM "programs" p
-  LEFT OUTER JOIN "weeks" w ON p."id" = w."programId"
+  FROM "public"."programs" p
+  LEFT OUTER JOIN "public"."weeks" w ON p."id" = w."programId"
   GROUP BY p."id";
-COMMENT ON VIEW "v_program_flag_roster" IS 'metaobjects:v1:sha256:14db4d7e9e8d27fde23b5a60797ef8bf301aa8e7a080c29f4b63ce23211e16ce';
+COMMENT ON VIEW "v_program_flag_roster" IS 'metaobjects:v1:sha256:959f59f574f0b9208871c5901bebdb1dc8bb5a292a6857c6d3875d10ca66807b';
 
 CREATE VIEW "v_fitness_totals_filled" AS
   SELECT
     COUNT(w."id") AS "weeks",
     COALESCE(CAST(SUM(w."durationMinutes") AS BIGINT), 0) AS "totalMinutesOrZero",
     COALESCE(CAST(COUNT(w."id") FILTER (WHERE w."durationMinutes" >= 60) AS NUMERIC) / NULLIF(COUNT(w."id"), 0), 0) AS "longShareOrZero"
-  FROM "weeks" w;
-COMMENT ON VIEW "v_fitness_totals_filled" IS 'metaobjects:v1:sha256:b3ea9f392eb506a9d70ffa39f7b66e1e7f987b5913b0f3e74d0b84a4d6c299a9';
+  FROM "public"."weeks" w;
+COMMENT ON VIEW "v_fitness_totals_filled" IS 'metaobjects:v1:sha256:d0ed47ee7acf997006df82f4371f5a99c7f01cb737cf0d0bd9ba23a350cb79b9';
 
 CREATE VIEW "v_measurement_stats" AS
   SELECT
@@ -344,16 +344,16 @@ CREATE VIEW "v_measurement_stats" AS
     AVG(m."preciseKg") AS "avgPreciseKg",
     MAX(m."preciseKg") AS "maxPreciseKg",
     COUNT(m."id") FILTER (WHERE m."massKg" >= 10) AS "heavyReadings"
-  FROM "measurements" m;
-COMMENT ON VIEW "v_measurement_stats" IS 'metaobjects:v1:sha256:8e6d5c3fc357a038917d6df20153b9d066487e9fa692afd696d86b5062ce43be';
+  FROM "public"."measurements" m;
+COMMENT ON VIEW "v_measurement_stats" IS 'metaobjects:v1:sha256:83b7bc73a23e108037b214c5bdc0197174eeba35297cc795690bcbf3610b0a40';
 
 CREATE VIEW "v_measurement_stats_filled" AS
   SELECT
     COUNT(m."id") AS "readings",
     COALESCE(AVG(m."preciseKg"), -1) AS "avgPreciseKgOrMinusOne",
     COALESCE(MAX(m."preciseKg"), 0) AS "maxPreciseKgOrZero"
-  FROM "measurements" m;
-COMMENT ON VIEW "v_measurement_stats_filled" IS 'metaobjects:v1:sha256:56ba8806e78aa0d43b374454a9a7bfb0a2e0bb015f288a8281418d31b2be194a';
+  FROM "public"."measurements" m;
+COMMENT ON VIEW "v_measurement_stats_filled" IS 'metaobjects:v1:sha256:994916a65e099af002f5a6ba87389c1ff11d65dd54c2a906a44ccf9ea0ff6e76';
 
 CREATE VIEW "v_asset_days" AS
   SELECT
@@ -364,9 +364,9 @@ CREATE VIEW "v_asset_days" AS
     MIN(a."recordedAt") AS "firstRecorded",
     MAX(a."observedAt") AS "lastObserved",
     MAX(a."asOfDate") AS "lastAsOf"
-  FROM "assets" a
+  FROM "public"."assets" a
   GROUP BY CAST(date_trunc('day', a."recordedAt" AT TIME ZONE 'UTC') AS DATE), CAST(date_trunc('month', CAST(a."asOfDate" AS TIMESTAMP)) AS DATE);
-COMMENT ON VIEW "v_asset_days" IS 'metaobjects:v1:sha256:2ecfc341adfc2080203a284dcd646ae32ef609a69a0c3880788b5ffb049a2543';
+COMMENT ON VIEW "v_asset_days" IS 'metaobjects:v1:sha256:2f7d637316f0093d68b47db5cb578e0c3ca03ae3592068d91a9a934da903fc05';
 
 CREATE VIEW "v_all_types_breakdown" AS
   SELECT
@@ -381,10 +381,10 @@ CREATE VIEW "v_all_types_breakdown" AS
     MAX(a."moneyVal") AS "maxMoney",
     MIN(a."lVal") AS "minLong",
     COUNT(a."id") FILTER (WHERE a."enumVal" IN ('MEDIUM', 'HIGH')) AS "highRows"
-  FROM "all_types" a
+  FROM "public"."all_types" a
   WHERE (a."tsVal" < ((now() AT TIME ZONE 'UTC') - INTERVAL 'PT1H') AND a."iVal" <> 99)
   GROUP BY a."bVal", a."enumVal", a."intEnumVal", a."dateVal", a."uuidVal";
-COMMENT ON VIEW "v_all_types_breakdown" IS 'metaobjects:v1:sha256:beac13c76688e1dd5ae66845abecd41a8d2e434e3fbfe819494341cc7e473f0d';
+COMMENT ON VIEW "v_all_types_breakdown" IS 'metaobjects:v1:sha256:29d564111904744e2bc98d6982166e680d037ff59a612df2e39767967c9b4cc3';
 
 CREATE VIEW "v_programs_over_time" AS
   SELECT
@@ -395,9 +395,9 @@ CREATE VIEW "v_programs_over_time" AS
     AVG(p."priceCents") AS "avgPrice",
     MIN(p."priceCents") AS "cheapest",
     MAX(p."priceCents") AS "priciest"
-  FROM "programs" p
+  FROM "public"."programs" p
   GROUP BY CAST(date_trunc('day', p."created_ts") AS DATE), CAST(date_trunc('quarter', p."created_ts") AS DATE), CAST(date_trunc('year', p."created_ts") AS DATE);
-COMMENT ON VIEW "v_programs_over_time" IS 'metaobjects:v1:sha256:aadf4509dae744682a2cf21e7cc02fa2ebfce16b6dd2e391e53a3bb4e8c0df19';
+COMMENT ON VIEW "v_programs_over_time" IS 'metaobjects:v1:sha256:de7effe14846eaf7e71263b81b07978d66dc8039e2c446b553f859706178ef53';
 
 CREATE VIEW "v_live_intro_programs" AS
   SELECT
@@ -405,18 +405,18 @@ CREATE VIEW "v_live_intro_programs" AS
     COUNT(p."id") AS "programs",
     COUNT(p."id") FILTER (WHERE p."status" <> 'DRAFT') AS "notDrafts",
     CAST(SUM(p."priceCents") FILTER (WHERE p."status" = 'PUBLISHED') AS BIGINT) AS "listValue"
-  FROM "programs" p
+  FROM "public"."programs" p
   WHERE ((p."title" LIKE 'Intro%' OR p."priceCents" = 0) AND (p."status" IN ('DRAFT', 'PUBLISHED') AND p."priceCents" < 5000))
   GROUP BY p."status";
-COMMENT ON VIEW "v_live_intro_programs" IS 'metaobjects:v1:sha256:2f4ea71ca39cc90b5293ceb4e353efcf6a0be3e8bdf3a8f587895abfb861e5f7';
+COMMENT ON VIEW "v_live_intro_programs" IS 'metaobjects:v1:sha256:d98782a8b47b31cf919935ebe0b936c1c56c4cbc42afe7abb0aefe0b99e0b30f';
 
 CREATE VIEW "v_programs_empty_scope" AS
   SELECT
     COUNT(p."id") AS "programs",
     COALESCE(AVG(p."priceCents"), -1) AS "avgPriceOrMinusOne"
-  FROM "programs" p
+  FROM "public"."programs" p
   WHERE (p."status" IN ('DRAFT', 'PUBLISHED') AND p."priceCents" > 1000000);
-COMMENT ON VIEW "v_programs_empty_scope" IS 'metaobjects:v1:sha256:b0d7aa6674edaf37d83feeac3fae8b5e7571637cd91ba2c7ef25125e78b1378b';
+COMMENT ON VIEW "v_programs_empty_scope" IS 'metaobjects:v1:sha256:428ecbdefdf33f34cd0f7dda9991a0ca0ff2ac3771e801c399f2237278a94ef2';
 
 CREATE VIEW "v_week_shapes" AS
   SELECT
@@ -427,10 +427,10 @@ CREATE VIEW "v_week_shapes" AS
     COUNT(w."id") FILTER (WHERE w."durationMinutes" < 30) AS "shortWeeks",
     COUNT(w."id") FILTER (WHERE (w."durationMinutes" > 30 AND w."durationMinutes" <= 60)) AS "midWeeks",
     CAST(SUM(w."durationMinutes") FILTER (WHERE (w."durationMinutes" >= 60 AND w."label" LIKE 'W%')) AS BIGINT) AS "longWMinutes"
-  FROM "weeks" w
-  INNER JOIN "programs" p ON p."id" = w."programId"
+  FROM "public"."weeks" w
+  INNER JOIN "public"."programs" p ON p."id" = w."programId"
   GROUP BY p."title";
-COMMENT ON VIEW "v_week_shapes" IS 'metaobjects:v1:sha256:d45ae0c03233df8ba4109d7c45a132e60185a96aaacdefe6e61de445286f6840';
+COMMENT ON VIEW "v_week_shapes" IS 'metaobjects:v1:sha256:a381a49f83dc4b49932261fa357f46c1e59e915e9a1c5cee6a9744130fc970c4';
 
 CREATE VIEW "v_sessions_by_program" AS
   SELECT
@@ -438,11 +438,11 @@ CREATE VIEW "v_sessions_by_program" AS
     w."id" AS "weekKey",
     COUNT(s."id") AS "sessions",
     CAST(SUM(s."minutes") AS BIGINT) AS "sessionMinutes"
-  FROM "sessions" s
-  INNER JOIN "weeks" w ON w."id" = s."weekId"
-  INNER JOIN "programs" p ON p."id" = w."programId"
+  FROM "public"."sessions" s
+  INNER JOIN "public"."weeks" w ON w."id" = s."weekId"
+  INNER JOIN "public"."programs" p ON p."id" = w."programId"
   GROUP BY p."title", w."id";
-COMMENT ON VIEW "v_sessions_by_program" IS 'metaobjects:v1:sha256:2df2051342861240b2ddc4d2d1cbdab012a4a255f0191c35a863b9cfa5754e14';
+COMMENT ON VIEW "v_sessions_by_program" IS 'metaobjects:v1:sha256:b8e27c5f4e4031a174f2d2e88dfc089290a81050102077f9ff27d45a35a53804';
 
 CREATE VIEW "v_program_sessions" AS
   SELECT
@@ -451,39 +451,39 @@ CREATE VIEW "v_program_sessions" AS
     COUNT(s."id") AS "sessions",
     CAST(SUM(s."minutes") AS BIGINT) AS "sessionMinutes",
     COALESCE(CAST(SUM(s."minutes") AS BIGINT), 0) AS "sessionMinutesOrZero"
-  FROM "programs" p
-  LEFT OUTER JOIN "weeks" w ON p."id" = w."programId"
-  LEFT OUTER JOIN "sessions" s ON w."id" = s."weekId"
+  FROM "public"."programs" p
+  LEFT OUTER JOIN "public"."weeks" w ON p."id" = w."programId"
+  LEFT OUTER JOIN "public"."sessions" s ON w."id" = s."weekId"
   GROUP BY p."id", p."title";
-COMMENT ON VIEW "v_program_sessions" IS 'metaobjects:v1:sha256:b6ecd744d937fc2cb0da4067281d062c060d06561f024640beb2bb3ca735bf4f';
+COMMENT ON VIEW "v_program_sessions" IS 'metaobjects:v1:sha256:55eae9cb44e2021d4f4efd9af5a7cfbbdc41afed1d175768208aec98c403445e';
 
 CREATE VIEW "v_nodes_by_parent" AS
   SELECT
     n0."label" AS "parentLabel",
     COUNT(n."id") AS "nodes"
-  FROM "nodes" n
-  LEFT OUTER JOIN "nodes" n0 ON n0."id" = n."parentId"
+  FROM "public"."nodes" n
+  LEFT OUTER JOIN "public"."nodes" n0 ON n0."id" = n."parentId"
   GROUP BY n0."label";
-COMMENT ON VIEW "v_nodes_by_parent" IS 'metaobjects:v1:sha256:a39a2061d1b52009c0f930de6c443430e8987501cbe40d03bebd5fe583864591';
+COMMENT ON VIEW "v_nodes_by_parent" IS 'metaobjects:v1:sha256:4abb4c3b57c3d9148d127b6f9efe0aba9709a57fbfc1ab7c962e9a5c0806bdfe';
 
 CREATE VIEW "v_auths_by_kind" AS
   SELECT
     a."type" AS "kind",
     COUNT(a."id") AS "auths",
     COUNT(DISTINCT a."reference") AS "distinctRefs"
-  FROM "auths" a
+  FROM "public"."auths" a
   WHERE a."type" <> 'PriorAuth'
   GROUP BY a."type";
-COMMENT ON VIEW "v_auths_by_kind" IS 'metaobjects:v1:sha256:600fcf3a54c8a8f51b2771850689073c7715193fe2528cd7af77bc2e97d22168';
+COMMENT ON VIEW "v_auths_by_kind" IS 'metaobjects:v1:sha256:1c8464289f36afaa7132f22c64ba8e5c5d529d4866cc27bc57b01b148dbbffbd';
 
 CREATE VIEW "v_gadget_events_by_label" AS
   SELECT
     g0."gadget_code" AS "gadgetLabel",
     COUNT(g."id") AS "gadgetEvents"
-  FROM "gadget_events" g
-  INNER JOIN "gadgets" g0 ON g0."id" = g."gadgetId"
+  FROM "public"."gadget_events" g
+  INNER JOIN "public"."gadgets" g0 ON g0."id" = g."gadgetId"
   GROUP BY g0."gadget_code";
-COMMENT ON VIEW "v_gadget_events_by_label" IS 'metaobjects:v1:sha256:ce353e347259448fb4055d7b20cb3de6210ce157c6824d3ab2b0b2dba661cc82';
+COMMENT ON VIEW "v_gadget_events_by_label" IS 'metaobjects:v1:sha256:9a257f4be8c2e229f8301e99778e83389ca2b3e9eb83cefed3843bb845d511ef';
 
 CREATE VIEW "v_entry_totals" AS
   SELECT
@@ -495,6 +495,6 @@ CREATE VIEW "v_entry_totals" AS
     MAX(e."amount") AS "top",
     CAST(COUNT(e."id") FILTER (WHERE e."flagged" = TRUE) AS NUMERIC) / NULLIF(COUNT(e."id"), 0) AS "flaggedShare",
     CAST(COUNT(e."id") AS NUMERIC) / NULLIF(COUNT(e."id") FILTER (WHERE e."flagged" = TRUE), 0) AS "perFlagged"
-  FROM "entries" e
+  FROM "public"."entries" e
   GROUP BY e."bucket";
-COMMENT ON VIEW "v_entry_totals" IS 'metaobjects:v1:sha256:5290cebc2ffad56830125b30824ac07830ca635415bddc97572e015f77d51be9';
+COMMENT ON VIEW "v_entry_totals" IS 'metaobjects:v1:sha256:f13c37d09d49fa968e94524c252f1383efbc7b159f60428e5e8347b966cd6a33';

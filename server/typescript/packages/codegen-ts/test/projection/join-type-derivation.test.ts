@@ -48,8 +48,8 @@ describe("#209 — belongs-to join type derived from FK optionality", () => {
   test("required FK → INNER JOIN (not LEFT OUTER)", async () => {
     const root = await load(belongsToModel(true));
     const [v] = buildProjectionViews(root, { dialect: "postgres" });
-    expect(v!.sql).toContain("INNER JOIN customers");
-    expect(v!.sql).not.toContain("LEFT OUTER JOIN customers");
+    expect(v!.sql).toContain("INNER JOIN public.customers");
+    expect(v!.sql).not.toContain("LEFT OUTER JOIN public.customers");
   });
 
   // `@enforce: false` removes the FK constraint, not the INNER join. An unenforced required
@@ -59,15 +59,15 @@ describe("#209 — belongs-to join type derived from FK optionality", () => {
   test("required but UNENFORCED FK → INNER JOIN (reproduces the hand-written view)", async () => {
     const root = await load(belongsToModel(true, false));
     const [v] = buildProjectionViews(root, { dialect: "postgres" });
-    expect(v!.sql).toContain("INNER JOIN customers");
-    expect(v!.sql).not.toContain("LEFT OUTER JOIN customers");
+    expect(v!.sql).toContain("INNER JOIN public.customers");
+    expect(v!.sql).not.toContain("LEFT OUTER JOIN public.customers");
   });
 
   test("nullable FK → LEFT OUTER JOIN (preserved)", async () => {
     const root = await load(belongsToModel(false));
     const [v] = buildProjectionViews(root, { dialect: "postgres" });
-    expect(v!.sql).toContain("LEFT OUTER JOIN customers");
-    expect(v!.sql).not.toContain("INNER JOIN customers");
+    expect(v!.sql).toContain("LEFT OUTER JOIN public.customers");
+    expect(v!.sql).not.toContain("INNER JOIN public.customers");
   });
 });
 
@@ -112,9 +112,9 @@ describe("#209 — nested join chain: an INNER hop under a LEFT ancestor demotes
     const root = await load(nestedModel(false));
     const [v] = buildProjectionViews(root, { dialect: "postgres" });
     // Both joins LEFT OUTER — an order with no customer must survive with NULLs, not
-    // be dropped by an INNER JOIN countries whose ON references a NULLed customer col.
-    expect(v!.sql).toContain("LEFT OUTER JOIN customers");
-    expect(v!.sql).toContain("LEFT OUTER JOIN countries");
+    // be dropped by an INNER JOIN public.countries whose ON references a NULLed customer col.
+    expect(v!.sql).toContain("LEFT OUTER JOIN public.customers");
+    expect(v!.sql).toContain("LEFT OUTER JOIN public.countries");
     expect(v!.sql).not.toContain("INNER JOIN");
   });
 
@@ -122,8 +122,8 @@ describe("#209 — nested join chain: an INNER hop under a LEFT ancestor demotes
     const root = await load(nestedModel(true));
     const [v] = buildProjectionViews(root, { dialect: "postgres" });
     // Order→Customer required + Customer→Country required → both INNER (no base row lost).
-    expect(v!.sql).toContain("INNER JOIN customers");
-    expect(v!.sql).toContain("INNER JOIN countries");
+    expect(v!.sql).toContain("INNER JOIN public.customers");
+    expect(v!.sql).toContain("INNER JOIN public.countries");
     expect(v!.sql).not.toContain("LEFT OUTER JOIN");
   });
 });
@@ -155,7 +155,7 @@ describe("#209 — has-many (inverse-FK) join stays LEFT OUTER", () => {
       ] } },
     ]);
     const [v] = buildProjectionViews(root, { dialect: "postgres" });
-    expect(v!.sql).toContain("LEFT OUTER JOIN weeks");
-    expect(v!.sql).not.toContain("INNER JOIN weeks");
+    expect(v!.sql).toContain("LEFT OUTER JOIN public.weeks");
+    expect(v!.sql).not.toContain("INNER JOIN public.weeks");
   });
 });

@@ -48,13 +48,13 @@ describe("#213 — write-through entity emits its replica view", () => {
   test("the SELECT is o.* (stored fields from the base) + the derived join column", async () => {
     const views = buildProjectionViews(await loadWriteThroughOrder(), { dialect: "postgres" });
     const sql = views.find((x) => x.name === "v_order_with_customer")!.sql;
-    expect(sql).toContain("FROM orders");
+    expect(sql).toContain("FROM public.orders");
     // stored fields project from the base alias
     expect(sql).toMatch(/\bid AS id\b/);
     expect(sql).toMatch(/customer_id AS customer_id/);
     // the derived extra projects from the joined customers table
     expect(sql).toContain("name AS customer_name");
-    expect(sql).toContain("JOIN customers");
+    expect(sql).toContain("JOIN public.customers");
   });
 
   test("the derived column does NOT project from the base (it is the joined value)", async () => {

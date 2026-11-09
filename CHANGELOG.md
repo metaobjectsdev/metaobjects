@@ -269,6 +269,14 @@ vocabulary; upgrade every port together.
 
 ### Changed
 
+- **Postgres view SQL qualifies every relation it reads** (ruling R54). A generated projection,
+  write-through or report view names each table as `<@schema>.<table>`, `public` when no
+  `@schema` is declared, in its `FROM`, every `JOIN` and every `origin.first` subquery. A bare
+  name bound through the `search_path` current at `CREATE VIEW`, so a view in another schema
+  over a same-named table could read the wrong one. SQLite and D1 stay bare; `@sql` bodies are
+  verbatim and untouched. **Upgrade note:** every generated Postgres view's body, and so its
+  fingerprint, changes once: the next `meta migrate` proposes a `replace-view` for each, with
+  the same columns and rows.
 - **Breaking, CLI: `meta types --format json` carries `implementedIn` in place of `tsOnly`.** Each
   row and attr names the ports that implement it so far (`"implementedIn": ["typescript"]`), and a
   port-scoped attr carries `ports`; `tsOnly` is gone, because the vocabulary it marked is now

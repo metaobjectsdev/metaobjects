@@ -27,7 +27,7 @@ describe("#207 — view-level @filter lowers to an outer WHERE", () => {
   test("no where clause → no WHERE emitted (byte-identical to before)", () => {
     const sql = emitViewDdl(baseSpec(undefined), OPTS);
     expect(sql).not.toContain("WHERE");
-    expect(sql).toContain("FROM orders o");
+    expect(sql).toContain("FROM public.orders o");
   });
 
   test("a simple eq predicate renders WHERE after FROM", () => {

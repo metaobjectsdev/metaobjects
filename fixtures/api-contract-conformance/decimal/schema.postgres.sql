@@ -27,6 +27,6 @@ CREATE VIEW "v_entry_totals" AS
     MAX(e."amount") AS "top",
     CAST(COUNT(e."id") FILTER (WHERE e."flagged" = TRUE) AS NUMERIC) / NULLIF(COUNT(e."id"), 0) AS "flaggedShare",
     CAST(COUNT(e."id") AS NUMERIC) / NULLIF(COUNT(e."id") FILTER (WHERE e."flagged" = TRUE), 0) AS "perFlagged"
-  FROM "entries" e
+  FROM "public"."entries" e
   GROUP BY e."bucket";
-COMMENT ON VIEW "v_entry_totals" IS 'metaobjects:v1:sha256:5290cebc2ffad56830125b30824ac07830ca635415bddc97572e015f77d51be9';
+COMMENT ON VIEW "v_entry_totals" IS 'metaobjects:v1:sha256:f13c37d09d49fa968e94524c252f1383efbc7b159f60428e5e8347b966cd6a33';

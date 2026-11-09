@@ -81,7 +81,7 @@ describe("buildProjectionViews — package-qualified @from + inherited source fi
     expect(v.sql).toContain("id AS id");
     expect(v.sql).toContain("raw_title AS title");
     expect(v.sql).toContain("created_at AS created_at");
-    expect(v.sql).toContain("FROM programs");
+    expect(v.sql).toContain("FROM public.programs");
   });
 });
 
@@ -140,7 +140,7 @@ describe("buildProjectionViews — scoped aggregate (origin.aggregate @filter)",
     const [v] = buildProjectionViews(root, { dialect: "postgres" });
     expect(v!.sql).toContain("COUNT(DISTINCT");          // plain count still emits
     expect(v!.sql).toMatch(/MAX\([a-z0-9]+\.ordinal\) FILTER \(WHERE [a-z0-9]+\.status = 'active'\) AS active_max/);
-    expect(v!.sql).toContain("LEFT OUTER JOIN weeks");   // inverse-FK join present
+    expect(v!.sql).toContain("LEFT OUTER JOIN public.weeks");   // inverse-FK join present
   });
 
   test("scalar filter desugars to eq (status: 'active')", async () => {
@@ -204,7 +204,7 @@ describe("buildProjectionViews — package-qualified relationship @objectRef", (
   test("qualified @objectRef still resolves the inverse-FK join + aggregate", async () => {
     const root = await load(model);
     const [v] = buildProjectionViews(root, { dialect: "postgres" });
-    expect(v!.sql).toContain("LEFT OUTER JOIN weeks"); // join present, not dropped
+    expect(v!.sql).toContain("LEFT OUTER JOIN public.weeks"); // join present, not dropped
     expect(v!.sql).toContain("COUNT(DISTINCT");        // aggregate emitted, not degraded away
     expect(v!.sql).toMatch(/COUNT\(DISTINCT [a-z0-9]+\.id\) AS week_count/);
   });
@@ -334,7 +334,7 @@ describe("buildReportViews — view-backed reports (FR-044 Plan 2, Table A)", ()
     const v = views[0]!;
     expect(v.fqn).toBe("acme::shop::StoreTotals");
     expect(v.dependsOn).toEqual(["purchases"]);
-    expect(v.sql).toContain("FROM \"purchases\" p");
+    expect(v.sql).toContain("FROM \"public\".\"purchases\" p");
     expect(v.sql).toContain('COUNT(p."id") FILTER (WHERE p."status" = \'active\') AS "purchases"');
     expect(v.sql).not.toContain("CREATE VIEW");
   });
@@ -402,7 +402,7 @@ describe("buildReportViews — view-backed reports (FR-044 Plan 2, Table A)", ()
     const root = await loadModel(replicaFirst({ "@unmanaged": true }));
     const views = buildReportViews(root, PG);
     expect(views.map((v) => v.name)).toEqual(["v_store_totals"]);
-    expect(views[0]!.sql).toContain('FROM "purchases" p');
+    expect(views[0]!.sql).toContain('FROM "public"."purchases" p');
   });
 
   test("a replica declared before the primary, with @sql: the primary is derived and named, not the replica's body", async () => {
@@ -410,7 +410,7 @@ describe("buildReportViews — view-backed reports (FR-044 Plan 2, Table A)", ()
     const views = buildReportViews(root, PG);
     expect(views.map((v) => v.name)).toEqual(["v_store_totals"]);
     expect(views[0]!.sql).not.toContain("SELECT 1 AS purchases");
-    expect(views[0]!.sql).toContain('FROM "purchases" p');
+    expect(views[0]!.sql).toContain('FROM "public"."purchases" p');
   });
 
   test("a primary that is @unmanaged is skipped even when a managed replica is declared first", async () => {

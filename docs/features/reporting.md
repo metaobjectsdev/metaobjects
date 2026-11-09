@@ -409,13 +409,13 @@ Every other join of a `@spine` report is `LEFT OUTER` too, so no join can drop a
     COUNT(p."id") FILTER (WHERE p."status" = 'active') AS "purchases",
     COALESCE(CAST(SUM(p."amountCents") FILTER (WHERE p."status" = 'active') AS BIGINT), 0) AS "revenue",
     CAST(COALESCE(CAST(SUM(p."amountCents") FILTER (WHERE p."status" = 'active') AS BIGINT), 0) AS NUMERIC) / NULLIF(COUNT(DISTINCT p."customerEmail"), 0) AS "revenuePerBuyer"
-  FROM "programs" p0
-  LEFT OUTER JOIN "purchases" p ON p0."id" = p."programId"
+  FROM "public"."programs" p0
+  LEFT OUTER JOIN "public"."purchases" p ON p0."id" = p."programId"
   GROUP BY p0."id", p0."title"
 ```
 
 With `"@segment": "active"` on the report, the join would read
-`LEFT OUTER JOIN "purchases" p ON p0."id" = p."programId" AND p."status" = 'active'`. The
+`LEFT OUTER JOIN "public"."purchases" p ON p0."id" = p."programId" AND p."status" = 'active'`. The
 aliases are the ones the same report would get without `@spine`.
 
 `meta migrate` refuses a derived `@spine` report, naming the report and the spine, when:

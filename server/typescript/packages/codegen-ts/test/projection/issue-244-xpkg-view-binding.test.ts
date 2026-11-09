@@ -58,7 +58,7 @@ describe("#244 — FQN @from/@via in a projection binds the qualified package's 
       expect(view).toBeDefined();
       // The join + dependency must be the acme::core Customer table.
       expect(view!.sql).toContain("customer_tier");
-      expect(view!.sql).toContain("JOIN customer ");
+      expect(view!.sql).toContain("JOIN public.customer ");
       expect(view!.sql).not.toContain("reporting_customer");
       expect(view!.dependsOn).toContain("customer");
       expect(view!.dependsOn).not.toContain("reporting_customer");

@@ -1,3 +1,4 @@
+import { DEFAULT_DB_SCHEMA_POSTGRES } from "@metaobjectsdev/metadata";
 import type {
   JoinNode, ViewSpec, ViewFilterClause, ViewExprNode, ViewOrderKey, SelectColumn,
 } from "./view-spec.js";
@@ -27,11 +28,29 @@ export interface EmitOptions {
   /** Map from entity name → table name for every entity referenced in joins. */
   readonly joinTables: Readonly<Record<string, string>>;
   /**
+   * Map from entity name (the `joinTables` keys, the base entity included) → its declared
+   * `@schema`. Postgres only (ruling R54): every relation a view reads is schema-qualified,
+   * with its declared schema or, absent one, `public` — a bare name binds through the
+   * `search_path` current when the view is created, so `reporting.programs` over a bare
+   * `programs` is one `search_path` away from reading itself. SQLite/D1 stay bare.
+   */
+  readonly tableSchemas?: Readonly<Record<string, string | undefined>>;
+  /**
    * When true, return only the view BODY (`SELECT … FROM …`, no `CREATE VIEW … AS`
    * wrapper, no trailing `;`). This is what migrate-ts's expected-schema/diff layer
    * consumes (it re-wraps the body); the full statement is for direct application.
    */
   readonly bodyOnly?: boolean;
+}
+
+/**
+ * A relation a view reads, as the FROM / JOIN / subquery names it. Postgres qualifies
+ * every one (ruling R54): `@schema`, else `public`. SQLite/D1 have no schemas here.
+ */
+export function viewRelation(entity: string, table: string, options: EmitOptions): string {
+  if (options.dialect !== "postgres") return quoteIfNeeded(table);
+  const schema = options.tableSchemas?.[entity] ?? DEFAULT_DB_SCHEMA_POSTGRES;
+  return `${quoteIfNeeded(schema)}.${quoteIfNeeded(table)}`;
 }
 
 /** SQL literal for a filter value, dialect-aware for booleans. */
@@ -141,7 +160,7 @@ function renderFirst(
     ? `${renderOrderKeys(c.orderBy, c.childAlias)}, ${tieBreak}`
     : tieBreak;
   return (
-    `(SELECT ${of} FROM ${quoteIfNeeded(childTable)} ${c.childAlias}` +
+    `(SELECT ${of} FROM ${viewRelation(c.childEntity, childTable, options)} ${c.childAlias}` +
     ` WHERE ${correlation}${filterClause} ORDER BY ${orderKeys} LIMIT 1) AS ${quoteIfNeeded(c.dbColAlias)}`
   );
 }
@@ -357,7 +376,7 @@ function renderJoin(
   // #209 — join type derived from FK optionality (extract-view-spec): a required
   // belongs-to FK → INNER (matches the hand-written INNER-join view); else LEFT OUTER.
   const joinKw = node.joinType === "inner" ? "INNER JOIN" : "LEFT OUTER JOIN";
-  let sql = `  ${joinKw} ${quoteIfNeeded(table)} ${childAlias} ON ${onClause}`;
+  let sql = `  ${joinKw} ${viewRelation(node.targetEntity, table, options)} ${childAlias} ON ${onClause}`;
   for (const childJoin of node.children) {
     sql += "\n" + renderJoin(childJoin, childAlias, options);
   }
@@ -368,7 +387,7 @@ export function emitViewDdl(spec: ViewSpec, options: EmitOptions): string {
   const cols = spec.selectSpec.columns
     .map((c) => "    " + renderColumn(c, options, spec.joinTree.baseAlias))
     .join(",\n");
-  const fromClause = `  FROM ${quoteIfNeeded(options.baseTableName)} ${spec.joinTree.baseAlias}`;
+  const fromClause = `  FROM ${viewRelation(spec.joinTree.baseEntity, options.baseTableName, options)} ${spec.joinTree.baseAlias}`;
   const joinsClause = spec.joinTree.joins
     .map((j) => renderJoin(j, spec.joinTree.baseAlias, options))
     .join("\n");

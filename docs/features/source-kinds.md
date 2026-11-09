@@ -147,6 +147,12 @@ set operation) blocks projection authoring — then carry that body in the `sour
 which keeps it tool-managed (registered, fingerprinted, drift-checked) instead of
 accidentally-unmanaged in a hand-edited migration file.
 
+On Postgres every relation a generated view reads is **schema-qualified**: its `@schema`, or
+`public` when none is declared (`FROM public.orders o`, `JOIN crm.customers c`; ruling R54). A
+bare name binds through the `search_path` current when the view is created, so a view in
+`reporting` over a bare `orders` is one `search_path` away from reading a `reporting.orders`.
+SQLite and D1 have no schemas there and stay bare. A report view follows the same rule.
+
 ```json
 {
   "object.projection": {

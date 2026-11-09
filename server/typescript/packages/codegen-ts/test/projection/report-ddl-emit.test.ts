@@ -95,8 +95,8 @@ describe("emitReportViewDdl — Table G v_program_minutes", () => {
       `    MIN(w."durationMinutes") AS "minMinutes",`,
       `    MAX(w."durationMinutes") AS "maxMinutes",`,
       `    CAST(COUNT(w."id") FILTER (WHERE w."durationMinutes" >= 60) AS NUMERIC) / NULLIF(COUNT(w."id"), 0) AS "longShare"`,
-      `  FROM "weeks" w`,
-      `  INNER JOIN "programs" p ON p."id" = w."programId"`,
+      `  FROM "public"."weeks" w`,
+      `  INNER JOIN "public"."programs" p ON p."id" = w."programId"`,
       `  GROUP BY w."programId", p."title"`,
     ));
   });
@@ -224,7 +224,7 @@ describe("emitReportViewDdl — Table G, remaining Postgres bodies", () => {
       `    COUNT(w."id") AS "weeks",`,
       `    CAST(SUM(w."durationMinutes") AS BIGINT) AS "totalMinutes",`,
       `    CAST(COUNT(w."id") FILTER (WHERE w."durationMinutes" >= 60) AS NUMERIC) / NULLIF(COUNT(w."id"), 0) AS "longShare"`,
-      `  FROM "weeks" w`,
+      `  FROM "public"."weeks" w`,
     ));
   });
 
@@ -235,7 +235,7 @@ describe("emitReportViewDdl — Table G, remaining Postgres bodies", () => {
       `    p."status" AS "status",`,
       `    COUNT(p."id") AS "programs",`,
       `    CAST(SUM(p."priceCents") FILTER (WHERE p."status" = 'PUBLISHED') AS BIGINT) AS "listValue"`,
-      `  FROM "programs" p`,
+      `  FROM "public"."programs" p`,
       `  GROUP BY CAST(date_trunc('month', p."created_ts") AS DATE), p."status"`,
     ));
   });
@@ -245,7 +245,7 @@ describe("emitReportViewDdl — Table G, remaining Postgres bodies", () => {
       `  SELECT`,
       `    CAST(date_trunc('week', p."created_ts") AS DATE) AS "createdAtWeek",`,
       `    COUNT(p."id") AS "programs"`,
-      `  FROM "programs" p`,
+      `  FROM "public"."programs" p`,
       `  WHERE p."status" = 'PUBLISHED'`,
       `  GROUP BY CAST(date_trunc('week', p."created_ts") AS DATE)`,
     ));
@@ -255,7 +255,7 @@ describe("emitReportViewDdl — Table G, remaining Postgres bodies", () => {
     expect(emitReportViewDdl(recentSpec, pg("programs"))).toBe(lines(
       `  SELECT`,
       `    COUNT(p."id") AS "programs"`,
-      `  FROM "programs" p`,
+      `  FROM "public"."programs" p`,
       `  WHERE p."created_ts" >= ((now() AT TIME ZONE 'UTC') - INTERVAL 'P30D')`,
     ));
   });
@@ -266,7 +266,7 @@ describe("emitReportViewDdl — Table G, remaining Postgres bodies", () => {
       `    date_trunc('hour', a."recordedAt", 'UTC') AS "recordedAtHour",`,
       `    CAST(date_trunc('week', CAST(a."asOfDate" AS TIMESTAMP)) AS DATE) AS "asOfDateWeek",`,
       `    COUNT(a."id") AS "assets"`,
-      `  FROM "assets" a`,
+      `  FROM "public"."assets" a`,
       `  GROUP BY date_trunc('hour', a."recordedAt", 'UTC'), CAST(date_trunc('week', CAST(a."asOfDate" AS TIMESTAMP)) AS DATE)`,
     ));
   });
@@ -468,7 +468,7 @@ describe("emitReportViewDdl — rules", () => {
   test("bodyOnly false wraps in CREATE VIEW with a quoted name and a trailing semicolon", () => {
     const spec = baseSpec("p", "Program", [col("programs", count("p.id"))], { viewName: "v_x" });
     const full = emitReportViewDdl(spec, { dialect: "postgres", baseTableName: "programs", joinTables: {} });
-    expect(full).toBe(`CREATE VIEW "v_x" AS\n  SELECT\n    COUNT(p."id") AS "programs"\n  FROM "programs" p;`);
+    expect(full).toBe(`CREATE VIEW "v_x" AS\n  SELECT\n    COUNT(p."id") AS "programs"\n  FROM "public"."programs" p;`);
     const my = emitReportViewDdl(spec, { dialect: "mysql", baseTableName: "programs", joinTables: {}, bodyOnly: false });
     expect(my.startsWith("CREATE VIEW `v_x` AS\n")).toBe(true);
     expect(my.endsWith(";")).toBe(true);
@@ -488,7 +488,7 @@ describe("emitReportViewDdl — rules", () => {
     };
     // quoteIfNeeded leaves these lower-case identifiers bare; the report emitter would quote them.
     expect(emitViewDdl(spec, { dialect: "postgres", baseTableName: "programs", joinTables: {} })).toBe(
-      "CREATE VIEW v_program_summary AS\n  SELECT\n    p.id AS id,\n    p.title AS title\n  FROM programs p;",
+      "CREATE VIEW v_program_summary AS\n  SELECT\n    p.id AS id,\n    p.title AS title\n  FROM public.programs p;",
     );
   });
 });
@@ -623,8 +623,8 @@ describe("emitReportViewDdl — Table D, a report @spine", () => {
       `  SELECT`,
       `    p."title" AS "programTitle",`,
       `    COUNT(w."id") AS "weeks"`,
-      `  FROM "programs" p`,
-      `  LEFT OUTER JOIN "weeks" w ON p."id" = w."programId"`,
+      `  FROM "public"."programs" p`,
+      `  LEFT OUTER JOIN "public"."weeks" w ON p."id" = w."programId"`,
       `  GROUP BY p."title"`,
     ));
   });
@@ -635,7 +635,7 @@ describe("emitReportViewDdl — Table D, a report @spine", () => {
     };
     const sql = emitReportViewDdl(spineSpec(segmentAndFilter), pg("weeks", tables));
     expect(sql).not.toContain("WHERE");
-    expect(sql).toContain(`  LEFT OUTER JOIN "weeks" w ON p."id" = w."programId" AND (w."durationMinutes" >= 60 AND w."label" = 'x')\n`);
+    expect(sql).toContain(`  LEFT OUTER JOIN "public"."weeks" w ON p."id" = w."programId" AND (w."durationMinutes" >= 60 AND w."label" = 'x')\n`);
     // An `or` scope is parenthesised inside the ON, so it cannot capture the join predicate.
     const or: ViewFilterClause = { kind: "or", clauses: [cmp("w.label", "eq", "a"), cmp("w.label", "eq", "b")] };
     const mySql = emitReportViewDdl(spineSpec(or), mysql("weeks", tables));
@@ -746,8 +746,8 @@ describe("Table D goldens (the bodies Task 6's canonical reports must produce)",
       `    COALESCE(CAST(SUM(w."durationMinutes") AS BIGINT), 0) AS "totalMinutesOrZero",`,
       `    CAST(COUNT(w."id") FILTER (WHERE w."durationMinutes" >= 60) AS NUMERIC) / NULLIF(COUNT(w."id"), 0) AS "longShare",`,
       `    COALESCE(CAST(COUNT(w."id") FILTER (WHERE w."durationMinutes" >= 60) AS NUMERIC) / NULLIF(COUNT(w."id"), 0), 0) AS "longShareOrZero"`,
-      `  FROM "programs" p`,
-      `  LEFT OUTER JOIN "weeks" w ON p."id" = w."programId"`,
+      `  FROM "public"."programs" p`,
+      `  LEFT OUTER JOIN "public"."weeks" w ON p."id" = w."programId"`,
       `  GROUP BY p."id", p."title"`,
     ));
     expect(v["v_program_long_weeks"]).toBe(lines(
@@ -755,8 +755,8 @@ describe("Table D goldens (the bodies Task 6's canonical reports must produce)",
       `    p."id" AS "programKey",`,
       `    COUNT(w."id") AS "weeks",`,
       `    COALESCE(CAST(SUM(w."durationMinutes") AS BIGINT), 0) AS "totalMinutesOrZero"`,
-      `  FROM "programs" p`,
-      `  LEFT OUTER JOIN "weeks" w ON p."id" = w."programId" AND w."durationMinutes" >= 60`,
+      `  FROM "public"."programs" p`,
+      `  LEFT OUTER JOIN "public"."weeks" w ON p."id" = w."programId" AND w."durationMinutes" >= 60`,
       `  GROUP BY p."id"`,
     ));
     expect(v["v_fitness_totals_filled"]).toBe(lines(
@@ -764,7 +764,7 @@ describe("Table D goldens (the bodies Task 6's canonical reports must produce)",
       `    COUNT(w."id") AS "weeks",`,
       `    COALESCE(CAST(SUM(w."durationMinutes") AS BIGINT), 0) AS "totalMinutesOrZero",`,
       `    COALESCE(CAST(COUNT(w."id") FILTER (WHERE w."durationMinutes" >= 60) AS NUMERIC) / NULLIF(COUNT(w."id"), 0), 0) AS "longShareOrZero"`,
-      `  FROM "weeks" w`,
+      `  FROM "public"."weeks" w`,
     ));
   });
 
@@ -852,16 +852,16 @@ describe("Table D goldens (the bodies Task 6's canonical reports must produce)",
       `    p."title" AS "programTitle",`,
       `    o."name" AS "ownerName",`,
       `    COUNT(w."id") AS "weeks"`,
-      `  FROM "programs" p`,
-      `  LEFT OUTER JOIN "weeks" w ON p."id" = w."programId"`,
-      `  LEFT OUTER JOIN "owners" o ON o."id" = p."ownerId"`,
+      `  FROM "public"."programs" p`,
+      `  LEFT OUTER JOIN "public"."weeks" w ON p."id" = w."programId"`,
+      `  LEFT OUTER JOIN "public"."owners" o ON o."id" = p."ownerId"`,
       `  GROUP BY p."title", o."name"`,
     ));
     // The same report without @spine keeps #209: both required hops are INNER.
     expect(v["v_Plain"]).toContain(lines(
-      `  FROM "weeks" w`,
-      `  INNER JOIN "programs" p ON p."id" = w."programId"`,
-      `  INNER JOIN "owners" o ON o."id" = p."ownerId"`,
+      `  FROM "public"."weeks" w`,
+      `  INNER JOIN "public"."programs" p ON p."id" = w."programId"`,
+      `  INNER JOIN "public"."owners" o ON o."id" = p."ownerId"`,
     ));
   });
 });
@@ -891,9 +891,9 @@ describe("Table D: the spine chain, end to end", () => {
       `  SELECT`,
       `    p."title" AS "programTitle",`,
       `    COUNT(s."id") AS "sessions"`,
-      `  FROM "programs" p`,
-      `  LEFT OUTER JOIN "weeks" w ON p."id" = w."programId"`,
-      `  LEFT OUTER JOIN "sessions" s ON w."id" = s."weekId" AND s."minutes" >= 10`,
+      `  FROM "public"."programs" p`,
+      `  LEFT OUTER JOIN "public"."weeks" w ON p."id" = w."programId"`,
+      `  LEFT OUTER JOIN "public"."sessions" s ON w."id" = s."weekId" AND s."minutes" >= 10`,
       `  GROUP BY p."title"`,
     ));
     expect((await viewsOf(sessions, "sqlite"))["v_sessions_by_program"]).toContain(lines(
@@ -929,12 +929,12 @@ describe("Table D: the spine chain, end to end", () => {
       `  SELECT`,
       `    p."tier" AS "tier",`,
       `    COUNT(a."id") AS "accounts"`,
-      `  FROM "profiles" p`,
-      `  LEFT OUTER JOIN "accounts" a ON p."accountId" = a."id"`,
+      `  FROM "public"."profiles" p`,
+      `  LEFT OUTER JOIN "public"."accounts" a ON p."accountId" = a."id"`,
       `  GROUP BY p."tier"`,
     ));
     // The forward join renders the same predicate: reversing the hop moves no column.
-    expect(v["v_by_tier_plain"]).toContain(`  LEFT OUTER JOIN "profiles" p ON p."accountId" = a."id"`);
+    expect(v["v_by_tier_plain"]).toContain(`  LEFT OUTER JOIN "public"."profiles" p ON p."accountId" = a."id"`);
   });
 });
 
@@ -1038,6 +1038,6 @@ describe("a via dimension's bare @of owner across packages", () => {
     expect(errors).toEqual([]);
     const [view] = buildReportViews(literalColumns(root), { dialect: "postgres" });
     expect(view?.sql).toContain(`"name" AS "realmName"`);
-    expect(view?.sql).toContain(`INNER JOIN "realms"`);
+    expect(view?.sql).toContain(`INNER JOIN "public"."realms"`);
   });
 });

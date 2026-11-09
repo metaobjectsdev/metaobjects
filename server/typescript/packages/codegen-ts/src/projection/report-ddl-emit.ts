@@ -4,7 +4,7 @@
 // quotes every identifier unconditionally, so a measure named `order` is valid DDL.
 import type { JoinNode } from "./view-spec.js";
 import type { ReportAggregate, ReportColumn, ReportViewSpec } from "./report-spec.js";
-import { AGG_ALL, AGG_ANY } from "@metaobjectsdev/metadata";
+import { AGG_ALL, AGG_ANY, DEFAULT_DB_SCHEMA_POSTGRES } from "@metaobjectsdev/metadata";
 import { cond, mysqlTupleCount, q, ref } from "./report-sql.js";
 import { truncateToGrain, type ReportDialect } from "./time-sql.js";
 
@@ -13,6 +13,8 @@ export interface ReportEmitOptions {
   readonly baseTableName: string;
   /** Map from entity name → table name for every entity referenced in joins. */
   readonly joinTables: Readonly<Record<string, string>>;
+  /** Entity name → declared `@schema`. Postgres qualifies every relation, `public` when absent (ruling R54). */
+  readonly tableSchemas?: Readonly<Record<string, string | undefined>>;
   /** Body only (no CREATE VIEW wrapper, no trailing `;`), as migrate-ts consumes it. */
   readonly bodyOnly?: boolean;
 }
@@ -130,6 +132,13 @@ function tableOf(entity: string, options: ReportEmitOptions): string {
   return table;
 }
 
+/** A relation the view reads: schema-qualified on Postgres (`@schema`, else `public`; ruling R54). */
+function relation(entity: string, table: string, options: ReportEmitOptions): string {
+  const d = options.dialect;
+  if (d !== "postgres") return q(table, d);
+  return `${q(options.tableSchemas?.[entity] ?? DEFAULT_DB_SCHEMA_POSTGRES, d)}.${q(table, d)}`;
+}
+
 /** The `ON` predicate of the hop `node` from `parentAlias`. An equality, so the same text
  *  serves the hop walked backwards (Table D's spine chain). */
 function onPredicate(node: JoinNode, parentAlias: string, d: ReportDialect): string {
@@ -145,7 +154,7 @@ function renderJoin(node: JoinNode, parentAlias: string, options: ReportEmitOpti
   const table = tableOf(node.targetEntity, options);
   const d = options.dialect;
   const kw = node.joinType === "inner" ? "INNER JOIN" : "LEFT OUTER JOIN";
-  let sql = `  ${kw} ${q(table, d)} ${node.alias} ON ${onPredicate(node, parentAlias, d)}`;
+  let sql = `  ${kw} ${relation(node.targetEntity, table, options)} ${node.alias} ON ${onPredicate(node, parentAlias, d)}`;
   for (const child of node.children) sql += "\n" + renderJoin(child, node.alias, options);
   return sql;
 }
@@ -174,12 +183,13 @@ function spineFrom(spec: ReportViewSpec, depth: number, options: ReportEmitOptio
     );
   }
   const spine = chain[chain.length - 1]!;
-  let sql = `  FROM ${q(tableOf(spine.targetEntity, options), d)} ${spine.alias}`;
+  let sql = `  FROM ${relation(spine.targetEntity, tableOf(spine.targetEntity, options), options)} ${spine.alias}`;
   for (let i = chain.length - 1; i >= 0; i--) {
     const parentAlias = i === 0 ? spec.joinTree.baseAlias : chain[i - 1]!.alias;
-    const parentTable = i === 0 ? options.baseTableName : tableOf(chain[i - 1]!.targetEntity, options);
+    const parentEntity = i === 0 ? spec.joinTree.baseEntity : chain[i - 1]!.targetEntity;
+    const parentTable = relation(parentEntity, i === 0 ? options.baseTableName : tableOf(parentEntity, options), options);
     const scope = i === 0 && spec.where !== undefined ? ` AND ${cond(spec.where, d)}` : "";
-    sql += `\n  LEFT OUTER JOIN ${q(parentTable, d)} ${parentAlias} ON ${onPredicate(chain[i]!, parentAlias, d)}${scope}`;
+    sql += `\n  LEFT OUTER JOIN ${parentTable} ${parentAlias} ON ${onPredicate(chain[i]!, parentAlias, d)}${scope}`;
   }
   for (const child of spine.children) sql += "\n" + renderJoin(child, spine.alias, options);
   return sql;
@@ -204,7 +214,7 @@ export function emitReportViewDdl(spec: ReportViewSpec, options: ReportEmitOptio
     const base = spec.joinTree.baseAlias;
     const joins = spec.joinTree.joins.map((j) => renderJoin(j, base, options)).join("\n");
     from =
-      `  FROM ${q(options.baseTableName, d)} ${base}` +
+      `  FROM ${relation(spec.joinTree.baseEntity, options.baseTableName, options)} ${base}` +
       (joins === "" ? "" : `\n${joins}`) +
       (spec.where === undefined ? "" : `\n  WHERE ${cond(spec.where, d)}`);
   } else {

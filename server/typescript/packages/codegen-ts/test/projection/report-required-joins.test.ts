@@ -115,7 +115,7 @@ async function load(): Promise<{ root: MetaRoot; report: MetaObject }> {
 /** alias → the join keyword the emitted view SQL joins it with. */
 function joinKeywordsOf(sql: string): Map<string, JoinKeyword> {
   const out = new Map<string, JoinKeyword>();
-  for (const m of sql.matchAll(/\b(INNER|LEFT OUTER) JOIN "[^"]+" (\w+) ON\b/g)) out.set(m[2]!, m[1] as JoinKeyword);
+  for (const m of sql.matchAll(/\b(INNER|LEFT OUTER) JOIN (?:"[^"]+"\.)?"[^"]+" (\w+) ON\b/g)) out.set(m[2]!, m[1] as JoinKeyword);
   return out;
 }
 

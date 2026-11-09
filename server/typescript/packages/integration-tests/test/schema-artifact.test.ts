@@ -75,7 +75,7 @@ describe("canonical schema artifact (schema.postgres.sql)", () => {
     expect(generated).toContain(`AVG(w."durationMinutes") AS "avgMinutes"`);
     expect(generated).toContain(`MIN(w."durationMinutes") AS "minMinutes"`);
     expect(generated).toContain(`MAX(w."durationMinutes") AS "maxMinutes"`);
-    expect(generated).toContain(`LEFT OUTER JOIN weeks w ON w."programId" = p.id`);
+    expect(generated).toContain(`LEFT OUTER JOIN public.weeks w ON w."programId" = p.id`);
     expect(generated).toContain(`GROUP BY p.id`);
   });
 });
