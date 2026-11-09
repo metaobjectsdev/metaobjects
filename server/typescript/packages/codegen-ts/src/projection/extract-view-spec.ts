@@ -59,7 +59,6 @@ import {
   IDENTITY_SUBTYPE_REFERENCE,
   IDENTITY_REFERENCE_ATTR_REFERENCES,
   FIELD_ATTR_COLUMN,
-  OBJECT_PROJECTION_ATTR_FILTER,
   findReferencesBetween,
   findReverseReferenceHops,
   OBJECT_SUBTYPE_PROJECTION,
@@ -67,6 +66,7 @@ import {
   resolveFlattenedColumnName,
   resolveFieldPathColumn,
   resolveFilterPath,
+  effectiveProjectionFilter,
   type FilterPath,
   isMetaRoot,
   isMetaField,
@@ -1893,8 +1893,10 @@ export function extractViewSpec(
   const base = writeThrough ? projection : baseEntityFor(projection, root);
   const usedAliases = new Set<string>();
   const baseAlias = shortAliasFor(base.name, usedAliases);
+  // C1: the EFFECTIVE @filter — every level of an extends chain, supers first, ANDed — so a
+  // projection extending a gated projection keeps the gate.
+  const rawFilter = writeThrough ? undefined : effectiveProjectionFilter(projection);
   // G7 (joined) / entity-derived: the @filter keys that are paths of to-one hops from the base.
-  const rawFilter = writeThrough ? undefined : projection.ownAttr(OBJECT_PROJECTION_ATTR_FILTER);
   const ownFieldNames = new Set(projection.fields().map((f) => f.name));
   const filterPaths = new Map<string, FilterPath>();
   for (const key of filterKeysOf(rawFilter)) {
@@ -1934,9 +1936,13 @@ export function extractViewSpec(
         const map = f.subType === FIELD_SUBTYPE_ENUM ? intValueMapOf(f) : undefined;
         if (map !== undefined) intMaps.set(key, map);
       };
-      for (const f of base.fields()) {
-        if (columnsByField.has(f.name)) continue;
-        reached(f.name, f, base, joinTree.baseAlias);
+      // I1: lazily — only the keys the filter names. Reaching every base field would inline (and
+      // refuse) a derived field the filter never mentions, and reserve aliases nobody reads.
+      const baseFields = new Map(base.fields().map((f) => [f.name, f] as const));
+      for (const key of new Set(filterKeysOf(rawFilter))) {
+        if (columnsByField.has(key) || filterPaths.has(key)) continue;
+        const f = baseFields.get(key);
+        if (f !== undefined) reached(key, f, base, joinTree.baseAlias);
       }
       // G7 (joined): a path key reads the reached entity's column on the alias its joins gave it.
       for (const [key, path] of filterPaths) {

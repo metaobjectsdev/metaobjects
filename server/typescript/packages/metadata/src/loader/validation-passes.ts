@@ -23,6 +23,7 @@ import type { MetaObject } from "../core/object/meta-object.js";
 import { findReverseReferenceHops } from "../core/relationship/find-reference.js";
 import { resolveFlattenedMember } from "../core/field/flattened-member.js";
 import { resolveFilterPath } from "../core/relationship/filter-path.js";
+import { effectiveProjectionFilter } from "../core/object/effective-projection-filter.js";
 import type { MetaReferenceIdentity } from "../core/identity/meta-identity.js";
 import { contradictionHint, contradictionsFor } from "../attr-contradictions.js";
 import { ParseError, type ErrorCode } from "../errors.js";
@@ -63,7 +64,6 @@ import {
   OBJECT_SUBTYPE_ENTITY,
   OBJECT_SUBTYPE_VALUE,
   OBJECT_SUBTYPE_PROJECTION,
-  OBJECT_PROJECTION_ATTR_FILTER,
 } from "../core/object/object-constants.js";
 import { MetaSource } from "../persistence/source/meta-source.js";
 import { resolveColumnName } from "../naming.js";
@@ -1767,7 +1767,8 @@ export function projectionReachedEntityFields(root: MetaData): Set<MetaData> {
   for (const obj of root.children().filter((c) => c.type === TYPE_OBJECT && c.subType === OBJECT_SUBTYPE_PROJECTION)) {
     const silent: ParseError[] = [];
     const base = _deriveBaseEntity(obj, root, "@filter", obj.source, silent);
-    const filter = obj.ownAttr(OBJECT_PROJECTION_ATTR_FILTER);
+    // C1: the effective filter — an extender reaches what its supers' filters name, too.
+    const filter = effectiveProjectionFilter(obj);
     if (base !== undefined && base !== obj) {
       for (const key of filterKeys(filter)) {
         const path = resolveFilterPath(base as MetaObject, key);
@@ -3057,17 +3058,19 @@ export function validateProjectionFilter(root: MetaData): ParseError[] {
   for (const obj of root
     .children()
     .filter((c) => c.type === TYPE_OBJECT && c.subType === OBJECT_SUBTYPE_PROJECTION)) {
-    // ADR-0039: own — the @filter is declared locally on this projection.
-    const filter = obj.ownAttr(OBJECT_PROJECTION_ATTR_FILTER);
+    // C1: the EFFECTIVE @filter — every level of an extends chain, supers first, ANDed — is
+    // what the view applies, so it is what is checked (an inherited gate is checked against
+    // the extender's fields too).
+    const filter = effectiveProjectionFilter(obj);
     // Non-object shapes are rejected by the attr schema check (FilterAttr.validateValue).
     if (typeof filter !== "object" || filter === null || Array.isArray(filter)) continue;
 
-    // Classify the projection's OWN fields (the declared set IS the exposure —
+    // Classify the projection's EFFECTIVE fields (the declared set IS the exposure —
     // FR-024/ADR-0028): aggregate-derived-ness + the op-band legal for the field's
-    // declared subType. origin.* never inherits (ADR-0029), so the origin reads
-    // below are own (category 4).
+    // declared subType. ADR-0039: resolving — a field inherited from a super projection is
+    // a column of this view (G13) and carries its own origin child, read own below.
     const fields = new Map<string, ProjectionFilterField>();
-    for (const f of obj.ownChildren().filter((c) => c.type === TYPE_FIELD)) {
+    for (const f of obj.children().filter((c) => c.type === TYPE_FIELD)) {
       const origin = f.ownChildren().find((c) => c.type === TYPE_ORIGIN);
       const derived =
         origin !== undefined &&

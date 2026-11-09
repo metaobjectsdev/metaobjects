@@ -169,6 +169,7 @@ export {
 } from "./core/relationship/find-reference.js";
 export type { ReferenceLookup } from "./core/relationship/find-reference.js";
 export { resolveFilterPath, type FilterPath } from "./core/relationship/filter-path.js";
+export { effectiveProjectionFilter } from "./core/object/effective-projection-filter.js";
 export {
   referenceCandidatesFor,
   referencePairingKeys,

@@ -1594,7 +1594,8 @@ public static partial class ValidationPasses
             var silent = new List<MetaError>();
             var baseEntity = DeriveBaseEntity(obj, root, "@filter", obj.Source, silent);
             if (baseEntity is MetaObject baseObject && !ReferenceEquals(baseEntity, obj)
-                && obj.OwnAttr(OBJECT_PROJECTION_ATTR_FILTER) is IReadOnlyDictionary<string, object?> filter)
+                // C1: the effective filter — an extender reaches what its supers' filters name.
+                && ProjectionFilters.Effective(obj) is IReadOnlyDictionary<string, object?> filter)
             {
                 foreach (var key in FilterKeys(filter))
                 {
@@ -1943,8 +1944,9 @@ public static partial class ValidationPasses
     // hardening, NOT gated cross-port — intentionally omitted here (the
     // compose recursion skips non-array/non-object shapes silently).
     //
-    // Own-attrs / own-children only: the @filter is declared locally on the
-    // projection, and origin.* never inherits (ADR-0029 / ADR-0039).
+    // Effective, not own (rc.19 C1): the @filter is every level of the extends chain
+    // ANDed (ProjectionFilters.Effective), and the fields are the projection's resolved
+    // ones; each field's origin.* is read own (it never inherits, ADR-0029 / ADR-0039).
     //
     // Ported from typescript/packages/metadata/src/loader/validation-passes.ts
     // validateProjectionFilter + checkProjectionFilterRefs.
@@ -1957,21 +1959,23 @@ public static partial class ValidationPasses
         foreach (var obj in root.OwnChildren()
                      .Where(c => c.Type == TYPE_OBJECT && c.SubType == OBJECT_SUBTYPE_PROJECTION))
         {
-            // ADR-0039: own — the @filter is declared locally on this projection.
+            // C1: the EFFECTIVE @filter — every level of an extends chain, supers first, ANDed —
+            // is what the view applies, so it is what is checked.
             // Non-object shapes are rejected by the attr-schema check (FilterAttr).
-            if (obj.OwnAttr(OBJECT_PROJECTION_ATTR_FILTER)
+            if (ProjectionFilters.Effective(obj)
                 is not IReadOnlyDictionary<string, object?> filter)
             {
                 continue;
             }
 
-            // Classify the projection's OWN fields (the declared set IS the exposure —
+            // Classify the projection's EFFECTIVE fields (the declared set IS the exposure —
             // FR-024 / ADR-0028): a field is aggregate-derived when it carries an OWN
-            // origin child whose subType is OTHER than passthrough/computed. origin.*
-            // never inherits (ADR-0029), so the origin read is own.
+            // origin child whose subType is OTHER than passthrough/computed. ADR-0039:
+            // resolving — a field inherited from a super projection is a column of this view
+            // (G13) and carries its own origin child, read own below.
             var declared = new HashSet<string>(StringComparer.Ordinal);
             var aggregateDerived = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var f in obj.OwnChildren().Where(c => c.Type == TYPE_FIELD))
+            foreach (var f in obj.Children().Where(c => c.Type == TYPE_FIELD))
             {
                 declared.Add(f.Name);
                 var origin = f.OwnChildren().FirstOrDefault(c => c.Type == TYPE_ORIGIN);
@@ -2997,9 +3001,9 @@ public static partial class ValidationPasses
             // WHERE), so wrapping it is deferred cleverness (design doc D5) — reject.
             if (hasSqlHost && obj.SubType == OBJECT_SUBTYPE_PROJECTION)
             {
-                // ADR-0039: own — the @filter is declared locally on this projection
-                // (mirrors ValidateProjectionFilter).
-                var filter = obj.OwnAttr(OBJECT_PROJECTION_ATTR_FILTER);
+                // C1: the effective @filter (mirrors ValidateProjectionFilter) — an inherited row
+                // scope cannot be applied to an author-owned body either, so it is refused.
+                var filter = ProjectionFilters.Effective(obj);
                 if (filter is not null)
                 {
                     errors.Add(new MetaError(

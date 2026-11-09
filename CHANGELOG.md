@@ -489,6 +489,20 @@ vocabulary; upgrade every port together.
   entity, and its view carries the effective fields and their origins, base first. An extender
   that would inherit its base's source is still refused at load: it declares its own. Pinned by
   `fixtures/conformance/projection-extends-abstract-projection`.
+- **An extender keeps its base projection's `@filter`** (rc.19 fix round, C1). Codegen read only
+  the extender's own `@filter`, so a projection extending a gated projection (a consent or HIPAA
+  gate on an abstract base) emitted an ungated view, with no error. A projection's effective
+  `@filter` is now every level of its `extends` chain, root-most first, ANDed — it composes, it
+  never overrides — and that is what the view's `WHERE` applies and what both loaders check
+  (against the extender's effective fields, so an extender may filter on an inherited
+  projection field). An extender with an `@sql` body that inherits a `@filter` is refused
+  (`ERR_ORIGIN_UNDER_SQL_BODY`), as one that declares it is. Pinned by
+  `fixtures/conformance/projection-extends-filtered-projection` and
+  `error-projection-extends-filter-sql-body`.
+- **A projection `@filter` no longer fails because the base entity has a derived field it
+  never names** (rc.19 fix round, I1). The rc.19 base-field fallback (G7) inlined every
+  unprojected base field, so an entity with a derived `origin.passthrough` or `origin.aggregate`
+  field made any `@filter` over it fail `meta gen`. Only the fields the filter names are reached.
 - **An origin `@filter` keeps every operator of a field clause** (rc.19 Phase 5, bug
   multi-op). `{ ordinal: { gte: 1, lte: 5 } }` on an `origin.aggregate` or `origin.first` kept
   only `gte`, so the aggregate spanned a wider row set than declared, silently; each operator is

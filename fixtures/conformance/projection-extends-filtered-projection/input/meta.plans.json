@@ -1,0 +1,52 @@
+{
+  "metadata.root": {
+    "package": "acme::plans",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Plan",
+          "children": [
+            { "source.rdb": { "@table": "plans" } },
+            { "field.long": { "name": "id" } },
+            { "field.string": { "name": "name" } },
+            { "field.string": { "name": "code" } },
+            { "field.boolean": { "name": "consented" } },
+            { "field.boolean": { "name": "deleted" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "GatedPlans",
+          "abstract": true,
+          "@filter": { "consented": true },
+          "children": [
+            { "field.long": { "name": "planId", "extends": "Plan.id" } },
+            { "field.string": { "name": "label", "children": [ { "origin.passthrough": { "@from": "Plan.name" } } ] } },
+            { "identity.primary": { "name": "id", "extends": "Plan.id" } }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "LivePlans",
+          "abstract": true,
+          "extends": "GatedPlans",
+          "@filter": { "deleted": false }
+        }
+      },
+      {
+        "object.projection": {
+          "name": "ExportPlans",
+          "extends": "LivePlans",
+          "@filter": { "label": { "isNull": false } },
+          "children": [
+            { "source.rdb": { "@kind": "view", "@view": "v_export_plans" } },
+            { "field.string": { "name": "code", "children": [ { "origin.passthrough": { "@from": "Plan.code" } } ] } }
+          ]
+        }
+      }
+    ]
+  }
+}

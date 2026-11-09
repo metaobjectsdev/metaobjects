@@ -25,7 +25,8 @@ import type { MetaData } from "../../shared/meta-data.js";
 import { ParseError } from "../../errors.js";
 import type { LoaderWarning } from "../../source.js";
 import { TYPE_OBJECT, TYPE_SOURCE, TYPE_FIELD } from "../../shared/base-types.js";
-import { OBJECT_SUBTYPE_PROJECTION, OBJECT_PROJECTION_ATTR_FILTER } from "../../core/object/object-constants.js";
+import { OBJECT_SUBTYPE_PROJECTION } from "../../core/object/object-constants.js";
+import { effectiveProjectionFilter } from "../../core/object/effective-projection-filter.js";
 import { MetaSource } from "./meta-source.js";
 import { MetaField } from "../../core/field/meta-field.js";
 import { SOURCE_ATTR_SQL, SOURCE_SUBTYPE_RDB } from "./source-constants.js";
@@ -138,9 +139,9 @@ export function validateSourceEscapes(root: MetaData): SourceEscapeValidationRes
     // of a TOOL-SYNTHESIZED body; with @sql the author owns the body (and its
     // WHERE), so wrapping it is deferred cleverness (design doc D5) — reject.
     if (hasSqlHost && obj.subType === OBJECT_SUBTYPE_PROJECTION) {
-      // ADR-0039: own — the @filter is declared locally on this projection
-      // (mirrors validateProjectionFilter).
-      const filter = obj.ownAttr(OBJECT_PROJECTION_ATTR_FILTER);
+      // C1: the effective @filter (mirrors validateProjectionFilter) — an inherited row scope
+      // cannot be applied to an author-owned body either, so it is refused, never dropped.
+      const filter = effectiveProjectionFilter(obj);
       if (filter !== undefined) {
         errors.push(
           new ParseError(
