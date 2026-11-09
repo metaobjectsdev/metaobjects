@@ -22,6 +22,7 @@ import type { MetaData } from "../shared/meta-data.js";
 import type { MetaObject } from "../core/object/meta-object.js";
 import { findReverseReferenceHops } from "../core/relationship/find-reference.js";
 import { resolveFlattenedMember } from "../core/field/flattened-member.js";
+import { resolveFilterPath } from "../core/relationship/filter-path.js";
 import type { MetaReferenceIdentity } from "../core/identity/meta-identity.js";
 import { contradictionHint, contradictionsFor } from "../attr-contradictions.js";
 import { ParseError, type ErrorCode } from "../errors.js";
@@ -2869,6 +2870,30 @@ function checkFilterClauses(
 interface ProjectionFilterField {
   readonly derived: boolean;
   readonly ops: readonly string[];
+  /** The path already failed to resolve, and said why. */
+  readonly reported?: boolean;
+}
+
+/**
+ * An entity field a projection @filter reaches (on the base, or through a path) cannot be
+ * filtered when it is an aggregate: a WHERE runs before any grouping. Its own stored column, an
+ * origin.computed or an origin.first (a correlated scalar subquery) are WHERE-legal (entity-derived).
+ */
+function entityFieldAggregates(f: MetaData): boolean {
+  // ADR-0039: own — origin.* never inherits (ADR-0029).
+  const origin = f.ownChildren().find((c) => c.type === TYPE_ORIGIN);
+  return origin !== undefined && origin.subType === ORIGIN_SUBTYPE_AGGREGATE;
+}
+
+/** Every field key of a (desugared) filter, through and/or. */
+function filterKeys(filter: unknown, out: string[] = []): string[] {
+  if (typeof filter !== "object" || filter === null || Array.isArray(filter)) return out;
+  for (const [key, val] of Object.entries(filter as Record<string, unknown>)) {
+    if (key === FILTER_COMPOSE_AND || key === FILTER_COMPOSE_OR) {
+      if (Array.isArray(val)) for (const sub of val) filterKeys(sub, out);
+    } else out.push(key);
+  }
+  return out;
 }
 
 export function validateProjectionFilter(root: MetaData): ParseError[] {
@@ -2903,7 +2928,23 @@ export function validateProjectionFilter(root: MetaData): ParseError[] {
     const base = _deriveBaseEntity(obj, root, "@filter", obj.source, []);
     if (base !== undefined && base !== obj) {
       for (const f of base.children().filter((c) => c.type === TYPE_FIELD)) {
-        if (!fields.has(f.name)) fields.set(f.name, { derived: false, ops: opsForField(f) });
+        if (!fields.has(f.name)) fields.set(f.name, { derived: entityFieldAggregates(f), ops: opsForField(f) });
+      }
+      // G7 (joined) / entity-derived: a key that is a PATH of to-one hops from the base, then a
+      // field of the entity reached (`caseId.status`). Not output; the view joins what it walks.
+      for (const key of filterKeys(filter)) {
+        if (fields.has(key)) continue;
+        const path = resolveFilterPath(base as MetaObject, key);
+        if (path === undefined) continue;
+        if (typeof path === "string") {
+          errors.push(new ParseError(
+            `projection "${obj.name}" @filter path "${key}" does not resolve: ${path}.`,
+            { code: "ERR_BAD_ATTR_FILTER", source: obj.source },
+          ));
+          fields.set(key, { derived: false, ops: [], reported: true });
+          continue;
+        }
+        fields.set(key, { derived: entityFieldAggregates(path.field), ops: opsForField(path.field) });
       }
     }
     checkProjectionFilterRefs(filter as Record<string, unknown>, fields, obj.name, obj.source, errors);
@@ -2945,6 +2986,7 @@ function checkProjectionFilterRefs(
       continue;
     }
     const field = fields.get(key);
+    if (field?.reported === true) continue;
     if (field === undefined) {
       err(
         `projection "${projectionName}" @filter references "${key}", which is not a declared field of the ` +

@@ -2,6 +2,7 @@
 // Postgres, SQLite and MySQL. Kept apart from view-ddl-emit.ts on purpose: the projection
 // emitter quotes conditionally (`quoteIfNeeded`) and is Postgres/SQLite only; a report
 // quotes every identifier unconditionally, so a measure named `order` is valid DDL.
+import { tphScopeSql } from "./view-ddl-emit.js";
 import type { JoinNode } from "./view-spec.js";
 import type { ReportAggregate, ReportColumn, ReportViewSpec } from "./report-spec.js";
 import { AGG_ALL, AGG_ANY, DEFAULT_DB_SCHEMA_POSTGRES } from "@metaobjectsdev/metadata";
@@ -156,7 +157,7 @@ function renderJoin(node: JoinNode, parentAlias: string, options: ReportEmitOpti
   const kw = node.joinType === "inner" ? "INNER JOIN" : "LEFT OUTER JOIN";
   // TPH-scope: a join onto a TPH subtype keeps only its rows of the shared table.
   const scope = node.tphScope !== undefined
-    ? ` AND ${node.alias}.${q(node.tphScope.column, d)} = ${typeof node.tphScope.value === "number" ? String(node.tphScope.value) : `'${node.tphScope.value.replace(/'/g, "''")}'`}`
+    ? ` AND ${node.alias}.${q(node.tphScope.column, d)}${tphScopeSql(node.tphScope.values, (v) => typeof v === "number" ? String(v) : `'${v.replace(/'/g, "''")}'`)}`
     : "";
   let sql = `  ${kw} ${relation(node.targetEntity, table, options)} ${node.alias} ON ${onPredicate(node, parentAlias, d)}${scope}`;
   for (const child of node.children) sql += "\n" + renderJoin(child, node.alias, options);

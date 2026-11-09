@@ -501,12 +501,21 @@ vocabulary; upgrade every port together.
   `ON` clause (a base row with no match survives), and an `origin.first` to its subquery's
   `WHERE`. An int-backed discriminator stores its integer. Report joins follow the same rule.
   **Upgrade note:** such a view's body changes, and it is re-proposed once as `replace-view`.
+  An abstract level between the base and its concrete subtypes reads the rows of every concrete
+  subtype beneath it (`<discriminator> IN (…)`), and a concrete subtype with concrete subtypes of
+  its own reads theirs too.
 - **A projection `@filter` reads a base-entity field the view does not output** (rc.19 Phase
   5, bug G7). `@filter: { deleted: false }` on a projection that exposes no `deleted` column
   lowers to `WHERE t.deleted = FALSE` on the base row; the loader refused it in TypeScript and C#
-  ("not a declared field of the projection"). A projection field of the same name wins; a joined
-  field the view does not output is not covered. Pinned by
+  ("not a declared field of the projection"). A projection field of the same name wins. Pinned by
   `fixtures/conformance/projection-filter-unprojected-base-field`.
+- **A projection `@filter` reads a joined field the view does not output** (rc.19 Phase 5, bug
+  G7, joined half). A filter key may be a path of to-one hops from the base entity, named as an
+  origin's `@via` names them, then a field of the entity reached: `@filter: { "caseId.status":
+  "open" }` joins `cases` (sharing a join an origin already walks) and lowers to
+  `WHERE c.status = 'open'`. A to-many hop is refused (`ERR_BAD_ATTR_FILTER`): it would multiply
+  the base rows. Pinned by `fixtures/conformance/projection-filter-joined-path` and
+  `error-projection-filter-path-to-many`.
 - **A Postgres view column takes its declared type** (rc.19 Phase 5, bug `cast`). A bare
   `NULL` (`origin.computed { @expr: { value: null } }`) is `text` in a view, so a `field.int` or
   `field.timestamp` declared that way became a text column; an `@convert: true` passthrough read

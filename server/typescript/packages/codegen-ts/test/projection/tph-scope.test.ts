@@ -15,7 +15,7 @@ const ENTITIES = [
   { "object.entity": { name: "Authorization", "@discriminator": "type", children: [
     { "source.rdb": { "@table": "authorizations" } },
     { "field.long": { name: "id" } },
-    { "field.enum": { name: "type", "@required": true, "@values": ["Copay", "Prior"], "@intValueMap": { Copay: 1, Prior: 2 } } },
+    { "field.enum": { name: "type", "@required": true, "@values": ["Copay", "Prior", "Medical", "Pharmacy"], "@intValueMap": { Copay: 1, Prior: 2, Medical: 3, Pharmacy: 4 } } },
     { "field.string": { name: "code" } },
     { "identity.primary": { name: "id", "@fields": "id" } },
   ] } },
@@ -23,6 +23,12 @@ const ENTITIES = [
     { "field.long": { name: "copayCardId" } },
     { "identity.reference": { name: "copayCard", "@fields": "copayCardId", "@references": "CopayCard" } },
   ] } },
+  // An abstract level between the base and two concrete subtypes: its rows are both subtypes'.
+  { "object.entity": { name: "BenefitAuthorization", extends: "Authorization", abstract: true, children: [
+    { "field.string": { name: "payer" } },
+  ] } },
+  { "object.entity": { name: "MedicalAuthorization", extends: "BenefitAuthorization", "@discriminatorValue": "Medical", children: [] } },
+  { "object.entity": { name: "PharmacyAuthorization", extends: "BenefitAuthorization", "@discriminatorValue": "Pharmacy", children: [] } },
 ];
 
 const model = (projections: unknown[]) => ({ "metadata.root": { package: "acme", children: [...ENTITIES, ...projections] } });
@@ -56,5 +62,15 @@ describe("TPH-scope — a view over a TPH subtype carries its discriminator", ()
     expect(sql).toMatch(/LEFT OUTER JOIN public\.authorizations (\w+) ON \1\.copay_card_id = c\.id AND \1\.type = 1/);
     expect(sql).toMatch(/FROM public\.authorizations (\w+) WHERE \1\.copay_card_id = c\.id AND \1\.type = 1 ORDER BY/);
     expect(sql).not.toContain("WHERE c.type");
+  });
+
+  test("an abstract intermediate level reads every concrete subtype beneath it", async () => {
+    const sql = await viewSql([{ "object.projection": { name: "BenefitAuthView", children: [
+      { "source.rdb": { "@kind": "view", "@table": "v_benefit_auth" } },
+      { "field.long": { name: "id", extends: "BenefitAuthorization.id" } },
+      { "field.string": { name: "payer", extends: "BenefitAuthorization.payer" } },
+      { "identity.primary": { name: "id", extends: "BenefitAuthorization.id" } },
+    ] } }]);
+    expect(sql).toContain("WHERE b.type IN (3, 4)");
   });
 });

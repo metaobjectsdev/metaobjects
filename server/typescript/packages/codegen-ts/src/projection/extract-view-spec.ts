@@ -60,6 +60,8 @@ import {
   resolveFlattenedMember,
   resolveFlattenedColumnName,
   resolveFieldPathColumn,
+  resolveFilterPath,
+  type FilterPath,
   isMetaRoot,
   resolveRelationshipReference,
   resolveObjectRef,
@@ -76,7 +78,7 @@ import {
 // #213 — a write-through ENTITY (FR-024 §7 read-view) hosts its own view; the base
 // is the entity itself, not an extends-anchored projection.
 import { isWriteThrough } from "./projection-detector.js";
-import { tphDiscriminatorPin } from "../tph.js";
+import { tphDiscriminatorBase, tphDiscriminatorPin } from "../tph.js";
 // #209 — the SAME NOT-NULL predicate that drives a column's `.notNull()` decides
 // whether a belongs-to join is INNER (required FK) vs LEFT OUTER (nullable FK).
 import { isRequired } from "../column-mapper.js";
@@ -84,7 +86,7 @@ import type { ColumnNamingStrategy } from "../metaobjects-config.js";
 import { fieldSqlType } from "@metaobjectsdev/migrate-ts/expected";
 import type {
   JoinNode, JoinTree, SelectColumn, SelectSpec, ViewSpec, ViewFilterClause,
-  ViewExprNode, ViewExprLiteral, ViewOrderKey, FirstInnerJoin, TphScope,
+  ViewExprNode, ViewExprLiteral, ViewOrderKey, FirstInnerJoin, TphScope, FirstColumn,
 } from "./view-spec.js";
 
 /** Compose keys in the attr.filter shape. */
@@ -869,22 +871,45 @@ export interface PathStep {
 export type Path = PathStep[];
 
 /**
- * TPH-scope: a TPH subtype's rows on its base's shared table — the discriminator column and the
- * value it stores for the subtype (an int-backed discriminator enum stores its integer).
- * Undefined for anything that is not a concrete TPH subtype.
+ * TPH-scope: a TPH level's rows on its base's shared table — the discriminator column and the
+ * values stored for it (an int-backed discriminator enum stores its integers): a concrete
+ * subtype's own value and those of every concrete subtype beneath it; an abstract intermediate
+ * level has only the latter. Undefined for the discriminator base and anything outside a TPH.
  */
 export function tphScopeOf(entity: MetaObject, ctx: ExtractContext): TphScope | undefined {
-  const pin = tphDiscriminatorPin(entity);
-  if (pin === undefined) return undefined;
-  const field = entity.fields().find((f) => f.name === pin.fieldName);
-  if (field === undefined) return undefined;
-  const map = field.subType === FIELD_SUBTYPE_ENUM ? intValueMapOf(field) : undefined;
-  return { column: sourceColumnNameFor(field, ctx), value: map?.[pin.value] ?? pin.value };
+  // The discriminator base itself (or anything outside a hierarchy) reads every row.
+  const base = tphDiscriminatorBase(entity);
+  if (base === undefined || base === entity) return undefined;
+  const root = entity.root();
+  const objects = isMetaRoot(root) ? root.objects() : [];
+  const descends = (o: MetaObject): boolean => {
+    for (let up = o.superResolved; up !== undefined; up = isMetaObject(up) ? up.superResolved : undefined) {
+      if (up === entity) return true;
+    }
+    return false;
+  };
+  // Its own rows, then every concrete level beneath it (an abstract level has only those).
+  const levels = [entity, ...objects.filter((o) => o !== entity && descends(o))];
+  const values: (string | number)[] = [];
+  let column: string | undefined;
+  for (const level of levels) {
+    const pin = tphDiscriminatorPin(level);
+    if (pin === undefined) continue;
+    const field = level.fields().find((f) => f.name === pin.fieldName);
+    if (field === undefined) continue;
+    const map = field.subType === FIELD_SUBTYPE_ENUM ? intValueMapOf(field) : undefined;
+    column = sourceColumnNameFor(field, ctx);
+    values.push(map?.[pin.value] ?? pin.value);
+  }
+  return column === undefined ? undefined : { column, values };
 }
 
-/** A TPH scope as a filter clause over `alias`. */
+/** A TPH scope as a filter clause over `alias`: one value compares, several are a list. */
 function tphScopeClause(scope: TphScope, alias: string): ViewFilterClause {
-  return { kind: "cmp", ref: `${alias}.${scope.column}`, op: "eq", value: scope.value };
+  const ref = `${alias}.${scope.column}`;
+  return scope.values.length === 1
+    ? { kind: "cmp", ref, op: "eq", value: scope.values[0] }
+    : { kind: "cmp", ref, op: FILTER_OP_IN, value: scope.values };
 }
 
 /** `a AND b`, where either may be absent. */
@@ -1069,8 +1094,10 @@ function buildJoinTree(
   usedAliases: Set<string>,
   baseAlias: string,
   ctx: ExtractContext,
+  extraPaths: readonly Path[] = [],
 ): JoinTree {
-  const allPaths: Path[] = [];
+  // G7 (joined): the to-one paths a view @filter walks join like any origin's @via.
+  const allPaths: Path[] = [...extraPaths];
   // Referrer package for resolving a bare @via head: the origins are authored on the
   // projection, so bare refs bind package-locally to it (FQN refs ignore this).
   const projPkg = packageOf(projection);
@@ -1359,99 +1386,113 @@ function buildSelectSpec(
     } else if (origin.subType === ORIGIN_SUBTYPE_FIRST) {
       // #195 correlated latest-row — argmax-then-project. Resolves to a correlated
       // subquery (NOT a join). ADR-0039: own — origin.* never inherits (ADR-0029).
-      const of_ = origin.ownAttr(ORIGIN_FIRST_ATTR_OF) as string | undefined;
-      if (!of_) continue;
-      const dotIdx = of_.indexOf(".");
-      if (dotIdx < 1) continue;
-      const ofFieldName = of_.slice(dotIdx + 1);
-      const childEntity = resolveEntityRef(root, of_.slice(0, dotIdx), projPkg);
-      if (!childEntity) continue;
-      const ofField = childEntity.fields().find((f) => f.name === ofFieldName);
-      if (!ofField) continue;
-      // The base↔child correlation FK — resolved exactly as buildJoinTree resolves a
-      // single hop (the identity.reference is the FK-direction SSOT). Single-hop @via;
-      // a multi-hop @via on origin.first is not lowered here (rare, and validated away).
-      // #368: two identity.reference declarations onto the same target are legal, so
-      // this correlation cannot silently take the first — refuse rather than guess.
-      // Unlike buildJoinTree's @via hop (a named relationship/reference this file can
-      // resolve via resolveHopReference), origin.first's OWN @via (ORIGIN_FIRST_ATTR_VIA)
-      // is never read anywhere in this file — buildJoinTree explicitly skips it
-      // (ORIGIN_SUBTYPE_FIRST falls through to `continue` there) and this branch derives
-      // childEntity from @of alone, so there is no hop name here to prefer. Fixing that is
-      // a separate, larger change (wiring @via/single-hop-unique inference into this
-      // branch to match _validateViaPath/_inferViaSingleHop) — out of scope for #368's
-      // silent-first-match fix; the message below reflects the real, narrower remedy.
-      // first-multihop: a @via of two or more hops is lowered along that path — the first hop
-      // correlated to the base, the rest INNER-joined inside the subquery. One hop (or none)
-      // keeps the direct correlation below, so its SQL is unchanged.
-      const firstVia = origin.ownAttr(ORIGIN_FIRST_ATTR_VIA);
-      if (typeof firstVia === "string" && firstVia.split(".").length > 2) {
-        columns.push(firstAlongPath(field.name, dbCol, firstVia, ofField, childEntity, origin, root, projPkg, usedAliases, ctx));
-        continue;
-      }
-      const refs = findReferencesBetween(base, childEntity);
-      // findReferencesBetween walks BOTH directions ([base,child] then [child,base]),
-      // so ">1 entry" is not by itself #368 ambiguity: a mutual 1:1 —
-      // Customer.primaryAddressRef -> Address PLUS Address.customerRef -> Customer —
-      // returns two entries pointing in OPPOSITE directions. That shape is legal
-      // (findReferenceBetween's own contract calls it "rare, but legal", and the
-      // referenceHolder: "source" | "target" branch below exists to serve it), and
-      // refusing it broke codegen for a model #368 says nothing about. The real
-      // ambiguity is two references declared by the SAME holder onto the other side —
-      // that is what the first-match below cannot choose between.
-      const ambiguousHolder = [base, childEntity].find(
-        (holder) => refs.filter((r) => r.holder === holder).length > 1,
-      );
-      if (ambiguousHolder !== undefined) {
-        const ambiguous = refs.filter((r) => r.holder === ambiguousHolder);
-        throw new Error(
-          `origin.first correlation from "${base.name}" to "${childEntity.name}" is ambiguous: ` +
-            `"${ambiguousHolder.name}" declares ${ambiguous.length} identity.reference nodes ` +
-            `onto the other side (${ambiguous.map((r) => r.referenceIdentity.name).join(", ")}). ` +
-            `origin.first's own @via is not consulted for this correlation — reduce to a ` +
-            `single identity.reference between these two entities.`,
-        );
-      }
-      const ref = refs[0];
-      if (!ref) continue;
-      const fkField = ref.referenceIdentity.fields[0];
-      if (!fkField) continue;
-      const pkField = ref.referenceIdentity.resolvedTargetPkField(root) ?? "id";
-      const referenceHolder: "source" | "target" =
-        ref.holder.name === base.name ? "source" : "target";
-      const fkHolder = referenceHolder === "source" ? base : childEntity;
-      const pkHolder = referenceHolder === "source" ? childEntity : base;
-      const childPk = primaryKeyColumn(childEntity, ctx);
-      if (childPk === undefined) continue;
-      // A FRESH alias — the subquery is an independent correlated scope, never the
-      // JOIN-tree alias (reserved against usedAliases so it can never collide).
-      const childAlias = shortAliasFor(childEntity.name, usedAliases);
-      const orderBy = resolveOrderByKeys(origin.ownAttr(ORIGIN_ATTR_ORDER_BY), childEntity, ctx);
-      const filterAttr = origin.ownAttr(ORIGIN_FIRST_ATTR_FILTER);
-      const childScope = tphScopeOf(childEntity, ctx);
-      const filter = andClauses(
-        filterAttr !== undefined ? resolveAggregateFilter(filterAttr, childEntity, childAlias, ctx) : undefined,
-        childScope !== undefined ? tphScopeClause(childScope, childAlias) : undefined,
-      );
-      columns.push({
-        kind: "first",
-        // FQN so it lines up with the resolutionKey()-keyed joinTables in build-projection-views (#244).
-        fieldName: field.name,
-        dbColAlias: dbCol,
-        childEntity: childEntity.resolutionKey(),
-        childAlias,
-        sourceColumn: sourceColumnNameFor(ofField, ctx),
-        referenceHolder,
-        fkColumn: joinColumnFor(fkHolder, fkField, ctx),
-        pkColumn: joinColumnFor(pkHolder, pkField, ctx),
-        childPkColumn: childPk,
-        orderBy,
-        ...(filter !== undefined ? { filter } : {}),
-      });
+      const first = buildFirstColumn(field, origin, base, root, projPkg, usedAliases, ctx);
+      if (first !== undefined) columns.push(first);
     }
   }
 
   return { columns };
+}
+
+/** origin.first's column: the selected related row's @of, correlated to `base`'s row (#195). */
+function buildFirstColumn(
+  field: MetaField,
+  origin: MetaData,
+  base: MetaObject,
+  root: MetaRoot,
+  projPkg: string,
+  usedAliases: Set<string>,
+  ctx: ExtractContext,
+): FirstColumn | undefined {
+  const dbCol = sourceColumnNameFor(field, ctx);
+  const of_ = origin.ownAttr(ORIGIN_FIRST_ATTR_OF) as string | undefined;
+  if (!of_) return undefined;
+  const dotIdx = of_.indexOf(".");
+  if (dotIdx < 1) return undefined;
+  const ofFieldName = of_.slice(dotIdx + 1);
+  const childEntity = resolveEntityRef(root, of_.slice(0, dotIdx), projPkg);
+  if (!childEntity) return undefined;
+  const ofField = childEntity.fields().find((f) => f.name === ofFieldName);
+  if (!ofField) return undefined;
+  // The base↔child correlation FK — resolved exactly as buildJoinTree resolves a
+  // single hop (the identity.reference is the FK-direction SSOT). Single-hop @via;
+  // a multi-hop @via on origin.first is not lowered here (rare, and validated away).
+  // #368: two identity.reference declarations onto the same target are legal, so
+  // this correlation cannot silently take the first — refuse rather than guess.
+  // Unlike buildJoinTree's @via hop (a named relationship/reference this file can
+  // resolve via resolveHopReference), origin.first's OWN @via (ORIGIN_FIRST_ATTR_VIA)
+  // is never read anywhere in this file — buildJoinTree explicitly skips it
+  // (ORIGIN_SUBTYPE_FIRST falls through to `continue` there) and this branch derives
+  // childEntity from @of alone, so there is no hop name here to prefer. Fixing that is
+  // a separate, larger change (wiring @via/single-hop-unique inference into this
+  // branch to match _validateViaPath/_inferViaSingleHop) — out of scope for #368's
+  // silent-first-match fix; the message below reflects the real, narrower remedy.
+  // first-multihop: a @via of two or more hops is lowered along that path — the first hop
+  // correlated to the base, the rest INNER-joined inside the subquery. One hop (or none)
+  // keeps the direct correlation below, so its SQL is unchanged.
+  const firstVia = origin.ownAttr(ORIGIN_FIRST_ATTR_VIA);
+  if (typeof firstVia === "string" && firstVia.split(".").length > 2) {
+    return firstAlongPath(field.name, dbCol, firstVia, ofField, childEntity, origin, root, projPkg, usedAliases, ctx) as FirstColumn;
+  }
+  const refs = findReferencesBetween(base, childEntity);
+  // findReferencesBetween walks BOTH directions ([base,child] then [child,base]),
+  // so ">1 entry" is not by itself #368 ambiguity: a mutual 1:1 —
+  // Customer.primaryAddressRef -> Address PLUS Address.customerRef -> Customer —
+  // returns two entries pointing in OPPOSITE directions. That shape is legal
+  // (findReferenceBetween's own contract calls it "rare, but legal", and the
+  // referenceHolder: "source" | "target" branch below exists to serve it), and
+  // refusing it broke codegen for a model #368 says nothing about. The real
+  // ambiguity is two references declared by the SAME holder onto the other side —
+  // that is what the first-match below cannot choose between.
+  const ambiguousHolder = [base, childEntity].find(
+    (holder) => refs.filter((r) => r.holder === holder).length > 1,
+  );
+  if (ambiguousHolder !== undefined) {
+    const ambiguous = refs.filter((r) => r.holder === ambiguousHolder);
+    throw new Error(
+      `origin.first correlation from "${base.name}" to "${childEntity.name}" is ambiguous: ` +
+        `"${ambiguousHolder.name}" declares ${ambiguous.length} identity.reference nodes ` +
+        `onto the other side (${ambiguous.map((r) => r.referenceIdentity.name).join(", ")}). ` +
+        `origin.first's own @via is not consulted for this correlation — reduce to a ` +
+        `single identity.reference between these two entities.`,
+    );
+  }
+  const ref = refs[0];
+  if (!ref) return undefined;
+  const fkField = ref.referenceIdentity.fields[0];
+  if (!fkField) return undefined;
+  const pkField = ref.referenceIdentity.resolvedTargetPkField(root) ?? "id";
+  const referenceHolder: "source" | "target" =
+    ref.holder.name === base.name ? "source" : "target";
+  const fkHolder = referenceHolder === "source" ? base : childEntity;
+  const pkHolder = referenceHolder === "source" ? childEntity : base;
+  const childPk = primaryKeyColumn(childEntity, ctx);
+  if (childPk === undefined) return undefined;
+  // A FRESH alias — the subquery is an independent correlated scope, never the
+  // JOIN-tree alias (reserved against usedAliases so it can never collide).
+  const childAlias = shortAliasFor(childEntity.name, usedAliases);
+  const orderBy = resolveOrderByKeys(origin.ownAttr(ORIGIN_ATTR_ORDER_BY), childEntity, ctx);
+  const filterAttr = origin.ownAttr(ORIGIN_FIRST_ATTR_FILTER);
+  const childScope = tphScopeOf(childEntity, ctx);
+  const filter = andClauses(
+    filterAttr !== undefined ? resolveAggregateFilter(filterAttr, childEntity, childAlias, ctx) : undefined,
+    childScope !== undefined ? tphScopeClause(childScope, childAlias) : undefined,
+  );
+  return {
+    kind: "first",
+    // FQN so it lines up with the resolutionKey()-keyed joinTables in build-projection-views (#244).
+    fieldName: field.name,
+    dbColAlias: dbCol,
+    childEntity: childEntity.resolutionKey(),
+    childAlias,
+    sourceColumn: sourceColumnNameFor(ofField, ctx),
+    referenceHolder,
+    fkColumn: joinColumnFor(fkHolder, fkField, ctx),
+    pkColumn: joinColumnFor(pkHolder, pkField, ctx),
+    childPkColumn: childPk,
+    orderBy,
+    ...(filter !== undefined ? { filter } : {}),
+  };
 }
 
 /**
@@ -1518,6 +1559,81 @@ function firstAlongPath(
   };
 }
 
+/** Every field key of a (desugared) filter, through and/or. */
+function filterKeysOf(filter: unknown, out: string[] = []): string[] {
+  if (!isPlainObject(filter)) return out;
+  for (const [key, val] of Object.entries(filter)) {
+    if (key === FILTER_AND || key === FILTER_OR) {
+      if (Array.isArray(val)) for (const sub of val) filterKeysOf(sub, out);
+    } else out.push(key);
+  }
+  return out;
+}
+
+/** The join alias the hop chain `hops` (relationship names from the base) landed on. */
+function aliasForHops(joinTree: JoinTree, hops: readonly string[]): string | undefined {
+  let nodes = joinTree.joins;
+  let alias: string | undefined;
+  for (const hop of hops) {
+    const node = nodes.find((n) => n.relationship === hop);
+    if (node === undefined) return undefined;
+    alias = node.alias;
+    nodes = node.children;
+  }
+  return alias;
+}
+
+/**
+ * The column a view @filter compares for a field of `entity` read on `alias` (the base, or the
+ * end of a to-one path): its stored column, or — entity-derived — its derivation inlined there.
+ */
+function filterColumnFor(
+  key: string,
+  field: MetaField,
+  entity: MetaObject,
+  alias: string,
+  root: MetaRoot,
+  usedAliases: Set<string>,
+  ctx: ExtractContext,
+  projectionName: string,
+): SelectColumn {
+  if (!field.isDerived()) {
+    return { kind: "passthrough", fieldName: key, dbColAlias: key, sourceAlias: alias, sourceColumn: sourceColumnNameFor(field, ctx) };
+  }
+  const expr = inlineEntityDerived(field, entity, alias, root, usedAliases, ctx, `Projection ${projectionName}: view @filter "${key}"`);
+  return { kind: "computed", fieldName: key, dbColAlias: key, expr };
+}
+
+/**
+ * entity-derived: a derived field declared on an ENTITY, lowered where a projection reaches it
+ * (its base row, or the end of a to-one path, at `alias`) — an origin.computed as its expression
+ * over that alias, an origin.first as its correlated subquery keyed on that alias. Aggregates are
+ * refused: they would need the reached rows grouped.
+ */
+export function inlineEntityDerived(
+  field: MetaField,
+  entity: MetaObject,
+  alias: string,
+  root: MetaRoot,
+  usedAliases: Set<string>,
+  ctx: ExtractContext,
+  where: string,
+): ViewExprNode {
+  // ADR-0039: own — origin.* never inherits (ADR-0029).
+  const origin = field.ownChildren().find((c) => c.type === TYPE_ORIGIN);
+  if (origin?.subType === ORIGIN_SUBTYPE_COMPUTED) {
+    const expr = resolveExprNode(origin.ownAttr(ORIGIN_COMPUTED_ATTR_EXPR), entity, alias, ctx);
+    if (expr !== undefined) return expr;
+  } else if (origin?.subType === ORIGIN_SUBTYPE_FIRST) {
+    const first = buildFirstColumn(field, origin, entity, root, packageOf(entity), usedAliases, ctx);
+    if (first !== undefined) return { kind: "first", column: { ...first, outerAlias: alias } };
+  }
+  throw new Error(
+    `${where}: "${entity.name}.${field.name}" is derived by ${origin === undefined ? "nothing" : `origin.${origin.subType}`}, ` +
+      `which a view cannot inline where it reaches the entity; only origin.computed and origin.first can be.`,
+  );
+}
+
 /** The inflation-sensitive aggregate kinds: a non-distinct row multiplication corrupts
  *  their value (sum/avg double-count; a non-distinct collect duplicates elements).
  *  count is DISTINCT-guarded; min/max and any/all are inflation-immune. */
@@ -1578,7 +1694,19 @@ export function extractViewSpec(
   const base = writeThrough ? projection : baseEntityFor(projection, root);
   const usedAliases = new Set<string>();
   const baseAlias = shortAliasFor(base.name, usedAliases);
-  const joinTree = buildJoinTree(projection, base, root, usedAliases, baseAlias, ctx);
+  // G7 (joined) / entity-derived: the @filter keys that are paths of to-one hops from the base.
+  const rawFilter = writeThrough ? undefined : projection.ownAttr(OBJECT_PROJECTION_ATTR_FILTER);
+  const ownFieldNames = new Set(projection.fields().map((f) => f.name));
+  const filterPaths = new Map<string, FilterPath>();
+  for (const key of filterKeysOf(rawFilter)) {
+    if (ownFieldNames.has(key)) continue;
+    const path = resolveFilterPath(base, key);
+    if (path !== undefined && typeof path !== "string") filterPaths.set(key, path);
+  }
+  const filterJoinPaths = [...filterPaths.values()]
+    .map((p) => walkViaPath(`${base.resolutionKey()}.${p.hops.join(".")}`, root, packageOf(projection), ctx))
+    .filter((p) => p.length > 0);
+  const joinTree = buildJoinTree(projection, base, root, usedAliases, baseAlias, ctx, filterJoinPaths);
   const selectSpec = buildSelectSpec(projection, base, joinTree, root, ctx, usedAliases);
   const groupBy = buildGroupBy(selectSpec);
 
@@ -1593,7 +1721,6 @@ export function extractViewSpec(
   // desugared canonical { field: { op: value } } form (FilterAttr.desugar at parse).
   let where: ViewFilterClause | undefined;
   if (!writeThrough) {
-    const rawFilter = projection.ownAttr(OBJECT_PROJECTION_ATTR_FILTER);
     if (rawFilter !== undefined) {
       const columnsByField = new Map<string, SelectColumn>(
         selectSpec.columns.map((c) => [c.fieldName, c] as const),
@@ -1601,14 +1728,22 @@ export function extractViewSpec(
       // G7: a base-entity field the view does not output is filtered on its base column; a
       // projection field of the same name wins. Its int-backed enum map comes from the base field.
       const intMaps = new Map(intEnumMapsOf(projection));
+      const reached = (key: string, f: MetaField, entity: MetaObject, alias: string): void => {
+        columnsByField.set(key, filterColumnFor(key, f, entity, alias, root, usedAliases, ctx, projection.name));
+        const map = f.subType === FIELD_SUBTYPE_ENUM ? intValueMapOf(f) : undefined;
+        if (map !== undefined) intMaps.set(key, map);
+      };
       for (const f of base.fields()) {
         if (columnsByField.has(f.name)) continue;
-        columnsByField.set(f.name, {
-          kind: "passthrough", fieldName: f.name, dbColAlias: f.name,
-          sourceAlias: joinTree.baseAlias, sourceColumn: sourceColumnNameFor(f, ctx),
-        });
-        const map = f.subType === FIELD_SUBTYPE_ENUM ? intValueMapOf(f) : undefined;
-        if (map !== undefined) intMaps.set(f.name, map);
+        reached(f.name, f, base, joinTree.baseAlias);
+      }
+      // G7 (joined): a path key reads the reached entity's column on the alias its joins gave it.
+      for (const [key, path] of filterPaths) {
+        const alias = aliasForHops(joinTree, path.hops);
+        if (alias === undefined) {
+          throw new Error(`Projection ${projection.name}: view @filter path "${key}" did not join.`);
+        }
+        reached(key, path.field as MetaField, path.entity, alias);
       }
       where = resolveViewFilter(rawFilter, columnsByField, projection.name, intMaps);
     }

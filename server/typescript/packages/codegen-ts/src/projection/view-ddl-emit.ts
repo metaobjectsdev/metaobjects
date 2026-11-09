@@ -69,15 +69,16 @@ const FILTER_OP_SQL: Readonly<Record<string, string>> = {
 };
 
 /** Render a resolved {@link ViewFilterClause} to a SQL boolean expression. */
-function renderFilterCond(clause: ViewFilterClause, dialect: EmitOptions["dialect"]): string {
+function renderFilterCond(clause: ViewFilterClause, options: EmitOptions): string {
+  const dialect = options.dialect;
   if (clause.kind === "and" || clause.kind === "or") {
-    const joined = clause.clauses.map((c) => renderFilterCond(c, dialect)).join(clause.kind === "and" ? " AND " : " OR ");
+    const joined = clause.clauses.map((c) => renderFilterCond(c, options)).join(clause.kind === "and" ? " AND " : " OR ");
     return `(${joined})`;
   }
   // The left-hand side is a bare `alias.column` for a `cmp`, or a parenthesized
   // inlined computed expression for #207's `exprCmp` (a projection @filter ref to
   // an origin.computed field). The op handling below is identical for both.
-  const lhs = clause.kind === "exprCmp" ? `(${renderExpr(clause.expr, dialect)})` : quoteRef(clause.ref);
+  const lhs = clause.kind === "exprCmp" ? `(${renderExpr(clause.expr, options)})` : quoteRef(clause.ref);
   if (clause.op === "isNull") return clause.value === false ? `${lhs} IS NOT NULL` : `${lhs} IS NULL`;
   if (clause.op === "in") {
     const vals = (Array.isArray(clause.value) ? clause.value : [clause.value]).map((v) => sqlLiteral(v, dialect));
@@ -104,7 +105,8 @@ function renderOrderKeys(keys: readonly ViewOrderKey[], alias: string): string {
 }
 
 /** Lower a resolved computed expression tree (#195 origin.computed) to a SQL scalar expression. */
-function renderExpr(node: ViewExprNode, dialect: EmitOptions["dialect"]): string {
+function renderExpr(node: ViewExprNode, options: EmitOptions): string {
+  const dialect = options.dialect;
   switch (node.kind) {
     case "col":
       return quoteRef(node.ref);
@@ -113,18 +115,20 @@ function renderExpr(node: ViewExprNode, dialect: EmitOptions["dialect"]): string
     case "cmp": {
       const op = FILTER_OP_SQL[node.op];
       if (!op) throw new Error(`view-ddl-emit: unsupported computed comparison operator "${node.op}".`);
-      return `${renderExpr(node.left, dialect)} ${op} ${renderExpr(node.right, dialect)}`;
+      return `${renderExpr(node.left, options)} ${op} ${renderExpr(node.right, options)}`;
     }
     case "nullTest":
-      return `${renderExpr(node.arg, dialect)} IS ${node.negated ? "NOT " : ""}NULL`;
+      return `${renderExpr(node.arg, options)} IS ${node.negated ? "NOT " : ""}NULL`;
     case "not":
-      return `NOT (${renderExpr(node.arg, dialect)})`;
+      return `NOT (${renderExpr(node.arg, options)})`;
     case "logic": {
       const joiner = node.op === "and" ? " AND " : " OR ";
-      return `(${node.args.map((a) => renderExpr(a, dialect)).join(joiner)})`;
+      return `(${node.args.map((a) => renderExpr(a, options)).join(joiner)})`;
     }
     case "coalesce":
-      return `COALESCE(${node.args.map((a) => renderExpr(a, dialect)).join(", ")})`;
+      return `COALESCE(${node.args.map((a) => renderExpr(a, options)).join(", ")})`;
+    case "first":
+      return firstSubquery(node.column, options, node.column.outerAlias ?? "");
   }
 }
 
@@ -135,6 +139,16 @@ function renderExpr(node: ViewExprNode, dialect: EmitOptions["dialect"]): string
  * ALWAYS appended as the final tie-breaker so equal-order rows stay byte-deterministic.
  */
 function renderFirst(
+  c: Extract<SelectColumn, { kind: "first" }>,
+  options: EmitOptions,
+  baseAlias: string,
+): string {
+  return `${firstSubquery(c, options, c.outerAlias ?? baseAlias)} AS ${quoteIfNeeded(c.dbColAlias)}`;
+}
+
+/** origin.first's correlated scalar subquery, keyed on `baseAlias` (the view's base, or the
+ *  alias an entity-derived field is reached on). */
+function firstSubquery(
   c: Extract<SelectColumn, { kind: "first" }>,
   options: EmitOptions,
   baseAlias: string,
@@ -165,7 +179,7 @@ function renderFirst(
   const correlation = c.referenceHolder === "source"
     ? `${c.childAlias}.${pk} = ${baseAlias}.${fk}`
     : `${c.childAlias}.${fk} = ${baseAlias}.${pk}`;
-  const filterClause = c.filter ? ` AND ${renderFilterCond(c.filter, options.dialect)}` : "";
+  const filterClause = c.filter ? ` AND ${renderFilterCond(c.filter, options)}` : "";
   // The @orderBy keys carry the nulls-last pin; the appended PK tie-breaker never does
   // (a primary key is non-null, so NULLS LAST would be noise). Its ASC direction makes
   // equal-order rows byte-deterministic.
@@ -175,7 +189,7 @@ function renderFirst(
     : tieBreak;
   return (
     `(SELECT ${of} FROM ${viewRelation(c.childEntity, childTable, options)} ${c.childAlias}${joins}` +
-    ` WHERE ${correlation}${filterClause} ORDER BY ${orderKeys} LIMIT 1) AS ${quoteIfNeeded(c.dbColAlias)}`
+    ` WHERE ${correlation}${filterClause} ORDER BY ${orderKeys} LIMIT 1)`
   );
 }
 
@@ -286,7 +300,7 @@ function renderColumn(c: SelectColumn, options: EmitOptions, baseAlias: string):
     // aggregate — use DISTINCT for count() over joined PKs to avoid join inflation.
     // A scoping @filter renders as postgres `FILTER (WHERE …)`; sqlite (no aggregate
     // FILTER pre-3.30) uses the portable `CASE WHEN … END` argument form.
-    const cond = c.filter ? renderFilterCond(c.filter, dialect) : undefined;
+    const cond = c.filter ? renderFilterCond(c.filter, options) : undefined;
     if (c.agg === "count") {
       if (cond && dialect === "sqlite") return `COUNT(DISTINCT CASE WHEN ${cond} THEN ${src} END) AS ${alias}`;
       if (cond) return `COUNT(DISTINCT ${src}) FILTER (WHERE ${cond}) AS ${alias}`;
@@ -301,7 +315,7 @@ function renderColumn(c: SelectColumn, options: EmitOptions, baseAlias: string):
   if (c.kind === "predicateAgg") {
     // #195 any/all. The phantom-row guard (joined.pk IS NOT NULL) EXCLUDES null-extended
     // LEFT-JOIN non-matches, so the empty-related-set pins hold: any=false / all=true.
-    const pred = renderFilterCond(c.pred, dialect);
+    const pred = renderFilterCond(c.pred, options);
     const guard = `${c.sourceAlias}.${quoteIfNeeded(c.joinedPkColumn)} IS NOT NULL`;
     if (dialect === "sqlite") {
       // No boolean aggregates: MAX≡bool_or, MIN≡bool_and over 1/0. The outer CASE yields
@@ -363,11 +377,16 @@ function renderColumn(c: SelectColumn, options: EmitOptions, baseAlias: string):
   }
 
   if (c.kind === "computed") {
-    return `${cast(renderExpr(c.expr, dialect), c.castTo, dialect)} AS ${alias}`;
+    return `${cast(renderExpr(c.expr, options), c.castTo, dialect)} AS ${alias}`;
   }
 
   // first — a correlated scalar subquery keyed on the base alias.
   return renderFirst(c, options, baseAlias);
+}
+
+/** A TPH scope's comparison after its column: ` = v` for one value, ` IN (a, b)` for several. */
+export function tphScopeSql(values: readonly (string | number)[], literal: (v: string | number) => string): string {
+  return values.length === 1 ? ` = ${literal(values[0]!)}` : ` IN (${values.map(literal).join(", ")})`;
 }
 
 function renderJoin(
@@ -397,7 +416,7 @@ function renderJoin(
   const joinKw = node.joinType === "inner" ? "INNER JOIN" : "LEFT OUTER JOIN";
   // TPH-scope: a join onto a TPH subtype keeps only its rows of the shared table.
   const scope = node.tphScope !== undefined
-    ? ` AND ${childAlias}.${quoteIfNeeded(node.tphScope.column)} = ${sqlLiteral(node.tphScope.value, options.dialect)}`
+    ? ` AND ${childAlias}.${quoteIfNeeded(node.tphScope.column)}${tphScopeSql(node.tphScope.values, (v) => sqlLiteral(v, options.dialect))}`
     : "";
   let sql = `  ${joinKw} ${viewRelation(node.targetEntity, table, options)} ${childAlias} ON ${onClause}${scope}`;
   for (const childJoin of node.children) {
@@ -419,7 +438,7 @@ export function emitViewDdl(spec: ViewSpec, options: EmitOptions): string {
   // filters rows, not aggregate groups — a post-aggregate HAVING is a separate concern).
   const whereClause =
     spec.where !== undefined
-      ? `\n  WHERE ${renderFilterCond(spec.where, options.dialect)}`
+      ? `\n  WHERE ${renderFilterCond(spec.where, options)}`
       : "";
   const groupByClause =
     spec.groupBy.length > 0

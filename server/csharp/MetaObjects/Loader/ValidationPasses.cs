@@ -1834,13 +1834,63 @@ public static partial class ValidationPasses
             // G7: a field of the BASE entity the view does not output is filterable too (a WHERE
             // reads the base row); a projection field of the same name wins.
             if (DeriveBaseEntity(obj, root, "@filter", obj.Source, []) is { } baseEntity && !ReferenceEquals(baseEntity, obj))
+            {
                 foreach (var f in baseEntity.Children().Where(c => c.Type == TYPE_FIELD))
-                    declared.Add(f.Name);
+                {
+                    if (!declared.Add(f.Name)) continue;
+                    if (EntityFieldAggregates(f)) aggregateDerived.Add(f.Name);
+                }
+                // G7 (joined) / entity-derived: a key that is a PATH of to-one hops from the base,
+                // then a field of the entity reached (`caseId.status`). Not output; the view joins it.
+                if (baseEntity is MetaObject baseObject)
+                {
+                    foreach (var key in FilterKeys(filter))
+                    {
+                        if (declared.Contains(key)) continue;
+                        var path = FilterPaths.Resolve(baseObject, key, out var why);
+                        if (path is null && why is null) continue;
+                        declared.Add(key);
+                        if (path is null)
+                        {
+                            errors.Add(new MetaError(
+                                $"projection \"{obj.Name}\" @filter path \"{key}\" does not resolve: {why}.",
+                                ErrorCode.ERR_BAD_ATTR_FILTER, Envelope: obj.Source));
+                            continue;
+                        }
+                        if (EntityFieldAggregates(path.Field)) aggregateDerived.Add(key);
+                    }
+                }
+            }
 
             CheckProjectionFilterRefs(filter, declared, aggregateDerived, obj.Name, obj.Source, errors);
         }
 
         return errors.AsReadOnly();
+    }
+
+    /// <summary>
+    /// An entity field a projection @filter reaches (on the base, or through a path) cannot be filtered
+    /// when it is an aggregate (a WHERE runs before grouping); its column, an origin.computed or an
+    /// origin.first (a correlated scalar subquery) can (entity-derived). origin.* never inherits.
+    /// </summary>
+    private static bool EntityFieldAggregates(MetaData f) =>
+        f.OwnChildren().FirstOrDefault(c => c.Type == TYPE_ORIGIN) is { SubType: ORIGIN_SUBTYPE_AGGREGATE };
+
+    /// <summary>Every field key of a filter, through and/or.</summary>
+    private static IEnumerable<string> FilterKeys(IReadOnlyDictionary<string, object?> filter)
+    {
+        foreach (var (key, clause) in filter)
+        {
+            if (key == FILTER_COMPOSE_OR || key == FILTER_COMPOSE_AND)
+            {
+                if (clause is IReadOnlyList<object?> subs)
+                    foreach (var sub in subs)
+                        if (sub is IReadOnlyDictionary<string, object?> subFilter)
+                            foreach (var k in FilterKeys(subFilter)) yield return k;
+                continue;
+            }
+            yield return key;
+        }
     }
 
     private static void CheckProjectionFilterRefs(

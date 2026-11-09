@@ -30,10 +30,12 @@ export interface JoinNode {
   readonly children: readonly JoinNode[];
 }
 
-/** A TPH subtype's discriminator pin: the shared table's discriminator column and the stored value. */
+/** A TPH level's rows of the shared table: the discriminator column and the values stored for
+ *  it — a concrete subtype's own and those of every concrete subtype beneath it (an abstract
+ *  intermediate level has only the latter). */
 export interface TphScope {
   readonly column: string;
-  readonly value: string | number;
+  readonly values: readonly (string | number)[];
 }
 
 /** Tree of JOINs rooted at the projection's base entity. */
@@ -79,7 +81,10 @@ export type ViewExprNode =
   | { readonly kind: "nullTest"; readonly negated: boolean; readonly arg: ViewExprNode } // isNull / isNotNull
   | { readonly kind: "not"; readonly arg: ViewExprNode }
   | { readonly kind: "logic"; readonly op: "and" | "or"; readonly args: readonly ViewExprNode[] }
-  | { readonly kind: "coalesce"; readonly args: readonly ViewExprNode[] };
+  | { readonly kind: "coalesce"; readonly args: readonly ViewExprNode[] }
+  // entity-derived: an entity's origin.first, inlined where a projection reaches the entity —
+  // its correlated scalar subquery, keyed on `column.outerAlias`.
+  | { readonly kind: "first"; readonly column: FirstColumn };
 
 /** A resolved ordering key: a physical column (naming-strategy applied) + direction. */
 export interface ViewOrderKey {
@@ -197,7 +202,12 @@ export type SelectColumn =
        * `childPkColumn`, `orderBy` and `filter` are over the LAST join's alias. Absent for one hop.
        */
       readonly innerJoins?: readonly FirstInnerJoin[];
+      /** entity-derived: the alias the correlation keys on, when it is not the view's base alias. */
+      readonly outerAlias?: string;
     };
+
+/** An `origin.first` column. */
+export type FirstColumn = Extract<SelectColumn, { kind: "first" }>;
 
 /** One inner join of a multi-hop `origin.first` subquery, from the alias before it. */
 export interface FirstInnerJoin {
