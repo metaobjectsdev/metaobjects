@@ -1,8 +1,10 @@
 import { DEFAULT_DB_SCHEMA_POSTGRES } from "@metaobjectsdev/metadata";
 import { pgType, type SqlType } from "@metaobjectsdev/migrate-ts/expected";
 import type {
-  JoinNode, ViewSpec, ViewFilterClause, ViewExprNode, ViewOrderKey, SelectColumn,
+  JoinNode, ViewSpec, ViewFilterClause, ViewExprNode, ViewOrderKey, SelectColumn, ColRef,
 } from "./view-spec.js";
+import { isRelativeNow } from "./report-spec.js";
+import { relativeNowSql } from "./time-sql.js";
 
 // Quote an identifier only when it isn't a plain lowercase snake identifier —
 // exactly postgres's own rule. This keeps snake_case output unquoted (the common
@@ -54,9 +56,12 @@ export function viewRelation(entity: string, table: string, options: EmitOptions
   return `${quoteIfNeeded(schema)}.${quoteIfNeeded(table)}`;
 }
 
-/** SQL literal for a filter value, dialect-aware for booleans. */
+/** SQL literal for a filter value, dialect-aware for booleans. A relative date (rc.19 `now`) is
+ *  the dialect's shifted "now"; a base-row operand (correlated-filter) is its column. */
 function sqlLiteral(value: unknown, dialect: EmitOptions["dialect"]): string {
   if (value === null || value === undefined) return "NULL";
+  if (isRelativeNow(value)) return relativeNowSql(value.duration, value.temporal, dialect, value.startOf);
+  if (isColRef(value)) return quoteRef(value.ref);
   if (typeof value === "number") return String(value);
   if (typeof value === "boolean") {
     return dialect === "sqlite" ? (value ? "1" : "0") : (value ? "TRUE" : "FALSE");
@@ -67,6 +72,17 @@ function sqlLiteral(value: unknown, dialect: EmitOptions["dialect"]): string {
 const FILTER_OP_SQL: Readonly<Record<string, string>> = {
   eq: "=", ne: "<>", gt: ">", gte: ">=", lt: "<", lte: "<=", like: "LIKE",
 };
+
+/** rc.19 correlated-filter's null-safe comparisons, per dialect (SQLite's IS / IS NOT are null-safe). */
+function nullSafeOpSql(op: string, dialect: EmitOptions["dialect"]): string | undefined {
+  if (op === "isDistinctFrom") return dialect === "sqlite" ? "IS NOT" : "IS DISTINCT FROM";
+  if (op === "isNotDistinctFrom") return dialect === "sqlite" ? "IS" : "IS NOT DISTINCT FROM";
+  return undefined;
+}
+
+function isColRef(v: unknown): v is ColRef {
+  return typeof v === "object" && v !== null && (v as { kind?: unknown }).kind === "colRef";
+}
 
 /** Render a resolved {@link ViewFilterClause} to a SQL boolean expression. */
 function renderFilterCond(clause: ViewFilterClause, options: EmitOptions): string {
@@ -84,7 +100,7 @@ function renderFilterCond(clause: ViewFilterClause, options: EmitOptions): strin
     const vals = (Array.isArray(clause.value) ? clause.value : [clause.value]).map((v) => sqlLiteral(v, dialect));
     return `${lhs} IN (${vals.join(", ")})`;
   }
-  const op = FILTER_OP_SQL[clause.op];
+  const op = FILTER_OP_SQL[clause.op] ?? nullSafeOpSql(clause.op, dialect);
   if (!op) throw new Error(`view-ddl-emit: unsupported filter operator "${clause.op}".`);
   return `${lhs} ${op} ${sqlLiteral(clause.value, dialect)}`;
 }
@@ -129,6 +145,14 @@ function renderExpr(node: ViewExprNode, options: EmitOptions): string {
       return `COALESCE(${node.args.map((a) => renderExpr(a, options)).join(", ")})`;
     case "first":
       return firstSubquery(node.column, options, node.column.outerAlias ?? "");
+    case "now":
+      return relativeNowSql(node.value.duration, node.value.temporal, dialect, node.value.startOf);
+    case "case": {
+      const arms = node.whens.map((w) => ` WHEN ${renderExpr(w.when, options)} THEN ${renderExpr(w.then, options)}`).join("");
+      const head = node.operand !== undefined ? `CASE ${renderExpr(node.operand, options)}` : "CASE";
+      const otherwise = node.else !== undefined ? ` ELSE ${renderExpr(node.else, options)}` : "";
+      return `(${head}${arms}${otherwise} END)`;
+    }
   }
 }
 

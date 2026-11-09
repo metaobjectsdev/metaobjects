@@ -90,6 +90,8 @@ const REPORT_ATTRS: Record<string, ExpectedAttr> = {
 // projection / report, and the JVM's @object / @objectAdapter on object.base, which
 // every subtype composes.
 const DB_SET_NAME: Record<string, ExpectedAttr> = {
+  // rc.19 (R57): @collectionName (kind 1, C# + TypeScript), and @dbSetName its deprecated alias.
+  collectionName: { valueType: "string", required: false },
   dbSetName: { valueType: "string", required: false },
 };
 

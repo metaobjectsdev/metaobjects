@@ -535,6 +535,25 @@ vocabulary; upgrade every port together.
   reads the owning table's `address_city` column (an empty `@flattenedColumnPrefix` reads the
   bare member column). The loader refused the path in TypeScript and C# ("no such field").
   Pinned by `fixtures/conformance/origin-passthrough-flattened-member`.
+- **The Tier 2 view vocabulary** (rc.19 Phase 6, ruling R58; loaders in C# and TypeScript, view
+  SQL in TypeScript, which builds every port's views). See `docs/features/relationships.md`
+  "Filtering and computing over joined rows".
+  - *entity-derived*: an entity may declare an `origin.first` / `origin.computed` field with no
+    read source when a projection reaches it (a `@filter` key or path, a passthrough `@from`);
+    it is no column and no ORM property, and is inlined where reached.
+  - *origin-segment*: `@segment` on `origin.first` and `origin.aggregate`.
+  - *now*: relative dates in a projection `@filter` and an origin `@filter`, and `{ now }` as an
+    expression leaf. **Changed:** the loader no longer refuses them there (rule F1); the corpus
+    fixtures `error-relative-date-wrong-host` and `error-relative-date-origin-host` became
+    `projection-filter-relative-now` and `origin-filter-relative-now`.
+  - *correlated-filter*: `{ field: "<base field>" }` operands in an origin `@filter`, with the
+    null-safe `isDistinctFrom` / `isNotDistinctFrom`.
+  - *computed-over-joined*: `origin.computed` refs name the projection's own fields first.
+  - *case*: searched and simple `case` expression nodes.
+  C# entity classes never carry a derived field. Pinned by the fixtures
+  `entity-derived-hipaa-gate`, `origin-computed-case-over-joined`,
+  `origin-correlated-filter-and-segment`, `error-origin-computed-case-mixed-types`,
+  `error-origin-segment-unresolved`, `error-origin-correlated-operand-unknown`.
 - **`@collectionName`, and a pluggable pluralizer** (rc.19 Phase 6, ruling R57; C# and
   TypeScript, kind 1). An object's collection name — the C# DbSet, the REST segment
   (snake_cased), the TS `list<X>` / `find<X>By…` exports and Drizzle collection variable, and the

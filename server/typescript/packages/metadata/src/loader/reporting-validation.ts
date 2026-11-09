@@ -36,9 +36,11 @@ import {
   TYPE_DIMENSION,
   TYPE_MEASURE,
   TYPE_SEGMENT,
+  TYPE_ORIGIN,
 } from "../shared/base-types.js";
 import {
   OBJECT_SUBTYPE_ENTITY,
+  OBJECT_SUBTYPE_PROJECTION,
   OBJECT_SUBTYPE_REPORT,
   OBJECT_REPORT_ATTR_FILTER,
   OBJECT_REPORT_ATTR_SEGMENT,
@@ -79,7 +81,7 @@ import {
 import { ATTR_SUBTYPE_FILTER } from "../core/attr/attr-constants.js";
 import { isMetaObject, isMetaRoot, isReadOnlySource, isWritableSource } from "../shared/node-guards.js";
 import { SOURCE_KIND_VIEW } from "../persistence/source/source-constants.js";
-import { AGG_ALL, AGG_ANY } from "../persistence/origin/origin-constants.js";
+import { AGG_ALL, AGG_ANY, ORIGIN_SUBTYPE_FIRST, ORIGIN_SUBTYPE_AGGREGATE } from "../persistence/origin/origin-constants.js";
 import {
   FILTER_RELATIVE_NOW,
   FILTER_RELATIVE_START_OF,
@@ -1113,6 +1115,43 @@ function checkReportMeasure(
 // F1 — relative-date values only on reporting hosts
 // ---------------------------------------------------------------------------
 
+/** rc.19 `now` — the view hosts whose `@filter` may carry a relative-date value too. */
+function isRelativeViewFilterHost(node: MetaData): boolean {
+  return (
+    (node.type === TYPE_OBJECT && node.subType === OBJECT_SUBTYPE_PROJECTION) ||
+    (node.type === TYPE_ORIGIN && (node.subType === ORIGIN_SUBTYPE_FIRST || node.subType === ORIGIN_SUBTYPE_AGGREGATE))
+  );
+}
+
+/** F2's value rules (exact shape, range op, ISO-8601 duration, startOf unit) on every relative
+ *  operand of a filter, without its field-type rule. */
+function checkRelativeShapes(filter: unknown, host: MetaData, sink: ErrorSink): void {
+  if (!isPlainObject(filter)) return;
+  const err = (message: string): void => sink.push(host, ERR_BAD_ATTR_FILTER, nodeLabel(host), `: ${message}`);
+  for (const [key, clause] of Object.entries(filter)) {
+    if (key === FILTER_COMPOSE_OR || key === FILTER_COMPOSE_AND) {
+      if (Array.isArray(clause)) for (const sub of clause) checkRelativeShapes(sub, host, sink);
+      continue;
+    }
+    if (!isPlainObject(clause)) continue;
+    for (const [op, operand] of Object.entries(clause)) {
+      const relative = relativeOperand(operand);
+      if (relative === undefined) continue;
+      const duration = relative[FILTER_RELATIVE_NOW];
+      const startOf = relative[FILTER_RELATIVE_START_OF];
+      if (!isExactRelativeValue(relative)) {
+        err(`@filter on '${key}' has a malformed relative date ${JSON.stringify(relative)}; a relative date is { now: "<ISO-8601 duration>" } with an optional startOf, and no other keys.`);
+      } else if (!RELATIVE_DATE_OPS.includes(op)) {
+        err(`@filter on '${key}' puts a relative date under op '${op}'; relative dates are legal only under gt, gte, lt and lte.`);
+      } else if (typeof duration !== "string" || !ISO_DURATION_RE.test(duration)) {
+        err(`@filter on '${key}' has relative date '${quoteValue(duration)}', which is not an ISO-8601 duration (e.g. '-P7D', '-PT12H').`);
+      } else if (FILTER_RELATIVE_START_OF in relative && (typeof startOf !== "string" || !(RELATIVE_START_OF_UNITS as readonly string[]).includes(startOf))) {
+        err(`@filter on '${key}' has startOf '${quoteValue(startOf)}'; startOf is one of ${RELATIVE_START_OF_UNITS.join(", ")}.`);
+      }
+    }
+  }
+}
+
 /** True for the hosts whose `@filter` may carry a relative-date value. */
 function isReportingFilterHost(node: MetaData): boolean {
   return (
@@ -1128,7 +1167,14 @@ function isReportingFilterHost(node: MetaData): boolean {
  * origin.aggregate/first @filter): those hosts have no lowering for it.
  */
 function checkNoRelativeDates(node: MetaData, sink: ErrorSink): void {
-  if (!isReportingFilterHost(node)) {
+  if (isRelativeViewFilterHost(node)) {
+    // rc.19 `now`: a projection's and an origin's @filter lower relative dates into the view.
+    // Their keys resolve elsewhere (projection fields, base paths, the related entity), so the
+    // value's own shape is checked here and the field's type where it is lowered.
+    for (const attr of node.ownMetaAttrs()) {
+      if (attr.subType === ATTR_SUBTYPE_FILTER) checkRelativeShapes(attr.value, node, sink);
+    }
+  } else if (!isReportingFilterHost(node)) {
     // ADR-0039: own — only locally declared filters are lowered, and the walk
     // visits every declared node exactly once (an inherited filter is checked
     // where it is declared; origin.* never inherits, ADR-0029).

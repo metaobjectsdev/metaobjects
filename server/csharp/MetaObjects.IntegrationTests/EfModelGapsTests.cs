@@ -130,6 +130,45 @@ public sealed class EfModelGapsTests
     private static IForeignKey ForeignKey(IEntityType t, params string[] props) =>
         Assert.Single(t.GetForeignKeys(), fk => fk.Properties.Select(p => p.Name).SequenceEqual(props));
 
+    // ── rc.19 entity-derived: a derived field projections reach, on an entity with no read source ──
+
+    private const string EntityDerivedModel = """
+    { "metadata.root": { "package": "acme", "children": [
+      { "object.entity": { "name": "Patient", "children": [
+        { "source.rdb": { "@table": "patients" } },
+        { "field.long": { "name": "id" } },
+        { "field.boolean": { "name": "hasConsent", "children": [
+          { "origin.first": { "@via": "Patient.consents", "@of": "Consent.onFile", "@orderBy": ["id:desc"] } }
+        ]}},
+        { "identity.primary": { "name": "id", "@fields": "id" } }
+      ]}},
+      { "object.entity": { "name": "Consent", "children": [
+        { "source.rdb": { "@table": "consents" } },
+        { "field.long": { "name": "id" } },
+        { "field.long": { "name": "patientId", "@required": true } },
+        { "field.boolean": { "name": "onFile" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
+        { "identity.reference": { "name": "patientId", "@fields": "patientId", "@references": "Patient" } }
+      ]}},
+      { "object.projection": { "name": "ConsentedPatients", "@filter": { "hasConsent": true }, "children": [
+        { "source.rdb": { "@kind": "view", "@view": "v_consented_patients" } },
+        { "field.long": { "name": "id", "extends": "acme::Patient.id" } },
+        { "identity.primary": { "name": "id", "extends": "acme::Patient.id" } }
+      ]}}
+    ]}}
+    """;
+
+    [Fact]
+    public void An_entity_derived_field_is_no_column_of_the_entity()
+    {
+        // The field has no column: the view a projection reaching it is built from inlines it.
+        var gen = GeneratedEfModel.Compile(EntityDerivedModel, "Acme.EntityDerived");
+        using var db = gen.ModelOnlyContext();
+        var patient = EntityType(db, "Patient");
+        Assert.Null(patient.FindProperty("HasConsent"));
+        Assert.Null(patient.ClrType.GetProperty("HasConsent"));
+    }
+
     // ── G6 (reference half): an identity.reference over a flattened value-object member ──────
 
     private const string FlattenedReferenceModel = """

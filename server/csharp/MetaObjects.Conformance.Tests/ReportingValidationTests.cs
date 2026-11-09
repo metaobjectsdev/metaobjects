@@ -588,7 +588,7 @@ public class ReportingValidationTests
     }
 
     [Fact]
-    public void F1_a_now_key_plus_other_keys_is_refused_on_a_non_reporting_host()
+    public void F1_a_now_key_plus_other_keys_is_refused_on_a_view_host()
     {
         var m = Positive();
         RootChildren(m).Add(Wrap("object.projection", """
@@ -600,11 +600,9 @@ public class ReportingValidationTests
                 { "field.timestamp": { "name": "purchasedAt", "extends": "Purchase.purchasedAt" } },
                 { "identity.primary": { "name": "id", "extends": "Purchase.id" } } ] }
             """));
+        // rc.19 `now`: a projection @filter takes a relative date, so only its malformed shape is refused.
         string msg = Single(Load(m), ErrorCode.ERR_BAD_ATTR_FILTER);
-        Assert.Equal(
-            "object.projection 'acme::shop::RecentPurchase': @filter uses a relative date ({ now: ... }), which is " +
-            "legal only in the @filter of a segment, measure.aggregate or object.report.",
-            msg);
+        Assert.Contains("malformed relative date", msg);
     }
 
     [Fact]
@@ -655,12 +653,12 @@ public class ReportingValidationTests
     }
 
     [Fact]
-    public void F1_a_field_named_now_inside_or_does_not_hide_a_real_relative_value_beside_it()
+    public void F1_a_field_named_now_inside_or_does_not_hide_a_malformed_relative_value_beside_it()
     {
         var m = Positive();
         RootChildren(m).Add(Wrap("object.projection", """
             { "name": "NowView",
-              "@filter": { "or": [ { "now": { "eq": 1 } }, { "purchasedAt": { "gte": { "now": "-P7D" } } } ] },
+              "@filter": { "or": [ { "now": { "eq": 1 } }, { "purchasedAt": { "gte": { "now": "7 days ago" } } } ] },
               "children": [
                 { "source.rdb": { "@kind": "view", "@view": "now_view" } },
                 { "field.long": { "name": "id", "extends": "Purchase.id" } },

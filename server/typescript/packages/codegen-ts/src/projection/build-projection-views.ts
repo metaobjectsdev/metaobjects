@@ -34,7 +34,7 @@ import type { ReportViewSpec } from "./report-spec.js";
 import type { ReportDialect } from "./time-sql.js";
 import { isReport } from "../source-detect.js";
 import { emitViewDdl } from "./view-ddl-emit.js";
-import type { JoinNode, ViewSpec } from "./view-spec.js";
+import type { JoinNode, SelectColumn, ViewExprNode, ViewFilterClause, ViewSpec } from "./view-spec.js";
 import type { ColumnNamingStrategy } from "../metaobjects-config.js";
 
 /** Structurally matches migrate-ts's `ExpectedViewInput` (name + body sql + optional schema). */
@@ -439,16 +439,42 @@ function collectDependsOn(
     for (const child of node.children) walk(child);
   };
   for (const j of spec.joinTree.joins) walk(j);
-  for (const c of spec.selectSpec.columns) {
-    if (c.kind === "first") {
-      const t = joinTables[c.childEntity];
-      if (t) tables.add(t);
-      // first-multihop: every table the subquery joins along its @via.
-      for (const j of c.innerJoins ?? []) {
-        const jt = joinTables[j.entity];
-        if (jt) tables.add(jt);
-      }
+  // origin.first subqueries — a column's, and (rc.19 entity-derived, computed-over-joined) one
+  // inlined in an expression or a filter — read their tables too.
+  const first = (c: Extract<SelectColumn, { kind: "first" }>): void => {
+    const t = joinTables[c.childEntity];
+    if (t) tables.add(t);
+    // first-multihop: every table the subquery joins along its @via.
+    for (const j of c.innerJoins ?? []) {
+      const jt = joinTables[j.entity];
+      if (jt) tables.add(jt);
     }
+    if (c.filter !== undefined) clause(c.filter);
+  };
+  const expr = (e: ViewExprNode): void => {
+    switch (e.kind) {
+      case "first": first(e.column); return;
+      case "cmp": expr(e.left); expr(e.right); return;
+      case "nullTest": case "not": expr(e.arg); return;
+      case "logic": case "coalesce": e.args.forEach(expr); return;
+      case "case":
+        if (e.operand !== undefined) expr(e.operand);
+        for (const w of e.whens) { expr(w.when); expr(w.then); }
+        if (e.else !== undefined) expr(e.else);
+        return;
+      default: return;
+    }
+  };
+  const clause = (f: ViewFilterClause): void => {
+    if (f.kind === "and" || f.kind === "or") f.clauses.forEach(clause);
+    else if (f.kind === "exprCmp") expr(f.expr);
+  };
+  for (const c of spec.selectSpec.columns) {
+    if (c.kind === "first") first(c);
+    else if (c.kind === "computed") expr(c.expr);
+    else if (c.kind === "aggregate" && c.filter !== undefined) clause(c.filter);
+    else if (c.kind === "predicateAgg") clause(c.pred);
   }
+  if (spec.where !== undefined) clause(spec.where);
   return [...tables];
 }

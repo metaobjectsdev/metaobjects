@@ -32,7 +32,7 @@
     {
       "type": "attr",
       "subType": "expression",
-      "description": "A structured expression tree over a base entity's own fields (closed node grammar: field/value refs, comparisons sharing the filter op vocabulary, isNull/isNotNull, and/or/not, coalesce). Backs origin.computed; a filter object embeds canonically. Additive node kinds (arithmetic/case/via-joined refs) are #159.",
+      "description": "A structured expression tree (closed node grammar: field/value refs, comparisons sharing the filter op vocabulary, isNull/isNotNull, and/or/not, coalesce, case, now). Backs origin.computed; a filter object embeds canonically. A { field } ref names one of the projection's own fields (a passthrough, joined or not, an origin.first or another origin.computed — never an aggregate, never itself), else a field of the base entity (rc.19 computed-over-joined). { case: [ { when, then }, ... ], else? } is a searched CASE (each when boolean); with operand: <expr> it is a simple CASE (each when a value compared with operand by equality); every then/else shares one type. { now: \"<ISO-8601 duration>\", startOf? } is the current instant shifted by the duration (rc.19 now), its kind (date, local or instant timestamp) taken from the field it is compared with. Arithmetic is #159.",
       "attrs": [],
       "children": []
     },
@@ -3674,7 +3674,7 @@
           "valueType": "filter",
           "isArray": false,
           "required": false,
-          "description": "Optional row-scope predicate (a portable attr.filter object: eq/ne/gt/gte/lt/lte/like/in/isNull with and/or, desugared to { field: { op: value } } at parse time) selecting which rows the view returns — lowered to an outer SQL WHERE. Resolves against the projection's own declared fields; an aggregate-derived field is not addressable (fail-closed)."
+          "description": "Optional row-scope predicate (a portable attr.filter object: eq/ne/gt/gte/lt/lte/like/in/isNull with and/or, desugared to { field: { op: value } } at parse time) selecting which rows the view returns — lowered to an outer SQL WHERE. A key names one of the projection's own fields, else a field of its base entity the view need not output, else a PATH of to-one hops (identity.reference or @cardinality one relationship names) from the base then a field of the entity reached ('caseId.patientId.hasActiveHipaaConsent'), joined but not output. A reached entity field may itself be derived (entity-derived: an origin.computed or origin.first declared on the entity, inlined where the filter reaches it). An aggregate-derived field is not addressable (fail-closed); a to-many hop is refused. A value may be a relative date ({ now: \"<ISO-8601 duration>\", startOf? }) on a date or timestamp field (rc.19)."
         },
         {
           "name": "object",
@@ -4008,7 +4008,7 @@
           "valueType": "filter",
           "isArray": false,
           "required": false,
-          "description": "Optional structured predicate scoping which related rows the aggregate spans (required for any/all, where it is the quantified predicate). A portable attr.filter object (eq/ne/in/isNull with and/or), desugared to canonical { field: { op: value } } at parse time; codegen renders it per target (e.g. SQL FILTER (WHERE ...) or SQLite CASE WHEN for a relational view)."
+          "description": "Optional structured predicate scoping which related rows the aggregate spans (required for any/all, where it is the quantified predicate). A portable attr.filter object (eq/ne/in/isNull with and/or), desugared to canonical { field: { op: value } } at parse time; codegen renders it per target (e.g. SQL FILTER (WHERE ...) or SQLite CASE WHEN for a relational view). A clause value may also be a relative date ({ now: \"<ISO-8601 duration>\", startOf? }) on a date or timestamp field, or — correlated-filter — { field: \"<base field>\" }, the base row's field, compared with eq/ne/gt/gte/lt/lte or the null-safe isDistinctFrom / isNotDistinctFrom (rc.19)."
         },
         {
           "name": "of",
@@ -4023,6 +4023,13 @@
           "isArray": true,
           "required": false,
           "description": "Ordering keys as 'field[:asc|desc]' (default asc) over the related entity's fields; nulls sort last. On @agg:collect sets element order (non-distinct only); on origin.first (required) selects the row. Semantic — carries no SQL syntax."
+        },
+        {
+          "name": "segment",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "Optional name of a segment.filter declared on the related entity (the @of entity, else the @via terminal) — rc.19 origin-segment. Its predicate scopes the related rows, ANDed with @filter, exactly as measure.aggregate @segment does; it may use relative dates."
         },
         {
           "name": "via",
@@ -4069,7 +4076,7 @@
           "valueType": "filter",
           "isArray": false,
           "required": false,
-          "description": "Optional structured predicate scoping which related rows are eligible for selection. A portable attr.filter object (eq/ne/in/isNull with and/or), desugared to canonical { field: { op: value } } at parse time."
+          "description": "Optional structured predicate scoping which related rows are eligible for selection. A portable attr.filter object (eq/ne/in/isNull with and/or), desugared to canonical { field: { op: value } } at parse time. A clause value may also be a relative date ({ now: \"<ISO-8601 duration>\", startOf? }) on a date or timestamp field, or — correlated-filter — { field: \"<base field>\" }, the base row's field, compared with eq/ne/gt/gte/lt/lte or the null-safe isDistinctFrom / isNotDistinctFrom (rc.19)."
         },
         {
           "name": "of",
@@ -4084,6 +4091,13 @@
           "isArray": true,
           "required": true,
           "description": "Ordering keys as 'field[:asc|desc]' (default asc) over the related entity's fields; nulls sort last. Selects the single row (the first after ordering). The related PK ascending is appended as the deterministic tie-breaker. Semantic — carries no SQL syntax."
+        },
+        {
+          "name": "segment",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "Optional name of a segment.filter declared on the related entity (the @of entity) — rc.19 origin-segment. Its predicate scopes the related rows, ANDed with @filter, exactly as measure.aggregate @segment does; it may use relative dates."
         },
         {
           "name": "via",

@@ -73,7 +73,7 @@ export const ATTR_DEFINITION: ProviderDefinition = {
       "type": "attr",
       "subType": "expression",
       "dataType": "object",
-      "description": "A structured expression tree over a base entity's own fields (closed node grammar: field/value refs, comparisons sharing the filter op vocabulary, isNull/isNotNull, and/or/not, coalesce). Backs origin.computed; a filter object embeds canonically. Additive node kinds (arithmetic/case/via-joined refs) are #159."
+      "description": "A structured expression tree (closed node grammar: field/value refs, comparisons sharing the filter op vocabulary, isNull/isNotNull, and/or/not, coalesce, case, now). Backs origin.computed; a filter object embeds canonically. A { field } ref names one of the projection's own fields (a passthrough, joined or not, an origin.first or another origin.computed — never an aggregate, never itself), else a field of the base entity (rc.19 computed-over-joined). { case: [ { when, then }, ... ], else? } is a searched CASE (each when boolean); with operand: <expr> it is a simple CASE (each when a value compared with operand by equality); every then/else shares one type. { now: \"<ISO-8601 duration>\", startOf? } is the current instant shifted by the duration (rc.19 now), its kind (date, local or instant timestamp) taken from the field it is compared with. Arithmetic is #159."
     }
   ]
 };

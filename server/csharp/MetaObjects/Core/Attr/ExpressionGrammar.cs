@@ -31,6 +31,14 @@ public static class ExpressionGrammar
     public const string EXPR_OP_IS_NOT_NULL = "isNotNull";
     public const string EXPR_OP_NOT         = "not";
     public const string EXPR_FN_COALESCE    = "coalesce";
+    // rc.19 `case` ({ case: [ { when, then } ], else?, operand? }) and `now` ({ now, startOf? }).
+    public const string EXPR_CASE           = "case";
+    public const string EXPR_CASE_WHEN      = "when";
+    public const string EXPR_CASE_THEN      = "then";
+    public const string EXPR_CASE_ELSE      = "else";
+    public const string EXPR_CASE_OPERAND   = "operand";
+    public const string EXPR_NOW            = "now";
+    public const string EXPR_NOW_START_OF   = "startOf";
 
     // Node-kind keys (verbatim from the @expr tree — not metamodel attrs).
     private const string KEY_FIELD = "field";
@@ -69,6 +77,11 @@ public static class ExpressionGrammar
             Walk(Get(n, KEY_RIGHT));
             Walk(Get(n, KEY_ARG));
             if (Get(n, KEY_ARGS) is IEnumerable<object?> args) foreach (var a in args) Walk(a);
+            Walk(Get(n, EXPR_CASE_OPERAND));
+            Walk(Get(n, EXPR_CASE_ELSE));
+            if (Get(n, EXPR_CASE) is IEnumerable<object?> arms)
+                foreach (var arm in arms)
+                    if (arm is IReadOnlyDictionary<string, object?> a) { Walk(Get(a, EXPR_CASE_WHEN)); Walk(Get(a, EXPR_CASE_THEN)); }
         }
         Walk(node);
         return refs;
@@ -107,6 +120,33 @@ public static class ExpressionGrammar
                 : ["expression 'value' must be a scalar literal (string/number/boolean/null)"];
         }
 
+        if (n.ContainsKey(EXPR_NOW))
+        {
+            if (Get(n, EXPR_NOW) is not string) return [$"expression '{EXPR_NOW}' must be an ISO-8601 duration string"];
+            var extra = n.Keys.Where(k => k != EXPR_NOW && k != EXPR_NOW_START_OF).ToList();
+            return extra.Count == 0 ? [] : [$"expression '{EXPR_NOW}' takes only '{EXPR_NOW_START_OF}' beside it, not {string.Join(", ", extra)}"];
+        }
+
+        if (n.ContainsKey(EXPR_CASE))
+        {
+            if (Get(n, EXPR_CASE) is not IReadOnlyList<object?> arms || arms.Count == 0)
+                return [$"'{EXPR_CASE}' requires a non-empty array of {{ {EXPR_CASE_WHEN}, {EXPR_CASE_THEN} }} arms"];
+            var errs = new List<string>();
+            foreach (var arm in arms)
+            {
+                if (arm is not IReadOnlyDictionary<string, object?> a || !a.ContainsKey(EXPR_CASE_WHEN) || !a.ContainsKey(EXPR_CASE_THEN))
+                {
+                    errs.Add($"every '{EXPR_CASE}' arm must be {{ {EXPR_CASE_WHEN}, {EXPR_CASE_THEN} }}");
+                    continue;
+                }
+                errs.AddRange(ValidateExprNode(Get(a, EXPR_CASE_WHEN)));
+                errs.AddRange(ValidateExprNode(Get(a, EXPR_CASE_THEN)));
+            }
+            if (n.ContainsKey(EXPR_CASE_ELSE)) errs.AddRange(ValidateExprNode(Get(n, EXPR_CASE_ELSE)));
+            if (n.ContainsKey(EXPR_CASE_OPERAND)) errs.AddRange(ValidateExprNode(Get(n, EXPR_CASE_OPERAND)));
+            return errs;
+        }
+
         if (n.ContainsKey(KEY_FN))
         {
             if (Get(n, KEY_FN) is not string fn || fn != EXPR_FN_COALESCE)
@@ -141,7 +181,7 @@ public static class ExpressionGrammar
             return [$"unknown expression op '{op}'"];
         }
 
-        return ["expression node must be one of {field}, {value}, {op,…}, {fn,…}"];
+        return ["expression node must be one of {field}, {value}, {op,…}, {fn,…}, {case,…}, {now}"];
     }
 
     // -------------------------------------------------------------------------
@@ -175,6 +215,43 @@ public static class ExpressionGrammar
 
         if (n.ContainsKey(KEY_VALUE))
             return new InferResult(LiteralType(Get(n, KEY_VALUE)), []);
+
+        // rc.19 now: an instant; compared with a date or local timestamp it takes that kind at lowering.
+        if (n.ContainsKey(EXPR_NOW))
+            return new InferResult(FIELD_SUBTYPE_TIMESTAMP, []);
+
+        if (n.ContainsKey(EXPR_CASE))
+        {
+            var errors = new List<string>();
+            var arms = (IReadOnlyList<object?>)Get(n, EXPR_CASE)!;
+            InferResult? operand = n.ContainsKey(EXPR_CASE_OPERAND) ? InferExprType(Get(n, EXPR_CASE_OPERAND), resolveField) : null;
+            if (operand is { } o) errors.AddRange(o.Errors);
+            var results = new List<string?>();
+            foreach (var armObj in arms)
+            {
+                var arm = (IReadOnlyDictionary<string, object?>)armObj!;
+                var w = InferExprType(Get(arm, EXPR_CASE_WHEN), resolveField);
+                errors.AddRange(w.Errors);
+                if (operand is null && w.Type is not null && w.Type != FIELD_SUBTYPE_BOOLEAN)
+                    errors.Add($"a searched '{EXPR_CASE}' needs a boolean '{EXPR_CASE_WHEN}', got {w.Type}");
+                if (operand is { Type: { } ot } && w.Type is not null && w.Type != ot)
+                    errors.Add($"a simple '{EXPR_CASE}' compares its {ot} '{EXPR_CASE_OPERAND}' with a {w.Type} '{EXPR_CASE_WHEN}'");
+                var t = InferExprType(Get(arm, EXPR_CASE_THEN), resolveField);
+                errors.AddRange(t.Errors);
+                results.Add(t.Type);
+            }
+            if (n.ContainsKey(EXPR_CASE_ELSE))
+            {
+                var e = InferExprType(Get(n, EXPR_CASE_ELSE), resolveField);
+                errors.AddRange(e.Errors);
+                results.Add(e.Type);
+            }
+            var types = results.Where(t => t is not null).Select(t => t!).ToList();
+            string? unified = types.Count > 0 ? types[0] : null;
+            if (unified is not null && types.Any(t => t != unified))
+                errors.Add($"'{EXPR_CASE}' results have differing types ({string.Join(", ", types.Distinct())})");
+            return new InferResult(unified, errors);
+        }
 
         if (n.ContainsKey(KEY_FN)) // coalesce
         {

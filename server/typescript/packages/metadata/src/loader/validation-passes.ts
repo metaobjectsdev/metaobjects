@@ -10,7 +10,7 @@
 // Private:  _findObject, _findField, _findRelationship,
 //           _validateFromPath, _validateViaPath  (helpers, not exported).
 
-import { TYPE_VALIDATOR } from "../shared/base-types.js";
+import { TYPE_VALIDATOR, TYPE_SEGMENT } from "../shared/base-types.js";
 import {
   CROSS_FIELD_VALIDATOR_SUBTYPES,
   VALIDATOR_ATTR_CONDITION,
@@ -125,6 +125,11 @@ import {
   ORIGIN_FIRST_ATTR_OF,
   ORIGIN_FIRST_ATTR_VIA,
   ORIGIN_FIRST_ATTR_FILTER,
+  ORIGIN_ATTR_SEGMENT,
+  FILTER_OP_IS_DISTINCT_FROM,
+  FILTER_OP_IS_NOT_DISTINCT_FROM,
+  CORRELATED_FILTER_OPS,
+  FILTER_OPERAND_FIELD,
   AGG_ANY,
   AGG_ALL,
   AGG_COLLECT,
@@ -1608,8 +1613,18 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
           // Type inference against the base entity's EFFECTIVE fields (ADR-0039).
           const base = _deriveBaseEntity(obj, root, field.name, src, errors);
           if (base === undefined) continue;
-          const resolveField = (name: string): string | undefined =>
-            base.children().find((f) => f.type === TYPE_FIELD && f.name === name)?.subType;
+          // rc.19 computed-over-joined: a ref names one of the projection's own fields first (a
+          // passthrough — joined or not —, an origin.first or another origin.computed), else a base
+          // field. Never itself, never an aggregate (it would need the grouped row).
+          const resolveField = (name: string): string | undefined => {
+            if (obj !== base && name !== field.name) {
+              const own = obj.children().find((f) => f.type === TYPE_FIELD && f.name === name);
+              const ownOrigin = own?.ownChildren().find((c) => c.type === TYPE_ORIGIN);
+              if (own !== undefined && ownOrigin?.subType !== ORIGIN_SUBTYPE_AGGREGATE) return own.subType;
+              if (own !== undefined) return undefined;
+            }
+            return base.children().find((f) => f.type === TYPE_FIELD && f.name === name)?.subType;
+          };
           const inferred = inferExprType(expr as ExprNode, resolveField);
           if (inferred.errors.length > 0) {
             for (const m of inferred.errors) {
@@ -1706,6 +1721,7 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
 
 export function validateDerivedFieldProvidability(root: MetaData): ParseError[] {
   const errors: ParseError[] = [];
+  const reached = projectionReachedEntityFields(root);
   // ADR-0039: root has no super; children()==ownChildren() but resolving is the default.
   for (const obj of root
     .children()
@@ -1718,18 +1734,157 @@ export function validateDerivedFieldProvidability(root: MetaData): ParseError[] 
     // ADR-0039: own — origin-bearing fields are validated on the OWN-declared
     // layer (mirrors validateOriginPaths; origin.* never inherits, ADR-0029).
     for (const field of obj.ownChildren().filter((c) => c.type === TYPE_FIELD)) {
-      if (!field.ownChildren().some((c) => c.type === TYPE_ORIGIN)) continue;
+      const origin = field.ownChildren().find((c) => c.type === TYPE_ORIGIN);
+      if (origin === undefined) continue;
+      // rc.19 entity-derived: a derived field a projection reaches (its @filter or a passthrough
+      // @from) is lowered inline there, so it needs no read source. Only the inlinable origins.
+      if ((origin.subType === ORIGIN_SUBTYPE_FIRST || origin.subType === ORIGIN_SUBTYPE_COMPUTED)
+        && reached.has(field)) continue;
       errors.push(
         new ParseError(
           `derived field "${obj.name}.${field.name}" carries an origin.* but entity "${obj.name}" declares no ` +
             `read-capable source — derived fields do not exist on the writable table. Declare a read-only source ` +
-            `(e.g. source.rdb @kind "view" @role "replica") to provide it, or move the field to an object.projection (FR-024 §7).`,
+            `(e.g. source.rdb @kind "view" @role "replica") to provide it, move the field to an object.projection (FR-024 §7), ` +
+            `or reach it from a projection's @filter or @from (an origin.first or origin.computed is then inlined there).`,
           { code: "ERR_DERIVED_FIELD_NO_READ_SOURCE", source: field.source },
         ),
       );
     }
   }
   return errors;
+}
+
+
+// ---------------------------------------------------------------------------
+// rc.19 entity-derived — the entity fields projections REACH without outputting them: a
+// projection @filter key naming a base field or a to-one path, and a passthrough @from. A
+// derived field reached this way is lowered inline where it is reached.
+// ---------------------------------------------------------------------------
+
+/** Every entity field node some projection's @filter key or passthrough @from names. */
+export function projectionReachedEntityFields(root: MetaData): Set<MetaData> {
+  const reached = new Set<MetaData>();
+  for (const obj of root.children().filter((c) => c.type === TYPE_OBJECT && c.subType === OBJECT_SUBTYPE_PROJECTION)) {
+    const silent: ParseError[] = [];
+    const base = _deriveBaseEntity(obj, root, "@filter", obj.source, silent);
+    const filter = obj.ownAttr(OBJECT_PROJECTION_ATTR_FILTER);
+    if (base !== undefined && base !== obj) {
+      for (const key of filterKeys(filter)) {
+        const path = resolveFilterPath(base as MetaObject, key);
+        if (path !== undefined && typeof path !== "string") reached.add(path.field);
+        else if (path === undefined) {
+          const f = base.children().find((c) => c.type === TYPE_FIELD && c.name === key);
+          if (f !== undefined) reached.add(f);
+        }
+      }
+    }
+    // ADR-0039: resolving — inherited fields carry their own origins (G13).
+    for (const field of obj.children().filter((c) => c.type === TYPE_FIELD)) {
+      for (const origin of field.ownChildren().filter((c) => c.type === TYPE_ORIGIN && c.subType === ORIGIN_SUBTYPE_PASSTHROUGH)) {
+        const from = origin.ownAttr(ORIGIN_PASSTHROUGH_ATTR_FROM);
+        if (typeof from !== "string") continue;
+        const target = _validateFromPath(from, root, obj, field.name, origin.source, silent);
+        if (target !== undefined) reached.add(target.field);
+      }
+    }
+  }
+  return reached;
+}
+
+/**
+ * rc.19 origin-segment and correlated-filter, on every origin.first / origin.aggregate:
+ *   - `@segment` names a segment.filter declared on the related entity (the @of entity, else
+ *     the @via terminal) — ERR_INVALID_ORIGIN otherwise;
+ *   - an `@filter` operand `{ field: "<name>" }` names a field of the base row (the projection's
+ *     base entity, or the entity hosting the field), with an op that compares two columns;
+ *     the null-safe ops take only such an operand — ERR_BAD_ATTR_FILTER otherwise.
+ */
+export function validateOriginSegmentsAndCorrelation(root: MetaData): ParseError[] {
+  const errors: ParseError[] = [];
+  for (const obj of root.children().filter((c) => c.type === TYPE_OBJECT
+    && (c.subType === OBJECT_SUBTYPE_PROJECTION || c.subType === OBJECT_SUBTYPE_ENTITY))) {
+    for (const field of obj.ownChildren().filter((c) => c.type === TYPE_FIELD)) {
+      for (const origin of field.ownChildren().filter((c) => c.type === TYPE_ORIGIN
+        && (c.subType === ORIGIN_SUBTYPE_FIRST || c.subType === ORIGIN_SUBTYPE_AGGREGATE))) {
+        const where = `origin.${origin.subType} on ${obj.name}.${field.name}`;
+        const segment = origin.ownAttr(ORIGIN_ATTR_SEGMENT);
+        if (typeof segment === "string") {
+          const related = originRelatedEntity(origin, obj, root);
+          if (related !== undefined && !related.children().some((c) => c.type === TYPE_SEGMENT && c.name === segment)) {
+            errors.push(new ParseError(
+              `${where}: @segment "${segment}" is not a segment declared on "${related.name}", the entity whose rows it scopes.`,
+              { code: "ERR_INVALID_ORIGIN", source: origin.source },
+            ));
+          }
+        }
+        const filter = origin.ownAttr(ORIGIN_FIRST_ATTR_FILTER);
+        if (filter === undefined) continue;
+        const silent: ParseError[] = [];
+        const base = _deriveBaseEntity(obj, root, field.name, origin.source, silent);
+        if (base === undefined) continue;
+        checkCorrelatedOperands(filter, base, where, origin.source, errors);
+      }
+    }
+  }
+  return errors;
+}
+
+/** The entity whose rows an origin.first / origin.aggregate spans: its @of entity, else its @via terminal. */
+function originRelatedEntity(origin: MetaData, obj: MetaData, root: MetaData): MetaData | undefined {
+  const of_ = origin.ownAttr(ORIGIN_FIRST_ATTR_OF);
+  const referrerPkg = obj.package ?? obj.fileDefaultPackage ?? "";
+  if (typeof of_ === "string" && of_.lastIndexOf(".") > 0) {
+    const owner = resolveObjectRef(root, of_.slice(0, of_.lastIndexOf(".")), referrerPkg).node;
+    return owner;
+  }
+  const via = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_VIA);
+  if (typeof via !== "string") return undefined;
+  const [head, ...hops] = via.split(".");
+  let current = resolveObjectRef(root, head ?? "", referrerPkg).node;
+  for (const hop of hops) {
+    if (current === undefined) return undefined;
+    const rel = current.children().find((c) => (c.type === TYPE_RELATIONSHIP || c.type === TYPE_IDENTITY) && c.name === hop);
+    current = rel === undefined
+      ? findReverseReferenceHops(current as MetaObject, hop, isMetaRoot(root) ? root.objects() : [])[0]?.holder
+      : refTarget(rel, rel.type === TYPE_RELATIONSHIP ? RELATIONSHIP_ATTR_OBJECT_REF : IDENTITY_REFERENCE_ATTR_REFERENCES);
+  }
+  return current;
+}
+
+function checkCorrelatedOperands(filter: unknown, base: MetaData, where: string, source: ErrorSource, errors: ParseError[]): void {
+  if (typeof filter !== "object" || filter === null || Array.isArray(filter)) return;
+  for (const [key, clause] of Object.entries(filter as Record<string, unknown>)) {
+    if (key === FILTER_COMPOSE_AND || key === FILTER_COMPOSE_OR) {
+      if (Array.isArray(clause)) for (const sub of clause) checkCorrelatedOperands(sub, base, where, source, errors);
+      continue;
+    }
+    if (typeof clause !== "object" || clause === null || Array.isArray(clause)) continue;
+    for (const [op, value] of Object.entries(clause as Record<string, unknown>)) {
+      const isOperand = typeof value === "object" && value !== null && !Array.isArray(value) && FILTER_OPERAND_FIELD in value;
+      const nullSafe = op === FILTER_OP_IS_DISTINCT_FROM || op === FILTER_OP_IS_NOT_DISTINCT_FROM;
+      if (!isOperand) {
+        if (nullSafe) {
+          errors.push(new ParseError(
+            `${where}: @filter on "${key}" uses "${op}", which compares with a base-row field: write { ${op}: { ${FILTER_OPERAND_FIELD}: "<base field>" } }.`,
+            { code: "ERR_BAD_ATTR_FILTER", source },
+          ));
+        }
+        continue;
+      }
+      const name = (value as Record<string, unknown>)[FILTER_OPERAND_FIELD];
+      if (!CORRELATED_FILTER_OPS.includes(op)) {
+        errors.push(new ParseError(
+          `${where}: @filter on "${key}" compares with a base-row field using "${op}"; a correlated operand takes ${CORRELATED_FILTER_OPS.join(", ")}.`,
+          { code: "ERR_BAD_ATTR_FILTER", source },
+        ));
+      } else if (typeof name !== "string" || !base.children().some((c) => c.type === TYPE_FIELD && c.name === name)) {
+        errors.push(new ParseError(
+          `${where}: @filter on "${key}" names base-row field "${String(name)}", which "${base.name}" does not declare.`,
+          { code: "ERR_BAD_ATTR_FILTER", source },
+        ));
+      }
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------

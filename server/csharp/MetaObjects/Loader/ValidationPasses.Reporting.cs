@@ -1061,6 +1061,44 @@ public static partial class ValidationPasses
     // F1 — relative-date values only on reporting hosts
     // -------------------------------------------------------------------------
 
+    /// <summary>rc.19 <c>now</c> — the view hosts whose <c>@filter</c> may carry a relative-date value too.</summary>
+    private static bool IsRelativeViewFilterHost(MetaData node) =>
+        (node.Type == TYPE_OBJECT && node.SubType == OBJECT_SUBTYPE_PROJECTION) ||
+        (node.Type == TYPE_ORIGIN && (node.SubType == ORIGIN_SUBTYPE_FIRST || node.SubType == ORIGIN_SUBTYPE_AGGREGATE));
+
+    /// <summary>F2's value rules (exact shape, range op, ISO-8601 duration, startOf unit) on every
+    /// relative operand of a filter, without its field-type rule.</summary>
+    private static void CheckRelativeShapes(object? filter, MetaData host, ReportingErrorSink sink)
+    {
+        if (filter is not IReadOnlyDictionary<string, object?> f) return;
+        void Err(string message) => sink.Push(host, ErrorCode.ERR_BAD_ATTR_FILTER, ReportingNodeLabel(host), $": {message}");
+        foreach (var (key, clause) in f)
+        {
+            if (key == FILTER_COMPOSE_OR || key == FILTER_COMPOSE_AND)
+            {
+                if (clause is IReadOnlyList<object?> subs) foreach (var sub in subs) CheckRelativeShapes(sub, host, sink);
+                continue;
+            }
+            if (clause is not IReadOnlyDictionary<string, object?> ops) continue;
+            foreach (var (op, operand) in ops)
+            {
+                var relative = RelativeOperand(operand);
+                if (relative is null) continue;
+                var duration = relative.TryGetValue(FILTER_RELATIVE_NOW, out var dv) ? dv : null;
+                if (!IsExactRelativeValue(relative))
+                    Err($"@filter on '{key}' has a malformed relative date {JsonStringify(relative)}; a relative date is " +
+                        "{ now: \"<ISO-8601 duration>\" } with an optional startOf, and no other keys.");
+                else if (!ReportingRelativeDateOps.Contains(op))
+                    Err($"@filter on '{key}' puts a relative date under op '{op}'; relative dates are legal only under gt, gte, lt and lte.");
+                else if (duration is not string d || !ISO_DURATION_RE.IsMatch(d))
+                    Err($"@filter on '{key}' has relative date '{QuoteValue(duration)}', which is not an ISO-8601 duration (e.g. '-P7D', '-PT12H').");
+                else if (relative.TryGetValue(FILTER_RELATIVE_START_OF, out var startOf)
+                         && (startOf is not string unit || !RELATIVE_START_OF_UNITS.Contains(unit)))
+                    Err($"@filter on '{key}' has startOf '{QuoteValue(startOf)}'; startOf is one of {string.Join(", ", RELATIVE_START_OF_UNITS)}.");
+            }
+        }
+    }
+
     /// <summary>True for the hosts whose <c>@filter</c> may carry a relative-date value.</summary>
     private static bool IsReportingFilterHost(MetaData node) =>
         node.Type == TYPE_SEGMENT ||
@@ -1074,7 +1112,18 @@ public static partial class ValidationPasses
     /// </summary>
     private static void CheckNoRelativeDates(MetaData node, TypeRegistry registry, ReportingErrorSink sink)
     {
-        if (!IsReportingFilterHost(node))
+        if (IsRelativeViewFilterHost(node))
+        {
+            // rc.19 `now`: a projection's and an origin's @filter lower relative dates into the view.
+            // Their keys resolve elsewhere, so the value's own shape is checked here.
+            foreach (var (attrName, value) in node.OwnAttrs())
+            {
+                bool isFilterAttr =
+                    registry.FindAttrSchema(node.Type, node.SubType, attrName)?.ValueType == ATTR_SUBTYPE_FILTER;
+                if (isFilterAttr) CheckRelativeShapes(value, node, sink);
+            }
+        }
+        else if (!IsReportingFilterHost(node))
         {
             // ADR-0039: own — only locally declared filters are lowered, and the walk
             // visits every declared node exactly once (an inherited filter is checked

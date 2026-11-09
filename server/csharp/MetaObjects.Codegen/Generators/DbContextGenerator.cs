@@ -201,7 +201,8 @@ public class DbContextGenerator : IGenerator
             // class, which omits the derived (origin.*) fields; so must the config, or it
             // would reference properties the write class does not declare (a compile error).
             // The derived fields' EF mapping lives on the read model (registered below).
-            IEnumerable<MetaField> configFields = e.IsWriteThrough()
+            // rc.19 entity-derived: an entity's derived field is never a column of its table.
+            IEnumerable<MetaField> configFields = e.IsWriteThrough() || e.IsEntity()
                 ? e.Fields().Where(f => !f.IsDerived())
                 : e.Fields();
             // #214 [0] — the per-field EF TYPE converters (owned-VO / enum / primitive

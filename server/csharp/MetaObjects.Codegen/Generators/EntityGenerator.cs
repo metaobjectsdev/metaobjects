@@ -290,8 +290,10 @@ public class EntityGenerator : IGenerator
             // Read-only projections map to a view (no [Table]); tables / a write-through
             // WRITE entity carry [Table].
             isView: entity.IsReadOnlyProjection(),
-            // #214 — the write entity of a write-through omits the derived (view-only) fields.
-            excludeDerived: entity.IsWriteThrough(),
+            // #214 — the write entity of a write-through omits the derived (view-only) fields; and
+            // (rc.19 entity-derived) so does any entity: a derived field on an entity with no read
+            // source is no column, only a definition projections inline where they reach it.
+            excludeDerived: entity.IsWriteThrough() || entity.IsEntity(),
             // A plain read-only projection keeps its warn-and-skip on object-typed columns
             // (collection materialization is a separate concern); the write entity is not a
             // view so this flag is inert there.

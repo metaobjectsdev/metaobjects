@@ -5,9 +5,9 @@
       "source": {
         "format": "json",
         "files": [
-          "meta.shop.json"
+          "meta.views.json"
         ],
-        "jsonPath": "$['metadata.root'].children[6]['object.projection'].children[2]['field.int'].children[0]['origin.aggregate']"
+        "jsonPath": "$['metadata.root'].children[3]['object.projection'].children[2]['field.timestamp'].children[0]['origin.aggregate']"
       }
     }
   ],

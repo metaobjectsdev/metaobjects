@@ -45,6 +45,12 @@ import {
   FILTER_COMPOSE_AND,
   FILTER_COMPOSE_OR,
   FILTER_RELATIVE_NOW,
+  FILTER_RELATIVE_START_OF,
+  FIELD_SUBTYPE_DATE,
+  FIELD_SUBTYPE_TIMESTAMP,
+  ORIGIN_ATTR_SEGMENT,
+  FILTER_OPERAND_FIELD,
+  type RelativeStartOf,
   SORT_ORDER_DESC,
   RELATIONSHIP_ATTR_OBJECT_REF,
   RELATIONSHIP_ATTR_CARDINALITY,
@@ -63,6 +69,7 @@ import {
   resolveFilterPath,
   type FilterPath,
   isMetaRoot,
+  isMetaField,
   resolveRelationshipReference,
   resolveObjectRef,
   refTarget,
@@ -84,9 +91,12 @@ import { tphDiscriminatorBase, tphDiscriminatorPin } from "../tph.js";
 import { isRequired } from "../column-mapper.js";
 import type { ColumnNamingStrategy } from "../metaobjects-config.js";
 import { fieldSqlType } from "@metaobjectsdev/migrate-ts/expected";
+import { segmentClause, temporalOf } from "./report-sql.js";
+import type { RelativeNow } from "./report-spec.js";
+import type { ReportTemporal } from "./time-sql.js";
 import type {
   JoinNode, JoinTree, SelectColumn, SelectSpec, ViewSpec, ViewFilterClause,
-  ViewExprNode, ViewExprLiteral, ViewOrderKey, FirstInnerJoin, TphScope, FirstColumn,
+  ViewExprNode, ViewExprLiteral, ViewOrderKey, FirstInnerJoin, TphScope, FirstColumn, ColRef,
 } from "./view-spec.js";
 
 /** Compose keys in the attr.filter shape. */
@@ -101,6 +111,14 @@ const FILTER_OR = FILTER_COMPOSE_OR;
 const EXPR_OP_IS_NOT_NULL = "isNotNull";
 const EXPR_OP_NOT = "not";
 const EXPR_FN_COALESCE = "coalesce";
+// rc.19 `case` and `now` node keys (mirror meta-attr-expression's EXPR_CASE* / EXPR_NOW*).
+const EXPR_CASE = "case";
+const EXPR_CASE_WHEN = "when";
+const EXPR_CASE_THEN = "then";
+const EXPR_CASE_ELSE = "else";
+const EXPR_CASE_OPERAND = "operand";
+const EXPR_NOW = FILTER_RELATIVE_NOW;
+const EXPR_NOW_START_OF = FILTER_RELATIVE_START_OF;
 
 /** The scalar-reduce @agg values that map to the plain `aggregate` SelectColumn kind. */
 const SCALAR_AGG_FUNCTIONS: ReadonlySet<string> = new Set(AGGREGATE_FUNCTIONS);
@@ -159,13 +177,15 @@ function resolveAggregateFilter(
   entity: MetaObject,
   alias: string,
   ctx: ExtractContext,
+  /** rc.19 correlated-filter: the base row a `{ field }` operand names, and its alias. */
+  outer?: OuterRow,
 ): ViewFilterClause | undefined {
   if (typeof filter !== "object" || filter === null || Array.isArray(filter)) return undefined;
   const clauses: ViewFilterClause[] = [];
   for (const [key, val] of Object.entries(filter as Record<string, unknown>)) {
     if (key === FILTER_AND || key === FILTER_OR) {
       const subs = (Array.isArray(val) ? val : [])
-        .map((s) => resolveAggregateFilter(s, entity, alias, ctx))
+        .map((s) => resolveAggregateFilter(s, entity, alias, ctx, outer))
         .filter((c): c is ViewFilterClause => c !== undefined);
       if (subs.length > 0) clauses.push({ kind: key === FILTER_AND ? "and" : "or", clauses: subs });
       continue;
@@ -180,20 +200,79 @@ function resolveAggregateFilter(
       op,
       // Same int-backed-enum encoding as the row-scope @filter below: this scoping
       // filter renders as a SQL literal too (FILTER (WHERE …) / CASE WHEN), so a
-      // member symbol would land unencoded in an integer comparison.
-      value: encodeIntEnumFilterValue(
-        raw,
-        op,
-        field.subType === FIELD_SUBTYPE_ENUM ? intValueMapOf(field) : undefined,
-        key,
-        `origin.aggregate @filter over ${entity.name}`,
-      ),
+      // member symbol would land unencoded in an integer comparison. rc.19: a relative date
+      // (`now`) and a base-row operand (correlated-filter) lower here too.
+      value: lowerFilterValue(raw, op, field, key, `origin @filter over ${entity.name}`, outer, ctx),
     }));
     if (fieldClauses.length === 1) clauses.push(fieldClauses[0]!);
     else if (fieldClauses.length > 1) clauses.push({ kind: "and", clauses: fieldClauses });
   }
   if (clauses.length === 0) return undefined;
   return clauses.length === 1 ? clauses[0]! : { kind: "and", clauses };
+}
+
+/** rc.19 correlated-filter: the row a `{ field: "<name>" }` filter operand reads, and its alias. */
+export interface OuterRow {
+  readonly entity: MetaObject;
+  readonly alias: string;
+}
+
+/** A `{ field: "<name>" }` operand (correlated-filter), not a relative date. */
+function isFieldOperand(v: unknown): v is { field: string } {
+  return isPlainObject(v) && typeof v[FILTER_OPERAND_FIELD] === "string" && !(FILTER_RELATIVE_NOW in v);
+}
+
+function isRelativeOperand(v: unknown): v is Record<string, unknown> {
+  return isPlainObject(v) && FILTER_RELATIVE_NOW in v;
+}
+
+/** rc.19 `now`: a relative-date operand on `field`, as the value the emitters render. */
+function relativeNowOf(v: Record<string, unknown>, field: MetaData, key: string, where: string): RelativeNow {
+  if (field.subType !== FIELD_SUBTYPE_DATE && field.subType !== FIELD_SUBTYPE_TIMESTAMP) {
+    throw new Error(`${where}: a relative-date value on "${key}" needs a field.date or field.timestamp.`);
+  }
+  return {
+    kind: "relativeNow",
+    duration: String(v[FILTER_RELATIVE_NOW]),
+    temporal: temporalOf(field as MetaField),
+    ...(FILTER_RELATIVE_START_OF in v ? { startOf: v[FILTER_RELATIVE_START_OF] as RelativeStartOf } : {}),
+  };
+}
+
+/**
+ * One filter operand for `field`, as the emitters render it: a relative date (rc.19 `now`), a
+ * base-row column (rc.19 correlated-filter, only where an `outer` row exists), or a literal —
+ * an int-backed enum member as its integer.
+ */
+function lowerFilterValue(
+  raw: unknown, op: string, field: MetaData, key: string, where: string, outer: OuterRow | undefined, ctx: ExtractContext,
+): unknown {
+  if (isRelativeOperand(raw)) return relativeNowOf(raw, field, key, where);
+  if (Array.isArray(raw) && raw.some(isRelativeOperand)) {
+    return raw.map((v) => (isRelativeOperand(v) ? relativeNowOf(v, field, key, where) : v));
+  }
+  if (isFieldOperand(raw)) {
+    const name = raw[FILTER_OPERAND_FIELD];
+    const other = outer?.entity.fields().find((f) => f.name === name);
+    if (outer === undefined || other === undefined) {
+      throw new Error(`${where}: "${key}" compares with base-row field "${name}", which the base row does not have.`);
+    }
+    return { kind: "colRef", ref: `${outer.alias}.${sourceColumnNameFor(other, ctx)}` } satisfies ColRef;
+  }
+  return encodeIntEnumFilterValue(
+    raw, op, field.subType === FIELD_SUBTYPE_ENUM ? intValueMapOf(field as MetaField) : undefined, key, where,
+  );
+}
+
+/** rc.19 origin-segment: the origin's `@segment` predicate over `entity` at `alias`, ANDed with its `@filter`. */
+function originScope(
+  origin: MetaData, filterAttr: unknown, entity: MetaObject, alias: string, ctx: ExtractContext, outer: OuterRow | undefined,
+): ViewFilterClause | undefined {
+  const segment = origin.ownAttr(ORIGIN_ATTR_SEGMENT);
+  const seg = typeof segment === "string"
+    ? segmentClause(segment, entity, alias, ctx, `origin.${origin.subType} @segment`)
+    : undefined;
+  return andClauses(seg, filterAttr !== undefined ? resolveAggregateFilter(filterAttr, entity, alias, ctx, outer) : undefined);
 }
 
 /**
@@ -286,13 +365,15 @@ function resolveViewFilter(
   columnsByField: ReadonlyMap<string, SelectColumn>,
   projectionName: string,
   intMapsByField: ReadonlyMap<string, Record<string, number>>,
+  /** The field each key names (rc.19 `now` reads its type to lower a relative date). */
+  fieldsByKey: ReadonlyMap<string, MetaData> = new Map(),
 ): ViewFilterClause | undefined {
   if (typeof filter !== "object" || filter === null || Array.isArray(filter)) return undefined;
   const clauses: ViewFilterClause[] = [];
   for (const [key, val] of Object.entries(filter as Record<string, unknown>)) {
     if (key === FILTER_AND || key === FILTER_OR) {
       const subs = (Array.isArray(val) ? val : [])
-        .map((s) => resolveViewFilter(s, columnsByField, projectionName, intMapsByField))
+        .map((s) => resolveViewFilter(s, columnsByField, projectionName, intMapsByField, fieldsByKey))
         .filter((c): c is ViewFilterClause => c !== undefined);
       if (subs.length > 0) clauses.push({ kind: key === FILTER_AND ? "and" : "or", clauses: subs });
       continue;
@@ -316,9 +397,12 @@ function resolveViewFilter(
       // column, so the authored member SYMBOL must become its integer before it is
       // rendered as a SQL literal. The Drizzle customType handles the runtime query
       // path, but view DDL is emitted as literal SQL text and never touches Drizzle.
-      const value = encodeIntEnumFilterValue(
-        rawValue, op, intMapsByField.get(key), key, `Projection ${projectionName}: view @filter`,
-      );
+      const where = `Projection ${projectionName}: view @filter`;
+      const keyField = fieldsByKey.get(key);
+      // rc.19 `now`: a relative date lowers to the dialect's "now" shifted, of the field's kind.
+      const value = isRelativeOperand(rawValue) && keyField !== undefined
+        ? relativeNowOf(rawValue, keyField, key, where)
+        : encodeIntEnumFilterValue(rawValue, op, intMapsByField.get(key), key, where);
       if (col.kind === "passthrough") {
         clauses.push({ kind: "cmp", ref: `${col.sourceAlias}.${col.sourceColumn}`, op, value });
       } else if (col.kind === "computed") {
@@ -790,12 +874,26 @@ function resolveExprNode(
   base: MetaObject,
   baseAlias: string,
   ctx: ExtractContext,
+  /** rc.19 computed-over-joined: a ref to one of the projection's own fields, resolved to its
+   *  column expression (and the field, for a `now` beside it); undefined → a base field. */
+  lookup?: (name: string) => ResolvedRef | undefined,
+  /** rc.19 `now`: the kind a relative instant takes here — the field it is compared with. */
+  nowTemporal: ReportTemporal = "instant",
 ): ViewExprNode | undefined {
   if (!isPlainObject(raw)) return undefined;
+  const sub = (x: unknown, temporal: ReportTemporal = nowTemporal): ViewExprNode | undefined =>
+    resolveExprNode(x, base, baseAlias, ctx, lookup, temporal);
+  // The field a `{ field }` operand names, for a `now` compared with it.
+  const fieldOf = (x: unknown): MetaField | undefined => {
+    if (!isPlainObject(x) || typeof x.field !== "string") return undefined;
+    return lookup?.(x.field)?.field ?? base.fields().find((f) => f.name === x.field);
+  };
 
   if ("field" in raw) {
     const name = raw.field;
     if (typeof name !== "string") return undefined;
+    const own = lookup?.(name);
+    if (own !== undefined) return own.expr;
     const field = base.fields().find((f) => f.name === name);
     if (!field) return undefined;
     return { kind: "col", ref: `${baseAlias}.${sourceColumnNameFor(field, ctx)}` };
@@ -803,35 +901,82 @@ function resolveExprNode(
   if ("value" in raw) {
     return { kind: "lit", value: raw.value as ViewExprLiteral };
   }
+  if (EXPR_NOW in raw) {
+    return {
+      kind: "now",
+      value: {
+        kind: "relativeNow",
+        duration: String(raw[EXPR_NOW]),
+        temporal: nowTemporal,
+        ...(EXPR_NOW_START_OF in raw ? { startOf: raw[EXPR_NOW_START_OF] as RelativeStartOf } : {}),
+      },
+    };
+  }
+  if (EXPR_CASE in raw) {
+    const arms = raw[EXPR_CASE];
+    if (!Array.isArray(arms)) return undefined;
+    const operand = EXPR_CASE_OPERAND in raw ? sub(raw[EXPR_CASE_OPERAND]) : undefined;
+    if (EXPR_CASE_OPERAND in raw && operand === undefined) return undefined;
+    const whens: { when: ViewExprNode; then: ViewExprNode }[] = [];
+    for (const arm of arms) {
+      if (!isPlainObject(arm)) return undefined;
+      const when = sub(arm[EXPR_CASE_WHEN]);
+      const then = sub(arm[EXPR_CASE_THEN]);
+      if (when === undefined || then === undefined) return undefined;
+      whens.push({ when, then });
+    }
+    const otherwise = EXPR_CASE_ELSE in raw ? sub(raw[EXPR_CASE_ELSE]) : undefined;
+    if (EXPR_CASE_ELSE in raw && otherwise === undefined) return undefined;
+    return {
+      kind: "case",
+      ...(operand !== undefined ? { operand } : {}),
+      whens,
+      ...(otherwise !== undefined ? { else: otherwise } : {}),
+    };
+  }
   if ("fn" in raw) {
     if (raw.fn !== EXPR_FN_COALESCE || !Array.isArray(raw.args)) return undefined;
-    const args = raw.args.map((a) => resolveExprNode(a, base, baseAlias, ctx));
+    const args = raw.args.map((a) => sub(a));
     if (args.some((a) => a === undefined)) return undefined;
     return { kind: "coalesce", args: args as ViewExprNode[] };
   }
   if ("op" in raw && typeof raw.op === "string") {
     const op = raw.op;
     if (EXPR_COMPARISON_OPS.has(op)) {
-      const left = resolveExprNode(raw.left, base, baseAlias, ctx);
-      const right = resolveExprNode(raw.right, base, baseAlias, ctx);
+      // A `now` takes the kind of the field it is compared with.
+      const lf = fieldOf(raw.left);
+      const rf = fieldOf(raw.right);
+      const left = sub(raw.left, rf !== undefined ? temporalOfField(rf) : nowTemporal);
+      const right = sub(raw.right, lf !== undefined ? temporalOfField(lf) : nowTemporal);
       return left && right ? { kind: "cmp", op, left, right } : undefined;
     }
     if (op === FILTER_OP_IS_NULL || op === EXPR_OP_IS_NOT_NULL) {
-      const arg = resolveExprNode(raw.arg, base, baseAlias, ctx);
+      const arg = sub(raw.arg);
       return arg ? { kind: "nullTest", negated: op === EXPR_OP_IS_NOT_NULL, arg } : undefined;
     }
     if (op === EXPR_OP_NOT) {
-      const arg = resolveExprNode(raw.arg, base, baseAlias, ctx);
+      const arg = sub(raw.arg);
       return arg ? { kind: "not", arg } : undefined;
     }
     if (op === FILTER_COMPOSE_AND || op === FILTER_COMPOSE_OR) {
       if (!Array.isArray(raw.args)) return undefined;
-      const args = raw.args.map((a) => resolveExprNode(a, base, baseAlias, ctx));
+      const args = raw.args.map((a) => sub(a));
       if (args.some((a) => a === undefined)) return undefined;
       return { kind: "logic", op: op === FILTER_COMPOSE_AND ? "and" : "or", args: args as ViewExprNode[] };
     }
   }
   return undefined;
+}
+
+/** A projection field resolved for an expression: its column expression, and the field. */
+interface ResolvedRef {
+  readonly expr: ViewExprNode;
+  readonly field: MetaField;
+}
+
+/** The relative-date kind of a temporal field; an instant for anything else. */
+function temporalOfField(f: MetaField): ReportTemporal {
+  return f.subType === FIELD_SUBTYPE_DATE || f.subType === FIELD_SUBTYPE_TIMESTAMP ? temporalOf(f) : "instant";
 }
 
 export function shortAliasFor(entityName: string, used: Set<string>): string {
@@ -1193,11 +1338,20 @@ function buildSelectSpec(
     ? base.fields()
     // G13: effective — an extending projection's view carries the inherited fields, base first.
     : projection.fields();
+  const pendingComputed = new Map<string, { index: number; origin: MetaData; field: MetaField }>();
   for (const field of declaredFields) {
     const origin = field.ownChildren().find((c) => c.type === TYPE_ORIGIN);
     const dbCol = sourceColumnNameFor(field, ctx);
 
     if (!origin) {
+      // rc.19 entity-derived: a field bound to a DERIVED base field has no base column; its
+      // derivation is inlined on the base row.
+      const bound = isReadViewHost ? undefined : field.superData;
+      if (bound !== undefined && isMetaField(bound) && bound.isDerived() && refNamedOwner(field, root) === base) {
+        const expr = inlineEntityDerived(bound, base, joinTree.baseAlias, root, usedAliases, ctx, `Projection ${projection.name}: "${field.name}"`);
+        columns.push({ kind: "computed", fieldName: field.name, dbColAlias: dbCol, expr });
+        continue;
+      }
       // Declared on projection but no origin — passthrough from base table. The alias is
       // this field's own column; the SOURCE is the extends target's, which differs
       // whenever the projection renames the base field.
@@ -1230,6 +1384,12 @@ function buildSelectSpec(
       // G6: a member of a flattened value object reads the owning table's prefixed column.
       const flattened = targetField === undefined ? resolveFlattenedMember(targetEntity, fieldName) : undefined;
       if (!targetField && !flattened) continue;
+      // rc.19 entity-derived: a derived field of the reached entity has no column; it is inlined.
+      if (targetField !== undefined && targetField.isDerived()) {
+        const expr = inlineEntityDerived(targetField, targetEntity, sourceAlias, root, usedAliases, ctx, `Projection ${projection.name}: "${field.name}" @from`);
+        columns.push({ kind: "computed", fieldName: field.name, dbColAlias: dbCol, expr });
+        continue;
+      }
       columns.push({
         kind: "passthrough",
         fieldName: field.name,
@@ -1259,9 +1419,7 @@ function buildSelectSpec(
         if (sourceAlias === undefined) continue;
         const joinedPk = primaryKeyColumn(relatedEntity, ctx);
         if (joinedPk === undefined) continue;
-        const pred = filterAttr !== undefined
-          ? resolveAggregateFilter(filterAttr, relatedEntity, sourceAlias, ctx)
-          : undefined;
+        const pred = originScope(origin, filterAttr, relatedEntity, sourceAlias, ctx, { entity: base, alias: joinTree.baseAlias });
         if (pred === undefined) continue; // loader requires @filter on any/all
         columns.push({
           kind: "predicateAgg",
@@ -1360,9 +1518,7 @@ function buildSelectSpec(
       if (SCALAR_AGG_FUNCTIONS.has(agg)) {
         // Optional scoping filter — resolved against the aggregated entity (the @of
         // entity, reached at `sourceAlias`), e.g. max(version) over only active rows.
-        const filter = filterAttr !== undefined
-          ? resolveAggregateFilter(filterAttr, targetEntity, sourceAlias, ctx)
-          : undefined;
+        const filter = originScope(origin, filterAttr, targetEntity, sourceAlias, ctx, { entity: base, alias: joinTree.baseAlias });
         columns.push({
           kind: "aggregate",
           fieldName: field.name,
@@ -1376,22 +1532,63 @@ function buildSelectSpec(
     } else if (origin.subType === ORIGIN_SUBTYPE_COMPUTED) {
       // #195 row-level computed value from the base entity's own fields (@expr tree,
       // no @via). ADR-0039: own — origin.* never inherits (ADR-0029).
-      const rawExpr = origin.ownAttr(ORIGIN_COMPUTED_ATTR_EXPR);
-      const expr = resolveExprNode(rawExpr, base, joinTree.baseAlias, ctx);
-      if (expr === undefined) continue;
-      // bug `cast`: a bare NULL in a view is text, so any other declared type needs the cast.
-      const declared = fieldSqlType(field);
-      const castNull = expr.kind === "lit" && expr.value === null && !(declared.kind === "text" && declared.maxLength === undefined);
-      columns.push({ kind: "computed", fieldName: field.name, dbColAlias: dbCol, expr, ...(castNull ? { castTo: declared } : {}) });
+      // rc.19 computed-over-joined: its refs may name other projection fields, so it resolves
+      // after every column exists (the second pass below), in this column's place.
+      pendingComputed.set(field.name, { index: columns.length, origin, field });
+      columns.push({ kind: "computed", fieldName: field.name, dbColAlias: dbCol, expr: { kind: "lit", value: null } });
     } else if (origin.subType === ORIGIN_SUBTYPE_FIRST) {
       // #195 correlated latest-row — argmax-then-project. Resolves to a correlated
       // subquery (NOT a join). ADR-0039: own — origin.* never inherits (ADR-0029).
-      const first = buildFirstColumn(field, origin, base, root, projPkg, usedAliases, ctx);
+      const first = buildFirstColumn(field, origin, base, joinTree.baseAlias, root, projPkg, usedAliases, ctx);
       if (first !== undefined) columns.push(first);
     }
   }
 
-  return { columns };
+  // rc.19 computed-over-joined — resolve every origin.computed now that the columns it may name
+  // exist: a ref to a projection field reads that column (a passthrough's source column, an
+  // origin.first's subquery, another computed's expression); anything else is a base field.
+  const byName = new Map(columns.map((c) => [c.fieldName, c] as const));
+  const fieldByName = new Map(declaredFields.map((f) => [f.name, f] as const));
+  const resolving = new Set<string>();
+  const resolveComputed = (name: string): ViewExprNode | undefined => {
+    const pending = pendingComputed.get(name)!;
+    if (resolving.has(name)) {
+      throw new Error(`Projection ${projection.name}: origin.computed "${name}" refers to itself through ${[...resolving].join(" → ")}.`);
+    }
+    resolving.add(name);
+    const lookup = (ref: string): ResolvedRef | undefined => {
+      if (ref === name) return undefined; // its own name is the base field's
+      const f = fieldByName.get(ref);
+      const c = byName.get(ref);
+      if (f === undefined || c === undefined) return undefined;
+      if (pendingComputed.has(ref)) {
+        const expr = resolveComputed(ref);
+        return expr === undefined ? undefined : { expr, field: f };
+      }
+      if (c.kind === "passthrough") return { expr: { kind: "col", ref: `${c.sourceAlias}.${c.sourceColumn}` }, field: f };
+      if (c.kind === "computed") return { expr: c.expr, field: f };
+      if (c.kind === "first") return { expr: { kind: "first", column: c }, field: f };
+      throw new Error(`Projection ${projection.name}: origin.computed "${name}" refers to "${ref}", an aggregate; a computed value cannot read one.`);
+    };
+    const expr = resolveExprNode(pending.origin.ownAttr(ORIGIN_COMPUTED_ATTR_EXPR), base, joinTree.baseAlias, ctx, lookup);
+    resolving.delete(name);
+    pendingComputed.delete(name);
+    if (expr === undefined) return undefined;
+    // bug `cast`: a bare NULL in a view is text, so any other declared type needs the cast.
+    const declared = fieldSqlType(pending.field);
+    const castNull = expr.kind === "lit" && expr.value === null && !(declared.kind === "text" && declared.maxLength === undefined);
+    const resolved: SelectColumn = { kind: "computed", fieldName: name, dbColAlias: sourceColumnNameFor(pending.field, ctx), expr, ...(castNull ? { castTo: declared } : {}) };
+    columns[pending.index] = resolved;
+    byName.set(name, resolved);
+    return expr;
+  };
+  const dropped: number[] = [];
+  for (const name of [...pendingComputed.keys()]) {
+    if (!pendingComputed.has(name)) continue; // resolved through another
+    const index = pendingComputed.get(name)!.index;
+    if (resolveComputed(name) === undefined) dropped.push(index);
+  }
+  return { columns: columns.filter((_, i) => !dropped.includes(i)) };
 }
 
 /** origin.first's column: the selected related row's @of, correlated to `base`'s row (#195). */
@@ -1399,6 +1596,7 @@ function buildFirstColumn(
   field: MetaField,
   origin: MetaData,
   base: MetaObject,
+  baseAlias: string,
   root: MetaRoot,
   projPkg: string,
   usedAliases: Set<string>,
@@ -1432,7 +1630,7 @@ function buildFirstColumn(
   // keeps the direct correlation below, so its SQL is unchanged.
   const firstVia = origin.ownAttr(ORIGIN_FIRST_ATTR_VIA);
   if (typeof firstVia === "string" && firstVia.split(".").length > 2) {
-    return firstAlongPath(field.name, dbCol, firstVia, ofField, childEntity, origin, root, projPkg, usedAliases, ctx) as FirstColumn;
+    return firstAlongPath(field.name, dbCol, firstVia, ofField, childEntity, origin, root, projPkg, usedAliases, ctx, { entity: base, alias: baseAlias }) as FirstColumn;
   }
   const refs = findReferencesBetween(base, childEntity);
   // findReferencesBetween walks BOTH directions ([base,child] then [child,base]),
@@ -1475,7 +1673,7 @@ function buildFirstColumn(
   const filterAttr = origin.ownAttr(ORIGIN_FIRST_ATTR_FILTER);
   const childScope = tphScopeOf(childEntity, ctx);
   const filter = andClauses(
-    filterAttr !== undefined ? resolveAggregateFilter(filterAttr, childEntity, childAlias, ctx) : undefined,
+    originScope(origin, filterAttr, childEntity, childAlias, ctx, { entity: base, alias: baseAlias }),
     childScope !== undefined ? tphScopeClause(childScope, childAlias) : undefined,
   );
   return {
@@ -1512,6 +1710,7 @@ function firstAlongPath(
   projPkg: string,
   usedAliases: Set<string>,
   ctx: ExtractContext,
+  outer: OuterRow,
 ): SelectColumn {
   const path = walkViaPath(via, root, projPkg, ctx);
   const hops = via.split(".").length - 1;
@@ -1539,7 +1738,7 @@ function firstAlongPath(
   const filterAttr = origin.ownAttr(ORIGIN_FIRST_ATTR_FILTER);
   const ofScope = tphScopeOf(ofEntity, ctx);
   const filter = andClauses(
-    filterAttr !== undefined ? resolveAggregateFilter(filterAttr, ofEntity, termAlias, ctx) : undefined,
+    originScope(origin, filterAttr, ofEntity, termAlias, ctx, outer),
     ofScope !== undefined ? tphScopeClause(ofScope, termAlias) : undefined,
   );
   return {
@@ -1625,7 +1824,7 @@ export function inlineEntityDerived(
     const expr = resolveExprNode(origin.ownAttr(ORIGIN_COMPUTED_ATTR_EXPR), entity, alias, ctx);
     if (expr !== undefined) return expr;
   } else if (origin?.subType === ORIGIN_SUBTYPE_FIRST) {
-    const first = buildFirstColumn(field, origin, entity, root, packageOf(entity), usedAliases, ctx);
+    const first = buildFirstColumn(field, origin, entity, alias, root, packageOf(entity), usedAliases, ctx);
     if (first !== undefined) return { kind: "first", column: { ...first, outerAlias: alias } };
   }
   throw new Error(
@@ -1728,8 +1927,10 @@ export function extractViewSpec(
       // G7: a base-entity field the view does not output is filtered on its base column; a
       // projection field of the same name wins. Its int-backed enum map comes from the base field.
       const intMaps = new Map(intEnumMapsOf(projection));
+      const fieldsByKey = new Map<string, MetaData>(projection.fields().map((f) => [f.name, f] as const));
       const reached = (key: string, f: MetaField, entity: MetaObject, alias: string): void => {
         columnsByField.set(key, filterColumnFor(key, f, entity, alias, root, usedAliases, ctx, projection.name));
+        fieldsByKey.set(key, f);
         const map = f.subType === FIELD_SUBTYPE_ENUM ? intValueMapOf(f) : undefined;
         if (map !== undefined) intMaps.set(key, map);
       };
@@ -1745,7 +1946,7 @@ export function extractViewSpec(
         }
         reached(key, path.field as MetaField, path.entity, alias);
       }
-      where = resolveViewFilter(rawFilter, columnsByField, projection.name, intMaps);
+      where = resolveViewFilter(rawFilter, columnsByField, projection.name, intMaps, fieldsByKey);
     }
   }
 

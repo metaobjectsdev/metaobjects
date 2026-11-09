@@ -104,3 +104,18 @@ export const ORIGIN_AGG_VALUES = [
   AGG_COLLECT,
 ] as const;
 export type OriginAggValue = (typeof ORIGIN_AGG_VALUES)[number];
+
+/** rc.19 origin-segment: a segment.filter of the related entity scoping the related rows
+ *  (origin.first, origin.aggregate), ANDed with @filter — mirrors measure.aggregate @segment. */
+export const ORIGIN_ATTR_SEGMENT = "segment";
+
+/** rc.19 correlated-filter: the null-safe comparisons an origin @filter may make with a base-row
+ *  field operand (`{ field: "<base field>" }`): IS DISTINCT FROM / IS NOT DISTINCT FROM. */
+export const FILTER_OP_IS_DISTINCT_FROM = "isDistinctFrom";
+export const FILTER_OP_IS_NOT_DISTINCT_FROM = "isNotDistinctFrom";
+/** The ops a correlated (base-field) operand may take in an origin @filter. */
+export const CORRELATED_FILTER_OPS: readonly string[] = [
+  "eq", "ne", "gt", "gte", "lt", "lte", FILTER_OP_IS_DISTINCT_FROM, FILTER_OP_IS_NOT_DISTINCT_FROM,
+];
+/** The key of a correlated operand: `{ field: "<base field>" }`. */
+export const FILTER_OPERAND_FIELD = "field";

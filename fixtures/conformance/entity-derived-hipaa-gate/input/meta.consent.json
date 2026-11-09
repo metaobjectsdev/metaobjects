@@ -1,0 +1,298 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Patient",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "patients"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.boolean": {
+                "name": "hasActiveHipaaConsent",
+                "children": [
+                  {
+                    "origin.first": {
+                      "@via": "acme::Patient.consents",
+                      "@of": "acme::Consent.consentIsOnFile",
+                      "@orderBy": [
+                        "id:desc"
+                      ],
+                      "@segment": "hipaaDecisive"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Consent",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "consents"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "patientId",
+                "@required": true
+              }
+            },
+            {
+              "field.int": {
+                "name": "consentTypeId"
+              }
+            },
+            {
+              "field.boolean": {
+                "name": "consentIsOnFile"
+              }
+            },
+            {
+              "field.boolean": {
+                "name": "patientConsent"
+              }
+            },
+            {
+              "field.date": {
+                "name": "dateReceived"
+              }
+            },
+            {
+              "field.date": {
+                "name": "effectiveEndDate"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "patientId",
+                "@fields": "patientId",
+                "@references": "acme::Patient"
+              }
+            },
+            {
+              "segment.filter": {
+                "name": "hipaaDecisive",
+                "@filter": {
+                  "consentTypeId": 1,
+                  "or": [
+                    {
+                      "consentIsOnFile": false
+                    },
+                    {
+                      "and": [
+                        {
+                          "consentIsOnFile": true
+                        },
+                        {
+                          "or": [
+                            {
+                              "patientConsent": null
+                            },
+                            {
+                              "patientConsent": true
+                            }
+                          ]
+                        },
+                        {
+                          "dateReceived": {
+                            "lte": {
+                              "now": "P0D"
+                            }
+                          }
+                        },
+                        {
+                          "or": [
+                            {
+                              "effectiveEndDate": null
+                            },
+                            {
+                              "effectiveEndDate": {
+                                "gte": {
+                                  "now": "P0D"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Case",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "cases"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "patientId",
+                "@required": true
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "patientId",
+                "@fields": "patientId",
+                "@references": "acme::Patient"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Authorization",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "authorizations"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "caseId",
+                "@required": true
+              }
+            },
+            {
+              "field.string": {
+                "name": "code"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "caseId",
+                "@fields": "caseId",
+                "@references": "acme::Case"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "AuthorizationExtract",
+          "@filter": {
+            "caseId.patientId.hasActiveHipaaConsent": true
+          },
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_authorization_extract"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id",
+                "extends": "acme::Authorization.id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "code",
+                "extends": "acme::Authorization.code"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "extends": "acme::Authorization.id"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "PatientExtract",
+          "@filter": {
+            "hasActiveHipaaConsent": true
+          },
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_patient_extract"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id",
+                "extends": "acme::Patient.id"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "extends": "acme::Patient.id"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

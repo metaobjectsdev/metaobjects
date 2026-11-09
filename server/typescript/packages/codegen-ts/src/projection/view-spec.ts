@@ -1,5 +1,6 @@
 import type { AggregateFunction } from "@metaobjectsdev/metadata";
 import type { SqlType } from "@metaobjectsdev/migrate-ts/expected";
+import type { RelativeNow } from "./report-spec.js";
 
 /** One node in the JOIN tree. `alias` is an auto-generated unique short alias. */
 export interface JoinNode {
@@ -84,7 +85,22 @@ export type ViewExprNode =
   | { readonly kind: "coalesce"; readonly args: readonly ViewExprNode[] }
   // entity-derived: an entity's origin.first, inlined where a projection reaches the entity —
   // its correlated scalar subquery, keyed on `column.outerAlias`.
-  | { readonly kind: "first"; readonly column: FirstColumn };
+  | { readonly kind: "first"; readonly column: FirstColumn }
+  // rc.19 `now`: the current instant shifted, of the kind of the field it is compared with.
+  | { readonly kind: "now"; readonly value: RelativeNow }
+  // rc.19 `case`: searched (each `when` a predicate) or, with `operand`, simple (each `when` a value).
+  | {
+      readonly kind: "case";
+      readonly operand?: ViewExprNode;
+      readonly whens: readonly { readonly when: ViewExprNode; readonly then: ViewExprNode }[];
+      readonly else?: ViewExprNode;
+    };
+
+/** rc.19 correlated-filter: a filter operand that is a column of the base row (`alias.column`). */
+export interface ColRef {
+  readonly kind: "colRef";
+  readonly ref: string;
+}
 
 /** A resolved ordering key: a physical column (naming-strategy applied) + direction. */
 export interface ViewOrderKey {

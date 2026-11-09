@@ -33,9 +33,9 @@ Core metaobjects metamodel types and subtypes.
 - `object.entity`: `@collectionName`, `@dbSetName`, `@discriminator`, `@discriminatorValue`
 - `object.projection`: `@collectionName`, `@dbSetName`, `@filter`
 - `object.report`: `@collectionName`, `@dbSetName`, `@dimensions`, `@filter`, `@from`, `@measures`, `@segment`, `@spine`
-- `origin.aggregate`: `@agg`, `@distinct`, `@filter`, `@of`, `@orderBy`, `@via`
+- `origin.aggregate`: `@agg`, `@distinct`, `@filter`, `@of`, `@orderBy`, `@segment`, `@via`
 - `origin.computed`: `@expr`
-- `origin.first`: `@filter`, `@of`, `@orderBy`, `@via`
+- `origin.first`: `@filter`, `@of`, `@orderBy`, `@segment`, `@via`
 - `origin.passthrough`: `@convert`, `@from`, `@via`
 - `relationship.aggregation`: `@cardinality`, `@objectRef`, `@onDelete`, `@onUpdate`, `@sourceRefField`, `@symmetric`, `@through`
 - `relationship.association`: `@cardinality`, `@objectRef`, `@onDelete`, `@onUpdate`, `@sourceRefField`, `@symmetric`, `@through`
