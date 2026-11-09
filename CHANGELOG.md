@@ -493,6 +493,17 @@ vocabulary; upgrade every port together.
   entity, and its view carries the effective fields and their origins, base first. An extender
   that would inherit its base's source is still refused at load: it declares its own. Pinned by
   `fixtures/conformance/projection-extends-abstract-projection`.
+- **C#: every generator that emits a class claims its name** (rc.19 fix round, I2). With
+  package-keyed paths two same-named objects no longer collide on one output file, so only a
+  claim stopped a duplicate type — and `<X>FilterAllowlist`, `<X>Names`, `<Report>Export` and
+  the template tier (`<T>RenderHelper`, the parser, the response format, the extractor) claimed
+  nothing, so the pair reached the compiler as CS0101. Each now claims where it emits and a
+  duplicate is a named `ERR_NAME_COLLISION`. **Upgrade note:** `<X>FilterAllowlist` is now
+  emitted in its entity's namespace (as `<X>Names` already was), so `GenConfig.PackageNamespaces`
+  separates the allowlists too; the generated routes already import that namespace. A refusal's
+  remedy says "rename one" where the class always lives in `GenConfig.Namespace` (the reverse
+  finders, a shared enum, the template tier, a report export), since mapping the packages cannot
+  help there.
 - **No CHECK for a derived field** (rc.19 fix round, I5). `meta migrate` and the C# EF context
   built a CHECK from a derived (origin-bearing) field's enum values or validators, and a
   cross-field CHECK naming one, though such a field has no column — so `CREATE TABLE` and the EF

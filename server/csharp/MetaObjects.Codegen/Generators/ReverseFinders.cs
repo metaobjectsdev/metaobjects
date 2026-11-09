@@ -145,8 +145,8 @@ public static class ReverseFinderBuilder
         sb.AppendLine("{");
 
         // The finders are members of one class: two FKs whose segments fold to one name collide.
-        ctx.Claim($"the C# namespace {ctx.Config.Namespace}", queriesCls, entity.ResolutionKey(),
-            "map the packages to distinct namespaces (GenConfig.PackageNamespaces), or rename one");
+        // The reverse finders always live in GenConfig.Namespace, so mapping the packages cannot help.
+        ctx.Claim($"the C# namespace {ctx.Config.Namespace}", queriesCls, entity.ResolutionKey(), "rename one");
         foreach (var fk in fks)
         {
             ctx.Claim($"the reverse finders of {ctx.Config.Namespace}.{queriesCls}", CSharpNaming.ReverseFinderName(entity, fk.FkField),

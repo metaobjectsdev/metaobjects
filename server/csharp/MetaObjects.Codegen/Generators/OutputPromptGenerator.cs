@@ -53,6 +53,8 @@ public class OutputPromptGenerator : IGenerator
     {
         var templateName = tmpl.Name;
         var promptClass = CSharpNaming.ResponseFormatClassName(templateName);
+        // rc.19 fix round (I2): the template tier always emits into GenConfig.Namespace.
+        ctx.Claim($"the C# namespace {ctx.Config.Namespace}", promptClass, tmpl.ResolutionKey(), "rename one");
         // rootName == the response value object's short name, so the fragment and extract()
         // agree — never the raw @responseRef, which may be an FQN (`acme::app::Answer`).
         var specLiteral = OutputFormatSpecEmitter.SpecLiteral(vo, tmpl, vo.Name);

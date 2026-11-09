@@ -104,6 +104,7 @@ public class ReportExportGenerator : IGenerator
         sb.AppendLine($"namespace {ctx.Config.Namespace};");
         sb.AppendLine();
         sb.AppendLine($"/// <summary>The CSV and XML export of the <c>{report.Name}</c> report: its columns, in derived-field order, over the generated <see cref=\"{cls}\"/> row.</summary>");
+        ctx.Claim($"the C# namespace {ctx.Config.Namespace}", $"{cls}Export", report.ResolutionKey(), "rename one");
         sb.AppendLine($"public static class {cls}Export");
         sb.AppendLine("{");
         sb.AppendLine("    /// <summary>The XML root element.</summary>");
