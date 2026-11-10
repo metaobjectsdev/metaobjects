@@ -67,6 +67,7 @@ import { defineConfig } from "@metaobjectsdev/cli";
 
 export default defineConfig({
   outDir: "src/generated", // beside the existing code; nothing imports it yet
+  outputLayout: "flat", // the paths below; the default puts each metadata package in a directory of its own
   dialect: "postgres",
   timestampMode: "date", // when the existing timestamp columns read as Date
   generators: ["entity"],
@@ -159,6 +160,7 @@ import { entityFile } from "@metaobjectsdev/codegen-ts/generators";
 
 export default defineConfig({
   outDir: "src/generated",
+  outputLayout: "flat", // the paths below; the default puts each metadata package in a directory of its own
   dialect: "postgres",
   targets: {
     contract: { outDir: "src/generated", runtime: false }, // Zod schemas and types, no ORM
