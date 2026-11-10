@@ -101,7 +101,7 @@ async function loadRoot(children: unknown[]) {
 async function runEntityFiles(
   root: Awaited<ReturnType<typeof loadRoot>>,
 ): Promise<EmittedFile[]> {
-  const renderContext = makeRenderContext({
+  const renderContext = makeRenderContext({ outputLayout: "flat",
     dialect: "sqlite",
     loadedRoot: root,
     outDir: "/tmp",
@@ -114,7 +114,7 @@ async function runEntityFiles(
     loadedRoot: root,
     matches: (_e: MetaObject) => true,
     projectRoot: "/tmp",
-    config: {
+    config: { outputLayout: "flat",
       outDir: "/tmp",
       extStyle: "none",
       dbImport: "~/db",

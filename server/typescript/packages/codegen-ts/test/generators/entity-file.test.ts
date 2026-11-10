@@ -23,7 +23,7 @@ describe("entityFile() factory", () => {
     const { root } = await loader.load([new FileSource(FIXTURE)]);
     const entities = root.objects();
 
-    const renderContext = makeRenderContext({
+    const renderContext = makeRenderContext({ outputLayout: "flat",
       dialect: "sqlite", loadedRoot: root, outDir: "/tmp",
       dbImport: "../db", extStyle: "none",
       pkMap: buildPkMap(root), relationMap: buildRelationMap(root),
@@ -31,7 +31,7 @@ describe("entityFile() factory", () => {
     const ctx: GenContext = {
       entities, loadedRoot: root,
       matches: () => true,
-      config: { outDir: "/tmp", extStyle: "none", dbImport: "../db", dialect: "sqlite" },
+      config: { outputLayout: "flat", outDir: "/tmp", extStyle: "none", dbImport: "../db", dialect: "sqlite" },
       renderContext,
       warn: () => {},
     };
@@ -53,7 +53,7 @@ describe("entityFile() factory", () => {
     const { root } = await loader.load([new FileSource(FIXTURE)]);
     const entities = root.objects();
 
-    const renderContext = makeRenderContext({
+    const renderContext = makeRenderContext({ outputLayout: "flat",
       dialect: "sqlite", loadedRoot: root, outDir: "/tmp",
       dbImport: "../db", extStyle: "none",
       pkMap: buildPkMap(root), relationMap: buildRelationMap(root),
@@ -61,7 +61,7 @@ describe("entityFile() factory", () => {
     const ctx: GenContext = {
       entities, loadedRoot: root,
       matches: () => true,
-      config: { outDir: "/tmp", extStyle: "none", dbImport: "../db", dialect: "sqlite" },
+      config: { outputLayout: "flat", outDir: "/tmp", extStyle: "none", dbImport: "../db", dialect: "sqlite" },
       renderContext,
       warn: () => {},
     };
@@ -83,7 +83,7 @@ describe("entityFile() factory", () => {
     const { root } = await loader.load([new FileSource(FIXTURE)]);
     const entities = root.objects();
 
-    const renderContext = makeRenderContext({
+    const renderContext = makeRenderContext({ outputLayout: "flat",
       dialect: "sqlite", loadedRoot: root, outDir: "/tmp",
       dbImport: "../db", extStyle: "none",
       pkMap: buildPkMap(root), relationMap: buildRelationMap(root),
@@ -93,7 +93,7 @@ describe("entityFile() factory", () => {
     const ctx: GenContext = {
       entities, loadedRoot: root,
       matches: (e) => gen.filter?.(e) ?? true,
-      config: { outDir: "/tmp", extStyle: "none", dbImport: "../db", dialect: "sqlite" },
+      config: { outputLayout: "flat", outDir: "/tmp", extStyle: "none", dbImport: "../db", dialect: "sqlite" },
       renderContext,
       warn: () => {},
     };
@@ -137,7 +137,7 @@ describe("entityFile() — emitAbstractShapes knob", () => {
     const { root, errors } = await new MetaDataLoader().load([new InMemoryStringSource(model)]);
     if (errors.length > 0) throw new Error(errors.map((e: { message: string }) => e.message).join("\n"));
     const entities = root.objects();
-    const renderContext = makeRenderContext({
+    const renderContext = makeRenderContext({ outputLayout: "flat",
       dialect: "sqlite", loadedRoot: root, outDir: "/tmp",
       dbImport: "../db", extStyle: "none", emitAbstractShapes,
       pkMap: buildPkMap(root), relationMap: buildRelationMap(root),
@@ -145,7 +145,7 @@ describe("entityFile() — emitAbstractShapes knob", () => {
     const ctx: GenContext = {
       entities, loadedRoot: root,
       matches: () => true,
-      config: { outDir: "/tmp", extStyle: "none", dbImport: "../db", dialect: "sqlite" },
+      config: { outputLayout: "flat", outDir: "/tmp", extStyle: "none", dbImport: "../db", dialect: "sqlite" },
       renderContext,
       warn: () => {},
     };
@@ -237,13 +237,13 @@ describe("entityFile() — emitAbstractShapes knob", () => {
     const { root, errors } = await new MetaDataLoader().load([new InMemoryStringSource(MODEL)]);
     expect(errors).toEqual([]);
     const entities = root.objects();
-    const renderContext = makeRenderContext({
+    const renderContext = makeRenderContext({ outputLayout: "flat",
       dialect: "sqlite", loadedRoot: root, outDir: "/tmp", dbImport: "../db", extStyle: "none",
       pkMap: buildPkMap(root), relationMap: buildRelationMap(root),
     });
     const ctx: GenContext = {
       entities, loadedRoot: root, matches: () => true,
-      config: { outDir: "/tmp", extStyle: "none", dbImport: "../db", dialect: "sqlite" },
+      config: { outputLayout: "flat", outDir: "/tmp", extStyle: "none", dbImport: "../db", dialect: "sqlite" },
       renderContext, warn: () => {},
     };
     const files = await entityFile().generate(ctx);

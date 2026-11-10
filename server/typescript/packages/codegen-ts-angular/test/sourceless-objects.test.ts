@@ -76,7 +76,7 @@ async function ctxFor(gen: Generator): Promise<GenContext> {
   const { root, errors } = await new MetaDataLoader().load([new InMemoryStringSource(META)]);
   expect(errors).toEqual([]);
   const entities = root.objects();
-  const renderContext = makeRenderContext({
+  const renderContext = makeRenderContext({ outputLayout: "flat",
     dialect: "postgres",
     loadedRoot: root,
     outDir: "/tmp",
@@ -89,7 +89,7 @@ async function ctxFor(gen: Generator): Promise<GenContext> {
     entities,
     loadedRoot: root,
     matches: (e) => gen.filter?.(e) ?? true,
-    config: { outDir: "/tmp", extStyle: "none", dbImport: "./db", dialect: "postgres" },
+    config: { outputLayout: "flat", outDir: "/tmp", extStyle: "none", dbImport: "./db", dialect: "postgres" },
     renderContext,
     warn: () => {},
   };

@@ -48,7 +48,7 @@ async function formFor(
   const { root, errors } = await new MetaDataLoader().load([new InMemoryStringSource(json)]);
   if (errors.length > 0) throw new Error(errors.map((e) => e.message).join("\n"));
 
-  const renderContext = makeRenderContext({
+  const renderContext = makeRenderContext({ outputLayout: "flat",
     dialect: "sqlite", loadedRoot: root, outDir: "/tmp",
     dbImport: "../db", extStyle: "none",
     pkMap: buildPkMap(root), relationMap: buildRelationMap(root),
@@ -58,7 +58,7 @@ async function formFor(
     entities: root.objects(),
     loadedRoot: root,
     matches: (e) => gen.filter?.(e) ?? true,
-    config: { outDir: "/tmp", extStyle: "none", dbImport: "../db", dialect: "sqlite" },
+    config: { outputLayout: "flat", outDir: "/tmp", extStyle: "none", dbImport: "../db", dialect: "sqlite" },
     renderContext,
     warn: () => {},
   };

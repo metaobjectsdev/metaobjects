@@ -103,7 +103,7 @@ function compile(dir: string, files: string[]): readonly ts.Diagnostic[] {
 
 async function generate(dialect: "sqlite" | "postgres", dir: string) {
   const root = await loadRoot();
-  const renderContext = makeRenderContext({
+  const renderContext = makeRenderContext({ outputLayout: "flat",
     dialect,
     loadedRoot: root,
     outDir: dir,
@@ -116,7 +116,7 @@ async function generate(dialect: "sqlite" | "postgres", dir: string) {
     loadedRoot: root,
     matches: () => true,
     projectRoot: dir,
-    config: { outDir: dir, extStyle: "none", dbImport: "~/db", dialect } as never,
+    config: { outputLayout: "flat", outDir: dir, extStyle: "none", dbImport: "~/db", dialect } as never,
     renderContext,
     warn: () => {},
   };

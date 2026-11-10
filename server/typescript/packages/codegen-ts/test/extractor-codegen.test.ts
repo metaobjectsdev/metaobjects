@@ -31,7 +31,7 @@ async function writeEntityModules(
   dir: string,
   root: Awaited<ReturnType<typeof loadRoot>>,
 ): Promise<void> {
-  const renderContext = makeRenderContext({
+  const renderContext = makeRenderContext({ outputLayout: "flat",
     dialect: "sqlite",
     loadedRoot: root,
     outDir: "/tmp",
@@ -44,7 +44,7 @@ async function writeEntityModules(
     loadedRoot: root,
     matches: () => true,
     projectRoot: "/tmp",
-    config: { outDir: "/tmp", extStyle: "none", dbImport: "~/db", dialect: "sqlite" } as never,
+    config: { outputLayout: "flat", outDir: "/tmp", extStyle: "none", dbImport: "~/db", dialect: "sqlite" } as never,
     renderContext,
     warn: () => {},
   };

@@ -258,7 +258,7 @@ describe("int-backed field.enum — generated codec against real Postgres", () =
 
     const root = (await new MetaDataLoader().load([new InMemoryStringSource(meta())])).root;
     const lr = await runGen({
-      config: defineConfig({
+      config: defineConfig({ outputLayout: "flat", 
         outDir: tmp,
         extStyle: "none",
         dbImport: "./db",
@@ -505,7 +505,7 @@ describe("int-backed field.enum under TPH — real Postgres", () => {
 
     const root = (await new MetaDataLoader().load([new InMemoryStringSource(TPH_META)])).root;
     const lr = await runGen({
-      config: defineConfig({
+      config: defineConfig({ outputLayout: "flat", 
         outDir: tphTmp, extStyle: "none", dbImport: "./db", dialect: "postgres",
         generators: [entityFile(), queriesFile()],
       }),

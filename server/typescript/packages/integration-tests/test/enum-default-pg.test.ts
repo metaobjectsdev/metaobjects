@@ -80,7 +80,7 @@ beforeAll(async () => {
   mkdirSync(genTmpRoot, { recursive: true });
   tmp = mkdtempSync(join(genTmpRoot, "enum-default-"));
   const lr = await runGen({
-    config: defineConfig({
+    config: defineConfig({ outputLayout: "flat", 
       outDir: tmp, extStyle: "none", dbImport: "./db", dialect: "postgres",
       generators: [entityFile(), queriesFile()],
     }),

@@ -26,7 +26,7 @@ const CONFIG = [
   `    });`,
   `  },`,
   `};`,
-  `export default defineConfig({ outDir: "out", dialect: "postgres", generators: [], providers: [geoProvider] });`,
+  `export default defineConfig({ outputLayout: "flat", outDir: "out", dialect: "postgres", generators: [], providers: [geoProvider] });`,
 ].join("\n");
 
 const META = {

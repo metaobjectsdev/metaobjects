@@ -16,7 +16,7 @@ const FIXTURE = resolve(import.meta.dir, "fixtures", "author-entity.json");
 async function ctxFor(filter?: (e: any) => boolean): Promise<GenContext> {
   const { root } = await new MetaDataLoader().load([new FileSource(FIXTURE)]);
   const entities = root.objects();
-  const renderContext = makeRenderContext({
+  const renderContext = makeRenderContext({ outputLayout: "flat",
     dialect: "sqlite",
     loadedRoot: root,
     outDir: "/tmp",
@@ -29,7 +29,7 @@ async function ctxFor(filter?: (e: any) => boolean): Promise<GenContext> {
     entities,
     loadedRoot: root,
     matches: filter ?? (() => true),
-    config: { outDir: "/tmp", extStyle: "none", dbImport: "../db", dialect: "sqlite" },
+    config: { outputLayout: "flat", outDir: "/tmp", extStyle: "none", dbImport: "../db", dialect: "sqlite" },
     renderContext,
     warn: () => {},
   };
@@ -208,8 +208,8 @@ describe("@emitAngular is retired", () => {
       entities: root.objects(),
       loadedRoot: root,
       matches: () => true,
-      config: { outDir: "/tmp", extStyle: "none", dbImport: "../db", dialect: "sqlite" },
-      renderContext: makeRenderContext({
+      config: { outputLayout: "flat", outDir: "/tmp", extStyle: "none", dbImport: "../db", dialect: "sqlite" },
+      renderContext: makeRenderContext({ outputLayout: "flat",
         dialect: "sqlite", loadedRoot: root, outDir: "/tmp", dbImport: "../db",
         extStyle: "none", pkMap: buildPkMap(root), relationMap: buildRelationMap(root),
       }),

@@ -96,7 +96,7 @@ beforeAll(async () => {
   writeFileSync(metaPath, JSON.stringify(MODEL));
 
   const result = await runGen({
-    config: defineConfig({
+    config: defineConfig({ outputLayout: "flat", 
       outDir: tmp,
       extStyle: "none",
       dbImport: "./db",

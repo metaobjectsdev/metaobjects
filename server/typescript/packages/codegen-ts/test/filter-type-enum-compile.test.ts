@@ -90,7 +90,7 @@ describe("<Entity>Filter types an enum filter value as the enum's member union",
     const root = loaded.root;
     const dir = mkdtempSync(join(import.meta.dir, "tmp-filter-enum-"));
     try {
-      const renderContext = makeRenderContext({
+      const renderContext = makeRenderContext({ outputLayout: "flat",
         dialect: "sqlite",
         loadedRoot: root,
         outDir: dir,
@@ -104,7 +104,7 @@ describe("<Entity>Filter types an enum filter value as the enum's member union",
         loadedRoot: root,
         matches: (e) => gen.filter?.(e) ?? true,
         projectRoot: dir,
-        config: { outDir: dir, extStyle: "none", dbImport: "~/db", dialect: "sqlite" } as never,
+        config: { outputLayout: "flat", outDir: dir, extStyle: "none", dbImport: "~/db", dialect: "sqlite" } as never,
         renderContext,
         warn: () => {},
       };

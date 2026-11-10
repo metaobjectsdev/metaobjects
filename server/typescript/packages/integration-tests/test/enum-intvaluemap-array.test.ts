@@ -69,7 +69,7 @@ async function generated(dialect: "postgres" | "sqlite"): Promise<{ table: any; 
   mkdirSync(genTmpRoot, { recursive: true });
   const dir = mkdtempSync(join(genTmpRoot, `enum-intmap-array-${dialect}-`));
   const lr = await runGen({
-    config: defineConfig({ outDir: dir, extStyle: "none", dbImport: "./db", dialect, generators: [entityFile()] }),
+    config: defineConfig({ outputLayout: "flat", outDir: dir, extStyle: "none", dbImport: "./db", dialect, generators: [entityFile()] }),
     metadata: await loadRoot(),
   });
   if (lr.warnings.length > 0) throw new Error(`codegen warnings: ${lr.warnings.join("; ")}`);

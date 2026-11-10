@@ -62,7 +62,7 @@ export async function startGeneratedProjectionServer(
   // so it sets the root to the default rules (ADR-0058: every resolver reads the root).
   root.physicalNaming = DEFAULT_PHYSICAL_NAMING;
   const lr = await runGen({
-    config: defineConfig({
+    config: defineConfig({ outputLayout: "flat", 
       outDir: tmp,
       extStyle: "none",
       dbImport: "./db",

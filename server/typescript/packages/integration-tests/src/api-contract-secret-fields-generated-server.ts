@@ -91,7 +91,7 @@ export async function startGeneratedSecretFieldsServer(
   // The lane provisions its table below in the generated Drizzle table's default spelling.
   root.physicalNaming = DEFAULT_PHYSICAL_NAMING;
   const lr = await runGen({
-    config: defineConfig({
+    config: defineConfig({ outputLayout: "flat", 
       outDir: tmp,
       extStyle: "none",
       dbImport: "./db",
