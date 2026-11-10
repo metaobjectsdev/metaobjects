@@ -129,7 +129,7 @@ async function genAndCompile(dialect: Dialect, withSchema: boolean): Promise<str
   const root = await loadRoot();
   const dir = mkdtempSync(join(import.meta.dir, "tmp-db-schema-generic-"));
   try {
-    const renderContext = makeRenderContext({
+    const renderContext = makeRenderContext({ outputLayout: "flat",
       dialect,
       loadedRoot: root,
       outDir: dir,
@@ -142,7 +142,7 @@ async function genAndCompile(dialect: Dialect, withSchema: boolean): Promise<str
       loadedRoot: root,
       matches: () => true,
       projectRoot: dir,
-      config: { outDir: dir, extStyle: "none", dbImport: "~/db", dialect } as never,
+      config: { outputLayout: "flat", outDir: dir, extStyle: "none", dbImport: "~/db", dialect } as never,
       renderContext,
       warn: () => {},
     };

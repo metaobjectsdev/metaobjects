@@ -133,7 +133,7 @@ describe("codegen-compile conformance — the shared fitness corpus", () => {
       const root = await loadCorpus();
       const dir = mkdtempSync(join(import.meta.dir, `tmp-codegen-compile-${dialect}-`));
       try {
-        const renderContext = makeRenderContext({
+        const renderContext = makeRenderContext({ outputLayout: "flat",
           dialect,
           loadedRoot: root,
           outDir: dir,
@@ -158,7 +158,7 @@ describe("codegen-compile conformance — the shared fitness corpus", () => {
           // extStyle "js" — the runner's default, and the only style NodeNext resolution
           // (the `tsc --init` profile) accepts. It must agree with the render context's
           // (also "js" by default): a mismatch emits half the tree extension-less.
-          config: { outDir: dir, extStyle: "js", dbImport: "~/db", dialect } as never,
+          config: { outputLayout: "flat", outDir: dir, extStyle: "js", dbImport: "~/db", dialect } as never,
           renderContext,
           warn: () => {},
         });

@@ -102,7 +102,7 @@ describe("projection codegen compiles (TS2724 regression guard)", () => {
     // Temp dir UNDER the package so node_modules (drizzle/zod) resolves.
     const dir = mkdtempSync(join(import.meta.dir, "tmp-proj-compile-"));
     try {
-      const renderContext = makeRenderContext({
+      const renderContext = makeRenderContext({ outputLayout: "flat",
         dialect: "sqlite",
         loadedRoot: root,
         outDir: dir,
@@ -115,7 +115,7 @@ describe("projection codegen compiles (TS2724 regression guard)", () => {
         loadedRoot: root,
         matches: () => true,
         projectRoot: dir,
-        config: { outDir: dir, extStyle: "none", dbImport: "~/db", dialect: "sqlite" } as never,
+        config: { outputLayout: "flat", outDir: dir, extStyle: "none", dbImport: "~/db", dialect: "sqlite" } as never,
         renderContext,
         warn: () => {},
       };

@@ -62,6 +62,7 @@ import {
   writeDeniedColumnsLine,
   servesReadApi,
   formatTs,
+  DEFAULT_OUTPUT_LAYOUT,
   entityOutputPath,
   effectivePackage,
   entityModuleSpecifier,
@@ -350,7 +351,7 @@ export const routesFileHono = function routesFileHono(opts?: RoutesFileHonoOpts)
     };
     return {
       path: entityOutputPath(
-        ctx.config.outputLayout ?? "flat",
+        ctx.config.outputLayout ?? DEFAULT_OUTPUT_LAYOUT,
         effectivePackage(entity),
         `${entity.name}.routes.hono.ts`,
       ),

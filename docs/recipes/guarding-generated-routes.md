@@ -17,6 +17,8 @@ Register the generated handler inside a scope that carries your hook. Fastify ho
 encapsulated per plugin and inherited by child scopes, so the hook reaches through the generated
 handler's own `register(..., { prefix })`:
 
+The paths below assume `outputLayout: "flat"`; under the default (`package`) each module sits in its metadata package's directory (`./generated/<package path>/Note.routes.js`).
+
 ```ts
 import { noteRoutes } from "./generated/Note.routes.js";
 

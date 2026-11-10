@@ -184,7 +184,7 @@ async function runGenerator(
   root: Awaited<ReturnType<typeof loadRoot>>,
   projectRoot: string,
 ): Promise<EmittedFile[]> {
-  const renderContext = makeRenderContext({
+  const renderContext = makeRenderContext({ outputLayout: "flat",
     dialect: "sqlite",
     loadedRoot: root,
     outDir: "/tmp",
@@ -198,7 +198,7 @@ async function runGenerator(
     // Replicates runner.ts:169 — the per-entity filter the generator declares.
     matches: (e: MetaObject) => gen.filter?.(e) ?? true,
     projectRoot,
-    config: {
+    config: { outputLayout: "flat",
       outDir: "/tmp",
       extStyle: "none",
       dbImport: "~/db",
@@ -359,7 +359,7 @@ describe("api-docs ACCURACY gate — documented symbols == real generated output
     extractorAll = joinContent(extractorFiles);
     renderAll = joinContent(renderFiles);
 
-    model = buildApiModel(root, { loadedRoot: root });
+    model = buildApiModel(root, { outputLayout: "flat", loadedRoot: root });
 
     // Sanity: the generators actually produced output for the rich fixture.
     expect(entityFiles.length).toBeGreaterThan(0);
@@ -941,7 +941,7 @@ describe("api-docs ACCURACY gate (T5) — relations / callable / prompt / Hono",
     honoFiles = await runGenerator(routesFileHono(), root, projectRoot);
 
     // Hono is the opt-in variant → the builder documents it only when asked.
-    model = buildApiModel(root, { loadedRoot: root, includeHonoRoutes: true });
+    model = buildApiModel(root, { outputLayout: "flat", loadedRoot: root, includeHonoRoutes: true });
 
     expect(entityFiles.length).toBeGreaterThan(0);
     // Exactly one callable entity in the fixture (PhaseSummary).
@@ -1083,7 +1083,7 @@ describe("api-docs ACCURACY gate (T5) — relations / callable / prompt / Hono",
   });
 
   test("HONO inverse: when includeHonoRoutes is NOT set, no Hono symbols are documented", () => {
-    const noHono = buildApiModel(root, { loadedRoot: root });
+    const noHono = buildApiModel(root, { outputLayout: "flat", loadedRoot: root });
     for (const u of noHono.units) {
       expect(u.symbols.some((s) => s.kind === "rest-hono")).toBe(false);
     }
@@ -1176,7 +1176,7 @@ describe("api-docs ACCURACY gate — writes are documented only where the genera
     queriesFiles = await runGenerator(queriesFile(), res.root, projectRoot);
     routesFiles = await runGenerator(routesFile(), res.root, projectRoot);
     honoFiles = await runGenerator(routesFileHono(), res.root, projectRoot);
-    model = buildApiModel(res.root, { loadedRoot: res.root, includeHonoRoutes: true });
+    model = buildApiModel(res.root, { outputLayout: "flat", loadedRoot: res.root, includeHonoRoutes: true });
   });
 
   for (const name of ["CustomerCard", "RegionTotal", "Order", "Customer"]) {

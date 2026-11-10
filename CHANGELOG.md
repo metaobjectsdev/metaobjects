@@ -357,11 +357,19 @@ vocabulary; upgrade every port together.
   (`acme::alpha::Note` → `acme/alpha/Note.g.cs`); a root-level object, the context, the shared
   enums and the run-wide helpers stay at the root. Namespaces are unchanged (the package binding
   decides them, `GenConfig.PackageNamespaces`), so two same-named types in one namespace are still
-  refused by the claim registry. TypeScript's default `outputLayout` flip is not in this build
-  yet; Python and the JVM ports follow in #544–#549 (`docs/CONFORMANCE.md`, "Generated paths keyed
-  by package"). **Upgrade note:** the next C# `gen` writes every generated file under its package
-  directory and sweeps the old flat copies; update any build globs or `<Compile>` items that named
-  the flat files. The shipped TypeScript examples now declare `outputLayout: "flat"` explicitly.
+  refused by the claim registry. **TypeScript: the default `outputLayout` is now `"package"`**
+  (ruling R63): a target that declares none writes each module under `<outDir>/<package path>/`
+  (`acme::blog`'s `Author` is `generated/acme/blog/Author.ts`), as `outputLayout: "package"`
+  already did. Python and the JVM ports follow in #544–#549 (`docs/CONFORMANCE.md`, "Generated
+  paths keyed by package"). **Upgrade notes:** the next C# `gen` writes every generated file under
+  its package directory and sweeps the old flat copies; update any build globs or `<Compile>`
+  items that named the flat files. The next TypeScript `meta gen` of a project that declares no
+  `outputLayout` moves its generated modules into package directories (and sweeps the flat
+  copies); set `outputLayout: "flat"` in `metaobjects.config.ts` to keep the old layout. Imports
+  through the generated barrel (`generated/index.ts`) are unaffected: it exports the same names
+  in both layouts. A direct import of a module (`./generated/Author.routes.js`; routes and
+  queries are not in the barrel) gains the package path. A root-level object (no package) stays
+  at `outDir`. The shipped TypeScript examples declare `outputLayout: "flat"` explicitly.
 - **Breaking, TypeScript: a value object is never renamed; one claim registry refuses real
   collisions** (ruling R52, amending ADR-0044 and ADR-0056). `acme::alpha::Note` is declared as
   `Note` in its own module; the `AcmeAlphaNote` derived name is gone, and so are

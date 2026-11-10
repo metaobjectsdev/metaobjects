@@ -122,7 +122,7 @@ async function genAndCompile(dialect: Dialect): Promise<readonly ts.Diagnostic[]
   const root = await loadRoot();
   const dir = mkdtempSync(join(import.meta.dir, "tmp-verbatim-"));
   try {
-    const renderContext = makeRenderContext({
+    const renderContext = makeRenderContext({ outputLayout: "flat",
       dialect,
       loadedRoot: root,
       outDir: dir,
@@ -135,7 +135,7 @@ async function genAndCompile(dialect: Dialect): Promise<readonly ts.Diagnostic[]
       loadedRoot: root,
       matches: () => true,
       projectRoot: dir,
-      config: { outDir: dir, extStyle: "none", dbImport: "~/db", dialect } as never,
+      config: { outputLayout: "flat", outDir: dir, extStyle: "none", dbImport: "~/db", dialect } as never,
       renderContext,
       warn: () => {},
     };

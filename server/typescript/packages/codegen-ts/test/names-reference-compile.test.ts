@@ -97,7 +97,7 @@ async function genAndCompile(
 
   const dir = mkdtempSync(join(import.meta.dir, "tmp-names-ref-"));
   try {
-    const renderContext = makeRenderContext({
+    const renderContext = makeRenderContext({ outputLayout: "flat",
       dialect,
       loadedRoot: root,
       outDir: dir,
@@ -114,7 +114,7 @@ async function genAndCompile(
       loadedRoot: root,
       matches: () => true,
       projectRoot: dir,
-      config: { outDir: dir, extStyle: "none", dbImport: "~/db", dialect } as never,
+      config: { outputLayout: "flat", outDir: dir, extStyle: "none", dbImport: "~/db", dialect } as never,
       renderContext,
       warn: () => {},
     };

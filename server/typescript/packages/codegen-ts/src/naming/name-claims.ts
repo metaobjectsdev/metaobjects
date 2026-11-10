@@ -17,7 +17,7 @@ import {
   type MetaObject,
 } from "@metaobjectsdev/metadata";
 import type { GenContext } from "../generator.js";
-import { packageToPath } from "../import-path.js";
+import { DEFAULT_OUTPUT_LAYOUT, packageToPath } from "../import-path.js";
 import { effectivePackage } from "../docs-paths.js";
 import { emitsInstanceArtifacts } from "../instance-artifacts.js";
 
@@ -57,7 +57,7 @@ const ROUTE_REMEDY =
 /** The scope of a module's exports: its target and, under the package layout, its package
  *  directory. Under the flat layout every module shares the target's one directory. */
 function moduleScope(ctx: GenContext, obj: MetaObject): string {
-  const layout = ctx.config.outputLayout ?? "flat";
+  const layout = ctx.config.outputLayout ?? DEFAULT_OUTPUT_LAYOUT;
   const dir = layout === "package" ? packageToPath(effectivePackage(obj)) : "";
   const target = ctx.renderContext?.selfTarget.name ?? "default";
   return `the module directory "${dir === "" ? "." : dir}" of target "${target}"`;

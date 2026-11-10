@@ -18,9 +18,9 @@ describe("resolveTargets", () => {
     });
   });
 
-  test("default target: outputLayout defaults to 'flat', importBase undefined", () => {
+  test("default target: outputLayout defaults to 'package' (R63), importBase undefined", () => {
     const t = resolveTargets({ ...base });
-    expect(t.default!.outputLayout).toBe("flat");
+    expect(t.default!.outputLayout).toBe("package");
     expect(t.default!.importBase).toBeUndefined();
   });
 

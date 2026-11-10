@@ -25,7 +25,7 @@ describe("renderEntityFile", () => {
     order.addChild(primary);
     root.addChild(order);
 
-    const ctx = makeRenderContext({
+    const ctx = makeRenderContext({ outputLayout: "flat",
       dialect: "sqlite",
       loadedRoot: root,
       outDir: "/x",
@@ -61,7 +61,7 @@ describe("renderEntityFile", () => {
     const root = result.root;
     const order = root.objects()[0]!;
 
-    const ctx = makeRenderContext({
+    const ctx = makeRenderContext({ outputLayout: "flat",
       dialect: "sqlite",
       loadedRoot: root,
       outDir: "/x",
@@ -107,7 +107,7 @@ describe("renderEntityFile", () => {
     const root = result.root;
     const order = root.objects()[0]!;
 
-    const ctx = makeRenderContext({
+    const ctx = makeRenderContext({ outputLayout: "flat",
       dialect: "sqlite",
       loadedRoot: root,
       outDir: "/x",
@@ -142,7 +142,7 @@ describe("renderEntityFile", () => {
     order.addChild(primary);
     root.addChild(order);
 
-    const ctx = makeRenderContext({
+    const ctx = makeRenderContext({ outputLayout: "flat",
       dialect: "sqlite",
       loadedRoot: root,
       outDir: "/x",
@@ -181,7 +181,7 @@ describe("renderEntityFile", () => {
     const root = result.root;
     const order = root.objects()[0]!;
 
-    const ctx = makeRenderContext({
+    const ctx = makeRenderContext({ outputLayout: "flat",
       dialect: "sqlite",
       loadedRoot: root,
       outDir: "/x",
@@ -220,7 +220,7 @@ describe("renderEntityFile", () => {
     const root = result.root;
     const user = root.objects()[0]!;
 
-    const ctx = makeRenderContext({
+    const ctx = makeRenderContext({ outputLayout: "flat",
       dialect: "sqlite",
       loadedRoot: root,
       outDir: "/x",
@@ -257,7 +257,7 @@ describe("renderEntityFile", () => {
     const root = result.root;
     const user = root.objects()[0]!;
 
-    const ctx = makeRenderContext({
+    const ctx = makeRenderContext({ outputLayout: "flat",
       dialect: "sqlite",
       loadedRoot: root,
       outDir: "/x",
@@ -290,7 +290,7 @@ describe("renderEntityFile", () => {
     post.addChild(primary);
     root.addChild(post);
 
-    const ctx = makeRenderContext({
+    const ctx = makeRenderContext({ outputLayout: "flat",
       dialect: "sqlite",
       loadedRoot: root,
       outDir: "/x",
@@ -330,7 +330,7 @@ describe("renderEntityFile", () => {
     post.addChild(primary);
     root.addChild(post);
 
-    const ctx = makeRenderContext({
+    const ctx = makeRenderContext({ outputLayout: "flat",
       dialect: "sqlite",
       loadedRoot: root,
       outDir: "/x",
@@ -360,7 +360,7 @@ describe("renderEntityFile", () => {
     post.addChild(primary);
     root.addChild(post);
 
-    const ctx = makeRenderContext({
+    const ctx = makeRenderContext({ outputLayout: "flat",
       dialect: "sqlite",
       loadedRoot: root,
       outDir: "/x",

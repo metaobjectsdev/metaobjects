@@ -649,9 +649,12 @@ with the literal types intact.
 
 The entity module imports only Drizzle and Zod; the generated routes mount through
 `@metaobjectsdev/runtime-ts`, an ordinary Apache-2.0 package, and Drizzle, Zod and
-Fastify are direct user-app deps. With the default (flat)
-`outputLayout`, entity output lands directly under `outDir` — `src/generated/Author.ts`,
-`Author.queries.ts`, `Author.routes.ts` — with no per-package subdirectory.
+Fastify are direct user-app deps. With the default (`package`)
+`outputLayout`, entity output lands under `outDir` in a directory per metadata package —
+`acme::blog`'s `Author` is `src/generated/acme/blog/Author.ts`, `Author.queries.ts` and
+`Author.routes.ts`. Imports through the generated barrel (`src/generated/index.ts`) do not
+name the directory. Set `outputLayout: "flat"` in `metaobjects.config.ts` to put every file
+directly under `outDir` (the layout before rc.19).
 
 The generated `Author.routes.ts` imports a module-level `db` singleton from the
 path configured by `dbImport` in `metaobjects.config.ts` (the generated queries take
@@ -670,7 +673,7 @@ export const db = drizzle(createClient({ url: "file:dev.sqlite" }));
 ```ts
 // src/server.ts
 import Fastify from "fastify";
-import { authorRoutes } from "./generated/Author.routes.js";
+import { authorRoutes } from "./generated/acme/blog/Author.routes.js";
 
 const app = Fastify();
 await app.register(authorRoutes);   // mounts GET/POST/PATCH/PUT/DELETE for Author
@@ -684,7 +687,7 @@ module-level singleton wired above, so `server.ts` never passes it explicitly.
 (`apiPrefix` in `metaobjects.config.ts` wraps the registration in a
 `fastify.register(..., { prefix })` block when set — see
 [`features/api-contract.md`](../features/api-contract.md).) The per-verb query
-helpers (`findAuthorById`, ...) live in the sibling `./generated/Author.queries`
+helpers (`findAuthorById`, ...) live in the sibling `./generated/acme/blog/Author.queries`
 file and take `db` as an explicit first argument — useful directly in request
 handlers, tests, or any runtime where a module singleton doesn't fit (see the
 recipe above).
@@ -701,7 +704,7 @@ npx tsx src/server.ts      # stock Node
 Node's built-in TypeScript support is **not** enough here — `node src/server.ts`
 (type stripping, on by default in Node 24; `--experimental-strip-types` before
 that) strips the types but deliberately does not rewrite module specifiers, so
-the generated `import … from "./generated/Author.routes.js"` fails with
+the generated `import … from "./generated/acme/blog/Author.routes.js"` fails with
 `ERR_MODULE_NOT_FOUND`. Run it through `tsx` as above, or compile with `npx tsc`
 first and run the emitted JavaScript.
 
@@ -796,7 +799,7 @@ binding exists only on `env`, so build the client and mount inside `fetch`:
 ```ts
 import { Hono } from "hono";
 import { drizzle } from "drizzle-orm/d1";
-import { registerAuthorRoutes } from "./generated/Author.routes.hono.js";
+import { registerAuthorRoutes } from "./generated/acme/blog/Author.routes.hono.js";
 
 interface Env { DB: D1Database }
 

@@ -195,9 +195,9 @@ collide on an output path. State per port:
 - *Done, C#:* every per-object generator writes through `OutputPaths.Of`
   (`<package segments>/<file>`; root-level objects at the root). The path follows the metadata
   package, not `PackageNamespaces`; namespaces are unchanged. Test: `OutputPathsTests`.
-- *TODO, TypeScript:* `outputLayout` still defaults to `"flat"` (`DEFAULT_OUTPUT_LAYOUT`); the
-  `"package"` layout exists and keeps two same-named objects apart. The flip moves the documented
-  quickstart's imports and the CLI fixtures that read flat paths.
+- *Done, TypeScript:* `outputLayout` defaults to `"package"` (`DEFAULT_OUTPUT_LAYOUT`, ruling
+  R63); `"flat"` stays available. Tests: `barrel-layout.test.ts` (the barrel exports the same
+  names in both layouts), `naming/name-claims.test.ts`.
 - *TODO, Python:* only the flat layout exists. A package layout is new work.
 - *TODO, Java and Kotlin:* files land in the mapped Java package directories, so two metadata
   packages mapped to one Java package would collide.

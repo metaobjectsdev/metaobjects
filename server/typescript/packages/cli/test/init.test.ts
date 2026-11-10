@@ -721,6 +721,7 @@ describe("init() — no dbImport, no db stub, and routes still works once chosen
         'import { routesFile } from "./codegen/generators/routes.js";',
         "export default defineConfig({",
         '  outDir: "src/generated",',
+        '  outputLayout: "flat",',
         '  dialect: "sqlite",',
         '  extStyle: "js",',
         '  dbImport: "../db",',

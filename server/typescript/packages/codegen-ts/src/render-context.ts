@@ -7,7 +7,7 @@ import { normalizeTimestampMode } from "./dialect-module.js";
 import type { PkInfo } from "./pk-resolver.js";
 import type { RelationMap } from "./relation-resolver.js";
 import type { ColumnNamingStrategy } from "./metaobjects-config.js";
-import type { OutputLayout, ResolvedTarget } from "./import-path.js";
+import { DEFAULT_OUTPUT_LAYOUT, type OutputLayout, type ResolvedTarget } from "./import-path.js";
 import { toCamelCase, variableNameFromEntity } from "./naming.js";
 
 /**
@@ -80,7 +80,7 @@ export interface RenderContext {
   apiPrefix: string;
   /** Whether abstract entities emit their shape artifact (type-only interface / value-object file). Defaults to true. Instance/write artifacts are never emitted for abstract entities regardless. */
   emitAbstractShapes: boolean;
-  /** Output layout mode: "flat" (default) — all files in outDir; "package" — sub-paths from entity metadata package. */
+  /** Output layout mode: "package" (default, R63) — sub-paths from entity metadata package; "flat" — all files in outDir. */
   outputLayout: OutputLayout;
   /**
    * §A6 — whether the run emits the `<Entity>Names` artifact (the runner aggregates the
@@ -180,7 +180,7 @@ export function withExtIfRelative(spec: string, style: ExtStyle): string {
 
 /** Thin factory; applies sensible defaults for fields the caller may omit. */
 export function makeRenderContext(opts: RenderContextInput): RenderContext {
-  const outputLayout = opts.outputLayout ?? "flat";
+  const outputLayout = opts.outputLayout ?? DEFAULT_OUTPUT_LAYOUT;
   const defaultTarget: ResolvedTarget = opts.selfTarget ?? {
     name: "default",
     outDir: opts.outDir,

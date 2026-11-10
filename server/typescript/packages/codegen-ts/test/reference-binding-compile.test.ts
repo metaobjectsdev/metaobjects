@@ -92,13 +92,13 @@ async function generate(): Promise<{ root: MetaRoot; files: EmittedFile[] }> {
   ]);
   expect(result.errors.map((e) => e.message)).toEqual([]);
   const root = result.root;
-  const renderContext = makeRenderContext({
+  const renderContext = makeRenderContext({ outputLayout: "flat",
     dialect: "postgres", loadedRoot: root, outDir: "/x", dbImport: "./db",
     pkMap: buildPkMap(root), relationMap: buildRelationMap(root), includeNames: true,
   });
   const genCtx = (g: { filter?: (e: MetaObject) => boolean }): GenContext => ({
     entities: root.objects(), loadedRoot: root, matches: (e) => g.filter?.(e) ?? true, projectRoot: "/x",
-    config: { outDir: "/x", extStyle: "none", dbImport: "./db", dialect: "postgres" } as never,
+    config: { outputLayout: "flat", outDir: "/x", extStyle: "none", dbImport: "./db", dialect: "postgres" } as never,
     renderContext, warn: () => {},
   });
   const generators = [entityFile(), namesFile(), queriesFile(), routesFile(), barrel()];

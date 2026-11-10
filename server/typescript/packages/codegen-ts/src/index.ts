@@ -120,7 +120,7 @@ export { entityTypeNames, type EntityTypeNames, type EntityTypeNamesOpts } from 
 // owned-composition-imports gate in test/ — it derives the required set from that body rather
 // than trusting this list to stay complete.
 
-export { packageToPath, entityOutputPath, crossEntitySpecifier, barrelEntrySpecifier, relativeModuleSpecifier, entityModuleSpecifier, siblingSpecifier, barrelModuleSpecifier } from "./import-path.js";
+export { DEFAULT_OUTPUT_LAYOUT, packageToPath, entityOutputPath, crossEntitySpecifier, barrelEntrySpecifier, relativeModuleSpecifier, entityModuleSpecifier, siblingSpecifier, barrelModuleSpecifier } from "./import-path.js";
 export type { OutputLayout, ResolvedTarget } from "./import-path.js";
 export {
   docPageOutputPath,

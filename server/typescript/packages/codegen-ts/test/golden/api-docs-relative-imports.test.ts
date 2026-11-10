@@ -72,7 +72,7 @@ async function loadRoot() {
 
 async function loadModel(opts?: { includeHonoRoutes?: boolean }): Promise<ApiModel> {
   const root = await loadRoot();
-  return buildApiModel(root, { loadedRoot: root, ...(opts ?? {}) });
+  return buildApiModel(root, { outputLayout: "flat", loadedRoot: root, ...(opts ?? {}) });
 }
 
 // ---------------------------------------------------------------------------
@@ -281,7 +281,7 @@ describe("Fix 1: a CRUD consumer from AGENT-API.md COMPILES against the REAL gen
     const queriesFiles = await runGenerator(queriesFile(), root, projectRoot);
 
     // 2. Build the api-docs agent form for the SAME model.
-    const model = buildApiModel(root, { loadedRoot: root });
+    const model = buildApiModel(root, { outputLayout: "flat", loadedRoot: root });
     const agent = renderAgentApi(model, provider);
 
     // 3. Lay out a temp output dir exactly as a consumer's generated dir: the

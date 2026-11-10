@@ -63,13 +63,13 @@ describe("int-backed field.enum ARRAY — generated modules compile", () => {
       const dir = mkdtempSync(join(import.meta.dir, `tmp-int-enum-array-${dialect}-`));
       try {
         const root = await loadRoot();
-        const renderContext = makeRenderContext({
+        const renderContext = makeRenderContext({ outputLayout: "flat",
           dialect, loadedRoot: root, outDir: dir, dbImport: "./db",
           pkMap: buildPkMap(root), relationMap: buildRelationMap(root),
         });
         const ctx: GenContext = {
           entities: root.objects(), loadedRoot: root, matches: () => true, projectRoot: dir,
-          config: { outDir: dir, extStyle: "none", dbImport: "./db", dialect } as never,
+          config: { outputLayout: "flat", outDir: dir, extStyle: "none", dbImport: "./db", dialect } as never,
           renderContext, warn: () => {},
         };
         const files = [

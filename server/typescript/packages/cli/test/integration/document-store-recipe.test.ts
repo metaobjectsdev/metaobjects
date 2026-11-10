@@ -85,7 +85,8 @@ describe("document-store recipe", () => {
 
     expect(await meta(root, "gen")).toMatchObject({ exit: 0 });
 
-    const out = join(root, "src", "generated");
+    // The default layout (R63): the "shop" package's directory.
+    const out = join(root, "src", "generated", "shop");
     const order = readFileSync(join(out, "Order.ts"), "utf8");
     for (const symbol of ["OrderInsertSchema", "OrderUpdateSchema", "OrderFilterAllowlist", "OrderPatch"]) {
       expect(order).toMatch(new RegExp(`export (const|type) ${symbol}\\b`));

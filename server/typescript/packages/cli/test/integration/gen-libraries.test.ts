@@ -63,6 +63,7 @@ function setup(libraries: string[] | undefined): { root: string; outDir: string 
 import { defineConfig } from "@metaobjectsdev/codegen-ts";
 export default defineConfig({
   outDir: ${JSON.stringify(outDir)},
+  outputLayout: "flat",
   dialect: "postgres",
   dbImport: "~/db",
   extStyle: "none",

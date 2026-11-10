@@ -70,7 +70,7 @@ async function loadModel(): Promise<{ model: ApiModel; root: Awaited<ReturnType<
   ]);
   expect(res.errors).toEqual([]);
   const root = res.root;
-  return { model: buildApiModel(root, { loadedRoot: root }), root };
+  return { model: buildApiModel(root, { outputLayout: "flat", loadedRoot: root }), root };
 }
 
 function unit(model: ApiModel, node: string): ApiUnitDoc {
@@ -644,7 +644,7 @@ async function loadCouponModel(): Promise<ApiModel> {
     ),
   ]);
   expect(res.errors).toEqual([]);
-  return buildApiModel(res.root, { loadedRoot: res.root });
+  return buildApiModel(res.root, { outputLayout: "flat", loadedRoot: res.root });
 }
 
 describe("worked example chains via the entity's REAL primary key (not a literal `id`)", () => {

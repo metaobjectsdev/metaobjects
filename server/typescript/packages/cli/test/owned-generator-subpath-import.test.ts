@@ -82,6 +82,7 @@ import { probeFile } from "./codegen/generators/probe.js";
 
 export default defineConfig({
   outDir: "src/generated",
+  outputLayout: "flat",
   dialect: "sqlite",
   generators: [probeFile()],
 });

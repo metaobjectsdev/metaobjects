@@ -80,6 +80,7 @@ import { routesFileHono } from "./codegen/generators/routes-hono.js";
 
 export default defineConfig({
   outDir: "src/gen",
+  outputLayout: "flat",
   dialect: "sqlite",
   dbImport: "../db",
   extStyle: "js",

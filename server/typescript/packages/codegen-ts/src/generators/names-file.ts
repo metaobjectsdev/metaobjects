@@ -1,5 +1,5 @@
 import type { Generator, GenContext, EmittedFile } from "../generator.js";
-import { entityOutputPath, crossEntitySpecifier } from "../import-path.js";
+import { DEFAULT_OUTPUT_LAYOUT, entityOutputPath, crossEntitySpecifier } from "../import-path.js";
 import { NAMES_FILE_SUFFIX } from "../constants.js";
 import { renderNamesDecl } from "../templates/names-decl.js";
 import { namesArtifactSuperOf, resolveObjectNames } from "../names.js";
@@ -49,7 +49,7 @@ export function namesFile(opts?: NamesFileOpts): Generator {
     // routesFileHono already uses via emitsHonoRoutes/includeHonoRoutes.
     emitsNames: true,
     generate: (ctx: GenContext): EmittedFile[] => {
-      const layout = ctx.config.outputLayout ?? "flat";
+      const layout = ctx.config.outputLayout ?? DEFAULT_OUTPUT_LAYOUT;
       const extStyle = ctx.config.extStyle ?? "js";
       // The strategy lives on the RENDER CONTEXT, not on ResolvedGenConfig — `ctx.config`
       // carries outDir/extStyle/dbImport/dialect and nothing about naming.

@@ -47,14 +47,14 @@ async function load(): Promise<MetaRoot> {
 }
 
 async function generate(gen: Generator, root: MetaRoot): Promise<EmittedFile[]> {
-  const renderContext = makeRenderContext({
+  const renderContext = makeRenderContext({ outputLayout: "flat",
     dialect: "postgres", loadedRoot: root, outDir: "/x", dbImport: "./db",
     pkMap: buildPkMap(root), relationMap: buildRelationMap(root), includeNames: true,
   });
   const ctx: GenContext = {
     // runGen hands a generator the served reports as their read models.
     entities: generatableObjects(root.objects(), root), loadedRoot: root, matches: (e: MetaObject) => gen.filter?.(e) ?? true,
-    projectRoot: "/x", config: { outDir: "/x", extStyle: "none", dbImport: "./db", dialect: "postgres" } as never,
+    projectRoot: "/x", config: { outputLayout: "flat", outDir: "/x", extStyle: "none", dbImport: "./db", dialect: "postgres" } as never,
     renderContext, warn: () => {},
   };
   return await gen.generate(ctx);

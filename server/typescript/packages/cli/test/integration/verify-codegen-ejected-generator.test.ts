@@ -66,6 +66,7 @@ const CONFIG = [
   `import { entityFile } from "./codegen/generators/entity.js";`,
   `export default defineConfig({`,
   `  outDir: ${JSON.stringify(OUT)},`,
+  `  outputLayout: "flat",`,
   `  dialect: "sqlite",`,
   `  dbImport: "~/db",`,
   `  extStyle: "none",`,

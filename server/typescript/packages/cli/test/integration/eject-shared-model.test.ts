@@ -105,6 +105,7 @@ function publisherConfig(importFrom: string): string {
     `import { sharedModelFile } from ${JSON.stringify(importFrom)};`,
     `export default defineConfig({`,
     `  outDir: ${JSON.stringify(PUBLISHED)},`,
+    `  outputLayout: "flat",`,
     `  dialect: "sqlite",`,
     `  generators: [sharedModelFile({ name: ${JSON.stringify(DEP_NAME)}, include: ["acme::common::**"], version: "1.0.0" })],`,
     `});`,

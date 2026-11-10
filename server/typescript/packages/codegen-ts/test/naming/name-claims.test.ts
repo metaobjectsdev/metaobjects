@@ -221,8 +221,8 @@ describe("a value object is never renamed", () => {
     }
   });
 
-  test("with no outputLayout declared they share one directory (the default is still flat) and are refused", async () => {
-    await expect(run(await twoNotes(), [entityFile()], "default")).rejects.toThrow(ERR_NAME_COLLISION);
+  test("with no outputLayout declared each takes its package's directory (the default is package, R63)", async () => {
+    await expect(run(await twoNotes(), [entityFile()], "default")).resolves.toBeDefined();
   });
 
   test("under the flat layout they share one module directory, and the collision is refused naming both", async () => {

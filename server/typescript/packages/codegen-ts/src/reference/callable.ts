@@ -32,6 +32,7 @@ import {
   type Generator,
   type GeneratorFactory,
   formatTs,
+  DEFAULT_OUTPUT_LAYOUT,
   entityOutputPath,
   effectivePackage,
 } from "@metaobjectsdev/codegen-ts/engine";
@@ -56,7 +57,7 @@ export const callableFile = function callableFile(opts?: CallableFileOpts): Gene
     generate: perEntity(async (entity, ctx) => {
       return {
         path: entityOutputPath(
-          ctx.config.outputLayout ?? "flat",
+          ctx.config.outputLayout ?? DEFAULT_OUTPUT_LAYOUT,
           effectivePackage(entity),
           `${entity.name}.callable.ts`,
         ),

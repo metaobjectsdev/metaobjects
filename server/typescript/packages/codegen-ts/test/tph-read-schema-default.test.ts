@@ -67,7 +67,7 @@ async function loadModel(model: object = MODEL): Promise<MetaRoot> {
 }
 
 async function generate(root: MetaRoot, dialect: Dialect, dir: string): Promise<EmittedFile[]> {
-  const renderContext = makeRenderContext({
+  const renderContext = makeRenderContext({ outputLayout: "flat",
     dialect,
     loadedRoot: root,
     outDir: dir,
@@ -82,7 +82,7 @@ async function generate(root: MetaRoot, dialect: Dialect, dir: string): Promise<
     loadedRoot: root,
     matches: (e) => generator.filter?.(e) ?? true,
     projectRoot: dir,
-    config: { outDir: dir, extStyle: "none", dbImport: "./db", dialect } as never,
+    config: { outputLayout: "flat", outDir: dir, extStyle: "none", dbImport: "./db", dialect } as never,
     renderContext,
     warn: () => {},
   });
@@ -266,7 +266,7 @@ for (const dialect of ["postgres", "sqlite"] as const) {
     test("the emitted read schema parses a raw base-table row with no derived key", async () => {
       const root = await loadModel(DERIVED_MODEL);
       const carrier = root.objects().find((o) => o.name === "Carrier")!;
-      const renderContext = makeRenderContext({
+      const renderContext = makeRenderContext({ outputLayout: "flat",
         dialect,
         loadedRoot: root,
         outDir: "/x",

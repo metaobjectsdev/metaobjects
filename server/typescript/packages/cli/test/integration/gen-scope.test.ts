@@ -28,6 +28,7 @@ function setupRepo(): string {
 import { defineConfig } from "@metaobjectsdev/codegen-ts";
 export default defineConfig({
   outDir: ${JSON.stringify(genOutDir(root))},
+  outputLayout: "flat",
   dialect: "sqlite",
   dbImport: "~/db",
   extStyle: "none",

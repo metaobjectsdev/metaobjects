@@ -72,6 +72,7 @@ import {
   writeDeniedColumnsLine,
   servesReadApi,
   formatTs,
+  DEFAULT_OUTPUT_LAYOUT,
   entityOutputPath,
   effectivePackage,
   crossEntitySpecifier,
@@ -760,7 +761,7 @@ export const routesFile = function routesFile(opts?: RoutesFileOpts): Generator 
         ?? ownedRuntimeImport(ctx.projectRoot ?? ".", ctx.renderContext.selfTarget.outDir),
     };
     return {
-      path: entityOutputPath(ctx.config.outputLayout ?? "flat", effectivePackage(entity), `${entity.name}.routes.ts`),
+      path: entityOutputPath(ctx.config.outputLayout ?? DEFAULT_OUTPUT_LAYOUT, effectivePackage(entity), `${entity.name}.routes.ts`),
       content: await formatTs(renderRoutes(entity, renderContext, resolveExpose(entity, opts?.expose), opts?.reportMaxRows)),
     };
   });

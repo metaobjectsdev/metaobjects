@@ -38,6 +38,7 @@ export default defineConfig({
   orm: "prisma",
   dialect: ${JSON.stringify(dialect)},
   outDir: ${JSON.stringify(join(root, "src/generated"))},
+  outputLayout: "flat",
   extStyle: "none",
   targets: { prisma: { outDir: ${JSON.stringify(join(root, "prisma"))} } },
   generators: ["entity", prismaSchemaFile({ target: "prisma"${prismaOpts} })],

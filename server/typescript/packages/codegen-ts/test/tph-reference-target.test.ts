@@ -89,7 +89,7 @@ async function loadModel(): Promise<MetaRoot> {
 }
 
 async function generate(root: MetaRoot, dialect: Dialect, dir: string): Promise<EmittedFile[]> {
-  const renderContext = makeRenderContext({
+  const renderContext = makeRenderContext({ outputLayout: "flat",
     dialect,
     loadedRoot: root,
     outDir: dir,
@@ -105,7 +105,7 @@ async function generate(root: MetaRoot, dialect: Dialect, dir: string): Promise<
     loadedRoot: root,
     matches: (e) => generator.filter?.(e) ?? true,
     projectRoot: dir,
-    config: { outDir: dir, extStyle: "none", dbImport: "./db", dialect } as never,
+    config: { outputLayout: "flat", outDir: dir, extStyle: "none", dbImport: "./db", dialect } as never,
     renderContext,
     warn: () => {},
   });

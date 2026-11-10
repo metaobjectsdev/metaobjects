@@ -101,6 +101,7 @@ async function emit(metadata: MetaRoot, generators: Generator[]): Promise<Record
   const root = mkdtempSync(join(tmpdir(), "reporting-inert-"));
   const config: MetaobjectsGenConfig = {
     outDir: "src/generated",
+    outputLayout: "flat",
     extStyle: "js",
     dialect: "postgres",
     dbImport: "../db",
@@ -404,7 +405,7 @@ describe("FR-044 a selection of only reports", () => {
     const root = mkdtempSync(join(tmpdir(), "reporting-inert-only-"));
     try {
       return await runGen({
-        config: { outDir: "src/generated", extStyle: "js", dialect: "postgres", dbImport: "../db", generators: allGenerators() },
+        config: { outDir: "src/generated", outputLayout: "flat", extStyle: "js", dialect: "postgres", dbImport: "../db", generators: allGenerators() },
         metadata: withReporting,
         projectRoot: root,
         genStateDir: join(root, GEN_STATE),
@@ -491,6 +492,7 @@ describe("FR-044 the documentation generators differ by exactly the report pages
 import { docsFile, docsSiteFile, requirementsFile } from "@metaobjectsdev/codegen-ts/generators";
 export default defineConfig({
   outDir: "src/generated",
+  outputLayout: "flat",
   extStyle: "js",
   dialect: "postgres",
   dbImport: "../db",

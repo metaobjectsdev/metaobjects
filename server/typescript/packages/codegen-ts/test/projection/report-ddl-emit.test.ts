@@ -54,7 +54,7 @@ function baseSpec(
 const longWeek = cmp("w.durationMinutes", "gte", 60);
 const programJoin: JoinNode = {
   relationship: "program", targetEntity: "Program", alias: "p", cardinality: "one",
-  fkColumn: "programId", pkColumn: "id", referenceHolder: "source", joinType: "inner", children: [],
+  fkColumn: "programId", pkColumn: "id", referenceHolder: "source", joinType: "left", children: [],
 };
 const programMinutes: ReportViewSpec = baseSpec(
   "w",

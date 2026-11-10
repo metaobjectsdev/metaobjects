@@ -39,7 +39,8 @@ describe("meta verify is not a vacuous gate", () => {
 
     // 0. The gate must actually have something to check, or exit 0 below means nothing.
     expect(await meta(root, "gen")).toMatchObject({ exit: 0 });
-    const customer = join(root, "src", "generated", "Customer.ts");
+    // The default layout (R63): the "shop" package's directory.
+    const customer = join(root, "src", "generated", "shop", "Customer.ts");
     const pristine = readFileSync(customer, "utf8");
 
     // 1. Clean tree: exit 0.

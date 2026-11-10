@@ -56,6 +56,7 @@ import {
   hasWritableRdbSource,
   formatTs,
   ownedRuntimeImport,
+  DEFAULT_OUTPUT_LAYOUT,
   entityOutputPath,
   namesRef,
   namesConstArg,
@@ -186,7 +187,7 @@ export const entityFile = function entityFile(opts?: EntityFileOpts): Generator 
         ?? ownedRuntimeImport(ctx.projectRoot ?? ".", ctx.renderContext.selfTarget.outDir),
     };
     return {
-      path: entityOutputPath(ctx.config.outputLayout ?? "flat", effectivePackage(entity), `${entity.name}.ts`),
+      path: entityOutputPath(ctx.config.outputLayout ?? DEFAULT_OUTPUT_LAYOUT, effectivePackage(entity), `${entity.name}.ts`),
       content: await formatTs(renderEntity(entity, renderContext, { allowlists })),
     };
   });

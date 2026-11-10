@@ -17,6 +17,7 @@ schema file that exports them. `meta migrate` never has to run.
 
    export default defineConfig({
      outDir: "src/generated",
+     outputLayout: "flat", // the paths below; the default puts each metadata package in a directory of its own
      dialect: "postgres",          // must match the database drizzle-kit migrates
      generators: [entityFile(), queriesFile(), barrel()],
    });

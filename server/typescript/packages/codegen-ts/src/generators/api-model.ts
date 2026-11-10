@@ -143,7 +143,7 @@ import { buildPkMap } from "../pk-resolver.js";
 import { buildRelationMap, type RelationEntry, type RelationMap } from "../relation-resolver.js";
 import { generatableObjects } from "../source-detect.js";
 import { effectivePackage } from "../docs-paths.js";
-import { entityOutputPath, type OutputLayout } from "../import-path.js";
+import { DEFAULT_OUTPUT_LAYOUT, entityOutputPath, type OutputLayout } from "../import-path.js";
 import type { RenderContext } from "../render-context.js";
 import type { GenContext } from "../generator.js";
 import type { PkInfo } from "../pk-resolver.js";
@@ -320,7 +320,7 @@ export function buildApiModel(root: MetaRoot, ctx: ApiModelContext): ApiModel {
   // getPkInfo wants a RenderContext; it only reads `.pkMap`, so a structural
   // shim is sufficient (and avoids forcing callers to build a full context).
   const pkCtx = { pkMap } as RenderContext;
-  const layout = ctx.outputLayout ?? "flat";
+  const layout = ctx.outputLayout ?? DEFAULT_OUTPUT_LAYOUT;
   const apiPrefix = ctx.apiPrefix ?? "";
   const relationMap = ctx.relationMap ?? buildRelationMap(root);
   const includeHono = ctx.includeHonoRoutes ?? false;
@@ -1295,7 +1295,7 @@ function templateExample(symbolBase: string, symbols: ApiSymbol[]): UnitExample 
 export function buildApiModelForRun(ctx: GenContext): ApiModel {
   return buildApiModel(ctx.loadedRoot, {
     loadedRoot: ctx.loadedRoot,
-    outputLayout: ctx.config.outputLayout ?? "flat",
+    outputLayout: ctx.config.outputLayout ?? DEFAULT_OUTPUT_LAYOUT,
     includeHonoRoutes: ctx.config.includeHonoRoutes ?? false,
     ...(ctx.config.includeEntityModule !== undefined && { includeEntityModule: ctx.config.includeEntityModule }),
     ...(ctx.config.includeQueries !== undefined && { includeQueries: ctx.config.includeQueries }),

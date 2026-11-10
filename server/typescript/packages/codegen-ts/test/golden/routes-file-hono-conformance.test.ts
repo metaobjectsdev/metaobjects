@@ -29,7 +29,7 @@ const CORPUS = resolve(import.meta.dir, "../../../../../../fixtures/conformance"
 const UPDATE = process.env.UPDATE_GOLDEN === "1";
 
 function makeCtx(root: Awaited<ReturnType<MetaDataLoader["load"]>>["root"]): GenContext {
-  const renderContext = makeRenderContext({
+  const renderContext = makeRenderContext({ outputLayout: "flat",
     dialect: "sqlite",
     loadedRoot: root,
     outDir: "/tmp",
@@ -44,7 +44,7 @@ function makeCtx(root: Awaited<ReturnType<MetaDataLoader["load"]>>["root"]): Gen
     entities: root.objects(),
     loadedRoot: root,
     matches: () => true,
-    config: { outDir: "/tmp", extStyle: "none", dbImport: "~/db", dialect: "sqlite" } as never,
+    config: { outputLayout: "flat", outDir: "/tmp", extStyle: "none", dbImport: "~/db", dialect: "sqlite" } as never,
     renderContext,
     warn: () => {},
   };

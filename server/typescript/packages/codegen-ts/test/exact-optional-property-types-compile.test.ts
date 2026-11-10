@@ -105,7 +105,7 @@ async function generateAndCompile(
   const root = loaded.root;
   const dir = mkdtempSync(join(import.meta.dir, "tmp-exact-optional-"));
   try {
-    const renderContext = makeRenderContext({
+    const renderContext = makeRenderContext({ outputLayout: "flat",
       dialect,
       loadedRoot: root,
       outDir: dir,
@@ -119,7 +119,7 @@ async function generateAndCompile(
       loadedRoot: root,
       matches: (e) => generator.filter?.(e) ?? true,
       projectRoot: dir,
-      config: { outDir: dir, extStyle: "none", dbImport: "~/db", dialect } as never,
+      config: { outputLayout: "flat", outDir: dir, extStyle: "none", dbImport: "~/db", dialect } as never,
       renderContext,
       warn: () => {},
     });

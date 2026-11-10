@@ -79,6 +79,7 @@ const CONFIG = [
   `import { namesFile } from "./codegen/generators/names.js";`,
   `export default defineConfig({`,
   `  outDir: "src/generated",`,
+  `  outputLayout: "flat",`,
   `  extStyle: "js",`,
   `  dbImport: "../db",`,
   `  dialect: "sqlite",`,

@@ -274,6 +274,7 @@ import { honoRoutesFile } from "./metaobjects-routes-hono";
 
 export default defineConfig({
   outDir: "src/generated",
+  outputLayout: "flat", // the paths below; the default puts each metadata package in a directory of its own
   dialect: "sqlite",
   apiPrefix: "/api",
   generators: [entityFile(), queriesFile(), honoRoutesFile(), barrel()],

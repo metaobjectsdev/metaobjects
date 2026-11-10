@@ -4,7 +4,7 @@ import { renderQueriesFile } from "../templates/queries-file.js";
 import { isTphSubtype } from "../tph.js";
 import { servesReadApi } from "../api-surface.js";
 import { formatTs } from "../format.js";
-import { entityOutputPath } from "../import-path.js";
+import { DEFAULT_OUTPUT_LAYOUT, entityOutputPath } from "../import-path.js";
 import { effectivePackage } from "../docs-paths.js";
 import { claimModuleNames } from "../naming/name-claims.js";
 
@@ -51,7 +51,7 @@ export const queriesFile = function queriesFile(opts?: QueriesFileOpts): Generat
       }
       claimModuleNames(ctx, entity);
       return {
-        path: entityOutputPath(ctx.config.outputLayout ?? "flat", effectivePackage(entity), `${entity.name}.queries.ts`),
+        path: entityOutputPath(ctx.config.outputLayout ?? DEFAULT_OUTPUT_LAYOUT, effectivePackage(entity), `${entity.name}.queries.ts`),
         content: await formatTs(renderQueriesFile(entity, ctx.renderContext)),
       };
     }),

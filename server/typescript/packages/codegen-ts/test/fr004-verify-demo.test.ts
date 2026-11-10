@@ -90,8 +90,8 @@ function genContext(root: Awaited<ReturnType<typeof loadRoot>>): GenContext {
     loadedRoot: root,
     matches: () => true,
     projectRoot: "/tmp",
-    config: { outDir: "/tmp", extStyle: "js", dbImport: "~/db", dialect: "sqlite" } as never,
-    renderContext: makeRenderContext({
+    config: { outputLayout: "flat", outDir: "/tmp", extStyle: "js", dbImport: "~/db", dialect: "sqlite" } as never,
+    renderContext: makeRenderContext({ outputLayout: "flat",
       dialect: "sqlite",
       loadedRoot: root,
       outDir: "/tmp",
