@@ -22,6 +22,7 @@ import { enumValues } from "../enum-meta.js";
 import { sortableFields, declaredSortDefaultOrder } from "./filter-shared.js";
 import type { RenderContext } from "../render-context.js";
 import { httpRuntimeSpecifier } from "../owned-runtime.js";
+import { DEFAULT_OUTPUT_LAYOUT } from "../import-path.js";
 import { effectivePackage } from "../docs-paths.js";
 
 /**
@@ -30,7 +31,7 @@ import { effectivePackage } from "../docs-paths.js";
  * (`owned-runtime.ts`). Absent `ctx`, or with no `httpRuntimeImport`, the package: the
  * byte-identical default.
  */
-const PACKAGE_DEFAULT = { outputLayout: "flat", extStyle: "none" } as const;
+const PACKAGE_DEFAULT = { outputLayout: DEFAULT_OUTPUT_LAYOUT, extStyle: "none" } as const;
 
 function allowlistTypesFrom(entity: MetaObject, ctx: RenderContext | undefined): string {
   return httpRuntimeSpecifier("allowlists", ctx ?? PACKAGE_DEFAULT, effectivePackage(entity));

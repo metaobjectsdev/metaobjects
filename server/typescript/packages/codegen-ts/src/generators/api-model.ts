@@ -281,7 +281,7 @@ export interface ApiModelContext {
   /** The output layout the codegen run uses. The per-symbol `importPath` mirrors
    *  the emitting generator's own path computation under this layout (flat →
    *  `Product.queries`; package → folded under the entity's package path iff the
-   *  generator folds). Defaults to "flat" (today's byte-identical placement). */
+   *  generator folds). Defaults to `DEFAULT_OUTPUT_LAYOUT` ("package", R63). */
   outputLayout?: OutputLayout;
   /** Whether to ALSO document the OPT-IN Hono CRUD variant (routesFileHono).
    *  Hono is not in the default generator suite — it is an alternative wired by

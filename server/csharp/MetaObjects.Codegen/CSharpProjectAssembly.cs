@@ -5,9 +5,11 @@
 //
 // Limits (rc.19 M7): the name is the project file's own <AssemblyName> (else its file name); a name
 // set in Directory.Build.props, a conditional <AssemblyName>, or an MSBuild expression is not read —
-// set GenConfig.ContextAssemblyName then. Lookups are cached per directory for the process.
+// set GenConfig.ContextAssemblyName then. A found project is cached per directory for the process;
+// a miss is not cached, so a project created later in the same process is found.
 
 using System.Collections.Concurrent;
+using System.Text.RegularExpressions;
 using System.Xml.Linq;
 
 namespace MetaObjects.Codegen;
@@ -42,7 +44,12 @@ internal static class CSharpProjectAssembly
         string full;
         try { full = Path.GetFullPath(dir); }
         catch (Exception e) when (e is ArgumentException or NotSupportedException or PathTooLongException) { return null; }
-        return Projects.GetOrAdd(full, static start =>
+        if (Projects.TryGetValue(full, out var cached)) return cached;
+        var found = Search(full);
+        if (found is not null) Projects[full] = found;
+        return found;
+
+        static string? Search(string start)
         {
             for (var d = new DirectoryInfo(start); d is not null; d = d.Parent)
             {
@@ -53,7 +60,7 @@ internal static class CSharpProjectAssembly
                 if (projects.Length == 1) return projects[0];
             }
             return null;
-        });
+        }
     }
 
     /// <summary>
@@ -64,23 +71,59 @@ internal static class CSharpProjectAssembly
     /// from the repository (the nearest directory above the project holding <c>.git</c>, else the
     /// farthest holding a <c>.sln</c>); another project holding them must carry the reference itself, in
     /// any of its <c>.cs</c> files but the migrations. Returns the migrations project when one was found.
+    /// <para>rc.19 fix round 2 (N1): it errs toward warning, because a false all-clear is a silent
+    /// RESTART. Every snapshot is examined (a stale copy in the context's project does not hide a real
+    /// migrations project elsewhere); a snapshot counts only when it names THIS context (its
+    /// <c>typeof</c> qualified with, or a <c>using</c> / <c>namespace</c> of, the context's namespace),
+    /// so a same-named context of another module cannot clear it; and the line counts only in code
+    /// (not in a comment or an <c>#if</c> block), naming the services type and, when known,
+    /// <paramref name="contextAssembly"/>.</para>
     /// </summary>
     public static (DesignTimeReferenceNeed Need, string? MigrationsProject) DesignTimeReference(
-        string outDir, string contextClassName, string servicesTypeName)
+        string outDir, string contextClassName, string servicesTypeName, string? contextAssembly = null)
     {
         if (FindProject(outDir) is not { } project) return (DesignTimeReferenceNeed.Unknown, null);
+        var dot = servicesTypeName.LastIndexOf('.');
+        var contextNamespace = dot > 0 ? servicesTypeName[..dot] : "";
         var snapshots = FindFiles(RepositoryRoot(Path.GetDirectoryName(project)!), contextClassName + "ModelSnapshot.cs");
         string? lacking = null;
         string? present = null;
+        string? inContextProject = null;
         foreach (var snapshot in snapshots)
         {
+            if (!SnapshotNamesContext(snapshot, contextNamespace, contextClassName)) continue;
             if (FindProject(Path.GetDirectoryName(snapshot)!) is not { } migrations) continue;
-            if (string.Equals(migrations, project, StringComparison.Ordinal)) return (DesignTimeReferenceNeed.Unnecessary, migrations);
-            if (CarriesReference(Path.GetDirectoryName(migrations)!, servicesTypeName)) present ??= migrations;
+            if (string.Equals(migrations, project, StringComparison.Ordinal)) inContextProject ??= migrations;
+            else if (CarriesReference(Path.GetDirectoryName(migrations)!, servicesTypeName, contextAssembly)) present ??= migrations;
             else lacking ??= migrations;
         }
         if (lacking is not null) return (DesignTimeReferenceNeed.Needed, lacking);
+        if (inContextProject is not null) return (DesignTimeReferenceNeed.Unnecessary, inContextProject);
         return present is not null ? (DesignTimeReferenceNeed.Present, present) : (DesignTimeReferenceNeed.Unknown, null);
+    }
+
+    /// <summary>True when the snapshot's <c>[DbContext(typeof(...))]</c> names the context in
+    /// <paramref name="contextNamespace"/>: qualified, or bare under a <c>using</c> or <c>namespace</c> of it.</summary>
+    private static bool SnapshotNamesContext(string snapshot, string contextNamespace, string contextClassName)
+    {
+        string text;
+        try { text = StripCommentsAndConditionals(File.ReadAllText(snapshot)); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return false; }
+        var ns = Regex.Escape(contextNamespace);
+        var cls = Regex.Escape(contextClassName);
+        if (Regex.IsMatch(text, $@"typeof\(\s*(global::)?{ns}\.{cls}\s*\)")) return true;
+        return Regex.IsMatch(text, $@"typeof\(\s*{cls}\s*\)")
+            && Regex.IsMatch(text, $@"(?m)^\s*(using\s+(global::)?{ns}\s*;|namespace\s+{ns}\s*[;{{])");
+    }
+
+    /// <summary>C# source with its comments and its <c>#if</c> … <c>#endif</c> blocks removed, so only
+    /// code that always compiles is read. (A string literal holding a comment marker loses its tail,
+    /// which can only turn a match into a miss, that is, into a warning.)</summary>
+    private static string StripCommentsAndConditionals(string text)
+    {
+        text = Regex.Replace(text, @"/\*.*?\*/", " ", RegexOptions.Singleline);
+        text = Regex.Replace(text, @"//[^\n]*", "");
+        return Regex.Replace(text, @"(?ms)^\s*#if\b.*?^\s*#endif\b[^\n]*", "");
     }
 
     private static readonly HashSet<string> SkippedDirectories = new(StringComparer.OrdinalIgnoreCase) { "bin", "obj", "node_modules", ".git", ".vs", ".idea" };
@@ -125,8 +168,13 @@ internal static class CSharpProjectAssembly
     /// (<c>&lt;14 digits&gt;_&lt;name&gt;.cs</c>) and a model snapshot are skipped: neither holds it, and a
     /// large project has thousands.
     /// </summary>
-    private static bool CarriesReference(string projectDir, string servicesTypeName)
+    private static bool CarriesReference(string projectDir, string servicesTypeName, string? contextAssembly)
     {
+        var svc = Regex.Escape(servicesTypeName);
+        var asm = contextAssembly is { Length: > 0 } ? Regex.Escape(contextAssembly) : "[^\"]+";
+        var attribute = new Regex(
+            @"\[\s*assembly\s*:\s*(global::)?(Microsoft\.EntityFrameworkCore\.Design\.)?DesignTimeServicesReference(Attribute)?\s*\(\s*""\s*"
+            + svc + @"\s*,\s*" + asm + @"\s*""");
         foreach (var file in FindFiles(projectDir, "*.cs"))
         {
             var name = Path.GetFileName(file);
@@ -135,9 +183,8 @@ internal static class CSharpProjectAssembly
             string text;
             try { text = File.ReadAllText(file); }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException) { continue; }
-            if (text.Contains("DesignTimeServicesReference", StringComparison.Ordinal)
-                && text.Contains("\"" + servicesTypeName + ",", StringComparison.Ordinal))
-                return true;
+            if (!text.Contains("DesignTimeServicesReference", StringComparison.Ordinal)) continue;
+            if (attribute.IsMatch(StripCommentsAndConditionals(text))) return true;
         }
         return false;
     }
@@ -177,7 +224,7 @@ public static class DesignTimeServicesReferences
     public static string? Warning(GenConfig config, string generator, string contextName, string servicesTypeName, string line, string consequence)
     {
         var assembly = config.ContextAssemblyName;
-        var (need, migrations) = CSharpProjectAssembly.DesignTimeReference(config.OutDir, contextName, servicesTypeName);
+        var (need, migrations) = CSharpProjectAssembly.DesignTimeReference(config.OutDir, contextName, servicesTypeName, assembly);
         return need switch
         {
             DesignTimeReferenceNeed.Needed =>

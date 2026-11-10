@@ -58,6 +58,20 @@ async function gen(
 }
 
 describe("run-wide orphan sweep", () => {
+  // rc.19 fix round 2 (N3): the CHANGELOG's R63 upgrade note says the next `meta gen` of a project
+  // that declares no outputLayout moves its modules into package directories and sweeps the flat
+  // copies. This is that run: flat first, then the default layout.
+  test("a flat layout's modules are swept when the default package layout takes over", async () => {
+    const root = await model("Telemetry");
+    await runGen({ config: { outDir: OUT, extStyle: "js", outputLayout: "flat", generators: [entityFile()] }, metadata: root, projectRoot });
+    expect(existsSync(abs(`${OUT}/Telemetry.ts`))).toBe(true);
+
+    const result = await runGen({ config: { outDir: OUT, extStyle: "js", generators: [entityFile()] }, metadata: root, projectRoot });
+    expect(existsSync(abs(`${OUT}/acme/Telemetry.ts`))).toBe(true);
+    expect(existsSync(abs(`${OUT}/Telemetry.ts`))).toBe(false);
+    expect(result.files).toContainEqual({ path: abs(`${OUT}/Telemetry.ts`), status: "removed" });
+  });
+
   test("a renamed value object's old module is deleted and forgotten", async () => {
     await gen(["Telemetry"]);
     expect(existsSync(abs(`${OUT}/Telemetry.ts`))).toBe(true);

@@ -94,7 +94,7 @@ export interface ResolvedGenConfig {
   extStyle: ExtStyle;
   dbImport: string;
   dialect: Dialect;
-  /** "flat" (default) — all files in outDir; "package" — files placed in a sub-path derived from each object's metadata package. */
+  /** "package" (default, R63) — files placed in a sub-path derived from each object's metadata package; "flat" — all files in outDir. */
   outputLayout?: OutputLayout;
   /** Whether the OPT-IN Hono routes generator (routesFileHono) is active in the
    *  run — aggregated by the runner from the suite's `emitsHonoRoutes` markers.
