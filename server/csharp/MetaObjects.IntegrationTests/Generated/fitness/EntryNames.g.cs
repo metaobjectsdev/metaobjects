@@ -32,7 +32,7 @@ public abstract class EntryNames
     public const string IdentityPkSubType = "primary";
     public const string IdentityPkName = "pk";
 
-    public static readonly Dictionary<string, string> ColumnsByField = new(System.StringComparer.Ordinal)
+    public static readonly Dictionary<string, string> ColumnsByField = new(global::System.StringComparer.Ordinal)
     {
         ["amount"] = AmountColumn,
         ["bucket"] = BucketColumn,

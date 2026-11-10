@@ -204,7 +204,7 @@ public class TphM2mRoutesTests
         var mount = ExtractMount(routes, "/auths/bridge/{id}/linkedAuths");
         // Rule c — the id in the URL must name a Bridge row before the junction is touched.
         Assert.Contains("if (!await db.Auths.OfType<BridgeAuth>().AnyAsync(x => x.Id == id))", mount);
-        Assert.Contains("return Results.Ok(new System.Collections.Generic.List<BridgeAuth>());", mount);
+        Assert.Contains("return Results.Ok(new global::System.Collections.Generic.List<BridgeAuth>());", mount);
         // Defect B — the self-join TARGET is the same subtype, which has no DbSet of its
         // own: the related rows must be loaded through the BASE DbSet, narrowed.
         Assert.Contains("await db.Auths.OfType<BridgeAuth>().AsNoTracking()", mount);

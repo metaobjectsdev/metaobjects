@@ -30,7 +30,7 @@ public abstract class JobNames
     public const string IdentityPrimarySubType = "primary";
     public const string IdentityPrimaryName = "primary";
 
-    public static readonly Dictionary<string, string> ColumnsByField = new(System.StringComparer.Ordinal)
+    public static readonly Dictionary<string, string> ColumnsByField = new(global::System.StringComparer.Ordinal)
     {
         ["id"] = IdColumn,
         ["kind"] = KindColumn,

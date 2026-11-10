@@ -173,7 +173,7 @@ public sealed class ExtractTierCollisionTests
         var extractorFile = Assert.Single(new ExtractorGenerator().Generate(ctx));
 
         Assert.Equal("WidgetOutExtractor.cs", System.IO.Path.GetFileName(extractorFile.Path));
-        Assert.Contains("public static Widget Parse(string text)", parserSrc);
+        Assert.Contains("public static global::Acme.Demo.Widget Parse(string text)", parserSrc);
         Assert.Contains("public static class WidgetOutExtractor", extractorFile.Content);
         Assert.DoesNotContain("AcmeDemo", parserSrc);
         Assert.DoesNotContain("AcmeDemo", extractorFile.Content);
@@ -243,7 +243,7 @@ public sealed class ExtractTierCollisionTests
         // its own namespace (ruling R52: never renamed).
         var entityFiles = new EntityGenerator().Generate(ctx).ToList();
         var entitySrc = Assert.Single(entityFiles, f => f.Content.Contains("namespace Acme.Alpha;")).Content;
-        Assert.Contains("public class Report", Assert.Single(entityFiles, f => f.Content.Contains("namespace Acme.Generated;")).Content);
+        Assert.Contains("public class Report", Assert.Single(entityFiles, f => f.Content.Contains("namespace Acme.Beta;")).Content);
         // §A6 (task 4) — GenConfig.IncludeNames is not set here (defaults to false),
         // so the Report entity below does NOT reference ReportNames; this compiles
         // ReportNames in alongside it as an unreferenced sibling class only.

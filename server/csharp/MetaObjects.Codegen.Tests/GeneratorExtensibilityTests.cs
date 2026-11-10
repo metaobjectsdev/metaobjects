@@ -83,7 +83,7 @@ public class GeneratorExtensibilityTests
         var src = Assert.Single(new DbContextGenerator().Generate(ctx)).Content;
         Assert.DoesNotContain("ADOPTER MODEL CONFIG", src);
         Assert.Contains("public class AppDbContext : DbContext", src);
-        Assert.Contains("public DbSet<Subscriber> Subscribers", src);
+        Assert.Contains("public DbSet<global::Acme.Subscriber> Subscribers", src);
     }
 
     // ---- OutputParserGenerator: override the EmitParser seam ----------------------

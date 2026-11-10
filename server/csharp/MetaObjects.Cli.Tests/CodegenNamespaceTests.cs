@@ -51,14 +51,25 @@ public sealed class CodegenNamespaceTests : IDisposable
 
     private string EntityFile() => File.ReadAllText(Path.Combine(OutDir, "acme", "shop", "Subscriber.g.cs"));
 
+    // rc.19 R65: a configured namespace places only the package-less types, so the tests of the
+    // configured namespace observe a root-level entity.
+    private string PackageLessEntityFile()
+    {
+        return File.ReadAllText(Path.Combine(OutDir, "Subscriber.g.cs"));
+    }
+
+    private void UsePackageLessMetadata() =>
+        File.WriteAllText(Path.Combine(MetaDir, "meta.shop.json"), Metadata.Replace("\"package\": \"acme::shop\", ", ""));
+
     [Fact]
     public void A_config_namespace_is_used_by_gen_and_a_bare_verify_is_clean()
     {
+        UsePackageLessMetadata();
         WriteConfig("\"outDir\": \"Generated\", \"namespace\": \"Acme.Blog\"");
 
         var gen = Run("gen");
         Assert.True(gen.Exit == 0, gen.Output);
-        Assert.Contains("namespace Acme.Blog;", EntityFile());
+        Assert.Contains("namespace Acme.Blog;", PackageLessEntityFile());
 
         var verify = Run("verify", "--codegen");
         Assert.True(verify.Exit == 0, verify.Output);
@@ -93,10 +104,11 @@ public sealed class CodegenNamespaceTests : IDisposable
     [Fact]
     public void The_flag_wins_over_config_and_output_under_another_namespace_is_drift()
     {
+        UsePackageLessMetadata();
         WriteConfig("\"outDir\": \"Generated\", \"namespace\": \"Acme.Blog\"");
 
         Assert.Equal(0, Run("gen", "--namespace", "Other.Ns").Exit);
-        Assert.Contains("namespace Other.Ns;", EntityFile());
+        Assert.Contains("namespace Other.Ns;", PackageLessEntityFile());
         Assert.Equal(1, Run("verify", "--codegen").Exit);
     }
 

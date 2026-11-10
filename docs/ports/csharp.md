@@ -207,14 +207,25 @@ directory holding `.metaobjects/`:
 Each generated type's namespace comes from the package bindings, keyed by that type's own
 metadata package: a type-level override (`GenConfig.TypeOverrides`), then a package-level one
 (`PackageNamespaces`), then the `Convention` rule (strip a package prefix, prepend a root, case
-each `::` segment), then `UnmappedStrategy`. With none of those configured, the default
-convention applies: each `::` segment PascalCased and joined with `.` (`acme::billing` is
-`Acme.Billing`), and the artifacts that belong to no single package (`AppDbContext`, routes) land in
-the namespace all the packages share. When they share no root, generation stops and asks for a
-namespace. Setting `--namespace` or `csharp.namespace` switches the default off and puts every type
-no binding places in that one flat namespace. The namespace must be a dotted path of C#
-identifiers. `dotnet meta gen` and `verify` set only that flat namespace; the per-package bindings
-are `GenConfig` properties, set when you run codegen from your own code with `CodegenRunner`.
+each `::` segment), then `UnmappedStrategy`. With none of those configured, the namespace IS the
+package, each `::` segment PascalCased and joined with `.` (`acme::billing` is `Acme.Billing`), the
+way the Java and Kotlin ports map packages. That holds whether or not a namespace is configured:
+`--namespace` / `csharp.namespace` is the home of the objects that have no package and of the
+artifacts that belong to no single object (`AppDbContext`, its design-time services, the callable
+wrappers, the template tier, the shared runtime helpers). With no namespace configured, that home
+is the namespace all the packages share; when they share no root, generation stops and asks for
+one. A per-object companion class follows its object: `<X>Names`, `<X>FilterAllowlist`,
+`<X>Routes`, `<X>Queries` (reverse finders), `<X>Export` and a shared enum are declared in the
+object's (or the enum's) package namespace, so an app mounting routes adds a `using` for that
+namespace. Generated code names every generated type it reaches in another namespace
+`global::`-qualified, so no namespace can capture another and no two `using`s can make a name
+ambiguous; two same-named objects in two packages are two types. Two objects bound to ONE
+namespace that share a name are refused (`ERR_NAME_COLLISION`, naming both). An explicit
+`UnmappedStrategy.Error` or `Derive` under a configured namespace keeps its meaning (the default
+mapping is switched off). The namespace must be a dotted path of C# identifiers. `dotnet meta gen`
+and `verify` set only the home namespace; the per-package bindings are `GenConfig` properties, set
+when you run codegen from your own code with `CodegenRunner`. To keep a package where an earlier
+release put it, map it: `PackageNamespaces = { ["acme::billing"] = "Acme.Blog" }`.
 
 With that, `dotnet meta gen` writes there, `dotnet meta verify --codegen` diffs against it, and
 a plain `dotnet meta verify` in CI runs the codegen gate with no flags. `--out <dir>` still works

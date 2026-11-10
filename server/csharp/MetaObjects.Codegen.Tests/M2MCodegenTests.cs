@@ -141,9 +141,9 @@ public class M2MCodegenTests
         var ctx = Ctx(Load());
         var db = FileContent(new DbContextGenerator().Generate(ctx), "AppDbContext.g.cs");
         // Hetero: HasMany(Tags).WithMany().UsingEntity<PostTag>(...) with explicit FK config.
-        Assert.Contains("Entity<Post>()", db);
+        Assert.Contains("Entity<global::Acme.Social.Post>()", db);
         Assert.Contains("HasMany(x => x.Tags)", db);
-        Assert.Contains("UsingEntity<PostTag>", db);
+        Assert.Contains("UsingEntity<global::Acme.Social.PostTag>", db);
     }
 
     [Fact]

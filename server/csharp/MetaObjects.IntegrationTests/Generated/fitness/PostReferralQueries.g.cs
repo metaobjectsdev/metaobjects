@@ -12,24 +12,24 @@ namespace MetaObjects.IntegrationTests.Generated;
 public static class PostReferralQueries
 {
     /// <summary>The PostReferral rows whose PostId equals <paramref name="postId"/> (one indexed query).</summary>
-    public static async System.Threading.Tasks.Task<List<PostReferral>> FindPostReferralsByPost(AppDbContext db, long postId) =>
+    public static async global::System.Threading.Tasks.Task<List<global::MetaObjects.IntegrationTests.Generated.PostReferral>> FindPostReferralsByPost(global::MetaObjects.IntegrationTests.Generated.AppDbContext db, long postId) =>
         await db.PostReferrals.AsNoTracking().Where(e => e.PostId == postId).ToListAsync();
 
     /// <summary>The PostReferral rows whose PostId is in <paramref name="postIds"/> (one batched IN query; anti-N+1).</summary>
-    public static async System.Threading.Tasks.Task<List<PostReferral>> FindPostReferralsByPostIn(AppDbContext db, IReadOnlyCollection<long> postIds)
+    public static async global::System.Threading.Tasks.Task<List<global::MetaObjects.IntegrationTests.Generated.PostReferral>> FindPostReferralsByPostIn(global::MetaObjects.IntegrationTests.Generated.AppDbContext db, IReadOnlyCollection<long> postIds)
     {
-        if (postIds.Count == 0) return new List<PostReferral>();
+        if (postIds.Count == 0) return new List<global::MetaObjects.IntegrationTests.Generated.PostReferral>();
         return await db.PostReferrals.AsNoTracking().Where(e => postIds.Contains(e.PostId)).ToListAsync();
     }
 
     /// <summary>The PostReferral rows whose ReferralId equals <paramref name="referralId"/> (one indexed query).</summary>
-    public static async System.Threading.Tasks.Task<List<PostReferral>> FindPostReferralsByReferral(AppDbContext db, long referralId) =>
+    public static async global::System.Threading.Tasks.Task<List<global::MetaObjects.IntegrationTests.Generated.PostReferral>> FindPostReferralsByReferral(global::MetaObjects.IntegrationTests.Generated.AppDbContext db, long referralId) =>
         await db.PostReferrals.AsNoTracking().Where(e => e.ReferralId == referralId).ToListAsync();
 
     /// <summary>The PostReferral rows whose ReferralId is in <paramref name="referralIds"/> (one batched IN query; anti-N+1).</summary>
-    public static async System.Threading.Tasks.Task<List<PostReferral>> FindPostReferralsByReferralIn(AppDbContext db, IReadOnlyCollection<long> referralIds)
+    public static async global::System.Threading.Tasks.Task<List<global::MetaObjects.IntegrationTests.Generated.PostReferral>> FindPostReferralsByReferralIn(global::MetaObjects.IntegrationTests.Generated.AppDbContext db, IReadOnlyCollection<long> referralIds)
     {
-        if (referralIds.Count == 0) return new List<PostReferral>();
+        if (referralIds.Count == 0) return new List<global::MetaObjects.IntegrationTests.Generated.PostReferral>();
         return await db.PostReferrals.AsNoTracking().Where(e => referralIds.Contains(e.ReferralId)).ToListAsync();
     }
 }

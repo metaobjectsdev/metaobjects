@@ -17,7 +17,7 @@ public abstract class PriorAuthAuthNames : AuthNames
     public const string ApproverField = "approver";
     public const string ApproverColumn = "approver";
 
-    public static new readonly Dictionary<string, string> ColumnsByField = new(System.StringComparer.Ordinal)
+    public static new readonly Dictionary<string, string> ColumnsByField = new(global::System.StringComparer.Ordinal)
     {
         ["approver"] = ApproverColumn,
         ["id"] = IdColumn,

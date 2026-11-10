@@ -83,7 +83,12 @@ base emits polymorphic `GET /<base>(+/{id})` plus a per-subtype CRUD set at
 `/<base>/<discriminatorValue lowercased>` (create injects the discriminator, cross-subtype
 get/update/delete → 404). Wire it after registering the context:
 
+The routes class lives in its entity's package namespace (`acme::blog` → `Acme.Blog`), so add a
+`using` for it:
+
 ```csharp
+using Acme.Blog;   // the entity's package namespace
+
 var app = builder.Build();
 app.MapAuthorRoutes("/api");   // the generated extension; you pass the prefix at mount time (default "/api")
 app.Run();

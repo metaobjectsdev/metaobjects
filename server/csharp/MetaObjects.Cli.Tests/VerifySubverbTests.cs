@@ -268,7 +268,9 @@ public sealed class VerifySubverbTests : IDisposable
 
         var r = VerifyCommand.RunSubverbs(CodegenOpts("Other.Ns"));
         Assert.NotEqual(0, r.ExitCode);
-        Assert.Contains(r.Codegen!.DriftedFiles, f => f.EndsWith("Subscriber.g.cs"));
+        // rc.19 R65: the packaged entity keeps its package's namespace; the context is what the
+        // configured namespace places.
+        Assert.Contains(r.Codegen!.DriftedFiles, f => f.EndsWith("AppDbContext.g.cs"));
     }
 
     [Fact]

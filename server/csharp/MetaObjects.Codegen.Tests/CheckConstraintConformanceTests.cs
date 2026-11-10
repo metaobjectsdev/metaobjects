@@ -75,7 +75,7 @@ public class CheckConstraintConformanceTests
     {
         var ctx = Ctx(Load(), "postgres");
         var context = new DbContextGenerator().Generate(ctx).Single(f => f.Path.EndsWith("AppDbContext.g.cs", StringComparison.Ordinal)).Content;
-        Assert.Contains("modelBuilder.Entity<Gadget>().ToTable(t => t.HasCheckConstraint(\"gadgets_status_chk\", \"\\\"status\\\" IN ('DRAFT', 'LIVE')\"));", context);
+        Assert.Contains("modelBuilder.Entity<global::Acme.Checks.Gadget>().ToTable(t => t.HasCheckConstraint(\"gadgets_status_chk\", \"\\\"status\\\" IN ('DRAFT', 'LIVE')\"));", context);
         Assert.Contains("t.HasCheckConstraint(\"gadgets_sku_shape\", ", context);
         Assert.Contains("t.HasCheckConstraint(\"gadgets_email_atleastone_chk\", \"num_nonnulls(\\\"email\\\", \\\"phone\\\") = 1\")", context);
     }

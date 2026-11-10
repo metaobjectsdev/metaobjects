@@ -1,7 +1,7 @@
 // R39: generated output paths are keyed by metadata package. Every per-object generator writes
-// `<package segments>/<file>`, so two same-named objects in two packages are two files; the C#
-// namespace is still the package binding's, so a same-namespace clash is refused by the claim
-// registry with PackageNamespaces as the remedy.
+// `<package segments>/<file>`, so two same-named objects in two packages are two files. Since
+// rc.19 R65 the C# namespace follows the package too, so a same-namespace clash takes an explicit
+// mapping of both packages onto one namespace; the claim registry refuses it, naming both.
 
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -43,6 +43,17 @@ public sealed class OutputPathsTests
         },
     };
 
+    /// <summary>R65: a real same-namespace clash — both packages mapped, explicitly, onto one namespace.</summary>
+    private static GenContext OneNamespace(MetaRoot root) => new()
+    {
+        Entities = root.Objects(), Root = root,
+        Config = new GenConfig
+        {
+            OutDir = "/tmp", Namespace = "Acme.Generated",
+            PackageNamespaces = new() { ["acme::alpha"] = "Acme.Shared", ["acme::beta"] = "Acme.Shared" },
+        },
+    };
+
     [Fact]
     public void A_file_is_written_under_its_objects_package()
     {
@@ -68,7 +79,7 @@ public sealed class OutputPathsTests
     [Fact]
     public void One_namespace_still_refuses_the_pair_with_PackageNamespaces_as_the_remedy()
     {
-        var ex = Assert.Throws<InvalidOperationException>(() => new EntityGenerator().Generate(Ctx(Load(), mapped: false)).ToList());
+        var ex = Assert.Throws<InvalidOperationException>(() => new EntityGenerator().Generate(OneNamespace(Load())).ToList());
         Assert.Contains(NameClaims.ERR_NAME_COLLISION, ex.Message);
         Assert.Contains("GenConfig.PackageNamespaces", ex.Message);
     }
@@ -104,7 +115,7 @@ public sealed class OutputPathsTests
     public void A_duplicate_in_one_namespace_is_a_named_refusal_not_CS0101(string generator)
     {
         IGenerator gen = generator == "names" ? new NamesGenerator() : new FilterAllowlistGenerator();
-        var ex = Assert.Throws<InvalidOperationException>(() => gen.Generate(Ctx(Load(), mapped: false)).ToList());
+        var ex = Assert.Throws<InvalidOperationException>(() => gen.Generate(OneNamespace(Load())).ToList());
         Assert.Contains(NameClaims.ERR_NAME_COLLISION, ex.Message);
         Assert.Contains("acme::alpha::Note", ex.Message);
         Assert.Contains("acme::beta::Note", ex.Message);
@@ -162,13 +173,25 @@ public sealed class OutputPathsTests
         """;
 
     [Fact]
-    public void Two_same_named_reports_in_two_packages_are_a_named_refusal_from_the_export()
+    public void Two_same_named_reports_in_two_packages_each_get_an_export_in_their_own_namespace()
     {
         var r = new MetaDataLoader().Load([
             new InMemoryStringSource(Report("acme::alpha"), id: "a.json"),
             new InMemoryStringSource(Report("acme::beta"), id: "b.json")]);
         Assert.Empty(r.Errors);
-        var ex = Assert.Throws<InvalidOperationException>(() => new ReportExportGenerator().Generate(Ctx(r.Root, mapped: true)).ToList());
+        var files = new ReportExportGenerator().Generate(Ctx(r.Root, mapped: false)).ToList();
+        Assert.Contains("namespace Acme.Alpha;", Assert.Single(files, f => f.Path == "acme/alpha/InvoiceTotalsExport.g.cs").Content);
+        Assert.Contains("namespace Acme.Beta;", Assert.Single(files, f => f.Path == "acme/beta/InvoiceTotalsExport.g.cs").Content);
+    }
+
+    [Fact]
+    public void Two_same_named_reports_mapped_onto_one_namespace_are_a_named_refusal_from_the_export()
+    {
+        var r = new MetaDataLoader().Load([
+            new InMemoryStringSource(Report("acme::alpha"), id: "a.json"),
+            new InMemoryStringSource(Report("acme::beta"), id: "b.json")]);
+        Assert.Empty(r.Errors);
+        var ex = Assert.Throws<InvalidOperationException>(() => new ReportExportGenerator().Generate(OneNamespace(r.Root)).ToList());
         Assert.Contains(NameClaims.ERR_NAME_COLLISION, ex.Message);
         Assert.Contains("InvoiceTotalsExport", ex.Message);
     }

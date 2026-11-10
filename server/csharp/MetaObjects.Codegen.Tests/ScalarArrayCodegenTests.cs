@@ -155,7 +155,7 @@ public class ScalarArrayCodegenTests
 
         // The scalar enum field must still have .HasConversion<string>().
         Assert.Contains(
-            "modelBuilder.Entity<Order>().Property(x => x.Status).HasConversion<string>();",
+            "modelBuilder.Entity<global::Acme.Order>().Property(x => x.Status).HasConversion<string>();",
             dbCtx);
     }
 
@@ -172,7 +172,7 @@ public class ScalarArrayCodegenTests
 
         // EF Core 8 primitive collection API — .ToJson() does not exist on PropertyBuilder<List<T>>.
         Assert.Contains(
-            "modelBuilder.Entity<Product>().PrimitiveCollection(x => x.Tags);",
+            "modelBuilder.Entity<global::Acme.Product>().PrimitiveCollection(x => x.Tags);",
             dbCtx);
         // Guard: the incorrect .Property(...).ToJson() form must NOT appear for this field.
         Assert.DoesNotContain("x => x.Tags).ToJson()", dbCtx);
@@ -187,7 +187,7 @@ public class ScalarArrayCodegenTests
 
         // EF Core 8: enum elements must persist as string symbols, not int ordinals.
         Assert.Contains(
-            "modelBuilder.Entity<Order>().PrimitiveCollection(x => x.Statuses).ElementType().HasConversion<string>();",
+            "modelBuilder.Entity<global::Acme.Order>().PrimitiveCollection(x => x.Statuses).ElementType().HasConversion<string>();",
             dbCtx);
         // Guard: the incorrect .Property(...).ToJson() form must NOT appear for this field.
         Assert.DoesNotContain("x => x.Statuses).ToJson()", dbCtx);
@@ -232,7 +232,7 @@ public class ScalarArrayCodegenTests
         // EF Core 8 primitive collection API for the uuid array (derived, not via
         // the removed dbColumnType:uuid_array value).
         Assert.Contains(
-            "modelBuilder.Entity<Widget>().PrimitiveCollection(x => x.Refs);",
+            "modelBuilder.Entity<global::Acme.Widget>().PrimitiveCollection(x => x.Refs);",
             dbCtx);
     }
 

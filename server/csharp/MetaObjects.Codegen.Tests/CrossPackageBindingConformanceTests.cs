@@ -165,10 +165,10 @@ public class CrossPackageBindingConformanceTests
         Assert.Contains("public long? CustomerId", orderEntity);
 
         string dbContext = files["AppDbContext.g.cs"];
-        Assert.Contains("modelBuilder.Entity<Post>().HasMany(x => x.Tags).WithMany().UsingEntity<PostTag>(", dbContext);
-        Assert.Contains("modelBuilder.Entity<Order>().HasMany(x => x.Labels).WithMany().UsingEntity<OrderLabel>(", dbContext);
-        Assert.Contains("l.HasOne<Label>().WithMany().HasForeignKey(j => j.LabelId)", dbContext);
-        Assert.Contains("modelBuilder.Entity<Order>().HasOne<Customer>().WithMany().HasForeignKey(e => e.CustomerId)", dbContext);
-        Assert.Contains("modelBuilder.Entity<Post>().HasOne<Tag>().WithMany().HasForeignKey(e => e.FeaturedTagId)", dbContext);
+        Assert.Contains("modelBuilder.Entity<global::Acme.Gen.A.Post>().HasMany(x => x.Tags).WithMany().UsingEntity<global::Acme.Gen.A.PostTag>(", dbContext);
+        Assert.Contains("modelBuilder.Entity<global::Acme.Gen.Acme.Order>().HasMany(x => x.Labels).WithMany().UsingEntity<global::Acme.Gen.OrderLabel>(", dbContext);
+        Assert.Contains("l.HasOne<global::Acme.Gen.Label>().WithMany().HasForeignKey(j => j.LabelId)", dbContext);
+        Assert.Contains("modelBuilder.Entity<global::Acme.Gen.Acme.Order>().HasOne<global::Acme.Gen.Customer>().WithMany().HasForeignKey(e => e.CustomerId)", dbContext);
+        Assert.Contains("modelBuilder.Entity<global::Acme.Gen.A.Post>().HasOne<global::Acme.Gen.B.Tag>().WithMany().HasForeignKey(e => e.FeaturedTagId)", dbContext);
     }
 }

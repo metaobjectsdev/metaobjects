@@ -116,12 +116,16 @@ public static class ReverseFinderBuilder
         Func<MetaField, string>? propertyName = null)
     {
         propertyName ??= f => CSharpNaming.PropertyName(f, ctx.Config);
-        var contextType = ctx.Config.ContextTypeName;
+        var contextType = ValueObjectNames.ContextTypeRef(ctx.Config);
         var fks = For(entity);
         if (fks.Count == 0) return null;
 
         var cls = CSharpNaming.Pascal(entity.Name);
-        var rowType = rowTypeOverride ?? cls;                          // #214 write-through → <Entity>View
+        // rc.19 R65: the finders live in their entity's namespace (a per-object class: two
+        // same-named entities in two packages each get one), and name every generated type
+        // global::-qualified — the row type and the context.
+        var entityNs = PackageBindingResolver.Resolve(ctx.Config, PackageBindingResolver.EffectivePackage(entity), entity.Name, fallbackContext: entity.Name);
+        var rowType = ValueObjectNames.Global(entityNs, rowTypeOverride ?? cls); // #214 write-through → <Entity>View
         var queriesCls = CSharpNaming.QueriesClassName(entity);
         var dbSet = readDbSetOverride ?? CSharpNaming.DbSetName(entity); // #214 write-through → <Entity>Views
 
@@ -132,12 +136,8 @@ public static class ReverseFinderBuilder
         sb.AppendLine("using System.Collections.Generic;");
         sb.AppendLine("using System.Linq;");
         sb.AppendLine("using Microsoft.EntityFrameworkCore;");
-        // The finders live beside the context; the entity (or its view read model) lives in its own
-        // package's namespace when the model is split.
-        var entityNs = PackageBindingResolver.Resolve(ctx.Config, PackageBindingResolver.EffectivePackage(entity), entity.Name, fallbackContext: entity.Name);
-        if (entityNs != ctx.Config.Namespace) sb.AppendLine($"using {entityNs};");
         sb.AppendLine();
-        sb.AppendLine($"namespace {ctx.Config.Namespace};");
+        sb.AppendLine($"namespace {entityNs};");
         sb.AppendLine();
         sb.AppendLine("/// <summary>Reverse-relationship FK finders for " + cls + " (ADR-0038): explicit,");
         sb.AppendLine("/// single-query reads — no lazy navigation, no N+1.</summary>");
@@ -145,13 +145,13 @@ public static class ReverseFinderBuilder
         sb.AppendLine("{");
 
         // The finders are members of one class: two FKs whose segments fold to one name collide.
-        // The reverse finders always live in GenConfig.Namespace, so mapping the packages cannot help.
-        ctx.Claim($"the C# namespace {ctx.Config.Namespace}", queriesCls, entity.ResolutionKey(), "rename one");
+        ctx.Claim($"the C# namespace {entityNs}", queriesCls, entity.ResolutionKey(),
+            "map the packages to distinct namespaces (GenConfig.PackageNamespaces), or rename one");
         foreach (var fk in fks)
         {
-            ctx.Claim($"the reverse finders of {ctx.Config.Namespace}.{queriesCls}", CSharpNaming.ReverseFinderName(entity, fk.FkField),
+            ctx.Claim($"the reverse finders of {entityNs}.{queriesCls}", CSharpNaming.ReverseFinderName(entity, fk.FkField),
                 $"{entity.ResolutionKey()}.{fk.FkField}", "rename one of the foreign-key fields");
-            ctx.Claim($"the reverse finders of {ctx.Config.Namespace}.{queriesCls}", CSharpNaming.ReverseFinderInName(entity, fk.FkField),
+            ctx.Claim($"the reverse finders of {entityNs}.{queriesCls}", CSharpNaming.ReverseFinderInName(entity, fk.FkField),
                 $"{entity.ResolutionKey()}.{fk.FkField}", "rename one of the foreign-key fields");
         }
 
@@ -169,13 +169,13 @@ public static class ReverseFinderBuilder
 
             // Single: one indexed WHERE <fk> = value → List<E>.
             sb.AppendLine($"    /// <summary>The {cls} rows whose {prop} equals <paramref name=\"{arg}\"/> (one indexed query).</summary>");
-            sb.AppendLine($"    public static async System.Threading.Tasks.Task<List<{rowType}>> {single}({contextType} db, {valueType} {arg}) =>");
+            sb.AppendLine($"    public static async global::System.Threading.Tasks.Task<List<{rowType}>> {single}({contextType} db, {valueType} {arg}) =>");
             sb.AppendLine($"        await db.{dbSet}.AsNoTracking().Where(e => e.{prop} == {arg}).ToListAsync();");
             sb.AppendLine();
 
             // Batched: one WHERE <fk> IN (values) → List<E> (anti-N+1 "selectin" shape).
             sb.AppendLine($"    /// <summary>The {cls} rows whose {prop} is in <paramref name=\"{arg}s\"/> (one batched IN query; anti-N+1).</summary>");
-            sb.AppendLine($"    public static async System.Threading.Tasks.Task<List<{rowType}>> {batched}({contextType} db, IReadOnlyCollection<{valueType}> {arg}s)");
+            sb.AppendLine($"    public static async global::System.Threading.Tasks.Task<List<{rowType}>> {batched}({contextType} db, IReadOnlyCollection<{valueType}> {arg}s)");
             sb.AppendLine("    {");
             sb.AppendLine($"        if ({arg}s.Count == 0) return new List<{rowType}>();");
             sb.AppendLine($"        return await db.{dbSet}.AsNoTracking().Where(e => {arg}s.Contains(e.{prop})).ToListAsync();");

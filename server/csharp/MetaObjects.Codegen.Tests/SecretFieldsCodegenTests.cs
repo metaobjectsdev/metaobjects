@@ -99,8 +99,8 @@ public class SecretFieldsCodegenTests
         Assert.Contains("new string[] { \"token\" }", aRoutes);
         Assert.Contains("input.Token = default!;", aRoutes);
         Assert.Contains("input.Memo = default!;", aRoutes);
-        Assert.Contains("string.Equals(prop.Name, \"token\", System.StringComparison.OrdinalIgnoreCase)) continue;", aRoutes);
-        Assert.Contains("string.Equals(prop.Name, \"memo\", System.StringComparison.OrdinalIgnoreCase)) continue;", aRoutes);
+        Assert.Contains("string.Equals(prop.Name, \"token\", global::System.StringComparison.OrdinalIgnoreCase)) continue;", aRoutes);
+        Assert.Contains("string.Equals(prop.Name, \"memo\", global::System.StringComparison.OrdinalIgnoreCase)) continue;", aRoutes);
         Assert.DoesNotContain("\"memo\" }", aRoutes);
     }
 
@@ -114,8 +114,8 @@ public class SecretFieldsCodegenTests
         // Create resets both; PATCH / PUT skip both (a present null is a write too).
         Assert.Contains("input.TokenHash = default!;", src);
         Assert.Contains("input.PinHash = default!;", src);
-        Assert.Contains("string.Equals(prop.Name, \"tokenHash\", System.StringComparison.OrdinalIgnoreCase)) continue;", src);
-        Assert.Contains("string.Equals(prop.Name, \"pinHash\", System.StringComparison.OrdinalIgnoreCase)) continue;", src);
+        Assert.Contains("string.Equals(prop.Name, \"tokenHash\", global::System.StringComparison.OrdinalIgnoreCase)) continue;", src);
+        Assert.Contains("string.Equals(prop.Name, \"pinHash\", global::System.StringComparison.OrdinalIgnoreCase)) continue;", src);
 
         // Only the credential is omitted on read (list, get, create echo, update echo).
         Assert.Contains("new string[] { \"pinHash\" }", src);

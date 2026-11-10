@@ -70,8 +70,8 @@ public class CallableGenerator : PerEntityGenerator
         // SourcePrimaryFunction for a tableFunction — so the emitted member says WHAT it is.
         var strategy = ctx.Config.ColumnNamingStrategy;
         var includeNames = ctx.Config.IncludeNames;
-        var procMember = CSharpNaming.SourceNameMember(entity, strategy, includeNames, source.Role);
-        var schemaMember = CSharpNaming.SourceSchemaMember(entity, strategy, includeNames, source.Role);
+        var procMember = CSharpNaming.SourceNameMember(entity, strategy, includeNames, source.Role, ctx.Config);
+        var schemaMember = CSharpNaming.SourceSchemaMember(entity, strategy, includeNames, source.Role, ctx.Config);
         // The schema prefix as it appears INSIDE the FromSqlRaw concatenation on the names
         // arm: `" + XNames.SourcePrimarySchema + "."`. Empty when the callable declares no @schema.
         var schemaPrefixExpr = schemaMember is null
@@ -110,15 +110,14 @@ public class CallableGenerator : PerEntityGenerator
         var fromSql = procMember is null
             ? $"FromSqlInterpolated($\"SELECT * FROM {procName}({sqlArgs})\")"
             : $"FromSqlRaw(\"SELECT * FROM {schemaPrefixExpr}\" + {procMember} + \"({rawPlaceholders})\"{rawArgs})";
-        var ctxType = ctx.Config.ContextTypeName;
-        // Use the resolved args VO's C# type name — @parameterRef (and source.ParameterRef)
-        // can be a package-qualified FQN ("acme::reporting::FooArgs"), and the "::" separator
-        // is invalid in a C# parameter type (CS7000). The file has a `using` for the result's and
-        // the args' namespaces, so a short name another object shares is global::-qualified
-        // (CS0104 otherwise) — the result type included, which can share its args' name.
+        // rc.19 R65: every generated type is named global::-qualified — the context, the result
+        // and the arguments object — so neither a namespace nor a pair of usings can capture one.
+        var ctxType = ValueObjectNames.ContextTypeRef(ctx.Config);
+        // Use the resolved args VO's C# type — @parameterRef (and source.ParameterRef) can be a
+        // package-qualified FQN ("acme::reporting::FooArgs"), and "::" is invalid in a C# type (CS7000).
         var fileNs = ctx.Config.Namespace;
-        var argsType = hasArgs ? ValueObjectNames.ShortRef(argsObject!, ctx.Root, ctx.Config, fileNs) : null;
-        var resultType = ValueObjectNames.ShortRef(entity, ctx.Root, ctx.Config, fileNs);
+        var argsType = hasArgs ? ValueObjectNames.GlobalRef(argsObject!, ctx.Config) : null;
+        var resultType = ValueObjectNames.GlobalRef(entity, ctx.Config);
         var signature = hasArgs ? $"{ctxType} db, {argsType} args" : $"{ctxType} db";
         // The wrapper class is declared in Config.Namespace, whatever the object's package.
         ctx.Claim($"the C# namespace {fileNs}", $"{cls}Callable", entity.ResolutionKey(), "rename one");
@@ -133,30 +132,18 @@ public class CallableGenerator : PerEntityGenerator
         // Package-binding — the callable's home namespace + the args VO's namespace, when split.
         // The callable file declares a `static class {cls}Callable` referencing the
         // result type and the args type; both can live in different per-package
-        // namespaces from where AppDbContext lives.
-        var callableNs = PackageBindingResolver.Resolve(ctx.Config, PackageBindingResolver.EffectivePackage(entity), entity.Name);
-        var argsNs = argsObject is not null
-            ? PackageBindingResolver.Resolve(ctx.Config, PackageBindingResolver.EffectivePackage(argsObject), argsObject.Name)
-            : null;
-        // The callable file lives in the default namespace (alongside AppDbContext);
-        // pull in usings for both the entity's home and the args object's home when
-        // they differ.
-        foreach (var ns in new[] { callableNs, argsNs }
-            .Where(n => !string.IsNullOrEmpty(n) && n != fileNs)
-            .Distinct(StringComparer.Ordinal)
-            .OrderBy(n => n, StringComparer.Ordinal))
-        {
-            sb.AppendLine($"using {ns};");
-        }
         sb.AppendLine();
         sb.AppendLine($"namespace {ctx.Config.Namespace};");
         sb.AppendLine();
         var kindNoun = source.EffectiveKind == SOURCE_KIND_STORED_PROC ? "stored procedure" : "table function";
         // The doc summary names the procedure the same way the SQL does — by the constant on
         // the names-ON arm (with the schema, when any, still spelled), literally otherwise.
-        var procDoc = procMember is null
+        // The doc names the constants bare (prose, not code that must resolve).
+        var procDocMember = CSharpNaming.SourceNameMember(entity, strategy, includeNames, source.Role);
+        var schemaDocMember = CSharpNaming.SourceSchemaMember(entity, strategy, includeNames, source.Role);
+        var procDoc = procDocMember is null
             ? $"the <c>{procName}</c> {kindNoun}"
-            : $"the {kindNoun} named by <c>{procMember}</c>{(schemaMember is null ? "" : $" in schema <c>{schemaMember}</c>")}";
+            : $"the {kindNoun} named by <c>{procDocMember}</c>{(schemaDocMember is null ? "" : $" in schema <c>{schemaDocMember}</c>")}";
         sb.AppendLine("/// <summary>");
         sb.AppendLine($"/// FR-015: typed wrapper around {procDoc}. Arguments bind in");
         sb.AppendLine($"/// declaration order from the @parameterRef value-object{(hasArgs ? $" (<c>{argsObjectName}</c>)" : string.Empty)}.");

@@ -274,7 +274,7 @@ public class DbContextCompileTests
             Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", Dialect = "postgres" },
         };
         var split = Assert.Single(new DbContextGenerator { ModelConfigChunkSize = 1 }.Generate(ctx), f => f.Path == "AppDbContext.g.cs").Content;
-        Assert.Contains("\") modelBuilder.Entity<Ticket>().HasIndex(", split);
+        Assert.Contains("\") modelBuilder.Entity<global::Acme.Ticket>().HasIndex(", split);
         var comp = CSharpCompilation.Create(
             "efcore_guard_" + Guid.NewGuid().ToString("N"),
             new EntityGenerator().Generate(ctx).Select(f => f.Content).Append(split)
@@ -305,7 +305,7 @@ public class DbContextCompileTests
         var namesFiles = new NamesGenerator().Generate(ctx).ToList();
 
         var dbctx = Assert.Single(dbContextFiles).Content;
-        Assert.Contains("new System.Text.Json.Serialization.JsonStringEnumConverter()", dbctx);
+        Assert.Contains("new global::System.Text.Json.Serialization.JsonStringEnumConverter()", dbctx);
 
         var allSources = entityFiles.Concat(dbContextFiles).Concat(namesFiles).ToList();
         var trees = allSources.Select(f => CSharpSyntaxTree.ParseText(
@@ -339,7 +339,7 @@ public class DbContextCompileTests
         var converterOf = helper.GetMethod("Converter", BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(converterOf);
 
-        var addressType = asm.GetType("Acme.Generated.Address");
+        var addressType = asm.GetType("Acme.Address");
         Assert.NotNull(addressType);
         // A non-required VO enum emits as Nullable<TEnum> — unwrap to the underlying enum
         // before parsing. The stored jsonb keys are the metadata field names, pinned by the
@@ -410,13 +410,13 @@ public class DbContextCompileTests
         // [0] — the DbContext registers the uri converter over the READ MODEL (InvoiceView),
         // not just the write entity, or EF Core fails model finalization on the uri column.
         Assert.Contains(
-            "modelBuilder.Entity<InvoiceView>().Property(x => x.DocUrl).HasColumnType(\"text\").HasConversion(",
+            "modelBuilder.Entity<global::Acme.InvoiceView>().Property(x => x.DocUrl).HasColumnType(\"text\").HasConversion(",
             dbctx);
 
         // The write entity still gets its own copies of both configs (unchanged behavior).
         Assert.Contains("public Uri? DocUrl { get; set; }", writeEntity);
         Assert.Contains(
-            "modelBuilder.Entity<Invoice>().Property(x => x.DocUrl).HasColumnType(\"text\").HasConversion(",
+            "modelBuilder.Entity<global::Acme.Invoice>().Property(x => x.DocUrl).HasColumnType(\"text\").HasConversion(",
             dbctx);
     }
 

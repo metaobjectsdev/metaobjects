@@ -83,9 +83,9 @@ public class ProjectionTests
         // keyed projection: ToView, no HasNoKey. §A6 (task 4) — references the
         // projection's own <Name>Names.SourcePrimaryView constant -- the member is named for
         // the source's @kind, so a view name cannot be read out of a table slot.
-        Assert.Contains("modelBuilder.Entity<ProgramSummary>().ToView(ProgramSummaryNames.SourcePrimaryView);", src);
+        Assert.Contains("modelBuilder.Entity<global::Acme.ProgramSummary>().ToView(global::Acme.ProgramSummaryNames.SourcePrimaryView);", src);
         // keyless projection: HasNoKey + ToView
-        Assert.Contains("modelBuilder.Entity<TagCount>().HasNoKey().ToView(TagCountNames.SourcePrimaryView);", src);
+        Assert.Contains("modelBuilder.Entity<global::Acme.TagCount>().HasNoKey().ToView(global::Acme.TagCountNames.SourcePrimaryView);", src);
     }
 
     [Fact]
@@ -95,7 +95,7 @@ public class ProjectionTests
         var src = new RoutesGenerator().Generate(ctx)
             .Single(f => System.IO.Path.GetFileName(f.Path) == "ProgramSummaryRoutes.g.cs").Content;
         // GET list takes HttpContext (qs handling per api-contract.md).
-        Assert.Contains("app.MapGet(prefix + \"/program_summaries\", async (HttpContext http, AppDbContext db) =>", src);
+        Assert.Contains("app.MapGet(prefix + \"/program_summaries\", async (HttpContext http, global::Acme.Generated.AppDbContext db) =>", src);
         Assert.Contains("app.MapGet(prefix + \"/program_summaries/{id}\"", src); // keyed -> readable by id
         // No write HANDLER anywhere: the verbs are mounted (see the test below), but
         // every one of them is a refusal, so nothing in this file can persist a row.

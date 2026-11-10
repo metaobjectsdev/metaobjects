@@ -9,9 +9,9 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace Acme.Work;
 
 [Table(JobNames.SourcePrimaryTable)]
-[System.Text.Json.Serialization.JsonDerivedType(typeof(CallJob))]
-[System.Text.Json.Serialization.JsonDerivedType(typeof(MailJob))]
-[System.Text.Json.Serialization.JsonDerivedType(typeof(PlainJob))]
+[global::System.Text.Json.Serialization.JsonDerivedType(typeof(CallJob))]
+[global::System.Text.Json.Serialization.JsonDerivedType(typeof(MailJob))]
+[global::System.Text.Json.Serialization.JsonDerivedType(typeof(PlainJob))]
 public abstract class Job
 {
     public enum JobKind { Call, Mail, Plain }

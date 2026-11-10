@@ -32,7 +32,7 @@ public abstract class MeasurementNames
     public const string IdentityIdSubType = "primary";
     public const string IdentityIdName = "id";
 
-    public static readonly Dictionary<string, string> ColumnsByField = new(System.StringComparer.Ordinal)
+    public static readonly Dictionary<string, string> ColumnsByField = new(global::System.StringComparer.Ordinal)
     {
         ["id"] = IdColumn,
         ["massKg"] = MassKgColumn,

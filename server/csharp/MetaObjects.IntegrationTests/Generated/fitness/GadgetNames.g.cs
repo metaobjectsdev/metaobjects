@@ -22,7 +22,7 @@ public abstract class GadgetNames : LabeledNames
     public new const string LabelField = "label";
     public new const string LabelColumn = "gadget_code";
 
-    public static new readonly Dictionary<string, string> ColumnsByField = new(System.StringComparer.Ordinal)
+    public static new readonly Dictionary<string, string> ColumnsByField = new(global::System.StringComparer.Ordinal)
     {
         ["id"] = IdColumn,
         ["label"] = LabelColumn,

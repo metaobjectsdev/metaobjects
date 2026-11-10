@@ -204,9 +204,9 @@ public class SourcelessEntityGatesTests
         Assert.True(DbContextGenerator.AppliesTo(Obj(ctx, "Booking"), ctx.Root));
 
         var dbContext = Assert.Single(new DbContextGenerator().Generate(ctx)).Content;
-        Assert.DoesNotContain("DbSet<Ledger>", dbContext);
-        Assert.DoesNotContain("Entity<Ledger>", dbContext);
-        Assert.Contains("DbSet<Booking>", dbContext);
+        Assert.DoesNotContain("DbSet<global::Acme.Gates.Ledger>", dbContext);
+        Assert.DoesNotContain("Entity<global::Acme.Gates.Ledger>", dbContext);
+        Assert.Contains("DbSet<global::Acme.Gates.Booking>", dbContext);
     }
 
     // ---- gate 4: RoutesGenerator ---------------------------------------------

@@ -92,7 +92,7 @@ public class Fr019SharedEnumCodegenTests
         foreach (var ef in new[] { order, shipment })
         {
             Assert.DoesNotContain("public enum OrderStatus", ef.Content);
-            Assert.Contains("public OrderStatus? Status { get; set; }", ef.Content);
+            Assert.Contains("public global::Acme.OrderStatus? Status { get; set; }", ef.Content);
         }
     }
 
@@ -345,8 +345,8 @@ public class Fr019SharedEnumCodegenTests
         Assert.DoesNotContain(files, f => System.IO.Path.GetFileName(f.Path) == "Enums.g.cs");
         var priority = Assert.Single(files, f => f.Path == "acme/billing/Priority.g.cs");
         var channel = Assert.Single(files, f => f.Path == "acme/billing/Channel.g.cs");
-        Assert.Contains("namespace Acme.Generated;", priority.Content);
-        Assert.Contains("namespace Acme.Generated;", channel.Content);
+        Assert.Contains("namespace Acme.Billing;", priority.Content);
+        Assert.Contains("namespace Acme.Billing;", channel.Content);
         Assert.Contains("public enum Channel { EMAIL, PHONE }", channel.Content);
     }
 

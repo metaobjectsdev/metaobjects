@@ -84,29 +84,28 @@ public sealed class ApiDocsNamespaceTests : IDisposable
         Assert.True(sawCsharpBlock, "expected at least one csharp code block across the rendered pages");
     }
 
+    // rc.19 R65: a packaged type's namespace is its package's (`acme::shop` → `Acme.Shop`), whatever
+    // namespace is configured; the import block names that namespace.
     [Fact]
-    public void Documented_namespace_defaults_to_the_gen_default_and_appears_in_blocks()
+    public void Documented_namespace_is_the_package_namespace_and_appears_in_blocks()
     {
         var outcome = RunDocs("Generated");
         Assert.True(outcome.Ok);
 
-        // acme::shop binds to the default namespace + package → "<DefaultNs>.Acme.Shop"-style.
-        // Whatever the resolved namespace, the import line must reference it (no naked "Generated"
-        // identifier outside a `using ...;`).
         var orderPage = Directory.EnumerateFiles(OutDir, "Order.md", SearchOption.AllDirectories).Single();
         var text = File.ReadAllText(orderPage);
-        Assert.Contains("```csharp\nusing ", text);
-        Assert.Contains("Generated", text);
+        Assert.Contains("```csharp\nusing Acme.Shop;", text);
     }
 
     [Fact]
-    public void Custom_namespace_flows_into_the_import_blocks()
+    public void A_configured_namespace_does_not_move_a_packaged_type()
     {
         var outcome = RunDocs("Acme.Custom");
         Assert.True(outcome.Ok);
 
         var orderPage = Directory.EnumerateFiles(OutDir, "Order.md", SearchOption.AllDirectories).Single();
         var text = File.ReadAllText(orderPage);
-        Assert.Contains("using Acme.Custom", text);
+        Assert.Contains("using Acme.Shop", text);
+        Assert.DoesNotContain("using Acme.Custom", text);
     }
 }

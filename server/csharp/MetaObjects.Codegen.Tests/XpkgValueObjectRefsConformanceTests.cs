@@ -42,9 +42,11 @@ public sealed class XpkgValueObjectRefsConformanceTests
             OutDir = "/tmp",
             Namespace = "Acme.Generated",
             Dialect = "postgres",
+            // rc.19 R65: each package has its own namespace by default; "flattened" is an explicit
+            // mapping of every package onto one.
             PackageNamespaces = mapPackages
                 ? new() { ["acme::alpha"] = "Acme.Alpha", ["acme::beta"] = "Acme.Beta", ["acme::app"] = "Acme.App" }
-                : new(),
+                : new() { ["acme::alpha"] = "Acme.Generated", ["acme::beta"] = "Acme.Generated", ["acme::app"] = "Acme.Generated" },
         },
     };
 
@@ -61,12 +63,12 @@ public sealed class XpkgValueObjectRefsConformanceTests
     {
         var ctx = Ctx(Load());
         var routes = Assert.Single(new RoutesGenerator().Generate(ctx), f => f.Path.EndsWith("HostRoutes.g.cs")).Content;
-        // Both namespaces are in scope, so a bare `Note` would be CS0104.
-        Assert.Contains("using Acme.Alpha;", routes);
-        Assert.Contains("using Acme.Beta;", routes);
+        // Every type the routes name from another namespace is global::-qualified (rc.19 R65), so
+        // no using is needed and no bare `Note` could be ambiguous (CS0104).
+        Assert.DoesNotContain("using Acme.Alpha;", routes);
         Assert.Contains("global::Acme.Alpha.Note", routes);
-        Assert.Contains("System.Collections.Generic.List<global::Acme.Beta.Note>", routes);
-        Assert.Contains("System.Collections.Generic.Dictionary<string, global::Acme.Beta.Note>", routes);
+        Assert.Contains("global::System.Collections.Generic.List<global::Acme.Beta.Note>", routes);
+        Assert.Contains("global::System.Collections.Generic.Dictionary<string, global::Acme.Beta.Note>", routes);
         Assert.DoesNotMatch(@"[<\s(]Note[>\s)]", routes);
     }
 

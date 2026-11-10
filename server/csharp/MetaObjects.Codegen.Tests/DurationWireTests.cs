@@ -272,27 +272,27 @@ public class DurationWireTests
 
         var ctx = files.Single(f => System.IO.Path.GetFileName(f.Path) == "AppDbContext.g.cs").Content.Replace("\r\n", "\n");
         const string Npgsql = "if (Database.ProviderName == \"Npgsql.EntityFrameworkCore.PostgreSQL\")";
-        const string Micros = "new Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<System.TimeSpan, long>(" +
+        const string Micros = "new global::Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<global::System.TimeSpan, long>(" +
             "v => global::Acme.Ops.DurationWire.ToMicros(v), v => global::Acme.Ops.DurationWire.FromMicros(v))";
         // Npgsql: the native interval, read through the generated NpgsqlInterval mapping; anything
         // else: an integer count of microseconds.
         Assert.Contains(
             $"        {Npgsql}\n" +
-            "            modelBuilder.Entity<Timer>().Property(x => x.Timeout).HasColumnType(\"interval\").Metadata.SetTypeMapping(DurationInterval.Mapping);\n" +
+            "            modelBuilder.Entity<global::Acme.Ops.Timer>().Property(x => x.Timeout).HasColumnType(\"interval\").Metadata.SetTypeMapping(DurationInterval.Mapping);\n" +
             "        else\n" +
-            $"            modelBuilder.Entity<Timer>().Property(x => x.Timeout).HasConversion({Micros});",
+            $"            modelBuilder.Entity<global::Acme.Ops.Timer>().Property(x => x.Timeout).HasConversion({Micros});",
             ctx);
         Assert.Contains(
             $"        {Npgsql}\n" +
-            "            modelBuilder.Entity<Timer>().PrimitiveCollection(x => x.Backoff).Metadata.SetTypeMapping(DurationInterval.ArrayMapping);\n" +
+            "            modelBuilder.Entity<global::Acme.Ops.Timer>().PrimitiveCollection(x => x.Backoff).Metadata.SetTypeMapping(DurationInterval.ArrayMapping);\n" +
             "        else\n" +
-            $"            modelBuilder.Entity<Timer>().PrimitiveCollection(x => x.Backoff).ElementType().HasConversion({Micros});",
+            $"            modelBuilder.Entity<global::Acme.Ops.Timer>().PrimitiveCollection(x => x.Backoff).ElementType().HasConversion({Micros});",
             ctx);
         Assert.Contains("internal static class DurationInterval", ctx);
         Assert.DoesNotContain("using Npgsql", ctx);
         // A duration member of a jsonb value object is stored as its canonical string on every provider.
-        Assert.Contains("b.Property(p => p.Length).HasConversion(new Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<System.TimeSpan, string>(", ctx);
-        Assert.Contains("b.PrimitiveCollection(p => p.Steps).ElementType().HasConversion(new Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<System.TimeSpan, string>(", ctx);
+        Assert.Contains("b.Property(p => p.Length).HasConversion(new global::Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<global::System.TimeSpan, string>(", ctx);
+        Assert.Contains("b.PrimitiveCollection(p => p.Steps).ElementType().HasConversion(new global::Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<global::System.TimeSpan, string>(", ctx);
         // ...and a duration member of a FLATTENED value object takes the top-level column mapping.
         Assert.Contains(
             "            b.Property(p => p.Cap).HasColumnName(\"limits_cap\");\n" +
@@ -304,11 +304,11 @@ public class DurationWireTests
         Assert.Contains($"                b.PrimitiveCollection(p => p.Marks).ElementType().HasConversion({Micros});", ctx);
 
         var allowlist = files.Single(f => System.IO.Path.GetFileName(f.Path) == "TimerFilterAllowlist.g.cs").Content;
-        Assert.Contains("[\"grace\"] = new(System.StringComparer.Ordinal) { \"eq\", \"ne\", \"gt\", \"gte\", \"lt\", \"lte\", \"in\", \"isNull\" },", allowlist);
+        Assert.Contains("[\"grace\"] = new(global::System.StringComparer.Ordinal) { \"eq\", \"ne\", \"gt\", \"gte\", \"lt\", \"lte\", \"in\", \"isNull\" },", allowlist);
 
         // The PATCH merge reads a duration through the wire helper, not System.Text.Json's own form.
         var routes = files.Single(f => System.IO.Path.GetFileName(f.Path) == "TimerRoutes.g.cs").Content;
-        Assert.Contains("if (clr == typeof(System.TimeSpan))", routes);
+        Assert.Contains("if (clr == typeof(global::System.TimeSpan))", routes);
         Assert.Contains("DurationWire.TryParseElement(prop.Value, out var __dur)", routes);
     }
 

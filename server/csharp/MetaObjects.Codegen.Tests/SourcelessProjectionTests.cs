@@ -83,7 +83,7 @@ public class SourcelessProjectionTests
         var files = new DbContextGenerator().Generate(Ctx(root));
         var src = string.Concat(files.Select(f => f.Content));
 
-        Assert.Contains("DbSet<Author>", src);       // the sourced entity is mapped
+        Assert.Contains("DbSet<global::Acme.Author>", src);       // the sourced entity is mapped
         Assert.DoesNotContain("AuthorPayload", src); // the sourceless projection is not
     }
 }

@@ -116,8 +116,9 @@ avoid a collision; a real collision (two objects emitting one name into one scop
 the run's claim registry with `ERR_NAME_COLLISION`, naming both and the remedy.
 
 - *Done:* C# (`GenContext.Claim`: types per namespace, DbSets per context, route segments per
-  routes entry, finders per class, expression indexes per schema). The `xpkg-collision` runners
-  map the two packages to distinct namespaces (`PackageNamespaces`).
+  routes entry, finders per class, expression indexes per schema). Since rc.19 R65 each package
+  is its own namespace by default, so the `xpkg-collision` pair is two types; mapping both
+  packages onto one namespace (`PackageNamespaces`) is what the refusal tests use.
 - *Done:* TypeScript (`ctx.claim`, helpers in `codegen-ts/src/naming/name-claims.ts`: a module's
   type and collection names per module directory, the barrel's re-exports per barrel, REST
   segments per routes entry). The `xpkg-collision` tests use the package output layout; a file
@@ -194,7 +195,9 @@ collide on an output path. State per port:
 
 - *Done, C#:* every per-object generator writes through `OutputPaths.Of`
   (`<package segments>/<file>`; root-level objects at the root). The path follows the metadata
-  package, not `PackageNamespaces`; namespaces are unchanged. Test: `OutputPathsTests`.
+  package, not `PackageNamespaces`. Since rc.19 R65 the namespace follows the package too
+  (`acme::alpha` → `Acme.Alpha`) unless a binding maps it; every cross-namespace reference is
+  `global::`-qualified. Tests: `OutputPathsTests`, `PackageNamespaceTests`.
 - *Done, TypeScript:* `outputLayout` defaults to `"package"` (`DEFAULT_OUTPUT_LAYOUT`, ruling
   R63); `"flat"` stays available. Tests: `barrel-layout.test.ts` (the barrel exports the same
   names in both layouts), `naming/name-claims.test.ts`.

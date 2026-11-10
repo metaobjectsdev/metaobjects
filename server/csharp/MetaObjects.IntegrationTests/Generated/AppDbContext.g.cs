@@ -9,128 +9,128 @@ public class AppDbContext : DbContext
 {
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
-    public DbSet<AllTypes> AllTypes { get; set; } = default!;
-    public DbSet<AllTypesBreakdown> AllTypesBreakdowns { get; set; } = default!;
-    public DbSet<Asset> Assets { get; set; } = default!;
-    public DbSet<AssetActivity> AssetActivities { get; set; } = default!;
-    public DbSet<AssetDays> AssetDays { get; set; } = default!;
-    public DbSet<Auth> Auths { get; set; } = default!;
-    public DbSet<AuthsByKind> AuthsByKinds { get; set; } = default!;
-    public DbSet<Entry> Entries { get; set; } = default!;
-    public DbSet<EntryTotals> EntryTotals { get; set; } = default!;
-    public DbSet<FitnessTotals> FitnessTotals { get; set; } = default!;
-    public DbSet<FitnessTotalsFilled> FitnessTotalsFilleds { get; set; } = default!;
-    public DbSet<Follow> Follows { get; set; } = default!;
-    public DbSet<Friendship> Friendships { get; set; } = default!;
-    public DbSet<Gadget> Gadgets { get; set; } = default!;
-    public DbSet<GadgetEvent> GadgetEvents { get; set; } = default!;
-    public DbSet<GadgetEventsByLabel> GadgetEventsByLabels { get; set; } = default!;
-    public DbSet<IntEnumArray> IntEnumArrays { get; set; } = default!;
-    public DbSet<LiveIntroPrograms> LiveIntroPrograms { get; set; } = default!;
-    public DbSet<Measurement> Measurements { get; set; } = default!;
-    public DbSet<MeasurementStats> MeasurementStats { get; set; } = default!;
-    public DbSet<MeasurementStatsFilled> MeasurementStatsFilleds { get; set; } = default!;
-    public DbSet<Node> Nodes { get; set; } = default!;
-    public DbSet<NodesByParent> NodesByParents { get; set; } = default!;
-    public DbSet<Person> Persons { get; set; } = default!;
-    public DbSet<Post> Posts { get; set; } = default!;
-    public DbSet<PostReferral> PostReferrals { get; set; } = default!;
-    public DbSet<PostTag> PostTags { get; set; } = default!;
-    public DbSet<Program> Programs { get; set; } = default!;
-    public DbSet<ProgramFlagRoster> ProgramFlagRosters { get; set; } = default!;
-    public DbSet<ProgramFlags> ProgramFlags { get; set; } = default!;
-    public DbSet<ProgramLongWeeks> ProgramLongWeeks { get; set; } = default!;
-    public DbSet<ProgramMinutes> ProgramMinutes { get; set; } = default!;
-    public DbSet<ProgramRoster> ProgramRosters { get; set; } = default!;
-    public DbSet<ProgramSessions> ProgramSessions { get; set; } = default!;
-    public DbSet<ProgramStat> ProgramStats { get; set; } = default!;
-    public DbSet<ProgramView> ProgramViews { get; set; } = default!;
-    public DbSet<ProgramsByMonth> ProgramsByMonths { get; set; } = default!;
-    public DbSet<ProgramsByWeek> ProgramsByWeeks { get; set; } = default!;
-    public DbSet<ProgramsEmptyScope> ProgramsEmptyScopes { get; set; } = default!;
-    public DbSet<ProgramsOverTime> ProgramsOverTimes { get; set; } = default!;
-    public DbSet<RecentPrograms> RecentPrograms { get; set; } = default!;
-    public DbSet<Session> Sessions { get; set; } = default!;
-    public DbSet<SessionsByProgram> SessionsByPrograms { get; set; } = default!;
-    public DbSet<Tag> Tags { get; set; } = default!;
-    public DbSet<Week> Weeks { get; set; } = default!;
-    public DbSet<WeekShapes> WeekShapes { get; set; } = default!;
+    public DbSet<global::MetaObjects.IntegrationTests.Generated.AllTypes> AllTypes { get; set; } = default!;
+    public DbSet<global::MetaObjects.IntegrationTests.Generated.AllTypesBreakdown> AllTypesBreakdowns { get; set; } = default!;
+    public DbSet<global::MetaObjects.IntegrationTests.Generated.Asset> Assets { get; set; } = default!;
+    public DbSet<global::MetaObjects.IntegrationTests.Generated.AssetActivity> AssetActivities { get; set; } = default!;
+    public DbSet<global::MetaObjects.IntegrationTests.Generated.AssetDays> AssetDays { get; set; } = default!;
+    public DbSet<global::MetaObjects.IntegrationTests.Generated.Auth> Auths { get; set; } = default!;
+    public DbSet<global::MetaObjects.IntegrationTests.Generated.AuthsByKind> AuthsByKinds { get; set; } = default!;
+    public DbSet<global::MetaObjects.IntegrationTests.Generated.Entry> Entries { get; set; } = default!;
+    public DbSet<global::MetaObjects.IntegrationTests.Generated.EntryTotals> EntryTotals { get; set; } = default!;
+    public DbSet<global::MetaObjects.IntegrationTests.Generated.FitnessTotals> FitnessTotals { get; set; } = default!;
+    public DbSet<global::MetaObjects.IntegrationTests.Generated.FitnessTotalsFilled> FitnessTotalsFilleds { get; set; } = default!;
+    public DbSet<global::MetaObjects.IntegrationTests.Generated.Follow> Follows { get; set; } = default!;
+    public DbSet<global::MetaObjects.IntegrationTests.Generated.Friendship> Friendships { get; set; } = default!;
+    public DbSet<global::MetaObjects.IntegrationTests.Generated.Gadget> Gadgets { get; set; } = default!;
+    public DbSet<global::MetaObjects.IntegrationTests.Generated.GadgetEvent> GadgetEvents { get; set; } = default!;
+    public DbSet<global::MetaObjects.IntegrationTests.Generated.GadgetEventsByLabel> GadgetEventsByLabels { get; set; } = default!;
+    public DbSet<global::MetaObjects.IntegrationTests.Generated.IntEnumArray> IntEnumArrays { get; set; } = default!;
+    public DbSet<global::MetaObjects.IntegrationTests.Generated.LiveIntroPrograms> LiveIntroPrograms { get; set; } = default!;
+    public DbSet<global::MetaObjects.IntegrationTests.Generated.Measurement> Measurements { get; set; } = default!;
+    public DbSet<global::MetaObjects.IntegrationTests.Generated.MeasurementStats> MeasurementStats { get; set; } = default!;
+    public DbSet<global::MetaObjects.IntegrationTests.Generated.MeasurementStatsFilled> MeasurementStatsFilleds { get; set; } = default!;
+    public DbSet<global::MetaObjects.IntegrationTests.Generated.Node> Nodes { get; set; } = default!;
+    public DbSet<global::MetaObjects.IntegrationTests.Generated.NodesByParent> NodesByParents { get; set; } = default!;
+    public DbSet<global::MetaObjects.IntegrationTests.Generated.Person> Persons { get; set; } = default!;
+    public DbSet<global::MetaObjects.IntegrationTests.Generated.Post> Posts { get; set; } = default!;
+    public DbSet<global::MetaObjects.IntegrationTests.Generated.PostReferral> PostReferrals { get; set; } = default!;
+    public DbSet<global::MetaObjects.IntegrationTests.Generated.PostTag> PostTags { get; set; } = default!;
+    public DbSet<global::MetaObjects.IntegrationTests.Generated.Program> Programs { get; set; } = default!;
+    public DbSet<global::MetaObjects.IntegrationTests.Generated.ProgramFlagRoster> ProgramFlagRosters { get; set; } = default!;
+    public DbSet<global::MetaObjects.IntegrationTests.Generated.ProgramFlags> ProgramFlags { get; set; } = default!;
+    public DbSet<global::MetaObjects.IntegrationTests.Generated.ProgramLongWeeks> ProgramLongWeeks { get; set; } = default!;
+    public DbSet<global::MetaObjects.IntegrationTests.Generated.ProgramMinutes> ProgramMinutes { get; set; } = default!;
+    public DbSet<global::MetaObjects.IntegrationTests.Generated.ProgramRoster> ProgramRosters { get; set; } = default!;
+    public DbSet<global::MetaObjects.IntegrationTests.Generated.ProgramSessions> ProgramSessions { get; set; } = default!;
+    public DbSet<global::MetaObjects.IntegrationTests.Generated.ProgramStat> ProgramStats { get; set; } = default!;
+    public DbSet<global::MetaObjects.IntegrationTests.Generated.ProgramView> ProgramViews { get; set; } = default!;
+    public DbSet<global::MetaObjects.IntegrationTests.Generated.ProgramsByMonth> ProgramsByMonths { get; set; } = default!;
+    public DbSet<global::MetaObjects.IntegrationTests.Generated.ProgramsByWeek> ProgramsByWeeks { get; set; } = default!;
+    public DbSet<global::MetaObjects.IntegrationTests.Generated.ProgramsEmptyScope> ProgramsEmptyScopes { get; set; } = default!;
+    public DbSet<global::MetaObjects.IntegrationTests.Generated.ProgramsOverTime> ProgramsOverTimes { get; set; } = default!;
+    public DbSet<global::MetaObjects.IntegrationTests.Generated.RecentPrograms> RecentPrograms { get; set; } = default!;
+    public DbSet<global::MetaObjects.IntegrationTests.Generated.Session> Sessions { get; set; } = default!;
+    public DbSet<global::MetaObjects.IntegrationTests.Generated.SessionsByProgram> SessionsByPrograms { get; set; } = default!;
+    public DbSet<global::MetaObjects.IntegrationTests.Generated.Tag> Tags { get; set; } = default!;
+    public DbSet<global::MetaObjects.IntegrationTests.Generated.Week> Weeks { get; set; } = default!;
+    public DbSet<global::MetaObjects.IntegrationTests.Generated.WeekShapes> WeekShapes { get; set; } = default!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        modelBuilder.Entity<AllTypesBreakdown>().HasNoKey().ToView("v_all_types_breakdown");
-        modelBuilder.Entity<AllTypesBreakdown>().Property(x => x.Level).HasConversion<string>();
-        modelBuilder.Entity<AllTypesBreakdown>().Property(x => x.LegacyStatus).HasConversion(v => v == AllTypesBreakdown.AllTypesBreakdownLegacyStatus.DRAFT ? 0 : v == AllTypesBreakdown.AllTypesBreakdownLegacyStatus.PUBLISHED ? 5 : v == AllTypesBreakdown.AllTypesBreakdownLegacyStatus.ARCHIVED ? 9 : UnmappedEnumMember(v, "legacyStatus"), v => v == 0 ? AllTypesBreakdown.AllTypesBreakdownLegacyStatus.DRAFT : v == 5 ? AllTypesBreakdown.AllTypesBreakdownLegacyStatus.PUBLISHED : v == 9 ? AllTypesBreakdown.AllTypesBreakdownLegacyStatus.ARCHIVED : UnmappedEnumValue<AllTypesBreakdown.AllTypesBreakdownLegacyStatus>(v, "legacyStatus"));
-        modelBuilder.Entity<AssetActivity>().HasNoKey().ToView("v_asset_activity");
-        modelBuilder.Entity<AssetDays>().HasNoKey().ToView("v_asset_days");
-        modelBuilder.Entity<AuthsByKind>().HasNoKey().ToView("v_auths_by_kind");
-        modelBuilder.Entity<AuthsByKind>().Property(x => x.Kind).HasConversion<string>();
-        modelBuilder.Entity<EntryTotals>().HasNoKey().ToView("v_entry_totals");
-        modelBuilder.Entity<FitnessTotals>().HasNoKey().ToView("v_fitness_totals");
-        modelBuilder.Entity<FitnessTotalsFilled>().HasNoKey().ToView("v_fitness_totals_filled");
-        modelBuilder.Entity<GadgetEventsByLabel>().HasNoKey().ToView("v_gadget_events_by_label");
-        modelBuilder.Entity<LiveIntroPrograms>().HasNoKey().ToView("v_live_intro_programs");
-        modelBuilder.Entity<LiveIntroPrograms>().Property(x => x.Status).HasConversion<string>();
-        modelBuilder.Entity<MeasurementStats>().HasNoKey().ToView("v_measurement_stats");
-        modelBuilder.Entity<MeasurementStatsFilled>().HasNoKey().ToView("v_measurement_stats_filled");
-        modelBuilder.Entity<NodesByParent>().HasNoKey().ToView("v_nodes_by_parent");
-        modelBuilder.Entity<ProgramFlagRoster>().HasNoKey().ToView("v_program_flag_roster");
-        modelBuilder.Entity<ProgramFlags>().HasNoKey().ToView("v_program_flags");
-        modelBuilder.Entity<ProgramLongWeeks>().HasNoKey().ToView("v_program_long_weeks");
-        modelBuilder.Entity<ProgramMinutes>().HasNoKey().ToView("v_program_minutes");
-        modelBuilder.Entity<ProgramRoster>().HasNoKey().ToView("v_program_roster");
-        modelBuilder.Entity<ProgramSessions>().HasNoKey().ToView("v_program_sessions");
-        modelBuilder.Entity<ProgramStat>().ToView(ProgramStatNames.SourcePrimaryView);
-        modelBuilder.Entity<ProgramView>().ToView(ProgramViewNames.SourcePrimaryView);
-        modelBuilder.Entity<ProgramView>().Property(x => x.Status).HasConversion<string>();
-        modelBuilder.Entity<ProgramsByMonth>().HasNoKey().ToView("v_programs_by_month");
-        modelBuilder.Entity<ProgramsByMonth>().Property(x => x.Status).HasConversion<string>();
-        modelBuilder.Entity<ProgramsByWeek>().HasNoKey().ToView("v_programs_by_week");
-        modelBuilder.Entity<ProgramsEmptyScope>().HasNoKey().ToView("v_programs_empty_scope");
-        modelBuilder.Entity<ProgramsOverTime>().HasNoKey().ToView("v_programs_over_time");
-        modelBuilder.Entity<RecentPrograms>().HasNoKey().ToView("v_recent_programs");
-        modelBuilder.Entity<SessionsByProgram>().HasNoKey().ToView("v_sessions_by_program");
-        modelBuilder.Entity<WeekShapes>().HasNoKey().ToView("v_week_shapes");
-        modelBuilder.Entity<AllTypes>().OwnsOne(x => x.Settings, b => b.ToJson(AllTypesNames.SettingsColumn));
-        modelBuilder.Entity<AllTypes>().OwnsMany(x => x.Labels, b => b.ToJson(AllTypesNames.LabelsColumn));
-        modelBuilder.Entity<AllTypes>().Property(x => x.EnumVal).HasConversion<string>();
-        modelBuilder.Entity<AllTypes>().Property(x => x.IntEnumVal).HasConversion(v => v == global::MetaObjects.IntegrationTests.Generated.AllTypes.AllTypesIntEnumVal.DRAFT ? 0 : v == global::MetaObjects.IntegrationTests.Generated.AllTypes.AllTypesIntEnumVal.PUBLISHED ? 5 : v == global::MetaObjects.IntegrationTests.Generated.AllTypes.AllTypesIntEnumVal.ARCHIVED ? 9 : UnmappedEnumMember(v, "intEnumVal"), v => v == 0 ? global::MetaObjects.IntegrationTests.Generated.AllTypes.AllTypesIntEnumVal.DRAFT : v == 5 ? global::MetaObjects.IntegrationTests.Generated.AllTypes.AllTypesIntEnumVal.PUBLISHED : v == 9 ? global::MetaObjects.IntegrationTests.Generated.AllTypes.AllTypesIntEnumVal.ARCHIVED : UnmappedEnumValue<global::MetaObjects.IntegrationTests.Generated.AllTypes.AllTypesIntEnumVal>(v, "intEnumVal"));
-        modelBuilder.Entity<AllTypes>().Property(x => x.DecVal).HasPrecision(18, 6);
-        modelBuilder.Entity<AllTypes>().Property(x => x.TsVal).HasColumnType("timestamp without time zone");
-        modelBuilder.Entity<AllTypes>().Property(x => x.TsTzVal).HasColumnType("timestamp with time zone");
-        modelBuilder.Entity<AllTypes>().Property(x => x.UriVal).HasColumnType("text").HasConversion(v => v!.ToString(), v => new System.Uri(v));
-        modelBuilder.Entity<AllTypes>().Property(x => x.InetVal).HasColumnType("inet");
-        modelBuilder.Entity<AllTypes>().Property(x => x.Inet6Val).HasColumnType("inet");
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.AllTypesBreakdown>().HasNoKey().ToView("v_all_types_breakdown");
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.AllTypesBreakdown>().Property(x => x.Level).HasConversion<string>();
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.AllTypesBreakdown>().Property(x => x.LegacyStatus).HasConversion(v => v == global::MetaObjects.IntegrationTests.Generated.AllTypesBreakdown.AllTypesBreakdownLegacyStatus.DRAFT ? 0 : v == global::MetaObjects.IntegrationTests.Generated.AllTypesBreakdown.AllTypesBreakdownLegacyStatus.PUBLISHED ? 5 : v == global::MetaObjects.IntegrationTests.Generated.AllTypesBreakdown.AllTypesBreakdownLegacyStatus.ARCHIVED ? 9 : UnmappedEnumMember(v, "legacyStatus"), v => v == 0 ? global::MetaObjects.IntegrationTests.Generated.AllTypesBreakdown.AllTypesBreakdownLegacyStatus.DRAFT : v == 5 ? global::MetaObjects.IntegrationTests.Generated.AllTypesBreakdown.AllTypesBreakdownLegacyStatus.PUBLISHED : v == 9 ? global::MetaObjects.IntegrationTests.Generated.AllTypesBreakdown.AllTypesBreakdownLegacyStatus.ARCHIVED : UnmappedEnumValue<global::MetaObjects.IntegrationTests.Generated.AllTypesBreakdown.AllTypesBreakdownLegacyStatus>(v, "legacyStatus"));
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.AssetActivity>().HasNoKey().ToView("v_asset_activity");
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.AssetDays>().HasNoKey().ToView("v_asset_days");
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.AuthsByKind>().HasNoKey().ToView("v_auths_by_kind");
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.AuthsByKind>().Property(x => x.Kind).HasConversion<string>();
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.EntryTotals>().HasNoKey().ToView("v_entry_totals");
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.FitnessTotals>().HasNoKey().ToView("v_fitness_totals");
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.FitnessTotalsFilled>().HasNoKey().ToView("v_fitness_totals_filled");
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.GadgetEventsByLabel>().HasNoKey().ToView("v_gadget_events_by_label");
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.LiveIntroPrograms>().HasNoKey().ToView("v_live_intro_programs");
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.LiveIntroPrograms>().Property(x => x.Status).HasConversion<string>();
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.MeasurementStats>().HasNoKey().ToView("v_measurement_stats");
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.MeasurementStatsFilled>().HasNoKey().ToView("v_measurement_stats_filled");
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.NodesByParent>().HasNoKey().ToView("v_nodes_by_parent");
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.ProgramFlagRoster>().HasNoKey().ToView("v_program_flag_roster");
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.ProgramFlags>().HasNoKey().ToView("v_program_flags");
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.ProgramLongWeeks>().HasNoKey().ToView("v_program_long_weeks");
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.ProgramMinutes>().HasNoKey().ToView("v_program_minutes");
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.ProgramRoster>().HasNoKey().ToView("v_program_roster");
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.ProgramSessions>().HasNoKey().ToView("v_program_sessions");
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.ProgramStat>().ToView(global::MetaObjects.IntegrationTests.Generated.ProgramStatNames.SourcePrimaryView);
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.ProgramView>().ToView(global::MetaObjects.IntegrationTests.Generated.ProgramViewNames.SourcePrimaryView);
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.ProgramView>().Property(x => x.Status).HasConversion<string>();
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.ProgramsByMonth>().HasNoKey().ToView("v_programs_by_month");
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.ProgramsByMonth>().Property(x => x.Status).HasConversion<string>();
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.ProgramsByWeek>().HasNoKey().ToView("v_programs_by_week");
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.ProgramsEmptyScope>().HasNoKey().ToView("v_programs_empty_scope");
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.ProgramsOverTime>().HasNoKey().ToView("v_programs_over_time");
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.RecentPrograms>().HasNoKey().ToView("v_recent_programs");
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.SessionsByProgram>().HasNoKey().ToView("v_sessions_by_program");
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.WeekShapes>().HasNoKey().ToView("v_week_shapes");
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.AllTypes>().OwnsOne(x => x.Settings, b => b.ToJson(global::MetaObjects.IntegrationTests.Generated.AllTypesNames.SettingsColumn));
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.AllTypes>().OwnsMany(x => x.Labels, b => b.ToJson(global::MetaObjects.IntegrationTests.Generated.AllTypesNames.LabelsColumn));
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.AllTypes>().Property(x => x.EnumVal).HasConversion<string>();
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.AllTypes>().Property(x => x.IntEnumVal).HasConversion(v => v == global::MetaObjects.IntegrationTests.Generated.AllTypes.AllTypesIntEnumVal.DRAFT ? 0 : v == global::MetaObjects.IntegrationTests.Generated.AllTypes.AllTypesIntEnumVal.PUBLISHED ? 5 : v == global::MetaObjects.IntegrationTests.Generated.AllTypes.AllTypesIntEnumVal.ARCHIVED ? 9 : UnmappedEnumMember(v, "intEnumVal"), v => v == 0 ? global::MetaObjects.IntegrationTests.Generated.AllTypes.AllTypesIntEnumVal.DRAFT : v == 5 ? global::MetaObjects.IntegrationTests.Generated.AllTypes.AllTypesIntEnumVal.PUBLISHED : v == 9 ? global::MetaObjects.IntegrationTests.Generated.AllTypes.AllTypesIntEnumVal.ARCHIVED : UnmappedEnumValue<global::MetaObjects.IntegrationTests.Generated.AllTypes.AllTypesIntEnumVal>(v, "intEnumVal"));
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.AllTypes>().Property(x => x.DecVal).HasPrecision(18, 6);
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.AllTypes>().Property(x => x.TsVal).HasColumnType("timestamp without time zone");
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.AllTypes>().Property(x => x.TsTzVal).HasColumnType("timestamp with time zone");
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.AllTypes>().Property(x => x.UriVal).HasColumnType("text").HasConversion(v => v!.ToString(), v => new global::System.Uri(v));
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.AllTypes>().Property(x => x.InetVal).HasColumnType("inet");
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.AllTypes>().Property(x => x.Inet6Val).HasColumnType("inet");
         if (Database.ProviderName == "Npgsql.EntityFrameworkCore.PostgreSQL")
-            modelBuilder.Entity<AllTypes>().Property(x => x.DurationVal).HasColumnType("interval").Metadata.SetTypeMapping(DurationInterval.Mapping);
+            modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.AllTypes>().Property(x => x.DurationVal).HasColumnType("interval").Metadata.SetTypeMapping(DurationInterval.Mapping);
         else
-            modelBuilder.Entity<AllTypes>().Property(x => x.DurationVal).HasConversion(new Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<System.TimeSpan, long>(v => global::MetaObjects.IntegrationTests.Generated.DurationWire.ToMicros(v), v => global::MetaObjects.IntegrationTests.Generated.DurationWire.FromMicros(v)));
-        modelBuilder.Entity<Asset>().Property(x => x.RecordedAt).HasColumnType("timestamp with time zone");
-        modelBuilder.Entity<Asset>().Property(x => x.ObservedAt).HasColumnType("timestamp without time zone");
-        modelBuilder.Entity<Asset>().Property(x => x.ExternalId).HasColumnType("uuid").HasConversion(v => System.Guid.Parse(v!), g => g.ToString("D"));
-        modelBuilder.Entity<Asset>().Property(x => x.Payload).HasColumnType("jsonb");
-        modelBuilder.Entity<Auth>().Property(x => x.Type).HasConversion<string>();
-        modelBuilder.Entity<Auth>().HasDiscriminator(e => e.Type).HasValue<BridgeAuth>(Auth.AuthType.Bridge).HasValue<CopayAuth>(Auth.AuthType.Copay).HasValue<PriorAuthAuth>(Auth.AuthType.PriorAuth).HasValue<ReferralAuth>(Auth.AuthType.Referral);
-        modelBuilder.Entity<CopayAuth>().Property(x => x.CopayAmount).HasPrecision(10, 2);
-        modelBuilder.Entity<ReferralAuth>().Property(x => x.Urgency).HasDefaultValue("routine").HasSentinel("routine");
-        modelBuilder.Entity<Entry>().Property(x => x.Amount).HasPrecision(28, 10);
-        modelBuilder.Entity<Follow>().HasOne<Person>().WithMany().HasForeignKey(e => e.FollowerId).OnDelete(DeleteBehavior.NoAction);
-        modelBuilder.Entity<Follow>().HasOne<Person>().WithMany().HasForeignKey(e => e.FolloweeId).OnDelete(DeleteBehavior.NoAction);
-        modelBuilder.Entity<Friendship>().HasOne<Person>().WithMany().HasForeignKey(e => e.PersonAId).OnDelete(DeleteBehavior.NoAction);
-        modelBuilder.Entity<Friendship>().HasOne<Person>().WithMany().HasForeignKey(e => e.PersonBId).OnDelete(DeleteBehavior.NoAction);
-        modelBuilder.Entity<GadgetEvent>().HasOne<Gadget>().WithMany().HasForeignKey(e => e.GadgetId).OnDelete(DeleteBehavior.NoAction);
-        modelBuilder.Entity<IntEnumArray>().Property(x => x.State).HasConversion(v => v == PublishState.DRAFT ? 0 : v == PublishState.PUBLISHED ? 5 : v == PublishState.ARCHIVED ? 9 : UnmappedEnumMember(v, "state"), v => v == 0 ? PublishState.DRAFT : v == 5 ? PublishState.PUBLISHED : v == 9 ? PublishState.ARCHIVED : UnmappedEnumValue<PublishState>(v, "state"));
-        modelBuilder.Entity<IntEnumArray>().PrimitiveCollection(x => x.History).ElementType().HasConversion(new global::Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<PublishState, int>(v => v == PublishState.DRAFT ? 0 : v == PublishState.PUBLISHED ? 5 : v == PublishState.ARCHIVED ? 9 : UnmappedEnumMember(v, "history"), v => v == 0 ? PublishState.DRAFT : v == 5 ? PublishState.PUBLISHED : v == 9 ? PublishState.ARCHIVED : UnmappedEnumValue<PublishState>(v, "history")));
-        modelBuilder.Entity<Measurement>().Property(x => x.PreciseKg).HasPrecision(9, 4);
-        modelBuilder.Entity<Node>().HasOne<Node>().WithMany().HasForeignKey(e => e.ParentId).OnDelete(DeleteBehavior.NoAction);
-        modelBuilder.Entity<Post>().HasMany(x => x.Tags).WithMany().UsingEntity<PostTag>(l => l.HasOne<Tag>().WithMany().HasForeignKey(j => j.TagId), r => r.HasOne<Post>().WithMany().HasForeignKey(j => j.PostId));
-        modelBuilder.Entity<Post>().HasMany(x => x.Referrals).WithMany().UsingEntity<PostReferral>(l => l.HasOne<ReferralAuth>().WithMany().HasForeignKey(j => j.ReferralId), r => r.HasOne<Post>().WithMany().HasForeignKey(j => j.PostId));
-        modelBuilder.Entity<Program>().Property(x => x.Status).HasConversion<string>();
-        modelBuilder.Entity<Program>().Property(x => x.CreatedAt).HasColumnType("timestamp without time zone");
-        modelBuilder.Entity<Program>().HasIndex(x => x.Title, ProgramNames.IdentityByTitleIndex).IsUnique().HasDatabaseName(ProgramNames.IdentityByTitleIndex);
-        modelBuilder.Entity<Program>().HasIndex(x => new { x.Title, x.Status }, ProgramNames.IndexIdxProgramsTitleStatusIndex).HasDatabaseName(ProgramNames.IndexIdxProgramsTitleStatusIndex);
-        modelBuilder.Entity<Session>().HasOne<Week>().WithMany().HasForeignKey(e => e.WeekId).OnDelete(DeleteBehavior.NoAction);
-        modelBuilder.Entity<Week>().HasOne<Program>().WithMany().HasForeignKey(e => e.ProgramId).OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.AllTypes>().Property(x => x.DurationVal).HasConversion(new global::Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<global::System.TimeSpan, long>(v => global::MetaObjects.IntegrationTests.Generated.DurationWire.ToMicros(v), v => global::MetaObjects.IntegrationTests.Generated.DurationWire.FromMicros(v)));
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.Asset>().Property(x => x.RecordedAt).HasColumnType("timestamp with time zone");
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.Asset>().Property(x => x.ObservedAt).HasColumnType("timestamp without time zone");
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.Asset>().Property(x => x.ExternalId).HasColumnType("uuid").HasConversion(v => global::System.Guid.Parse(v!), g => g.ToString("D"));
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.Asset>().Property(x => x.Payload).HasColumnType("jsonb");
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.Auth>().Property(x => x.Type).HasConversion<string>();
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.Auth>().HasDiscriminator(e => e.Type).HasValue<global::MetaObjects.IntegrationTests.Generated.BridgeAuth>(global::MetaObjects.IntegrationTests.Generated.Auth.AuthType.Bridge).HasValue<global::MetaObjects.IntegrationTests.Generated.CopayAuth>(global::MetaObjects.IntegrationTests.Generated.Auth.AuthType.Copay).HasValue<global::MetaObjects.IntegrationTests.Generated.PriorAuthAuth>(global::MetaObjects.IntegrationTests.Generated.Auth.AuthType.PriorAuth).HasValue<global::MetaObjects.IntegrationTests.Generated.ReferralAuth>(global::MetaObjects.IntegrationTests.Generated.Auth.AuthType.Referral);
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.CopayAuth>().Property(x => x.CopayAmount).HasPrecision(10, 2);
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.ReferralAuth>().Property(x => x.Urgency).HasDefaultValue("routine").HasSentinel("routine");
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.Entry>().Property(x => x.Amount).HasPrecision(28, 10);
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.Follow>().HasOne<global::MetaObjects.IntegrationTests.Generated.Person>().WithMany().HasForeignKey(e => e.FollowerId).OnDelete(DeleteBehavior.NoAction);
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.Follow>().HasOne<global::MetaObjects.IntegrationTests.Generated.Person>().WithMany().HasForeignKey(e => e.FolloweeId).OnDelete(DeleteBehavior.NoAction);
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.Friendship>().HasOne<global::MetaObjects.IntegrationTests.Generated.Person>().WithMany().HasForeignKey(e => e.PersonAId).OnDelete(DeleteBehavior.NoAction);
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.Friendship>().HasOne<global::MetaObjects.IntegrationTests.Generated.Person>().WithMany().HasForeignKey(e => e.PersonBId).OnDelete(DeleteBehavior.NoAction);
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.GadgetEvent>().HasOne<global::MetaObjects.IntegrationTests.Generated.Gadget>().WithMany().HasForeignKey(e => e.GadgetId).OnDelete(DeleteBehavior.NoAction);
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.IntEnumArray>().Property(x => x.State).HasConversion(v => v == global::MetaObjects.IntegrationTests.Generated.PublishState.DRAFT ? 0 : v == global::MetaObjects.IntegrationTests.Generated.PublishState.PUBLISHED ? 5 : v == global::MetaObjects.IntegrationTests.Generated.PublishState.ARCHIVED ? 9 : UnmappedEnumMember(v, "state"), v => v == 0 ? global::MetaObjects.IntegrationTests.Generated.PublishState.DRAFT : v == 5 ? global::MetaObjects.IntegrationTests.Generated.PublishState.PUBLISHED : v == 9 ? global::MetaObjects.IntegrationTests.Generated.PublishState.ARCHIVED : UnmappedEnumValue<global::MetaObjects.IntegrationTests.Generated.PublishState>(v, "state"));
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.IntEnumArray>().PrimitiveCollection(x => x.History).ElementType().HasConversion(new global::Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<global::MetaObjects.IntegrationTests.Generated.PublishState, int>(v => v == global::MetaObjects.IntegrationTests.Generated.PublishState.DRAFT ? 0 : v == global::MetaObjects.IntegrationTests.Generated.PublishState.PUBLISHED ? 5 : v == global::MetaObjects.IntegrationTests.Generated.PublishState.ARCHIVED ? 9 : UnmappedEnumMember(v, "history"), v => v == 0 ? global::MetaObjects.IntegrationTests.Generated.PublishState.DRAFT : v == 5 ? global::MetaObjects.IntegrationTests.Generated.PublishState.PUBLISHED : v == 9 ? global::MetaObjects.IntegrationTests.Generated.PublishState.ARCHIVED : UnmappedEnumValue<global::MetaObjects.IntegrationTests.Generated.PublishState>(v, "history")));
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.Measurement>().Property(x => x.PreciseKg).HasPrecision(9, 4);
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.Node>().HasOne<global::MetaObjects.IntegrationTests.Generated.Node>().WithMany().HasForeignKey(e => e.ParentId).OnDelete(DeleteBehavior.NoAction);
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.Post>().HasMany(x => x.Tags).WithMany().UsingEntity<global::MetaObjects.IntegrationTests.Generated.PostTag>(l => l.HasOne<global::MetaObjects.IntegrationTests.Generated.Tag>().WithMany().HasForeignKey(j => j.TagId), r => r.HasOne<global::MetaObjects.IntegrationTests.Generated.Post>().WithMany().HasForeignKey(j => j.PostId));
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.Post>().HasMany(x => x.Referrals).WithMany().UsingEntity<global::MetaObjects.IntegrationTests.Generated.PostReferral>(l => l.HasOne<global::MetaObjects.IntegrationTests.Generated.ReferralAuth>().WithMany().HasForeignKey(j => j.ReferralId), r => r.HasOne<global::MetaObjects.IntegrationTests.Generated.Post>().WithMany().HasForeignKey(j => j.PostId));
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.Program>().Property(x => x.Status).HasConversion<string>();
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.Program>().Property(x => x.CreatedAt).HasColumnType("timestamp without time zone");
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.Program>().HasIndex(x => x.Title, global::MetaObjects.IntegrationTests.Generated.ProgramNames.IdentityByTitleIndex).IsUnique().HasDatabaseName(global::MetaObjects.IntegrationTests.Generated.ProgramNames.IdentityByTitleIndex);
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.Program>().HasIndex(x => new { x.Title, x.Status }, global::MetaObjects.IntegrationTests.Generated.ProgramNames.IndexIdxProgramsTitleStatusIndex).HasDatabaseName(global::MetaObjects.IntegrationTests.Generated.ProgramNames.IndexIdxProgramsTitleStatusIndex);
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.Session>().HasOne<global::MetaObjects.IntegrationTests.Generated.Week>().WithMany().HasForeignKey(e => e.WeekId).OnDelete(DeleteBehavior.NoAction);
+        modelBuilder.Entity<global::MetaObjects.IntegrationTests.Generated.Week>().HasOne<global::MetaObjects.IntegrationTests.Generated.Program>().WithMany().HasForeignKey(e => e.ProgramId).OnDelete(DeleteBehavior.Cascade);
     }
 
     /// <summary>
@@ -140,7 +140,7 @@ public class AppDbContext : DbContext
     /// would hand the caller a wrong-but-valid value, silently.
     /// </summary>
     private static T UnmappedEnumValue<T>(int stored, string field) =>
-        throw new System.InvalidOperationException(
+        throw new global::System.InvalidOperationException(
             $"field.enum '{field}' read stored value {stored} with no member in " +
             "@intValueMap — the database holds a value the model does not describe.");
 
@@ -150,7 +150,7 @@ public class AppDbContext : DbContext
     /// integer, and writing some other member's instead would corrupt the row silently.
     /// </summary>
     private static int UnmappedEnumMember(object? value, string field) =>
-        throw new System.InvalidOperationException(
+        throw new global::System.InvalidOperationException(
             $"field.enum '{field}' cannot write {value}: it has no integer in " +
             "@intValueMap — the value is not one of the members the model declares.");
 }

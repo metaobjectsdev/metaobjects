@@ -53,6 +53,33 @@ public static class ValueObjectNames
     }
 
     /// <summary>
+    /// rc.19 R65: <paramref name="obj"/>'s type (entity, value object, projection, report),
+    /// <c>global::</c>-qualified — how every generated file outside the type's own declaration
+    /// names it, so no namespace can capture the name (CS0234) and no pair of <c>using</c>s can make
+    /// it ambiguous (CS0104).
+    /// </summary>
+    public static string GlobalRef(MetaData obj, GenConfig config) =>
+        Global(Namespace(obj, config), CSharpNaming.Pascal(obj.Name));
+
+    /// <summary><paramref name="name"/> in <paramref name="ns"/> as a <c>global::</c>-qualified name.
+    /// A <paramref name="name"/> that is already qualified (<c>global::…</c>) is returned as is.</summary>
+    public static string Global(string ns, string name) =>
+        name.StartsWith("global::", StringComparison.Ordinal) ? name : $"global::{ns}.{name}";
+
+    /// <summary>
+    /// rc.19 R65: <see cref="GenConfig.ContextTypeName"/> as generated code names it from any
+    /// namespace: as written when already <c>global::</c>-qualified, <c>global::</c> + the name when
+    /// dotted (the adopter named its namespace), otherwise in <see cref="GenConfig.Namespace"/>,
+    /// where the DbContext generator declares it.
+    /// </summary>
+    public static string ContextTypeRef(GenConfig config)
+    {
+        var name = config.ContextTypeName;
+        if (name.StartsWith("global::", StringComparison.Ordinal)) return name;
+        return name.Contains('.') ? "global::" + name : Global(config.Namespace, name);
+    }
+
+    /// <summary>
     /// How code in <paramref name="fromNamespace"/> names <paramref name="obj"/>'s type when a
     /// <c>using</c> of its namespace is in scope: bare, unless another object in the model shares its
     /// short name and it lives in another namespace — then <c>global::</c>-qualified, since a bare

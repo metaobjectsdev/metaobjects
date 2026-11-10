@@ -115,13 +115,13 @@ public class Issue203AutoSetStampingTests
         var src = Routes(Model);
         // Both the onCreate (createdAt) AND onUpdate (updatedAt) columns are stamped on
         // insert — the model's value is ignored (fresh row: updated_at == created_at).
-        Assert.Contains("input.CreatedAt = System.DateTimeOffset.UtcNow;", src);
-        Assert.Contains("input.UpdatedAt = System.DateTimeOffset.UtcNow;", src);
+        Assert.Contains("input.CreatedAt = global::System.DateTimeOffset.UtcNow;", src);
+        Assert.Contains("input.UpdatedAt = global::System.DateTimeOffset.UtcNow;", src);
         // Stamping happens BEFORE the row is persisted.
         var addIdx = src.IndexOf("db.Posts.Add(input);", System.StringComparison.Ordinal);
         Assert.True(addIdx > 0);
-        Assert.True(src.IndexOf("input.CreatedAt = System.DateTimeOffset.UtcNow;", System.StringComparison.Ordinal) < addIdx);
-        Assert.True(src.IndexOf("input.UpdatedAt = System.DateTimeOffset.UtcNow;", System.StringComparison.Ordinal) < addIdx);
+        Assert.True(src.IndexOf("input.CreatedAt = global::System.DateTimeOffset.UtcNow;", System.StringComparison.Ordinal) < addIdx);
+        Assert.True(src.IndexOf("input.UpdatedAt = global::System.DateTimeOffset.UtcNow;", System.StringComparison.Ordinal) < addIdx);
     }
 
     [Fact]
@@ -141,12 +141,12 @@ public class Issue203AutoSetStampingTests
     {
         var src = Routes(Model);
         // onUpdate column is bumped on every update...
-        Assert.Contains("existing.UpdatedAt = System.DateTimeOffset.UtcNow;", src);
+        Assert.Contains("existing.UpdatedAt = global::System.DateTimeOffset.UtcNow;", src);
         // ...but the onCreate column is NEVER stamped on update (the write-once created_at
         // contract — omitting this special-case is the latent lost-update bug).
         Assert.DoesNotContain("existing.CreatedAt =", src);
         // Stamped BEFORE the caller's partial merge block (so a partial still bumps it).
-        var stampIdx = src.IndexOf("existing.UpdatedAt = System.DateTimeOffset.UtcNow;", System.StringComparison.Ordinal);
+        var stampIdx = src.IndexOf("existing.UpdatedAt = global::System.DateTimeOffset.UtcNow;", System.StringComparison.Ordinal);
         var mergeIdx = src.IndexOf("foreach (var prop in body.RootElement.EnumerateObject())", System.StringComparison.Ordinal);
         Assert.True(stampIdx > 0 && mergeIdx > 0 && stampIdx < mergeIdx);
     }
@@ -157,17 +157,17 @@ public class Issue203AutoSetStampingTests
         var src = Routes(Model);
         // The caller can never set an @autoSet column via the PATCH/PUT body — both the
         // onCreate and onUpdate columns are skipped in the present-key merge.
-        Assert.Contains("if (string.Equals(target.Name, \"CreatedAt\", System.StringComparison.Ordinal)) continue; // @autoSet: server-owned", src);
-        Assert.Contains("if (string.Equals(target.Name, \"UpdatedAt\", System.StringComparison.Ordinal)) continue; // @autoSet: server-owned", src);
+        Assert.Contains("if (string.Equals(target.Name, \"CreatedAt\", global::System.StringComparison.Ordinal)) continue; // @autoSet: server-owned", src);
+        Assert.Contains("if (string.Equals(target.Name, \"UpdatedAt\", global::System.StringComparison.Ordinal)) continue; // @autoSet: server-owned", src);
     }
 
     [Fact]
     public void InsertPreserving_escape_hatch_is_emitted_verbatim_for_autoSet_entity()
     {
         var src = Routes(Model);
-        Assert.Contains("public static async System.Threading.Tasks.Task<Post> InsertPreserving(AppDbContext db, Post input)", src);
+        Assert.Contains("public static async global::System.Threading.Tasks.Task<Post> InsertPreserving(global::Acme.Generated.AppDbContext db, Post input)", src);
         // The escape hatch writes the @autoSet columns VERBATIM — it must NOT stamp now().
-        var start = src.IndexOf("InsertPreserving(AppDbContext db, Post input)", System.StringComparison.Ordinal);
+        var start = src.IndexOf("InsertPreserving(global::Acme.Generated.AppDbContext db, Post input)", System.StringComparison.Ordinal);
         Assert.True(start > 0);
         var body = src[start..];
         Assert.Contains("db.Posts.Add(input);", body);
@@ -193,11 +193,11 @@ public class Issue203AutoSetStampingTests
             new RoutesGenerator().Generate(Ctx(Load(InheritedModel)))
                 .Where(f => System.IO.Path.GetFileName(f.Path) == "NoteRoutes.g.cs"));
         var body = src.Content;
-        Assert.Contains("input.CreatedAt = System.DateTimeOffset.UtcNow;", body);
-        Assert.Contains("input.UpdatedAt = System.DateTimeOffset.UtcNow;", body);
-        Assert.Contains("existing.UpdatedAt = System.DateTimeOffset.UtcNow;", body);
+        Assert.Contains("input.CreatedAt = global::System.DateTimeOffset.UtcNow;", body);
+        Assert.Contains("input.UpdatedAt = global::System.DateTimeOffset.UtcNow;", body);
+        Assert.Contains("existing.UpdatedAt = global::System.DateTimeOffset.UtcNow;", body);
         Assert.DoesNotContain("existing.CreatedAt =", body);
-        Assert.Contains("InsertPreserving(AppDbContext db, Note input)", body);
+        Assert.Contains("InsertPreserving(global::Acme.Generated.AppDbContext db, Note input)", body);
     }
 
     [Fact]
@@ -205,11 +205,11 @@ public class Issue203AutoSetStampingTests
     {
         var src = Routes(TemporalModel);
         // field.date onCreate → DateOnly.FromDateTime(now).
-        Assert.Contains("input.CreatedOn = System.DateOnly.FromDateTime(System.DateTime.UtcNow);", src);
+        Assert.Contains("input.CreatedOn = global::System.DateOnly.FromDateTime(global::System.DateTime.UtcNow);", src);
         // field.timestamp @localTime onUpdate → DateTime (naive wall-clock) on both insert...
-        Assert.Contains("input.TouchedAt = System.DateTime.Now;", src);
+        Assert.Contains("input.TouchedAt = global::System.DateTime.Now;", src);
         // ...and update.
-        Assert.Contains("existing.TouchedAt = System.DateTime.Now;", src);
+        Assert.Contains("existing.TouchedAt = global::System.DateTime.Now;", src);
     }
 
     // -------------------------------------------------------------------------

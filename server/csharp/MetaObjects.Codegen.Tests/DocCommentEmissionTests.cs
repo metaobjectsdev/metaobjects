@@ -280,7 +280,7 @@ public class DocCommentEmissionTests
         Assert.Contains("/// <summary>A registered account holder.</summary>", src);
         // Summary must precede the DbSet property.
         int summaryIdx = src.IndexOf("/// <summary>A registered account holder.</summary>", StringComparison.Ordinal);
-        int dbsetIdx   = src.IndexOf("public DbSet<User> Users", StringComparison.Ordinal);
+        int dbsetIdx   = src.IndexOf("public DbSet<global::Acme.Generated.User> Users", StringComparison.Ordinal);
         Assert.True(summaryIdx < dbsetIdx, "summary comment must precede DbSet property");
     }
 

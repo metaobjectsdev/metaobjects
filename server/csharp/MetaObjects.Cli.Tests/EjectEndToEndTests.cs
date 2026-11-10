@@ -363,8 +363,10 @@ public sealed class EjectEndToEndTests : IDisposable
         """);
         var route = System.Text.RegularExpressions.Regex.Match(routesText, "prefix \\+ \"(/[^\"/{]+)\"").Groups[1].Value;
         Assert.False(string.IsNullOrEmpty(route), "could not find the collection route in the generated routes file");
+        // rc.19 R65: the context lives in the configured namespace, the routes in the entity's package's.
         File.WriteAllText(Path.Combine(appDir, "Program.cs"), $$"""
         using Acme.Generated;
+        using Acme.Widgets;
         using Codegen.Runtime;
         using Microsoft.EntityFrameworkCore;
 

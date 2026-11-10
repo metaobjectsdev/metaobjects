@@ -61,7 +61,7 @@ public class RequiredNestedValueObjectTests
         using var ms = new MemoryStream();
         var emit = comp.Emit(ms);
         Assert.True(emit.Success, string.Join("\n", emit.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)));
-        var type = Assembly.Load(ms.ToArray()).GetType("Acme.Generated.ScoringConfig")!;
+        var type = Assembly.Load(ms.ToArray()).GetType("Acme.ScoringConfig")!;
 
         var config = System.Text.Json.JsonSerializer.Deserialize("{}", type)!;
         Assert.NotNull(type.GetProperty("Thresholds")!.GetValue(config));

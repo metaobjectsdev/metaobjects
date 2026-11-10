@@ -15,6 +15,6 @@ public class FitnessTotals
     [Column("totalMinutes")]
     public long? TotalMinutes { get; set; }
     [Column("longShare")]
-    [System.Text.Json.Serialization.JsonConverter(typeof(DecimalWire.NullableDecimalJsonConverter))]
+    [global::System.Text.Json.Serialization.JsonConverter(typeof(DecimalWire.NullableDecimalJsonConverter))]
     public decimal? LongShare { get; set; }
 }

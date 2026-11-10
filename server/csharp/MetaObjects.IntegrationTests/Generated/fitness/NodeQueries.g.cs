@@ -12,13 +12,13 @@ namespace MetaObjects.IntegrationTests.Generated;
 public static class NodeQueries
 {
     /// <summary>The Node rows whose ParentId equals <paramref name="parentId"/> (one indexed query).</summary>
-    public static async System.Threading.Tasks.Task<List<Node>> FindNodesByParent(AppDbContext db, long? parentId) =>
+    public static async global::System.Threading.Tasks.Task<List<global::MetaObjects.IntegrationTests.Generated.Node>> FindNodesByParent(global::MetaObjects.IntegrationTests.Generated.AppDbContext db, long? parentId) =>
         await db.Nodes.AsNoTracking().Where(e => e.ParentId == parentId).ToListAsync();
 
     /// <summary>The Node rows whose ParentId is in <paramref name="parentIds"/> (one batched IN query; anti-N+1).</summary>
-    public static async System.Threading.Tasks.Task<List<Node>> FindNodesByParentIn(AppDbContext db, IReadOnlyCollection<long?> parentIds)
+    public static async global::System.Threading.Tasks.Task<List<global::MetaObjects.IntegrationTests.Generated.Node>> FindNodesByParentIn(global::MetaObjects.IntegrationTests.Generated.AppDbContext db, IReadOnlyCollection<long?> parentIds)
     {
-        if (parentIds.Count == 0) return new List<Node>();
+        if (parentIds.Count == 0) return new List<global::MetaObjects.IntegrationTests.Generated.Node>();
         return await db.Nodes.AsNoTracking().Where(e => parentIds.Contains(e.ParentId)).ToListAsync();
     }
 }

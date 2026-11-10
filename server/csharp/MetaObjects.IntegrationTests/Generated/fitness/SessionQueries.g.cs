@@ -12,13 +12,13 @@ namespace MetaObjects.IntegrationTests.Generated;
 public static class SessionQueries
 {
     /// <summary>The Session rows whose WeekId equals <paramref name="weekId"/> (one indexed query).</summary>
-    public static async System.Threading.Tasks.Task<List<Session>> FindSessionsByWeek(AppDbContext db, long weekId) =>
+    public static async global::System.Threading.Tasks.Task<List<global::MetaObjects.IntegrationTests.Generated.Session>> FindSessionsByWeek(global::MetaObjects.IntegrationTests.Generated.AppDbContext db, long weekId) =>
         await db.Sessions.AsNoTracking().Where(e => e.WeekId == weekId).ToListAsync();
 
     /// <summary>The Session rows whose WeekId is in <paramref name="weekIds"/> (one batched IN query; anti-N+1).</summary>
-    public static async System.Threading.Tasks.Task<List<Session>> FindSessionsByWeekIn(AppDbContext db, IReadOnlyCollection<long> weekIds)
+    public static async global::System.Threading.Tasks.Task<List<global::MetaObjects.IntegrationTests.Generated.Session>> FindSessionsByWeekIn(global::MetaObjects.IntegrationTests.Generated.AppDbContext db, IReadOnlyCollection<long> weekIds)
     {
-        if (weekIds.Count == 0) return new List<Session>();
+        if (weekIds.Count == 0) return new List<global::MetaObjects.IntegrationTests.Generated.Session>();
         return await db.Sessions.AsNoTracking().Where(e => weekIds.Contains(e.WeekId)).ToListAsync();
     }
 }

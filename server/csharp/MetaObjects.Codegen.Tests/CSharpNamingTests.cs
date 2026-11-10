@@ -391,7 +391,7 @@ public class CSharpNamingTests
         foreach (var pkg in new[] { "enterprise", "core" })
         {
             var context = Assert.Single(Run(new DbContextGenerator { Include = InPackage(pkg) }, root)).Content;
-            Assert.Contains("DbSet<Payer> Payers", context);
+            Assert.Contains($"DbSet<global::Acme.{CSharpNaming.Pascal(pkg)}.Payer> Payers", context);
             Assert.NotEmpty(Run(new RoutesGenerator { Include = InPackage(pkg) }, root));
         }
         var entities = Run(new EntityGenerator(), root).Select(f => f.Content).ToList();
@@ -498,7 +498,7 @@ public class CSharpNamingTests
         Assert.Equal("caseHistory", MetaObjects.Meta.ReverseReferenceHops.HopName(history));
         var warnings = new List<string>();
         var context = Assert.Single(new DbContextGenerator().Generate(CtxWarn(root, warnings))).Content;
-        Assert.Contains("DbSet<CaseHistory> CaseHistory { get; set; }", context);
+        Assert.Contains("DbSet<global::Core.CaseHistory> CaseHistory { get; set; }", context);
         Assert.DoesNotContain(warnings, w => w.Contains("deprecated"));
     }
 
@@ -508,7 +508,7 @@ public class CSharpNamingTests
         var root = History("\"@dbSetName\": \"CaseHistory\",");
         Assert.Equal("case_history", CSharpNaming.RoutePath(HistoryOf(root)));
         var warnings = new List<string>();
-        Assert.Contains("DbSet<CaseHistory> CaseHistory { get; set; }", Assert.Single(new DbContextGenerator().Generate(CtxWarn(root, warnings))).Content);
+        Assert.Contains("DbSet<global::Core.CaseHistory> CaseHistory { get; set; }", Assert.Single(new DbContextGenerator().Generate(CtxWarn(root, warnings))).Content);
         Assert.Contains(warnings, w => w.Contains("@dbSetName is deprecated") && w.Contains("@collectionName"));
     }
 

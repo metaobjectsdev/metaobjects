@@ -126,9 +126,9 @@ public class TphCodegenTests
         // key would be a C#-only addition to a cross-port wire contract.
         var auth = FileContent(new EntityGenerator().Generate(Ctx(Load())), "Auth.g.cs");
 
-        Assert.Contains("[System.Text.Json.Serialization.JsonDerivedType(typeof(BridgeAuth))]", auth);
-        Assert.Contains("[System.Text.Json.Serialization.JsonDerivedType(typeof(CopayAuth))]", auth);
-        Assert.Contains("[System.Text.Json.Serialization.JsonDerivedType(typeof(PriorAuthAuth))]", auth);
+        Assert.Contains("[global::System.Text.Json.Serialization.JsonDerivedType(typeof(BridgeAuth))]", auth);
+        Assert.Contains("[global::System.Text.Json.Serialization.JsonDerivedType(typeof(CopayAuth))]", auth);
+        Assert.Contains("[global::System.Text.Json.Serialization.JsonDerivedType(typeof(PriorAuthAuth))]", auth);
         Assert.DoesNotContain("typeDiscriminator", auth);
     }
 
@@ -190,19 +190,19 @@ public class TphCodegenTests
     {
         var db = FileContent(new DbContextGenerator().Generate(Ctx(Load())), "AppDbContext.g.cs");
         // Exactly one DbSet for the hierarchy (the base); no per-subtype DbSet.
-        Assert.Contains("public DbSet<Auth> Auths { get; set; }", db);
-        Assert.DoesNotContain("DbSet<BridgeAuth>", db);
-        Assert.DoesNotContain("DbSet<CopayAuth>", db);
-        Assert.DoesNotContain("DbSet<PriorAuthAuth>", db);
+        Assert.Contains("public DbSet<global::Acme.Auth.Auth> Auths { get; set; }", db);
+        Assert.DoesNotContain("DbSet<global::Acme.Auth.BridgeAuth>", db);
+        Assert.DoesNotContain("DbSet<global::Acme.Auth.CopayAuth>", db);
+        Assert.DoesNotContain("DbSet<global::Acme.Auth.PriorAuthAuth>", db);
         // HasDiscriminator + HasValue per subtype (the discriminator maps to the enum prop;
         // the enum's HasConversion<string>() stores the symbol, so the column is TEXT).
         // Bare "Auth." stays bare: the global::-qualification (CSharpNaming.QualifiedOwnerTypeRef)
         // only applies when the owner's OWN name is already-plural ("Auth" is not), see
         // a base entity named like e.g. "AllTypes" would get the qualified form.
         Assert.Contains("HasDiscriminator(e => e.Type)", db);
-        Assert.Contains("HasValue<BridgeAuth>(Auth.AuthType.Bridge)", db);
-        Assert.Contains("HasValue<CopayAuth>(Auth.AuthType.Copay)", db);
-        Assert.Contains("HasValue<PriorAuthAuth>(Auth.AuthType.PriorAuth)", db);
+        Assert.Contains("HasValue<global::Acme.Auth.BridgeAuth>(global::Acme.Auth.Auth.AuthType.Bridge)", db);
+        Assert.Contains("HasValue<global::Acme.Auth.CopayAuth>(global::Acme.Auth.Auth.AuthType.Copay)", db);
+        Assert.Contains("HasValue<global::Acme.Auth.PriorAuthAuth>(global::Acme.Auth.Auth.AuthType.PriorAuth)", db);
     }
 
     [Fact]
@@ -231,8 +231,8 @@ public class TphCodegenTests
         // handler: it reads the raw JSON (HttpContext) and 400s a body missing/null-ing any
         // @required key BEFORE binding — so an omitted value-type `quantity` is a 400, not a 201
         // with a default 0. The PK `id` and the discriminator `type` are excluded from the set.
-        Assert.Contains("MapPost(prefix + \"/auths/bridge\", async (HttpContext http, AppDbContext db) =>", auth);
-        Assert.Contains("System.Text.Json.JsonSerializer.Deserialize<BridgeAuth>(", auth);
+        Assert.Contains("MapPost(prefix + \"/auths/bridge\", async (HttpContext http, global::Acme.Generated.AppDbContext db) =>", auth);
+        Assert.Contains("global::System.Text.Json.JsonSerializer.Deserialize<BridgeAuth>(", auth);
         Assert.Matches(@"new\[\] \{[^}]*""reference""[^}]*\}", auth);   // base @required string
         Assert.Matches(@"new\[\] \{[^}]*""quantity""[^}]*\}", auth);    // own @required value-type
         Assert.Contains("OfType<BridgeAuth>()", auth);

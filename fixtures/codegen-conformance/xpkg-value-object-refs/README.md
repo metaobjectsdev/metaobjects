@@ -11,11 +11,12 @@ must tell them apart without a rename.
 
 A port that writes every package into one namespace or module directory refuses this model
 with `ERR_NAME_COLLISION` (two `Note`s, two `Summary`s); the corpus is run with the packages
-kept apart — C# `GenConfig.PackageNamespaces`, TypeScript `outputLayout: "package"`. With them
-apart, every generated file that names one of the pair must name it unambiguously:
+kept apart — C# by default (each package is its own namespace, rc.19 R65; the runner maps them
+explicitly too), TypeScript `outputLayout: "package"` (the default). With them apart, every
+generated file that names one of the pair must name it unambiguously:
 
-- **C#:** a file whose `using`s bring in both namespaces names the type `global::`-qualified
-  (a bare `Note` or `Summary` is `CS0104`).
+- **C#:** every generated file names a type of another namespace `global::`-qualified (a bare
+  `Note` or `Summary` under `using`s of both namespaces is `CS0104`).
 - **TypeScript:** a file that imports both binds each under a package-qualified local alias
   (`import type { Note as AcmeAlphaNote }`).
 

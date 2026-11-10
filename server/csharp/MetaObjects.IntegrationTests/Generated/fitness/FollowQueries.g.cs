@@ -12,24 +12,24 @@ namespace MetaObjects.IntegrationTests.Generated;
 public static class FollowQueries
 {
     /// <summary>The Follow rows whose FollowerId equals <paramref name="followerId"/> (one indexed query).</summary>
-    public static async System.Threading.Tasks.Task<List<Follow>> FindFollowsByFollower(AppDbContext db, long followerId) =>
+    public static async global::System.Threading.Tasks.Task<List<global::MetaObjects.IntegrationTests.Generated.Follow>> FindFollowsByFollower(global::MetaObjects.IntegrationTests.Generated.AppDbContext db, long followerId) =>
         await db.Follows.AsNoTracking().Where(e => e.FollowerId == followerId).ToListAsync();
 
     /// <summary>The Follow rows whose FollowerId is in <paramref name="followerIds"/> (one batched IN query; anti-N+1).</summary>
-    public static async System.Threading.Tasks.Task<List<Follow>> FindFollowsByFollowerIn(AppDbContext db, IReadOnlyCollection<long> followerIds)
+    public static async global::System.Threading.Tasks.Task<List<global::MetaObjects.IntegrationTests.Generated.Follow>> FindFollowsByFollowerIn(global::MetaObjects.IntegrationTests.Generated.AppDbContext db, IReadOnlyCollection<long> followerIds)
     {
-        if (followerIds.Count == 0) return new List<Follow>();
+        if (followerIds.Count == 0) return new List<global::MetaObjects.IntegrationTests.Generated.Follow>();
         return await db.Follows.AsNoTracking().Where(e => followerIds.Contains(e.FollowerId)).ToListAsync();
     }
 
     /// <summary>The Follow rows whose FolloweeId equals <paramref name="followeeId"/> (one indexed query).</summary>
-    public static async System.Threading.Tasks.Task<List<Follow>> FindFollowsByFollowee(AppDbContext db, long followeeId) =>
+    public static async global::System.Threading.Tasks.Task<List<global::MetaObjects.IntegrationTests.Generated.Follow>> FindFollowsByFollowee(global::MetaObjects.IntegrationTests.Generated.AppDbContext db, long followeeId) =>
         await db.Follows.AsNoTracking().Where(e => e.FolloweeId == followeeId).ToListAsync();
 
     /// <summary>The Follow rows whose FolloweeId is in <paramref name="followeeIds"/> (one batched IN query; anti-N+1).</summary>
-    public static async System.Threading.Tasks.Task<List<Follow>> FindFollowsByFolloweeIn(AppDbContext db, IReadOnlyCollection<long> followeeIds)
+    public static async global::System.Threading.Tasks.Task<List<global::MetaObjects.IntegrationTests.Generated.Follow>> FindFollowsByFolloweeIn(global::MetaObjects.IntegrationTests.Generated.AppDbContext db, IReadOnlyCollection<long> followeeIds)
     {
-        if (followeeIds.Count == 0) return new List<Follow>();
+        if (followeeIds.Count == 0) return new List<global::MetaObjects.IntegrationTests.Generated.Follow>();
         return await db.Follows.AsNoTracking().Where(e => followeeIds.Contains(e.FolloweeId)).ToListAsync();
     }
 }

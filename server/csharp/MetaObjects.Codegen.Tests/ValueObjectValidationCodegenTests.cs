@@ -77,8 +77,8 @@ public class ValueObjectValidationCodegenTests
         Assert.Contains("\"markers\"", routes);
         Assert.Contains("existing.OptionalMarker = null;", routes);        // nullable single: present-null clears
         Assert.Contains("existing.Markers = null;", routes);              // nullable array: present-null clears
-        Assert.Contains("Deserialize<Marker>", routes);                  // single VO
-        Assert.Contains("Deserialize<System.Collections.Generic.List<Marker>>", routes); // array VO
+        Assert.Contains("Deserialize<global::Acme.Store.Marker>", routes);                  // single VO
+        Assert.Contains("Deserialize<global::System.Collections.Generic.List<global::Acme.Store.Marker>>", routes); // array VO
         // Recursive VO validation on BOTH PATCH and POST.
         Assert.Contains("ValueObjectValidator.Validate", routes);
         Assert.Contains("ValueObjectValidator.Validate(input.PrimaryMarker)", routes);

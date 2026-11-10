@@ -180,8 +180,8 @@ public class ExtractorGenerator : IGenerator
             string et = EnumTypeRef(owner, field, ctx);
             if (Fr010FieldMapping.IsArray(field))
                 return $"({m} ?? global::System.Linq.Enumerable.Empty<string?>()).Where(x => x is not null)" +
-                       $".Select(x => System.Enum.Parse<{et}>(x!)).ToList()";
-            return required ? $"System.Enum.Parse<{et}>({m}!)" : $"{m} is null ? ({et}?)null : System.Enum.Parse<{et}>({m})";
+                       $".Select(x => global::System.Enum.Parse<{et}>(x!)).ToList()";
+            return required ? $"global::System.Enum.Parse<{et}>({m}!)" : $"{m} is null ? ({et}?)null : global::System.Enum.Parse<{et}>({m})";
         }
 
         string baseType = CSharpNaming.DbColumnTypeClrOverride(field) ?? CSharpNaming.ScalarForField(field) ?? "string";

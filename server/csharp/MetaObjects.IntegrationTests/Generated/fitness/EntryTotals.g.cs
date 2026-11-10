@@ -18,21 +18,21 @@ public class EntryTotals
     [Column("entries")]
     public long Entries { get; set; }
     [Column("total")]
-    [System.Text.Json.Serialization.JsonConverter(typeof(DecimalWire.NullableDecimalJsonConverter))]
+    [global::System.Text.Json.Serialization.JsonConverter(typeof(DecimalWire.NullableDecimalJsonConverter))]
     public decimal? Total { get; set; }
     [Column("totalOrZero")]
-    [System.Text.Json.Serialization.JsonConverter(typeof(DecimalWire.DecimalJsonConverter))]
+    [global::System.Text.Json.Serialization.JsonConverter(typeof(DecimalWire.DecimalJsonConverter))]
     public decimal TotalOrZero { get; set; }
     [Column("mean")]
-    [System.Text.Json.Serialization.JsonConverter(typeof(DecimalWire.NullableDecimalJsonConverter))]
+    [global::System.Text.Json.Serialization.JsonConverter(typeof(DecimalWire.NullableDecimalJsonConverter))]
     public decimal? Mean { get; set; }
     [Column("top")]
     [DecimalWire.Declared(28, 10)]
     public decimal? Top { get; set; }
     [Column("flaggedShare")]
-    [System.Text.Json.Serialization.JsonConverter(typeof(DecimalWire.NullableDecimalJsonConverter))]
+    [global::System.Text.Json.Serialization.JsonConverter(typeof(DecimalWire.NullableDecimalJsonConverter))]
     public decimal? FlaggedShare { get; set; }
     [Column("perFlagged")]
-    [System.Text.Json.Serialization.JsonConverter(typeof(DecimalWire.NullableDecimalJsonConverter))]
+    [global::System.Text.Json.Serialization.JsonConverter(typeof(DecimalWire.NullableDecimalJsonConverter))]
     public decimal? PerFlagged { get; set; }
 }

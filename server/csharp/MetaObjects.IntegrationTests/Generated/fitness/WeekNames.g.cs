@@ -37,7 +37,7 @@ public abstract class WeekNames
     public const string IdentityIdSubType = "primary";
     public const string IdentityIdName = "id";
 
-    public static readonly Dictionary<string, string> ColumnsByField = new(System.StringComparer.Ordinal)
+    public static readonly Dictionary<string, string> ColumnsByField = new(global::System.StringComparer.Ordinal)
     {
         ["deload"] = DeloadColumn,
         ["durationMinutes"] = DurationMinutesColumn,

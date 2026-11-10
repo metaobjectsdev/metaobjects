@@ -21,7 +21,7 @@ public abstract class PlainJobNames : JobNames
     public const string IdentityRefOwnerSubType = "reference";
     public const string IdentityRefOwnerName = "refOwner";
 
-    public static new readonly Dictionary<string, string> ColumnsByField = new(System.StringComparer.Ordinal)
+    public static new readonly Dictionary<string, string> ColumnsByField = new(global::System.StringComparer.Ordinal)
     {
         ["id"] = IdColumn,
         ["kind"] = KindColumn,

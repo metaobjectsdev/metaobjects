@@ -19,7 +19,7 @@ public abstract class BaseEntityNames
     public const string IdField = "id";
     public const string IdColumn = "id";
 
-    public static readonly Dictionary<string, string> ColumnsByField = new(System.StringComparer.Ordinal)
+    public static readonly Dictionary<string, string> ColumnsByField = new(global::System.StringComparer.Ordinal)
     {
         ["createdAt"] = CreatedAtColumn,
         ["id"] = IdColumn,

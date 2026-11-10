@@ -94,7 +94,7 @@ public class DemoTests
     {
         var errors = CompileErrors(WithGeneratedPayload(Load(), $$"""
         using System.Collections.Generic;
-        using Acme.Generated;
+        using Acme.Ai;
         using MetaObjects.Render;
         public static class GoodCaller
         {
@@ -115,7 +115,7 @@ public class DemoTests
         // `title` belongs to PostBrief, not AuthorBrief — the shape a renamed or misremembered
         // field produces. The POCO's member set is the metadata's, so this does not compile.
         var errors = CompileErrors(WithGeneratedPayload(Load(), $$"""
-        using Acme.Generated;
+        using Acme.Ai;
         using MetaObjects.Render;
         public static class BadCaller
         {
@@ -135,7 +135,7 @@ public class DemoTests
         // `posts` carries no `@required`, so omitting it must be legal — the shape #309 was
         // filed about: an LLM response that simply does not populate an optional field.
         var errors = CompileErrors(WithGeneratedPayload(Load(), $$"""
-        using Acme.Generated;
+        using Acme.Ai;
         using MetaObjects.Render;
         public static class PartialCaller
         {

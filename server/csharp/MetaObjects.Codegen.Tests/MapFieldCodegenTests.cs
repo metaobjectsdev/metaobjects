@@ -91,14 +91,14 @@ public class MapFieldCodegenTests
         // (the map loop in DbContextGenerator.EmitFieldTypeConfig): an unmapped Dictionary
         // does not land on the jsonb column the migration creates.
         Assert.Contains(
-            "modelBuilder.Entity<Customer>().Property(x => x.Labels).HasColumnType(\"jsonb\")"
+            "modelBuilder.Entity<global::Acme.Customer>().Property(x => x.Labels).HasColumnType(\"jsonb\")"
                 + ".HasConversion(MapJsonb.Converter<string>(), MapJsonb.Comparer<string>());",
             dbCtx);
         // The @required map's property is non-null, so its converter is the non-null
         // factory — EF Core 8's nullability-aware HasConversion checks the converter's
         // model type against the property's own annotation (a mismatch is CS8620).
         Assert.Contains(
-            "modelBuilder.Entity<Customer>().Property(x => x.Channels).HasColumnType(\"jsonb\")"
+            "modelBuilder.Entity<global::Acme.Customer>().Property(x => x.Channels).HasColumnType(\"jsonb\")"
                 + ".HasConversion(MapJsonb.RequiredConverter<string>(), MapJsonb.Comparer<string>());",
             dbCtx);
     }
@@ -109,9 +109,9 @@ public class MapFieldCodegenTests
         var dbCtx = Assert.Single(new DbContextGenerator().Generate(Ctx(Load()))).Content;
 
         Assert.Contains(
-            "modelBuilder.Entity<Customer>().Property(x => x.Addresses).HasColumnType(\"jsonb\")"
-                + ".HasConversion(MapJsonb.Converter<Acme.Generated.Address>()"
-                + ", MapJsonb.Comparer<Acme.Generated.Address>());",
+            "modelBuilder.Entity<global::Acme.Customer>().Property(x => x.Addresses).HasColumnType(\"jsonb\")"
+                + ".HasConversion(MapJsonb.Converter<global::Acme.Address>()"
+                + ", MapJsonb.Comparer<global::Acme.Address>());",
             dbCtx);
     }
 
@@ -183,7 +183,7 @@ public class MapFieldCodegenTests
         // ...so the storage mapping must be too.
         var dbCtx = Assert.Single(new DbContextGenerator().Generate(ctx)).Content;
         Assert.Contains(
-            "modelBuilder.Entity<CustomerSummary>().Property(x => x.Tallies).HasColumnType(\"jsonb\")"
+            "modelBuilder.Entity<global::Acme.CustomerSummary>().Property(x => x.Tallies).HasColumnType(\"jsonb\")"
                 + ".HasConversion(MapJsonb.Converter<int>(), MapJsonb.Comparer<int>());",
             dbCtx);
         // ...and the helper it names must be declared, or the generated file will not compile.
@@ -260,7 +260,7 @@ public class MapFieldCodegenTests
         var comparerOf = helper.GetMethod("Comparer", BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(comparerOf);
         var scalar = comparerOf.MakeGenericMethod(typeof(string)).Invoke(null, null)!;
-        var voType = asm.GetType("Acme.Generated.Address");
+        var voType = asm.GetType("Acme.Address");
         Assert.NotNull(voType);
         var objectValued = comparerOf.MakeGenericMethod(voType).Invoke(null, null)!;
 

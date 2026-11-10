@@ -31,7 +31,7 @@ public abstract class GadgetEventNames
     public const string IdentityIdSubType = "primary";
     public const string IdentityIdName = "id";
 
-    public static readonly Dictionary<string, string> ColumnsByField = new(System.StringComparer.Ordinal)
+    public static readonly Dictionary<string, string> ColumnsByField = new(global::System.StringComparer.Ordinal)
     {
         ["gadgetId"] = GadgetIdColumn,
         ["id"] = IdColumn,

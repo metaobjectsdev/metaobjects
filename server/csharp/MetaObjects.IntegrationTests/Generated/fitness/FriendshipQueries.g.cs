@@ -12,24 +12,24 @@ namespace MetaObjects.IntegrationTests.Generated;
 public static class FriendshipQueries
 {
     /// <summary>The Friendship rows whose PersonAId equals <paramref name="personAId"/> (one indexed query).</summary>
-    public static async System.Threading.Tasks.Task<List<Friendship>> FindFriendshipsByPersonA(AppDbContext db, long personAId) =>
+    public static async global::System.Threading.Tasks.Task<List<global::MetaObjects.IntegrationTests.Generated.Friendship>> FindFriendshipsByPersonA(global::MetaObjects.IntegrationTests.Generated.AppDbContext db, long personAId) =>
         await db.Friendships.AsNoTracking().Where(e => e.PersonAId == personAId).ToListAsync();
 
     /// <summary>The Friendship rows whose PersonAId is in <paramref name="personAIds"/> (one batched IN query; anti-N+1).</summary>
-    public static async System.Threading.Tasks.Task<List<Friendship>> FindFriendshipsByPersonAIn(AppDbContext db, IReadOnlyCollection<long> personAIds)
+    public static async global::System.Threading.Tasks.Task<List<global::MetaObjects.IntegrationTests.Generated.Friendship>> FindFriendshipsByPersonAIn(global::MetaObjects.IntegrationTests.Generated.AppDbContext db, IReadOnlyCollection<long> personAIds)
     {
-        if (personAIds.Count == 0) return new List<Friendship>();
+        if (personAIds.Count == 0) return new List<global::MetaObjects.IntegrationTests.Generated.Friendship>();
         return await db.Friendships.AsNoTracking().Where(e => personAIds.Contains(e.PersonAId)).ToListAsync();
     }
 
     /// <summary>The Friendship rows whose PersonBId equals <paramref name="personBId"/> (one indexed query).</summary>
-    public static async System.Threading.Tasks.Task<List<Friendship>> FindFriendshipsByPersonB(AppDbContext db, long personBId) =>
+    public static async global::System.Threading.Tasks.Task<List<global::MetaObjects.IntegrationTests.Generated.Friendship>> FindFriendshipsByPersonB(global::MetaObjects.IntegrationTests.Generated.AppDbContext db, long personBId) =>
         await db.Friendships.AsNoTracking().Where(e => e.PersonBId == personBId).ToListAsync();
 
     /// <summary>The Friendship rows whose PersonBId is in <paramref name="personBIds"/> (one batched IN query; anti-N+1).</summary>
-    public static async System.Threading.Tasks.Task<List<Friendship>> FindFriendshipsByPersonBIn(AppDbContext db, IReadOnlyCollection<long> personBIds)
+    public static async global::System.Threading.Tasks.Task<List<global::MetaObjects.IntegrationTests.Generated.Friendship>> FindFriendshipsByPersonBIn(global::MetaObjects.IntegrationTests.Generated.AppDbContext db, IReadOnlyCollection<long> personBIds)
     {
-        if (personBIds.Count == 0) return new List<Friendship>();
+        if (personBIds.Count == 0) return new List<global::MetaObjects.IntegrationTests.Generated.Friendship>();
         return await db.Friendships.AsNoTracking().Where(e => personBIds.Contains(e.PersonBId)).ToListAsync();
     }
 }

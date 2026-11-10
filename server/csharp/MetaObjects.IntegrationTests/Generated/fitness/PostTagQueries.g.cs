@@ -12,24 +12,24 @@ namespace MetaObjects.IntegrationTests.Generated;
 public static class PostTagQueries
 {
     /// <summary>The PostTag rows whose PostId equals <paramref name="postId"/> (one indexed query).</summary>
-    public static async System.Threading.Tasks.Task<List<PostTag>> FindPostTagsByPost(AppDbContext db, long postId) =>
+    public static async global::System.Threading.Tasks.Task<List<global::MetaObjects.IntegrationTests.Generated.PostTag>> FindPostTagsByPost(global::MetaObjects.IntegrationTests.Generated.AppDbContext db, long postId) =>
         await db.PostTags.AsNoTracking().Where(e => e.PostId == postId).ToListAsync();
 
     /// <summary>The PostTag rows whose PostId is in <paramref name="postIds"/> (one batched IN query; anti-N+1).</summary>
-    public static async System.Threading.Tasks.Task<List<PostTag>> FindPostTagsByPostIn(AppDbContext db, IReadOnlyCollection<long> postIds)
+    public static async global::System.Threading.Tasks.Task<List<global::MetaObjects.IntegrationTests.Generated.PostTag>> FindPostTagsByPostIn(global::MetaObjects.IntegrationTests.Generated.AppDbContext db, IReadOnlyCollection<long> postIds)
     {
-        if (postIds.Count == 0) return new List<PostTag>();
+        if (postIds.Count == 0) return new List<global::MetaObjects.IntegrationTests.Generated.PostTag>();
         return await db.PostTags.AsNoTracking().Where(e => postIds.Contains(e.PostId)).ToListAsync();
     }
 
     /// <summary>The PostTag rows whose TagId equals <paramref name="tagId"/> (one indexed query).</summary>
-    public static async System.Threading.Tasks.Task<List<PostTag>> FindPostTagsByTag(AppDbContext db, long tagId) =>
+    public static async global::System.Threading.Tasks.Task<List<global::MetaObjects.IntegrationTests.Generated.PostTag>> FindPostTagsByTag(global::MetaObjects.IntegrationTests.Generated.AppDbContext db, long tagId) =>
         await db.PostTags.AsNoTracking().Where(e => e.TagId == tagId).ToListAsync();
 
     /// <summary>The PostTag rows whose TagId is in <paramref name="tagIds"/> (one batched IN query; anti-N+1).</summary>
-    public static async System.Threading.Tasks.Task<List<PostTag>> FindPostTagsByTagIn(AppDbContext db, IReadOnlyCollection<long> tagIds)
+    public static async global::System.Threading.Tasks.Task<List<global::MetaObjects.IntegrationTests.Generated.PostTag>> FindPostTagsByTagIn(global::MetaObjects.IntegrationTests.Generated.AppDbContext db, IReadOnlyCollection<long> tagIds)
     {
-        if (tagIds.Count == 0) return new List<PostTag>();
+        if (tagIds.Count == 0) return new List<global::MetaObjects.IntegrationTests.Generated.PostTag>();
         return await db.PostTags.AsNoTracking().Where(e => tagIds.Contains(e.TagId)).ToListAsync();
     }
 }

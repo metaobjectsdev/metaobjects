@@ -11,21 +11,21 @@ public class AppDbContext : DbContext
 {
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
-    public DbSet<Job> Jobs { get; set; } = default!;
-    public DbSet<Workflow> Workflows { get; set; } = default!;
+    public DbSet<global::Acme.Work.Job> Jobs { get; set; } = default!;
+    public DbSet<global::Acme.Work.Workflow> Workflows { get; set; } = default!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        modelBuilder.Entity<Job>().OwnsOne(x => x.Note, b =>
+        modelBuilder.Entity<global::Acme.Work.Job>().OwnsOne(x => x.Note, b =>
         {
-            b.ToJson(JobNames.NoteColumn);
+            b.ToJson(global::Acme.Work.JobNames.NoteColumn);
             b.Property(p => p.Level).HasConversion<string>();
         });
-        modelBuilder.Entity<Job>().Property(x => x.Kind).HasConversion<string>();
-        modelBuilder.Entity<Job>().HasDiscriminator(e => e.Kind).HasValue<CallJob>(Job.JobKind.Call).HasValue<MailJob>(Job.JobKind.Mail).HasValue<PlainJob>(Job.JobKind.Plain);
-        modelBuilder.Entity<PlainJob>().HasOne<Workflow>().WithMany().HasForeignKey(e => e.OwnerId).OnDelete(DeleteBehavior.NoAction);
-        modelBuilder.Entity<CallJob>().HasOne<Workflow>().WithMany().HasForeignKey(e => e.WorkflowId).OnDelete(DeleteBehavior.NoAction);
-        modelBuilder.Entity<MailJob>().HasOne<Workflow>().WithMany().HasForeignKey(e => e.WorkflowId).OnDelete(DeleteBehavior.NoAction);
-        modelBuilder.Entity<Workflow>().Property(x => x.CreatedAt).HasColumnType("timestamp with time zone");
+        modelBuilder.Entity<global::Acme.Work.Job>().Property(x => x.Kind).HasConversion<string>();
+        modelBuilder.Entity<global::Acme.Work.Job>().HasDiscriminator(e => e.Kind).HasValue<global::Acme.Work.CallJob>(global::Acme.Work.Job.JobKind.Call).HasValue<global::Acme.Work.MailJob>(global::Acme.Work.Job.JobKind.Mail).HasValue<global::Acme.Work.PlainJob>(global::Acme.Work.Job.JobKind.Plain);
+        modelBuilder.Entity<global::Acme.Work.PlainJob>().HasOne<global::Acme.Work.Workflow>().WithMany().HasForeignKey(e => e.OwnerId).OnDelete(DeleteBehavior.NoAction);
+        modelBuilder.Entity<global::Acme.Work.CallJob>().HasOne<global::Acme.Work.Workflow>().WithMany().HasForeignKey(e => e.WorkflowId).OnDelete(DeleteBehavior.NoAction);
+        modelBuilder.Entity<global::Acme.Work.MailJob>().HasOne<global::Acme.Work.Workflow>().WithMany().HasForeignKey(e => e.WorkflowId).OnDelete(DeleteBehavior.NoAction);
+        modelBuilder.Entity<global::Acme.Work.Workflow>().Property(x => x.CreatedAt).HasColumnType("timestamp with time zone");
     }
 }

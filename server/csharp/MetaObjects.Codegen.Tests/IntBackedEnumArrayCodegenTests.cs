@@ -104,11 +104,11 @@ public class IntBackedEnumArrayCodegenTests
         """));
 
         var dbctx = DbContext(ctx);
-        Assert.Contains("modelBuilder.Entity<DocSummary>().PrimitiveCollection(x => x.History).ElementType()"
-            + ".HasConversion(new global::Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<Status, int>(v => v == Status.DRAFT ? 0 : v == Status.PUBLISHED ? 5 : v == Status.ARCHIVED ? 9 : UnmappedEnumMember(v, \"history\"), "
-            + "v => v == 0 ? Status.DRAFT : v == 5 ? Status.PUBLISHED : v == 9 ? Status.ARCHIVED : UnmappedEnumValue<Status>(v, \"history\")));",
+        Assert.Contains("modelBuilder.Entity<global::Acme.DocSummary>().PrimitiveCollection(x => x.History).ElementType()"
+            + ".HasConversion(new global::Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<global::Acme.Status, int>(v => v == global::Acme.Status.DRAFT ? 0 : v == global::Acme.Status.PUBLISHED ? 5 : v == global::Acme.Status.ARCHIVED ? 9 : UnmappedEnumMember(v, \"history\"), "
+            + "v => v == 0 ? global::Acme.Status.DRAFT : v == 5 ? global::Acme.Status.PUBLISHED : v == 9 ? global::Acme.Status.ARCHIVED : UnmappedEnumValue<global::Acme.Status>(v, \"history\")));",
             dbctx);
-        Assert.Contains("modelBuilder.Entity<DocSummary>().PrimitiveCollection(x => x.Labels).ElementType().HasConversion<string>();",
+        Assert.Contains("modelBuilder.Entity<global::Acme.DocSummary>().PrimitiveCollection(x => x.Labels).ElementType().HasConversion<string>();",
             dbctx);
         Assert.Contains("private static T UnmappedEnumValue<T>(int stored, string field)", dbctx);
 
@@ -137,9 +137,9 @@ public class IntBackedEnumArrayCodegenTests
         """));
 
         var dbctx = DbContext(ctx);
-        Assert.Contains("modelBuilder.Entity<Doc>().PrimitiveCollection(x => x.History).ElementType()"
-            + ".HasConversion(new global::Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<Status, int>(v => v == Status.DRAFT ? 0 : v == Status.PUBLISHED ? 5 : UnmappedEnumMember(v, \"history\"), "
-            + "v => v == 0 ? Status.DRAFT : v == 5 ? Status.PUBLISHED : UnmappedEnumValue<Status>(v, \"history\")));",
+        Assert.Contains("modelBuilder.Entity<global::Acme.Doc>().PrimitiveCollection(x => x.History).ElementType()"
+            + ".HasConversion(new global::Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<global::Acme.Status, int>(v => v == global::Acme.Status.DRAFT ? 0 : v == global::Acme.Status.PUBLISHED ? 5 : UnmappedEnumMember(v, \"history\"), "
+            + "v => v == 0 ? global::Acme.Status.DRAFT : v == 5 ? global::Acme.Status.PUBLISHED : UnmappedEnumValue<global::Acme.Status>(v, \"history\")));",
             dbctx);
 
         var errors = CompileErrors(ctx);
@@ -175,10 +175,10 @@ public class IntBackedEnumArrayCodegenTests
 
         var files = new EntityGenerator().Generate(ctx).ToList();
         var doc = files.Single(f => System.IO.Path.GetFileName(f.Path) == "Doc.g.cs").Content;
-        Assert.Contains("public IList<Status>? History { get; set; }\n", doc.Replace("\r\n", "\n"));
-        Assert.Contains("public IList<Status> Trail { get; set; } = new List<Status>();", doc);
+        Assert.Contains("public IList<global::Acme.Status>? History { get; set; }\n", doc.Replace("\r\n", "\n"));
+        Assert.Contains("public IList<global::Acme.Status> Trail { get; set; } = new List<global::Acme.Status>();", doc);
         var address = files.Single(f => System.IO.Path.GetFileName(f.Path) == "Address.g.cs").Content;
-        Assert.Contains("public IList<Status>? Tags { get; set; }", address);
+        Assert.Contains("public IList<global::Acme.Status>? Tags { get; set; }", address);
 
         var errors = CompileErrors(ctx);
         Assert.True(errors.Count == 0, "generated code should compile:\n" + string.Join("\n", errors));

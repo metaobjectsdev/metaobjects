@@ -12,13 +12,13 @@ namespace MetaObjects.IntegrationTests.Generated;
 public static class WeekQueries
 {
     /// <summary>The Week rows whose ProgramId equals <paramref name="programId"/> (one indexed query).</summary>
-    public static async System.Threading.Tasks.Task<List<Week>> FindWeeksByProgram(AppDbContext db, long programId) =>
+    public static async global::System.Threading.Tasks.Task<List<global::MetaObjects.IntegrationTests.Generated.Week>> FindWeeksByProgram(global::MetaObjects.IntegrationTests.Generated.AppDbContext db, long programId) =>
         await db.Weeks.AsNoTracking().Where(e => e.ProgramId == programId).ToListAsync();
 
     /// <summary>The Week rows whose ProgramId is in <paramref name="programIds"/> (one batched IN query; anti-N+1).</summary>
-    public static async System.Threading.Tasks.Task<List<Week>> FindWeeksByProgramIn(AppDbContext db, IReadOnlyCollection<long> programIds)
+    public static async global::System.Threading.Tasks.Task<List<global::MetaObjects.IntegrationTests.Generated.Week>> FindWeeksByProgramIn(global::MetaObjects.IntegrationTests.Generated.AppDbContext db, IReadOnlyCollection<long> programIds)
     {
-        if (programIds.Count == 0) return new List<Week>();
+        if (programIds.Count == 0) return new List<global::MetaObjects.IntegrationTests.Generated.Week>();
         return await db.Weeks.AsNoTracking().Where(e => programIds.Contains(e.ProgramId)).ToListAsync();
     }
 }

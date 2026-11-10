@@ -45,7 +45,7 @@ public class TphDiscriminatorEnumTests
         };
         var files = new EntityGenerator().Generate(ctx).Concat(new DbContextGenerator().Generate(ctx)).ToList();
         var context = files.Single(f => f.Path == "AppDbContext.g.cs").Content;
-        Assert.Contains(".HasValue<Car>(Acme.Shared.VehicleKind.Car).HasValue<Van>(Acme.Shared.VehicleKind.Van)", context);
+        Assert.Contains(".HasValue<global::Acme.Car>(Acme.Shared.VehicleKind.Car).HasValue<global::Acme.Van>(Acme.Shared.VehicleKind.Van)", context);
 
         var trees = files.Select(f => f.Content).Append(ProvidedEnum)
             .Select(c => CSharpSyntaxTree.ParseText(c, new CSharpParseOptions(LanguageVersion.CSharp12)));

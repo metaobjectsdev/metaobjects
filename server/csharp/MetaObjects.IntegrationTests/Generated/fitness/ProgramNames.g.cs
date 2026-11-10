@@ -43,7 +43,7 @@ public abstract class ProgramNames
     public const string IndexIdxProgramsTitleStatusName = "idx_programs_title_status";
     public const string IndexIdxProgramsTitleStatusIndex = "idx_programs_title_status";
 
-    public static readonly Dictionary<string, string> ColumnsByField = new(System.StringComparer.Ordinal)
+    public static readonly Dictionary<string, string> ColumnsByField = new(global::System.StringComparer.Ordinal)
     {
         ["createdAt"] = CreatedAtColumn,
         ["id"] = IdColumn,

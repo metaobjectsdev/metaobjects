@@ -76,8 +76,8 @@ public class GeneratorIncludeTests
     public void DbContext_include_maps_only_the_accepted_objects()
     {
         var src = Assert.Single(new DbContextGenerator { Include = o => o.Name is "Customer" }.Generate(Ctx())).Content;
-        Assert.Contains("DbSet<Customer>", src);
-        Assert.DoesNotContain("DbSet<Order>", src);
+        Assert.Contains("DbSet<global::Acme.Customer>", src);
+        Assert.DoesNotContain("DbSet<global::Acme.Order>", src);
     }
 
     [Fact]

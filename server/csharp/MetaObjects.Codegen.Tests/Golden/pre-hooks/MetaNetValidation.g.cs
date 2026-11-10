@@ -7,7 +7,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 
-namespace Acme.Generated;
+namespace Acme;
 
 /// <summary>GENERATED (#234) — strict System.Text.Json converters for field.uri /
 /// field.inet. Dependency-free; runs without any MetaObjects runtime.</summary>

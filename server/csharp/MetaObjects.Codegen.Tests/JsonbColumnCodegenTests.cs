@@ -125,7 +125,7 @@ public class JsonbColumnCodegenTests
         var dbCtx = Assert.Single(new DbContextGenerator().Generate(ctx)).Content;
 
         Assert.Contains(
-            "modelBuilder.Entity<Asset>().Property(x => x.Payload).HasColumnType(\"jsonb\");",
+            "modelBuilder.Entity<global::Acme.Asset>().Property(x => x.Payload).HasColumnType(\"jsonb\");",
             dbCtx);
     }
 

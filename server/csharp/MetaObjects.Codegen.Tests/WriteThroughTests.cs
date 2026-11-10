@@ -116,17 +116,17 @@ public class WriteThroughTests
     {
         var src = Assert.Single(new DbContextGenerator().Generate(Ctx(Load()))).Content;
         // The write entity is a normal table DbSet; the read model a view DbSet.
-        Assert.Contains("public DbSet<Order> Orders { get; set; }", src);
-        Assert.Contains("public DbSet<OrderView> OrderViews { get; set; }", src);
+        Assert.Contains("public DbSet<global::Acme.Order> Orders { get; set; }", src);
+        Assert.Contains("public DbSet<global::Acme.OrderView> OrderViews { get; set; }", src);
         // The read model maps to the replica view (keyed → no HasNoKey), through a CONSTANT
         // since 0.25.0. This line was the last literal in AppDbContext, and it was booked as
         // structural: <Entity>Names carried the PRIMARY source's name only, so a write-through
         // entity's two physical names had one slot between them. Keying the artifact's sources
         // by @role gave the replica a home, and the member is named for its @kind, so the read
         // site says "this is a view" without a second lookup.
-        Assert.Contains("modelBuilder.Entity<OrderView>().ToView(OrderNames.SourceReplicaView);", src);
+        Assert.Contains("modelBuilder.Entity<global::Acme.OrderView>().ToView(global::Acme.OrderNames.SourceReplicaView);", src);
         Assert.DoesNotContain("\"v_order_with_customer\"", src);
-        Assert.DoesNotContain("modelBuilder.Entity<OrderView>().HasNoKey()", src);
+        Assert.DoesNotContain("modelBuilder.Entity<global::Acme.OrderView>().HasNoKey()", src);
     }
 
     // ---- Routes: reads → view DbSet, writes → table DbSet, re-read by PK --------
@@ -175,7 +175,7 @@ public class WriteThroughTests
     public void Reverse_finders_return_view_rows_from_view_dbset()
     {
         var src = Src(new EntityGenerator().Generate(Ctx(Load())), "OrderQueries.g.cs");
-        Assert.Contains("Task<List<OrderView>> FindOrdersByCustomer(AppDbContext db", src);
+        Assert.Contains("Task<List<global::Acme.OrderView>> FindOrdersByCustomer(global::Acme.Generated.AppDbContext db", src);
         Assert.Contains("await db.OrderViews.AsNoTracking()", src);
     }
 

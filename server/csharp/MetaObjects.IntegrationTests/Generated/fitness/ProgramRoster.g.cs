@@ -24,9 +24,9 @@ public class ProgramRoster
     [Column("totalMinutesOrZero")]
     public long TotalMinutesOrZero { get; set; }
     [Column("longShare")]
-    [System.Text.Json.Serialization.JsonConverter(typeof(DecimalWire.NullableDecimalJsonConverter))]
+    [global::System.Text.Json.Serialization.JsonConverter(typeof(DecimalWire.NullableDecimalJsonConverter))]
     public decimal? LongShare { get; set; }
     [Column("longShareOrZero")]
-    [System.Text.Json.Serialization.JsonConverter(typeof(DecimalWire.DecimalJsonConverter))]
+    [global::System.Text.Json.Serialization.JsonConverter(typeof(DecimalWire.DecimalJsonConverter))]
     public decimal LongShareOrZero { get; set; }
 }

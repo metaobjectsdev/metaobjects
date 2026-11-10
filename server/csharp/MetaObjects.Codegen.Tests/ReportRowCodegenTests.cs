@@ -152,8 +152,8 @@ public class ReportRowCodegenTests
         Assert.DoesNotContain("[Table(", files["SalesTotal.g.cs"]);
 
         var ctx = files["AppDbContext.g.cs"];
-        Assert.Contains("    public DbSet<SalesTotal> SalesTotals { get; set; } = default!;", ctx);
-        Assert.Contains("        modelBuilder.Entity<SalesTotal>().HasNoKey().ToView(\"v_sales\");", ctx);
+        Assert.Contains("    public DbSet<global::Acme.Shop.SalesTotal> SalesTotals { get; set; } = default!;", ctx);
+        Assert.Contains("        modelBuilder.Entity<global::Acme.Shop.SalesTotal>().HasNoKey().ToView(\"v_sales\");", ctx);
 
         // Its read surface (Plan 3): the allowlist and the routes file. No names artifact.
         Assert.Equal(
@@ -275,7 +275,7 @@ public class ReportRowCodegenTests
         // Table C: a count and a sum of a currency take the numeric band.
         foreach (var field in new[] { "purchases", "buyers", "revenue" })
             Assert.Contains(
-                $"        [\"{field}\"] = new(System.StringComparer.Ordinal) {{ \"eq\", \"ne\", \"gt\", \"gte\", \"lt\", \"lte\", \"in\", \"isNull\" }},",
+                $"        [\"{field}\"] = new(global::System.StringComparer.Ordinal) {{ \"eq\", \"ne\", \"gt\", \"gte\", \"lt\", \"lte\", \"in\", \"isNull\" }},",
                 allowlist);
         // The report's own derived fields, never the @from entity's.
         Assert.DoesNotContain("customerEmail", allowlist);
@@ -340,8 +340,8 @@ public class ReportRowCodegenTests
         })
             Assert.Contains($"        [\"{field}\"] = ", allowlist);
         // A string dimension takes the string band, a date the ordered band.
-        Assert.Contains("[\"channel\"] = new(System.StringComparer.Ordinal) { \"eq\", \"ne\", \"in\", \"like\", \"isNull\" },", allowlist);
-        Assert.Contains("[\"soldAtDay\"] = new(System.StringComparer.Ordinal) { \"eq\", \"ne\", \"gt\", \"gte\", \"lt\", \"lte\", \"in\", \"isNull\" },", allowlist);
+        Assert.Contains("[\"channel\"] = new(global::System.StringComparer.Ordinal) { \"eq\", \"ne\", \"in\", \"like\", \"isNull\" },", allowlist);
+        Assert.Contains("[\"soldAtDay\"] = new(global::System.StringComparer.Ordinal) { \"eq\", \"ne\", \"gt\", \"gte\", \"lt\", \"lte\", \"in\", \"isNull\" },", allowlist);
     }
 
     [Fact]
@@ -681,7 +681,7 @@ public class ReportRowCodegenTests
         var files = EmitAll(RunnerContext(Cube()));
         Assert.Contains("    public enum SalesCubeStatus { OPEN, PAID }", files["SalesCube.g.cs"]);
         Assert.Contains(
-            "        modelBuilder.Entity<SalesCube>().Property(x => x.Status).HasConversion<string>();",
+            "        modelBuilder.Entity<global::Acme.Shop.SalesCube>().Property(x => x.Status).HasConversion<string>();",
             files["AppDbContext.g.cs"]);
     }
 

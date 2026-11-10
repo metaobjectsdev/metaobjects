@@ -15,7 +15,7 @@ public class IntEnumArray
     [Column(IntEnumArrayNames.IdColumn)]
     public long Id { get; set; }
     [Column(IntEnumArrayNames.StateColumn)]
-    public PublishState? State { get; set; }
+    public global::MetaObjects.IntegrationTests.Generated.PublishState? State { get; set; }
     [Column(IntEnumArrayNames.HistoryColumn)]
-    public IList<PublishState>? History { get; set; }
+    public IList<global::MetaObjects.IntegrationTests.Generated.PublishState>? History { get; set; }
 }

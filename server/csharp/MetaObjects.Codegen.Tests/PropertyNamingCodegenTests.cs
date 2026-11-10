@@ -162,7 +162,7 @@ public class PropertyNamingCodegenTests
     {
         var files = new EntityGenerator().Generate(Ctx(Load(), contextType: "ShopContext")).ToList();
         var finders = files.Single(f => System.IO.Path.GetFileName(f.Path) == "OrderLineQueries.g.cs").Content;
-        Assert.Contains("(ShopContext db, long customerId)", finders);
+        Assert.Contains("(global::Acme.Generated.ShopContext db, long customerId)", finders);
         Assert.DoesNotContain("AppDbContext", finders);
     }
 
@@ -181,7 +181,7 @@ public class PropertyNamingCodegenTests
             StringBuilder sb, MetaObject entity, string className, ClassDeclarationKind kind, GenContext ctx)
         {
             if (kind is ClassDeclarationKind.MappedEntity or ClassDeclarationKind.TphSubtype)
-                sb.AppendLine("[System.Serializable]");
+                sb.AppendLine("[global::System.Serializable]");
         }
     }
 
@@ -190,12 +190,12 @@ public class PropertyNamingCodegenTests
     {
         var files = new MarkedEntities().Generate(Ctx(Load())).ToList();
         var customer = files.Single(f => System.IO.Path.GetFileName(f.Path) == "Customer.g.cs").Content.Replace("\r\n", "\n");
-        Assert.Contains("[System.Serializable]\npublic class Customer", customer);
-        Assert.True(customer.IndexOf("[Table(", StringComparison.Ordinal) < customer.IndexOf("[System.Serializable]", StringComparison.Ordinal));
+        Assert.Contains("[global::System.Serializable]\npublic class Customer", customer);
+        Assert.True(customer.IndexOf("[Table(", StringComparison.Ordinal) < customer.IndexOf("[global::System.Serializable]", StringComparison.Ordinal));
         var vehicle = files.Single(f => System.IO.Path.GetFileName(f.Path) == "Vehicle.g.cs").Content.Replace("\r\n", "\n");
         // After the framework's own class attributes, immediately before the declaration.
-        Assert.Contains("[System.Text.Json.Serialization.JsonDerivedType(typeof(Van))]\n[System.Serializable]\npublic abstract class Vehicle", vehicle);
-        Assert.Contains("[System.Serializable]\npublic class Car : Vehicle", files.Single(f => System.IO.Path.GetFileName(f.Path) == "Car.g.cs").Content.Replace("\r\n", "\n"));
-        Assert.DoesNotContain("[System.Serializable]", files.Single(f => System.IO.Path.GetFileName(f.Path) == "PostalAddress.g.cs").Content);
+        Assert.Contains("[global::System.Text.Json.Serialization.JsonDerivedType(typeof(Van))]\n[global::System.Serializable]\npublic abstract class Vehicle", vehicle);
+        Assert.Contains("[global::System.Serializable]\npublic class Car : Vehicle", files.Single(f => System.IO.Path.GetFileName(f.Path) == "Car.g.cs").Content.Replace("\r\n", "\n"));
+        Assert.DoesNotContain("[global::System.Serializable]", files.Single(f => System.IO.Path.GetFileName(f.Path) == "PostalAddress.g.cs").Content);
     }
 }

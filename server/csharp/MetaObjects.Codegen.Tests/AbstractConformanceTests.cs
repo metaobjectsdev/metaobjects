@@ -60,9 +60,9 @@ public class AbstractConformanceTests
         var files = new DbContextGenerator().Generate(Context(root)).ToList();
         var ctx = Assert.Single(files);
 
-        Assert.DoesNotContain("DbSet<AbstractRecord>", ctx.Content);
-        Assert.DoesNotContain("DbSet<BaseShape>", ctx.Content);
-        Assert.Contains("DbSet<Widget>", ctx.Content);
+        Assert.DoesNotContain("DbSet<global::Acme.Shop.AbstractRecord>", ctx.Content);
+        Assert.DoesNotContain("DbSet<global::Acme.Shop.BaseShape>", ctx.Content);
+        Assert.Contains("DbSet<global::Acme.Shop.Widget>", ctx.Content);
     }
 
     // ---- Routes: no route file for abstract entities, file for the concrete one ----

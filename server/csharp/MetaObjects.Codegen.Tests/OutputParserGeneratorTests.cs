@@ -108,12 +108,12 @@ public sealed class OutputParserGeneratorTests
         Assert.Contains("public static class NpcResponseOutputParser", src);
 
         // Parse returns the payload-VO type and throws on failure.
-        Assert.Contains("public static NpcResponsePayload Parse(string text)", src);
+        Assert.Contains("public static global::Acme.Ai.NpcResponsePayload Parse(string text)", src);
         Assert.Contains("throw new JsonException", src);
 
         // TryParse returns bool + nullable out + error out.
         Assert.Contains("public static bool TryParse(string text,", src);
-        Assert.Contains("[NotNullWhen(true)] out NpcResponsePayload? value", src);
+        Assert.Contains("[NotNullWhen(true)] out global::Acme.Ai.NpcResponsePayload? value", src);
         Assert.Contains("[NotNullWhen(false)] out string? error", src);
     }
 
@@ -194,7 +194,7 @@ public sealed class OutputParserGeneratorTests
         // No strict tier — nor any of the System.Text.Json machinery it needs.
         // Match the PUBLIC signatures, not a bare "TryParse(": the tolerant tier's
         // coercion mappers legitimately call int.TryParse / decimal.TryParse.
-        Assert.DoesNotContain("public static Answer Parse(string text)", file.Content);
+        Assert.DoesNotContain("public static global::Acme.Ai.Answer Parse(string text)", file.Content);
         Assert.DoesNotContain("public static bool TryParse(string text,", file.Content);
         Assert.DoesNotContain("using System.Text.Json;", file.Content);
         Assert.DoesNotContain("JsonSerializer", file.Content);
@@ -220,7 +220,7 @@ public sealed class OutputParserGeneratorTests
         ]}}
         """;
         var file = Assert.Single(new OutputParserGenerator().Generate(Ctx(Load(m))), f => f.Path.EndsWith(".response.cs"));
-        Assert.Contains("public static Answer Parse(string text)", file.Content);
+        Assert.Contains("public static global::Acme.Ai.Answer Parse(string text)", file.Content);
         Assert.Contains("public static bool TryParse(string text,", file.Content);
         Assert.Contains("using System.Text.Json;", file.Content);
         Assert.Contains("Format.Json", file.Content);
@@ -329,7 +329,7 @@ public sealed class OutputParserGeneratorTests
         Assert.Equal("SupportAnswerPrompt.response.cs", System.IO.Path.GetFileName(file.Path));
         // The bound type is the @responseRef shape (SupportAnswer), NOT the @payloadRef
         // request shape (SupportRequest) — the distinction ADR-0052 exists to draw.
-        Assert.Contains("public static SupportAnswer Parse(string text)", file.Content);
+        Assert.Contains("public static global::Acme.Support.SupportAnswer Parse(string text)", file.Content);
         Assert.DoesNotContain("SupportRequest Parse(", file.Content);
         Assert.Contains("public static bool TryParse(string text,", file.Content);
     }

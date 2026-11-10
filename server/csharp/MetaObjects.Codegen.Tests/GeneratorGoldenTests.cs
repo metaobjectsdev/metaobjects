@@ -5,6 +5,8 @@
 //
 // Capture (only ever against a checkout that predates the hooks): GOLDEN_WRITE=1 dotnet test
 // --filter GeneratorGoldenTests. Compare mode is the default.
+// Re-captured once for rc.19 R65 (a package's own namespace; every cross-namespace reference
+// global::-qualified), a deliberate output change rather than a hook's.
 
 using System.Runtime.CompilerServices;
 using MetaObjects.Codegen;

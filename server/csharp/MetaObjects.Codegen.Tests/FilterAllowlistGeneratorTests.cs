@@ -48,7 +48,7 @@ public class FilterAllowlistGeneratorTests
         Assert.Equal("AuthorFilterAllowlist.g.cs", System.IO.Path.GetFileName(file.Path));
         var src = file.Content;
         // Field set is the empty initializer block.
-        Assert.Contains("public static readonly HashSet<string> Fields = new(System.StringComparer.Ordinal)", src);
+        Assert.Contains("public static readonly HashSet<string> Fields = new(global::System.StringComparer.Ordinal)", src);
         Assert.Contains("public static readonly Dictionary<string, HashSet<string>> OpsByField", src);
         // No field strings of any kind in the emitted source.
         Assert.DoesNotContain("\"name\"", src);
@@ -77,10 +77,10 @@ public class FilterAllowlistGeneratorTests
         Assert.Contains("\"name\",", src);
 
         // String operators on name: eq, ne, in, like, isNull (no gt/gte/lt/lte).
-        Assert.Contains("[\"name\"] = new(System.StringComparer.Ordinal) { \"eq\", \"ne\", \"in\", \"like\", \"isNull\" }", src);
+        Assert.Contains("[\"name\"] = new(global::System.StringComparer.Ordinal) { \"eq\", \"ne\", \"in\", \"like\", \"isNull\" }", src);
 
         // Numeric operators on id include the four ordering ops.
-        Assert.Contains("[\"id\"] = new(System.StringComparer.Ordinal) { \"eq\", \"ne\", \"gt\", \"gte\", \"lt\", \"lte\", \"in\", \"isNull\" }", src);
+        Assert.Contains("[\"id\"] = new(global::System.StringComparer.Ordinal) { \"eq\", \"ne\", \"gt\", \"gte\", \"lt\", \"lte\", \"in\", \"isNull\" }", src);
     }
 
     [Fact]
@@ -103,9 +103,9 @@ public class FilterAllowlistGeneratorTests
         Assert.Contains("\"ref\",", src);
         Assert.Contains("\"total\",", src);
         // uuid — identity-comparison only, no like.
-        Assert.Contains("[\"ref\"] = new(System.StringComparer.Ordinal) { \"eq\", \"ne\", \"in\", \"isNull\" }", src);
+        Assert.Contains("[\"ref\"] = new(global::System.StringComparer.Ordinal) { \"eq\", \"ne\", \"in\", \"isNull\" }", src);
         // currency — numeric ops.
-        Assert.Contains("[\"total\"] = new(System.StringComparer.Ordinal) { \"eq\", \"ne\", \"gt\", \"gte\", \"lt\", \"lte\", \"in\", \"isNull\" }", src);
+        Assert.Contains("[\"total\"] = new(global::System.StringComparer.Ordinal) { \"eq\", \"ne\", \"gt\", \"gte\", \"lt\", \"lte\", \"in\", \"isNull\" }", src);
     }
 
     private const string ProjectionModel = """

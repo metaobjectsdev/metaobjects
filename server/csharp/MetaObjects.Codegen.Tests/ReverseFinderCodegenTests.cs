@@ -81,14 +81,14 @@ public class ReverseFinderCodegenTests
         var queries = Queries(LoadFixture(), "GameSession");
 
         // Single-value finders — one per Scene FK, disambiguated by the FK field segment.
-        Assert.Contains("Task<List<GameSession>> FindGameSessionsByCurrentScene(", queries);
-        Assert.Contains("Task<List<GameSession>> FindGameSessionsByLastOpeningNarrativeScene(", queries);
-        Assert.Contains("Task<List<GameSession>> FindGameSessionsByTransitioningFromScene(", queries);
+        Assert.Contains("Task<List<global::Game.GameSession>> FindGameSessionsByCurrentScene(", queries);
+        Assert.Contains("Task<List<global::Game.GameSession>> FindGameSessionsByLastOpeningNarrativeScene(", queries);
+        Assert.Contains("Task<List<global::Game.GameSession>> FindGameSessionsByTransitioningFromScene(", queries);
 
         // Batched finders — the same three, distinct.
-        Assert.Contains("Task<List<GameSession>> FindGameSessionsByCurrentSceneIn(", queries);
-        Assert.Contains("Task<List<GameSession>> FindGameSessionsByLastOpeningNarrativeSceneIn(", queries);
-        Assert.Contains("Task<List<GameSession>> FindGameSessionsByTransitioningFromSceneIn(", queries);
+        Assert.Contains("Task<List<global::Game.GameSession>> FindGameSessionsByCurrentSceneIn(", queries);
+        Assert.Contains("Task<List<global::Game.GameSession>> FindGameSessionsByLastOpeningNarrativeSceneIn(", queries);
+        Assert.Contains("Task<List<global::Game.GameSession>> FindGameSessionsByTransitioningFromSceneIn(", queries);
 
         // No collision: each of the six finder names appears exactly once.
         foreach (var name in new[]
@@ -114,8 +114,8 @@ public class ReverseFinderCodegenTests
         // Batched: one WHERE <fk> IN (values) — the anti-N+1 selectin shape, empty-guarded.
         // currentSceneId is an OPTIONAL FK column (not @required / PK) → long? element type,
         // matching the FK property the entity class declares so Contains type-checks.
-        Assert.Contains("FindGameSessionsByCurrentSceneIn(AppDbContext db, IReadOnlyCollection<long?> currentSceneIds)", queries);
-        Assert.Contains("if (currentSceneIds.Count == 0) return new List<GameSession>();", queries);
+        Assert.Contains("FindGameSessionsByCurrentSceneIn(global::Game.Generated.AppDbContext db, IReadOnlyCollection<long?> currentSceneIds)", queries);
+        Assert.Contains("if (currentSceneIds.Count == 0) return new List<global::Game.GameSession>();", queries);
         Assert.Contains(
             "return await db.GameSessions.AsNoTracking().Where(e => currentSceneIds.Contains(e.CurrentSceneId)).ToListAsync();",
             queries);
@@ -131,10 +131,10 @@ public class ReverseFinderCodegenTests
         var queries = Queries(LoadFixture(), "GameSession");
 
         // Scene PK is field.long, the FK column is optional → long? finder argument.
-        Assert.Contains("FindGameSessionsByCurrentScene(AppDbContext db, long? currentSceneId)", queries);
+        Assert.Contains("FindGameSessionsByCurrentScene(global::Game.Generated.AppDbContext db, long? currentSceneId)", queries);
         // Player PK is field.string → string-typed argument (playerId, trailing "Id" dropped → ByPlayer).
-        Assert.Contains("FindGameSessionsByPlayer(AppDbContext db, string playerId)", queries);
-        Assert.Contains("FindGameSessionsByPlayerIn(AppDbContext db, IReadOnlyCollection<string> playerIds)", queries);
+        Assert.Contains("FindGameSessionsByPlayer(global::Game.Generated.AppDbContext db, string playerId)", queries);
+        Assert.Contains("FindGameSessionsByPlayerIn(global::Game.Generated.AppDbContext db, IReadOnlyCollection<string> playerIds)", queries);
     }
 
     // ---- No <Entity>Queries file for an entity with no reverse FK (Scene / Player) ----

@@ -176,7 +176,7 @@ public class ObjectFieldCodegenTests
         // NOT converted: Address (object.value) has no primary source and so no
         // AddressNames artifact, and the prefixed name is a composite no single
         // constant could hold anyway (a genuine lookup miss).
-        Assert.Contains("modelBuilder.Entity<Customer>().OwnsOne(x => x.HomeAddress, b =>", dbContext);
+        Assert.Contains("modelBuilder.Entity<global::Acme.Customer>().OwnsOne(x => x.HomeAddress, b =>", dbContext);
         Assert.Contains("b.Property(p => p.Street).HasColumnName(\"homeAddress_street\");", dbContext);
         Assert.Contains("b.Property(p => p.City).HasColumnName(\"homeAddress_city\");", dbContext);
         // The value object's ENUM members are flattened the same way — migrate-ts's
@@ -205,9 +205,9 @@ public class ObjectFieldCodegenTests
         // column inside a JSON document (the flattened arm above is where its int pair belongs).
         Assert.Contains(
             """
-                    modelBuilder.Entity<Customer>().OwnsOne(x => x.Config, b =>
+                    modelBuilder.Entity<global::Acme.Customer>().OwnsOne(x => x.Config, b =>
                     {
-                        b.ToJson(CustomerNames.ConfigColumn);
+                        b.ToJson(global::Acme.CustomerNames.ConfigColumn);
                         b.Property(p => p.Kind).HasConversion<string>();
                         b.Property(p => p.Grade).HasConversion<string>();
                     });
@@ -315,8 +315,8 @@ public class ObjectFieldCodegenTests
         // cover entity namespaces only, and a value object is not an entity.
         Assert.Contains(
             "b.Property(p => p.Prefs).HasColumnName(\"profile_prefs\").HasColumnType(\"jsonb\")"
-                + ".HasConversion(MapJsonb.Converter<Acme.Generated.Badge>()"
-                + ", MapJsonb.Comparer<Acme.Generated.Badge>());",
+                + ".HasConversion(MapJsonb.Converter<global::Acme.Badge>()"
+                + ", MapJsonb.Comparer<global::Acme.Badge>());",
             dbContext);
         // EF's own `<Nav>_<Prop>` default would name a column the migration never creates, so
         // the explicit HasColumnName above is the load-bearing half.
@@ -340,9 +340,9 @@ public class ObjectFieldCodegenTests
         // must serialize as the member symbol rather than EF's ordinal.
         Assert.Contains(
             """
-                    modelBuilder.Entity<Customer>().OwnsMany(x => x.Tags, b =>
+                    modelBuilder.Entity<global::Acme.Customer>().OwnsMany(x => x.Tags, b =>
                     {
-                        b.ToJson(CustomerNames.TagsColumn);
+                        b.ToJson(global::Acme.CustomerNames.TagsColumn);
                         b.Property(p => p.Kind).HasConversion<string>();
                         b.Property(p => p.Grade).HasConversion<string>();
                     });

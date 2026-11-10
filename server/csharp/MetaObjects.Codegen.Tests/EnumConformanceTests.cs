@@ -63,7 +63,7 @@ public class EnumConformanceTests
         // The entity references the shared enum without redeclaring it.
         var ticket = Assert.Single(files, f => System.IO.Path.GetFileName(f.Path) == "Ticket.g.cs");
         Assert.DoesNotContain("public enum Priority", ticket.Content);
-        Assert.Contains("public Priority", ticket.Content);
+        Assert.Contains("public global::Acme.Shop.Priority", ticket.Content);
     }
 
     [Fact]

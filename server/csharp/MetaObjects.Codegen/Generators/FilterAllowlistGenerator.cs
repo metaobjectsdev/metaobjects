@@ -96,18 +96,18 @@ public class FilterAllowlistGenerator : PerEntityGenerator
 
         // Fields — the field-name set. Use System.StringComparer.Ordinal for
         // case-sensitive matching (the URL grammar is case-exact).
-        sb.AppendLine("    public static readonly HashSet<string> Fields = new(System.StringComparer.Ordinal)");
+        sb.AppendLine("    public static readonly HashSet<string> Fields = new(global::System.StringComparer.Ordinal)");
         sb.AppendLine("    {");
         foreach (var f in opsByField.Keys) sb.AppendLine($"        \"{f}\",");
         sb.AppendLine("    };");
         sb.AppendLine();
 
         // OpsByField — Dictionary<field, HashSet<op>>.
-        sb.AppendLine("    public static readonly Dictionary<string, HashSet<string>> OpsByField = new(System.StringComparer.Ordinal)");
+        sb.AppendLine("    public static readonly Dictionary<string, HashSet<string>> OpsByField = new(global::System.StringComparer.Ordinal)");
         sb.AppendLine("    {");
         foreach (var kvp in opsByField)
         {
-            sb.Append($"        [\"{kvp.Key}\"] = new(System.StringComparer.Ordinal) {{ ");
+            sb.Append($"        [\"{kvp.Key}\"] = new(global::System.StringComparer.Ordinal) {{ ");
             bool first = true;
             foreach (var op in kvp.Value)
             {

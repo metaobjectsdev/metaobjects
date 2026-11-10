@@ -39,6 +39,10 @@ public class IntegrationFixtureDriftTests
     {
         OutDir = "/unused", // the generators key off Path; OutDir is not embedded in content
         Namespace = IntegrationNamespace,
+        // rc.19 R65: the corpus's `fitness` package would take its own namespace (`Fitness`); the
+        // Docker suite's hand-written code names these types in IntegrationNamespace, so the package
+        // is pinned there — the upgrade note's remedy, applied to our own consumer.
+        PackageNamespaces = new() { ["fitness"] = IntegrationNamespace },
         ColumnNamingStrategy = CorpusPaths.Naming.Columns,
         IncludeNames = true,
         EmitAbstractShapes = false,

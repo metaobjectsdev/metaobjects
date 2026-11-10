@@ -73,7 +73,7 @@ public class Issue294ReferentialActionTests
     }
 
     private static string WeekFkLine(string source) =>
-        Assert.Single(source.Split('\n'), l => l.Contains("HasOne<Program>()")).Trim();
+        Assert.Single(source.Split('\n'), l => l.Contains("HasOne<global::Acme.Program>()")).Trim();
 
     [Fact]
     public void A_plain_reference_now_configures_a_real_foreign_key()
@@ -86,7 +86,7 @@ public class Issue294ReferentialActionTests
         // to a same-named DbSet property in preference to the type (see
         // DbContextForeignKeyConfigTests / ForeignKeyExpression).
         Assert.Equal(
-            "modelBuilder.Entity<Week>().HasOne<Program>().WithMany()"
+            "modelBuilder.Entity<global::Acme.Week>().HasOne<global::Acme.Program>().WithMany()"
             + ".HasForeignKey(e => e.ProgramId).OnDelete(DeleteBehavior.Cascade);",
             WeekFkLine(source));
         Assert.DoesNotContain("GetForeignKeys", source);
@@ -176,7 +176,7 @@ public class Issue294ReferentialActionTests
     {
         // ADR-0046 — @enforce:false is a navigation-only reference with no FK at all.
         var (source, _) = Generate(TwoEntityModel(referenceAttrs: """, "@enforce": false """));
-        Assert.DoesNotContain("HasOne<Program>()", source);
+        Assert.DoesNotContain("HasOne<global::Acme.Program>()", source);
     }
 
     // A TPH base and one concrete subtype declaring the SAME foreign key — the exact
@@ -215,11 +215,11 @@ public class Issue294ReferentialActionTests
     public void A_tph_base_and_subtype_declaring_the_same_fk_configure_it_once()
     {
         var (source, _) = Generate(TphDualDeclaration);
-        var fkLines = source.Split('\n').Where(l => l.Contains("HasOne<User>()")).ToList();
+        var fkLines = source.Split('\n').Where(l => l.Contains("HasOne<global::Acme.User>()")).ToList();
 
         var line = Assert.Single(fkLines);
         // Configured on the BASE, which owns the shared table's column.
-        Assert.Contains("modelBuilder.Entity<Item>()", line);
+        Assert.Contains("modelBuilder.Entity<global::Acme.Item>()", line);
         Assert.Contains(".OnDelete(DeleteBehavior.Cascade)", line);
     }
 

@@ -140,7 +140,7 @@ public class ReportingInertTests
         #nullable enable
         using System.Collections.Generic;
 
-        namespace MetaObjects.ReportingInert.Generated;
+        namespace Acme.Shop;
 
         /// <summary>
         /// GENERATED — per-entity FR-009 filter allowlist for StoreTotals.
@@ -149,18 +149,18 @@ public class ReportingInertTests
         /// </summary>
         public static class StoreTotalsFilterAllowlist
         {
-            public static readonly HashSet<string> Fields = new(System.StringComparer.Ordinal)
+            public static readonly HashSet<string> Fields = new(global::System.StringComparer.Ordinal)
             {
                 "purchases",
                 "buyers",
                 "revenue",
             };
 
-            public static readonly Dictionary<string, HashSet<string>> OpsByField = new(System.StringComparer.Ordinal)
+            public static readonly Dictionary<string, HashSet<string>> OpsByField = new(global::System.StringComparer.Ordinal)
             {
-                ["purchases"] = new(System.StringComparer.Ordinal) { "eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull" },
-                ["buyers"] = new(System.StringComparer.Ordinal) { "eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull" },
-                ["revenue"] = new(System.StringComparer.Ordinal) { "eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull" },
+                ["purchases"] = new(global::System.StringComparer.Ordinal) { "eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull" },
+                ["buyers"] = new(global::System.StringComparer.Ordinal) { "eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull" },
+                ["revenue"] = new(global::System.StringComparer.Ordinal) { "eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull" },
             };
         }
 
@@ -171,7 +171,7 @@ public class ReportingInertTests
     private static void AssertReportRoutes(string routes)
     {
         Assert.Contains("public static class StoreTotalsRoutes", routes);
-        Assert.Contains("        app.MapGet(prefix + \"/store_totals\", async (HttpContext http, AppDbContext db) =>", routes);
+        Assert.Contains("        app.MapGet(prefix + \"/store_totals\", async (HttpContext http, global::MetaObjects.ReportingInert.Generated.AppDbContext db) =>", routes);
         Assert.Contains("        app.MapPost(prefix + \"/store_totals\", () =>", routes);
         Assert.Contains("message = \"POST is not supported on a report (read-only).\" }, statusCode: 405));", routes);
         Assert.Single(routes.Split('\n'), l => l.Contains("app.MapGet(", StringComparison.Ordinal));
@@ -193,7 +193,7 @@ public class ReportingInertTests
         using System.ComponentModel.DataAnnotations;
         using System.ComponentModel.DataAnnotations.Schema;
 
-        namespace MetaObjects.ReportingInert.Generated;
+        namespace Acme.Shop;
 
         public class StoreTotals
         {
@@ -209,8 +209,8 @@ public class ReportingInertTests
 
     private static readonly string[] ExpectedDbContextLines =
     [
-        "    public DbSet<StoreTotals> StoreTotals { get; set; } = default!;",
-        "        modelBuilder.Entity<StoreTotals>().HasNoKey().ToView(\"v_store_totals\");",
+        "    public DbSet<global::Acme.Shop.StoreTotals> StoreTotals { get; set; } = default!;",
+        "        modelBuilder.Entity<global::Acme.Shop.StoreTotals>().HasNoKey().ToView(\"v_store_totals\");",
     ];
 
     /// <summary>The lines of <paramref name="actual"/> that <paramref name="expected"/> lacks,

@@ -4,7 +4,8 @@
 //   1. Type-level override        — config.TypeOverrides["<pkg>::<typeName>"]
 //   2. Package-level override     — config.PackageNamespaces[<pkg>]
 //   3. Convention rule            — config.Convention (strip + prepend + case + separator); when
-//                                   none is set and no flat namespace is either, DefaultConvention
+//                                   none is set, DefaultConvention (the package itself, PascalCased),
+//                                   unless a configured namespace asks for Error/Derive (rc.19 R65)
 //   4. Unmapped strategy fallback — config.UnmappedStrategy (Flatten | Error | Derive)
 //
 // All resolution happens via this single helper so the @provided enum resolver
@@ -62,8 +63,16 @@ public static class PackageBindingResolver
             .OrderBy(ns => ns, StringComparer.Ordinal)
             .Select(ns => $"using {ns};");
 
+    // rc.19 R65: with no Convention, a package's namespace IS the package, each `::` segment
+    // PascalCased (`acme::alpha` → `Acme.Alpha`), as Java and Kotlin map packages — whether or not
+    // a namespace is configured; GenConfig.Namespace then serves only package-less objects and the
+    // artifacts of no single package. PackageNamespaces and TypeOverrides still win. A project that
+    // asks for UnmappedPackageStrategy.Error or Derive under a configured namespace keeps that
+    // meaning: it chose to map its packages itself.
     private static PackageBindingConvention? EffectiveConvention(GenConfig config) =>
-        config.Convention ?? (config.HasNamespace ? null : DefaultConvention);
+        config.Convention ?? (!config.HasNamespace || config.UnmappedStrategy == UnmappedPackageStrategy.Flatten
+            ? DefaultConvention
+            : null);
 
     /// <summary>The metadata node's EFFECTIVE package — the file-default package captured at parse
     /// time, NOT just the node's own (rarely-set) <c>package:</c> attr. Mirrors the

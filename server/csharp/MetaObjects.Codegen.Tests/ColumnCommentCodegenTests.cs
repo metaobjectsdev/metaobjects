@@ -44,7 +44,7 @@ public sealed class ColumnCommentCodegenTests
     {
         var (files, _) = Run("postgres");
         var context = files.Single(f => f.Path == "AppDbContext.g.cs").Content;
-        Assert.Contains("modelBuilder.Entity<Ticket>().Metadata.GetProperty(\"Labels\").SetComment(\"Labels by key.\");", context);
+        Assert.Contains("modelBuilder.Entity<global::Acme.Ticket>().Metadata.GetProperty(\"Labels\").SetComment(\"Labels by key.\");", context);
         Assert.DoesNotContain("FindProperty(", context);
     }
 
@@ -55,7 +55,7 @@ public sealed class ColumnCommentCodegenTests
         // Its outDir is no project on disk, so only the I4 "cannot tell" reference warning is expected.
         Assert.Empty(warnings.Where(w => !w.Contains("cannot tell whether EF reads the DesignTimeServicesReference", StringComparison.Ordinal)));
         var context = files.Single(f => f.Path == "AppDbContext.g.cs").Content;
-        Assert.Contains("modelBuilder.Entity<Ticket>().Metadata.FindNavigation(\"Meta\")!.TargetEntityType" +
+        Assert.Contains("modelBuilder.Entity<global::Acme.Ticket>().Metadata.FindNavigation(\"Meta\")!.TargetEntityType" +
             ".SetAnnotation(\"MetaObjects:JsonColumnComment\", \"Free-form tags.\");", context);
         // No increment key here: the services are emitted for the comment alone.
         var services = Assert.Single(files, f => f.Path.EndsWith("DesignTimeServices.g.cs", StringComparison.Ordinal)).Content;

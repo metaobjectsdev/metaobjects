@@ -224,7 +224,7 @@ public class GeneratorHooksTests
     {
         var g = new RecordingDb();
         Db(g, Load());
-        Assert.Equal(["DbColumnTypeConfig:Auth.uid"], g.Calls.Where(c => c.StartsWith("DbColumnTypeConfig:")));
+        Assert.Equal(["DbColumnTypeConfig:global::Acme.Auth.uid"], g.Calls.Where(c => c.StartsWith("DbColumnTypeConfig:")));
     }
 
     [Fact]
@@ -416,8 +416,8 @@ public class GeneratorHooksTests
     {
         var root = Load();
         var (removed, added) = Diff(Db(new DbContextGenerator(), root), Db(new DbSetDb(), root));
-        Assert.Equal(["    public DbSet<Auth> Auths { get; set; } = default!;"], removed);
-        Assert.Equal(["    public virtual DbSet<Auth> Auths { get; set; } = default!;"], added);
+        Assert.Equal(["    public DbSet<global::Acme.Auth> Auths { get; set; } = default!;"], removed);
+        Assert.Equal(["    public virtual DbSet<global::Acme.Auth> Auths { get; set; } = default!;"], added);
     }
 
     private sealed class DbColumnTypeDb : DbContextGenerator
@@ -447,7 +447,7 @@ public class GeneratorHooksTests
         var (removed, added) = Diff(Db(new DbContextGenerator(), root), Db(new NoReferenceDb(), root));
         Assert.Empty(added);
         var line = Assert.Single(removed);
-        Assert.Contains("modelBuilder.Entity<Auth>().HasOne<Auth>().WithMany().HasForeignKey(e => e.ParentId)", line);
+        Assert.Contains("modelBuilder.Entity<global::Acme.Auth>().HasOne<global::Acme.Auth>().WithMany().HasForeignKey(e => e.ParentId)", line);
     }
 
     private sealed class DefaultValueDb : DbContextGenerator
@@ -497,7 +497,7 @@ public class GeneratorHooksTests
         var root = Load();
         var (removed, added) = Diff(Db(new DbContextGenerator(), root), Db(new FieldTypeDb(), root));
         Assert.Empty(removed);
-        Assert.Equal(["        // adopter line for Auth.note"], added);
+        Assert.Equal(["        // adopter line for global::Acme.Auth.note"], added);
     }
 
     private sealed class OwnedDb : DbContextGenerator
@@ -514,7 +514,7 @@ public class GeneratorHooksTests
         Assert.Empty(added);
         // The jsonb value object's block (it holds an enum, so it is the multi-line form) is
         // gone; the flattened ones are not.
-        Assert.Contains(removed, l => l.Contains("modelBuilder.Entity<Auth>().OwnsOne(x => x.Config"));
+        Assert.Contains(removed, l => l.Contains("modelBuilder.Entity<global::Acme.Auth>().OwnsOne(x => x.Config"));
         Assert.DoesNotContain(removed, l => l.Contains("OwnsOne(x => x.Home"));
         Assert.DoesNotContain(removed, l => l.Contains("OwnsOne(x => x.Site"));
     }
@@ -534,8 +534,8 @@ public class GeneratorHooksTests
         Assert.Equal(["        // adopter Auth>BridgeAuth"], added);
         // Everything removed is configuration of the subtype's own builder, nothing of the root's.
         Assert.NotEmpty(removed);
-        Assert.Contains(removed, l => l.Contains("modelBuilder.Entity<BridgeAuth>()"));
-        Assert.DoesNotContain(removed, l => l.Contains("Entity<Auth>()"));
+        Assert.Contains(removed, l => l.Contains("modelBuilder.Entity<global::Acme.BridgeAuth>()"));
+        Assert.DoesNotContain(removed, l => l.Contains("Entity<global::Acme.Auth>()"));
     }
 
     private sealed class TrailerDb : DbContextGenerator
@@ -830,7 +830,7 @@ public class GeneratorHooksTests
             stock.Single(f => System.IO.Path.GetFileName(f.Path) == "Auth.g.cs").Content,
             hooked.Single(f => System.IO.Path.GetFileName(f.Path) == "Auth.g.cs").Content);
         Assert.Empty(added);
-        Assert.Equal(["[System.Text.Json.Serialization.JsonDerivedType(typeof(BridgeAuth))]"], removed);
+        Assert.Equal(["[global::System.Text.Json.Serialization.JsonDerivedType(typeof(BridgeAuth))]"], removed);
         foreach (var f in stock.Where(f => System.IO.Path.GetFileName(f.Path) != "Auth.g.cs"))
             Assert.Equal(f.Content, hooked.Single(x => x.Path == f.Path).Content);
     }
@@ -882,8 +882,9 @@ public class GeneratorHooksTests
         var root = Load();
         var (removed, added) = Diff(Db(new DbContextGenerator(), root), Db(new NamespaceDb(), root));
         Assert.Equal(["namespace Acme.Generated;"], removed);
-        // The entities stay where they are, so the context now needs their namespace.
-        Assert.Equal(["using Acme.Generated;", "namespace Acme.Data;"], added);
+        // The entities stay in their package's namespace (rc.19 R65: `Acme`), which the context
+        // already imports, so only the namespace line moves.
+        Assert.Equal(["namespace Acme.Data;"], added);
     }
 
     private sealed class NoCtorDb : DbContextGenerator
@@ -1055,26 +1056,26 @@ public class GeneratorHooksTests
         ]}}
         """;
         var lines = Lines(Db(new DbContextGenerator(), Load(model)));
-        var fks = lines.Where(l => l.Contains(".HasOne<Workflow>()")).ToList();
+        var fks = lines.Where(l => l.Contains(".HasOne<global::Acme.Workflow>()")).ToList();
         Assert.Equal(2, fks.Count);
-        Assert.Single(fks, l => l.Contains("Entity<CallJob>()"));
-        Assert.Single(fks, l => l.Contains("Entity<MailJob>()"));
-        Assert.DoesNotContain(fks, l => l.Contains("Entity<UrgentCallJob>()"));
+        Assert.Single(fks, l => l.Contains("Entity<global::Acme.CallJob>()"));
+        Assert.Single(fks, l => l.Contains("Entity<global::Acme.MailJob>()"));
+        Assert.DoesNotContain(fks, l => l.Contains("Entity<global::Acme.UrgentCallJob>()"));
     }
 
     [Fact]
     public void Reference_on_abstract_tph_intermediate_is_configured()
     {
-        const string onCaseJob = "        modelBuilder.Entity<CaseJob>().HasOne<Workflow>().WithMany().HasForeignKey(e => e.WorkflowId).OnDelete(DeleteBehavior.NoAction);";
+        const string onCaseJob = "        modelBuilder.Entity<global::Acme.Work.CaseJob>().HasOne<global::Acme.Work.Workflow>().WithMany().HasForeignKey(e => e.WorkflowId).OnDelete(DeleteBehavior.NoAction);";
         var shapes = Lines(GeneratorGoldenTests.GenerateRound2(shapes: true).Single(f => System.IO.Path.GetFileName(f.Path) == "AppDbContext.g.cs").Content);
         Assert.Single(shapes, l => l == onCaseJob);
-        Assert.DoesNotContain(shapes, l => l.Contains("Entity<CallJob>().HasOne<Workflow>()"));
+        Assert.DoesNotContain(shapes, l => l.Contains("Entity<global::Acme.Work.CallJob>().HasOne<global::Acme.Work.Workflow>()"));
 
         var folded = Lines(GeneratorGoldenTests.GenerateRound2(shapes: false).Single(f => System.IO.Path.GetFileName(f.Path) == "AppDbContext.g.cs").Content);
-        Assert.DoesNotContain(folded, l => l.Contains("Entity<CaseJob>()"));
+        Assert.DoesNotContain(folded, l => l.Contains("Entity<global::Acme.Work.CaseJob>()"));
         foreach (var leaf in new[] { "CallJob", "MailJob" })
-            Assert.Single(folded, l => l == onCaseJob.Replace("Entity<CaseJob>", $"Entity<{leaf}>"));
-        Assert.DoesNotContain(folded, l => l.Contains("Entity<PlainJob>().HasOne<Workflow>().WithMany().HasForeignKey(e => e.WorkflowId)"));
+            Assert.Single(folded, l => l == onCaseJob.Replace("Entity<global::Acme.Work.CaseJob>", $"Entity<global::Acme.Work.{leaf}>"));
+        Assert.DoesNotContain(folded, l => l.Contains("Entity<global::Acme.Work.PlainJob>().HasOne<global::Acme.Work.Workflow>().WithMany().HasForeignKey(e => e.WorkflowId)"));
 
         var g = new RecordingDb();
         g.Generate(GeneratorGoldenTests.Round2Context(shapes: true)).ToList();

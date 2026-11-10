@@ -73,6 +73,18 @@ public sealed class ValueObjectReuseTests
         },
     };
 
+    // rc.19 R65: each package has its own namespace by default, so "one namespace" is now an explicit
+    // mapping of both packages onto it.
+    private static GenContext OneNamespace(MetaRoot root) => new()
+    {
+        Entities = root.Objects(), Root = root,
+        Config = new GenConfig
+        {
+            OutDir = "/tmp", Namespace = "Acme.Generated",
+            PackageNamespaces = new() { ["acme::alpha"] = "Acme.Generated", ["acme::beta"] = "Acme.Generated" },
+        },
+    };
+
     // Ruling R52 — a value object is never renamed. Two that share a short name in one namespace are
     // a real collision, refused by the run's claim registry with the remedy; in two namespaces they
     // are two types of the same name.
@@ -81,7 +93,7 @@ public sealed class ValueObjectReuseTests
     public void Two_value_objects_sharing_a_short_name_in_one_namespace_are_refused_naming_both()
     {
         var root = Load(Alpha, Beta);
-        var ex = Assert.ThrowsAny<InvalidOperationException>(() => new EntityGenerator().Generate(Ctx(root)).ToList());
+        var ex = Assert.ThrowsAny<InvalidOperationException>(() => new EntityGenerator().Generate(OneNamespace(root)).ToList());
         Assert.Contains("ERR_NAME_COLLISION", ex.Message);
         Assert.Contains("\"acme::alpha::Note\"", ex.Message);
         Assert.Contains("\"acme::beta::Note\"", ex.Message);
@@ -112,7 +124,7 @@ public sealed class ValueObjectReuseTests
             { "field.long": { "name": "id" } },
             { "identity.primary": { "@fields": "id" } } ] } } ] } }
         """);
-        var ex = Assert.ThrowsAny<InvalidOperationException>(() => new EntityGenerator().Generate(Ctx(root)).ToList());
+        var ex = Assert.ThrowsAny<InvalidOperationException>(() => new EntityGenerator().Generate(OneNamespace(root)).ToList());
         Assert.Contains("ERR_NAME_COLLISION", ex.Message);
         Assert.Contains("\"Note\"", ex.Message);
     }
@@ -212,7 +224,7 @@ public sealed class ValueObjectReuseTests
         // also what gives it `{{#hasBio}}` — the accessor a JVM payload record used to generate.
         var root = Load(SharedResponse);
         var asm = Compile(GeneratedValueObjects.Sources(root));
-        var answerType = asm.GetType("Acme.Generated.Answer")!;
+        var answerType = asm.GetType("Acme.Ai.Answer")!;
 
         var with = Activator.CreateInstance(answerType)!;
         answerType.GetProperty("Text")!.SetValue(with, "hi");

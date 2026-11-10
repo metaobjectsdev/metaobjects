@@ -101,7 +101,7 @@ public class NamesGenerator : PerEntityGenerator
     // compiling) but deprecated. [Obsolete] on a declaration warns nothing; only a use does, so a
     // project that never reads it gets no new warning.
     private const string FlattenedColumnObsolete =
-        "[System.Obsolete(\"A flattened field has no column of its own; use the member constants.\")]";
+        "[global::System.Obsolete(\"A flattened field has no column of its own; use the member constants.\")]";
 
     /// <summary>
     /// One string constant. The VALUE is author-controlled — an object name, a key name, a
@@ -403,7 +403,7 @@ public class NamesGenerator : PerEntityGenerator
         // class hides the base's field rather than overriding it (a static field cannot be
         // virtual), which is what makes `<Sub>Names.ColumnsByField` the complete one.
         var hides = superCls is null ? "" : "new ";
-        sb.AppendLine($"    public static {hides}readonly Dictionary<string, string> ColumnsByField = new(System.StringComparer.Ordinal)");
+        sb.AppendLine($"    public static {hides}readonly Dictionary<string, string> ColumnsByField = new(global::System.StringComparer.Ordinal)");
         sb.AppendLine("    {");
         var skippedMembers = CollidingFlattenedMembers(names);
         foreach (var f in names.Fields.Values.OrderBy(v => v.Name, StringComparer.Ordinal))

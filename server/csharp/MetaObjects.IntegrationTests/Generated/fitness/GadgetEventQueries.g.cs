@@ -12,13 +12,13 @@ namespace MetaObjects.IntegrationTests.Generated;
 public static class GadgetEventQueries
 {
     /// <summary>The GadgetEvent rows whose GadgetId equals <paramref name="gadgetId"/> (one indexed query).</summary>
-    public static async System.Threading.Tasks.Task<List<GadgetEvent>> FindGadgetEventsByGadget(AppDbContext db, long gadgetId) =>
+    public static async global::System.Threading.Tasks.Task<List<global::MetaObjects.IntegrationTests.Generated.GadgetEvent>> FindGadgetEventsByGadget(global::MetaObjects.IntegrationTests.Generated.AppDbContext db, long gadgetId) =>
         await db.GadgetEvents.AsNoTracking().Where(e => e.GadgetId == gadgetId).ToListAsync();
 
     /// <summary>The GadgetEvent rows whose GadgetId is in <paramref name="gadgetIds"/> (one batched IN query; anti-N+1).</summary>
-    public static async System.Threading.Tasks.Task<List<GadgetEvent>> FindGadgetEventsByGadgetIn(AppDbContext db, IReadOnlyCollection<long> gadgetIds)
+    public static async global::System.Threading.Tasks.Task<List<global::MetaObjects.IntegrationTests.Generated.GadgetEvent>> FindGadgetEventsByGadgetIn(global::MetaObjects.IntegrationTests.Generated.AppDbContext db, IReadOnlyCollection<long> gadgetIds)
     {
-        if (gadgetIds.Count == 0) return new List<GadgetEvent>();
+        if (gadgetIds.Count == 0) return new List<global::MetaObjects.IntegrationTests.Generated.GadgetEvent>();
         return await db.GadgetEvents.AsNoTracking().Where(e => gadgetIds.Contains(e.GadgetId)).ToListAsync();
     }
 }

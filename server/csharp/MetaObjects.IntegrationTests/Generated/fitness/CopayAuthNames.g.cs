@@ -17,7 +17,7 @@ public abstract class CopayAuthNames : AuthNames
     public const string CopayAmountField = "copayAmount";
     public const string CopayAmountColumn = "copayAmount";
 
-    public static new readonly Dictionary<string, string> ColumnsByField = new(System.StringComparer.Ordinal)
+    public static new readonly Dictionary<string, string> ColumnsByField = new(global::System.StringComparer.Ordinal)
     {
         ["copayAmount"] = CopayAmountColumn,
         ["id"] = IdColumn,

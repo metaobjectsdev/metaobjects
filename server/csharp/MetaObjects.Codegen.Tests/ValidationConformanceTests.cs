@@ -107,7 +107,8 @@ public sealed class ValidationConformanceTests
         private static readonly Assembly Asm = Compile();
 
         internal static Type For(string entityName) =>
-            Asm.GetType($"Acme.Validation.Generated.{entityName}")
+            // rc.19 R65: the corpus's `acme::auth` types land in their package's namespace.
+            Asm.GetType($"Acme.Auth.{entityName}")
             ?? throw new InvalidOperationException($"generated assembly has no type for {entityName}");
 
         private static Assembly Compile()

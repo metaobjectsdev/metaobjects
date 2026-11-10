@@ -69,13 +69,13 @@ public sealed class RenderHelperCodegenTests
         var file = Assert.Single(new RenderHelperGenerator(templateRoot).Generate(Ctx(root)));
         Assert.Equal("WelcomePage.render.cs", System.IO.Path.GetFileName(file.Path));
         Assert.Contains("public static class WelcomePageRenderHelper", file.Content);
-        Assert.Contains("public static string Render(Welcome payload, global::MetaObjects.Render.IProvider provider)", file.Content);
+        Assert.Contains("public static string Render(global::Acme.Ai.Welcome payload, global::MetaObjects.Render.IProvider provider)", file.Content);
 
         // Compile the helper alongside the value object's POCO (ADR-0056), then reflectively render.
         var asm = CompileToAssembly([file.Content, .. GeneratedValueObjects.Sources(root)]);
 
         var helper = asm.GetType("Acme.Generated.WelcomePageRenderHelper")!;
-        var payloadType = asm.GetType("Acme.Generated.Welcome")!;
+        var payloadType = asm.GetType("Acme.Ai.Welcome")!;
         var payload = Activator.CreateInstance(payloadType)!;
         payloadType.GetProperty("Name")!.SetValue(payload, "Ada");
 
@@ -108,7 +108,7 @@ public sealed class RenderHelperCodegenTests
         var asm = CompileToAssembly([file.Content, .. GeneratedValueObjects.Sources(root)]);
 
         var helper = asm.GetType("Acme.Generated.WelcomePageRenderHelper")!;
-        var payloadType = asm.GetType("Acme.Generated.Welcome")!;
+        var payloadType = asm.GetType("Acme.Ai.Welcome")!;
         var render = helper.GetMethod("Render")!;
         var provider = new FilesystemProvider(templateRoot);
 
@@ -150,12 +150,12 @@ public sealed class RenderHelperCodegenTests
 
         var file = Assert.Single(new RenderHelperGenerator(templateRoot).Generate(Ctx(root)));
         Assert.Equal("WelcomeEmail.render.cs", System.IO.Path.GetFileName(file.Path));
-        Assert.Contains("public static global::MetaObjects.Render.EmailDocument Render(Welcome payload", file.Content);
+        Assert.Contains("public static global::MetaObjects.Render.EmailDocument Render(global::Acme.Ai.Welcome payload", file.Content);
 
         var asm = CompileToAssembly([file.Content, .. GeneratedValueObjects.Sources(root)]);
 
         var helper = asm.GetType("Acme.Generated.WelcomeEmailRenderHelper")!;
-        var payloadType = asm.GetType("Acme.Generated.Welcome")!;
+        var payloadType = asm.GetType("Acme.Ai.Welcome")!;
         var payload = Activator.CreateInstance(payloadType)!;
         payloadType.GetProperty("Name")!.SetValue(payload, "Ada");
 
@@ -187,7 +187,7 @@ public sealed class RenderHelperCodegenTests
         var asm = CompileToAssembly([file.Content, .. GeneratedValueObjects.Sources(root)]);
 
         var helper = asm.GetType("Acme.Generated.WelcomeEmailRenderHelper")!;
-        var payloadType = asm.GetType("Acme.Generated.Welcome")!;
+        var payloadType = asm.GetType("Acme.Ai.Welcome")!;
         var payload = Activator.CreateInstance(payloadType)!;
         payloadType.GetProperty("Name")!.SetValue(payload, "Ada");
 

@@ -137,12 +137,15 @@ public class DerivedNamespaceTests
         Assert.Contains("namespace Acme.Billing;", Content(files, "AppDbContext.g.cs"));
     }
 
+    // rc.19 R65: a configured namespace is the home of the package-less artifacts only; a packaged
+    // type keeps its package's namespace.
     [Fact]
-    public void Configured_namespace_overrides_the_derived_default()
+    public void A_configured_namespace_places_only_the_artifacts_of_no_package()
     {
         var files = Generate(Load(Billing(), Crm, Ops), Bare() with { Namespace = "My.App" });
-        Assert.Contains("namespace My.App;", Content(files, "Invoice.g.cs"));
-        Assert.Contains("namespace My.App;", Content(files, "Order.g.cs"));
+        Assert.Contains("namespace Acme.Billing;", Content(files, "Invoice.g.cs"));
+        Assert.Contains("namespace Acme.Crm;", Content(files, "Order.g.cs"));
+        Assert.Contains("namespace My.App;", Content(files, "AppDbContext.g.cs"));
     }
 
     [Fact]
@@ -186,13 +189,14 @@ public class DerivedNamespaceTests
     }
 
     [Fact]
-    public void Routes_reach_the_package_namespaces_of_the_types_they_name()
+    public void Routes_and_exports_live_in_their_objects_package_namespace()
     {
+        // rc.19 R65: a per-object class follows its object; what it names from elsewhere (the
+        // context, another package's types) is global::-qualified, so it needs no using.
         var files = Generate(Load(Billing(), Crm, Ops), Bare());
-        Assert.Contains("Acme.Billing", Usings(Content(files, "InvoiceRoutes.g.cs")));
-        Assert.Contains("Acme.Crm", Usings(Content(files, "OrderRoutes.g.cs")));
-        // Order navigates to an Invoice, and the home namespace is neither package's.
-        Assert.Contains("Acme", Content(files, "OrderRoutes.g.cs").Split('\n').Where(l => l.StartsWith("namespace ")).Select(l => l["namespace ".Length..].TrimEnd(';', '\r')));
-        Assert.Contains("Acme.Billing", Usings(Content(files, "InvoiceTotalsExport.g.cs")));
+        Assert.Contains("namespace Acme.Billing;", Content(files, "InvoiceRoutes.g.cs"));
+        Assert.Contains("namespace Acme.Crm;", Content(files, "OrderRoutes.g.cs"));
+        Assert.Contains("global::Acme.AppDbContext db", Content(files, "OrderRoutes.g.cs"));
+        Assert.Empty(Usings(Content(files, "OrderRoutes.g.cs")).Where(u => u.StartsWith("Acme", StringComparison.Ordinal)));
     }
 }

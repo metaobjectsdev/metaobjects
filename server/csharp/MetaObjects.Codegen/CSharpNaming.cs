@@ -413,6 +413,12 @@ public static class CSharpNaming
     /// <summary>The per-object physical database names class name: <c>&lt;EntityPascal&gt;Names</c>.</summary>
     public static string NamesClassName(MetaObject entity) => NamesClassName(entity.Name);
 
+    /// <summary>rc.19 R65: <paramref name="obj"/>'s names class as a file elsewhere names it —
+    /// bare when <paramref name="qualify"/> is null (the caller is in the object's own namespace),
+    /// else <c>global::</c>-qualified in the object's namespace under that config.</summary>
+    public static string NamesRef(MetaObject obj, GenConfig? qualify) =>
+        qualify is null ? NamesClassName(obj) : ValueObjectNames.Global(ValueObjectNames.Namespace(obj, qualify), NamesClassName(obj));
+
     /// <summary>Overload taking a bare object name — used when only a super's NAME is in hand.</summary>
     public static string NamesClassName(string objectName) => Pascal(objectName) + "Names";
 
@@ -922,11 +928,11 @@ public static class CSharpNaming
     /// resolving), the exact set this method iterates.</item>
     /// </list>
     /// </summary>
-    public static string ColumnRef(MetaObject owner, MetaField field, ColumnNamingStrategy strategy, bool includeNames)
+    public static string ColumnRef(MetaObject owner, MetaField field, ColumnNamingStrategy strategy, bool includeNames, GenConfig? qualify = null)
     {
         var names = includeNames ? ResolveObjectNames(owner, strategy) : null;
         return names is not null && names.Fields.ContainsKey(field.Name)
-            ? $"{NamesClassName(owner)}.{FieldMemberName(field.Name, MEMBER_COLUMN)}"
+            ? $"{NamesRef(owner, qualify)}.{FieldMemberName(field.Name, MEMBER_COLUMN)}"
             : $"\"{Column(field, strategy)}\"";
     }
 
@@ -935,12 +941,12 @@ public static class CSharpNaming
     /// <c>&lt;Owner&gt;Names</c> constant (<c>IdentityUqCustEmailIndex</c>) when this run emits
     /// the names artifact and it declares the key, else the resolved name as a literal.
     /// </summary>
-    public static string IndexRef(MetaObject owner, MetaData key, ColumnNamingStrategy strategy, bool includeNames)
+    public static string IndexRef(MetaObject owner, MetaData key, ColumnNamingStrategy strategy, bool includeNames, GenConfig? qualify = null)
     {
         var names = includeNames ? ResolveObjectNames(owner, strategy) : null;
         var keys = key.Type == TYPE_INDEX ? names?.Indexes : names?.Identities;
         return keys is not null && keys.TryGetValue(key.Name, out var k) && k.Index is not null
-            ? $"{NamesClassName(owner)}.{KeyMemberName(key.Type, key.Name, MEMBER_INDEX)}"
+            ? $"{NamesRef(owner, qualify)}.{KeyMemberName(key.Type, key.Name, MEMBER_INDEX)}"
             : $"\"{CSharpStringLiteral(IndexNaming.ResolveIndexName(key))}\"";
     }
 
@@ -981,8 +987,8 @@ public static class CSharpNaming
     /// </summary>
     public static string NameRef(
         MetaObject obj, ColumnNamingStrategy strategy, bool includeNames, string literal,
-        string role = SOURCE_ROLE_PRIMARY) =>
-        SourceNameMember(obj, strategy, includeNames, role) ?? $"\"{literal}\"";
+        string role = SOURCE_ROLE_PRIMARY, GenConfig? qualify = null) =>
+        SourceNameMember(obj, strategy, includeNames, role, qualify) ?? $"\"{literal}\"";
 
     /// <summary>
     /// The <c>&lt;Owner&gt;Names.Source&lt;Role&gt;&lt;Alias&gt;</c> physical-name
@@ -996,7 +1002,7 @@ public static class CSharpNaming
     /// </summary>
     public static string? SourceNameMember(
         MetaObject obj, ColumnNamingStrategy strategy, bool includeNames,
-        string role = SOURCE_ROLE_PRIMARY)
+        string role = SOURCE_ROLE_PRIMARY, GenConfig? qualify = null)
     {
         if (!includeNames) return null;
         var src = ResolveObjectNames(obj, strategy)?.Sources.GetValueOrDefault(role);
@@ -1004,7 +1010,7 @@ public static class CSharpNaming
         // keeps a future kind from emitting a member that was never declared.
         return src?.PhysicalNameAlias is null
             ? null
-            : $"{NamesClassName(obj)}.{SourceMemberName(role, src.PhysicalNameAlias)}";
+            : $"{NamesRef(obj, qualify)}.{SourceMemberName(role, src.PhysicalNameAlias)}";
     }
 
     /// <summary>
@@ -1016,13 +1022,13 @@ public static class CSharpNaming
     /// </summary>
     public static string? SourceSchemaMember(
         MetaObject obj, ColumnNamingStrategy strategy, bool includeNames,
-        string role = SOURCE_ROLE_PRIMARY)
+        string role = SOURCE_ROLE_PRIMARY, GenConfig? qualify = null)
     {
         if (!includeNames) return null;
         var src = ResolveObjectNames(obj, strategy)?.Sources.GetValueOrDefault(role);
         return string.IsNullOrEmpty(src?.Schema)
             ? null
-            : $"{NamesClassName(obj)}.{SourceMemberName(role, SOURCE_ATTR_SCHEMA)}";
+            : $"{NamesRef(obj, qualify)}.{SourceMemberName(role, SOURCE_ATTR_SCHEMA)}";
     }
 
     /// <summary>
@@ -1056,11 +1062,11 @@ public static class CSharpNaming
     /// </summary>
     public static string ViewSchemaArg(
         MetaObject obj, ColumnNamingStrategy strategy, bool includeNames,
-        string role = SOURCE_ROLE_PRIMARY)
+        string role = SOURCE_ROLE_PRIMARY, GenConfig? qualify = null)
     {
         var src = ResolveObjectNames(obj, strategy)?.Sources.GetValueOrDefault(role);
         if (string.IsNullOrEmpty(src?.Schema)) return "";
-        return SourceSchemaMember(obj, strategy, includeNames, role) is { } member
+        return SourceSchemaMember(obj, strategy, includeNames, role, qualify) is { } member
             ? $", {member}"
             : $", \"{src.Schema}\"";
     }
@@ -1245,7 +1251,8 @@ public static class CSharpNaming
     /// forbid.</para>
     /// </summary>
     public static string QualifiedOwnerTypeRef(string owner, MetaObject ownerObject, GenConfig config) =>
-        Pluralize(owner) == owner ? $"global::{ValueObjectNames.Namespace(ownerObject, config)}.{owner}" : owner;
+        owner.StartsWith("global::", StringComparison.Ordinal) ? owner
+        : Pluralize(owner) == owner ? $"global::{ValueObjectNames.Namespace(ownerObject, config)}.{owner}" : owner;
 
     private static readonly char[] CSharpEscapeChars = { '\\', '"', '\t', '\n', '\r' };
 

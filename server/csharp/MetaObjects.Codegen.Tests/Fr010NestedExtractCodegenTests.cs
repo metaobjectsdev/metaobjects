@@ -68,7 +68,7 @@ public sealed class Fr010NestedExtractCodegenTests
 
         // The delegating overload + the loader convenience overload + the baked FQN.
         Assert.Contains("public const string PAYLOAD_FQN = \"OrderPayload\";", src);
-        Assert.Contains("public static global::MetaObjects.Render.Extract.ExtractionResult<OrderPayloadExtracted> ExtractLenient(\n        global::MetaObjects.Meta.MetaObject mo, string text, ExtractOptions? opts = null)", src);
+        Assert.Contains("public static global::MetaObjects.Render.Extract.ExtractionResult<global::Acme.Orders.OrderPayloadExtracted> ExtractLenient(\n        global::MetaObjects.Meta.MetaObject mo, string text, ExtractOptions? opts = null)", src);
         Assert.Contains("global::MetaObjects.Meta.MetaRoot root, string text, ExtractOptions? opts = null)", src);
         Assert.Contains("global::MetaObjects.Codegen.Runtime.ExtractObject.Extract(mo, text, Format.Json, opts)", src);
 

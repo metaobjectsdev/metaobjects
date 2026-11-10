@@ -558,11 +558,11 @@ public class NamesGeneratorTests
 
         // Projection .ToView — the unconditional [Table]-shaped substitution (keyless:
         // CustomerSummary declares no identity, so .HasNoKey() precedes it).
-        Assert.Contains("modelBuilder.Entity<CustomerSummary>().HasNoKey().ToView(CustomerSummaryNames.SourcePrimaryView);", dbContext);
+        Assert.Contains("modelBuilder.Entity<global::Acme.CustomerSummary>().HasNoKey().ToView(global::Acme.CustomerSummaryNames.SourcePrimaryView);", dbContext);
         Assert.DoesNotContain("ToView(\"v_customer_summary\")", dbContext);
 
         // Object-typed field .ToJson — the owner's own field, always present.
-        Assert.Contains("b.ToJson(CustomerNames.ConfigColumn)", dbContext);
+        Assert.Contains("b.ToJson(global::Acme.CustomerNames.ConfigColumn)", dbContext);
         Assert.DoesNotContain("b.ToJson(\"config\")", dbContext);
     }
 
@@ -827,13 +827,13 @@ public class NamesGeneratorTests
         var dbContext = new DbContextGenerator().Generate(ctx).Single().Content;
 
         // Exactly what these two lines emitted before Program A added the constant.
-        Assert.Contains("modelBuilder.Entity<CustomerSummary>().HasNoKey().ToView(\"v_customer_summary\");", dbContext);
+        Assert.Contains("modelBuilder.Entity<global::Acme.CustomerSummary>().HasNoKey().ToView(\"v_customer_summary\");", dbContext);
         Assert.Contains("b.ToJson(\"config\")", dbContext);
 
         Assert.DoesNotContain("CustomerSummaryNames", dbContext);
         Assert.DoesNotContain("CustomerNames", dbContext);
-        Assert.DoesNotContain("ToView(CustomerSummaryNames.SourcePrimaryView)", dbContext);
-        Assert.DoesNotContain("b.ToJson(CustomerNames.ConfigColumn)", dbContext);
+        Assert.DoesNotContain("ToView(global::Acme.CustomerSummaryNames.SourcePrimaryView)", dbContext);
+        Assert.DoesNotContain("b.ToJson(global::Acme.CustomerNames.ConfigColumn)", dbContext);
     }
 
     [Fact]
@@ -917,7 +917,7 @@ public class NamesGeneratorTests
         Assert.Contains("[\"shipTo\"] = ShipToColumn,", content);
         // ...but the flattened field's own column constant names no column of the table: deprecated.
         Assert.Contains(
-            "    [System.Obsolete(\"A flattened field has no column of its own; use the member constants.\")]\n" +
+            "    [global::System.Obsolete(\"A flattened field has no column of its own; use the member constants.\")]\n" +
             "    public const string ShipToColumn = \"ship_to\";", content.Replace("\r\n", "\n"));
         Assert.Single(System.Text.RegularExpressions.Regex.Matches(content, "Obsolete"));
         Assert.Contains("[\"shipTo.street\"] = ShipToStreetColumn,", content);

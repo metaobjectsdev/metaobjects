@@ -5,20 +5,20 @@ using System.Collections.Generic;
 using System.Linq;
 using Microsoft.EntityFrameworkCore;
 
-namespace Acme.Generated;
+namespace Acme;
 
 /// <summary>Reverse-relationship FK finders for Invoice (ADR-0038): explicit,
 /// single-query reads — no lazy navigation, no N+1.</summary>
 public static class InvoiceQueries
 {
     /// <summary>The Invoice rows whose ClientId equals <paramref name="clientId"/> (one indexed query).</summary>
-    public static async System.Threading.Tasks.Task<List<InvoiceView>> FindInvoicesByClient(AppDbContext db, long clientId) =>
+    public static async global::System.Threading.Tasks.Task<List<global::Acme.InvoiceView>> FindInvoicesByClient(global::Acme.Generated.AppDbContext db, long clientId) =>
         await db.InvoiceViews.AsNoTracking().Where(e => e.ClientId == clientId).ToListAsync();
 
     /// <summary>The Invoice rows whose ClientId is in <paramref name="clientIds"/> (one batched IN query; anti-N+1).</summary>
-    public static async System.Threading.Tasks.Task<List<InvoiceView>> FindInvoicesByClientIn(AppDbContext db, IReadOnlyCollection<long> clientIds)
+    public static async global::System.Threading.Tasks.Task<List<global::Acme.InvoiceView>> FindInvoicesByClientIn(global::Acme.Generated.AppDbContext db, IReadOnlyCollection<long> clientIds)
     {
-        if (clientIds.Count == 0) return new List<InvoiceView>();
+        if (clientIds.Count == 0) return new List<global::Acme.InvoiceView>();
         return await db.InvoiceViews.AsNoTracking().Where(e => clientIds.Contains(e.ClientId)).ToListAsync();
     }
 }

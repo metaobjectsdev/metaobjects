@@ -17,7 +17,7 @@ public abstract class BridgeAuthNames : AuthNames
     public const string QuantityField = "quantity";
     public const string QuantityColumn = "quantity";
 
-    public static new readonly Dictionary<string, string> ColumnsByField = new(System.StringComparer.Ordinal)
+    public static new readonly Dictionary<string, string> ColumnsByField = new(global::System.StringComparer.Ordinal)
     {
         ["id"] = IdColumn,
         ["quantity"] = QuantityColumn,

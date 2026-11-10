@@ -78,7 +78,7 @@ public sealed class IdentityStartDialectTests
         // OnModelCreating body is chunked.
         var context = Run("postgres").Files.Single(f => f.Path == "AppDbContext.g.cs").Content;
         var line = Assert.Single(context.Split('\n'), l => l.Contains("Npgsql:IdentitySequenceOptions"));
-        Assert.StartsWith("if (Database.ProviderName == \"Npgsql.EntityFrameworkCore.PostgreSQL\") modelBuilder.Entity<Ticket>()", line.Trim());
+        Assert.StartsWith("if (Database.ProviderName == \"Npgsql.EntityFrameworkCore.PostgreSQL\") modelBuilder.Entity<global::Acme.Ticket>()", line.Trim());
     }
 
     [Fact]
@@ -103,8 +103,8 @@ public sealed class IdentityStartDialectTests
     }
 
     [Theory]
-    [InlineData("<Project Sdk=\"Microsoft.NET.Sdk\"></Project>", "Acme.Data")]
-    [InlineData("<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><AssemblyName>Acme.Persistence</AssemblyName></PropertyGroup></Project>", "Acme.Persistence")]
+    [InlineData("<Project Sdk=\"global::Microsoft.NET.Sdk\"></Project>", "Acme.Data")]
+    [InlineData("<Project Sdk=\"global::Microsoft.NET.Sdk\"><PropertyGroup><AssemblyName>Acme.Persistence</AssemblyName></PropertyGroup></Project>", "Acme.Persistence")]
     public void The_assembly_name_is_read_from_the_project_the_output_is_written_into(string csproj, string expected)
     {
         var project = Directory.CreateTempSubdirectory("mo-dts-").FullName;
@@ -129,7 +129,7 @@ public sealed class IdentityStartDialectTests
     // the migrations (<Context>ModelSnapshot.cs), and otherwise warns with the exact line to add.
 
     private const string Line =
-        "[assembly: Microsoft.EntityFrameworkCore.Design.DesignTimeServicesReference(\"Acme.AppDbContextDesignTimeServices, Acme.Data\", \"Npgsql.EntityFrameworkCore.PostgreSQL\")]";
+        "[assembly: global::Microsoft.EntityFrameworkCore.Design.DesignTimeServicesReference(\"Acme.AppDbContextDesignTimeServices, Acme.Data\", \"Npgsql.EntityFrameworkCore.PostgreSQL\")]";
 
     /// <summary>A repository with the context's project (Acme.Data) and, optionally, a migrations project.</summary>
     private static string Repo(string? snapshotIn, string? migrationsSource = null)
@@ -137,9 +137,9 @@ public sealed class IdentityStartDialectTests
         var repo = Directory.CreateTempSubdirectory("mo-dts-repo-").FullName;
         Directory.CreateDirectory(Path.Combine(repo, ".git"));
         Directory.CreateDirectory(Path.Combine(repo, "Acme.Data"));
-        File.WriteAllText(Path.Combine(repo, "Acme.Data", "Acme.Data.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\"></Project>");
+        File.WriteAllText(Path.Combine(repo, "Acme.Data", "Acme.Data.csproj"), "<Project Sdk=\"global::Microsoft.NET.Sdk\"></Project>");
         Directory.CreateDirectory(Path.Combine(repo, "Acme.Migrations"));
-        File.WriteAllText(Path.Combine(repo, "Acme.Migrations", "Acme.Migrations.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\"></Project>");
+        File.WriteAllText(Path.Combine(repo, "Acme.Migrations", "Acme.Migrations.csproj"), "<Project Sdk=\"global::Microsoft.NET.Sdk\"></Project>");
         if (snapshotIn is not null)
         {
             var dir = Path.Combine(repo, snapshotIn, "Migrations");

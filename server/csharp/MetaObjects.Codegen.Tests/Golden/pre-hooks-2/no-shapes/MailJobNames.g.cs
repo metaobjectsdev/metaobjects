@@ -17,7 +17,7 @@ public abstract class MailJobNames : CaseJobNames
     public const string AddressField = "address";
     public const string AddressColumn = "address";
 
-    public static new readonly Dictionary<string, string> ColumnsByField = new(System.StringComparer.Ordinal)
+    public static new readonly Dictionary<string, string> ColumnsByField = new(global::System.StringComparer.Ordinal)
     {
         ["address"] = AddressColumn,
         ["id"] = IdColumn,

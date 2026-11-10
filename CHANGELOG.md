@@ -370,6 +370,35 @@ vocabulary; upgrade every port together.
   in both layouts. A direct import of a module (`./generated/Author.routes.js`; routes and
   queries are not in the barrel) gains the package path. A root-level object (no package) stays
   at `outDir`. The shipped TypeScript examples declare `outputLayout: "flat"` explicitly.
+- **Breaking, C#: a generated type's namespace is its metadata package (rulings R64, R65).** With
+  no binding for it, a packaged type's namespace is the package itself, each `::` segment
+  PascalCased (`acme::alpha` → `Acme.Alpha`), as the Java and Kotlin ports map packages, whether
+  or not a namespace is configured. `--namespace` / `csharp.namespace` (`GenConfig.Namespace`) now
+  places only the objects with no package and the artifacts of no single object: the context and
+  its design-time services, the callable wrappers, the template tier (render helpers, parsers,
+  extractors, output prompts) and the shared runtime helpers. A per-object companion follows its
+  object into the package namespace: `<X>Names`, `<X>FilterAllowlist`, `<X>Routes`, `<X>Queries`
+  (reverse finders), `<X>Export` and a materialized shared enum. Every generated file names every
+  generated type it reaches in another namespace `global::`-qualified (the context, entities,
+  value objects, shared enums, names classes, and `System`/`Microsoft` framework types), so no
+  namespace can capture another (`CS0234`: a package `acme::app::system` derives `Acme.App.System`)
+  and no two `using`s can make a name ambiguous (`CS0104`); the routes and callable files no
+  longer carry `using` lines for package namespaces. Two same-named objects in two packages are
+  two types with no remedy needed; two objects bound to ONE namespace that share a name are still
+  refused (`ERR_NAME_COLLISION`). `GenConfig.PackageNamespaces`, `TypeOverrides` and `Convention`
+  win as before, and an explicit `UnmappedStrategy.Error` or `Derive` under a configured namespace
+  keeps its meaning (the package mapping applies only to the default `Flatten`). A hook override
+  on `DbContextGenerator` receives the `global::`-qualified type as its `owner` argument
+  (`global::Acme.Alpha.Note`), which it can splice into `Entity<{owner}>` as before. A `@provided`
+  enum is the adopter's type and is named as configured, unchanged. **Upgrade note:** on the next
+  `gen`, every generated type in a package that no `PackageNamespaces`, `TypeOverrides` or
+  `Convention` entry maps moves once, from the configured namespace to its package's namespace,
+  together with its routes, reverse finders, names, filter allowlist and report export; update
+  the `using` lines of the code that names them (an app that mounts `Map<X>Routes` adds the
+  entity's package namespace). To keep a package where it was, map it:
+  `PackageNamespaces = { ["acme::alpha"] = "Acme.Generated" }`. A project whose every package is
+  already bound (a `Convention`, or `TypeOverrides` for each object) sees no type move, only the
+  `global::` spelling in the regenerated files.
 - **Breaking, TypeScript: a value object is never renamed; one claim registry refuses real
   collisions** (ruling R52, amending ADR-0044 and ADR-0056). `acme::alpha::Note` is declared as
   `Note` in its own module; the `AcmeAlphaNote` derived name is gone, and so are

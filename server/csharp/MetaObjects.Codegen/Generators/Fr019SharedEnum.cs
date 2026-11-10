@@ -130,9 +130,17 @@ public static class Fr019SharedEnum
     ///   codegen-time error naming the enum + the config key (ADR-0026 / ADR-0001).</item>
     /// </list>
     /// </summary>
+    /// <summary>rc.19 R65: the namespace a materialized (non-<c>@provided</c>) shared enum is declared
+    /// in — its declaring package's, through the package binding, else <see cref="GenConfig.Namespace"/>.</summary>
+    public static string MaterializedNamespace(SharedEnum shared, GenConfig config) =>
+        PackageBindingResolver.Resolve(config, shared.Package, shared.Name, fallbackContext: shared.Name);
+
     public static string SharedEnumTypeReference(SharedEnum shared, GenConfig config)
     {
-        if (!shared.Provided) return shared.Name;
+        // rc.19 R65: a materialized shared enum is declared in its package's namespace and named
+        // global::-qualified from everywhere. A @provided enum is the adopter's type, named as
+        // configured (the ProvidedEnumNamespace / PackageNamespaces spelling, unchanged).
+        if (!shared.Provided) return ValueObjectNames.Global(MaterializedNamespace(shared, config), shared.Name);
         // Bind the namespace to the enum's declaring metadata package (ADR-0001):
         //   TypeOverrides → PackageNamespaces → Convention with ProvidedEnumPrepend →
         //   ProvidedEnumNamespace (FR-019 legacy single-string fallback) → Error.

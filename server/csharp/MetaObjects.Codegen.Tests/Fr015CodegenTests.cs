@@ -4,7 +4,7 @@
 // method (one <Entity>.callable.cs per callable entity). Per the FR-015 spec, the C#
 // emission uses EF Core FromSqlInterpolated when the names artifact is NOT in the run:
 //
-//   public static Task<IReadOnlyList<PhaseSummary>> Call(AppDbContext db, PhaseSummaryArgs args)
+//   public static Task<IReadOnlyList<PhaseSummary>> Call(global::Acme.Generated.AppDbContext db, global::Acme.Analytics.PhaseSummaryArgs args)
 //       => db.Set<PhaseSummary>()
 //             .FromSqlInterpolated($"SELECT * FROM analytics.fn_phase_summary({args.CaseId}, {args.AsOfDate})")
 //             .ToListAsync()...;
@@ -13,7 +13,7 @@
 // procedure's name through FromSqlRaw, because an interpolation hole is a PARAMETER and an
 // identifier cannot be one:
 //
-//             .FromSqlRaw("SELECT * FROM " + PhaseSummaryNames.SourcePrimarySchema + "." + PhaseSummaryNames.SourcePrimaryProc + "({0}, {1})", args.CaseId, args.AsOfDate)
+//             .FromSqlRaw("SELECT * FROM " + global::Acme.Analytics.PhaseSummaryNames.SourcePrimarySchema + "." + global::Acme.Analytics.PhaseSummaryNames.SourcePrimaryProc + "({0}, {1})", args.CaseId, args.AsOfDate)
 //
 // Args bind in the @parameterRef value-object's field DECLARATION order on both arms. A
 // callable with no @parameterRef emits a zero-arg overload calling fn_x().
@@ -113,15 +113,15 @@ public class Fr015CodegenTests
         var c = Content(Files(), "PhaseSummary.callable.g.cs");
 
         // Method signature: db + the args value-object.
-        Assert.Contains("AppDbContext db, PhaseSummaryArgs args", c);
+        Assert.Contains("global::Acme.Generated.AppDbContext db, global::Acme.Analytics.PhaseSummaryArgs args", c);
         // Returns the projection rows.
-        Assert.Contains("Task<IReadOnlyList<PhaseSummary>>", c);
+        Assert.Contains("Task<IReadOnlyList<global::Acme.Analytics.PhaseSummary>>", c);
         // FromSqlInterpolated with schema-qualified proc name + args in declaration
         // order (caseId, asOfDate → CaseId, AsOfDate).
         Assert.Contains(
             "FromSqlInterpolated($\"SELECT * FROM analytics.fn_phase_summary({args.CaseId}, {args.AsOfDate})\")",
             c);
-        Assert.Contains("db.Set<PhaseSummary>()", c);
+        Assert.Contains("db.Set<global::Acme.Analytics.PhaseSummary>()", c);
         Assert.Contains("ToListAsync", c);
     }
 
@@ -133,7 +133,7 @@ public class Fr015CodegenTests
         Assert.Contains(
             "FromSqlInterpolated($\"SELECT * FROM fn_active_phases({args.CaseId}, {args.AsOfDate})\")",
             c);
-        Assert.Contains("AppDbContext db, PhaseSummaryArgs args", c);
+        Assert.Contains("global::Acme.Generated.AppDbContext db, global::Acme.Analytics.PhaseSummaryArgs args", c);
     }
 
     [Fact]
@@ -141,11 +141,11 @@ public class Fr015CodegenTests
     {
         var c = Content(Files(), "AllPhases.callable.g.cs");
         // No args parameter.
-        Assert.Contains("AppDbContext db)", c);
+        Assert.Contains("global::Acme.Generated.AppDbContext db)", c);
         Assert.DoesNotContain("args", c);
         // Empty parameter list in the SQL.
         Assert.Contains("FromSqlInterpolated($\"SELECT * FROM fn_all_phases()\")", c);
-        Assert.Contains("Task<IReadOnlyList<AllPhases>>", c);
+        Assert.Contains("Task<IReadOnlyList<global::Acme.Analytics.AllPhases>>", c);
     }
 
     // ---------------------------------------------------------------------------------
@@ -177,7 +177,7 @@ public class Fr015CodegenTests
         // qualification is ruled on separately across the ports" — it has been ruled on, every
         // port qualifies, and this was the one C# site that qualified at all.
         Assert.Contains(
-            ".FromSqlRaw(\"SELECT * FROM \" + PhaseSummaryNames.SourcePrimarySchema + \".\" + PhaseSummaryNames.SourcePrimaryProc + \"({0}, {1})\", args.CaseId, args.AsOfDate)",
+            ".FromSqlRaw(\"SELECT * FROM \" + global::Acme.Analytics.PhaseSummaryNames.SourcePrimarySchema + \".\" + global::Acme.Analytics.PhaseSummaryNames.SourcePrimaryProc + \"({0}, {1})\", args.CaseId, args.AsOfDate)",
             c);
         Assert.DoesNotContain("FromSqlInterpolated", c);
         // The doc summary names it the same way the SQL does.
@@ -192,7 +192,7 @@ public class Fr015CodegenTests
     {
         var c = Content(NamesOnFiles(), "ActivePhases.callable.g.cs");
         Assert.Contains(
-            ".FromSqlRaw(\"SELECT * FROM \" + ActivePhasesNames.SourcePrimaryFunction + \"({0}, {1})\", args.CaseId, args.AsOfDate)",
+            ".FromSqlRaw(\"SELECT * FROM \" + global::Acme.Analytics.ActivePhasesNames.SourcePrimaryFunction + \"({0}, {1})\", args.CaseId, args.AsOfDate)",
             c);
         Assert.Contains("typed wrapper around the table function named by <c>ActivePhasesNames.SourcePrimaryFunction</c>.", c);
         Assert.DoesNotContain("fn_active_phases", c);
@@ -202,7 +202,7 @@ public class Fr015CodegenTests
     public void NamesOn_zero_arg_callable_passes_no_parameters()
     {
         var c = Content(NamesOnFiles(), "AllPhases.callable.g.cs");
-        Assert.Contains(".FromSqlRaw(\"SELECT * FROM \" + AllPhasesNames.SourcePrimaryProc + \"()\")", c);
+        Assert.Contains(".FromSqlRaw(\"SELECT * FROM \" + global::Acme.Analytics.AllPhasesNames.SourcePrimaryProc + \"()\")", c);
         Assert.DoesNotContain("fn_all_phases", c);
     }
 

@@ -27,7 +27,7 @@ public abstract class WorkflowNames : BaseEntityNames
     public const string IdentityPrimarySubType = "primary";
     public const string IdentityPrimaryName = "primary";
 
-    public static new readonly Dictionary<string, string> ColumnsByField = new(System.StringComparer.Ordinal)
+    public static new readonly Dictionary<string, string> ColumnsByField = new(global::System.StringComparer.Ordinal)
     {
         ["createdAt"] = CreatedAtColumn,
         ["id"] = IdColumn,

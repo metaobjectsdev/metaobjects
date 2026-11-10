@@ -146,7 +146,7 @@ public sealed class DbContextForeignKeyConfigTests
         var src = Assert.Single(new DbContextGenerator().Generate(Ctx(Load(renamed)))).Content;
 
         Assert.Contains(
-            "modelBuilder.Entity<Addresses>().HasOne<Address>().WithMany()"
+            "modelBuilder.Entity<global::Acme.Addresses>().HasOne<global::Acme.Address>().WithMany()"
             + ".HasForeignKey(e => e.AddressId).OnDelete(DeleteBehavior.Cascade);",
             src);
         // No nameof() anywhere in the FK configuration — that is the whole defect.
@@ -212,8 +212,8 @@ public sealed class DbContextForeignKeyConfigTests
         // opting out of the DbContext.
         Assert.DoesNotContain("HasOne<", suppressed);
         Assert.DoesNotContain("HasForeignKey", suppressed);
-        Assert.Contains("public DbSet<Author> Authors { get; set; }", suppressed);
-        Assert.Contains("public DbSet<Post> Posts { get; set; }", suppressed);
+        Assert.Contains("public DbSet<global::Acme.Author> Authors { get; set; }", suppressed);
+        Assert.Contains("public DbSet<global::Acme.Post> Posts { get; set; }", suppressed);
     }
 
     [Fact]

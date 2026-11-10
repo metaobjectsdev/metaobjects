@@ -8,10 +8,10 @@ using System.ComponentModel.DataAnnotations.Schema;
 using System.Net;
 using System.Text.Json.Serialization;
 
-namespace Acme.Generated;
+namespace Acme;
 
 [Table("auths")]
-[System.Text.Json.Serialization.JsonDerivedType(typeof(BridgeAuth))]
+[global::System.Text.Json.Serialization.JsonDerivedType(typeof(BridgeAuth))]
 public abstract class Auth
 {
     public enum AuthType { Bridge, Plain }

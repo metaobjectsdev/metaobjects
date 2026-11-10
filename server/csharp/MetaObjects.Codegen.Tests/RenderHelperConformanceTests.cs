@@ -335,7 +335,7 @@ public sealed class RenderHelperConformanceTests
 
     private static object MakeWelcome(Assembly asm, string name)
     {
-        var payloadType = asm.GetType("Acme.Generated.Welcome")!;
+        var payloadType = asm.GetType("Acme.Ai.Welcome")!;
         var payload = Activator.CreateInstance(payloadType)!;
         payloadType.GetProperty("Name")!.SetValue(payload, name);
         return payload;

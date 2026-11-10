@@ -19,11 +19,14 @@ public class PackageBindingResolverTests
         Namespace = "Acme.Generated",
     };
 
+    // rc.19 R65: with no binding, a package's namespace is the package itself, PascalCased per
+    // segment (as Java and Kotlin map packages); the configured namespace places package-less types.
     [Fact]
-    public void Default_config_falls_back_to_Namespace_byte_identical_to_pre_FR021()
+    public void Default_config_maps_a_package_to_its_own_namespace_and_no_package_to_Namespace()
     {
         var cfg = CfgWithDefaults();
-        Assert.Equal("Acme.Generated", PackageBindingResolver.Resolve(cfg, "acme::cases", "Case"));
+        Assert.Equal("Acme.Cases", PackageBindingResolver.Resolve(cfg, "acme::cases", "Case"));
+        Assert.Equal("Acme.UsersAccess", PackageBindingResolver.Resolve(cfg, "acme::users-access", "User"));
         Assert.Equal("Acme.Generated", PackageBindingResolver.Resolve(cfg, null));
         Assert.Equal("Acme.Generated", PackageBindingResolver.Resolve(cfg, ""));
     }
