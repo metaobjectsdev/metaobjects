@@ -1,0 +1,143 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "User",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "users"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "name",
+                "@required": true
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Account",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "accounts"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "ownerId",
+                "@required": true
+              }
+            },
+            {
+              "field.long": {
+                "name": "approverId"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "owner",
+                "@fields": [
+                  "ownerId"
+                ],
+                "@references": "acme::User"
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "approver",
+                "@fields": [
+                  "approverId"
+                ],
+                "@references": "acme::User"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "AccountView",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_accounts"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id",
+                "extends": "acme::Account.id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "ownerName",
+                "children": [
+                  {
+                    "origin.passthrough": {
+                      "@from": "acme::User.name",
+                      "@via": "acme::Account.owner"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.string": {
+                "name": "approverName",
+                "children": [
+                  {
+                    "origin.passthrough": {
+                      "@from": "acme::User.name",
+                      "@via": "acme::Account.approver"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "extends": "acme::Account.id"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

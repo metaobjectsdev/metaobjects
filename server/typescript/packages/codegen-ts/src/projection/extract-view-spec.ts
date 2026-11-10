@@ -1272,6 +1272,31 @@ function buildJoinTree(
 // Helpers for SelectSpec building
 // ---------------------------------------------------------------------------
 
+/**
+ * The alias an origin reads its `@via`'s terminal entity from. With a `@via`, it is the join the
+ * hop chain itself built (two references onto one target are two joins with two aliases); the
+ * entity-name lookup below is only the fallback for an origin with no `@via` (the base, or a join
+ * the tree reaches by entity alone).
+ */
+function originSourceAlias(
+  joinTree: JoinTree,
+  via: string | undefined,
+  entityName: string,
+  root: MetaRoot,
+  projPkg: string,
+  ctx: ExtractContext,
+): string | undefined {
+  if (via !== undefined && via.length > 0) {
+    const path = walkViaPath(via, root, projPkg, ctx);
+    // Only when the hop chain ends on the entity the origin reads (an aggregate's @of names it).
+    if (path.length > 0 && path[path.length - 1]!.targetEntity === entityName) {
+      const alias = aliasForHops(joinTree, path.map((step) => step.relationship));
+      if (alias !== undefined) return alias;
+    }
+  }
+  return findAliasInTree(joinTree, entityName);
+}
+
 function findAliasInTree(
   joinTree: JoinTree,
   entityName: string,
@@ -1359,7 +1384,8 @@ function buildSelectSpec(
       const fieldName = from.slice(dotIdx + 1);
       const targetEntity = resolveEntityRef(root, from.slice(0, dotIdx), projPkg);
       if (!targetEntity) continue;
-      const sourceAlias = findAliasInTree(joinTree, targetEntity.resolutionKey());
+      const passthroughVia = origin.ownAttr(ORIGIN_PASSTHROUGH_ATTR_VIA) as string | undefined;
+      const sourceAlias = originSourceAlias(joinTree, passthroughVia, targetEntity.resolutionKey(), root, projPkg, ctx);
       if (sourceAlias === undefined) continue;
       // EFFECTIVE fields — the source column may be inherited via `extends`
       // (e.g. created_at/updated_at/created_by from an audited base), which
@@ -1399,7 +1425,7 @@ function buildSelectSpec(
         if (!via) continue;
         const relatedEntity = viaTerminalEntity(via, root, projPkg);
         if (!relatedEntity) continue;
-        const sourceAlias = findAliasInTree(joinTree, relatedEntity.resolutionKey());
+        const sourceAlias = originSourceAlias(joinTree, via, relatedEntity.resolutionKey(), root, projPkg, ctx);
         if (sourceAlias === undefined) continue;
         const joinedPk = primaryKeyColumn(relatedEntity, ctx);
         if (joinedPk === undefined) continue;
@@ -1434,7 +1460,7 @@ function buildSelectSpec(
         if (!via) continue;
         const relatedEntity = viaTerminalEntity(via, root, projPkg);
         if (!relatedEntity) continue;
-        const sourceAlias = findAliasInTree(joinTree, relatedEntity.resolutionKey());
+        const sourceAlias = originSourceAlias(joinTree, via, relatedEntity.resolutionKey(), root, projPkg, ctx);
         if (sourceAlias === undefined) continue;
         const joinedPk = primaryKeyColumn(relatedEntity, ctx);
         if (joinedPk === undefined) continue;
@@ -1474,7 +1500,7 @@ function buildSelectSpec(
       const fieldName = of_.slice(dotIdx + 1);
       const targetEntity = resolveEntityRef(root, of_.slice(0, dotIdx), projPkg);
       if (!targetEntity) continue;
-      const sourceAlias = findAliasInTree(joinTree, targetEntity.resolutionKey());
+      const sourceAlias = originSourceAlias(joinTree, origin.ownAttr(ORIGIN_AGGREGATE_ATTR_VIA) as string | undefined, targetEntity.resolutionKey(), root, projPkg, ctx);
       if (sourceAlias === undefined) continue;
       const targetField = targetEntity.fields().find((f) => f.name === fieldName);
       if (!targetField) continue;

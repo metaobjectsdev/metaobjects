@@ -523,6 +523,16 @@ vocabulary; upgrade every port together.
 
 ### Fixed
 
+- **Fix, TypeScript views: two references onto one target entity read their own rows.** A
+  projection whose origins reach the same entity through two different references
+  (`Account.owner` and `Account.approver`, both `User`) got two joins (`u`, `u0`), but every origin
+  looked its alias up by target entity, so both columns selected from the first join and the
+  second read the wrong row. An origin with a `@via` now reads from the join its own hop chain
+  built (passthroughs and every aggregate arm); reports already resolved by path. Fixture
+  `fixtures/conformance/origin-passthrough-two-references-one-target`. **Upgrade note:** a
+  generated view with such a pair is re-proposed once as `replace-view`, and its second column now
+  holds the row its reference names.
+
 - **A projection that extends another projection gets a view with the inherited fields**
   (rc.19 Phase 5, bug G13). The loader could not derive the base entity of an extender that
   anchors nothing of its own (TypeScript and C#), and view codegen read only the extender's own
