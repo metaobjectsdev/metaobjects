@@ -52,7 +52,7 @@ describe("renderOutputParser()", () => {
     expect(out).toContain('import { z } from "zod"');
     // ADR-0056: the parse result is the @responseRef value object's OWN interface, imported
     // from the module entityFile() declares it in — never a template-named copy.
-    expect(out).toContain('import type { NpcResponsePayload } from "./NpcResponsePayload.js";');
+    expect(out).toContain('import type { NpcResponsePayload } from "./acme/ai/NpcResponsePayload.js";');
     expect(out).not.toContain('./payloads');
     expect(out).not.toContain("NpcResponseOutputData");
     expect(out).toContain("const NpcResponseOutputSchema = z.object({");

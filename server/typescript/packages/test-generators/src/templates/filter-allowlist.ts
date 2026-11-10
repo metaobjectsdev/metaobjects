@@ -22,6 +22,7 @@ import { enumValues } from "@metaobjectsdev/codegen-ts/engine";
 import { sortableFields, declaredSortDefaultOrder } from "./filter-shared.js";
 import type { RenderContext } from "@metaobjectsdev/codegen-ts/engine";
 import { httpRuntimeSpecifier } from "@metaobjectsdev/codegen-ts/engine";
+import { DEFAULT_OUTPUT_LAYOUT } from "@metaobjectsdev/codegen-ts/engine";
 import { effectivePackage } from "@metaobjectsdev/codegen-ts/engine";
 
 /**
@@ -30,7 +31,7 @@ import { effectivePackage } from "@metaobjectsdev/codegen-ts/engine";
  * (`owned-runtime.ts`). Absent `ctx`, or with no `httpRuntimeImport`, the package: the
  * byte-identical default.
  */
-const PACKAGE_DEFAULT = { outputLayout: "flat", extStyle: "none" } as const;
+const PACKAGE_DEFAULT = { outputLayout: DEFAULT_OUTPUT_LAYOUT, extStyle: "none" } as const;
 
 function allowlistTypesFrom(entity: MetaObject, ctx: RenderContext | undefined): string {
   return httpRuntimeSpecifier("allowlists", ctx ?? PACKAGE_DEFAULT, effectivePackage(entity));

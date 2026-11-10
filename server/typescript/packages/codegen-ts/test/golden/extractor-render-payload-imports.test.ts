@@ -101,7 +101,7 @@ async function loadRoot(children: unknown[]) {
 async function runEntityFiles(
   root: Awaited<ReturnType<typeof loadRoot>>,
 ): Promise<EmittedFile[]> {
-  const renderContext = makeRenderContext({ outputLayout: "flat",
+  const renderContext = makeRenderContext({
     dialect: "sqlite",
     loadedRoot: root,
     outDir: "/tmp",
@@ -114,7 +114,7 @@ async function runEntityFiles(
     loadedRoot: root,
     matches: (_e: MetaObject) => true,
     projectRoot: "/tmp",
-    config: { outputLayout: "flat",
+    config: {
       outDir: "/tmp",
       extStyle: "none",
       dbImport: "~/db",
@@ -225,15 +225,15 @@ describe("extractor/render payload import resolves against the REAL generated VO
     expect(extractorSrc).not.toContain('from "./payloads.js"');
     expect(renderSrc).not.toContain('from "./payloads.js"');
     // The render-helper imports the payload VO interface from its OWN module.
-    expect(renderSrc).toContain('import type { Order } from "./Order.js";');
+    expect(renderSrc).toContain('import type { Order } from "./acme/ai/Order.js";');
     // The extractor imports each VO interface from ITS module; the enum alias
     // rides along on the OWNER VO's module (Order).
-    expect(extractorSrc).toContain('from "./Order.js"');
-    expect(extractorSrc).toContain('from "./Customer.js"');
-    expect(extractorSrc).toContain('from "./Line.js"');
+    expect(extractorSrc).toContain('from "./acme/ai/Order.js"');
+    expect(extractorSrc).toContain('from "./acme/ai/Customer.js"');
+    expect(extractorSrc).toContain('from "./acme/ai/Line.js"');
 
     // 3. Lay the real generated VO modules + the extractor/render files into a
-    //    temp dir exactly as `meta gen` would (flat, co-located).
+    //    temp dir exactly as `meta gen` would (the default package layout, R63).
     const dir = mkdtempSync(join(tmpdir(), "extractor-render-payload-"));
     TEMP_DIRS.push(dir);
     const write = (rel: string, body: string) => {
@@ -282,15 +282,15 @@ describe("the render helper honours extStyle and marks itself generated", () => 
   test('extStyle "none" drops the extension from the payload import', async () => {
     const root = await loadRoot(MODEL);
     const src = renderRenderHelper(root, "OrderDoc", PROVIDER, "none");
-    expect(src).toMatch(/from "\.\/[A-Za-z0-9_]+";/);
-    expect(src).not.toMatch(/from "\.\/[A-Za-z0-9_]+\.js";/);
+    expect(src).toMatch(/from "\.\/[A-Za-z0-9_/]+";/);
+    expect(src).not.toMatch(/from "\.\/[A-Za-z0-9_/]+\.js";/);
   });
 
   test('extStyle "js" keeps it — and is the default, so an existing caller is unchanged', async () => {
     const root = await loadRoot(MODEL);
     const explicit = renderRenderHelper(root, "OrderDoc", PROVIDER, "js");
     const defaulted = renderRenderHelper(root, "OrderDoc", PROVIDER);
-    expect(explicit).toMatch(/from "\.\/[A-Za-z0-9_]+\.js";/);
+    expect(explicit).toMatch(/from "\.\/[A-Za-z0-9_/]+\.js";/);
     expect(defaulted).toBe(explicit);
   });
 

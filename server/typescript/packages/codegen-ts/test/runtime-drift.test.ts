@@ -7,8 +7,8 @@
 // holds the drifted text; the clean text the helpers are generated from is the parent corpus's
 // `templates/`.
 import { describe, test, expect, afterAll } from "bun:test";
-import { mkdtempSync, writeFileSync, rmSync, readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { FileSystemProvider } from "../src/render-engine/framework-provider.js";
 import { renderRenderHelper } from "../src/templates/render-helper.js";
@@ -61,7 +61,9 @@ describe("runtime drift — a variable not on the payload raises at render time"
     TEMP_DIRS.push(dir);
     // The handle imports the payload from the value object's own module.
     const imp = /from "(\.[^"]+)"/.exec(out[0]!.content)?.[1] ?? "./Welcome.js";
-    writeFileSync(join(dir, imp.replace(/\.js$/, "") + ".ts"), PAYLOADS);
+    const payloadFile = join(dir, imp.replace(/\.js$/, "") + ".ts");
+    mkdirSync(dirname(payloadFile), { recursive: true });
+    writeFileSync(payloadFile, PAYLOADS);
     writeFileSync(join(dir, "prompts.ts"), out[0]!.content);
     const mod = await import(join(dir, "prompts.ts"));
     expect(mod.renderWelcomePrompt({ name: "Ada" }, clean())).toBe("Hello Ada");

@@ -11,8 +11,8 @@
 // emitted extractor module under bun, and CALL the generated functions.
 
 import { describe, test, expect, afterAll } from "bun:test";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { dirname, join } from "node:path";
 import ts from "typescript";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { renderOutputParser } from "../src/templates/output-parser.js";
@@ -31,7 +31,7 @@ async function writeEntityModules(
   dir: string,
   root: Awaited<ReturnType<typeof loadRoot>>,
 ): Promise<void> {
-  const renderContext = makeRenderContext({ outputLayout: "flat",
+  const renderContext = makeRenderContext({
     dialect: "sqlite",
     loadedRoot: root,
     outDir: "/tmp",
@@ -44,11 +44,12 @@ async function writeEntityModules(
     loadedRoot: root,
     matches: () => true,
     projectRoot: "/tmp",
-    config: { outputLayout: "flat", outDir: "/tmp", extStyle: "none", dbImport: "~/db", dialect: "sqlite" } as never,
+    config: { outDir: "/tmp", extStyle: "none", dbImport: "~/db", dialect: "sqlite" } as never,
     renderContext,
     warn: () => {},
   };
   for (const f of await entityFile().generate(ctx)) {
+    mkdirSync(dirname(join(dir, f.path)), { recursive: true });
     writeFileSync(join(dir, f.path), f.content);
   }
 }
@@ -234,9 +235,9 @@ describe("Extractor codegen — source shape", () => {
     writeFileSync(join(dir, "engine.d.ts"), ENGINE_STUBS);
 
     const diagnostics = compile(dir, [
-      "Order.ts",
-      "Customer.ts",
-      "Line.ts",
+      "acme/ai/Order.ts",
+      "acme/ai/Customer.ts",
+      "acme/ai/Line.ts",
       "OrderOut.response.ts",
       "OrderOut.extractor.ts",
       "engine.d.ts",

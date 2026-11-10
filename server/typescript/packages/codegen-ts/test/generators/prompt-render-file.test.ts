@@ -60,7 +60,8 @@ describe("promptRender() factory", () => {
     expect(out[0]!.path).toBe("prompts.ts");
     // The payload type is the value object's OWN interface, declared by entityFile() in its
     // module — imported, never re-declared here.
-    expect(out[0]!.content).toContain('import type { NpcPromptPayload } from "./NpcPromptPayload.js";');
+    // No render context: the default layout (package, R63) places the module under its package path.
+    expect(out[0]!.content).toContain('import type { NpcPromptPayload } from "./acme/ai/NpcPromptPayload.js";');
     expect(out[0]!.content).not.toContain("export interface");
     expect(out[0]!.content).toContain(
       "export function renderNpcTurn(payload: NpcPromptPayload, provider: Provider): string",
@@ -199,8 +200,8 @@ describe("promptRender() factory", () => {
     const out = await promptRender().generate(makeCtx(root));
     const content = out[0]!.content;
     expect(content).not.toContain("export interface");
-    expect(content).toContain('import type { PayloadA } from "./PayloadA.js";');
-    expect(content).toContain('import type { PayloadB } from "./PayloadB.js";');
+    expect(content).toContain('import type { PayloadA } from "./acme/ai/PayloadA.js";');
+    expect(content).toContain('import type { PayloadB } from "./acme/ai/PayloadB.js";');
     expect(content).not.toContain("Lens");
   });
 });

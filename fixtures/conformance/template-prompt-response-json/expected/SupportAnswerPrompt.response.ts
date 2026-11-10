@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { SupportAnswer } from "./SupportAnswer.js";
+import type { SupportAnswer } from "./acme/support/SupportAnswer.js";
 import {
   Format,
   type ExtractOptions,
