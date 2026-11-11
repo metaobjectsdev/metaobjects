@@ -491,8 +491,7 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             "kotlin.Boolean" -> text.lowercase().takeIf { it == "true" || it == "false" }
             // A database expression (now(), gen_random_uuid()) is the database's to fill.
             "kotlin.String" -> if (com.metaobjects.generator.util.GeneratorUtil.isSqlExpressionDefault(text)) null
-                else "\"" + text.replace("\\", "\\\\").replace("\"", "\\\"").replace("$", "\\$")
-                    .replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t") + "\""
+                else "\"" + KotlinExtractSchemaEmitter.kotlinStringLiteral(text) + "\""
             "kotlin.Int" -> text.toIntOrNull()?.toString()
             "kotlin.Long" -> text.toLongOrNull()?.let { "${it}L" }
             "kotlin.Double" -> text.toDoubleOrNull()?.toString()

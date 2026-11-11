@@ -51,3 +51,8 @@ queries:
     entity: ArchivedLedgerEntry
     insert: { memo: archived-new }
     expect: { memo: archived-new }
+
+  - name: roundtrip-leaves-the-default-schema-untouched
+    op: count
+    entity: LedgerEntry
+    expect: 2

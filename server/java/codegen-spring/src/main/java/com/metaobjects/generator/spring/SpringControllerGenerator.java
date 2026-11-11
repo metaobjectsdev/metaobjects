@@ -1705,7 +1705,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
                 case com.metaobjects.field.EnumField.SUBTYPE_ENUM -> {
                     Object values = f.hasMetaAttr(com.metaobjects.field.EnumField.ATTR_VALUES)
                         ? f.getMetaAttr(com.metaobjects.field.EnumField.ATTR_VALUES).getValue() : null;
-                    yield values instanceof List<?> l && l.stream().anyMatch(v -> text.equals(String.valueOf(v))) ? javaString(text) : null;
+                    yield values instanceof List<?> l && l.stream().anyMatch(v -> text.equals(String.valueOf(v))) ? javaLiteral(text) : null;
                 }
                 case com.metaobjects.field.BooleanField.SUBTYPE_BOOLEAN ->
                     "true".equalsIgnoreCase(text) || "false".equalsIgnoreCase(text) ? text.toLowerCase() : null;
@@ -1717,14 +1717,18 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
                     text.matches("-?\\d+(\\.\\d+)?") ? "new java.math.BigDecimal(\"" + text + "\")" : null;
                 // A database expression (now(), gen_random_uuid()) is the database's to fill.
                 case com.metaobjects.field.StringField.SUBTYPE_STRING ->
-                    com.metaobjects.generator.util.GeneratorUtil.isSqlExpressionDefault(text) ? null : javaString(text);
+                    com.metaobjects.generator.util.GeneratorUtil.isSqlExpressionDefault(text) ? null : javaLiteral(text);
                 default -> null;
             };
             if (value == null) continue;
-            String key = javaString(f.getName());
+            String key = javaLiteral(f.getName());
             out.add("if (!filled.has(" + key + ")) filled.put(" + key + ", " + value + ");");
         }
         return out;
+    }
+
+    private static String javaLiteral(String text) {
+        return "\"" + SpringGeneratorSupport.escapeJavaString(text) + "\"";
     }
 
     /** The body of a create handler bound to the raw {@code JsonNode body}: refuse a
@@ -1742,26 +1746,6 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("        } catch (com.fasterxml.jackson.core.JsonProcessingException | IllegalArgumentException e) {\n");
         src.append("            return ResponseEntity.badRequest().body(UnreadableBody.envelope(e));\n");
         src.append("        }\n");
-    }
-
-    /** {@code text} as a Java string literal; every character a literal cannot hold raw is escaped. */
-    private static String javaString(String text) {
-        StringBuilder out = new StringBuilder("\"");
-        for (int i = 0; i < text.length(); i++) {
-            char c = text.charAt(i);
-            switch (c) {
-                case '\\' -> out.append("\\\\");
-                case '"' -> out.append("\\\"");
-                case '\n' -> out.append("\\n");
-                case '\r' -> out.append("\\r");
-                case '\t' -> out.append("\\t");
-                default -> {
-                    if (c < 0x20 || c == 0x2028 || c == 0x2029) out.append(String.format("\\u%04x", (int) c));
-                    else out.append(c);
-                }
-            }
-        }
-        return out.append('"').toString();
     }
 
     private static void appendStripWriteDenied(StringBuilder src, String dtoName, List<MetaField> components,
