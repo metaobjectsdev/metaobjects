@@ -966,11 +966,11 @@ public class DbContextGenerator : IGenerator
     /// for all three. It applies at both ends: the differ scaffolds the change as that SQL (so a
     /// migration added through it is safe wherever it runs), and the SQL generator rewrites a
     /// migration scaffolded without it.
-    /// <para>Ruling: registration, not the context's <c>OnConfiguring</c> — EF refuses an
+    /// <para>Registration, not the context's <c>OnConfiguring</c>: EF refuses an
     /// <c>OnConfiguring</c> that replaces services under pooling, a partial context could not
     /// declare its own, and a base context's would be shadowed. A context that declares a start
     /// therefore checks, as its model is built, that the rewrite is registered, and throws if not.</para>
-    /// <para>Ruling: this file references Npgsql at compile time (it subclasses
+    /// <para>This file references Npgsql at compile time (it subclasses
     /// <c>NpgsqlMigrationsSqlGenerator</c>), and it is emitted only for a Postgres project.
     /// Reflection would keep the project free of the reference, but a decorator built by
     /// reflection over Npgsql's generator is the runtime binding ADR-0001 rules out. The differ
