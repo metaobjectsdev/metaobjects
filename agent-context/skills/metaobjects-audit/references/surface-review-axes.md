@@ -13,6 +13,7 @@ The full hunt for each axis of Phase 1b (Partial / Deep path). Each axis runs in
 - F2. Over-generation — unnecessary generated files
 - G. Runtime-contract anti-patterns
 - G2. `own*()` accessor discipline
+- G3. Guarded status transitions
 - H. Authoring correctness / ADR conformance
 - H2. Wrong native type
 - I. Vocabulary hygiene / modernization (advisory)
@@ -200,6 +201,37 @@ The full hunt for each axis of Phase 1b (Partial / Deep path). Each axis runs in
   deliberately-own attribute `@dbColumnType` (a physical column-type override, never
   inherited). Any own read that carries a comment naming one of these cases is fine; an
   uncommented own read of an effective property is the defect.
+- [ ] **G3. Guarded status transitions (a correctness check, `unguarded-status-transition`).**
+  For each model whose enum column is status-like (a `field.enum`, or a `field.string` named
+  `status` / `state` / `phase` / `stage`, whose members read as a lifecycle: pending, running,
+  complete, error), list **every write to that column** in non-generated code: an ORM
+  `update(...).set({ status })`, a `UPDATE ... SET status`, an entity property assignment that is
+  then saved, an upsert. For each write ask one question: **is it conditional on the current
+  value?** A guarded write names the state it moves from (`WHERE id = ? AND status = <from>`, a
+  compare-and-set whose affected-row count is checked, an optimistic-lock version, a database
+  constraint that rejects the move). An unguarded write (`SET status = 'complete' WHERE id = ?`)
+  lets two workers, a retry or a late callback move a row backwards or out of a terminal state
+  (`complete` overwritten by `error`), and nothing reports it. An insert's initial value is not a
+  transition. A write that is the only possible transition and has one writer is lower
+  confidence, not exempt: say why it is safe to leave. Score `guarded writes / all writes` per
+  status column and list the unguarded ones; also state whether the allowed `from` states are
+  written down anywhere, because a rule held only in scattered `WHERE` clauses is a second
+  source of truth.
+  **The remedy never uses raw SQL.** Raw SQL spells the table, the column and the enum member by
+  hand, and those names drift. At a minimum the guarded write references the generated constants
+  for the table, the field and the enum member; ideally it goes through the port's ORM, which
+  carries them as typed handles, with the constraints the model already generates (the enum's
+  `CHECK`) behind it. Per port the guard is a predicate on the current value inside the ORM
+  update: Drizzle / Kysely `.where(and(eq(t.id, id), eq(t.status, <from>)))` on TypeScript;
+  SQLAlchemy `update(T).where(T.id == id, T.status == <from>)` or the `ObjectManager` on Python;
+  OMDB or the generated repository, or a JPA modifying query over entity attributes, on Java;
+  Exposed `T.update({ (T.id eq id) and (T.status eq <from>) })` on Kotlin; EF Core
+  `ExecuteUpdateAsync` after a `Where(x => x.Status == <from>)` on C#. Each checks the
+  affected-row count. `<from>` is the generated enum constant, never a literal (signature 13 in
+  `drift-signatures.md`). **If the allowed transitions need a declared form, that is a question
+  for the human, never a new attribute** (ADR-0023): the sketch proposes the ORM guard and
+  records the transition table as an open decision. Pillar `runtime`, surface `repository`.
+
 - [ ] **H. Authoring-correctness / ADR-conformance (deep).** Invented/unregistered
   `@`-attrs or post-bootstrap registration (ADR-0023 — custom attrs belong in a registered
   provider or `attr.properties`); retired source-v2 forms (`source.dbTable` / `@name` /

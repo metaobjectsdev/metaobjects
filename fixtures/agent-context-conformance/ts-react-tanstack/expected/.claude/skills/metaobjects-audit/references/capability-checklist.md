@@ -58,7 +58,11 @@ classify it (using the classification scheme in `SKILL.md`) and route the cutove
 - **`field.date` / `field.time` / `field.timestamp`** (`@autoSet`) — hunt hand-stamped
   `createdAt` / `updatedAt` assignments and ad-hoc temporal parsing; `@autoSet` stamps them.
 - **`field.enum`** (`@values`) — hunt hand-written TS unions, language `enum`s, or DB
-  `CHECK ... IN (...)` lists that restate a modeled enum's members.
+  `CHECK ... IN (...)` lists that restate a modeled enum's members. Two more hunts on the same
+  capability: a member or event name typed as a hand string beside the generated constant
+  (`drift-signatures.md`, signature 13), and a status-like enum column written without a
+  condition on its current value (`surface-review-axes.md`, G3: every write conditional, through
+  the port's ORM with generated constants, never raw SQL).
 - **`field.uuid`** — hunt UUIDs typed as bare strings / hand-validated.
 - **`field.object`** (`@objectRef`, `@storage`) — hunt hand-flattened owned columns or
   hand-rolled jsonb (de)serialization the `@storage` mode (`flattened`/`jsonb`/`subdocument`)

@@ -67,6 +67,8 @@ rejected (exit 2).
 | `FromSqlInterpolated(` outside `.g.cs` | stored-proc call — candidate for the `callable` generator |
 | `// keep in sync with` / `// mirrors the` | second-source-of-truth comment — always a finding |
 | `HasPrecision(` hand-coded | `field.decimal` with `@precision`/`@scale` drives this from the `entity` generator |
+| a member of a generated enum typed as a hand string (`"Error"` in raw SQL, a JSON body, a topic or event name, a `switch` over a `string`) beside the generated enum constant | **signature 13.** Value-first from each enum's `@values`. A value typed as the generated C# enum is resolved and exempt; a `string` position, SQL text or a payload is compared and scores |
+| a status-like column written with a property assignment then `SaveChanges`, or `ExecuteSqlRaw("UPDATE ... SET Status")`, with no condition on the current value | **axis G3.** Guard it through EF Core: `Where(x => x.Id == id && x.Status == <from>)` then `ExecuteUpdateAsync`, with the generated enum constant, and check the affected-row count. Never raw SQL |
 | a table/column string in raw-SQL EF calls, or `nameof(Entity.Prop)` standing in for a column | second spelling of a declared physical name — reference `<Entity>Names.g.cs` (`AuthorNames.SourcePrimaryTable` / `<Field>Column`, emitted when `codegen/Generators.cs` lists `names` — `Names.Name` is the OBJECT's name, not the table); an EF property inside LINQ is the typed handle — correct |
 
 ---
@@ -92,8 +94,19 @@ identical too, proves a copy unmodified; that row is a **finding**: point the
 (`dotnet meta eject --undo` removes every identical copy and prints the edit). `DIFFERS`
 with `0 of your own` rules out added lines, not removed ones: confirm from `git log -p` on
 the copy that nothing changed after the eject, else report it as **possibly customized:
-check its history**. A copy with lines of its own, or an edited runtime file, is a
-customization; check only how far behind it is. Count lines for the Phase 0 total: lines in
+check its history**.
+
+**`DIFFERS` is printed for BOTH a deliberate customization and a copy gone stale by version**,
+so the listing cannot tell them apart, and a copy with lines of its own is NOT thereby a
+customization: `M of your own` counts every line absent from today's reference, so after the
+reference moved on, a line it removed or rewrote reads as "yours" and is an older upstream
+line. Run the history check on any `DIFFERS` row, `M` above 0 included: lines the copy's later
+commits added are the project's own; lines already in the eject commit are upstream's and
+count as behind. Report two figures, `<n> lines behind the reference` and `<m> lines of the
+project's own (confirmed from history)`. A copy whose own lines history does not confirm is
+**possibly customized or stale: check its history**; one that is stale by version is a finding
+(`owned-generator-stale`): re-eject at the current version or return to the stock entry.
+Count lines for the Phase 0 total: lines in
 copies proven unmodified, over all lines under `codegen/generators/` and `codegen/runtime/`.
 
 A generator the project WRITES is an `IGenerator` listed in

@@ -71,6 +71,8 @@ The active generator list is declared in `pom.xml` under the plugin `<configurat
 | A hand-written data class mirroring a template's `@payloadRef` / `@responseRef` value object | `KotlinEntityGenerator` emits that value object's data class, and it IS the payload type (ADR-0056); check `pom.xml` wires it |
 | `// keep in sync with` / `// mirrors the` | second-source-of-truth comment — always a finding |
 | `transaction(db) {` bodies that duplicate every CRUD operation | hand-written Exposed transactions are expected (see Calibration), but if they duplicate generated-CRUD logic exactly, audit further |
+| a member of a generated enum typed as a hand string (`"ERROR"` in `exec("…")`, a JSON body, a topic or event name, a `when` over a `String`) beside the generated enum constant | **signature 13.** Value-first from each enum's `@values`. A value typed as the generated Kotlin enum is resolved and exempt; a `String` position, SQL text or a payload is compared and scores |
+| a status-like column written with `T.update({ ... }) { it[status] = ... }` and no `status eq <from>` in the predicate, or an `exec("UPDATE ... SET status")` | **axis G3.** Guard it through Exposed: `T.update({ (T.id eq id) and (T.status eq <from>) })` with the generated constant, and check the returned count. Never raw SQL |
 | a table/column string in `exec("…")` raw SQL or a Flyway script | reference `<Entity>Names` (`KotlinNamesGenerator`, opt-in); `AuthorTable.name` inside the Exposed DSL is the typed handle — correct, not a finding |
 
 ---
@@ -95,8 +97,19 @@ own]`, and a generator copied with companion classes adds `; differing: <files>`
 back at the stock class and remove the copy (`mvn metaobjects:eject -Dundo=true` removes
 every identical copy and prints the `pom.xml` edit). `DIFFERS` with `0 of your own` rules
 out added lines, not removed ones: confirm from `git log -p` on the copy that nothing
-changed after the eject, else report it as **possibly customized: check its history**. A
-copy with lines of its own is a customization; check only how far behind it is. Count lines
+changed after the eject, else report it as **possibly customized: check its history**.
+
+**`DIFFERS` is printed for BOTH a deliberate customization and a copy gone stale by version**,
+so the listing cannot tell them apart, and a copy with lines of its own is NOT thereby a
+customization: `M of your own` counts every line absent from today's reference, so after the
+reference moved on, a line it removed or rewrote reads as "yours" and is an older upstream
+line. Run the history check on any `DIFFERS` row, `M` above 0 included: lines the copy's later
+commits added are the project's own; lines already in the eject commit are upstream's and
+count as behind. Report two figures, `<n> lines behind the reference` and `<m> lines of the
+project's own (confirmed from history)`. A copy whose own lines history does not confirm is
+**possibly customized or stale: check its history**; one that is stale by version is a finding
+(`owned-generator-stale`): re-eject at the current version or return to the stock entry.
+Count lines
 for the Phase 0 total: lines in copies proven unmodified, over all lines under `codegen/`
 that eject wrote or the project wrote.
 
