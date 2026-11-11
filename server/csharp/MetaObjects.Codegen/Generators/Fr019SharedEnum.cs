@@ -102,14 +102,17 @@ public static class Fr019SharedEnum
     /// type name. A declaration nobody extends is not materialized (no dangling type).
     /// Deterministic order: first-consumption order across entities (ordinal by name).
     /// </summary>
-    public static IReadOnlyList<SharedEnum> CollectSharedEnums(MetaRoot root, IEnumerable<MetaObject>? alsoReached = null)
+    public static IReadOnlyList<SharedEnum> CollectSharedEnums(MetaRoot root, IEnumerable<MetaObject>? alsoReached = null,
+        Func<MetaObject, bool>? scope = null)
     {
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var outList = new List<SharedEnum>();
         // FR-023: an enum reaches the output iff an object this project generates uses it, decided by the
         // USING object, never by the enum's own package. `alsoReached` is what that object pulls in that
         // is itself imported (a value object whose POCO is emitted because a generated entity holds one).
-        foreach (var entity in root.Objects().Where(root.InScope).Concat(alsoReached ?? []))
+        // G2 (rc.20): a narrowed run (GenContext.Narrow) uses only the objects its scope accepts, plus
+        // what it emits beyond them (alsoReached); `null` is every in-scope object, as before.
+        foreach (var entity in root.Objects().Where(o => root.InScope(o) && (scope is null || scope(o))).Concat(alsoReached ?? []))
             foreach (var field in entity.Fields())
             {
                 if (SharedEnumForField(field) is not { } shared) continue;
@@ -119,8 +122,9 @@ public static class Fr019SharedEnum
     }
 
     /// <summary>The shared enums that metaobjects MATERIALIZES (non-@provided, consumed).</summary>
-    public static IReadOnlyList<SharedEnum> MaterializedSharedEnums(MetaRoot root, IEnumerable<MetaObject>? alsoReached = null) =>
-        CollectSharedEnums(root, alsoReached).Where(e => !e.Provided).ToList();
+    public static IReadOnlyList<SharedEnum> MaterializedSharedEnums(MetaRoot root, IEnumerable<MetaObject>? alsoReached = null,
+        Func<MetaObject, bool>? scope = null) =>
+        CollectSharedEnums(root, alsoReached, scope).Where(e => !e.Provided).ToList();
 
     /// <summary>
     /// The C# type reference a consuming field emits for a shared/provided enum:

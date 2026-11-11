@@ -1083,13 +1083,17 @@ public class EntityGenerator : IGenerator
         // FR-023: an imported value object this run emits a POCO for (a generated type needs it), so
         // the enums IT uses are part of the output too.
         var importedShapes = valueShapes.Where(vo => !ctx.Root.InScope(vo)).ToList();
+        // G2 (rc.20): a narrowed run (Include) declares the enums of the objects it accepts and of
+        // every value object it emits beyond them (a reached closure POCO), not the whole model's;
+        // another entry declares the rest. Un-narrowed, the set is unchanged.
+        var reached = ctx.Scope is null ? importedShapes : valueShapes.ToList();
 
-        foreach (var shared in Fr019SharedEnum.CollectSharedEnums(ctx.Root, importedShapes))
+        foreach (var shared in Fr019SharedEnum.CollectSharedEnums(ctx.Root, reached, ctx.Scope))
             if (shared.Provided)
                 _ = Fr019SharedEnum.SharedEnumTypeReference(shared, ctx.Config);
 
         var files = new List<EmittedFile>();
-        foreach (var e in Fr019SharedEnum.MaterializedSharedEnums(ctx.Root, importedShapes))
+        foreach (var e in Fr019SharedEnum.MaterializedSharedEnums(ctx.Root, reached, ctx.Scope))
         {
             // rc.19 R65: a shared enum is declared in its package's namespace; consumers name it
             // global::-qualified (Fr019SharedEnum.SharedEnumTypeReference).

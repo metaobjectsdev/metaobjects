@@ -534,6 +534,12 @@ vocabulary; upgrade every port together.
   `GetProperty("<Prop>").SetComment(...)` on its column; any other mapping gets no comment line
   and a warning naming the field (`meta migrate` still writes the comment).
 
+- **Fix, C#: a narrowed `EntityGenerator` declares only the shared enums it uses (G2).** With
+  `Include`, the materialized shared enums were still collected from every in-scope object, so two
+  entries splitting the model both declared each one. A narrowed entry now declares the enums of
+  the objects it accepts and of every value object it emits beyond them; an un-narrowed run emits
+  the same set as before.
+
 - **Fix, TypeScript views: two references onto one target entity read their own rows.** A
   projection whose origins reach the same entity through two different references
   (`Account.owner` and `Account.approver`, both `User`) got two joins (`u`, `u0`), but every origin

@@ -103,4 +103,62 @@ public class GeneratorIncludeTests
         Assert.Single(narrowed.Entities);
         Assert.Same(ctx.Root, narrowed.Root);
     }
+
+    // G2, rc.20: a narrowed entry declares the shared enums of what it emits, not the whole model's,
+    // so two entries splitting the model do not both declare one enum.
+    private const string SharedEnums = """
+    { "metadata.root": { "package": "acme", "children": [
+      { "field.enum": { "name": "OrderStatus", "abstract": true, "@values": ["DRAFT", "PLACED"] } },
+      { "field.enum": { "name": "Tier", "abstract": true, "@values": ["GOLD", "SILVER"] } },
+      { "field.enum": { "name": "Mood", "abstract": true, "@values": ["CALM", "LOUD"] } },
+      { "object.entity": { "name": "Order", "children": [
+        { "source.rdb": { "@table": "orders" } },
+        { "field.long": { "name": "id" } },
+        { "field.enum": { "name": "status", "extends": "OrderStatus" } },
+        { "field.object": { "name": "note", "@objectRef": "Note" } },
+        { "identity.primary": { "@fields": "id" } }
+      ]}},
+      { "object.entity": { "name": "Customer", "children": [
+        { "source.rdb": { "@table": "customers" } },
+        { "field.long": { "name": "id" } },
+        { "field.enum": { "name": "tier", "extends": "Tier" } },
+        { "identity.primary": { "@fields": "id" } }
+      ]}},
+      { "object.value": { "name": "Note", "children": [ { "field.enum": { "name": "mood", "extends": "Mood" } } ]}}
+    ]}}
+    """;
+
+    private static string SharedEnumPaths(EntityGenerator g)
+    {
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(SharedEnums, id: "enums.json")]);
+        Assert.Empty(r.Errors);
+        var ctx = new GenContext
+        {
+            Entities = r.Root.Objects(), Root = r.Root,
+            Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated" },
+        };
+        return string.Join("|", g.Generate(ctx).Select(f => f.Path).OrderBy(p => p));
+    }
+
+    [Fact]
+    public void A_narrowed_entry_declares_only_the_shared_enums_it_uses()
+    {
+        var all = SharedEnumPaths(new EntityGenerator());
+        Assert.Contains("OrderStatus.g.cs", all);
+        Assert.Contains("Tier.g.cs", all);
+        Assert.Contains("Mood.g.cs", all);
+
+        var orders = SharedEnumPaths(new EntityGenerator { Include = o => o.Name is "Order" });
+        Assert.Contains("OrderStatus.g.cs", orders);
+        // The value object Order reaches is emitted, so the enum it uses is too.
+        Assert.Contains("Note.g.cs", orders);
+        Assert.Contains("Mood.g.cs", orders);
+        Assert.DoesNotContain("Tier.g.cs", orders);
+
+        var customers = SharedEnumPaths(new EntityGenerator { Include = o => o.Name is "Customer" });
+        Assert.Contains("Tier.g.cs", customers);
+        Assert.DoesNotContain("OrderStatus.g.cs", customers);
+        Assert.DoesNotContain("Mood.g.cs", customers);
+    }
 }
+
