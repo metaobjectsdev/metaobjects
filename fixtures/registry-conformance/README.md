@@ -377,8 +377,8 @@ Detail per port:
   uniform emitter exclusions documented in "EXCLUDED" above (no Java behavior
   change): the structural keywords `isArray`/`isAbstract` + the `description`
   per-type duplicate are filtered from the `attrs` list, the `metadata.base`
-  anchor row is skipped, and the generic `view.*` controls are cut from the
-  manifest (every port registers them for loading only). The REMAINING (Phase 2) divergence between Java's
+  anchor row is skipped. (The generic `view.*` controls were cut from the
+  manifest at that point; they are now in it, marked `implementedIn`.) The REMAINING (Phase 2) divergence between Java's
   registry and the cross-port logical vocabulary that TS, C#, and Python agree
   on: Java carries a parallel physical-DB attr vocabulary
   (`dbType`/`dbIndex`/`dbLength`/`dbNullable`/`dbForeignKey`/`dbPrecision`/
