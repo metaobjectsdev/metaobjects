@@ -22,6 +22,7 @@ import com.google.gson.JsonParser;
 import com.metaobjects.ErrorCode;
 import com.metaobjects.MetaDataException;
 import com.metaobjects.loader.FileSource;
+import com.metaobjects.requirement.RequirementCheck;
 import com.metaobjects.loader.LoaderOptions;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.loader.MetaDataSource;
@@ -78,7 +79,8 @@ public class DependencyConformanceTest {
                          JsonObject config, JsonObject lock, String resolveFrom,
                          List<String> expectFiles, List<String> expectImported,
                          List<String> expectSelected, List<String> expectMigrateGoverned,
-                         String expectLoadError, List<String> expectErrorFiles, String expectError) {}
+                         String expectLoadError, List<String> expectErrorFiles, String expectError,
+                         Map<String, String> expectLedger, Boolean expectCoverageMeasured) {}
 
     static Path corpusDir() {
         Path dir = Paths.get("").toAbsolutePath();
@@ -131,7 +133,9 @@ public class DependencyConformanceTest {
                     stringList(c, "expectFiles"), stringList(c, "expectImported"),
                     stringList(c, "expectSelected"), stringList(c, "expectMigrateGoverned"),
                     optString(c, "expectLoadError"), stringList(c, "expectErrorFiles"),
-                    optString(c, "expectError"))});
+                    optString(c, "expectError"),
+                    c.has("expectLedger") ? stringMap(c, "expectLedger") : null,
+                    c.has("expectCoverageMeasured") ? c.get("expectCoverageMeasured").getAsBoolean() : null)});
         }
         return rows;
     }
@@ -213,7 +217,8 @@ public class DependencyConformanceTest {
             assertEquals(new TreeSet<>(testCase.expectFiles()), actual);
 
             boolean needsLoad = testCase.expectImported() != null || testCase.expectSelected() != null
-                    || testCase.expectMigrateGoverned() != null || testCase.expectLoadError() != null;
+                    || testCase.expectMigrateGoverned() != null || testCase.expectLoadError() != null
+                    || testCase.expectLedger() != null;
             if (!needsLoad) return;
 
             DependencySet deps = collection.dependencies();
@@ -223,6 +228,7 @@ public class DependencyConformanceTest {
             MetaDataLoader loader = new MetaDataLoader(
                     LoaderOptions.create(false, false, true), MetaDataLoader.SUBTYPE_MANUAL, "dep-conformance");
             loader.init();
+            loader.getRoot().setDependencySet(deps);
             Throwable thrown = null;
             try {
                 loader.load(sources);
@@ -267,6 +273,26 @@ public class DependencyConformanceTest {
                 // An absent predicate governs everything loaded.
                 Predicate<String> governed = deps.inMigrateScope().orElse(fqn -> true);
                 assertEquals(new TreeSet<>(testCase.expectMigrateGoverned()), filter(loaded, governed));
+            }
+            if (testCase.expectLedger() != null) {
+                // The LEDGER arm: which requirements are this project's own, keyed
+                // `<package>::<dotted path>`, and whether object coverage is measured.
+                RequirementCheck.Scan scan = RequirementCheck.scan(loader.getRoot(), new RequirementCheck.Options(null, false));
+                Map<String, String> ledger = new java.util.TreeMap<>();
+                for (RequirementCheck.Addressed a : scan.addressed()) {
+                    String status = a.node().getStatus();
+                    ledger.put(com.metaobjects.requirement.RequirementTestIdentities.addressOf(
+                            RequirementCheck.effectivePackage(a.node()), a.path()), status == null ? "" : status);
+                }
+                assertEquals(new java.util.TreeMap<>(testCase.expectLedger()), ledger);
+                assertEquals(Boolean.TRUE.equals(testCase.expectCoverageMeasured()), scan.measureCoverage());
+                // The requirement-tests generators walk the same ledger: no test for the rest.
+                Set<String> walked = new TreeSet<>();
+                for (com.metaobjects.requirement.RequirementTestIdentities.Walked w
+                        : com.metaobjects.requirement.RequirementTestIdentities.walk(loader.getRoot())) {
+                    walked.add(com.metaobjects.requirement.RequirementTestIdentities.addressOf(w.view().pkg(), w.view().path()));
+                }
+                assertEquals(new TreeSet<>(testCase.expectLedger().keySet()), walked);
             }
         } finally {
             delete(root);

@@ -6,6 +6,7 @@ import {
   packageOfResolutionKey,
   ParseError,
   TYPE_OBJECT,
+  TYPE_REQUIREMENT,
   type ErrorSource,
   type LoaderError,
   type LoadResult,
@@ -457,8 +458,10 @@ function refuseUnownedPackages(
   // ADR-0039 SANCTIONED own-accessor case: a root-level scan. `MetaRoot` has no
   // super, so own and effective children are the same set here — and the
   // question asked is precisely "what did this tree declare at the top level",
-  // which is the own layer by definition.
-  for (const node of root.ownChildrenOfType(TYPE_OBJECT)) {
+  // which is the own layer by definition. Requirements too: a publisher may export its
+  // ledger, and a new requirement in its package would be the publisher's, not this
+  // project's, to every gate that reads the ledger by package.
+  for (const node of [...root.ownChildrenOfType(TYPE_OBJECT), ...root.ownChildrenOfType(TYPE_REQUIREMENT)]) {
     const key = node.resolutionKey();
     const pkg = packageOfResolutionKey(key);
     if (!packages.has(pkg) || nodes.has(key)) continue;

@@ -911,6 +911,7 @@ def _run_suite(
     baseline: str = "default",
     refused_out: list[str] | None = None,
     select: Callable[[str], bool] | None = None,
+    in_ledger: Callable[[str], bool] | None = None,
     api_prefix: str = DEFAULT_API_PREFIX,
     overwrite_hand_edits: frozenset[str] = frozenset(),
     overwrite_paths_out: set[str] | None = None,
@@ -971,7 +972,9 @@ def _run_suite(
     if not generators:
         raise NoGeneratorsSelectedError
     suite = generators
-    result = run_gen(config, root, generators=suite, entity_filter=entity_filter, select=select)
+    result = run_gen(
+        config, root, generators=suite, entity_filter=entity_filter, select=select, in_ledger=in_ledger
+    )
     if overwrite_paths_out is not None:
         overwrite_paths_out.update(
             path for path, by in result.generated_by.items() if by in overwrite_hand_edits
@@ -1518,6 +1521,7 @@ def _run_gen_targets(
     baseline: str = "default",
     refused_out: list[str] | None = None,
     select: Callable[[str], bool] | None = None,
+    in_ledger: Callable[[str], bool] | None = None,
     build_ctx: GeneratorBuildContext | None = None,
     column_naming: str = DEFAULT_COLUMN_NAMING,
     selection: list[str] | None = None,
@@ -1646,7 +1650,8 @@ def _run_gen_targets(
                 written = _run_suite(
                     root, out_dir, gens, t.entities, gen_state_dir=gen_state_dir,
                     column_naming=column_naming, project_root=project_root, baseline=baseline,
-                    refused_out=refused_out, select=select, api_prefix=config.api_prefix,
+                    refused_out=refused_out, select=select, in_ledger=in_ledger,
+                    api_prefix=config.api_prefix,
                     overwrite_hand_edits=overwrite, overwrite_paths_out=overwrite_paths_out,
                 )
             if spec_gens:
@@ -1654,7 +1659,7 @@ def _run_gen_targets(
                     root, out_dir, spec_gens, t.entities, emit_package_init=False,
                     gen_state_dir=gen_state_dir, column_naming=column_naming,
                     project_root=project_root, baseline=baseline, refused_out=refused_out,
-                    select=select, api_prefix=config.api_prefix,
+                    select=select, in_ledger=in_ledger, api_prefix=config.api_prefix,
                 )
         except ValueError as exc:  # intra-target run_gen collision → clean error
             errors.append(f"target '{t.name}': {exc}")
@@ -1767,6 +1772,7 @@ def _cmd_gen_config(args: argparse.Namespace) -> int:
         baseline=baseline,
         refused_out=refused,
         select=collection.in_scope,
+        in_ledger=collection.in_ledger,
         build_ctx=GeneratorBuildContext(template_root),
         column_naming=column_naming,
         selection=selection,
@@ -2131,6 +2137,7 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
             overwrite_paths: set[str] = set()
             regen = dict(
                 select=collection.in_scope,
+                in_ledger=collection.in_ledger,
                 build_ctx=GeneratorBuildContext(template_root),
                 # R31: the `names` generator's constants are strategy-dependent, so the regen
                 # must use the strategy `gen` wrote with, or every constant reads as drift.
@@ -2743,6 +2750,8 @@ def _verify_requirements(args: argparse.Namespace, model: "_VerifyModel | None")
     scan = scan_requirements(
         model.root,
         coverable=collection.in_scope if collection is not None else None,
+        in_ledger=collection.in_ledger if collection is not None else None,
+        imported=collection.imported if collection is not None else None,
         require_implementers=bool(getattr(args, "require_implementers", False))
         or os.environ.get(REQUIRE_IMPLEMENTERS_ENV) == "1",
     )

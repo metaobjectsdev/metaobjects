@@ -636,8 +636,12 @@ public final class Dependencies {
         if (importedPackages == null || importedPackages.isEmpty()) return;
         // ADR-0039 SANCTIONED own-accessor case: a root-level scan. MetaRoot has no super, so own
         // and effective children are the same set, and the question is "what did this tree declare
-        // at the top level", which is the own layer by definition.
-        for (MetaObject node : root.getChildren(MetaObject.class, false)) {
+        // at the top level", which is the own layer by definition. Requirements too: a publisher may
+        // export its ledger, and a new requirement in its package would read as the publisher's to
+        // every gate that keys the ledger by package.
+        List<MetaData> topLevel = new ArrayList<>(root.getChildren(MetaObject.class, false));
+        topLevel.addAll(root.getChildren(com.metaobjects.requirement.MetaRequirement.class, false));
+        for (MetaData node : topLevel) {
             String key = node.getName();
             String pkg = packageOf(key);
             if (!importedPackages.contains(pkg) || importedNodes.contains(key)) continue;

@@ -73,6 +73,12 @@ public sealed class NeutralConfig
     public IReadOnlyList<string>? MigrateScope { get; }
 
     /// <summary>
+    /// FR-023 — <c>requirements.inherit</c>: the dependencies whose requirements this project takes on
+    /// as its own ledger (<see cref="ImportScope.InLedger"/>). Empty when absent.
+    /// </summary>
+    public IReadOnlyList<string> RequirementsInherit { get; private init; } = [];
+
+    /// <summary>
     /// The directory holding the <c>.metaobjects/</c> folder this config was read from — where the lock and
     /// the committed dependency snapshots live beside it.
     /// </summary>
@@ -282,7 +288,11 @@ public sealed class NeutralConfig
             // lists read above, are IGNORED by design — see the file header.
             return new NeutralConfig(specs, libraries, new PhysicalNaming(columns, tables), ReadWire(root, path),
                 ReadCSharp(root, path, configDir), dependencies, scopeInclude, migrateScope,
-                Path.GetFullPath(configDir)) { Enums = ReadEnums(root, path) };
+                Path.GetFullPath(configDir))
+            {
+                Enums = ReadEnums(root, path),
+                RequirementsInherit = ReadRequirementsInherit(root, path),
+            };
         }
     }
 
@@ -298,6 +308,23 @@ public sealed class NeutralConfig
         if (specs.Select(s => s.Name).Distinct(StringComparer.Ordinal).Count() != specs.Count)
             throw new MetaModelException($"{path}: \"dependencies\" names must be unique", ErrorCode.ERR_BAD_ATTR_VALUE);
         return specs;
+    }
+
+    /// FR-023 — <c>requirements.inherit</c>. Refused like <c>naming</c>: an unknown key inside
+    /// <c>requirements</c> would otherwise be a misspelt <c>inherit</c> that silently leaves the ledger out.
+    private static IReadOnlyList<string> ReadRequirementsInherit(JsonElement root, string path)
+    {
+        if (!root.TryGetProperty("requirements", out var block) || block.ValueKind == JsonValueKind.Null) return [];
+        if (block.ValueKind != JsonValueKind.Object)
+            throw new MetaModelException($"{path}: \"requirements\" must be an object", ErrorCode.ERR_BAD_ATTR_VALUE);
+        foreach (var p in block.EnumerateObject())
+        {
+            if (p.Name != "inherit")
+                throw new MetaModelException(
+                    $"{path}: \"requirements\" has an unknown key \"{p.Name}\" (expected \"inherit\")",
+                    ErrorCode.ERR_BAD_ATTR_VALUE);
+        }
+        return ReadPatterns(root, path, "requirements", "inherit") ?? [];
     }
 
     /// One pattern list nested in a TypeScript-owned block: `scope.include` or `migrate.scope`. The

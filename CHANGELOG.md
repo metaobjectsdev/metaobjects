@@ -18,6 +18,23 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
 
 ### Added
 
+- **A shared model can carry its requirements, and a consumer can inherit them (FR-023).** The
+  publisher's `shared-model` generator takes `requirements: true` (TypeScript `sharedModelFile`,
+  the Java/Kotlin generator arg `requirements`, C# `SharedModelGenerator.Requirements`; default
+  off) and then publishes the selected `requirement.*` nodes beside the model they describe; a
+  requirement claiming a node outside the selection is refused at publish. `template.*` is never
+  published. On the consumer side, `requirements.inherit` in `.metaobjects/config.json` names the
+  dependency packages whose requirements join the project's ledger, by the same explicit-include
+  rule as `scope.include` (`**` names nothing). A dependency's requirement that is not inherited
+  still loads, so an overlay of it resolves, but the requirement gate, its summary and lint, the
+  `requirement-tests` generators and the requirements pages leave it out; `requirementTestIdentities`
+  (TypeScript) and `requirement_test_identities` (Python) take the collection's ledger predicate
+  as `inLedger` / `in_ledger`, as the generator does. An imported requirement never switches object
+  coverage on, inherited or not, as a library's never does. Every port reads the key (TypeScript,
+  Python, Java, Kotlin through Java, C#). A consumer on an older toolchain treats a published
+  requirement as its own, so upgrade consumers before publishing with `requirements: true`. See
+  `docs/features/metadata-dependencies.md`, "Inheriting a dependency's requirements".
+
 - **`maven` and `nuget` dependency transports (FR-023).** `meta deps sync` and `meta deps check` can
   now read a shared model out of a published package that is already in the local cache, so a JVM or
   .NET consumer no longer needs the publisher's directory on disk. `{ "name": "x", "maven":
@@ -316,6 +333,10 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
   fields.
 
 ### Changed
+
+- **A new top-level requirement declared into a dependency's package is refused** with
+  `ERR_DEPENDENCY_PACKAGE_NOT_OWNED`, as a new object there already was. An overlay of the
+  dependency's own requirement is still accepted.
 
 - **`docsSiteFile()` builds the model explorer by default.** A project that lists
   `docsSiteFile()` gets a different site under `site/` on its next `meta gen`, with new page

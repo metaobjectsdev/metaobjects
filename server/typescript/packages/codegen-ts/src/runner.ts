@@ -138,6 +138,12 @@ export interface RunGenOpts {
    */
   scope?: (fqn: string) => boolean;
   /**
+   * FR-023 — which requirements are this project's ledger, read with `<package>::<path>`
+   * (`Collection.inLedger`, passed straight through like `scope`). Threaded onto
+   * `GenContext.inLedger`. Undefined ⇒ every loaded requirement.
+   */
+  inLedger?: (fqn: string) => boolean;
+  /**
    * FR-023 §4.3 — the collection's own source files (`Collection.ownFiles`; never
    * a dependency's snapshot artifact), threaded onto `GenContext.sourceFiles` for
    * `sharedModelFile()`'s default `files` selection. The CLI's `gen` command
@@ -945,6 +951,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
       // than per matched entity, where `matches` never runs. Absent scope ⇒ no
       // `select` at all, byte-identical to a project with no `scope` declared.
       ...(scope !== undefined && { select: scope }),
+      ...(opts.inLedger !== undefined && { inLedger: opts.inLedger }),
       config: {
         outDir: selfTarget.outDir,
         extStyle: config.extStyle,

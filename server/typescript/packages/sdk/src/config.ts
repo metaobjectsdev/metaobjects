@@ -208,6 +208,20 @@ export const ConfigSchema = z.object({
     .default({}),
   migrate: MigrateBlock.optional(),
   /**
+   * FR-023 — which dependencies' requirements this project takes on as its own ledger.
+   * `inherit` lists scope patterns, and a pattern counts only when it NAMES a dependency's
+   * package literally (`acme::common::**` names `acme::common`; `**` names nothing), the rule
+   * `scope.include` follows. An imported requirement not named here is loaded, so an overlay
+   * of it resolves, and is otherwise left alone: not listed, checked, summarised or given a
+   * generated test. A separate key from `scope.include` on purpose: that one also selects a
+   * package for code generation. Read by every port's config reader.
+   */
+  requirements: z
+    .strictObject({
+      inherit: z.array(z.string().min(1)).optional(),
+    })
+    .optional(),
+  /**
    * How a metadata name becomes a physical database name when the metadata gives none
    * (ADR-0058). `columns` applies to a field with no `@column`; `tables` to an object whose
    * source names no table, view or procedure, through the frozen pluralizer. One setting for

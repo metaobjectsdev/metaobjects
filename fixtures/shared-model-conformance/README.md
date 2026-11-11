@@ -44,10 +44,11 @@ Exactly one of `expectArtifact` + `expectManifest`, `expectRefusal` is present p
   token `@@METAMODEL_VERSION@@` there and a runner substitutes its own constant before comparing.
   `packages` and `nodes` are sorted, and `integrity` is the sha256 of the artifact's bytes.
 - **`expectRefusal.reason`** — one of:
-  - `empty-selection` — `include` / `exclude` select no node (`requirement.*` and `template.*`
-    never count).
+  - `empty-selection` — `include` / `exclude` select no node (`template.*` never counts, and
+    `requirement.*` counts only when `input.requirements` is `true`).
   - `not-closed` — a selected node `extends` or references (any ref-bearing attribute) a node
-    outside the selection. `pairs` is the EXHAUSTIVE list of `(referrer, target)` resolution
+    outside the selection, or a selected requirement's `@implementedBy` claim resolves to a node
+    outside it (only the owner segment counts; a claim that resolves nothing is not followed). `pairs` is the EXHAUSTIVE list of `(referrer, target)` resolution
     keys, sorted by referrer then target, which the error must name.
   - `non-core-vocabulary` — the selection loads with the publisher's own providers but not with
     core vocabulary alone, which is how a consumer loads it.
@@ -57,8 +58,15 @@ Exactly one of `expectArtifact` + `expectManifest`, `expectRefusal` is present p
 
 ## Rules the cases pin
 
-- `requirement.*` and `template.*` top-level nodes are never published, whatever `include` says
-  (`requirements-and-templates-are-always-dropped`).
+- `template.*` top-level nodes are never published, whatever `include` says. `requirement.*`
+  nodes are published only when the case sets `input.requirements: true`
+  (`requirements-and-templates-are-dropped-by-default`,
+  `requirements-are-published-when-asked`,
+  `templates-are-dropped-when-requirements-are-published`,
+  `a-requirement-alone-is-an-empty-selection-by-default`).
+- An exported requirement cannot claim a node the export leaves out: `@implementedBy` is not a
+  loader reference, but the closure check follows it
+  (`a-requirement-claiming-a-node-outside-the-selection-is-refused`).
 - The order of `files` does not change the bytes (`the-order-of-files-does-not-change-the-bytes`).
 - Nodes are sorted by resolution key; each carries its own `package`; `extends` is preserved, not
   flattened (`a-selection-spanning-two-packages-lists-both-sorted`).

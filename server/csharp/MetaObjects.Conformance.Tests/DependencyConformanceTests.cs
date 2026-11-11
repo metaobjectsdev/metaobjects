@@ -11,6 +11,7 @@
 using System.Text.Json;
 using MetaObjects;
 using MetaObjects.Config;
+using MetaObjects.Core.Requirement;
 using MetaObjects.Meta;
 using MetaObjects.Source;
 using Xunit;
@@ -192,7 +193,8 @@ public class DependencyConformanceTests : IDisposable
     private static void AssertArms(JsonElement c, ResolvedMetadata resolved, string name)
     {
         var needsLoad = c.TryGetProperty("expectImported", out _) || c.TryGetProperty("expectSelected", out _) ||
-                        c.TryGetProperty("expectMigrateGoverned", out _) || c.TryGetProperty("expectLoadError", out _);
+                        c.TryGetProperty("expectMigrateGoverned", out _) || c.TryGetProperty("expectLoadError", out _) ||
+                        c.TryGetProperty("expectLedger", out _);
         if (!needsLoad) return;
 
         var result = resolved.Load();
@@ -226,5 +228,22 @@ public class DependencyConformanceTests : IDisposable
             Assert.Equal(Sorted(Strings(expectSelected)), Sorted(topLevel.Where(imports.InScope)));
         if (c.TryGetProperty("expectMigrateGoverned", out var expectGoverned))
             Assert.Equal(Sorted(Strings(expectGoverned)), Sorted(topLevel.Where(imports.InMigrateScope)));
+        if (c.TryGetProperty("expectLedger", out var expectLedger))
+        {
+            // The LEDGER arm: which requirements are this project's own, keyed
+            // `<package>::<dotted path>`, and whether object coverage is measured.
+            Assert.Same(imports, (result.Root as MetaRoot)?.ImportScope);
+            var scan = RequirementCheck.Scan(result.Root);
+            var ledger = scan.Addressed.ToDictionary(
+                a => RequirementTestIdentities.AddressOf(RequirementCheck.EffectivePackage(a.Node), a.Path),
+                a => a.Node.Status ?? "", StringComparer.Ordinal);
+            var expected = expectLedger.EnumerateObject().ToDictionary(p => p.Name, p => p.Value.GetString()!, StringComparer.Ordinal);
+            Assert.Equal(expected.OrderBy(kv => kv.Key, StringComparer.Ordinal), ledger.OrderBy(kv => kv.Key, StringComparer.Ordinal));
+            var measured = c.TryGetProperty("expectCoverageMeasured", out var m) && m.GetBoolean();
+            Assert.Equal(measured, scan.MeasureCoverage);
+            // The requirement-tests generator walks the same ledger: no test for the rest.
+            Assert.Equal(Sorted(expected.Keys),
+                Sorted(RequirementTestIdentities.Walk(result.Root).Select(w => RequirementTestIdentities.AddressOf(w.View.Package, w.View.Path))));
+        }
     }
 }

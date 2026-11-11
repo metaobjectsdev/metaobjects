@@ -69,6 +69,7 @@ def run_gen(
     entity_filter: list[str] | None = None,
     select: Callable[[str], bool] | None = None,
     merge_strategy: str = "overwrite",
+    in_ledger: Callable[[str], bool] | None = None,
 ) -> RunGenResult:
     """Mirrors ``codegen-ts``'s ``runner.ts``.
 
@@ -148,6 +149,7 @@ def run_gen(
             config=config,
             warn=_warn_collector(gen.name, result.warnings),
             generators=tuple(g.name for g in generators),
+            in_ledger=in_ledger,
         )
         for f in gen.generate(ctx):
             full = os.path.join(config.out_dir, f.path)

@@ -59,6 +59,7 @@ const MODEL = {
 async function emit(
   opts: RequirementTestsOpts = {},
   warn: (m: string) => void = () => {},
+  inLedger?: (fqn: string) => boolean,
 ): Promise<EmittedFile[]> {
   const r = await new MetaDataLoader().load([
     new InMemoryStringSource(JSON.stringify(MODEL)),
@@ -72,6 +73,7 @@ async function emit(
     matches: () => true,
     config: {},
     warn,
+    ...(inLedger !== undefined ? { inLedger } : {}),
   } as unknown as GenContext;
   return (await requirementTests(opts).generate(ctx)) as EmittedFile[];
 }
@@ -84,6 +86,22 @@ describe("requirementTests — fan-out", () => {
       "requirements/links.slugField.object.entity.test.ts",
       "requirements/links.slugField.view.text.test.ts",
     ]);
+  });
+});
+
+describe("requirementTests — the project's ledger (FR-023)", () => {
+  test("a requirement outside the ledger gets no stub, read by <package>::<path>", async () => {
+    const seen: string[] = [];
+    const files = await emit({}, () => {}, (fqn) => {
+      seen.push(fqn);
+      return false;
+    });
+    expect(files).toEqual([]);
+    expect(seen).toContain("acme::probe::links.slugField");
+  });
+
+  test("a ledger admitting the requirement emits exactly as without one", async () => {
+    expect(await emit({}, () => {}, () => true)).toEqual(await emit());
   });
 });
 

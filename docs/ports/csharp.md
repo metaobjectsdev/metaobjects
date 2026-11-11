@@ -114,7 +114,8 @@ A model published from another repository is declared under `dependencies` in
 reads both, at every rung of the source ladder, and never writes them: a snapshot that no longer
 matches the lock fails with `ERR_DEPENDENCY_SNAPSHOT_STALE`. The snapshot loads first, so your
 own metadata can `extends`, overlay or reference its nodes, but an imported node is not generated
-(and is not counted by the requirement gate) unless `scope.include` names its package. What C#
+unless `scope.include` names its package, and an imported requirement is not counted by the
+requirement gate unless `requirements.inherit` names it. What C#
 does and does not do is in
 [Metadata dependencies](../features/metadata-dependencies.md).
 
@@ -305,7 +306,8 @@ new SharedModelGenerator
 `<Version>` (from the project file, else the nearest `Directory.Build.props`). It writes nothing and
 names the option to change when the selection is empty, is not closed over `extends` and reference
 attributes, or needs vocabulary outside the library's. Give `OutDir` a directory that holds nothing
-else. `requirement.*` and `template.*` nodes are never published. `dotnet meta eject shared-model`
+else. `requirement.*` nodes are published only when `Requirements` is set (`requirements: true`, default
+off); `template.*` nodes are never published. `dotnet meta eject shared-model`
 copies the generator into your project; the artifact bytes stay in the package, because a copy that
 changed them would publish a model a consumer's sync refuses. The consumer runs the Node `meta deps
 sync`, which stays the only writer of the lock and the snapshot.

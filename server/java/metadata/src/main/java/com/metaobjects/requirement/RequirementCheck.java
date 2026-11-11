@@ -2,6 +2,7 @@ package com.metaobjects.requirement;
 
 import com.metaobjects.MetaData;
 import com.metaobjects.MetaRoot;
+import com.metaobjects.config.DependencySet;
 import com.metaobjects.io.util.IOUtil;
 import com.metaobjects.library.LibrarySources;
 import com.metaobjects.loader.ValidationPhase;
@@ -133,11 +134,11 @@ public final class RequirementCheck {
     // ------------------------------------------------------------------
 
     public static Scan scan(MetaRoot root, Options options) {
-        List<Addressed> addressed = collectAddressed(root);
+        List<Addressed> addressed = collectLedger(root);
         SymbolTable symbols = SymbolTable.build(root);
         boolean measure = options.measureCoverage() != null
             ? options.measureCoverage()
-            : projectAuthoredRequirements(addressed);
+            : projectAuthoredRequirements(addressed, root.getDependencySet());
         return new Scan(addressed, claimedObjectKeys(root, symbols, addressed), measure,
             options.requireImplementers(), symbols);
     }
@@ -149,12 +150,34 @@ public final class RequirementCheck {
      * PACKAGE. An overlay on a library requirement stays in the library's package and does not
      * activate coverage.
      */
-    private static boolean projectAuthoredRequirements(List<Addressed> addressed) {
+    private static boolean projectAuthoredRequirements(List<Addressed> addressed, DependencySet dependencies) {
         Set<String> libraryPackages = LibrarySources.libraryPackages();
         for (Addressed a : addressed) {
-            if (!libraryPackages.contains(effectivePackage(a.node()))) return true;
+            String pkg = effectivePackage(a.node());
+            if (libraryPackages.contains(pkg)) continue;
+            // FR-023: a dependency's requirement, inherited or not, is the publisher's design for
+            // the same reason a library's is, and cannot switch coverage on either.
+            if (dependencies.imported(RequirementTestIdentities.addressOf(pkg, a.path()))) continue;
+            return true;
         }
         return false;
+    }
+
+    /**
+     * The requirements that are this project's ledger: every loaded requirement but a
+     * dependency's that {@code requirements.inherit} does not name ({@link DependencySet#inLedger},
+     * read from the dependency set the loader put on the root). One left out is still loaded, so
+     * an overlay of it resolves, and nothing here or in the requirement-tests generators addresses it.
+     */
+    public static List<Addressed> collectLedger(MetaRoot root) {
+        DependencySet dependencies = root.getDependencySet();
+        List<Addressed> out = new ArrayList<>();
+        for (Addressed a : collectAddressed(root)) {
+            if (dependencies.inLedger(RequirementTestIdentities.addressOf(effectivePackage(a.node()), a.path()))) {
+                out.add(a);
+            }
+        }
+        return out;
     }
 
     /**

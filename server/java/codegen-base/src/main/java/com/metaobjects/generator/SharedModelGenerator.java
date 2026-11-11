@@ -26,8 +26,9 @@ import java.util.List;
  * <p>Args: {@code outputDir}, {@code name} (the dependency key a consumer syncs under; the artifact
  * is {@code <name>.metaobjects.json}), {@code include} (comma-separated scope patterns, such as
  * {@code acme::common::**}), {@code files} (comma-separated metadata files that may contribute),
- * and optionally {@code exclude} (applied after {@code include}) and {@code version} (default: the
- * project's version).</p>
+ * and optionally {@code exclude} (applied after {@code include}), {@code version} (default: the
+ * project's version) and {@code requirements} ({@code true} publishes the selected
+ * {@code requirement.*} nodes as well; default {@code false}).</p>
  */
 public class SharedModelGenerator extends FileEmittingGenerator {
 
@@ -36,6 +37,7 @@ public class SharedModelGenerator extends FileEmittingGenerator {
     public static final String ARG_EXCLUDE = "exclude";
     public static final String ARG_FILES = "files";
     public static final String ARG_VERSION = "version";
+    public static final String ARG_REQUIREMENTS = "requirements";
 
     @Override
     protected List<EmittedFile> generate(MetaDataLoader loader) {
@@ -49,7 +51,11 @@ public class SharedModelGenerator extends FileEmittingGenerator {
         // The providers the project's own load used, so its extra attributes load here too.
         List<MetaDataTypeProvider> providers = loader.getLoaderOptions().getProviders();
 
-        SharedModel.Built model = SharedModel.build(new SharedModel.Input(name, files, include, exclude, providers));
+        // Publishing the ledger is opt-in: "true" adds the selected requirement.* nodes.
+        boolean requirements = hasArg(ARG_REQUIREMENTS) && Boolean.parseBoolean(getArg(ARG_REQUIREMENTS).trim());
+
+        SharedModel.Built model = SharedModel.build(
+            new SharedModel.Input(name, files, include, exclude, providers, requirements));
 
         // Resolved after the selection has passed every check, so a model that cannot be published
         // says so before a missing version does.

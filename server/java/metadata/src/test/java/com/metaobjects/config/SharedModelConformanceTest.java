@@ -105,7 +105,8 @@ public class SharedModelConformanceTest {
             providers.add(new SecretHandlingProvider());
         }
         SharedModel.Input in = new SharedModel.Input(input.get("name").getAsString(), files,
-                strings(input, "include"), strings(input, "exclude"), providers);
+                strings(input, "include"), strings(input, "exclude"), providers,
+                input.has("requirements") && input.get("requirements").getAsBoolean());
 
         if (testCase.has("expectRefusal")) {
             JsonObject refusal = testCase.getAsJsonObject("expectRefusal");

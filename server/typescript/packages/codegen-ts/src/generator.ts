@@ -43,6 +43,11 @@ export interface GenContext {
    *  read `select` directly to honour the same exclusion. Undefined ⇒ every
    *  node is in scope, byte-identical to a project with no `scope` declared. */
   select?: (fqn: string) => boolean;
+  /** FR-023 — is the requirement at `<package>::<dotted path>` part of this project's ledger
+   *  (`RunGenOpts.inLedger`, the collection's `inLedger`)? A dependency's requirement the
+   *  project did not inherit is loaded and gets no generated test. Undefined ⇒ every loaded
+   *  requirement is the project's, as before the option existed. */
+  inLedger?: (fqn: string) => boolean;
   config: ResolvedGenConfig;
   /** Pre-built by the runner: the resolved config keys that are not on `config` —
    *  `apiPrefix`, `columnNamingStrategy`, `collectionName`, `timestampMode` — plus the

@@ -3,7 +3,8 @@
 // `meta deps sync`. The consumer's `meta deps check` / `dotnet meta verify --deps` then compares the two.
 //
 // This file decides what belongs to the PUBLISHING PROJECT: which of its source files may contribute
-// (Files), which nodes are published (Include / Exclude) and which version is recorded (Version, else the
+// (Files), which nodes are published (Include / Exclude, plus Requirements to add the selected
+// requirement.* nodes) and which version is recorded (Version, else the
 // project's <Version>). Everything a consumer checks is MetaObjects.Config.SharedModel's, in the package:
 // what is selected, that the selection is closed, the document's bytes, the hash over them and the
 // manifest's shape and file names. It is a reference helper (ADR-0034 Amendment 3): `dotnet meta eject
@@ -62,6 +63,10 @@ public class SharedModelGenerator : IGenerator
     /// project's main load. The artifact must still load WITHOUT them: a consumer does not have them.</summary>
     public IReadOnlyList<IMetaDataTypeProvider>? Providers { get; init; }
 
+    /// <summary>Publish the selected <c>requirement.*</c> nodes too, so a consumer can inherit them. Default
+    /// false: shapes only. <c>template.*</c> is never published.</summary>
+    public bool Requirements { get; init; }
+
     public IEnumerable<EmittedFile> Generate(GenContext ctx)
     {
         var name = Required(ModelName, nameof(ModelName), "the dependency key a consumer will sync under");
@@ -72,7 +77,7 @@ public class SharedModelGenerator : IGenerator
         var model = SharedModel.Build(new SharedModelInput(
             name,
             Files.Select(f => Path.GetFullPath(f, projectRoot)).ToList(),
-            Include, Exclude, Providers));
+            Include, Exclude, Providers, Requirements));
 
         // Resolved after the selection has passed every check, so a model that cannot be published says
         // so before a missing version does.
