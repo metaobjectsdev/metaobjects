@@ -257,8 +257,9 @@ describe("renderDocsFile — Storage table (NEUTRAL physical mapping)", () => {
       loadedRoot: root,
     });
     // FK fields get the 🔗 glyph + the target appended to the Type cell as a
-    // backticked ref. The legacy "foreign key → `Target`" key cell is gone.
-    expect(out).toContain("🔗 `authorId` | `long` → `Author` | yes |  |  |");
+    // backticked ref. The legacy "foreign key → `Target`" key cell is gone. The Column cell
+    // carries the column the default (snake_case) naming strategy resolves.
+    expect(out).toContain("🔗 `authorId` | `long` → `Author` | yes | `author_id` |  |");
   });
 
   test("regex validator surfaces pattern in constraints", () => {

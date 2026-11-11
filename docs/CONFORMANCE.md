@@ -26,7 +26,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 
 | Corpus | Fixtures | TS | Java | Kotlin | C# | Python |
 |---|---|---|---|---|---|---|
-| [`fixtures/conformance/`](../fixtures/conformance/) (metamodel) | 449 | ✓ | ✓ | inherits via `metadata-ktx` | ✓ | ✓ |
+| [`fixtures/conformance/`](../fixtures/conformance/) (metamodel) | 451 | ✓ | ✓ | inherits via `metadata-ktx` | ✓ | ✓ |
 | [`fixtures/yaml-conformance/`](../fixtures/yaml-conformance/) | 16 | 16 / 16 | 15 / 16 (1 ledgered: `yaml-quoted-leading-zero` — Java pipeline strips quotes off `"007"`) | inherits via Java | 15 / 16 (1 ledgered: `error-yaml-coerced-hex-in-string` — YamlDotNet doesn't coerce `0xFF`) | 16 / 16 |
 | [`fixtures/verify-conformance/`](../fixtures/verify-conformance/) | 45 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/verify-strict-conformance/`](../fixtures/verify-strict-conformance/) | 1 | ✓ | — | — | — | ✓ |
@@ -35,8 +35,8 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/jinja-verify-conformance/`](../fixtures/jinja-verify-conformance/) (ADR-0061 — the payload check over a Jinja body) | 31 | ✓ | refuses Jinja | refuses, via Java | refuses Jinja | ✓ |
 | [`fixtures/extract-conformance/`](../fixtures/extract-conformance/) | 58 | ✓ | ✓ | inherits the shared JVM engine | ✓ | ✓ |
 | [`fixtures/output-prompt-conformance/`](../fixtures/output-prompt-conformance/) | 17 | ✓ | ✓ | ✓ | ✓ | ✓ |
-| [`fixtures/persistence-conformance/`](../fixtures/persistence-conformance/) | 59 (53 query + 6 migration) | all 59; the 24 `report-*` and the `-15` decimal scenarios also on SQLite, MySQL and D1, `decimal-exact` also on MySQL (a scenario's `engines:` key is exact) | 53 query (migrations TS-only, ADR-0015); the `report-*` and `engines:` scenarios also on SQLite and MySQL | 53 query (via Exposed); the `report-*` and `engines:` scenarios also on SQLite and MySQL | 53 query; the `report-*` and `engines:` scenarios also on SQLite and MySQL | 53 query (pg8000); the `report-*` and `engines:` scenarios also on SQLite (`sqlite3`) and MySQL (PyMySQL) |
-| [`fixtures/api-contract-conformance/`](../fixtures/api-contract-conformance/) | 121 (31 core + 10 tph + 9 m2m + 5 jsonb + 2 write-through + 2 secret-fields + 12 projection + 37 report + 11 decimal + 2 duration) | ✓ (Fastify reference + generated lane); `report/`, `decimal/` and `duration/` also on SQLite, MySQL and D1 | ✓ (embedded HTTP + JDBC); `report/`, `decimal/` and `duration/` generated controllers over OMDB on Postgres, SQLite and MySQL | ✓ (embedded HTTP + Exposed); `report/`, `decimal/` and `duration/` also on SQLite and MySQL | ✓ (Kestrel + Npgsql); `report/`, `decimal/` and `duration/` also on SQLite and MySQL | ✓ (FastAPI + pg8000); `report/`, `decimal/` and `duration/` also on SQLite and MySQL |
+| [`fixtures/persistence-conformance/`](../fixtures/persistence-conformance/) | 62 (55 query + 7 migration) | all 62; the 24 `report-*` and the `-15` decimal scenarios also on SQLite, MySQL and D1, `decimal-exact` also on MySQL (a scenario's `engines:` key is exact) | 55 query (migrations TS-only, ADR-0015); the `report-*` and `engines:` scenarios also on SQLite and MySQL | 55 query (via Exposed); the `report-*` and `engines:` scenarios also on SQLite and MySQL | 55 query; the `report-*` and `engines:` scenarios also on SQLite and MySQL | 55 query (pg8000); the `report-*` and `engines:` scenarios also on SQLite (`sqlite3`) and MySQL (PyMySQL) |
+| [`fixtures/api-contract-conformance/`](../fixtures/api-contract-conformance/) | 123 (31 core + 10 tph + 9 m2m + 5 jsonb + 2 write-through + 2 secret-fields + 2 enum-default + 12 projection + 37 report + 11 decimal + 2 duration) | ✓ (Fastify reference + generated lane); `report/`, `decimal/` and `duration/` also on SQLite, MySQL and D1 | ✓ (embedded HTTP + JDBC); `report/`, `decimal/` and `duration/` generated controllers over OMDB on Postgres, SQLite and MySQL | ✓ (embedded HTTP + Exposed); `report/`, `decimal/` and `duration/` also on SQLite and MySQL | ✓ (Kestrel + Npgsql); `report/`, `decimal/` and `duration/` also on SQLite and MySQL | ✓ (FastAPI + pg8000); `report/`, `decimal/` and `duration/` also on SQLite and MySQL |
 | [`fixtures/decimal-wire/`](../fixtures/decimal-wire/) | 1 vector file (format, parse, filter operand, 15-digit read) | ✓ (`runtime-ts` and the generated helper) | ✓ (`CanonicalDecimal`) | ✓ (the generated wire file) | ✓ (`DecimalWire`) | ✓ (`decimal_wire`) |
 | [`fixtures/duration-wire/`](../fixtures/duration-wire/) | 1 vector file: the `wire` vectors (parse, precision, refused) every port passes, and the `codecs` groups (Postgres text read and write, stored microseconds) each port passes only for the codecs it has | ✓ (`metadata` / `runtime-ts` and the generated helper) | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/validation-conformance/`](../fixtures/validation-conformance/) | 42 cases + 43 cross-field cases (`cross-field-cases.json`, generated record model only) | ✓ (generated Zod + run-time `runValidators`) | ✓ | ✓ | ✓ | ✓ (generated Pydantic + run-time `run_validators`) |
@@ -110,6 +110,44 @@ The matrix is corpus-shaped, so a feature whose coverage splits — across sever
 corpora, or between its *vocabulary* and its *behaviour* — never gets a row of its
 own, and its boundary ends up discoverable only from the feature doc. The split ones
 are recorded here instead.
+
+**`identity.primary @sequenceStart`** (one semantic in every port): on a fresh
+database the identity or sequence begins at `@sequenceStart`; when the start changes on an
+existing database, the change sets `START WITH` only. It never `RESTART`s and never moves the
+current value, because live rows already hold the ids it has handed out. The port TODOs below
+are tracked in [#544](https://github.com/metaobjectsdev/metaobjects/issues/544).
+
+- *Honoured and pinned:* C#. The generated context carries the start on Npgsql, and the generated
+  rewrite (`UseIdentityStartMigrations()`) writes every start-only change — added, changed or
+  removed — as `ALTER TABLE … ALTER COLUMN … SET START WITH n`, whether the migration is scaffolded
+  through it or its SQL is generated through it (Npgsql alone writes `RESTART WITH n`, or
+  `RESTART WITH 1` for a removed start). `EfModelGapsTests` pins all three transitions on both
+  paths, and on live Postgres that the next id after the change follows the last row.
+- *Honoured and pinned:* TypeScript (`meta migrate`). A fresh table is created `START WITH n`;
+  a changed start writes `ALTER SEQUENCE … START WITH n` only. The persistence migration
+  scenario `sequence-start-change-keeps-counter` pins on live Postgres that the next id after
+  the change follows the last row.
+- *TODO, Java (OMDB) and Kotlin (Exposed):* the vocabulary loads; neither emits or honours the
+  start in its DDL or mapping. Add it with the same semantic and the same pin.
+- *TODO, Python:* the vocabulary loads; the runtime has no DDL path. If it gains one, the same
+  semantic and pin apply.
+
+**Native index vocabulary and `@description` in the ORM models.** `meta migrate` creates
+every index (`identity.secondary`, `index.lookup`, a field's `@unique`, with `@where`, `@using`,
+`@orders`, `@expr` and the resolved name) and writes `@description` as `COMMENT ON`. What each
+port's ORM model carries beside it:
+
+- *C# (EF Core):* every index, with `@where`, `@orders`, `@using` and its name, and the table and
+  column comments. An `@expr` index is not an EF index; `meta migrate` creates it. Pinned by
+  `EfModelGapsTests`.
+- *TypeScript (Drizzle):* every index, with `@where`, `@orders`, `@using`, `@expr` and its name
+  (`templates/drizzle-schema.ts`). Not expressible: `@description`, which Drizzle has no API for;
+  an `@expr` index on SQLite (Drizzle's `.on()` there takes columns only).
+- *Kotlin (Exposed 0.55):* each index's name, `@using` (`indexType`) and `@where`
+  (`filterCondition`). Pinned by `KotlinExposedIndexVocabularyTest`. Not expressible: `@orders`
+  (an Exposed index has no per-column direction), `@expr` (it indexes columns or typed
+  functions, not a raw expression) and `@description` (no comment API).
+- *Java, Python:* no ORM model or DDL emitter; nothing to carry.
 
 **The eject contract** ([ADR-0034](../spec/decisions/ADR-0034-codegen-scaffold-and-own.md)
 Amendment 8). A gate, not a corpus: it has no fixtures of its own, and reads
@@ -288,7 +326,7 @@ unit-test runners (`bun test`, `dotnet test`, `pytest`, `mvn test`) pull Docker.
 
 ## Fixture-to-doc mapping
 
-### `fixtures/conformance/` — metamodel loader + canonical serializer (449)
+### `fixtures/conformance/` — metamodel loader + canonical serializer (451)
 
 | Fixture prefix | Feature doc |
 |---|---|
@@ -352,10 +390,10 @@ All 37 fixtures → [features/migrations-and-drift.md](features/migrations-and-d
 may carry `"isArray": true`; with `fields` it is a list of objects, without it a list of
 scalars. The six `verify-positional-accessor-*` cases pin where `-last` is available.
 
-### `fixtures/persistence-conformance/` (59 — 53 query + 6 migration)
+### `fixtures/persistence-conformance/` (62 — 55 query + 7 migration)
 
-- `migrations/*` (6) → [features/migrations-and-drift.md](features/migrations-and-drift.md) (schema migration section)
-- `queries/*` (53) → [features/source-kinds.md](features/source-kinds.md) (query semantics against `source.rdb`)
+- `migrations/*` (7) → [features/migrations-and-drift.md](features/migrations-and-drift.md) (schema migration section)
+- `queries/*` (55) → [features/source-kinds.md](features/source-kinds.md) (query semantics against `source.rdb`)
 
 **Engines beyond Postgres (FR-044 reports, decimals).** The twenty-four `queries/report-*.yaml`
 scenarios also run on SQLite and MySQL 8.4 in every port, and on D1's local runtime in
@@ -384,11 +422,11 @@ The corpus also covers the 9 cross-port filter operators (`eq`, `ne`, `gt`,
 `gte`, `lt`, `lte`, `in`, `like`, `isNull`) plus the implicit-AND combinator
 and 2 error shapes (`invalid_filter_field` / `invalid_filter_op`) under the
 URL grammar `?filter[<field>][<op>]=<value>` (FR-009). On top of the 31 core
-scenarios the corpus carries nine sub-corpora — `tph/` (10, single-table
+scenarios the corpus carries ten sub-corpora — `tph/` (10, single-table
 inheritance; a subtype decimal filters and refuses extra digits), `m2m/` (9 — 3 plain, 5 gating TPH x M:N together, the combination
 each corpus alone could not reach, and 1 pinning the collection-URL spelling),
 `jsonb/` (5, typed value-object columns; numbers inside them: a double stays a JSON number, a decimal is the canonical string),
-`write-through/` (2, table-write + view-read entities), `secret-fields/` (2, #484: a `@formExclude` or credential `view.password` field is ignored on create, PATCH and PUT, and a credential is never returned), `projection/` (12, a
+`write-through/` (2, table-write + view-read entities), `secret-fields/` (2, #484: a `@formExclude` or credential `view.password` field is ignored on create, PATCH and PUT, and a credential is never returned), `enum-default/` (2, a create that omits a `field.enum` with `@default` stores the default, and a supplied value is kept), `projection/` (12, a
 read-only view answers reads and refuses writes with 405; a projection with no declared
 identity has no item route; a projection keyed on a field not named `id` is addressed by
 it, whether its identity names `@fields` or derives them; decimal and float fields filter), `decimal/` (11, ADR-0019 Amendment 1: a decimal, array element and undeclared-precision column included, is one
@@ -400,7 +438,7 @@ its derived fields, answers `POST` with 405 and mounts no `/{id}`; a `@spine` re
 a row with no facts, and a measure with `@default` filters and sorts as its default). All 5 ports — TS, Java,
 Kotlin, C#, Python — run it in BOTH lanes: a hand-rolled reference server and
 the port's own GENERATED API artifact booted over HTTP. `write-through/`,
-`secret-fields/`, `projection/`, `decimal/`, `duration/` and `report/` run the generated lane only, on all five ports: what
+`secret-fields/`, `enum-default/`, `projection/`, `decimal/`, `duration/` and `report/` run the generated lane only, on all five ports: what
 they test is whether a port's generator emits the routes. The `report/` sub-corpus is the one
 that reads real views, so it runs full stack on Postgres, SQLite and MySQL
 (`report/schema.sqlite.sql`, `report/schema.mysql.sql`, both TypeScript-produced) in every
@@ -649,8 +687,8 @@ JSON and verify payload feeds it unchanged.
 
 ## Orphaned fixtures (tested but not yet documented)
 
-The fixtures in the nine corpora mapped above (metamodel 449 + yaml 16 + verify 45
-+ render 18 + persistence 59 + api-contract 121 + source-resolution 25 + scope 10 +
+The fixtures in the nine corpora mapped above (metamodel 451 + yaml 16 + verify 45
++ render 18 + persistence 62 + api-contract 123 + source-resolution 25 + scope 10 +
 dependency 47) each map to a feature doc, and so do the two requirement corpora, `shared-model-conformance`, the
 `cube-model` corpus and `explorer-conformance`, whose case lists live in their own READMEs. None are orphaned today. The remaining
 corpora in the totals table gate tooling contracts (registry manifests, provider

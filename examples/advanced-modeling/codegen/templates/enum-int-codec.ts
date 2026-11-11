@@ -49,6 +49,11 @@ export function renderEnumIntCustomType(t: EnumIntCustomType, importModule: stri
   const fromEntries = t.members
     .map((m) => `${t.intByMember[m]}: ${JSON.stringify(m)}`)
     .join(", ");
+  const maps = code`
+const ${t.toIntConstName} = { ${toEntries} } as const satisfies Record<${union}, number>;
+const ${t.fromIntConstName}: Record<number, ${union}> = { ${fromEntries} };`;
+  if (t.array === "native") return renderNativeArrayElementCodec(t, customTypeSym, union, maps);
+  if (t.array === "json") return renderJsonArrayCodec(t, customTypeSym, union, maps);
   return code`
 const ${t.toIntConstName} = { ${toEntries} } as const satisfies Record<${union}, number>;
 const ${t.fromIntConstName}: Record<number, ${union}> = { ${fromEntries} };
@@ -61,6 +66,77 @@ const ${t.fnConstName} = ${customTypeSym}<{ data: ${union}; driverData: number }
       throw new Error(\`unmapped ${t.fnConstName} value: \${value}\`);
     }
     return member;
+  },
+});
+`;
+}
+
+/**
+ * The ELEMENT codec of a Postgres `integer[]` int-backed enum array, used under
+ * Drizzle's `.array()`: PgArray maps each element through it on write and read. It
+ * differs from the scalar codec in two places. PgArray hands a null ELEMENT to
+ * `fromDriver`, so null reads back as null (as in a string-backed `text[]`). And an
+ * unmapped member throws on write, where the scalar's `undefined` is left to the
+ * column's CHECK: an array column has none, and an `undefined` element would be
+ * bound as NULL.
+ */
+function renderNativeArrayElementCodec(t: EnumIntCustomType, customTypeSym: unknown, union: string, maps: Code): Code {
+  return code`${maps}
+const ${t.fnConstName} = ${customTypeSym}<{ data: ${union}; driverData: number }>({
+  dataType: () => ${JSON.stringify(t.dataType)},
+  toDriver: (value) => {
+    const stored = ${t.toIntConstName}[value];
+    if (stored === undefined) {
+      throw new Error(\`unmapped ${t.fnConstName} member: \${String(value)}\`);
+    }
+    return stored;
+  },
+  fromDriver: (value) => {
+    if (value === null) return value as never;
+    const member = ${t.fromIntConstName}[value];
+    if (member === undefined) {
+      throw new Error(\`unmapped ${t.fnConstName} value: \${value}\`);
+    }
+    return member;
+  },
+});
+`;
+}
+
+/**
+ * A whole-array codec for an int-backed enum array kept in ONE JSON column (SQLite
+ * `text`, MySQL `json`): a JSON array of the mapped INTS, `[5,0]`, never of the member
+ * symbols. A null element stays null; an unmapped member throws on write and an
+ * element that is not a mapped int throws on read (a symbol written before this codec
+ * existed included). The driver hands back JSON text (SQLite) or the parsed array
+ * (mysql2), so both are accepted.
+ */
+function renderJsonArrayCodec(t: EnumIntCustomType, customTypeSym: unknown, union: string, maps: Code): Code {
+  return code`${maps}
+const ${t.fnConstName} = ${customTypeSym}<{ data: (${union})[]; driverData: string }>({
+  dataType: () => ${JSON.stringify(t.dataType)},
+  toDriver: (value) =>
+    JSON.stringify(value.map((member) => {
+      if (member === null) return null;
+      const stored = ${t.toIntConstName}[member];
+      if (stored === undefined) {
+        throw new Error(\`unmapped ${t.fnConstName} member: \${String(member)}\`);
+      }
+      return stored;
+    })),
+  fromDriver: (value) => {
+    const stored: unknown = typeof value === "string" ? JSON.parse(value) : value;
+    if (!Array.isArray(stored)) {
+      throw new Error(\`${t.fnConstName} expected a JSON array, got: \${String(value)}\`);
+    }
+    return stored.map((el: unknown) => {
+      if (el === null) return el as never;
+      const member = typeof el === "number" ? ${t.fromIntConstName}[el] : undefined;
+      if (member === undefined) {
+        throw new Error(\`unmapped ${t.fnConstName} value: \${JSON.stringify(el)}\`);
+      }
+      return member;
+    });
   },
 });
 `;

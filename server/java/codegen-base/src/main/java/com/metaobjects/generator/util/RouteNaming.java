@@ -3,6 +3,7 @@ package com.metaobjects.generator.util;
 import com.metaobjects.database.ColumnNaming;
 import com.metaobjects.generator.GeneratorException;
 import com.metaobjects.object.MetaObject;
+import com.metaobjects.source.RdbSource;
 
 import java.util.HashMap;
 import java.util.List;
@@ -138,9 +139,15 @@ public final class RouteNaming {
      * ({@code MetaDataGeneratorMojo#executeGenerators}) — the single choke point shared
      * by every JVM generator (Java's {@code codegen-spring} AND Kotlin's
      * {@code codegen-kotlin}, both invoked through the same {@code metaobjects:generate}
-     * Maven goal). Scoped to every object EXCEPT {@code object.value} ({@link
-     * MetaObject#SUBTYPE_VALUE}) — a value object never gets a route, so it cannot
-     * collide on one.</p>
+     * Maven goal). The scope is the whole run because the name it compares is a served path:
+     * one Spring app mounts every generated controller under the same prefix, so two objects
+     * whose segments match serve one route whatever their packages (their classes and
+     * repositories are in their own Java packages and never collide). Counted over the objects
+     * that emit a collection ({@link #emitsCollection}):
+     * a value object, an abstract object and one with no {@code source.rdb} never get a
+     * controller, repository or route, so they cannot collide on one — a layered model's
+     * abstract {@code enterprise::Payer} beside a concrete {@code core::Payer} is not a
+     * collision.</p>
      *
      * <p>A PURE function of the entity set, never of traversal order: the reported pair
      * is deterministic (first-seen-by-input-order "owner" of a collection segment;
@@ -153,7 +160,7 @@ public final class RouteNaming {
     public static void assertNoCollectionNameCollisions(List<MetaObject> entities) {
         Map<String, MetaObject> ownerOfSegment = new HashMap<>();
         for (MetaObject obj : entities) {
-            if (MetaObject.SUBTYPE_VALUE.equals(obj.getSubType())) continue;
+            if (!emitsCollection(obj)) continue;
             String segment = collectionSegment(obj.getShortName());
             MetaObject existing = ownerOfSegment.get(segment);
             if (existing != null) {
@@ -168,5 +175,17 @@ public final class RouteNaming {
                 ownerOfSegment.put(segment, obj);
             }
         }
+    }
+
+    /**
+     * Whether {@code obj} gets a collection (a controller, repository, route): not a value
+     * object, not abstract, and backed by a {@code source.rdb}. The TypeScript, C# and Python
+     * ports count the same objects.
+     */
+    static boolean emitsCollection(MetaObject obj) {
+        if (MetaObject.SUBTYPE_VALUE.equals(obj.getSubType())) return false;
+        if (GeneratorUtil.isAbstract(obj)) return false;
+        // ADR-0039: RESOLVING — a source inherited through extends backs the object too.
+        return obj.getSources(true).stream().anyMatch(s -> s instanceof RdbSource);
     }
 }

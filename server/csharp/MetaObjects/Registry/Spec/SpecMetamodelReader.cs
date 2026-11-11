@@ -56,7 +56,8 @@ public sealed record SpecAttrEntry(
     string? Example,
     string? WhenToUse,
     IReadOnlyList<string>? AllowedValues,
-    object? Default)
+    object? Default,
+    IReadOnlyList<string>? Ports = null)
 {
     /// <summary>Whether this attr is required — the JSON encodes requiredness as <c>min: 1</c>.</summary>
     public bool Required => Min == 1;
@@ -363,7 +364,10 @@ public sealed class SpecMetamodelReader
                 Example: Str(c, "example"),
                 WhenToUse: Str(c, "whenToUse"),
                 AllowedValues: allowed,
-                Default: def));
+                Default: def,
+                Ports: c.TryGetProperty("ports", out JsonElement ports) && ports.ValueKind == JsonValueKind.Array
+                    ? ports.EnumerateArray().Select(x => x.GetString()!).ToList()
+                    : null));
         }
         return outList;
     }

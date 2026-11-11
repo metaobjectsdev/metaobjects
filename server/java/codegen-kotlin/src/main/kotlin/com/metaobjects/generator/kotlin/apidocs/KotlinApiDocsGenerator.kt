@@ -28,7 +28,9 @@ class KotlinApiDocsGenerator : FileEmittingGenerator() {
         val project = getArg(ARG_PROJECT_NAME, "project")
         val subDir = getArg(ARG_API_SUBDIR, DEFAULT_API_SUBDIR)
         val modelBaseUrl = if (hasArg(ARG_MODEL_BASE_URL)) getArg(ARG_MODEL_BASE_URL) else null
-        val layout = when (val value = getArg(ARG_LAYOUT, LAYOUT_FLAT)) {
+        // Keyed by package unless the entry asks for flat: a page named by its short name alone
+        // collides with a same-named node of another package.
+        val layout = when (val value = getArg(ARG_LAYOUT, LAYOUT_PACKAGE)) {
             LAYOUT_FLAT -> DocsPaths.Layout.FLAT
             LAYOUT_PACKAGE -> DocsPaths.Layout.PACKAGE
             // A misspelt layout would otherwise write every page somewhere its links do not point.
@@ -40,9 +42,22 @@ class KotlinApiDocsGenerator : FileEmittingGenerator() {
         val renderer = KotlinApiDocsRenderer()
 
         val pages = mutableListOf<EmittedFile>()
-        val paths = HashSet<String>()
-        fun add(pagePath: String, content: String) {
-            if (!paths.add(pagePath)) throw GeneratorException("api-docs: duplicate api page output path: $pagePath")
+        // Lower-cased path -> "path (fqn)". Compared case-insensitively: macOS and Windows hold
+        // `ProductNdc.md` and `ProductNDC.md` as one file, so one page would silently replace the other.
+        val paths = HashMap<String, String>()
+        fun add(pagePath: String, fqn: String, content: String) {
+            val prior = paths.putIfAbsent(pagePath.lowercase(), "$pagePath ($fqn)")
+            if (prior != null) {
+                throw GeneratorException(
+                    if (prior.startsWith("$pagePath (")) {
+                        "api-docs: duplicate api page output path $pagePath: $prior and $fqn — rename one of them, " +
+                            "or use the package layout."
+                    } else {
+                        "api-docs: api page output paths $prior and $pagePath ($fqn) differ only in case — one file " +
+                            "on a case-insensitive filesystem (macOS, Windows), so one page would replace the other. " +
+                            "Rename one of them."
+                    })
+            }
             pages.add(EmittedFile("$subDir/$pagePath", content))
         }
         for (unit in model.units) {
@@ -51,10 +66,11 @@ class KotlinApiDocsGenerator : FileEmittingGenerator() {
             // the link is emitted only against a <modelBaseUrl> that hosts them.
             val modelHref = if (modelBaseUrl.isNullOrEmpty()) null
                 else DocsPaths.modelCrossHref("$subDir/$pagePath", pagePath, modelBaseUrl)
-            add(pagePath, renderer.renderUnitPage(unit, modelHref))
+            val fqn = if (unit.pkg.isNullOrEmpty()) unit.node else "${unit.pkg}.${unit.node}"
+            add(pagePath, fqn, renderer.renderUnitPage(unit, modelHref))
         }
-        add("README.md", renderer.renderIndex(model, layout))
-        add("AGENT-API.md", renderer.renderAgentApi(model))
+        add("README.md", "<the api index>", renderer.renderIndex(model, layout))
+        add("AGENT-API.md", "<the agent page>", renderer.renderAgentApi(model))
         return pages
     }
 
@@ -65,7 +81,8 @@ class KotlinApiDocsGenerator : FileEmittingGenerator() {
         /** Arg: where under `outputDir` the pages land. Default [DEFAULT_API_SUBDIR]. */
         const val ARG_API_SUBDIR: String = "apiSubDir"
 
-        /** Arg: the page layout, `flat` (one file per unit, the default) or `package`. */
+        /** Arg: the page layout, `package` (each page under its package path, the default) or `flat`
+         *  (one file per unit at the surface root, which refuses two same-named units). */
         const val ARG_LAYOUT: String = "layout"
 
         /** Arg: the base URL the pages' links to the model pages are written against; with none set, the pages carry no such link. */

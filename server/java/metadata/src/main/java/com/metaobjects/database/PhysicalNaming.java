@@ -41,51 +41,40 @@ public final class PhysicalNaming {
 
     /**
      * Validates and builds a {@code PhysicalNaming}. Callers are config readers
-     * ({@code NeutralConfig}, a conformance-corpus runner): an unknown value is refused
-     * ({@code ERR_BAD_ATTR_VALUE}), never silently defaulted — a typo would otherwise bind a
-     * whole schema to the wrong names and report success.
+     * ({@code NeutralConfig}, a conformance-corpus runner): each value is the NAME of a strategy
+     * registered in {@link NamingStrategies} — a built-in, or one the application registered
+     * before the read (ADR-0058 Amendment 1). A name nothing answers is refused
+     * ({@code ERR_BAD_ATTR_VALUE}), naming it, never silently defaulted — a typo would otherwise
+     * bind a whole schema to the wrong names and report success.
      *
-     * @throws MetaDataException on a {@code columns} value outside
-     *     {@link ColumnNaming#SNAKE_CASE}/{@link ColumnNaming#LITERAL}/{@link ColumnNaming#KEBAB_CASE}/
-     *     {@link ColumnNaming#UPPER_FIRST}, or a {@code tables} value outside
-     *     {@link #TABLE_SNAKE_CASE}/{@link #TABLE_LITERAL} (kebab-case and upperFirst are column
-     *     rules only — not table rules).
+     * @throws MetaDataException on a {@code columns} name no column strategy answers, or a
+     *     {@code tables} name no table rule answers ({@code kebab-case} and {@code pascal} are
+     *     column rules only)
      */
     public static PhysicalNaming of(String columns, String tables) {
-        if (!ColumnNaming.SNAKE_CASE.equals(columns) && !ColumnNaming.LITERAL.equals(columns)
-                && !ColumnNaming.KEBAB_CASE.equals(columns) && !ColumnNaming.UPPER_FIRST.equals(columns)) {
-            throw new MetaDataException(
-                "unknown \"naming.columns\" rule \"" + columns + "\" in .metaobjects/config.json; "
-                    + "expected one of: " + ColumnNaming.SNAKE_CASE + ", " + ColumnNaming.LITERAL
-                    + ", " + ColumnNaming.KEBAB_CASE + ", " + ColumnNaming.UPPER_FIRST,
-                ErrorCode.ERR_BAD_ATTR_VALUE);
+        if (!NamingStrategies.isColumn(columns)) {
+            throw new MetaDataException(NamingStrategies.unknownMessage("columns", columns), ErrorCode.ERR_BAD_ATTR_VALUE);
         }
-        if (!TABLE_SNAKE_CASE.equals(tables) && !TABLE_LITERAL.equals(tables)) {
-            throw new MetaDataException(
-                "unknown \"naming.tables\" rule \"" + tables + "\" in .metaobjects/config.json; "
-                    + "expected one of: " + TABLE_SNAKE_CASE + ", " + TABLE_LITERAL,
-                ErrorCode.ERR_BAD_ATTR_VALUE);
+        if (!NamingStrategies.isTable(tables)) {
+            throw new MetaDataException(NamingStrategies.unknownMessage("tables", tables), ErrorCode.ERR_BAD_ATTR_VALUE);
         }
         return new PhysicalNaming(columns, tables);
     }
 
-    /** The {@code naming.columns} rule — snake_case / literal / kebab-case / upperFirst. */
+    /** The {@code naming.columns} strategy's name — a built-in or an application-registered one. */
     public String columns() {
         return columns;
     }
 
-    /** The {@code naming.tables} rule — snake_case / literal. */
+    /** The {@code naming.tables} rule's name — a built-in or an application-registered one. */
     public String tables() {
         return tables;
     }
 
-    /** {@code name} cased by a table rule (never pluralized — that is a separate, frozen step). */
+    /** {@code name} cased by the table rule registered as {@code rule} (never pluralized — that
+     *  is a separate, frozen step). Throws on a name nothing registered. */
     public static String applyTableRule(String name, String rule) {
-        if (TABLE_LITERAL.equals(rule)) return name;
-        if (TABLE_SNAKE_CASE.equals(rule)) return ColumnNaming.toSnakeCase(name);
-        throw new IllegalArgumentException(
-            "unknown table-naming rule '" + rule + "'; expected one of: "
-                + TABLE_SNAKE_CASE + ", " + TABLE_LITERAL);
+        return NamingStrategies.table(rule).apply(name);
     }
 
     /**

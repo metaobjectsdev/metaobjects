@@ -46,12 +46,12 @@ public final class ColumnNaming {
     /** camelCase / PascalCase to kebab-case. */
     public static final String KEBAB_CASE = "kebab-case";
     /**
-     * The first letter upper-cased, nothing else changed ({@code requestURL} to
-     * {@code RequestURL}, {@code id} to {@code Id}): for a schema whose columns are named like
-     * the fields with an upper-case first letter, so a camelCase model maps onto it with no
-     * {@code @column}. Not a word split: one UTF-16 unit in, one out.
+     * {@code pascal}: the first letter upper-cased, nothing else changed ({@code requestURL} to
+     * {@code RequestURL}, {@code npi} to {@code Npi}): for a schema whose columns are named like
+     * the fields with an upper-case first letter (EF Core's default), so a camelCase model maps
+     * onto it with no {@code @column}. Not a word split: one UTF-16 unit in, one out.
      */
-    public static final String UPPER_FIRST = "upperFirst";
+    public static final String PASCAL = "pascal";
 
     /** The project default (ADR-0058) — what {@code meta migrate} has always created. */
     public static final String DEFAULT = SNAKE_CASE;
@@ -80,24 +80,20 @@ public final class ColumnNaming {
     }
 
     /**
-     * Apply a strategy to a bare name.
+     * Apply a strategy — a built-in or one the application registered in
+     * {@link NamingStrategies} (ADR-0058 Amendment 1) — to a bare name. The one door every JVM
+     * column resolution goes through.
      *
-     * @throws IllegalArgumentException on an unknown strategy — never a silent fallback
-     *     to the default, because a typo would otherwise bind a whole schema to the
+     * @throws com.metaobjects.MetaDataException on a name nothing registered — never a silent
+     *     fallback to the default, because a typo would otherwise bind a whole schema to the
      *     wrong columns and report success.
      */
     public static String apply(String name, String strategy) {
-        if (LITERAL.equals(strategy)) return name;
-        if (SNAKE_CASE.equals(strategy)) return toSnakeCase(name);
-        if (KEBAB_CASE.equals(strategy)) return toSnakeCase(name).replace('_', '-');
-        if (UPPER_FIRST.equals(strategy)) return toUpperFirstColumn(name);
-        throw new IllegalArgumentException(
-                "unknown column-naming strategy '" + strategy + "'; expected one of: "
-                        + LITERAL + ", " + SNAKE_CASE + ", " + KEBAB_CASE + ", " + UPPER_FIRST);
+        return NamingStrategies.column(strategy).apply(name);
     }
 
-    /** The {@link #UPPER_FIRST} rule: the first letter upper-cased, the rest verbatim. */
-    public static String toUpperFirstColumn(String name) {
+    /** The {@link #PASCAL} rule: the first letter upper-cased, the rest verbatim. */
+    public static String toPascalColumn(String name) {
         if (name == null || name.isEmpty()) return name;
         return Character.toUpperCase(name.charAt(0)) + name.substring(1);
     }

@@ -10,6 +10,8 @@ import com.metaobjects.integration.kotlin.Scenarios.QueryScenario
 import com.metaobjects.integration.kotlin.Scenarios.QuerySpec
 import com.metaobjects.integration.kotlin.tables.AssetTable
 import com.metaobjects.integration.kotlin.tables.EntryTable
+import com.metaobjects.integration.kotlin.tables.LedgerEntryTable
+import com.metaobjects.integration.kotlin.tables.ArchivedLedgerEntryTable
 import com.metaobjects.integration.kotlin.tables.MetaDurationColumnType
 import com.metaobjects.integration.kotlin.tables.ReferenceDecimal
 import com.metaobjects.integration.kotlin.tables.AuthTable
@@ -546,6 +548,9 @@ object QueryScenarioRunner {
             "AllTypes" -> AllTypesTable
             // ADR-0019 Amendment 1: the decimal subject table.
             "Entry" -> EntryTable
+            // Two same-named tables in two schemas (`@schema`).
+            "LedgerEntry" -> LedgerEntryTable
+            "ArchivedLedgerEntry" -> ArchivedLedgerEntryTable
             // FR-017 TPH: the discriminator base + all its subtypes share the single `auths` table.
             "Auth", "BridgeAuth", "CopayAuth", "PriorAuthAuth" -> AuthTable
             else -> error("No Exposed Table registered for entity '$entity' — extend QueryScenarioRunner.tableFor or tables/ReportViews")

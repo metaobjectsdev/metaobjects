@@ -35,7 +35,9 @@ public sealed record ReverseFk(
     /// <summary>The bare target entity name the FK references (e.g. "Scene"); a display name only.</summary>
     string TargetEntity,
     /// <summary>The entity the loader bound the reference to (null when it did not resolve).</summary>
-    MetaObject? Target = null);
+    MetaObject? Target = null,
+    /// <summary>The target field the FK pairs with when <c>@references</c> names one; null for the target's primary key.</summary>
+    string? TargetField = null);
 
 /// <summary>
 /// Builds <see cref="ReverseFk"/> descriptors and renders the reverse finders for
@@ -58,7 +60,8 @@ public static class ReverseFinderBuilder
             var target = reference.TargetEntity;
             if (string.IsNullOrEmpty(fkField) || string.IsNullOrEmpty(target)) continue;
             var bound = global::MetaObjects.NamingRefs.RefTarget(reference, IDENTITY_REFERENCE_ATTR_REFERENCES) as MetaObject;
-            result.Add(new ReverseFk(fkField!, bound?.Name ?? CSharpNaming.StripPkg(target!), bound));
+            result.Add(new ReverseFk(fkField!, bound?.Name ?? CSharpNaming.StripPkg(target!), bound,
+                reference.TargetFields.Count > 0 ? reference.TargetFields[0] : null));
         }
         return result;
     }
@@ -74,9 +77,13 @@ public static class ReverseFinderBuilder
     private static string FkValueType(MetaObject entity, ReverseFk fk, MetaRoot root)
     {
         var target = fk.Target;
-        var targetPkField = target?.PrimaryIdentity()?.Fields is { Count: 1 } pk
-            ? target.FindField(pk[0])
-            : null;
+        // The column the FK pairs with: the reference's first named target field, else the
+        // target's single-column primary key (the bare `@references` form).
+        var targetPkField = fk.TargetField is { } named
+            ? target?.FindField(named)
+            : target?.PrimaryIdentity()?.Fields is { Count: 1 } pk
+                ? target.FindField(pk[0])
+                : null;
 
         string baseType =
             (targetPkField is not null ? CSharpNaming.ScalarFor(targetPkField.SubType) : null)
@@ -97,10 +104,16 @@ public static class ReverseFinderBuilder
     /// the finders — which are READS — through a write-through entity's view read model + its
     /// DbSet, so the returned rows carry the derived fields; the finder NAMES still derive from
     /// the entity. Null (the default) keeps the pre-#214 output byte-identical.
+    /// <para><paramref name="propertyName"/> names the FK property the finder filters on; null uses
+    /// the run's resolver (<see cref="CSharpNaming.PropertyName"/>). The context parameter is typed
+    /// <see cref="GenConfig.ContextTypeName"/>.</para>
     /// </summary>
     public static EmittedFile? Generate(
-        MetaObject entity, GenContext ctx, string? rowTypeOverride = null, string? readDbSetOverride = null)
+        MetaObject entity, GenContext ctx, string? rowTypeOverride = null, string? readDbSetOverride = null,
+        Func<MetaField, string>? propertyName = null)
     {
+        propertyName ??= f => CSharpNaming.PropertyName(f, ctx.Config);
+        var contextType = ctx.Config.ContextTypeName;
         var fks = For(entity);
         if (fks.Count == 0) return null;
 
@@ -116,7 +129,7 @@ public static class ReverseFinderBuilder
         sb.AppendLine("using System.Collections.Generic;");
         sb.AppendLine("using System.Linq;");
         sb.AppendLine("using Microsoft.EntityFrameworkCore;");
-        // The finders live beside AppDbContext; the entity (or its view read model) lives in its own
+        // The finders live beside the context; the entity (or its view read model) lives in its own
         // package's namespace when the model is split.
         var entityNs = PackageBindingResolver.Resolve(ctx.Config, PackageBindingResolver.EffectivePackage(entity), entity.Name, fallbackContext: entity.Name);
         if (entityNs != ctx.Config.Namespace) sb.AppendLine($"using {entityNs};");
@@ -128,11 +141,18 @@ public static class ReverseFinderBuilder
         sb.AppendLine($"public static class {queriesCls}");
         sb.AppendLine("{");
 
+        // The finders are members of one class: two FKs whose segments fold to one name collide.
+        CSharpNaming.AssertUniqueInScope(
+            fks.SelectMany(fk => new[] {
+                (CSharpNaming.ReverseFinderName(entity, fk.FkField), $"{entity.ResolutionKey()}.{fk.FkField}"),
+                (CSharpNaming.ReverseFinderInName(entity, fk.FkField), $"{entity.ResolutionKey()}.{fk.FkField}") }),
+            "reverse finder", $"the class {queriesCls}", "rename one of the foreign-key fields");
+
         var first = true;
         foreach (var fk in fks)
         {
             var valueType = FkValueType(entity, fk, ctx.Root);
-            var prop = CSharpNaming.Pascal(fk.FkField);
+            var prop = entity.FindField(fk.FkField) is { } fkField ? propertyName(fkField) : CSharpNaming.Pascal(fk.FkField);
             var arg = fk.FkField;
             var single = CSharpNaming.ReverseFinderName(entity, fk.FkField);
             var batched = CSharpNaming.ReverseFinderInName(entity, fk.FkField);
@@ -142,13 +162,13 @@ public static class ReverseFinderBuilder
 
             // Single: one indexed WHERE <fk> = value → List<E>.
             sb.AppendLine($"    /// <summary>The {cls} rows whose {prop} equals <paramref name=\"{arg}\"/> (one indexed query).</summary>");
-            sb.AppendLine($"    public static async System.Threading.Tasks.Task<List<{rowType}>> {single}(AppDbContext db, {valueType} {arg}) =>");
+            sb.AppendLine($"    public static async System.Threading.Tasks.Task<List<{rowType}>> {single}({contextType} db, {valueType} {arg}) =>");
             sb.AppendLine($"        await db.{dbSet}.AsNoTracking().Where(e => e.{prop} == {arg}).ToListAsync();");
             sb.AppendLine();
 
             // Batched: one WHERE <fk> IN (values) → List<E> (anti-N+1 "selectin" shape).
             sb.AppendLine($"    /// <summary>The {cls} rows whose {prop} is in <paramref name=\"{arg}s\"/> (one batched IN query; anti-N+1).</summary>");
-            sb.AppendLine($"    public static async System.Threading.Tasks.Task<List<{rowType}>> {batched}(AppDbContext db, IReadOnlyCollection<{valueType}> {arg}s)");
+            sb.AppendLine($"    public static async System.Threading.Tasks.Task<List<{rowType}>> {batched}({contextType} db, IReadOnlyCollection<{valueType}> {arg}s)");
             sb.AppendLine("    {");
             sb.AppendLine($"        if ({arg}s.Count == 0) return new List<{rowType}>();");
             sb.AppendLine($"        return await db.{dbSet}.AsNoTracking().Where(e => {arg}s.Contains(e.{prop})).ToListAsync();");

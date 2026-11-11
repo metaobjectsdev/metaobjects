@@ -71,15 +71,19 @@ function ctxFor(root: MetaRoot, layout: OutputLayout = "flat"): GenContext {
 
 const API_SURFACES = [{ label: "TypeScript", subDir: "api/ts" }];
 
+// The model's nodes share one package, so a page is keyed here by its name (the pages sit
+// under that package's directory; the overview README.md at the docs root).
+const pageName = (path: string): string => path.slice(path.lastIndexOf("/") + 1);
+
 async function modelPages(root: MetaRoot, layout: OutputLayout = "flat"): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
-  for (const f of await docsFile({ apiSurfaces: API_SURFACES }).generate(ctxFor(root, layout))) out[f.path] = f.content;
+  for (const f of await docsFile({ apiSurfaces: API_SURFACES }).generate(ctxFor(root, layout))) out[pageName(f.path)] = f.content;
   return out;
 }
 
 async function apiPages(root: MetaRoot): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
-  for (const f of await apiDocsFile({ subDir: "api/ts", modelSurface: true }).generate(ctxFor(root))) out[f.path] = f.content;
+  for (const f of await apiDocsFile({ subDir: "api/ts", modelSurface: true }).generate(ctxFor(root))) out[`api/ts/${pageName(f.path)}`] = f.content;
   return out;
 }
 
@@ -120,8 +124,8 @@ describe("FR-044 model surface: a page for every report", () => {
     }
     const index = pages["README.md"]!;
     expect(index).toContain(
-      "## Reports\n\n- [DailyRevenue](./DailyRevenue.md)\n- [ProgramCatalogue](./ProgramCatalogue.md)\n" +
-        "- [ProgramEngagement](./ProgramEngagement.md)\n- [StoreTotals](./StoreTotals.md)\n",
+      "## Reports\n\n- [DailyRevenue](./acme/shop/DailyRevenue.md)\n- [ProgramCatalogue](./acme/shop/ProgramCatalogue.md)\n" +
+        "- [ProgramEngagement](./acme/shop/ProgramEngagement.md)\n- [StoreTotals](./acme/shop/StoreTotals.md)\n",
     );
     // A report is not an entity: the entity list is the one the model without reports has.
     const entities = (md: string): string => {
@@ -146,7 +150,7 @@ describe("FR-044 model surface: a page for every report", () => {
       "| `revenue` | `currency` | yes | measure | sum of `Purchase.amountCents` where segment `active` |\n",
     );
     // A served report has an api unit, so its page links to it.
-    expect(page).toContain("**API reference:** [TypeScript](./api/ts/StoreTotals.md)");
+    expect(page).toContain("**API reference:** [TypeScript](../../api/ts/acme/shop/StoreTotals.md)");
   });
 
   test("a sourceless report says it is not served, and still lists its columns and row scope", async () => {
@@ -226,8 +230,8 @@ describe("FR-044 model surface: a page for every report", () => {
 
   test("report and @from links resolve in package layout", async () => {
     const pages = await modelPages(withReporting, "package");
-    expect(pages["acme/shop/StoreTotals.md"]).toContain("**From:** [Purchase](./Purchase.md)");
-    expect(pages["acme/shop/Purchase.md"]).toContain("- [StoreTotals](./StoreTotals.md)");
+    expect(pages["StoreTotals.md"]).toContain("**From:** [Purchase](./Purchase.md)");
+    expect(pages["Purchase.md"]).toContain("- [StoreTotals](./StoreTotals.md)");
     expect(pages["README.md"]).toContain("- [StoreTotals](./acme/shop/StoreTotals.md)");
   });
 

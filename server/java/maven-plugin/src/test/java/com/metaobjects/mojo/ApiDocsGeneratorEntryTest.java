@@ -65,11 +65,11 @@ public class ApiDocsGeneratorEntryTest {
         String agent = Files.readString(java.resolve("AGENT-API.md"));
         assertTrue("the agent page carries <projectName>: " + agent, agent.contains("fruit-shop"));
 
-        // The Kotlin entry takes every default: api/kotlin, flat layout.
+        // The Kotlin entry takes every default: api/kotlin, package layout.
         Path kotlin = docs().resolve("api/kotlin");
         assertTrue(Files.exists(kotlin.resolve("README.md")));
         assertTrue(Files.exists(kotlin.resolve("AGENT-API.md")));
-        String kotlinPage = Files.readString(kotlin.resolve("Basket.md"));
+        String kotlinPage = Files.readString(kotlin.resolve("simple/fruitbasket/Basket.md"));
         assertTrue(kotlinPage, kotlinPage.contains("```kotlin"));
         assertFalse("no <modelBaseUrl>: the model link would be dead, so it is omitted: " + kotlinPage,
                 kotlinPage.contains("**Model / metadata:**"));
@@ -132,7 +132,7 @@ public class ApiDocsGeneratorEntryTest {
         configure(inSync, entry(JAVA_DOCS, committed), entry(KOTLIN_DOCS, committed));
         inSync.execute();
 
-        Path page = committed.resolve("api/kotlin/Widget.md");
+        Path page = committed.resolve("api/kotlin/verify/demo/Widget.md");
         Files.writeString(page, Files.readString(page) + "\nedited by hand\n", StandardCharsets.UTF_8);
         MetaDataVerifyMojo drifted = new MetaDataVerifyMojo();
         configure(drifted, entry(JAVA_DOCS, committed), entry(KOTLIN_DOCS, committed));

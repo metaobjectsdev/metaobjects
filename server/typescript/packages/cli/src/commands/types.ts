@@ -136,6 +136,8 @@ interface Entry {
   sharedRoot: boolean;
   /** An attr entry: the id of the provider that registered it (ADR-0062). */
   provider: string | undefined;
+  /** The ports that act on a language-specific attr; absent = every port. */
+  ports?: readonly string[];
   raw: unknown; // the catalog node
 }
 
@@ -143,10 +145,17 @@ interface Entry {
 const MARK_TS_ONLY = "[ts-only]";
 const MARK_BASE = "[base]";
 const LEGEND = `  ${MARK_BASE}     the type's shared root — its @attrs apply to every subtype of that type\n` +
-  `  ${MARK_TS_ONLY}  registered in TypeScript only; the cross-port metamodel contract does not carry it`;
+  `  ${MARK_TS_ONLY}  registered in TypeScript only; the cross-port metamodel contract does not carry it\n` +
+  `  [<port>-only]  every port loads and type-checks it; only <port> acts on it`;
+
+/** `[csharp-only]` for an attr only C# acts on; `[csharp+java]` style for several. */
+function portsMark(ports: readonly string[] | undefined): string {
+  if (ports === undefined || ports.length === 0) return "";
+  return ports.length === 1 ? `[${ports[0]}-only]` : `[${ports.join("+")}]`;
+}
 
 function marks(e: Entry): string {
-  const m = [e.sharedRoot ? MARK_BASE : "", e.tsOnly ? MARK_TS_ONLY : ""].filter(Boolean);
+  const m = [e.sharedRoot ? MARK_BASE : "", e.tsOnly ? MARK_TS_ONLY : "", portsMark(e.ports)].filter(Boolean);
   return m.length > 0 ? `  ${m.join(" ")}` : "";
 }
 
@@ -157,6 +166,7 @@ interface RawAttr {
   isArray: boolean;
   required: boolean;
   allowedValues?: readonly string[];
+  ports?: readonly string[];
   description: string;
   whenToUse?: string;
 }
@@ -169,6 +179,7 @@ function attrRecord(at: RawAttr, provider?: string): Record<string, unknown> {
     isArray: at.isArray,
     required: at.required,
     ...(at.allowedValues !== undefined ? { allowedValues: at.allowedValues } : {}),
+    ...(at.ports !== undefined ? { ports: at.ports } : {}),
     description: at.description,
     ...(at.whenToUse !== undefined ? { whenToUse: at.whenToUse } : {}),
   };
@@ -186,6 +197,7 @@ function payloadMatch(e: Entry): Record<string, unknown> {
     common: e.common,
     tsOnly: e.tsOnly,
     sharedRoot: e.sharedRoot,
+    ...(e.ports !== undefined ? { ports: e.ports } : {}),
     description: e.description,
     ...(e.whenToUse !== undefined ? { whenToUse: e.whenToUse } : {}),
   };
@@ -291,7 +303,8 @@ export async function typesCommand(args: string[], fmt: OutputFormat = "text"): 
       entries.push({
         kind: "attr", name: `${tsName} @${at.name}`, owner: tsName, type: mt.type,
         description: at.description, whenToUse: at.whenToUse, attrNames: [],
-        common: false, tsOnly: !mt.crossPort, sharedRoot: false, provider: mt.attrProviders[at.name], raw: at,
+        common: false, tsOnly: !mt.crossPort, sharedRoot: false, provider: mt.attrProviders[at.name],
+        ...((at as { ports?: readonly string[] }).ports !== undefined ? { ports: (at as { ports?: readonly string[] }).ports } : {}), raw: at,
       });
     }
   }

@@ -167,6 +167,7 @@ public static class RegistryManifest
         bool IsArray,
         bool Required,
         IReadOnlyList<string>? AllowedValues,
+        IReadOnlyList<string>? Ports,
         string Description,
         string? Rules,
         string? Example,
@@ -289,7 +290,10 @@ public static class RegistryManifest
         // FR-033 — the documentation surface follows the existing facets, in fixed
         // key order: name, valueType, isArray, required, allowedValues?, description,
         // then the optional rules/example/whenToUse (emitted only when present).
-        return new ManifestAttr(a.Name, valueType, isArray, a.Required, allowedValues, a.Description, a.Rules, a.Example, a.WhenToUse);
+        IReadOnlyList<string>? ports = a.Ports is { Count: > 0 } p
+            ? p.OrderBy(x => x, StringComparer.Ordinal).ToList()
+            : null;
+        return new ManifestAttr(a.Name, valueType, isArray, a.Required, allowedValues, ports, a.Description, a.Rules, a.Example, a.WhenToUse);
     }
 
     // ------------------------------------------------------------------
@@ -505,6 +509,16 @@ public static class RegistryManifest
             foreach (string value in allowed)
             {
                 writer.WriteStringValue(value);
+            }
+            writer.WriteEndArray();
+        }
+        // The ports that act on a language-specific attr, sorted, only when named.
+        if (a.Ports is { Count: > 0 } ports)
+        {
+            writer.WriteStartArray("ports");
+            foreach (string port in ports)
+            {
+                writer.WriteStringValue(port);
             }
             writer.WriteEndArray();
         }

@@ -99,11 +99,11 @@ public class ReportRowCodegenTests
         return result.Root;
     }
 
-    private static GenConfig Config(ColumnNamingStrategy strategy = ColumnNamingStrategy.Literal, bool includeNames = true) => new()
+    private static GenConfig Config(ColumnNamingStrategy? strategy = null, bool includeNames = true) => new()
     {
         OutDir = "/unused",
         Namespace = Namespace,
-        ColumnNamingStrategy = strategy,
+        ColumnNamingStrategy = strategy ?? ColumnNamingStrategy.Literal,
         IncludeNames = includeNames,
     };
 
@@ -717,13 +717,13 @@ public class ReportRowCodegenTests
     public void A_report_whose_DbSet_name_collides_with_an_entitys_is_refused()
     {
         // Report `Sales` and entity `Sale` both claim the DbSet property `Sales`.
-        var root = Load(Report("Sales", "\"@kind\": \"view\", \"@view\": \"v_sales\""));
+        var root = Load(Report("Sales", "\"@kind\": \"view\", \"@view\": \"v_sales\"", measures: "\"revenue\""));
         var outDir = Path.Combine(Path.GetTempPath(), "report-rows-" + Guid.NewGuid().ToString("N"));
         try
         {
             var ex = Assert.Throws<InvalidOperationException>(() =>
-                CodegenRunner.Run(Config() with { OutDir = outDir }, root, [new EntityGenerator(), new DbContextGenerator()]));
-            Assert.Contains("\"Sale\" and \"Sales\" both pluralize", ex.Message);
+                CodegenRunner.Run(Config() with { OutDir = outDir }, root, [new DbContextGenerator()]));
+            Assert.Contains("DbSet property \"Sales\"", ex.Message);
         }
         finally
         {

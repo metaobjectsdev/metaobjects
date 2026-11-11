@@ -305,10 +305,11 @@ existing column with the same options), and `meta verify --db` reads the live se
 from the catalog. A live sequence whose start or name differs from the declaration is altered
 in place, never dropped:
 
-- a different start sets it (`ALTER SEQUENCE … START WITH n`) and moves the counter up to it
-  when it has not got there (`setval(…, n, false)`), so the next insert takes the declared
-  start. It never moves the counter down, which could hand out an id already in use; the down
-  migration restores the old start value and leaves the counter where it is.
+- a different start records it (`ALTER SEQUENCE … START WITH n`) and nothing else. It never
+  restarts the sequence and never moves its current value, because live rows already hold the
+  ids it handed out: `@sequenceStart` is the first value of a fresh sequence, the same in
+  every port. The down migration restores the old start value, again without touching the
+  counter.
 - a different name renames it (`ALTER SEQUENCE … RENAME TO …`); the down renames it back.
 
 Only what the model declares is compared, on every path (a live database, a shadow database,

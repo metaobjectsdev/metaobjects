@@ -91,7 +91,7 @@ function assertNeutral(content: string, label: string) {
 describe("template.output doc page (render contract) — DOCUMENT", () => {
   it("emits WelcomePage.md with neutral render-contract sections", async () => {
     const out = await emitFixture("template-doc-document");
-    const page = out.find((f) => f.path === "WelcomePage.md");
+    const page = out.find((f) => ("/" + f.path).endsWith("/" + "WelcomePage.md"));
     expect(page, "missing WelcomePage.md").toBeDefined();
     const md = page!.content;
 
@@ -139,7 +139,7 @@ describe("template.output doc page (render contract) — DOCUMENT", () => {
 describe("template.output doc page (render contract) — EMAIL", () => {
   it("emits WelcomeEmail.md with the multipart parts table + 3 source refs", async () => {
     const out = await emitFixture("template-doc-email");
-    const page = out.find((f) => f.path === "WelcomeEmail.md");
+    const page = out.find((f) => ("/" + f.path).endsWith("/" + "WelcomeEmail.md"));
     expect(page, "missing WelcomeEmail.md").toBeDefined();
     const md = page!.content;
 
@@ -196,7 +196,7 @@ describe("naming reconciliation — entity ↔ template cross-links use the RAW 
     const out = await emitFixture("template-doc-email");
 
     // Entity page for the payload VO.
-    const entity = out.find((f) => f.path === "Welcome.md");
+    const entity = out.find((f) => ("/" + f.path).endsWith("/" + "Welcome.md"));
     expect(entity, "missing Welcome.md (entity page for payload VO)").toBeDefined();
     const entityMd = entity!.content;
     // Used-by link target must be the RAW template name.
@@ -204,11 +204,11 @@ describe("naming reconciliation — entity ↔ template cross-links use the RAW 
     expect(entityMd).toContain("](./WelcomeEmail.md)");
 
     // Template page links back to the payload entity by RAW name.
-    const tmpl = out.find((f) => f.path === "WelcomeEmail.md");
+    const tmpl = out.find((f) => ("/" + f.path).endsWith("/" + "WelcomeEmail.md"));
     expect(tmpl!.content).toContain("(./Welcome.md)");
 
     // Both target files are actually emitted (links resolve).
-    expect(out.find((f) => f.path === "WelcomeEmail.md")).toBeDefined();
-    expect(out.find((f) => f.path === "Welcome.md")).toBeDefined();
+    expect(out.find((f) => ("/" + f.path).endsWith("/" + "WelcomeEmail.md"))).toBeDefined();
+    expect(out.find((f) => ("/" + f.path).endsWith("/" + "Welcome.md"))).toBeDefined();
   });
 });

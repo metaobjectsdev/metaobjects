@@ -19,6 +19,8 @@ import { type ErrorCode, OBJECT_SUBTYPE_VALUE, type MetaObject } from "@metaobje
 import { pluralize, toSnakeCase } from "@metaobjectsdev/metadata";
 import { emitsInstanceArtifacts } from "../instance-artifacts.js";
 import { isTphSubtype } from "../tph.js";
+import { effectivePackage } from "../docs-paths.js";
+import type { OutputLayout } from "../import-path.js";
 
 // Already promoted to the shared cross-language error-code ledger
 // (fixtures/conformance/ERROR-CODES.json) and to TS's own ERROR_CODES array
@@ -26,42 +28,62 @@ import { isTphSubtype } from "../tph.js";
 // (ADR-0044) went through, the sibling case this one is modeled on.
 export const ERR_COLLECTION_NAME_COLLISION = "ERR_COLLECTION_NAME_COLLISION" satisfies ErrorCode;
 
+/** Where the names live: the layout the entity modules are written in, and which of the two
+ *  name sets the run emits at all. */
+export interface CollectionNameScopes {
+  /** `flat` (one module directory) or `package` (a directory per metadata package). */
+  layout?: OutputLayout;
+  /** Whether the pluralized module names are checked (the run writes entity modules, queries or
+   *  a UI tier, which export them). Default true. */
+  modules?: boolean;
+  /** Whether the REST segments are checked (one app serves every route). Default true. */
+  routes?: boolean;
+}
+
 /**
- * Refuse a generation run in which two DISTINCT entities/projections pluralize to
- * the same API-surface collection name.
+ * Refuse two objects that claim one generated name in ONE scope. There is no run-wide rule:
+ * a name collides only where the artifact that carries it lives.
  *
- * Scope: every object EXCEPT `object.value` (a value object never gets a route,
- * hook, or collection variable — it is pure shape, so it cannot collide on any of
- * those). A TPH subtype IS included: it gets its own `list<Plural>`/`find<Plural>`-
- * style generated names against the shared base table, so two subtypes (or a
- * subtype and an unrelated top-level entity) sharing a pluralized name collide on
- * those generated symbols exactly as two top-level entities would.
+ * - The pluralized names (`list<Plural>`, `find<Plural>By…`, the hooks, the Drizzle table
+ *   variable) are exports of the entity modules, which share one directory and barrel under
+ *   the flat layout and one per metadata package under the package layout.
+ * - The REST collection segment is a path one app serves: unique across every routed object.
  *
- * A PURE function of the entity set — never of traversal order: the reported pair
- * is deterministic (first-seen-by-input-order "owner" of a plural; the error is
- * thrown as soon as a second, different entity claims the same plural, so which
- * pair is named depends only on the INPUT ORDER's first collision, matching how
- * `assignEmittedNames` (ADR-0044) reports its own first-detected pair rather than
- * attempting to enumerate every colliding pair in one message).
+ * Counted over the objects that emit those names (`emitsInstanceArtifacts`): an abstract or
+ * sourceless object emits none, so a layered model's abstract `enterprise::Payer` beside a
+ * concrete `core::Payer` takes part in neither scope. A TPH subtype IS included in the module
+ * scope: it gets its own `list<Plural>`-style names against the shared base table.
+ *
+ * Deterministic: the first object to claim a name owns it, and the error names the second.
  */
-export function assertNoCollectionNameCollisions(entities: readonly MetaObject[]): void {
+export function assertNoCollectionNameCollisions(
+  entities: readonly MetaObject[],
+  scopes: CollectionNameScopes = {},
+): void {
+  if (scopes.modules !== false) assertNoModuleNameCollisions(entities, scopes.layout ?? "flat");
+  if (scopes.routes !== false) assertNoRouteSegmentCollisions(entities);
+}
+
+/** The module half: the pluralized names, in the entity modules' scope by layout. */
+function assertNoModuleNameCollisions(entities: readonly MetaObject[], layout: OutputLayout): void {
   const ownerOfPlural = new Map<string, MetaObject>();
   for (const obj of entities) {
-    if (obj.subType === OBJECT_SUBTYPE_VALUE) continue;
+    if (obj.subType === OBJECT_SUBTYPE_VALUE || !emitsInstanceArtifacts(obj)) continue;
     const plural = pluralize(obj.name);
-    const existing = ownerOfPlural.get(plural);
+    const scope = layout === "package" ? (effectivePackage(obj) ?? "") : "";
+    const key = `${scope}\u0000${plural}`;
+    const existing = ownerOfPlural.get(key);
     if (existing !== undefined && existing.resolutionKey() !== obj.resolutionKey()) {
       throw new Error(
-        `${ERR_COLLECTION_NAME_COLLISION}: "${existing.name}" and "${obj.name}" both pluralize ` +
-        `to the API-surface collection name "${plural}" (REST path, generated hook/query/finder/` +
-        `list names, DbSet/collection variable name) — rename one entity so its pluralized name ` +
-        `is distinct. Default PHYSICAL table names are unaffected by this rule and are not ` +
-        `involved in the collision.`,
+        `${ERR_COLLECTION_NAME_COLLISION}: "${existing.resolutionKey()}" and "${obj.resolutionKey()}" both pluralize ` +
+        `to the collection name "${plural}" in one module scope (${scope === "" ? "the entity modules' directory" : `package ${scope}`}; ` +
+        `generated hook/query/finder/list names, the collection variable) — rename one entity, or ` +
+        `place the modules by package (outputLayout: "package"). Default PHYSICAL table names are ` +
+        `unaffected by this rule.`,
       );
     }
-    if (existing === undefined) ownerOfPlural.set(plural, obj);
+    if (existing === undefined) ownerOfPlural.set(key, obj);
   }
-  assertNoRouteSegmentCollisions(entities);
 }
 
 /**
@@ -80,7 +102,7 @@ function assertNoRouteSegmentCollisions(entities: readonly MetaObject[]): void {
     const existing = ownerOfSegment.get(segment);
     if (existing !== undefined && existing.resolutionKey() !== obj.resolutionKey()) {
       throw new Error(
-        `${ERR_COLLECTION_NAME_COLLISION}: "${existing.name}" and "${obj.name}" both resolve ` +
+        `${ERR_COLLECTION_NAME_COLLISION}: "${existing.resolutionKey()}" and "${obj.resolutionKey()}" both resolve ` +
         `to the REST collection segment "${segment}" — rename one entity so its snake_cased, ` +
         `pluralized route segment is distinct.`,
       );

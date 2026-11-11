@@ -41,6 +41,10 @@ public sealed class ApiDocsGenerator : IGenerator
         var model = new CSharpApiModelBuilder(ctx.Config, ctx.Applicability).Build(ctx.Root, ProjectName);
         var renderer = new CSharpApiDocsRenderer();
         const DocsPaths.Layout layout = DocsPaths.Layout.Package;
+        // Refused before anything is yielded: two pages that are one file must not half-write.
+        DocsPaths.AssertNoDuplicateDocPaths(model.Units.Select(u => (
+            DocsPaths.DocPageOutputPath(layout, u.Package, u.Node),
+            string.IsNullOrEmpty(u.Package) ? u.Node : $"{u.Package}::{u.Node}")));
 
         foreach (var unit in model.Units)
         {

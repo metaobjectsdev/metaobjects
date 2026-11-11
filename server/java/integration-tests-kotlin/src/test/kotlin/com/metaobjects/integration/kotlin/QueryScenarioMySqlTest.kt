@@ -47,7 +47,7 @@ internal class QueryScenarioMySqlTest {
         @JvmStatic
         fun scenarios(): Stream<Arguments> {
             val corpus = ScenarioLoader.findCorpusRoot()
-            val reports = ScenarioLoader.loadQueries(corpus.resolve("queries")).filter { it.runsOn(ScenarioEngine.MYSQL) }
+            val reports = ScenarioLoader.loadQueries(corpus.resolve("queries")).filter { it.runsOn(ScenarioEngine.MYSQL) && it.name !in Scenarios.DEFERRED.keys }
             Assumptions.assumeTrue(reports.isNotEmpty(), "No report-* scenarios under fixtures/persistence-conformance/queries")
             return reports.stream().map { Arguments.of(it.name, it) }
         }

@@ -1,5 +1,5 @@
 import type { SchemaConventions } from "@metaobjectsdev/migrate-ts";
-import { physicalNamingRemovedMessage, type MetaDataTypeProvider } from "@metaobjectsdev/metadata";
+import { physicalNamingRemovedMessage, type MetaDataTypeProvider, type NamingFunction } from "@metaobjectsdev/metadata";
 import { physicalNamingGuideUrl } from "@metaobjectsdev/metadata/release-docs";
 import type { RoutesExpose } from "./routes-expose.js";
 import type { Generator } from "./generator.js";
@@ -168,6 +168,12 @@ export const DEFAULT_EXT_STYLE: ExtStyle = "js";
  * fills inert defaults when they are absent AND the model emits no DB artifacts, and
  * throws a clear error when they are absent but the model DOES emit DB code (#194).
  */
+/** `namingStrategies` in `metaobjects.config.ts`: application strategies by name (ADR-0058 Amendment 1). */
+export interface NamingStrategies {
+  readonly columns?: Readonly<Record<string, NamingFunction>>;
+  readonly tables?: Readonly<Record<string, NamingFunction>>;
+}
+
 export interface MetaobjectsGenConfig extends Omit<ResolvedGenConfig, "dbImport" | "dialect" | "extStyle" | "routesExpose" | "reportExportInRun" | "includeUiTierExplicit"> {
   dbImport?: string;
   dialect?: Dialect;
@@ -189,6 +195,18 @@ export interface MetaobjectsGenConfig extends Omit<ResolvedGenConfig, "dbImport"
    * Start from a preset: `{ ...efcoreConventions, id: "acme", primaryKeyName: ... }`.
    */
   schemaConventions?: SchemaConventions;
+  /**
+   * The project's own physical-naming strategies (ADR-0058 Amendment 1), by name. Every `meta`
+   * command registers them BEFORE it reads `.metaobjects/config.json`, which then selects one
+   * exactly as it selects a built-in: `"naming": { "columns": "<name>" }`. A strategy is a
+   * function from a bare metadata name to a physical name; wrapping a built-in is one line:
+   * `{ columns: { "pascal-acronyms": (n) => (n === "npi" ? "NPI" : columnNamingStrategy("pascal")(n)) } }`.
+   * Column strategies name a field with no `@column`; table rules name a source with no physical
+   * name (the entity-name fallback is still pluralized after the rule). A built-in name cannot be
+   * replaced. A program that loads the model itself registers with
+   * `registerColumnNamingStrategy` / `registerTableNamingRule` from `@metaobjectsdev/metadata`.
+   */
+  namingStrategies?: NamingStrategies;
   /**
    * Auto-pluralize the Drizzle collection (table) variable name derived from
    * each entity (`AgentConfig` → `agentConfigs`). Defaults to `true`. Set

@@ -120,7 +120,7 @@ describe("through meta gen: the written pages follow the generator list", () => 
         }),
         metadata: root, projectRoot: tmp,
       });
-      return readFileSync(join(tmp, "docs", "api", "Product.md"), "utf8");
+      return readFileSync(join(tmp, "docs", "api", "acme", "shop", "Product.md"), "utf8");
     } finally { rmSync(tmp, { recursive: true, force: true }); }
   }
 

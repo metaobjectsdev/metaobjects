@@ -116,6 +116,17 @@ export const OBJECT_DEFINITION: ProviderDefinition = {
           "min": 0,
           "max": 1,
           "description": "FR-014: on a subtype of an entity with @discriminator — the value that identifies rows of this subtype in the shared discriminator field. Wire form is always a string; the underlying field's subtype (enum / int / string) controls codegen + storage coercion. Required on every concrete subtype of a discriminated entity."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "dbSetName",
+          "min": 0,
+          "max": 1,
+          "ports": [
+            "csharp"
+          ],
+          "description": "C#-only (EF Core): the DbSet property name the generated context gives this object, in place of the plural derived from its name. Set it when two objects in one generated context would otherwise claim the same property. Every port loads and type-checks it; only C# acts on it."
         }
       ]
     },
@@ -151,6 +162,17 @@ export const OBJECT_DEFINITION: ProviderDefinition = {
           "min": 0,
           "max": 1,
           "description": "Optional row-scope predicate (a portable attr.filter object: eq/ne/gt/gte/lt/lte/like/in/isNull with and/or, desugared to { field: { op: value } } at parse time) selecting which rows the view returns — lowered to an outer SQL WHERE. Resolves against the projection's own declared fields; an aggregate-derived field is not addressable (fail-closed)."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "dbSetName",
+          "min": 0,
+          "max": 1,
+          "ports": [
+            "csharp"
+          ],
+          "description": "C#-only (EF Core): the DbSet property name the generated context gives this object, in place of the plural derived from its name. Set it when two objects in one generated context would otherwise claim the same property. Every port loads and type-checks it; only C# acts on it."
         }
       ]
     },
@@ -210,6 +232,17 @@ export const OBJECT_DEFINITION: ProviderDefinition = {
           "min": 0,
           "max": 1,
           "description": "Optional to-one path from @from to the entity whose rows supply the report's rows (e.g. 'Purchase.program'), written like a dimension's @via. With it the report has one row per distinct dimension tuple among THAT entity's rows, including the ones no row of @from refers to: a count there is 0 and any other measure is null unless it declares @default. Every listed dimension must be reached through this path. @segment and @filter still scope the rows of @from and never remove a row. A row of @from whose reference is null or matches nothing is in no row of the report."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "dbSetName",
+          "min": 0,
+          "max": 1,
+          "ports": [
+            "csharp"
+          ],
+          "description": "C#-only (EF Core): the DbSet property name the generated context gives this object, in place of the plural derived from its name. Set it when two objects in one generated context would otherwise claim the same property. Every port loads and type-checks it; only C# acts on it."
         }
       ]
     }

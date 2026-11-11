@@ -52,7 +52,7 @@
 export interface StorageFieldDoc {
   name: string;                  // raw field name (without backticks)
   /** @markdown — physical column name (field's `@column` if set, else the
-   *  field name), wrapped in backticks. */
+   *  name the configured column-naming strategy resolves), wrapped in backticks. */
   columnCell: string;
   /** @markdown — neutral physical type (declared `@dbColumnType` override
    *  uppercased, else the field's logical type), wrapped in backticks. */
@@ -108,7 +108,8 @@ export interface FieldDoc {
   /** @markdown — "yes" / "" — whether the field is required (or a PK). */
   requiredCell: string;
   /** @markdown — physical persistence info, ONLY when interesting:
-   *    `@column` override that differs from the field name → "`UserId`"
+   *    physical column (`@column`, else the naming strategy's) that differs
+   *      from the field name → "`UserId`"
    *    `@dbColumnType` set → "`UserId` `UUID`"  (or "`Data` `JSONB`" when
    *      the field name happens to match the column)
    *  Empty when field name == column AND no @dbColumnType override. */

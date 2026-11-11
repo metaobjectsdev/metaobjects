@@ -21,6 +21,9 @@ OBJECT_SUBTYPES = (
 #   @discriminatorValue — on a subtype: the value identifying its rows.
 OBJECT_ATTR_DISCRIMINATOR = "discriminator"
 OBJECT_ATTR_DISCRIMINATOR_VALUE = "discriminatorValue"
+# C#-only (ports ["csharp"]): the EF Core DbSet property name. Loaded and type-checked here
+# on object.entity / projection / report; no Python generator acts on it.
+OBJECT_ATTR_DB_SET_NAME = "dbSetName"
 
 # #207 — object.projection row-scope @filter (view-level WHERE). An optional
 # row-scope predicate on an object.projection (a portable attr.filter object —

@@ -357,4 +357,22 @@ public class GeneratorUtil {
         }
         return false;
     }
+
+    private static final java.util.List<java.util.regex.Pattern> SQL_EXPRESSION_DEFAULTS = java.util.List.of(
+        java.util.regex.Pattern.compile("^now$", java.util.regex.Pattern.CASE_INSENSITIVE),
+        java.util.regex.Pattern.compile("^now\\(\\)$", java.util.regex.Pattern.CASE_INSENSITIVE),
+        java.util.regex.Pattern.compile("^current_timestamp$", java.util.regex.Pattern.CASE_INSENSITIVE),
+        java.util.regex.Pattern.compile("^current_date$", java.util.regex.Pattern.CASE_INSENSITIVE),
+        java.util.regex.Pattern.compile("^current_time$", java.util.regex.Pattern.CASE_INSENSITIVE),
+        java.util.regex.Pattern.compile("\\(\\)$"));
+
+    /**
+     * True when a string {@code @default} is a database expression the database fills in
+     * ({@code now()}, {@code current_timestamp}, {@code gen_random_uuid()}), not a literal the
+     * generated code may write. The same rule as {@code meta migrate} and the other ports, so a
+     * literal such as {@code "N/A (unknown)"} is a literal everywhere.
+     */
+    public static boolean isSqlExpressionDefault(String text) {
+        return text != null && SQL_EXPRESSION_DEFAULTS.stream().anyMatch(p -> p.matcher(text).find());
+    }
 }

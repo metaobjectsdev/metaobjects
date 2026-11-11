@@ -86,11 +86,16 @@ const REPORT_ATTRS: Record<string, ExpectedAttr> = {
   spine: { valueType: "string", required: false },
 };
 
+// @dbSetName: C#-only vocabulary every port loads, on entity / projection / report.
+const DB_SET_NAME: Record<string, ExpectedAttr> = {
+  dbSetName: { valueType: "string", required: false },
+};
+
 function expectedAttrsFor(subType: string): Record<string, ExpectedAttr> {
-  if (subType === OBJECT_SUBTYPE_ENTITY) return { ...DISCRIMINATOR };
+  if (subType === OBJECT_SUBTYPE_ENTITY) return { ...DISCRIMINATOR, ...DB_SET_NAME };
   if (subType === OBJECT_SUBTYPE_VALUE) return { ...NORMALIZE };
-  if (subType === OBJECT_SUBTYPE_PROJECTION) return { ...PROJECTION_FILTER };
-  if (subType === OBJECT_SUBTYPE_REPORT) return { ...REPORT_ATTRS };
+  if (subType === OBJECT_SUBTYPE_PROJECTION) return { ...PROJECTION_FILTER, ...DB_SET_NAME };
+  if (subType === OBJECT_SUBTYPE_REPORT) return { ...REPORT_ATTRS, ...DB_SET_NAME };
   // base carries NO attrs (discriminator moved to entity only).
   return {};
 }

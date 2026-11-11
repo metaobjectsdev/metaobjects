@@ -228,6 +228,17 @@ mirror deliberately stays `String` / `List<String>`; its `toStrict()` bridges `S
 `valueOf`. Kept as a resolved entry (rather than deleted) because external notes referenced this
 section by title.
 
+## `field.enum` arrays have no Exposed array column
+
+An `isArray` `field.enum`, string-backed or int-backed (`@intValueMap`), is typed `List<E>` on the
+data class, but `KotlinExposedTableGenerator.enumColumnSpec` emits a SCALAR column for it
+(`enumerationByName` / `customEnumeration(..., "INTEGER", ...)`), so the generated controller for
+the entity does not compile. Nothing silently stores symbols: the mismatch fails the build. The fix
+is an array column whose element codec is the enum's: `array<E>(col, <enum column type>)` on
+Postgres, and a JSON text array on SQLite/MySQL as `MetaDecimalArrayColumnType` does for decimals.
+Until then the compile gates leave out the fitness corpus' `IntEnumArrayController.kt` (and
+`GeneratorRequiresCompileTest` its `IntEnumArrayRepository*.kt`, which bind the same column).
+
 ## Composite-FK relationships not emitted
 
 **Status:** Day-1 limitation. [`KotlinExposedTableGenerator.kt:573`](src/main/kotlin/com/metaobjects/generator/kotlin/KotlinExposedTableGenerator.kt#L573)

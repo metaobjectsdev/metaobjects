@@ -77,7 +77,7 @@ public class ReportingInertTest extends SharedRegistryTestBase {
         // writer: two files, "|"-separated.
         "report-export", "acme/shop/StoreTotalsExport.java|acme/shop/ReportExportWriter.java",
         // The api reference documents the served report as one more unit.
-        "api-docs", "api/java/StoreTotals.md");
+        "api-docs", "api/java/acme/shop/StoreTotals.md");
 
     /**
      * The files that LIST every unit rather than describe one, by generator stable name: the api

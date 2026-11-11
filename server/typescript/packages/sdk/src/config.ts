@@ -4,9 +4,10 @@ import { join } from "node:path";
 import type { SourceSpec } from "./sources.js";
 import { DependencySpecSchema, type DependencySpec } from "./dependencies.js";
 import {
-  COLUMN_NAMING_STRATEGIES,
   DEFAULT_PHYSICAL_NAMING,
-  TABLE_NAMING_RULES,
+  isRegisteredColumnNamingStrategy,
+  isRegisteredTableNamingRule,
+  unknownNamingStrategyMessage,
   DEFAULT_WIRE_FORMAT,
   DEFAULT_ENUM_DEFAULTS,
   type EnumDefaults,
@@ -21,8 +22,6 @@ import {
   type WireFormat,
   type WireNullMembers,
   type PhysicalNaming,
-  type ColumnNamingStrategy,
-  type TableNamingRule,
 } from "@metaobjectsdev/metadata";
 
 const DialectEnum = z.enum(["sqlite", "postgres", "d1"]);
@@ -228,11 +227,26 @@ export const ConfigSchema = z.object({
    * the PROJECT, read here by every port, because every port reads and writes the one database
    * `meta migrate` created: codegen, migrate, the runtime and verify all resolve through it.
    * Absent means `snake_case` for both, which is what `meta migrate` has always created.
+   *
+   * Each value is the NAME of a registered strategy (ADR-0058 Amendment 1): a built-in
+   * (`columns`: `snake_case`, `literal`, `kebab-case`, `pascal`; `tables`: `snake_case`,
+   * `literal`) or one the application registered (`namingStrategies` in
+   * `metaobjects.config.ts`, or `registerColumnNamingStrategy` / `registerTableNamingRule`
+   * before the load). A name no registered strategy answers is refused HERE, when the file is
+   * read, never later and never by falling back to the default.
    */
   naming: z
     .object({
-      columns: z.enum(COLUMN_NAMING_STRATEGIES as [ColumnNamingStrategy, ...ColumnNamingStrategy[]]).optional(),
-      tables: z.enum(TABLE_NAMING_RULES as [TableNamingRule, ...TableNamingRule[]]).optional(),
+      columns: z.string()
+        .superRefine((n, ctx) => {
+          if (!isRegisteredColumnNamingStrategy(n)) ctx.addIssue({ code: "custom", message: unknownNamingStrategyMessage("columns", n) });
+        })
+        .optional(),
+      tables: z.string()
+        .superRefine((n, ctx) => {
+          if (!isRegisteredTableNamingRule(n)) ctx.addIssue({ code: "custom", message: unknownNamingStrategyMessage("tables", n) });
+        })
+        .optional(),
     })
     .strict()
     .optional(),

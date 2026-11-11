@@ -8,7 +8,11 @@ import { randomBytes } from "node:crypto";
 import { createJiti } from "jiti";
 import type { MetaDataTypeProvider, MetaobjectsGenConfig } from "@metaobjectsdev/codegen-ts";
 import { resolveCollection, type Collection } from "@metaobjectsdev/sdk";
-import { physicalNamingRemovedMessage } from "@metaobjectsdev/metadata";
+import {
+  physicalNamingRemovedMessage,
+  registerColumnNamingStrategy,
+  registerTableNamingRule,
+} from "@metaobjectsdev/metadata";
 
 const CONFIG_FILE = "metaobjects.config.ts";
 
@@ -548,6 +552,7 @@ export async function loadMetaobjectsConfig(projectRoot: string): Promise<Metaob
           physicalNamingRemovedMessage("columnNamingStrategy in metaobjects.config.ts", String(removedNaming), physicalNamingGuideUrl()),
       );
     }
+    registerNamingStrategies(cfg, fullPath);
     return cfg;
   } finally {
     // Restoring is safe: Babel's installer self-neuters after the first call, so
@@ -563,3 +568,20 @@ export async function loadMetaobjectsConfig(projectRoot: string): Promise<Metaob
     }
   }
 }
+
+/**
+ * Registers a config's `namingStrategies` (ADR-0058 Amendment 1). Registering a name again
+ * replaces it, so loading one config twice in a process is harmless; a built-in name is
+ * refused by the registry, with the config's path in front.
+ */
+function registerNamingStrategies(cfg: MetaobjectsGenConfig, fullPath: string): void {
+  const strategies = cfg.namingStrategies;
+  if (strategies === undefined) return;
+  try {
+    for (const [name, fn] of Object.entries(strategies.columns ?? {})) registerColumnNamingStrategy(name, fn);
+    for (const [name, fn] of Object.entries(strategies.tables ?? {})) registerTableNamingRule(name, fn);
+  } catch (err) {
+    throw new Error(`metaobjects.config.ts at ${fullPath}: namingStrategies: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+

@@ -1,0 +1,89 @@
+name: roundtrip-int-enum-array
+description: |
+  An int-backed field.enum ARRAY (`IntEnumArray.history`) persists each element as
+  its declared integer and reads each one back as its member. The map is INHERITED
+  from the shared abstract enum `PublishState` (DRAFT=0, PUBLISHED=5, ARCHIVED=9),
+  which a scalar column (`state`) on the same entity also uses — the shape adopters
+  write. The failure this pins is a codec that maps only scalars, so an array
+  silently stores member SYMBOLS: on Postgres the column is `integer[]`; on SQLite,
+  D1 and MySQL it is a JSON array of numbers (`[5,0]`), never `["PUBLISHED","DRAFT"]`.
+
+  The seed rows hold RAW integers, written as SQL, so the reads below prove the
+  decode against stored ints rather than against whatever the port's own write
+  produced. The query DSL cannot read a column's raw value back, so the write
+  direction is held by the roundtrips together with those seeded reads: on Postgres
+  `integer[]` refuses a symbol element outright, and on the JSON-text engines a port
+  that wrote symbols would need a read that also passes symbols through, which the
+  seeded reads would not match.
+
+  - an unmapped stored int (42) fails the read, exactly as an unmapped scalar does;
+  - an empty array is `[]` and a null array is `null` (`[]` ≠ null);
+  - element order is preserved;
+  - no CHECK on the array column (membership stays app-level), so the seed with an
+    unmapped element is accepted by every engine.
+
+  Ids are seeded from 101 so the runtime-generated ids of the roundtrip inserts
+  (identity / AUTO_INCREMENT / AUTOINCREMENT) never collide with them.
+engines: [postgres, mysql, sqlite, d1]
+seed-data: |
+  INSERT INTO "int_enum_arrays" ("id","state","history") VALUES
+    (101, 5, '{5,0}'),
+    (102, 0, '{}'),
+    (103, NULL, NULL),
+    (104, 5, '{5,42}');
+seed-data-engine:
+  sqlite: |
+    INSERT INTO "int_enum_arrays" ("id","state","history") VALUES
+      (101, 5, '[5,0]'),
+      (102, 0, '[]'),
+      (103, NULL, NULL),
+      (104, 5, '[5,42]');
+  mysql: |
+    INSERT INTO `int_enum_arrays` (`id`,`state`,`history`) VALUES
+      (101, 5, '[5,0]'),
+      (102, 0, '[]'),
+      (103, NULL, NULL),
+      (104, 5, '[5,42]');
+queries:
+  # A list (not three gets) so a non-Postgres engine's BIGINT id is mapped onto the wire
+  # string the same way every other all-engine scenario's rows are.
+  - name: seeded-ints-read-as-members-in-order
+    op: list
+    entity: IntEnumArray
+    filter: { id: { in: [101, 102, 103] } }
+    sort: [{ field: id, dir: asc }]
+    expect:
+      - { id: "101", state: PUBLISHED, history: [PUBLISHED, DRAFT] }
+      - { id: "102", state: DRAFT, history: [] }
+      - { id: "103", state: null, history: null }
+
+  - name: seeded-unmapped-element-fails-the-read
+    op: get
+    entity: IntEnumArray
+    by: { id: 104 }
+    expect-error: true
+
+  # The scalar column sharing the enum still filters by member (operand mapped to 5).
+  - name: scalar-sharing-the-enum-filters-by-member
+    op: count
+    entity: IntEnumArray
+    filter: { state: { eq: PUBLISHED } }
+    expect: 2
+
+  - name: roundtrip-two-elements
+    op: roundtrip
+    entity: IntEnumArray
+    insert: { state: ARCHIVED, history: [PUBLISHED, DRAFT] }
+    expect: { state: ARCHIVED, history: [PUBLISHED, DRAFT] }
+
+  - name: roundtrip-empty-array
+    op: roundtrip
+    entity: IntEnumArray
+    insert: { state: DRAFT, history: [] }
+    expect: { state: DRAFT, history: [] }
+
+  - name: roundtrip-null-array
+    op: roundtrip
+    entity: IntEnumArray
+    insert: { state: null, history: null }
+    expect: { state: null, history: null }

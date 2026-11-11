@@ -39,13 +39,13 @@ namespace MetaObjects.Codegen.Tests;
 
 public class NamesGeneratorTests
 {
-    private static GenContext Ctx(MetaRoot root, ColumnNamingStrategy strategy = ColumnNamingStrategy.SnakeCase) => new()
+    private static GenContext Ctx(MetaRoot root, ColumnNamingStrategy? strategy = null) => new()
     {
         Entities = root.Objects(), Root = root,
         // IncludeNames: true -- this is the ON-arm helper (see CtxWithoutNames below for
         // the OFF arm); GenConfig.IncludeNames defaults to false, so the Task-4
         // consumption-site assertions below need it set explicitly.
-        Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", ColumnNamingStrategy = strategy, IncludeNames = true },
+        Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", ColumnNamingStrategy = strategy ?? ColumnNamingStrategy.SnakeCase, IncludeNames = true },
     };
 
     private static MetaRoot Load(string model)
@@ -729,12 +729,12 @@ public class NamesGeneratorTests
     // constant-reference spelling it replaces is GONE.
     // -------------------------------------------------------------------------
 
-    private static GenContext CtxWithoutNames(MetaRoot root, ColumnNamingStrategy strategy = ColumnNamingStrategy.SnakeCase) => new()
+    private static GenContext CtxWithoutNames(MetaRoot root, ColumnNamingStrategy? strategy = null) => new()
     {
         Entities = root.Objects(), Root = root,
         Config = new GenConfig
         {
-            OutDir = "/tmp", Namespace = "Acme.Generated", ColumnNamingStrategy = strategy,
+            OutDir = "/tmp", Namespace = "Acme.Generated", ColumnNamingStrategy = strategy ?? ColumnNamingStrategy.SnakeCase,
             // The fact under test: this GenContext models a run where `names` was never
             // selected (e.g. `--generators entity,db-context`). GenConfig.IncludeNames
             // now defaults to false too, but this sets it explicitly rather than relying

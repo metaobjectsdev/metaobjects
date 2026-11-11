@@ -1393,7 +1393,7 @@ describe("ADR-0034 Amendments 7 and 9 — the docs and api-docs references write
     // entity's neighbourhood on its own page. (The standalone `mermaid-er` generator that
     // also drew the first one was removed in 1.1.)
     expect(readme).toContain("## Diagram\n\n```mermaid\nerDiagram\n");
-    const week = ("files" in model ? model.files : []).find(([p]) => p === "Week.md")?.[1] ?? "";
+    const week = ("files" in model ? model.files : []).find(([p]) => p === "fitness/Week.md")?.[1] ?? "";
     expect(week).toContain("```mermaid\nflowchart TB\n");
     expect(readme).toContain("## Reports");
     expect(readme).toContain("## Templates");
@@ -1401,7 +1401,7 @@ describe("ADR-0034 Amendments 7 and 9 — the docs and api-docs references write
     expect(readme).toContain("https://docs.example.test/java/README.md");
     const api = await emit(fitness, refApiDocs(), "flat", BOTH, { includeHonoRoutes: true, apiPrefix: "/api" });
     const pages = "files" in api ? new Map(api.files) : new Map<string, string>();
-    expect(pages.has("api/ProgramRoster.md")).toBe(true);
+    expect(pages.has("api/fitness/ProgramRoster.md")).toBe(true);
     expect([...pages.values()].some((c) => c.includes("hono"))).toBe(true);
     expect([...pages.values()].some((c) => c.includes("/api/"))).toBe(true);
   });
@@ -1411,7 +1411,7 @@ describe("ADR-0034 Amendments 7 and 9 — the docs and api-docs references write
     const only = (e: { name: string }) => e.name === "User";
     const a = await emit(root, builtinDocs({ filter: only }), "flat", NO_API);
     const b = await emit(root, refDocs({ filter: only }), "flat", NO_API);
-    expect(paths(a)).toEqual(["README.md", "User.md"]);
+    expect(paths(a)).toEqual(["README.md", "demo/User.md"]);
     expect(b).toEqual(a);
   });
 

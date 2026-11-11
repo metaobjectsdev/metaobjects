@@ -48,6 +48,21 @@ public object KotlinGenUtil {
     const val AUTO_SET_ON_UPDATE = "onUpdate"
 
     /**
+     * Escape [s] for embedding inside a Kotlin double-quoted string literal (the caller adds
+     * the quotes). Handles `\`, `"`, `$` (Kotlin string templates), newline, tab and carriage
+     * return; `\` goes first so its own replacement is not re-escaped. Lives here because this
+     * object is on the eject engine surface: an ejected generator copy must compile without
+     * KotlinExtractSchemaEmitter, which delegates to this single definition.
+     */
+    fun kotlinStringLiteral(s: String): String =
+        s.replace("\\", "\\\\")
+            .replace("\"", "\\\"")
+            .replace("$", "\\$")
+            .replace("\n", "\\n")
+            .replace("\t", "\\t")
+            .replace("\r", "\\r")
+
+    /**
      * Resolve a MetaObject (entity OR value) from a CANONICAL reference value (ADR-0059 R7):
      * an exact resolution-key match (`pkg::Name`, `::Name`, or a root-level `Name`), with any
      * dotted child tail ignored. Never matches on a short name. Returns null when nothing matches.
@@ -922,7 +937,7 @@ public object KotlinGenUtil {
     const val COLUMN_NAMING_SNAKE_CASE: String = ColumnNaming.SNAKE_CASE
     const val COLUMN_NAMING_LITERAL: String = ColumnNaming.LITERAL
     const val COLUMN_NAMING_KEBAB_CASE: String = ColumnNaming.KEBAB_CASE
-    const val COLUMN_NAMING_UPPER_FIRST: String = ColumnNaming.UPPER_FIRST
+    const val COLUMN_NAMING_PASCAL: String = ColumnNaming.PASCAL
     const val DEFAULT_COLUMN_NAMING: String = COLUMN_NAMING_SNAKE_CASE
 
     /**
@@ -951,7 +966,10 @@ public object KotlinGenUtil {
      */
     const val ARG_USE_NAMES: String = EmitsPhysicalNameConstants.ARG_USE_NAMES
 
-    /** Apply a column-naming strategy to a bare name. */
+    /**
+     * Apply a column-naming strategy — a built-in or one the application registered in
+     * [com.metaobjects.database.NamingStrategies] (ADR-0058 Amendment 1) — to a bare name.
+     */
     fun applyColumnNamingStrategy(name: String, strategy: String): String =
         ColumnNaming.apply(name, strategy)
 

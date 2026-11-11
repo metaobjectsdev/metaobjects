@@ -45,6 +45,8 @@
 import { TYPE_TEMPLATE, type MetaObject, type MetaRoot } from "@metaobjectsdev/metadata";
 import {
   apiSurfaceHref,
+  DOCS_PAGE_LAYOUT,
+  docIndexLabel,
   assertNoDuplicateDocPaths,
   docPageHref,
   docPageNode,
@@ -104,7 +106,9 @@ export const docsFile = function docsFile(opts?: DocsFileOpts): Generator {
       }
       const rc = ctx.renderContext;
       const provider = projectProvider(docsTemplateRoot(ctx, opts?.templates));
-      const layout = ctx.config.outputLayout ?? "flat";
+      // Pages are keyed by package (DOCS_PAGE_LAYOUT), whatever the target's outputLayout:
+      // a page named by its short name alone collides with a same-named node elsewhere.
+      const layout = DOCS_PAGE_LAYOUT;
 
       // The api surfaces to link: the option, or the api pages the run writes to this
       // target. One link per surface, computed from the FROM page's own path so it resolves
@@ -233,7 +237,7 @@ function renderIndexPage(
     out.push("## Entities");
     out.push("");
     for (const node of [...entityNodes].sort(byName)) {
-      out.push(`- [${node.name}](${docPageHref(layout, INDEX_NODE, node)})`);
+      out.push(`- [${docIndexLabel(node, entityNodes)}](${docPageHref(layout, INDEX_NODE, node)})`);
     }
     out.push("");
   }
@@ -242,7 +246,7 @@ function renderIndexPage(
     out.push("## Reports");
     out.push("");
     for (const node of [...reportNodes].sort(byName)) {
-      out.push(`- [${node.name}](${docPageHref(layout, INDEX_NODE, node)})`);
+      out.push(`- [${docIndexLabel(node, reportNodes)}](${docPageHref(layout, INDEX_NODE, node)})`);
     }
     out.push("");
   }
@@ -250,7 +254,7 @@ function renderIndexPage(
     out.push("## Templates");
     out.push("");
     for (const node of [...templateNodes].sort(byName)) {
-      out.push(`- [${node.name}](${docPageHref(layout, INDEX_NODE, node)})`);
+      out.push(`- [${docIndexLabel(node, templateNodes)}](${docPageHref(layout, INDEX_NODE, node)})`);
     }
     out.push("");
   }

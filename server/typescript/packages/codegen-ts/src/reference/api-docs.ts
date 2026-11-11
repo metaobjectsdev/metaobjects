@@ -46,6 +46,7 @@
 // copy of this file imports them from there: they are yours too.
 
 import {
+  DOCS_PAGE_LAYOUT,
   assertNoDuplicateDocPaths,
   docPageOutputPath,
   projectProvider,
@@ -88,7 +89,9 @@ export function apiDocsFile(opts?: ApiDocsFileOpts): Generator {
     emitsApiDocs: { subDir: apiDir },
     generate(ctx) {
       const provider = projectProvider(docsTemplateRoot(ctx));
-      const layout = ctx.config.outputLayout ?? "flat";
+      // Pages are keyed by package (DOCS_PAGE_LAYOUT), whatever the target's outputLayout:
+      // a page named by its short name alone collides with a same-named node elsewhere.
+      const layout = DOCS_PAGE_LAYOUT;
 
       // Whether each page links back to its model page: hosted elsewhere (`modelBaseUrl`),
       // or written to this same target by `docsFile()`, which the runner reports.

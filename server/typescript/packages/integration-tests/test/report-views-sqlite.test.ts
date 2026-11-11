@@ -34,7 +34,7 @@ import {
 import { buildProjectionViews } from "@metaobjectsdev/codegen-ts";
 import { MetaDataLoader, InMemoryStringSource, type MetaRoot } from "@metaobjectsdev/metadata";
 import { isInetResidue } from "../src/drift-residue.ts";
-import { loadMetadataDir } from "../src/load-metadata.ts";
+import { loadMetadataDirWithoutSchemas } from "../src/load-metadata.ts";
 import { CANONICAL_DIR } from "../src/paths.ts";
 
 /** The project setting `"naming": { "columns": "literal" }` (ADR-0058), set where the
@@ -148,7 +148,7 @@ describe("report views — canonical model on real SQLite", () => {
   let expected: SchemaSnapshot;
 
   beforeEach(async () => {
-    canonical = await loadMetadataDir(CANONICAL_DIR);
+    canonical = await loadMetadataDirWithoutSchemas(CANONICAL_DIR);
     ({ expected } = await migrate(canonical));
   });
 

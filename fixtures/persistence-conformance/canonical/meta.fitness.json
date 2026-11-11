@@ -517,6 +517,35 @@
         "@measures": ["entries", "total", "totalOrZero", "mean", "top", "flaggedShare", "perFlagged"],
         "children": [ { "source.rdb": { "@kind": "view", "@view": "v_entry_totals" } } ] } },
 
+      { "field.enum": {
+        "name": "PublishState", "abstract": true,
+        "@values": ["DRAFT", "PUBLISHED", "ARCHIVED"],
+        "@intValueMap": { "DRAFT": 0, "PUBLISHED": 5, "ARCHIVED": 9 } } },
+      { "object.entity": {
+        "name": "IntEnumArray",
+        "children": [
+          { "source.rdb": { "@table": "int_enum_arrays" } },
+          { "field.long": { "name": "id" } },
+          { "field.enum": { "name": "state", "extends": "PublishState" } },
+          { "field.enum": { "name": "history", "extends": "PublishState", "isArray": true } },
+          { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } } ] } },
+
+      { "object.entity": {
+        "name": "LedgerEntry",
+        "children": [
+          { "source.rdb": { "@table": "ledger_entries" } },
+          { "field.long": { "name": "id" } },
+          { "field.string": { "name": "memo", "@maxLength": 40 } },
+          { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } } ] } },
+
+      { "object.entity": {
+        "name": "ArchivedLedgerEntry",
+        "children": [
+          { "source.rdb": { "@table": "ledger_entries", "@schema": "archive" } },
+          { "field.long": { "name": "id" } },
+          { "field.string": { "name": "memo", "@maxLength": 40 } },
+          { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } } ] } },
+
       { "template.prompt": {
         "name": "coachNote",
         "@payloadRef": "ProgramBrief",

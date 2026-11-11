@@ -851,6 +851,31 @@ public class SpringNamesGeneratorTest extends SharedRegistryTestBase {
      * column, and the names artifact must carry each one as {@code <FIELD>_<MEMBER>_COLUMN}
      * holding exactly the column {@code meta migrate} creates, under every naming rule.
      */
+    /**
+     * The corpus's application-registered strategies (ADR-0058 Amendment 1), registered through
+     * {@link com.metaobjects.database.NamingStrategies} the way an application does, each
+     * delegating to the built-in it names. Idempotent.
+     */
+    static void registerCorpusStrategies(com.fasterxml.jackson.databind.JsonNode corpus) {
+        for (com.fasterxml.jackson.databind.JsonNode s : corpus.get("strategies")) {
+            String name = s.get("name").asText();
+            String prefix = s.has("prefix") ? s.get("prefix").asText() : "";
+            java.util.Set<String> upper = new java.util.HashSet<>();
+            if (s.has("upperCase")) for (com.fasterxml.jackson.databind.JsonNode u : s.get("upperCase")) upper.add(u.asText());
+            if ("columns".equals(s.get("for").asText())) {
+                com.metaobjects.database.NamingStrategies.NamingFunction inner =
+                    com.metaobjects.database.NamingStrategies.column(s.get("delegate").asText());
+                com.metaobjects.database.NamingStrategies.registerColumns(name,
+                    n -> upper.contains(n) ? n.toUpperCase(java.util.Locale.ROOT) : prefix + inner.apply(n));
+            } else {
+                com.metaobjects.database.NamingStrategies.NamingFunction inner =
+                    com.metaobjects.database.NamingStrategies.table(s.get("delegate").asText());
+                com.metaobjects.database.NamingStrategies.registerTables(name,
+                    n -> upper.contains(n) ? n.toUpperCase(java.util.Locale.ROOT) : prefix + inner.apply(n));
+            }
+        }
+    }
+
     @Test
     public void everyFlattenedColumnInTheNamingCorpusIsAConstant() throws IOException {
         Path dir = Path.of("").toAbsolutePath();
@@ -858,8 +883,10 @@ public class SpringNamesGeneratorTest extends SharedRegistryTestBase {
         assertNotNull("could not locate the repository fixtures/ directory", dir);
         Path corpus = dir.resolve("fixtures/naming-conformance/physical-names");
         String model = Files.readString(corpus.resolve("meta.naming.json"));
-        com.fasterxml.jackson.databind.JsonNode cases = new com.fasterxml.jackson.databind.ObjectMapper()
-            .readTree(corpus.resolve("cases.json").toFile()).get("cases");
+        com.fasterxml.jackson.databind.JsonNode corpusDoc = new com.fasterxml.jackson.databind.ObjectMapper()
+            .readTree(corpus.resolve("cases.json").toFile());
+        registerCorpusStrategies(corpusDoc);
+        com.fasterxml.jackson.databind.JsonNode cases = corpusDoc.get("cases");
         for (com.fasterxml.jackson.databind.JsonNode c : cases) {
             com.fasterxml.jackson.databind.JsonNode naming = c.get("naming");
             String columnsRule = naming != null && naming.has("columns") ? naming.get("columns").asText() : "snake_case";

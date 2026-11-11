@@ -52,8 +52,8 @@ fixtures/api-contract-conformance/
     └── filter-invalid-value.yaml   # uncoercible value → 400; the fourth envelope, previously ungated
 ```
 
-Beside the 31 core scenarios above sit nine **sub-corpora**, each a directory with its
-own `meta.json`, `seed.json`, `scenarios/` and `README.md` (90 scenarios in all, 121 with the
+Beside the 31 core scenarios above sit ten **sub-corpora**, each a directory with its
+own `meta.json`, `seed.json`, `scenarios/` and `README.md` (92 scenarios in all, 123 with the
 core):
 
 | Directory | Scenarios | Gates | Lanes |
@@ -63,6 +63,7 @@ core):
 | `jsonb/` | 5 | typed value-object columns, and the numbers inside them (a double stays a JSON number; a decimal is a canonical string, option A of the 1.1.0 review) | both |
 | `write-through/` | 2 | an entity that writes a table and reads a view | generated only |
 | `secret-fields/` | 2 | #484: a `@formExclude` or credential (`view.password`) field is ignored on create, PATCH and PUT, and a credential is never returned | generated only |
+| `enum-default/` | 2 | a create that omits a `field.enum` carrying `@default` stores the default (echo and GET by id), and a supplied member is kept | generated only |
 | `projection/` | 12 | a read-only `object.projection`: reads served, every write `405`; no declared identity means no `/{id}` route; a key not named `id` addresses the row; decimal and float filters. Its `docs-routes.json` pins the routes each port documents | generated only |
 | `report/` | 37 | a view-backed `object.report` (FR-044): list, filter, sort and paging on derived fields, `POST` is `405`, no `/{id}` route; a `@spine` report keeps a row with no facts, and a measure with `@default` filters and sorts as its default; a dimension over an array or a map is neither filterable nor sortable. Also carries `schema.postgres.sql`, the TypeScript-produced table and views the C# lane executes | generated only |
 | `decimal/` | 11 | `field.decimal` is an exact canonical string on the wire (ADR-0019 Amendment 1): read, filter, sort, write and a report over decimals. A scenario's `engines:` key is exact; the `-15` twins run on SQLite and D1 as well. Also carries `schema.postgres.sql` / `schema.sqlite.sql` / `schema.mysql.sql` | generated only |

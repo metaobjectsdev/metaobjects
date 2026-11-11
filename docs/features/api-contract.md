@@ -571,6 +571,16 @@ returns the column, its `report-export` output has no column for it, and it is n
 
 `fixtures/api-contract-conformance/secret-fields/` pins this in the generated lane of every port.
 
+## Defaults on create
+
+A create body may leave out a field that declares a literal `@default` (an enum member, a boolean, a
+number, a string). The stored row then holds the default, never `null` and never the type's zero value.
+Java and Kotlin fill it in the generated handler; TypeScript, C# and Python leave the column out of the
+INSERT, so the column default that `meta migrate` writes applies. A value the body does supply is
+kept.
+
+`fixtures/api-contract-conformance/enum-default/` pins this for an enum in the generated lane of every port.
+
 ## Read-only projections
 
 **All five ports serve an `object.projection` whose only source is a read-only

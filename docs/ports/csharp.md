@@ -387,10 +387,97 @@ The codegen emits:
   See [reporting](../features/reporting.md#how-a-report-is-served).
 - `AppDbContext.g.cs` — `DbSet<Author>`, projection `.ToView()`, `@storage` owned
   types via `OwnsOne` (single) / `OwnsMany(...).ToJson(...)` (`@isArray` array-of-VO),
-  enum-as-string via `HasConversion<string>()`.
+  enum-as-string via `HasConversion<string>()`. An int-backed enum (`@intValueMap`) gets a
+  converter pair that stores the declared integer and throws on a stored integer the map does
+  not describe, and on a write of a value it does not describe (a cast integer, say), rather
+  than storing another member's integer. On an `isArray` enum that pair is the element converter of an EF Core primitive
+  collection, so a Postgres column is `integer[]` and a SQLite or MySQL column is a JSON array
+  of numbers (`[5,0]`). A non-required int-backed enum array is an `IList<TEnum>?`, so a NULL
+  column reads back as null.
 - `AuthorRoutes.g.cs` — CRUD minimal-API endpoints.
 - `AuthorFilterAllowlist.g.cs` — the server-side filter/sort allowlist feeding the
   generated list handler.
+
+### Entity and DbContext generator options
+
+**Renaming a property.** A field's C# property is its PascalCased name. To spell some
+differently (an acronym, say), set one resolver on the config, `GenConfig.PropertyNaming`
+(`Func<MetaField, string>`, returning the name). The entity classes, the composite
+`[PrimaryKey(nameof(...))]`, every `AppDbContext` model line and the reverse finders all read it,
+so the declaration and every reference agree. The hooks `EntityGenerator.PropertyName` and
+`DbContextGenerator.PropertyName` default to it; a subclass that overrides one must override the
+other the same way. The routes generator and the filter runtime still use the PascalCased name.
+
+**Class attributes.** `EntityGenerator.EmitClassAttributes(sb, entity, className, kind, ctx)` is
+called for every class it emits (mapped entity, TPH subtype, abstract shape, value object), after
+the framework's own attributes and right before the declaration line. Override it to add an
+attribute without re-implementing `EmitClassHeader`.
+
+**One line at a time.** Each of these is a `protected virtual` hook whose default is the line it
+replaces; override it, call base, and adjust. On `EntityGenerator`: `ValueObjectMemberAttributes`
+(the `[JsonPropertyName]` before each value-object member), `ColumnAttributeArguments` (the
+arguments of a mapped property's `[Column(...)]`; none leaves the attribute out) and
+`TphDerivedTypeAttributes` (the `[JsonDerivedType]` lines on a TPH base). On `DbContextGenerator`,
+the head of the file: `ContextUsings` (the `using` lines), `ContextNamespace`, `ContextClassName`
+(default `AppDbContext`; `GenConfig.ContextTypeName` does not change it), `ContextBaseClass`,
+`ContextIsPartial`, `EmitContextConstructor` and `ContextMemberLines` (members after the
+constructor, such as a `partial void` declaration a `ContextTrailerLines` call implements). The
+file is `AppDbContext.g.cs` whatever the class is called, and the routes generator still names
+`AppDbContext`: rename the class and you keep the routes consistent yourself. `NamesGenerator.Render`
+emits one `<Entity>Names.g.cs`; a `null` from it emits none.
+
+**Reverse finders.** `<Entity>Queries.g.cs` takes the context as its first parameter, typed
+`GenConfig.ContextTypeName` (default `AppDbContext`). `new EntityGenerator { EmitsReverseFinders =
+false }` emits none, for a project that writes its own.
+
+**Scoping value objects.** `Include` scopes the entities and value objects an entry emits, but a
+value object an emitted entity points at is still emitted, so the output compiles. Set
+`ScopesValueObjectClosure = true` beside `Include` to drop those too, when you provide the type
+yourself.
+
+**What the context configures beyond the column types.** A single-column
+`identity.primary @generation: assigned` key is `ValueGeneratedNever()`, so EF always sends the
+caller's value, `0` included. An `identity.reference` relationship carries
+`.HasConstraintName(...)` from `@constraintName`, and `.HasPrincipalKey(...)` when `@references`
+names target fields other than the primary key. Under `EmitAbstractShapes` a concrete entity
+extends its abstract shape class, which carries no EF attributes, so the key, column names and
+`@maxLength` of the fields it inherits from there are configured in the context instead.
+A `@storage: flattened` value object pins each member to its flattened column; a value object
+nested inside it is one jsonb column holding the whole document (EF Core 8 cannot own a JSON
+column inside a table-split owned type).
+A field's `@default` is `HasDefaultValue(v).HasSentinel(v)` when it is a C# literal of the
+property's type (bool, string, number, enum member): EF then leaves the column out of an INSERT
+only when the value is the default anyway, so an explicit `false`, `0` or NULL is stored as set. A
+SQL expression (`now()`, anything function-like; a bare `now` is `now()`) or a timestamp, date or
+uuid literal is `HasDefaultValueSql(...)`, and only on a `@required` property, because EF cannot
+tell a deliberate NULL from "not supplied". A scalar or enum property starts at its literal
+`@default` (its C# initializer), so a new entity the app never touches holds the sentinel and the
+column default applies. A timestamp or uuid property has no C# initializer from its `@default`,
+so a new entity carries the CLR default and EF sends it.
+
+`identity.primary @sequenceStart` on a single-field `increment` key is the identity's START on
+Npgsql (a fresh database begins there). No start-only change ever restarts the sequence: Npgsql
+alone writes a start added as `RESTART WITH n`, a changed one as `RESTART WITH m`, and a removed one
+as `RESTART WITH 1`, each handing out ids live rows may hold. A Postgres context with an increment
+key gets `IdentityStartMigrationsSqlGenerator.g.cs`, which carries the rewrite: every start-only
+change is `ALTER TABLE … ALTER COLUMN … SET START WITH n` (a removed start is set back to the
+identity default), and the current value never moves. Register it after `UseNpgsql(...)`, wherever
+the context is configured — the app's registration (pooled or not), an
+`IDesignTimeDbContextFactory`, or the context's own `OnConfiguring`:
+
+```csharp
+services.AddDbContextPool<AppDbContext>(o => o.UseNpgsql(cs).UseIdentityStartMigrations());
+```
+
+It applies at both ends: the differ scaffolds the change as that SQL, so a migration added through
+it is safe wherever it runs, and the SQL generator rewrites a migration scaffolded without it. A
+context that declares a start refuses to build its model on Npgsql when the rewrite is not
+registered (an `InvalidOperationException` that names the call), so a missing registration fails at
+`dotnet ef migrations add`, never as a silent RESTART. The file references
+`Npgsql.EntityFrameworkCore.PostgreSQL` at compile time, so it (and the start in the model) is
+emitted only for a project whose `.metaobjects/config.json` names
+`"migrate": { "dialect": "postgres" }` (a self-hosted runner sets `GenConfig.Dialect`). Any other
+project gets neither, with a warning, and never needs the Npgsql package.
 
 ### Decimals and null members on the wire
 
@@ -560,7 +647,9 @@ Column names come from the project's `naming` setting in `.metaobjects/config.js
 database whose columns are named exactly like the fields declares
 `"naming": { "columns": "literal" }`; through 1.0 that was this port's default. One whose columns
 are the field names with the first letter upper-cased (`requestURL` → `RequestURL`) declares
-`"upperFirst"`. `dotnet meta gen`
+`"pascal"`. A host that needs its own rule (an acronym list, a prefix) registers it with
+`NamingStrategies.RegisterColumns(name, n => ...)` before it reads the config, and names it there;
+the stock `dotnet meta` tool knows only the built-ins. `dotnet meta gen`
 and `dotnet meta verify --codegen` both read the setting, so a plain run and the drift gate
 resolve the identical column strings; `--column-naming` is refused
 ([physical-naming.md](../features/migrations/physical-naming.md)). `verify --codegen` says so

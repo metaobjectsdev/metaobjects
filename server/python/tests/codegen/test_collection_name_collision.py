@@ -116,3 +116,48 @@ def test_raises_for_route_segment_twins(tmp_path: Path) -> None:
     msg = str(exc_info.value)
     assert ERR_COLLECTION_NAME_COLLISION in msg
     assert '"ApiKey"' in msg and '"APIKey"' in msg and "api_keys" in msg
+
+
+# fixtures/naming-conformance/'s shapeOnlyCases: an object that emits no collection (abstract,
+# or with no source) claims no collection name, so a same-named emitting entity in another
+# package is not a collision. crossPackageCollisionCases is the control.
+
+def _naming_corpus() -> dict:
+    return json.loads(_NAMING_CONFORMANCE_FIXTURE.read_text())
+
+
+def _packaged_objects(tmp_path: Path, *objects: dict) -> list:
+    """Each object in its own package (one file per package), declaring an ``id`` key."""
+    meta_dir = tmp_path / "packaged"
+    meta_dir.mkdir(parents=True, exist_ok=True)
+    for i, o in enumerate(objects):
+        node: dict = {"name": o["name"], "children": [
+            *([] if o.get("source") is False
+              else [{"source.rdb": {"@table": f"{o['package']}_{o['name'].lower()}"}}]),
+            {"field.long": {"name": "id"}},
+            {"identity.primary": {"@fields": "id"}},
+        ]}
+        if o.get("abstract") is True:
+            node["abstract"] = True
+        (meta_dir / f"meta.{i}.json").write_text(json.dumps(
+            {"metadata.root": {"package": o["package"], "children": [{"object.entity": node}]}}))
+    result = MetaDataLoader.from_directory(meta_dir)
+    assert result.errors == [], result.errors
+    return [c for c in result.root.own_children() if c.type == TYPE_OBJECT and isinstance(c, MetaObject)]
+
+
+@pytest.mark.parametrize("case", _naming_corpus()["shapeOnlyCases"], ids=lambda c: c["note"])
+def test_naming_conformance_an_object_that_emits_no_collection_claims_no_name(
+    tmp_path: Path, case: dict
+) -> None:
+    objects = _packaged_objects(tmp_path, case["shapeOnly"], case["emitting"])
+    # Both orders: the first-seen object owns a name, so order must not matter.
+    assert_no_collection_name_collisions(objects)
+    assert_no_collection_name_collisions(list(reversed(objects)))
+
+
+def test_naming_conformance_two_emitting_entities_in_two_packages_still_collide(tmp_path: Path) -> None:
+    for case in _naming_corpus()["crossPackageCollisionCases"]:
+        objects = _packaged_objects(tmp_path / case["collidesOn"], case["entityA"], case["entityB"])
+        with pytest.raises(ValueError, match=f'{ERR_COLLECTION_NAME_COLLISION}.*"{case["collidesOn"]}"'):
+            assert_no_collection_name_collisions(objects)

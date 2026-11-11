@@ -503,20 +503,15 @@ function renderTableComments(t: TableDescriptor): string[] {
 }
 
 /**
- * Start first, under the live name; then the rename. `START WITH` alone only records the
- * restart point, so the counter is moved up to the new start — never down, which could hand
- * out an id already in use — by `setval(..., false)` when it has not reached it.
+ * Start first, under the live name; then the rename. A changed start only records the new
+ * `START WITH`: the sequence is never restarted and its current value never moves, because
+ * live rows already hold the ids it handed out. `@sequenceStart` means the first value of a
+ * fresh sequence, the same in every port.
  */
 function renderAlterSequence(schema: string | undefined, sequence: string, toStart: number | undefined, toName: string | undefined): string {
   const seq = quoteQualified(sequence, schema);
-  const regclass = `'${seq.replace(/'/g, "''")}'`;
   return [
-    ...(toStart !== undefined
-      ? [
-        `ALTER SEQUENCE ${seq} START WITH ${toStart};`,
-        `SELECT setval(${regclass}, ${toStart}, false) FROM ${seq} WHERE last_value < ${toStart};`,
-      ]
-      : []),
+    ...(toStart !== undefined ? [`ALTER SEQUENCE ${seq} START WITH ${toStart};`] : []),
     ...(toName !== undefined ? [`ALTER SEQUENCE ${seq} RENAME TO ${quote(toName)};`] : []),
   ].join("\n");
 }

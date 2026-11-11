@@ -92,15 +92,25 @@ export function drizzleDriver(opts: DrizzleDriverOptions): DrizzleDriverPublic {
 // Internals
 // ---------------------------------------------------------------------------
 
-/** SQL table name → Drizzle table const. */
+/** Qualified SQL table name (`schema.table`, or `table` with no schema) → Drizzle table const. */
 type TableIndex = Map<string, AnyTable>;
+
+/** The key a relation is indexed and looked up under: its @schema (when it has one) and name. */
+function tableKey(name: string, schema: string | undefined): string {
+  return schema === undefined ? name : `${schema}.${name}`;
+}
+
+// Drizzle keeps a pgSchema(...)/mysqlSchema(...) table's schema under this symbol.
+const DRIZZLE_SCHEMA = Symbol.for("drizzle:Schema");
 
 function indexTables(schema: Record<string, unknown>): TableIndex {
   const index: TableIndex = new Map();
   for (const value of Object.values(schema)) {
     if (!isDrizzleTable(value)) continue;
     const tableName = getTableName(value as AnyTable);
-    if (typeof tableName === "string") index.set(tableName, value as AnyTable);
+    if (typeof tableName !== "string") continue;
+    const tableSchema = (value as Record<symbol, unknown>)[DRIZZLE_SCHEMA];
+    index.set(tableKey(tableName, typeof tableSchema === "string" ? tableSchema : undefined), value as AnyTable);
   }
   return index;
 }
@@ -122,11 +132,13 @@ function makeDrizzleDriver(
   tables: TableIndex,
   dialect: "sqlite" | "postgres" | "mysql",
 ): DrizzleDriverPublic {
-  function requireTable(name: string): AnyTable {
-    const t = tables.get(name);
+  // A relation's @schema selects the table on an engine that has schemas; SQLite has none.
+  function requireTable(name: string, schema?: string): AnyTable {
+    const key = tableKey(name, dialect === "sqlite" ? undefined : schema);
+    const t = tables.get(key);
     if (!t) {
       throw new Error(
-        `drizzleDriver: no table named '${name}' in the provided schema (known: ${[...tables.keys()].sort().join(", ") || "<none>"})`,
+        `drizzleDriver: no table named '${key}' in the provided schema (known: ${[...tables.keys()].sort().join(", ") || "<none>"})`,
       );
     }
     return t;
@@ -236,7 +248,7 @@ function makeDrizzleDriver(
     dialect,
 
     async selectOne(spec: SelectSpec): Promise<Row | null> {
-      const table = requireTable(spec.table);
+      const table = requireTable(spec.table, spec.schema);
       const selectArg = buildSelectMap(table, spec.columns);
       let q = db.select(selectArg).from(table);
       const w = applyWhere(table, spec.where, table);
@@ -249,7 +261,7 @@ function makeDrizzleDriver(
     },
 
     async selectMany(spec: SelectSpec): Promise<Row[]> {
-      const table = requireTable(spec.table);
+      const table = requireTable(spec.table, spec.schema);
       const selectArg = buildSelectMap(table, spec.columns);
       let q = db.select(selectArg).from(table);
       const w = applyWhere(table, spec.where, table);
@@ -262,7 +274,7 @@ function makeDrizzleDriver(
     },
 
     async count(spec: CountSpec): Promise<number> {
-      const table = requireTable(spec.table);
+      const table = requireTable(spec.table, spec.schema);
       let q = db.select({ c: drzCount() }).from(table);
       const w = applyWhere(table, spec.where, table);
       if (w !== undefined) q = q.where(w);
@@ -272,7 +284,7 @@ function makeDrizzleDriver(
     },
 
     async insert(spec: InsertSpec): Promise<Row> {
-      const table = requireTable(spec.table);
+      const table = requireTable(spec.table, spec.schema);
       try {
         if (dialect === "mysql") return await insertAndReadBack(table, spec.table, spec.values, spec.returning, spec.key);
         const result = await db
@@ -290,7 +302,7 @@ function makeDrizzleDriver(
     },
 
     async insertMany(spec: InsertManySpec): Promise<Row[]> {
-      const table = requireTable(spec.table);
+      const table = requireTable(spec.table, spec.schema);
       try {
         if (dialect === "mysql") {
           const out: Row[] = [];
@@ -311,7 +323,7 @@ function makeDrizzleDriver(
     },
 
     async update(spec: UpdateSpec): Promise<Row | null> {
-      const table = requireTable(spec.table);
+      const table = requireTable(spec.table, spec.schema);
       try {
         let q = db.update(table).set(toJsValues(table, spec.values));
         const w = applyWhere(table, spec.where, table);
@@ -335,7 +347,7 @@ function makeDrizzleDriver(
     },
 
     async updateMany(spec: UpdateManySpec): Promise<number> {
-      const table = requireTable(spec.table);
+      const table = requireTable(spec.table, spec.schema);
       try {
         let q = db.update(table).set(toJsValues(table, spec.values));
         const w = applyWhere(table, spec.where, table);
@@ -348,7 +360,7 @@ function makeDrizzleDriver(
     },
 
     async delete(spec: DeleteSpec): Promise<number> {
-      const table = requireTable(spec.table);
+      const table = requireTable(spec.table, spec.schema);
       try {
         let q = db.delete(table);
         const w = applyWhere(table, spec.where, table);
@@ -361,7 +373,7 @@ function makeDrizzleDriver(
     },
 
     async deleteMany(spec: DeleteManySpec): Promise<number> {
-      const table = requireTable(spec.table);
+      const table = requireTable(spec.table, spec.schema);
       try {
         let q = db.delete(table);
         const w = applyWhere(table, spec.where, table);

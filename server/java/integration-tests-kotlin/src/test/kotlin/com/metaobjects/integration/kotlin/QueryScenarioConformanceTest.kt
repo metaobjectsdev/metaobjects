@@ -44,9 +44,10 @@ internal class QueryScenarioConformanceTest {
          * FR-017 TPH (table-per-hierarchy) now lands in the Kotlin port — the single `auths`
          * Exposed [com.metaobjects.integration.kotlin.tables.AuthTable] plus the discriminator
          * inject/scope/project + op:create / expect-error dispatch in [QueryScenarioRunner] — so
-         * the `tph-*.yaml` scenarios run. No scenarios are currently deferred.
+         * the `tph-*.yaml` scenarios run. The one current deferral is port-wide, so it lives in
+         * [Scenarios.DEFERRED].
          */
-        private val DEFERRED_SCENARIOS = emptyMap<String, String>()
+        private val DEFERRED_SCENARIOS = Scenarios.DEFERRED
 
         /**
          * `-Dmetaobjects.scenarios=a,b` narrows a run to the named scenarios (one Postgres

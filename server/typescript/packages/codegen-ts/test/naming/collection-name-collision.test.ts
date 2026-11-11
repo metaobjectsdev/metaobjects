@@ -42,7 +42,7 @@ describe("assertNoCollectionNameCollisions", () => {
     // already-plural and stays "Addresses" — both land on the same collection name.
     const objects = await loadObjects([entity("Address"), entity("Addresses")]);
     expect(() => assertNoCollectionNameCollisions(objects)).toThrow(
-      new RegExp(`${ERR_COLLECTION_NAME_COLLISION}.*"Address".*"Addresses".*"Addresses"`),
+      new RegExp(`${ERR_COLLECTION_NAME_COLLISION}.*"acme::Address".*"acme::Addresses".*"Addresses"`),
     );
   });
 
@@ -109,7 +109,7 @@ describe("assertNoCollectionNameCollisions", () => {
   test("ApiKey and APIKey collide on the snake_cased route segment", async () => {
     const objects = await loadObjects([entity("ApiKey"), entity("APIKey")]);
     expect(() => assertNoCollectionNameCollisions(objects)).toThrow(
-      new RegExp(`${ERR_COLLECTION_NAME_COLLISION}.*"ApiKey".*"APIKey".*"api_keys"`),
+      new RegExp(`${ERR_COLLECTION_NAME_COLLISION}.*"acme::ApiKey".*"acme::APIKey".*"api_keys"`),
     );
   });
 
@@ -131,5 +131,67 @@ describe("assertNoCollectionNameCollisions", () => {
       const objects = await loadObjects([entity("ApiKey"), twin]);
       expect(() => assertNoCollectionNameCollisions(objects)).not.toThrow();
     }
+  });
+
+  // fixtures/naming-conformance/'s shapeOnlyCases: an object that emits no collection
+  // (abstract, or with no source.rdb) claims no collection name, so a same-named emitting
+  // entity in another package is not a collision. crossPackageCollisionCases is the control.
+  describe("across packages", () => {
+    type NamedObject = { package: string; name: string; abstract?: boolean; source?: boolean };
+    const corpus = JSON.parse(readFileSync(resolve(
+      dirname(fileURLToPath(import.meta.url)),
+      "..", "..", "..", "..", "..", "..",
+      "fixtures", "naming-conformance", "already-plural-pluralize.json",
+    ), "utf8")) as {
+      shapeOnlyCases: { shapeOnly: NamedObject; emitting: NamedObject; note: string }[];
+      crossPackageCollisionCases: { entityA: NamedObject; entityB: NamedObject; collidesOn: string }[];
+    };
+
+    /** Each object in its own package (one source per package), declaring an `id` key. */
+    async function packagedObjects(...objects: NamedObject[]): Promise<MetaObject[]> {
+      const res = await new MetaDataLoader().load(objects.map((o) => new InMemoryStringSource(JSON.stringify({
+        "metadata.root": { package: o.package, children: [{ "object.entity": {
+          name: o.name,
+          ...(o.abstract === true ? { abstract: true } : {}),
+          children: [
+            ...(o.source === false ? [] : [{ "source.rdb": { "@table": `${o.package}_${o.name.toLowerCase()}` } }]),
+            { "field.long": { name: "id" } },
+            { "identity.primary": { "@fields": "id" } },
+          ],
+        } }] },
+      }))));
+      expect(res.errors).toEqual([]);
+      return res.root.objects();
+    }
+
+    for (const c of corpus.shapeOnlyCases) {
+      test(`accepted: ${c.note}`, async () => {
+        // Both orders: the first-seen object owns a name, so order must not matter.
+        const forward = await packagedObjects(c.shapeOnly, c.emitting);
+        expect(() => assertNoCollectionNameCollisions(forward)).not.toThrow();
+        const reverse = await packagedObjects(c.emitting, c.shapeOnly);
+        expect(() => assertNoCollectionNameCollisions(reverse)).not.toThrow();
+      });
+    }
+
+    test("two emitting entities with one name in two packages share one module scope under the flat layout", async () => {
+      for (const c of corpus.crossPackageCollisionCases) {
+        const objects = await packagedObjects(c.entityA, c.entityB);
+        expect(() => assertNoCollectionNameCollisions(objects, { layout: "flat" })).toThrow(
+          new RegExp(`${ERR_COLLECTION_NAME_COLLISION}.*"${c.collidesOn}"`),
+        );
+      }
+    });
+
+    test("under the package layout their modules are two scopes, but one app still serves one route", async () => {
+      for (const c of corpus.crossPackageCollisionCases) {
+        const objects = await packagedObjects(c.entityA, c.entityB);
+        // The pluralized names live in two package modules; the REST segment is one path.
+        expect(() => assertNoCollectionNameCollisions(objects, { layout: "package" })).toThrow(
+          /REST collection segment "payers"/,
+        );
+        expect(() => assertNoCollectionNameCollisions(objects, { layout: "package", routes: false })).not.toThrow();
+      }
+    });
   });
 });

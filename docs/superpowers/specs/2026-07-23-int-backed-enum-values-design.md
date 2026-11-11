@@ -167,6 +167,18 @@ This is why `@intValueMap` is a map, not a second array parallel to `@values`.
   `error-enum-intvaluemap-array` (own map) and `error-enum-intvaluemap-array-inherited`
   (the canonical shared-enum shape).
 
+- **D7 amendment (2026-11-04) — the array form is supported; the load error is removed.**
+  D7's premise, that nothing needs the array form, turned out to be wrong. An adopter's scalar
+  integer-coded columns share an enum with array fields whose stored elements are the same
+  integers. Because both halves are read resolving, the map on the shared enum blocked every
+  one of those scalar columns too. The project rule is that a limit belongs only to the port
+  or database that has it, so identical refusal everywhere is not the goal. Every port now maps
+  elements wherever it stores an enum array (TypeScript on all engines, C# on all engines,
+  Python on Postgres). A port that stores no primitive array on an engine refuses the
+  int-backed form there at its codec, never writing symbols, and defers the scenario by name
+  in its own runner. The two error fixtures became the positive `enum-int-backed-array`
+  fixtures, and `roundtrip-int-enum-array` gates the runtime codecs.
+
 - **D8 — Migration safety: no auto-recast.** Adding `@intValueMap` to a *new* field (no
   existing column) is a normal create. Adding or removing `@intValueMap` on a field that
   **already has a table/column** is a backing-mode change — migrate-ts detects it in the
