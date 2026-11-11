@@ -960,8 +960,9 @@ function buildChecks(
     }
   }
   // Entity-scoped cross-field validators (comparison / requiredWhen / presentIff / atLeastOne).
+  // A cross-field validator always keeps its CHECK: it is enforced nowhere else, and the loader
+  // refuses @dbCheck: false on one (ERR_CROSS_FIELD_WITHOUT_CHECK).
   for (const v of entity.validators()) {
-    if (checkOptedOut(v)) continue;
     const check = crossFieldCheck(v, entity, tableName, strategy, dialect);
     if (check) checks.push(withDeclaredName(withCondition(check, v, entity, strategy, dialect), v));
   }

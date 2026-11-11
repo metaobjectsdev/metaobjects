@@ -80,9 +80,10 @@ public static class CheckConstraints
                 if (check is not null) checks.Add(Named(check, v));
             }
         }
+        // A cross-field validator always keeps its CHECK: it is enforced nowhere else, and the loader
+        // refuses @dbCheck: false on one (ERR_CROSS_FIELD_WITHOUT_CHECK).
         foreach (var v in entity.Validators())
         {
-            if (OptedOut(v)) continue;
             if (CrossFieldCheck(v, entity, table, strategy, dialect) is { } check)
                 checks.Add(Named(WithCondition(check, v, entity, strategy, dialect), v));
         }

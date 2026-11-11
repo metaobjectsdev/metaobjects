@@ -20,10 +20,10 @@
             { "field.timestamp": { "name": "startsAt" } },
             { "field.timestamp": { "name": "endsAt" } },
             { "identity.primary": { "name": "pk", "@fields": "id" } },
-            { "validator.comparison": { "name": "window", "@left": "startsAt", "@op": "lte", "@right": "endsAt", "@dbCheck": false } },
-            { "validator.requiredWhen": { "name": "clinicEmail", "@field": "email", "@when": "kind", "@equals": "clinic", "@dbCheck": false } },
-            { "validator.presentIff": { "name": "clinicStart", "@field": "startsAt", "@when": "kind", "@equals": "clinic", "@dbCheck": false } },
-            { "validator.atLeastOne": { "name": "contact", "@fields": ["email", "phone"], "@dbCheck": false } }
+            { "validator.comparison": { "name": "window", "@left": "startsAt", "@op": "lte", "@right": "endsAt", "@dbCheck": true } },
+            { "validator.requiredWhen": { "name": "clinicEmail", "@field": "email", "@when": "kind", "@equals": "clinic", "@dbCheck": true } },
+            { "validator.presentIff": { "name": "clinicStart", "@field": "startsAt", "@when": "kind", "@equals": "clinic", "@dbCheck": true } },
+            { "validator.atLeastOne": { "name": "contact", "@fields": ["email", "phone"], "@dbCheck": true } }
           ]
         }
       }

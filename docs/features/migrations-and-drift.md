@@ -424,16 +424,17 @@ attributes shape it, all database-only (no generated code reads them):
   declared name is always emitted, even where `migrate.checks.skipRedundant` (below) would leave
   it out.
 - **`@dbCheck: false`** leaves the CHECK out: `meta migrate`, `meta verify --db` and a generated
-  EF model declare none for that validator or enum (absent, `true`). It is per node, on the same
-  validators and on `field.enum`. Use it for a column whose legacy rows break the rule: a CHECK
-  added `NOT VALID` still refuses an `UPDATE` of such a row, whatever the update changes. The
-  generated app-level validation is unchanged, so `numeric`, `length` and `regex` still hold every
-  write and an enum's members still bound the property; a cross-field validator (`comparison`,
-  `requiredWhen`, `presentIff`, `atLeastOne`) is enforced only by its CHECK, so with `false` it is
-  enforced nowhere. A live CHECK the model no longer declares is proposed for dropping (under
-  `--allow drop-check` on Postgres). Declaring `@constraintName` too is refused
-  (`ERR_CONSTRAINT_NAME_WITHOUT_CHECK`): there is no CHECK for the name to name.
-  `migrate.checks.skipRedundant` (below) is independent: it only ever leaves more out.
+  EF model declare none for that validator or enum (absent, `true`). It is per node, on a
+  `numeric`, `length` or `regex` validator and on `field.enum`. Use it for a column whose legacy
+  rows break the rule: a CHECK added `NOT VALID` still refuses an `UPDATE` of such a row, whatever
+  the update changes. The generated app-level validation is unchanged, so the validator still holds
+  every write and an enum's members still bound the property. A cross-field validator
+  (`comparison`, `requiredWhen`, `presentIff`, `atLeastOne`) is enforced only by its CHECK, so
+  `false` on one is refused (`ERR_CROSS_FIELD_WITHOUT_CHECK`): remove the validator instead.
+  A live CHECK the model no longer declares is proposed for dropping (under `--allow drop-check`
+  on Postgres). Declaring `@constraintName` too is refused (`ERR_CONSTRAINT_NAME_WITHOUT_CHECK`):
+  there is no CHECK for the name to name. `migrate.checks.skipRedundant` (below) is independent:
+  it only ever leaves more out.
 - **`@condition`** on a cross-field validator (`comparison`, `requiredWhen`, `presentIff`,
   `atLeastOne`) is an expression, in the grammar `origin.computed` uses, over the entity's fields.
   The rule holds only where the condition does: the CHECK is `(NOT condition) OR (rule)`, with

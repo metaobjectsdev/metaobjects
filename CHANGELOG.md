@@ -26,15 +26,17 @@ vocabulary; upgrade every port together.
 - **`@dbCheck: false`: a validator or enum with no database CHECK (rc.20).** A CHECK-generating
   validator (`numeric`, `length`, `regex`, `comparison`, `requiredWhen`, `presentIff`,
   `atLeastOne`) or a `field.enum` takes an optional db-provider boolean `@dbCheck`, default `true`.
-  With `false`, `meta migrate`, `meta verify --db`, the Prisma schema's CHECKs and the C# EF
-  context's declared CHECKs leave that one node's CHECK out; every other CHECK on the table, and
-  `migrate.checks.skipRedundant`, are unchanged. It is for a column whose legacy rows break a rule:
-  a CHECK added `NOT VALID` still refuses an UPDATE of such a row. The generated app-level
-  validation is unchanged, so `numeric`, `length`, `regex` and an enum's members still hold every
-  write; a cross-field validator has no app-level enforcement, so with `false` it is enforced
-  nowhere. `@dbCheck: false` with `@constraintName` is refused at load in every port
-  (`ERR_CONSTRAINT_NAME_WITHOUT_CHECK`). Fixtures `fixtures/conformance/validator-db-check` and
-  `error-db-check-constraint-name`; the shared CHECK corpus (`fixtures/check-constraint-conformance`)
+  With `false` on a `numeric`, `length` or `regex` validator or a `field.enum`, `meta migrate`,
+  `meta verify --db`, the Prisma schema's CHECKs and the C# EF context's declared CHECKs leave that
+  one node's CHECK out; every other CHECK on the table, and `migrate.checks.skipRedundant`, are
+  unchanged. It is for a column whose legacy rows break a rule: a CHECK added `NOT VALID` still
+  refuses an UPDATE of such a row. The generated app-level validation is unchanged, so the
+  validator and an enum's members still hold every write. A cross-field validator is enforced only
+  by its CHECK, so `@dbCheck: false` on one is refused at load in every port
+  (`ERR_CROSS_FIELD_WITHOUT_CHECK`; remove the validator instead), and so is `@dbCheck: false` with
+  `@constraintName` (`ERR_CONSTRAINT_NAME_WITHOUT_CHECK`). Fixtures
+  `fixtures/conformance/validator-db-check`, `error-db-check-constraint-name` and
+  `error-db-check-cross-field`; the shared CHECK corpus (`fixtures/check-constraint-conformance`)
   pins the omissions for TypeScript and C#. **Upgrade note:** a live CHECK whose node now says
   `@dbCheck: false` is proposed for dropping by the next `meta migrate` (`--allow drop-check` on
   Postgres), and by the next EF migration a C# model scaffolds.

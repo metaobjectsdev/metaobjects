@@ -52,8 +52,7 @@
             { "validator.atLeastOne": { "name": "contact", "@fields": ["email", "phone"], "@max": 1 } },
             { "validator.atLeastOne": { "name": "anyContact", "@fields": ["phone", "fax"],
                 "@condition": { "op": "eq", "left": { "field": "level" }, "right": { "value": "HIGH" } } } },
-            { "validator.requiredWhen": { "name": "bandFax", "@field": "fax", "@when": "band", "@equals": "HIGH" } },
-            { "validator.comparison": { "name": "legacyWindow", "@left": "startsAt", "@op": "lt", "@right": "endsAt", "@dbCheck": false } }
+            { "validator.requiredWhen": { "name": "bandFax", "@field": "fax", "@when": "band", "@equals": "HIGH" } }
           ]
         }
       },

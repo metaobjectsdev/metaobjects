@@ -1,0 +1,26 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Visit",
+          "children": [
+            { "source.rdb": { "@table": "visits" } },
+            { "field.long": { "name": "id" } },
+            { "field.string": { "name": "kind" } },
+            { "field.string": { "name": "email" } },
+            { "field.string": { "name": "phone" } },
+            { "field.timestamp": { "name": "startsAt" } },
+            { "field.timestamp": { "name": "endsAt" } },
+            { "identity.primary": { "name": "pk", "@fields": "id" } },
+            { "validator.comparison": { "name": "window", "@left": "startsAt", "@op": "lte", "@right": "endsAt", "@dbCheck": false } },
+            { "validator.requiredWhen": { "name": "clinicEmail", "@field": "email", "@when": "kind", "@equals": "clinic", "@dbCheck": false } },
+            { "validator.presentIff": { "name": "clinicStart", "@field": "startsAt", "@when": "kind", "@equals": "clinic", "@dbCheck": false } },
+            { "validator.atLeastOne": { "name": "contact", "@fields": ["email", "phone"], "@dbCheck": false, "@constraintName": "visits_contact_ok" } }
+          ]
+        }
+      }
+    ]
+  }
+}

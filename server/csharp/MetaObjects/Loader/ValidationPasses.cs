@@ -2542,8 +2542,10 @@ public static partial class ValidationPasses
     // ---------------------------------------------------------------------------
     // @dbCheck: false (db provider) asks a CHECK-generating validator or a field.enum for no
     // database CHECK; @constraintName names that CHECK. Together there is nothing to name, so the
-    // node is refused (ERR_CONSTRAINT_NAME_WITHOUT_CHECK). Read RESOLVING (ADR-0039), reported on
-    // each node that declares either of the two itself. Mirrors TS validateDbCheck.
+    // node is refused (ERR_CONSTRAINT_NAME_WITHOUT_CHECK). A cross-field validator is enforced only
+    // by its CHECK, so @dbCheck: false on one is refused (ERR_CROSS_FIELD_WITHOUT_CHECK), the one
+    // error such a node gets. Read RESOLVING (ADR-0039), reported on each node that declares either
+    // of the two itself. Mirrors TS validateDbCheck.
     // ---------------------------------------------------------------------------
     public static IReadOnlyList<MetaError> ValidateDbCheck(MetaData root)
     {
@@ -2554,10 +2556,20 @@ public static partial class ValidationPasses
         {
             var checkedNode = (node.Type == TYPE_VALIDATOR && MetaObjects.Core.Validator.ValidatorConstants.CHECK_VALIDATOR_SUBTYPES.Contains(node.SubType))
                 || (node.Type == TYPE_FIELD && node.SubType == FIELD_SUBTYPE_ENUM);
-            if (checkedNode && (node.OwnAttr(dbCheck) is not null || node.OwnAttr(constraintName) is not null)
-                && node.Attr(dbCheck) is false && node.Attr(constraintName) is string { Length: > 0 } name)
+            var label = $"{node.Type}.{node.SubType} \"{(owner is null ? "" : owner + ".")}{node.Name}\"";
+            var declares = checkedNode && (node.OwnAttr(dbCheck) is not null || node.OwnAttr(constraintName) is not null);
+            if (declares && node.Attr(dbCheck) is false && node.Type == TYPE_VALIDATOR
+                && MetaObjects.Core.Validator.ValidatorConstants.CROSS_FIELD_VALIDATOR_SUBTYPES_FOR_DB_CHECK.Contains(node.SubType))
             {
-                var label = $"{node.Type}.{node.SubType} \"{(owner is null ? "" : owner + ".")}{node.Name}\"";
+                // A cross-field validator has no app-level enforcement: its CHECK is the rule.
+                errors.Add(new MetaError(
+                    $"{label} sets @dbCheck: false, but this validator is enforced only by its CHECK, so the rule would be " +
+                    "enforced nowhere. Remove the validator, or remove @dbCheck: false.",
+                    ErrorCode.ERR_CROSS_FIELD_WITHOUT_CHECK,
+                    Envelope: node.Source));
+            }
+            else if (declares && node.Attr(dbCheck) is false && node.Attr(constraintName) is string { Length: > 0 } name)
+            {
                 errors.Add(new MetaError(
                     $"{label} sets @dbCheck: false and @constraintName \"{name}\"; with no CHECK there is nothing for the name to name. " +
                     "Remove @constraintName, or remove @dbCheck: false.",

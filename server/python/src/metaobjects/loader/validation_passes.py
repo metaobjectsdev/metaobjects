@@ -3765,8 +3765,10 @@ def _validate_identity_sequence(root: MetaData, errors: list[MetaError]) -> None
 
 # @dbCheck: false (db provider) asks a CHECK-generating validator or a field.enum for no
 # database CHECK; @constraintName names that CHECK. Together there is nothing to name, so the
-# node is refused (ERR_CONSTRAINT_NAME_WITHOUT_CHECK). Read RESOLVING (ADR-0039), reported on
-# each node that declares either of the two itself. Mirrors TS validateDbCheck.
+# node is refused (ERR_CONSTRAINT_NAME_WITHOUT_CHECK). A cross-field validator is enforced only by
+# its CHECK, so @dbCheck: false on one is refused (ERR_CROSS_FIELD_WITHOUT_CHECK), the one error
+# such a node gets. Read RESOLVING (ADR-0039), reported on each node that declares either of the
+# two itself. Mirrors TS validateDbCheck.
 def _validate_db_check(root: MetaData, errors: list[MetaError]) -> None:
     from ..meta.core.field import field_constants as fc
     from ..meta.core.validator import validator_constants as vc
@@ -3786,8 +3788,20 @@ def _validate_db_check(root: MetaData, errors: list[MetaError]) -> None:
         declares = node.attr(vc.VALIDATOR_ATTR_DB_CHECK) is not None or node.attr(vc.VALIDATOR_ATTR_CONSTRAINT_NAME) is not None
         if checked and declares:
             name = node.get_meta_attr(vc.VALIDATOR_ATTR_CONSTRAINT_NAME)
-            if node.get_meta_attr(vc.VALIDATOR_ATTR_DB_CHECK) is False and isinstance(name, str) and name:
-                prefix = f"{owner}." if owner is not None else ""
+            off = node.get_meta_attr(vc.VALIDATOR_ATTR_DB_CHECK) is False
+            prefix = f"{owner}." if owner is not None else ""
+            if off and node.type == TYPE_VALIDATOR and node.sub_type in vc.CROSS_FIELD_VALIDATOR_SUBTYPES:
+                # A cross-field validator has no app-level enforcement: its CHECK is the rule.
+                errors.append(MetaError(
+                    code=ErrorCode.ERR_CROSS_FIELD_WITHOUT_CHECK,
+                    message=(
+                        f'{node.type}.{node.sub_type} "{prefix}{node.name}" sets @dbCheck: false, but this validator '
+                        "is enforced only by its CHECK, so the rule would be enforced nowhere. Remove the validator, "
+                        "or remove @dbCheck: false."
+                    ),
+                    envelope=node.source,
+                ))
+            elif off and isinstance(name, str) and name:
                 errors.append(MetaError(
                     code=ErrorCode.ERR_CONSTRAINT_NAME_WITHOUT_CHECK,
                     message=(

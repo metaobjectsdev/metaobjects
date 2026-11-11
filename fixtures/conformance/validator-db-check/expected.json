@@ -99,7 +99,7 @@
             {
               "validator.comparison": {
                 "name": "window",
-                "@dbCheck": false,
+                "@dbCheck": true,
                 "@left": "startsAt",
                 "@op": "lte",
                 "@right": "endsAt"
@@ -108,7 +108,7 @@
             {
               "validator.requiredWhen": {
                 "name": "clinicEmail",
-                "@dbCheck": false,
+                "@dbCheck": true,
                 "@equals": "clinic",
                 "@field": "email",
                 "@when": "kind"
@@ -117,7 +117,7 @@
             {
               "validator.presentIff": {
                 "name": "clinicStart",
-                "@dbCheck": false,
+                "@dbCheck": true,
                 "@equals": "clinic",
                 "@field": "startsAt",
                 "@when": "kind"
@@ -126,7 +126,7 @@
             {
               "validator.atLeastOne": {
                 "name": "contact",
-                "@dbCheck": false,
+                "@dbCheck": true,
                 "@fields": [
                   "email",
                   "phone"

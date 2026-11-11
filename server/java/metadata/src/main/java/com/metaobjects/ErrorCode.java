@@ -301,6 +301,8 @@ public enum ErrorCode {
     ERR_SEQUENCE_START_OUT_OF_RANGE,
     /** A CHECK-generating validator or field.enum sets @dbCheck: false and @constraintName. */
     ERR_CONSTRAINT_NAME_WITHOUT_CHECK,
+    /** A cross-field validator (enforced only by its CHECK) sets @dbCheck: false. */
+    ERR_CROSS_FIELD_WITHOUT_CHECK,
 
     /** @storage was set on a field that has no @objectRef. */
     ERR_STORAGE_WITHOUT_OBJECT_REF,

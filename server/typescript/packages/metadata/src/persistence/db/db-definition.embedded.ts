@@ -302,7 +302,7 @@ export const DB_DEFINITION: ProviderDefinition = {
           "name": "dbCheck",
           "min": 0,
           "max": 1,
-          "description": "false: this validator generates no database CHECK (meta migrate and a generated EF model leave it out). A numeric, length or regex validator is still enforced on every write by the generated app-level validators; a cross-field validator (comparison, requiredWhen, presentIff, atLeastOne) is enforced only by its CHECK, so on one of those false leaves the rule enforced nowhere. Absent: true. For a column whose legacy rows break the rule, which a CHECK would refuse on their next UPDATE even NOT VALID. Refused with @constraintName (ERR_CONSTRAINT_NAME_WITHOUT_CHECK). RDB-physical — contributed by the db provider."
+          "description": "false: this numeric, length or regex validator generates no database CHECK (meta migrate and a generated EF model leave it out); the generated app-level validators still enforce it on every write. Absent: true. A cross-field validator (comparison, requiredWhen, presentIff, atLeastOne) is enforced only by its CHECK, so false on one of those is refused (ERR_CROSS_FIELD_WITHOUT_CHECK). For a column whose legacy rows break the rule, which a CHECK would refuse on their next UPDATE even NOT VALID. Refused with @constraintName (ERR_CONSTRAINT_NAME_WITHOUT_CHECK). RDB-physical — contributed by the db provider."
         }
       ]
     },

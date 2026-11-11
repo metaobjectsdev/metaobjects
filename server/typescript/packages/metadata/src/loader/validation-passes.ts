@@ -2062,6 +2062,8 @@ export function validateIdentitySequence(root: MetaData): ParseError[] {
 // @dbCheck: false (db provider) asks a CHECK-generating validator or a field.enum for no
 // database CHECK; @constraintName names that CHECK. Together there is nothing to name, so the
 // node is refused (ERR_CONSTRAINT_NAME_WITHOUT_CHECK) rather than one of them silently ignored.
+// A cross-field validator is enforced only by its CHECK, so @dbCheck: false on one is refused
+// (ERR_CROSS_FIELD_WITHOUT_CHECK), and that is the one error such a node gets.
 // Read RESOLVING (ADR-0039), reported on each node that declares either of the two itself.
 // ---------------------------------------------------------------------------
 
@@ -2076,8 +2078,15 @@ export function validateDbCheck(root: MetaData): ParseError[] {
       || (node.type === TYPE_FIELD && node.subType === FIELD_SUBTYPE_ENUM);
     if (checked && (node.ownAttr(VALIDATOR_ATTR_DB_CHECK) !== undefined || node.ownAttr(VALIDATOR_ATTR_CONSTRAINT_NAME) !== undefined)) {
       const name = node.attr(VALIDATOR_ATTR_CONSTRAINT_NAME);
-      if (node.attr(VALIDATOR_ATTR_DB_CHECK) === false && typeof name === "string" && name.length > 0) {
-        const label = `${node.type}.${node.subType} "${owner !== undefined ? `${owner}.` : ""}${node.name}"`;
+      const label = `${node.type}.${node.subType} "${owner !== undefined ? `${owner}.` : ""}${node.name}"`;
+      if (node.attr(VALIDATOR_ATTR_DB_CHECK) === false && CROSS_FIELD_VALIDATOR_SUBTYPES.includes(node.subType)) {
+        // A cross-field validator has no app-level enforcement: its CHECK is the rule.
+        errors.push(new ParseError(
+          `${label} sets @dbCheck: false, but this validator is enforced only by its CHECK, so the rule would be ` +
+          `enforced nowhere. Remove the validator, or remove @dbCheck: false.`,
+          { code: "ERR_CROSS_FIELD_WITHOUT_CHECK", source: node.source },
+        ));
+      } else if (node.attr(VALIDATOR_ATTR_DB_CHECK) === false && typeof name === "string" && name.length > 0) {
         errors.push(new ParseError(
           `${label} sets @dbCheck: false and @constraintName "${name}"; with no CHECK there is nothing for the name to name. ` +
           `Remove @constraintName, or remove @dbCheck: false.`,
