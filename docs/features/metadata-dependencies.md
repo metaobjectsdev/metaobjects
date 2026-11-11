@@ -416,7 +416,7 @@ To take them on, name the dependency's package in `requirements.inherit`:
 // .metaobjects/config.json (consumer)
 {
   "dependencies": [{ "name": "acme-common", "npm": "@acme/common-model" }],
-  "requirements": { "inherit": ["acme::common"] }
+  "requirements": { "inherit": ["acme::common::**"] }
 }
 ```
 
@@ -429,9 +429,10 @@ as a new object there is.
 
 Three rules keep it predictable:
 
-- **A pattern must NAME the package.** `acme::common` or `acme::common::**` inherits it;
-  `**` alone names nothing and inherits nothing. This is the explicit-include rule
-  `scope.include` follows.
+- **A pattern must NAME the package.** `acme::common::**` (or a node pattern such as
+  `acme::common::Customers`) inherits `acme::common`; a bare `acme::common` names the
+  package `acme`, and `**` alone names nothing, so neither inherits it. The final segment
+  names a node, which is the explicit-include rule `scope.include` follows.
 - **It is a separate key from `scope.include`.** Naming a package in `scope.include`
   also generates code for it, which is not what taking on its requirements means.
   `scope.include` alone inherits nothing.
@@ -855,8 +856,9 @@ but **not** built yet — do not assume any of the following exists:
   so they exercise the full imported/selected/governed assertions like every
   other case. Six resolution cases also pin the ledger (`expectLedger`, `expectCoverageMeasured`):
   which requirements are the project's own and whether coverage is measured, asserted through
-  each port's requirement gate and its `requirement-tests` walk, in TypeScript, Python, Java and
-  C#. `transport-cases.json` beside it pins the `npm`, `python`, `maven` and `nuget` transports
+  each port's requirement gate in TypeScript, Python, Java and C#, and through the
+  `requirement-tests` walk in Java and C# (the TypeScript and Python generators' ledger filter
+  is pinned by their own unit tests). `transport-cases.json` beside it pins the `npm`, `python`, `maven` and `nuget` transports
   themselves (32 cases: packages laid out under a temp `node_modules`, on a temp
   Python import path, as a jar in a temp local Maven repository and as a package in a temp NuGet
   cache, the directory each resolves to, the exact lock `sync` writes, and

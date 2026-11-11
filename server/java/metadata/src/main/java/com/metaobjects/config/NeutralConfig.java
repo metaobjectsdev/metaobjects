@@ -478,7 +478,6 @@ public final class NeutralConfig {
         return stringArray(include, "scope.include", origin);
     }
 
-    /** {@code migrate.scope}, or {@code null} when absent; every other {@code migrate} key is ignored. */
     /**
      * FR-023 — {@code requirements.inherit}. Refused like {@code naming}: an unknown key inside
      * {@code requirements} would otherwise be a misspelt {@code inherit} that silently leaves the
@@ -498,6 +497,7 @@ public final class NeutralConfig {
         return stringArray(inherit, "requirements.inherit", origin);
     }
 
+    /** {@code migrate.scope}, or {@code null} when absent; every other {@code migrate} key is ignored. */
     private static List<String> parseMigrateScope(JsonElement migrate, String origin) {
         if (migrate == null || migrate.isJsonNull()) return null;
         if (!migrate.isJsonObject()) throw bad(origin + ": \"migrate\" must be an object");
