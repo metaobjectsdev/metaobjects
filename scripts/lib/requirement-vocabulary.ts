@@ -93,7 +93,7 @@ export interface Entry { key: string; attrs: Set<string> }
  * `expected-registry.json` is the cross-port contract, `spec/metamodel/*.json` is what
  * the providers declare, and the gap is exactly `metadata.root`, which has no spec file.
  * (The 13 generic `view.*` controls were once carved out of the manifest;
- * them back as kind-1 vocabulary, so both artifacts now carry them.) A carve-out from the
+ * they are back as kind-1 vocabulary, so both artifacts now carry them.) A carve-out from the
  * cross-port manifest is a statement about portability, not a licence to leave
  * vocabulary unpromised.
  *
