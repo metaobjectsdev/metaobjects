@@ -121,6 +121,11 @@ are the `--format text` labels. In `--format json` or `toon` the same row carrie
 - A copy with lines of its own is an intentional customization. Check only how far behind
   it is.
 
+Count lines for the Phase 0 total: lines in copies proven unmodified, with the
+`codegen/runtime/` files they reach, over all lines the project owns under `codegen/`
+(`generators/`, `runtime/`, and the `templates/` modules an eject copies).
+`meta eject --undo` removes every identical copy and prints the config edit.
+
 **`entity`, `routes` and `routes-hono` own more than the generator file.** Ejecting one
 also copies the HTTP adapter its output imports into `codegen/runtime/`, and a route fix
 is often made there with the generator file left untouched. Read the state of those files

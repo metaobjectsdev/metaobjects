@@ -80,6 +80,25 @@ the same way — a `module:symbol` entry in a target's `generators` in `metaobje
 reading the model through `metaobjects.codegen.model_walk`. (`--provider module:symbol`
 registers **metamodel vocabulary**, not a generator — do not read it as one.)
 
+**Audit the owned copies first.** A copy exists to carry a change; one that carries none is
+duplication that falls behind the reference.
+
+```bash
+metaobjects gen --list      # the catalog, each owned copy marked
+```
+
+An owned row ends `[owned — identical]` or `[owned — DIFFERS: N behind, M of your own]`, and
+a generator that reads a `codegen/runtime/` module (`routes`: `filter_parser`,
+`constraint_errors`) prints an indented `runtime <path> [<status>]` line per companion. Only
+`identical`, with every companion identical too, proves a copy unmodified; that row is a
+**finding**: point the `metaobjects.config.yaml` entry back at the stock name and remove the
+copy (`metaobjects eject --undo` removes every identical copy and prints the config edit).
+`DIFFERS` with `0 of your own` rules out added lines, not removed ones: confirm from
+`git log -p` on the copy that nothing changed after the eject, else report it as **possibly
+customized: check its history**. A copy with lines of its own, or an edited companion, is a
+customization; check only how far behind it is. Count lines for the Phase 0 total: lines in
+copies proven unmodified, over all lines under `codegen/generators/` and `codegen/runtime/`.
+
 **A finding of the form "the built-ins do not emit the shape this project needs", or a
 hand-written layer the model fully describes, resolves to a generator the project writes**
 (ADR-0034 Amendment 4), or to a declarative template (a target's `templateSpec: <json>`,

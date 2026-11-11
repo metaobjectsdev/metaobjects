@@ -3,7 +3,7 @@
 ## Contents
 - Census scope
 - Keeping the result in place
-- Anti-pattern list
+- Anti-pattern list (includes the unlinked-payload ratio)
 - Template-text duplication
 
 **The census covers EVERY module**, not only the application: test harnesses, simulators,
@@ -26,6 +26,24 @@ format-built argument at the project's own LLM request call sites.
   **sourceless `object.projection`** carrying those origins (#210 — assembly origins on an
   `object.value` fail load with `ERR_SUBTYPE_RULE_VIOLATION`; `@payloadRef` accepts the sourceless
   projection).
+- **Unlinked payload.** A declared payload shape is necessary, not sufficient: the check above
+  asks whether the payload IS a shape, this one asks where its fields COME FROM. For each object
+  a `@payloadRef` names, class every field:
+  - **LINKED** — a dotted `extends: Entity.field` (for example `"extends": "Customer.email"`),
+    or an origin that resolves to an entity field (`origin.passthrough` with
+    `@from: Customer.email`, or an `aggregate` / `first` origin whose `@of` names one).
+  - **CALLER-SUPPLIED** — no entity owns the value (the user's question, a run-time setting, a
+    date the caller computes). Say why for each; "the caller fills it" is not a reason when the
+    caller reads it off an entity.
+  - **UNLINKED COPY** — declared as a free-standing field, while the call site fills it from an
+    entity property (`payload.email = customer.email`, `email=customer.email`).
+  Report `linked / (linked + unlinked copies)` per payload and in total. Each unlinked copy is a
+  finding (`unlinked-payload-field`): renaming or re-typing the entity field will not fail
+  `verify --templates`, because the payload declares its own copy and the template still
+  matches that copy. Remedy: replace the field with `extends: Entity.field` (or a passthrough
+  origin on a sourceless projection). The `parity_gate` is a scratch-copy proof: rename the
+  entity field in a throwaway copy of the metadata and confirm the project's verify now fails,
+  where before the change it passed.
 - Silent-degradation hack (`try/except KeyError` or `?? ''` around formatting) — flag every instance.
 - Hand-rolled output parsing (regex / XML / ad-hoc JSON) vs a declared **responding
   `template.prompt`** (one carrying `@responseRef`) + generated `parse*` / `safeParse*` /

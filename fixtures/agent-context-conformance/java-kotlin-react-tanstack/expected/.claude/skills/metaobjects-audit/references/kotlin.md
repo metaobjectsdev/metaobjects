@@ -77,11 +77,30 @@ The active generator list is declared in `pom.xml` under the plugin `<configurat
 
 ## Owned generators
 
-Kotlin does not scaffold-and-own generators — they are provided by
-`metaobjects-codegen-kotlin` and wired by FQ class name in `pom.xml`. There is no
-analog to the TS `codegen/generators/*.ts` pattern here.
+Stock generators come from `metaobjects-codegen-kotlin` and are wired by fully qualified
+class name in `pom.xml`. `mvn metaobjects:eject -Dnames=<a,b> -Dport=kotlin` copies one
+into a separate `codegen/` Maven module under the project's own package, and `pom.xml` then
+names the copy.
 
-Kotlin does, however, have **both** authoring paths — it shares the JVM engine — so a
+**Audit the owned copies first.** A copy exists to carry a change; one that carries none is
+duplication that falls behind the reference.
+
+```bash
+mvn metaobjects:eject -Dlist      # the catalog, each owned copy marked
+```
+
+Each owned row is marked `[owned — identical]` or `[owned — DIFFERS: N behind, M of your
+own]`, and a generator copied with companion classes adds `; differing: <files>`. Only
+`identical` proves a copy unmodified; that row is a **finding**: point the `pom.xml` entry
+back at the stock class and remove the copy (`mvn metaobjects:eject -Dundo=true` removes
+every identical copy and prints the `pom.xml` edit). `DIFFERS` with `0 of your own` rules
+out added lines, not removed ones: confirm from `git log -p` on the copy that nothing
+changed after the eject, else report it as **possibly customized: check its history**. A
+copy with lines of its own is a customization; check only how far behind it is. Count lines
+for the Phase 0 total: lines in copies proven unmodified, over all lines under `codegen/`
+that eject wrote or the project wrote.
+
+Kotlin also has **both** authoring paths — it shares the JVM engine — so a
 project needing a shape the built-ins do not emit has two legitimate answers and neither
 is a finding on its own: a **programmatic** generator (implement
 `com.metaobjects.generator.Generator`, name the class in a `<generator>` element), or a

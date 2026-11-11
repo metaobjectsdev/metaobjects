@@ -11,6 +11,7 @@ what a green run already proves.
 
 ## Contents
 - What verify has already proven (do not re-check by hand)
+- Currency checks — run these before sampling
 - What only a human or an agent reading the code can catch
 - Scope — do NOT flag these as defects
 - Reporting
@@ -54,12 +55,46 @@ Three limits, and each puts something back on your list:
 `title` is deliberately NOT flagged as an inert slot; it is chartered as the entry's label and
 is rendered (see item 6). Do not report a populated `title` as a defect.
 
+## Currency checks — run these before sampling
+
+A green gate proves the ledger's links resolve, not that the ledger keeps up with the code.
+These three checks measure that, and the first one chooses the sample for item 1 below.
+
+**(a) Ledger stale.** From git history, take the commits that add a feature (a `feat:` /
+`feat(...)` subject under Conventional Commits; otherwise merged feature branches or PRs
+labelled as features) over the last six months or the last 50 such commits, whichever is
+fewer. Report two numbers: the share of those commits that also change requirement metadata
+(any file holding `requirement.*` nodes), and the count of feature commits since the most
+recent change to that metadata. A share **under half**, or **more than ten** feature commits
+since the last ledger change, is the finding `ledger-stale`, stating both numbers. The
+feature commits that did not touch the ledger are the sample for item 1: read what each one
+built and check that a requirement says so with a true status.
+
+**(b) Nothing implements a live claim.** Run the project's verify with the strict switch:
+`meta verify --require-implementers`, `metaobjects verify --require-implementers`,
+`mvn metaobjects:verify -Dmeta.verify.requireImplementers=true` or
+`dotnet meta verify --require-implementers` (all ports also read
+`META_REQUIRE_IMPLEMENTERS=1`). Each `WARN_REQUIREMENT_NOTHING_IMPLEMENTS` on a `live` entry
+is a finding (`live-claim-unimplemented`) naming the entry. State whether the project's own
+gate passes the switch; if it does not and the ledger has no such entries, recommend adding
+it so the ledger cannot fall behind again.
+
+**(c) Live claim, unwired implementer.** For each `@implementedBy` target of a `live` entry,
+find the generated code that target produces and confirm hand-written code imports or calls
+it. A live claim whose implementer is generated code nothing uses is the finding
+`live-claim-unwired-implementer`: the claim resolves, so verify is satisfied, but the
+capability is not reachable. Before raising it, rule out a runtime use: code that reaches the
+entity through the runtime `ObjectManager` (or a metadata-driven admin or tool registry)
+uses it without importing anything generated, so search for the entity's name in those calls
+too.
+
 ## What only a human or an agent reading the code can catch
 
 **1. Statuses that are false.** The highest-value finding in the whole dimension. A
 requirement marked `live` whose implementation was gutted; one marked `partial` that is now
 complete; one marked `planned` that was quietly built months ago. Sample the claims
-and read the nodes. `status` is the only payload with controlled evidence behind it — the
+and read the nodes, starting with the feature commits currency check (a) found outside the
+ledger. `status` is the only payload with controlled evidence behind it — the
 resurrection protection rides entirely on it being true.
 
 **2. Non-violable statements.** Every requirement must state what breaking it looks like.

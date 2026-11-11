@@ -22,7 +22,9 @@ The full hunt for each axis of Phase 1b (Partial / Deep path). Each axis runs in
   grids/forms/filters vs `layout.dataGrid` / form generators / filter-allowlist.
 - [ ] **C. Drift hotspot — validators, mappers, runtime models.** Hand validators / DTO-mappers /
   dataclasses shadowing a generated shape. Diff field-by-field; the divergence is the bug.
-- [ ] **D. Prompt pillar.** Every LLM prompt-construction site (see `prompt-anti-patterns.md`).
+- [ ] **D. Prompt pillar.** Every LLM prompt-construction site (see `prompt-anti-patterns.md`),
+  including the **unlinked payload** count: for each `@payloadRef` object, how many of its
+  fields are linked to the entity field they copy.
 - [ ] **E. Owned generators & scaffold-and-own** (see "Owned-codegen & scaffold-and-own assessment" in `SKILL.md`).
 - [ ] **E2. Capability ledger — `requirement.*`** (see `references/requirements.md` and the
   Requirement axis of the capability checklist). The one axis whose hunt is hand-written
@@ -34,6 +36,9 @@ The full hunt for each axis of Phase 1b (Partial / Deep path). Each axis runs in
   design, and a real estate reports most of itself unclaimed on day one). Score the prose
   it would replace, and prefer ONE concrete claim an author can check over a
   whole-estate migration.
+  Where a ledger exists, run the three **currency checks** in `references/requirements.md`
+  (ledger stale, `--require-implementers`, live claim with an unwired implementer) before
+  sampling statuses.
   **First establish the estate LOADS.** An older ledger fails the load outright, so
   `meta verify` never runs and everything in `references/requirements.md` is unavailable:
   `@violation` and `@verifiedBy` were retired in **0.24.0** (no deprecation shim — ADR-0023
@@ -53,6 +58,52 @@ The full hunt for each axis of Phase 1b (Partial / Deep path). Each axis runs in
   subverbs (`--codegen` / `--templates` / `--db`)? Committed-codegen freshness gate?
   Advisories heeded? Routine `--no-verify` bypass? Loader `ERR_*` / warnings addressed?
   Parse the stable `code` field, not message text (ADR-0009).
+  **No CI means NO, whatever local hooks exist.** A git hook is not part of the clone: it
+  counts only when a tracked setup step installs it (a `prepare` / `postinstall` script, a
+  `core.hooksPath` set by a committed setup script, a hook manager declared in the
+  project's dependencies). An untracked `.git/hooks/pre-push` on one machine is not a gate.
+  A project with no CI workflow and no tracked hook installer answers the Binary CI drift
+  gate **NO**, and that is a **Tier 1 finding** whose `next_command` is the snippet below
+  for the project's port, ready to paste.
+
+  | Port | Verify commands for the snippet (one per subverb the project's artifacts need) |
+  |---|---|
+  | TypeScript | `npx meta verify --codegen --templates`; add `npx meta verify --db` against a provisioned database |
+  | Python | `metaobjects verify --codegen` and `metaobjects verify --templates` |
+  | Java / Kotlin | `mvn -B metaobjects:verify -Dmeta.verify.mode=codegen` and `-Dmeta.verify.mode=templates` |
+  | C# | `dotnet meta verify --codegen` and `dotnet meta verify --templates` |
+
+  The snippet is one CI job that checks out the repo, installs the toolchain and runs those
+  commands with nothing after them, for example GitHub Actions steps
+  `- run: npx meta verify --codegen --templates`. Where the project has no CI host, it is a
+  tracked `pre-push` hook that runs the same commands plus the tracked setup line that
+  installs it. Schema drift (`--db`) runs through the Node `meta` CLI in every port.
+  **Does it block?** Wired is not blocking. A gate that runs and is ignored scores the same as
+  no gate, so answer all three before scoring this axis:
+  - **(a) The exit code propagates.** Search CI files, package scripts, Makefiles, shell
+    scripts and build files on every path that runs verify for anything that swallows its
+    failure: `|| true`, `|| echo`, `; exit 0`, `continue-on-error: true`, `set +e`,
+    `allow_failure: true`, `ignore_errors`, a step or job marked optional or non-required,
+    a Maven `testFailureIgnore` / `failOnError=false` style switch, an MSBuild
+    `ContinueOnError`, a `-Dmeta.lax=true` or other option that turns a verify failure into a
+    warning, and verify output piped into a command whose exit code is the one that counts
+    (`meta verify | tee log` without `pipefail`). Each one is a finding naming the file and
+    line.
+  - **(b) It is green now.** Run the project's own verify command, the exact one its gate
+    runs, and record the exit code and the error count. A non-zero exit the project tolerates
+    ("known errors", a baseline file, a count it compares against) is a finding that states
+    the count and recommends a **ratchet**: the gate stores today's count and fails when it
+    rises, so the number can only fall (see the CI ratchet gate in `metaobjects-verify`). A
+    tolerated count with no ratchet is a gate that will absorb every new error.
+  - **(c) Every route to production passes it.** List each deploy entry point: CI deploy
+    jobs, release workflows, deploy scripts, `Makefile` / package-script deploy targets, a
+    hosting platform's build command, a manual `deploy.sh`. Flag each one that ships without
+    verify having passed on the same commit (a deploy job that does not depend on the verify
+    job, a script that builds and pushes directly, a `skip-checks` / `--no-verify` input).
+  Score the gate **BLOCKING** (verify runs on every route to production and a failure stops
+  it), **RUNS BUT DOES NOT BLOCK** (it runs somewhere, but (a), (b) or (c) failed) or
+  **ABSENT**. Only **BLOCKING** passes the drift-gate pillar's tier and answers YES on the
+  Binary CI drift gate; report the other two as **NO** and name which of (a), (b), (c) failed.
   **Is any advisory half switched OFF?** A gate can be wired, green, and muted. The
   requirements authoring lint is advisory and mutable — `--no-requirement-lint` or
   `META_NO_REQUIREMENT_LINT=1` silences it while the gate above it still runs and can still
@@ -96,9 +147,24 @@ The full hunt for each axis of Phase 1b (Partial / Deep path). Each axis runs in
     code imports: drop the generator rather than generate into the void.
   - **Wrong target / duplicate output** — the same logical artifact emitted to two
     places (a mis-set per-target `outDir`), one of which is orphaned.
+  - **Consumed / emitted, per generator kind.** For each generator kind (entity, routes,
+    query hooks, grid, form, and so on) report `consumed / emitted` files, where consumed is
+    confirmed by an import or reference from hand-written code, not by the file existing.
+  - **Generated and bypassed.** Where a kind is under half consumed and axis B found a
+    hand-written equivalent for the same entity (a hand-built admin page, form or grid
+    beside the unused generated one), raise ONE finding, `generated-and-bypassed`, that
+    names both files. This is not the same as dead output: the project needed the surface
+    and built it again by hand, so the generated one is a second, unused source of truth.
+    The app chooses per entity: **use the generated artifact** (customising the owned
+    generator until it fits, then deleting the hand-written page after a parity gate), or
+    **filter it out** with the generator's `filter` and record the hand-written page as
+    ACCEPTABLE with a stated reason. Emitted and unused is not an end state: the finding
+    closes only when each entity is on one side or the other.
   Recommend generating ONLY what is consumed — decide per generator: drop the ones
   whose whole output class nothing imports, and narrow the ones that over-emit with
-  their `filter`. A smaller, fully-consumed generated surface beats a large one with
+  their `filter`. Dropping is the remedy only when no hand-written equivalent exists;
+  where one does, the finding is `generated-and-bypassed` above. A smaller,
+  fully-consumed generated surface beats a large one with
   dead files (which also make the leverage ratio lie; discount them from the census).
 - [ ] **G. Runtime-contract anti-patterns.** Module-global `db` vs context-as-parameter
   (ADR-0008); wire-canonicalization in the query path vs native in-process return types
