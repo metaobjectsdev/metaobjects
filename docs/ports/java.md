@@ -202,7 +202,8 @@ directory). `meta deps sync` (Node) is the only writer of the snapshot and `deps
 the Maven build reads them offline and refuses a stale or hand-edited snapshot with
 `ERR_DEPENDENCY_SNAPSHOT_STALE`. Your own entities can `extends` and reference the imported
 ones; the generators emit nothing for an imported object unless `scope.include` names its
-package, and a new top-level node declared into a package a dependency owns fails with
+package, an imported requirement counts toward the gate only when `requirements.inherit` names
+its package, and a new top-level node declared into a package a dependency owns fails with
 `ERR_DEPENDENCY_PACKAGE_NOT_OWNED`. Kotlin builds inherit all of this. See
 [`metadata-dependencies.md`](../features/metadata-dependencies.md).
 
@@ -802,7 +803,8 @@ Wire it like any generator:
 
 It writes the artifact and the manifest with the same bytes as the TypeScript `sharedModelFile()`:
 the shared corpus (`fixtures/shared-model-conformance/`) is the gate. The version comes from the
-module's `<version>` unless you pass `version`. Requirement and template nodes are never published.
+module's `<version>` unless you pass `version`. `requirement.*` nodes are published only when you pass
+`<requirements>true</requirements>` (default off); `template.*` nodes are never published.
 Moving the artifact into a registry, and recording a consumer's snapshot and lock, is the Node
 `meta deps sync`'s job; this generator only produces the files.
 
