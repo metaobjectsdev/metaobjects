@@ -56,6 +56,8 @@ const DEFAULT_PROVIDERS = [
 	"metaobjects-documentation",
 	"metaobjects-prompt",
 	"metaobjects-ui",
+	// View.textarea @rows and the view.image attrs are cross-port vocabulary.
+	"metaobjects-ui-web",
 ];
 
 export interface Fixture {

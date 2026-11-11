@@ -73,7 +73,8 @@ public sealed record AttrSchema(
     string? Rules = null,
     string? Example = null,
     string? WhenToUse = null,
-    IReadOnlyList<string>? Ports = null);
+    IReadOnlyList<string>? Ports = null,
+    IReadOnlyList<string>? ImplementedIn = null);
 
 // ---------------------------------------------------------------------------
 // TypeDefinition
@@ -106,6 +107,13 @@ public sealed class TypeDefinition
     public string? Example { get; }
     public string? WhenToUse { get; }
     public IReadOnlyList<string> Parents { get; }
+
+    /// <summary>
+    /// The ports that implement this type so far (<c>["typescript"]</c>), when
+    /// the others have not yet. Cross-port vocabulary: every port registers it and loads it
+    /// strictly. Empty = every port implements it. Sourced from the embedded spec.
+    /// </summary>
+    public IReadOnlyList<string> ImplementedIn { get; internal set; } = [];
 
     /// <summary>
     /// Max children of this (type, subType) per parent. 0 = unbounded (the default);
@@ -760,8 +768,10 @@ public sealed class TypeRegistry
                         Rules = a.Rules,
                         Example = a.Example,
                         WhenToUse = a.WhenToUse,
-                        // The ports that act on a language-specific attr.
+                        // The ports that act on a language-specific attr (kind 2),
+                        // and the ports that implement a cross-port attr so far (kind 1).
                         Ports = a.Ports,
+                        ImplementedIn = a.ImplementedIn,
                     };
             }).ToList();
 
@@ -778,6 +788,8 @@ public sealed class TypeRegistry
                 def.Parents,
                 def.MaxOccurs,
                 def.DefaultName));
+            // From the spec, which is its only source.
+            _defs[key].ImplementedIn = typeDoc?.ImplementedIn ?? [];
         }
 
         // Common-attr descriptions from the universal *.* documentation entry.
@@ -824,6 +836,7 @@ public sealed class TypeRegistry
     {
         rebuilt.References = source.References;
         rebuilt.Validate = source.Validate;
+        rebuilt.ImplementedIn = source.ImplementedIn;
         return rebuilt;
     }
 

@@ -46,6 +46,8 @@ class AttrSchema:
     when_to_use: str | None = None
     # The ports that act on a language-specific attr (``("csharp",)``); None = every port.
     ports: tuple[str, ...] | None = None
+    # The ports that implement this cross-port attr so far (``("java",)``); None = every port.
+    implemented_in: tuple[str, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -87,6 +89,9 @@ class TypeDefinition:
     example: str | None = None
     when_to_use: str | None = None
     parents: list[str] = field(default_factory=list)
+    # The ports that implement this cross-port type so far (``("typescript",)``);
+    # None = every port. Sourced from the embedded spec.
+    implemented_in: tuple[str, ...] | None = None
     # Max children of this type.subType per parent (1 = singleton). Loader-enforced.
     max_occurs: int | None = None
     # Default name for a singleton (max_occurs==1) child declared with no name.

@@ -1,0 +1,108 @@
+{
+  "metadata.root": {
+    "package": "acme::catalog",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Product",
+          "@object": "com.acme.catalog.Product",
+          "@objectAdapter": "com.acme.catalog.ProductAdapter",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "products"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "sku"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "sku",
+                "@of": "Product.sku"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "products",
+                "@agg": "count",
+                "@of": "Product.id"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "Price",
+          "@object": "com.acme.catalog.Price",
+          "@objectAdapter": "com.acme.catalog.PriceAdapter",
+          "children": [
+            {
+              "field.string": {
+                "name": "currency"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "ProductSummary",
+          "@object": "com.acme.catalog.ProductSummary",
+          "@objectAdapter": "com.acme.catalog.ProductSummaryAdapter",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_product_summary"
+              }
+            },
+            {
+              "field.string": {
+                "name": "sku"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.report": {
+          "name": "ProductCounts",
+          "@object": "com.acme.catalog.ProductCounts",
+          "@objectAdapter": "com.acme.catalog.ProductCountsAdapter",
+          "@from": "Product",
+          "@dimensions": [
+            "sku"
+          ],
+          "@measures": [
+            "products"
+          ],
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_product_counts"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -20,8 +20,6 @@ import com.metaobjects.MetaDataTypeId;
 import com.metaobjects.attr.MetaAttribute;
 import com.metaobjects.constraint.Constraint;
 import com.metaobjects.field.MetaField;
-import com.metaobjects.view.CurrencyView;
-import com.metaobjects.view.MetaView;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -279,6 +277,8 @@ public final class RegistryManifest {
                 // Placed after their type deps (field/view/layout/template/object);
                 // compose() re-resolves order via getDependencies() regardless.
                 new com.metaobjects.presentation.ui.UiTypesMetaDataProvider(),
+                // view.textarea @rows and the view.image attrs (ui-web.json).
+                new com.metaobjects.presentation.ui.UiWebTypesMetaDataProvider(),
                 new com.metaobjects.template.PromptTypesMetaDataProvider(),
                 new com.metaobjects.object.CoreObjectsMetaDataProvider());
     }
@@ -315,9 +315,10 @@ public final class RegistryManifest {
     //    `description` lives only in the commonAttrs block (ADR-0062).
     //  - metadata.base is Java's internal inheritance anchor — other ports
     //    register only metadata.root (the deferred inheritsFrom anchor).
-    //  - the generic view.* controls are a TS-web-presentation facet. Java
-    //    registers them for LOADING only (PresentationView); this filter is what
-    //    keeps them out of the cross-port manifest.
+    //  - NOT carved out: vocabulary only some ports act on. Cross-port vocabulary
+    //    only some ports implement so far (the generic view.* controls, @object)
+    //    carries `implementedIn`; language-specific vocabulary (@dbSetName,
+    //    @objectAdapter) carries `ports`. Both are IN the manifest.
     // ------------------------------------------------------------------
 
     /**
@@ -335,14 +336,10 @@ public final class RegistryManifest {
     public enum ExclusionReason {
         /** Sentinel: NOT excluded — logical cross-port vocabulary. */
         INCLUDED,
-        /** Native type-binding / factory (incl. ADR-0001 {@code object}, ADR-0005 {@code objectAdapter}). */
-        NATIVE_BINDING,
         /** Bare structural / OO-shape keyword (isArray/isAbstract/extends/implements/isInterface). */
         STRUCTURAL_KEYWORD,
         /** The {@code metadata.base} per-port inheritance anchor (deferred inheritsFrom facet). */
         INHERITANCE_ANCHOR,
-        /** TS-web-presentation-only facet (the generic {@code view.*} controls). */
-        PRESENTATION_ONLY,
         /**
          * FR-024 reference-first rollout slot (RETIRED at the atomic flip): the
          * {@code object.projection} row + the {@code origin.aggregate.via}
@@ -365,20 +362,16 @@ public final class RegistryManifest {
      * NOT per-type attributes — Java registers them on {@code object.base}
      * (inherited by entity/value), so the classification is what drops them from
      * the emitter (no-op for TS/C#/Python). They remain REGISTERED (the loader
-     * must accept an authored {@code extends:}). {@code object}
-     * (ADR-0001 class-FQN type binding) and {@code objectAdapter} (ADR-0005
-     * value-access seam) are per-port binding mechanisms (same category as native
-     * type bindings); they stay REGISTERED in Java (read by the value-access
-     * representation, IO readers, OMDB), only carved out of the manifest.</p>
+     * must accept an authored {@code extends:}). {@code object} (ADR-0001) and
+     * {@code objectAdapter} (ADR-0005) are NOT carved out: they are in the manifest,
+     * marked {@code implementedIn: ["java"]} and {@code ports: ["java", "kotlin"]}.</p>
      */
     private static final Map<String, ExclusionReason> EXCLUDED_PER_TYPE_ATTRS = Map.of(
             MetaField.ATTR_IS_ARRAY, ExclusionReason.STRUCTURAL_KEYWORD,
             MetaData.ATTR_IS_ABSTRACT, ExclusionReason.STRUCTURAL_KEYWORD,
             com.metaobjects.object.MetaObject.ATTR_EXTENDS, ExclusionReason.STRUCTURAL_KEYWORD,
             com.metaobjects.object.MetaObject.ATTR_IMPLEMENTS, ExclusionReason.STRUCTURAL_KEYWORD,
-            com.metaobjects.object.MetaObject.ATTR_IS_INTERFACE, ExclusionReason.STRUCTURAL_KEYWORD,
-            com.metaobjects.object.MetaObject.ATTR_OBJECT, ExclusionReason.NATIVE_BINDING,
-            com.metaobjects.object.AbstractObjectRepresentation.ATTR_OBJECT_ADAPTER, ExclusionReason.NATIVE_BINDING);
+            com.metaobjects.object.MetaObject.ATTR_IS_INTERFACE, ExclusionReason.STRUCTURAL_KEYWORD);
 
     /**
      * Classify a per-type attr: an {@link ExclusionReason} (carved out) or
@@ -390,19 +383,19 @@ public final class RegistryManifest {
 
     /**
      * Classify a {@code (type, subType)} row: the {@code metadata.base} inheritance
-     * anchor (C-5) / the generic presentation-only {@code view.*} controls (B-2) /
-     * {@link ExclusionReason#INCLUDED}.
+     * anchor (C-5) / {@link ExclusionReason#INCLUDED}. The generic {@code view.*}
+     * controls are NOT carved out: they are in the manifest with {@code implementedIn}.
      */
     public static ExclusionReason classifyTypeSubType(String type, String subType) {
         if (MetaData.TYPE_METADATA.equals(type) && MetaData.SUBTYPE_BASE.equals(subType)) {
             return ExclusionReason.INHERITANCE_ANCHOR; // C-5 — Java's internal inheritance anchor
         }
-        if (MetaView.TYPE_VIEW.equals(type)
-                && !MetaData.SUBTYPE_BASE.equals(subType)
-                && !CurrencyView.SUBTYPE_CURRENCY.equals(subType)) {
-            return ExclusionReason.PRESENTATION_ONLY; // B-2 — TS-web-presentation generic view controls
-        }
         return ExclusionReason.INCLUDED;
+    }
+
+    /** A sorted copy of a spec port list, or {@code null} when it is absent or empty. */
+    private static List<String> sortedOrNull(List<String> ports) {
+        return ports != null && !ports.isEmpty() ? ports.stream().sorted().toList() : null;
     }
 
     /** True if a {@code (type, subType)} row is carved out of the manifest (any reason). */
@@ -427,7 +420,7 @@ public final class RegistryManifest {
      * {@code rules}/{@code example}/{@code whenToUse} doc facets (null = omitted).
      */
     private record ManifestAttr(String name, String valueType, boolean isArray, boolean required,
-                                List<String> allowedValues, List<String> ports,
+                                List<String> allowedValues, List<String> implementedIn, List<String> ports,
                                 String description, String rules, String example, String whenToUse) {}
 
     /**
@@ -446,7 +439,7 @@ public final class RegistryManifest {
      * structural constraint graph (FR-033). {@code rules}/{@code example}/
      * {@code whenToUse} are null when absent; {@code parents} is empty when absent.
      */
-    private record ManifestType(String type, String subType, String description,
+    private record ManifestType(String type, String subType, List<String> implementedIn, String description,
                                 String rules, String example, String whenToUse,
                                 List<ManifestAttr> attrs, List<ManifestChild> children,
                                 List<String> parents) {}
@@ -513,9 +506,10 @@ public final class RegistryManifest {
             // (omitted by the serializer). Sub-step B may source them.
             // The ports that act on a language-specific attr, from the spec, sorted.
             var doc = SPEC.attrDoc(type, subType, name);
-            List<String> ports = doc != null && doc.ports() != null && !doc.ports().isEmpty()
-                    ? doc.ports().stream().sorted().toList() : null;
-            byName.put(name, new ManifestAttr(name, valueType, isArray, required, allowedValues, ports,
+            List<String> ports = sortedOrNull(doc != null ? doc.ports() : null);
+            // The ports that implement a cross-port attr so far, from the spec, sorted.
+            List<String> implementedIn = sortedOrNull(doc != null ? doc.implementedIn() : null);
+            byName.put(name, new ManifestAttr(name, valueType, isArray, required, allowedValues, implementedIn, ports,
                     description, null, null, null));
         }
 
@@ -714,7 +708,7 @@ public final class RegistryManifest {
         List<ManifestType> types = new ArrayList<>();
         for (MetaDataTypeId id : registry.getRegisteredTypes()) {
             if (isExcludedTypeSubType(id.type(), id.subType())) {
-                continue; // metadata.base anchor (C-5) / generic view.* controls (B-2)
+                continue; // metadata.base anchor (C-5)
             }
             TypeDefinition def = registry.getTypeDefinition(id.type(), id.subType());
             // FR-033: per-type docs. description is the existing TypeDefinition
@@ -725,7 +719,10 @@ public final class RegistryManifest {
             String example = def != null ? def.getExample() : null;
             String whenToUse = def != null ? def.getWhenToUse() : null;
             List<String> parents = def != null ? def.getParents() : List.of();
-            types.add(new ManifestType(id.type(), id.subType(), description,
+            // The ports that implement this cross-port type so far, from the spec.
+            var typeDoc = SPEC.typeDoc(id.type(), id.subType());
+            List<String> implementedIn = sortedOrNull(typeDoc != null ? typeDoc.implementedIn() : null);
+            types.add(new ManifestType(id.type(), id.subType(), implementedIn, description,
                 rules, example, whenToUse,
                 attrsOf(registry, id.type(), id.subType(), arrayAttrNames),
                 childrenOf(registry, id.type(), id.subType()),
@@ -744,7 +741,7 @@ public final class RegistryManifest {
             // ADR-0036 Wave 1 — no common attr declares a closed value-set today
             // (null → the allowedValues key is omitted by the serializer).
             commonAttrs.add(new ManifestAttr(def.name(), def.valueType(), def.isArray(), false,
-                null, null, def.description() != null ? def.description() : "", null, null, null));
+                null, null, null, def.description() != null ? def.description() : "", null, null, null));
         }
         commonAttrs.sort(Comparator.comparing(ManifestAttr::name));
 
@@ -788,6 +785,12 @@ public final class RegistryManifest {
                 sb.append("    {\n");
                 sb.append("      \"type\": ").append(jsonString(t.type())).append(",\n");
                 sb.append("      \"subType\": ").append(jsonString(t.subType())).append(",\n");
+                // The ports that implement it so far, only when named.
+                if (t.implementedIn() != null) {
+                    sb.append("      \"implementedIn\": ");
+                    appendStringArray(sb, t.implementedIn(), "      ");
+                    sb.append(",\n");
+                }
                 sb.append("      \"description\": ").append(jsonString(t.description())).append(",\n");
                 // FR-033: optional type-level docs, emitted ONLY when present, in
                 // fixed order between `description` and `attrs`.
@@ -871,7 +874,13 @@ public final class RegistryManifest {
                 appendStringArray(sb, a.allowedValues(), fieldIndent);
                 sb.append(",\n");
             }
-            // The ports that act on a language-specific attr, only when named.
+            // The ports that implement a cross-port attr so far, then the ports that act
+            // on a language-specific attr; each only when named.
+            if (a.implementedIn() != null && !a.implementedIn().isEmpty()) {
+                sb.append(fieldIndent).append("\"implementedIn\": ");
+                appendStringArray(sb, a.implementedIn(), fieldIndent);
+                sb.append(",\n");
+            }
             if (a.ports() != null && !a.ports().isEmpty()) {
                 sb.append(fieldIndent).append("\"ports\": ");
                 appendStringArray(sb, a.ports(), fieldIndent);

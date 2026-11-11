@@ -37,6 +37,21 @@ public static class ObjectSchema
                 "form is always a string; the underlying field's subtype (enum / int / " +
                 "string) controls codegen + storage coercion. Required on every concrete " +
                 "subtype of a discriminated entity."),
+
+        // On object.base, so every object subtype carries them. C# loads and
+        // type-checks both; neither does anything here. Descriptions are single-sourced
+        // from spec/metamodel/object.json.
+        new AttrSchema(
+            Name: ObjectConstants.OBJECT_ATTR_OBJECT,
+            ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
+            Required: false,
+            Description: "The native class an object binds to (ADR-0001)."),
+
+        new AttrSchema(
+            Name: ObjectConstants.OBJECT_ATTR_OBJECT_ADAPTER,
+            ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
+            Required: false,
+            Description: "Java-only (ADR-0005): the ObjectAdapter that takes over value access."),
     ];
 
     /// <summary>

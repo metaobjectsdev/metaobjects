@@ -91,8 +91,9 @@ export interface Entry { key: string; attrs: Set<string> }
  *
  * The population is the UNION of two artifacts that are NOT interchangeable:
  * `expected-registry.json` is the cross-port contract, `spec/metamodel/*.json` is what
- * the providers declare, and the gap is exactly `metadata.root` on one side and the 13
- * TS-web presentation-only `view.*` controls on the other. A carve-out from the
+ * the providers declare, and the gap is exactly `metadata.root`, which has no spec file.
+ * (The 13 generic `view.*` controls were once carved out of the manifest;
+ * they are back as kind-1 vocabulary, so both artifacts now carry them.) A carve-out from the
  * cross-port manifest is a statement about portability, not a licence to leave
  * vocabulary unpromised.
  *

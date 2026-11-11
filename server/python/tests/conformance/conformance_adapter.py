@@ -12,6 +12,7 @@ from metaobjects.core_types import core_provider, core_providers
 from metaobjects.documentation import doc_provider
 from metaobjects.meta.persistence.db.db_provider import db_provider
 from metaobjects.meta.presentation.ui.ui_provider import ui_provider
+from metaobjects.meta.presentation.ui.ui_web_provider import ui_web_provider
 from metaobjects.meta.template.prompt_provider import prompt_provider
 from metaobjects.errors import ErrorCode, ParseError
 from metaobjects.meta.meta_data import MetaData
@@ -126,6 +127,8 @@ _PROVIDER_MAP: dict[str, Provider] = {
     # The UI / query-surface domain provider — registers @filterable / @sortable /
     # @sortableDefaultOrder (field), view.currency @locale, layout.dataGrid attrs.
     ui_provider.id: ui_provider,                    # "metaobjects-ui"
+    # view.textarea @rows and the view.image attrs (ui-web.json).
+    ui_web_provider.id: ui_web_provider,            # "metaobjects-ui-web"
     # Back-compat alias: pre-rename fixtures (and other ports' fixtures) still name the
     # provider "metaobjects-template"; map it to the renamed prompt provider — the same
     # alias the TS adapter keeps (adapter.ts: "metaobjects-template": promptProvider).

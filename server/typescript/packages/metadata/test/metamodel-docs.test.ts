@@ -133,43 +133,22 @@ test("providers.md indexes all six concern providers with descriptions", () => {
   }
 });
 
-test("providers.md 'Owns' honors the same exclusions as INDEX/type pages (no generic view.* controls)", () => {
+test("providers.md 'Owns' and INDEX carry the kind-1 view.* controls, marked on their pages", () => {
   const out = docs();
   const providers = out.get("providers.md")!;
-  // The "Owns (registers)" core list must NOT advertise the 11 manifest-
-  // excluded TS-web-presentation controls (absent from INDEX/type pages) — a
-  // provider that CONTRIBUTES attrs to one of these controls (e.g.
-  // metaobjects-ui-web extending view.textarea/view.image with @rows / the
-  // image attrs) may still legitimately name it under its own "Contributes
-  // attributes" section, so scope this assertion to the "Owns (registers)"
-  // line specifically rather than the whole page.
+  // The generic view.* controls are cross-port vocabulary only TypeScript implements so
+  // far: IN the manifest, so the docs cover them like any other subtype.
   const ownsMatch = providers.match(/\*\*Owns \(registers\):\*\* (.+)/);
   expect(ownsMatch).not.toBeNull();
   const owns = ownsMatch![1];
-  for (const excluded of [
-    "view.checkbox",
-    "view.date",
-    "view.dropdown",
-    "view.hidden",
-    "view.hotlink",
-    "view.month",
-    "view.number",
-    "view.password",
-    "view.radio",
-    "view.text",
-    "view.textarea",
-    "view.web",
-  ]) {
-    expect(owns).not.toContain(`\`${excluded}\``);
+  for (const control of ["view.base", "view.currency", "view.text", "view.textarea", "view.image", "view.web"]) {
+    expect(owns).toContain(`\`${control}\``);
   }
-  // ... but DOES keep the agreed view subtypes (`view.base`, `view.currency`).
-  expect(owns).toContain("`view.base`");
-  expect(owns).toContain("`view.currency`");
-
-  // The same vocabulary INDEX covers: no excluded control leaks into INDEX either.
   const index = out.get("INDEX.md")!;
-  expect(index).not.toContain("`view.text`");
+  expect(index).toContain("`view.text`");
   expect(index).toContain("`view.currency`");
+  const viewPage = [...out.entries()].find(([k]) => k.includes("view"))![1];
+  expect(viewPage).toContain("**Implemented in:** typescript so far");
 });
 
 test("provenance: core owns field.currency; db contributes @column; ui contributes @filterable", () => {

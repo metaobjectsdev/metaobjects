@@ -21,9 +21,6 @@
 //                port-PRIVATE-mechanism, not abstract-vs-physical.
 //
 //   • PORT_PRIVATE — a per-port mechanism, NOT cross-port vocabulary:
-//        - NATIVE_BINDING   factories / native type classes / the ADR-0001
-//                           `object` class-FQN binding + ADR-0005 `objectAdapter`
-//                           value-access seam (OO-port runtime mechanisms).
 //        - STRUCTURAL_KEYWORD bare body keywords (`isArray`/`isAbstract`/
 //                           `extends`/`implements`/`isInterface`) — the
 //                           structural/OO-shape spine, peers of name/children,
@@ -33,13 +30,15 @@
 //        - INHERITANCE_ANCHOR the `metadata.base` per-port abstract anchor (the
 //                           deferred `inheritsFrom` facet; other ports register
 //                           only the concrete `metadata.root`).
-//        - PRESENTATION_ONLY the 13 generic `view.*` entries — 12 controls
-//          (checkbox/date/…) plus the `web` abstract base
-//                           — a TS-web presentation facet (TS web client + TS
-//                           form codegen consume them; zero backend/codegen/
-//                           render consumers in any port), like the TS-only `D1`
-//                           dialect. REGISTERED in every port, for LOADING
-//                           only; EXCLUDED from the manifest everywhere.
+//
+// NOT a carve-out: vocabulary only SOME ports act on is still
+// cross-port vocabulary, and it is IN the manifest, marked rather than removed.
+//   • kind 1 — implemented so far only in some ports (the 13 generic `view.*`
+//     entries and their attrs): the type carries `implementedIn: ["typescript"]`.
+//   • kind 2 — language-specific by nature (`@dbSetName`, the JVM's `@object` /
+//     `@objectAdapter`): the attr carries `ports: [...]`.
+// Every port registers both kinds and loads them strictly; a port not named loads
+// them and does nothing with them. An unregistered name still fails.
 //
 // The boundary is now an EXPLICIT classification (not a silent default): the
 // port-private set is enumerated WITH a reason category, and a TRIPWIRE
@@ -69,21 +68,16 @@
 
 import { RESERVED_KEY_IS_ARRAY, RESERVED_KEY_EXTENDS } from "./shared/structural.js";
 import { DOC_ATTR_DESCRIPTION } from "./core/documentation/doc-constants.js";
-import { SUBTYPE_BASE, TYPE_METADATA, TYPE_VIEW } from "./shared/base-types.js";
-import { VIEW_SUBTYPE_CURRENCY } from "./presentation/view/view-constants.js";
+import { SUBTYPE_BASE, TYPE_METADATA } from "./shared/base-types.js";
 
 /** The reason an attr/row is classified PORT_PRIVATE (carved out of the agreed vocabulary). */
 export enum ExclusionReason {
-  /** Native type-binding / factory mechanism (incl. ADR-0001 `object`, ADR-0005 `objectAdapter`). */
-  NativeBinding = "native-binding",
   /** Bare structural / OO-shape keyword (`isArray`/`isAbstract`/`extends`/`implements`/`isInterface`). */
   StructuralKeyword = "structural-keyword",
   /** A `commonAttr` (`description`) re-registered per-type — belongs in the commonAttrs block. */
   CommonAttrDup = "common-attr-dup",
   /** The `metadata.base` per-port inheritance anchor (deferred `inheritsFrom` facet). */
   InheritanceAnchor = "inheritance-anchor",
-  /** TS-web-presentation-only facet (the generic `view.*` controls). */
-  PresentationOnly = "presentation-only",
   /**
    * FR-024 TS-reference-first rollout (RETIRED at the atomic flip): new
    * vocabulary genuinely registered (and gated by TS tests) but carved out of
@@ -103,9 +97,6 @@ const ATTR_NAME_IS_ABSTRACT = "isAbstract";
 /** Java-OO structural-shape keywords as per-type attr names (the OO modeling spine). */
 const ATTR_NAME_IMPLEMENTS = "implements";
 const ATTR_NAME_IS_INTERFACE = "isInterface";
-/** ADR-0001 class-FQN type binding + ADR-0005 hybrid value-access seam (per-port runtime mechanisms). */
-const ATTR_NAME_OBJECT = "object";
-const ATTR_NAME_OBJECT_ADAPTER = "objectAdapter";
 
 /**
  * The per-type attr names carved OUT of the agreed vocabulary, each mapped to
@@ -120,16 +111,14 @@ export const EXCLUDED_PER_TYPE_ATTRS: ReadonlyMap<string, ExclusionReason> = new
   [RESERVED_KEY_EXTENDS, ExclusionReason.StructuralKeyword],
   [ATTR_NAME_IMPLEMENTS, ExclusionReason.StructuralKeyword],
   [ATTR_NAME_IS_INTERFACE, ExclusionReason.StructuralKeyword],
-  [ATTR_NAME_OBJECT, ExclusionReason.NativeBinding],
-  [ATTR_NAME_OBJECT_ADAPTER, ExclusionReason.NativeBinding],
   [DOC_ATTR_DESCRIPTION, ExclusionReason.CommonAttrDup],
 ]);
 
 /**
  * `(type, subType)` rows carved OUT of the agreed vocabulary, with reason.
- * `metadata.base` is the per-port inheritance anchor (INHERITANCE_ANCHOR); the
- * 13 generic `view.*` entries — 12 controls plus the `web` abstract base — are
- * TS-web-presentation-only (PRESENTATION_ONLY).
+ * `metadata.base` is the per-port inheritance anchor (INHERITANCE_ANCHOR). The
+ * generic `view.*` controls are NOT carved out: they are kind-1 vocabulary, IN the
+ * manifest with `implementedIn`.
  * Returns the reason, or `undefined` for an INCLUDED (logical) row.
  */
 export function classifyTypeSubType(
@@ -138,9 +127,6 @@ export function classifyTypeSubType(
 ): ExclusionReason | undefined {
   if (type === TYPE_METADATA && subType === SUBTYPE_BASE) {
     return ExclusionReason.InheritanceAnchor; // C-5 — Java's internal inheritance anchor
-  }
-  if (type === TYPE_VIEW && subType !== SUBTYPE_BASE && subType !== VIEW_SUBTYPE_CURRENCY) {
-    return ExclusionReason.PresentationOnly; // B-2 — TS-web-presentation generic view controls
   }
   return undefined;
 }

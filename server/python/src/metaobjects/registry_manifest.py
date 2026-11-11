@@ -31,9 +31,8 @@ from .meta.core.attr.attr_constants import (
     ATTR_SUBTYPE_STRING,
     ATTR_SUBTYPE_STRINGARRAY,
 )
-from .meta.presentation.view.view_constants import VIEW_SUBTYPE_CURRENCY
 from .registry import AttrSchema, ChildRule, TypeDefinition, TypeRegistry
-from .shared.base_types import SUBTYPE_BASE, TYPE_ATTR, TYPE_METADATA, TYPE_VIEW
+from .shared.base_types import SUBTYPE_BASE, TYPE_ATTR, TYPE_METADATA
 from .shared.structural import KEY_IS_ARRAY
 
 # Wave 3b — the in/out boundary is an EXPLICIT CLASSIFICATION (a reason category
@@ -53,16 +52,12 @@ class ExclusionReason(str, Enum):
 
     #: Sentinel: NOT excluded — logical cross-port vocabulary.
     INCLUDED = "included"
-    #: Native type-binding / factory (incl. ADR-0001 ``object``, ADR-0005 ``objectAdapter``).
-    NATIVE_BINDING = "native-binding"
     #: Bare structural / OO-shape keyword (isArray/isAbstract/extends/implements/isInterface).
     STRUCTURAL_KEYWORD = "structural-keyword"
     #: A commonAttr (``description``) re-registered per-type — belongs in commonAttrs.
     COMMON_ATTR_DUP = "common-attr-dup"
     #: The ``metadata.base`` per-port inheritance anchor (deferred inheritsFrom facet).
     INHERITANCE_ANCHOR = "inheritance-anchor"
-    #: TS-web-presentation-only facet (the generic ``view.*`` controls).
-    PRESENTATION_ONLY = "presentation-only"
     #: FR-024 reference-first rollout slot (RETIRED at the atomic flip): the
     #: ``object.projection`` row + the ``origin.aggregate.via`` required-override
     #: were excluded until every port registered the FR-024 loader-grammar slice,
@@ -76,9 +71,6 @@ _ATTR_NAME_IS_ABSTRACT = "isAbstract"
 _ATTR_NAME_EXTENDS = "extends"
 _ATTR_NAME_IMPLEMENTS = "implements"
 _ATTR_NAME_IS_INTERFACE = "isInterface"
-# ADR-0001 class-FQN type binding + ADR-0005 hybrid value-access seam.
-_ATTR_NAME_OBJECT = "object"
-_ATTR_NAME_OBJECT_ADAPTER = "objectAdapter"
 
 # Per-type attr names carved out of the agreed vocabulary, each mapped to its
 # PORT_PRIVATE reason. An attr NOT in this map is logical (INCLUDED) by the
@@ -90,8 +82,6 @@ _EXCLUDED_PER_TYPE_ATTRS: dict[str, ExclusionReason] = {
     _ATTR_NAME_EXTENDS: ExclusionReason.STRUCTURAL_KEYWORD,
     _ATTR_NAME_IMPLEMENTS: ExclusionReason.STRUCTURAL_KEYWORD,
     _ATTR_NAME_IS_INTERFACE: ExclusionReason.STRUCTURAL_KEYWORD,
-    _ATTR_NAME_OBJECT: ExclusionReason.NATIVE_BINDING,
-    _ATTR_NAME_OBJECT_ADAPTER: ExclusionReason.NATIVE_BINDING,
     DOC_ATTR_DESCRIPTION: ExclusionReason.COMMON_ATTR_DUP,
 }
 
@@ -104,11 +94,10 @@ def classify_per_type_attr(name: str) -> ExclusionReason:
 
 def classify_type_subtype(type_name: str, sub_type: str) -> ExclusionReason:
     """Classify a ``(type, subType)`` row: the metadata.base inheritance anchor
-    (C-5) / the generic ``view.*`` presentation controls (B-2) / INCLUDED."""
+    (C-5) / INCLUDED. The generic ``view.*`` controls are NOT carved out: they are in
+    the manifest with ``implementedIn``."""
     if type_name == TYPE_METADATA and sub_type == SUBTYPE_BASE:
         return ExclusionReason.INHERITANCE_ANCHOR  # C-5 — Java's internal inheritance anchor
-    if type_name == TYPE_VIEW and sub_type not in (SUBTYPE_BASE, VIEW_SUBTYPE_CURRENCY):
-        return ExclusionReason.PRESENTATION_ONLY  # B-2 — TS-web-presentation generic view controls
     return ExclusionReason.INCLUDED
 
 
@@ -152,7 +141,10 @@ def _to_manifest_attr(attr: AttrSchema) -> dict[str, object]:
     # is stringified for a stable cross-port surface.
     if attr.allowed_values is not None and len(attr.allowed_values) > 0:
         out["allowedValues"] = [str(v) for v in attr.allowed_values]
-    # The ports that act on a language-specific attr, sorted, only when named.
+    # The ports that implement a cross-port attr so far, then the ports that act on a
+    # language-specific attr; each sorted, only when named.
+    if attr.implemented_in:
+        out["implementedIn"] = sorted(attr.implemented_in)
     if attr.ports:
         out["ports"] = sorted(attr.ports)
     out["description"] = attr.description
@@ -283,7 +275,7 @@ def build_registry_manifest(registry: TypeRegistry) -> dict[str, object]:
     # walk, so dict iteration order is irrelevant.
     for definition in registry._defs.values():  # noqa: SLF001 (no public iterator)
         if _is_excluded_type_subtype(definition.type, definition.sub_type):
-            continue  # metadata.base anchor (C-5) / generic view.* controls (B-2)
+            continue  # metadata.base anchor (C-5)
         # Fixed TS key order: type, subType, description, optional
         # rules/example/whenToUse (only when present), attrs, children, optional
         # parents (only when non-empty + sorted ASCII). Insertion order on the
@@ -291,8 +283,11 @@ def build_registry_manifest(registry: TypeRegistry) -> dict[str, object]:
         type_dict: dict[str, object] = {
             "type": definition.type,
             "subType": definition.sub_type,
-            "description": definition.description,
         }
+        # The ports that implement it so far, only when named.
+        if definition.implemented_in:
+            type_dict["implementedIn"] = sorted(definition.implemented_in)
+        type_dict["description"] = definition.description
         if definition.rules is not None:
             type_dict["rules"] = definition.rules
         if definition.example is not None:

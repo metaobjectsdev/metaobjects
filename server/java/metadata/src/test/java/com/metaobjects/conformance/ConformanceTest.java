@@ -187,6 +187,9 @@ public class ConformanceTest {
             "metaobjects-ui", List.of(
                 com.metaobjects.presentation.ui.UiTypesMetaDataProvider.PROVIDER_ID
             ),
+            "metaobjects-ui-web", List.of(
+                com.metaobjects.presentation.ui.UiWebTypesMetaDataProvider.PROVIDER_ID
+            ),
             "metaobjects-prompt", List.of(
                 com.metaobjects.template.PromptTypesMetaDataProvider.PROVIDER_ID
             )

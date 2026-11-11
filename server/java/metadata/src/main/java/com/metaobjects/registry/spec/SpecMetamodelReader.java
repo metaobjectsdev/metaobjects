@@ -83,7 +83,9 @@ public final class SpecMetamodelReader {
      * One documented metamodel facet (a type/subType or an attr) — its description
      * plus the optional doc fields. Any may be {@code null} when absent in the JSON.
      */
-    public record DocFacet(String description, String rules, String example, String whenToUse) {
+    public record DocFacet(String description, String rules, String example, String whenToUse,
+                           /* The ports that implement this cross-port type so far; null = every port. */
+                           java.util.List<String> implementedIn) {
     }
 
     /**
@@ -95,7 +97,9 @@ public final class SpecMetamodelReader {
                             String description, String rules, String example, String whenToUse,
                             java.util.List<String> allowedValues,
                             /* The ports that act on a language-specific attr; null = every port. */
-                            java.util.List<String> ports) {
+                            java.util.List<String> ports,
+                            /* The ports that implement this cross-port attr so far; null = every port. */
+                            java.util.List<String> implementedIn) {
     }
 
     /**
@@ -211,7 +215,8 @@ public final class SpecMetamodelReader {
                 declaredKeys.add(key);
                 typeDocs.put(key, new DocFacet(
                         nullable(t, "description"), nullable(t, "rules"),
-                        nullable(t, "example"), nullable(t, "whenToUse")));
+                        nullable(t, "example"), nullable(t, "whenToUse"),
+                        parseStringList(t, "implementedIn")));
                 Map<String, AttrEntry> attrs = typeAttrDocs.computeIfAbsent(key, k -> new LinkedHashMap<>());
                 for (AttrEntry a : parseAttrChildren(t)) {
                     attrs.put(a.name(), a);
@@ -293,7 +298,8 @@ public final class SpecMetamodelReader {
                     str(c, "name"), nullable(c, "subType"), isArray, min, max, maxIsNull,
                     nullable(c, "description"), nullable(c, "rules"),
                     nullable(c, "example"), nullable(c, "whenToUse"),
-                    parseAllowedValues(c), parseStringList(c, "ports")));
+                    parseAllowedValues(c), parseStringList(c, "ports"),
+                    parseStringList(c, "implementedIn")));
         }
         return out;
     }
