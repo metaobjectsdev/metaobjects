@@ -3429,7 +3429,29 @@
       "type": "object",
       "subType": "base",
       "description": "Abstract object base — the shared root subtype that concrete object subtypes (entity/value/projection) specialize. Declares the structural children common to EVERY object subtype (the intersection: field/identity/validator/layout/source); subtype-specific children (relationship, template) and attrs (discriminator) ride their own subtypes. Has no runtime semantics of its own; not authored directly. A `object.base` node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED): this subtype is a registry anchor concrete subtypes inherit from, never a node in a document.",
-      "attrs": [],
+      "attrs": [
+        {
+          "name": "object",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "implementedIn": [
+            "java"
+          ],
+          "description": "The native class an object binds to (ADR-0001), in place of its default runtime class: on the JVM, a fully-qualified class name. Cross-port vocabulary only Java implements so far; every port loads and type-checks it, and the others do not act on it yet."
+        },
+        {
+          "name": "objectAdapter",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "ports": [
+            "java",
+            "kotlin"
+          ],
+          "description": "JVM-only (ADR-0005): the fully-qualified name of an ObjectAdapter that takes over value access for this object's instances. Every port loads and type-checks it; only Java and Kotlin act on it."
+        }
+      ],
       "children": [
         {
           "childType": "field",
@@ -3505,6 +3527,27 @@
           "isArray": false,
           "required": false,
           "description": "FR-014: on a subtype of an entity with @discriminator — the value that identifies rows of this subtype in the shared discriminator field. Wire form is always a string; the underlying field's subtype (enum / int / string) controls codegen + storage coercion. Required on every concrete subtype of a discriminated entity."
+        },
+        {
+          "name": "object",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "implementedIn": [
+            "java"
+          ],
+          "description": "The native class an object binds to (ADR-0001), in place of its default runtime class: on the JVM, a fully-qualified class name. Cross-port vocabulary only Java implements so far; every port loads and type-checks it, and the others do not act on it yet."
+        },
+        {
+          "name": "objectAdapter",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "ports": [
+            "java",
+            "kotlin"
+          ],
+          "description": "JVM-only (ADR-0005): the fully-qualified name of an ObjectAdapter that takes over value access for this object's instances. Every port loads and type-checks it; only Java and Kotlin act on it."
         }
       ],
       "children": [
@@ -3610,6 +3653,27 @@
           "isArray": false,
           "required": false,
           "description": "Optional row-scope predicate (a portable attr.filter object: eq/ne/gt/gte/lt/lte/like/in/isNull with and/or, desugared to { field: { op: value } } at parse time) selecting which rows the view returns — lowered to an outer SQL WHERE. Resolves against the projection's own declared fields; an aggregate-derived field is not addressable (fail-closed)."
+        },
+        {
+          "name": "object",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "implementedIn": [
+            "java"
+          ],
+          "description": "The native class an object binds to (ADR-0001), in place of its default runtime class: on the JVM, a fully-qualified class name. Cross-port vocabulary only Java implements so far; every port loads and type-checks it, and the others do not act on it yet."
+        },
+        {
+          "name": "objectAdapter",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "ports": [
+            "java",
+            "kotlin"
+          ],
+          "description": "JVM-only (ADR-0005): the fully-qualified name of an ObjectAdapter that takes over value access for this object's instances. Every port loads and type-checks it; only Java and Kotlin act on it."
         }
       ],
       "children": [
@@ -3702,6 +3766,27 @@
           "description": "Measure names of @from."
         },
         {
+          "name": "object",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "implementedIn": [
+            "java"
+          ],
+          "description": "The native class an object binds to (ADR-0001), in place of its default runtime class: on the JVM, a fully-qualified class name. Cross-port vocabulary only Java implements so far; every port loads and type-checks it, and the others do not act on it yet."
+        },
+        {
+          "name": "objectAdapter",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "ports": [
+            "java",
+            "kotlin"
+          ],
+          "description": "JVM-only (ADR-0005): the fully-qualified name of an ObjectAdapter that takes over value access for this object's instances. Every port loads and type-checks it; only Java and Kotlin act on it."
+        },
+        {
           "name": "segment",
           "valueType": "string",
           "isArray": false,
@@ -3779,6 +3864,27 @@
             "strip"
           ],
           "description": "ASCII normalization mode for tolerant enum extract (none|collapse|strip, default strip). On field.enum it is per-field; on object.value it is the default for the object's enum fields."
+        },
+        {
+          "name": "object",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "implementedIn": [
+            "java"
+          ],
+          "description": "The native class an object binds to (ADR-0001), in place of its default runtime class: on the JVM, a fully-qualified class name. Cross-port vocabulary only Java implements so far; every port loads and type-checks it, and the others do not act on it yet."
+        },
+        {
+          "name": "objectAdapter",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "ports": [
+            "java",
+            "kotlin"
+          ],
+          "description": "JVM-only (ADR-0005): the fully-qualified name of an ObjectAdapter that takes over value access for this object's instances. Every port loads and type-checks it; only Java and Kotlin act on it."
         }
       ],
       "children": [
@@ -5191,6 +5297,16 @@
     },
     {
       "type": "view",
+      "subType": "checkbox",
+      "implementedIn": [
+        "typescript"
+      ],
+      "description": "Checkbox selection control.",
+      "attrs": [],
+      "children": []
+    },
+    {
+      "type": "view",
       "subType": "currency",
       "description": "Currency display formatting (locale-aware via @locale).",
       "attrs": [
@@ -5202,6 +5318,170 @@
           "description": "BCP 47 locale code controlling currency display formatting. Defaults to 'en-US' when omitted."
         }
       ],
+      "children": []
+    },
+    {
+      "type": "view",
+      "subType": "date",
+      "implementedIn": [
+        "typescript"
+      ],
+      "description": "Date picker / date display.",
+      "attrs": [],
+      "children": []
+    },
+    {
+      "type": "view",
+      "subType": "dropdown",
+      "implementedIn": [
+        "typescript"
+      ],
+      "description": "Single-select dropdown control.",
+      "attrs": [],
+      "children": []
+    },
+    {
+      "type": "view",
+      "subType": "hidden",
+      "implementedIn": [
+        "typescript"
+      ],
+      "description": "Not rendered; carried but not shown.",
+      "attrs": [],
+      "children": []
+    },
+    {
+      "type": "view",
+      "subType": "hotlink",
+      "implementedIn": [
+        "typescript"
+      ],
+      "description": "Renders the value as a clickable link.",
+      "attrs": [],
+      "children": []
+    },
+    {
+      "type": "view",
+      "subType": "image",
+      "implementedIn": [
+        "typescript"
+      ],
+      "description": "Image upload/display control; the field stores an opaque storage key (field.string).",
+      "attrs": [
+        {
+          "name": "accept",
+          "valueType": "string",
+          "isArray": true,
+          "required": false,
+          "description": "Accepted MIME types (client guard; the server re-enforces)."
+        },
+        {
+          "name": "aspectRatio",
+          "valueType": "double",
+          "isArray": false,
+          "required": false,
+          "description": "Crop aspect ratio (width / height). Omit for freeform."
+        },
+        {
+          "name": "maxBytes",
+          "valueType": "int",
+          "isArray": false,
+          "required": false,
+          "description": "Client-side size ceiling in bytes."
+        },
+        {
+          "name": "maxEdge",
+          "valueType": "int",
+          "isArray": false,
+          "required": false,
+          "description": "Longest-edge bound in px for the re-encoded output."
+        },
+        {
+          "name": "store",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "Opaque storage-namespace hint passed to the upload adapter (not infrastructure)."
+        }
+      ],
+      "children": []
+    },
+    {
+      "type": "view",
+      "subType": "month",
+      "implementedIn": [
+        "typescript"
+      ],
+      "description": "Month picker / month display.",
+      "attrs": [],
+      "children": []
+    },
+    {
+      "type": "view",
+      "subType": "number",
+      "implementedIn": [
+        "typescript"
+      ],
+      "description": "Numeric input control.",
+      "attrs": [],
+      "children": []
+    },
+    {
+      "type": "view",
+      "subType": "password",
+      "implementedIn": [
+        "typescript"
+      ],
+      "description": "Masked input for sensitive values.",
+      "attrs": [],
+      "children": []
+    },
+    {
+      "type": "view",
+      "subType": "radio",
+      "implementedIn": [
+        "typescript"
+      ],
+      "description": "Radio-button selection control.",
+      "attrs": [],
+      "children": []
+    },
+    {
+      "type": "view",
+      "subType": "text",
+      "implementedIn": [
+        "typescript"
+      ],
+      "description": "Single-line text input/display.",
+      "attrs": [],
+      "children": []
+    },
+    {
+      "type": "view",
+      "subType": "textarea",
+      "implementedIn": [
+        "typescript"
+      ],
+      "description": "Multi-line text area.",
+      "attrs": [
+        {
+          "name": "rows",
+          "valueType": "int",
+          "isArray": false,
+          "required": false,
+          "description": "Visible row count for the generated <textarea>; the form generator defaults to 4 when absent."
+        }
+      ],
+      "children": []
+    },
+    {
+      "type": "view",
+      "subType": "web",
+      "implementedIn": [
+        "typescript"
+      ],
+      "description": "Abstract base for web-rendered views.",
+      "attrs": [],
       "children": []
     }
   ],

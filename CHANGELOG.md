@@ -13,13 +13,32 @@ here.**
 **`metamodelVersion` moves to `1.3`.** This release adds vocabulary (`field.duration`,
 `validator.exactlyOne`, `@constraintName`, `@condition`, `@maxLength` on `field.enum`,
 `@sequenceStart`, `@sequenceName`, `@flattenedColumnPrefix`, the `pascal` column rule, and
-`@dbSetName`, a C#-only attr) and nothing that loaded before stops loading. A registry attr entry
-gains `ports`, carried into the registry manifest: the ports that act on a language-specific attr
-(`@dbSetName` names `["csharp"]`). A port that reports `1.2` does not know that vocabulary; upgrade
-every port together.
+`@dbSetName`, a C#-only attr) and nothing that loaded before stops loading. The registry gains two
+fields on a type or attr entry, carried into the registry manifest: `implementedIn` (cross-port
+vocabulary only the named ports implement so far, e.g. the `view.*` controls, `["typescript"]`) and
+`ports` (vocabulary only the named ports ever act on, e.g. `@dbSetName`, `["csharp"]`, and
+`@objectAdapter`, `["java", "kotlin"]`: the JVM runtime both share acts on it). The manifest's row
+set grows by the `implementedIn` rows that used to be carved out. A port that reports `1.2` does not
+know that vocabulary; upgrade every port together.
 
 ### Added
 
+- **Cross-port vocabulary that only some ports implement so far (`implementedIn`).** A registry
+  type or attr may name the ports that implement it so far (`"implementedIn": ["typescript"]` on
+  its `spec/metamodel` entry, carried into the registry manifest). It is still cross-port
+  vocabulary: every port registers it and loads it strictly, and a port that has not implemented
+  it ignores it. The 13 generic `view.*` controls, `view.textarea @rows` and the five `view.image`
+  attrs are `["typescript"]`; `object.* @object` is `["java"]`. They used to be carved out of the
+  manifest (`PRESENTATION_ONLY`, `NATIVE_BINDING`); both carve-outs are gone, and the registry
+  canonical grows by those rows. `meta types` marks them `[ts; pending elsewhere]` / `[java;
+  pending elsewhere]` (it used to say `[ts-only]`, "the cross-port contract does not carry it"; its
+  JSON change is under Changed), and the metamodel docs now cover the view controls.
+  `@objectAdapter` joins `@dbSetName` as port-scoped (`"ports": ["java", "kotlin"]`). C#, Java,
+  Kotlin and Python now register the `metaobjects-ui-web` attrs (`view.textarea @rows` and the
+  `view.image` attrs), and C# and Python register `@object` / `@objectAdapter`, so a model that
+  uses any of them loads strictly in every port. Gated by the conformance fixtures
+  `view-kind1-controls`, `object-kind1-jvm-binding-attrs` and
+  `error-kind1-view-unregistered-attr`, and by the registry canonical.
 - **Port-scoped vocabulary, and `@dbSetName`.** A registry attr may name the ports
   that act on it (`"ports": ["csharp"]` on its `spec/metamodel` entry, carried into the registry
   manifest). Every port registers and type-checks it, so a model that carries it loads under every
@@ -510,6 +529,12 @@ every port together.
   Python, `Verify` in C#, the `verify` field of `RenderRequest` in Java and Kotlin). If a template
   already named a missing variable, regenerate and fix the name; the generated helper text changes
   (TypeScript `prompts.ts` and Python helpers gain a `verify` argument).
+- **Deprecated, CLI: `tsOnly` in `meta types --format json`; read `implementedIn`.** Each row
+  and attr now names the ports that implement it so far (`"implementedIn": ["typescript"]`), and a
+  port-scoped attr carries `ports`. `tsOnly` is still emitted through 1.3.x, derived from
+  `implementedIn` (`true` exactly when it is `["typescript"]`), and is removed in 1.4. The text
+  output's `[ts-only]` marker is now `[ts; pending elsewhere]`, and a port-scoped attr shows
+  `[<port>-only]` (`[java+kotlin]` for `@objectAdapter`, which names two).
 
 - **C#, upgrade note: the next EF migration scaffolds your indexes and comments.** The generated
   context now declares every `@unique`, `identity.secondary` and `index.lookup` as an EF index

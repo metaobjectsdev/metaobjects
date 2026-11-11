@@ -1,12 +1,13 @@
-// uiWebProvider — TS-web presentation view attrs. Extends view.textarea with
+// uiWebProvider — web presentation view attrs. Extends view.textarea with
 // @rows and registers the view.image control's five attrs
-// (@aspectRatio/@maxEdge/@store/@accept/@maxBytes). These are TS-web
-// presentation-only concerns, NOT core view properties, so they live here —
-// mirroring the uiProvider / dbProvider / promptProvider pattern.
+// (@aspectRatio/@maxEdge/@store/@accept/@maxBytes). These are presentation
+// concerns, NOT core view properties, so they live here — mirroring the
+// uiProvider / dbProvider / promptProvider pattern.
 //
-// The non-TS ports commit a byte-identical mirror of spec/metamodel/ui-web.json
-// (Step 4) for the embed drift gates, but NEVER apply this provider — the
-// view.textarea/view.image control attrs are TS-web presentation-only.
+// This is cross-port vocabulary that only TypeScript
+// implements so far (view.json marks the types `implementedIn: ["typescript"]`).
+// Every port applies this provider, so every port loads these attrs strictly
+// and ignores them; an unregistered attr on these views still fails.
 //
 // FR-033-style: the attrs + their descriptions are DATA — read from
 // spec/metamodel/ui-web.json (embedded as UI_WEB_DEFINITION) via the unified
@@ -22,7 +23,7 @@ export const uiWebProvider: MetaDataTypeProvider = {
   id: "metaobjects-ui-web",
   dependencies: ["metaobjects-core-types"],
   description:
-    "TS-web presentation view attrs — @rows (view.textarea) and the view.image control attrs. Applied only in TypeScript; the non-TS ports mirror the spec file but never apply this provider (the view subtypes are TS-web presentation-only).",
+    "Web presentation view attrs — @rows (view.textarea) and the view.image control attrs. Every port applies this provider and loads them strictly; only TypeScript acts on them so far.",
   registerTypes(registry: TypeRegistry): void {
     applyProviderDefinition(registry, UI_WEB_DEFINITION, {});
   },

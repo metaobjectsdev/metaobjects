@@ -38,7 +38,8 @@ public sealed record SpecDocFacet(
     string? Description,
     string? Rules,
     string? Example,
-    string? WhenToUse);
+    string? WhenToUse,
+    IReadOnlyList<string>? ImplementedIn = null);
 
 /// <summary>
 /// An attr child entry parsed from the JSON — the description-bearing facet B1 uses,
@@ -57,7 +58,8 @@ public sealed record SpecAttrEntry(
     string? WhenToUse,
     IReadOnlyList<string>? AllowedValues,
     object? Default,
-    IReadOnlyList<string>? Ports = null)
+    IReadOnlyList<string>? Ports = null,
+    IReadOnlyList<string>? ImplementedIn = null)
 {
     /// <summary>Whether this attr is required — the JSON encodes requiredness as <c>min: 1</c>.</summary>
     public bool Required => Min == 1;
@@ -232,7 +234,8 @@ public sealed class SpecMetamodelReader
                 string key = Key(type, subType);
                 _declaredKeys.Add(key);
                 _typeDocs[key] = new SpecDocFacet(
-                    Str(t, "description"), Str(t, "rules"), Str(t, "example"), Str(t, "whenToUse"));
+                    Str(t, "description"), Str(t, "rules"), Str(t, "example"), Str(t, "whenToUse"),
+                    StrList(t, "implementedIn"));
                 var attrs = new Dictionary<string, SpecAttrEntry>(StringComparer.Ordinal);
                 foreach (SpecAttrEntry a in ParseAttrChildren(t))
                 {
@@ -365,9 +368,8 @@ public sealed class SpecMetamodelReader
                 WhenToUse: Str(c, "whenToUse"),
                 AllowedValues: allowed,
                 Default: def,
-                Ports: c.TryGetProperty("ports", out JsonElement ports) && ports.ValueKind == JsonValueKind.Array
-                    ? ports.EnumerateArray().Select(x => x.GetString()!).ToList()
-                    : null));
+                Ports: StrList(c, "ports"),
+                ImplementedIn: StrList(c, "implementedIn")));
         }
         return outList;
     }
@@ -559,6 +561,12 @@ public sealed class SpecMetamodelReader
     private static string StructKey(SpecStructChild c) => $"{c.ChildType} {c.ChildSubType} {c.ChildName}";
 
     private static string Key(string type, string subType) => $"{type}.{subType}";
+
+    /// <summary>A list of strings under <paramref name="key"/> (<c>ports</c> / <c>implementedIn</c>), or null when absent.</summary>
+    private static IReadOnlyList<string>? StrList(JsonElement o, string key) =>
+        o.TryGetProperty(key, out JsonElement e) && e.ValueKind == JsonValueKind.Array
+            ? e.EnumerateArray().Select(x => x.GetString()!).ToList()
+            : null;
 
     private static string? Str(JsonElement o, string k) =>
         o.TryGetProperty(k, out JsonElement e) && e.ValueKind == JsonValueKind.String ? e.GetString() : null;

@@ -162,6 +162,8 @@ public static class ConformanceAdapter
             // among them — they register with the template type itself in core-types
             // (TemplateSchema), never in a provider that can be composed out.
             ["metaobjects-ui"]            = MetaObjects.Presentation.Ui.UiMetaDataProvider.Instance,
+            // View.textarea @rows and the view.image attrs (ui-web.json).
+            ["metaobjects-ui-web"]        = MetaObjects.Presentation.Ui.UiWebMetaDataProvider.Instance,
             ["metaobjects-prompt"]        = MetaObjects.Template.PromptMetaDataProvider.Instance,
             // Back-compat alias: pre-rename fixtures (and other ports' fixtures) still name the
             // provider "metaobjects-template"; map it to the renamed prompt provider — the same

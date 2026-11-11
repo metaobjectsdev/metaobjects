@@ -54,6 +54,18 @@ public static class ObjectConstants
     /// </summary>
     public const string OBJECT_ATTR_DB_SET_NAME = "dbSetName";
 
+    /// <summary>
+    /// The native class an object binds to (ADR-0001). Cross-port vocabulary only
+    /// Java implements so far: C# loads and type-checks it, and does not act on it yet.
+    /// </summary>
+    public const string OBJECT_ATTR_OBJECT = "object";
+
+    /// <summary>
+    /// Java-only (ADR-0005): the ObjectAdapter that takes over value access. C#
+    /// loads and type-checks it, and never acts on it.
+    /// </summary>
+    public const string OBJECT_ATTR_OBJECT_ADAPTER = "objectAdapter";
+
     // -----------------------------------------------------------------------
     // #207 — projection row-scope @filter (view-level WHERE)
     // -----------------------------------------------------------------------

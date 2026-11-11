@@ -42,3 +42,36 @@ describe("a C#-only attribute", () => {
     expect(entity.attrs.find((a) => a.name === "dbSetName")?.ports).toEqual(["csharp"]);
   });
 });
+
+// Cross-port vocabulary only some ports implement so far.
+const KIND1 = `{ "metadata.root": { "package": "acme", "children": [
+  { "object.entity": { "name": "Product", "@object": "com.acme.Product", "children": [
+    { "field.long": { "name": "id" } },
+    { "field.string": { "name": "notes", "children": [
+      { "view.textarea": { "name": "form", "@rows": 6 } } ] } },
+    { "field.string": { "name": "coverKey", "children": [
+      { "view.image": { "name": "form", "@aspectRatio": 1.5, "@maxEdge": 2000, "@store": "photos",
+                        "@accept": ["image/png"], "@maxBytes": 1048576 } } ] } },
+    { "identity.primary": { "@fields": "id" } }
+  ] } }
+] } }`;
+
+describe("kind-1 vocabulary", () => {
+  test("loads under the strict loader", async () => {
+    expect(await codes(KIND1)).toEqual([]);
+  });
+
+  test("an attribute the registry does not carry on a kind-1 view still fails", async () => {
+    expect(await codes(KIND1.replace(`"@maxBytes": 1048576`, `"@cropShape": "circle"`))).toContain("ERR_UNKNOWN_ATTR");
+  });
+
+  test("the vocabulary names the ports that implement it so far", async () => {
+    const catalog = buildVocabularyCatalog(composeRegistry(coreProviders));
+    const image = catalog.types.find((t) => t.type === "view" && t.subType === "image")!;
+    expect(image.implementedIn).toEqual(["typescript"]);
+    expect(image.crossPort).toBe(true);
+    const entity = catalog.types.find((t) => t.type === "object" && t.subType === "entity")!;
+    expect(entity.attrs.find((a) => a.name === "object")?.implementedIn).toEqual(["java"]);
+    expect(entity.attrs.find((a) => a.name === "objectAdapter")?.ports).toEqual(["java", "kotlin"]);
+  });
+});

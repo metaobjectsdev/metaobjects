@@ -212,9 +212,10 @@ public class RegistryManifestConformanceTest {
             RegistryManifest.classifyPerTypeAttr("extends"));
         assertEquals(RegistryManifest.ExclusionReason.STRUCTURAL_KEYWORD,
             RegistryManifest.classifyPerTypeAttr("isArray"));
-        assertEquals(RegistryManifest.ExclusionReason.NATIVE_BINDING,
+        // @object and @objectAdapter are in the manifest (implementedIn / ports), not carved out.
+        assertEquals(RegistryManifest.ExclusionReason.INCLUDED,
             RegistryManifest.classifyPerTypeAttr("object"));
-        assertEquals(RegistryManifest.ExclusionReason.NATIVE_BINDING,
+        assertEquals(RegistryManifest.ExclusionReason.INCLUDED,
             RegistryManifest.classifyPerTypeAttr("objectAdapter"));
         // Genuinely logical attrs are INCLUDED.
         assertEquals(RegistryManifest.ExclusionReason.INCLUDED,
@@ -224,7 +225,8 @@ public class RegistryManifestConformanceTest {
         // Row classification.
         assertEquals(RegistryManifest.ExclusionReason.INHERITANCE_ANCHOR,
             RegistryManifest.classifyTypeSubType("metadata", "base"));
-        assertEquals(RegistryManifest.ExclusionReason.PRESENTATION_ONLY,
+        // The generic view controls are in the manifest, marked implementedIn.
+        assertEquals(RegistryManifest.ExclusionReason.INCLUDED,
             RegistryManifest.classifyTypeSubType("view", "dropdown"));
         assertEquals(RegistryManifest.ExclusionReason.INCLUDED,
             RegistryManifest.classifyTypeSubType("view", "currency"));

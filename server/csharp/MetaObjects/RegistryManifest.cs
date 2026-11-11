@@ -18,7 +18,6 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using MetaObjects.Core.Attr;
 using MetaObjects.Core.Documentation;
-using MetaObjects.Presentation.View;
 using MetaObjects.Shared;
 
 namespace MetaObjects;
@@ -39,9 +38,10 @@ public static class RegistryManifest
     //    them as such; `description` stays in commonAttrs);
     //  - `metadata.base` is a per-port inheritance anchor (Java's), not in the
     //    cross-port contract — other ports register only `metadata.root`;
-    //  - the generic `view.*` controls are a TS-web-presentation facet. C#
-    //    registers them for LOADING only (CoreTypes, via ViewConstants); this
-    //    filter is what keeps them out of the cross-port manifest.
+    //  - NOT carved out: vocabulary only some ports act on. Kind 1
+    //    (implemented in some ports so far — the generic `view.*` controls,
+    //    `@object`) carries `implementedIn`; kind 2 (language-specific —
+    //    `@dbSetName`, `@objectAdapter`) carries `ports`. Both are IN the manifest.
     // ------------------------------------------------------------------
 
     // Wave 3b — the in/out boundary is an EXPLICIT CLASSIFICATION (a reason
@@ -59,16 +59,12 @@ public static class RegistryManifest
     {
         /// <summary>Sentinel: NOT excluded — logical cross-port vocabulary (INCLUDED).</summary>
         Included,
-        /// <summary>Native type-binding / factory mechanism (incl. ADR-0001 <c>object</c>, ADR-0005 <c>objectAdapter</c>).</summary>
-        NativeBinding,
         /// <summary>Bare structural / OO-shape keyword (<c>isArray</c>/<c>isAbstract</c>/<c>extends</c>/<c>implements</c>/<c>isInterface</c>).</summary>
         StructuralKeyword,
         /// <summary>A <c>commonAttr</c> (<c>description</c>) re-registered per-type — belongs in the commonAttrs block.</summary>
         CommonAttrDup,
         /// <summary>The <c>metadata.base</c> per-port inheritance anchor (deferred <c>inheritsFrom</c> facet).</summary>
         InheritanceAnchor,
-        /// <summary>TS-web-presentation-only facet (the generic <c>view.*</c> controls).</summary>
-        PresentationOnly,
         /// <summary>
         /// FR-024 reference-first rollout slot (RETIRED at the atomic flip): the
         /// <c>object.projection</c> row + the <c>origin.aggregate.via</c>
@@ -85,9 +81,6 @@ public static class RegistryManifest
     /// <summary>The Java-OO structural-shape keyword names (the OO modeling spine), not cross-port per-type attrs.</summary>
     private const string AttrNameImplements = "implements";
     private const string AttrNameIsInterface = "isInterface";
-    /// <summary>ADR-0001 class-FQN type binding + ADR-0005 hybrid value-access seam (per-port runtime mechanisms).</summary>
-    private const string AttrNameObject = "object";
-    private const string AttrNameObjectAdapter = "objectAdapter";
 
     /// <summary>Per-type attr names carved out of the agreed vocabulary, each mapped to its PORT_PRIVATE reason. An attr NOT in this map is logical (INCLUDED) by the ADR-0023 sealed-vocabulary contract.</summary>
     private static readonly IReadOnlyDictionary<string, ExclusionReason> ExcludedPerTypeAttrs =
@@ -98,8 +91,6 @@ public static class RegistryManifest
             [Structural.RESERVED_KEY_EXTENDS] = ExclusionReason.StructuralKeyword,
             [AttrNameImplements] = ExclusionReason.StructuralKeyword,
             [AttrNameIsInterface] = ExclusionReason.StructuralKeyword,
-            [AttrNameObject] = ExclusionReason.NativeBinding,
-            [AttrNameObjectAdapter] = ExclusionReason.NativeBinding,
             [DocumentationConstants.DOC_ATTR_DESCRIPTION] = ExclusionReason.CommonAttrDup,
         };
 
@@ -107,18 +98,16 @@ public static class RegistryManifest
     public static ExclusionReason ClassifyPerTypeAttr(string name) =>
         ExcludedPerTypeAttrs.TryGetValue(name, out ExclusionReason reason) ? reason : ExclusionReason.Included;
 
-    /// <summary>Classify a <c>(type, subType)</c> row: the metadata.base inheritance anchor / the generic view.* presentation controls / Included.</summary>
+    /// <summary>
+    /// Classify a <c>(type, subType)</c> row: the metadata.base inheritance anchor / Included.
+    /// The generic <c>view.*</c> controls are NOT carved out: they are kind-1 vocabulary,
+    /// in the manifest with <c>implementedIn</c>.
+    /// </summary>
     public static ExclusionReason ClassifyTypeSubType(string type, string subType)
     {
         if (type == BaseTypes.TYPE_METADATA && subType == BaseTypes.SUBTYPE_BASE)
         {
             return ExclusionReason.InheritanceAnchor; // C-5 — Java's internal inheritance anchor
-        }
-        if (type == BaseTypes.TYPE_VIEW
-            && subType != BaseTypes.SUBTYPE_BASE
-            && subType != ViewConstants.VIEW_SUBTYPE_CURRENCY)
-        {
-            return ExclusionReason.PresentationOnly; // B-2 — TS-web-presentation generic view controls
         }
         return ExclusionReason.Included;
     }
@@ -167,6 +156,7 @@ public static class RegistryManifest
         bool IsArray,
         bool Required,
         IReadOnlyList<string>? AllowedValues,
+        IReadOnlyList<string>? ImplementedIn,
         IReadOnlyList<string>? Ports,
         string Description,
         string? Rules,
@@ -198,6 +188,7 @@ public static class RegistryManifest
     private sealed record ManifestType(
         string Type,
         string SubType,
+        IReadOnlyList<string> ImplementedIn,
         string Description,
         string? Rules,
         string? Example,
@@ -293,7 +284,10 @@ public static class RegistryManifest
         IReadOnlyList<string>? ports = a.Ports is { Count: > 0 } p
             ? p.OrderBy(x => x, StringComparer.Ordinal).ToList()
             : null;
-        return new ManifestAttr(a.Name, valueType, isArray, a.Required, allowedValues, ports, a.Description, a.Rules, a.Example, a.WhenToUse);
+        IReadOnlyList<string>? implementedIn = a.ImplementedIn is { Count: > 0 } k
+            ? k.OrderBy(x => x, StringComparer.Ordinal).ToList()
+            : null;
+        return new ManifestAttr(a.Name, valueType, isArray, a.Required, allowedValues, implementedIn, ports, a.Description, a.Rules, a.Example, a.WhenToUse);
     }
 
     // ------------------------------------------------------------------
@@ -362,6 +356,7 @@ public static class RegistryManifest
         new(
             def.TypeId.Type,
             def.TypeId.SubType,
+            def.ImplementedIn.OrderBy(x => x, StringComparer.Ordinal).ToList(),
             def.Description,
             def.Rules,
             def.Example,
@@ -426,6 +421,8 @@ public static class RegistryManifest
                 writer.WriteStartObject();
                 writer.WriteString("type", t.Type);
                 writer.WriteString("subType", t.SubType);
+                // The ports that implement it so far, only when named.
+                WriteStringArrayIfAny(writer, "implementedIn", t.ImplementedIn);
                 // FR-033 — description (required) then the optional docs facets,
                 // each emitted ONLY when present so absent keys stay absent.
                 writer.WriteString("description", t.Description);
@@ -485,6 +482,21 @@ public static class RegistryManifest
         return json + "\n";
     }
 
+    /// <summary>Write <paramref name="name"/> as a string array, only when it has members.</summary>
+    private static void WriteStringArrayIfAny(Utf8JsonWriter writer, string name, IReadOnlyList<string>? values)
+    {
+        if (values is not { Count: > 0 })
+        {
+            return;
+        }
+        writer.WriteStartArray(name);
+        foreach (string v in values)
+        {
+            writer.WriteStringValue(v);
+        }
+        writer.WriteEndArray();
+    }
+
     private static void WriteAttr(Utf8JsonWriter writer, ManifestAttr a)
     {
         writer.WriteStartObject();
@@ -512,16 +524,10 @@ public static class RegistryManifest
             }
             writer.WriteEndArray();
         }
-        // The ports that act on a language-specific attr, sorted, only when named.
-        if (a.Ports is { Count: > 0 } ports)
-        {
-            writer.WriteStartArray("ports");
-            foreach (string port in ports)
-            {
-                writer.WriteStringValue(port);
-            }
-            writer.WriteEndArray();
-        }
+        // Kind 1 (the ports that implement it so far), then kind 2 (the ports that
+        // act on a language-specific attr); each sorted, only when named.
+        WriteStringArrayIfAny(writer, "implementedIn", a.ImplementedIn);
+        WriteStringArrayIfAny(writer, "ports", a.Ports);
         // FR-033 — description (required) then the optional docs facets, each
         // emitted ONLY when present.
         writer.WriteString("description", a.Description);

@@ -1,6 +1,6 @@
 {
-  "registeredSubTypeCount": 66,
-  "exercisedSubTypeCount": 58,
+  "registeredSubTypeCount": 79,
+  "exercisedSubTypeCount": 71,
   "untestedSubTypes": [
     "attr.boolean",
     "attr.class",

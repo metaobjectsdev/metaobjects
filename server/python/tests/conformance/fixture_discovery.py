@@ -22,6 +22,8 @@ _DEFAULT_PROVIDERS: tuple[str, ...] = (
     "metaobjects-documentation",
     "metaobjects-prompt",
     "metaobjects-ui",
+    # view.textarea @rows and the view.image attrs are cross-port vocabulary.
+    "metaobjects-ui-web",
 )
 
 

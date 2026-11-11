@@ -91,4 +91,17 @@ children and the cardinality of that subtype. Documentation attributes
 | `validator.required` | Fails when the value is null (NOT NULL). Equivalent to @required on the owning field: on a non-array string, generated wire-tier input validation also rejects the empty string by default unless an explicit validator.length @min: 0 opts back to presence-only. | [types/validator.md#validatorrequired](types/validator.md#validatorrequired) |
 | `validator.requiredWhen` | One-directional conditional presence: when the gating field (@when) equals @equals, the target field (@field) must be present (NOT NULL); otherwise @field is unconstrained. Mirrors JSON Schema dependentRequired / Rails validates_presence_of :x, if:. Entity-scoped; references fields by name. | [types/validator.md#validatorrequiredwhen](types/validator.md#validatorrequiredwhen) |
 | `view.base` | Abstract view base — the shared root subtype for field-level UI/render hints. A view declares how a field's value is rendered or edited; the base carries no attrs of its own. Not authored directly: a `view.base` node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED) — this subtype is a registry anchor concrete subtypes inherit from, never a node in a document. | [types/view.md#viewbase](types/view.md#viewbase) |
+| `view.checkbox` | Checkbox selection control. | [types/view.md#viewcheckbox](types/view.md#viewcheckbox) |
 | `view.currency` | Currency display formatting (locale-aware via @locale). | [types/view.md#viewcurrency](types/view.md#viewcurrency) |
+| `view.date` | Date picker / date display. | [types/view.md#viewdate](types/view.md#viewdate) |
+| `view.dropdown` | Single-select dropdown control. | [types/view.md#viewdropdown](types/view.md#viewdropdown) |
+| `view.hidden` | Not rendered; carried but not shown. | [types/view.md#viewhidden](types/view.md#viewhidden) |
+| `view.hotlink` | Renders the value as a clickable link. | [types/view.md#viewhotlink](types/view.md#viewhotlink) |
+| `view.image` | Image upload/display control; the field stores an opaque storage key (field.string). | [types/view.md#viewimage](types/view.md#viewimage) |
+| `view.month` | Month picker / month display. | [types/view.md#viewmonth](types/view.md#viewmonth) |
+| `view.number` | Numeric input control. | [types/view.md#viewnumber](types/view.md#viewnumber) |
+| `view.password` | Masked input for sensitive values. | [types/view.md#viewpassword](types/view.md#viewpassword) |
+| `view.radio` | Radio-button selection control. | [types/view.md#viewradio](types/view.md#viewradio) |
+| `view.text` | Single-line text input/display. | [types/view.md#viewtext](types/view.md#viewtext) |
+| `view.textarea` | Multi-line text area. | [types/view.md#viewtextarea](types/view.md#viewtextarea) |
+| `view.web` | Abstract base for web-rendered views. | [types/view.md#viewweb](types/view.md#viewweb) |

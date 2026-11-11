@@ -69,6 +69,12 @@ _WILDCARD = "*"
 _BASE_SUBTYPE = "base"
 
 
+
+def _str_tuple(o: dict, key: str) -> tuple[str, ...] | None:
+    """A list of strings under ``key`` (``ports`` / ``implementedIn``), or None when absent."""
+    v = o.get(key)
+    return tuple(v) if v is not None else None
+
 @dataclass(frozen=True)
 class DocFacet:
     """One documented metamodel facet (a type/subType) — its description plus the
@@ -78,6 +84,8 @@ class DocFacet:
     rules: str | None = None
     example: str | None = None
     when_to_use: str | None = None
+    # The ports that implement this cross-port type so far; None = every port.
+    implemented_in: tuple[str, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -104,6 +112,8 @@ class AttrEntry:
     default: object | None = None
     # The ports that act on a language-specific attr; None = every port.
     ports: tuple[str, ...] | None = None
+    # The ports that implement this cross-port attr so far; None = every port.
+    implemented_in: tuple[str, ...] | None = None
 
     @property
     def required(self) -> bool:
@@ -204,6 +214,7 @@ class SpecMetamodelReader:
                 rules=t.get("rules"),
                 example=t.get("example"),
                 when_to_use=t.get("whenToUse"),
+                implemented_in=_str_tuple(t, "implementedIn"),
             )
             attrs = self._type_attr_docs.setdefault(key, {})
             for a in self._parse_attr_children(t):
@@ -254,7 +265,8 @@ class SpecMetamodelReader:
                     when_to_use=c.get("whenToUse"),
                     allowed_values=tuple(allowed) if allowed is not None else None,
                     default=c.get("default"),
-                    ports=tuple(c["ports"]) if c.get("ports") is not None else None,
+                    ports=_str_tuple(c, "ports"),
+                    implemented_in=_str_tuple(c, "implementedIn"),
                 )
             )
         return out
@@ -489,6 +501,7 @@ def apply_spec_descriptions(registry) -> None:
             definition.rules = facet.rules
             definition.example = facet.example
             definition.when_to_use = facet.when_to_use
+            definition.implemented_in = facet.implemented_in
 
         new_attrs = []
         for attr in definition.attrs:
@@ -502,6 +515,7 @@ def apply_spec_descriptions(registry) -> None:
                         example=a.example,
                         when_to_use=a.when_to_use,
                         ports=a.ports,
+                        implemented_in=a.implemented_in,
                     )
                 )
             else:

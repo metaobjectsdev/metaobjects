@@ -26,7 +26,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 
 | Corpus | Fixtures | TS | Java | Kotlin | C# | Python |
 |---|---|---|---|---|---|---|
-| [`fixtures/conformance/`](../fixtures/conformance/) (metamodel) | 451 | ✓ | ✓ | inherits via `metadata-ktx` | ✓ | ✓ |
+| [`fixtures/conformance/`](../fixtures/conformance/) (metamodel) | 454 | ✓ | ✓ | inherits via `metadata-ktx` | ✓ | ✓ |
 | [`fixtures/yaml-conformance/`](../fixtures/yaml-conformance/) | 16 | 16 / 16 | 15 / 16 (1 ledgered: `yaml-quoted-leading-zero` — Java pipeline strips quotes off `"007"`) | inherits via Java | 15 / 16 (1 ledgered: `error-yaml-coerced-hex-in-string` — YamlDotNet doesn't coerce `0xFF`) | 16 / 16 |
 | [`fixtures/verify-conformance/`](../fixtures/verify-conformance/) | 45 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/verify-strict-conformance/`](../fixtures/verify-strict-conformance/) | 1 | ✓ | — | — | — | ✓ |
@@ -131,6 +131,30 @@ are tracked in [#544](https://github.com/metaobjectsdev/metaobjects/issues/544).
   start in its DDL or mapping. Add it with the same semantic and the same pin.
 - *TODO, Python:* the vocabulary loads; the runtime has no DDL path. If it gains one, the same
   semantic and pin apply.
+
+**Cross-port vocabulary implemented in some ports so far (`implementedIn`).** Each entry
+below is in the shared registry and the registry manifest, marked `implementedIn`. A port that
+has not implemented it must still register it and load it strictly (and then ignore it); an
+unregistered attr on it still fails. Gated by the conformance fixtures `view-kind1-controls`,
+`object-kind1-jvm-binding-attrs` and `error-kind1-view-unregistered-attr`, and by the registry
+canonical (`fixtures/registry-conformance/expected-registry.json`).
+
+- *Implemented in TypeScript only* (`implementedIn: ["typescript"]`). The TS web client and TS
+  form codegen act on them; no other port does yet.
+  - `view.checkbox`, `view.date`, `view.dropdown`, `view.hidden`, `view.hotlink`, `view.month`,
+    `view.number`, `view.password`, `view.radio`, `view.text`, `view.web` (types, no attrs)
+  - `view.textarea`, and its `@rows`
+  - `view.image`, and its `@accept`, `@aspectRatio`, `@maxBytes`, `@maxEdge`, `@store`
+- *Implemented in Java only* (`implementedIn: ["java"]`): `object.* @object` (ADR-0001), the
+  native class an object binds to. Java's runtime acts on it; Java's own behaviour is unchanged.
+- *Loads strictly in every port.* Each port registers the `metaobjects-ui-web` provider
+  (`view.textarea @rows`, the `view.image` attrs) and `@object` / `@objectAdapter` on
+  `object.*`, loads all three fixtures strictly, and emits `implementedIn` in its manifest, which
+  byte-matches the canonical in all five ports (`KindOneVocabularyTests` in C#;
+  `registry-conformance.test.ts` in TypeScript; `RegistryManifestConformanceTest` in Java and
+  Kotlin; `test_registry_conformance.py` in Python).
+- *Port-scoped, for comparison* (`ports`, language-specific by nature, never "pending"):
+  `@dbSetName` (`["csharp"]`) and `@objectAdapter` (`["java", "kotlin"]`).
 
 **Native index vocabulary and `@description` in the ORM models.** `meta migrate` creates
 every index (`identity.secondary`, `index.lookup`, a field's `@unique`, with `@where`, `@using`,
@@ -326,7 +350,7 @@ unit-test runners (`bun test`, `dotnet test`, `pytest`, `mvn test`) pull Docker.
 
 ## Fixture-to-doc mapping
 
-### `fixtures/conformance/` — metamodel loader + canonical serializer (451)
+### `fixtures/conformance/` — metamodel loader + canonical serializer (454)
 
 | Fixture prefix | Feature doc |
 |---|---|
@@ -687,7 +711,7 @@ JSON and verify payload feeds it unchanged.
 
 ## Orphaned fixtures (tested but not yet documented)
 
-The fixtures in the nine corpora mapped above (metamodel 451 + yaml 16 + verify 45
+The fixtures in the nine corpora mapped above (metamodel 454 + yaml 16 + verify 45
 + render 18 + persistence 62 + api-contract 123 + source-resolution 25 + scope 10 +
 dependency 47) each map to a feature doc, and so do the two requirement corpora, `shared-model-conformance`, the
 `cube-model` corpus and `explorer-conformance`, whose case lists live in their own READMEs. None are orphaned today. The remaining

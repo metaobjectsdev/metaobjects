@@ -57,6 +57,14 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <p><em>No subtype-specific attributes.</em></p>
 <p><strong>Allowed children</strong></p>
 <p><em>No structural children.</em></p>
+<h3>view.checkbox</h3>
+<p>Checkbox selection control.</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>Implemented in:</strong> typescript so far — every port loads and type-checks it; the others do not act on it yet.</p>
+<p><strong>Attributes</strong></p>
+<p><em>No subtype-specific attributes.</em></p>
+<p><strong>Allowed children</strong></p>
+<p><em>No structural children.</em></p>
 <h3>view.currency</h3>
 <p>Currency display formatting (locale-aware via @locale).</p>
 <p><strong>Owning provider:</strong> metaobjects-core-types</p>
@@ -83,6 +91,180 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>BCP 47 locale code controlling currency display formatting. Defaults to &#39;en-US&#39; when omitted.</td>
 </tr>
 </tbody></table>
+<p><strong>Allowed children</strong></p>
+<p><em>No structural children.</em></p>
+<h3>view.date</h3>
+<p>Date picker / date display.</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>Implemented in:</strong> typescript so far — every port loads and type-checks it; the others do not act on it yet.</p>
+<p><strong>Attributes</strong></p>
+<p><em>No subtype-specific attributes.</em></p>
+<p><strong>Allowed children</strong></p>
+<p><em>No structural children.</em></p>
+<h3>view.dropdown</h3>
+<p>Single-select dropdown control.</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>Implemented in:</strong> typescript so far — every port loads and type-checks it; the others do not act on it yet.</p>
+<p><strong>Attributes</strong></p>
+<p><em>No subtype-specific attributes.</em></p>
+<p><strong>Allowed children</strong></p>
+<p><em>No structural children.</em></p>
+<h3>view.hidden</h3>
+<p>Not rendered; carried but not shown.</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>Implemented in:</strong> typescript so far — every port loads and type-checks it; the others do not act on it yet.</p>
+<p><strong>Attributes</strong></p>
+<p><em>No subtype-specific attributes.</em></p>
+<p><strong>Allowed children</strong></p>
+<p><em>No structural children.</em></p>
+<h3>view.hotlink</h3>
+<p>Renders the value as a clickable link.</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>Implemented in:</strong> typescript so far — every port loads and type-checks it; the others do not act on it yet.</p>
+<p><strong>Attributes</strong></p>
+<p><em>No subtype-specific attributes.</em></p>
+<p><strong>Allowed children</strong></p>
+<p><em>No structural children.</em></p>
+<h3>view.image</h3>
+<p>Image upload/display control; the field stores an opaque storage key (field.string).</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>Implemented in:</strong> typescript so far — every port loads and type-checks it; the others do not act on it yet.</p>
+<p><strong>Attributes</strong></p>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Allowed values</th>
+<th>Provider</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>@accept</code></td>
+<td>string[]</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui-web</td>
+<td>Accepted MIME types (client guard; the server re-enforces).</td>
+</tr>
+<tr>
+<td><code>@aspectRatio</code></td>
+<td>double</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui-web</td>
+<td>Crop aspect ratio (width / height). Omit for freeform.</td>
+</tr>
+<tr>
+<td><code>@maxBytes</code></td>
+<td>int</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui-web</td>
+<td>Client-side size ceiling in bytes.</td>
+</tr>
+<tr>
+<td><code>@maxEdge</code></td>
+<td>int</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui-web</td>
+<td>Longest-edge bound in px for the re-encoded output.</td>
+</tr>
+<tr>
+<td><code>@store</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui-web</td>
+<td>Opaque storage-namespace hint passed to the upload adapter (not infrastructure).</td>
+</tr>
+</tbody></table>
+<p><strong>Allowed children</strong></p>
+<p><em>No structural children.</em></p>
+<h3>view.month</h3>
+<p>Month picker / month display.</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>Implemented in:</strong> typescript so far — every port loads and type-checks it; the others do not act on it yet.</p>
+<p><strong>Attributes</strong></p>
+<p><em>No subtype-specific attributes.</em></p>
+<p><strong>Allowed children</strong></p>
+<p><em>No structural children.</em></p>
+<h3>view.number</h3>
+<p>Numeric input control.</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>Implemented in:</strong> typescript so far — every port loads and type-checks it; the others do not act on it yet.</p>
+<p><strong>Attributes</strong></p>
+<p><em>No subtype-specific attributes.</em></p>
+<p><strong>Allowed children</strong></p>
+<p><em>No structural children.</em></p>
+<h3>view.password</h3>
+<p>Masked input for sensitive values.</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>Implemented in:</strong> typescript so far — every port loads and type-checks it; the others do not act on it yet.</p>
+<p><strong>Attributes</strong></p>
+<p><em>No subtype-specific attributes.</em></p>
+<p><strong>Allowed children</strong></p>
+<p><em>No structural children.</em></p>
+<h3>view.radio</h3>
+<p>Radio-button selection control.</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>Implemented in:</strong> typescript so far — every port loads and type-checks it; the others do not act on it yet.</p>
+<p><strong>Attributes</strong></p>
+<p><em>No subtype-specific attributes.</em></p>
+<p><strong>Allowed children</strong></p>
+<p><em>No structural children.</em></p>
+<h3>view.text</h3>
+<p>Single-line text input/display.</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>Implemented in:</strong> typescript so far — every port loads and type-checks it; the others do not act on it yet.</p>
+<p><strong>Attributes</strong></p>
+<p><em>No subtype-specific attributes.</em></p>
+<p><strong>Allowed children</strong></p>
+<p><em>No structural children.</em></p>
+<h3>view.textarea</h3>
+<p>Multi-line text area.</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>Implemented in:</strong> typescript so far — every port loads and type-checks it; the others do not act on it yet.</p>
+<p><strong>Attributes</strong></p>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Allowed values</th>
+<th>Provider</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>@rows</code></td>
+<td>int</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-ui-web</td>
+<td>Visible row count for the generated <textarea>; the form generator defaults to 4 when absent.</td>
+</tr>
+</tbody></table>
+<p><strong>Allowed children</strong></p>
+<p><em>No structural children.</em></p>
+<h3>view.web</h3>
+<p>Abstract base for web-rendered views.</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
+<p><strong>Implemented in:</strong> typescript so far — every port loads and type-checks it; the others do not act on it yet.</p>
+<p><strong>Attributes</strong></p>
+<p><em>No subtype-specific attributes.</em></p>
 <p><strong>Allowed children</strong></p>
 <p><em>No structural children.</em></p>
 

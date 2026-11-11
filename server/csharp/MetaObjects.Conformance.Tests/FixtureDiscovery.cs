@@ -93,6 +93,8 @@ public static class FixtureDiscovery
             "metaobjects-documentation",
             "metaobjects-prompt",
             "metaobjects-ui",
+            // View.textarea @rows and the view.image attrs.
+            "metaobjects-ui-web",
         };
 
     /// <summary>

@@ -1,0 +1,193 @@
+{
+  "metadata.root": {
+    "package": "acme::catalog",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Product",
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "checkboxValue",
+                "children": [
+                  {
+                    "view.checkbox": {
+                      "name": "form"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.string": {
+                "name": "dateValue",
+                "children": [
+                  {
+                    "view.date": {
+                      "name": "form"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.string": {
+                "name": "dropdownValue",
+                "children": [
+                  {
+                    "view.dropdown": {
+                      "name": "form"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.string": {
+                "name": "hiddenValue",
+                "children": [
+                  {
+                    "view.hidden": {
+                      "name": "form"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.string": {
+                "name": "hotlinkValue",
+                "children": [
+                  {
+                    "view.hotlink": {
+                      "name": "form"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.string": {
+                "name": "monthValue",
+                "children": [
+                  {
+                    "view.month": {
+                      "name": "form"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.string": {
+                "name": "numberValue",
+                "children": [
+                  {
+                    "view.number": {
+                      "name": "form"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.string": {
+                "name": "passwordValue",
+                "children": [
+                  {
+                    "view.password": {
+                      "name": "form"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.string": {
+                "name": "radioValue",
+                "children": [
+                  {
+                    "view.radio": {
+                      "name": "form"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.string": {
+                "name": "textValue",
+                "children": [
+                  {
+                    "view.text": {
+                      "name": "form"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.string": {
+                "name": "webValue",
+                "children": [
+                  {
+                    "view.web": {
+                      "name": "form"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.string": {
+                "name": "notes",
+                "children": [
+                  {
+                    "view.textarea": {
+                      "name": "form",
+                      "@rows": 6
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.string": {
+                "name": "coverKey",
+                "@maxLength": 80,
+                "children": [
+                  {
+                    "view.image": {
+                      "name": "form",
+                      "@accept": [
+                        "image/jpeg",
+                        "image/png"
+                      ],
+                      "@aspectRatio": 1.5,
+                      "@maxBytes": 10485760,
+                      "@maxEdge": 2000,
+                      "@store": "photos"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

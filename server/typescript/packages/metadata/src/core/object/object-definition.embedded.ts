@@ -55,6 +55,29 @@ export const OBJECT_DEFINITION: ProviderDefinition = {
           "name": "*",
           "min": 0,
           "max": null
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "object",
+          "min": 0,
+          "max": 1,
+          "implementedIn": [
+            "java"
+          ],
+          "description": "The native class an object binds to (ADR-0001), in place of its default runtime class: on the JVM, a fully-qualified class name. Cross-port vocabulary only Java implements so far; every port loads and type-checks it, and the others do not act on it yet."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "objectAdapter",
+          "min": 0,
+          "max": 1,
+          "ports": [
+            "java",
+            "kotlin"
+          ],
+          "description": "JVM-only (ADR-0005): the fully-qualified name of an ObjectAdapter that takes over value access for this object's instances. Every port loads and type-checks it; only Java and Kotlin act on it."
         }
       ]
     },

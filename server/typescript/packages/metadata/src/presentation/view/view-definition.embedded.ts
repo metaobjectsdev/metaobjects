@@ -17,61 +17,97 @@ export const VIEW_DEFINITION: ProviderDefinition = {
     {
       "type": "view",
       "subType": "text",
+      "implementedIn": [
+        "typescript"
+      ],
       "description": "Single-line text input/display."
     },
     {
       "type": "view",
       "subType": "textarea",
+      "implementedIn": [
+        "typescript"
+      ],
       "description": "Multi-line text area."
     },
     {
       "type": "view",
       "subType": "date",
+      "implementedIn": [
+        "typescript"
+      ],
       "description": "Date picker / date display."
     },
     {
       "type": "view",
       "subType": "month",
+      "implementedIn": [
+        "typescript"
+      ],
       "description": "Month picker / month display."
     },
     {
       "type": "view",
       "subType": "hotlink",
+      "implementedIn": [
+        "typescript"
+      ],
       "description": "Renders the value as a clickable link."
     },
     {
       "type": "view",
       "subType": "dropdown",
+      "implementedIn": [
+        "typescript"
+      ],
       "description": "Single-select dropdown control."
     },
     {
       "type": "view",
       "subType": "radio",
+      "implementedIn": [
+        "typescript"
+      ],
       "description": "Radio-button selection control."
     },
     {
       "type": "view",
       "subType": "checkbox",
+      "implementedIn": [
+        "typescript"
+      ],
       "description": "Checkbox selection control."
     },
     {
       "type": "view",
       "subType": "number",
+      "implementedIn": [
+        "typescript"
+      ],
       "description": "Numeric input control."
     },
     {
       "type": "view",
       "subType": "password",
+      "implementedIn": [
+        "typescript"
+      ],
       "description": "Masked input for sensitive values."
     },
     {
       "type": "view",
       "subType": "hidden",
+      "implementedIn": [
+        "typescript"
+      ],
       "description": "Not rendered; carried but not shown."
     },
     {
       "type": "view",
       "subType": "web",
+      "implementedIn": [
+        "typescript"
+      ],
       "description": "Abstract base for web-rendered views."
     },
     {
@@ -82,6 +118,9 @@ export const VIEW_DEFINITION: ProviderDefinition = {
     {
       "type": "view",
       "subType": "image",
+      "implementedIn": [
+        "typescript"
+      ],
       "description": "Image upload/display control; the field stores an opaque storage key (field.string)."
     }
   ]

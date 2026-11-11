@@ -54,7 +54,37 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <p>Abstract object base — the shared root subtype that concrete object subtypes (entity/value/projection) specialize. Declares the structural children common to EVERY object subtype (the intersection: field/identity/validator/layout/source); subtype-specific children (relationship, template) and attrs (discriminator) ride their own subtypes. Has no runtime semantics of its own; not authored directly. A <code>object.base</code> node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED): this subtype is a registry anchor concrete subtypes inherit from, never a node in a document.</p>
 <p><strong>Owning provider:</strong> metaobjects-core-types</p>
 <p><strong>Attributes</strong></p>
-<p><em>No subtype-specific attributes.</em></p>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Allowed values</th>
+<th>Provider</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>@object</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>The native class an object binds to (ADR-0001), in place of its default runtime class: on the JVM, a fully-qualified class name. Cross-port vocabulary only Java implements so far; every port loads and type-checks it, and the others do not act on it yet.</td>
+</tr>
+<tr>
+<td><code>@objectAdapter</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>JVM-only (ADR-0005): the fully-qualified name of an ObjectAdapter that takes over value access for this object&#39;s instances. Every port loads and type-checks it; only Java and Kotlin act on it.</td>
+</tr>
+</tbody></table>
 <p><strong>Allowed children</strong></p>
 <ul>
 <li><code>field.*</code> — 0..*</li>
@@ -109,6 +139,24 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>metaobjects-core-types</td>
 <td>FR-014: on a subtype of an entity with @discriminator — the value that identifies rows of this subtype in the shared discriminator field. Wire form is always a string; the underlying field&#39;s subtype (enum / int / string) controls codegen + storage coercion. Required on every concrete subtype of a discriminated entity.</td>
 </tr>
+<tr>
+<td><code>@object</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>The native class an object binds to (ADR-0001), in place of its default runtime class: on the JVM, a fully-qualified class name. Cross-port vocabulary only Java implements so far; every port loads and type-checks it, and the others do not act on it yet.</td>
+</tr>
+<tr>
+<td><code>@objectAdapter</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>JVM-only (ADR-0005): the fully-qualified name of an ObjectAdapter that takes over value access for this object&#39;s instances. Every port loads and type-checks it; only Java and Kotlin act on it.</td>
+</tr>
 </tbody></table>
 <p><strong>Allowed children</strong></p>
 <ul>
@@ -159,6 +207,24 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td></td>
 <td>metaobjects-core-types</td>
 <td>Optional row-scope predicate (a portable attr.filter object: eq/ne/gt/gte/lt/lte/like/in/isNull with and/or, desugared to { field: { op: value } } at parse time) selecting which rows the view returns — lowered to an outer SQL WHERE. Resolves against the projection&#39;s own declared fields; an aggregate-derived field is not addressable (fail-closed).</td>
+</tr>
+<tr>
+<td><code>@object</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>The native class an object binds to (ADR-0001), in place of its default runtime class: on the JVM, a fully-qualified class name. Cross-port vocabulary only Java implements so far; every port loads and type-checks it, and the others do not act on it yet.</td>
+</tr>
+<tr>
+<td><code>@objectAdapter</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>JVM-only (ADR-0005): the fully-qualified name of an ObjectAdapter that takes over value access for this object&#39;s instances. Every port loads and type-checks it; only Java and Kotlin act on it.</td>
 </tr>
 </tbody></table>
 <p><strong>Allowed children</strong></p>
@@ -233,6 +299,24 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>Measure names of @from.</td>
 </tr>
 <tr>
+<td><code>@object</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>The native class an object binds to (ADR-0001), in place of its default runtime class: on the JVM, a fully-qualified class name. Cross-port vocabulary only Java implements so far; every port loads and type-checks it, and the others do not act on it yet.</td>
+</tr>
+<tr>
+<td><code>@objectAdapter</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>JVM-only (ADR-0005): the fully-qualified name of an ObjectAdapter that takes over value access for this object&#39;s instances. Every port loads and type-checks it; only Java and Kotlin act on it.</td>
+</tr>
+<tr>
 <td><code>@segment</code></td>
 <td>string</td>
 <td>no</td>
@@ -286,6 +370,24 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td><code>none</code>, <code>collapse</code>, <code>strip</code></td>
 <td>metaobjects-prompt</td>
 <td>ASCII normalization mode for tolerant enum extract (none|collapse|strip, default strip). On field.enum it is per-field; on object.value it is the default for the object&#39;s enum fields.</td>
+</tr>
+<tr>
+<td><code>@object</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>The native class an object binds to (ADR-0001), in place of its default runtime class: on the JVM, a fully-qualified class name. Cross-port vocabulary only Java implements so far; every port loads and type-checks it, and the others do not act on it yet.</td>
+</tr>
+<tr>
+<td><code>@objectAdapter</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>JVM-only (ADR-0005): the fully-qualified name of an ObjectAdapter that takes over value access for this object&#39;s instances. Every port loads and type-checks it; only Java and Kotlin act on it.</td>
 </tr>
 </tbody></table>
 <p><strong>Allowed children</strong></p>

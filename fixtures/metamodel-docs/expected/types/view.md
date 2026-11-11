@@ -24,6 +24,22 @@ _No subtype-specific attributes._
 
 _No structural children._
 
+### view.checkbox
+
+Checkbox selection control.
+
+**Owning provider:** metaobjects-core-types
+
+**Implemented in:** typescript so far — every port loads and type-checks it; the others do not act on it yet.
+
+**Attributes**
+
+_No subtype-specific attributes._
+
+**Allowed children**
+
+_No structural children._
+
 ### view.currency
 
 Currency display formatting (locale-aware via @locale).
@@ -35,6 +51,206 @@ Currency display formatting (locale-aware via @locale).
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
 | --- | --- | --- | --- | --- | --- | --- |
 | `@locale` | string | no | `en-US` |  | metaobjects-ui | BCP 47 locale code controlling currency display formatting. Defaults to 'en-US' when omitted. |
+
+**Allowed children**
+
+_No structural children._
+
+### view.date
+
+Date picker / date display.
+
+**Owning provider:** metaobjects-core-types
+
+**Implemented in:** typescript so far — every port loads and type-checks it; the others do not act on it yet.
+
+**Attributes**
+
+_No subtype-specific attributes._
+
+**Allowed children**
+
+_No structural children._
+
+### view.dropdown
+
+Single-select dropdown control.
+
+**Owning provider:** metaobjects-core-types
+
+**Implemented in:** typescript so far — every port loads and type-checks it; the others do not act on it yet.
+
+**Attributes**
+
+_No subtype-specific attributes._
+
+**Allowed children**
+
+_No structural children._
+
+### view.hidden
+
+Not rendered; carried but not shown.
+
+**Owning provider:** metaobjects-core-types
+
+**Implemented in:** typescript so far — every port loads and type-checks it; the others do not act on it yet.
+
+**Attributes**
+
+_No subtype-specific attributes._
+
+**Allowed children**
+
+_No structural children._
+
+### view.hotlink
+
+Renders the value as a clickable link.
+
+**Owning provider:** metaobjects-core-types
+
+**Implemented in:** typescript so far — every port loads and type-checks it; the others do not act on it yet.
+
+**Attributes**
+
+_No subtype-specific attributes._
+
+**Allowed children**
+
+_No structural children._
+
+### view.image
+
+Image upload/display control; the field stores an opaque storage key (field.string).
+
+**Owning provider:** metaobjects-core-types
+
+**Implemented in:** typescript so far — every port loads and type-checks it; the others do not act on it yet.
+
+**Attributes**
+
+| Attribute | Type | Required | Default | Allowed values | Provider | Description |
+| --- | --- | --- | --- | --- | --- | --- |
+| `@accept` | string[] | no |  |  | metaobjects-ui-web | Accepted MIME types (client guard; the server re-enforces). |
+| `@aspectRatio` | double | no |  |  | metaobjects-ui-web | Crop aspect ratio (width / height). Omit for freeform. |
+| `@maxBytes` | int | no |  |  | metaobjects-ui-web | Client-side size ceiling in bytes. |
+| `@maxEdge` | int | no |  |  | metaobjects-ui-web | Longest-edge bound in px for the re-encoded output. |
+| `@store` | string | no |  |  | metaobjects-ui-web | Opaque storage-namespace hint passed to the upload adapter (not infrastructure). |
+
+**Allowed children**
+
+_No structural children._
+
+### view.month
+
+Month picker / month display.
+
+**Owning provider:** metaobjects-core-types
+
+**Implemented in:** typescript so far — every port loads and type-checks it; the others do not act on it yet.
+
+**Attributes**
+
+_No subtype-specific attributes._
+
+**Allowed children**
+
+_No structural children._
+
+### view.number
+
+Numeric input control.
+
+**Owning provider:** metaobjects-core-types
+
+**Implemented in:** typescript so far — every port loads and type-checks it; the others do not act on it yet.
+
+**Attributes**
+
+_No subtype-specific attributes._
+
+**Allowed children**
+
+_No structural children._
+
+### view.password
+
+Masked input for sensitive values.
+
+**Owning provider:** metaobjects-core-types
+
+**Implemented in:** typescript so far — every port loads and type-checks it; the others do not act on it yet.
+
+**Attributes**
+
+_No subtype-specific attributes._
+
+**Allowed children**
+
+_No structural children._
+
+### view.radio
+
+Radio-button selection control.
+
+**Owning provider:** metaobjects-core-types
+
+**Implemented in:** typescript so far — every port loads and type-checks it; the others do not act on it yet.
+
+**Attributes**
+
+_No subtype-specific attributes._
+
+**Allowed children**
+
+_No structural children._
+
+### view.text
+
+Single-line text input/display.
+
+**Owning provider:** metaobjects-core-types
+
+**Implemented in:** typescript so far — every port loads and type-checks it; the others do not act on it yet.
+
+**Attributes**
+
+_No subtype-specific attributes._
+
+**Allowed children**
+
+_No structural children._
+
+### view.textarea
+
+Multi-line text area.
+
+**Owning provider:** metaobjects-core-types
+
+**Implemented in:** typescript so far — every port loads and type-checks it; the others do not act on it yet.
+
+**Attributes**
+
+| Attribute | Type | Required | Default | Allowed values | Provider | Description |
+| --- | --- | --- | --- | --- | --- | --- |
+| `@rows` | int | no |  |  | metaobjects-ui-web | Visible row count for the generated <textarea>; the form generator defaults to 4 when absent. |
+
+**Allowed children**
+
+_No structural children._
+
+### view.web
+
+Abstract base for web-rendered views.
+
+**Owning provider:** metaobjects-core-types
+
+**Implemented in:** typescript so far — every port loads and type-checks it; the others do not act on it yet.
+
+**Attributes**
+
+_No subtype-specific attributes._
 
 **Allowed children**
 

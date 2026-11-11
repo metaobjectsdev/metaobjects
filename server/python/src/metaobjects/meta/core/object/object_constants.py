@@ -24,6 +24,11 @@ OBJECT_ATTR_DISCRIMINATOR_VALUE = "discriminatorValue"
 # C#-only (ports ["csharp"]): the EF Core DbSet property name. Loaded and type-checked here
 # on object.entity / projection / report; no Python generator acts on it.
 OBJECT_ATTR_DB_SET_NAME = "dbSetName"
+# On object.base, so every object subtype carries them. ``@object`` (ADR-0001) is
+# cross-port vocabulary only Java implements so far; ``@objectAdapter`` (ADR-0005) is
+# JVM-only (ports ["java", "kotlin"]). Python loads and type-checks both; it acts on neither.
+OBJECT_ATTR_OBJECT = "object"
+OBJECT_ATTR_OBJECT_ADAPTER = "objectAdapter"
 
 # #207 — object.projection row-scope @filter (view-level WHERE). An optional
 # row-scope predicate on an object.projection (a portable attr.filter object —

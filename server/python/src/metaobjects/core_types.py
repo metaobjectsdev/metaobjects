@@ -60,6 +60,8 @@ from .meta.core.object.object_constants import (
     OBJECT_ATTR_DISCRIMINATOR,
     OBJECT_ATTR_DISCRIMINATOR_VALUE,
     OBJECT_ATTR_DB_SET_NAME,
+    OBJECT_ATTR_OBJECT,
+    OBJECT_ATTR_OBJECT_ADAPTER,
     OBJECT_PROJECTION_ATTR_FILTER,
     OBJECT_REPORT_ATTR_DIMENSIONS,
     OBJECT_REPORT_ATTR_FILTER,
@@ -299,6 +301,10 @@ _OBJECT_COMMON_ATTRS = [
     # declares it on entity / projection / report; the strict per-subtype scoping
     # (apply_spec_descriptions) prunes it from the others.
     AttrSchema(name=OBJECT_ATTR_DB_SET_NAME, value_type=ATTR_SUBTYPE_STRING, required=False),
+    # @object / @objectAdapter: the JVM's native binding attrs, declared on object.base
+    # in object.json and so kept on every subtype. Loaded and type-checked; unused here.
+    AttrSchema(name=OBJECT_ATTR_OBJECT, value_type=ATTR_SUBTYPE_STRING, required=False),
+    AttrSchema(name=OBJECT_ATTR_OBJECT_ADAPTER, value_type=ATTR_SUBTYPE_STRING, required=False),
 ]
 # FR-011: @normalize is an object-level default for the enum fields of a payload
 # value-object — registered on object.value ONLY (not entity/base). FR-033 re-homes
@@ -1256,6 +1262,7 @@ for _tmpl_sub, _tmpl_attrs in _TEMPLATE_ATTRS_BY_SUBTYPE.items():
 from .meta.persistence.db.db_provider import db_provider  # noqa: E402
 from .meta.template.prompt_provider import prompt_provider  # noqa: E402
 from .meta.presentation.ui.ui_provider import ui_provider  # noqa: E402
+from .meta.presentation.ui.ui_web_provider import ui_web_provider  # noqa: E402
 from .documentation.doc_provider import doc_provider  # noqa: E402
 
 core_providers: list[Provider] = [
@@ -1264,6 +1271,9 @@ core_providers: list[Provider] = [
     doc_provider,
     prompt_provider,
     ui_provider,
+    # view.textarea @rows and the view.image attrs (ui-web.json): cross-port vocabulary
+    # only TypeScript implements so far. Loaded strictly here and ignored.
+    ui_web_provider,
 ]
 
 # #265 — the ids of the LIBRARY providers above, as a frozen set. Consulted by

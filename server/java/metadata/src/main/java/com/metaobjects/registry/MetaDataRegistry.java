@@ -533,6 +533,7 @@ public class MetaDataRegistry {
             case "string":     return com.metaobjects.attr.StringAttribute.SUBTYPE_STRING;
             case "boolean":    return com.metaobjects.attr.BooleanAttribute.SUBTYPE_BOOLEAN;
             case "int":        return com.metaobjects.attr.IntAttribute.SUBTYPE_INT;
+            case "double":     return com.metaobjects.attr.DoubleAttribute.SUBTYPE_DOUBLE;
             case "properties": return com.metaobjects.attr.PropertiesAttribute.SUBTYPE_PROPERTIES;
             case "filter":     return com.metaobjects.attr.FilterAttribute.SUBTYPE_FILTER;
             default:
