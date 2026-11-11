@@ -528,7 +528,7 @@ function entitySummary(entity: MetaObject): string | undefined {
   return typeof v === "string" && v.length > 0 ? v : undefined;
 }
 
-function describeIdentity(id: MetaIdentity): string {
+function describeIdentity(id: MetaIdentity, entity: MetaObject, layout: OutputLayout): string {
   const fields = id.fields;
   const fieldList = fields.length === 1
     ? `\`${fields[0]}\``
@@ -549,6 +549,14 @@ function describeIdentity(id: MetaIdentity): string {
     // loaded value is canonical.
     const raw = id.authoredAttr(IDENTITY_REFERENCE_ATTR_REFERENCES);
     if (typeof raw === "string" && raw.length > 0) {
+      // G4 (rc.20): the target links to its page, through the same docPageHref the field table's
+      // FK links use, whether the reference is bare or package-qualified (ADR-0059 R7: the node
+      // the loader bound, never a name match). An unbound target stays plain text.
+      const bound = refTarget(id, IDENTITY_REFERENCE_ATTR_REFERENCES);
+      if (bound !== undefined && bound.type === TYPE_OBJECT) {
+        const href = docPageHref(layout, docPageNode(entity), docPageNode(bound as MetaObject));
+        return `**Reference:** ${fieldList} → [\`${raw}\`](${href})`;
+      }
       return `**Reference:** ${fieldList} → \`${raw}\``;
     }
     return `**Reference:** ${fieldList}`;
@@ -657,7 +665,7 @@ export function buildEntityDocData(
   // ---- Identities
   const ids = entity.identities();
   const identities: IdentityDoc[] | undefined = ids.length > 0
-    ? ids.map((id) => ({ bullet: describeIdentity(id) }))
+    ? ids.map((id) => ({ bullet: describeIdentity(id, entity, layout) }))
     : undefined;
 
   // ---- Relationships

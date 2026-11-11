@@ -544,6 +544,13 @@ vocabulary; upgrade every port together.
   the objects it accepts and of every value object it emits beyond them; an un-narrowed run emits
   the same set as before.
 
+- **Fix, TypeScript docs: an identity reference's target links to its page (G4).** The Identity
+  section printed ``**Reference:** `x` → `Target` `` unlinked, bare or package-qualified. The target
+  now links through the same `docPageHref` the field table's foreign-key links use
+  (``→ [`acme::crm::Customer`](../crm/Customer.md)``), keeping the authored spelling as the label;
+  a target the loader did not bind stays plain text. **Upgrade note:** committed docs pages with an
+  identity reference regenerate once with the link.
+
 - **Fix, TypeScript views: two references onto one target entity read their own rows.** A
   projection whose origins reach the same entity through two different references
   (`Account.owner` and `Account.approver`, both `User`) got two joins (`u`, `u0`), but every origin

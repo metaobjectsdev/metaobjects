@@ -87,4 +87,11 @@ describe("docsFile — cross-page links follow package placement (item 11)", () 
     const pages = await render();
     expect(pages.get("acme/sales/Order.md")).toContain("**References:** [`Order.id`](./Order.md)");
   });
+
+  // G4, rc.20: the Identity section's reference bullet links its target too, bare or qualified.
+  it("an identity reference links its target, package-qualified or bare", async () => {
+    const order = (await render()).get("acme/sales/Order.md")!;
+    expect(order).toContain("**Reference:** `customerId` → [`acme::crm::Customer`](../crm/Customer.md)");
+    expect(order).toContain("**Reference:** `parentId` → [`acme::sales::Order`](./Order.md)");
+  });
 });

@@ -61,7 +61,7 @@ flowchart TB
 ## Identity
 
 - **Primary key:** \`id\`
-- **Reference:** \`programId\` → \`Program\`
+- **Reference:** \`programId\` → [\`Program\`](./Program.md)
 
 ## In context
 
