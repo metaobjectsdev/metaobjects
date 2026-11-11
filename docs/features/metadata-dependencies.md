@@ -401,6 +401,50 @@ scope too, whether or not it has any dependencies at all.
 `field.enum` reaches the generated `enums.ts` iff a *selected* entity's field resolves
 to it — decided by the using entity, never by the enum's own package.
 
+## Inheriting a dependency's requirements
+
+A dependency published with `requirements: true` carries its requirements, and they load
+with its model: an overlay of one resolves, and `meta verify` can see it. By default they
+stay the **publisher's** ledger, not yours. The requirement gate does not check, count,
+summarise or lint them, and the `requirement-tests` generator writes no test for them.
+That is the same default as an imported entity's code generation, for the same reason:
+you did not declare them.
+
+To take them on, name the dependency's package in `requirements.inherit`:
+
+```jsonc
+// .metaobjects/config.json (consumer)
+{
+  "dependencies": [{ "name": "acme-common", "npm": "@acme/common-model" }],
+  "requirements": { "inherit": ["acme::common"] }
+}
+```
+
+The inherited requirements then join your ledger: `meta verify` resolves their
+`@implementedBy` against the loaded model and reports each by its status, and
+`requirement-tests` scaffolds a test per claim. Change one's verdict for your project with
+an overlay (same package, same name, `overlay: true`, a new `@status`); a NEW requirement
+declared into the dependency's package is refused with `ERR_DEPENDENCY_PACKAGE_NOT_OWNED`,
+as a new object there is.
+
+Three rules keep it predictable:
+
+- **A pattern must NAME the package.** `acme::common` or `acme::common::**` inherits it;
+  `**` alone names nothing and inherits nothing. This is the explicit-include rule
+  `scope.include` follows.
+- **It is a separate key from `scope.include`.** Naming a package in `scope.include`
+  also generates code for it, which is not what taking on its requirements means.
+  `scope.include` alone inherits nothing.
+- **An imported requirement never switches object coverage on**, inherited or not. Only a
+  requirement you wrote yourself does, as for a [library](libraries.md)'s requirements:
+  depending on a model must not enrol you in a gate you did not ask for.
+
+`requirements` refuses any key but `inherit`, so a misspelling fails the load instead of
+quietly leaving the ledger out. A consumer on a toolchain older than this key treats a
+published requirement as its own, so pin the toolchain before you publish with
+`requirements: true` to a consumer you do not control. The manifest's `schema_version` does
+not change.
+
 ## What fails at load, when upstream moves
 
 The loader's own validation already fails your build the moment a target you built on
@@ -473,6 +517,7 @@ export default defineConfig({
       name: "acme-common",
       include: ["acme::common::**"],
       // exclude: ["acme::common::InternalOnly"],
+      // requirements: true, // also publish the selected requirement.* nodes (default false)
       // files: [...],       // default: the run's own source files
       // version: "1.2.0",   // default: the nearest package.json version
       target: "shared",
@@ -490,13 +535,19 @@ it:
 
 1. Loads `files` standalone with your project's own registry, strict.
 2. Selects top-level nodes matching `include`/`exclude` — always excluding
-   `requirement.*` and `template.*` (a publisher's ledger and prompts are not a
-   consumer's shapes).
+   `template.*` (a publisher's prompts are not a consumer's shapes), and excluding
+   `requirement.*` unless `requirements: true`. With it, the publisher's ledger ships
+   with the model it describes, so a consumer can inherit it (see
+   [Inheriting a dependency's requirements](#inheriting-a-dependencys-requirements)).
+   Java and Kotlin take the same switch as the generator arg `requirements`, and C# as
+   `SharedModelGenerator.Requirements`.
 3. **Checks the selection is closed** — every `extends` target and every ref-bearing
    attribute of a selected node (and its descendants) must resolve to another
    *selected* node, or the build fails naming the `(referrer → target)` pairs. This
    is what stops an internal shape from silently leaking through a dangling
-   reference.
+   reference. A published requirement's `@implementedBy` targets count as references
+   too: a requirement claiming a node you did not select is refused, so a consumer
+   never inherits a claim that cannot resolve.
 4. **Re-loads the emitted artifact standalone with core providers only** — your
    provider vocabulary is not carried into the export; a Phase 1a export that needs
    it fails here, at publish time, not on a consumer's `meta deps sync`.
@@ -785,8 +836,8 @@ but **not** built yet — do not assume any of the following exists:
 
 ## Verified by
 
-- [`fixtures/dependency-conformance/`](../../fixtures/dependency-conformance/) — 39
-  cases. 28 pin resolution (including `npm`, `python`, `maven` and `nuget` dependencies loading from their
+- [`fixtures/dependency-conformance/`](../../fixtures/dependency-conformance/) — 46
+  cases. 35 pin resolution (including `npm`, `python`, `maven` and `nuget` dependencies loading from their
   committed snapshot with nothing installed), the exhaustive `imported`/`inScope`/`inMigrateScope` sets,
   overlay/extends/reference behavior against a synced snapshot, and every load- and
   resolution-time error above, run by TypeScript (the reference implementation),
@@ -795,22 +846,26 @@ but **not** built yet — do not assume any of the following exists:
   check (`current`, `drifted`, `unresolved`), run by TypeScript, Java (Kotlin through the same
   `metaobjects:verify` goal), Python (`metaobjects deps check`, `verify --deps`) and C#
   (`dotnet meta verify --deps`).
-  Three artifacts under `fixtures/dependency-conformance/artifacts/` are
+  Four artifacts under `fixtures/dependency-conformance/artifacts/` are
   pinned by sha256 in the README so the corpus itself can never silently drift.
-  Python's runner asserts all 28 resolution cases identically to TypeScript's, with no
+  Python's runner asserts all 35 resolution cases identically to TypeScript's, with no
   exemptions — the two overlay cases that need a view child as incidental content
   use `view.currency` (the one concrete `view.*` subtype registered cross-port,
   per `fixtures/registry-conformance/expected-registry.json`), not `view.text`,
   so they exercise the full imported/selected/governed assertions like every
-  other case. `transport-cases.json` beside it pins the `npm`, `python`, `maven` and `nuget` transports
+  other case. Six resolution cases also pin the ledger (`expectLedger`, `expectCoverageMeasured`):
+  which requirements are the project's own and whether coverage is measured, asserted through
+  each port's requirement gate and its `requirement-tests` walk, in TypeScript, Python, Java and
+  C#. `transport-cases.json` beside it pins the `npm`, `python`, `maven` and `nuget` transports
   themselves (32 cases: packages laid out under a temp `node_modules`, on a temp
   Python import path, as a jar in a temp local Maven repository and as a package in a temp NuGet
   cache, the directory each resolves to, the exact lock `sync` writes, and
   each refusal), run by Node `meta deps sync`, the only writer.
-- [`fixtures/shared-model-conformance/`](../../fixtures/shared-model-conformance/) — 11 cases
+- [`fixtures/shared-model-conformance/`](../../fixtures/shared-model-conformance/) — 15 cases
   pinning what a publisher writes: the exact artifact and manifest bytes for a source tree and
-  `include` / `exclude` / `files`, and the refusals (an empty selection, a closure failure naming
-  every `referrer → target` pair, vocabulary a consumer's toolchain does not ship). TypeScript, Java
+  `include` / `exclude` / `files` / `requirements`, and the refusals (an empty selection, a
+  requirement claiming a node outside the selection, a closure failure naming every
+  `referrer → target` pair, vocabulary a consumer's toolchain does not ship). TypeScript, Java
   (Kotlin through the same engine) and C# run all of it; Python runs the serializer arm.
 
 ## See also

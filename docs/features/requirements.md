@@ -380,9 +380,16 @@ reaches that base; a functional claim does not spread. What is counted is concre
 `object.entity` nodes: abstract entities, `object.value` and `object.projection` are not.
 
 **When coverage is measured.** Only when the project authored at least one requirement of
-its own. A project whose only requirements came from a shipped library, with or without an
-overlay on one of them, is not measured, and the summary says so instead of printing a
-ratio.
+its own. A project whose only requirements came from a shipped library or a metadata
+dependency, with or without an overlay on one of them, is not measured, and the summary says
+so instead of printing a ratio.
+
+**A dependency's requirements are not yours by default.** A shared model published with
+`requirements: true` carries its requirements; they load, but the gate, the summary and the
+`requirement-tests` generator leave them out unless `requirements.inherit` in
+`.metaobjects/config.json` names the dependency's package. Inherited, they are checked and
+counted like your own, and still never switch coverage on. See
+[metadata-dependencies.md](metadata-dependencies.md#inheriting-a-dependencys-requirements).
 
 **The summary**, one line whenever the model declares a requirement:
 

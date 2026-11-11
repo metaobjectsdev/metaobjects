@@ -439,6 +439,9 @@ public sealed class ImportScope
     /// <summary>The project's declared <c>migrate.scope</c>, or null when it declares none.</summary>
     public IReadOnlyList<string>? MigrateScope { get; }
 
+    /// <summary>The project's declared <c>requirements.inherit</c>, for the explicit-include rule.</summary>
+    public IReadOnlyList<string> RequirementsInherit { get; private init; } = [];
+
     private readonly CompiledScope? _migrate;
 
     private ImportScope(IReadOnlyList<ResolvedDependency> dependencies, IReadOnlyList<string> scopeInclude, IReadOnlyList<string>? migrateScope)
@@ -469,7 +472,10 @@ public sealed class ImportScope
         var resolved = specs.Count == 0 && lockEntries is null
             ? []
             : DependencyResolver.VerifySnapshot(configDir, specs, lockEntries);
-        return new ImportScope(resolved, scopeInclude, migrateScope);
+        return new ImportScope(resolved, scopeInclude, migrateScope)
+        {
+            RequirementsInherit = config?.RequirementsInherit ?? [],
+        };
     }
 
     /// <summary>Is <paramref name="fqn"/> in a package one of this project's dependencies owns?</summary>
@@ -487,6 +493,18 @@ public sealed class ImportScope
     {
         var pkg = DependencyResolver.PackageOf(fqn);
         return !ImportedPackages.Contains(pkg) || DependencyResolver.ExplicitlyIncludes(ScopeInclude, pkg);
+    }
+
+    /// <summary>
+    /// FR-023 — is the requirement at <paramref name="fqn"/> (<c>&lt;package&gt;::&lt;dotted path&gt;</c>) part of
+    /// this project's ledger? Its own requirements always are; a dependency's only when
+    /// <c>requirements.inherit</c> NAMES the dependency's package. Read by the requirement gate and the
+    /// requirement-tests generator.
+    /// </summary>
+    public bool InLedger(string fqn)
+    {
+        var pkg = DependencyResolver.PackageOf(fqn);
+        return !ImportedPackages.Contains(pkg) || DependencyResolver.ExplicitlyIncludes(RequirementsInherit, pkg);
     }
 
     /// <summary>
@@ -524,8 +542,12 @@ public sealed class ImportScope
 
         // ADR-0039 SANCTIONED own-accessor case: a root-level scan. `MetaRoot` has no super, so own and
         // effective children are the same set here, and the question asked is precisely "what did this
-        // tree declare at the top level", which is the own layer by definition.
-        foreach (var node in root.Objects())
+        // tree declare at the top level", which is the own layer by definition. Requirements too: a
+        // publisher may export its ledger, and a new requirement in its package would read as the
+        // publisher's to every gate that keys the ledger by package.
+        var topLevel = root.Objects().Cast<MetaData>()
+            .Concat(root.Children().Where(c => c.Type == MetaObjects.Shared.BaseTypes.TYPE_REQUIREMENT));
+        foreach (var node in topLevel)
         {
             var key = node.ResolutionKey();
             var pkg = DependencyResolver.PackageOf(key);

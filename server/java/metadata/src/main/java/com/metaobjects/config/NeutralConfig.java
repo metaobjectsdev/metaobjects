@@ -70,6 +70,7 @@ public final class NeutralConfig {
     private final PhysicalNaming physicalNaming;
     private final WireFormat wireFormat;
     private EnumDefaults enumDefaults = EnumDefaults.DEFAULT;
+    private List<String> requirementsInherit = List.of();
 
     private NeutralConfig(List<Map<String, String>> sources, List<Map<String, String>> dependencies,
                           List<String> scopeInclude, List<String> migrateScope,
@@ -118,6 +119,15 @@ public final class NeutralConfig {
      */
     public List<String> getMigrateScope() {
         return migrateScope;
+    }
+
+    /**
+     * FR-023 — the declared {@code requirements.inherit} patterns: the dependencies whose
+     * requirements this project takes on as its own ledger ({@link DependencySet#inLedger}).
+     * Empty when the key is absent.
+     */
+    public List<String> getRequirementsInherit() {
+        return requirementsInherit;
     }
 
     /**
@@ -338,6 +348,7 @@ public final class NeutralConfig {
         NeutralConfig cfg = new NeutralConfig(specs, dependencies, scopeInclude, migrateScope, physicalNaming,
                 wireFormat);
         cfg.enumDefaults = parseEnums(root.get("enums"), origin);
+        cfg.requirementsInherit = parseRequirementsInherit(root.get("requirements"), origin);
         return cfg;
     }
 
@@ -468,6 +479,25 @@ public final class NeutralConfig {
     }
 
     /** {@code migrate.scope}, or {@code null} when absent; every other {@code migrate} key is ignored. */
+    /**
+     * FR-023 — {@code requirements.inherit}. Refused like {@code naming}: an unknown key inside
+     * {@code requirements} would otherwise be a misspelt {@code inherit} that silently leaves the
+     * ledger out.
+     */
+    private static List<String> parseRequirementsInherit(JsonElement requirements, String origin) {
+        if (requirements == null || requirements.isJsonNull()) return List.of();
+        if (!requirements.isJsonObject()) throw bad(origin + ": \"requirements\" must be an object");
+        JsonObject obj = requirements.getAsJsonObject();
+        for (String key : obj.keySet()) {
+            if (!"inherit".equals(key)) {
+                throw bad(origin + ": \"requirements\" has unknown key \"" + key + "\"; expected \"inherit\"");
+            }
+        }
+        JsonElement inherit = obj.get("inherit");
+        if (inherit == null || inherit.isJsonNull()) return List.of();
+        return stringArray(inherit, "requirements.inherit", origin);
+    }
+
     private static List<String> parseMigrateScope(JsonElement migrate, String origin) {
         if (migrate == null || migrate.isJsonNull()) return null;
         if (!migrate.isJsonObject()) throw bad(origin + ": \"migrate\" must be an object");

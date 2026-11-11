@@ -13,6 +13,7 @@ cases.json          # { cases: [ { name, tree, treeFiles?, config, lock?,
                      #             resolveFrom?, expectFiles?, expectImported?,
                      #             expectSelected?, expectMigrateGoverned?,
                      #             expectLoadError?, expectErrorFiles?, expectError?,
+                     #             expectLedger?, expectCoverageMeasured?,
                      #             expectCheck? } ] }
 transport-cases.json # the npm / python / maven / nuget transport arm (Node `meta deps sync` only — see below)
 README.md
@@ -43,6 +44,8 @@ artifacts/           # pinned dependency artifacts, referenced by cases via `tre
                                      // (undefined inMigrateScope admits everything)
   "expectLoadError": "ERR_*",        // OPTIONAL: the collection resolves, then LOADING it fails with this code
   "expectErrorFiles": ["dep:…"],     // OPTIONAL with expectLoadError: source.files[0] of the first error
+  "expectLedger": { "<pkg>::<path>": "<status>" }, // OPTIONAL: the LEDGER arm, EXHAUSTIVE (see below)
+  "expectCoverageMeasured": true,    // OPTIONAL with expectLedger: default false
   "expectError": "ERR_*",            // resolution itself fails with this code
   "expectCheck": { "<name>": "current" | "drifted" | "unresolved" }  // the CHECK arm
 } ] }
@@ -96,6 +99,16 @@ belong to the other.
   (`dep:<name>/<artifact>`) rather than a local one.
 - **`expectError`** — the resolution-failure arm: `resolveCollection` itself must reject
   with this exact code.
+- **`expectLedger`** — OPTIONAL, alongside `expectFiles`: the LEDGER arm. The EXHAUSTIVE map,
+  over every loaded requirement, of the ones that are this project's own ledger, keyed
+  `<effective package>::<dotted path>` (the bare path when the package is empty), each to its
+  effective `@status` (after overlays). A requirement belongs to the ledger unless its package
+  is a dependency's and `requirements.inherit` does not NAME that package (the same
+  explicit-include rule as `scope.include`; `**` names nothing). A port asserts the map through
+  its requirement gate's scan, and the same set of addresses through its requirement-tests walk.
+- **`expectCoverageMeasured`** — OPTIONAL, alongside `expectLedger`, default `false`: whether
+  the gate measures object coverage. Only a requirement the project wrote itself switches it on;
+  an imported requirement never does, inherited or not, as a library's never does.
 
 - **`expectCheck`** — the check arm (`meta deps check` / `verify --deps`): for each declared
   dependency, resolve its `path` against the config's directory, read and validate the
@@ -271,6 +284,9 @@ package are `ERR_DEPENDENCY_UNRESOLVED`; a `dir` that exists but holds no `metao
 - **Kotlin** — inherits via Java: it loads through the same loader and Maven plugin, and checks
   through the same `metaobjects:verify` goal. The
   Kotlin generators are covered by a codegen test that an imported entity emits nothing.
+- **The ledger arm** (`expectLedger`) runs in every port but Kotlin, which shares Java's gate:
+  TypeScript `cli/test/dependency-ledger-conformance.test.ts` (the gate lives in the CLI
+  package), Python, Java and C# in the same runners named below.
 - **C#** — the resolution arm: resolution, load-time failure, lock/snapshot integrity, on the
   neutral source ladder and again through the explicit metadata directory (C# has no native
   config surface, so `.metaobjects/config.json` is where a dependency is declared at every

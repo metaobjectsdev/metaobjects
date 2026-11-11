@@ -21,6 +21,7 @@
 // or that a claimed node implements the requirement claiming it.
 
 using System.Globalization;
+using MetaObjects.Config;
 using MetaObjects.Library;
 using MetaObjects.Meta;
 
@@ -152,11 +153,11 @@ public static class RequirementCheck
     /// </param>
     public static RequirementScan Scan(MetaData root, bool? measureCoverage = null, bool requireImplementers = false)
     {
-        var addressed = CollectAddressed(root);
+        var addressed = CollectLedger(root);
         return new RequirementScan(
             addressed,
             ClaimedObjectKeys(root, addressed.Select(a => a.Node)),
-            measureCoverage ?? ProjectAuthoredRequirements(addressed),
+            measureCoverage ?? ProjectAuthoredRequirements(addressed, (root as MetaRoot)?.ImportScope),
             requireImplementers);
     }
 
@@ -167,10 +168,31 @@ public static class RequirementCheck
     /// PACKAGE, a manifest fact. An overlay on a library requirement stays in the library's
     /// package and does not activate coverage.
     /// </summary>
-    private static bool ProjectAuthoredRequirements(IReadOnlyList<AddressedRequirement> addressed)
+    private static bool ProjectAuthoredRequirements(IReadOnlyList<AddressedRequirement> addressed, ImportScope? imports)
     {
         var libraryPackages = LibrarySources.LibraryPackages();
-        return addressed.Any(a => !libraryPackages.Contains(EffectivePackage(a.Node)));
+        // FR-023: a dependency's requirement, inherited or not, is the publisher's design for the same
+        // reason a library's is, and cannot switch coverage on either.
+        return addressed.Any(a =>
+        {
+            var pkg = EffectivePackage(a.Node);
+            return !libraryPackages.Contains(pkg)
+                && !(imports?.Imported(RequirementTestIdentities.AddressOf(pkg, a.Path)) ?? false);
+        });
+    }
+
+    /// <summary>
+    /// The requirements that are this project's ledger: every loaded requirement but a dependency's
+    /// that <c>requirements.inherit</c> does not name (<see cref="ImportScope.InLedger"/>, read from the
+    /// root). One left out is still loaded, so an overlay of it resolves, and nothing here or in the
+    /// requirement-tests generator addresses it.
+    /// </summary>
+    public static IReadOnlyList<AddressedRequirement> CollectLedger(MetaData root)
+    {
+        var imports = (root as MetaRoot)?.ImportScope;
+        var all = CollectAddressed(root);
+        if (imports is null) return all;
+        return all.Where(a => imports.InLedger(RequirementTestIdentities.AddressOf(EffectivePackage(a.Node), a.Path))).ToList();
     }
 
     /// <summary>

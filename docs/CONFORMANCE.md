@@ -49,8 +49,8 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/provider-composition-conformance/`](../fixtures/provider-composition-conformance/) | 18 (11 error-shape + 4 compose-load + 3 attr-ownership) | ✓ | ✓ | — (JVM registry via Java) | ✓ | ✓ |
 | [`fixtures/source-resolution-conformance/`](../fixtures/source-resolution-conformance/) | 25 cases | ✓ (reference implementation) | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/scope-conformance/`](../fixtures/scope-conformance/) | 10 cases | ✓ (reference implementation) | ✓ | inherits via Java | ✓ | ✓ |
-| [`fixtures/dependency-conformance/`](../fixtures/dependency-conformance/) | 39 cases (28 resolution + 11 check) + 32 transport cases | ✓ (reference implementation; all three arms) | ✓ (resolution arm, all 28; check arm, all 11) | inherits via Java | ✓ (resolution arm, all 28; check arm, all 11, as `verify --deps`) | ✓ (resolution arm, all 28 identically; check arm, all 11, as `deps check` and `verify --deps`; the transport arm is Node-only) |
-| [`fixtures/shared-model-conformance/`](../fixtures/shared-model-conformance/) | 11 cases (7 publish + 4 refusal) | ✓ (reference implementation) | ✓ (all 11; `SharedModelConformanceTest`) | inherits via Java (`KotlinSharedModelGeneratorTest` pins the generator) | ✓ (all 11; `SharedModelConformanceTests`) | ✓ (serializer arm: the 7 publish cases' document bytes; no publisher) |
+| [`fixtures/dependency-conformance/`](../fixtures/dependency-conformance/) | 46 cases (35 resolution, 6 of them with a ledger arm, + 11 check) + 32 transport cases | ✓ (reference implementation; all four arms) | ✓ (resolution arm, all 35, ledger included; check arm, all 11) | inherits via Java | ✓ (resolution arm, all 35, ledger included; check arm, all 11, as `verify --deps`) | ✓ (resolution arm, all 35 identically, ledger included; check arm, all 11, as `deps check` and `verify --deps`; the transport arm is Node-only) |
+| [`fixtures/shared-model-conformance/`](../fixtures/shared-model-conformance/) | 15 cases (9 publish + 6 refusal) | ✓ (reference implementation) | ✓ (all 15; `SharedModelConformanceTest`) | inherits via Java (`KotlinSharedModelGeneratorTest` pins the generator) | ✓ (all 15; `SharedModelConformanceTests`) | ✓ (serializer arm: the 9 publish cases' document bytes; no publisher) |
 | [`fixtures/agent-context-conformance/`](../fixtures/agent-context-conformance/) | 4 | ✓ (the emitter is TS-owned) | — | — | — | — |
 | [`fixtures/metamodel-docs/`](../fixtures/metamodel-docs/) | 1 | ✓ (docs emit is TS-owned) | — | — | — | — |
 | [`fixtures/fmt-conformance/`](../fixtures/fmt-conformance/) (#304 — `meta fmt`) | 12 | ✓ (reference) | ✓ | inherits via Java | ✓ | ✓ |
@@ -463,21 +463,30 @@ also matches before a trailing newline. Kotlin has no runner of its own: it inhe
 the Java loader. Each of those two guards is pinned by a test beside the corpus, since
 the corpus asserts matches only and carries no invalid-pattern case.
 
-### `fixtures/dependency-conformance/` (39 cases + 32 transport cases)
+### `fixtures/dependency-conformance/` (46 cases + 32 transport cases)
 
-All 39 cases → [features/metadata-dependencies.md](features/metadata-dependencies.md)
+All 46 cases → [features/metadata-dependencies.md](features/metadata-dependencies.md)
 (declaring a dependency, `meta deps sync`, the committed snapshot + lock, default
 exclusion of imported metadata, overlay/extends across the boundary, every load-
-and resolution-time failure, and the upstream check). File-shaped like `scope-conformance/`
-above: one committed `cases.json`, no per-port fixture, no ledger. The corpus has three arms:
+and resolution-time failure, the upstream check, and which imported requirements are the
+project's own ledger). File-shaped like `scope-conformance/` above: one committed `cases.json`,
+no per-port fixture. The corpus has four arms:
 
-- **Resolution (28 cases).** Every case's `expectFiles`/`expectImported`/`expectSelected`/
+- **Resolution (35 cases).** Every case's `expectFiles`/`expectImported`/`expectSelected`/
   `expectMigrateGoverned`/`expectLoadError` assertions. **TypeScript (the reference
-  implementation), Python, Java and C# all run all 28, identically**, with no exemption. The two
+  implementation), Python, Java and C# all run all 35, identically**, with no exemption. The two
   overlay cases that need a view child as incidental content use `view.currency` (the one
   concrete `view.*` subtype registered cross-port), not `view.text` — a prior revision used
   `view.text`, which Python did not register then, and carried a since-discharged allowlist
   for it. Kotlin inherits the Java run through the same loader and Maven plugin.
+- **Ledger (6 of the resolution cases, `expectLedger` / `expectCoverageMeasured`).** Which loaded
+  requirements are this project's ledger (its own, plus a dependency's only when
+  `requirements.inherit` names the dependency's package) with each one's effective `@status`, and
+  whether object coverage is measured (never by an imported requirement). Each port asserts it
+  through its requirement gate's scan and again through its requirement-tests walk: TypeScript in
+  `cli/test/dependency-ledger-conformance.test.ts`, the other ports in their resolution runner.
+  A seventh case refuses a new requirement declared into a dependency's package
+  (`ERR_DEPENDENCY_PACKAGE_NOT_OWNED`) on the load-time path.
 - **Check (11 cases, `expectCheck`).** For each declared dependency, `current`, `drifted` or
   `unresolved` (a missing path, a bad manifest, a hash mismatch, or not yet in the lock). Run
   by TypeScript, in `cli/test/dependency-check-conformance.test.ts`, by Java in
@@ -500,24 +509,25 @@ neutral one (`Resolve(null, dir)`), and the explicit metadata directory a
 `DependencyConformanceTests`; it runs the 11 check cases through `DependencyResolver.CheckDependencies`
 (S7) and skips the transport cases (C# never syncs).
 
-### `fixtures/shared-model-conformance/` (11 cases)
+### `fixtures/shared-model-conformance/` (15 cases)
 
 → [features/metadata-dependencies.md](features/metadata-dependencies.md) (the publisher's
 `sharedModelFile()`). A source tree under `source/`, plus `files` / `include` / `exclude` /
-`version`, must produce **exactly** the pinned artifact and manifest bytes (seven cases), or be
-refused for the pinned reason (four: an empty selection, a reference or `extends` outside the
-selection with the `referrer → target` pairs named, and vocabulary only a consumer provider
-registers). `requirement.*` and `template.*` nodes are always dropped, and the order of `files`
-does not change the bytes. The manifest goldens carry the token `@@METAMODEL_VERSION@@` where
+`version` / `requirements`, must produce **exactly** the pinned artifact and manifest bytes (nine
+cases), or be refused for the pinned reason (six: an empty selection, a requirement alone
+without `requirements`, a requirement claiming a node outside the selection, a reference or
+`extends` outside the selection with the `referrer → target` pairs named, and vocabulary only a
+consumer provider registers). `template.*` nodes are always dropped and `requirement.*` nodes
+unless `requirements` is set, and the order of `files` does not change the bytes. The manifest goldens carry the token `@@METAMODEL_VERSION@@` where
 the manifest records the toolchain's `metamodelVersion`, so they do not move with it.
 
-**TypeScript runs all 11**, in `codegen-ts/test/shared-model-conformance.test.ts`. **Python runs
+**TypeScript runs all 15**, in `codegen-ts/test/shared-model-conformance.test.ts`. **Python runs
 the serializer arm**: for each publish case it loads `files`, takes the nodes the pinned manifest
 lists, and `serialize_shared_document` must reproduce the artifact byte for byte (and the sha256
 the manifest records). Python has no publisher, so selection and the refusals are TypeScript's.
-**Java runs all 11**, in `metadata`'s `SharedModelConformanceTest` against the `SharedModel` engine
+**Java runs all 15**, in `metadata`'s `SharedModelConformanceTest` against the `SharedModel` engine
 the `shared-model` generator calls; **Kotlin** runs through that same engine and Maven goals and adds
-only `KotlinSharedModelGeneratorTest`. **C# runs all 11**, in `SharedModelConformanceTests`.
+only `KotlinSharedModelGeneratorTest`. **C# runs all 15**, in `SharedModelConformanceTests`.
 
 > **ADR-0055 (deferred overlay application) — SHIPPED in every port.** The nine cases added
 > for it (`overlay-mixed-file-base-in-later-file`, `overlay-mixed-file-base-in-earlier-file`,
@@ -641,7 +651,7 @@ JSON and verify payload feeds it unchanged.
 
 The fixtures in the nine corpora mapped above (metamodel 449 + yaml 16 + verify 45
 + render 18 + persistence 59 + api-contract 121 + source-resolution 25 + scope 10 +
-dependency 39) each map to a feature doc, and so do the two requirement corpora, `shared-model-conformance`, the
+dependency 46) each map to a feature doc, and so do the two requirement corpora, `shared-model-conformance`, the
 `cube-model` corpus and `explorer-conformance`, whose case lists live in their own READMEs. None are orphaned today. The remaining
 corpora in the totals table gate tooling contracts (registry manifests, provider
 composition, agent context, docs emit) rather than user-facing metamodel behaviour,

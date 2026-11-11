@@ -546,6 +546,7 @@ async function listCatalogCommand(
       probe: {
         metadata,
         scope: genCollection.inScope,
+        inLedger: genCollection.inLedger,
         sourceFiles: genCollection.ownFiles,
         sourceRoots: sourceRootsOf(genCollection),
         agentSchema: () => schemaOptions === undefined ? undefined : buildAgentSchemaInput(

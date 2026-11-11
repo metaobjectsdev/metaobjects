@@ -44,18 +44,20 @@ public final class DependencySet {
 
     /** The set of a project that declares no dependencies. */
     public static final DependencySet EMPTY =
-            new DependencySet(List.of(), List.of(), null);
+            new DependencySet(List.of(), List.of(), null, List.of());
 
     private final List<Dependencies.ResolvedDependency> dependencies;
     private final List<String> scopeInclude;
     private final List<String> migrateScope;
+    private final List<String> requirementsInherit;
     private final Set<String> importedPackages;
     private final Set<String> importedNodes;
     private final Scope.Compiled declaredMigrateScope;
 
     private DependencySet(List<Dependencies.ResolvedDependency> dependencies, List<String> scopeInclude,
-                          List<String> migrateScope) {
+                          List<String> migrateScope, List<String> requirementsInherit) {
         this.dependencies = List.copyOf(dependencies);
+        this.requirementsInherit = List.copyOf(requirementsInherit);
         this.scopeInclude = List.copyOf(scopeInclude);
         this.migrateScope = migrateScope == null ? null : List.copyOf(migrateScope);
         Set<String> packages = new HashSet<>();
@@ -88,7 +90,8 @@ public final class DependencySet {
         List<Dependencies.ResolvedDependency> resolved = specs.isEmpty() && lock.isEmpty()
                 ? List.of()
                 : Dependencies.verifySnapshot(configDir, specs, lock);
-        return new DependencySet(resolved, include, migrate);
+        return new DependencySet(resolved, include, migrate,
+                config.map(NeutralConfig::getRequirementsInherit).orElse(List.of()));
     }
 
     /**
@@ -114,7 +117,8 @@ public final class DependencySet {
         List<Dependencies.ResolvedDependency> resolved = declared.isEmpty() && lock.isEmpty()
                 ? List.of()
                 : Dependencies.verifySnapshot(declared, lock, reader);
-        return new DependencySet(resolved, include, migrate);
+        return new DependencySet(resolved, include, migrate,
+                config.map(NeutralConfig::getRequirementsInherit).orElse(List.of()));
     }
 
     /** The resolved dependencies, in dependency-NAME order. */
@@ -160,6 +164,18 @@ public final class DependencySet {
         String pkg = Dependencies.packageOf(fqn);
         if (!importedPackages.contains(pkg)) return true;
         return Dependencies.explicitlyIncludes(scopeInclude, pkg);
+    }
+
+    /**
+     * FR-023 — is the requirement at {@code fqn} ({@code <package>::<dotted path>}) part of this
+     * project's ledger? Its own requirements always are; a dependency's only when
+     * {@code requirements.inherit} NAMES the dependency's package. Read by the requirement gate and
+     * the requirement-tests generators.
+     */
+    public boolean inLedger(String fqn) {
+        String pkg = Dependencies.packageOf(fqn);
+        if (!importedPackages.contains(pkg)) return true;
+        return Dependencies.explicitlyIncludes(requirementsInherit, pkg);
     }
 
     /**
