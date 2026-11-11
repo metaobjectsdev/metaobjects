@@ -383,9 +383,13 @@ vocabulary; upgrade every port together.
   value objects, shared enums, names classes, and `System`/`Microsoft` framework types), so no
   namespace can capture another (`CS0234`: a package `acme::app::system` derives `Acme.App.System`)
   and no two `using`s can make a name ambiguous (`CS0104`); the routes and callable files no
-  longer carry `using` lines for package namespaces. Two same-named objects in two packages are
-  two types with no remedy needed; two objects bound to ONE namespace that share a name are still
-  refused (`ERR_NAME_COLLISION`). `GenConfig.PackageNamespaces`, `TypeOverrides` and `Convention`
+  longer carry `using` lines for package namespaces. Two same-named entities or value objects in
+  two packages are two types with no remedy needed; two objects bound to ONE namespace that share a
+  name are still refused (`ERR_NAME_COLLISION`). So are two same-named callables, and two
+  same-named templates (render helper, output parser, output prompt, extractor), in two packages:
+  the callable wrappers and the template tier stay in the configured namespace whatever their
+  package, so packages do not keep them apart and a package mapping does not help; rename one (the
+  refusal says so). `GenConfig.PackageNamespaces`, `TypeOverrides` and `Convention`
   win as before, and an explicit `UnmappedStrategy.Error` or `Derive` under a configured namespace
   keeps its meaning (the package mapping applies only to the default `Flatten`). A hook override
   on `DbContextGenerator` receives the `global::`-qualified type as its `owner` argument

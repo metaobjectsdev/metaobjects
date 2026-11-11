@@ -99,7 +99,7 @@ public class OutputParserGenerator : IGenerator
         var templateName = tmpl.Name;
         var parserClass = CSharpNaming.ParserClassName(templateName);
         // rc.19 fix round (I2): the template tier always emits into GenConfig.Namespace.
-        ctx.Claim($"the C# namespace {ctx.Config.Namespace}", parserClass, tmpl.ResolutionKey(), "rename one");
+        ctx.Claim($"the C# namespace {ctx.Config.Namespace}", parserClass, tmpl.ResolutionKey(), NameClaims.HomeNamespaceRemedy("an output parser"));
         // ADR-0052: the shape parsed INTO is @responseRef — the reply — never @payloadRef,
         // which types the request this prompt renders outbound.
         var payloadRef = responseRef;

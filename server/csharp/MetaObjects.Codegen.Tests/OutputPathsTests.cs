@@ -156,7 +156,30 @@ public sealed class OutputPathsTests
         var ex = Assert.Throws<InvalidOperationException>(() => gen.Generate(Ctx(r.Root, mapped: true)).ToList());
         Assert.Contains(NameClaims.ERR_NAME_COLLISION, ex.Message);
         Assert.Contains("rename one", ex.Message);
+        // The refusal says why: the tier stays in the home namespace, whatever the package.
+        Assert.Contains("is declared in the configured namespace, GenConfig.Namespace, whatever its package", ex.Message);
         Assert.DoesNotContain("PackageNamespaces", ex.Message);
+    }
+
+    private static string Proc(string pkg) => $$"""
+        { "metadata.root": { "package": "{{pkg}}", "children": [
+          { "object.projection": { "name": "Digest", "children": [
+            { "source.rdb": { "@kind": "storedProc", "@proc": "fn_{{pkg.Replace("::", "_")}}_digest" } },
+            { "field.long": { "name": "id" } },
+            { "field.long": { "name": "total" } } ] } } ] } }
+        """;
+
+    [Fact]
+    public void Two_same_named_callables_in_two_packages_are_a_named_refusal_that_says_why()
+    {
+        var r = new MetaDataLoader().Load([
+            new InMemoryStringSource(Proc("acme::alpha"), id: "a.json"),
+            new InMemoryStringSource(Proc("acme::beta"), id: "b.json")]);
+        Assert.Empty(r.Errors);
+        // The wrapper class is declared in GenConfig.Namespace, so mapping the packages cannot help.
+        var ex = Assert.Throws<InvalidOperationException>(() => new CallableGenerator().Generate(Ctx(r.Root, mapped: true)).ToList());
+        Assert.Contains(NameClaims.ERR_NAME_COLLISION, ex.Message);
+        Assert.Contains("rename one (a callable wrapper is declared in the configured namespace, GenConfig.Namespace, whatever its package", ex.Message);
     }
 
     private static string Report(string pkg) => $$"""
