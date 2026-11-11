@@ -52,7 +52,7 @@ internal sealed class ProjectionGeneratedServerFactory : IAsyncDisposable
         await ProjectionFixture.ProvisionSchemaAsync(pg.ConnectionString);
 
         var (assembly, routedNames) = CompileGeneratedServer();
-        var dbContextType = assembly.GetType($"{GeneratedNamespace}.AppDbContext")
+        var dbContextType = MetaObjects.IntegrationTests.GeneratedTypes.Find(assembly, $"{GeneratedNamespace}.AppDbContext")
             ?? throw new InvalidOperationException("generated AppDbContext type not found");
 
         var builder = WebApplication.CreateBuilder();
@@ -67,7 +67,7 @@ internal sealed class ProjectionGeneratedServerFactory : IAsyncDisposable
         // coexist; only the projection's routes carry scenarios.
         foreach (var name in routedNames)
         {
-            var routesType = assembly.GetType($"{GeneratedNamespace}.{name}Routes")
+            var routesType = MetaObjects.IntegrationTests.GeneratedTypes.Find(assembly, $"{GeneratedNamespace}.{name}Routes")
                 ?? throw new InvalidOperationException($"generated {name}Routes type not found");
             var mapMethod = routesType.GetMethod($"Map{name}Routes", BindingFlags.Public | BindingFlags.Static)
                 ?? throw new InvalidOperationException($"generated Map{name}Routes method not found");

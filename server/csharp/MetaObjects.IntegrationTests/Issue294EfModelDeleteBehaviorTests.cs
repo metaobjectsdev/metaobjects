@@ -137,7 +137,7 @@ public class Issue294EfModelDeleteBehaviorTests
     private static DbContext BuildGeneratedContext()
     {
         var assembly = CompileGenerated();
-        var dbContextType = assembly.GetType($"{GeneratedNamespace}.AppDbContext")
+        var dbContextType = MetaObjects.IntegrationTests.GeneratedTypes.Find(assembly, $"{GeneratedNamespace}.AppDbContext")
             ?? throw new InvalidOperationException("generated AppDbContext type not found");
 
         var optionsBuilder = (DbContextOptionsBuilder)Activator.CreateInstance(

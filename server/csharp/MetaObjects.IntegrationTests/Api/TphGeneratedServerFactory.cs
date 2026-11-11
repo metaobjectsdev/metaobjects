@@ -53,7 +53,7 @@ internal sealed class TphGeneratedServerFactory : IAsyncDisposable
         await TphFixture.ProvisionSchemaAsync(pg.ConnectionString);
 
         var (assembly, baseRouteEntities) = CompileGeneratedServer();
-        var dbContextType = assembly.GetType($"{GeneratedNamespace}.AppDbContext")
+        var dbContextType = MetaObjects.IntegrationTests.GeneratedTypes.Find(assembly, $"{GeneratedNamespace}.AppDbContext")
             ?? throw new InvalidOperationException("generated AppDbContext type not found");
 
         var builder = WebApplication.CreateBuilder();
@@ -71,7 +71,7 @@ internal sealed class TphGeneratedServerFactory : IAsyncDisposable
         // <Sub>Routes type, so the lookup simply skips them.
         foreach (var entity in baseRouteEntities)
         {
-            var routesType = assembly.GetType($"{GeneratedNamespace}.{entity}Routes");
+            var routesType = MetaObjects.IntegrationTests.GeneratedTypes.Find(assembly, $"{GeneratedNamespace}.{entity}Routes");
             if (routesType is null) continue;
             var mapMethod = routesType.GetMethod($"Map{entity}Routes", BindingFlags.Public | BindingFlags.Static);
             mapMethod?.Invoke(null, new object[] { app, "/api" });

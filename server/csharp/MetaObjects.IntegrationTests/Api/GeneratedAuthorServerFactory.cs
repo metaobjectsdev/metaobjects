@@ -101,9 +101,9 @@ internal sealed class GeneratedAuthorServerFactory : IAsyncDisposable
         }
 
         var generatedAssembly = CompileGeneratedServer();
-        var dbContextType = generatedAssembly.GetType($"{GeneratedNamespace}.AppDbContext")
+        var dbContextType = MetaObjects.IntegrationTests.GeneratedTypes.Find(generatedAssembly, $"{GeneratedNamespace}.AppDbContext")
             ?? throw new InvalidOperationException("generated AppDbContext type not found");
-        var routesType = generatedAssembly.GetType($"{GeneratedNamespace}.AuthorRoutes")
+        var routesType = MetaObjects.IntegrationTests.GeneratedTypes.Find(generatedAssembly, $"{GeneratedNamespace}.AuthorRoutes")
             ?? throw new InvalidOperationException("generated AuthorRoutes type not found");
 
         var builder = WebApplication.CreateBuilder();

@@ -237,7 +237,7 @@ public sealed class IntBackedEnumArrayPersistenceTests
     // ── reflection plumbing over the compiled generated assembly ─────────────────
 
     private static Type Type(string name) =>
-        Generated.Value.GetType($"{Ns}.{name}") ?? throw new InvalidOperationException($"no generated type {name}");
+        MetaObjects.IntegrationTests.GeneratedTypes.Find(Generated.Value, $"{Ns}.{name}") ?? throw new InvalidOperationException($"no generated type {name}");
 
     private static DbContext NewContext(Action<DbContextOptionsBuilder> configure)
     {
