@@ -70,6 +70,8 @@ here — the table is its second pass, not its definition.
 | the resource path in an API call or mount — `app.get("/subscribers")`, the `/subscribers` inside `fetch("/api/subscribers")`, a TanStack `queryKey` path | second spelling of `$path` on the entity module and its `.meta.ts` twin. The `/api` prefix is NOT part of the finding: the constants surface deliberately carries no prefix member — it is the provider's `baseUrl`, a deployment fact — so the prefix has no constant by design and is never a gap either |
 | a field name passed as text where the parameter's type is a bare `string` — `sort: "created_at"`, `filter["email"]`, a column-id string in a grid config | the per-field constants object carries `name`. Check the parameter type first: where the generated hook types it as a union of field names it is resolved and this row does not apply, exactly as a typed property access does not |
 | a form label or a validation limit/message re-typed in hand JSX or a hand validator (`maxLength={255}`, `"Email is required"`) | derived from `@title` and the field's validator children into `label` / `rules`; the hand copy is a second source of truth |
+| a member of a generated enum typed as a hand string where the file already imports its constant (`status: "error"` beside `CouncilStatusEnum.enum.complete`), in a string-typed position, raw SQL, a JSON payload or an event name | **signature 13.** Value-first: grep the non-generated tree for each enum's `@values`. Check the declared type at the site first: a position narrowed by the generated `export type <Entity><Field>` union is resolved and exempt; a `Record<string, unknown>`, a `string` parameter or a `sql` fragment is compared and scores |
+| a status-like column written with `.set({ status })` and no condition on the current value, or a `sql` `UPDATE ... SET status` | **axis G3.** Guard it through Drizzle / Kysely: `.where(and(eq(t.id, id), eq(t.status, <from>)))` with the generated constant, and check the affected-row count. Never raw SQL |
 | **NOT a finding — the rule's consequences, not a list:** anything RESOLVED (a typed handle, a typed property access, a typed filter key, an enum member narrowed by the generated `export type <Entity><Field>` union — measured: 332 such literals on one estate, 0 real) and anything the metadata does not OWN (a page route or link, `<Route path="/programs">` / `<a href="/programs">` — 11 apparent `$path` hits on another estate, 0 real; the deployment prefix above) | rewriting a resolved reference to a string lookup is a regression; converting a page route couples the site's URL structure to the API's. Emitted `options: [...] as const` populates a dropdown, not replaces checked literals. A shape that is neither resolved nor unowned and has a constant → score it, whatever it is |
 
 ---
@@ -118,8 +120,17 @@ are the `--format text` labels. In `--format json` or `toon` the same row carrie
   `diff -u node_modules/@metaobjectsdev/codegen-ts/src/reference/<name>.ts codegen/generators/<name>.ts`
   showing only upstream changes. Confirmed, it is the same finding. Not confirmed, report
   it as **possibly customized: check its history**, never as a copy to drop.
-- A copy with lines of its own is an intentional customization. Check only how far behind
-  it is.
+- A copy with lines of its own (`M > 0`) is **not** thereby an intentional customization. The
+  listing prints `DIFFERS` for both a deliberate customization and a copy gone stale by
+  version, and `M line(s) of your own` counts every line absent from today's reference: after
+  the reference moved on, a line it removed or rewrote reads as "yours" and is an older
+  upstream line. Run the same history check on any `DIFFERS` row, `M > 0` included
+  (`git log -p -- codegen/generators/<name>.ts`): lines the copy's later commits added are the
+  project's own; lines already in the eject commit are upstream's, and count as behind. Report
+  `<n> lines behind the reference` and `<m> lines of the project's own (confirmed from
+  history)` as two figures. A copy whose own lines history does not confirm is **possibly
+  customized or stale: check its history**; a copy that is stale by version is a finding
+  (`owned-generator-stale`): re-eject at the current version or return to the package import.
 
 Count lines for the Phase 0 total: lines in copies proven unmodified, with the
 `codegen/runtime/` files they reach, over all lines the project owns under `codegen/`

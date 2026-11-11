@@ -25,7 +25,7 @@ Actual cutovers run through the existing skills mapped per finding tier (§ Brid
 | `references/calibration.md` | Before raising any finding: it lists the port gaps and non-defects that are never the adopter's fault. |
 | `references/surface-review-axes.md` | Working any axis (A–I) of Phase 1b. |
 | `references/capability-checklist.md` | On every axis: the exhaustive list of what the metamodel can express, one hunt per capability. |
-| `references/drift-signatures.md` | Hunting hand-written second sources of truth (validators, mappers, comments, views, JSON bags). |
+| `references/drift-signatures.md` | Hunting hand-written second sources of truth (validators, mappers, comments, views, JSON bags, physical-name literals, enum-member and event-name literals). |
 | `references/prompt-anti-patterns.md` | Axis D: the project builds text sent to an LLM or parses a reply. |
 | `references/vocabulary-hygiene.md` | Axis I: retired or deprecated authoring forms, custom vocabulary, vocabulary opportunities. |
 | `references/requirements.md` | Axis E2: the project declares `requirement.*` nodes. |
@@ -65,7 +65,13 @@ Actual cutovers run through the existing skills mapped per finding tier (§ Brid
   not removed or reordered ones: confirm those from the file's history
   (`git log -p -- codegen/generators/<name>.ts` shows no edit after the eject) first, and
   report a copy you cannot confirm as "possibly customized: check its history", not as a
-  copy to drop. For `entity`,
+  copy to drop. **A copy with lines of its own is not proof of a customization either.**
+  `meta eject --list` (and each port's listing) prints `DIFFERS` for BOTH a deliberate
+  customization and a copy gone stale by version, and its `M of your own` count includes
+  every line the reference has since removed or rewritten, which are older upstream lines.
+  Run the history check on every `DIFFERS` row, `M` above 0 included, and report the two
+  figures separately: lines behind the reference, and lines of the project's own that the
+  history confirms. A copy stale by version is a finding (`owned-generator-stale`). For `entity`,
   `routes` and `routes-hono` that holds only when every `codegen/runtime/` file the copy
   reaches is also marked identical: an edited adapter is a customization, and such a copy
   is not a finding. Those runtime rows appear only with `--format text` (or as the
@@ -134,7 +140,7 @@ Axes (the full hunt for each is in `references/surface-review-axes.md` — open 
 - **C.** Drift hotspot — validators, mappers, runtime models · **D.** Prompt pillar
 - **E.** Owned generators and scaffold-and-own · **E2.** Capability ledger (`requirement.*`, opt-in)
 - **F.** Drift-gate adoption — does it block? · **F2.** Over-generation and generated-but-bypassed (codegen waste)
-- **G.** Runtime-contract anti-patterns · **G2.** `own*()` accessor discipline (a correctness defect, not advisory)
+- **G.** Runtime-contract anti-patterns · **G2.** `own*()` accessor discipline (a correctness defect, not advisory) · **G3.** Guarded status transitions (every write to a status-like enum column is conditional on the current value; the fix goes through the port's ORM with generated constants, never raw SQL)
 - **H.** Authoring correctness / ADR conformance · **H2.** Wrong native type (`field.string` + `@dbColumnType: uuid`)
 - **I.** Vocabulary hygiene / modernization (advisory, never a failing finding)
 
@@ -173,7 +179,9 @@ hidden candidate. **Stub trap:** demo-data routes have nothing to replace — cl
   the Phase 0 owned-generators check: recommend the package import. Importing any other
   generator from that subpath is correct and is not a finding.
 - Audit owned generators: (a) regenerate clean? (b) drifted from reference templates —
-  intentional (good) vs stale/accidental (missed upstream fix)? (c) hand-rolling a walk
+  intentional (good) vs stale/accidental (missed upstream fix)? Decide it from the copy's
+  history, not from the listing's `own` count: `DIFFERS` reads the same for both, and lines
+  the reference has since removed count as "own" (Phase 0, owned-generators check). (c) hand-rolling a walk
   that a declarative `scope` + `outputPattern` could replace? (d) bespoke shape better as
   a `templateGenerator` than a forked generator?
 - **Authoring ladder:** built-in fits → import it as shipped · close → **eject it and
@@ -274,7 +282,7 @@ Each roadmap item: LOC retired, prerequisite, **parity-gate before deleting hand
 
 | Field | Content |
 |---|---|
-| `id` | stable kebab id (e.g. `handwritten-crud-route`, `manual-zod-validator`) |
+| `id` | stable kebab id (e.g. `handwritten-crud-route`, `manual-zod-validator`, `enum-literal-spelling`, `unguarded-status-transition`, `owned-generator-stale`) |
 | `title` | "you hand-wrote X that metadata can generate / model" |
 | `pillar` | `codegen` / `runtime` / `drift` / `prompt` |
 | `surface` | `entity` / `route` / `validator` / `repository` / `dto` / `hooks` / `prompt` / `migration` |
