@@ -558,6 +558,14 @@ vocabulary; upgrade every port together.
   a target the loader did not bind stays plain text. **Upgrade note:** committed docs pages with an
   identity reference regenerate once with the link.
 
+- **Fix, C#: the `DurationInterval` mapping names framework types `global::`-qualified (G8).** The
+  runtime text the DbContext generator writes after the context class (the `field.duration`
+  interval mapping) spelled `System.Type`, `System.TimeSpan`, `Microsoft.EntityFrameworkCore…`
+  bare inside the home namespace, so a package deriving `<home>.System` (`acme::system` beside a
+  context in `Acme`) captured them (`CS0234`). They are `global::`-qualified now. The design-time
+  services and the `DecimalWire`/`DurationWire` copies already name framework types only through
+  top-level `using`s, which no namespace captures; a test builds all of them beside `Acme.System`.
+
 - **Fix, TypeScript views: two references onto one target entity read their own rows.** A
   projection whose origins reach the same entity through two different references
   (`Account.owner` and `Account.approver`, both `User`) got two joins (`u`, `u0`), but every origin
