@@ -44,7 +44,7 @@ public sealed class EfModelGapsTests
     private static IEntityType EntityType(DbContext db, string name) =>
         Assert.Single(db.Model.GetEntityTypes(), t => t.ClrType.Name == name);
 
-    // ── D10: identity.primary @generation: assigned ─────────────────────────────────────────
+    // ── identity.primary @generation: assigned ─────────────────────────────────────────
 
     private const string AssignedModel = """
     { "metadata.root": { "package": "acme", "children": [
@@ -94,7 +94,7 @@ public sealed class EfModelGapsTests
         Assert.Equal(new object?[] { 42L, "answer" }, rows[1]);
     }
 
-    // ── D12 + D16: identity.reference @constraintName, and a reference to a non-PK key ──────
+    // ── identity.reference @constraintName, and a reference to a non-PK key ──────
 
     private const string ReferenceModel = """
     { "metadata.root": { "package": "acme", "children": [
@@ -176,7 +176,7 @@ public sealed class EfModelGapsTests
         }
     }
 
-    // ── D21: a TPH discriminator typed by a SHARED enum ─────────────────────────────────────
+    // ── a TPH discriminator typed by a SHARED enum ─────────────────────────────────────
 
     private const string SharedDiscriminatorModel = """
     { "metadata.root": { "package": "acme", "children": [
@@ -222,7 +222,7 @@ public sealed class EfModelGapsTests
         }
     }
 
-    // ── D23: a keyed projection ─────────────────────────────────────────────────────────────
+    // ── a keyed projection ─────────────────────────────────────────────────────────────
 
     private const string KeyedProjectionModel = """
     { "metadata.root": { "package": "acme", "children": [
@@ -346,7 +346,7 @@ public sealed class EfModelGapsTests
         Assert.Single(await Rows(pg.ConnectionString, """SELECT "created_by" FROM "ledgers" WHERE "ledgerCode" = 'L-1' """));
     }
 
-    // ── D06 + D07: a TPH subtype's own fields are configured ────────────────────────────────
+    // ── a TPH subtype's own fields are configured ────────────────────────────────
 
     private const string TphOwnFieldsModel = """
     { "metadata.root": { "package": "acme", "children": [
@@ -380,10 +380,10 @@ public sealed class EfModelGapsTests
         using (var model = gen.ModelOnlyContext())
         {
             var person = EntityType(model, "Person");
-            // D07: without it EF falls back to `timestamp with time zone` only by accident of the
+            // Without it EF falls back to `timestamp with time zone` only by accident of the
             // CLR type; the explicit column type is what the migration creates.
             Assert.Equal("timestamp with time zone", person.FindProperty("BornAt")!.GetColumnType());
-            // D06: the value object is an owned JSON document, not a discovered navigation.
+            // The value object is an owned JSON document, not a discovered navigation.
             var home = person.FindNavigation("Home")!;
             Assert.True(home.ForeignKey.IsOwnership);
             Assert.Equal("home", home.TargetEntityType.GetContainerColumnName());
@@ -418,7 +418,7 @@ public sealed class EfModelGapsTests
         }
     }
 
-    // ── D20(c): a value object nested inside a FLATTENED value object ───────────────────────
+    // ── a value object nested inside a FLATTENED value object ───────────────────────
 
     private const string FlattenedNestedModel = """
     { "metadata.root": { "package": "acme", "children": [
