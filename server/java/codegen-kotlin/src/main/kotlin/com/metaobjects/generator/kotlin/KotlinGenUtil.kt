@@ -48,6 +48,21 @@ public object KotlinGenUtil {
     const val AUTO_SET_ON_UPDATE = "onUpdate"
 
     /**
+     * Escape [s] for embedding inside a Kotlin double-quoted string literal (the caller adds
+     * the quotes). Handles `\`, `"`, `$` (Kotlin string templates), newline, tab and carriage
+     * return; `\` goes first so its own replacement is not re-escaped. Lives here because this
+     * object is on the eject engine surface: an ejected generator copy must compile without
+     * KotlinExtractSchemaEmitter, which delegates to this single definition.
+     */
+    fun kotlinStringLiteral(s: String): String =
+        s.replace("\\", "\\\\")
+            .replace("\"", "\\\"")
+            .replace("$", "\\$")
+            .replace("\n", "\\n")
+            .replace("\t", "\\t")
+            .replace("\r", "\\r")
+
+    /**
      * Resolve a MetaObject (entity OR value) from a CANONICAL reference value (ADR-0059 R7):
      * an exact resolution-key match (`pkg::Name`, `::Name`, or a root-level `Name`), with any
      * dotted child tail ignored. Never matches on a short name. Returns null when nothing matches.

@@ -1288,13 +1288,13 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             (if (node.hasMetaAttr(name)) node.getMetaAttr(name).value as? String else null)?.trim()?.takeIf { it.isNotEmpty() }
         val out = StringBuilder()
         str(com.metaobjects.identity.SecondaryIdentity.ATTR_USING)?.takeIf { it != "btree" }?.let {
-            out.append(", indexType = ").append("\"").append(KotlinExtractSchemaEmitter.kotlinStringLiteral(it)).append("\"")
+            out.append(", indexType = ").append("\"").append(KotlinGenUtil.kotlinStringLiteral(it)).append("\"")
         }
         str(com.metaobjects.identity.SecondaryIdentity.ATTR_WHERE)?.let {
             val op = ExposedImports.core(exposedApi(), "Op")
             val qb = ExposedImports.core(exposedApi(), "QueryBuilder")
             out.append(", filterCondition = { object : $op<Boolean>() { override fun toQueryBuilder(queryBuilder: $qb) { ")
-                .append("queryBuilder.append(").append("\"").append(KotlinExtractSchemaEmitter.kotlinStringLiteral(it)).append("\"").append(") } } }")
+                .append("queryBuilder.append(").append("\"").append(KotlinGenUtil.kotlinStringLiteral(it)).append("\"").append(") } } }")
         }
         return out.toString()
     }
