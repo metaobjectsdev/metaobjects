@@ -270,10 +270,21 @@ export async function buildSharedModel(input: SharedModelInput): Promise<SharedM
   const selectedKeys = new Set(selected.map((n) => n.resolutionKey()));
   const closureFailures = checkClosure(standaloneRoot, selected, selectedKeys);
   if (closureFailures.length > 0) {
-    const lines = closureFailures.map((p) => `  ${p.referrer} → ${p.target}`).join("\n");
+    // Same sanctioned root-level own read as step 2: a template is never exported, so a
+    // reference to one can only be closed by excluding the referrer.
+    const templateKeys = new Set(
+      standaloneRoot.ownChildren().filter((n) => n.type === TYPE_TEMPLATE).map((n) => n.resolutionKey()),
+    );
+    const lines = closureFailures
+      .map((p) =>
+        templateKeys.has(p.target)
+          ? `  ${p.referrer} → ${p.target}: templates are never exported; exclude the referrer`
+          : `  ${p.referrer} → ${p.target}: include it or exclude the referrer`,
+      )
+      .join("\n");
     throw new Error(
       `sharedModelFile("${input.name}"): the selection is not closed — these references ` +
-        `point outside it; include it or exclude the referrer:\n${lines}`,
+        `point outside it:\n${lines}`,
     );
   }
 

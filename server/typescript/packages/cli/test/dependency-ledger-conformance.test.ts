@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { effectiveRequirementPackage } from "@metaobjectsdev/metadata";
 import { DEFAULT_METAOBJECTS_DIR, LOCK_FILE, loadMemory, resolveCollection } from "@metaobjectsdev/sdk";
+import { requirementRows, requirementTestIdentities } from "@metaobjectsdev/codegen-ts";
 import { scanRequirements } from "../src/lib/requirement-check.js";
 
 interface Case {
@@ -72,6 +73,16 @@ describe("dependency conformance: the ledger arm", () => {
       }
       expect(ledger).toEqual(c.expectLedger ?? {});
       expect(scan.measureCoverage).toBe(c.expectCoverageMeasured ?? false);
+
+      // The requirement-tests generator and the requirements pages read the same ledger.
+      const expected = Object.keys(c.expectLedger ?? {}).sort();
+      const tested = requirementTestIdentities(loaded, { filter: () => true, inLedger: collection.inLedger });
+      expect([...new Set(tested.map((t) => (t.package === "" ? t.path : `${t.package}::${t.path}`)))].sort()).toEqual(
+        expected,
+      );
+      const listed = requirementRows(loaded, collection.inLedger).map((r) => r.path);
+      const pathOf = (key: string): string => key.split("::").at(-1) ?? key;
+      expect(listed.sort()).toEqual(expected.map(pathOf).sort());
     });
   }
 });

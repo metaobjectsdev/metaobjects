@@ -17,6 +17,7 @@ from pathlib import Path
 import pytest
 
 from metaobjects.cli import _load_collection_result
+from metaobjects.codegen.requirement_walk import requirement_test_identities
 from metaobjects.config.dependencies import LOCK_FILE, read_lock
 from metaobjects.config.dependency_check import check_dependencies
 from metaobjects.config.neutral_config import read_neutral_config
@@ -151,6 +152,13 @@ def test_dependency_conformance_case(case: dict, tmp_path: Path) -> None:
         }
         assert ledger == case["expectLedger"]
         assert scan.measure_coverage == case.get("expectCoverageMeasured", False)
+        # The requirement-tests generator walks the same ledger: no test for the rest.
+        identities = requirement_test_identities(
+            result.root, filter=lambda _view: True, in_ledger=collection.in_ledger
+        )
+        assert sorted({requirement_fqn(t.package, t.path) for t in identities}) == sorted(
+            case["expectLedger"]
+        )
 
     if "expectLoadError" in case:
         # Two arms produce a load-time failure: a loader-native `MetaError` in

@@ -66,7 +66,7 @@ function read(rel: string): string {
 function classify(err: Error): Refusal {
   if (/selected no nodes/.test(err.message)) return { reason: "empty-selection" };
   if (/selection is not closed/.test(err.message)) {
-    const pairs = [...err.message.matchAll(/^ {2}(\S+) → (\S+)$/gm)].map((m) => ({
+    const pairs = [...err.message.matchAll(/^ {2}(\S+) → (\S+):/gm)].map((m) => ({
       referrer: m[1]!,
       target: m[2]!,
     }));

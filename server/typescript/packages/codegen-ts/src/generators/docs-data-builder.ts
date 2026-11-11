@@ -83,6 +83,9 @@ export interface BuildDocDataOpts {
    *  `apiSurfaceHref` so each resolves in BOTH layouts. ABSENT for model-only
    *  runs → default output byte-identical. */
   apiRefs?: Array<{ label: string; href: string }>;
+  /** The collection's ledger predicate (`GenContext.inLedger`): a dependency's requirement
+   *  the project did not inherit is not listed under "Required by". */
+  inLedger?: (fqn: string) => boolean;
 }
 
 /** Whether a field is required — `@required` true OR a `validator.required`
@@ -728,7 +731,7 @@ export function buildEntityDocData(
   const memberDepth = (path: string): number => (path === "" ? 0 : path.split(".").length);
   const claimedByMatches: UsedByDoc[] = [];
   if (entity.subType === OBJECT_SUBTYPE_ENTITY) {
-    for (const walked of walkRequirements(root)) {
+    for (const walked of walkRequirements(root, opts.inLedger)) {
       // The SHALLOWEST member path among this requirement's targets that lands on this
       // entity: "" for an entity-grain claim, "status" for an L5 member claim. undefined
       // when no target is under this entity.

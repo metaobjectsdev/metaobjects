@@ -26,8 +26,10 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
   published. On the consumer side, `requirements.inherit` in `.metaobjects/config.json` names the
   dependency packages whose requirements join the project's ledger, by the same explicit-include
   rule as `scope.include` (`**` names nothing). A dependency's requirement that is not inherited
-  still loads, so an overlay of it resolves, but the requirement gate, its summary and lint, and
-  the `requirement-tests` generators leave it out. An imported requirement never switches object
+  still loads, so an overlay of it resolves, but the requirement gate, its summary and lint, the
+  `requirement-tests` generators and the requirements pages leave it out; `requirementTestIdentities`
+  (TypeScript) and `requirement_test_identities` (Python) take the collection's ledger predicate
+  as `inLedger` / `in_ledger`, as the generator does. An imported requirement never switches object
   coverage on, inherited or not, as a library's never does. Every port reads the key (TypeScript,
   Python, Java, Kotlin through Java, C#). A consumer on an older toolchain treats a published
   requirement as its own, so upgrade consumers before publishing with `requirements: true`. See

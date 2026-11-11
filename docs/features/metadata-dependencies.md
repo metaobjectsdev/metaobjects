@@ -406,7 +406,9 @@ to it — decided by the using entity, never by the enum's own package.
 A dependency published with `requirements: true` carries its requirements, and they load
 with its model: an overlay of one resolves, and `meta verify` can see it. By default they
 stay the **publisher's** ledger, not yours. The requirement gate does not check, count,
-summarise or lint them, and the `requirement-tests` generator writes no test for them.
+summarise or lint them, the `requirement-tests` generator writes no test for them, and the
+requirements pages (`requirementsFile()`, the agent docs' `requirements.md`, an entity page's
+"Required by") do not list them.
 That is the same default as an imported entity's code generation, for the same reason:
 you did not declare them.
 
@@ -837,8 +839,8 @@ but **not** built yet — do not assume any of the following exists:
 
 ## Verified by
 
-- [`fixtures/dependency-conformance/`](../../fixtures/dependency-conformance/) — 46
-  cases. 35 pin resolution (including `npm`, `python`, `maven` and `nuget` dependencies loading from their
+- [`fixtures/dependency-conformance/`](../../fixtures/dependency-conformance/) — 47
+  cases. 36 pin resolution (including `npm`, `python`, `maven` and `nuget` dependencies loading from their
   committed snapshot with nothing installed), the exhaustive `imported`/`inScope`/`inMigrateScope` sets,
   overlay/extends/reference behavior against a synced snapshot, and every load- and
   resolution-time error above, run by TypeScript (the reference implementation),
@@ -849,16 +851,16 @@ but **not** built yet — do not assume any of the following exists:
   (`dotnet meta verify --deps`).
   Four artifacts under `fixtures/dependency-conformance/artifacts/` are
   pinned by sha256 in the README so the corpus itself can never silently drift.
-  Python's runner asserts all 35 resolution cases identically to TypeScript's, with no
+  Python's runner asserts all 36 resolution cases identically to TypeScript's, with no
   exemptions — the two overlay cases that need a view child as incidental content
   use `view.currency` (the one concrete `view.*` subtype registered cross-port,
   per `fixtures/registry-conformance/expected-registry.json`), not `view.text`,
   so they exercise the full imported/selected/governed assertions like every
-  other case. Six resolution cases also pin the ledger (`expectLedger`, `expectCoverageMeasured`):
-  which requirements are the project's own and whether coverage is measured, asserted through
-  each port's requirement gate in TypeScript, Python, Java and C#, and through the
-  `requirement-tests` walk in Java and C# (the TypeScript and Python generators' ledger filter
-  is pinned by their own unit tests). `transport-cases.json` beside it pins the `npm`, `python`, `maven` and `nuget` transports
+  other case. Seven resolution cases also pin the ledger (`expectLedger`, `expectCoverageMeasured`):
+  which requirements are the project's own and whether coverage is measured, asserted in
+  TypeScript, Python, Java and C# through each port's requirement gate and through its
+  `requirement-tests` identities walk, and in TypeScript through the rows the requirements
+  pages list (the documentation generators that list requirements are TypeScript-only). `transport-cases.json` beside it pins the `npm`, `python`, `maven` and `nuget` transports
   themselves (32 cases: packages laid out under a temp `node_modules`, on a temp
   Python import path, as a jar in a temp local Maven repository and as a package in a temp NuGet
   cache, the directory each resolves to, the exact lock `sync` writes, and

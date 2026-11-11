@@ -49,7 +49,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/provider-composition-conformance/`](../fixtures/provider-composition-conformance/) | 18 (11 error-shape + 4 compose-load + 3 attr-ownership) | ✓ | ✓ | — (JVM registry via Java) | ✓ | ✓ |
 | [`fixtures/source-resolution-conformance/`](../fixtures/source-resolution-conformance/) | 25 cases | ✓ (reference implementation) | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/scope-conformance/`](../fixtures/scope-conformance/) | 10 cases | ✓ (reference implementation) | ✓ | inherits via Java | ✓ | ✓ |
-| [`fixtures/dependency-conformance/`](../fixtures/dependency-conformance/) | 46 cases (35 resolution, 6 of them with a ledger arm, + 11 check) + 32 transport cases | ✓ (reference implementation; all four arms) | ✓ (resolution arm, all 35, ledger included; check arm, all 11) | inherits via Java | ✓ (resolution arm, all 35, ledger included; check arm, all 11, as `verify --deps`) | ✓ (resolution arm, all 35 identically, ledger included; check arm, all 11, as `deps check` and `verify --deps`; the transport arm is Node-only) |
+| [`fixtures/dependency-conformance/`](../fixtures/dependency-conformance/) | 47 cases (36 resolution, 7 of them with a ledger arm, + 11 check) + 32 transport cases | ✓ (reference implementation; all four arms) | ✓ (resolution arm, all 36, ledger included; check arm, all 11) | inherits via Java | ✓ (resolution arm, all 36, ledger included; check arm, all 11, as `verify --deps`) | ✓ (resolution arm, all 36 identically, ledger included; check arm, all 11, as `deps check` and `verify --deps`; the transport arm is Node-only) |
 | [`fixtures/shared-model-conformance/`](../fixtures/shared-model-conformance/) | 15 cases (9 publish + 6 refusal) | ✓ (reference implementation) | ✓ (all 15; `SharedModelConformanceTest`) | inherits via Java (`KotlinSharedModelGeneratorTest` pins the generator) | ✓ (all 15; `SharedModelConformanceTests`) | ✓ (serializer arm: the 9 publish cases' document bytes; no publisher) |
 | [`fixtures/agent-context-conformance/`](../fixtures/agent-context-conformance/) | 4 | ✓ (the emitter is TS-owned) | — | — | — | — |
 | [`fixtures/metamodel-docs/`](../fixtures/metamodel-docs/) | 1 | ✓ (docs emit is TS-owned) | — | — | — | — |
@@ -463,9 +463,9 @@ also matches before a trailing newline. Kotlin has no runner of its own: it inhe
 the Java loader. Each of those two guards is pinned by a test beside the corpus, since
 the corpus asserts matches only and carries no invalid-pattern case.
 
-### `fixtures/dependency-conformance/` (46 cases + 32 transport cases)
+### `fixtures/dependency-conformance/` (47 cases + 32 transport cases)
 
-All 46 cases → [features/metadata-dependencies.md](features/metadata-dependencies.md)
+All 47 cases → [features/metadata-dependencies.md](features/metadata-dependencies.md)
 (declaring a dependency, `meta deps sync`, the committed snapshot + lock, default
 exclusion of imported metadata, overlay/extends across the boundary, every load-
 and resolution-time failure, the upstream check, and which imported requirements are the
@@ -651,7 +651,7 @@ JSON and verify payload feeds it unchanged.
 
 The fixtures in the nine corpora mapped above (metamodel 449 + yaml 16 + verify 45
 + render 18 + persistence 59 + api-contract 121 + source-resolution 25 + scope 10 +
-dependency 46) each map to a feature doc, and so do the two requirement corpora, `shared-model-conformance`, the
+dependency 47) each map to a feature doc, and so do the two requirement corpora, `shared-model-conformance`, the
 `cube-model` corpus and `explorer-conformance`, whose case lists live in their own READMEs. None are orphaned today. The remaining
 corpora in the totals table gate tooling contracts (registry manifests, provider
 composition, agent context, docs emit) rather than user-facing metamodel behaviour,

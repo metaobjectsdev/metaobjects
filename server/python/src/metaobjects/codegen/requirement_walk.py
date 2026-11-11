@@ -30,7 +30,11 @@ from metaobjects.meta.core.requirement.requirement_constants import (
 )
 from metaobjects.meta.core.requirement.resolve_claim import resolve_claim
 from metaobjects.meta.meta_data import MetaData
-from metaobjects.requirement_check import collect_addressed_requirements, effective_package
+from metaobjects.requirement_check import (
+    collect_addressed_requirements,
+    effective_package,
+    requirement_fqn,
+)
 from metaobjects.shared.separators import PACKAGE_SEP
 
 #: The unit of a requirement that resolves no target. Doubles as the catch-all renderer key.
@@ -105,14 +109,16 @@ def _concern_of(node: MetaData) -> str:
     return f"{node.type}.{node.sub_type}"
 
 
-def requirement_ledger_key(view: RequirementView) -> str:
-    """FR-023 — the key a ledger predicate (``GenContext.in_ledger``) reads for a requirement:
-    ``<package>::<dotted path>``, or the bare path when the effective package is empty."""
-    return view.path if view.package == "" else f"{view.package}::{view.path}"
+def walk_requirements(
+    root: MetaData, in_ledger: Callable[[str], bool] | None = None
+) -> list[WalkedRequirement]:
+    """Every ``requirement.*`` node in the project's ledger, nested ones included, in
+    declaration order.
 
-
-def walk_requirements(root: MetaData) -> list[WalkedRequirement]:
-    """Every ``requirement.*`` node, nested ones included, in declaration order.
+    ``in_ledger`` is the collection's ledger predicate (``Collection.in_ledger``), read at
+    ``<package>::<dotted path>``: a dependency's requirement the project did not inherit is
+    left out. ``None``: every loaded requirement is the ledger, which is right for a model
+    loaded with no dependencies.
 
     An unresolvable ``@implementedBy`` reference is skipped rather than raised on: its
     severity depends on ``@status`` and belongs to ``verify``, and codegen must not fail a
@@ -123,6 +129,8 @@ def walk_requirements(root: MetaData) -> list[WalkedRequirement]:
         req = item.node
         # The referrer package a bare reference binds in (ADR-0042) is the effective package.
         package = effective_package(req)
+        if in_ledger is not None and not in_ledger(requirement_fqn(package, item.path)):
+            continue
         targets: list[ResolvedClaim] = []
         for ref in req.implemented_by():
             target = resolve_claim(root, ref, package)
@@ -268,14 +276,17 @@ def requirement_test_identities(
     *,
     grain: str = "concern",
     filter: RequirementFilter | None = None,  # noqa: A002 — the seam's published name
+    in_ledger: Callable[[str], bool] | None = None,
 ) -> list[RequirementTestIdentity]:
-    """Every test the generator would emit, sorted by ``id`` (code points, never a locale)."""
+    """Every test the generator would emit for the project's ledger, sorted by ``id`` (code
+    points, never a locale). Pass the collection's ``in_ledger``, as the generator receives
+    it; ``None``: every loaded requirement is the ledger (see ``walk_requirements``)."""
     # Checked here as well as per requirement, so a bad grain is refused even over a ledger
     # the filter empties: the answer must not depend on what the model holds.
     assert_requirement_test_grain(grain)
     include = filter if filter is not None else default_requirement_test_filter
     out: list[RequirementTestIdentity] = []
-    for walked in walk_requirements(root):
+    for walked in walk_requirements(root, in_ledger):
         if not include(walked.view):
             continue
         for unit in requirement_test_units(walked, grain):

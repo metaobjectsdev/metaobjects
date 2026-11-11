@@ -75,14 +75,21 @@ export function requirementLedgerKey(view: Pick<RequirementView, "package" | "pa
 }
 
 /**
- * Depth-first walk of every `requirement.*` node, nested ones included.
+ * Depth-first walk of every `requirement.*` node in the project's ledger, nested ones
+ * included. `inLedger` is the collection's ledger predicate (`Collection.inLedger`), read
+ * at `requirementLedgerKey`: a dependency's requirement the project did not inherit is
+ * left out. Omitted, every loaded requirement is the ledger, which is right for a model
+ * loaded with no dependencies.
  *
  * Unresolvable `@implementedBy` references are skipped rather than thrown on —
  * resolution severity is `meta verify`'s job (it depends on `@status`, which is why
  * it cannot live in the loader), and codegen must not fail a build over a
  * diagnostic another command owns.
  */
-export function walkRequirements(root: MetaData): WalkedRequirement[] {
+export function walkRequirements(
+  root: MetaData,
+  inLedger?: (fqn: string) => boolean,
+): WalkedRequirement[] {
   const out: WalkedRequirement[] = [];
 
   const visit = (node: MetaData, prefix: string): void => {
@@ -92,6 +99,10 @@ export function walkRequirements(root: MetaData): WalkedRequirement[] {
     // Same referrer-package basis the CLI's checks use, so a bare reference binds
     // package-locally under the ADR-0042 contract.
     const referrerPkg = effectiveRequirementPackage(node);
+    if (inLedger !== undefined && !inLedger(requirementLedgerKey({ package: referrerPkg, path }))) {
+      for (const child of node.children()) visit(child, path);
+      return;
+    }
 
     const targets: ResolvedClaim[] = [];
     for (const ref of req.implementedBy()) {
@@ -356,10 +367,18 @@ export function requirementTestIdentity(
 // language ports, and these orders are pinned by a corpus all five ports run.
 const compareCodeUnits = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 
-/** Every test the generator would emit, sorted by id. */
+/**
+ * Every test the generator would emit for the project's ledger, sorted by id. Pass the
+ * collection's `inLedger`, as the generator receives it; omitted, every loaded
+ * requirement is the ledger (see `walkRequirements`).
+ */
 export function requirementTestIdentities(
   root: MetaData,
-  opts: { grain?: RequirementTestGrain; filter?: (r: RequirementView) => boolean } = {},
+  opts: {
+    grain?: RequirementTestGrain;
+    filter?: (r: RequirementView) => boolean;
+    inLedger?: (fqn: string) => boolean;
+  } = {},
 ): RequirementTestIdentity[] {
   const filter = opts.filter ?? defaultRequirementTestFilter;
   // Checked here as well as per requirement, so a bad grain is refused even over a
@@ -367,7 +386,7 @@ export function requirementTestIdentities(
   const grain = opts.grain ?? "concern";
   assertRequirementTestGrain(grain);
   const out: RequirementTestIdentity[] = [];
-  for (const walked of walkRequirements(root)) {
+  for (const walked of walkRequirements(root, opts.inLedger)) {
     if (!filter(walked.view)) continue;
     for (const unit of requirementTestUnits(walked, grain).keys()) {
       out.push(requirementTestIdentity(walked, unit));

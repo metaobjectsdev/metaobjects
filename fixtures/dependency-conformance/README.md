@@ -105,7 +105,9 @@ belong to the other.
   effective `@status` (after overlays). A requirement belongs to the ledger unless its package
   is a dependency's and `requirements.inherit` does not NAME that package (the same
   explicit-include rule as `scope.include`; `**` names nothing). A port asserts the map through
-  its requirement gate's scan, and the same set of addresses through its requirement-tests walk.
+  its requirement gate's scan, and the same set of addresses through its requirement-tests
+  identities walk; TypeScript also asserts the paths its requirements pages list (the only port
+  with a generator that lists requirements).
 - **`expectCoverageMeasured`** — OPTIONAL, alongside `expectLedger`, default `false`: whether
   the gate measures object coverage. Only a requirement the project wrote itself switches it on;
   an imported requirement never does, inherited or not, as a library's never does.

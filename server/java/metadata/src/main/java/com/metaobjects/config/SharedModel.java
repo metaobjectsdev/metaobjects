@@ -208,11 +208,22 @@ public final class SharedModel {
         for (MetaData n : selected) selectedKeys.add(n.getName());
         List<Pair> failures = checkClosure(root, selected, selectedKeys);
         if (!failures.isEmpty()) {
+            // Same sanctioned root-level own read as step 2: a template is never exported, so a
+            // reference to one can only be closed by excluding the referrer.
+            Set<String> templateKeys = new HashSet<>();
+            for (MetaData n : root.getChildren(MetaData.class, false)) {
+                if (TemplateConstants.TYPE_TEMPLATE.equals(n.getType())) templateKeys.add(n.getName());
+            }
             StringBuilder lines = new StringBuilder();
-            for (Pair p : failures) lines.append("\n  ").append(p.referrer()).append(" -> ").append(p.target());
+            for (Pair p : failures) {
+                lines.append("\n  ").append(p.referrer()).append(" -> ").append(p.target())
+                    .append(templateKeys.contains(p.target())
+                        ? ": templates are never exported; exclude the referrer"
+                        : ": include it or exclude the referrer");
+            }
             throw new Refusal(Reason.NOT_CLOSED,
                 "shared-model \"" + input.name() + "\": the selection is not closed - these references point "
-                    + "outside it; include it or exclude the referrer:" + lines, failures);
+                    + "outside it:" + lines, failures);
         }
 
         // Step 4: serialize (sorted by resolution key).

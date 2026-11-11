@@ -143,10 +143,17 @@ public static class SharedModel
         var failures = CheckClosure(root, selected, selectedKeys);
         if (failures.Count > 0)
         {
-            var lines = string.Concat(failures.Select(p => $"\n  {p.Referrer} -> {p.Target}"));
+            // Same sanctioned root-level own read as step 2: a template is never exported, so a
+            // reference to one can only be closed by excluding the referrer.
+            var templateKeys = root.OwnChildren().Where(n => n.Type == TYPE_TEMPLATE)
+                .Select(n => n.ResolutionKey()).ToHashSet(StringComparer.Ordinal);
+            var lines = string.Concat(failures.Select(p => $"\n  {p.Referrer} -> {p.Target}: " +
+                (templateKeys.Contains(p.Target)
+                    ? "templates are never exported; exclude the referrer"
+                    : "include it or exclude the referrer")));
             throw new SharedModelRefusal(SharedModelRefusalReason.NotClosed,
                 $"shared-model \"{input.Name}\": the selection is not closed - these references point " +
-                "outside it; include it or exclude the referrer:" + lines, failures);
+                "outside it:" + lines, failures);
         }
 
         // Step 4: serialize (sorted by resolution key).

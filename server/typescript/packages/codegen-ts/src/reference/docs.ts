@@ -149,6 +149,7 @@ export const docsFile = function docsFile(opts?: DocsFileOpts): Generator {
             }),
             loadedRoot: rc.loadedRoot,
             ...(apiRefs !== undefined && { apiRefs }),
+            ...(ctx.inLedger !== undefined && { inLedger: ctx.inLedger }),
           });
           return { path, content: renderDocPage(ENTITY_PAGE_REF, payload, provider, path) };
         });
