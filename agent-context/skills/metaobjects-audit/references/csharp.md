@@ -80,7 +80,23 @@ copies the helper runtime the generated routes call (`FilterParser`, `EfCoreFilt
 `ValueObjectValidator`, `ConstraintErrors`, `Iso8601TimestampConverter`) into
 `codegen/runtime/` under the namespace `Codegen.Runtime`. That folder is owned code, not a
 hand-rolled filter parser: do not flag it. `dotnet meta gen --list` marks each owned copy
-`identical` or `DIFFERS`. A generator the project WRITES is an `IGenerator` listed in
+`identical` or `DIFFERS`.
+
+**Audit the owned copies first.** A copy exists to carry a change; one that carries none is
+duplication that falls behind the reference. In `dotnet meta gen --list` an owned row reads
+`[owned — identical]` or `[owned — DIFFERS: N behind, M of your own]` (`0 behind, 0 of your
+own, reordered` for a copy with the same lines in another order), and `routes` adds a clause
+for each `codegen/runtime/` file that differs. Only `identical`, with every runtime clause
+identical too, proves a copy unmodified; that row is a **finding**: point the
+`codegen/Generators.cs` entry back at the stock generator and remove the copy
+(`dotnet meta eject --undo` removes every identical copy and prints the edit). `DIFFERS`
+with `0 of your own` rules out added lines, not removed ones: confirm from `git log -p` on
+the copy that nothing changed after the eject, else report it as **possibly customized:
+check its history**. A copy with lines of its own, or an edited runtime file, is a
+customization; check only how far behind it is. Count lines for the Phase 0 total: lines in
+copies proven unmodified, over all lines under `codegen/generators/` and `codegen/runtime/`.
+
+A generator the project WRITES is an `IGenerator` listed in
 `codegen/Generators.cs` the same way. With no `codegen/Generators.cs`, `dotnet meta gen`
 exits 2 and generates nothing.
 

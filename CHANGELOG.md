@@ -298,6 +298,22 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
   the shipped per-port matrix (consume, check, publish, runtime load, transports), the deferred list
   names what is still not built, and the verify, codegen, authoring, audit and capability-sheet skills
   teach the Java, Kotlin and C# publish paths, the `deps` checks and the `maven` and `nuget` transports.
+- **The `metaobjects-audit` skill checks that a project uses MetaObjects as documented, not only
+  that it installed it.** Axis F now asks whether the verify gate blocks: it looks for swallowed
+  exit codes, runs the project's own verify and records the error count (recommending a ratchet
+  for a tolerated count), lists every deploy path that skips it, and scores the gate BLOCKING,
+  RUNS BUT DOES NOT BLOCK or ABSENT; a project with no CI answers NO whatever untracked hooks it
+  has. Axis F2 reports `consumed / emitted` per generator kind and raises one
+  `generated-and-bypassed` finding where a hand-built page stands beside an unused generated one.
+  The prompt reference counts payload fields linked to entity fields (`extends: Entity.field`)
+  against unlinked copies. The requirements reference adds three currency checks: ledger
+  staleness from git history, `--require-implementers`, and live claims whose generated
+  implementer nothing uses. The unmodified-owned-copy check now covers Java, Kotlin, C# and
+  Python (the Java and Kotlin references no longer say those ports cannot eject), reported as one
+  line total. Phase 1b adds a shape-coverage census of every boundary shape. The scorecard gains a
+  "used as described" line, a re-run marks each earlier finding fixed, open or deferred against
+  the previous `.metaobjects/adoption-audit.json`, and the report documents the JSON's top-level
+  fields.
 
 ### Changed
 

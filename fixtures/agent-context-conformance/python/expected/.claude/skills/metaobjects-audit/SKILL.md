@@ -74,7 +74,13 @@ Actual cutovers run through the existing skills mapped per finding tier (§ Brid
   `queriesFile` / `routesFile` / `barrel` on a 1.0.x install** fails to load, because 1.0
   removed those four and 1.1 restored them: there it is an upgrade blocker, fixed by
   upgrading to 1.1 or by ejecting. Importing anything from that subpath is otherwise
-  correct and is never a finding by itself.
+  correct and is never a finding by itself. **Every port owns generators the same way**:
+  run the owned-copy check in each port reference the project uses (TypeScript
+  `meta eject --list --format text`, Python `metaobjects gen --list`, Java / Kotlin
+  `mvn metaobjects:eject -Dlist`, C# `dotnet meta gen --list`), and report ONE total across
+  all of them: **unmodified owned-generator lines / all owned-generator lines**, where
+  unmodified counts only copies proven unmodified. Report the proven copies together as
+  one finding, `owned-generator-stock-copies`, listing each copy and the port's undo command.
 - [ ] **Cross-language version consistency (silent-drift check).** If the project uses MetaObjects in more than one language (e.g. a TS web client + a Java/Python/C# backend), enumerate EVERY MetaObjects package across ALL ecosystems (npm `@metaobjectsdev/*`, Maven `com.metaobjects:*`, PyPI `metaobjects`, NuGet `MetaObjects.*`) and record each version. **The version-number LINES differ by ecosystem (npm/PyPI/NuGet `0.x`/`1.x` vs Maven `7.x`/`8.x`), so you CANNOT eyeball drift** — a `0.12` next to a `7.7` looks fine but can be badly out of sync. Compare the **`metamodelVersion`** each port reports (the shared spec version on the registry manifest): a mismatch is real cross-language drift and a **finding** — the ports disagree on vocabulary/wire behavior. Also flag any port not on the latest release for its ecosystem. (This is a known real-world failure mode: newest backend, stale client, invisible because the numbers differ.)
 - [ ] Classify: **Greenfield** (none/minimal) · **Partial** · **Deep** → choose path below.
 
@@ -103,6 +109,20 @@ code grows.
 The gap between "modeled + query helpers" and "has view + route + UI" is the headline
 lopsidedness.
 
+**Shape coverage census.** The coverage matrix lists modelled entities only, so a shape
+nobody modelled never appears in it. Count the other side too. List every shape that crosses
+a boundary: database tables and views, request and response bodies, queue and socket
+messages, prompt inputs, LLM replies, and file formats the project reads or writes. For each
+shape, record whether it is modelled, and for each layer that states it (DDL or migration,
+ORM model, validator, DTO, client type, prompt payload, reply parser) whether that statement
+is **generated**, **derived** from generated code (a type built from a generated type, a
+`z.infer` of a generated schema), or **hand-declared**. Report
+`generated or derived statements / all statements` and list the unmodelled shapes. A table
+present in the database or the migrations with no entity or projection behind it is a
+finding (`unmodelled-table`). Like the leverage ratio this is a measurement, never a target:
+an unmodelled shape is a finding only where the cost test in § Owned-codegen says modelling it
+pays, or it is a table.
+
 **Surface review — 8 axes (independently runnable).**
 Work the full `references/capability-checklist.md` on every axis. Check calibration
 guards (`references/calibration.md`) before raising a finding. **Verify, don't assume** — read the
@@ -113,7 +133,7 @@ Axes (the full hunt for each is in `references/surface-review-axes.md` — open 
 - **A.** Codegen candidates — API / server routes · **B.** Codegen candidates — web / client
 - **C.** Drift hotspot — validators, mappers, runtime models · **D.** Prompt pillar
 - **E.** Owned generators and scaffold-and-own · **E2.** Capability ledger (`requirement.*`, opt-in)
-- **F.** Drift-gate adoption · **F2.** Over-generation (codegen waste)
+- **F.** Drift-gate adoption — does it block? · **F2.** Over-generation and generated-but-bypassed (codegen waste)
 - **G.** Runtime-contract anti-patterns · **G2.** `own*()` accessor discipline (a correctness defect, not advisory)
 - **H.** Authoring correctness / ADR conformance · **H2.** Wrong native type (`field.string` + `@dbColumnType: uuid`)
 - **I.** Vocabulary hygiene / modernization (advisory, never a failing finding)
@@ -199,14 +219,36 @@ one-consumer need, read it codegen-locally.
 
 1. **Headline MATURITY TIER** — Greenfield → Partial → Deep → Exemplary; worst-of with
    prerequisite gating (a missing pillar can't be averaged away); rendered with **the single
-   next unmet check** ("you're Partial; the next rung needs `verify` in CI").
+   next unmet check** ("you're Partial; the next rung needs a blocking `verify` in CI").
 2. **Per-pillar breakdown (never rolled into one number)** — `pillar | tier | top gap` over
    codegen / runtime / drift-gate / prompts. This is the core deliverable.
-3. **Binary CI drift gate** — prominent and separate: **"Is `meta verify` drift detection
-   wired into CI?"** It is binary because the risk is binary.
+3. **Binary CI drift gate** — prominent and separate: **"Does `meta verify` drift detection
+   block every route to production?"** It is binary because the risk is binary. YES only
+   when axis F scores the gate **BLOCKING**; RUNS BUT DOES NOT BLOCK and ABSENT both answer
+   NO, with the reason (exit code swallowed, tolerated error count, a deploy path that
+   skips it, no CI). Local hooks with no tracked installer do not count.
+4. **Used as described** — one line, separate from the tier: does the project use what it
+   adopted the way MetaObjects documents it? Built from four measurements, each shown with
+   its numbers: generated artifacts consumed rather than bypassed (axis F2, `consumed /
+   emitted` and the `generated-and-bypassed` count); the gate blocks (axis F score); prompt
+   payload fields linked to entity fields (axis D, `linked / (linked + unlinked copies)`);
+   and boundary shapes generated or derived (Phase 1b shape coverage census). Render it as
+   `Used as described: <band> — generated forms 5/12 consumed · gate RUNS BUT DOES NOT
+   BLOCK · payload fields 6/10 linked · shapes 50% generated or derived`, banded by its worst
+   part.
 
-Coarse bands only (none / some / most / all). Worst-of within a pillar. On re-run, grade
-the delta. Lead with gaps, not the grade.
+Coarse bands only (none / some / most / all). Worst-of within a pillar. Lead with gaps, not
+the grade.
+
+**Re-run: compare against the previous audit.** If `.metaobjects/adoption-audit.json`
+already exists, read it before starting and keep it as the baseline. Match each earlier
+finding to this run's by `id` plus location, and give every earlier finding a `status`:
+**fixed** (the location no longer shows it; say what changed), **open** (still present,
+carrying its original `first_seen`), or **deferred** (the project recorded a decision not to
+fix it now, in a commit, an ADR, a tracked issue or a code comment, quoted as
+`deferred_reason`). A finding that is still present with no recorded decision is open, never
+deferred. New findings are `new`. Report the counts per status at the top of the report,
+and show each scorecard line beside its previous value.
 
 **Vocabulary hygiene (axis I) is advisory** — it surfaces as modernization
 opportunities in the roadmap, scored as such, and **never gates a tier or fails the
@@ -218,8 +260,10 @@ audit.** Dated-but-working vocabulary is a quality nudge, not a defect.
 
 **Two artifacts:** `.metaobjects/adoption-audit.json` + rendered Markdown.
 
-**Markdown sections (lead with Scorecard):** 0. Scorecard (tier + pillar table + CI gate) ·
-1. Triage + census · 2. Coverage matrix · 3. Per-surface classification tables · 4. Drift
+**Markdown sections (lead with Scorecard):** 0. Scorecard (tier + pillar table + CI gate +
+used as described; on a re-run, the fixed / open / deferred / new counts) ·
+1. Triage + census (including the owned-generator unmodified-lines total and the shape
+coverage census) · 2. Coverage matrix · 3. Per-surface classification tables · 4. Drift
 findings (active bugs first) · 5. Owned-codegen + generator gaps · 6. Drift-gate adoption ·
 7. Runtime-contract + authoring-correctness (axes G+H) · 8. Semantic-constraint ratification ·
 9. Prompt-pillar assessment · 10. Prioritized roadmap: Tier 1 drift kill → Tier 2 existing
@@ -243,6 +287,24 @@ Each roadmap item: LOC retired, prerequisite, **parity-gate before deleting hand
 | `next_command` | the exact command / skill that performs the cutover (see bridge below) |
 | `parity_gate` | the specific check proving behavior-equivalence |
 | `tier` | 1–4 |
+| `status` | `new` / `open` / `fixed` / `deferred` against the previous audit (`new` on a first run) |
+| `first_seen` | date of the audit that first raised it (carried forward on re-runs) |
+| `deferred_reason` | for `deferred` only: the recorded decision, quoted, and where it is recorded |
+
+Fixed findings stay in the file with `status: fixed` for one run, so the next reader sees
+what closed.
+
+**Top-level fields in `.metaobjects/adoption-audit.json`**, beside `findings[]`:
+
+| Field | Content |
+|---|---|
+| `audited_at`, `commit` | when the audit ran and the commit it read |
+| `previous` | `audited_at` and `commit` of the baseline audit, or `null` on a first run |
+| `tier`, `pillars[]` | headline tier and `{ pillar, tier, top_gap }` per pillar |
+| `ci_gate` | `{ score: "BLOCKING" \| "RUNS_BUT_DOES_NOT_BLOCK" \| "ABSENT", exit_code, error_count, swallowed_at[], deploy_paths_skipping[] }` |
+| `used_as_described` | `{ band, generated_consumed, generated_emitted, bypassed_count, gate_score, payload_fields_linked, payload_fields_unlinked, shape_statements_generated_or_derived, shape_statements_total, unmodelled_shapes[] }` |
+| `owned_generators` | `{ unmodified_lines, total_lines, copies[] }`, one total across every port |
+| `status_counts` | `{ new, open, fixed, deferred }` |
 
 Within each tier, sort by impact ÷ effort (quick wins first). Tier 1 leads.
 

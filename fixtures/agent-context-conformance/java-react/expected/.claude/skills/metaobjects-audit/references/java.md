@@ -72,11 +72,30 @@ plugin `<configuration>` — that is the source of truth for which generators ru
 
 ## Owned generators
 
-Java does not scaffold-and-own generators — they are provided by
-`metaobjects-codegen-spring` and wired by FQ class name in `pom.xml`. There is no
-analog to the TS `codegen/generators/*.ts` pattern here.
+Stock generators come from `metaobjects-codegen-spring` and are wired by fully qualified
+class name in `pom.xml`. `mvn metaobjects:eject -Dnames=<a,b> -Dport=java` copies one into
+a separate `codegen/` Maven module under the project's own package, and `pom.xml` then names
+the copy.
 
-Java does, however, have **both** authoring paths, so a project needing a shape the
+**Audit the owned copies first.** A copy exists to carry a change; one that carries none is
+duplication that falls behind the reference.
+
+```bash
+mvn metaobjects:eject -Dlist      # the catalog, each owned copy marked
+```
+
+Each owned row is marked `[owned — identical]` or `[owned — DIFFERS: N behind, M of your
+own]`, and a generator copied with companion classes (emitters, Java `entity` and
+`extractor`) adds `; differing: <files>`. Only `identical` proves a copy unmodified; that
+row is a **finding**: point the `pom.xml` entry back at the stock class and remove the copy
+(`mvn metaobjects:eject -Dundo=true` removes every identical copy and prints the `pom.xml`
+edit). `DIFFERS` with `0 of your own` rules out added lines, not removed ones: confirm from
+`git log -p` on the copy that nothing changed after the eject, else report it as **possibly
+customized: check its history**. A copy with lines of its own is a customization; check
+only how far behind it is. Count lines for the Phase 0 total: lines in copies proven
+unmodified, over all lines under `codegen/` that eject wrote or the project wrote.
+
+Java also has **both** authoring paths, so a project needing a shape the
 built-ins do not emit has two legitimate answers and neither is a finding on its own:
 a **programmatic** generator (implement `com.metaobjects.generator.Generator`, name the
 class in a `<generator>` element — the plugin loads it from the project classpath), or a
