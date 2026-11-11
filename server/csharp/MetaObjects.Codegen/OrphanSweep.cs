@@ -158,6 +158,62 @@ public static class OrphanSweep
             discarded.Distinct().Order(StringComparer.Ordinal).ToList());
     }
 
+    /// <summary>How many leading lines <see cref="SweepMarked"/> reads for the generated marker.</summary>
+    private const int MarkerLines = 5;
+
+    /// <summary>
+    /// G5 (rc.20): the sweep for a self-hosted runner that keeps no hash manifest (no
+    /// <see cref="GenConfig.GenStateDir"/>), so a layout change (the package layout, R39) does not
+    /// leave the old files behind. Deletes each file under <paramref name="dirs"/> that carries the
+    /// generated marker (<see cref="CodegenRunner.GeneratedMarker"/>) in its first lines and that
+    /// <paramref name="emitted"/> (absolute paths; <see cref="CodegenRunner.RunResult.EmittedPaths"/>)
+    /// does not hold, and returns the deleted absolute paths, sorted.
+    /// <para>
+    /// This is the manifest-less write rule turned on deletion: with no manifest, a file carrying the
+    /// marker is the generator's to overwrite, edited or not, so it is also the generator's to
+    /// delete once nothing emits it. A file without the marker is never touched, nor is anything
+    /// under a <c>.metaobjects</c> directory. Opt-in, and only for the caller's own runner: it is
+    /// never called by <see cref="CodegenRunner.Run(GenConfig, MetaObjects.Meta.MetaRoot, IReadOnlyList{IGenerator})"/>.
+    /// Pass the union of every run's directories and emitted paths when one runner makes several
+    /// runs, since a file another run emitted would look orphaned to this one; and call it only
+    /// after a run of the whole generator list, for the same reason <see cref="GenConfig.SweepOrphans"/> is.
+    /// </para>
+    /// </summary>
+    public static IReadOnlyList<string> SweepMarked(IEnumerable<string> dirs, IReadOnlySet<string> emitted)
+    {
+        var wanted = new HashSet<string>(emitted.Select(Path.GetFullPath), StringComparer.Ordinal);
+        var removed = new SortedSet<string>(StringComparer.Ordinal);
+        foreach (var dir in dirs.Select(Path.GetFullPath).Distinct(StringComparer.Ordinal))
+        {
+            if (!Directory.Exists(dir)) continue;
+            foreach (var path in Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories))
+            {
+                var full = Path.GetFullPath(path);
+                if (wanted.Contains(full) || removed.Contains(full)) continue;
+                if (Path.GetRelativePath(dir, full).Split(Path.DirectorySeparatorChar).Contains(".metaobjects")) continue;
+                if (!CarriesMarker(full)) continue;
+                File.Delete(full);
+                removed.Add(full);
+            }
+        }
+        return removed.ToList();
+    }
+
+    private static bool CarriesMarker(string path)
+    {
+        try
+        {
+            using var reader = new StreamReader(path);
+            for (var i = 0; i < MarkerLines && reader.ReadLine() is { } line; i++)
+                if (line.Contains(CodegenRunner.GeneratedMarker, StringComparison.Ordinal)) return true;
+            return false;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
     /// <summary>The warning for edited orphans. The same wording as codegen-ts's
     /// <c>refusedOrphanMessage</c> and Python's <c>refused_orphan_message</c>: what happened, why
     /// nothing was deleted, and the two ways out.</summary>
