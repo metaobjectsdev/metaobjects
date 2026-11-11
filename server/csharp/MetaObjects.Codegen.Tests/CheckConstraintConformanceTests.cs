@@ -78,6 +78,12 @@ public class CheckConstraintConformanceTests
         Assert.Contains("modelBuilder.Entity<global::Acme.Checks.Gadget>().ToTable(t => t.HasCheckConstraint(\"gadgets_status_chk\", \"\\\"status\\\" IN ('DRAFT', 'LIVE')\"));", context);
         Assert.Contains("t.HasCheckConstraint(\"gadgets_sku_shape\", ", context);
         Assert.Contains("t.HasCheckConstraint(\"gadgets_email_atleastone_chk\", \"num_nonnulls(\\\"email\\\", \\\"phone\\\") = 1\")", context);
+        // rc.20 @dbCheck: false — the opted-out validators and enum declare no CHECK; a sibling
+        // validator on the same field keeps its own.
+        Assert.DoesNotContain("gadgets_npi_", context);
+        Assert.DoesNotContain("gadgets_legacy_state_chk", context);
+        Assert.DoesNotContain("\\\"rank\\\" >= 1", context);
+        Assert.Contains("t.HasCheckConstraint(\"gadgets_rank_numeric_chk\", \"\\\"rank\\\" <= 99\")", context);
     }
 
     [Fact]

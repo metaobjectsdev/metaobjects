@@ -258,6 +258,8 @@ def run_validations(
     _validate_identity_sequence(root, errors)
     # cross-field validators — atLeastOne @max in range; @condition names entity fields.
     _validate_cross_field_validators(root, errors)
+    # @dbCheck: false with @constraintName names a CHECK that is never created.
+    _validate_db_check(root, errors)
     # field.map — exactly one of @valueType (scalar) or @objectRef (VO), and
     # @valueType (when set) must name a known scalar subtype.
     _validate_field_map(root, errors)
@@ -3759,6 +3761,48 @@ def _validate_identity_sequence(root: MetaData, errors: list[MetaError]) -> None
                 ),
                 envelope=ident.source,
             ))
+
+
+# @dbCheck: false (db provider) asks a CHECK-generating validator or a field.enum for no
+# database CHECK; @constraintName names that CHECK. Together there is nothing to name, so the
+# node is refused (ERR_CONSTRAINT_NAME_WITHOUT_CHECK). Read RESOLVING (ADR-0039), reported on
+# each node that declares either of the two itself. Mirrors TS validateDbCheck.
+def _validate_db_check(root: MetaData, errors: list[MetaError]) -> None:
+    from ..meta.core.field import field_constants as fc
+    from ..meta.core.validator import validator_constants as vc
+
+    checked_validators = (
+        vc.VALIDATOR_SUBTYPE_NUMERIC,
+        vc.VALIDATOR_SUBTYPE_LENGTH,
+        vc.VALIDATOR_SUBTYPE_REGEX,
+        *vc.CROSS_FIELD_VALIDATOR_SUBTYPES,
+    )
+
+    def visit(node: MetaData, owner: str | None) -> None:
+        checked = (node.type == TYPE_VALIDATOR and node.sub_type in checked_validators) or (
+            node.type == TYPE_FIELD and node.sub_type == fc.FIELD_SUBTYPE_ENUM
+        )
+        # ADR-0039 sanctioned own: reported where the node declares either attr itself.
+        declares = node.attr(vc.VALIDATOR_ATTR_DB_CHECK) is not None or node.attr(vc.VALIDATOR_ATTR_CONSTRAINT_NAME) is not None
+        if checked and declares:
+            name = node.get_meta_attr(vc.VALIDATOR_ATTR_CONSTRAINT_NAME)
+            if node.get_meta_attr(vc.VALIDATOR_ATTR_DB_CHECK) is False and isinstance(name, str) and name:
+                prefix = f"{owner}." if owner is not None else ""
+                errors.append(MetaError(
+                    code=ErrorCode.ERR_CONSTRAINT_NAME_WITHOUT_CHECK,
+                    message=(
+                        f'{node.type}.{node.sub_type} "{prefix}{node.name}" sets @dbCheck: false and '
+                        f'@constraintName "{name}"; with no CHECK there is nothing for the name to name. '
+                        "Remove @constraintName, or remove @dbCheck: false."
+                    ),
+                    envelope=node.source,
+                ))
+        nxt = node.name if node.type in (TYPE_OBJECT, TYPE_FIELD) else owner
+        for child in node.own_children():
+            visit(child, nxt)
+
+    for child in root.own_children():
+        visit(child, None)
 
 
 # Cross-field validators (comparison / requiredWhen / presentIff / atLeastOne), which the

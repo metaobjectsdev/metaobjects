@@ -111,6 +111,20 @@ public static class DbSchema
         Required: false,
         Description: "The database name of the CHECK constraint this validator generates (numeric, length, regex and the cross-field validators; the others generate no CHECK). Absent: the derived <table>_<column>_<kind>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider.");
 
+    /// <summary><c>@dbCheck</c> on a validator — <c>false</c> generates no database CHECK for it.</summary>
+    public static readonly AttrSchema ValidatorDbCheckSchema = new AttrSchema(
+        Name: Core.Validator.ValidatorConstants.VALIDATOR_ATTR_DB_CHECK,
+        ValueType: AttrConstants.ATTR_SUBTYPE_BOOLEAN,
+        Required: false,
+        Description: "false: this validator generates no database CHECK (meta migrate and a generated EF model leave it out). A numeric, length or regex validator is still enforced on every write by the generated app-level validators; a cross-field validator (comparison, requiredWhen, presentIff, atLeastOne) is enforced only by its CHECK, so on one of those false leaves the rule enforced nowhere. Absent: true. For a column whose legacy rows break the rule, which a CHECK would refuse on their next UPDATE even NOT VALID. Refused with @constraintName (ERR_CONSTRAINT_NAME_WITHOUT_CHECK). RDB-physical — contributed by the db provider.");
+
+    /// <summary><c>@dbCheck</c> on a field.enum — <c>false</c> generates no membership CHECK.</summary>
+    public static readonly AttrSchema EnumDbCheckSchema = new AttrSchema(
+        Name: Core.Validator.ValidatorConstants.VALIDATOR_ATTR_DB_CHECK,
+        ValueType: AttrConstants.ATTR_SUBTYPE_BOOLEAN,
+        Required: false,
+        Description: "false: this enum's member list generates no database CHECK (meta migrate and a generated EF model leave it out); the generated app-level validation still holds every write to the members. Absent: true. For a column whose legacy rows hold values outside the members, which a CHECK would refuse on their next UPDATE even NOT VALID. Refused with @constraintName (ERR_CONSTRAINT_NAME_WITHOUT_CHECK). RDB-physical — contributed by the db provider.");
+
     /// <summary><c>@constraintName</c> on a field.enum — the database name of its membership CHECK.</summary>
     public static readonly AttrSchema EnumConstraintNameSchema = new AttrSchema(
         Name: Core.Validator.ValidatorConstants.VALIDATOR_ATTR_CONSTRAINT_NAME,

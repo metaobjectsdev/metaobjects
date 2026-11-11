@@ -13,7 +13,7 @@
             { "field.enum": { "name": "tags", "isArray": true, "@values": ["A", "B"] } },
             { "field.string": { "name": "kind", "@required": true } },
             { "field.int": { "name": "score", "children": [ { "validator.numeric": { "@min": 1, "@max": 5 } } ] } },
-            { "field.int": { "name": "floor", "children": [ { "validator.numeric": { "@min": 0 } } ] } },
+            { "field.int": { "name": "floor", "children": [ { "validator.numeric": { "@min": 0, "@dbCheck": true } } ] } },
             { "field.string": { "name": "code", "@maxLength": 10, "children": [ { "validator.length": { "@min": 2, "@max": 20 } } ] } },
             { "field.string": { "name": "label", "@maxLength": 40, "children": [ { "validator.length": { "@min": 0, "@max": 30 } } ] } },
             { "field.string": { "name": "sku", "children": [ { "validator.regex": { "@pattern": "^[A-Z]{3}-'\\d+$", "@constraintName": "gadgets_sku_shape" } } ] } },
@@ -29,6 +29,13 @@
             { "field.string": { "name": "fax" } },
             { "field.enum": { "name": "channel", "@values": ["EMAIL", "SMS"], "children": [ { "validator.length": { "@min": 1, "@max": 5 } } ] } },
             { "field.string": { "name": "ref", "@maxLength": 10, "children": [ { "validator.length": { "@max": 10, "@constraintName": "gadgets_ref_fits" } } ] } },
+            { "field.string": { "name": "npi", "children": [
+                { "validator.regex": { "name": "tenDigits", "@pattern": "^\\d{10}$", "@dbCheck": false } },
+                { "validator.length": { "name": "npiLength", "@max": 12, "@dbCheck": false } } ] } },
+            { "field.enum": { "name": "legacyState", "@values": ["OPEN", "SHUT"], "@dbCheck": false } },
+            { "field.int": { "name": "rank", "children": [
+                { "validator.numeric": { "name": "rankFloor", "@min": 1, "@dbCheck": false } },
+                { "validator.numeric": { "name": "rankCeiling", "@max": 99 } } ] } },
             { "field.string": { "name": "band", "children": [
                 { "validator.length": { "@max": 4 } },
                 { "origin.computed": { "@expr": { "case": [ { "when": { "op": "gte", "left": { "field": "score" }, "right": { "value": 4 } }, "then": { "value": "HIGH" } } ],
@@ -45,7 +52,8 @@
             { "validator.atLeastOne": { "name": "contact", "@fields": ["email", "phone"], "@max": 1 } },
             { "validator.atLeastOne": { "name": "anyContact", "@fields": ["phone", "fax"],
                 "@condition": { "op": "eq", "left": { "field": "level" }, "right": { "value": "HIGH" } } } },
-            { "validator.requiredWhen": { "name": "bandFax", "@field": "fax", "@when": "band", "@equals": "HIGH" } }
+            { "validator.requiredWhen": { "name": "bandFax", "@field": "fax", "@when": "band", "@equals": "HIGH" } },
+            { "validator.comparison": { "name": "legacyWindow", "@left": "startsAt", "@op": "lt", "@right": "endsAt", "@dbCheck": false } }
           ]
         }
       },

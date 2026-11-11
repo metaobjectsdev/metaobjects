@@ -265,6 +265,7 @@ public final class ValidationPhase {
         validateEnumMaxLength(root, collected);
         validateIdentitySequence(root, collected);
         validateCrossFieldValidators(root, collected);
+        validateDbCheck(root, collected);
         pass(collected, () -> validateFieldMap(root));
         pass(collected, () -> validateIdentityFieldsAndGeneration(root));
         // FR-024 B3/B4a — subtype rules (identity-name, value purity, projection licensing).
@@ -2564,6 +2565,44 @@ public final class ValidationPhase {
                     ErrorCode.ERR_SEQUENCE_WITHOUT_INCREMENT, id.getSource()));
             }
         }
+    }
+
+    // =========================================================================
+    // @dbCheck: false (db provider) asks a CHECK-generating validator or a field.enum for no
+    // database CHECK; @constraintName names that CHECK. Together there is nothing to name, so the
+    // node is refused (ERR_CONSTRAINT_NAME_WITHOUT_CHECK). Read RESOLVING (ADR-0039), reported on
+    // each node that declares either of the two itself. Mirrors TS validateDbCheck.
+    // =========================================================================
+
+    private static final java.util.Set<String> DB_CHECK_VALIDATOR_SUBTYPES = java.util.Set.of(
+        "numeric", "length", "regex", "comparison", "requiredWhen", "presentIff", "atLeastOne");
+
+    static void validateDbCheck(MetaRoot root, List<MetaDataException> out) {
+        for (MetaData child : root.getChildren(MetaData.class, false)) visitDbCheck(child, null, out);
+    }
+
+    private static void visitDbCheck(MetaData node, String owner, List<MetaDataException> out) {
+        if (node instanceof com.metaobjects.attr.MetaAttribute) return;
+        String dbCheck = com.metaobjects.validator.MetaValidator.ATTR_DB_CHECK;
+        String constraintName = com.metaobjects.validator.MetaValidator.ATTR_CONSTRAINT_NAME;
+        boolean checked = ("validator".equals(node.getType()) && DB_CHECK_VALIDATOR_SUBTYPES.contains(node.getSubType()))
+            || ("field".equals(node.getType()) && "enum".equals(node.getSubType()));
+        if (checked && (node.hasMetaAttr(dbCheck, false) || node.hasMetaAttr(constraintName, false))
+                && node.hasMetaAttr(dbCheck) && node.hasMetaAttr(constraintName)) {
+            boolean off = "false".equalsIgnoreCase(String.valueOf(node.getMetaAttr(dbCheck).getValue()));
+            String name = node.getMetaAttr(constraintName).getValueAsString();
+            if (off && name != null && !name.isEmpty()) {
+                String label = node.getType() + "." + node.getSubType() + " \"" + (owner == null ? "" : owner + ".")
+                    + node.getShortName() + "\"";
+                out.add(new MetaDataException(
+                    ErrorMessageConstants.ERR_CONSTRAINT_NAME_WITHOUT_CHECK
+                        + ": " + label + " sets @dbCheck: false and @constraintName \"" + name + "\"; with no CHECK"
+                        + " there is nothing for the name to name. Remove @constraintName, or remove @dbCheck: false.",
+                    ErrorCode.ERR_CONSTRAINT_NAME_WITHOUT_CHECK, node.getSource()));
+            }
+        }
+        String next = ("object".equals(node.getType()) || "field".equals(node.getType())) ? node.getShortName() : owner;
+        for (MetaData child : node.getChildren(MetaData.class, false)) visitDbCheck(child, next, out);
     }
 
     /** Every offending enum is reported, as the other ports do, not only the first. */

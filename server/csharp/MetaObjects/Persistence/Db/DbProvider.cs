@@ -57,13 +57,13 @@ public sealed class DbMetaDataProvider : IMetaDataTypeProvider
         registry.Extend(
             MetaObjects.Shared.BaseTypes.TYPE_FIELD,
             FieldConstants.FIELD_SUBTYPE_ENUM,
-            attributes: [DbSchema.EnumConstraintNameSchema]);
+            attributes: [DbSchema.EnumConstraintNameSchema, DbSchema.EnumDbCheckSchema]);
         foreach (string subType in Core.Validator.ValidatorConstants.CHECK_VALIDATOR_SUBTYPES)
         {
             registry.Extend(
                 MetaObjects.Shared.BaseTypes.TYPE_VALIDATOR,
                 subType,
-                attributes: [DbSchema.ValidatorConstraintNameSchema]);
+                attributes: [DbSchema.ValidatorConstraintNameSchema, DbSchema.ValidatorDbCheckSchema]);
         }
 
         // @flattenedColumnPrefix is field.object-ONLY (the flattened-member column prefix), mirroring

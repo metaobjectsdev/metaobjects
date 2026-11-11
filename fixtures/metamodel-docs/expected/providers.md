@@ -67,7 +67,7 @@ DB-domain attributes — @column / @db.indexed / @dbColumnType on every field, @
 - `field.decimal`: `@column`, `@db.indexed`, `@dbColumnType`
 - `field.double`: `@column`, `@db.indexed`, `@dbColumnType`
 - `field.duration`: `@column`, `@db.indexed`, `@dbColumnType`
-- `field.enum`: `@column`, `@constraintName`, `@db.indexed`, `@dbColumnType`
+- `field.enum`: `@column`, `@constraintName`, `@db.indexed`, `@dbCheck`, `@dbColumnType`
 - `field.float`: `@column`, `@db.indexed`, `@dbColumnType`
 - `field.inet`: `@column`, `@db.indexed`, `@dbColumnType`
 - `field.int`: `@column`, `@db.indexed`, `@dbColumnType`
@@ -84,13 +84,13 @@ DB-domain attributes — @column / @db.indexed / @dbColumnType on every field, @
 - `identity.secondary`: `@expr`, `@orders`, `@using`, `@where`
 - `index.lookup`: `@expr`, `@orders`, `@using`, `@where`
 - `source.rdb`: `@function`, `@kind`, `@materializedView`, `@parameterRef`, `@proc`, `@role`, `@schema`, `@sql`, `@table`, `@unmanaged`, `@view`
-- `validator.atLeastOne`: `@constraintName`
-- `validator.comparison`: `@constraintName`
-- `validator.length`: `@constraintName`
-- `validator.numeric`: `@constraintName`
-- `validator.presentIff`: `@constraintName`
-- `validator.regex`: `@constraintName`
-- `validator.requiredWhen`: `@constraintName`
+- `validator.atLeastOne`: `@constraintName`, `@dbCheck`
+- `validator.comparison`: `@constraintName`, `@dbCheck`
+- `validator.length`: `@constraintName`, `@dbCheck`
+- `validator.numeric`: `@constraintName`, `@dbCheck`
+- `validator.presentIff`: `@constraintName`, `@dbCheck`
+- `validator.regex`: `@constraintName`, `@dbCheck`
+- `validator.requiredWhen`: `@constraintName`, `@dbCheck`
 
 ## metaobjects-documentation
 

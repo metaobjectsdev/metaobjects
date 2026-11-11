@@ -1,0 +1,141 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Provider",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "providers"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.enum": {
+                "name": "state",
+                "@dbCheck": false,
+                "@values": [
+                  "OPEN",
+                  "SHUT"
+                ]
+              }
+            },
+            {
+              "field.string": {
+                "name": "npi",
+                "children": [
+                  {
+                    "validator.regex": {
+                      "name": "tenDigits",
+                      "@dbCheck": false,
+                      "@pattern": "^\\d{10}$"
+                    }
+                  },
+                  {
+                    "validator.length": {
+                      "name": "npiLength",
+                      "@constraintName": "providers_npi_fits",
+                      "@dbCheck": true,
+                      "@max": 12
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.int": {
+                "name": "rank",
+                "children": [
+                  {
+                    "validator.numeric": {
+                      "name": "rankRange",
+                      "@dbCheck": false,
+                      "@max": 99,
+                      "@min": 1
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.string": {
+                "name": "kind"
+              }
+            },
+            {
+              "field.string": {
+                "name": "email"
+              }
+            },
+            {
+              "field.string": {
+                "name": "phone"
+              }
+            },
+            {
+              "field.timestamp": {
+                "name": "startsAt"
+              }
+            },
+            {
+              "field.timestamp": {
+                "name": "endsAt"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "validator.comparison": {
+                "name": "window",
+                "@dbCheck": false,
+                "@left": "startsAt",
+                "@op": "lte",
+                "@right": "endsAt"
+              }
+            },
+            {
+              "validator.requiredWhen": {
+                "name": "clinicEmail",
+                "@dbCheck": false,
+                "@equals": "clinic",
+                "@field": "email",
+                "@when": "kind"
+              }
+            },
+            {
+              "validator.presentIff": {
+                "name": "clinicStart",
+                "@dbCheck": false,
+                "@equals": "clinic",
+                "@field": "startsAt",
+                "@when": "kind"
+              }
+            },
+            {
+              "validator.atLeastOne": {
+                "name": "contact",
+                "@dbCheck": false,
+                "@fields": [
+                  "email",
+                  "phone"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

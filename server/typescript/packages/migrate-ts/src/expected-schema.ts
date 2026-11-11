@@ -75,6 +75,7 @@ import {
   VALIDATOR_ATTR_CONDITION,
   VALIDATOR_ATTR_MAX,
   VALIDATOR_ATTR_CONSTRAINT_NAME,
+  VALIDATOR_ATTR_DB_CHECK,
   type ExprNode,
 } from "@metaobjectsdev/metadata";
 import type { SqlType } from "./sql-type.js";
@@ -911,7 +912,9 @@ function buildChecks(
     // the member strings — `IN (0, 5, 9)`, not `IN ('DRAFT', …)`. The members are
     // still the SSOT: the integers are read THROUGH the map, keyed by member, so a
     // member with no mapping cannot silently vanish from the constraint.
-    if (field.subType === FIELD_SUBTYPE_ENUM) {
+    // @dbCheck: false (ADR-0039 resolving) asks for no CHECK; the enum's membership and each
+    // validator's rule are enforced app-side only.
+    if (field.subType === FIELD_SUBTYPE_ENUM && !checkOptedOut(field)) {
       const raw = field.attr(FIELD_ATTR_VALUES);
       if (Array.isArray(raw) && raw.length > 0) {
         const values = raw.map((v) => String(v));
@@ -946,6 +949,7 @@ function buildChecks(
     const enforcesLength = dialect !== "sqlite" && dialect !== "d1";
     const enforcedMax = skipRedundant && enforcesLength && columnType.kind === "text" ? columnType.maxLength : undefined;
     for (const v of field.validators()) {
+      if (checkOptedOut(v)) continue;
       // A declared @constraintName asks for the CHECK by name, so it is kept even where the
       // project's `migrate.checks.skipRedundant` would leave it out: a declaration beats a default.
       const keep = declaredCheckName(v) !== undefined;
@@ -957,6 +961,7 @@ function buildChecks(
   }
   // Entity-scoped cross-field validators (comparison / requiredWhen / presentIff / atLeastOne).
   for (const v of entity.validators()) {
+    if (checkOptedOut(v)) continue;
     const check = crossFieldCheck(v, entity, tableName, strategy, dialect);
     if (check) checks.push(withDeclaredName(withCondition(check, v, entity, strategy, dialect), v));
   }
@@ -1033,6 +1038,12 @@ function renderEquals(
     || whenField.subType === FIELD_SUBTYPE_DECIMAL || whenField.subType === FIELD_SUBTYPE_CURRENCY;
   if (numeric && /^-?\d+(\.\d+)?$/.test(s)) return s;
   return `'${s.replace(/'/g, "''")}'`;
+}
+
+/** Whether a validator or field.enum opts out of its CHECK (`@dbCheck: false`; ADR-0039 resolving).
+ *  `migrate.checks.skipRedundant` is independent of it: it only ever leaves more out. */
+function checkOptedOut(node: MetaData): boolean {
+  return node.attr(VALIDATOR_ATTR_DB_CHECK) === false;
 }
 
 /** A validator's or field.enum's declared CHECK name (`@constraintName`; ADR-0039 resolving), if any. */

@@ -26,7 +26,7 @@ import type { LoaderWarning } from "../source.js";
 import { codeSource, resolvedSource } from "../source.js";
 import { parseJson } from "../parser-json.js";
 import { validateDataGridSortFields, validateFilterableHasIndex, validateFilterableHasSupportedOps, validateSortableHasSupportedSubtype, validateOriginPaths, validateDerivedFieldProvidability, validateDataGridFilterValues, validateFieldObjectStorage, validateFieldMap,
-  validateEnumMaxLength, validateIdentitySequence, validateCrossFieldValidators, validateTemplatePayloadRefs, validateFieldDefaults, validateRelationships, validateOneSideReferenceResolution, validateM2MJunctionPairing, validateIndexLookupFields, validateProjectionFilter, validateOriginSegmentsAndCorrelation, validateRetiredRequirementLinks, validateColumnNameCollisions } from "./validation-passes.js";
+  validateEnumMaxLength, validateIdentitySequence, validateCrossFieldValidators, validateDbCheck, validateTemplatePayloadRefs, validateFieldDefaults, validateRelationships, validateOneSideReferenceResolution, validateM2MJunctionPairing, validateIndexLookupFields, validateProjectionFilter, validateOriginSegmentsAndCorrelation, validateRetiredRequirementLinks, validateColumnNameCollisions } from "./validation-passes.js";
 import { validateReporting } from "./reporting-validation.js";
 import { runRegisteredValidation } from "./validation-registry.js";
 import { validateSourceRoles } from "../persistence/source/validate-source-roles.js";
@@ -734,6 +734,9 @@ export class MetaDataLoader {
 
       // Cross-field validators: atLeastOne @max in range; @condition names real fields.
       errors.push(...validateCrossFieldValidators(root));
+
+      // @dbCheck: false with @constraintName names a CHECK that is never created.
+      errors.push(...validateDbCheck(root));
 
       // Tenth pass: one-primary multi-source rule — if an object has ≥1 source,
       // exactly one must carry role "primary" (ERR_SOURCE_NO_PRIMARY /

@@ -164,6 +164,10 @@ public class CoreDBMetaDataProvider implements MetaDataTypeProvider {
             registry.extendType(c, def -> def
                 .optionalAttributeWithConstraints(com.metaobjects.validator.MetaValidator.ATTR_CONSTRAINT_NAME)
                 .ofType(StringAttribute.SUBTYPE_STRING).asSingle());
+            // @dbCheck: false asks the same node for no CHECK at all (rc.20).
+            registry.extendType(c, def -> def
+                .optionalAttributeWithConstraints(com.metaobjects.validator.MetaValidator.ATTR_DB_CHECK)
+                .ofType(com.metaobjects.attr.BooleanAttribute.SUBTYPE_BOOLEAN).asSingle());
         }
 
         // --- index.lookup RDB-physical attrs ---

@@ -411,7 +411,7 @@ the re-diff is empty afterwards. Postgres keeps `IS [NOT] DISTINCT FROM`.
 
 ### CHECKs from validators: names, conditions, how many
 
-A `validator.*` node and a `field.enum`'s member list each become a CHECK constraint. Three
+A `validator.*` node and a `field.enum`'s member list each become a CHECK constraint. Four
 attributes shape it, all database-only (no generated code reads them):
 
 - **`@constraintName`** names the CHECK, for a database whose CHECKs were named by hand. On the
@@ -423,6 +423,17 @@ attributes shape it, all database-only (no generated code reads them):
   (Postgres would truncate it, and the CHECK would never match its declaration). A CHECK with a
   declared name is always emitted, even where `migrate.checks.skipRedundant` (below) would leave
   it out.
+- **`@dbCheck: false`** leaves the CHECK out: `meta migrate`, `meta verify --db` and a generated
+  EF model declare none for that validator or enum (absent, `true`). It is per node, on the same
+  validators and on `field.enum`. Use it for a column whose legacy rows break the rule: a CHECK
+  added `NOT VALID` still refuses an `UPDATE` of such a row, whatever the update changes. The
+  generated app-level validation is unchanged, so `numeric`, `length` and `regex` still hold every
+  write and an enum's members still bound the property; a cross-field validator (`comparison`,
+  `requiredWhen`, `presentIff`, `atLeastOne`) is enforced only by its CHECK, so with `false` it is
+  enforced nowhere. A live CHECK the model no longer declares is proposed for dropping (under
+  `--allow drop-check` on Postgres). Declaring `@constraintName` too is refused
+  (`ERR_CONSTRAINT_NAME_WITHOUT_CHECK`): there is no CHECK for the name to name.
+  `migrate.checks.skipRedundant` (below) is independent: it only ever leaves more out.
 - **`@condition`** on a cross-field validator (`comparison`, `requiredWhen`, `presentIff`,
   `atLeastOne`) is an expression, in the grammar `origin.computed` uses, over the entity's fields.
   The rule holds only where the condition does: the CHECK is `(NOT condition) OR (rule)`, with

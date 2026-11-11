@@ -55,6 +55,8 @@ export type ComparisonOp = (typeof VALIDATOR_COMPARISON_OPS)[number];
 export const VALIDATOR_ATTR_CONDITION = "condition";
 /** Every validator (db provider): the database name of the CHECK it generates. */
 export const VALIDATOR_ATTR_CONSTRAINT_NAME = "constraintName";
+/** A CHECK-generating validator or field.enum (db provider): `false` generates no database CHECK. Absent: true. */
+export const VALIDATOR_ATTR_DB_CHECK = "dbCheck";
 /** The cross-field validators: the database enforces them, nothing else evaluates them. */
 export const CROSS_FIELD_VALIDATOR_SUBTYPES: readonly string[] = [
   VALIDATOR_SUBTYPE_COMPARISON,

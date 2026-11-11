@@ -2540,6 +2540,38 @@ public static partial class ValidationPasses
     }
 
     // ---------------------------------------------------------------------------
+    // @dbCheck: false (db provider) asks a CHECK-generating validator or a field.enum for no
+    // database CHECK; @constraintName names that CHECK. Together there is nothing to name, so the
+    // node is refused (ERR_CONSTRAINT_NAME_WITHOUT_CHECK). Read RESOLVING (ADR-0039), reported on
+    // each node that declares either of the two itself. Mirrors TS validateDbCheck.
+    // ---------------------------------------------------------------------------
+    public static IReadOnlyList<MetaError> ValidateDbCheck(MetaData root)
+    {
+        var errors = new List<MetaError>();
+        const string dbCheck = MetaObjects.Core.Validator.ValidatorConstants.VALIDATOR_ATTR_DB_CHECK;
+        const string constraintName = MetaObjects.Core.Validator.ValidatorConstants.VALIDATOR_ATTR_CONSTRAINT_NAME;
+        void Visit(MetaData node, string? owner)
+        {
+            var checkedNode = (node.Type == TYPE_VALIDATOR && MetaObjects.Core.Validator.ValidatorConstants.CHECK_VALIDATOR_SUBTYPES.Contains(node.SubType))
+                || (node.Type == TYPE_FIELD && node.SubType == FIELD_SUBTYPE_ENUM);
+            if (checkedNode && (node.OwnAttr(dbCheck) is not null || node.OwnAttr(constraintName) is not null)
+                && node.Attr(dbCheck) is false && node.Attr(constraintName) is string { Length: > 0 } name)
+            {
+                var label = $"{node.Type}.{node.SubType} \"{(owner is null ? "" : owner + ".")}{node.Name}\"";
+                errors.Add(new MetaError(
+                    $"{label} sets @dbCheck: false and @constraintName \"{name}\"; with no CHECK there is nothing for the name to name. " +
+                    "Remove @constraintName, or remove @dbCheck: false.",
+                    ErrorCode.ERR_CONSTRAINT_NAME_WITHOUT_CHECK,
+                    Envelope: node.Source));
+            }
+            var next = node.Type == TYPE_OBJECT || node.Type == TYPE_FIELD ? node.Name : owner;
+            foreach (var child in node.OwnChildren()) Visit(child, next);
+        }
+        foreach (var child in root.OwnChildren()) Visit(child, null);
+        return errors;
+    }
+
+    // ---------------------------------------------------------------------------
     // field.enum @maxLength — the column length of a string-stored enum:
     //   1. every member of @values fits in it (ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH), the
     //      longest offender named;

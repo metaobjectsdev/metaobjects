@@ -125,6 +125,15 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>The database name of the CHECK constraint this validator generates (numeric, length, regex and the cross-field validators; the others generate no CHECK). Absent: the derived <table><em><column></em><kind>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider.</td>
 </tr>
 <tr>
+<td><code>@dbCheck</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>false: this validator generates no database CHECK (meta migrate and a generated EF model leave it out). A numeric, length or regex validator is still enforced on every write by the generated app-level validators; a cross-field validator (comparison, requiredWhen, presentIff, atLeastOne) is enforced only by its CHECK, so on one of those false leaves the rule enforced nowhere. Absent: true. For a column whose legacy rows break the rule, which a CHECK would refuse on their next UPDATE even NOT VALID. Refused with @constraintName (ERR_CONSTRAINT_NAME_WITHOUT_CHECK). RDB-physical — contributed by the db provider.</td>
+</tr>
+<tr>
 <td><code>@fields</code></td>
 <td>string[]</td>
 <td>yes</td>
@@ -219,6 +228,15 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>The database name of the CHECK constraint this validator generates (numeric, length, regex and the cross-field validators; the others generate no CHECK). Absent: the derived <table><em><column></em><kind>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider.</td>
 </tr>
 <tr>
+<td><code>@dbCheck</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>false: this validator generates no database CHECK (meta migrate and a generated EF model leave it out). A numeric, length or regex validator is still enforced on every write by the generated app-level validators; a cross-field validator (comparison, requiredWhen, presentIff, atLeastOne) is enforced only by its CHECK, so on one of those false leaves the rule enforced nowhere. Absent: true. For a column whose legacy rows break the rule, which a CHECK would refuse on their next UPDATE even NOT VALID. Refused with @constraintName (ERR_CONSTRAINT_NAME_WITHOUT_CHECK). RDB-physical — contributed by the db provider.</td>
+</tr>
+<tr>
 <td><code>@left</code></td>
 <td>string</td>
 <td>yes</td>
@@ -275,6 +293,15 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>The database name of the CHECK constraint this validator generates (numeric, length, regex and the cross-field validators; the others generate no CHECK). Absent: the derived <table><em><column></em><kind>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider.</td>
 </tr>
 <tr>
+<td><code>@dbCheck</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>false: this validator generates no database CHECK (meta migrate and a generated EF model leave it out). A numeric, length or regex validator is still enforced on every write by the generated app-level validators; a cross-field validator (comparison, requiredWhen, presentIff, atLeastOne) is enforced only by its CHECK, so on one of those false leaves the rule enforced nowhere. Absent: true. For a column whose legacy rows break the rule, which a CHECK would refuse on their next UPDATE even NOT VALID. Refused with @constraintName (ERR_CONSTRAINT_NAME_WITHOUT_CHECK). RDB-physical — contributed by the db provider.</td>
+</tr>
+<tr>
 <td><code>@max</code></td>
 <td>int</td>
 <td>no</td>
@@ -320,6 +347,15 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td></td>
 <td>metaobjects-db</td>
 <td>The database name of the CHECK constraint this validator generates (numeric, length, regex and the cross-field validators; the others generate no CHECK). Absent: the derived <table><em><column></em><kind>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider.</td>
+</tr>
+<tr>
+<td><code>@dbCheck</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>false: this validator generates no database CHECK (meta migrate and a generated EF model leave it out). A numeric, length or regex validator is still enforced on every write by the generated app-level validators; a cross-field validator (comparison, requiredWhen, presentIff, atLeastOne) is enforced only by its CHECK, so on one of those false leaves the rule enforced nowhere. Absent: true. For a column whose legacy rows break the rule, which a CHECK would refuse on their next UPDATE even NOT VALID. Refused with @constraintName (ERR_CONSTRAINT_NAME_WITHOUT_CHECK). RDB-physical — contributed by the db provider.</td>
 </tr>
 <tr>
 <td><code>@max</code></td>
@@ -379,6 +415,15 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>The database name of the CHECK constraint this validator generates (numeric, length, regex and the cross-field validators; the others generate no CHECK). Absent: the derived <table><em><column></em><kind>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider.</td>
 </tr>
 <tr>
+<td><code>@dbCheck</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>false: this validator generates no database CHECK (meta migrate and a generated EF model leave it out). A numeric, length or regex validator is still enforced on every write by the generated app-level validators; a cross-field validator (comparison, requiredWhen, presentIff, atLeastOne) is enforced only by its CHECK, so on one of those false leaves the rule enforced nowhere. Absent: true. For a column whose legacy rows break the rule, which a CHECK would refuse on their next UPDATE even NOT VALID. Refused with @constraintName (ERR_CONSTRAINT_NAME_WITHOUT_CHECK). RDB-physical — contributed by the db provider.</td>
+</tr>
+<tr>
 <td><code>@equals</code></td>
 <td>string</td>
 <td>yes</td>
@@ -433,6 +478,15 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td></td>
 <td>metaobjects-db</td>
 <td>The database name of the CHECK constraint this validator generates (numeric, length, regex and the cross-field validators; the others generate no CHECK). Absent: the derived <table><em><column></em><kind>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider.</td>
+</tr>
+<tr>
+<td><code>@dbCheck</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>false: this validator generates no database CHECK (meta migrate and a generated EF model leave it out). A numeric, length or regex validator is still enforced on every write by the generated app-level validators; a cross-field validator (comparison, requiredWhen, presentIff, atLeastOne) is enforced only by its CHECK, so on one of those false leaves the rule enforced nowhere. Absent: true. For a column whose legacy rows break the rule, which a CHECK would refuse on their next UPDATE even NOT VALID. Refused with @constraintName (ERR_CONSTRAINT_NAME_WITHOUT_CHECK). RDB-physical — contributed by the db provider.</td>
 </tr>
 <tr>
 <td><code>@max</code></td>
@@ -507,6 +561,15 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td></td>
 <td>metaobjects-db</td>
 <td>The database name of the CHECK constraint this validator generates (numeric, length, regex and the cross-field validators; the others generate no CHECK). Absent: the derived <table><em><column></em><kind>_chk. Lets a model adopt a database whose CHECKs were named by hand. RDB-physical — contributed by the db provider.</td>
+</tr>
+<tr>
+<td><code>@dbCheck</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>false: this validator generates no database CHECK (meta migrate and a generated EF model leave it out). A numeric, length or regex validator is still enforced on every write by the generated app-level validators; a cross-field validator (comparison, requiredWhen, presentIff, atLeastOne) is enforced only by its CHECK, so on one of those false leaves the rule enforced nowhere. Absent: true. For a column whose legacy rows break the rule, which a CHECK would refuse on their next UPDATE even NOT VALID. Refused with @constraintName (ERR_CONSTRAINT_NAME_WITHOUT_CHECK). RDB-physical — contributed by the db provider.</td>
 </tr>
 <tr>
 <td><code>@equals</code></td>

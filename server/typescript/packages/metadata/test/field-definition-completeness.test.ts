@@ -111,6 +111,7 @@ const ENUM_CORE_EXTRA: Record<string, AttrExp> = {
 // db provider: the name of the CHECK an enum's member list generates.
 const ENUM_DB_EXTRA: Record<string, AttrExp> = {
   constraintName: { valueType: "string", required: false },
+  dbCheck: { valueType: "boolean", required: false },
 };
 
 /** Scoped concern attrs (db / prompt). */

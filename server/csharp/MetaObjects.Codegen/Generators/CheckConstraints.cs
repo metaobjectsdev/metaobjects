@@ -54,7 +54,8 @@ public static class CheckConstraints
             if (field.IsDerived()) continue;
             var col = CSharpNaming.Column(field, strategy);
             var qcol = Quote(col);
-            if (field.SubType == FIELD_SUBTYPE_ENUM && field.EffectiveEnumValues is { Count: > 0 } values)
+            // @dbCheck: false (resolving) asks for no CHECK: the rule is enforced app-side only.
+            if (field.SubType == FIELD_SUBTYPE_ENUM && !OptedOut(field) && field.EffectiveEnumValues is { Count: > 0 } values)
             {
                 var ints = field.Attr(FIELD_ATTR_INT_VALUE_MAP) as IReadOnlyDictionary<string, object?>;
                 var members = ints is null
@@ -70,6 +71,7 @@ public static class CheckConstraints
             var enforcedMax = config.SkipRedundantChecks && !IsSqlite(dialect) ? VarcharLength(field) : null;
             foreach (var v in field.Validators())
             {
+                if (OptedOut(v)) continue;
                 // A declared @constraintName asks for the CHECK by name, so it is kept even where
                 // skipRedundant would leave it out: a declaration beats a default.
                 var declared = DeclaredName(v) is not null;
@@ -80,11 +82,16 @@ public static class CheckConstraints
         }
         foreach (var v in entity.Validators())
         {
+            if (OptedOut(v)) continue;
             if (CrossFieldCheck(v, entity, table, strategy, dialect) is { } check)
                 checks.Add(Named(WithCondition(check, v, entity, strategy, dialect), v));
         }
         return checks;
     }
+
+    /// <summary>Whether a validator or field.enum opts out of its CHECK (<c>@dbCheck: false</c>, resolving).
+    /// <c>SkipRedundantChecks</c> is independent of it: it only ever leaves more out.</summary>
+    private static bool OptedOut(MetaData node) => node.Attr(VALIDATOR_ATTR_DB_CHECK) is false;
 
     /// <summary>The length a string column's <c>VARCHAR(n)</c> enforces: a string's <c>@maxLength</c>, a string-stored enum's resolved length.</summary>
     private static long? VarcharLength(MetaField field) => field.SubType switch

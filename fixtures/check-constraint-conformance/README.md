@@ -20,6 +20,9 @@ The rules the corpus pins (ruling R55, which follows `meta migrate`):
 - names `<table>_<column>_chk` (enum), `_numeric_chk`, `_length_chk`, `_regex_chk`, `_cmp_chk`,
   `_reqwhen_chk`, `_presentiff_chk`, `_atleastone_chk`; a declared `@constraintName` replaces the
   name and is kept even where `skipRedundant` would leave the CHECK out;
+- `@dbCheck: false` leaves a validator's or an enum's CHECK out, under `skipRedundant` too
+  (`npi`, `legacyState`, `rank`'s minimum, `legacyWindow`); a sibling validator on the same field
+  keeps its own (`rank`'s maximum), and `@dbCheck: true` is the default (`floor`);
 - comparisons, not `BETWEEN`; columns double-quoted; an int-backed enum lists its integers; a
   duration literal is the interval text on Postgres and microseconds on SQLite;
 - no CHECK on an array column, and none on a derived (origin-bearing) field — it has no column —

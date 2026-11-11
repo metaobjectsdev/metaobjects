@@ -1192,6 +1192,15 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>When true, suppress the @filterable-without-index Loader warning (the field is indexed by other means).</td>
 </tr>
 <tr>
+<td><code>@dbCheck</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-db</td>
+<td>false: this enum&#39;s member list generates no database CHECK (meta migrate and a generated EF model leave it out); the generated app-level validation still holds every write to the members. Absent: true. For a column whose legacy rows hold values outside the members, which a CHECK would refuse on their next UPDATE even NOT VALID. Refused with @constraintName (ERR_CONSTRAINT_NAME_WITHOUT_CHECK). RDB-physical — contributed by the db provider.</td>
+</tr>
+<tr>
 <td><code>@dbColumnType</code></td>
 <td>string</td>
 <td>no</td>

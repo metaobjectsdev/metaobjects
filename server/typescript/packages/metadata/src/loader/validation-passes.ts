@@ -17,6 +17,11 @@ import {
   VALIDATOR_ATTR_FIELDS,
   VALIDATOR_ATTR_MAX,
   VALIDATOR_SUBTYPE_AT_LEAST_ONE,
+  VALIDATOR_ATTR_CONSTRAINT_NAME,
+  VALIDATOR_ATTR_DB_CHECK,
+  VALIDATOR_SUBTYPE_LENGTH,
+  VALIDATOR_SUBTYPE_NUMERIC,
+  VALIDATOR_SUBTYPE_REGEX,
 } from "../core/validator/validator-constants.js";
 import type { MetaData } from "../shared/meta-data.js";
 import type { MetaObject } from "../core/object/meta-object.js";
@@ -2050,6 +2055,40 @@ export function validateIdentitySequence(root: MetaData): ParseError[] {
       ));
     }
   }
+  return errors;
+}
+
+// ---------------------------------------------------------------------------
+// @dbCheck: false (db provider) asks a CHECK-generating validator or a field.enum for no
+// database CHECK; @constraintName names that CHECK. Together there is nothing to name, so the
+// node is refused (ERR_CONSTRAINT_NAME_WITHOUT_CHECK) rather than one of them silently ignored.
+// Read RESOLVING (ADR-0039), reported on each node that declares either of the two itself.
+// ---------------------------------------------------------------------------
+
+const DB_CHECK_VALIDATOR_SUBTYPES: readonly string[] = [
+  VALIDATOR_SUBTYPE_NUMERIC, VALIDATOR_SUBTYPE_LENGTH, VALIDATOR_SUBTYPE_REGEX, ...CROSS_FIELD_VALIDATOR_SUBTYPES,
+];
+
+export function validateDbCheck(root: MetaData): ParseError[] {
+  const errors: ParseError[] = [];
+  const visit = (node: MetaData, owner: string | undefined): void => {
+    const checked = (node.type === TYPE_VALIDATOR && DB_CHECK_VALIDATOR_SUBTYPES.includes(node.subType))
+      || (node.type === TYPE_FIELD && node.subType === FIELD_SUBTYPE_ENUM);
+    if (checked && (node.ownAttr(VALIDATOR_ATTR_DB_CHECK) !== undefined || node.ownAttr(VALIDATOR_ATTR_CONSTRAINT_NAME) !== undefined)) {
+      const name = node.attr(VALIDATOR_ATTR_CONSTRAINT_NAME);
+      if (node.attr(VALIDATOR_ATTR_DB_CHECK) === false && typeof name === "string" && name.length > 0) {
+        const label = `${node.type}.${node.subType} "${owner !== undefined ? `${owner}.` : ""}${node.name}"`;
+        errors.push(new ParseError(
+          `${label} sets @dbCheck: false and @constraintName "${name}"; with no CHECK there is nothing for the name to name. ` +
+          `Remove @constraintName, or remove @dbCheck: false.`,
+          { code: "ERR_CONSTRAINT_NAME_WITHOUT_CHECK", source: node.source },
+        ));
+      }
+    }
+    const next = node.type === TYPE_OBJECT || node.type === TYPE_FIELD ? node.name : owner;
+    for (const child of node.ownChildren()) visit(child, next);
+  };
+  for (const child of root.ownChildren()) visit(child, undefined);
   return errors;
 }
 

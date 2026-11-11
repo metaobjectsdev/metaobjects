@@ -102,7 +102,7 @@ provider owns. This is the ownership lens over the same vocabulary
 <li><code>field.decimal</code>: <code>@column</code>, <code>@db.indexed</code>, <code>@dbColumnType</code></li>
 <li><code>field.double</code>: <code>@column</code>, <code>@db.indexed</code>, <code>@dbColumnType</code></li>
 <li><code>field.duration</code>: <code>@column</code>, <code>@db.indexed</code>, <code>@dbColumnType</code></li>
-<li><code>field.enum</code>: <code>@column</code>, <code>@constraintName</code>, <code>@db.indexed</code>, <code>@dbColumnType</code></li>
+<li><code>field.enum</code>: <code>@column</code>, <code>@constraintName</code>, <code>@db.indexed</code>, <code>@dbCheck</code>, <code>@dbColumnType</code></li>
 <li><code>field.float</code>: <code>@column</code>, <code>@db.indexed</code>, <code>@dbColumnType</code></li>
 <li><code>field.inet</code>: <code>@column</code>, <code>@db.indexed</code>, <code>@dbColumnType</code></li>
 <li><code>field.int</code>: <code>@column</code>, <code>@db.indexed</code>, <code>@dbColumnType</code></li>
@@ -119,13 +119,13 @@ provider owns. This is the ownership lens over the same vocabulary
 <li><code>identity.secondary</code>: <code>@expr</code>, <code>@orders</code>, <code>@using</code>, <code>@where</code></li>
 <li><code>index.lookup</code>: <code>@expr</code>, <code>@orders</code>, <code>@using</code>, <code>@where</code></li>
 <li><code>source.rdb</code>: <code>@function</code>, <code>@kind</code>, <code>@materializedView</code>, <code>@parameterRef</code>, <code>@proc</code>, <code>@role</code>, <code>@schema</code>, <code>@sql</code>, <code>@table</code>, <code>@unmanaged</code>, <code>@view</code></li>
-<li><code>validator.atLeastOne</code>: <code>@constraintName</code></li>
-<li><code>validator.comparison</code>: <code>@constraintName</code></li>
-<li><code>validator.length</code>: <code>@constraintName</code></li>
-<li><code>validator.numeric</code>: <code>@constraintName</code></li>
-<li><code>validator.presentIff</code>: <code>@constraintName</code></li>
-<li><code>validator.regex</code>: <code>@constraintName</code></li>
-<li><code>validator.requiredWhen</code>: <code>@constraintName</code></li>
+<li><code>validator.atLeastOne</code>: <code>@constraintName</code>, <code>@dbCheck</code></li>
+<li><code>validator.comparison</code>: <code>@constraintName</code>, <code>@dbCheck</code></li>
+<li><code>validator.length</code>: <code>@constraintName</code>, <code>@dbCheck</code></li>
+<li><code>validator.numeric</code>: <code>@constraintName</code>, <code>@dbCheck</code></li>
+<li><code>validator.presentIff</code>: <code>@constraintName</code>, <code>@dbCheck</code></li>
+<li><code>validator.regex</code>: <code>@constraintName</code>, <code>@dbCheck</code></li>
+<li><code>validator.requiredWhen</code>: <code>@constraintName</code>, <code>@dbCheck</code></li>
 </ul>
 <h2>metaobjects-documentation</h2>
 <p>Universal documentation common attrs (description / title / notes / deprecated / replacedBy / seeAlso / aliases) accepted on every metatype.</p>

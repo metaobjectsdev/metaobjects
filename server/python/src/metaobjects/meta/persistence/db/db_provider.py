@@ -208,6 +208,18 @@ _VALIDATOR_CONSTRAINT_NAME_SCHEMA = AttrSchema(
         "were named by hand. RDB-physical — contributed by the db provider."
     ),
 )
+_ENUM_DB_CHECK_SCHEMA = AttrSchema(
+    name=vc.VALIDATOR_ATTR_DB_CHECK,
+    value_type=ATTR_SUBTYPE_BOOLEAN,
+    required=False,
+    description="false: this enum's member list generates no database CHECK (meta migrate and a generated EF model leave it out); the generated app-level validation still holds every write to the members. Absent: true. For a column whose legacy rows hold values outside the members, which a CHECK would refuse on their next UPDATE even NOT VALID. Refused with @constraintName (ERR_CONSTRAINT_NAME_WITHOUT_CHECK). RDB-physical — contributed by the db provider.",
+)
+_VALIDATOR_DB_CHECK_SCHEMA = AttrSchema(
+    name=vc.VALIDATOR_ATTR_DB_CHECK,
+    value_type=ATTR_SUBTYPE_BOOLEAN,
+    required=False,
+    description="false: this validator generates no database CHECK (meta migrate and a generated EF model leave it out). A numeric, length or regex validator is still enforced on every write by the generated app-level validators; a cross-field validator (comparison, requiredWhen, presentIff, atLeastOne) is enforced only by its CHECK, so on one of those false leaves the rule enforced nowhere. Absent: true. For a column whose legacy rows break the rule, which a CHECK would refuse on their next UPDATE even NOT VALID. Refused with @constraintName (ERR_CONSTRAINT_NAME_WITHOUT_CHECK). RDB-physical — contributed by the db provider.",
+)
 # The validators meta migrate renders as a CHECK: required is NOT NULL; array and base have none.
 _VALIDATOR_SUBTYPES_FOR_CONSTRAINT_NAME = (
     vc.VALIDATOR_SUBTYPE_NUMERIC,
@@ -257,9 +269,10 @@ def _register(registry: TypeRegistry) -> None:
         ],
     )
     # @constraintName names the CHECK a validator / a field.enum's membership generates.
-    registry.extend(TYPE_FIELD, fc.FIELD_SUBTYPE_ENUM, attributes=[_ENUM_CONSTRAINT_NAME_SCHEMA])
+    # @dbCheck: false asks either of them for no CHECK at all.
+    registry.extend(TYPE_FIELD, fc.FIELD_SUBTYPE_ENUM, attributes=[_ENUM_CONSTRAINT_NAME_SCHEMA, _ENUM_DB_CHECK_SCHEMA])
     for sub_type in _VALIDATOR_SUBTYPES_FOR_CONSTRAINT_NAME:
-        registry.extend(TYPE_VALIDATOR, sub_type, attributes=[_VALIDATOR_CONSTRAINT_NAME_SCHEMA])
+        registry.extend(TYPE_VALIDATOR, sub_type, attributes=[_VALIDATOR_CONSTRAINT_NAME_SCHEMA, _VALIDATOR_DB_CHECK_SCHEMA])
     # index.lookup: same RDB physical attrs as identity.secondary (@orders/@where/@expr/@using).
     registry.extend(
         TYPE_INDEX,

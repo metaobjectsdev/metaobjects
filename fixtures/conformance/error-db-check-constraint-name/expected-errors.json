@@ -1,0 +1,25 @@
+{
+  "errors": [
+    {
+      "code": "ERR_CONSTRAINT_NAME_WITHOUT_CHECK",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.checks.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[0]['object.entity'].children[2]['field.enum']"
+      }
+    },
+    {
+      "code": "ERR_CONSTRAINT_NAME_WITHOUT_CHECK",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.checks.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[0]['object.entity'].children[3]['field.string'].children[0]['validator.regex']"
+      }
+    }
+  ],
+  "warnings": []
+}

@@ -33,6 +33,8 @@ VALIDATOR_ATTR_FIELDS = "fields"
 VALIDATOR_ATTR_CONDITION = "condition"
 # The database name of the CHECK a CHECK-generating validator generates (db provider).
 VALIDATOR_ATTR_CONSTRAINT_NAME = "constraintName"
+# A CHECK-generating validator or field.enum (db provider): false generates no database CHECK. Absent: true.
+VALIDATOR_ATTR_DB_CHECK = "dbCheck"
 # The cross-field validators (entity-scoped; the database enforces them as CHECKs).
 CROSS_FIELD_VALIDATOR_SUBTYPES = (
     VALIDATOR_SUBTYPE_COMPARISON,

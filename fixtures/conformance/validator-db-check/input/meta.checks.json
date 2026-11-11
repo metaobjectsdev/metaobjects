@@ -1,0 +1,32 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Provider",
+          "children": [
+            { "source.rdb": { "@table": "providers" } },
+            { "field.long": { "name": "id" } },
+            { "field.enum": { "name": "state", "@values": ["OPEN", "SHUT"], "@dbCheck": false } },
+            { "field.string": { "name": "npi", "children": [
+              { "validator.regex": { "name": "tenDigits", "@pattern": "^\\d{10}$", "@dbCheck": false } },
+              { "validator.length": { "name": "npiLength", "@max": 12, "@dbCheck": true, "@constraintName": "providers_npi_fits" } }
+            ] } },
+            { "field.int": { "name": "rank", "children": [ { "validator.numeric": { "name": "rankRange", "@min": 1, "@max": 99, "@dbCheck": false } } ] } },
+            { "field.string": { "name": "kind" } },
+            { "field.string": { "name": "email" } },
+            { "field.string": { "name": "phone" } },
+            { "field.timestamp": { "name": "startsAt" } },
+            { "field.timestamp": { "name": "endsAt" } },
+            { "identity.primary": { "name": "pk", "@fields": "id" } },
+            { "validator.comparison": { "name": "window", "@left": "startsAt", "@op": "lte", "@right": "endsAt", "@dbCheck": false } },
+            { "validator.requiredWhen": { "name": "clinicEmail", "@field": "email", "@when": "kind", "@equals": "clinic", "@dbCheck": false } },
+            { "validator.presentIff": { "name": "clinicStart", "@field": "startsAt", "@when": "kind", "@equals": "clinic", "@dbCheck": false } },
+            { "validator.atLeastOne": { "name": "contact", "@fields": ["email", "phone"], "@dbCheck": false } }
+          ]
+        }
+      }
+    ]
+  }
+}

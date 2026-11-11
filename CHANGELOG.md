@@ -11,7 +11,7 @@ here.**
 ## [Unreleased]
 
 **`metamodelVersion` moves to `1.3`.** This release adds vocabulary (`field.duration`,
-`@constraintName`, `@condition`, `atLeastOne @max`, `@sequenceStart`, `@sequenceName`,
+`@constraintName`, `@dbCheck`, `@condition`, `atLeastOne @max`, `@sequenceStart`, `@sequenceName`,
 `@flattenedColumnPrefix`, the `pascal` column rule, and `@dbSetName`, a C#-only attr) and nothing
 that loaded before stops loading. The registry gains two fields on a type or attr entry, carried
 into the registry manifest: `implementedIn` (kind 1: cross-port vocabulary only the named ports
@@ -22,6 +22,22 @@ the kind-1 rows that used to be carved out. A port that reports `1.2` does not k
 vocabulary; upgrade every port together.
 
 ### Added
+
+- **`@dbCheck: false`: a validator or enum with no database CHECK (rc.20).** A CHECK-generating
+  validator (`numeric`, `length`, `regex`, `comparison`, `requiredWhen`, `presentIff`,
+  `atLeastOne`) or a `field.enum` takes an optional db-provider boolean `@dbCheck`, default `true`.
+  With `false`, `meta migrate`, `meta verify --db`, the Prisma schema's CHECKs and the C# EF
+  context's declared CHECKs leave that one node's CHECK out; every other CHECK on the table, and
+  `migrate.checks.skipRedundant`, are unchanged. It is for a column whose legacy rows break a rule:
+  a CHECK added `NOT VALID` still refuses an UPDATE of such a row. The generated app-level
+  validation is unchanged, so `numeric`, `length`, `regex` and an enum's members still hold every
+  write; a cross-field validator has no app-level enforcement, so with `false` it is enforced
+  nowhere. `@dbCheck: false` with `@constraintName` is refused at load in every port
+  (`ERR_CONSTRAINT_NAME_WITHOUT_CHECK`). Fixtures `fixtures/conformance/validator-db-check` and
+  `error-db-check-constraint-name`; the shared CHECK corpus (`fixtures/check-constraint-conformance`)
+  pins the omissions for TypeScript and C#. **Upgrade note:** a live CHECK whose node now says
+  `@dbCheck: false` is proposed for dropping by the next `meta migrate` (`--allow drop-check` on
+  Postgres), and by the next EF migration a C# model scaffolds.
 
 - **C#: an orphan sweep for a self-hosted runner with no hash manifest (G5).** A runner that
   calls `CodegenRunner.Run` without `GenStateDir` swept nothing, so a layout change (R39) left the

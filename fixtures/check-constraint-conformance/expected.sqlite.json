@@ -37,6 +37,10 @@
       "expression": "length(\"ref\") <= 10"
     },
     {
+      "name": "gadgets_rank_numeric_chk",
+      "expression": "\"rank\" <= 99"
+    },
+    {
       "name": "gadgets_starts_at_cmp_chk",
       "expression": "\"starts_at\" <= \"ends_at\""
     },
