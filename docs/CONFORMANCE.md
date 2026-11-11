@@ -472,20 +472,20 @@ and resolution-time failure, the upstream check, and which imported requirements
 project's own ledger). File-shaped like `scope-conformance/` above: one committed `cases.json`,
 no per-port fixture. The corpus has four arms:
 
-- **Resolution (35 cases).** Every case's `expectFiles`/`expectImported`/`expectSelected`/
+- **Resolution (36 cases).** Every case's `expectFiles`/`expectImported`/`expectSelected`/
   `expectMigrateGoverned`/`expectLoadError` assertions. **TypeScript (the reference
-  implementation), Python, Java and C# all run all 35, identically**, with no exemption. The two
+  implementation), Python, Java and C# all run all 36, identically**, with no exemption. The two
   overlay cases that need a view child as incidental content use `view.currency` (the one
   concrete `view.*` subtype registered cross-port), not `view.text` — a prior revision used
   `view.text`, which Python did not register then, and carried a since-discharged allowlist
   for it. Kotlin inherits the Java run through the same loader and Maven plugin.
-- **Ledger (6 of the resolution cases, `expectLedger` / `expectCoverageMeasured`).** Which loaded
+- **Ledger (7 of the resolution cases, `expectLedger` / `expectCoverageMeasured`).** Which loaded
   requirements are this project's ledger (its own, plus a dependency's only when
   `requirements.inherit` names the dependency's package) with each one's effective `@status`, and
   whether object coverage is measured (never by an imported requirement). Each port asserts it
   through its requirement gate's scan and again through its requirement-tests walk: TypeScript in
   `cli/test/dependency-ledger-conformance.test.ts`, the other ports in their resolution runner.
-  A seventh case refuses a new requirement declared into a dependency's package
+  An eighth case refuses a new requirement declared into a dependency's package
   (`ERR_DEPENDENCY_PACKAGE_NOT_OWNED`) on the load-time path.
 - **Check (11 cases, `expectCheck`).** For each declared dependency, `current`, `drifted` or
   `unresolved` (a missing path, a bad manifest, a hash mismatch, or not yet in the lock). Run
