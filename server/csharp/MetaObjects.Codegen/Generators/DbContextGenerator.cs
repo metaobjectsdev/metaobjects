@@ -1201,6 +1201,20 @@ public class DbContextGenerator : IGenerator
                 // property instead, and takes the comment as any column does.
                 if (!HoldsMap(vo, ctx.Root, new HashSet<MetaObject>()))
                 {
+                    // An OwnedTypeConfig override decides the mapping, so the lines already emitted
+                    // say which it is (G1, rc.20): only an owned JSON navigation takes the annotation.
+                    var mapping = MappedAs(owner, PropertyName(f), modelLines);
+                    if (mapping == ObjectFieldMapping.Property)
+                    {
+                        modelLines.Add($"        modelBuilder.Entity<{owner}>().Metadata.GetProperty(\"{PropertyName(f)}\").SetComment(\"{literal}\");");
+                        continue;
+                    }
+                    if (mapping == ObjectFieldMapping.Unknown)
+                    {
+                        ctx.Warn($"{Name}: the @description of {entity.Name}.{f.Name} is not in the EF model: an OwnedTypeConfig override " +
+                            "maps it neither as an owned JSON navigation nor as a property this generator can see. meta migrate still writes it.");
+                        continue;
+                    }
                     if (!IdentityStartOn(ctx))
                     {
                         ctx.Warn($"{Name}: the @description of {entity.Name}.{f.Name} is not in the EF model: a JSON column carries " +
@@ -1215,6 +1229,33 @@ public class DbContextGenerator : IGenerator
             // GetProperty, not FindProperty?.: a property this generator configures and cannot find is a bug, said loudly.
             modelLines.Add($"        modelBuilder.Entity<{owner}>().Metadata.GetProperty(\"{PropertyName(f)}\").SetComment(\"{literal}\");");
         }
+    }
+
+    private enum ObjectFieldMapping { OwnedJson, Property, Unknown }
+
+    /// <summary>
+    /// How the model lines emitted so far map a non-flattened object field of <paramref name="owner"/>
+    /// (G1, rc.20). The field-type lines, <see cref="OwnedTypeConfig"/>'s among them, are emitted before
+    /// the comments, and each line is one statement, so the emitted text is exact: a
+    /// <c>OwnsOne</c>/<c>OwnsMany</c> of the navigation with a <c>ToJson</c> is an owned JSON column
+    /// (the stock mapping), a <c>Property(x =&gt; x.Nav)</c> is a column an override mapped as a property
+    /// (a jsonb POCO, say). Anything else is a mapping this generator cannot see, and the comment line
+    /// it would emit could name a navigation or property that is not in the model.
+    /// </summary>
+    private static ObjectFieldMapping MappedAs(string owner, string nav, List<string> modelLines)
+    {
+        var entity = $"modelBuilder.Entity<{owner}>().";
+        string[] owned = [$"{entity}OwnsOne(x => x.{nav}, b =>", $"{entity}OwnsMany(x => x.{nav}, b =>"];
+        var property = $"{entity}Property(x => x.{nav})";
+        var asProperty = false;
+        foreach (var line in modelLines)
+        {
+            var text = line.TrimStart();
+            if (owned.Any(o => text.StartsWith(o, StringComparison.Ordinal)) && text.Contains(".ToJson(", StringComparison.Ordinal))
+                return ObjectFieldMapping.OwnedJson;
+            if (text.StartsWith(property, StringComparison.Ordinal)) asProperty = true;
+        }
+        return asProperty ? ObjectFieldMapping.Property : ObjectFieldMapping.Unknown;
     }
 
     /// <summary>The owned-type annotation carrying a JSON column's comment (ruling R59).</summary>

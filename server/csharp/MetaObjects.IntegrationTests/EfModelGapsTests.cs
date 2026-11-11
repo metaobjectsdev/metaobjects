@@ -1258,6 +1258,59 @@ public sealed class EfModelGapsTests
         Assert.Contains("\"MetaObjects:JsonColumnComment\", \"Snap.\"", code);
     }
 
+    // G1, rc.20 — an OwnedTypeConfig override decides how an object field is mapped. One that maps
+    // it as a jsonb property (P3 does, for every non-flattened value object) has no owned navigation,
+    // so the owned type's annotation line would throw a NullReferenceException in OnModelCreating
+    // and no model would build. The comment goes on the property's column instead; a mapping the
+    // generator cannot see gets no comment line at all.
+
+    private sealed class JsonbPropertyHook(string config) : MetaObjects.Codegen.Generators.DbContextGenerator
+    {
+        protected override string? OwnedTypeConfig(string owner, MetaObjects.Meta.MetaObject entity, MetaObjects.Meta.MetaField field,
+            MetaObjects.Codegen.GenContext ctx) => config.Replace("__OWNER__", owner);
+    }
+
+    private static GeneratedEfModel HookedCommentModel(string hookLine, string ns) => GeneratedEfModel.Compile(
+        JsonCommentModel.Replace("__FIELD_DOC__", ", \"@description\": \"The ticket's metadata.\"").Replace("__VO_DOC__", ""),
+        ns, c => c with { Dialect = "postgres" }, dbContext: new JsonbPropertyHook(hookLine));
+
+    [Fact]
+    public void A_json_column_a_hook_maps_as_a_property_takes_its_comment_on_the_column()
+    {
+        var gen = HookedCommentModel(
+            "        modelBuilder.Entity<__OWNER__>().Property(x => x.Meta).HasColumnName(\"meta\").HasColumnType(\"jsonb\");", "Acme.HookedProperty");
+        using var db = gen.ModelOnlyContext();
+        // A comment is design-time configuration: the read-optimized runtime model does not keep it.
+        var model = Microsoft.EntityFrameworkCore.Infrastructure.AccessorExtensions
+            .GetService<Microsoft.EntityFrameworkCore.Metadata.IDesignTimeModel>(db).Model;
+        var ticket = model.FindEntityType(gen.Type("Ticket"))!;
+        Assert.Null(ticket.FindNavigation("Meta"));
+        var meta = ticket.FindProperty("Meta")!;
+        Assert.Equal("jsonb", meta.GetColumnType());
+        Assert.Equal("The ticket's metadata.", meta.GetComment());
+        Assert.DoesNotContain("MetaObjects:JsonColumnComment", gen.Sources["AppDbContext.g.cs"]);
+    }
+
+    [Fact]
+    public void A_json_column_a_hook_maps_some_other_way_builds_with_no_comment_line()
+    {
+        var gen = HookedCommentModel("        modelBuilder.Entity<__OWNER__>().Ignore(x => x.Meta);", "Acme.HookedIgnore");
+        using var db = gen.ModelOnlyContext();
+        var ticket = db.Model.FindEntityType(gen.Type("Ticket"))!;
+        Assert.Null(ticket.FindNavigation("Meta"));
+        Assert.Null(ticket.FindProperty("Meta"));
+        Assert.DoesNotContain("The ticket's metadata.", gen.Sources["AppDbContext.g.cs"]);
+    }
+
+    [Fact]
+    public void A_stock_owned_json_column_keeps_its_annotation()
+    {
+        var gen = CommentModel("Owned.");
+        using var db = gen.ModelOnlyContext();
+        var ticket = db.Model.FindEntityType(gen.Type("Ticket"))!;
+        Assert.Equal("Owned.", ticket.FindNavigation("Meta")!.TargetEntityType.FindAnnotation("MetaObjects:JsonColumnComment")?.Value);
+    }
+
     [Fact]
     public async Task A_scaffolded_json_column_comment_lands_on_the_live_column()
     {

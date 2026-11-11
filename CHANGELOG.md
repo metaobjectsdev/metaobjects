@@ -523,6 +523,17 @@ vocabulary; upgrade every port together.
 
 ### Fixed
 
+- **Fix, C#: a described `field.object` an `OwnedTypeConfig` override maps as a column no longer
+  breaks the model build (G1).** `DbContextGenerator` assumed a non-flattened object field with no
+  map is owned JSON, and whenever the field or its value object carried a `@description` it
+  emitted `Metadata.FindNavigation("<Prop>")!.TargetEntityType.SetAnnotation(...)`. An override
+  that maps the field as a property (a jsonb POCO column) leaves no navigation, so every model
+  build threw a `NullReferenceException` in `OnModelCreating`. The comment line now follows the
+  mapping the emitted lines declare: an owned JSON navigation (`OwnsOne`/`OwnsMany` with
+  `ToJson`) keeps the annotation, byte for byte; a `Property(x => x.<Prop>)` takes
+  `GetProperty("<Prop>").SetComment(...)` on its column; any other mapping gets no comment line
+  and a warning naming the field (`meta migrate` still writes the comment).
+
 - **Fix, TypeScript views: two references onto one target entity read their own rows.** A
   projection whose origins reach the same entity through two different references
   (`Account.owner` and `Account.approver`, both `User`) got two joins (`u`, `u0`), but every origin
