@@ -48,6 +48,7 @@ from metaobjects.codegen.requirement_walk import (
     assert_requirement_test_grain,
     default_requirement_test_filter,
     mangle,
+    requirement_ledger_key,
     requirement_test_identity,
     requirement_test_units,
     walk_requirements,
@@ -234,6 +235,9 @@ class _RequirementTestsGenerator:
         planned: list[tuple[RequirementTestIdentity, RequirementTestArgs]] = []
         uncovered: list[str] = []
         for walked in walk_requirements(ctx.loaded_root):
+            # FR-023 — a dependency's requirement the project did not inherit is not its ledger.
+            if ctx.in_ledger is not None and not ctx.in_ledger(requirement_ledger_key(walked.view)):
+                continue
             if not self._include(walked.view):
                 # Named by PATH: diagnostics use the path (contract Table A).
                 uncovered.append(walked.view.path)

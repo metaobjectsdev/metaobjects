@@ -105,6 +105,12 @@ def _concern_of(node: MetaData) -> str:
     return f"{node.type}.{node.sub_type}"
 
 
+def requirement_ledger_key(view: RequirementView) -> str:
+    """FR-023 — the key a ledger predicate (``GenContext.in_ledger``) reads for a requirement:
+    ``<package>::<dotted path>``, or the bare path when the effective package is empty."""
+    return view.path if view.package == "" else f"{view.package}::{view.path}"
+
+
 def walk_requirements(root: MetaData) -> list[WalkedRequirement]:
     """Every ``requirement.*`` node, nested ones included, in declaration order.
 

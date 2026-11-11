@@ -262,6 +262,8 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
       // passed: an unconfigured project's predicate admits everything, so this
       // is a no-op for the common case, not a behavior change.
       scope: genCollection.inScope,
+      // FR-023 — a dependency's requirement this project did not inherit gets no test.
+      inLedger: genCollection.inLedger,
       // FR-023 §4.3 — the collection's own source files (never a dependency's
       // snapshot artifact), so sharedModelFile() defaults its `files` selection
       // to exactly what this project itself declares.

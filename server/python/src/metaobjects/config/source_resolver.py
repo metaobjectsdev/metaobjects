@@ -188,6 +188,7 @@ def _collection_from_own_files(
         libraries=tuple(libraries),
         naming=naming,
         wire=wire,
+        requirements_inherit=tuple(cfg.requirements_inherit if cfg is not None else []),
     )
 
 

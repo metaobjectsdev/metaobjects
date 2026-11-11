@@ -317,12 +317,23 @@ export interface RequirementScan {
  * what the adopter's own model is for. Treating it as activation would mean correcting
  * one library entry silently acquired a coverage gate over the whole estate.
  */
-function projectAuthoredRequirements(addressed: readonly AddressedRequirement[]): boolean {
+function projectAuthoredRequirements(
+  addressed: readonly AddressedRequirement[],
+  imported?: (fqn: string) => boolean,
+): boolean {
   const libPkgs = libraryPackages();
   return addressed.some((r) => {
     const pkg = effectiveRequirementPackage(r.node);
-    return !libPkgs.has(pkg);
+    // FR-023 — a dependency's requirement, inherited or not, is the publisher's design for
+    // the same reason a library's is, and cannot switch coverage on either.
+    return !libPkgs.has(pkg) && !(imported?.(requirementFqn(pkg, r.path)) ?? false);
   });
+}
+
+/** The key a collection predicate reads for a requirement: its effective package and its
+ *  dotted path, as `<package>::<path>` (just the path when the package is empty). */
+function requirementFqn(pkg: string, path: string): string {
+  return pkg === "" ? path : `${pkg}::${path}`;
 }
 
 export function scanRequirements(
@@ -337,13 +348,24 @@ export function scanRequirements(
     measureCoverage?: boolean;
     /** Raise WARN_REQUIREMENT_NOTHING_IMPLEMENTS to severity "error". Default false. */
     requireImplementers?: boolean;
+    /** FR-023 — which requirements are this project's ledger (`Collection.inLedger`), read
+     *  with `<package>::<path>`. One left out is still loaded, so an overlay of it resolves,
+     *  but nothing here addresses it: not checked, summarised, linted or claimed. Undefined
+     *  means every loaded requirement, as before the option existed. */
+    inLedger?: (fqn: string) => boolean;
+    /** FR-023 — is `<package>::<path>` a dependency's (`Collection.imported`)? Such a
+     *  requirement, even an inherited one, never switches object coverage on. */
+    imported?: (fqn: string) => boolean;
   },
 ): RequirementScan {
-  const addressed = collectAddressedRequirements(root);
+  const inLedger = opts?.inLedger;
+  const addressed = collectAddressedRequirements(root).filter(
+    (r) => inLedger === undefined || inLedger(requirementFqn(effectiveRequirementPackage(r.node), r.path)),
+  );
   return {
     addressed,
     claimedObjects: claimedObjectKeys(root, addressed.map((r) => r.node)),
-    measureCoverage: opts?.measureCoverage ?? projectAuthoredRequirements(addressed),
+    measureCoverage: opts?.measureCoverage ?? projectAuthoredRequirements(addressed, opts?.imported),
     requireImplementers: opts?.requireImplementers ?? false,
     // `exactOptionalPropertyTypes` — an omitted key, never an explicit `undefined`.
     ...(opts?.coverable !== undefined ? { coverable: opts.coverable } : {}),

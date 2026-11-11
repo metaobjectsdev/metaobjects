@@ -388,6 +388,7 @@ export {
   requirementTestUnits,
   requirementTestIdentity,
   requirementTestIdentities,
+  requirementLedgerKey,
   witnessKeyCollisions,
 } from "./requirement-walk.js";
 export type {

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from metaobjects.errors import ErrorCode, ParseError
@@ -85,6 +85,10 @@ class NeutralConfig:
     #: Attached to the loaded root (`MetaRoot.wire`) beside `naming`; validated HERE
     #: for the same reason `naming` is.
     wire: WireFormat = WireFormat()
+
+    #: FR-023 — `requirements.inherit`: scope patterns naming the dependencies whose
+    #: requirements this project takes on as its own ledger (`Collection.in_ledger`).
+    requirements_inherit: list[str] = field(default_factory=list)
 
 
 def find_project_dir(start: Path) -> Path | None:
@@ -180,6 +184,7 @@ def read_neutral_config(config_dir: Path) -> NeutralConfig | None:
     naming = _read_naming(raw, path)
     wire = _read_wire(raw, path)
     _check_enums(raw, path)
+    requirements_inherit = _read_requirements_inherit(raw, path)
 
     # Unknown top-level keys are IGNORED by design — see the module docstring.
     return NeutralConfig(
@@ -190,7 +195,30 @@ def read_neutral_config(config_dir: Path) -> NeutralConfig | None:
         libraries=libraries,
         naming=naming,
         wire=wire,
+        requirements_inherit=requirements_inherit,
     )
+
+
+def _read_requirements_inherit(raw: dict[str, object], path: Path) -> list[str]:
+    """FR-023 — `requirements.inherit`, the dependencies whose requirements join this
+    project's ledger. Validated like `naming`: an unknown key inside `requirements` is
+    refused, because a misspelt `inherit` would silently leave the ledger out.
+    """
+    block = raw.get("requirements")
+    if block is None:
+        return []
+    if not isinstance(block, dict):
+        raise ParseError(f"{path}: 'requirements' must be an object", code=ErrorCode.ERR_COLLECTION_NOT_FOUND)
+    unknown = sorted(k for k in block if k != "inherit")
+    if unknown:
+        raise ParseError(
+            f"{path}: 'requirements' has unknown key(s) {unknown}; accepted: ['inherit']",
+            code=ErrorCode.ERR_COLLECTION_NOT_FOUND,
+        )
+    inherit = block.get("inherit")
+    if inherit is None:
+        return []
+    return _string_array_or_raise(inherit, "requirements.inherit", path)
 
 
 def _string_array_or_raise(value: object, field: str, path: Path) -> list[str]:

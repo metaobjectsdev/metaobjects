@@ -19,7 +19,7 @@ from metaobjects.meta.meta_data import MetaData
 from metaobjects.naming import NamingRules, package_of_resolution_key
 from metaobjects.wire import WireFormat
 from metaobjects.registry_manifest import METAMODEL_VERSION
-from metaobjects.shared.base_types import TYPE_OBJECT
+from metaobjects.shared.base_types import TYPE_OBJECT, TYPE_REQUIREMENT
 
 #: Directory (under `.metaobjects/`) holding the synced snapshot artifacts,
 #: one subdirectory per dependency name: `.metaobjects/deps/<name>/`.
@@ -507,9 +507,11 @@ def refuse_unowned_packages(
     # ADR-0039 SANCTIONED own-accessor case: a root-level scan. `MetaRoot` has
     # no super, so own and effective children are the same set here, and the
     # question asked is precisely "what did this tree declare at the top
-    # level", which is the own layer by definition.
+    # level", which is the own layer by definition. Requirements too: a publisher may
+    # export its ledger, and a new requirement in its package would read as the
+    # publisher's to every gate that keys the ledger by package.
     for node in root.own_children():
-        if node.type != TYPE_OBJECT:
+        if node.type not in (TYPE_OBJECT, TYPE_REQUIREMENT):
             continue
         key = node.resolution_key()
         pkg = package_of_resolution_key(key)
@@ -675,9 +677,23 @@ class Collection:
     #: attached to the loaded root beside `naming`.
     wire: WireFormat = WireFormat()
 
+    #: FR-023 — the declared `requirements.inherit` patterns, for `in_ledger`.
+    requirements_inherit: tuple[str, ...] = ()
+
     def imported(self, fqn: str) -> bool:
         """Is `fqn` in a package one of this project's dependencies owns?"""
         return package_of_resolution_key(fqn) in self.imported_packages
+
+    def in_ledger(self, fqn: str) -> bool:
+        """Is the requirement at `fqn` (`<package>::<dotted path>`) part of this project's
+        ledger? Its own requirements always are; a dependency's only when
+        `requirements.inherit` NAMES the dependency's package (`explicitly_includes`). Read
+        by the requirement gate and the requirement-tests generator.
+        """
+        pkg = package_of_resolution_key(fqn)
+        if pkg not in self.imported_packages:
+            return True
+        return explicitly_includes(self.requirements_inherit, pkg)
 
     def in_scope(self, fqn: str) -> bool:
         """Output filter for codegen (`run_gen`'s `select`) and `verify --codegen`, and the

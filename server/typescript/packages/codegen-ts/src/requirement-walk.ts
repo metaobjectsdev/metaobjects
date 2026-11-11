@@ -76,6 +76,12 @@ export const NO_CONCERN = "*";
  * it cannot live in the loader), and codegen must not fail a build over a
  * diagnostic another command owns.
  */
+/** FR-023 — the key a ledger predicate (`GenContext.inLedger`) reads for a requirement:
+ *  `<package>::<dotted path>`, or the bare path when the effective package is empty. */
+export function requirementLedgerKey(view: Pick<RequirementView, "package" | "path">): string {
+  return view.package === "" ? view.path : `${view.package}::${view.path}`;
+}
+
 export function walkRequirements(root: MetaData): WalkedRequirement[] {
   const out: WalkedRequirement[] = [];
 

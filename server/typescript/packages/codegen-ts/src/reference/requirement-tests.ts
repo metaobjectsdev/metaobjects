@@ -41,6 +41,7 @@ import {
   NO_CONCERN,
   assertRequirementTestGrain,
   defaultRequirementTestFilter,
+  requirementLedgerKey,
   requirementTestIdentity,
   requirementTestUnits,
   walkRequirements,
@@ -302,6 +303,8 @@ export function requirementTests(opts: RequirementTestsOpts = {}): Generator {
       }
 
       for (const walked of walkRequirements(ctx.loadedRoot)) {
+        // FR-023 — a dependency's requirement the project did not inherit is not its ledger.
+        if (ctx.inLedger !== undefined && !ctx.inLedger(requirementLedgerKey(walked.view))) continue;
         if (!filter(walked.view)) {
           uncovered.push(walked.view.path);
           continue;

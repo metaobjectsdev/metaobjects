@@ -134,6 +134,13 @@ export interface Collection {
    * codegen output and never the coverage denominator (T18 ruling, all ports).
    */
   readonly inCoverage: (fqn: string) => boolean;
+  /**
+   * FR-023 — is the requirement at `fqn` (its effective package, `::`, its dotted path) part
+   * of this project's ledger? Its own requirements always are; a dependency's are only when
+   * `requirements.inherit` NAMES the dependency's package (the `explicitlyIncludes` rule).
+   * Read by the requirement gate, its summary and lint, and the requirement-tests generator.
+   */
+  readonly inLedger: (fqn: string) => boolean;
   /** Output filter for migrate/verify --db (`migrate.scope`). Undefined => the
    *  command governs everything loaded, and that undefined is load-bearing: it
    *  is what leaves the expected schema untouched (migrate-ts `scope.ts`). */
@@ -278,6 +285,7 @@ export async function resolveCollection(
   let specs: readonly SourceSpec[] = DEFAULT_SOURCES;
   let scopeSpec: Config["scope"];
   let migrateSpec: string[] | undefined;
+  let inheritSpec: string[] | undefined;
   let dependencySpecs: readonly DependencySpec[] = [];
   let libraries: readonly string[] = [];
   let physicalNaming: PhysicalNaming = DEFAULT_PHYSICAL_NAMING;
@@ -297,6 +305,7 @@ export async function resolveCollection(
     if (cfg.sources.length > 0) specs = cfg.sources;
     scopeSpec = cfg.scope;
     migrateSpec = cfg.migrate?.scope;
+    inheritSpec = cfg.requirements?.inherit;
     dependencySpecs = cfg.dependencies;
     libraries = cfg.libraries;
     physicalNaming = physicalNamingFromConfig(cfg);
@@ -439,6 +448,12 @@ export async function resolveCollection(
     // and does not name it — see `explicitlyIncludes`.
     inScope: (fqn: string): boolean => matchesScope(fqn, scope) && inCoverage(fqn),
     inCoverage,
+    // An imported requirement joins the ledger only when `requirements.inherit` names its
+    // package; a wildcard reaches it and does not name it, as for `scope.include`.
+    inLedger: (fqn: string): boolean => {
+      const pkg = packageOfResolutionKey(fqn);
+      return !importedPackages.has(pkg) || explicitlyIncludes(inheritSpec, pkg);
+    },
     // Undefined ONLY when the project declares no `migrate.scope` AND imports
     // nothing — migrate-ts reads that undefined as "govern everything loaded",
     // and it is what leaves the expected schema untouched. With a dependency

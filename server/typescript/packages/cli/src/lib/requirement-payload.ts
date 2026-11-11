@@ -87,9 +87,19 @@ export interface RequirementPayload {
  */
 export function requirementPayload(
   root: MetaData,
-  collection: { inCoverage: (fqn: string) => boolean; files: readonly string[] },
+  collection: {
+    inCoverage: (fqn: string) => boolean;
+    inLedger?: (fqn: string) => boolean;
+    imported?: (fqn: string) => boolean;
+    files: readonly string[];
+  },
 ): RequirementPayload | undefined {
-  const scan = scanRequirements(root, { coverable: collection.inCoverage, requireImplementers: false });
+  const scan = scanRequirements(root, {
+    coverable: collection.inCoverage,
+    requireImplementers: false,
+    ...(collection.inLedger !== undefined ? { inLedger: collection.inLedger } : {}),
+    ...(collection.imported !== undefined ? { imported: collection.imported } : {}),
+  });
   const s = summariseRequirements(root, scan);
   if (s === undefined) return undefined;
   const diags = [...checkRequirements(root, scan)];

@@ -797,6 +797,8 @@ export async function verifyCommand(
     // command line it shares with local runs.
     const scan = scanRequirements(root, {
       coverable: collection.inCoverage,
+      inLedger: collection.inLedger,
+      imported: collection.imported,
       requireImplementers: flags.requireImplementers || process.env.META_REQUIRE_IMPLEMENTERS === "1",
     });
     const diags = [...checkRequirements(root, scan)];
@@ -1775,6 +1777,7 @@ export async function verifyCommand(
         ),
         schemaSettings: codegenSchema,
         requirementLedger,
+        inLedger: genCollection.inLedger,
       });
     } catch (err) {
       log.error(`verify --codegen: regeneration failed: ${describeError(err)}`);
@@ -1799,6 +1802,7 @@ export async function verifyCommand(
               agentSchema: () => buildAgentSchemaInput(codegenRoot, config.dialect, () => {}, codegenSchema),
               schemaSettings: codegenSchema,
               requirementLedger,
+              inLedger: genCollection.inLedger,
             });
           return probe.error === undefined && probe.clean;
         } finally {

@@ -426,6 +426,394 @@
       "expectSelected": []
     },
     {
+      "name": "an-imported-requirement-is-not-the-ledger-by-default",
+      "tree": {
+        "metaobjects/meta.app.json": "{\"metadata.root\":{\"package\":\"app\",\"children\":[{\"object.entity\":{\"name\":\"Order\",\"children\":[{\"source.rdb\":{\"@table\":\"orders\"}},{\"field.long\":{\"name\":\"id\"}},{\"identity.primary\":{\"name\":\"pk\",\"@fields\":[\"id\"]}}]}}]}}"
+      },
+      "treeFiles": {
+        ".metaobjects/deps/acme-common/acme-common.metaobjects.json": "artifacts/acme-common-v1-requirements.json"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [],
+        "dependencies": [
+          {
+            "name": "acme-common",
+            "path": "../acme-common/metaobjects"
+          }
+        ]
+      },
+      "lock": {
+        "schema_version": 1,
+        "dependencies": {
+          "acme-common": {
+            "version": "1.1.0",
+            "metamodelVersion": "1.0",
+            "resolvedFrom": {
+              "path": "../acme-common/metaobjects"
+            },
+            "artifact": "acme-common.metaobjects.json",
+            "integrity": "sha256-4a812237fec408e10eaf1dfa25550cc642c9b3c0e41dc72581db8ba93c87eb57",
+            "packages": [
+              "acme::common"
+            ],
+            "nodes": [
+              "acme::common::Address",
+              "acme::common::Audited",
+              "acme::common::AuditedRows",
+              "acme::common::Customer",
+              "acme::common::Customers"
+            ]
+          }
+        }
+      },
+      "expectFiles": [
+        ".metaobjects/deps/acme-common/acme-common.metaobjects.json",
+        "metaobjects/meta.app.json"
+      ],
+      "expectLedger": {},
+      "expectCoverageMeasured": false
+    },
+    {
+      "name": "requirements-inherit-naming-the-package-takes-on-its-ledger",
+      "tree": {
+        "metaobjects/meta.app.json": "{\"metadata.root\":{\"package\":\"app\",\"children\":[{\"object.entity\":{\"name\":\"Order\",\"children\":[{\"source.rdb\":{\"@table\":\"orders\"}},{\"field.long\":{\"name\":\"id\"}},{\"identity.primary\":{\"name\":\"pk\",\"@fields\":[\"id\"]}}]}}]}}"
+      },
+      "treeFiles": {
+        ".metaobjects/deps/acme-common/acme-common.metaobjects.json": "artifacts/acme-common-v1-requirements.json"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [],
+        "dependencies": [
+          {
+            "name": "acme-common",
+            "path": "../acme-common/metaobjects"
+          }
+        ],
+        "requirements": {
+          "inherit": [
+            "acme::common::**"
+          ]
+        }
+      },
+      "lock": {
+        "schema_version": 1,
+        "dependencies": {
+          "acme-common": {
+            "version": "1.1.0",
+            "metamodelVersion": "1.0",
+            "resolvedFrom": {
+              "path": "../acme-common/metaobjects"
+            },
+            "artifact": "acme-common.metaobjects.json",
+            "integrity": "sha256-4a812237fec408e10eaf1dfa25550cc642c9b3c0e41dc72581db8ba93c87eb57",
+            "packages": [
+              "acme::common"
+            ],
+            "nodes": [
+              "acme::common::Address",
+              "acme::common::Audited",
+              "acme::common::AuditedRows",
+              "acme::common::Customer",
+              "acme::common::Customers"
+            ]
+          }
+        }
+      },
+      "expectFiles": [
+        ".metaobjects/deps/acme-common/acme-common.metaobjects.json",
+        "metaobjects/meta.app.json"
+      ],
+      "expectLedger": {
+        "acme::common::AuditedRows": "live",
+        "acme::common::Customers": "live",
+        "acme::common::Customers.ReachableByEmail": "live"
+      },
+      "expectCoverageMeasured": false
+    },
+    {
+      "name": "a-wildcard-inherit-does-not-name-a-package",
+      "tree": {
+        "metaobjects/meta.app.json": "{\"metadata.root\":{\"package\":\"app\",\"children\":[{\"object.entity\":{\"name\":\"Order\",\"children\":[{\"source.rdb\":{\"@table\":\"orders\"}},{\"field.long\":{\"name\":\"id\"}},{\"identity.primary\":{\"name\":\"pk\",\"@fields\":[\"id\"]}}]}}]}}"
+      },
+      "treeFiles": {
+        ".metaobjects/deps/acme-common/acme-common.metaobjects.json": "artifacts/acme-common-v1-requirements.json"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [],
+        "dependencies": [
+          {
+            "name": "acme-common",
+            "path": "../acme-common/metaobjects"
+          }
+        ],
+        "requirements": {
+          "inherit": [
+            "**"
+          ]
+        }
+      },
+      "lock": {
+        "schema_version": 1,
+        "dependencies": {
+          "acme-common": {
+            "version": "1.1.0",
+            "metamodelVersion": "1.0",
+            "resolvedFrom": {
+              "path": "../acme-common/metaobjects"
+            },
+            "artifact": "acme-common.metaobjects.json",
+            "integrity": "sha256-4a812237fec408e10eaf1dfa25550cc642c9b3c0e41dc72581db8ba93c87eb57",
+            "packages": [
+              "acme::common"
+            ],
+            "nodes": [
+              "acme::common::Address",
+              "acme::common::Audited",
+              "acme::common::AuditedRows",
+              "acme::common::Customer",
+              "acme::common::Customers"
+            ]
+          }
+        }
+      },
+      "expectFiles": [
+        ".metaobjects/deps/acme-common/acme-common.metaobjects.json",
+        "metaobjects/meta.app.json"
+      ],
+      "expectLedger": {},
+      "expectCoverageMeasured": false
+    },
+    {
+      "name": "a-scope-include-naming-the-package-does-not-inherit-its-requirements",
+      "tree": {
+        "metaobjects/meta.app.json": "{\"metadata.root\":{\"package\":\"app\",\"children\":[{\"object.entity\":{\"name\":\"Order\",\"children\":[{\"source.rdb\":{\"@table\":\"orders\"}},{\"field.long\":{\"name\":\"id\"}},{\"identity.primary\":{\"name\":\"pk\",\"@fields\":[\"id\"]}}]}}]}}"
+      },
+      "treeFiles": {
+        ".metaobjects/deps/acme-common/acme-common.metaobjects.json": "artifacts/acme-common-v1-requirements.json"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [],
+        "dependencies": [
+          {
+            "name": "acme-common",
+            "path": "../acme-common/metaobjects"
+          }
+        ],
+        "scope": {
+          "include": [
+            "app::**",
+            "acme::common::**"
+          ]
+        }
+      },
+      "lock": {
+        "schema_version": 1,
+        "dependencies": {
+          "acme-common": {
+            "version": "1.1.0",
+            "metamodelVersion": "1.0",
+            "resolvedFrom": {
+              "path": "../acme-common/metaobjects"
+            },
+            "artifact": "acme-common.metaobjects.json",
+            "integrity": "sha256-4a812237fec408e10eaf1dfa25550cc642c9b3c0e41dc72581db8ba93c87eb57",
+            "packages": [
+              "acme::common"
+            ],
+            "nodes": [
+              "acme::common::Address",
+              "acme::common::Audited",
+              "acme::common::AuditedRows",
+              "acme::common::Customer",
+              "acme::common::Customers"
+            ]
+          }
+        }
+      },
+      "expectFiles": [
+        ".metaobjects/deps/acme-common/acme-common.metaobjects.json",
+        "metaobjects/meta.app.json"
+      ],
+      "expectLedger": {},
+      "expectCoverageMeasured": false
+    },
+    {
+      "name": "an-inherited-ledger-beside-an-own-requirement-measures-coverage",
+      "tree": {
+        "metaobjects/meta.app.json": "{\"metadata.root\":{\"package\":\"app\",\"children\":[{\"object.entity\":{\"name\":\"Order\",\"children\":[{\"source.rdb\":{\"@table\":\"orders\"}},{\"field.long\":{\"name\":\"id\"}},{\"identity.primary\":{\"name\":\"pk\",\"@fields\":[\"id\"]}}]}},{\"requirement.functional\":{\"name\":\"OrdersTaken\",\"@level\":4,\"@status\":\"live\",\"@statement\":\"An order is recorded when it is placed.\",\"@counterexample\":\"A placed order with no row.\",\"@implementedBy\":[\"Order\"]}}]}}"
+      },
+      "treeFiles": {
+        ".metaobjects/deps/acme-common/acme-common.metaobjects.json": "artifacts/acme-common-v1-requirements.json"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [],
+        "dependencies": [
+          {
+            "name": "acme-common",
+            "path": "../acme-common/metaobjects"
+          }
+        ],
+        "requirements": {
+          "inherit": [
+            "acme::common::**"
+          ]
+        }
+      },
+      "lock": {
+        "schema_version": 1,
+        "dependencies": {
+          "acme-common": {
+            "version": "1.1.0",
+            "metamodelVersion": "1.0",
+            "resolvedFrom": {
+              "path": "../acme-common/metaobjects"
+            },
+            "artifact": "acme-common.metaobjects.json",
+            "integrity": "sha256-4a812237fec408e10eaf1dfa25550cc642c9b3c0e41dc72581db8ba93c87eb57",
+            "packages": [
+              "acme::common"
+            ],
+            "nodes": [
+              "acme::common::Address",
+              "acme::common::Audited",
+              "acme::common::AuditedRows",
+              "acme::common::Customer",
+              "acme::common::Customers"
+            ]
+          }
+        }
+      },
+      "expectFiles": [
+        ".metaobjects/deps/acme-common/acme-common.metaobjects.json",
+        "metaobjects/meta.app.json"
+      ],
+      "expectLedger": {
+        "acme::common::AuditedRows": "live",
+        "acme::common::Customers": "live",
+        "acme::common::Customers.ReachableByEmail": "live",
+        "app::OrdersTaken": "live"
+      },
+      "expectCoverageMeasured": true
+    },
+    {
+      "name": "an-overlay-of-an-inherited-requirement-changes-its-verdict-not-coverage",
+      "tree": {
+        "metaobjects/meta.app.json": "{\"metadata.root\":{\"package\":\"app\",\"children\":[{\"object.entity\":{\"name\":\"Order\",\"children\":[{\"source.rdb\":{\"@table\":\"orders\"}},{\"field.long\":{\"name\":\"id\"}},{\"identity.primary\":{\"name\":\"pk\",\"@fields\":[\"id\"]}}]}}]}}",
+        "metaobjects/meta.ext.json": "{\"metadata.root\":{\"package\":\"acme::common\",\"children\":[{\"requirement.functional\":{\"name\":\"Customers\",\"overlay\":true,\"@status\":\"partial\"}}]}}"
+      },
+      "treeFiles": {
+        ".metaobjects/deps/acme-common/acme-common.metaobjects.json": "artifacts/acme-common-v1-requirements.json"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [],
+        "dependencies": [
+          {
+            "name": "acme-common",
+            "path": "../acme-common/metaobjects"
+          }
+        ],
+        "requirements": {
+          "inherit": [
+            "acme::common::**"
+          ]
+        }
+      },
+      "lock": {
+        "schema_version": 1,
+        "dependencies": {
+          "acme-common": {
+            "version": "1.1.0",
+            "metamodelVersion": "1.0",
+            "resolvedFrom": {
+              "path": "../acme-common/metaobjects"
+            },
+            "artifact": "acme-common.metaobjects.json",
+            "integrity": "sha256-4a812237fec408e10eaf1dfa25550cc642c9b3c0e41dc72581db8ba93c87eb57",
+            "packages": [
+              "acme::common"
+            ],
+            "nodes": [
+              "acme::common::Address",
+              "acme::common::Audited",
+              "acme::common::AuditedRows",
+              "acme::common::Customer",
+              "acme::common::Customers"
+            ]
+          }
+        }
+      },
+      "expectFiles": [
+        ".metaobjects/deps/acme-common/acme-common.metaobjects.json",
+        "metaobjects/meta.app.json",
+        "metaobjects/meta.ext.json"
+      ],
+      "expectLedger": {
+        "acme::common::AuditedRows": "live",
+        "acme::common::Customers": "partial",
+        "acme::common::Customers.ReachableByEmail": "live"
+      },
+      "expectCoverageMeasured": false
+    },
+    {
+      "name": "a-local-requirement-in-a-dependency-package-is-refused",
+      "tree": {
+        "metaobjects/meta.ext.json": "{\"metadata.root\":{\"package\":\"acme::common\",\"children\":[{\"requirement.functional\":{\"name\":\"Invoicing\",\"@level\":4,\"@status\":\"planned\",\"@statement\":\"Customers are invoiced.\",\"@counterexample\":\"A customer never invoiced.\"}}]}}"
+      },
+      "treeFiles": {
+        ".metaobjects/deps/acme-common/acme-common.metaobjects.json": "artifacts/acme-common-v1-requirements.json"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [],
+        "dependencies": [
+          {
+            "name": "acme-common",
+            "path": "../acme-common/metaobjects"
+          }
+        ],
+        "requirements": {
+          "inherit": [
+            "acme::common::**"
+          ]
+        }
+      },
+      "lock": {
+        "schema_version": 1,
+        "dependencies": {
+          "acme-common": {
+            "version": "1.1.0",
+            "metamodelVersion": "1.0",
+            "resolvedFrom": {
+              "path": "../acme-common/metaobjects"
+            },
+            "artifact": "acme-common.metaobjects.json",
+            "integrity": "sha256-4a812237fec408e10eaf1dfa25550cc642c9b3c0e41dc72581db8ba93c87eb57",
+            "packages": [
+              "acme::common"
+            ],
+            "nodes": [
+              "acme::common::Address",
+              "acme::common::Audited",
+              "acme::common::AuditedRows",
+              "acme::common::Customer",
+              "acme::common::Customers"
+            ]
+          }
+        }
+      },
+      "expectFiles": [
+        ".metaobjects/deps/acme-common/acme-common.metaobjects.json",
+        "metaobjects/meta.ext.json"
+      ],
+      "expectLoadError": "ERR_DEPENDENCY_PACKAGE_NOT_OWNED"
+    },
+    {
       "name": "a-missing-lock-is-stale",
       "tree": {
         "metaobjects/meta.app.json": "{\"metadata.root\":{\"package\":\"app\",\"children\":[{\"object.entity\":{\"name\":\"Order\",\"children\":[{\"source.rdb\":{\"@table\":\"orders\"}},{\"field.long\":{\"name\":\"id\"}},{\"identity.primary\":{\"name\":\"pk\",\"@fields\":[\"id\"]}}]}}]}}"

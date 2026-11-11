@@ -31,6 +31,10 @@ class GenContext:
     #: The stable names of every generator in this run, so one generator can tell that a
     #: sibling is wired (the router emits the ``?format=`` branch only beside ``report-export``).
     generators: tuple[str, ...] = ()
+    #: FR-023 — is the requirement at ``<package>::<dotted path>`` this project's ledger
+    #: (``Collection.in_ledger``)? A dependency's requirement the project did not inherit
+    #: gets no generated test. ``None``: every loaded requirement is the project's.
+    in_ledger: Callable[[str], bool] | None = None
 
 
 class Generator(Protocol):

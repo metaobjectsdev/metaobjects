@@ -22,6 +22,7 @@ from metaobjects.config.dependency_check import check_dependencies
 from metaobjects.config.neutral_config import read_neutral_config
 from metaobjects.config.source_resolver import resolve_collection_full
 from metaobjects.errors import ParseError
+from metaobjects.requirement_check import effective_package, requirement_fqn, scan_requirements
 from metaobjects.shared.base_types import TYPE_OBJECT
 
 _CORPUS_DIR = (
@@ -132,6 +133,24 @@ def test_dependency_conformance_case(case: dict, tmp_path: Path) -> None:
                 if (collection.in_migrate_scope(fqn) if collection.in_migrate_scope else True)
             )
             assert governed == sorted(case["expectMigrateGoverned"])
+
+    if "expectLedger" in case:
+        # The ledger arm: which loaded requirements are this project's ledger, and whether
+        # object coverage is measured (an inherited requirement never switches it on).
+        result = _load_collection_result(collection)
+        assert not result.errors, [f"{e.code}: {e.message}" for e in result.errors]
+        scan = scan_requirements(
+            result.root,
+            coverable=collection.in_scope,
+            in_ledger=collection.in_ledger,
+            imported=collection.imported,
+        )
+        ledger = {
+            requirement_fqn(effective_package(a.node), a.path): a.node.status() or ""
+            for a in scan.addressed
+        }
+        assert ledger == case["expectLedger"]
+        assert scan.measure_coverage == case.get("expectCoverageMeasured", False)
 
     if "expectLoadError" in case:
         # Two arms produce a load-time failure: a loader-native `MetaError` in
