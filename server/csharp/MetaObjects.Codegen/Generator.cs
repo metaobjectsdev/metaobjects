@@ -457,15 +457,6 @@ public sealed class NameClaims
 
     private readonly Dictionary<(string Scope, string Name), string> _owners = new();
 
-    /// <summary>
-    /// The remedy for a collision in the home namespace (<see cref="GenConfig.Namespace"/>): the
-    /// callable wrappers and the template tier are declared there whatever their object's package,
-    /// so two packages do not keep two same-named ones apart, and a package mapping cannot help.
-    /// </summary>
-    public static string HomeNamespaceRemedy(string what) =>
-        $"rename one ({what} is declared in the configured namespace, GenConfig.Namespace, whatever its package, " +
-        "so the two packages do not keep them apart)";
-
     /// <inheritdoc cref="GenContext.Claim"/>
     public void Claim(string scope, string name, string claimant, string remedy)
     {
