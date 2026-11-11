@@ -799,6 +799,6 @@ describe("renderRoutesFile — a served report (FR-044 Plan 3)", () => {
       dryRun: true,
     });
     await expect(run).rejects.toThrow(ERR_COLLECTION_NAME_COLLISION);
-    await expect(run).rejects.toThrow(/"Invoice" and "Invoices"/);
+    await expect(run).rejects.toThrow(/Invoice" and ".*Invoices"/);
   });
 });

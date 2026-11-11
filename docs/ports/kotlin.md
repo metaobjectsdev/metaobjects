@@ -476,7 +476,8 @@ reactor's 2.0.21; its round-trip test additionally needs docker. Run via
    selection compiles every entity's generated `<Entity>Controller.kt` — TPH, M:N, view
    projections, and every `emitPerFieldDispatchArm` operator arm across every scalar
    subtype — against real Spring 6.2 (`spring-webmvc`) + jakarta.servlet + Jackson on the
-   module's test classpath (real dependencies, not stubs), with no exclusions. The
+   module's test classpath (real dependencies, not stubs), with one exclusion:
+   `IntEnumArrayController.kt` (see [Enum arrays](#enum-arrays) below). The
    per-field dispatch gate is derived from the SAME single source of truth the generated
    `<Entity>FilterAllowlist` reads (`com.metaobjects.query.FilterOps`), so the controller
    can never emit an operator the allowlist itself would refuse to admit — this is also
@@ -488,7 +489,7 @@ reactor's 2.0.21; its round-trip test additionally needs docker. Run via
    agrees with the controller's `String` assumption, rather than the native `Column<UUID>`
    `uuid(...)`/`javaUUID(...)` emits for a genuine `field.uuid`. The `exposedApi=0` sibling
    of this same controller-tier compile pass — over the identical full fitness corpus,
-   with the SAME zero exclusions — lives in `integration-tests-kotlin` (it already has
+   with the SAME one exclusion — lives in `integration-tests-kotlin` (it already has
    Exposed 0.x + Spring on its classpath), closing the gap `CodegenCompileConformanceTest`
    deliberately leaves open for 0.x (that module has no Spring dependency at all).
 3. **Round-trip.** The hand-rolled `Meta*ColumnType` support classes
@@ -908,6 +909,18 @@ service usage end-to-end. Swap the ASP.NET sections for Spring Boot
 configuration (Spring `WebMvcConfigurer` instead of `AddCors`, application
 port 8080 instead of 5000) — every other line carries over verbatim because
 the contract is universal.
+
+### Enum arrays
+
+A `field.enum` with `isArray: true` loads, string-backed or int-backed (`@intValueMap`, own or
+inherited from a shared abstract enum). The data class types it `List<E>`, but the Exposed table
+generator has no array column for an enum of either kind: `enumColumnSpec` in
+`KotlinExposedTableGenerator` emits the scalar `enumerationByName(...)` or
+`customEnumeration(..., "INTEGER", ...)`, so the generated controller for such an entity does not
+compile. It never stores member symbols in an integer column, because the code that would do so
+does not type-check. Persist an enum array through your own column until the generator emits one.
+The `roundtrip-int-enum-array` persistence scenario is deferred in this port's runners for this
+reason.
 
 ## Drift detection (Tier-2 integration)
 

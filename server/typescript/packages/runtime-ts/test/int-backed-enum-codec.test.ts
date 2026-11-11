@@ -160,3 +160,93 @@ describe("int-backed field.enum — filter values", () => {
     });
   });
 });
+
+// An int-backed enum ARRAY: each element persists as its declared int (Postgres
+// `integer[]`, a JSON array of numbers on SQLite/MySQL) and reads back as its member.
+// The failure this pins is D7's: a scalar-only codec leaves the array untouched, so
+// member SYMBOLS land in the integer array (or in the JSON text, where no CHECK or
+// column type stops them).
+function makeTagged(): MetaData {
+  const order = meta(new TypeId(TYPE_OBJECT, OBJECT_SUBTYPE_ENTITY), "Order");
+  order.addChild(meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_LONG), "id"));
+  const history = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_ENUM), "history");
+  history.setAttr(FIELD_ATTR_VALUES, VALUES);
+  history.setAttr(FIELD_ATTR_INT_VALUE_MAP, INT_MAP);
+  history.isArray = true;
+  order.addChild(history);
+  const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
+  primary.setAttr("fields", ["id"]);
+  order.addChild(primary);
+  return order;
+}
+
+describe("int-backed field.enum ARRAY — write codec", () => {
+  for (const dialect of ["postgres", "sqlite", "mysql"] as const) {
+    test(`encodes every element to its int, in order (${dialect})`, () => {
+      const row = coerceRowOnWrite(makeTagged(), { id: 1, history: ["PUBLISHED", "DRAFT"] }, dialect);
+      expect(row.history).toEqual([5, 0]);
+    });
+  }
+
+  test("an empty array stays empty", () => {
+    expect(coerceRowOnWrite(makeTagged(), { id: 1, history: [] }, "postgres").history).toEqual([]);
+  });
+
+  test("a null array stays null", () => {
+    expect(coerceRowOnWrite(makeTagged(), { id: 1, history: null }, "postgres").history).toBeNull();
+  });
+
+  // Same as a string-backed enum array's null element: passed through untouched.
+  test("a null element passes through", () => {
+    expect(coerceRowOnWrite(makeTagged(), { id: 1, history: ["ARCHIVED", null] }, "postgres").history)
+      .toEqual([9, null]);
+  });
+
+  // A scalar's unmapped symbol is rejected by the column's CHECK. An array column has
+  // no CHECK, and on SQLite/MySQL the JSON text would store the symbol silently — so
+  // the codec refuses it rather than writing the D7 corruption.
+  test("an unmapped element THROWS instead of landing as a symbol", () => {
+    expect(() => coerceRowOnWrite(makeTagged(), { id: 1, history: ["PUBLISHED", "NOPE"] }, "sqlite"))
+      .toThrow(/'NOPE'.*no entry in @intValueMap/);
+  });
+
+  test("the caller's array is not mutated", () => {
+    const input = ["PUBLISHED"];
+    coerceRowOnWrite(makeTagged(), { id: 1, history: input }, "postgres");
+    expect(input).toEqual(["PUBLISHED"]);
+  });
+});
+
+describe("int-backed field.enum ARRAY — read codec", () => {
+  test("decodes every stored int back to its member, in order", () => {
+    expect(coerceRowOnRead(makeTagged(), { id: 1, history: [5, 0] }, "postgres").history)
+      .toEqual(["PUBLISHED", "DRAFT"]);
+  });
+
+  test("decodes the JSON text SQLite hands back", () => {
+    expect(coerceRowOnRead(makeTagged(), { id: 1, history: "[9,5]" }, "sqlite").history)
+      .toEqual(["ARCHIVED", "PUBLISHED"]);
+  });
+
+  test("an empty array stays empty, a null array stays null", () => {
+    expect(coerceRowOnRead(makeTagged(), { id: 1, history: [] }, "postgres").history).toEqual([]);
+    expect(coerceRowOnRead(makeTagged(), { id: 1, history: null }, "postgres").history).toBeNull();
+  });
+
+  test("a null element stays null", () => {
+    expect(coerceRowOnRead(makeTagged(), { id: 1, history: [0, null] }, "postgres").history)
+      .toEqual(["DRAFT", null]);
+  });
+
+  test("an unmapped stored int THROWS, like the scalar", () => {
+    expect(() => coerceRowOnRead(makeTagged(), { id: 1, history: [5, 42] }, "postgres"))
+      .toThrow(/stored value 42 with no member in @intValueMap/);
+  });
+
+  // A row written before element-wise encoding existed holds symbols in the JSON
+  // text. Handing them back as if they were members would hide that corruption.
+  test("a stored SYMBOL element THROWS rather than passing through", () => {
+    expect(() => coerceRowOnRead(makeTagged(), { id: 1, history: '["PUBLISHED"]' }, "sqlite"))
+      .toThrow(/stored value "PUBLISHED" with no member in @intValueMap/);
+  });
+});

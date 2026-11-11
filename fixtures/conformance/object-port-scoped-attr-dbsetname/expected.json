@@ -1,0 +1,94 @@
+{
+  "metadata.root": {
+    "package": "acme::clinical",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Diagnosis",
+          "@dbSetName": "Diagnosis",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "diagnoses"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "code"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "code",
+                "@of": "acme::clinical::Diagnosis.code"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "diagnoses",
+                "@agg": "count",
+                "@of": [
+                  "acme::clinical::Diagnosis.id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "DiagnosisSummary",
+          "@dbSetName": "DiagnosisSummary",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_diagnosis_summary"
+              }
+            },
+            {
+              "field.string": {
+                "name": "code"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.report": {
+          "name": "DiagnosisCounts",
+          "@dbSetName": "DiagnosisCounts",
+          "@dimensions": [
+            "code"
+          ],
+          "@from": "acme::clinical::Diagnosis",
+          "@measures": [
+            "diagnoses"
+          ],
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_diagnosis_counts"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
+

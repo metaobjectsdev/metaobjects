@@ -1,4 +1,5 @@
 import { describe, test, expect } from "bun:test";
+import { registerColumnNamingStrategy, resetNamingStrategiesForTesting, toSnakeCase } from "@metaobjectsdev/metadata";
 import {
   columnNameFromField,
   tableNameFromEntity,
@@ -43,5 +44,20 @@ describe("viewNameFromProjection — v_ prefix + strategy", () => {
   });
   test("kebab-case: ProgramSummary → v-program-summary", () => {
     expect(viewNameFromProjection("ProgramSummary", "kebab-case")).toBe("v-program-summary");
+  });
+  test("pascal: ProgramSummary → v_ProgramSummary", () => {
+    expect(viewNameFromProjection("ProgramSummary", "pascal")).toBe("v_ProgramSummary");
+  });
+  // The prefix's separator is the one the strategy puts between words, read from the strategy
+  // rather than from a switch on built-in names, so an application's strategy gets it too.
+  test("an application strategy: the prefix takes its word separator", () => {
+    try {
+      registerColumnNamingStrategy("test-dotted", (n) => toSnakeCase(n).replace(/_/g, "."));
+      registerColumnNamingStrategy("test-upper-snake", (n) => toSnakeCase(n).toUpperCase());
+      expect(viewNameFromProjection("ProgramSummary", "test-dotted")).toBe("v.program.summary");
+      expect(viewNameFromProjection("ProgramSummary", "test-upper-snake")).toBe("v_PROGRAM_SUMMARY");
+    } finally {
+      resetNamingStrategiesForTesting();
+    }
   });
 });

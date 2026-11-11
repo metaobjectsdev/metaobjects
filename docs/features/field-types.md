@@ -136,7 +136,8 @@ database calls it. `@column` sets the second. It never changes the first.
 
 With no `@column`, the physical name comes from the project's **column rule**:
 `snake_case` (the default), `literal` (the field name verbatim), `kebab-case` or
-`upperFirst` (the first letter upper-cased, the rest verbatim). That
+`pascal` (the first letter upper-cased, the rest verbatim), or a rule your application
+registers under a name of its own (see [physical-naming.md](migrations/physical-naming.md)). That
 is CONFIG, not metadata, on purpose: the same model has to be able to drive a
 snake_case Postgres schema and a literal-column one. It is ONE setting for the whole
 project, `naming` in `.metaobjects/config.json` (ADR-0058):
@@ -241,10 +242,14 @@ deferred (see [enum-datatype-design.md](../superpowers/specs/2026-05-23-enum-dat
 
 Two rules follow from int-backing being a **persistence-layer codec**:
 
-- **It is scalar-only.** `@intValueMap` together with `isArray: true` is a load error,
-  `ERR_ENUM_INT_VALUE_MAP_ARRAY`, in every port — no port implements the codec element-wise
-  over an array column, so the combination would silently persist member *symbols* into an
-  integer array. An array-of-enum stays string-backed.
+- **An array is mapped element by element.** An enum field with `isArray: true` that
+  carries `@intValueMap` (its own, or inherited from a shared enum) stores each element as
+  its declared integer: an `integer[]` column on Postgres, and a JSON array of numbers
+  (`[5,0]`) where an engine keeps arrays as JSON text (SQLite, D1, MySQL). Each element reads
+  back as its member. A null array stays null and an empty one stays empty. The array column
+  has no `CHECK`, the same as a string-backed enum array. Where a port's runtime stores no
+  primitive array on an engine, it refuses an int-backed one there rather than writing
+  symbols: see that port's page under [docs/ports/](../ports/).
 - **A stored integer that maps to no member throws on read**, in every port. The row holds
   data the model says is impossible (a hand-written `INSERT`, or a member removed without a
   migration); surfacing the raw integer would hand you a "member" that is not one — and is
@@ -323,7 +328,7 @@ For `flattened`, the generated table gets `address_street`, `address_city`,
 
 Each member's column is a **prefix** followed by the member's own column (its `@column`, else
 its name under the project's column rule). The prefix defaults to the embedding field's column
-and `_` (`address_`; with `@column: "bill"`, `bill_`; under the `upperFirst` rule, `Address_`,
+and `_` (`address_`; with `@column: "bill"`, `bill_`; under the `pascal` rule, `Address_`,
 EF Core's own default). **`@flattenedColumnPrefix`** on the embedding field replaces it,
 verbatim:
 

@@ -34,6 +34,7 @@
 using System.Text;
 using MetaObjects.Meta;
 using static MetaObjects.Core.Field.FieldConstants;
+using static MetaObjects.Core.Object.ObjectConstants;
 
 namespace MetaObjects.Codegen.Generators;
 
@@ -78,10 +79,20 @@ public class RoutesGenerator : PerEntityGenerator
     // FR-044 — a served report joins the set as its ROW MODEL (ReportRows): a keyless,
     // projection-shaped object, so GenerateStandardRoutes emits the list GET and the POST
     // refusal and nothing else. A raw report node in the entity set is dropped.
-    public override IEnumerable<EmittedFile> Generate(GenContext ctx) =>
-        ReportRows.WithReportRows(ctx.Narrow(Include))
+    public override IEnumerable<EmittedFile> Generate(GenContext ctx)
+    {
+        var served = ReportRows.WithReportRows(ctx.Narrow(Include))
             .Where(e => AppliesTo(e, ctx.Root))
-            .Select(e => GenerateOne(e, ctx));
+            .ToList();
+        // One routes entry is mounted under one prefix, so two objects whose segments match
+        // serve one path. A TPH subtype is served under its base's segment and claims none.
+        CSharpNaming.AssertUniqueInScope(
+            served.Where(e => e.OwnAttr(OBJECT_ATTR_DISCRIMINATOR_VALUE) is not string { Length: > 0 })
+                .Select(e => (CSharpNaming.RoutePath(e), e.ResolutionKey())),
+            "REST collection segment", "one routes entry",
+            "rename one, or generate them with two routes entries mounted under different prefixes");
+        return served.Select(e => GenerateOne(e, ctx));
+    }
 
     protected override EmittedFile GenerateOne(MetaObject entity, GenContext ctx)
     {

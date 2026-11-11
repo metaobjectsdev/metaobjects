@@ -56,7 +56,7 @@ from ..naming import (
 from ..meta.core.identity import identity_constants as ic
 from ..meta.persistence.db import db_constants as dbc
 from ..meta.persistence.source.meta_source import MetaSource
-from ..source_resolution import resolve_table_name
+from ..source_resolution import primary_rdb_source, resolve_table_name
 from .n2m_resolver import (
     N2mDescriptor,
     collect_column_ids,
@@ -462,9 +462,9 @@ class ObjectManager:
         if insert_cols:
             col_list = ", ".join(self._d.quote(c) for c in insert_cols)
             placeholders = ", ".join(self._d.placeholder for _ in insert_cols)
-            sql = f"INSERT INTO {self._d.quote(table)} ({col_list}) VALUES ({placeholders})"
+            sql = f"INSERT INTO {self._relation(entity)} ({col_list}) VALUES ({placeholders})"
         else:
-            sql = f"INSERT INTO {self._d.quote(table)} {self._d.default_values}"
+            sql = f"INSERT INTO {self._relation(entity)} {self._d.default_values}"
         if self._d.supports_returning:
             sql += f" RETURNING {', '.join(self._d.quote(c) for c in all_cols)}"
             result = self._driver.insert_returning(sql, tuple(params))
@@ -592,7 +592,7 @@ class ObjectManager:
         if tph is not None:
             where += f" AND {self._d.quote(_column_of(entity.find_field(tph.field), self._column_naming))} = {self._d.placeholder}"
             params.append(tph.value)
-        sql = f"UPDATE {self._d.quote(table)} SET {assignments} WHERE {where}"
+        sql = f"UPDATE {self._relation(entity)} SET {assignments} WHERE {where}"
         if self._d.supports_returning:
             sql += f" RETURNING {', '.join(self._d.quote(c) for c in all_cols)}"
             result = self._driver.update_returning(sql, tuple(params))
@@ -656,7 +656,7 @@ class ObjectManager:
             params.append(tph.value)
         sql = (
             f"SELECT {', '.join(self._d.quote(c) for c in cols)} "
-            f"FROM {self._d.quote(self._table_name(entity))} WHERE {where}"
+            f"FROM {self._relation(entity)} WHERE {where}"
         )
         result = self._driver.select(sql, tuple(params))
         if not result.rows:
@@ -694,7 +694,7 @@ class ObjectManager:
         if tph is not None:
             where += f" AND {self._d.quote(_column_of(entity.find_field(tph.field), self._column_naming))} = {self._d.placeholder}"
             params.append(tph.value)
-        sql = f"DELETE FROM {self._d.quote(table)} WHERE {where}"
+        sql = f"DELETE FROM {self._relation(entity)} WHERE {where}"
         return self._driver.execute_rowcount(sql, tuple(params)) > 0
 
     def find_many(
@@ -712,7 +712,7 @@ class ObjectManager:
         # fields (incl. derived) are selected — the view exposes them.
         table = self._read_source_name(entity)
         cols = [_column_of(f, self._column_naming) for f in entity.fields()]
-        sql = f'SELECT {", ".join(self._d.quote(c) for c in cols)} FROM {self._d.quote(table)}'
+        sql = f'SELECT {", ".join(self._d.quote(c) for c in cols)} FROM {self._read_relation(entity)}'
         params: list[Any] = []
         # FR-017 TPH: a subtype read is scoped to its discriminator value (a row of
         # a different subtype is invisible); the base entity (no @discriminatorValue)
@@ -753,7 +753,7 @@ class ObjectManager:
         # #214: count reads through the same source as find_many (the replica view for a
         # write-through entity — a 1:1 replica, so the count is unchanged).
         table = self._read_source_name(entity)
-        sql = f"SELECT COUNT(*) FROM {self._d.quote(table)}"
+        sql = f"SELECT COUNT(*) FROM {self._read_relation(entity)}"
         params: list[Any] = []
         filter = self._scope_filter(filter, tph_subtype_of(entity))  # FR-017 TPH subtype scope
         where = _compile_filter(filter, entity, self._column_naming, self._d) if filter else None
@@ -808,13 +808,13 @@ class ObjectManager:
         select_cols = f"{self._d.quote(source_col)}, {self._d.quote(target_col)}"
         if desc.symmetric:
             sql = (
-                f"SELECT {select_cols} FROM {self._d.quote(join_table)} "
+                f"SELECT {select_cols} FROM {self._relation(junction)} "
                 f"WHERE {self._d.quote(source_col)} = {self._d.placeholder} OR {self._d.quote(target_col)} = {self._d.placeholder}"
             )
             params: tuple[Any, ...] = (source_id, source_id)
         else:
             sql = (
-                f"SELECT {select_cols} FROM {self._d.quote(join_table)} "
+                f"SELECT {select_cols} FROM {self._relation(junction)} "
                 f"WHERE {self._d.quote(source_col)} = {self._d.placeholder}"
             )
             params = (source_id,)
@@ -911,6 +911,28 @@ class ObjectManager:
                 f"the ObjectManager."
             )
         return table
+
+    def _qualified(self, name: str, schema: str | None) -> str:
+        """*name* quoted, qualified by its source's ``@schema`` where the engine has schemas.
+        ``meta migrate`` creates a relation declared with ``@schema: sales`` as
+        ``"sales"."<name>"``; a bare name would resolve through ``search_path`` to another
+        relation, or none. SQLite has no schemas, so its names stay bare."""
+        quoted = self._d.quote(name)
+        return f"{self._d.quote(schema)}.{quoted}" if schema and self._d.qualifies_schemas else quoted
+
+    def _relation(self, entity: MetaObject) -> str:
+        """The relation WRITES (and by-id reads) target, quoted and schema-qualified."""
+        src = primary_rdb_source(entity)
+        return self._qualified(self._table_name(entity), src.schema() if src is not None else None)
+
+    def _read_relation(self, entity: MetaObject) -> str:
+        """The relation list and count READS run against (:meth:`_read_source_name`), quoted
+        and qualified by the schema of the source it names."""
+        if entity.is_write_through():
+            for c in entity.own_children():
+                if isinstance(c, MetaSource) and c.is_read_only() and c.physical_name():
+                    return self._qualified(c.physical_name(), c.schema())
+        return self._relation(entity)
 
     def _read_source_name(self, entity: MetaObject) -> str:
         """The physical relation READS run against. FR-024 §7 (#214): a write-through
@@ -1187,10 +1209,18 @@ def _coerce_write_value(field: MetaField, value: Any) -> Any:
     #
     # An unmapped symbol is passed through untouched: membership is the column's
     # CHECK constraint to enforce, and inventing a value here would hide the drift.
+    #
+    # isArray=true (an ``integer[]`` column): encode ELEMENT-WISE, so the driver
+    # binds a list of ints, never the symbol list. A null element stays a null
+    # element (as in a string-backed enum array), and an unmapped element passes
+    # through like the scalar does; an array column carries no CHECK, so the
+    # database's integer[] type is what rejects it.
     if sub == fc.FIELD_SUBTYPE_ENUM:
         int_map = _int_value_map(field)
-        if int_map is not None and value in int_map:
-            return int_map[value]
+        if int_map is not None:
+            if _field_is_array(field) and isinstance(value, list):
+                return [_encode_enum_member(int_map, v) for v in value]
+            return _encode_enum_member(int_map, value)
 
     # Everything else (string / int / long / double / float / boolean / enum)
     # is already the native type pg8000 binds directly.
@@ -1271,6 +1301,14 @@ def _duration_write_value(field: MetaField, value: Any) -> DurationParam:
         raise ValueError(f"field.duration '{field.name}' cannot be written: {e}") from None
 
 
+def _encode_enum_member(int_map: dict[Any, Any], member: Any) -> Any:
+    """One member symbol as its declared int; ``None`` and an unmapped (or
+    unhashable) value pass through untouched."""
+    if isinstance(member, str) and member in int_map:
+        return int_map[member]
+    return member
+
+
 def _int_value_map(field: MetaField) -> dict[Any, Any] | None:
     """The declared ``@intValueMap`` (symbol → int), or ``None`` when the enum is
     string-backed.
@@ -1331,7 +1369,18 @@ def _decode_read_value(field: MetaField, value: Any) -> Any:
     if field.sub_type != fc.FIELD_SUBTYPE_ENUM:
         return value
     int_map = _int_value_map(field)
-    if int_map is None or not isinstance(value, int) or isinstance(value, bool):
+    if int_map is None:
+        return value
+    if isinstance(value, list):
+        # isArray=true (``integer[]``): decode element-wise; a null element stays null.
+        return [None if v is None else _decode_enum_int(field, int_map, v) for v in value]
+    return _decode_enum_int(field, int_map, value)
+
+
+def _decode_enum_int(field: MetaField, int_map: dict[Any, Any], value: Any) -> Any:
+    """One stored int as its member symbol. A non-int is returned as read; an int
+    with no member RAISES (see :func:`_decode_read_value`)."""
+    if not isinstance(value, int) or isinstance(value, bool):
         return value
     for symbol, stored in int_map.items():
         if stored == value:

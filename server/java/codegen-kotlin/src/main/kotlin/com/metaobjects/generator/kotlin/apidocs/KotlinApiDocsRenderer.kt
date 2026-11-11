@@ -128,18 +128,20 @@ class KotlinApiDocsRenderer {
         sb.append("# API Reference\n\nGenerated public API surface, one page per entity and output template.\n")
         if (entities.isNotEmpty()) {
             sb.append("\n## Entities\n\n")
-            for (u in entities) appendIndexRow(sb, u, layout)
+            for (u in entities) appendIndexRow(sb, u, layout, entities)
         }
         if (templates.isNotEmpty()) {
             sb.append("\n## Templates\n\n")
-            for (u in templates) appendIndexRow(sb, u, layout)
+            for (u in templates) appendIndexRow(sb, u, layout, templates)
         }
         return sb.toString()
     }
 
-    private fun appendIndexRow(sb: StringBuilder, u: ApiUnit, layout: DocsPaths.Layout) {
+    private fun appendIndexRow(sb: StringBuilder, u: ApiUnit, layout: DocsPaths.Layout, siblings: List<ApiUnit>) {
         val href = DocsPaths.surfaceCrossHref("README.md", DocsPaths.docPageOutputPath(layout, u.pkg, u.node))
-        sb.append("- [").append(u.node).append("](").append(href).append(") — ")
+        // Readable when two units share a short name: the label carries the package.
+        val label = DocsPaths.indexLabel(u.node, u.pkg, siblings.map { it.node })
+        sb.append("- [").append(label).append("](").append(href).append(") — ")
             .append(summary(u)).append(" (").append(u.symbols.size).append(" symbols)\n")
     }
 

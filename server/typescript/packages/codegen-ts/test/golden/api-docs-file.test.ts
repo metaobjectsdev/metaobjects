@@ -7,7 +7,7 @@
 //   • index links resolve to files actually emitted in the run, in BOTH flat and
 //     package layout (collision-safe docPageHref placement);
 //   • the multi-package short-name collision contract is the SAME docs-paths
-//     guard docsFile() reuses: flat hard-errors, package folds under subdirs;
+//     guard docsFile() reuses: pages fold under package subdirs in every layout;
 //   • the `api-docs` entry is registered NATIVE + the factory constructs.
 
 import { describe, test, expect } from "bun:test";
@@ -132,17 +132,17 @@ function makeCtx(
 const provider = projectProvider(undefined);
 
 describe("apiDocsFile() — emitted file set + content reuses the Task-2 renderers", () => {
-  test("emits api/<Node>.md per unit + README.md + AGENT-API.md (flat)", async () => {
+  test("emits api/<pkg>/<Node>.md per unit + README.md + AGENT-API.md (any outputLayout)", async () => {
     const root = await loadRoot([SHOP]);
     const out = await apiDocsFile().generate(makeCtx(root));
     const paths = out.map((f) => f.path).sort();
     expect(paths).toEqual(
       [
         `${API_DIR}/AGENT-API.md`,
-        `${API_DIR}/Product.md`,
-        `${API_DIR}/ProductSummary.md`,
+        `${API_DIR}/acme/shop/Product.md`,
+        `${API_DIR}/acme/shop/ProductSummary.md`,
         `${API_DIR}/README.md`,
-        `${API_DIR}/SummaryVO.md`,
+        `${API_DIR}/acme/shop/SummaryVO.md`,
       ].sort(),
     );
   });
@@ -152,19 +152,19 @@ describe("apiDocsFile() — emitted file set + content reuses the Task-2 rendere
     const model = buildApiModel(root, { loadedRoot: root });
     const out = await apiDocsFile().generate(makeCtx(root));
     for (const u of model.units) {
-      const page = out.find((f) => f.path === `${API_DIR}/${u.node}.md`);
+      const page = out.find((f) => f.path === `${API_DIR}/acme/shop/${u.node}.md`);
       expect(page, `page for ${u.node}`).toBeDefined();
       expect(page!.content).toBe(renderEntityApiPage(u, provider));
     }
   });
 
-  test("README.md == renderApiIndex (flat) and AGENT-API.md == renderAgentApi", async () => {
+  test("README.md == renderApiIndex (package, whatever the outputLayout) and AGENT-API.md == renderAgentApi", async () => {
     const root = await loadRoot([SHOP]);
     const model = buildApiModel(root, { loadedRoot: root });
     const out = await apiDocsFile().generate(makeCtx(root));
     const readme = out.find((f) => f.path === `${API_DIR}/README.md`)!;
     const agent = out.find((f) => f.path === `${API_DIR}/AGENT-API.md`)!;
-    expect(readme.content).toBe(renderApiIndex(model, "flat", provider));
+    expect(readme.content).toBe(renderApiIndex(model, "package", provider));
     expect(agent.content).toBe(renderAgentApi(model, provider));
   });
 
@@ -203,7 +203,7 @@ function assertIndexLinksResolve(out: { path: string; content: string }[], index
 }
 
 describe("apiDocsFile() — index links resolve to emitted pages", () => {
-  test("flat layout: every README link resolves", async () => {
+  test("default outputLayout: every README link resolves", async () => {
     const root = await loadRoot([SHOP]);
     const out = await apiDocsFile().generate(makeCtx(root));
     assertIndexLinksResolve(out, `${API_DIR}/README.md`);
@@ -220,18 +220,12 @@ describe("apiDocsFile() — index links resolve to emitted pages", () => {
 });
 
 describe("apiDocsFile() — cross-package short-name collision (docs-paths guard)", () => {
-  test("flat layout: two Order nodes in different packages → HARD ERROR", async () => {
+  test("flat outputLayout: two Order nodes in different packages are still two pages", async () => {
     const root = await loadRoot([SALES_ORDER, COMMS_ORDER_TEMPLATE]);
-    let err: Error | undefined;
-    try {
-      await apiDocsFile().generate(makeCtx(root)); // flat default
-    } catch (e) {
-      err = e as Error;
-    }
-    expect(err, "expected a hard error on duplicate output path").toBeDefined();
-    expect(err!.message).toContain("Order.md");
-    expect(err!.message).toContain("acme::sales::Order");
-    expect(err!.message).toContain("acme::comms::Order");
+    const out = await apiDocsFile().generate(makeCtx(root, "flat"));
+    const paths = out.map((f) => f.path).sort();
+    expect(paths).toContain(`${API_DIR}/acme/sales/Order.md`);
+    expect(paths).toContain(`${API_DIR}/acme/comms/Order.md`);
   });
 
   test("package layout: both Order pages emitted under distinct nested paths", async () => {

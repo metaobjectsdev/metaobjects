@@ -4,14 +4,21 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.metaobjects.generator.GeneratorException;
+import com.metaobjects.loader.InMemoryStringSource;
+import com.metaobjects.loader.LoaderOptions;
+import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.object.EntityMetaObject;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.object.ValueMetaObject;
+import com.metaobjects.registry.ObjectClassRegistry;
+import com.metaobjects.source.RdbSource;
+import org.junit.After;
 import org.junit.Test;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.Assert.assertEquals;
@@ -152,8 +159,11 @@ public class RouteNamingTest {
 
     // ---- assertNoCollectionNameCollisions ---------------------------------
 
+    // An entity that gets a collection: concrete, backed by a source.rdb.
     private static MetaObject entity(String name) {
-        return new EntityMetaObject(name);
+        MetaObject entity = new EntityMetaObject(name);
+        entity.addChild(new RdbSource("source"));
+        return entity;
     }
 
     private static MetaObject value(String name) {
@@ -212,6 +222,75 @@ public class RouteNamingTest {
             String b = c.get("entityB").getAsString();
             assertThrows("(" + a + ", " + b + ")", GeneratorException.class,
                 () -> RouteNaming.assertNoCollectionNameCollisions(List.of(entity(a), entity(b))));
+        }
+    }
+
+    // ---- an object that emits no collection never claims a collection name ----
+    //
+    // fixtures/naming-conformance/'s shapeOnlyCases: an abstract or sourceless object gets no
+    // controller, repository or route, so a same-named emitting entity in another package is
+    // not a collision. crossPackageCollisionCases is the control.
+
+    @After
+    public void resetRegistry() {
+        ObjectClassRegistry.resetGlobal();
+    }
+
+    private static JsonObject namingCorpus() throws IOException {
+        Path repoRoot = Path.of(System.getProperty("user.dir")).resolve("../../..").normalize();
+        Path fixture = repoRoot.resolve("fixtures/naming-conformance/already-plural-pluralize.json");
+        return JsonParser.parseString(Files.readString(fixture)).getAsJsonObject();
+    }
+
+    /** Each object in its own package (one source per package), declaring an {@code id} key. */
+    private static List<MetaObject> packagedObjects(JsonObject... objects) {
+        List<com.metaobjects.loader.MetaDataSource> sources = new ArrayList<>();
+        for (int i = 0; i < objects.length; i++) {
+            JsonObject o = objects[i];
+            String pkg = o.get("package").getAsString();
+            String name = o.get("name").getAsString();
+            boolean isAbstract = o.has("abstract") && o.get("abstract").getAsBoolean();
+            boolean source = !o.has("source") || o.get("source").getAsBoolean();
+            String json = "{ \"metadata.root\": { \"package\": \"" + pkg + "\", \"children\": [\n"
+                + "  { \"object.entity\": { \"name\": \"" + name + "\", "
+                + (isAbstract ? "\"abstract\": true, " : "") + "\"children\": [\n"
+                + (source ? "    { \"source.rdb\": { \"@table\": \"" + pkg + "_" + name.toLowerCase() + "\" } },\n" : "")
+                + "    { \"field.long\": { \"name\": \"id\" } },\n"
+                + "    { \"identity.primary\": { \"@fields\": \"id\" } }\n"
+                + "  ] } }\n] } }";
+            sources.add(new InMemoryStringSource(json, "naming/" + pkg + "-" + i + ".json"));
+        }
+        MetaDataLoader loader = new MetaDataLoader(
+                LoaderOptions.create(false, false, true), MetaDataLoader.SUBTYPE_MANUAL, "naming");
+        loader.init();
+        loader.load(sources);
+        return new ArrayList<>(loader.getMetaObjects());
+    }
+
+    @Test
+    public void namingConformanceAnObjectThatEmitsNoCollectionClaimsNoName() throws IOException {
+        JsonArray cases = namingCorpus().getAsJsonArray("shapeOnlyCases");
+        for (int i = 0; i < cases.size(); i++) {
+            JsonObject c = cases.get(i).getAsJsonObject();
+            JsonObject shapeOnly = c.getAsJsonObject("shapeOnly");
+            JsonObject emitting = c.getAsJsonObject("emitting");
+            // Both orders: the first-seen object owns a name, so order must not matter.
+            RouteNaming.assertNoCollectionNameCollisions(packagedObjects(shapeOnly, emitting));
+            ObjectClassRegistry.resetGlobal();
+            RouteNaming.assertNoCollectionNameCollisions(packagedObjects(emitting, shapeOnly));
+            ObjectClassRegistry.resetGlobal();
+        }
+    }
+
+    @Test
+    public void namingConformanceTwoEmittingEntitiesInTwoPackagesStillCollide() throws IOException {
+        JsonArray cases = namingCorpus().getAsJsonArray("crossPackageCollisionCases");
+        for (int i = 0; i < cases.size(); i++) {
+            JsonObject c = cases.get(i).getAsJsonObject();
+            List<MetaObject> objects = packagedObjects(c.getAsJsonObject("entityA"), c.getAsJsonObject("entityB"));
+            GeneratorException ex = assertThrows(GeneratorException.class,
+                () -> RouteNaming.assertNoCollectionNameCollisions(objects));
+            assertTrue(ex.getMessage(), ex.getMessage().contains(c.get("collidesOn").getAsString().toLowerCase()));
         }
     }
 }

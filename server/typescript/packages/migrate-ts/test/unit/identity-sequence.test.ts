@@ -60,8 +60,8 @@ describe("identity.primary sequence start and name", () => {
     expect(changes.filter((c) => c.kind === "alter-sequence")).toHaveLength(1);
     const { up, down } = emit(changes, { dialect: "postgres" });
     expect(up).toContain('ALTER SEQUENCE "Ticket_Id_seq" START WITH 1000000000;');
-    // START WITH alone only records a restart point: the counter is moved up to it, never down.
-    expect(up).toContain(`SELECT setval('"Ticket_Id_seq"', 1000000000, false) FROM "Ticket_Id_seq" WHERE last_value < 1000000000;`);
+    // A changed start is recorded, never applied to the live counter: no setval, no RESTART.
+    expect(up).not.toMatch(/setval|RESTART/);
     expect(up).toContain('ALTER SEQUENCE "Ticket_Id_seq" RENAME TO "Old_Id_seq";');
     expect(down).toContain('ALTER SEQUENCE "Old_Id_seq" RENAME TO "Ticket_Id_seq";');
     expect(down).toContain('ALTER SEQUENCE "Ticket_Id_seq" START WITH 1;');

@@ -11,13 +11,15 @@ import {
   writeArtifact,
 } from "./canonical-schema.ts";
 import { CANONICAL_MYSQL_SCHEMA_SQL_PATH, generateCanonicalMysqlSchemaSql } from "./canonical-schema-mysql.ts";
-import { loadMetadataDir } from "./load-metadata.ts";
+import { loadMetadataDir, loadMetadataDirWithoutSchemas } from "./load-metadata.ts";
 import { CANONICAL_DIR } from "./paths.ts";
 
 async function main(): Promise<void> {
   const root = await loadMetadataDir(CANONICAL_DIR);
+  // SQLite has no schemas: its artifact leaves out the objects that declare one.
+  const schemaless = await loadMetadataDirWithoutSchemas(CANONICAL_DIR);
   for (const dialect of ["postgres", "sqlite"] as const satisfies readonly CanonicalSchemaDialect[]) {
-    writeArtifact(canonicalSchemaSqlPath(dialect), await generateCanonicalSchemaSql(root, { dialect }));
+    writeArtifact(canonicalSchemaSqlPath(dialect), await generateCanonicalSchemaSql(dialect === "sqlite" ? schemaless : root, { dialect }));
   }
   writeArtifact(CANONICAL_MYSQL_SCHEMA_SQL_PATH, generateCanonicalMysqlSchemaSql(root));
 }

@@ -213,13 +213,13 @@ describe("meta gen writes the documentation the list declares", () => {
     expect(await run(["gen", "--cwd", root])).toBe(0);
     const docs = filesUnder(join(root, "docs", "generated"));
     expect(docs).toEqual(expect.arrayContaining([
-      "README.md", "Talk.md", "api/README.md", "api/AGENT-API.md", "api/Talk.md",
+      "README.md", "app/Talk.md", "api/README.md", "api/AGENT-API.md", "api/app/Talk.md",
       "agent/schema.md", "metamodel/INDEX.md", "metamodel/providers.md",
     ]));
     // A model with no requirement.* node gets no ledger file.
     expect(docs.some((p) => p.startsWith("requirements."))).toBe(false);
-    expect(readFileSync(join(root, "docs", "generated", "Talk.md"), "utf8")).toContain("api/Talk.md");
-    expect(readFileSync(join(root, "docs", "generated", "api", "Talk.md"), "utf8")).toContain("../Talk.md");
+    expect(readFileSync(join(root, "docs", "generated", "app", "Talk.md"), "utf8")).toContain("api/app/Talk.md");
+    expect(readFileSync(join(root, "docs", "generated", "api", "app", "Talk.md"), "utf8")).toContain("../../app/Talk.md");
     // The schema page describes the project's dialect.
     expect(readFileSync(join(root, "docs", "generated", "agent", "schema.md"), "utf8")).toContain("talks");
     // Nothing of the documentation lands among the code.
@@ -237,7 +237,7 @@ describe("meta gen writes the documentation the list declares", () => {
   test("the api pages list only the verbs routesFile({ expose }) mounts", async () => {
     const root = project({ config: base(`["entity", routesFile({ expose: ["list", "get"] }), apiDocsFile()]`) });
     expect(await run(["gen", "--cwd", root])).toBe(0);
-    const page = readFileSync(join(root, "docs", "generated", "api", "Talk.md"), "utf8");
+    const page = readFileSync(join(root, "docs", "generated", "api", "app", "Talk.md"), "utf8");
     expect(page).toContain("GET /talks");
     expect(page).not.toContain("POST /talks");
     expect(page).not.toContain("DELETE /talks");
@@ -287,7 +287,7 @@ describe("meta gen --generators narrows a run to declared entries", () => {
     const root = project({ config: base(generators) });
     expect(await run(["gen", "--generators", "docs,api-docs", "--cwd", root])).toBe(0);
     expect(existsSync(join(root, "generated"))).toBe(false);
-    expect(filesUnder(join(root, "docs", "generated"))).toEqual(expect.arrayContaining(["Talk.md", "api/Talk.md"]));
+    expect(filesUnder(join(root, "docs", "generated"))).toEqual(expect.arrayContaining(["app/Talk.md", "api/app/Talk.md"]));
   });
 
   test("a narrowed run reads the run's facts from the whole list: the Hono routes are documented", async () => {
@@ -295,7 +295,7 @@ describe("meta gen --generators narrows a run to declared entries", () => {
     expect(await run(["gen", "--generators", "api-docs", "--cwd", root])).toBe(0);
     expect(readFileSync(join(root, "docs", "generated", "api", "AGENT-API.md"), "utf8")).toContain("routes.hono");
     // ...and the model pages it did not write are still linked from it, because the list declares them.
-    expect(readFileSync(join(root, "docs", "generated", "api", "Talk.md"), "utf8")).toContain("../Talk.md");
+    expect(readFileSync(join(root, "docs", "generated", "api", "app", "Talk.md"), "utf8")).toContain("../../app/Talk.md");
   });
 
   test("a name the config does not declare is refused, exit 2, nothing written", async () => {
@@ -342,9 +342,9 @@ describe("meta verify --codegen checks the documentation the list declares", () 
   // runner without the ignored pages answers as the machine that generated them does.
   test("a git-ignored page is not checked, and the run says how many were not", async () => {
     const root = project({ config: base(`["entity", docsFile()]`), ownRepo: true });
-    writeFileSync(join(root, ".gitignore"), "docs/generated/Talk.md\n", "utf8");
+    writeFileSync(join(root, ".gitignore"), "docs/generated/app/Talk.md\n", "utf8");
     expect(await run(["gen", "--cwd", root])).toBe(0);
-    rmSync(join(root, "docs", "generated", "Talk.md"));
+    rmSync(join(root, "docs", "generated", "app", "Talk.md"));
     expect(await run(["verify", "--codegen", "--cwd", root])).toBe(0);
     expect([...out, ...err].join("\n")).toContain(
       "1 generated documentation page(s) are git-ignored and were not checked",
@@ -356,7 +356,7 @@ describe("meta verify --codegen checks the documentation the list declares", () 
     writeFileSync(join(root, ".gitignore"), "docs/\n", "utf8");
     expect(await run(["gen", "--cwd", root])).toBe(0);
     // A stale page in the ignored directory is not drift: nothing there is compared.
-    writeFileSync(join(root, "docs", "generated", "Talk.md"), "stale\n", "utf8");
+    writeFileSync(join(root, "docs", "generated", "app", "Talk.md"), "stale\n", "utf8");
     expect(await run(["verify", "--codegen", "--cwd", root])).toBe(0);
     expect([...out, ...err].join("\n")).toContain(
       "docs/generated: the repository git-ignores every documentation page generated there, so they were not compared.",

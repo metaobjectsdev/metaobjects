@@ -219,6 +219,39 @@ public class DbContextCompileTests
         Assert.Contains("[Column(OrderNames.StatusColumn)]", orderSrc);
     }
 
+    // A large model's configuration is split into ordered methods: one OnModelCreating holding every
+    // line has a stack frame too big for a thread-pool thread in a Debug build (each converter lambda is
+    // an expression tree built from locals), and a test host overflows its stack building the model.
+    [Fact]
+    public void A_large_model_config_is_split_into_ordered_methods_that_compile()
+    {
+        var ctx = Ctx(Load());
+        var whole = Assert.Single(new DbContextGenerator().Generate(ctx)).Content;
+        Assert.DoesNotContain("ConfigureModel01", whole);
+
+        var split = Assert.Single(new DbContextGenerator { ModelConfigChunkSize = 3 }.Generate(ctx)).Content;
+        Assert.Contains("        ConfigureModel01(modelBuilder);\n        ConfigureModel02(modelBuilder);", split);
+        Assert.Contains("    private void ConfigureModel01(ModelBuilder modelBuilder)", split);
+
+        // The same lines, in the same order, end up in the methods.
+        static List<string> ConfigLines(string src) => src.Split('\n')
+            .Where(l => l.StartsWith("        modelBuilder.", StringComparison.Ordinal))
+            .ToList();
+        Assert.Equal(ConfigLines(whole), ConfigLines(split));
+
+        var sources = new EntityGenerator().Generate(ctx)
+            .Concat(new NamesGenerator().Generate(ctx))
+            .Select(f => f.Content)
+            .Append(split);
+        var comp = CSharpCompilation.Create(
+            "efcore_split_" + Guid.NewGuid().ToString("N"),
+            sources.Select(c => CSharpSyntaxTree.ParseText(c, new CSharpParseOptions(LanguageVersion.CSharp12))),
+            BuildReferences(),
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        var errors = comp.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).Select(d => $"{d.Id}: {d.GetMessage()}").ToList();
+        Assert.True(errors.Count == 0, string.Join("\n", errors));
+    }
+
     // The map's value object is serialized by the MapJsonb helper's shared JsonSerializerOptions,
     // and System.Text.Json writes enums as NUMBERS by default — so a field.enum member of the
     // map's @objectRef value object persisted as its ORDINAL, while the same member of the same

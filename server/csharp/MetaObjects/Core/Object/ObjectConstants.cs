@@ -47,6 +47,13 @@ public static class ObjectConstants
     /// </summary>
     public const string OBJECT_ATTR_DISCRIMINATOR_VALUE = "discriminatorValue";
 
+    /// <summary>
+    /// The collection property a per-context ORM mapping gives an object (the EF Core DbSet
+    /// property name), in place of the plural derived from its name. On object.entity and on the
+    /// view-backed object.projection / object.report that get a DbSet.
+    /// </summary>
+    public const string OBJECT_ATTR_DB_SET_NAME = "dbSetName";
+
     // -----------------------------------------------------------------------
     // #207 — projection row-scope @filter (view-level WHERE)
     // -----------------------------------------------------------------------

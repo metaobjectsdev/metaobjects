@@ -493,7 +493,7 @@ public class SimpleMappingHandlerDB implements MappingHandler {
       // an object is read through the read-only source it declares ITSELF (a projection's
       // own view; a report read model's one source copy); an inherited writable source is
       // reached through getTableRef below.
-      return mc.findPrimaryReadOnlySource().map( MetaSource::getPhysicalName ).orElse( null );
+      return mc.findPrimaryReadOnlySource().map( SimpleMappingHandlerDB::qualifiedName ).orElse( null );
     }
 
     /**
@@ -509,7 +509,20 @@ public class SimpleMappingHandlerDB implements MappingHandler {
      */
     protected String getTableRef( MetaObject mc )
     {
-      return mc.findPrimaryWritableSource().map( MetaSource::getPhysicalName ).orElse( null );
+      return mc.findPrimaryWritableSource().map( SimpleMappingHandlerDB::qualifiedName ).orElse( null );
+    }
+
+    /**
+     * The source's physical name, qualified by its {@code @schema} when it declares one
+     * ({@code sales.orders}), so a relation in a non-default schema is read and written there
+     * rather than wherever the connection's search path resolves the bare name.
+     * {@link NameDef#parseName} splits it back into schema and name.
+     */
+    protected static String qualifiedName( MetaSource source )
+    {
+      String name = source.getPhysicalName();
+      String schema = source.getSchema();
+      return schema == null || schema.isEmpty() ? name : schema + "." + name;
     }
 
     /**

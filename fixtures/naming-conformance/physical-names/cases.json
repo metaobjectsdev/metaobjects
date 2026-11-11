@@ -1,5 +1,9 @@
 {
-  "_comment": "Cross-port physical naming (ADR-0058). Each case is the `naming` block of a project's .metaobjects/config.json. A port parses it with the reader it uses for that file, loads meta.naming.json, and resolves every table and column below through the resolver its codegen, migrate (TypeScript), runtime and verify use. `tables` keys are object names; `columns` keys are `<Object>.<field>`. Overrides (@table, a source's structural name, @column) win under every rule; the entity-name fallback keeps the frozen legacy pluralizer under every rule. `invalid` blocks must be refused when the config is read. `upperFirst` upper-cases the field name's first letter and changes nothing else (`requestURL` → `RequestURL`). A key `<Object>.<field>.<member>` names a member of a `@storage: flattened` value object: its column is the flattened prefix (`@flattenedColumnPrefix` on the embedding field, verbatim, `\"\"` allowed; else that field's resolved column and `_`) followed by the member's resolved column; a prefix inherited through `extends` counts.",
+  "_comment": "Cross-port physical naming (ADR-0058). Each case is the `naming` block of a project's .metaobjects/config.json. A port parses it with the reader it uses for that file, loads meta.naming.json, and resolves every table and column below through the resolver its codegen, migrate (TypeScript), runtime and verify use. `tables` keys are object names; `columns` keys are `<Object>.<field>`. Overrides (@table, a source's structural name, @column) win under every rule; the entity-name fallback keeps the frozen legacy pluralizer under every rule. `invalid` blocks must be refused when the config is read. `pascal` upper-cases the field name's first letter and changes nothing else (`requestURL` → `RequestURL`, `ssn` → `Ssn`); an acronym `@column` (`NPI`) stays as written. A key `<Object>.<field>.<member>` names a member of a `@storage: flattened` value object: its column is the flattened prefix (`@flattenedColumnPrefix` on the embedding field, verbatim, `\"\"` allowed; else that field's resolved column and `_`) followed by the member's resolved column; a prefix inherited through `extends` counts. `strategies` are application-registered naming strategies: before reading any block, a port registers each one through its own extension point (the registry an application uses), as a function of the bare name: a name in `upperCase` gives that name upper-cased (ASCII), any other name gives `prefix` (absent: \"\") followed by the `delegate` built-in's result. `for` is the setting it may be named in (`columns` or `tables`). A config naming a strategy no registered strategy answers, built in or registered, is refused when it is read, and a block with `messageIncludes` must be refused with a message containing each string; the message also names the port.",
+  "strategies": [
+    { "name": "pascal-acronyms", "for": "columns", "delegate": "pascal", "upperCase": ["id", "ssn"] },
+    { "name": "tbl-snake", "for": "tables", "delegate": "snake_case", "prefix": "tbl_" }
+  ],
   "cases": [
     {
       "name": "default",
@@ -7,7 +11,7 @@
       "tables": { "OrderItem": "order_items", "Person": "people", "AuditEntry": "audit_log", "Category": "categories", "HTTPRequest": "http_requests", "Shipment": "shipments" },
       "columns": {
         "OrderItem.id": "id", "OrderItem.createdAt": "created_at", "OrderItem.unitPriceCents": "unit_price_cents", "OrderItem.sku": "SKU_CODE",
-        "Person.firstName": "first_name", "Person.lastName": "family_name",
+        "Person.firstName": "first_name", "Person.lastName": "family_name", "Person.npi": "NPI", "Person.ssn": "ssn",
         "AuditEntry.eventType": "event_type",
         "Category.displayName": "display_name",
         "HTTPRequest.requestURL": "request_url",
@@ -20,7 +24,7 @@
       "tables": { "OrderItem": "order_items", "Person": "people", "AuditEntry": "audit_log", "Category": "categories", "HTTPRequest": "http_requests", "Shipment": "shipments" },
       "columns": {
         "OrderItem.id": "id", "OrderItem.createdAt": "created_at", "OrderItem.unitPriceCents": "unit_price_cents", "OrderItem.sku": "SKU_CODE",
-        "Person.firstName": "first_name", "Person.lastName": "family_name",
+        "Person.firstName": "first_name", "Person.lastName": "family_name", "Person.npi": "NPI", "Person.ssn": "ssn",
         "AuditEntry.eventType": "event_type",
         "Category.displayName": "display_name",
         "HTTPRequest.requestURL": "request_url",
@@ -33,7 +37,7 @@
       "tables": { "OrderItem": "order_items", "Person": "people", "AuditEntry": "audit_log", "Category": "categories", "HTTPRequest": "http_requests", "Shipment": "shipments" },
       "columns": {
         "OrderItem.id": "id", "OrderItem.createdAt": "createdAt", "OrderItem.unitPriceCents": "unitPriceCents", "OrderItem.sku": "SKU_CODE",
-        "Person.firstName": "firstName", "Person.lastName": "family_name",
+        "Person.firstName": "firstName", "Person.lastName": "family_name", "Person.npi": "NPI", "Person.ssn": "ssn",
         "AuditEntry.eventType": "eventType",
         "Category.displayName": "displayName",
         "HTTPRequest.requestURL": "requestURL",
@@ -46,7 +50,7 @@
       "tables": { "OrderItem": "OrderItems", "Person": "people", "AuditEntry": "AuditLog", "Category": "Categories", "HTTPRequest": "HTTPRequests", "Shipment": "Shipments" },
       "columns": {
         "OrderItem.id": "id", "OrderItem.createdAt": "created_at", "OrderItem.unitPriceCents": "unit_price_cents", "OrderItem.sku": "SKU_CODE",
-        "Person.firstName": "first_name", "Person.lastName": "family_name",
+        "Person.firstName": "first_name", "Person.lastName": "family_name", "Person.npi": "NPI", "Person.ssn": "ssn",
         "AuditEntry.eventType": "event_type",
         "Category.displayName": "display_name",
         "HTTPRequest.requestURL": "request_url",
@@ -59,7 +63,7 @@
       "tables": { "OrderItem": "OrderItems", "Person": "people", "AuditEntry": "AuditLog", "Category": "Categories", "HTTPRequest": "HTTPRequests", "Shipment": "Shipments" },
       "columns": {
         "OrderItem.id": "id", "OrderItem.createdAt": "created-at", "OrderItem.unitPriceCents": "unit-price-cents", "OrderItem.sku": "SKU_CODE",
-        "Person.firstName": "first-name", "Person.lastName": "family_name",
+        "Person.firstName": "first-name", "Person.lastName": "family_name", "Person.npi": "NPI", "Person.ssn": "ssn",
         "AuditEntry.eventType": "event-type",
         "Category.displayName": "display-name",
         "HTTPRequest.requestURL": "request-url",
@@ -67,24 +71,40 @@
       }
     },
     {
-      "name": "upperFirst columns, literal tables",
-      "naming": { "columns": "upperFirst", "tables": "literal" },
+      "name": "pascal columns, literal tables",
+      "naming": { "columns": "pascal", "tables": "literal" },
       "tables": { "OrderItem": "OrderItems", "Person": "people", "AuditEntry": "AuditLog", "Category": "Categories", "HTTPRequest": "HTTPRequests", "Shipment": "Shipments" },
       "columns": {
         "OrderItem.id": "Id", "OrderItem.createdAt": "CreatedAt", "OrderItem.unitPriceCents": "UnitPriceCents", "OrderItem.sku": "SKU_CODE",
-        "Person.firstName": "FirstName", "Person.lastName": "family_name",
+        "Person.firstName": "FirstName", "Person.lastName": "family_name", "Person.npi": "NPI", "Person.ssn": "Ssn",
         "AuditEntry.eventType": "EventType",
         "Category.displayName": "DisplayName",
         "HTTPRequest.requestURL": "RequestURL",
         "Shipment.id": "Id", "Shipment.shipTo.street": "ShipTo_Street", "Shipment.shipTo.postalCode": "ShipTo_PostalCode", "Shipment.shipTo.country": "ShipTo_CTRY", "Shipment.billTo.postalCode": "bill_PostalCode", "Shipment.returnTo.postalCode": "PostalCode", "Shipment.giftTo.postalCode": "g_PostalCode", "Shipment.giftTo.country": "g_CTRY", "Shipment.homeTo.postalCode": "addr_PostalCode"
+      }
+    },
+    {
+      "name": "app-registered column and table strategies",
+      "naming": { "columns": "pascal-acronyms", "tables": "tbl-snake" },
+      "tables": { "OrderItem": "tbl_order_items", "Person": "people", "AuditEntry": "tbl_audit_log", "Category": "tbl_categories", "HTTPRequest": "tbl_http_requests", "Shipment": "tbl_shipments" },
+      "columns": {
+        "OrderItem.id": "ID", "OrderItem.createdAt": "CreatedAt", "OrderItem.unitPriceCents": "UnitPriceCents", "OrderItem.sku": "SKU_CODE",
+        "Person.firstName": "FirstName", "Person.lastName": "family_name", "Person.npi": "NPI", "Person.ssn": "SSN",
+        "AuditEntry.eventType": "EventType",
+        "Category.displayName": "DisplayName",
+        "HTTPRequest.requestURL": "RequestURL",
+        "Shipment.id": "ID", "Shipment.shipTo.street": "ShipTo_Street", "Shipment.shipTo.postalCode": "ShipTo_PostalCode", "Shipment.shipTo.country": "ShipTo_CTRY", "Shipment.billTo.postalCode": "bill_PostalCode", "Shipment.returnTo.postalCode": "PostalCode", "Shipment.giftTo.postalCode": "g_PostalCode", "Shipment.giftTo.country": "g_CTRY", "Shipment.homeTo.postalCode": "addr_PostalCode"
       }
     }
   ],
   "invalid": [
     { "name": "unknown column rule", "naming": { "columns": "camelCase" } },
     { "name": "kebab-case is not a table rule", "naming": { "tables": "kebab-case" } },
-    { "name": "upperFirst is not a table rule", "naming": { "tables": "upperFirst" } },
+    { "name": "pascal is not a table rule", "naming": { "tables": "pascal" } },
     { "name": "unknown key", "naming": { "column": "literal" } },
-    { "name": "not an object", "naming": "snake_case"}
+    { "name": "not an object", "naming": "snake_case"},
+    { "name": "a column strategy nothing registered", "naming": { "columns": "pascal-acronym" }, "messageIncludes": ["naming.columns", "\"pascal-acronym\"", "pascal-acronyms"] },
+    { "name": "a table strategy nothing registered", "naming": { "tables": "tbl_snake" }, "messageIncludes": ["naming.tables", "\"tbl_snake\"", "tbl-snake"] },
+    { "name": "an app column strategy is not a table rule", "naming": { "tables": "pascal-acronyms" }, "messageIncludes": ["naming.tables", "\"pascal-acronyms\""] }
   ]
 }

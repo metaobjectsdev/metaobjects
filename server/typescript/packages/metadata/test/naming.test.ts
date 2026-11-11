@@ -1,5 +1,21 @@
 import { describe, it, expect } from "bun:test";
-import { toUpperFirstColumn } from "../src/naming.js";
+import {
+  toPascalColumn,
+  applyColumnNamingStrategy,
+  applyTableNamingRule,
+  columnNamingStrategy,
+  tableNamingRule,
+  registerColumnNamingStrategy,
+  registerTableNamingRule,
+  registeredColumnNamingStrategies,
+  registeredTableNamingRules,
+  resetNamingStrategiesForTesting,
+  isRegisteredColumnNamingStrategy,
+  isRegisteredTableNamingRule,
+  unknownNamingStrategyMessage,
+  BUILTIN_COLUMN_NAMING_STRATEGIES,
+  BUILTIN_TABLE_NAMING_RULES,
+} from "../src/naming.js";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -373,16 +389,70 @@ describe("fixtures/naming-conformance/already-plural-pluralize.json", () => {
   );
 });
 
-describe("toUpperFirstColumn", () => {
+describe("toPascalColumn", () => {
   it("upper-cases the first letter only", () => {
-    expect(toUpperFirstColumn("requestURL")).toBe("RequestURL");
-    expect(toUpperFirstColumn("")).toBe("");
+    expect(toPascalColumn("requestURL")).toBe("RequestURL");
+    expect(toPascalColumn("npi")).toBe("Npi");
+    expect(toPascalColumn("")).toBe("");
   });
 
   // C#'s char.ToUpperInvariant and Java's Character.toUpperCase map one character to one
   // character, so `ß` stays `ß` there; JavaScript's toUpperCase gives "SS". Every port keeps a
   // first character whose upper case is not a single character, so all five name it alike.
   it("keeps a first character whose upper case is not one character", () => {
-    expect(toUpperFirstColumn("ßeta")).toBe("ßeta");
+    expect(toPascalColumn("ßeta")).toBe("ßeta");
+  });
+});
+
+describe("naming strategy registry", () => {
+  it("registers every built-in by name", () => {
+    expect([...BUILTIN_COLUMN_NAMING_STRATEGIES]).toEqual(["snake_case", "literal", "kebab-case", "pascal"]);
+    expect([...BUILTIN_TABLE_NAMING_RULES]).toEqual(["snake_case", "literal"]);
+    expect(applyColumnNamingStrategy("requestURL", "pascal")).toBe("RequestURL");
+    expect(columnNamingStrategy("snake_case")("requestURL")).toBe("request_url");
+    expect(tableNamingRule("literal")("OrderItem")).toBe("OrderItem");
+  });
+
+  it("resolves an application-registered strategy that delegates to a built-in", () => {
+    const pascal = columnNamingStrategy("pascal");
+    registerColumnNamingStrategy("test-acronyms", (n) => (n === "npi" ? "NPI" : pascal(n)));
+    expect(applyColumnNamingStrategy("npi", "test-acronyms")).toBe("NPI");
+    expect(applyColumnNamingStrategy("createdAt", "test-acronyms")).toBe("CreatedAt");
+    expect(registeredColumnNamingStrategies()).toContain("test-acronyms");
+    registerTableNamingRule("test-prefixed", (n) => "t_" + tableNamingRule("snake_case")(n));
+    expect(applyTableNamingRule("OrderItem", "test-prefixed")).toBe("t_order_item");
+    expect(registeredTableNamingRules()).toContain("test-prefixed");
+    // A column strategy is not a table rule.
+    expect(registeredTableNamingRules()).not.toContain("test-acronyms");
+  });
+
+  it("refuses to replace a built-in", () => {
+    expect(() => registerColumnNamingStrategy("snake_case", (n) => n)).toThrow(/built in/);
+    expect(() => registerTableNamingRule("literal", (n) => n)).toThrow(/built in/);
+  });
+
+  it("an unknown name fails loud, naming the strategy and the port", () => {
+    expect(() => applyColumnNamingStrategy("x", "no-such-rule")).toThrow(
+      unknownNamingStrategyMessage("columns", "no-such-rule"),
+    );
+    expect(() => applyTableNamingRule("X", "no-such-rule")).toThrow(/"naming.tables" names "no-such-rule"/);
+    const message = unknownNamingStrategyMessage("columns", "no-such-rule");
+    expect(message).toContain("TypeScript port");
+    expect(message).toContain("built in: snake_case, literal, kebab-case, pascal");
+  });
+
+  it("resetNamingStrategiesForTesting forgets the application's strategies and keeps the built-ins", () => {
+    registerColumnNamingStrategy("test-reset", (n) => n.toUpperCase());
+    registerTableNamingRule("test-reset-tables", (n) => n.toUpperCase());
+    expect(isRegisteredColumnNamingStrategy("test-reset")).toBe(true);
+
+    resetNamingStrategiesForTesting();
+
+    expect(isRegisteredColumnNamingStrategy("test-reset")).toBe(false);
+    expect(isRegisteredTableNamingRule("test-reset-tables")).toBe(false);
+    expect([...registeredColumnNamingStrategies()]).toEqual([...BUILTIN_COLUMN_NAMING_STRATEGIES]);
+    expect([...registeredTableNamingRules()]).toEqual([...BUILTIN_TABLE_NAMING_RULES]);
+    expect(() => applyColumnNamingStrategy("id", "test-reset")).toThrow(/"naming.columns" names "test-reset"/);
+    expect(applyColumnNamingStrategy("requestURL", "snake_case")).toBe("request_url");
   });
 });

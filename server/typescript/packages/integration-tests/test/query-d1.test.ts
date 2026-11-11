@@ -7,7 +7,7 @@
 import { beforeAll, describe, test } from "bun:test";
 import { CANONICAL_DIR, QUERIES_DIR } from "../src/paths.ts";
 import { generateCanonicalSchemaSql } from "../src/canonical-schema.ts";
-import { loadMetadataDir } from "../src/load-metadata.ts";
+import { loadMetadataDirWithoutSchemas } from "../src/load-metadata.ts";
 import { loadQueriesFor } from "../src/scenario.ts";
 import { runQueryScenarioD1, startLocalD1 } from "../src/query-scenario-d1.ts";
 
@@ -15,7 +15,7 @@ import { runQueryScenarioD1, startLocalD1 } from "../src/query-scenario-d1.ts";
 // metadata — the whole migrate pipeline runs once for the suite instead of once per scenario.
 let schemaSql: string;
 beforeAll(async () => {
-  schemaSql = await generateCanonicalSchemaSql(await loadMetadataDir(CANONICAL_DIR), { dialect: "d1" });
+  schemaSql = await generateCanonicalSchemaSql(await loadMetadataDirWithoutSchemas(CANONICAL_DIR), { dialect: "d1" });
 }, 120_000);
 
 describe("persistence conformance — report query scenarios on Cloudflare D1 (local runtime)", () => {

@@ -30,6 +30,7 @@ import type { Generator, GeneratorFactory, EmittedFile } from "../generator.js";
 import {
   docPageOutputPath,
   surfaceCrossHref,
+  DOCS_PAGE_LAYOUT,
   assertNoDuplicateDocPaths,
   type DocPageNode,
   type DocPagePlacement,
@@ -73,7 +74,9 @@ export const apiDocsFile = function apiDocsFile(opts?: ApiDocsFileOpts): Generat
     emitsApiDocs: { subDir: apiDir },
     generate(ctx) {
       const provider = projectProvider(docsTemplateRoot(ctx));
-      const layout = ctx.config.outputLayout ?? "flat";
+      // Pages are keyed by package (DOCS_PAGE_LAYOUT), whatever the target's outputLayout:
+      // a page named by its short name alone collides with a same-named node elsewhere.
+      const layout = DOCS_PAGE_LAYOUT;
 
       // Whether each page links back to its model page: the model pages are hosted
       // elsewhere (`modelBaseUrl`), or `docsFile()` writes them to this same target.

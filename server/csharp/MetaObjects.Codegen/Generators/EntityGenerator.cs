@@ -38,17 +38,56 @@ public class EntityGenerator : IGenerator
 {
     public virtual string Name => "entity-generator";
 
-    /// <summary>The C# property name for a field. Default: PascalCase the metadata
-    /// (camelCase) name. Extension seam (ADR-0002) — a subclass can override to honor
-    /// an explicit casing source (e.g. P3 preserves an all-caps acronym column casing
-    /// like NPI/PARequired that a plain PascalCase of the field name would mangle).</summary>
-    protected virtual string PropertyName(MetaField field) => CSharpNaming.Pascal(field.Name);
+    /// <summary>The C# property name for a field. Default: the run's
+    /// <see cref="GenConfig.PropertyNaming"/> resolver, else PascalCase of the metadata
+    /// (camelCase) name (<see cref="CSharpNaming.PropertyName"/>). Extension seam (ADR-0002) — a
+    /// subclass can override to honor an explicit casing source (an all-caps acronym a plain
+    /// PascalCase of the field name would mangle). Every name this generator emits for a field —
+    /// the property, the composite <c>[PrimaryKey]</c>, the reverse finders — goes through here.
+    /// The DbContext generator names the same properties: set the resolver on the config, or
+    /// override <c>DbContextGenerator.PropertyName</c> to match.</summary>
+    protected virtual string PropertyName(MetaField field) => CSharpNaming.PropertyName(field, _config);
+
+    // The run's config, for the PropertyName default. Set when Generate starts.
+    private GenConfig? _config;
+
+    // The run's context, for the property hooks (PropertyClrType / PropertyInitializer) of the
+    // emitters that were never handed one. Set when Generate starts; a member emitter called on
+    // its own (a subclass reaching ScalarProperty directly) gets a context built from the config.
+    private GenContext? _ctx;
+
+    private GenContext HookContext() =>
+        _ctx ?? new GenContext
+        {
+            Entities = [], Root = null!,
+            Config = _config ?? new GenConfig { OutDir = "", Namespace = "" },
+        };
+
+    // What the member emitter now running knows that the property hooks' signature does not carry,
+    // so the hooks' defaults can reproduce each emitter's own answer: a value-object member (an
+    // omittable array, a constructible required nested object), a TPH subtype's own scalar (no
+    // @dbColumnType override, no origin guarantee), and an aggregate's result type. Set at the
+    // start of every member emitter, read by the default hooks it calls.
+    private readonly record struct PropertySite(bool ValueObject, bool TphSubtype, string? BaseTypeOverride);
+    private PropertySite _site;
+
+    /// <summary>Whether this entry emits the ADR-0038 reverse-FK finders
+    /// (<c>&lt;Entity&gt;Queries.g.cs</c>). <c>true</c> by default; an adopter that writes its own
+    /// finders turns them off here instead of dropping the files by name.</summary>
+    public bool EmitsReverseFinders { get; init; } = true;
 
     /// <summary>Scope this entry to some objects: only those it accepts are emitted (entities
     /// and value objects alike). A value object an emitted entity points at is still emitted,
     /// because it is resolved through the model root. <c>null</c>, the default, accepts every
     /// object. See <see cref="GenContext.Narrow"/>.</summary>
     public Func<MetaObject, bool>? Include { get; init; }
+
+    /// <summary>When <c>true</c>, <see cref="Include"/> also applies to the value objects this run
+    /// reaches through the model root (an emitted entity's object fields, callable arguments,
+    /// template payloads, and their nested value objects): one it rejects gets no POCO even when
+    /// an emitted type references it, and the adopter supplies that type. <c>false</c>, the
+    /// default, emits every reached value object so the output compiles on its own.</summary>
+    public bool ScopesValueObjectClosure { get; init; }
 
     // The run's wire setting (ADR-0019 Amendment 2), read from the loaded root when Generate
     // starts. Read from the run, not from each field's own root: a report's row model is a
@@ -59,6 +98,8 @@ public class EntityGenerator : IGenerator
     {
         ctx = ctx.Narrow(Include);
         _wire = ctx.Root.WireFormat;
+        _config = ctx.Config;
+        _ctx = ctx;
         // FR-044 — a view-backed report joins the set as its ROW MODEL (a keyless,
         // projection-shaped object carrying its derived fields); every other report node
         // is dropped. See ReportRows.
@@ -97,6 +138,8 @@ public class EntityGenerator : IGenerator
         // abstract value object an entity object-field does reach (its owned-type navigation
         // needs the class).
         var valueObjects = ValueShapes(ReferencedValueObjects([.. mapped, .. unmappedShapes], ctx), ctx);
+        if (ScopesValueObjectClosure && ctx.Scope is { } scope)
+            valueObjects = valueObjects.Where(scope).ToList();
 
         var files = new List<EmittedFile>();
 
@@ -147,10 +190,17 @@ public class EntityGenerator : IGenerator
         }
         // A concrete sourceless object (#248) shares the value object's emission: a plain
         // POCO with the validation DataAnnotations and none of the EF mapping attributes.
+        // Asked about EVERY one of them: a null from an override drops that object's file.
         foreach (var o in unmappedShapes)
-            files.Add(EmitValueObjectPoco(o, ctx));
+            if (EmitValueObjectPoco(o, ctx) is { } poco)
+            {
+                files.Add(poco);
+            }
         foreach (var vo in valueObjects)
-            files.Add(EmitValueObjectPoco(vo, ctx));
+            if (EmitValueObjectPoco(vo, ctx) is { } poco)
+            {
+                files.Add(poco);
+            }
 
         // ADR-0038 — reverse-relationship navigation as explicit FK finders. For each
         // concrete, table-mapped entity holding ≥1 FK (identity.reference), emit a
@@ -158,7 +208,7 @@ public class EntityGenerator : IGenerator
         // generated DbSet (framework-free, single-query LINQ). NOT a lazy collection.
         // TPH subtypes are folded into the base's DbSet, so finders hang off the base
         // entity's set — skip subtype-level emission (the base carries the FKs it owns).
-        foreach (var e in mapped)
+        foreach (var e in EmitsReverseFinders ? mapped : [])
         {
             if (InstanceArtifacts.IsAbstract(e)) continue;
             if (TphPlanBuilder.IsTphSubtype(e, ctx.Root)) continue;
@@ -172,7 +222,7 @@ public class EntityGenerator : IGenerator
                 rowOverride = CSharpNaming.ViewModelClassName(e);
                 dbSetOverride = CSharpNaming.ViewDbSetName(e);
             }
-            if (ReverseFinderBuilder.Generate(e, ctx, rowOverride, dbSetOverride) is { } queries)
+            if (ReverseFinderBuilder.Generate(e, ctx, rowOverride, dbSetOverride, PropertyName) is { } queries)
                 files.Add(queries);
         }
 
@@ -411,7 +461,8 @@ public class EntityGenerator : IGenerator
         // Composite primary key -> class-level [PrimaryKey(...)] (EF Core 7+).
         if (pkFields.Count > 1)
         {
-            var names = string.Join(", ", pkFields.Select(f => $"nameof({CSharpNaming.Pascal(f)})"));
+            var names = string.Join(", ", pkFields.Select(f =>
+                $"nameof({(entity.FindField(f) is { } pkField ? PropertyName(pkField) : CSharpNaming.Pascal(f))})"));
             sb.AppendLine($"[PrimaryKey({names})]");
         }
         // A6 -- CSharpNaming.NameRef gates this on TWO independent things, neither of
@@ -442,16 +493,47 @@ public class EntityGenerator : IGenerator
         // contract. Deserialization into the BASE is not something the generated routes do —
         // an abstract base has no create/update handler, and each subtype's handler
         // deserializes that subtype directly.
-        if (TphPlanBuilder.For(entity, ctx.Root) is { } tphPlan)
-            foreach (var sub in tphPlan.Subtypes)
-                sb.AppendLine(
-                    $"[System.Text.Json.Serialization.JsonDerivedType(typeof({CSharpNaming.Pascal(sub.Entity.Name)}))]");
+        if (TphPlanBuilder.IsTphDiscriminatorBase(entity, ctx.Root))
+        {
+            foreach (var line in TphDerivedTypeAttributes(entity, ctx))
+            {
+                sb.AppendLine(line);
+            }
+        }
+        EmitClassAttributes(sb, entity, className, ClassDeclarationKind.MappedEntity, ctx);
 
         // The `public [abstract] class <Name>[ : Base]` declaration line itself is routed
         // through the single overridable seam shared by all four emitted class kinds, so an
         // adopter's `partial`/marker-interface override applies uniformly. The EF mapping
         // attrs ([Table]/[PrimaryKey]) above stay here — they are mapped-entity-only.
         EmitClassDeclarationLine(sb, entity, className, ClassDeclarationKind.MappedEntity, ctx);
+    }
+
+    /// <summary>
+    /// Hook — the polymorphic-serialization attribute lines <see cref="EmitClassHeader"/> writes on a
+    /// TPH discriminator base, after its <c>[Table]</c> and before the adopter's
+    /// <see cref="EmitClassAttributes"/>: complete class-level lines, no indent. Called once per TPH
+    /// base (<paramref name="root"/>), and only for one. Default: one
+    /// <c>[System.Text.Json.Serialization.JsonDerivedType(typeof(&lt;Sub&gt;))]</c> per concrete
+    /// subtype, in the plan's order (see the comment in <see cref="EmitClassHeader"/> for why they are
+    /// there). Return none to keep a base-typed list serializing the declared type only, or add a
+    /// <c>[JsonPolymorphic]</c> line to configure a type discriminator.
+    /// </summary>
+    protected virtual IEnumerable<string> TphDerivedTypeAttributes(MetaObject root, GenContext ctx) =>
+        TphPlanBuilder.For(root, ctx.Root) is { } plan
+            ? plan.Subtypes.Select(sub =>
+                $"[System.Text.Json.Serialization.JsonDerivedType(typeof({CSharpNaming.Pascal(sub.Entity.Name)}))]")
+            : [];
+
+    // Extension hook — class-level attributes of an adopter's own, emitted after the framework's
+    // (XML doc, [PrimaryKey], [Table], [JsonDerivedType]) and immediately before the declaration
+    // line, for every class kind. The default emits nothing, so default output is byte-identical.
+    // Override it to add an attribute without re-implementing EmitClassHeader; each line written
+    // should be a complete attribute line with no indent.
+    protected virtual void EmitClassAttributes(
+        StringBuilder sb, MetaObject entity, string className, ClassDeclarationKind kind, GenContext ctx)
+    {
+        // No-op by default.
     }
 
     // The four emitted class kinds — the declaration-line seam dispatches on this so an
@@ -580,6 +662,7 @@ public class EntityGenerator : IGenerator
         sb.AppendLine();
 
         XmlDocBuilder.AppendTo(sb, entity);
+        EmitClassAttributes(sb, entity, className, ClassDeclarationKind.TphSubtype, ctx);
         EmitClassDeclarationLine(sb, entity, className, ClassDeclarationKind.TphSubtype, ctx);
         var tphAncestor = EmittedTphAncestor(entity, ctx);
         var validatingBase = HasEffectiveCrossField(tphAncestor) ? tphAncestor : null;
@@ -647,6 +730,7 @@ public class EntityGenerator : IGenerator
     protected virtual string TphSubtypeScalarProperty(
         MetaObject entity, MetaField field, ColumnNamingStrategy strategy, bool includeNames)
     {
+        _site = new PropertySite(ValueObject: false, TphSubtype: true, null);
         // ScalarForField resolves the ADR-0036 Wave 2 conditional field.timestamp binding.
         var baseType = CSharpNaming.ScalarForField(field)!;
         var propName = PropertyName(field);
@@ -654,21 +738,24 @@ public class EntityGenerator : IGenerator
         if (field.ResolvedIsArray()) // ADR-0039: resolving — array-ness inheritable via extends
         {
             var arr = new StringBuilder();
-            arr.AppendLine($"    [Column({CSharpNaming.ColumnRef(entity, field, strategy, includeNames)})]");
+            if (ColumnAttributeLine(entity, field, strategy, includeNames) is { } arrColumn)
+            {
+                arr.AppendLine(arrColumn);
+            }
             AppendArrayValidatorAttributes(arr, field);
             AppendDecimalConverterAttribute(arr, field, nullable: false, _wire);
             AppendDurationConverterAttribute(arr, field, _wire);
             // A NON-required decimal array is nullable (no initializer) so PATCH null / an omitted
             // POST value stays a NULL column instead of failing as a required collection.
-            if (IsDecimalWireField(field) && !CSharpNaming.IsRequired(entity, field))
-                arr.Append($"    public IList<{baseType}>? {propName} {{ get; set; }}");
-            else
-                arr.Append($"    public IList<{baseType}> {propName} {{ get; set; }} = new List<{baseType}>();");
+            arr.Append(PropertyDeclaration(entity, field, propName, "get; set;"));
             return arr.ToString();
         }
 
         var sb = new StringBuilder();
-        sb.AppendLine($"    [Column({CSharpNaming.ColumnRef(entity, field, strategy, includeNames)})]");
+        if (ColumnAttributeLine(entity, field, strategy, includeNames) is { } column)
+        {
+            sb.AppendLine(column);
+        }
         if (baseType == "string")
             AppendStringValidatorAttributes(sb, field);
         else
@@ -676,7 +763,6 @@ public class EntityGenerator : IGenerator
         var required = CSharpNaming.IsRequired(entity, field);
         AppendDecimalConverterAttribute(sb, field, nullable: !required, _wire);
         AppendDurationConverterAttribute(sb, field, _wire);
-        var nullable = required ? "" : "?";
         // Mirrors ScalarProperty's own initializer handling (its non-TPH sibling): a
         // literal-safe @default (bool/int/long/double/float/decimal/string) wins over the
         // `= default!;` filler a required REFERENCE-type property would otherwise need.
@@ -684,12 +770,7 @@ public class EntityGenerator : IGenerator
         // life at the CLR default (false/0/null) on `new Sub()` instead of the declared
         // @default value — every OTHER scalar-property path in this generator already
         // applies DefaultInitializer; this one was the one gap.
-        var defaultInit = DefaultInitializer(field, baseType);
-        var isValue = CSharpNaming.IsValueType(baseType);
-        var init = defaultInit.Length > 0
-            ? defaultInit
-            : (required && !isValue ? " = default!;" : string.Empty);
-        sb.Append($"    public {baseType}{nullable} {propName} {{ get; set; }}{init}");
+        sb.Append(PropertyDeclaration(entity, field, propName, "get; set;"));
         return sb.ToString();
     }
 
@@ -697,14 +778,19 @@ public class EntityGenerator : IGenerator
     // follows @required (see TphSubtypeScalarProperty); the column is auto-nullable.
     protected virtual string TphSubtypeEnumProperty(MetaObject entity, MetaField field, GenConfig config, ColumnNamingStrategy strategy)
     {
-        var typeName = EnumPropertyTypeName(entity, field, config);
+        _site = new PropertySite(ValueObject: false, TphSubtype: true, null);
         var propName = PropertyName(field);
-        var colAttr = $"    [Column({CSharpNaming.ColumnRef(entity, field, strategy, config.IncludeNames)})]\n";
-        if (field.ResolvedIsArray()) // ADR-0039: resolving — array-ness inheritable via extends
-            return $"{colAttr}    public IList<{typeName}> {propName} {{ get; set; }} = new List<{typeName}>();";
-        var nullable = CSharpNaming.IsRequired(entity, field) ? "" : "?";
-        return $"{colAttr}    public {typeName}{nullable} {propName} {{ get; set; }}";
+        var colAttr = ColumnAttributeLine(entity, field, strategy, config.IncludeNames) is { } column ? column + "\n" : "";
+        return colAttr + PropertyDeclaration(entity, field, propName, "get; set;");
     }
+
+    // An enum ARRAY property is IList<TEnum> with an empty-list initializer, except a
+    // NON-required int-backed one (@intValueMap, read resolving — it is normally inherited from
+    // a shared abstract enum), which is a nullable IList<TEnum>? with no initializer, the rule a
+    // non-required decimal array follows: its integer[] / JSON column is nullable, and a NULL
+    // must read back as null rather than fail materialization of a non-nullable collection.
+    // A string-backed enum array keeps the non-nullable form it has always had. (Default of the
+    // PropertyClrType / PropertyInitializer hooks.)
 
     // The directly-extended entity (the metadata `extends` target) of a TPH subtype — the
     // immediate parent in the inheritance chain (abstract intermediate or the root). Falls
@@ -809,6 +895,7 @@ public class EntityGenerator : IGenerator
         sb.AppendLine();
 
         XmlDocBuilder.AppendTo(sb, entity);
+        EmitClassAttributes(sb, entity, className, ClassDeclarationKind.AbstractShape, ctx);
         EmitClassDeclarationLine(sb, entity, className, ClassDeclarationKind.AbstractShape, ctx);
         sb.AppendLine("{");
 
@@ -852,7 +939,8 @@ public class EntityGenerator : IGenerator
     // Plain POCO for a value object nested by an owned-type navigation. No [Table] /
     // [Key]; column names are set in the DbContext's OwnsOne config (flattened) or are
     // opaque JSON property names (jsonb), so the POCO carries no mapping attributes.
-    protected virtual EmittedFile EmitValueObjectPoco(MetaObject vo, GenContext ctx)
+    // A hook: return null to emit no file for this object (the adopter supplies the type itself).
+    protected virtual EmittedFile? EmitValueObjectPoco(MetaObject vo, GenContext ctx)
     {
         // ADR-0056: the ONE name every generator uses for this type (collision-qualified when
         // two value objects share a short name).
@@ -887,6 +975,7 @@ public class EntityGenerator : IGenerator
         sb.AppendLine($"namespace {PackageBindingResolver.Resolve(ctx.Config, PackageBindingResolver.EffectivePackage(vo), vo.Name, fallbackContext: vo.Name)};");
         sb.AppendLine();
         XmlDocBuilder.AppendTo(sb, vo);
+        EmitClassAttributes(sb, vo, className, ClassDeclarationKind.ValueObject, ctx);
         EmitClassDeclarationLine(sb, vo, className, ClassDeclarationKind.ValueObject, ctx);
         sb.AppendLine("{");
 
@@ -909,7 +998,7 @@ public class EntityGenerator : IGenerator
                 // but HONOURS on a flattened one — binding an unprefixed column the migration
                 // never creates.
                 member = EnumProperty(vo, field, ctx.Config, ctx.Config.ColumnNamingStrategy, withAttributes: false);
-            else if (field.SubType == FIELD_SUBTYPE_OBJECT && ObjectNavProperty(vo, field, ctx) is { } nav)
+            else if (field.SubType == FIELD_SUBTYPE_OBJECT && ObjectNavProperty(vo, field, ctx, valueObject: true) is { } nav)
                 member = nav;
             else if (field.SubType == FIELD_SUBTYPE_MAP)
                 member = MapProperty(vo, field, ctx, withAttributes: false);
@@ -923,7 +1012,7 @@ public class EntityGenerator : IGenerator
             // (double, DateTimeOffset, ...), so the condition is emitted for the nullable members alone.
             var nullableMember = _wire.NullMembers == NullMemberForm.Omit
                 && System.Text.RegularExpressions.Regex.IsMatch(member, @"^\s*public\s+[^=;{(]*\?\s+\w+", System.Text.RegularExpressions.RegexOptions.Multiline);
-            member = $"    [JsonPropertyName(\"{field.Name}\")]\n"
+            member = string.Concat(ValueObjectMemberAttributes(vo, field, ctx).Select(l => l + "\n"))
                 + (nullableMember ? "    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]\n" : "")
                 + member;
             member = ApplyPropertyAttributes(member, vo, field, ctx);
@@ -941,6 +1030,17 @@ public class EntityGenerator : IGenerator
         sb.AppendLine("}");
         return new EmittedFile($"{className}.g.cs", sb.ToString());
     }
+
+    /// <summary>
+    /// Hook — the attribute lines <see cref="EmitValueObjectPoco"/> writes before one value-object
+    /// member, ahead of the <c>[JsonIgnore]</c> a <c>wire.nullMembers: omit</c> run adds and of the
+    /// member's own attributes: complete lines, 4-space indent included. Called once per emitted
+    /// member. Default: <c>[JsonPropertyName("&lt;field&gt;")]</c>, which pins the member's jsonb
+    /// element and wire name to the metadata field name. Return none to let the serializer's naming
+    /// policy (or a document already keyed by the CLR name) decide instead.
+    /// </summary>
+    protected virtual IEnumerable<string> ValueObjectMemberAttributes(MetaObject vo, MetaField f, GenContext ctx) =>
+        [$"    [JsonPropertyName(\"{f.Name}\")]"];
 
     // Collects nested C# enum declarations for all enum-subtype fields on an object,
     // deduplicating by type name so two fields that extend the same abstract enum emit
@@ -2319,24 +2419,209 @@ public static class DurationWire
         return new EmittedFile(fileName, sb.ToString());
     }
 
+    // One property's declaration line, from the two hooks: `public <type> <name> { <setter> }`
+    // plus ` = <init>;` when PropertyInitializer gives one. The attributes above it are the
+    // caller's.
+    private string PropertyDeclaration(
+        MetaObject owner, MetaField field, string propName, string setter, GenContext? ctx = null)
+    {
+        ctx ??= HookContext();
+        var init = PropertyInitializer(owner, field, ctx);
+        return $"    public {PropertyClrType(owner, field, ctx)} {propName} {{ {setter} }}"
+            + (init is null ? string.Empty : $" = {init};");
+    }
+
+    /// <summary>
+    /// Hook — the full CLR type of a property: its element type, nullability <c>?</c> and
+    /// collection type (<c>IList&lt;T&gt;</c>, <c>ICollection&lt;T&gt;</c>, <c>Dictionary&lt;string, V&gt;</c>).
+    /// Called for every scalar, enum, object and map member the entity, TPH-subtype, abstract-shape
+    /// and value-object emitters write. The default is the type those emitters have always written;
+    /// an override calls base and adjusts it (a <c>virtual</c> collection, a different nullable
+    /// rule), and the declaration line, <c>[Column]</c> and validation attributes are unchanged.
+    /// </summary>
+    protected virtual string PropertyClrType(MetaObject owner, MetaField field, GenContext ctx)
+    {
+        var required = CSharpNaming.IsRequired(owner, field);
+        if (CSharpNaming.ScalarFor(field.SubType) is not null)
+        {
+            var baseType = ScalarBaseType(field);
+            if (field.ResolvedIsArray()) // ADR-0039: resolving — array-ness inheritable via extends
+            {
+                    return $"IList<{baseType}>" + (ArrayIsNullable(owner, field) ? "?" : string.Empty);
+            }
+            return ScalarIsNonNull(owner, field) ? baseType : baseType + "?";
+        }
+        if (field.SubType == FIELD_SUBTYPE_ENUM)
+        {
+            var typeName = EnumPropertyTypeName(owner, field, ctx.Config);
+            if (field.ResolvedIsArray())
+            {
+                    return $"IList<{typeName}>" + (EnumArrayIsNullable(owner, field) ? "?" : string.Empty);
+            }
+            return required ? typeName : typeName + "?";
+        }
+        if (field.SubType == FIELD_SUBTYPE_OBJECT)
+        {
+            var typeName = ValueObjectNames.ResolveFieldRef(field, ctx.Root) is { } target
+                ? ValueObjectNames.TypeName(target, ctx.Root)
+                : CSharpNaming.Pascal(CSharpNaming.StripPkg(field.ObjectRef ?? field.Name));
+            if (field.ResolvedIsArray())
+            {
+                    return $"ICollection<{typeName}>" + (required ? string.Empty : "?");
+            }
+            return required ? typeName : typeName + "?";
+        }
+        if (field.SubType == FIELD_SUBTYPE_MAP)
+        {
+                return $"Dictionary<string, {CSharpNaming.MapValueType(field, ctx.Root)}>" + (required ? string.Empty : "?");
+        }
+        return CSharpNaming.ScalarForField(field) ?? "object";
+    }
+
+    /// <summary>
+    /// Hook — the initializer of a property: the text after <c>=</c> (no <c>=</c>, no
+    /// <c>;</c>), or <c>null</c> for none. Called for the same members as <see cref="PropertyClrType"/>.
+    /// The default is what those emitters have always written: a literal-safe <c>@default</c>, else
+    /// <c>default!</c> for a required reference type, an empty <c>List&lt;T&gt;</c> for a collection
+    /// that is never null, <c>new()</c> for a required map, <c>new T()</c> for a required nested
+    /// object of a value object.
+    /// </summary>
+    protected virtual string? PropertyInitializer(MetaObject owner, MetaField field, GenContext ctx)
+    {
+        var required = CSharpNaming.IsRequired(owner, field);
+        if (CSharpNaming.ScalarFor(field.SubType) is not null)
+        {
+            var baseType = ScalarBaseType(field);
+            if (field.ResolvedIsArray())
+            {
+                    return ArrayIsNullable(owner, field) ? null : $"new List<{baseType}>()";
+            }
+            // A literal-safe @default (bool / integer / floating / string) takes precedence over
+            // the `default!` filler for required reference types. @default is a cross-port metadata concept.
+            return DefaultInitializerValue(field, baseType)
+                ?? (ScalarIsNonNull(owner, field) && !CSharpNaming.IsValueType(baseType) ? "default!" : null);
+        }
+        if (field.SubType == FIELD_SUBTYPE_ENUM)
+        {
+            var typeName = EnumPropertyTypeName(owner, field, ctx.Config);
+            if (!field.ResolvedIsArray())
+            {
+                // A scalar enum starts at its @default, as a scalar does. The DbContext makes
+                // that member the EF sentinel (HasDefaultValue(v).HasSentinel(v)), so an
+                // untouched enum must hold it: default(TEnum) — the first member, or 0 for a
+                // @provided enum — is written instead of the column default, and 0 has no
+                // integer under @intValueMap.
+                return EnumDefaultInitializerValue(field, typeName);
+            }
+            return EnumArrayIsNullable(owner, field) ? null : $"new List<{typeName}>()";
+        }
+        if (field.SubType == FIELD_SUBTYPE_OBJECT)
+        {
+            var target = ValueObjectNames.ResolveFieldRef(field, ctx.Root);
+            var typeName = target is not null
+                ? ValueObjectNames.TypeName(target, ctx.Root)
+                : CSharpNaming.Pascal(CSharpNaming.StripPkg(field.ObjectRef ?? field.Name));
+            if (field.ResolvedIsArray())
+            {
+                    return required ? $"new List<{typeName}>()" : null;
+            }
+            if (!required)
+            {
+                return null;
+            }
+            // A REQUIRED member of a value object starts as an instance rather than `= default!`,
+            // so a document that omits it deserializes with it present instead of null behind a
+            // non-nullable type. An abstract target cannot be constructed and keeps the filler; an
+            // entity's owned navigation keeps it too (EF materializes it from the row).
+            return _site.ValueObject && target is { IsAbstract: false } ? $"new {typeName}()" : "default!";
+        }
+        if (field.SubType == FIELD_SUBTYPE_MAP)
+        {
+                return required ? "new()" : null;
+        }
+        return null;
+    }
+
+    // The scalar's element type before nullability: a @dbColumnType:jsonb open-bag shifts it to a
+    // parsed JSON value (JsonDocument, issue #98), taking precedence over the logical scalar; a uuid
+    // override keeps the logical CLR type (converted at the DB seam); an aggregate's own result type
+    // stands in for the declared one. ScalarForField resolves the ADR-0036 Wave 2 conditional
+    // field.timestamp binding (default DateTimeOffset / @localTime:true DateTime). A TPH subtype's own
+    // scalar carries neither override.
+    private string ScalarBaseType(MetaField field) =>
+        _site.TphSubtype
+            ? CSharpNaming.ScalarForField(field)!
+            : CSharpNaming.DbColumnTypeClrOverride(field) ?? _site.BaseTypeOverride ?? CSharpNaming.ScalarForField(field)!;
+
+    // #195 — a field derived by origin.aggregate @agg:any|all|collect is COALESCE-guaranteed non-null
+    // in the synthesized view, so its CLR read type is non-null even when not @required (mirroring TS
+    // column-mapper, where notNull = isRequired || originGuaranteedNonNull). A TPH subtype's own
+    // scalar follows @required alone.
+    private bool ScalarIsNonNull(MetaObject owner, MetaField field) =>
+        CSharpNaming.IsRequired(owner, field) || (!_site.TphSubtype && OriginGuaranteedNonNull(field));
+
+    // A NON-required decimal array is nullable (no initializer) so PATCH null / an omitted POST value
+    // stays a NULL column instead of failing as a required collection; so is a NON-required
+    // value-object array under `wire.nullMembers: omit`, so a null member is omitted on the wire.
+    private bool ArrayIsNullable(MetaObject owner, MetaField field) =>
+        (IsDecimalWireField(field) || (_site.ValueObject && _wire.NullMembers == NullMemberForm.Omit))
+        && !CSharpNaming.IsRequired(owner, field);
+
+    // A NON-required int-backed enum array (@intValueMap, read resolving) is nullable.
+    private static bool EnumArrayIsNullable(MetaObject owner, MetaField field) =>
+        field.Attr(FIELD_ATTR_INT_VALUE_MAP) is not null && !CSharpNaming.IsRequired(owner, field);
+
+    /// <summary>
+    /// Hook — the argument list of the one <c>[Column(...)]</c> attribute a mapped property carries
+    /// (an entity's, a TPH subtype's own, a map's), joined with <c>", "</c>. Called once per
+    /// <c>[Column]</c> emitted; never for a value object's members, which carry none. Default: the
+    /// physical column, as the <c>&lt;Entity&gt;Names</c> constant when that artifact is part of the
+    /// run, else the quoted literal. Append to it (<c>TypeName = "jsonb"</c>) to extend the attribute;
+    /// return none to leave the attribute out, for a column configured fluently instead.
+    /// </summary>
+    protected virtual IEnumerable<string> ColumnAttributeArguments(MetaObject owner, MetaField f, GenContext ctx) =>
+        [CSharpNaming.ColumnRef(
+            owner, f,
+            _columnSite?.Strategy ?? ctx.Config.ColumnNamingStrategy,
+            _columnSite?.IncludeNames ?? ctx.Config.IncludeNames)];
+
+    // The naming strategy and names-artifact gate of the member emitter now asking, which a
+    // subclass may pass differently from the run's config; read by ColumnAttributeArguments'
+    // default so it reproduces that emitter's own [Column] exactly.
+    private (ColumnNamingStrategy Strategy, bool IncludeNames)? _columnSite;
+
+    // The `    [Column(...)]` line (no newline), or null when ColumnAttributeArguments returns none.
+    private string? ColumnAttributeLine(
+        MetaObject owner, MetaField field, ColumnNamingStrategy strategy, bool includeNames, GenContext? ctx = null)
+    {
+        _columnSite = (strategy, includeNames);
+        try
+        {
+            var args = ColumnAttributeArguments(owner, field, ctx ?? HookContext()).ToList();
+            return args.Count == 0 ? null : $"    [Column({string.Join(", ", args)})]";
+        }
+        finally
+        {
+            _columnSite = null;
+        }
+    }
+
     // A property for an enum-subtype field. The property type is the nested enum name.
-    // When the field is an array, emit List<EnumType> with an empty-list initializer;
-    // the List is never nullable (the column stores a jsonb array, always present).
+    // When the field is an array, see EnumArrayProperty.
     // withAttributes adds the EF [Column] mapping; abstract shape classes pass false
     // (shapes carry no EF mapping).
     protected virtual string EnumProperty(
         MetaObject entity, MetaField field, GenConfig config, ColumnNamingStrategy strategy, bool withAttributes = true)
     {
         // FR-019 — a shared/provided enum is referenced (materialized once / external);
-        // an inline enum keeps the per-object nested <Entity><Field> type name.
-        var typeName = EnumPropertyTypeName(entity, field, config);
+        // an inline enum keeps the per-object nested <Entity><Field> type name. (The type and
+        // the array initializer are the PropertyClrType / PropertyInitializer defaults.)
+        _site = new PropertySite(ValueObject: false, TphSubtype: false, null);
         var propName = PropertyName(field);
-        var colAttr = withAttributes ? $"    [Column({CSharpNaming.ColumnRef(entity, field, strategy, config.IncludeNames)})]\n" : "";
-        if (field.ResolvedIsArray()) // ADR-0039: resolving — array-ness inheritable via extends
-            return $"{colAttr}    public IList<{typeName}> {propName} {{ get; set; }} = new List<{typeName}>();";
-        var required = CSharpNaming.IsRequired(entity, field);
-        var type = required ? typeName : typeName + "?";
-        return $"{colAttr}    public {type} {propName} {{ get; set; }}";
+        var colAttr = withAttributes && ColumnAttributeLine(entity, field, strategy, config.IncludeNames) is { } column
+            ? column + "\n"
+            : "";
+        return colAttr + PropertyDeclaration(entity, field, propName, "get; set;");
     }
 
     // A scalar property. withAttributes adds the EF-mapping annotations ([Key] for a
@@ -2360,19 +2645,19 @@ public static class DurationWire
     // POCOs) never reaches ColumnRef at all, so the default is inert there.
     protected virtual string ScalarProperty(
         MetaObject owner, MetaField field, IReadOnlyList<string> pkFields,
-        bool withAttributes, ColumnNamingStrategy strategy = ColumnNamingStrategy.Literal,
+        bool withAttributes, ColumnNamingStrategy? strategy = null,
         bool includeNames = false,
         string? baseTypeOverride = null, bool? withValidationAttributes = null,
         bool valueObject = false)
     {
+        strategy ??= ColumnNamingStrategy.Literal;
         var emitValidation = withValidationAttributes ?? withAttributes;
+        _site = new PropertySite(valueObject, TphSubtype: false, baseTypeOverride);
         // A @dbColumnType:jsonb open-bag shifts the CLR property to a parsed JSON value
         // (JsonDocument) — issue #98 — taking precedence over the logical scalar. A uuid
         // override keeps the logical CLR type (converted at the DB seam). ScalarForField
         // resolves the ADR-0036 Wave 2 conditional field.timestamp binding (default
         // DateTimeOffset / @localTime:true DateTime).
-        var baseType = CSharpNaming.DbColumnTypeClrOverride(field)
-            ?? baseTypeOverride ?? CSharpNaming.ScalarForField(field)!;
         var propName = PropertyName(field);
 
         // Array fields: emit List<T> with an empty-list initializer and only a [Column]
@@ -2381,8 +2666,10 @@ public static class DurationWire
         if (field.ResolvedIsArray()) // ADR-0039: resolving — array-ness inheritable via extends
         {
             var arr = new StringBuilder();
-            if (withAttributes)
-                arr.AppendLine($"    [Column({CSharpNaming.ColumnRef(owner, field, strategy, includeNames)})]");
+            if (withAttributes && ColumnAttributeLine(owner, field, strategy, includeNames) is { } arrColumn)
+            {
+                arr.AppendLine(arrColumn);
+            }
             // validator.array @min/@max → element-count bounds on the collection.
             if (emitValidation)
                 AppendArrayValidatorAttributes(arr, field);
@@ -2393,24 +2680,20 @@ public static class DurationWire
             // A NON-required decimal array is nullable (no initializer) so PATCH null / an omitted
             // POST value stays a NULL column instead of failing as a required collection; a
             // NON-required value-object array is nullable so a null member is omitted on the wire.
-            var omittable = valueObject && _wire.NullMembers == NullMemberForm.Omit;
-            if ((IsDecimalWireField(field) || omittable) && !CSharpNaming.IsRequired(owner, field))
-                arr.Append($"    public IList<{baseType}>? {propName} {{ get; set; }}");
-            else
-                arr.Append($"    public IList<{baseType}> {propName} {{ get; set; }} = new List<{baseType}>();");
+            // (That rule is the default of the PropertyClrType / PropertyInitializer hooks.)
+            arr.Append(PropertyDeclaration(owner, field, propName, "get; set;"));
             return arr.ToString();
         }
 
+        var baseType = ScalarBaseType(field);
         var required = CSharpNaming.IsRequired(owner, field);
+        var isValue = CSharpNaming.IsValueType(baseType);
         // #195 — a field derived by origin.aggregate @agg:any|all|collect is
         // COALESCE-guaranteed non-null in the synthesized view (any→false, all→true,
         // collect→[]), so its CLR read type is non-null even when not @required. The
         // [Required] validation attr stays keyed on `required` (author intent), while
         // the nullability `?` + `= default!;` init follow `nonNull` — mirroring TS
         // column-mapper, where notNull = isRequired || originGuaranteedNonNull.
-        var nonNull = required || OriginGuaranteedNonNull(field);
-        var isValue = CSharpNaming.IsValueType(baseType);
-
         var sb = new StringBuilder();
         // EF-mapping attributes ([Key]/[Column]) — mapped entities only; a VO POCO's
         // JSON member mapping is fluent (.ToJson), so it carries none of these.
@@ -2418,7 +2701,10 @@ public static class DurationWire
         {
             if (pkFields.Count == 1 && pkFields[0] == field.Name)
                 sb.AppendLine("    [Key]");
-            sb.AppendLine($"    [Column({CSharpNaming.ColumnRef(owner, field, strategy, includeNames)})]");
+            if (ColumnAttributeLine(owner, field, strategy, includeNames) is { } column)
+            {
+                sb.AppendLine(column);
+            }
         }
         // Validation DataAnnotations — mapped entities AND value-object POCOs (a VO's
         // own members are validated on POST/PATCH; Program D), never an attribute-free
@@ -2451,26 +2737,21 @@ public static class DurationWire
             AppendNetConverterAttribute(sb, field);
         // ADR-0019 Amendment 1: a decimal crosses JSON as a canonical string. Attached per
         // property (not through host JsonSerializerOptions) so no host configuration drops it.
-        AppendDecimalConverterAttribute(sb, field, nullable: !nonNull, _wire);
+        AppendDecimalConverterAttribute(sb, field, nullable: !ScalarIsNonNull(owner, field), _wire);
         // field.duration: a TimeSpan crosses JSON as its canonical ISO-8601 string, never as
         // System.Text.Json's own "01:30:00".
         AppendDurationConverterAttribute(sb, field, _wire);
 
-        var type = nonNull ? baseType : baseType + "?";
-        // A literal-safe @default (bool / integer / floating / string) emits a property
-        // initializer (e.g. `= false;`), taking precedence over the `= default!;` filler
-        // for required reference types. @default is a cross-port metadata concept.
-        var defaultInit = DefaultInitializer(field, baseType);
-        var init = defaultInit.Length > 0
-            ? defaultInit
-            : (nonNull && !isValue ? " = default!;" : string.Empty);
+        // The type and initializer are the hooks' defaults: nullable unless required (or
+        // origin-guaranteed non-null), a literal-safe @default as the initializer (e.g. `= false;`)
+        // taking precedence over the `= default!;` filler for required reference types.
         // FR-037 R1 — only `readOnly` takes a private setter: EF materializes it on read,
         // and application code cannot write it at all (the DbContext additionally excludes
         // the column from UPDATE). `writeOnce` keeps a PUBLIC setter on purpose — the caller
         // must be able to supply it on insert; freezing it afterwards is the DbContext's
         // SetAfterSaveBehavior(Ignore), not the property's job.
         var setter = field.IsReadOnlyMutability ? "get; private set;" : "get; set;";
-        sb.Append($"    public {type} {propName} {{ {setter} }}{init}");
+        sb.Append(PropertyDeclaration(owner, field, propName, setter));
         return sb.ToString();
     }
 
@@ -2610,39 +2891,62 @@ public static class DurationWire
     // not the initializer). enum / temporal / uuid / object defaults are NOT emitted as
     // initializers here. The literal carries the right C# suffix (L / f / m) so it
     // compiles for long / float / decimal targets.
-    protected static string DefaultInitializer(MetaField field, string baseType)
+    protected static string DefaultInitializer(MetaField field, string baseType) =>
+        DefaultInitializerValue(field, baseType) is { } value ? $" = {value};" : string.Empty;
+
+    // A scalar enum's @default as its member (`<TEnum>.<member>`), or null when there is no
+    // @default or it names no member of the field's effective @values (the loader refuses
+    // that; the guard keeps the emit compilable regardless). The member set is the one the
+    // DbContext's HasDefaultValue/HasSentinel literal reads, so the two always agree.
+    private static string? EnumDefaultInitializerValue(MetaField field, string enumTypeName)
+    {
+        if (field.Default is not { } raw)
+        {
+            return null;
+        }
+        var member = Convert.ToString(raw, System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty;
+        return field.EffectiveEnumValues is { } members && members.Contains(member)
+            ? $"{enumTypeName}.{member}"
+            : null;
+    }
+
+    // The expression of that initializer (the text after `=`), or null for none.
+    private static string? DefaultInitializerValue(MetaField field, string baseType)
     {
         var raw = field.Default;
-        if (raw is null) return string.Empty;
+        if (raw is null)
+        {
+            return null;
+        }
         switch (baseType)
         {
             case "bool":
                 var b = raw is bool bv
                     ? bv
                     : string.Equals(raw.ToString(), "true", StringComparison.OrdinalIgnoreCase);
-                return b ? " = true;" : " = false;";
+                return b ? "true" : "false";
             case "string":
-                return $" = \"{EscapeAttrString(raw.ToString() ?? string.Empty)}\";";
+                return $"\"{EscapeAttrString(raw.ToString() ?? string.Empty)}\"";
             case "int":
             case "short":
             case "byte":
-                return NumericLiteral(raw) is { } i ? $" = {i};" : string.Empty;
+                return NumericLiteral(raw) is { } i ? i : null;
             case "long":
-                return NumericLiteral(raw) is { } l ? $" = {l}L;" : string.Empty;
+                return NumericLiteral(raw) is { } l ? $"{l}L" : null;
             case "double":
-                return NumericLiteral(raw) is { } d ? $" = {d};" : string.Empty;
+                return NumericLiteral(raw) is { } d ? d : null;
             case "float":
-                return NumericLiteral(raw) is { } f ? $" = {f}f;" : string.Empty;
+                return NumericLiteral(raw) is { } f ? $"{f}f" : null;
             case "decimal":
-                return NumericLiteral(raw) is { } m ? $" = {m}m;" : string.Empty;
+                return NumericLiteral(raw) is { } m ? $"{m}m" : null;
             // field.duration: an ISO-8601 @default in the accepted form is parsed by the namespace's
             // DurationWire (a malformed one emits nothing, as for the other types).
             case "TimeSpan":
                 return raw is string iso && DurationDefaultPattern.IsMatch(iso)
-                    ? $" = DurationWire.Parse(\"{iso}\");"
-                    : string.Empty;
+                    ? $"DurationWire.Parse(\"{iso}\")"
+                    : null;
             default:
-                return string.Empty;
+                return null;
         }
     }
 
@@ -2692,16 +2996,21 @@ public static class DurationWire
 
     // An owned-type navigation property for an object-typed field. Returns null (with
     // a warning) when the @objectRef can't be resolved.
-    protected string? ObjectNavProperty(MetaObject owner, MetaField field, GenContext ctx)
+    //
+    // valueObject: the owner is a value-object POCO. A REQUIRED member there starts as an
+    // instance (`= new T();`) rather than `= default!`, so a document that omits the member
+    // deserializes with it present instead of null behind a non-nullable type. An abstract
+    // target cannot be constructed and keeps the filler; an entity's owned navigation keeps it
+    // too (EF materializes it from the row).
+    protected string? ObjectNavProperty(MetaObject owner, MetaField field, GenContext ctx, bool valueObject = false)
     {
         if (ValueObjectNames.ResolveFieldRef(field, ctx.Root) is not { } target)
         {
             ctx.Warn($"{Name}: object-typed field \"{owner.Name}.{field.Name}\" has an unresolved @objectRef \"{field.ObjectRef}\" — skipped.");
             return null;
         }
-        var typeName = ValueObjectNames.TypeName(target, ctx.Root);
+        _site = new PropertySite(valueObject, TphSubtype: false, null);
         var propName = PropertyName(field);
-        var required = CSharpNaming.IsRequired(owner, field);
         // An object-typed field with @isArray:true is a COLLECTION of the value object
         // (EF maps it via .OwnsMany(...).ToJson(...)), not a single nullable ref. A REQUIRED
         // array is a non-null collection with an empty-list initializer (never null). A
@@ -2709,13 +3018,8 @@ public static class DurationWire
         // stays a NULL jsonb column (distinct from an explicit empty `[]`) — mirroring the
         // single-VO nullability below. A non-null empty-list default would erase that
         // null-vs-empty distinction (EF re-serializes the empty list to `[]` on write).
-        if (field.ResolvedIsArray()) // ADR-0039: resolving — array-ness inheritable via extends
-            return required
-                ? $"    public ICollection<{typeName}> {propName} {{ get; set; }} = new List<{typeName}>();"
-                : $"    public ICollection<{typeName}>? {propName} {{ get; set; }}";
-        return required
-            ? $"    public {typeName} {propName} {{ get; set; }} = default!;"
-            : $"    public {typeName}? {propName} {{ get; set; }}";
+        // (The type and initializer are the PropertyClrType / PropertyInitializer defaults.)
+        return PropertyDeclaration(owner, field, propName, "get; set;", ctx);
     }
 
     // A property for a field.map (an open-keyed map). Emits a single
@@ -2739,13 +3043,13 @@ public static class DurationWire
     // mapping; value-object POCOs (no EF mapping) pass false.
     protected string MapProperty(MetaObject owner, MetaField field, GenContext ctx, bool withAttributes = true)
     {
-        var valueType = CSharpNaming.MapValueType(field, ctx.Root);
+        _site = new PropertySite(ValueObject: false, TphSubtype: false, null);
         var propName = PropertyName(field);
-        var required = CSharpNaming.IsRequired(owner, field);
-        var colAttr = withAttributes ? $"    [Column({CSharpNaming.ColumnRef(owner, field, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames)})]\n" : "";
-        return required
-            ? $"{colAttr}    public Dictionary<string, {valueType}> {propName} {{ get; set; }} = new();"
-            : $"{colAttr}    public Dictionary<string, {valueType}>? {propName} {{ get; set; }}";
+        var colAttr = withAttributes
+            && ColumnAttributeLine(owner, field, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames, ctx) is { } column
+            ? column + "\n"
+            : "";
+        return colAttr + PropertyDeclaration(owner, field, propName, "get; set;", ctx);
     }
 
     // The CLR scalar type for a projection field whose value is a MIN/MAX aggregate:

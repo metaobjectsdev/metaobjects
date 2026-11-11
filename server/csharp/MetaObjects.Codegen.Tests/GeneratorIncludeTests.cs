@@ -59,6 +59,20 @@ public class GeneratorIncludeTests
     }
 
     [Fact]
+    public void A_scoped_closure_drops_the_value_objects_include_rejects()
+    {
+        // Opt-in: Include then applies to the value objects reached through the root too, so a
+        // value object it rejects gets no POCO even though an accepted entity points at it — the
+        // adopter supplies that type (or re-types the field) itself.
+        var scoped = Paths(new EntityGenerator { Include = o => o.Name is not "ShipTo", ScopesValueObjectClosure = true });
+        Assert.Contains("Order.g.cs", scoped);
+        Assert.Contains("CatalogEntry.g.cs", scoped);
+        Assert.DoesNotContain("ShipTo.g.cs", scoped);
+        // Without the option, the reached value object is still emitted.
+        Assert.Contains("ShipTo.g.cs", Paths(new EntityGenerator { Include = o => o.Name is not "ShipTo" }));
+    }
+
+    [Fact]
     public void DbContext_include_maps_only_the_accepted_objects()
     {
         var src = Assert.Single(new DbContextGenerator { Include = o => o.Name is "Customer" }.Generate(Ctx())).Content;

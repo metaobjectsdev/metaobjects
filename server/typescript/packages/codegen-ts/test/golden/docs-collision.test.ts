@@ -5,10 +5,10 @@
 // `template.output acme::comms::Order` — both want `Order.md`. (Two same-type
 // same-short-name roots are collapsed upstream by the loader's (type,name)
 // merge, so the realistic, reproducible docs-level collision is between nodes
-// of DIFFERENT type that the loader keeps distinct.) In flat layout the
-// generator MUST hard-error (never silently overwrite); in package layout the
-// pages fold under package-path subdirs and BOTH survive with correct relative
-// cross-links.
+// of DIFFERENT type that the loader keeps distinct.) Doc pages are keyed by
+// package whatever the target's outputLayout (DOCS_PAGE_LAYOUT), so the pages
+// fold under package-path subdirs and BOTH survive with correct relative
+// cross-links; a flat outputLayout places code, not pages.
 
 import { describe, it, expect } from "bun:test";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
@@ -104,19 +104,15 @@ function makeCtx(
 }
 
 describe("docsFile() — cross-package short-name collision safety", () => {
-  it("flat layout: two Order nodes in different packages → HARD ERROR naming both FQNs + path", async () => {
+  it("flat outputLayout: two Order nodes in different packages are still two pages", async () => {
+    // The target's outputLayout places code. A page is keyed by package regardless, so a
+    // short-name clash across packages is never one file.
     const root = await loadRoot([SALES_ORDER, COMMS_ORDER_TEMPLATE]);
-    const gen = docsFile();
-    let err: Error | undefined;
-    try {
-      await gen.generate(makeCtx(root)); // flat (default)
-    } catch (e) {
-      err = e as Error;
-    }
-    expect(err, "expected a hard error on duplicate output path").toBeDefined();
-    expect(err!.message).toContain("Order.md");
-    expect(err!.message).toContain("acme::sales::Order");
-    expect(err!.message).toContain("acme::comms::Order");
+    const out = await docsFile().generate(makeCtx(root, "flat"));
+    const paths = out.map((f) => f.path).sort();
+    expect(paths).toContain("acme/sales/Order.md");
+    expect(paths).toContain("acme/comms/Order.md");
+    expect(new Set(paths).size).toBe(paths.length);
   });
 
   it("package layout: both Order pages emitted under package subdirs — NO collision", async () => {
@@ -175,11 +171,11 @@ describe("docsFile() — cross-package short-name collision safety", () => {
     // docs root in addition to the per-node pages.
     const OVERVIEW_PAGES = 1;
     expect(out.length).toBe(docCount + OVERVIEW_PAGES);
-    expect(out.filter((f) => f.path === "README.md").length).toBe(OVERVIEW_PAGES);
+    expect(out.filter((f) => ("/" + f.path).endsWith("/" + "README.md")).length).toBe(OVERVIEW_PAGES);
     expect(new Set(out.map((f) => f.path)).size).toBe(out.length);
   });
 
-  it("single-package flat (back-compat): pages are <name>.md with ./<name>.md links", async () => {
+  it("single package: pages sit under the package path, linking each other ./<name>.md", async () => {
     const single = JSON.stringify({
       "metadata.root": {
         package: "acme::shop",
@@ -198,17 +194,16 @@ describe("docsFile() — cross-package short-name collision safety", () => {
       },
     });
     const root = await loadRoot([single]);
-    const out = await docsFile().generate(makeCtx(root)); // flat default
+    const out = await docsFile().generate(makeCtx(root)); // the default outputLayout
     const paths = out.map((f) => f.path).sort();
-    // Per-node pages + the additive neutral overview/index (README.md).
-    expect(paths).toEqual(["Cart.md", "CartEmail.md", "README.md"]);
-    // The overview links both pages with same-dir ./<name>.md hrefs in flat.
+    // Per-node pages + the additive neutral overview/index (README.md) at the docs root.
+    expect(paths).toEqual(["README.md", "acme/shop/Cart.md", "acme/shop/CartEmail.md"]);
     const readme = out.find((f) => f.path === "README.md")!;
-    expect(readme.content).toContain("](./Cart.md)");
-    expect(readme.content).toContain("](./CartEmail.md)");
-    // Cross-links are same-dir ./<name>.md in flat.
-    const cart = out.find((f) => f.path === "Cart.md")!;
-    const tpl = out.find((f) => f.path === "CartEmail.md")!;
+    expect(readme.content).toContain("](./acme/shop/Cart.md)");
+    expect(readme.content).toContain("](./acme/shop/CartEmail.md)");
+    // Pages in one package link each other in the same directory.
+    const cart = out.find((f) => f.path === "acme/shop/Cart.md")!;
+    const tpl = out.find((f) => f.path === "acme/shop/CartEmail.md")!;
     expect(cart.content).toContain("](./CartEmail.md)");
     expect(tpl.content).toContain("](./Cart.md)");
   });

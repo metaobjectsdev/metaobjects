@@ -12,11 +12,49 @@ here.**
 
 **`metamodelVersion` moves to `1.3`.** This release adds vocabulary (`field.duration`,
 `validator.exactlyOne`, `@constraintName`, `@condition`, `@maxLength` on `field.enum`,
-`@sequenceStart`, `@sequenceName`, `@flattenedColumnPrefix`, the `upperFirst` column rule) and
-nothing that loaded before stops
-loading. A port that reports `1.2` does not know that vocabulary; upgrade every port together.
+`@sequenceStart`, `@sequenceName`, `@flattenedColumnPrefix`, the `pascal` column rule, and
+`@dbSetName`, a C#-only attr) and nothing that loaded before stops loading. A registry attr entry
+gains `ports`, carried into the registry manifest: the ports that act on a language-specific attr
+(`@dbSetName` names `["csharp"]`). A port that reports `1.2` does not know that vocabulary; upgrade
+every port together.
 
 ### Added
+
+- **Port-scoped vocabulary, and `@dbSetName`.** A registry attr may name the ports
+  that act on it (`"ports": ["csharp"]` on its `spec/metamodel` entry, carried into the registry
+  manifest). Every port registers and type-checks it, so a model that carries it loads under every
+  port's strict loader; a port not named does nothing with it. An attr the registry does not carry
+  still fails, and a wrong value type fails in every port (Java now refuses a list given to a scalar
+  string attr, as the other ports did). `meta types` marks such an attr `[csharp-only]` and its JSON
+  carries `ports`. The first one is `@dbSetName`: the EF Core DbSet property name the generated C#
+  context gives an `object.entity`, `object.projection` or `object.report` (`"@dbSetName":
+  "Diagnosis"`), in place of the derived plural; the routes, the reverse finders and the api
+  reference read the property name through it.
+
+- **An int-backed enum can be an array.** `@intValueMap` together with `isArray: true` (the
+  map on the field, or inherited from a shared enum) now loads in every port instead of
+  failing with `ERR_ENUM_INT_VALUE_MAP_ARRAY`, which is removed. Each element is stored as its
+  declared integer and read back as its member: `integer[]` on Postgres, and a JSON array of
+  numbers on SQLite, D1 and MySQL. A stored integer that maps to no member fails the read, as
+  it does for a scalar. The refusal had a cost beyond arrays: the map is read through
+  `extends`, so one map on a shared enum blocked every scalar column that used it whenever any
+  array field shared the enum too. Per port:
+  - TypeScript: ObjectManager and the generated Drizzle columns map elements on every engine
+    (Postgres through the element codec under `.array()`, SQLite and MySQL through a whole-array
+    JSON codec). An unmapped member throws on write, because the array column has no `CHECK`
+    to reject it. `meta migrate` already produced `integer[]`.
+  - C#: the generated array conversion now compiles (it wraps the pair in a `ValueConverter`),
+    the `UnmappedEnumValue` helper is emitted when a flattened value object's array member is
+    the only int-backed enum, projection and report-row enum arrays get the element converter
+    (they read stored ints as ordinals before), and a non-required int-backed enum array is
+    nullable.
+  - Python: ObjectManager maps elements on write, read and filter operands on Postgres. Its
+    SQLite and MySQL dialects store no primitive array, so the new scenario is deferred there.
+  - Java: OMDB stores no enum array on any engine, so its codec refuses an int-backed one on
+    write and read instead of writing symbols. Kotlin's Exposed generator emits no enum array
+    column. Both defer the new scenario.
+  Gated by the positive conformance fixtures `enum-int-backed-array` and
+  `enum-int-backed-array-inherited`, and the persistence scenario `roundtrip-int-enum-array`.
 
 - **A shared model can carry its requirements, and a consumer can inherit them (FR-023).** The
   publisher's `shared-model` generator takes `requirements: true` (TypeScript `sharedModelFile`,
@@ -162,7 +200,9 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
     both ways: System.Text.Json's `TimeSpan` form in C# (`"01:30:00"`), `Duration.toString()` in
     Java and Kotlin, Pydantic's `timedelta` form in Python (which folds 24 hours into a day,
     `"P1DT2H"`), and the canonical string in TypeScript. `iso` is the canonical form in every port.
-    A filter operand is ISO-8601 in both modes. The api-contract and persistence corpora pin `iso`,
+    A filter operand is ISO-8601 in both modes. **Upgrade note:** a C# project that wants
+    ISO-8601 durations on the wire (`"PT1H30M"`) sets `"wire": { "durations": "iso" }`; without
+    it, C# writes `TimeSpan`'s own form (`"01:30:00"`). The api-contract and persistence corpora pin `iso`,
     and a new `api-contract-conformance/duration/` sub-corpus gates it through every port's
     generated routes on Postgres and SQLite (and MySQL and D1 where a port has them).
   - An owned (ejected) generator copy from before this release does not know `field.duration`:
@@ -183,7 +223,10 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
   rule, and a conditional rule only where its condition is true. They are optional; a model without
   them generates what it did. A `@condition` naming a field the entity does not have, one that is not
   a boolean expression, one comparing a field with a literal of another kind (or with `null`), or an
-  `exactlyOne` naming fewer than two fields, is refused at load (`ERR_BAD_ATTR_VALUE`) in every port. A declared CHECK name another constraint on the table
+  `exactlyOne` naming fewer than two fields, is refused at load (`ERR_BAD_ATTR_VALUE`) in every port.
+  **Upgrade note:** `validator.atLeastOne` takes no `@max`; a rule meaning "exactly one of these
+  fields" is `validator.exactlyOne`, so a model carrying `@max: 1` on an `atLeastOne` fails to load
+  until the validator is renamed and the `@max` removed. A declared CHECK name another constraint on the table
   already has, or one over 63 bytes on Postgres, is refused by `meta migrate` and `meta verify`
   (`ERR_CHECK_NAME`). See `docs/features/migrations-and-drift.md`, "CHECKs from validators".
 - **Contract emitters: JSON Schema and OpenAPI generators (FR-022).** `jsonSchemaFile()`
@@ -238,7 +281,10 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
   a table rename. On Postgres `meta migrate` creates
   `GENERATED BY DEFAULT AS IDENTITY (SEQUENCE NAME "…" START WITH n)`, reads the live sequence
   back from the catalog, and alters one whose declared start or name differs in place: a new
-  start is set and the counter moved up to it (never down), a new name is a rename. Only what
+  start is recorded (`ALTER SEQUENCE … START WITH n`) and the counter is never moved, because live
+  rows hold the ids it handed out; a new name is a rename. Every port gives `@sequenceStart` this
+  one meaning, the first value of a fresh sequence; the persistence migration scenario
+  `sequence-start-change-keeps-counter` pins it on live Postgres. Only what
   the model declares is compared, on the live, shadow and snapshot paths alike, so a model that
   declares neither sees no new change and writes the same SQL and snapshots. Every port
   registers both attributes and refuses either without `@generation: increment`
@@ -257,13 +303,34 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
   the project default, which `meta migrate` and `meta verify` report by name. `@maxLength` beside
   `@intValueMap` is refused at load (`ERR_ENUM_MAX_LENGTH_WITH_INT_VALUE_MAP`). A new shared
   corpus, `fixtures/enum-length-conformance/`, pins the resolution in those ports.
-- **An `upperFirst` column rule.** `"naming": { "columns": "upperFirst" }` in
+- **A `pascal` column rule.** `"naming": { "columns": "pascal" }` in
   `.metaobjects/config.json` upper-cases a field name's first letter and changes nothing else
-  (`createdAt` → `CreatedAt`, `requestURL` → `RequestURL`, `address_line1` → `Address_line1`), in
-  every port. A schema whose columns are the field names with a capital first letter (EF Core's
-  default, for one) then needs `@column` only where the database spells a name differently. A
-  column rule only; `literal` tables keep an object name verbatim.
-  See `docs/features/migrations/physical-naming.md`.
+  (`createdAt` → `CreatedAt`, `requestURL` → `RequestURL`, `npi` → `Npi`, `address_line1` →
+  `Address_line1`), in every port. A schema whose columns are the field names with a capital
+  first letter (EF Core's default, for one) then needs `@column` only where the database spells
+  a name differently (`@column: "NPI"`). A column rule only; `literal` tables keep an object name
+  verbatim. See `docs/features/migrations/physical-naming.md`.
+- **Your own naming strategies, in every port (ADR-0058 Amendment 1).** The column and table
+  rules are now named strategies in a registry each port's application extends, and
+  `.metaobjects/config.json` selects a registered strategy by name exactly as it selects a
+  built-in: `"naming": { "columns": "pascal-acronyms" }`. A strategy is a function from a name
+  to a name and may wrap a built-in in one line. Register it with `namingStrategies` in
+  `metaobjects.config.ts` (every `meta` command registers it before reading the config) or
+  `registerColumnNamingStrategy` / `registerTableNamingRule` (TypeScript),
+  `NamingStrategies.RegisterColumns` / `RegisterTables` (C#),
+  `NamingStrategies.registerColumns` / `registerTables` (Java and Kotlin), or
+  `register_column_naming_strategy` / `register_table_naming_rule` (Python). Codegen, the
+  runtime, `verify` (its naming probe tries registered strategies after the built-ins),
+  `meta migrate` and the view and docs generators all resolve through the registry; `@column`
+  and `@table` still win. A name no registered strategy answers is refused when the config is
+  read, with one message in every port naming the setting, the name, the port and what is
+  registered. A built-in cannot be replaced. The shared naming corpus registers the same two
+  application strategies in every port and resolves the same names. Every port resolves a
+  strategy by name each time it applies, so a strategy registered or replaced after the config was
+  read is the one used. A Python provider module (`providers:` in `metaobjects.config.yaml`) that
+  registers a strategy when it is imported is in time for the stock `metaobjects` console script,
+  which imports providers before it reads the config. The C# type change and Java's new exception
+  are under Changed.
 - **Schema conventions for the database objects no code addresses.** `migrate.conventions` in
   `.metaobjects/config.json` picks how `meta migrate` names primary-key and foreign-key
   constraints, whether each foreign key gets an index, and whether a unique key an FK references
@@ -308,6 +375,51 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
   subtype plus attributes with its provider and refusing the same file without it.
   `docs/features/extending-with-providers.md` now has a worked example per language, and the
   `metaobjects-authoring` skill teaches it, with a reference file per language.
+
+- **C#: one property-name resolver for every generator that names a field's property.**
+  `GenConfig.PropertyNaming` (`Func<MetaField, string>`, default PascalCase) is read by the
+  entity classes, the composite `[PrimaryKey(nameof(...))]`, every `AppDbContext` model line and
+  the reverse finders. `DbContextGenerator` gains the `protected virtual PropertyName` hook
+  `EntityGenerator` already had; both default to the resolver. Before, an adopter that overrode
+  `EntityGenerator.PropertyName` got a context that configured the PascalCased name, which did
+  not compile.
+- **C#: `EntityGenerator.EmitClassAttributes`,** a seam for class-level attributes of your own,
+  called for every class kind after the framework's attributes and before the declaration, so a
+  subclass no longer copies `EmitClassHeader` to add one.
+- **C#: `EntityGenerator.ScopesValueObjectClosure`** (default `false`). With it set, `Include`
+  also applies to the value objects reached through the model root (an emitted entity's object
+  fields, callable arguments, template payloads), so a value object `Include` rejects gets no
+  POCO even when an emitted type references it, and the adopter supplies the type. The default
+  still emits every reached value object, so the output compiles on its own.
+- **C#: `EntityGenerator.EmitsReverseFinders`** (default `true`) turns the ADR-0038
+  `<Entity>Queries.g.cs` finders off.
+
+- **C#: the DbContext and entity generators are overridable one line at a time.** An adopter that
+  needs one line of generated output different overrides one `protected virtual` hook, calls base and
+  adjusts what it returns, instead of rewriting the finished file or re-emitting a whole body. On
+  `DbContextGenerator`: `ContextBaseClass`, `ContextPreambleLines`, `ContextTrailerLines`,
+  `AlwaysEmitOnModelCreating`, `DbSetLine`, `DbColumnTypeConfig`, `ReferenceConfig`,
+  `DefaultValueConfig`, `EnumConversionCall` (now an instance method taking the `GenContext`),
+  `FieldTypeConfig`, `OwnedTypeConfig`, `TphSubtypeFieldConfig` and `EntityConfigTrailer` (new). On
+  `EntityGenerator`: `PropertyClrType` and `PropertyInitializer` (every scalar, enum, object and map
+  member), and `EmitValueObjectPoco`, which may now return `null` to drop a value object's file and is
+  asked about every one. The preamble comes first in `OnModelCreating`, the trailer last, and a split
+  model keeps its `ConfigureModelNN` calls between them. The default output is byte-identical.
+- **C#: more of the generated output is one hook away.** `EntityGenerator.ValueObjectMemberAttributes`
+  (the `[JsonPropertyName]` line before each value-object member), `ColumnAttributeArguments` (the
+  argument list of a mapped property's one `[Column(...)]`; append `TypeName = "jsonb"`, or return
+  none to leave the attribute out) and `TphDerivedTypeAttributes` (the `[JsonDerivedType]` lines on a
+  TPH base). The DbContext's head, which `EmitUsings` hard-coded, is built from `ContextUsings`
+  (the `using` lines), `ContextNamespace`, `ContextClassName` (default `AppDbContext`; a set
+  `GenConfig.ContextTypeName` still names only the type callables and finders take, and an override
+  leaves the routes generator naming `AppDbContext`), `EmitContextConstructor`, `ContextIsPartial`
+  and `ContextMemberLines` (extra members, after the constructor). `NamesGenerator` is no longer `sealed`, and its per-object emit,
+  `Render`, is `protected virtual`; a `null` from it emits no file. The default output is
+  byte-identical.
+- **A test-only reset of the naming registry, in every port.** `resetNamingStrategiesForTesting()`
+  (TypeScript), `NamingStrategies.ResetForTesting()` (C#), `NamingStrategies.resetForTesting()` (Java
+  and Kotlin) and `reset_naming_strategies_for_testing()` (Python) forget the strategies the
+  application registered and keep the built-ins.
 
 ### Documentation
 
@@ -398,7 +510,265 @@ loading. A port that reports `1.2` does not know that vocabulary; upgrade every 
   already named a missing variable, regenerate and fix the name; the generated helper text changes
   (TypeScript `prompts.ts` and Python helpers gain a `verify` argument).
 
+- **C#, upgrade note: the next EF migration scaffolds your indexes and comments.** The generated
+  context now declares every `@unique`, `identity.secondary` and `index.lookup` as an EF index
+  (named as `meta migrate` names them) and every `@description` as a table or column comment, which
+  the model never carried before. So the first `dotnet ef migrations add` after upgrading scaffolds a
+  `CreateIndex` for each index and an `AlterColumn`/`AlterTable` comment for each description, as
+  if they were new. On a database `meta migrate` (or your own SQL) already built, the indexes exist
+  and the migration fails on "relation already exists". If they exist under the same names, empty
+  the migration's `Up` and `Down` (keep the snapshot change) so EF records them as present; if they
+  exist under other names, rename them in the database or in the metadata first. Comments re-apply
+  harmlessly. A database built from the model (`EnsureCreated`, or a fresh migration chain) is
+  unaffected. An `@expr` index is never an EF index; `meta migrate` creates it.
+- **C#, upgrade note: identity starts never RESTART, and need one registration call.** A Postgres
+  project's context now carries `identity.primary @sequenceStart` in its model, and every start-only
+  change — a start added, changed or removed — is written `SET START WITH n` (a removed start goes
+  back to the identity default), never `RESTART`, so the current value never moves under ids live
+  rows hold. The first migration after upgrading shows, for each table that declares a start, an
+  `AlterColumn` (or, when scaffolded through the rewrite, a `Sql("ALTER TABLE … SET START WITH n")`)
+  that records the start and changes nothing else; it is safe to apply. Register the rewrite where
+  the context is configured, after `UseNpgsql(...)`: `options.UseNpgsql(cs).UseIdentityStartMigrations()`
+  (pooled or not, in an `IDesignTimeDbContextFactory`, or in a partial context's own
+  `OnConfiguring`). A context that declares a start throws as its model is built on Npgsql without
+  it, naming the call.
+- **C#, upgrade note: a self-hosted codegen runner sets `GenConfig.Dialect`.** `@sequenceStart` and
+  the identity-start rewrite are emitted only when the dialect is `postgres`. `CodegenCli` reads it
+  from `.metaobjects/config.json` `migrate.dialect`; a runner that builds its own `GenConfig` must
+  set `Dialect = "postgres"`, or it gets a warning and no start in the model.
+- **C#, upgrade note: an unset nullable enum with `@default` starts at `@default`, not NULL** (the
+  same rule as a nullable scalar with `@default`, which already started at it). An entity
+  created without setting the field now stores the default member; an explicit `null` is still
+  stored as NULL. To keep NULL as the starting value, do not declare `@default` on the field. The
+  same holds for a value object's enum member: a stored JSON document that lacks the member reads
+  as `@default`, not null.
+- **C#: one generated context maps each relation to one object.** Two concrete
+  objects of one context that resolve to the same table, view, procedure or function in the same
+  `@schema` are refused with `ERR_DUPLICATE_SQL_NAME`, naming both; before, they silently shared it
+  once `@dbSetName` split their DbSet names. The same name in two schemas is two relations, and an
+  object that extends another and inherits its source is one EF hierarchy. A `@dbSetName` that is not
+  a C# identifier, or names `Database`, `Model`, `ChangeTracker` or `ContextId`, is refused by name.
+- **TypeScript: the collision refusal checks only the names the run emits.** The pluralized module
+  names are checked when entity modules, queries or a UI tier are wired, and the REST segments when
+  a routes generator is, so a docs-only run never refuses names no generator writes.
+- **Breaking, C#: `ColumnNamingStrategy` and `TableNamingRule` are classes, not enums**
+  (ADR-0058 Amendment 1). They are compared by name. `ColumnNamingStrategy.SnakeCase` and the other
+  built-ins keep their names (`Pascal` is new). Code that switches on one, uses one as a constant
+  default parameter (`= ColumnNamingStrategy.Literal`) or as an `[InlineData]` argument has to
+  change: call `strategy.Apply(name)`, take a nullable parameter, or pass the name string.
+  `Apply` is an extension method, so `default(ColumnNamingStrategy)` (now `null`) applies as the
+  enum's default did, `Literal`, rather than throwing `NullReferenceException`; the same holds for
+  `TableNamingRule`. `EntityGenerator.ScalarProperty`'s `strategy` parameter is now
+  `ColumnNamingStrategy?` (default `Literal`), so an override changes its signature to match.
+  `NeutralConfig.Read` and `MetadataLocation.Resolve` gain a `validateNaming` overload that keeps a
+  name this process has not registered (`ColumnNamingStrategy.ByName`) for resolution to refuse.
+- **Java: `ColumnNaming.apply` throws `MetaDataException` for an unknown strategy name** where it
+  threw `IllegalArgumentException`.
+- **TypeScript: an entity's docs page names the column the naming strategy resolves.** The Fields
+  table's Column cell, a field's Column detail and the Storage payload printed only an explicit
+  `@column`, so a project that names its columns by rule (`pascal`, `snake_case`) instead of a
+  `@column` on every field lost them. They now print the resolved column wherever it differs from
+  the field name; a value object's members still show only an explicit `@column`, since each owner
+  maps them. A default (`snake_case`) page gains the column of each multi-word field.
+
 ### Fixed
+
+- **An enum's `@default` is what an untouched record stores**. C#: a scalar enum
+  started at `default(TEnum)`, not at `@default`, while the EF sentinel was `@default`, so EF
+  wrote it: a string-stored or int-mapped enum stored its first member, a nullable one NULL, and
+  a `@provided` int-backed enum with no 0 member threw `cannot write 0`. It now starts at its
+  `@default` member, as a scalar does. Kotlin: the generated data class gave a defaulted field no
+  ctor default, so a create body omitting a required one answered 400 and a nullable one was
+  written as an explicit NULL; a literal `@default` (enum member, Boolean, String, Int, Long,
+  Double) is now the ctor default. Java: the DTO is a record, which cannot default a
+  component, so a generated create handler for an entity with a literal `@default` binds the raw
+  body, fills the absent defaulted fields (an explicit value, null included, is kept) and then
+  binds the DTO, on the vanilla and the TPH per-subtype create alike; an entity with none keeps the
+  direct binding. TypeScript and Python were already right (a create that omits
+  the field leaves it out of the INSERT, and the Python model starts at `@default`); live tests
+  now prove it. The new api-contract `enum-default/` sub-corpus gates it in the generated lane of
+  all five ports: a create that omits the enum stores its default, and a supplied value is kept.
+  A nullable C# enum with `@default` now starts at it too: see the upgrade note under
+  Changed.
+- **A generated name collides only in the scope that carries it**. The run-wide
+  refusal of two objects whose short names pluralize alike is gone. C#: DbSet names are unique
+  within one generated context (the error says "rename one, or set @dbSetName"), route segments
+  within one routes entry, reverse finders within their class. TypeScript: the pluralized names
+  within the entity modules' scope (one directory under the flat layout, one per package under
+  the package layout), REST segments across the app. Python and JVM keep one run-wide scope,
+  which is theirs (one flat module package; one Spring app). An abstract or sourceless object
+  emits nothing, so it never collides: a layered model's abstract `enterprise::Payer` beside a
+  concrete `core::Payer` generates. The naming-conformance corpus gains `shapeOnlyCases` and
+  `crossPackageCollisionCases`.
+- **Doc pages are keyed by package**. TypeScript's `docsFile()` and `apiDocsFile()` now
+  place every page under its package path whatever the docs target's `outputLayout` (which still
+  places code), and Java's and Kotlin's api-docs `layout` defaults to `package` (`flat` is still
+  honoured). Two same-named nodes in two packages are two pages, and an index entry that shares
+  its short name carries its package. In every port, two page paths that differ only in case
+  (`ProductNdc.md`, `ProductNDC.md`: one file on macOS and Windows) are refused by name instead of
+  one page silently replacing the other. **Upgrade note:** a TypeScript project on the flat
+  default sees its doc pages move under package directories on the next `meta gen`. A Java or
+  Kotlin build that relied on the old `flat` default for its api-docs sees the same move; set
+  `layout` to `flat` on that generator to keep the old paths.
+- **`@schema` reaches every mapping.** C#: a view mapping is `.ToView(name, schema)`, as a table's
+  `[Table]` already carried its schema. Python, TypeScript and Java: the runtime addressed a bare
+  table name, so an entity in `@schema: sales` was read and written in whatever `search_path`
+  resolved, and two entities mapping the same table name in two schemas read one table. Every read
+  and write now qualifies the relation: the Python ObjectManager, the TypeScript ObjectManager on
+  both its Kysely and Drizzle drivers, and Java OMDB (SQLite, which has no schemas, keeps bare
+  names). A new persistence scenario, `schema-qualified-same-name`, maps `ledger_entries` and
+  `archive.ledger_entries` to two entities and runs on Postgres in every port.
+- **C#: `identity.primary @sequenceStart` reaches the EF model, and no start-only change ever
+  restarts**. On Npgsql a fresh database's identity begins at `@sequenceStart`. A
+  Postgres context with an increment key gets a generated rewrite, registered with
+  `UseIdentityStartMigrations()` (see Changed), that writes a start added, changed or removed as
+  `SET START WITH n`, both when the migration is scaffolded and when its SQL is generated: Npgsql's
+  own generator writes `RESTART WITH n` (or `RESTART WITH 1` for a removed start), which hands out
+  ids live rows already hold. It references Npgsql at compile time, so it and the start are emitted
+  only for a project whose `migrate.dialect` is `postgres`; any other project gets a warning and
+  needs no Npgsql package. TypeScript's `meta migrate` writes the same `START WITH`-only change;
+  Java and Kotlin do not yet carry the start
+  ([#544](https://github.com/metaobjectsdev/metaobjects/issues/544)); see `docs/CONFORMANCE.md`,
+  "Split coverage".
+- **C#: the EF model carries the index vocabulary and `@description`.** A field's `@unique`, an
+  `identity.secondary` and an `index.lookup` are EF indexes under the names `meta migrate` gives
+  them, with `@where` (`HasFilter`), `@orders` (`IsDescending`) and `@using` (the Npgsql index
+  method); `@description` is the table and column comment, on a TPH subtype's own fields too. A model over
+  the migrated database now declares its indexes, so a database EF builds has them (EF never
+  dropped them: an index its snapshot never knew is invisible to it); see Changed for the first
+  migration after upgrading. An `@expr` index an abstract base declares reaches each concrete
+  child's table. Kotlin's Exposed
+  table now carries an index's `@using` (`indexType`) and `@where` (`filterCondition`); what
+  Exposed and Drizzle cannot express is listed in `docs/CONFORMANCE.md`, "Split coverage".
+
+- **C#: a `<Entity>Names` whose base lives in another namespace compiles.** The names artifact
+  extends its base's (`<Entity>Names : <Base>Names`), and the base's file is emitted in the base's
+  own namespace, but the subtype's file carried no `using` for it: one CS0246 per artifact for a
+  model whose abstract bases bind to another namespace. It now writes that `using`.
+- **C#: a reference declared on an abstract TPH intermediate is configured.** The DbContext's TPH
+  pass read only the concrete subtypes' own references, so one declared on an abstract level
+  between the base and its leaves reached no `ReferenceConfig` call: EF built no relationship over
+  the column, and its `@onDelete` and `@constraintName` were lost. Each intermediate is now
+  configured once: on its own builder when it is a class (`EmitAbstractShapes`), else on each
+  topmost concrete subtype its fields are folded into (a concrete subtype under one of those
+  inherits its foreign key).
+- **C#: `dotnet meta verify --codegen` accepts a naming strategy only the project's codegen runner
+  registers.** Stock verify refused the config's `naming` value before it handed the `--codegen`
+  gate to `codegen/Program.cs`, which is where an application registers its strategy, so verify
+  failed where `gen` succeeded. It now hands off first and refuses an unknown name in its own process
+  only when no runner ran, or when `--templates` or `--db` (which run in that process) are asked for
+  too; either way it is exit 2 with the standard message, never an unhandled exception.
+- **TypeScript: `viewNameFromProjection` reads the separator from the strategy.** It switched on
+  the name `"kebab-case"`; the separator after `v` is now the one the strategy writes between two
+  words, else `_`. Every built-in keeps its view name, and an application strategy gets the same
+  rule.
+- **TypeScript: a `metaobjects.config.ts` that fails to load while the naming preload needs it is
+  reported.** The preload swallowed the error, and the command went on to refuse the strategy's
+  name as unregistered. It now stops and names the failed load, and the strategy it would have
+  registered when that is still missing.
+- **C#: a large model's `OnModelCreating` no longer overflows the stack.** The DbContext generator put
+  every configuration line in one method; on a model with hundreds of converters and owned types its
+  stack frame was too large for a thread-pool thread in a Debug build, so a test host crashed with a
+  stack overflow while building the model. Past `ModelConfigChunkSize` entries (default 200) the
+  configuration is split into `ConfigureModelNN` methods called in order; a smaller model is emitted
+  as before.
+
+- **C#: concurrent reads of a loaded model no longer corrupt its cache.** `MetaData.Cached`
+  memoized derived reads (`Validators()`, `ResolvedIsArray()`, `OwnAttrs()`, …) in a plain
+  `Dictionary`, so two threads touching a frozen node for the first time could corrupt it, and
+  every later read in the process then failed with "Operations that change non-concurrent
+  collections must have exclusive access". A host that loads metadata once and serves requests
+  from it in parallel, or a parallel test run, hit this. The cache is now a
+  `ConcurrentDictionary`.
+
+
+- **C#: a field's `@default` reaches the EF model.** The context configured no default at all,
+  so a database EF creates (`EnsureCreated`, an EF migration) had none, and an insert that relied
+  on one failed with a NOT NULL violation. A literal the property's CLR type holds (bool, string,
+  number, enum member) is now `HasDefaultValue(v).HasSentinel(v)`. The sentinel matters: EF leaves
+  a property with a database default out of the INSERT when its value equals the sentinel, which is
+  otherwise the CLR default, so a bool defaulting to `true` would have stored `true` when the app
+  set `false` (and a nullable one, or a string, would have lost an explicit NULL). With the
+  default as the sentinel, EF omits only a value the database would write anyway; a live test
+  sets every such property to its CLR default and reads it back. A SQL expression (`now()`,
+  anything function-like, `current_timestamp`; a bare `now` is `now()`), or a timestamp, date or
+  uuid literal, is `HasDefaultValueSql(...)` on a `@required` property only: on a nullable one EF
+  would replace an explicit NULL with the default, so it is left out there. Primary keys, arrays,
+  value objects, maps and durations get no default. A model whose database lacks a declared
+  default (one `meta migrate` did not build) now sees EF omit a column whose value equals it.
+
+- **C#: a `@required` value-object member of a value object starts as an instance.** It was
+  `public T X { get; set; } = default!;`, so a document that omitted it deserialized to null
+  behind a non-nullable type. It is now `= new T();` (an abstract target keeps `default!`, and
+  an entity's owned navigation is unchanged), so the member is present and its own members are
+  validated.
+
+- **C#: a value object nested inside a flattened one maps to one jsonb value.** The flattened
+  owner configured it as a nested owned `ToJson`, which EF Core 8 refuses inside a table-split
+  owned type ("All owned types containing a JSON column must be mapped to a JSON column
+  themselves"), so the whole context failed model validation. It is now one jsonb property
+  converted whole through the generated `MapJsonb.ObjectConverter`/`ObjectComparer`, pinned to the
+  same `<prefix><column>` the migration creates; members keep their `[JsonPropertyName]` keys and
+  enums their symbols. Every other flattened member, scalar enums included, keeps its
+  `HasColumnName`.
+
+- **C#: a TPH subtype's own fields get their EF configuration.** The context configured the
+  fields of the TPH root only, so a field a subtype declares itself got none: a `field.object`
+  was left for EF to discover as an entity (model validation failed with "requires a primary
+  key"), and a timestamp, enum, decimal precision, array, map, duration or `@readOnly` column
+  lost the mapping the same field gets on the root. Each concrete subtype now configures the
+  fields it adds, on its own builder. The integration corpus's `CopayAuth.copayAmount` gains its
+  `HasPrecision(10, 2)`.
+
+- **C#: under `EmitAbstractShapes`, a concrete entity extends its abstract shape and keeps the
+  facets of the fields it inherits.** The entity class left out the fields its abstract parent
+  declares, expecting the shape class to carry them, but never named the shape as its base, so
+  those fields were on no class and the context did not compile. It now declares `: <Shape>`
+  (an abstract shape extending another does too). The shape carries no EF attributes, so the
+  context configures what the inherited fields' attributes would have: the single-column key
+  (`HasKey`), each column name (`HasColumnName`) and a string's `@maxLength` (`HasMaxLength`).
+  Models without the knob are unchanged.
+
+- **C#: a TPH discriminator typed by a shared or `@provided` enum compiles.** `HasValue<Sub>(...)`
+  named the enum as a type nested in the base entity (`Vehicle.VehicleKind.Car`), which a shared
+  or provided enum (FR-019) is not; it now names it where it lives, as the enum conversions do.
+
+- **C#: a reference's `@constraintName` and non-primary-key target reach the EF model.** The
+  relationship line now ends in `.HasConstraintName("...")` when the `identity.reference` declares
+  `@constraintName` (the junction sides of an M:N too), so a database EF creates names its foreign
+  keys as the schema does. When `@references` names target fields that are not the target's
+  primary key (`"Warehouse.regionCode,siteNo"`), it carries `.HasPrincipalKey(...)`; EF paired
+  the FK with the primary key instead, which failed model validation for a composite FK and
+  joined the wrong column for a single one. The reverse finder for such a reference now types its
+  value by the named target field, where it used the target's primary key type and did not
+  compile.
+
+- **C#: `identity.primary @generation: assigned` configures the key `ValueGeneratedNever()`.**
+  EF's convention made a single integer or Guid key generated on add, so a caller-supplied key
+  equal to the CLR default (`0`) was left out of the INSERT and the row refused, and
+  `EnsureCreated` built an identity column. `increment`, `uuid` and an absent `@generation` keep
+  EF's convention.
+
+- **C#: an int-backed enum refuses to write a value its `@intValueMap` does not describe.** The
+  write converter was `v == A ? 1 : v == B ? 2 : 3`, so the last member was the else branch: a
+  cast like `(Status)99`, or a member a `@provided` C# enum declares that `@values` does not, was
+  stored as the last member's integer, and a single-member enum wrote its constant whatever the
+  value. Every member now has its own branch, ending in a generated `UnmappedEnumMember` helper
+  that throws, as the read side already did with `UnmappedEnumValue`. Scalars, array elements
+  and flattened value-object members alike.
+
+- **C#: the reverse finders take `GenConfig.ContextTypeName`.** They hardcoded `AppDbContext`
+  as their first parameter's type, so a project that renamed its context got finders that did
+  not compile.
+
+- **C#: a "-sis" entity name pluralizes to "-ses" in DbSet and finder names.** `Diagnosis` gave
+  `DbSet<Diagnosis> Diagnosises` and `FindDiagnosisesByPatient`; it now gives `Diagnoses` and
+  `FindDiagnosesByPatient` (`Analysis` → `Analyses`, `Basis` → `Bases`). The `-tion`, `-y` and
+  `-s` endings were already right and are now pinned by tests. The REST collection segment is a
+  cross-port wire contract and keeps the shared rule (`/api/diagnosises`) until every port
+  changes together. An adopter that aliased the old DbSet name can drop the alias. **Upgrade
+  note:** code that names `Diagnosises` or `FindDiagnosisesBy…` stops compiling; use the new name,
+  or set `"@dbSetName": "Diagnosises"` on the entity to keep the old one.
 
 - **TypeScript: a derived flattened `field.object` no longer produces flat member keys (#524
   follow-up).** A flattened field that carries an `origin.*` owns no column (the Drizzle table and

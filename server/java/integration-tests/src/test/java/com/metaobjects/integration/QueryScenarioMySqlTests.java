@@ -16,6 +16,7 @@ import java.util.Map;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assumptions.abort;
 
 /**
  * The persistence corpus' report scenarios ({@code report-*.yaml}) on MySQL, through the OMDB
@@ -62,6 +63,8 @@ final class QueryScenarioMySqlTests {
     @ParameterizedTest(name = "{0}")
     @MethodSource("scenarios")
     void reportScenario(String name, QueryScenario scenario) {
+        String deferralReason = Scenarios.DEFERRED.get(name);
+        if (deferralReason != null) abort(deferralReason);
         assertDoesNotThrow(() -> QueryScenarioRunner.run(scenario, mysql, CORPUS.resolve("canonical"), ScenarioEngine.MYSQL));
     }
 }

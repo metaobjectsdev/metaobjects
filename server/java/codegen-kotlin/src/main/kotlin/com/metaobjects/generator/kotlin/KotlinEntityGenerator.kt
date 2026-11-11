@@ -293,8 +293,19 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             val nullable = tphBase || derivedReadOnly || serverOwned || KotlinGenUtil.isNullableShapeProperty(field)
             val propType = if (nullable) baseType.copy(nullable = true) else baseType
             val propName = field.name
+            // A literal @default is the ctor default, as C#'s initializer and Python's model default
+            // are: a create body that omits the field binds @default (a required one would otherwise
+            // fail to bind, a nullable one would be written as an explicit NULL the column default
+            // never sees). Not for the shapes whose ctor default is null on purpose (TPH union,
+            // derived, server-owned).
+            val literalDefault = if (tphBase || derivedReadOnly || serverOwned) null else literalDefault(field, baseType)
             val param = ParameterSpec.builder(propName, propType)
-                .apply { if (nullable) defaultValue("null") }
+                .apply {
+                    when {
+                        literalDefault != null -> defaultValue("%L", literalDefault)
+                        nullable -> defaultValue("null")
+                    }
+                }
                 .build()
             ctorBuilder.addParameter(param)
             val propBuilder = PropertySpec.builder(propName, propType).initializer(propName)
@@ -458,6 +469,37 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
      * NOT consulted here — flattened vs jsonb only affects the persistence column shape,
      * not the in-memory shape.
      */
+    /**
+     * The Kotlin literal of a field's `@default` for its ctor default, or null when it has none
+     * this can spell: an enum member (`Type.MEMBER`, a member of the effective `@values`), a
+     * Boolean, a String, or an Int / Long / Double number. A SQL-expression default (`now()`,
+     * anything function-like) is the database's to fill and gets none, as does an array.
+     */
+    protected open fun literalDefault(field: MetaField<*>, type: TypeName): String? {
+        // ADR-0039: resolving — @default may be inherited via extends.
+        if (!field.hasMetaAttr(MetaField.ATTR_DEFAULT) || field.isArrayType) return null
+        val raw = field.getMetaAttr(MetaField.ATTR_DEFAULT).value ?: return null
+        val text = raw.toString()
+        if (field is com.metaobjects.field.EnumField) {
+            // The members the enum class declares: its shared declaration's @values (FR-019), else its own.
+            val declaration = com.metaobjects.field.EnumField.resolveSharedEnumDeclaration(field) as? com.metaobjects.field.EnumField ?: field
+            val members = (runCatching { declaration.getMetaAttr(com.metaobjects.field.EnumField.ATTR_VALUES).value }.getOrNull() as? List<*>)
+                ?.mapNotNull { it?.toString() } ?: return null
+            return if (text in members) "${(type as? com.squareup.kotlinpoet.ClassName)?.canonicalName ?: type}.$text" else null
+        }
+        return when ((type as? com.squareup.kotlinpoet.ClassName)?.canonicalName) {
+            "kotlin.Boolean" -> text.lowercase().takeIf { it == "true" || it == "false" }
+            // A database expression (now(), gen_random_uuid()) is the database's to fill.
+            "kotlin.String" -> if (com.metaobjects.generator.util.GeneratorUtil.isSqlExpressionDefault(text)) null
+                else "\"" + text.replace("\\", "\\\\").replace("\"", "\\\"").replace("$", "\\$")
+                    .replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t") + "\""
+            "kotlin.Int" -> text.toIntOrNull()?.toString()
+            "kotlin.Long" -> text.toLongOrNull()?.let { "${it}L" }
+            "kotlin.Double" -> text.toDoubleOrNull()?.toString()
+            else -> null
+        }
+    }
+
     protected open fun resolvePropertyType(field: MetaField<*>, owner: MetaObject, loader: MetaDataLoader): TypeName {
         val element = resolveElementType(field, owner, loader)
         // @isArray fields are a List of the element type (List<T>). isArrayType()

@@ -54,13 +54,14 @@ export function toKebabCase(s: string): string {
 }
 
 /**
- * The `upperFirst` column rule: the first letter upper-cased, nothing else changed
- * (`createdAt` → `CreatedAt`, `requestURL` → `RequestURL`, `address_line1` →
+ * The `pascal` column rule: the first letter upper-cased, nothing else changed
+ * (`createdAt` → `CreatedAt`, `requestURL` → `RequestURL`, `npi` → `Npi`, `address_line1` →
  * `Address_line1`). Not a word split: every other character keeps the case it was written
  * in, so a model maps onto a schema whose columns are its field names with a capital first
- * letter (EF Core's default, for one) with no `@column`.
+ * letter (EF Core's default, for one) with no `@column`. An acronym the database spells in
+ * capitals (`NPI`) takes an `@column`, or an application strategy that wraps this one.
  */
-export function toUpperFirstColumn(s: string): string {
+export function toPascalColumn(s: string): string {
   // One UTF-16 unit in, one out — as C#'s char.ToUpperInvariant and Java's
   // Character.toUpperCase do — so `ß` (whose JavaScript upper case is "SS") stays `ß` in
   // every port.
@@ -69,30 +70,192 @@ export function toUpperFirstColumn(s: string): string {
   return (upper.length === 1 ? upper : first) + s.slice(1);
 }
 
-/**
- * How a field with no `@column` becomes a column name. One project setting,
- * `naming.columns` in `.metaobjects/config.json`, read by every port (ADR-0058): the
- * loaded root carries it ({@link physicalNamingOf}), so codegen, migrate, the runtime
- * and verify resolve the same name. Not a metadata attr: `@column` is the per-field
- * override, this is the rule for the rest.
- */
-export type ColumnNamingStrategy = "snake_case" | "literal" | "kebab-case" | "upperFirst";
+/** A naming strategy: a bare metadata name in, a physical name out. */
+export type NamingFunction = (name: string) => string;
 
-/** Every column-naming rule, in the order the conformance corpus lists them. */
-export const COLUMN_NAMING_STRATEGIES: readonly ColumnNamingStrategy[] = ["snake_case", "literal", "kebab-case", "upperFirst"];
+/** The column rules every port builds in, in the order the conformance corpus lists them. */
+export const BUILTIN_COLUMN_NAMING_STRATEGIES = ["snake_case", "literal", "kebab-case", "pascal"] as const;
+export type BuiltinColumnNamingStrategy = (typeof BUILTIN_COLUMN_NAMING_STRATEGIES)[number];
+
+/** The table rules every port builds in. */
+export const BUILTIN_TABLE_NAMING_RULES = ["snake_case", "literal"] as const;
+export type BuiltinTableNamingRule = (typeof BUILTIN_TABLE_NAMING_RULES)[number];
+
+/**
+ * How a field with no `@column` becomes a column name: the NAME of a registered column
+ * strategy. One project setting, `naming.columns` in `.metaobjects/config.json`, read by
+ * every port (ADR-0058): the loaded root carries it ({@link physicalNamingOf}), so codegen,
+ * migrate, the runtime and verify resolve the same name. A built-in, or a name the
+ * application registered with {@link registerColumnNamingStrategy} (ADR-0058 Amendment 1).
+ * Not a metadata attr: `@column` is the per-field override, this is the rule for the rest.
+ */
+// `string & {}` keeps editor completion for the built-ins while admitting a registered name.
+export type ColumnNamingStrategy = BuiltinColumnNamingStrategy | (string & {});
+
+/**
+ * How an object with no physical-name attribute (`@table`, `@view`, ...) and no source name
+ * gets its table name: the entity (or source) name cased by this rule, the NAME of a
+ * registered table rule. The entity-name fallback keeps the frozen legacy pluralizer under
+ * every rule ({@link pluralizeTableNameLegacy}).
+ */
+export type TableNamingRule = BuiltinTableNamingRule | (string & {});
+
+interface NamingRegistry {
+  readonly columns: Map<string, NamingFunction>;
+  readonly tables: Map<string, NamingFunction>;
+}
+
+/**
+ * One registry per PROCESS, not per module copy. A globally-installed CLI and a project-local
+ * dependency are two physical copies of this package (see `shared/node-guards.ts`), and an
+ * application's `metaobjects.config.ts` may import the other one: a module-level map would
+ * register the strategy in a registry the loader never reads, and the config would be
+ * refused as naming an unknown strategy.
+ */
+const REGISTRY_KEY = Symbol.for("@metaobjectsdev/metadata/naming-strategies");
+
+function registry(): NamingRegistry {
+  const holder = globalThis as { [REGISTRY_KEY]?: NamingRegistry };
+  let r = holder[REGISTRY_KEY];
+  if (r === undefined) {
+    r = { columns: new Map(), tables: new Map() };
+    holder[REGISTRY_KEY] = r;
+  }
+  // Built-ins are re-seeded on every read, so a registry an older copy of this package
+  // created still answers them, and nothing can have replaced one.
+  for (const [name, fn] of BUILTIN_COLUMN_FUNCTIONS) if (!r.columns.has(name)) r.columns.set(name, fn);
+  for (const [name, fn] of BUILTIN_TABLE_FUNCTIONS) if (!r.tables.has(name)) r.tables.set(name, fn);
+  return r;
+}
+
+const BUILTIN_COLUMN_FUNCTIONS: ReadonlyMap<string, NamingFunction> = new Map<string, NamingFunction>([
+  ["snake_case", toSnakeCase],
+  ["literal", (name) => name],
+  ["kebab-case", toKebabCase],
+  ["pascal", toPascalColumn],
+]);
+
+const BUILTIN_TABLE_FUNCTIONS: ReadonlyMap<string, NamingFunction> = new Map<string, NamingFunction>([
+  ["snake_case", toSnakeCase],
+  ["literal", (name) => name],
+]);
+
+/** The port this registry belongs to, as every port's unknown-strategy message names it. */
+const NAMING_PORT = "TypeScript";
+
+function register(kind: "columns" | "tables", name: string, apply: NamingFunction): void {
+  const builtIns = kind === "columns" ? BUILTIN_COLUMN_FUNCTIONS : BUILTIN_TABLE_FUNCTIONS;
+  if (typeof name !== "string" || name === "") {
+    throw new MetaModelError(`a ${kindLabel(kind)} strategy needs a non-empty name`);
+  }
+  if (builtIns.has(name)) {
+    throw new MetaModelError(
+      `"${name}" is a built in ${kindLabel(kind)} strategy and cannot be replaced; register yours under another name`,
+    );
+  }
+  if (typeof apply !== "function") {
+    throw new MetaModelError(`${kindLabel(kind)} strategy "${name}" must be a function from a name to a name`);
+  }
+  // Registering a name again replaces it: an application registers once at startup, and a
+  // config module loaded twice in one process must not fail the second time.
+  registry()[kind].set(name, apply);
+}
+
+function kindLabel(kind: "columns" | "tables"): string {
+  return kind === "columns" ? "column-naming" : "table-naming";
+}
+
+/**
+ * Register a named column strategy (ADR-0058 Amendment 1). `.metaobjects/config.json` then
+ * selects it as `"naming": { "columns": "<name>" }`, exactly as it selects a built-in. Register
+ * BEFORE the config is read: `meta` commands register `namingStrategies` from
+ * `metaobjects.config.ts` first; a program calling `loadMemory` registers before it. Wrapping a
+ * built-in is one line: `registerColumnNamingStrategy("x", (n) => ... columnNamingStrategy("pascal")(n))`.
+ * A built-in name cannot be replaced; registering a name of your own again replaces it.
+ */
+export function registerColumnNamingStrategy(name: string, apply: NamingFunction): void {
+  register("columns", name, apply);
+}
+
+/** Register a named table rule (ADR-0058 Amendment 1); see {@link registerColumnNamingStrategy}. */
+export function registerTableNamingRule(name: string, apply: NamingFunction): void {
+  register("tables", name, apply);
+}
+
+/** Every registered column strategy's name: the built-ins in corpus order, then the application's. */
+export function registeredColumnNamingStrategies(): readonly string[] {
+  return [...registry().columns.keys()];
+}
+
+/** Every registered table rule's name: the built-ins, then the application's. */
+export function registeredTableNamingRules(): readonly string[] {
+  return [...registry().tables.keys()];
+}
+
+/**
+ * What every port says when a config (or a caller) names a strategy no registered strategy
+ * answers. Same words in every port, with that port's name, so an estate running several
+ * ports sees one message and knows which port's registry lacked it.
+ */
+export function unknownNamingStrategyMessage(kind: "columns" | "tables", name: string): string {
+  const builtIns: readonly string[] = kind === "columns" ? BUILTIN_COLUMN_NAMING_STRATEGIES : BUILTIN_TABLE_NAMING_RULES;
+  const registered = (kind === "columns" ? registeredColumnNamingStrategies() : registeredTableNamingRules())
+    .filter((n) => !builtIns.includes(n));
+  return (
+    `"naming.${kind}" names "${name}", which no ${kindLabel(kind)} strategy registered in the ` +
+    `${NAMING_PORT} port answers (built in: ${builtIns.join(", ")}; registered by the application: ` +
+    `${registered.length === 0 ? "none" : registered.join(", ")}). Register it before ` +
+    `.metaobjects/config.json is read, or correct the name.`
+  );
+}
+
+/** The column strategy registered as `name`. Throws, naming it, when nothing answers it. */
+export function columnNamingStrategy(name: string): NamingFunction {
+  const fn = registry().columns.get(name);
+  if (fn === undefined) throw new MetaModelError(unknownNamingStrategyMessage("columns", name));
+  return fn;
+}
+
+/** The table rule registered as `name`. Throws, naming it, when nothing answers it. */
+export function tableNamingRule(name: string): NamingFunction {
+  const fn = registry().tables.get(name);
+  if (fn === undefined) throw new MetaModelError(unknownNamingStrategyMessage("tables", name));
+  return fn;
+}
+
+/**
+ * TEST-ONLY: forget every strategy the application registered, leaving the built-ins. The
+ * registry is process-wide (and shared by every copy of this package), so a test that registers
+ * one resets it when it is done rather than leaving it for the next test to find. Not for
+ * production code.
+ */
+export function resetNamingStrategiesForTesting(): void {
+  const r = registry();
+  for (const name of [...r.columns.keys()]) if (!BUILTIN_COLUMN_FUNCTIONS.has(name)) r.columns.delete(name);
+  for (const name of [...r.tables.keys()]) if (!BUILTIN_TABLE_FUNCTIONS.has(name)) r.tables.delete(name);
+}
+
+/** True when `name` is a registered column strategy, built in or the application's. */
+export function isRegisteredColumnNamingStrategy(name: string): boolean {
+  return registry().columns.has(name);
+}
+
+/** True when `name` is a registered table rule, built in or the application's. */
+export function isRegisteredTableNamingRule(name: string): boolean {
+  return registry().tables.has(name);
+}
+
+/**
+ * Every BUILT-IN column rule, in the order the conformance corpus lists them. The registry
+ * ({@link registeredColumnNamingStrategies}) is the full set a config may name.
+ */
+export const COLUMN_NAMING_STRATEGIES: readonly ColumnNamingStrategy[] = BUILTIN_COLUMN_NAMING_STRATEGIES;
 
 /** The default in EVERY port: what `meta migrate` has always created. */
 export const DEFAULT_COLUMN_NAMING_STRATEGY: ColumnNamingStrategy = "snake_case";
 
-/**
- * How an object with no physical-name attribute (`@table`, `@view`, ...) and no source name
- * gets its table name: the entity (or source) name cased by this rule. The entity-name
- * fallback keeps the frozen legacy pluralizer under every rule ({@link pluralizeTableNameLegacy}).
- */
-export type TableNamingRule = "snake_case" | "literal";
-
-/** Every table-naming rule. */
-export const TABLE_NAMING_RULES: readonly TableNamingRule[] = ["snake_case", "literal"];
+/** Every BUILT-IN table rule; see {@link registeredTableNamingRules} for the full set. */
+export const TABLE_NAMING_RULES: readonly TableNamingRule[] = BUILTIN_TABLE_NAMING_RULES;
 
 /** The project's physical-naming rules: `naming` in `.metaobjects/config.json` (ADR-0058). */
 export interface PhysicalNaming {
@@ -140,18 +303,20 @@ export function physicalNamingRemovedMessage(
   );
 }
 
-/** `name` cased by the table rule. */
+/** `name` cased by the table rule registered as `rule`. Throws on a name nothing registered. */
 export function applyTableNamingRule(name: string, rule: TableNamingRule): string {
-  return rule === "literal" ? name : toSnakeCase(name);
+  return tableNamingRule(rule)(name);
 }
 
+/**
+ * `name` through the column strategy registered as `strategy`: the ONE door every column
+ * resolution goes through (codegen, migrate, the runtime, verify, the view and docs
+ * generators), so an application's strategy reaches all of them. Throws on a name nothing
+ * registered: never a silent fallback to the default, which would bind a whole schema to
+ * the wrong columns and report success.
+ */
 export function applyColumnNamingStrategy(name: string, strategy: ColumnNamingStrategy): string {
-  switch (strategy) {
-    case "literal":     return name;
-    case "kebab-case":  return toKebabCase(name);
-    case "snake_case":  return toSnakeCase(name);
-    case "upperFirst":  return toUpperFirstColumn(name);
-  }
+  return columnNamingStrategy(strategy)(name);
 }
 
 /** The four letters that precede a genuinely SINGULAR "...s" ending in the common
@@ -337,7 +502,7 @@ export function resolveColumnName(
  * The text before each member's column when `field` (a `field.object @storage "flattened"`)
  * expands its value object into the owning table: its `@flattenedColumnPrefix` verbatim (`""` allowed),
  * else its own resolved column and `_`. With `@column: "bill"` the members are
- * `bill_<member column>`; under the `upperFirst` rule an `address` field gives `Address_`,
+ * `bill_<member column>`; under the `pascal` rule an `address` field gives `Address_`,
  * which is EF Core's owned-type default.
  *
  * Core naming, not migrate's: generated ORM mappings (the Prisma schema, the C# EF mapping,

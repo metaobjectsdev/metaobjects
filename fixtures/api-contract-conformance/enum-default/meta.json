@@ -1,0 +1,17 @@
+{
+  "metadata.root": {
+    "package": "acme::defaults",
+    "children": [
+      { "object.entity": {
+        "name": "Ticket",
+        "children": [
+          { "source.rdb":       { "@table": "tickets" } },
+          { "field.long":       { "name": "id", "@filterable": true, "@sortable": true } },
+          { "field.string":     { "name": "title", "@required": true, "@maxLength": 100, "@filterable": true, "@sortable": true } },
+          { "field.enum":       { "name": "priority", "@values": ["LOW", "NORMAL", "HIGH"], "@default": "NORMAL", "@filterable": true } },
+          { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
+        ]
+      }}
+    ]
+  }
+}

@@ -428,6 +428,14 @@ public final class JdbcCodecs {
      * {@code @values}' numeric half, a logical property of the enum vocabulary that
      * inherits through {@code extends}, so a concrete field extending a shared
      * abstract enum encodes with the inherited map.</p>
+     *
+     * <p>An int-backed ARRAY ({@code @intValueMap} + {@code isArray}, own or inherited) is
+     * refused in both directions. OMDB persists no enum array of either kind — no driver maps
+     * {@code field.enum} to a native array column (see
+     * {@code PostgresDriver.nativeArrayElementType}), so the list would reach this scalar codec,
+     * which would bind its {@code toString()} (the member SYMBOLS) and read a stored JSON array
+     * through {@code getInt} (SQLite answers {@code 0}, a member nobody stored). Refusing keeps
+     * that silent corruption impossible.</p>
      */
     static final class EnumCodec implements JdbcFieldCodec {
         @Override public void readInto(Object o, MetaField f, ResultSet rs, int j) throws SQLException {
@@ -436,6 +444,7 @@ public final class JdbcCodecs {
                 f.setString(o, rs.getString(j));
                 return;
             }
+            refuseArray(f);
             int stored = rs.getInt(j);
             if (rs.wasNull()) {
                 f.setString(o, null);
@@ -467,6 +476,7 @@ public final class JdbcCodecs {
                 else s.setString(j, v.toString());
                 return;
             }
+            refuseArray(f);
             if (v == null) {
                 s.setNull(j, Types.INTEGER);
                 return;
@@ -480,6 +490,15 @@ public final class JdbcCodecs {
             // Membership is the database's to enforce; inventing a value here
             // would turn a loud error into a silently wrong row.
             s.setString(j, v.toString());
+        }
+
+        /** Throws when an int-backed enum is an ARRAY: OMDB has no enum-array column to store it in. */
+        private static void refuseArray(MetaField f) throws SQLException {
+            if (!f.isArrayType()) return;
+            throw new SQLException(
+                "field.enum '" + f.getName() + "' is an int-backed array (@" + EnumField.ATTR_INT_VALUE_MAP
+                    + " with isArray) — OMDB persists no enum array, so it refuses rather than store "
+                    + "the member symbols or read a member nobody stored.");
         }
 
         /** The declared symbol→int map, or null when the enum is string-backed. */

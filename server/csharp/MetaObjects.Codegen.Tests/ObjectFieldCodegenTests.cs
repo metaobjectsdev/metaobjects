@@ -100,11 +100,12 @@ public class ObjectFieldCodegenTests
     // own columns), and the default prefix follows the project's column rule: the names
     // `meta migrate` creates for the same model (core naming's ResolveFlattenedColumnPrefix).
     [Theory]
-    [InlineData(ColumnNamingStrategy.Literal, "street", "Officestreet", "homeAddress_street")]
-    [InlineData(ColumnNamingStrategy.UpperFirst, "Street", "OfficeStreet", "HomeAddress_Street")]
+    [InlineData("literal", "street", "Officestreet", "homeAddress_street")]
+    [InlineData("pascal", "Street", "OfficeStreet", "HomeAddress_Street")]
     public void DbContext_flattened_columns_follow_column_prefix_and_the_column_rule(
-        ColumnNamingStrategy strategy, string plain, string prefixed, string byDefault)
+        string strategyName, string plain, string prefixed, string byDefault)
     {
+        var strategy = NamingStrategies.Column(strategyName);
         const string model = """
         { "metadata.root": { "package": "acme", "children": [
           { "object.value": { "name": "Address", "children": [ { "field.string": { "name": "street" } } ]}},
@@ -186,7 +187,7 @@ public class ObjectFieldCodegenTests
         // migration never created — measured against a real Postgres, not inferred.
         Assert.Contains("b.Property(p => p.Kind).HasColumnName(\"homeAddress_kind\").HasConversion<string>();", dbContext);
         Assert.Contains(
-            "b.Property(p => p.Grade).HasColumnName(\"homeAddress_grade\").HasConversion(v => v == Address.AddressGrade.LO ? 1 : 2, " +
+            "b.Property(p => p.Grade).HasColumnName(\"homeAddress_grade\").HasConversion(v => v == Address.AddressGrade.LO ? 1 : v == Address.AddressGrade.HI ? 2 : UnmappedEnumMember(v, \"grade\"), " +
             "v => v == 1 ? Address.AddressGrade.LO : v == 2 ? Address.AddressGrade.HI : UnmappedEnumValue<Address.AddressGrade>(v, \"grade\"));",
             dbContext);
         // ...and the fail-fast helper that converter names is declared, even though the ONLY
@@ -281,17 +282,12 @@ public class ObjectFieldCodegenTests
 
         // A NESTED value object member: ONE json column at `<prefix>_<col>` (migrate's
         // subtypeToSqlType returns json for field.object — a nested VO does not flatten
-        // recursively), so it needs its own ToJson pinned to that column. The nested builder
-        // is `nb`: emitting `b.` here would not compile in the GENERATED file.
+        // recursively). It is one jsonb property converted whole: EF Core 8 refuses a nested
+        // owned ToJson inside a table-split owned type, which failed model validation.
         Assert.Contains(
-            """
-                        b.OwnsOne(p => p.Badge, nb =>
-                        {
-                            nb.ToJson("profile_badge");
-                            nb.Property(p => p.Tier).HasConversion<string>();
-                        });
-            """,
+            "b.Property(p => p.Badge).HasColumnName(\"profile_badge\").HasColumnType(\"jsonb\").HasConversion(MapJsonb.ObjectConverter<",
             dbContext);
+        Assert.DoesNotContain("nb.ToJson", dbContext);
     }
 
     // A field.map member USED to be the one member kind deliberately not named: the port

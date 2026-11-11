@@ -9,9 +9,9 @@ import com.metaobjects.generator.apidocs.GeneratorApplicability;
 import com.metaobjects.loader.MetaDataLoader;
 
 import java.util.ArrayList;
-import java.util.HashSet;
+import java.util.HashMap;
 import java.util.List;
-import java.util.Set;
+import java.util.Map;
 
 /**
  * {@code api-docs} — the Java SDK api reference (the {@code api/java} surface of the cross-port
@@ -38,7 +38,8 @@ public final class JavaApiDocsGenerator extends FileEmittingGenerator {
     /** Arg: where under {@code outputDir} the pages land. Default {@link #DEFAULT_API_SUBDIR}. */
     public static final String ARG_API_SUBDIR = "apiSubDir";
 
-    /** Arg: the page layout, {@code flat} (one file per unit, the default) or {@code package}. */
+    /** Arg: the page layout, {@code package} (each page under its package path, the default) or
+     *  {@code flat} (one file per unit at the surface root, which refuses two same-named units). */
     public static final String ARG_LAYOUT = "layout";
 
     /** Arg: the base URL the pages' links to the model pages are written against; with none set, the pages carry no such link. */
@@ -58,23 +59,27 @@ public final class JavaApiDocsGenerator extends FileEmittingGenerator {
         String project = getArg(ARG_PROJECT_NAME, "project");
         String subDir = getArg(ARG_API_SUBDIR, DEFAULT_API_SUBDIR);
         String modelBaseUrl = hasArg(ARG_MODEL_BASE_URL) ? getArg(ARG_MODEL_BASE_URL) : null;
-        DocsPaths.Layout layout = layoutOf(getArg(ARG_LAYOUT, LAYOUT_FLAT));
+        // Keyed by package unless the entry asks for flat: a page named by its short name alone
+        // collides with a same-named node of another package.
+        DocsPaths.Layout layout = layoutOf(getArg(ARG_LAYOUT, LAYOUT_PACKAGE));
 
         JavaApiModel model = new JavaApiModelBuilder(applicability).build(loader, project);
         JavaApiDocsRenderer renderer = new JavaApiDocsRenderer();
 
         List<EmittedFile> pages = new ArrayList<>();
-        Set<String> paths = new HashSet<>();
+        Map<String, String> paths = new HashMap<>();
         for (ApiUnit unit : model.units()) {
             String pagePath = DocsPaths.docPageOutputPath(layout, unit.pkg(), unit.node());
             // No model pages are written beside the api pages, so a relative link would be dead:
             // the link is emitted only against a <modelBaseUrl> that hosts them.
             String modelHref = modelBaseUrl == null || modelBaseUrl.isEmpty() ? null
                     : DocsPaths.modelCrossHref(subDir + "/" + pagePath, pagePath, modelBaseUrl);
-            add(pages, paths, subDir, pagePath, renderer.renderUnitPage(unit, modelHref));
+            // The unit's Java package is the page's folder, so it names the unit here too.
+            String fqn = unit.pkg() == null || unit.pkg().isEmpty() ? unit.node() : unit.pkg() + "." + unit.node();
+            add(pages, paths, subDir, pagePath, fqn, renderer.renderUnitPage(unit, modelHref));
         }
-        add(pages, paths, subDir, "README.md", renderer.renderIndex(model, layout));
-        add(pages, paths, subDir, "AGENT-API.md", renderer.renderAgentApi(model));
+        add(pages, paths, subDir, "README.md", "<the api index>", renderer.renderIndex(model, layout));
+        add(pages, paths, subDir, "AGENT-API.md", "<the agent page>", renderer.renderAgentApi(model));
         return pages;
     }
 
@@ -87,11 +92,19 @@ public final class JavaApiDocsGenerator extends FileEmittingGenerator {
                 + LAYOUT_PACKAGE + " (got \"" + value + "\")");
     }
 
-    /** Add one page, failing on a path two units resolve to. */
-    private static void add(List<EmittedFile> pages, Set<String> paths, String subDir, String pagePath,
-                            String content) {
-        if (!paths.add(pagePath)) {
-            throw new GeneratorException("api-docs: duplicate api page output path: " + pagePath);
+    /** Add one page, failing on a path two units resolve to. Paths are compared case-insensitively:
+     *  macOS and Windows hold {@code ProductNdc.md} and {@code ProductNDC.md} as one file, so one
+     *  page would silently replace the other. {@code paths} maps a lower-cased path to "path (fqn)". */
+    private static void add(List<EmittedFile> pages, Map<String, String> paths, String subDir, String pagePath,
+                            String fqn, String content) {
+        String prior = paths.putIfAbsent(pagePath.toLowerCase(java.util.Locale.ROOT), pagePath + " (" + fqn + ")");
+        if (prior != null) {
+            throw new GeneratorException(prior.startsWith(pagePath + " (")
+                ? "api-docs: duplicate api page output path " + pagePath + ": " + prior + " and " + fqn
+                    + " — rename one of them, or use the package layout."
+                : "api-docs: api page output paths " + prior + " and " + pagePath + " (" + fqn + ") differ only"
+                    + " in case — one file on a case-insensitive filesystem (macOS, Windows), so one page would"
+                    + " replace the other. Rename one of them.");
         }
         pages.add(new EmittedFile(subDir + "/" + pagePath, content));
     }

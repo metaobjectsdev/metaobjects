@@ -18,7 +18,7 @@ import { render } from "@metaobjectsdev/render";
 import type { Provider } from "@metaobjectsdev/render";
 import type { ApiModel, ApiUnitDoc, ApiSymbol, ApiSymbolKind, UnitExample } from "./api-model.js";
 import { inlineShape, type FieldShape } from "./api-field-shape.js";
-import { docPageHref, type DocPageNode } from "../docs-paths.js";
+import { docIndexLabel, docPageHref, type DocPageNode } from "../docs-paths.js";
 import type { OutputLayout } from "../import-path.js";
 import { GENERATED_HEADER } from "../constants.js";
 
@@ -379,14 +379,19 @@ function unitSummary(unit: ApiUnitDoc): string {
   return parts.length > 0 ? parts.join(", ") : "no public symbols";
 }
 
-function indexRow(layout: OutputLayout, unit: ApiUnitDoc): IndexRowVM {
+function indexRow(layout: OutputLayout, unit: ApiUnitDoc, siblings: readonly ApiUnitDoc[]): IndexRowVM {
   // The per-unit page is placed by {name, effective package} (see Task-3
   // emission); link to it via the same docPageHref used for doc pages so it
   // resolves in BOTH layouts — flat (`./Product.md`) and package
   // (`./acme/shop/Product.md`), folding under the package path.
   const href = docPageHref(layout, INDEX_NODE, { name: unit.node, package: unit.package });
+  // Readable when two units share a short name: the label carries the package.
+  const node = docIndexLabel(
+    { name: unit.node, package: unit.package },
+    siblings.map((u) => ({ name: u.node, package: u.package })),
+  );
   return {
-    node: unit.node,
+    node,
     href,
     summary: unitSummary(unit),
     symbolCount: unit.symbols.length,
@@ -406,9 +411,9 @@ export function renderApiIndex(model: ApiModel, layout: OutputLayout, provider: 
     title: "API Reference",
     intro: "Generated public API surface, one page per entity and output template.",
     hasEntities: entities.length > 0,
-    entities: entities.map((u) => indexRow(layout, u)),
+    entities: entities.map((u) => indexRow(layout, u, entities)),
     hasTemplates: templates.length > 0,
-    templates: templates.map((u) => indexRow(layout, u)),
+    templates: templates.map((u) => indexRow(layout, u, templates)),
   };
   return render({ ref: INDEX_REF, payload, provider, format: "markdown" });
 }

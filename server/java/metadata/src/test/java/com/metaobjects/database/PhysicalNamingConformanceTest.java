@@ -68,7 +68,34 @@ public class PhysicalNamingConformanceTest extends SharedRegistryTestBase {
     private record Case(String name, JsonElement naming, Map<String, String> tables,
                          Map<String, String> columns) {}
 
-    private record InvalidCase(String name, JsonElement naming) {}
+    record InvalidCase(String name, JsonElement naming, List<String> messageIncludes) {}
+
+    /**
+     * The corpus's application-registered strategies (ADR-0058 Amendment 1), registered the way
+     * an application does — through {@link NamingStrategies}, before any config is read — each
+     * delegating to the built-in it names. Idempotent: registering a name again replaces it.
+     */
+    static void registerCorpusStrategies() throws IOException {
+        for (JsonElement el : readCorpus().getAsJsonArray("strategies")) {
+            JsonObject s = el.getAsJsonObject();
+            String name = s.get("name").getAsString();
+            String delegate = s.get("delegate").getAsString();
+            String prefix = s.has("prefix") ? s.get("prefix").getAsString() : "";
+            java.util.Set<String> upper = new java.util.HashSet<>();
+            if (s.has("upperCase")) {
+                for (JsonElement u : s.getAsJsonArray("upperCase")) upper.add(u.getAsString());
+            }
+            if ("columns".equals(s.get("for").getAsString())) {
+                NamingStrategies.NamingFunction inner = NamingStrategies.column(delegate);
+                NamingStrategies.registerColumns(name,
+                    n -> upper.contains(n) ? n.toUpperCase(java.util.Locale.ROOT) : prefix + inner.apply(n));
+            } else {
+                NamingStrategies.NamingFunction inner = NamingStrategies.table(delegate);
+                NamingStrategies.registerTables(name,
+                    n -> upper.contains(n) ? n.toUpperCase(java.util.Locale.ROOT) : prefix + inner.apply(n));
+            }
+        }
+    }
 
     static Path corpusDir() {
         Path dir = Paths.get("").toAbsolutePath();
@@ -80,7 +107,7 @@ public class PhysicalNamingConformanceTest extends SharedRegistryTestBase {
         return dir.resolve("fixtures/naming-conformance/physical-names");
     }
 
-    private static JsonObject readCorpus() throws IOException {
+    static JsonObject readCorpus() throws IOException {
         String content = new String(
             Files.readAllBytes(corpusDir().resolve("cases.json")), StandardCharsets.UTF_8);
         return JsonParser.parseString(content).getAsJsonObject();
@@ -93,7 +120,7 @@ public class PhysicalNamingConformanceTest extends SharedRegistryTestBase {
      * {@code null} means the whole {@code "naming"} key is ABSENT (the "default" case), never a
      * literal {@code "naming": null} (which {@code NeutralConfig} refuses as non-an-object).
      */
-    private static PhysicalNaming parseNaming(JsonElement naming, String origin) {
+    static PhysicalNaming parseNaming(JsonElement naming, String origin) {
         JsonObject doc = new JsonObject();
         doc.addProperty("schema_version", 1);
         if (naming != null && !naming.isJsonNull()) {
@@ -104,6 +131,7 @@ public class PhysicalNamingConformanceTest extends SharedRegistryTestBase {
 
     @Parameters(name = "{0}")
     public static Collection<Object[]> cases() throws IOException {
+        registerCorpusStrategies();
         JsonObject root = readCorpus();
         List<Object[]> rows = new ArrayList<>();
         for (JsonElement el : root.getAsJsonArray("cases")) {
@@ -178,35 +206,6 @@ public class PhysicalNamingConformanceTest extends SharedRegistryTestBase {
                 actual = ColumnNaming.resolveFlattened(field, member);
             }
             assertEquals(caseName + ": column name for " + e.getKey(), e.getValue(), actual);
-        }
-    }
-
-    /** Separate suite over the corpus's {@code invalid} array — each must be refused. */
-    @RunWith(Parameterized.class)
-    public static class Invalid {
-
-        @Parameters(name = "{0}")
-        public static Collection<Object[]> invalidCases() throws IOException {
-            JsonObject root = readCorpus();
-            List<Object[]> rows = new ArrayList<>();
-            for (JsonElement el : root.getAsJsonArray("invalid")) {
-                JsonObject c = el.getAsJsonObject();
-                String name = c.get("name").getAsString();
-                rows.add(new Object[]{name, new InvalidCase(name, c.get("naming"))});
-            }
-            return rows;
-        }
-
-        @Parameter(0)
-        public String caseName;
-
-        @Parameter(1)
-        public InvalidCase testCase;
-
-        @Test
-        public void isRefused() {
-            assertThrows(MetaDataException.class,
-                () -> parseNaming(testCase.naming(), "invalid-case:" + caseName));
         }
     }
 }

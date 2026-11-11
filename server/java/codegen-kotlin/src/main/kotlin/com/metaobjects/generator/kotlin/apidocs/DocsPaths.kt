@@ -22,6 +22,16 @@ object DocsPaths {
         return pkg.replace("::", "/").replace(".", "/")
     }
 
+    /**
+     * The index label of a page: its short name, or `"<name> (<package>)"` when another unit in the
+     * same list shares that name (case-insensitively), so the index tells the two apart. [siblings] is
+     * the whole list, this unit included. Mirrors the TS `docIndexLabel`.
+     */
+    fun indexLabel(name: String, pkg: String?, siblings: List<String>): String {
+        val shared = siblings.count { it.equals(name, ignoreCase = true) } > 1
+        return if (shared && !pkg.isNullOrEmpty()) "$name ($pkg)" else name
+    }
+
     /** Flat -> `"<name>.md"`; Package -> `"<pkg-folded>/<name>.md"`. */
     fun docPageOutputPath(layout: Layout, pkg: String?, name: String): String {
         val file = "$name.md"

@@ -70,5 +70,74 @@
       "collidesOn": "api_keys",
       "note": "route-segment twins — the pluralized PascalCase names differ (ApiKeys / APIKeys) but both snake_case to api_key and serve /api_keys"
     }
+  ],
+  "_shapeOnlyComment": "Expected-PASS cases: a name collides only inside the scope of the artifact that carries it (one DbSet context, one routes entry, one module or class), and an object that emits nothing (abstract, or declaring and inheriting no source.rdb) takes part in no scope, so it never collides. Every port must ACCEPT each case: build `shapeOnly` and `emitting` as objects in their own packages (`abstract` and `source` say whether the shape-only object is abstract and whether it declares a source.rdb; both objects declare an `id` primary identity, and `emitting` always has a source), then run that port's scoped checks over both. `crossPackageCollisionCases`: two EMITTING entities of the same name in two packages collide when the port puts both in ONE scope (one context, one routes entry); in separate scopes they are two names.",
+  "shapeOnlyCases": [
+    {
+      "shapeOnly": {
+        "package": "enterprise",
+        "name": "Payer",
+        "abstract": true,
+        "source": false
+      },
+      "emitting": {
+        "package": "core",
+        "name": "Payer"
+      },
+      "note": "abstract and sourceless: the shape a layered library declares for the application to extend"
+    },
+    {
+      "shapeOnly": {
+        "package": "enterprise",
+        "name": "Payer",
+        "abstract": true,
+        "source": true
+      },
+      "emitting": {
+        "package": "core",
+        "name": "Payer"
+      },
+      "note": "abstract with a source: an abstract object never has an instance, so nothing is generated for it"
+    },
+    {
+      "shapeOnly": {
+        "package": "enterprise",
+        "name": "Payer",
+        "abstract": false,
+        "source": false
+      },
+      "emitting": {
+        "package": "core",
+        "name": "Payer"
+      },
+      "note": "concrete and sourceless (#248): no table, route or finder; the adopter owns its data access"
+    },
+    {
+      "shapeOnly": {
+        "package": "enterprise",
+        "name": "Address",
+        "abstract": true,
+        "source": false
+      },
+      "emitting": {
+        "package": "core",
+        "name": "Addresses"
+      },
+      "note": "the already-plural pair, with one side shape-only"
+    }
+  ],
+  "crossPackageCollisionCases": [
+    {
+      "entityA": {
+        "package": "enterprise",
+        "name": "Payer"
+      },
+      "entityB": {
+        "package": "core",
+        "name": "Payer"
+      },
+      "collidesOn": "Payers",
+      "note": "two emitting entities with one short name in two packages: refused once both land in one scope, accepted in two"
+    }
   ]
 }

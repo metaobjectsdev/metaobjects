@@ -91,3 +91,41 @@ describe("Drizzle codegen — int-backed field.enum customType", () => {
     expect(out).toContain('text("status"');
   });
 });
+
+// An int-backed enum ARRAY. Postgres composes the element codec under `.array()`
+// (integer[]); SQLite and MySQL hold the array in one JSON column, so the codec is
+// a whole-array one writing the mapped INTS. A text(…, { mode: "json" }) column
+// there would store the member symbols — design D7's failure mode.
+describe("Drizzle codegen — int-backed field.enum ARRAY", () => {
+  const ARRAY_DECL = { name: "status", isArray: true, "@values": VALUES, "@intValueMap": INT_MAP };
+
+  test("postgres: the element codec under .array(), null-safe on read, throwing on an unmapped write", async () => {
+    const out = await emit(ARRAY_DECL, [], "postgres");
+    expect(out).toContain('statusIntEnum("status").array()');
+    expect(out).toContain('dataType: () => "integer"');
+    expect(out).toContain("unmapped statusIntEnum member");
+    expect(out).not.toContain("JSON.stringify");
+  });
+
+  test("sqlite: a JSON-array-of-ints codec in a text column, never mode json", async () => {
+    const out = await emit(ARRAY_DECL, [], "sqlite");
+    expect(out).toContain('statusIntEnumArray("status")');
+    expect(out).toContain('dataType: () => "text"');
+    expect(out).toContain('data: ("DRAFT" | "PUBLISHED" | "ARCHIVED")[]');
+    expect(out).toContain("JSON.stringify(value.map(");
+    expect(out).not.toContain('mode: "json"');
+    expect(out).not.toContain(".array()");
+  });
+
+  test("mysql: the same codec in a json column", async () => {
+    const out = await emit(ARRAY_DECL, [], "mysql");
+    expect(out).toContain('statusIntEnumArray("status")');
+    expect(out).toContain('dataType: () => "json"');
+  });
+
+  test("an array column gets no CHECK", async () => {
+    for (const d of ["postgres", "sqlite", "mysql"] as const) {
+      expect(await emit(ARRAY_DECL, [], d)).not.toContain("_chk");
+    }
+  });
+});

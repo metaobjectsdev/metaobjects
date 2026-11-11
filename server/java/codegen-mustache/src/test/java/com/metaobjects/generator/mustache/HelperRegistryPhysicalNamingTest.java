@@ -53,6 +53,31 @@ public class HelperRegistryPhysicalNamingTest {
         return loader;
     }
 
+    /**
+     * The corpus's application-registered strategies (ADR-0058 Amendment 1), registered through
+     * {@link com.metaobjects.database.NamingStrategies} the way an application does, each
+     * delegating to the built-in it names. Idempotent.
+     */
+    static void registerCorpusStrategies(com.fasterxml.jackson.databind.JsonNode corpus) {
+        for (com.fasterxml.jackson.databind.JsonNode s : corpus.get("strategies")) {
+            String name = s.get("name").asText();
+            String prefix = s.has("prefix") ? s.get("prefix").asText() : "";
+            java.util.Set<String> upper = new java.util.HashSet<>();
+            if (s.has("upperCase")) for (com.fasterxml.jackson.databind.JsonNode u : s.get("upperCase")) upper.add(u.asText());
+            if ("columns".equals(s.get("for").asText())) {
+                com.metaobjects.database.NamingStrategies.NamingFunction inner =
+                    com.metaobjects.database.NamingStrategies.column(s.get("delegate").asText());
+                com.metaobjects.database.NamingStrategies.registerColumns(name,
+                    n -> upper.contains(n) ? n.toUpperCase(java.util.Locale.ROOT) : prefix + inner.apply(n));
+            } else {
+                com.metaobjects.database.NamingStrategies.NamingFunction inner =
+                    com.metaobjects.database.NamingStrategies.table(s.get("delegate").asText());
+                com.metaobjects.database.NamingStrategies.registerTables(name,
+                    n -> upper.contains(n) ? n.toUpperCase(java.util.Locale.ROOT) : prefix + inner.apply(n));
+            }
+        }
+    }
+
     private static MetaObject object(MetaDataLoader loader, String shortName) {
         for (MetaObject obj : loader.getMetaObjects()) {
             if (shortName.equals(obj.getShortName())) return obj;
@@ -64,6 +89,7 @@ public class HelperRegistryPhysicalNamingTest {
     public void tableAndColumnHelpersFollowEveryCorpusNamingRule() throws IOException {
         HelperRegistry helpers = new HelperRegistry();
         JsonNode corpus = JSON.readTree(corpusDir().resolve("cases.json").toFile());
+        registerCorpusStrategies(corpus);
         int checked = 0;
         for (JsonNode c : corpus.get("cases")) {
             String name = c.get("name").asText();

@@ -43,6 +43,7 @@ An object that owns its data: own identity, writable sources, and lifecycle. The
 
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
 | --- | --- | --- | --- | --- | --- | --- |
+| `@dbSetName` | string | no |  |  | metaobjects-core-types | C#-only (EF Core): the DbSet property name the generated context gives this object, in place of the plural derived from its name. Set it when two objects in one generated context would otherwise claim the same property. Every port loads and type-checks it; only C# acts on it. |
 | `@discriminator` | string | no |  |  | metaobjects-core-types | FR-014: names the field on this entity (resolvable via extends:) that holds the subtype-discriminator value. Subtypes of this entity declare @discriminatorValue to bind their rows to a discriminator value. The discriminator field itself is an ordinary field declaration (typically field.enum or field.int / field.string). |
 | `@discriminatorValue` | string | no |  |  | metaobjects-core-types | FR-014: on a subtype of an entity with @discriminator — the value that identifies rows of this subtype in the shared discriminator field. Wire form is always a string; the underlying field's subtype (enum / int / string) controls codegen + storage coercion. Required on every concrete subtype of a discriminated entity. |
 
@@ -74,6 +75,7 @@ A derived read-only representation of entities. Its fields are extends-bound / o
 
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
 | --- | --- | --- | --- | --- | --- | --- |
+| `@dbSetName` | string | no |  |  | metaobjects-core-types | C#-only (EF Core): the DbSet property name the generated context gives this object, in place of the plural derived from its name. Set it when two objects in one generated context would otherwise claim the same property. Every port loads and type-checks it; only C# acts on it. |
 | `@filter` | filter | no |  |  | metaobjects-core-types | Optional row-scope predicate (a portable attr.filter object: eq/ne/gt/gte/lt/lte/like/in/isNull with and/or, desugared to { field: { op: value } } at parse time) selecting which rows the view returns — lowered to an outer SQL WHERE. Resolves against the projection's own declared fields; an aggregate-derived field is not addressable (fail-closed). |
 
 **Allowed children**
@@ -97,6 +99,7 @@ A declared report (FR-044): a fixed combination of dimensions and measures of ON
 
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
 | --- | --- | --- | --- | --- | --- | --- |
+| `@dbSetName` | string | no |  |  | metaobjects-core-types | C#-only (EF Core): the DbSet property name the generated context gives this object, in place of the plural derived from its name. Set it when two objects in one generated context would otherwise claim the same property. Every port loads and type-checks it; only C# acts on it. |
 | `@dimensions` | string[] | no |  |  | metaobjects-core-types | Dimension names of @from; a time dimension is written 'name:grain'. Absent means one global row. |
 | `@filter` | filter | no |  |  | metaobjects-core-types | Optional row scope over @from's fields; may use relative-date values. |
 | `@from` | string | yes |  |  | metaobjects-core-types | The object.entity whose rows the report aggregates. |

@@ -44,6 +44,8 @@ class AttrSchema:
     rules: str | None = None
     example: str | None = None
     when_to_use: str | None = None
+    # The ports that act on a language-specific attr (``("csharp",)``); None = every port.
+    ports: tuple[str, ...] | None = None
 
 
 @dataclass(frozen=True)

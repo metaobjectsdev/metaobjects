@@ -1423,6 +1423,27 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
                     }
                 }
             }
+            // A list given to a declared SCALAR string attr is a wrong value type (TS, C# and
+            // Python refuse it with the same code). Without this the list was stored as its
+            // JSON text, so a wrong-typed value loaded silently.
+            if (rawValue.isJsonArray()) {
+                com.metaobjects.registry.TypeDefinition parentDef =
+                    getTypeRegistry().getTypeDefinition(md.getType(), md.getSubType());
+                com.metaobjects.registry.ChildRequirement req = parentDef == null ? null : parentDef.getChildRequirement(attrName);
+                String arrayConstraintId = md.getType() + "." + md.getSubType() + "." + attrName + ".array";
+                if (req != null
+                        && MetaAttribute.TYPE_ATTR.equals(req.getExpectedType())
+                        && com.metaobjects.attr.StringAttribute.SUBTYPE_STRING.equals(req.getExpectedSubType())
+                        && !getTypeRegistry().hasConstraint(arrayConstraintId)
+                        && !getTypeRegistry().hasConstraint("*.*." + attrName + ".array")) {
+                    throw new MetaDataException(
+                        ErrorMessageConstants.ERR_BAD_ATTR_VALUE
+                            + ": @" + attrName + " on " + md.getType() + "." + md.getSubType()
+                            + " '" + md.getName() + "' takes one string, not " + describeJsonKind(rawValue)
+                            + " in file [" + getFilename() + "]",
+                        ErrorCode.ERR_BAD_ATTR_VALUE, currentSourceEnvelope());
+                }
+            }
             String stringValue;
             // Set when a bare string is wrapped for an array attr and carries a comma: the
             // comma-delimited array path would split it, so it is re-set whole below.

@@ -21,6 +21,35 @@ namespace MetaObjects.Codegen.Tests;
 
 public class NamingConformanceTests
 {
+    // The corpus's application-registered strategies (ADR-0058 Amendment 1), registered the
+    // way an application does — through NamingStrategies, before any config is read — each
+    // delegating to the built-in it names.
+    static NamingConformanceTests() => RegisterCorpusStrategies();
+
+    internal static void RegisterCorpusStrategies()
+    {
+        using var doc = CasesDoc();
+        foreach (var s in doc.RootElement.GetProperty("strategies").EnumerateArray())
+        {
+            var name = s.GetProperty("name").GetString()!;
+            var delegateName = s.GetProperty("delegate").GetString()!;
+            var prefix = s.TryGetProperty("prefix", out var p) ? p.GetString()! : "";
+            var upper = s.TryGetProperty("upperCase", out var u)
+                ? u.EnumerateArray().Select(e => e.GetString()!).ToHashSet(StringComparer.Ordinal)
+                : new HashSet<string>(StringComparer.Ordinal);
+            if (s.GetProperty("for").GetString() == "columns")
+            {
+                var inner = NamingStrategies.Column(delegateName);
+                NamingStrategies.RegisterColumns(name, n => upper.Contains(n) ? n.ToUpperInvariant() : prefix + inner.Apply(n));
+            }
+            else
+            {
+                var inner = NamingStrategies.Table(delegateName);
+                NamingStrategies.RegisterTables(name, n => upper.Contains(n) ? n.ToUpperInvariant() : prefix + inner.Apply(n));
+            }
+        }
+    }
+
     private static string FixtureDir =>
         Path.Combine(CorpusPaths.RepoRoot(), "fixtures", "naming-conformance", "physical-names");
 
@@ -62,12 +91,15 @@ public class NamingConformanceTests
         return new Case(name, naming, tables, columns);
     }
 
-    private static JsonElement LoadInvalidNaming(string name)
+    private static (JsonElement Naming, string[] MessageIncludes) LoadInvalidNaming(string name)
     {
         using var doc = CasesDoc();
         var el = doc.RootElement.GetProperty("invalid").EnumerateArray()
             .Single(c => c.GetProperty("name").GetString() == name);
-        return el.GetProperty("naming").Clone();
+        var includes = el.TryGetProperty("messageIncludes", out var m)
+            ? m.EnumerateArray().Select(e => e.GetString()!).ToArray()
+            : [];
+        return (el.GetProperty("naming").Clone(), includes);
     }
 
     /// <summary>
@@ -178,7 +210,9 @@ public class NamingConformanceTests
     [MemberData(nameof(InvalidCaseNames))]
     public void Refuses_invalid_naming_blocks(string name)
     {
-        var naming = LoadInvalidNaming(name);
-        Assert.ThrowsAny<MetaObjects.MetaModelException>(() => ReadNaming(naming));
+        var (naming, includes) = LoadInvalidNaming(name);
+        var ex = Assert.ThrowsAny<MetaObjects.MetaModelException>(() => ReadNaming(naming));
+        foreach (var part in includes) Assert.Contains(part, ex.Message);
+        if (includes.Length > 0) Assert.Contains("C# port", ex.Message);
     }
 }

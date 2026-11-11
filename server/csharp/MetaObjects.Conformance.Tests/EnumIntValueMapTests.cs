@@ -86,4 +86,42 @@ public class EnumIntValueMapTests
         var res = TryLoad(Model(""", "@intValueMap": {"DRAFT": 0, "PUBLISHED": 5, "ARCHIVED": 9999999999}"""));
         Assert.Contains(res.Errors, e => e.Code == ErrorCode.ERR_BAD_ATTR_VALUE);
     }
+
+    // An int-backed enum ARRAY loads: this port persists it element-wise (an EF Core
+    // primitive collection whose element converter is the @intValueMap pair), so there is
+    // no reason to refuse it here.
+    [Fact]
+    public void An_array_with_its_own_intValueMap_loads_clean()
+    {
+        var res = TryLoad(Model(""", "isArray": true, "@intValueMap": {"DRAFT": 0, "PUBLISHED": 5, "ARCHIVED": 9}"""));
+        Assert.Empty(res.Errors);
+    }
+
+    // The shape adopters write: the map on a shared abstract enum, inherited by an array field.
+    [Fact]
+    public void An_array_inheriting_a_shared_intValueMap_loads_clean()
+    {
+        var res = TryLoad("""
+        { "metadata.root": { "package": "acme", "children": [
+          { "field.enum": { "name": "Status", "abstract": true,
+              "@values": ["DRAFT","PUBLISHED","ARCHIVED"],
+              "@intValueMap": {"DRAFT": 0, "PUBLISHED": 5, "ARCHIVED": 9} } },
+          { "object.entity": { "name": "Order", "children": [
+            { "field.long": { "name": "id" } },
+            { "field.enum": { "name": "status", "extends": "acme::Status" } },
+            { "field.enum": { "name": "history", "extends": "acme::Status", "isArray": true } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+          ]}}
+        ]}}
+        """);
+        Assert.Empty(res.Errors);
+    }
+
+    // The content rules still apply to an array: being an array exempts nothing.
+    [Fact]
+    public void An_array_with_a_mismatched_intValueMap_is_still_rejected()
+    {
+        var res = TryLoad(Model(""", "isArray": true, "@intValueMap": {"DRAFT": 0, "PUBLISHED": 5}"""));
+        Assert.Contains(res.Errors, e => e.Code == ErrorCode.ERR_BAD_ATTR_VALUE && e.Message.Contains("ARCHIVED"));
+    }
 }

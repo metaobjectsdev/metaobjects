@@ -40,6 +40,41 @@ public static class DocsPaths
         return dir.Length == 0 ? file : dir + "/" + file;
     }
 
+    /// <summary>
+    /// The index label of a page: its short name, or <c>"&lt;name&gt; (&lt;package&gt;)"</c> when
+    /// another unit in the same list shares that name (case-insensitively), so the index tells the
+    /// two apart. <paramref name="siblings"/> is the whole list, this unit included. Mirrors the TS
+    /// <c>docIndexLabel</c>.
+    /// </summary>
+    public static string IndexLabel(string name, string? pkg, IEnumerable<string> siblings)
+    {
+        var shared = siblings.Count(n => string.Equals(n, name, StringComparison.OrdinalIgnoreCase)) > 1;
+        return shared && !string.IsNullOrEmpty(pkg) ? $"{name} ({pkg})" : name;
+    }
+
+    /// <summary>
+    /// Refuse two pages that resolve to the same output path, compared case-insensitively: macOS
+    /// and Windows hold <c>ProductNdc.md</c> and <c>ProductNDC.md</c> as one file, so one page
+    /// would silently replace the other. Each placement is (path, the node's FQN). Mirrors the TS
+    /// <c>assertNoDuplicateDocPaths</c>.
+    /// </summary>
+    public static void AssertNoDuplicateDocPaths(IEnumerable<(string Path, string Fqn)> placements)
+    {
+        var seen = new Dictionary<string, (string Path, string Fqn)>(StringComparer.OrdinalIgnoreCase);
+        foreach (var placement in placements)
+        {
+            if (seen.TryGetValue(placement.Path, out var prior))
+            {
+                throw new InvalidOperationException(prior.Path == placement.Path
+                    ? $"docs: duplicate output path \"{placement.Path}\" from nodes {prior.Fqn} and {placement.Fqn} — rename one of them."
+                    : $"docs: output paths \"{prior.Path}\" ({prior.Fqn}) and \"{placement.Path}\" ({placement.Fqn}) differ only " +
+                      "in case — one file on a case-insensitive filesystem (macOS, Windows), so one page would replace " +
+                      "the other. Rename one of them.");
+            }
+            seen[placement.Path] = placement;
+        }
+    }
+
     /// <summary>Relative posix href from <paramref name="fromOutputPath"/>'s directory to
     /// <paramref name="toOutputPath"/> (mirrors the TS <c>surfaceCrossHref</c>).</summary>
     public static string SurfaceCrossHref(string fromOutputPath, string toOutputPath)

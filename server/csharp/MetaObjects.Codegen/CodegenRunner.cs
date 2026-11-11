@@ -70,11 +70,10 @@ public static class CodegenRunner
             Generators = generators,
         };
 
-        // Refuse before any generator runs — the one choke point that sees the WHOLE
-        // entity set every DbSet/route/finder-emitting generator below reads from.
-        // A view-backed report gets a DbSet too, so it is part of the collision check.
-        CSharpNaming.AssertNoCollectionNameCollisions(
-            [.. ctx.Entities, .. root.Objects().Where(o => ReportRows.IsViewBacked(o) && root.InScope(o))]);
+        // No run-wide name-collision check: each generator refuses a name two objects claim in
+        // the scope it emits into (DbSet names per context, route segments per routes entry,
+        // finders per class; CSharpNaming.AssertUniqueInScope). The same short name in two
+        // packages is two names until both land in one of those scopes.
 
         Directory.CreateDirectory(config.OutDir);
         var results = new List<WriteResult>();

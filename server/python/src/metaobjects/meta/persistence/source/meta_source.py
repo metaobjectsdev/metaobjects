@@ -6,7 +6,7 @@ physical-name aliases (@table / @view / @materializedView / @proc / @function)
 """
 from __future__ import annotations
 
-from ....naming import TABLE_NAMING_LITERAL, naming_rules_of
+from ....naming import apply_table_naming_rule, naming_rules_of
 from ...meta_data import MetaData
 from .source_constants import (
     ALL_PHYSICAL_NAME_ALIASES,
@@ -21,30 +21,6 @@ from .source_constants import (
     SOURCE_ATTR_UNMANAGED,
     SOURCE_READ_ONLY_KINDS,
 )
-
-
-def _to_snake_case(s: str) -> str:
-    """``MyName`` → ``my_name``; ``HTTPServer`` → ``http_server`` (mirrors TS
-    ``toSnakeCase`` regex pair, ASCII-only)."""
-    if not s:
-        return s
-    # Run 1: split between an uppercase-run and an upper+lower head.
-    out: list[str] = []
-    n = len(s)
-    for i, ch in enumerate(s):
-        is_upper = "A" <= ch <= "Z"
-        if is_upper and i > 0:
-            prev = s[i - 1]
-            prev_upper = "A" <= prev <= "Z"
-            prev_alnum_lower = ("a" <= prev <= "z") or ("0" <= prev <= "9")
-            nxt = s[i + 1] if i + 1 < n else ""
-            nxt_lower = "a" <= nxt <= "z"
-            if prev_alnum_lower:
-                out.append("_")
-            elif prev_upper and nxt_lower:
-                out.append("_")
-        out.append(ch.lower())
-    return "".join(out)
 
 
 def _pluralize(s: str) -> str:
@@ -169,17 +145,16 @@ class MetaSource(MetaData):
                 return legacy
 
         rule = table_naming if table_naming is not None else naming_rules_of(self).tables
-        literal = rule == TABLE_NAMING_LITERAL
 
-        # Step 3: source's structural name, cased by the rule (no pluralize).
+        # Step 3: source's structural name, cased by the rule (no pluralize). The rule is a
+        # registered table rule, built in or the application's (ADR-0058 Amendment 1).
         if self.name:
-            return self.name if literal else _to_snake_case(self.name)
+            return apply_table_naming_rule(self.name, rule)
 
         # Step 4: owning entity's name, cased by the rule, then pluralized.
         owner = self.parent
         if owner is not None and getattr(owner, "name", ""):
-            cased = owner.name if literal else _to_snake_case(owner.name)
-            return _pluralize(cased)
+            return _pluralize(apply_table_naming_rule(owner.name, rule))
 
         return ""
 

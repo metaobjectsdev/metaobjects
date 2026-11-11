@@ -922,7 +922,7 @@ public object KotlinGenUtil {
     const val COLUMN_NAMING_SNAKE_CASE: String = ColumnNaming.SNAKE_CASE
     const val COLUMN_NAMING_LITERAL: String = ColumnNaming.LITERAL
     const val COLUMN_NAMING_KEBAB_CASE: String = ColumnNaming.KEBAB_CASE
-    const val COLUMN_NAMING_UPPER_FIRST: String = ColumnNaming.UPPER_FIRST
+    const val COLUMN_NAMING_PASCAL: String = ColumnNaming.PASCAL
     const val DEFAULT_COLUMN_NAMING: String = COLUMN_NAMING_SNAKE_CASE
 
     /**
@@ -951,7 +951,10 @@ public object KotlinGenUtil {
      */
     const val ARG_USE_NAMES: String = EmitsPhysicalNameConstants.ARG_USE_NAMES
 
-    /** Apply a column-naming strategy to a bare name. */
+    /**
+     * Apply a column-naming strategy — a built-in or one the application registered in
+     * [com.metaobjects.database.NamingStrategies] (ADR-0058 Amendment 1) — to a bare name.
+     */
     fun applyColumnNamingStrategy(name: String, strategy: String): String =
         ColumnNaming.apply(name, strategy)
 

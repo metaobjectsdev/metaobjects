@@ -72,6 +72,9 @@ public sealed class NeutralConfig
     /// <summary>FR-023 — <c>migrate.scope</c>, or null when the project declares none.</summary>
     public IReadOnlyList<string>? MigrateScope { get; }
 
+    /// <summary>`migrate.dialect`: the SQL dialect the project's schema is built for, or null.</summary>
+    public string? MigrateDialect { get; private init; }
+
     /// <summary>
     /// FR-023 — <c>requirements.inherit</c>: the dependencies whose requirements this project takes on
     /// as its own ledger (<see cref="ImportScope.InLedger"/>). Empty when absent.
@@ -139,7 +142,24 @@ public sealed class NeutralConfig
     /// used here is deliberately NOT part of the cross-port contract (only the
     /// raise-don't-degrade behavior is), so callers should match on message,
     /// not code, for this path.
-    public static NeutralConfig? Read(string configDir)
+    public static NeutralConfig? Read(string configDir) => Read(configDir, validateNaming: true);
+
+    /// `migrate.dialect`, as the TypeScript `meta migrate` reads it; null when absent or not a string.
+    private static string? ReadMigrateDialect(JsonElement root) =>
+        root.TryGetProperty("migrate", out var migrate) && migrate.ValueKind == JsonValueKind.Object
+        && migrate.TryGetProperty("dialect", out var d) && d.ValueKind == JsonValueKind.String
+            ? d.GetString()
+            : null;
+
+    /// <summary>
+    /// As <see cref="Read(string)"/>; with <paramref name="validateNaming"/> false a
+    /// <c>naming</c> value no strategy registered in THIS process answers is kept by name
+    /// (<see cref="ColumnNamingStrategy.ByName"/>) instead of refused, and refused when it is
+    /// applied. For a caller that hands the config to another process that registers it — stock
+    /// <c>dotnet meta verify</c> handing <c>--codegen</c> to the project's codegen runner. A wrong
+    /// SHAPE is still refused.
+    /// </summary>
+    public static NeutralConfig? Read(string configDir, bool validateNaming)
     {
         var path = Path.Combine(configDir, MetaObjectsDir, ConfigFile);
         if (!File.Exists(path)) return null;
@@ -264,17 +284,38 @@ public sealed class NeutralConfig
                 {
                     switch (p.Name)
                     {
+                        // ADR-0058 Amendment 1: a value is the NAME of a registered strategy, a
+                        // built-in or one the application registered (NamingStrategies) before
+                        // this read. A name nothing answers is refused here, naming it.
                         case "columns":
-                            if (p.Value.ValueKind != JsonValueKind.String || !TryParseColumnNaming(p.Value.GetString()!, out columns))
+                            if (p.Value.ValueKind != JsonValueKind.String)
                                 throw new MetaModelException(
-                                    $"{path}: \"naming.columns\" must be one of \"snake_case\", \"literal\", \"kebab-case\", \"upperFirst\"",
+                                    $"{path}: \"naming.columns\" must be a string naming a column-naming strategy",
                                     ErrorCode.ERR_BAD_ATTR_VALUE);
+                            if (!NamingStrategies.TryGetColumn(p.Value.GetString()!, out var column))
+                            {
+                                if (validateNaming)
+                                    throw new MetaModelException(
+                                        $"{path}: {NamingStrategies.UnknownMessage("columns", p.Value.GetString()!)}",
+                                        ErrorCode.ERR_BAD_ATTR_VALUE);
+                                column = ColumnNamingStrategy.ByName(p.Value.GetString()!);
+                            }
+                            columns = column;
                             break;
                         case "tables":
-                            if (p.Value.ValueKind != JsonValueKind.String || !TryParseTableNaming(p.Value.GetString()!, out tables))
+                            if (p.Value.ValueKind != JsonValueKind.String)
                                 throw new MetaModelException(
-                                    $"{path}: \"naming.tables\" must be one of \"snake_case\", \"literal\"",
+                                    $"{path}: \"naming.tables\" must be a string naming a table-naming strategy",
                                     ErrorCode.ERR_BAD_ATTR_VALUE);
+                            if (!NamingStrategies.TryGetTable(p.Value.GetString()!, out var table))
+                            {
+                                if (validateNaming)
+                                    throw new MetaModelException(
+                                        $"{path}: {NamingStrategies.UnknownMessage("tables", p.Value.GetString()!)}",
+                                        ErrorCode.ERR_BAD_ATTR_VALUE);
+                                table = TableNamingRule.ByName(p.Value.GetString()!);
+                            }
+                            tables = table;
                             break;
                         default:
                             throw new MetaModelException(
@@ -292,6 +333,7 @@ public sealed class NeutralConfig
             {
                 Enums = ReadEnums(root, path),
                 RequirementsInherit = ReadRequirementsInherit(root, path),
+                MigrateDialect = ReadMigrateDialect(root),
             };
         }
     }
@@ -499,29 +541,5 @@ public sealed class NeutralConfig
             }
         }
         return new WireFormat(decimals, nullMembers, durations);
-    }
-
-    /// The cross-port spellings (ADR-0058) — not .NET enum names, so the JSON value reads
-    /// the same in every port's config.
-    private static bool TryParseColumnNaming(string raw, out ColumnNamingStrategy strategy)
-    {
-        switch (raw)
-        {
-            case "literal":     strategy = ColumnNamingStrategy.Literal;   return true;
-            case "snake_case":  strategy = ColumnNamingStrategy.SnakeCase; return true;
-            case "kebab-case":  strategy = ColumnNamingStrategy.KebabCase; return true;
-            case "upperFirst":  strategy = ColumnNamingStrategy.UpperFirst; return true;
-            default:            strategy = ColumnNamingStrategy.Literal;   return false;
-        }
-    }
-
-    private static bool TryParseTableNaming(string raw, out TableNamingRule rule)
-    {
-        switch (raw)
-        {
-            case "literal":    rule = TableNamingRule.Literal;   return true;
-            case "snake_case": rule = TableNamingRule.SnakeCase; return true;
-            default:           rule = TableNamingRule.Literal;   return false;
-        }
     }
 }

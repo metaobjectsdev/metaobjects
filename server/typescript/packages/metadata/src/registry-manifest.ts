@@ -52,6 +52,8 @@ export interface ManifestAttr {
    * value-set drifting between ports (the failure mode the dbColumnType slim hit).
    */
   allowedValues?: readonly string[];
+  /** The ports that act on a language-specific attr, sorted. Emitted ONLY when the attr names them. */
+  ports?: readonly string[];
   /** FR-033 — human/AI-facing description of the attribute (required, non-empty). */
   description: string;
   /** FR-033 — prose documenting the complex rules enforced in code. Emitted only when present. */
@@ -161,6 +163,7 @@ function toManifestAttr(attr: AttrSchema): ManifestAttr {
     isArray,
     required: attr.required,
     ...(hasAllowed ? { allowedValues: attr.allowedValues!.map((v) => String(v)) } : {}),
+    ...(attr.ports !== undefined && attr.ports.length > 0 ? { ports: [...attr.ports].sort() } : {}),
     description: attr.description,
   };
   if (attr.rules !== undefined) out.rules = attr.rules;

@@ -1,0 +1,53 @@
+name: schema-qualified-same-name
+description: |
+  Two entities map tables with the same name in different database schemas:
+  `LedgerEntry` reads `ledger_entries` (the default schema) and `ArchivedLedgerEntry`
+  reads `archive.ledger_entries` (`source.rdb @schema: archive`). Each must read and
+  write its own table. The failure this pins is a runtime that drops `@schema` and
+  addresses the bare table name, so both entities silently read the default schema's
+  rows — the lists below would then come back identical.
+
+  Postgres only: SQLite and D1 have no schemas, and `meta migrate` refuses a declared
+  one there.
+
+  Ids are seeded from 101 so the runtime-generated ids of the roundtrip inserts never
+  collide with them.
+engines: [postgres]
+seed-data: |
+  INSERT INTO "ledger_entries" ("id","memo") VALUES
+    (101, 'current-a'),
+    (102, 'current-b');
+  INSERT INTO "archive"."ledger_entries" ("id","memo") VALUES
+    (101, 'archived-a');
+queries:
+  - name: default-schema-table
+    op: list
+    entity: LedgerEntry
+    sort: [{ field: id, dir: asc }]
+    expect:
+      - { id: "101", memo: current-a }
+      - { id: "102", memo: current-b }
+
+  - name: schema-qualified-table
+    op: list
+    entity: ArchivedLedgerEntry
+    sort: [{ field: id, dir: asc }]
+    expect:
+      - { id: "101", memo: archived-a }
+
+  - name: get-reads-the-declared-schema
+    op: get
+    entity: ArchivedLedgerEntry
+    by: { id: 101 }
+    expect: { id: "101", memo: archived-a }
+
+  - name: count-reads-the-declared-schema
+    op: count
+    entity: ArchivedLedgerEntry
+    expect: 1
+
+  - name: roundtrip-writes-the-declared-schema
+    op: roundtrip
+    entity: ArchivedLedgerEntry
+    insert: { memo: archived-new }
+    expect: { memo: archived-new }

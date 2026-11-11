@@ -7,6 +7,16 @@ package com.metaobjects.integration.kotlin
  */
 object Scenarios {
 
+    /**
+     * Scenarios this port defers on EVERY engine it runs them on, each with the port gap that
+     * blocks it. Every other scenario under `queries/` runs, so a new fixture auto-runs or
+     * auto-fails, forcing a deliberate entry here.
+     */
+    val DEFERRED: Map<String, String> = mapOf(
+        "roundtrip-int-enum-array" to
+            "Exposed codegen persists no field.enum array of either kind: KotlinExposedTableGenerator.enumColumnSpec emits a SCALAR enumerationByName/customEnumeration column for an isArray enum, so the generated List<E> property does not type-check against it; the hand-written reference tables mirror the generator.",
+    )
+
     data class SortSpec(val field: String, val dir: String)
 
     data class QuerySpec(

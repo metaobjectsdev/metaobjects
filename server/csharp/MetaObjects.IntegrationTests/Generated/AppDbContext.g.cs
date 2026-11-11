@@ -11,6 +11,7 @@ public class AppDbContext : DbContext
 
     public DbSet<AllTypes> AllTypes { get; set; } = default!;
     public DbSet<AllTypesBreakdown> AllTypesBreakdowns { get; set; } = default!;
+    public DbSet<ArchivedLedgerEntry> ArchivedLedgerEntries { get; set; } = default!;
     public DbSet<Asset> Assets { get; set; } = default!;
     public DbSet<AssetActivity> AssetActivities { get; set; } = default!;
     public DbSet<AssetDays> AssetDays { get; set; } = default!;
@@ -25,6 +26,8 @@ public class AppDbContext : DbContext
     public DbSet<Gadget> Gadgets { get; set; } = default!;
     public DbSet<GadgetEvent> GadgetEvents { get; set; } = default!;
     public DbSet<GadgetEventsByLabel> GadgetEventsByLabels { get; set; } = default!;
+    public DbSet<IntEnumArray> IntEnumArrays { get; set; } = default!;
+    public DbSet<LedgerEntry> LedgerEntries { get; set; } = default!;
     public DbSet<LiveIntroPrograms> LiveIntroPrograms { get; set; } = default!;
     public DbSet<Measurement> Measurements { get; set; } = default!;
     public DbSet<MeasurementStats> MeasurementStats { get; set; } = default!;
@@ -59,7 +62,7 @@ public class AppDbContext : DbContext
     {
         modelBuilder.Entity<AllTypesBreakdown>().HasNoKey().ToView("v_all_types_breakdown");
         modelBuilder.Entity<AllTypesBreakdown>().Property(x => x.Level).HasConversion<string>();
-        modelBuilder.Entity<AllTypesBreakdown>().Property(x => x.LegacyStatus).HasConversion(v => v == AllTypesBreakdown.AllTypesBreakdownLegacyStatus.DRAFT ? 0 : v == AllTypesBreakdown.AllTypesBreakdownLegacyStatus.PUBLISHED ? 5 : 9, v => v == 0 ? AllTypesBreakdown.AllTypesBreakdownLegacyStatus.DRAFT : v == 5 ? AllTypesBreakdown.AllTypesBreakdownLegacyStatus.PUBLISHED : v == 9 ? AllTypesBreakdown.AllTypesBreakdownLegacyStatus.ARCHIVED : UnmappedEnumValue<AllTypesBreakdown.AllTypesBreakdownLegacyStatus>(v, "legacyStatus"));
+        modelBuilder.Entity<AllTypesBreakdown>().Property(x => x.LegacyStatus).HasConversion(v => v == AllTypesBreakdown.AllTypesBreakdownLegacyStatus.DRAFT ? 0 : v == AllTypesBreakdown.AllTypesBreakdownLegacyStatus.PUBLISHED ? 5 : v == AllTypesBreakdown.AllTypesBreakdownLegacyStatus.ARCHIVED ? 9 : UnmappedEnumMember(v, "legacyStatus"), v => v == 0 ? AllTypesBreakdown.AllTypesBreakdownLegacyStatus.DRAFT : v == 5 ? AllTypesBreakdown.AllTypesBreakdownLegacyStatus.PUBLISHED : v == 9 ? AllTypesBreakdown.AllTypesBreakdownLegacyStatus.ARCHIVED : UnmappedEnumValue<AllTypesBreakdown.AllTypesBreakdownLegacyStatus>(v, "legacyStatus"));
         modelBuilder.Entity<AssetActivity>().HasNoKey().ToView("v_asset_activity");
         modelBuilder.Entity<AssetDays>().HasNoKey().ToView("v_asset_days");
         modelBuilder.Entity<AuthsByKind>().HasNoKey().ToView("v_auths_by_kind");
@@ -93,7 +96,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<AllTypes>().OwnsOne(x => x.Settings, b => b.ToJson(AllTypesNames.SettingsColumn));
         modelBuilder.Entity<AllTypes>().OwnsMany(x => x.Labels, b => b.ToJson(AllTypesNames.LabelsColumn));
         modelBuilder.Entity<AllTypes>().Property(x => x.EnumVal).HasConversion<string>();
-        modelBuilder.Entity<AllTypes>().Property(x => x.IntEnumVal).HasConversion(v => v == global::MetaObjects.IntegrationTests.Generated.AllTypes.AllTypesIntEnumVal.DRAFT ? 0 : v == global::MetaObjects.IntegrationTests.Generated.AllTypes.AllTypesIntEnumVal.PUBLISHED ? 5 : 9, v => v == 0 ? global::MetaObjects.IntegrationTests.Generated.AllTypes.AllTypesIntEnumVal.DRAFT : v == 5 ? global::MetaObjects.IntegrationTests.Generated.AllTypes.AllTypesIntEnumVal.PUBLISHED : v == 9 ? global::MetaObjects.IntegrationTests.Generated.AllTypes.AllTypesIntEnumVal.ARCHIVED : UnmappedEnumValue<global::MetaObjects.IntegrationTests.Generated.AllTypes.AllTypesIntEnumVal>(v, "intEnumVal"));
+        modelBuilder.Entity<AllTypes>().Property(x => x.IntEnumVal).HasConversion(v => v == global::MetaObjects.IntegrationTests.Generated.AllTypes.AllTypesIntEnumVal.DRAFT ? 0 : v == global::MetaObjects.IntegrationTests.Generated.AllTypes.AllTypesIntEnumVal.PUBLISHED ? 5 : v == global::MetaObjects.IntegrationTests.Generated.AllTypes.AllTypesIntEnumVal.ARCHIVED ? 9 : UnmappedEnumMember(v, "intEnumVal"), v => v == 0 ? global::MetaObjects.IntegrationTests.Generated.AllTypes.AllTypesIntEnumVal.DRAFT : v == 5 ? global::MetaObjects.IntegrationTests.Generated.AllTypes.AllTypesIntEnumVal.PUBLISHED : v == 9 ? global::MetaObjects.IntegrationTests.Generated.AllTypes.AllTypesIntEnumVal.ARCHIVED : UnmappedEnumValue<global::MetaObjects.IntegrationTests.Generated.AllTypes.AllTypesIntEnumVal>(v, "intEnumVal"));
         modelBuilder.Entity<AllTypes>().Property(x => x.DecVal).HasPrecision(18, 6);
         modelBuilder.Entity<AllTypes>().Property(x => x.TsVal).HasColumnType("timestamp without time zone");
         modelBuilder.Entity<AllTypes>().Property(x => x.TsTzVal).HasColumnType("timestamp with time zone");
@@ -110,18 +113,24 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Asset>().Property(x => x.Payload).HasColumnType("jsonb");
         modelBuilder.Entity<Auth>().Property(x => x.Type).HasConversion<string>();
         modelBuilder.Entity<Auth>().HasDiscriminator(e => e.Type).HasValue<BridgeAuth>(Auth.AuthType.Bridge).HasValue<CopayAuth>(Auth.AuthType.Copay).HasValue<PriorAuthAuth>(Auth.AuthType.PriorAuth).HasValue<ReferralAuth>(Auth.AuthType.Referral);
+        modelBuilder.Entity<CopayAuth>().Property(x => x.CopayAmount).HasPrecision(10, 2);
+        modelBuilder.Entity<ReferralAuth>().Property(x => x.Urgency).HasDefaultValue("routine").HasSentinel("routine");
         modelBuilder.Entity<Entry>().Property(x => x.Amount).HasPrecision(28, 10);
         modelBuilder.Entity<Follow>().HasOne<Person>().WithMany().HasForeignKey(e => e.FollowerId).OnDelete(DeleteBehavior.NoAction);
         modelBuilder.Entity<Follow>().HasOne<Person>().WithMany().HasForeignKey(e => e.FolloweeId).OnDelete(DeleteBehavior.NoAction);
         modelBuilder.Entity<Friendship>().HasOne<Person>().WithMany().HasForeignKey(e => e.PersonAId).OnDelete(DeleteBehavior.NoAction);
         modelBuilder.Entity<Friendship>().HasOne<Person>().WithMany().HasForeignKey(e => e.PersonBId).OnDelete(DeleteBehavior.NoAction);
         modelBuilder.Entity<GadgetEvent>().HasOne<Gadget>().WithMany().HasForeignKey(e => e.GadgetId).OnDelete(DeleteBehavior.NoAction);
+        modelBuilder.Entity<IntEnumArray>().Property(x => x.State).HasConversion(v => v == PublishState.DRAFT ? 0 : v == PublishState.PUBLISHED ? 5 : v == PublishState.ARCHIVED ? 9 : UnmappedEnumMember(v, "state"), v => v == 0 ? PublishState.DRAFT : v == 5 ? PublishState.PUBLISHED : v == 9 ? PublishState.ARCHIVED : UnmappedEnumValue<PublishState>(v, "state"));
+        modelBuilder.Entity<IntEnumArray>().PrimitiveCollection(x => x.History).ElementType().HasConversion(new global::Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<PublishState, int>(v => v == PublishState.DRAFT ? 0 : v == PublishState.PUBLISHED ? 5 : v == PublishState.ARCHIVED ? 9 : UnmappedEnumMember(v, "history"), v => v == 0 ? PublishState.DRAFT : v == 5 ? PublishState.PUBLISHED : v == 9 ? PublishState.ARCHIVED : UnmappedEnumValue<PublishState>(v, "history")));
         modelBuilder.Entity<Measurement>().Property(x => x.PreciseKg).HasPrecision(9, 4);
         modelBuilder.Entity<Node>().HasOne<Node>().WithMany().HasForeignKey(e => e.ParentId).OnDelete(DeleteBehavior.NoAction);
         modelBuilder.Entity<Post>().HasMany(x => x.Tags).WithMany().UsingEntity<PostTag>(l => l.HasOne<Tag>().WithMany().HasForeignKey(j => j.TagId), r => r.HasOne<Post>().WithMany().HasForeignKey(j => j.PostId));
         modelBuilder.Entity<Post>().HasMany(x => x.Referrals).WithMany().UsingEntity<PostReferral>(l => l.HasOne<ReferralAuth>().WithMany().HasForeignKey(j => j.ReferralId), r => r.HasOne<Post>().WithMany().HasForeignKey(j => j.PostId));
         modelBuilder.Entity<Program>().Property(x => x.Status).HasConversion<string>();
         modelBuilder.Entity<Program>().Property(x => x.CreatedAt).HasColumnType("timestamp without time zone");
+        modelBuilder.Entity<Program>().HasIndex(x => x.Title, ProgramNames.IdentityByTitleIndex).IsUnique().HasDatabaseName(ProgramNames.IdentityByTitleIndex);
+        modelBuilder.Entity<Program>().HasIndex(x => new { x.Title, x.Status }, ProgramNames.IndexIdxProgramsTitleStatusIndex).HasDatabaseName(ProgramNames.IndexIdxProgramsTitleStatusIndex);
         modelBuilder.Entity<Session>().HasOne<Week>().WithMany().HasForeignKey(e => e.WeekId).OnDelete(DeleteBehavior.NoAction);
         modelBuilder.Entity<Week>().HasOne<Program>().WithMany().HasForeignKey(e => e.ProgramId).OnDelete(DeleteBehavior.Cascade);
     }
@@ -136,6 +145,16 @@ public class AppDbContext : DbContext
         throw new System.InvalidOperationException(
             $"field.enum '{field}' read stored value {stored} with no member in " +
             "@intValueMap — the database holds a value the model does not describe.");
+
+    /// <summary>
+    /// An int-backed field.enum property held a value outside @values (a cast integer, or
+    /// a member the C# enum declares that the metadata does not): it has no declared
+    /// integer, and writing some other member's instead would corrupt the row silently.
+    /// </summary>
+    private static int UnmappedEnumMember(object? value, string field) =>
+        throw new System.InvalidOperationException(
+            $"field.enum '{field}' cannot write {value}: it has no integer in " +
+            "@intValueMap — the value is not one of the members the model declares.");
 }
 
 /// <summary>

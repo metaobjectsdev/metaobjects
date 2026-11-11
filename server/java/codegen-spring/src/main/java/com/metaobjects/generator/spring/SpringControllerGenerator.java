@@ -342,10 +342,21 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         // validate it EXPLICITLY with the injected Validator, emitting {"error":"validation"} on
         // any field-constraint violation BEFORE persisting.
         src.append("    @PostMapping\n");
-        src.append("    public ResponseEntity<?> create(@RequestBody ").append(dtoName).append(" dto) {\n");
+        // A create body that omits a field with a literal @default binds @default, as every
+        // other port's create shape does. The DTO is a record, which cannot default a component,
+        // so the handler binds the raw body, fills the absent defaulted fields, and then binds the
+        // DTO (an explicit value, null included, is kept). An entity with no such field keeps the
+        // direct DTO binding, byte-identical.
+        List<MetaField> components = SpringGeneratorSupport.dtoComponentFields(entity);
+        List<String> defaultPuts = createDefaultPuts(entity, components);
+        if (defaultPuts.isEmpty()) {
+            src.append("    public ResponseEntity<?> create(@RequestBody ").append(dtoName).append(" dto) {\n");
+        } else {
+            src.append("    public ResponseEntity<?> create(@RequestBody JsonNode body) {\n");
+            appendFillDefaults(src, dtoName, defaultPuts);
+        }
         // #484: a @formExclude / credential value is IGNORED (never rejected): the DTO is rebuilt
         // without it, so the column is left to the repository's default.
-        List<MetaField> components = SpringGeneratorSupport.dtoComponentFields(entity);
         appendStripWriteDenied(src, dtoName, components, SpringGeneratorSupport.writeDeniedNames(components));
         // A caller does not supply server-owned columns, so a @NotNull on one must not reject
         // the request. The DTO is BOTH the request and the response body, so `id` carries
@@ -1345,8 +1356,16 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
                     : "dto." + SpringNaming.recordComponentName(f.getName()) + "()");
             if (!crossFieldRules.isEmpty()) src.append("    @SuppressWarnings(\"unchecked\")\n");
             src.append("    @PostMapping(\"/").append(seg).append("\")\n");
-            src.append("    public ResponseEntity<?> create").append(suffix)
-               .append("(@RequestBody ").append(dtoName).append(" dto) {\n");
+            // As the vanilla create — fill the subtype's omitted literal @default fields into
+            // the raw body, then bind the union DTO. No such field: the direct binding, byte-identical.
+            List<String> subDefaultPuts = createDefaultPuts(st.entity(), SpringGeneratorSupport.dtoComponentFields(st.entity()));
+            if (subDefaultPuts.isEmpty()) {
+                src.append("    public ResponseEntity<?> create").append(suffix)
+                   .append("(@RequestBody ").append(dtoName).append(" dto) {\n");
+            } else {
+                src.append("    public ResponseEntity<?> create").append(suffix).append("(@RequestBody JsonNode body) {\n");
+                appendFillDefaults(src, dtoName, subDefaultPuts);
+            }
             for (MetaField vf : createValidated) {
                 // Both the property STRING and the accessor take the escaped component name:
                 // Bean Validation resolves a record's property by its COMPONENT, and
@@ -1665,7 +1684,86 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         return List.of();
     }
 
-    /** The fields of a create body that a generated write route ignores (#484). */
+    /**
+     * One {@code filled.put(...)} statement per DTO component with a literal {@code @default}
+     * this can spell (an enum member, a boolean, a number, a string), guarded by its absence from
+     * the body. A SQL-expression default is the database's, an array or a temporal default has no
+     * literal here, and a server-owned or {@code @autoSet} column is never the caller's to send.
+     */
+    private static List<String> createDefaultPuts(MetaObject entity, List<MetaField> components) {
+        List<String> out = new ArrayList<>();
+        List<String> serverOwned = serverOwnedOnCreate(entity);
+        for (MetaField f : components) {
+            if (f.isArrayType() || serverOwned.contains(f.getName()) || AutoSetSupport.isAutoSet(f)) continue;
+            if (f.isDerived()) continue;
+            // ADR-0039: resolving — @default may be inherited via extends.
+            if (!f.hasMetaAttr(MetaField.ATTR_DEFAULT)) continue;
+            Object raw = f.getMetaAttr(MetaField.ATTR_DEFAULT).getValue();
+            if (raw == null) continue;
+            String text = raw.toString();
+            String value = switch (f.getSubType()) {
+                case com.metaobjects.field.EnumField.SUBTYPE_ENUM -> {
+                    Object values = f.hasMetaAttr(com.metaobjects.field.EnumField.ATTR_VALUES)
+                        ? f.getMetaAttr(com.metaobjects.field.EnumField.ATTR_VALUES).getValue() : null;
+                    yield values instanceof List<?> l && l.stream().anyMatch(v -> text.equals(String.valueOf(v))) ? javaString(text) : null;
+                }
+                case com.metaobjects.field.BooleanField.SUBTYPE_BOOLEAN ->
+                    "true".equalsIgnoreCase(text) || "false".equalsIgnoreCase(text) ? text.toLowerCase() : null;
+                case com.metaobjects.field.IntegerField.SUBTYPE_INT, com.metaobjects.field.LongField.SUBTYPE_LONG ->
+                    text.matches("-?\\d+") ? text + "L" : null;
+                case com.metaobjects.field.DoubleField.SUBTYPE_DOUBLE, com.metaobjects.field.FloatField.SUBTYPE_FLOAT ->
+                    text.matches("-?\\d+(\\.\\d+)?([eE][-+]?\\d+)?") ? text + "d" : null;
+                case com.metaobjects.field.DecimalField.SUBTYPE_DECIMAL ->
+                    text.matches("-?\\d+(\\.\\d+)?") ? "new java.math.BigDecimal(\"" + text + "\")" : null;
+                // A database expression (now(), gen_random_uuid()) is the database's to fill.
+                case com.metaobjects.field.StringField.SUBTYPE_STRING ->
+                    com.metaobjects.generator.util.GeneratorUtil.isSqlExpressionDefault(text) ? null : javaString(text);
+                default -> null;
+            };
+            if (value == null) continue;
+            String key = javaString(f.getName());
+            out.add("if (!filled.has(" + key + ")) filled.put(" + key + ", " + value + ");");
+        }
+        return out;
+    }
+
+    /** The body of a create handler bound to the raw {@code JsonNode body}: refuse a
+     *  non-object body, fill the absent defaulted fields ({@link #createDefaultPuts}), bind
+     *  {@code dto}. */
+    private static void appendFillDefaults(StringBuilder src, String dtoName, List<String> puts) {
+        src.append("        if (!(body instanceof com.fasterxml.jackson.databind.node.ObjectNode given)) {\n");
+        src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", \"validation\"));\n");
+        src.append("        }\n");
+        src.append("        com.fasterxml.jackson.databind.node.ObjectNode filled = given.deepCopy();\n");
+        for (String put : puts) src.append("        ").append(put).append("\n");
+        src.append("        ").append(dtoName).append(" dto;\n");
+        src.append("        try {\n");
+        src.append("            dto = objectMapper.treeToValue(filled, ").append(dtoName).append(".class);\n");
+        src.append("        } catch (com.fasterxml.jackson.core.JsonProcessingException | IllegalArgumentException e) {\n");
+        src.append("            return ResponseEntity.badRequest().body(UnreadableBody.envelope(e));\n");
+        src.append("        }\n");
+    }
+
+    /** {@code text} as a Java string literal; every character a literal cannot hold raw is escaped. */
+    private static String javaString(String text) {
+        StringBuilder out = new StringBuilder("\"");
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            switch (c) {
+                case '\\' -> out.append("\\\\");
+                case '"' -> out.append("\\\"");
+                case '\n' -> out.append("\\n");
+                case '\r' -> out.append("\\r");
+                case '\t' -> out.append("\\t");
+                default -> {
+                    if (c < 0x20 || c == 0x2028 || c == 0x2029) out.append(String.format("\\u%04x", (int) c));
+                    else out.append(c);
+                }
+            }
+        }
+        return out.append('"').toString();
+    }
+
     private static void appendStripWriteDenied(StringBuilder src, String dtoName, List<MetaField> components,
                                                Set<String> writeDenied) {
         if (components.stream().noneMatch(f -> writeDenied.contains(f.getName()))) return;

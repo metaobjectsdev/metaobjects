@@ -56,6 +56,16 @@ public class DbContextGenerator : IGenerator
     /// </summary>
     protected virtual bool EmitsReferenceForeignKeys => true;
 
+    /// <summary>The C# property name of a field, for every line of model configuration that
+    /// names one. Default: the run's <see cref="GenConfig.PropertyNaming"/> resolver, else
+    /// PascalCase of the field name — the same answer <c>EntityGenerator.PropertyName</c> gives
+    /// by default, so the two agree. A subclass that overrides the entity generator's hook
+    /// overrides this one the same way (or sets the resolver on the config instead).</summary>
+    protected virtual string PropertyName(MetaField field) => CSharpNaming.PropertyName(field, _config);
+
+    // The run's config, for the PropertyName default. Set when Generate starts.
+    private GenConfig? _config;
+
     /// <summary>
     /// True iff this object gets a DbSet on the generated AppDbContext: a persisted
     /// entity/projection (<c>IsEntity() || DbView != null</c>) that emits instance
@@ -75,6 +85,7 @@ public class DbContextGenerator : IGenerator
     public virtual IEnumerable<EmittedFile> Generate(GenContext ctx)
     {
         ctx = ctx.Narrow(Include);
+        _config = ctx.Config;
         // FR-017 TPH: a concrete subtype shares the base's single table — it gets NO
         // DbSet and no per-subtype model config; the hierarchy is reached via the base
         // DbSet (`.OfType<Sub>()`). Filter subtypes out of the emitted set entirely.
@@ -86,6 +97,17 @@ public class DbContextGenerator : IGenerator
             .OrderBy(o => o.Name, StringComparer.Ordinal)
             .ToList();
         if (objects.Count == 0) return [];
+        // One context, one property per name (CS0102 otherwise). Compared on the names this
+        // context emits, so an object that gets no DbSet here never takes part.
+        CSharpNaming.AssertUniqueInScope(
+            objects.SelectMany(o => o.IsWriteThrough()
+                ? new[] { (DbSetPropertyName(o, ctx), o.ResolutionKey()), (CSharpNaming.ViewDbSetName(o), o.ResolutionKey()) }
+                : new[] { (DbSetPropertyName(o, ctx), o.ResolutionKey()) }),
+            "DbSet property", "one generated context",
+            "rename one, or set @dbSetName on one of them");
+        // In one context each relation (or routine) is one object's. Two objects
+        // that resolve to one (schema, name) would silently read and write one table.
+        AssertOnePhysicalAddress(objects, ctx);
 
         // OnModelCreating body lines (8-space indented), in a stable order.
         var modelLines = new List<string>();
@@ -132,7 +154,7 @@ public class DbContextGenerator : IGenerator
             // narrowed --generators selection. Falls back to the bare literal view name
             // (p.DbView, non-null in this branch) otherwise -- exactly what this line
             // emitted before Program A added the constant.
-            modelLines.Add($"        modelBuilder.Entity<{name}>(){noKey}.ToView({CSharpNaming.NameRef(p, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames, p.DbView!)});");
+            modelLines.Add($"        modelBuilder.Entity<{name}>(){noKey}.ToView({CSharpNaming.NameRef(p, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames, p.DbView!)}{CSharpNaming.ViewSchemaArg(p, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames)});");
             // Enum-typed projection columns persist as their string symbol in the view
             // (string-backed enums, CHECK-constrained varchar/text). Without an explicit
             // string conversion EF defaults to the int-ordinal mapping and reads the text
@@ -142,8 +164,20 @@ public class DbContextGenerator : IGenerator
             // An int-backed enum (@intValueMap) column in the view holds the declared INTEGER,
             // so it takes the same custom converter pair the table side gets — reading it as
             // a string would fail materialization exactly as the ordinal default does here.
-            foreach (var f in p.Fields().Where(f => f.SubType == FIELD_SUBTYPE_ENUM && !f.ResolvedIsArray()))
-                modelLines.Add($"        modelBuilder.Entity<{name}>().Property(x => x.{CSharpNaming.Pascal(f.Name)}).{EnumConversionCall(name, p, f, ctx.Config)};");
+            // An enum ARRAY column takes the table side's element converter too: left to EF's
+            // ordinal default, an int-backed array would read its stored ints as ORDINALS and
+            // silently name the wrong members, and a string-backed one would read text[] as int[].
+            foreach (var f in p.Fields().Where(f => f.SubType == FIELD_SUBTYPE_ENUM))
+            {
+                // An override that returns null for a field leaves it unconverted: no line.
+                if (EnumConversionCall(name, p, f, ctx) is not { } conversion)
+                {
+                    continue;
+                }
+                modelLines.Add(f.ResolvedIsArray()
+                    ? $"        modelBuilder.Entity<{name}>().PrimitiveCollection(x => x.{PropertyName(f)}).ElementType().{conversion};"
+                    : $"        modelBuilder.Entity<{name}>().Property(x => x.{PropertyName(f)}).{conversion};");
+            }
             // A field.map column on a view needs its jsonb mapping for the SAME reason:
             // EntityGenerator emits the Dictionary property for a projection too, so without
             // this loop the property carries no column type and no converter -- only an
@@ -153,6 +187,7 @@ public class DbContextGenerator : IGenerator
                 modelLines.Add(MapJsonbConfig(name, p, f, ctx));
             // A duration column on a view reads through the same provider-dependent mapping.
             AddDurationConfig(name, p, p.Fields(), ctx, modelLines);
+            EmitShapeInheritedFacets(name, p, p.Fields(), ctx, modelLines);
         }
         foreach (var e in objects.Where(o => o.IsEntity() && !o.IsReadOnlyProjection()))
         {
@@ -172,6 +207,19 @@ public class DbContextGenerator : IGenerator
             // finalization on a field.uri / @dbColumnType:uuid column). jsonbObjectsOnly:false —
             // the write entity carries flattened VOs too (its per-column spread is mapped here).
             EmitFieldTypeConfig(owner, e, configFields, ctx, modelLines, jsonbObjectsOnly: false);
+            EmitShapeInheritedFacets(owner, e, configFields, ctx, modelLines);
+            EmitDefaultValueConfig(e, configFields, ctx, modelLines);
+            if (IdentityStartOn(ctx)) EmitIdentityStartConfig(owner, e, modelLines);
+            EmitCommentConfig(owner, e, configFields, modelLines);
+            EmitIndexConfig(owner, e, ctx, modelLines);
+
+            // identity.primary @generation: assigned — the caller supplies the key. EF's
+            // convention makes a single integer or Guid key generated on add, which leaves a key
+            // equal to the CLR default (0) out of the INSERT altogether, and has EnsureCreated
+            // build an identity column the model never asked for.
+            if (AssignedKeyField(e) is { } assignedKey)
+                modelLines.Add(
+                    $"        modelBuilder.Entity<{owner}>().Property(x => x.{PropertyName(assignedKey)}).ValueGeneratedNever();");
 
             // FR-037 R1 — both non-readWrite modes are excluded from UPDATE, which EF
             // expresses the same way: SetAfterSaveBehavior(Ignore). They differ on INSERT,
@@ -183,7 +231,7 @@ public class DbContextGenerator : IGenerator
             foreach (var f in configFields.Where(f => !f.ResolvedIsArray()
                                                       && f.Mutability != MUTABILITY_READ_WRITE))
             {
-                var prop = CSharpNaming.Pascal(f.Name);
+                var prop = PropertyName(f);
                 modelLines.Add(
                     $"        modelBuilder.Entity<{owner}>().Property(x => x.{prop}).Metadata.SetAfterSaveBehavior(PropertySaveBehavior.Ignore);");
             }
@@ -208,7 +256,10 @@ public class DbContextGenerator : IGenerator
             // own columns into the base table as nullable.
             var tph = TphPlanBuilder.For(e, ctx.Root);
             if (tph is not null)
+            {
                 modelLines.Add(HasDiscriminatorConfig(owner, e, tph, ctx.Config));
+                EmitTphSubtypeFieldConfig(e, tph, ctx, modelLines);
+            }
 
             // ADR-0047 / #294 — explicit 1:N relationship configuration, with the
             // referential action INLINE on the call that establishes the foreign key.
@@ -219,7 +270,11 @@ public class DbContextGenerator : IGenerator
             // UsingEntityConfig; see the m2mJunctions note above.
             junctionOwnedFks.TryGetValue(e, out var ownedByUsingEntity);
             if (EmitsReferenceForeignKeys)
-                EmitReferenceConfig(owner, e, tph, ctx, modelLines, ownedByUsingEntity);
+                EmitReferenceConfig(e, tph, ctx, modelLines, ownedByUsingEntity);
+
+            // The adopter's own per-entity lines (indexes, CHECKs, query filters, computed
+            // columns), last so they see everything the entity was configured with.
+            modelLines.AddRange(EntityConfigTrailer(e, ctx));
         }
 
         // #214 (FR-024 §7) — register the write-through read model against its replica view.
@@ -243,7 +298,7 @@ public class DbContextGenerator : IGenerator
             var replicaRole = wt.ReplicaSource!.Role;
             var viewRef = CSharpNaming.NameRef(
                 wt, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames, wt.ReplicaViewName!, replicaRole);
-            modelLines.Add($"        modelBuilder.Entity<{view}>().ToView({viewRef});");
+            modelLines.Add($"        modelBuilder.Entity<{view}>().ToView({viewRef}{CSharpNaming.ViewSchemaArg(wt, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames, replicaRole)});");
             // #214 [0] — the read model exposes ALL fields (incl. the derived origin.* fields),
             // so it needs the SAME per-field TYPE converters the write entity gets, or EF Core
             // fails model finalization (a field.uri / @dbColumnType:uuid / decimal-precision /
@@ -262,13 +317,35 @@ public class DbContextGenerator : IGenerator
         var needsMetadataUsing = objects
             .Where(o => o.IsEntity() && !o.IsReadOnlyProjection())
             .Any(o => o.Fields().Any(f => !f.ResolvedIsArray()
-                                          && f.Mutability != MUTABILITY_READ_WRITE));
+                                          && f.Mutability != MUTABILITY_READ_WRITE))
+            // A TPH subtype's own read-only field is configured too (EmitTphSubtypeFieldConfig).
+            || modelLines.Any(l => l.Contains("PropertySaveBehavior.", StringComparison.Ordinal));
+
+        // The identity-start rewrite. A Postgres context with an increment key gets the
+        // generated rewrite (and its UseIdentityStartMigrations() options extension) whether or not
+        // a start is declared today, so removing the last @sequenceStart still goes through it
+        // and the adopter's registration keeps compiling. A context that DECLARES a start refuses
+        // to build its model on Npgsql without the rewrite: Npgsql alone writes every start-only
+        // change as RESTART.
+        var written = objects.Where(o => o.IsEntity() && !o.IsReadOnlyProjection()).ToList();
+        var declaresStart = written.Any(o => IdentityStartOf(o) is not null);
+        var identityStart = IdentityStartOn(ctx) && written.Any(o => IncrementKeyOf(o) is not null);
+        if (declaresStart && !IdentityStartOn(ctx))
+            ctx.Warn($"{Name}: @sequenceStart is not in the EF model: the project names no Postgres " +
+                "dialect (.metaobjects/config.json migrate.dialect: \"postgres\"; a self-hosted runner sets GenConfig.Dialect), " +
+                "and the rewrite that keeps a changed start from restarting the sequence binds Npgsql. meta migrate still creates the start.");
+        if (declaresStart && identityStart)
+            modelLines.Insert(0, $"        if (Database.ProviderName == \"{NpgsqlProviderName}\") global::{ctx.Config.Namespace}.{IdentityStartExtensionsName}.EnsureConfigured(this);");
 
         var sb = new StringBuilder();
         EmitUsings(sb, needsMetadataUsing, ctx);
         EmitDbSetDeclarations(sb, objects, ctx);
         EmitOnModelCreatingBody(sb, modelLines, ctx);
-        if (NeedsUnmappedEnumHelper(objects, ctx.Root)) EmitUnmappedEnumHelper(sb);
+        // The model lines are complete here, so the emitted text decides too: a TPH subtype's own
+        // int-backed enum is configured although the subtype is not in `objects`.
+        if (NeedsUnmappedEnumHelper(objects, ctx.Root)
+            || modelLines.Any(l => l.Contains(UnmappedEnumMemberHelperName + "(", StringComparison.Ordinal)))
+            EmitUnmappedEnumHelper(sb);
         // Gated on the EMITTED text, not on a second derivation of it. Every site that uses the
         // helper appends to modelLines (entity, read-only projection, and the flattened-VO member
         // block, which lands here as one OwnedTypeConfig string), and modelLines is complete by
@@ -278,14 +355,19 @@ public class DbContextGenerator : IGenerator
         if (modelLines.Any(l => l.Contains(MapJsonbHelperName))) EmitMapJsonbHelper(sb);
         sb.AppendLine("}");
         if (modelLines.Any(l => l.Contains(DurationIntervalHelperName + "."))) EmitDurationIntervalHelper(sb);
-        return [new EmittedFile("AppDbContext.g.cs", sb.ToString())];
+        return identityStart
+            ? [new EmittedFile("AppDbContext.g.cs", sb.ToString()), new EmittedFile($"{IdentityStartGeneratorName}.g.cs", IdentityStartMigrationsFile(ctx))]
+            : [new EmittedFile("AppDbContext.g.cs", sb.ToString())];
     }
 
     /// <summary>
     /// Extension hook — emits the file header, usings, namespace, and the opening of
     /// the <c>public class AppDbContext : DbContext</c> declaration through its primary
-    /// constructor (leaving the class body open for <see cref="EmitDbSetDeclarations"/>
-    /// + <see cref="EmitOnModelCreatingBody"/>; the caller emits the closing <c>}</c>).
+    /// constructor and any <see cref="ContextMemberLines"/> (leaving the class body open for
+    /// <see cref="EmitDbSetDeclarations"/> + <see cref="EmitOnModelCreatingBody"/>; the caller
+    /// emits the closing <c>}</c>). The shell is assembled from <see cref="ContextNamespace"/>,
+    /// <see cref="ContextIsPartial"/>, <see cref="ContextClassName"/>, <see cref="ContextBaseClass"/>
+    /// and <see cref="EmitContextConstructor"/>, so changing one of them needs no copy of this body.
     /// <paramref name="needsMetadataUsing"/> is true when a <c>@readOnly</c> field
     /// requires the <c>Microsoft.EntityFrameworkCore.Metadata</c> import. The default
     /// body reproduces the inline emission, so default output is byte-identical.
@@ -296,29 +378,113 @@ public class DbContextGenerator : IGenerator
         sb.AppendLine("// <auto-generated/>");
         sb.AppendLine("// Generated by MetaObjects dbcontext-generator. Do not edit by hand.");
         sb.AppendLine("#nullable enable");
-        sb.AppendLine("using Microsoft.EntityFrameworkCore;");
+        var dbCtxNs = ContextNamespace(ctx);
+        _usingSite = (needsMetadataUsing, dbCtxNs);
+        try
+        {
+            foreach (var line in ContextUsings(ctx))
+            {
+                sb.AppendLine(line);
+            }
+        }
+        finally
+        {
+            _usingSite = null;
+        }
+        sb.AppendLine();
+        sb.AppendLine($"namespace {dbCtxNs};");
+        sb.AppendLine();
+        var name = ContextClassName(ctx);
+        sb.AppendLine($"public {(ContextIsPartial(ctx) ? "partial " : "")}class {name} : {ContextBaseClass(ctx)}");
+        sb.AppendLine("{");
+        if (EmitContextConstructor(ctx))
+        {
+            sb.AppendLine($"    public {name}(DbContextOptions<{name}> options) : base(options) {{ }}");
+            sb.AppendLine();
+        }
+        var members = ContextMemberLines(ctx).ToList();
+        foreach (var line in members)
+        {
+            sb.AppendLine(line);
+        }
+        if (members.Count > 0)
+        {
+            sb.AppendLine();
+        }
+    }
+
+    // What EmitUsings knows that ContextUsings' signature does not carry: whether a read-only field
+    // needs the Metadata namespace, and the namespace the context is declared in (asked once, of
+    // ContextNamespace). Null when ContextUsings is called on its own.
+    private (bool NeedsMetadataUsing, string ContextNamespace)? _usingSite;
+
+    /// <summary>
+    /// Hook — the <c>using</c> lines of the context file, complete (<c>using X;</c>), in order.
+    /// Default: <c>Microsoft.EntityFrameworkCore</c>; <c>Microsoft.EntityFrameworkCore.Metadata</c>
+    /// when a <c>@readOnly</c> field needs <c>PropertySaveBehavior</c>; then every namespace an
+    /// entity or view resolves to other than <see cref="ContextNamespace"/>, ordinal order (the
+    /// context names every entity by its short name). Called once per context. Override to add a
+    /// namespace your <see cref="ContextBaseClass"/> lives in, or to drop one whose objects you
+    /// leave out of the context.
+    /// </summary>
+    protected virtual IEnumerable<string> ContextUsings(GenContext ctx)
+    {
+        var needsMetadataUsing = _usingSite?.NeedsMetadataUsing ?? false;
+        var dbCtxNs = _usingSite?.ContextNamespace ?? ContextNamespace(ctx);
+        var lines = new List<string> { "using Microsoft.EntityFrameworkCore;" };
         if (needsMetadataUsing)
-            sb.AppendLine("using Microsoft.EntityFrameworkCore.Metadata;");
+            lines.Add("using Microsoft.EntityFrameworkCore.Metadata;");
         // Package-binding — pull in every per-package namespace the model uses. The DbContext
         // references EVERY entity by short name (DbSet<X>, modelBuilder.Entity<X>()),
         // so it needs a `using` for each distinct namespace the entities resolve to.
-        var dbCtxNs = ctx.Config.Namespace;
         var refNamespaces = ReportRows.WithReportRows(ctx)
             .Where(o => o.IsEntity() || o.DbView is not null)
             .Select(o => PackageBindingResolver.Resolve(ctx.Config, PackageBindingResolver.EffectivePackage(o), o.Name))
             .Where(ns => !string.IsNullOrEmpty(ns) && ns != dbCtxNs)
             .Distinct(StringComparer.Ordinal)
             .OrderBy(ns => ns, StringComparer.Ordinal);
-        foreach (var ns in refNamespaces)
-            sb.AppendLine($"using {ns};");
-        sb.AppendLine();
-        sb.AppendLine($"namespace {ctx.Config.Namespace};");
-        sb.AppendLine();
-        sb.AppendLine("public class AppDbContext : DbContext");
-        sb.AppendLine("{");
-        sb.AppendLine("    public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }");
-        sb.AppendLine();
+        lines.AddRange(refNamespaces.Select(ns => $"using {ns};"));
+        return lines;
     }
+
+    /// <summary>
+    /// Hook — the generated context's class name, used for the declaration and its constructor.
+    /// Default <c>AppDbContext</c>, always: <see cref="GenConfig.ContextTypeName"/> is the type the
+    /// callable wrappers and reverse finders TAKE, which an adopter may define itself (often as a
+    /// subclass of <c>AppDbContext</c>), so it does not name this class. The file stays
+    /// <c>AppDbContext.g.cs</c>. An override renames only this declaration: the routes generator
+    /// still names <c>AppDbContext</c> in its handlers, and keeping it consistent (an owned routes
+    /// generator, or a <c>ContextTypeName</c> to match) is the adopter's.
+    /// </summary>
+    protected virtual string ContextClassName(GenContext ctx) => "AppDbContext";
+
+    /// <summary>
+    /// Hook — the namespace the context is declared in. Default: <see cref="GenConfig.Namespace"/>.
+    /// Every entity namespace other than this one gets a <c>using</c>.
+    /// </summary>
+    protected virtual string ContextNamespace(GenContext ctx) => ctx.Config.Namespace;
+
+    /// <summary>
+    /// Hook — whether the context declares its <c>(DbContextOptions&lt;TContext&gt; options)</c>
+    /// constructor. Default <c>true</c>. Return <c>false</c> when a hand-written partial owns the
+    /// constructors (to inject services the generated one cannot know about).
+    /// </summary>
+    protected virtual bool EmitContextConstructor(GenContext ctx) => true;
+
+    /// <summary>
+    /// Hook — whether the context class is declared <c>partial</c>. Default <c>false</c>, the
+    /// declaration it has always had. Return <c>true</c> to pair it with a hand-written partial.
+    /// </summary>
+    protected virtual bool ContextIsPartial(GenContext ctx) => false;
+
+    /// <summary>
+    /// Hook — extra class members, as complete lines (4-space indent included), placed after the
+    /// constructor and before the <c>DbSet</c> declarations; a blank line follows them when there
+    /// are any. Default none. An adopter declares a partial method here
+    /// (<c>partial void OnModelCreatingExtensions(ModelBuilder modelBuilder);</c>) that its
+    /// <see cref="ContextTrailerLines"/> call, and its hand-written partial, implement.
+    /// </summary>
+    protected virtual IEnumerable<string> ContextMemberLines(GenContext ctx) => [];
 
     /// <summary>
     /// Extension hook — emits one <c>public DbSet&lt;Entity&gt; Plural { get; set; }</c>
@@ -332,7 +498,7 @@ public class DbContextGenerator : IGenerator
         {
             var name = CSharpNaming.Pascal(o.Name);
             XmlDocBuilder.AppendTo(sb, o, indent: "    ");
-            sb.AppendLine($"    public DbSet<{name}> {CSharpNaming.Pluralize(name)} {{ get; set; }} = default!;");
+            sb.AppendLine(DbSetLine(o, ctx));
             // #214 — a write-through entity additionally exposes a read-model DbSet mapped to
             // its replica view (reads route here; the derived fields live on the view row).
             if (o.IsWriteThrough())
@@ -351,15 +517,116 @@ public class DbContextGenerator : IGenerator
     /// the block is omitted entirely. The default body reproduces the inline emission,
     /// so default output is byte-identical.
     /// </summary>
+    /// <summary>The most configuration entries <c>OnModelCreating</c> holds before they are split into
+    /// <c>ConfigureModelNN</c> methods, called in order. One method holding every entry of a large model has
+    /// a stack frame too big for a thread-pool thread in a Debug build (each converter lambda is an
+    /// expression tree built from locals), so building the model overflows the stack. A model within the
+    /// limit is emitted as before.</summary>
+    public int ModelConfigChunkSize { get; init; } = 200;
+
     protected virtual void EmitOnModelCreatingBody(StringBuilder sb, IReadOnlyList<string> modelLines, GenContext ctx)
     {
-        if (modelLines.Count == 0) return;
+        // Materialized once: a hook may enumerate lazily, and each is asked exactly once per context.
+        var preamble = ContextPreambleLines(ctx).ToList();
+        var trailer = ContextTrailerLines(ctx).ToList();
+        if (modelLines.Count == 0 && preamble.Count == 0 && trailer.Count == 0 && !AlwaysEmitOnModelCreating(ctx))
+        {
+            return;
+        }
         sb.AppendLine();
         sb.AppendLine("    protected override void OnModelCreating(ModelBuilder modelBuilder)");
         sb.AppendLine("    {");
-        foreach (var line in modelLines) sb.AppendLine(line);
+        // Order is part of the contract: preamble first, the model lines (or the ConfigureModelNN
+        // calls that stand for them) in order, trailer last.
+        foreach (var line in preamble)
+        {
+            sb.AppendLine(line);
+        }
+        if (modelLines.Count <= ModelConfigChunkSize)
+        {
+            foreach (var line in modelLines) sb.AppendLine(line);
+            foreach (var line in trailer)
+            {
+                sb.AppendLine(line);
+            }
+            sb.AppendLine("    }");
+            return;
+        }
+        var chunks = modelLines.Chunk(Math.Max(1, ModelConfigChunkSize)).ToList();
+        for (var i = 0; i < chunks.Count; i++)
+        {
+            sb.AppendLine($"        ConfigureModel{i + 1:D2}(modelBuilder);");
+        }
+        foreach (var line in trailer)
+        {
+            sb.AppendLine(line);
+        }
         sb.AppendLine("    }");
+        for (var i = 0; i < chunks.Count; i++)
+        {
+            sb.AppendLine();
+            sb.AppendLine($"    private void ConfigureModel{i + 1:D2}(ModelBuilder modelBuilder)");
+            sb.AppendLine("    {");
+            foreach (var line in chunks[i]) sb.AppendLine(line);
+            sb.AppendLine("    }");
+        }
     }
+
+    /// <summary>
+    /// Hook — the base class of the generated context. Default <c>DbContext</c>. An adopter whose
+    /// context derives from its own (an auditing or tenancy context) returns that type here.
+    /// </summary>
+    protected virtual string ContextBaseClass(GenContext ctx) => "DbContext";
+
+    /// <summary>
+    /// Hook — complete lines (8-space indent included, as <c>modelLines</c> are) placed FIRST in
+    /// <c>OnModelCreating</c>, before any model configuration or <c>ConfigureModelNN</c> call.
+    /// Default none. An adopter returns <c>base.OnModelCreating(modelBuilder);</c> here.
+    /// These lines are NOT scanned when the file decides whether it needs the <c>PropertySaveBehavior</c>
+    /// using or the <c>MapJsonb</c>, <c>UnmappedEnum</c> and <c>DurationInterval</c> helpers: that decision reads the
+    /// entity model lines only, so a line here that depends on one of them must bring it itself.
+    /// </summary>
+    protected virtual IEnumerable<string> ContextPreambleLines(GenContext ctx) => [];
+
+    /// <summary>
+    /// Hook — complete lines placed LAST in <c>OnModelCreating</c>, after the model configuration
+    /// (or after the <c>ConfigureModelNN</c> calls when the model is split). Default none. An
+    /// adopter returns a partial extension hook call here.
+    /// Like the preamble, these lines are not scanned for using / helper gating.
+    /// </summary>
+    protected virtual IEnumerable<string> ContextTrailerLines(GenContext ctx) => [];
+
+    /// <summary>
+    /// Hook — whether <c>OnModelCreating</c> is emitted even when there is nothing to put in it
+    /// (no model lines, no preamble, no trailer). Default <c>false</c>: an empty method is omitted.
+    /// </summary>
+    protected virtual bool AlwaysEmitOnModelCreating(GenContext ctx) => false;
+
+    /// <summary>
+    /// Hook — the whole <c>DbSet</c> declaration line for an entity (indent included), so an
+    /// override can add <c>virtual</c> or change the name. The XML doc above it is emitted by the
+    /// caller. A write-through entity's read-model <c>DbSet</c> is not routed through here.
+    /// </summary>
+    protected virtual string DbSetLine(MetaObject entity, GenContext ctx)
+    {
+        var name = CSharpNaming.Pascal(entity.Name);
+        return $"    public DbSet<{name}> {DbSetPropertyName(entity, ctx)} {{ get; set; }} = default!;";
+    }
+
+    /// <summary>
+    /// Hook — the DbSet property name for an object: its <c>@dbSetName</c>, else the derived
+    /// plural (<see cref="CSharpNaming.DbSetName"/>). The context's collision check compares
+    /// this name, so an override that renames the property is checked as it emits it.
+    /// </summary>
+    protected virtual string DbSetPropertyName(MetaObject entity, GenContext ctx) => CSharpNaming.DbSetName(entity);
+
+    /// <summary>
+    /// Hook — extra configuration lines appended after everything else an entity is configured
+    /// with (field types, defaults, M:N, TPH discriminator, references). Default none. For the
+    /// adopter's own per-entity lines: indexes, CHECK constraints, query filters, computed columns.
+    /// Called for each table-mapped entity (not a TPH subtype, not a read-only projection).
+    /// </summary>
+    protected virtual IEnumerable<string> EntityConfigTrailer(MetaObject entity, GenContext ctx) => [];
 
     // R6 Plan 2b — EF mapping for a @dbColumnType physical-override field. The CLR
     // property type is unchanged (the logical field's native binding); only the DB
@@ -375,9 +642,9 @@ public class DbContextGenerator : IGenerator
     //                                            raw JSON text ↔ string directly.
     // (ADR-0036 Wave 2: the retired timestamp_with_tz override is gone — timezone-awareness
     //  is the field.timestamp default, opted out of via @localTime; handled above.)
-    private static string? DbColumnTypeConfig(string owner, MetaField f)
+    protected virtual string? DbColumnTypeConfig(string owner, MetaField f)
     {
-        var prop = CSharpNaming.Pascal(f.Name);
+        var prop = PropertyName(f);
         var lhs = $"        modelBuilder.Entity<{owner}>().Property(x => x.{prop})";
         return f.DbColumnType switch
         {
@@ -401,18 +668,23 @@ public class DbContextGenerator : IGenerator
     // discriminator field is an enum (the canonical shape) the HasValue argument is the
     // enum literal (<EnumType>.<Value>), which round-trips through the enum's
     // HasConversion<string>() as the text symbol; otherwise the raw string value.
-    private static string HasDiscriminatorConfig(string owner, MetaObject baseEntity, TphPlan tph, GenConfig config)
+    private string HasDiscriminatorConfig(string owner, MetaObject baseEntity, TphPlan tph, GenConfig config)
     {
         var discField = baseEntity.FindField(tph.DiscriminatorField);
-        var discProp = CSharpNaming.Pascal(tph.DiscriminatorField);
+        var discProp = discField is not null ? PropertyName(discField) : CSharpNaming.Pascal(tph.DiscriminatorField);
         var isEnum = discField is not null && discField.SubType == FIELD_SUBTYPE_ENUM;
         // The enum type is nested in the base class, so qualify it (<Base>.<EnumType>)
         // when referenced from the DbContext (a sibling type) — global::-qualified
         // (CSharpNaming.QualifiedOwnerTypeRef), not bare: a bare <Base> can resolve to
         // this DbContext's own same-named DbSet property instead of the entity type
         // (CS1061), which an already-plural base entity name now reaches.
+        // FR-019: a SHARED (root-level abstract) or @provided enum is not nested in the base —
+        // it is named where it lives, exactly as EnumConversionCall names it.
         var enumType = discField is not null && isEnum
-            ? $"{CSharpNaming.QualifiedOwnerTypeRef(owner, baseEntity, config)}.{CSharpNaming.EnumTypeName(baseEntity, discField)}" : null;
+            ? Fr019SharedEnum.SharedEnumForField(discField) is { } shared
+                ? Fr019SharedEnum.SharedEnumTypeReference(shared, config)
+                : $"{CSharpNaming.QualifiedOwnerTypeRef(owner, baseEntity, config)}.{CSharpNaming.EnumTypeName(baseEntity, discField)}"
+            : null;
 
         var sb = new StringBuilder();
         sb.Append($"        modelBuilder.Entity<{owner}>().HasDiscriminator(e => e.{discProp})");
@@ -453,7 +725,7 @@ public class DbContextGenerator : IGenerator
     /// base+subtype dual declaration that made the adopter's mutation unreliable.</para>
     /// </summary>
     private void EmitReferenceConfig(
-        string owner, MetaObject entity, TphPlan? tph, GenContext ctx, List<string> modelLines,
+        MetaObject entity, TphPlan? tph, GenContext ctx, List<string> modelLines,
         IReadOnlySet<string>? ownedByUsingEntity)
     {
         // Seeded with the junction columns UsingEntityConfig already configures, so those
@@ -465,7 +737,7 @@ public class DbContextGenerator : IGenerator
         foreach (var reference in entity.ReferenceIdentities().Where(r => r.Enforce))
         {
             if (!emitted.Add(FkKey(reference))) continue;
-            if (ReferenceConfig(owner, entity, reference, ctx) is { } line) modelLines.Add(line);
+            modelLines.AddRange(ReferenceConfig(entity, reference, ctx));
         }
 
         if (tph is null) return;
@@ -479,11 +751,664 @@ public class DbContextGenerator : IGenerator
                          .OfType<MetaReferenceIdentity>().Where(r => r.Enforce))
             {
                 if (!emitted.Add(FkKey(reference))) continue;
-                if (ReferenceConfig(CSharpNaming.Pascal(st.Entity.Name), st.Entity, reference, ctx) is { } line)
-                    modelLines.Add(line);
+                modelLines.AddRange(ReferenceConfig(st.Entity, reference, ctx));
+            }
+        }
+
+        // The abstract levels between the base and its concrete subtypes, once each, in the order
+        // the subtypes reach them (nearest first). Their own references were on no type at all:
+        // the column existed, and EF knew no relationship over it. An intermediate that is a class
+        // (EmitAbstractShapes) is configured on its own builder, which makes it part of the EF
+        // hierarchy and the foreign key one for all its leaves; one that is not (its fields are
+        // folded into each concrete subtype) is configured on each of those subtypes.
+        var concrete = new HashSet<MetaObject>(tph.Subtypes.Select(s => s.Entity));
+        var seen = new HashSet<MetaObject>();
+        foreach (var st in tph.Subtypes)
+        {
+            for (var mid = st.Entity.SuperData as MetaObject;
+                 mid is not null && !ReferenceEquals(mid, entity);
+                 mid = mid.SuperData as MetaObject)
+            {
+                if (concrete.Contains(mid)) continue; // a concrete subtype: the pass above
+                if (!seen.Add(mid)) break;            // reached before, and so was everything above it
+                var references = mid.OwnIdentities().OfType<MetaReferenceIdentity>().Where(r => r.Enforce).ToList();
+                if (references.Count == 0) continue;
+                var isClass = !InstanceArtifacts.IsAbstract(mid) || ctx.Config.EmitAbstractShapes;
+                // Folded into its subtypes: the TOPMOST concrete ones only. A concrete subtype under
+                // another concrete one below `mid` inherits that one's foreign key (EF builds the FK
+                // on the declaring entity type), so configuring it again would repeat the line.
+                var leaves = isClass
+                    ? [mid]
+                    : tph.Subtypes.Select(s => s.Entity)
+                        .Where(e => DescendsFrom(e, mid) && !HasConcreteAncestorBelow(e, mid, concrete))
+                        .ToList();
+                foreach (var reference in references)
+                {
+                    if (!emitted.Add(FkKey(reference))) continue;
+                    foreach (var leaf in leaves)
+                        modelLines.AddRange(ReferenceConfig(leaf, reference, ctx));
+                }
             }
         }
     }
+
+    // Whether a concrete subtype sits strictly between `obj` and `ancestor` in obj's extends chain.
+    private static bool HasConcreteAncestorBelow(MetaObject obj, MetaObject ancestor, IReadOnlySet<MetaObject> concrete)
+    {
+        for (var cursor = obj.SuperData as MetaObject; cursor is not null && !ReferenceEquals(cursor, ancestor);
+             cursor = cursor.SuperData as MetaObject)
+            if (concrete.Contains(cursor)) return true;
+        return false;
+    }
+
+    private static bool DescendsFrom(MetaObject obj, MetaObject ancestor)
+    {
+        for (var cursor = obj.SuperData; cursor is not null; cursor = cursor.SuperData)
+            if (ReferenceEquals(cursor, ancestor)) return true;
+        return false;
+    }
+
+    /// <summary>
+    /// Core <c>@default</c> as the column default EF knows about, so a database EF creates carries
+    /// it and the model agrees with the schema <c>meta migrate</c> builds:
+    /// <list type="bullet">
+    ///   <item>A literal the property's CLR type can hold (bool, string, a number, an enum member)
+    ///   is <c>HasDefaultValue(v).HasSentinel(v)</c>. The sentinel is the load-bearing half. EF
+    ///   leaves a property with a database default out of the INSERT when its value equals the
+    ///   sentinel, which is otherwise the CLR default — so a bool defaulting to <c>true</c> would
+    ///   store <c>true</c> when the app set <c>false</c>, and a nullable one its explicit NULL.
+    ///   With the declared default as the sentinel, EF omits only the value the database would
+    ///   write anyway, for nullable and non-nullable properties alike.</item>
+    ///   <item>A SQL expression (<c>now()</c>, anything function-like, <c>current_timestamp</c>;
+    ///   a bare <c>now</c> is <c>now()</c>, as migrate reads it) or a literal of a type with no
+    ///   C# literal here (a timestamp, date, uuid) is <c>HasDefaultValueSql(...)</c>, on a
+    ///   REQUIRED property only. Its sentinel stays the CLR default, which on a non-nullable
+    ///   property means "not supplied"; on a nullable one it is NULL, and an app that set NULL on
+    ///   purpose would get the default instead, so those are left out.</item>
+    /// </list>
+    /// Not configured: primary-key fields, arrays, value objects, maps and durations.
+    /// </summary>
+    private void EmitDefaultValueConfig(
+        MetaObject entity, IEnumerable<MetaField> fields, GenContext ctx, List<string> modelLines)
+    {
+        foreach (var f in fields)
+        {
+            modelLines.AddRange(DefaultValueConfig(entity, f, ctx));
+        }
+    }
+
+    /// <summary>
+    /// Hook — the column-default configuration lines for one field (see the summary above):
+    /// <c>HasDefaultValue/HasSentinel</c>, <c>HasDefaultValueSql</c>, or none. Called for EVERY field
+    /// of a configured entity, so an override can add a default the metadata does not carry;
+    /// the base returns nothing for a primary-key field, an array, a field with no <c>@default</c>
+    /// and a <c>@dbColumnType</c> override. The emitted class is the entity's own name.
+    /// </summary>
+    protected virtual IEnumerable<string> DefaultValueConfig(MetaObject entity, MetaField f, GenContext ctx)
+    {
+        var className = CSharpNaming.Pascal(entity.Name);
+        var pk = entity.PrimaryIdentity()?.Fields ?? [];
+        if (f.Default is not { } raw || f.ResolvedIsArray() || pk.Contains(f.Name))
+        {
+            return [];
+        }
+        if (CSharpNaming.DbColumnTypeClrOverride(f) is not null)
+        {
+            return [];
+        }
+        var lhs = $"        modelBuilder.Entity<{className}>().Property(x => x.{PropertyName(f)})";
+        if (DefaultLiteral(className, entity, f, raw, ctx.Config) is { } literal)
+        {
+            return [$"{lhs}.HasDefaultValue({literal}).HasSentinel({literal});"];
+        }
+        if (!CSharpNaming.IsRequired(entity, f) || DefaultSql(f, raw) is not { } sql)
+        {
+            return [];
+        }
+        return [$"{lhs}.HasDefaultValueSql(\"{CSharpNaming.CSharpStringLiteral(sql)}\");"];
+    }
+
+    /// <summary>
+    /// Refuse two objects of one context that resolve to one physical address: the same name
+    /// in the same <c>@schema</c> (no schema is the dialect's default, one address too). Tables,
+    /// views and materialized views share one namespace, as PostgreSQL's relations do; stored
+    /// procedures and table functions share another. The same name in two schemas is two
+    /// addresses. Keyed on every source the object maps (a write-through's table and view),
+    /// resolved through the names artifact's own resolution, so a default table name counts.
+    /// An object that extends another and inherits its source is one EF hierarchy over that
+    /// table, not a second claim on it.
+    /// </summary>
+    private static void AssertOnePhysicalAddress(IReadOnlyList<MetaObject> objects, GenContext ctx)
+    {
+        var owners = new Dictionary<string, (MetaObject Claimant, string Kind)>(StringComparer.Ordinal);
+        static bool Extends(MetaObject sub, MetaObject super)
+        {
+            for (var s = sub.SuperData; s is not null; s = s.SuperData)
+                if (ReferenceEquals(s, super)) return true;
+            return false;
+        }
+        foreach (var o in objects)
+        {
+            if (CSharpNaming.ResolveObjectNames(o, ctx.Config.ColumnNamingStrategy) is not { } names) continue;
+            foreach (var src in names.Sources.Values)
+            {
+                if (src.PhysicalName is not { Length: > 0 } physical) continue;
+                var routine = src.Kind is MetaObjects.Persistence.Source.SourceConstants.SOURCE_KIND_STORED_PROC
+                    or MetaObjects.Persistence.Source.SourceConstants.SOURCE_KIND_TABLE_FUNCTION;
+                var address = (src.Schema is { Length: > 0 } schema ? $"\"{schema}\"." : "") + $"\"{physical}\"";
+                var key = (routine ? "routine " : "relation ") + address;
+                if (!owners.TryGetValue(key, out var existing))
+                {
+                    owners[key] = (o, src.Kind);
+                    continue;
+                }
+                if (ReferenceEquals(existing.Claimant, o) || Extends(o, existing.Claimant) || Extends(existing.Claimant, o)) continue;
+                throw new InvalidOperationException(
+                    $"ERR_DUPLICATE_SQL_NAME: \"{existing.Claimant.ResolutionKey()}\" ({existing.Kind}) and \"{o.ResolutionKey()}\" ({src.Kind}) both map to " +
+                    $"{address} in one generated context — rename one (its source @table / @view / physical name), " +
+                    "or give one its own @schema.");
+            }
+        }
+    }
+
+    /// <summary>
+    /// <c>identity.primary @sequenceStart</c> on a single-field <c>increment</c> key: a fresh
+    /// database's identity begins there, as <c>meta migrate</c> creates it (<c>GENERATED BY
+    /// DEFAULT AS IDENTITY (START WITH n)</c>). Set as the annotation Npgsql's
+    /// <c>HasIdentityOptions</c> writes, inside the provider check, so the context itself needs
+    /// no Npgsql reference. A start-only change never restarts the sequence: Npgsql alone would
+    /// write <c>RESTART WITH n</c> (or <c>RESTART WITH 1</c> when the start is removed), handing
+    /// out ids live rows hold, so the adopter registers the generated rewrite
+    /// (<see cref="IdentityStartMigrationsFile"/>), and the context refuses to build its model
+    /// on Npgsql without it.
+    /// </summary>
+    private static void EmitIdentityStartConfig(string owner, MetaObject entity, List<string> modelLines)
+    {
+        if (IdentityStartOf(entity) is not { } start) return;
+        modelLines.Add($"        if (Database.ProviderName == \"{NpgsqlProviderName}\")");
+        modelLines.Add($"            modelBuilder.Entity<{owner}>().Property(x => x.{CSharpNaming.Pascal(start.Field.Name)}).HasAnnotation(" +
+            $"\"{NpgsqlIdentityOptionsAnnotation}\", \"'{start.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}', '1', '', '', 'False', '1'\");");
+    }
+
+    private const string NpgsqlIdentityOptionsAnnotation = "Npgsql:IdentitySequenceOptions";
+    private const string IdentityStartGeneratorName = "IdentityStartMigrationsSqlGenerator";
+    private const string IdentityStartDifferName = "IdentityStartMigrationsModelDiffer";
+    private const string IdentityStartExtensionsName = "IdentityStartMigrations";
+
+    /// <summary>
+    /// Whether this run emits <c>@sequenceStart</c> and the rewrite: the project's dialect is
+    /// Postgres. The rewrite subclasses Npgsql's generator, so a project on any other dialect, or
+    /// naming none, gets neither it nor the start in its model, and a migration can never RESTART.
+    /// </summary>
+    private static bool IdentityStartOn(GenContext ctx) =>
+        string.Equals(ctx.Config.Dialect, "postgres", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>The field of an entity's single-field increment key — the key a start applies to — or null.</summary>
+    private static MetaField? IncrementKeyOf(MetaObject entity) =>
+        entity.PrimaryIdentity() is MetaPrimaryIdentity { Fields.Count: 1, Generation: GENERATION_INCREMENT } pk
+            ? entity.FindField(pk.Fields[0])
+            : null;
+
+    /// <summary>The <c>@sequenceStart</c> of an entity's single-field increment key, or null.</summary>
+    private static (MetaField Field, long Value)? IdentityStartOf(MetaObject entity)
+    {
+        if (IncrementKeyOf(entity) is not { } field || entity.PrimaryIdentity()!.Attr(DbConstants.IDENTITY_ATTR_SEQUENCE_START) is not { } raw) return null;
+        return (field, Convert.ToInt64(raw, System.Globalization.CultureInfo.InvariantCulture));
+    }
+
+    /// <summary>
+    /// The identity-start rewrite a Postgres context's adopter registers with
+    /// <c>UseIdentityStartMigrations()</c>, after <c>UseNpgsql(...)</c>. Every start-only identity
+    /// change — a start added, changed or removed — is
+    /// <c>ALTER TABLE … ALTER COLUMN … SET START WITH n</c>, which records where a fresh sequence
+    /// (or a deliberate restart) begins and leaves the current value where live rows put it; a
+    /// removed start is set back to the identity default. Npgsql alone writes <c>RESTART</c>
+    /// for all three. It applies at both ends: the differ scaffolds the change as that SQL (so a
+    /// migration added through it is safe wherever it runs), and the SQL generator rewrites a
+    /// migration scaffolded without it.
+    /// <para>Ruling: registration, not the context's <c>OnConfiguring</c> — EF refuses an
+    /// <c>OnConfiguring</c> that replaces services under pooling, a partial context could not
+    /// declare its own, and a base context's would be shadowed. A context that declares a start
+    /// therefore checks, as its model is built, that the rewrite is registered, and throws if not.</para>
+    /// <para>Ruling: this file references Npgsql at compile time (it subclasses
+    /// <c>NpgsqlMigrationsSqlGenerator</c>), and it is emitted only for a Postgres project.
+    /// Reflection would keep the project free of the reference, but a decorator built by
+    /// reflection over Npgsql's generator is the runtime binding ADR-0001 rules out. The differ
+    /// wraps EF's own, which DI constructs with whatever that EF version's constructor needs.</para>
+    /// </summary>
+    private string IdentityStartMigrationsFile(GenContext ctx)
+    {
+        var ns = ctx.Config.Namespace;
+        return $$"""
+            // <auto-generated/>
+            // Generated by MetaObjects db-context. Do not edit by hand.
+            #nullable enable
+            #pragma warning disable EF1001 // Npgsql's options interface and EF's differ live in Internal namespaces.
+            using System;
+            using System.Collections.Generic;
+            using System.Linq;
+            using Microsoft.EntityFrameworkCore;
+            using Microsoft.EntityFrameworkCore.Infrastructure;
+            using Microsoft.EntityFrameworkCore.Metadata;
+            using Microsoft.EntityFrameworkCore.Migrations;
+            using Microsoft.EntityFrameworkCore.Migrations.Internal;
+            using Microsoft.EntityFrameworkCore.Migrations.Operations;
+            using Microsoft.EntityFrameworkCore.Storage;
+            using Microsoft.Extensions.DependencyInjection;
+            using Npgsql.EntityFrameworkCore.PostgreSQL.Infrastructure.Internal;
+            using Npgsql.EntityFrameworkCore.PostgreSQL.Migrations;
+
+            namespace {{ns}};
+
+            /// <summary>Registers the identity-start rewrite: no start-only identity change ever
+            /// restarts the sequence.</summary>
+            public static class {{IdentityStartExtensionsName}}
+            {
+                /// <summary>Call after <c>UseNpgsql(...)</c>, wherever the context is configured: the
+                /// app's registration (pooled or not), an <c>IDesignTimeDbContextFactory</c>, or the
+                /// context's own <c>OnConfiguring</c>. Without Npgsql it does nothing.</summary>
+                public static DbContextOptionsBuilder UseIdentityStartMigrations(this DbContextOptionsBuilder options)
+                {
+                    if (options.Options.FindExtension<NpgsqlOptionsExtension>() is null) return options;
+                    return options
+                        .ReplaceService<IMigrationsSqlGenerator, {{IdentityStartGeneratorName}}>()
+                        .ReplaceService<IMigrationsModelDiffer, {{IdentityStartDifferName}}>();
+                }
+
+                /// <inheritdoc cref="UseIdentityStartMigrations(DbContextOptionsBuilder)"/>
+                public static DbContextOptionsBuilder<TContext> UseIdentityStartMigrations<TContext>(this DbContextOptionsBuilder<TContext> options)
+                    where TContext : DbContext =>
+                    (DbContextOptionsBuilder<TContext>)UseIdentityStartMigrations((DbContextOptionsBuilder)options);
+
+                /// <summary>Throws unless the rewrite is registered. A context that declares an
+                /// identity start calls it as its model is built on Npgsql.</summary>
+                public static void EnsureConfigured(DbContext context)
+                {
+                    var replaced = context.GetService<IDbContextOptions>().FindExtension<CoreOptionsExtension>()?.ReplacedServices;
+                    if (replaced is not null && replaced.TryGetValue((typeof(IMigrationsSqlGenerator), null), out var generator)
+                        && generator == typeof({{IdentityStartGeneratorName}}))
+                        return;
+                    throw new InvalidOperationException(
+                        $"{context.GetType().Name} declares an identity start (@sequenceStart), and Npgsql alone writes a changed start as RESTART, " +
+                        "which hands out ids live rows hold. Call UseIdentityStartMigrations() after UseNpgsql(...) where the context is " +
+                        "configured (its registration, an IDesignTimeDbContextFactory, or its OnConfiguring).");
+                }
+
+                private const string Options = "{{NpgsqlIdentityOptionsAnnotation}}";
+                private const string Strategy = "Npgsql:ValueGenerationStrategy";
+
+                // The serialized options are "'start', 'increment', 'min', 'max', 'cyclic', 'cache'";
+                // a missing annotation is Npgsql's defaults, and an empty start is no start.
+                private const string Defaults = "'', '1', '', '', 'False', '1'";
+                private static string[] Parts(string? options) => (options ?? Defaults).Split(',').Select(p => p.Trim().Trim('\'')).ToArray();
+                private static string? Start(string? options) => Parts(options)[0] is { Length: > 0 } start ? start : null;
+
+                /// <summary><paramref name="options"/> with the start replaced: what the old column
+                /// must say for Npgsql to see no start change.</summary>
+                private static string WithStart(string? options, string? start) =>
+                    "'" + (start ?? "") + "'" + (options ?? Defaults)[(options ?? Defaults).IndexOf(',')..];
+
+                /// <summary>Where an identity without a start begins: its minimum ascending, its
+                /// maximum descending (PostgreSQL's default).</summary>
+                private static string DefaultStart(string? options)
+                {
+                    var p = Parts(options);
+                    var descending = long.TryParse(p[1], out var increment) && increment < 0;
+                    return descending ? (p[3] is { Length: > 0 } max ? max : "-1") : (p[2] is { Length: > 0 } min ? min : "1");
+                }
+
+                private static bool IsIdentity(object? strategy) => strategy?.ToString()?.StartsWith("Identity", StringComparison.Ordinal) == true;
+
+                /// <summary>The start-only change an alter carries: the start it moves to, or null
+                /// when it moves none.</summary>
+                internal static (string Sql, string OldOptions)? StartChange(AlterColumnOperation operation, ISqlGenerationHelper sql)
+                {
+                    if (!IsIdentity(operation[Strategy]) || !IsIdentity(operation.OldColumn[Strategy])) return null;
+                    var to = operation[Options] as string;
+                    var from = operation.OldColumn[Options] as string;
+                    if (Start(to) == Start(from)) return null;
+                    var statement = "ALTER TABLE " + sql.DelimitIdentifier(operation.Table, operation.Schema)
+                        + " ALTER COLUMN " + sql.DelimitIdentifier(operation.Name)
+                        + " SET START WITH " + (Start(to) ?? DefaultStart(to)) + sql.StatementTerminator;
+                    return (statement, WithStart(from, Start(to)));
+                }
+
+                /// <summary>Whether the alter changes nothing but its identity start.</summary>
+                internal static bool OnlyTheStart(AlterColumnOperation operation, string oldOptions)
+                {
+                    var o = operation.OldColumn;
+                    if (operation.ClrType != o.ClrType || operation.ColumnType != o.ColumnType || operation.IsNullable != o.IsNullable
+                        || operation.IsUnicode != o.IsUnicode || operation.IsFixedLength != o.IsFixedLength || operation.MaxLength != o.MaxLength
+                        || operation.Precision != o.Precision || operation.Scale != o.Scale || operation.IsRowVersion != o.IsRowVersion
+                        || !Equals(operation.DefaultValue, o.DefaultValue) || operation.DefaultValueSql != o.DefaultValueSql
+                        || operation.ComputedColumnSql != o.ComputedColumnSql || operation.IsStored != o.IsStored
+                        || operation.Comment != o.Comment || operation.Collation != o.Collation)
+                        return false;
+                    var names = operation.GetAnnotations().Select(a => a.Name).Union(o.GetAnnotations().Select(a => a.Name));
+                    return names.All(n => n == Options
+                        ? Parts(operation[n] as string).SequenceEqual(Parts(oldOptions))
+                        : Equals(operation[n], o[n]));
+                }
+            }
+
+            /// <summary>Npgsql's migrations SQL, except that a start-only identity change is
+            /// <c>SET START WITH</c> only: the current value never moves (no RESTART), because
+            /// live rows already hold the ids below it.</summary>
+            public class {{IdentityStartGeneratorName}}(
+                MigrationsSqlGeneratorDependencies dependencies, INpgsqlSingletonOptions npgsqlOptions)
+                : NpgsqlMigrationsSqlGenerator(dependencies, npgsqlOptions)
+            {
+                private const string Options = "{{NpgsqlIdentityOptionsAnnotation}}";
+
+                protected override void Generate(AlterColumnOperation operation, IModel? model, MigrationCommandListBuilder builder)
+                {
+                    if ({{IdentityStartExtensionsName}}.StartChange(operation, Dependencies.SqlGenerationHelper) is not { } change)
+                    {
+                        base.Generate(operation, model, builder);
+                        return;
+                    }
+                    builder.AppendLine(change.Sql);
+                    builder.EndCommand();
+                    // The rest of the column change, with the old start made the new one, so Npgsql
+                    // sees no start change; restored after, as a migration's operations are reused.
+                    var old = operation.OldColumn[Options];
+                    operation.OldColumn[Options] = change.OldOptions;
+                    try
+                    {
+                        base.Generate(operation, model, builder);
+                    }
+                    finally
+                    {
+                        operation.OldColumn[Options] = old;
+                    }
+                }
+            }
+
+            /// <summary>EF's model differ, except that a start-only identity change is scaffolded
+            /// as <c>SET START WITH</c> SQL, so the migration never restarts the sequence even where
+            /// it runs without this rewrite.</summary>
+            public sealed class {{IdentityStartDifferName}}(IServiceProvider services, ISqlGenerationHelper sql) : IMigrationsModelDiffer
+            {
+                private const string Options = "{{NpgsqlIdentityOptionsAnnotation}}";
+                private readonly IMigrationsModelDiffer _inner = ActivatorUtilities.CreateInstance<MigrationsModelDiffer>(services);
+
+                public bool HasDifferences(IRelationalModel? source, IRelationalModel? target) => _inner.HasDifferences(source, target);
+
+                public IReadOnlyList<MigrationOperation> GetDifferences(IRelationalModel? source, IRelationalModel? target)
+                {
+                    var result = new List<MigrationOperation>();
+                    foreach (var operation in _inner.GetDifferences(source, target))
+                    {
+                        if (operation is not AlterColumnOperation alter || {{IdentityStartExtensionsName}}.StartChange(alter, sql) is not { } change)
+                        {
+                            result.Add(operation);
+                            continue;
+                        }
+                        result.Add(new SqlOperation { Sql = change.Sql });
+                        if ({{IdentityStartExtensionsName}}.OnlyTheStart(alter, change.OldOptions)) continue;
+                        alter.OldColumn[Options] = change.OldOptions;
+                        result.Add(alter);
+                    }
+                    return result;
+                }
+            }
+            """ + "\n";
+    }
+
+    /// <summary>
+    /// Core <c>@description</c> as the database comment, as <c>meta migrate</c> writes it
+    /// (<c>COMMENT ON TABLE</c> / <c>COMMENT ON COLUMN</c>): an entity's on its table, a field's
+    /// on its column, read resolving. Set through the metadata API, which reaches every property
+    /// kind; a flattened value object is not a column (its members are), so it gets none.
+    /// </summary>
+    private void EmitCommentConfig(string owner, MetaObject entity, IEnumerable<MetaField> fields, List<string> modelLines,
+        bool tableComment = true)
+    {
+        if (tableComment && entity.Attr(MetaObjects.Core.Documentation.DocumentationConstants.DOC_ATTR_DESCRIPTION) is string { Length: > 0 } table)
+            modelLines.Add($"        modelBuilder.Entity<{owner}>().Metadata.SetComment(\"{CSharpNaming.CSharpStringLiteral(table)}\");");
+        foreach (var f in fields)
+        {
+            if (f.Attr(MetaObjects.Core.Documentation.DocumentationConstants.DOC_ATTR_DESCRIPTION) is not string { Length: > 0 } text) continue;
+            if (f.SubType == FIELD_SUBTYPE_OBJECT || f.SubType == FIELD_SUBTYPE_MAP) continue;
+            modelLines.Add($"        modelBuilder.Entity<{owner}>().Metadata.FindProperty(\"{PropertyName(f)}\")?.SetComment(\"{CSharpNaming.CSharpStringLiteral(text)}\");");
+        }
+    }
+
+    /// <summary>
+    /// The index vocabulary as EF indexes, named as <c>meta migrate</c> names them, so a model
+    /// over the migrated database declares the indexes it has (an EF migration would otherwise
+    /// drop them): a field's <c>@unique</c> (<c>&lt;table&gt;_&lt;column&gt;_unique</c>), an
+    /// <c>identity.secondary</c> (unique) and an <c>index.lookup</c>, each with <c>@where</c>
+    /// (<c>HasFilter</c>), <c>@using</c> (<c>HasMethod</c>) and <c>@orders</c>
+    /// (<c>IsDescending</c>), under its resolved name. An <c>@expr</c> index is not one EF can
+    /// model; <c>meta migrate</c> creates it.
+    /// </summary>
+    private void EmitIndexConfig(string owner, MetaObject entity, GenContext ctx, List<string> modelLines,
+        IEnumerable<MetaField>? ownFields = null, Func<MetaData, bool>? declares = null)
+    {
+        var table = CSharpNaming.Table(entity);
+        // A TPH subtype passes the fields and index nodes it adds beyond its ancestors in the model.
+        foreach (var f in ownFields ?? entity.Fields())
+        {
+            // ADR-0039: resolving — @unique may be inherited via extends.
+            if (f.Attr(FIELD_ATTR_UNIQUE) is not true || f.ResolvedIsArray()) continue;
+            var column = CSharpNaming.Column(f, ctx.Config.ColumnNamingStrategy);
+            modelLines.Add($"        modelBuilder.Entity<{owner}>().HasIndex(x => x.{PropertyName(f)}).IsUnique()" +
+                $".HasDatabaseName(\"{CSharpNaming.CSharpStringLiteral($"{table}_{column}_unique")}\");");
+        }
+        var nodes = entity.SecondaryIdentities().Select(i => ((MetaData)i, i.Fields, true))
+            .Concat(entity.LookupIndexes().Select(i => ((MetaData)i, i.Fields, false)))
+            .Where(n => declares is null || declares(n.Item1))
+            .ToList();
+        foreach (var (node, fields, unique) in nodes)
+        {
+            if (node.Attr(DbConstants.IDENTITY_ATTR_EXPR) is string { Length: > 0 } || fields.Count == 0) continue;
+            var props = new List<string>();
+            foreach (var name in fields)
+            {
+                if (entity.FindField(name) is not { } mf) { props.Clear(); break; }
+                props.Add(PropertyName(mf));
+            }
+            if (props.Count == 0) continue;
+            var indexName = CSharpNaming.IndexRef(entity, node, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames);
+            var selector = props.Count == 1 ? $"x => x.{props[0]}" : $"x => new {{ {string.Join(", ", props.Select(p => "x." + p))} }}";
+            // The NAMED overload: two indexes over one column list (a partial one beside a plain
+            // one) are two EF indexes only when each carries its own name.
+            var line = new StringBuilder($"        modelBuilder.Entity<{owner}>().HasIndex({selector}, {indexName})");
+            if (unique) line.Append(".IsUnique()");
+            if (node.Attr(DbConstants.IDENTITY_ATTR_WHERE) is string where && where.Trim().Length > 0)
+                line.Append($".HasFilter(\"{CSharpNaming.CSharpStringLiteral(where.Trim())}\")");
+            if (node.Attr(DbConstants.IDENTITY_ATTR_ORDERS) is System.Collections.IEnumerable orderList and not string)
+            {
+                var desc = orderList.Cast<object?>().Select(o => string.Equals(o?.ToString(), "desc", StringComparison.OrdinalIgnoreCase)).ToList();
+                if (desc.Any(d => d))
+                    line.Append(".IsDescending(").Append(string.Join(", ", props.Select((_, i) => i < desc.Count && desc[i] ? "true" : "false"))).Append(')');
+            }
+            line.Append($".HasDatabaseName({indexName});");
+            modelLines.Add(line.ToString());
+            // @using: the access method, an Npgsql annotation (btree is the default and is left out).
+            if (node.Attr(DbConstants.IDENTITY_ATTR_USING) is string method && method.Trim().Length > 0 && method.Trim() != "btree")
+            {
+                modelLines.Add($"        if (Database.ProviderName == \"{NpgsqlProviderName}\")");
+                modelLines.Add($"            modelBuilder.Entity<{owner}>().HasIndex({selector}, {indexName})" +
+                    $".HasAnnotation(\"Npgsql:IndexMethod\", \"{CSharpNaming.CSharpStringLiteral(method.Trim())}\");");
+            }
+        }
+    }
+
+    // The SQL expressions migrate treats as an expression default (expected-schema.ts
+    // EXPR_DEFAULT_PATTERNS): the rest of a string default is a literal.
+    private static readonly System.Text.RegularExpressions.Regex ExprDefault = new(
+        @"^(current_timestamp|now\(\)|current_date|current_time)$|\(\)",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    /// <summary>A C# literal of the property's own CLR type for a <c>@default</c>, or <c>null</c>
+    /// when the default is a SQL expression or its type has no literal form here.</summary>
+    private static string? DefaultLiteral(string className, MetaObject entity, MetaField f, object raw, GenConfig config)
+    {
+        var text = Convert.ToString(raw, System.Globalization.CultureInfo.InvariantCulture) ?? "";
+        if (f.SubType == FIELD_SUBTYPE_ENUM)
+        {
+            if (f.EffectiveEnumValues is not { } members || !members.Contains(text)) return null;
+            var type = Fr019SharedEnum.SharedEnumForField(f) is { } shared
+                ? Fr019SharedEnum.SharedEnumTypeReference(shared, config)
+                : $"{CSharpNaming.QualifiedOwnerTypeRef(className, entity, config)}.{CSharpNaming.EnumTypeName(entity, f)}";
+            return $"{type}.{text}";
+        }
+        var clr = CSharpNaming.ScalarForField(f);
+        if (clr == "string")
+            return text.Length > 0 && (ExprDefault.IsMatch(text) || text.Equals("now", StringComparison.OrdinalIgnoreCase))
+                ? null
+                : $"\"{CSharpNaming.CSharpStringLiteral(text)}\"";
+        if (clr == "bool")
+            return raw is bool b ? (b ? "true" : "false")
+                : bool.TryParse(text, out var pb) ? (pb ? "true" : "false") : null;
+        var suffix = clr switch
+        {
+            "int" => "", "long" => "L", "double" => "d", "float" => "f", "decimal" => "m",
+            "short" => "", "byte" => "", _ => null,
+        };
+        if (suffix is null
+            || !decimal.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out _))
+            return null;
+        // An integral literal for a short/byte property needs the cast: EF requires the default's
+        // type to be the property's own.
+        return clr is "short" or "byte" ? $"({clr}){text}" : text + suffix;
+    }
+
+    /// <summary>The SQL a <c>@default</c> that has no C# literal stands for: the expression as
+    /// declared (a bare <c>now</c> as <c>now()</c>), or a quoted SQL literal.</summary>
+    private static string? DefaultSql(MetaField f, object raw)
+    {
+        if (raw is not string text || f.SubType is FIELD_SUBTYPE_DURATION or FIELD_SUBTYPE_MAP or FIELD_SUBTYPE_OBJECT)
+            return null;
+        if (text.Equals("now", StringComparison.OrdinalIgnoreCase)) return "now()";
+        if (text.Length > 0 && ExprDefault.IsMatch(text)) return text;
+        return "'" + text.Replace("'", "''") + "'";
+    }
+
+    /// <summary>
+    /// FR-017 TPH — the per-field configuration of the fields a concrete SUBTYPE declares beyond
+    /// its TPH ancestors. A subtype gets no DbSet and is not in the emitted set, so the root's
+    /// pass (over the root's own fields) never reaches them: an owned value object was left for
+    /// EF to discover as an entity ("requires a primary key"), and a timestamp, enum, decimal,
+    /// array or map column lost the mapping the same field gets on the root. Configured on the
+    /// subtype's own builder, which EF applies to the shared table. A subtype that extends another
+    /// concrete subtype configures only what it adds, since the parent is in the model already.
+    /// </summary>
+    private void EmitTphSubtypeFieldConfig(MetaObject root, TphPlan tph, GenContext ctx, List<string> modelLines)
+    {
+        foreach (var st in tph.Subtypes)
+            modelLines.AddRange(TphSubtypeFieldConfig(root, st.Entity, ctx));
+    }
+
+    /// <summary>
+    /// Hook — the per-field configuration of one concrete TPH SUBTYPE (see the summary above):
+    /// the field-type lines, the column defaults, the <c>SetAfterSaveBehavior</c> lines, the
+    /// column comments and the indexes (<c>@unique</c>, <c>identity.secondary</c>,
+    /// <c>index.lookup</c>) for what it declares beyond its TPH ancestors, on the subtype's own builder. Called once per
+    /// subtype of each discriminator <paramref name="root"/>; empty for a subtype that adds no field.
+    /// </summary>
+    protected virtual IEnumerable<string> TphSubtypeFieldConfig(MetaObject root, MetaObject subtype, GenContext ctx)
+    {
+        var tph = TphPlanBuilder.For(root, ctx.Root);
+        if (tph is null)
+        {
+            return [];
+        }
+        var concrete = new HashSet<MetaObject>(tph.Subtypes.Select(st => st.Entity));
+        // The nearest ancestor already in the EF model: a concrete subtype, else the root.
+        var cursor = subtype.SuperData as MetaObject;
+        while (cursor is not null && cursor != root && !concrete.Contains(cursor))
+        {
+            cursor = cursor.SuperData as MetaObject;
+        }
+        var ancestor = cursor ?? root;
+        var inherited = new HashSet<string>(ancestor.Fields().Select(f => f.Name), StringComparer.Ordinal);
+        var own = subtype.Fields().Where(f => !inherited.Contains(f.Name)).ToList();
+        // Resolving on both sides: an index node an abstract level between them declares is the
+        // subtype's to configure, one the ancestor already resolves is configured there.
+        var ancestorIndexes = new HashSet<string>(
+            ancestor.SecondaryIdentities().Select(i => i.Name).Concat(ancestor.LookupIndexes().Select(i => i.Name)), StringComparer.Ordinal);
+        var ownIndexes = subtype.SecondaryIdentities().Select(i => i.Name).Concat(subtype.LookupIndexes().Select(i => i.Name))
+            .Where(n => !ancestorIndexes.Contains(n)).ToHashSet(StringComparer.Ordinal);
+        if (own.Count == 0 && ownIndexes.Count == 0)
+        {
+            return [];
+        }
+
+        var lines = new List<string>();
+        var cls = CSharpNaming.Pascal(subtype.Name);
+        EmitFieldTypeConfig(cls, subtype, own, ctx, lines, jsonbObjectsOnly: false);
+        EmitDefaultValueConfig(subtype, own, ctx, lines);
+        foreach (var f in own.Where(f => !f.ResolvedIsArray() && f.Mutability != MUTABILITY_READ_WRITE))
+        {
+            lines.Add(
+                $"        modelBuilder.Entity<{cls}>().Property(x => x.{PropertyName(f)}).Metadata.SetAfterSaveBehavior(PropertySaveBehavior.Ignore);");
+        }
+        // The shared table's comment is the root's; a subtype's own columns carry theirs.
+        EmitCommentConfig(cls, subtype, own, lines, tableComment: false);
+        EmitIndexConfig(cls, subtype, ctx, lines, own, n => ownIndexes.Contains(n.Name));
+        return lines;
+    }
+
+    /// <summary>
+    /// Under <see cref="GenConfig.EmitAbstractShapes"/>, a concrete class extends the abstract
+    /// shape its entity extends, and the fields that shape declares live on the shape class —
+    /// which carries no EF attributes by design. So the <c>[Key]</c>, <c>[Column]</c> and
+    /// <c>[MaxLength]</c> those fields would have carried on the concrete class are configured
+    /// here instead, or the model keys the entity by convention, names the columns after the
+    /// properties, and drops the declared length. Nothing when the knob is off (the concrete
+    /// class then declares every field itself, attributes included).
+    /// </summary>
+    private void EmitShapeInheritedFacets(
+        string className, MetaObject entity, IEnumerable<MetaField> fields, GenContext ctx, List<string> modelLines)
+    {
+        if (!ctx.Config.EmitAbstractShapes) return;
+        if (entity.SuperData is not MetaObject parent || !parent.IsEntity() || !InstanceArtifacts.IsAbstract(parent)
+            || TphPlanBuilder.IsTphMember(parent, ctx.Root))
+            return;
+        var shapeDeclared = new HashSet<string>(parent.Fields().Select(f => f.Name), StringComparer.Ordinal);
+        var lhs = $"        modelBuilder.Entity<{className}>()";
+
+        if (entity.PrimaryIdentity()?.Fields is [var keyName] && shapeDeclared.Contains(keyName)
+            && entity.FindField(keyName) is { } keyField)
+            modelLines.Add($"{lhs}.HasKey(x => x.{PropertyName(keyField)});");
+
+        foreach (var f in fields.Where(f => shapeDeclared.Contains(f.Name)))
+        {
+            var col = CSharpNaming.ColumnRef(entity, f, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames);
+            var prop = PropertyName(f);
+            var isScalar = CSharpNaming.ScalarFor(f.SubType) is not null;
+            if (f.ResolvedIsArray() && (isScalar || f.SubType == FIELD_SUBTYPE_ENUM))
+                modelLines.Add($"{lhs}.PrimitiveCollection(x => x.{prop}).HasColumnName({col});");
+            else if (isScalar || f.SubType is FIELD_SUBTYPE_ENUM or FIELD_SUBTYPE_MAP)
+                modelLines.Add($"{lhs}.Property(x => x.{prop}).HasColumnName({col})"
+                    + (f.SubType == FIELD_SUBTYPE_STRING && EffectiveMaxLength(f) is { } max ? $".HasMaxLength({max})" : "")
+                    + ";");
+            // An object field's column is already named by its owned-type config.
+        }
+    }
+
+    /// <summary>A string field's effective maximum length: the strictest of <c>@maxLength</c> and
+    /// a <c>validator.length @max</c> — the same value EntityGenerator's <c>[MaxLength]</c> carries.</summary>
+    private static long? EffectiveMaxLength(MetaField f)
+    {
+        long? max = f.MaxLength;
+        foreach (var v in f.Validators())
+            if (v.SubType == MetaObjects.Core.Validator.ValidatorConstants.VALIDATOR_SUBTYPE_LENGTH && v.Max is long lmax)
+                max = max is long cur ? Math.Min(cur, lmax) : lmax;
+        return max;
+    }
+
+    /// <summary>The key field of a single-column primary identity declared
+    /// <c>@generation: assigned</c>, or <c>null</c>. A composite key is never generated by EF's
+    /// convention, so it needs nothing.</summary>
+    private static MetaField? AssignedKeyField(MetaObject entity) =>
+        entity.PrimaryIdentity() is MetaPrimaryIdentity { Generation: GENERATION_ASSIGNED } pk
+        && pk.Fields is [var only]
+            ? entity.FindField(only)
+            : null;
 
     /// <summary>
     /// Identity of the physical foreign key a reference defines: its ordered FK field
@@ -494,22 +1419,30 @@ public class DbContextGenerator : IGenerator
         string.Join(",", ReferentialActions.ReadIdentityFields(reference));
 
     /// <summary>
-    /// The relationship-configuration line for one reference, or <c>null</c> when it
-    /// cannot be expressed: an unresolvable / non-persisted target, or an FK field the
-    /// emitted class does not declare. Silent by design — a dangling <c>@references</c>
+    /// Hook — the relationship-configuration lines for one reference: one line, or none when it
+    /// cannot be expressed (an unresolvable / non-persisted target, or an FK field the
+    /// emitted class does not declare). Silent by design — a dangling <c>@references</c>
     /// is already a load error, and the other cases are shapes this generator
-    /// deliberately does not map.
+    /// deliberately does not map. <paramref name="entity"/> is the declaring entity (a TPH
+    /// subtype for a reference it declares itself); the emitted class is its own name.
     /// </summary>
-    private string? ReferenceConfig(
-        string owner, MetaObject entity, MetaReferenceIdentity reference, GenContext ctx)
+    protected virtual IEnumerable<string> ReferenceConfig(
+        MetaObject entity, MetaReferenceIdentity reference, GenContext ctx)
     {
-        if (reference.TargetEntity is null) return null;
+        var owner = CSharpNaming.Pascal(entity.Name);
+        if (reference.TargetEntity is null)
+        {
+            return [];
+        }
         var target = NamingRefs.RefTarget(reference, IDENTITY_REFERENCE_ATTR_REFERENCES) as MetaObject;
         if (target is null || !target.IsEntity() || !InstanceArtifacts.EmitsInstanceArtifacts(target))
-            return null;
+            return [];
 
         var fkFields = ReferentialActions.ReadIdentityFields(reference);
-        if (fkFields.Count == 0) return null;
+        if (fkFields.Count == 0)
+        {
+            return [];
+        }
 
         var props = new List<string>(fkFields.Count);
         var isWriteThrough = entity.IsWriteThrough();
@@ -518,16 +1451,55 @@ public class DbContextGenerator : IGenerator
             // #214 — a write-through entity's WRITE class omits the derived (origin.*)
             // fields, so naming one here would reference a property the class does not
             // declare (a compile error in the generated file).
-            if (entity.FindField(name) is not { } field) return null;
-            if (isWriteThrough && field.IsDerived()) return null;
-            props.Add(CSharpNaming.Pascal(name));
+            if (entity.FindField(name) is not { } field)
+            {
+                return [];
+            }
+            if (isWriteThrough && field.IsDerived())
+            {
+                return [];
+            }
+            props.Add(PropertyName(field));
         }
 
         var actions = ReferentialActions.Resolve(entity, reference);
-        return $"        modelBuilder.Entity<{owner}>().HasOne<{CSharpNaming.Pascal(target.Name)}>()"
+        return [$"        modelBuilder.Entity<{owner}>().HasOne<{CSharpNaming.Pascal(target.Name)}>()"
              + $".WithMany().HasForeignKey({ForeignKeyExpression("e", props)})"
-             + $"{OnDeleteCall(entity, fkFields, actions.OnDelete, ctx)};";
+             + PrincipalKeyCall(reference, target)
+             + $"{OnDeleteCall(entity, fkFields, actions.OnDelete, ctx)}"
+             + ConstraintNameCall(reference) + ";"];
     }
+
+    /// <summary>
+    /// <c>.HasPrincipalKey(...)</c> when <c>@references</c> names target fields that are not the
+    /// target's primary key (<c>"Warehouse.regionCode,siteNo"</c>), else <c>""</c>. Without it EF
+    /// pairs the foreign key with the primary key: a composite FK then fails model validation
+    /// ("cannot target the primary key ... because it is not compatible"), and a single column of
+    /// the PK's type is silently joined to the wrong column. EF makes the named fields an
+    /// alternate key, which is the unique constraint such a reference needs anyway.
+    /// </summary>
+    private string PrincipalKeyCall(MetaReferenceIdentity reference, MetaObject target)
+    {
+        var targetFields = reference.TargetFields;
+        if (targetFields.Count == 0) return string.Empty;
+        if (target.PrimaryIdentity()?.Fields is { } pk && pk.SequenceEqual(targetFields, StringComparer.Ordinal))
+            return string.Empty;
+        var props = new List<string>(targetFields.Count);
+        foreach (var name in targetFields)
+        {
+            if (target.FindField(name) is not { } field) return string.Empty;
+            props.Add(PropertyName(field));
+        }
+        return $".HasPrincipalKey({ForeignKeyExpression("p", props)})";
+    }
+
+    /// <summary><c>.HasConstraintName("...")</c> from the reference's <c>@constraintName</c>, so the
+    /// model (and a database EF creates from it) names the FK the way the schema does; else <c>""</c>.</summary>
+    private static string ConstraintNameCall(MetaReferenceIdentity reference) =>
+        // ADR-0039: resolving — an inherited reference keeps its declared name.
+        reference.Attr(DbConstants.IDENTITY_ATTR_CONSTRAINT_NAME) is string name && name.Length > 0
+            ? $".HasConstraintName(\"{CSharpNaming.CSharpStringLiteral(name)}\")"
+            : string.Empty;
 
     /// <summary>
     /// The <c>HasForeignKey</c> argument naming <paramref name="props"/> on the dependent:
@@ -619,9 +1591,14 @@ public class DbContextGenerator : IGenerator
         // delete, a behaviour change for every existing M:N adopter that has nothing to do
         // with #294. The 1:N path defaults precisely because those relationships are NEW
         // here: there is no prior behaviour to preserve, only EF's convention to prevent.
-        if (resolved is null) return string.Empty;
-        return OnDeleteCall(junction, [fkField], resolved, ctx);
+        var constraint = ConstraintNameCall(reference);
+        if (resolved is null) return constraint;
+        return OnDeleteCall(junction, [fkField], resolved, ctx) + constraint;
     }
+
+    // A junction FK column's C# property, through the same resolver its entity class used.
+    private string JunctionFkProperty(MetaObject junction, string fkField) =>
+        junction.FindField(fkField) is { } f ? PropertyName(f) : CSharpNaming.Pascal(fkField);
 
     // FR-018 — EF skip-navigation config for a hetero M:N navigation through its
     // explicit junction entity. The junction's FK PROPERTIES are the PascalCased
@@ -645,8 +1622,8 @@ public class DbContextGenerator : IGenerator
         var target = CSharpNaming.Pascal(nav.Target.Name);
         var through = CSharpNaming.Pascal(nav.Junction.Name);
         var navProp = CSharpNaming.Pascal(nav.Name);
-        var sourceFkProp = CSharpNaming.Pascal(nav.SourceField);
-        var targetFkProp = CSharpNaming.Pascal(nav.TargetField);
+        var sourceFkProp = JunctionFkProperty(nav.Junction, nav.SourceField);
+        var targetFkProp = JunctionFkProperty(nav.Junction, nav.TargetField);
         var targetOnDelete = JunctionSideOnDelete(nav.Junction, nav.TargetField, ctx);
         var sourceOnDelete = JunctionSideOnDelete(nav.Junction, nav.SourceField, ctx);
         // Typed lambdas for the same reason the 1:N path uses them (see ForeignKeyExpression):
@@ -676,6 +1653,9 @@ public class DbContextGenerator : IGenerator
     /// <summary>Name of the generated fail-fast helper the read converters end in.</summary>
     private const string UnmappedEnumHelperName = "UnmappedEnumValue";
 
+    /// <summary>Name of the generated fail-fast helper the write converters end in.</summary>
+    private const string UnmappedEnumMemberHelperName = "UnmappedEnumMember";
+
     /// <summary>
     /// Emits the fail-fast helper every int-backed enum's provider→model converter ends
     /// in. Emitted only when at least one such converter was generated, so a model with
@@ -696,6 +1676,16 @@ public class DbContextGenerator : IGenerator
         sb.AppendLine("        throw new System.InvalidOperationException(");
         sb.AppendLine("            $\"field.enum '{field}' read stored value {stored} with no member in \" +");
         sb.AppendLine("            \"@intValueMap — the database holds a value the model does not describe.\");");
+        sb.AppendLine();
+        sb.AppendLine("    /// <summary>");
+        sb.AppendLine("    /// An int-backed field.enum property held a value outside @values (a cast integer, or");
+        sb.AppendLine("    /// a member the C# enum declares that the metadata does not): it has no declared");
+        sb.AppendLine("    /// integer, and writing some other member's instead would corrupt the row silently.");
+        sb.AppendLine("    /// </summary>");
+        sb.AppendLine($"    private static int {UnmappedEnumMemberHelperName}(object? value, string field) =>");
+        sb.AppendLine("        throw new System.InvalidOperationException(");
+        sb.AppendLine("            $\"field.enum '{field}' cannot write {value}: it has no integer in \" +");
+        sb.AppendLine("            \"@intValueMap — the value is not one of the members the model declares.\");");
     }
 
     /// <summary>
@@ -704,8 +1694,8 @@ public class DbContextGenerator : IGenerator
     /// (<see cref="EmitFieldTypeConfig"/>) and the read-only-projection path, which both emit
     /// a <c>Dictionary&lt;string, V&gt;</c> property and so both need the mapping.
     /// </summary>
-    private static string MapJsonbConfig(string className, MetaObject owner, MetaField f, GenContext ctx) =>
-        $"        modelBuilder.Entity<{className}>().Property(x => x.{CSharpNaming.Pascal(f.Name)})"
+    private string MapJsonbConfig(string className, MetaObject owner, MetaField f, GenContext ctx) =>
+        $"        modelBuilder.Entity<{className}>().Property(x => x.{PropertyName(f)})"
             + MapJsonbSuffix(owner, f, ctx) + ";";
 
     /// <summary>
@@ -905,7 +1895,7 @@ public class DbContextGenerator : IGenerator
             || (f.SubType == FIELD_SUBTYPE_OBJECT && f.Storage == STORAGE_FLATTENED && !f.ResolvedIsArray()
                 && ValueObjectNames.ResolveFieldRef(f, root) is { } vo
                 && vo.Fields().Any(nf =>
-                    nf.SubType == FIELD_SUBTYPE_ENUM && !nf.ResolvedIsArray() && IntValueMapOf(nf) is not null))));
+                    nf.SubType == FIELD_SUBTYPE_ENUM && IntValueMapOf(nf) is not null))));
 
     /// <summary>
     /// The complete <c>HasConversion</c> call for an enum property: the generic
@@ -922,12 +1912,15 @@ public class DbContextGenerator : IGenerator
     /// with no member THROWS rather than silently materializing as the last member —
     /// matching all four sibling ports. CS8188 bans a throw-EXPRESSION inside an
     /// expression tree, but a method CALL is legal there and the throw itself happens in
-    /// the helper's ordinary body. Only the read side needs this: the model→provider
-    /// chain is exhaustive over the enum by construction, since <c>@intValueMap</c>'s
-    /// keys are loader-validated to match <c>@values</c> exactly.</para>
+    /// the helper's ordinary body. The model→provider chain does the same, ending in
+    /// <c>UnmappedEnumMember</c>: <c>@intValueMap</c>'s keys match <c>@values</c>
+    /// exactly, but the C# enum can still hold a value outside them (a cast integer, or a
+    /// <c>@provided</c> enum's extra member), which must not be stored as another member's
+    /// integer.</para>
     /// </remarks>
-    private static string EnumConversionCall(string owner, MetaObject entity, MetaField f, GenConfig config)
+    protected virtual string? EnumConversionCall(string owner, MetaObject entity, MetaField f, GenContext ctx)
     {
+        var config = ctx.Config;
         var intMap = IntValueMapOf(f);
         // A string-backed enum's column length (EnumLength.ResolveMaxLength: its @maxLength, else
         // the project's enums.maxLength) is the VARCHAR(n) `meta migrate` creates. An array enum
@@ -970,15 +1963,28 @@ public class DbContextGenerator : IGenerator
 
         var toProvider = new System.Text.StringBuilder("v => ");
         var fromProvider = new System.Text.StringBuilder("v => ");
-        for (var i = 0; i < members.Count - 1; i++)
+        // Every member gets its own branch on the WRITE side too, ending in the throwing helper:
+        // a value outside @values (a cast like (E)99, or a member a @provided C# enum carries
+        // that the metadata does not) would otherwise fall into the else branch and be stored
+        // as the LAST member's int, silently.
+        for (var i = 0; i < members.Count; i++)
             toProvider.Append($"v == {type}.{members[i]} ? {ints[i]} : ");
-        toProvider.Append(ints[^1]);
+        // Typed object: the lambda's parameter is the property's type, nullable or not.
+        toProvider.Append($"{UnmappedEnumMemberHelperName}(v, \"{f.Name}\")");
         // Every member gets its own branch here (no last-member fallthrough) so the
         // final else can reject an int the model does not describe.
         for (var i = 0; i < members.Count; i++)
             fromProvider.Append($"v == {ints[i]} ? {type}.{members[i]} : ");
         fromProvider.Append($"{UnmappedEnumHelperName}<{type}>(v, \"{f.Name}\")");
 
+        // An ARRAY's conversion goes on the primitive collection's ElementTypeBuilder, which
+        // is not generic: it has no HasConversion(lambda, lambda) overload to type the two
+        // lambdas against (CS1660), so the pair is wrapped in an explicit ValueConverter.
+        // The element converter is the scalar pair unchanged, so each element is stored as
+        // its declared int and an unmapped stored element throws exactly as a scalar does.
+        if (f.ResolvedIsArray())
+            return "HasConversion(new global::Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<"
+                + $"{type}, int>({toProvider}, {fromProvider}))";
         return $"HasConversion({toProvider}, {fromProvider})";
     }
 
@@ -1008,7 +2014,153 @@ public class DbContextGenerator : IGenerator
 
         foreach (var f in fieldList.Where(f => f.SubType == FIELD_SUBTYPE_OBJECT
                      && (!jsonbObjectsOnly || f.Storage != STORAGE_FLATTENED)))
-            if (OwnedTypeConfig(className, entity, f, ctx) is { } cfg) modelLines.Add(cfg);
+        {
+            if (OwnedTypeConfig(className, entity, f, ctx) is { } cfg)
+            {
+                modelLines.Add(cfg);
+            }
+        }
+
+        // Every other kind of field, in FieldTypeRank order: all maps, then all enums, then primitive
+        // collections, decimals, timestamps, uri, inet, durations. The order is the one this method
+        // has always emitted in (OrderBy is stable, so fields keep their declared order within a
+        // kind); FieldTypeConfig is asked about every field, once, in that order. An ARRAY of
+        // durations belongs to two kinds, a primitive collection and a duration, and the old passes
+        // wrote its two halves apart: its duration half is set aside by the hook (see
+        // FieldTypeConfig) and written here at its declared place among the durations.
+        var items = new List<(int Rank, MetaField Field, bool DurationHalf)>();
+        foreach (var f in fieldList)
+        {
+            items.Add((FieldTypeRank(f), f, false));
+            if (IsDurationArray(f))
+            {
+                items.Add((FieldTypeRankDuration, f, true));
+            }
+        }
+        var outerDeferred = _deferredDurationLines;
+        var deferred = new Dictionary<MetaField, List<string>>();
+        _deferredDurationLines = deferred;
+        try
+        {
+            foreach (var (_, f, durationHalf) in items.OrderBy(i => i.Rank))
+            {
+                if (durationHalf)
+                {
+                    if (deferred.TryGetValue(f, out var half))
+                    {
+                        modelLines.AddRange(half);
+                    }
+                    continue;
+                }
+                if (f.SubType == FIELD_SUBTYPE_ENUM)
+                {
+                    // An override that returns null leaves the field unconverted: no line.
+                    if (EnumConversionCall(className, entity, f, ctx) is { } conversion)
+                    {
+                        var prop = PropertyName(f);
+                        // An int-backed enum (@intValueMap) persists the declared INTEGER instead of the
+                        // member symbol, so it needs a custom converter pair rather than HasConversion<string>().
+                        // The generated C# `enum` declaration is byte-identical either way — int-backing is a
+                        // persistence concern, invisible in the entity's API.
+                        // ADR-0039: resolving — array-ness inheritable via extends. Array-of-enum uses the
+                        // EF Core 8 primitive collection with a per-element conversion so members persist as
+                        // symbols (["DRAFT"]) — or as their declared ints — not as int ordinals ([0]).
+                        if (f.ResolvedIsArray())
+                        {
+                            modelLines.Add($"        modelBuilder.Entity<{className}>().PrimitiveCollection(x => x.{prop}).ElementType().{conversion};");
+                        }
+                        else
+                        {
+                            modelLines.Add($"        modelBuilder.Entity<{className}>().Property(x => x.{prop}).{conversion};");
+                        }
+                    }
+                }
+                modelLines.AddRange(FieldTypeConfig(className, entity, f, ctx));
+            }
+        }
+        finally
+        {
+            _deferredDurationLines = outerDeferred;
+        }
+
+        foreach (var f in fieldList.Where(f => !f.ResolvedIsArray() && f.DbColumnType is not null))
+        {
+            // An override that returns null leaves the field with no column-type line.
+            if (DbColumnTypeConfig(className, f) is { } cfg)
+            {
+                modelLines.Add(cfg);
+            }
+        }
+    }
+
+    // The duration half of an ARRAY-of-durations field's lines, set aside by the default
+    // FieldTypeConfig while EmitFieldTypeConfig is running, so the driver can write it where the
+    // duration pass always wrote it. Null outside that run, when the hook returns everything at once.
+    private Dictionary<MetaField, List<string>>? _deferredDurationLines;
+
+    private const int FieldTypeRankDuration = 8;
+
+    private static bool IsDurationArray(MetaField f) =>
+        f.ResolvedIsArray() && f.SubType == FIELD_SUBTYPE_DURATION && f.DbColumnType is null;
+
+    // The place of a field's type configuration among the others, so a model's lines keep the
+    // order they have always had: maps, enums, primitive collections, decimals, timestamps, uri,
+    // inet, durations. A field matching more than one (an array of durations is both a primitive
+    // collection and a duration) sits at the first. Everything else — scalars needing nothing,
+    // owned value objects (configured by OwnedTypeConfig above) — sorts last and emits nothing here.
+    private static int FieldTypeRank(MetaField f)
+    {
+        var array = f.ResolvedIsArray();
+        if (f.SubType == FIELD_SUBTYPE_MAP)
+        {
+            return 1;
+        }
+        if (f.SubType == FIELD_SUBTYPE_ENUM)
+        {
+            return 2;
+        }
+        if (array && CSharpNaming.ScalarFor(f.SubType) is not null)
+        {
+            return 3;
+        }
+        if (!array && f.SubType == FIELD_SUBTYPE_DECIMAL && f.Precision is not null)
+        {
+            return 4;
+        }
+        if (!array && f.SubType == FIELD_SUBTYPE_TIMESTAMP)
+        {
+            return 5;
+        }
+        if (!array && f.SubType == FIELD_SUBTYPE_URI && !CSharpNaming.IsLenientNet(f))
+        {
+            return 6;
+        }
+        if (!array && f.SubType == FIELD_SUBTYPE_INET && !CSharpNaming.IsLenientNet(f))
+        {
+            return 7;
+        }
+        if (f.SubType == FIELD_SUBTYPE_DURATION && f.DbColumnType is null)
+        {
+            return 8;
+        }
+        return 99;
+    }
+
+    /// <summary>
+    /// Hook — the type configuration lines of ONE field, on <paramref name="owner"/> (the emitted
+    /// class: the entity, a TPH subtype, or a write-through entity's <c>&lt;Entity&gt;View</c> read
+    /// model): a <c>field.map</c>'s jsonb column, a scalar array's primitive collection, a decimal's
+    /// precision, a timestamp's column type, <c>field.uri</c>/<c>field.inet</c> storage and a
+    /// duration's provider-dependent mapping. Called for EVERY field being configured, so an
+    /// override can add a line for any of them; the base returns nothing for a field none of those
+    /// apply to. Enum conversions come from <see cref="EnumConversionCall"/>, owned value objects
+    /// from <see cref="OwnedTypeConfig"/> and <c>@dbColumnType</c> from <see cref="DbColumnTypeConfig"/>.
+    /// </summary>
+    protected virtual IEnumerable<string> FieldTypeConfig(string owner, MetaObject entity, MetaField f, GenContext ctx)
+    {
+        var lines = new List<string>();
+        var array = f.ResolvedIsArray();
+        var prop = PropertyName(f);
 
         // field.map -> a single jsonb column holding the JSON object. Without this the property
         // gets NO storage mapping at all: nothing tells EF the column type, and nothing tells it
@@ -1024,70 +2176,47 @@ public class DbContextGenerator : IGenerator
         // explicitly, so the mapping does not depend on any host-side serializer configuration
         // the generated code cannot make on a consumer's behalf. The COMPARER is not optional --
         // see EmitMapJsonbHelper.
-        foreach (var f in fieldList.Where(f => f.SubType == FIELD_SUBTYPE_MAP))
-            modelLines.Add(MapJsonbConfig(className, entity, f, ctx));
-
-        foreach (var f in fieldList.Where(f => f.SubType == FIELD_SUBTYPE_ENUM))
+        if (f.SubType == FIELD_SUBTYPE_MAP)
         {
-            var prop = CSharpNaming.Pascal(f.Name);
-            // An int-backed enum (@intValueMap) persists the declared INTEGER instead of the
-            // member symbol, so it needs a custom converter pair rather than HasConversion<string>().
-            // The generated C# `enum` declaration is byte-identical either way — int-backing is a
-            // persistence concern, invisible in the entity's API.
-            var conversion = EnumConversionCall(className, entity, f, ctx.Config);
-            // ADR-0039: resolving — array-ness inheritable via extends. Array-of-enum uses the
-            // EF Core 8 primitive collection with a per-element conversion so members persist as
-            // symbols (["DRAFT"]) — or as their declared ints — not as int ordinals ([0]).
-            if (f.ResolvedIsArray())
-                modelLines.Add($"        modelBuilder.Entity<{className}>().PrimitiveCollection(x => x.{prop}).ElementType().{conversion};");
-            else
-                modelLines.Add($"        modelBuilder.Entity<{className}>().Property(x => x.{prop}).{conversion};");
+            lines.Add(MapJsonbConfig(owner, entity, f, ctx));
         }
 
-        foreach (var f in fieldList.Where(f => f.ResolvedIsArray() && CSharpNaming.ScalarFor(f.SubType) is not null))
+        if (array && CSharpNaming.ScalarFor(f.SubType) is not null)
         {
-            var prop = CSharpNaming.Pascal(f.Name);
-            modelLines.Add($"        modelBuilder.Entity<{className}>().PrimitiveCollection(x => x.{prop});");
+            lines.Add($"        modelBuilder.Entity<{owner}>().PrimitiveCollection(x => x.{prop});");
         }
 
-        foreach (var f in fieldList.Where(f =>
-                     !f.ResolvedIsArray() && f.SubType == FIELD_SUBTYPE_DECIMAL && f.Precision is not null))
+        if (!array && f.SubType == FIELD_SUBTYPE_DECIMAL && f.Precision is not null)
         {
-            var prop = CSharpNaming.Pascal(f.Name);
-            modelLines.Add(f.Scale is long sc
-                ? $"        modelBuilder.Entity<{className}>().Property(x => x.{prop}).HasPrecision({f.Precision}, {sc});"
-                : $"        modelBuilder.Entity<{className}>().Property(x => x.{prop}).HasPrecision({f.Precision});");
+            lines.Add(f.Scale is long sc
+                ? $"        modelBuilder.Entity<{owner}>().Property(x => x.{prop}).HasPrecision({f.Precision}, {sc});"
+                : $"        modelBuilder.Entity<{owner}>().Property(x => x.{prop}).HasPrecision({f.Precision});");
         }
 
-        foreach (var f in fieldList.Where(f => !f.ResolvedIsArray() && f.SubType == FIELD_SUBTYPE_TIMESTAMP))
+        if (!array && f.SubType == FIELD_SUBTYPE_TIMESTAMP)
         {
-            var prop = CSharpNaming.Pascal(f.Name);
             var colType = CSharpNaming.IsLocalTime(f)
                 ? "timestamp without time zone"
                 : "timestamp with time zone";
-            modelLines.Add($"        modelBuilder.Entity<{className}>().Property(x => x.{prop}).HasColumnType(\"{colType}\");");
+            lines.Add($"        modelBuilder.Entity<{owner}>().Property(x => x.{prop}).HasColumnType(\"{colType}\");");
         }
 
         // #234: a @lenient field.uri / field.inet is a plain string mapped to a plain `text`
         // column (EF's string default) — no System.Uri HasConversion, no native `inet` type.
-        foreach (var f in fieldList.Where(f => !f.ResolvedIsArray()
-                     && f.SubType == FIELD_SUBTYPE_URI && !CSharpNaming.IsLenientNet(f)))
+        if (!array && f.SubType == FIELD_SUBTYPE_URI && !CSharpNaming.IsLenientNet(f))
         {
-            var prop = CSharpNaming.Pascal(f.Name);
             // System.Uri is FULLY QUALIFIED: the emitted AppDbContext carries no `using System;`
             // (unlike the entity files), so an unqualified `new Uri(v)` in OnModelCreating fails
             // to compile except under a host's ImplicitUsings — the generated context must be
             // self-contained (this is also on the #214 write-through read-model path now).
-            modelLines.Add(
-                $"        modelBuilder.Entity<{className}>().Property(x => x.{prop}).HasColumnType(\"text\").HasConversion(v => v!.ToString(), v => new System.Uri(v));");
+            lines.Add(
+                $"        modelBuilder.Entity<{owner}>().Property(x => x.{prop}).HasColumnType(\"text\").HasConversion(v => v!.ToString(), v => new System.Uri(v));");
         }
 
-        foreach (var f in fieldList.Where(f => !f.ResolvedIsArray()
-                     && f.SubType == FIELD_SUBTYPE_INET && !CSharpNaming.IsLenientNet(f)))
+        if (!array && f.SubType == FIELD_SUBTYPE_INET && !CSharpNaming.IsLenientNet(f))
         {
-            var prop = CSharpNaming.Pascal(f.Name);
-            modelLines.Add(
-                $"        modelBuilder.Entity<{className}>().Property(x => x.{prop}).HasColumnType(\"inet\");");
+            lines.Add(
+                $"        modelBuilder.Entity<{owner}>().Property(x => x.{prop}).HasColumnType(\"inet\");");
         }
 
         // field.duration — a System.TimeSpan. Npgsql maps it to the native `interval` (and an array
@@ -1095,10 +2224,23 @@ public class DbContextGenerator : IGenerator
         // provider stores the canonical ISO-8601 string in a text column (the TS-owned SQLite / MySQL
         // schemas), through the entity namespace's DurationWire; EF's own TimeSpan text ("01:30:00")
         // would not be the cross-port form, and MySQL's `time` cannot hold more than 838 hours.
-        AddDurationConfig(className, entity, fieldList, ctx, modelLines);
+        if (f.SubType == FIELD_SUBTYPE_DURATION && f.DbColumnType is null)
+        {
+            if (_deferredDurationLines is { } deferred && IsDurationArray(f))
+            {
+                // Under EmitFieldTypeConfig the duration half of an array waits for its pass; the
+                // lines are still this hook's to produce, the driver only moves them.
+                var half = new List<string>();
+                AddDurationConfig(owner, entity, [f], ctx, half);
+                deferred[f] = half;
+            }
+            else
+            {
+                AddDurationConfig(owner, entity, [f], ctx, lines);
+            }
+        }
 
-        foreach (var f in fieldList.Where(f => !f.ResolvedIsArray() && f.DbColumnType is not null))
-            if (DbColumnTypeConfig(className, f) is { } cfg) modelLines.Add(cfg);
+        return lines;
     }
 
     // field.duration — a System.TimeSpan. Npgsql maps it to the native `interval` (and an array
@@ -1106,12 +2248,12 @@ public class DbContextGenerator : IGenerator
     // provider stores a 64-bit count of microseconds in an integer column (the TS-owned SQLite /
     // MySQL schemas), through the entity namespace's DurationWire; EF's own TimeSpan text
     // ("01:30:00") does not order as the span, and MySQL's `time` cannot hold more than 838 hours.
-    private static void AddDurationConfig(
+    private void AddDurationConfig(
         string className, MetaObject entity, IEnumerable<MetaField> fields, GenContext ctx, List<string> modelLines)
     {
         foreach (var f in fields.Where(f => f.SubType == FIELD_SUBTYPE_DURATION && f.DbColumnType is null))
             modelLines.Add(string.Join("\n",
-                DurationColumnLines($"modelBuilder.Entity<{className}>()", "x", CSharpNaming.Pascal(f.Name), f.ResolvedIsArray(), entity, ctx, "        ")));
+                DurationColumnLines($"modelBuilder.Entity<{className}>()", "x", PropertyName(f), f.ResolvedIsArray(), entity, ctx, "        ")));
     }
 
     // The provider-dependent mapping of one duration column (a top-level property, or a member of a
@@ -1328,7 +2470,7 @@ public sealed class DurationIntervalArrayMapping : Microsoft.EntityFrameworkCore
     // required, so EF models it nullable — a gen↔schema nullability mismatch. Deferred
     // until the exact EF Core required-owned-JSON mapping can be validated against a
     // live provider.
-    private string? OwnedTypeConfig(string owner, MetaObject entity, MetaField field, GenContext ctx)
+    protected virtual string? OwnedTypeConfig(string owner, MetaObject entity, MetaField field, GenContext ctx)
     {
         if (ValueObjectNames.ResolveFieldRef(field, ctx.Root) is not { } vo)
         {
@@ -1336,7 +2478,7 @@ public sealed class DurationIntervalArrayMapping : Microsoft.EntityFrameworkCore
             return null;
         }
         var strategy = ctx.Config.ColumnNamingStrategy;
-        var nav = CSharpNaming.Pascal(field.Name);
+        var nav = PropertyName(field);
         // A6 -- the field itself belongs to `entity` (the JSON column's own physical
         // name, not the nested value object's), so it hits entity's own names artifact
         // unconditionally in practice — a lookup, not an assumption, per ColumnRef.
@@ -1387,7 +2529,7 @@ public sealed class DurationIntervalArrayMapping : Microsoft.EntityFrameworkCore
         // else `<parent field's column>_`, then the member's own column — the same function
         // migrate-ts names these columns with, and TS owns the schema (ADR-0015). It is NOT EF's
         // own owned-type default, `<Nav>_<Prop>`, which binds a column no migration creates
-        // (under the upperFirst column rule the two coincide). Under this generator's column
+        // (under the pascal column rule the two coincide). Under this generator's column
         // rule, so verify's probe of an alternate rule names these columns the way it names
         // every other.
 
@@ -1431,30 +2573,35 @@ public sealed class DurationIntervalArrayMapping : Microsoft.EntityFrameworkCore
             // members persist as int ordinals inside the array.
             if (nf.SubType == FIELD_SUBTYPE_ENUM && nf.ResolvedIsArray())
             {
-                sb.AppendLine($"            b.PrimitiveCollection(p => p.{CSharpNaming.Pascal(nf.Name)})"
-                    + $".HasColumnName(\"{nestedColAny}\").ElementType()"
-                    + $".{EnumConversionCall(ValueObjectNames.TypeName(vo, ctx.Root), vo, nf, ctx.Config)};");
+                // An override returning null leaves the member unconverted: no line for it.
+                if (EnumConversionCall(ValueObjectNames.TypeName(vo, ctx.Root), vo, nf, ctx) is { } elementConversion)
+                {
+                    sb.AppendLine($"            b.PrimitiveCollection(p => p.{PropertyName(nf)})"
+                        + $".HasColumnName(\"{nestedColAny}\").ElementType()"
+                        + $".{elementConversion};");
+                }
                 continue;
             }
 
             // A NESTED value object: migrate gives it ONE json column at `<prefix><col>`
             // (subtypeToSqlType returns { kind: "json" } for field.object — a nested VO does
-            // not flatten recursively). EF models it as a nested owned type, so it needs its
-            // own ToJson pinned to that column, plus the enum conversions its own members
-            // need — the same rule one level down.
+            // not flatten recursively). It is one jsonb PROPERTY converted whole (the same
+            // ObjectConverter/ObjectComparer pair a map-holding value object takes), never a
+            // nested owned `ToJson`: EF Core 8 refuses a JSON column inside a table-split owned
+            // type ("All owned types containing a JSON column must be mapped to a JSON column
+            // themselves"), which failed model validation for the whole context. The document
+            // is keyed by each member's [JsonPropertyName] and enums are written as their
+            // symbols, the same document the owned-JSON mapping writes elsewhere.
             if (nf.SubType == FIELD_SUBTYPE_OBJECT
-                && ValueObjectNames.ResolveFieldRef(nf, ctx.Root) is { } nestedVo)
+                && ValueObjectNames.ResolveFieldRef(nf, ctx.Root) is not null)
             {
-                var ownsCall = nf.ResolvedIsArray() ? "OwnsMany" : "OwnsOne";
-                sb.AppendLine($"            b.{ownsCall}(p => p.{CSharpNaming.Pascal(nf.Name)}, nb =>");
-                sb.AppendLine("            {");
-                sb.AppendLine($"                nb.ToJson(\"{nestedColAny}\");");
-                // `nb`, not `b` — the nested builder shadows the outer one, and emitting `b.`
-                // here would compile-fail the GENERATED file (the outer builder is out of the
-                // nested lambda's intended scope and names the wrong entity type anyway).
-                foreach (var line in JsonEnumConversions(nestedVo, ctx, builder: "nb"))
-                    sb.AppendLine("    " + line);
-                sb.AppendLine("            });");
+                var nullable = CSharpNaming.IsRequired(vo, nf) ? "" : "?";
+                var nestedType = MapValueTypeRef(nf, ctx);
+                var clr = nf.ResolvedIsArray()
+                    ? $"System.Collections.Generic.ICollection<{nestedType}>{nullable}"
+                    : nestedType + nullable;
+                sb.AppendLine($"            b.Property(p => p.{PropertyName(nf)}).HasColumnName(\"{nestedColAny}\")"
+                    + $".HasColumnType(\"jsonb\").HasConversion({MapJsonbHelperName}.ObjectConverter<{clr}>(), {MapJsonbHelperName}.ObjectComparer<{clr}>());");
                 continue;
             }
 
@@ -1466,7 +2613,7 @@ public sealed class DurationIntervalArrayMapping : Microsoft.EntityFrameworkCore
             // default: a column the migration never creates (42703 at the engine).
             if (nf.SubType == FIELD_SUBTYPE_MAP)
             {
-                sb.AppendLine($"            b.Property(p => p.{CSharpNaming.Pascal(nf.Name)})"
+                sb.AppendLine($"            b.Property(p => p.{PropertyName(nf)})"
                     + $".HasColumnName(\"{nestedColAny}\")" + MapJsonbSuffix(vo, nf, ctx) + ";");
                 continue;
             }
@@ -1477,7 +2624,7 @@ public sealed class DurationIntervalArrayMapping : Microsoft.EntityFrameworkCore
             // its own "01:30:00" text there and fail to read another port's count.
             if (nf.SubType == FIELD_SUBTYPE_DURATION && CSharpNaming.DbColumnTypeClrOverride(nf) is null)
             {
-                var dprop = CSharpNaming.Pascal(nf.Name);
+                var dprop = PropertyName(nf);
                 sb.AppendLine(nf.ResolvedIsArray()
                     ? $"            b.PrimitiveCollection(p => p.{dprop}).HasColumnName(\"{nestedColAny}\");"
                     : $"            b.Property(p => p.{dprop}).HasColumnName(\"{nestedColAny}\");");
@@ -1500,8 +2647,10 @@ public sealed class DurationIntervalArrayMapping : Microsoft.EntityFrameworkCore
             var nestedCol = nestedColAny;
             // The enum type nests in the value object's class (EntityGenerator's
             // EmitValueObjectPoco), so the VO is the `owner` the conversion qualifies it by.
-            var conversion = isEnum ? $".{EnumConversionCall(ValueObjectNames.TypeName(vo, ctx.Root), vo, nf, ctx.Config)}" : "";
-            sb.AppendLine($"            b.Property(p => p.{CSharpNaming.Pascal(nf.Name)}).HasColumnName(\"{nestedCol}\"){conversion};");
+            var conversion = isEnum && EnumConversionCall(ValueObjectNames.TypeName(vo, ctx.Root), vo, nf, ctx) is { } call
+                ? $".{call}"
+                : "";
+            sb.AppendLine($"            b.Property(p => p.{PropertyName(nf)}).HasColumnName(\"{nestedCol}\"){conversion};");
         }
         sb.Append("        });");
         return sb.ToString();
@@ -1527,12 +2676,12 @@ public sealed class DurationIntervalArrayMapping : Microsoft.EntityFrameworkCore
     /// with a per-element conversion); the two must not drift, because a VO member and a top-level
     /// field of the same declared subtype describe the same stored value.</para>
     /// </remarks>
-    private static List<string> JsonEnumConversions(MetaObject vo, GenContext ctx, string builder = "b")
+    private List<string> JsonEnumConversions(MetaObject vo, GenContext ctx, string builder = "b")
     {
         var lines = new List<string>();
         foreach (var nf in vo.Fields())
         {
-            var prop = CSharpNaming.Pascal(nf.Name);
+            var prop = PropertyName(nf);
             // A decimal member of a JSON document is stored as its CANONICAL STRING (the same text
             // the wire carries, ADR-0019 Amendment 1), not as EF's default JSON number: an exact
             // read-back, identical to every other port's stored form. Single members only.

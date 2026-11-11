@@ -1,0 +1,25 @@
+name: sequence-start-change-keeps-counter
+description: |
+  An existing table's increment key gains `@sequenceStart: 1000`. The migration records the
+  new start (`ALTER SEQUENCE … START WITH 1000`) and nothing else: it never RESTARTs the
+  sequence and never moves its current value, because the live rows already hold the ids it
+  handed out. Every port applies `@sequenceStart` with this one meaning — the start of a
+  fresh sequence, never a reset of a live one.
+
+  The seed inserts two rows WITHOUT ids, so the sequence itself hands out 1 and 2. After the
+  up migration the counter still stands at 2 and the next insert takes 3.
+
+seed-metadata: ./states/program-v1/
+seed-data: |
+  INSERT INTO "programs" ("title") VALUES ('Foundations'), ('Strength');
+
+target-metadata: ./states/program-seq-v2/
+
+expect:
+  blocked: []
+  up-contains:
+    - 'ALTER SEQUENCE "programs_id_seq" START WITH 1000;'
+  apply-up-then-query:
+    sql: SELECT nextval('"programs_id_seq"') AS "next"
+    rows:
+      - { next: "3" }

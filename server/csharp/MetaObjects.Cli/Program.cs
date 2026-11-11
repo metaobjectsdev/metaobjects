@@ -318,13 +318,13 @@ static int RunEject(string[] rest)
 //
 // Never exits without a usable result: either hands back the resolved location or
 // prints a diagnostic and terminates the process.
-static ResolvedMetadata ResolveMetadataDirOrExit(string? metadataDir)
+static ResolvedMetadata ResolveMetadataDirOrExit(string? metadataDir, bool validateNaming = true)
 {
     // The ladder itself lives in MetaObjects.Config.MetadataLocation, shared with an
     // ejected codegen/Program.cs; this wrapper only turns its refusals into exit 2.
     try
     {
-        return MetadataLocation.Resolve(metadataDir, Directory.GetCurrentDirectory());
+        return MetadataLocation.Resolve(metadataDir, Directory.GetCurrentDirectory(), validateNaming);
     }
     catch (MetaObjects.MetaModelException e)
     {
@@ -450,7 +450,12 @@ static int RunVerify(string[] rest)
 
     // Rung 1 (explicit positional) is honored as-is; an omitted metadataDir
     // falls back to the port-neutral .metaobjects/config.json ladder.
-    var resolvedMeta = ResolveMetadataDirOrExit(metadataDir);
+    //
+    // ADR-0058 Amendment 1: a `naming` strategy may be one only the project's codegen runner
+    // registers (codegen/Program.cs), and the --codegen gate below is handed to that runner. So
+    // the name is not refused here; it is checked after the hand-off, by this process only when
+    // no runner ran (the runner reads the same file and refuses it there).
+    var resolvedMeta = ResolveMetadataDirOrExit(metadataDir, validateNaming: false);
     // --out wins; otherwise the project's declared `csharp.outDir`, the directory gen writes.
     outDir ??= resolvedMeta.OutDir;
 
@@ -486,6 +491,7 @@ static int RunVerify(string[] rest)
     // "no --out" usage message unchanged).
     var codegenHandedOff = false;
     var codegenHandoffExit = 0;
+    var ownedRunnerRan = false;
     var projectRoot = metadataDir is not null
         ? GenCommand.ProjectRootFor(metadataDir)
         : Directory.GetCurrentDirectory();
@@ -523,7 +529,24 @@ static int RunVerify(string[] rest)
             if (templateRoot is not null) codegenArgs.AddRange(["--template-root", templateRoot]);
             if (lax) codegenArgs.Add("--lax");
             codegenHandedOff = CodegenHandoff.TryRun(projectRoot, codegenArgs.ToArray(), out codegenHandoffExit);
+            ownedRunnerRan = codegenHandedOff;
         }
+    }
+
+    // No runner registered anything for this verify: refuse a naming value nothing in THIS
+    // process answers, exactly as the config read always has (the same message, exit 2).
+    if (!ownedRunnerRan) ResolveMetadataDirOrExit(metadataDir);
+    // A runner ran --codegen with the strategy registered, but --templates and --db run HERE,
+    // which never registered it: refuse it the same way, saying why, before a gate resolves a name.
+    else if ((templates || db)
+             && !(MetaObjects.Meta.NamingStrategies.TryGetColumn(resolvedMeta.Naming.Columns.Name, out _)
+                  && MetaObjects.Meta.NamingStrategies.TryGetTable(resolvedMeta.Naming.Tables.Name, out _)))
+    {
+        Console.Error.WriteLine(
+            "dotnet meta verify: --codegen ran in codegen/Generators.cs's runner, but --templates and --db " +
+            "run in this process, which has not registered the naming strategy .metaobjects/config.json names. " +
+            "Run those gates from a host that registers it.");
+        ResolveMetadataDirOrExit(metadataDir);
     }
 
     var opts = new VerifyCommand.Options
@@ -559,7 +582,18 @@ static int RunVerify(string[] rest)
         Strict = !lax,
     };
 
-    var result = VerifyCommand.RunSubverbs(opts);
+    VerifyCommand.SubverbResult result;
+    try
+    {
+        result = VerifyCommand.RunSubverbs(opts);
+    }
+    catch (MetaObjects.MetaModelException e)
+    {
+        // A gate resolved a name through a naming strategy this process has not registered (a
+        // bare verify's templates gate after the hand-off, say): the refusal the config read gives.
+        Console.Error.WriteLine($"error: {e.Code}: {e.Message}");
+        return 2;
+    }
 
     if (result.EmittedDefaultNote) Console.WriteLine(VerifyCommand.SUBVERB_NOTE);
 

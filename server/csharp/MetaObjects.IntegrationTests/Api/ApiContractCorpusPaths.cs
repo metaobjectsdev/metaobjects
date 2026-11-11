@@ -113,4 +113,11 @@ internal static class ApiContractCorpusPaths
     public static readonly string SecretFieldsScenariosDir = Path.Combine(SecretFieldsDir, "scenarios");
     public static readonly string SecretFieldsSeedFile = Path.Combine(SecretFieldsDir, "seed.json");
     public static readonly string SecretFieldsMetaJson = Path.Combine(SecretFieldsDir, "meta.json");
+
+    // enum-default subcorpus (a defaulted enum on create), generated lane only.
+    public static readonly string EnumDefaultDir = Path.Combine(Corpus, "enum-default");
+    public static readonly string EnumDefaultScenariosDir = Path.Combine(EnumDefaultDir, "scenarios");
+    public static readonly string EnumDefaultSeedFile = Path.Combine(EnumDefaultDir, "seed.json");
+    public static readonly string EnumDefaultMetaJson = Path.Combine(EnumDefaultDir, "meta.json");
 }
+
