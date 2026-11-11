@@ -68,6 +68,21 @@ public class SharedModelGeneratorTest {
             .replace("@@METAMODEL_VERSION@@", RegistryManifest.METAMODEL_VERSION), manifest);
     }
 
+    @Test public void theRequirementsArgPublishesTheLedgerTheCorpusPins() throws Exception {
+        Path out = Files.createTempDirectory("shared-model-gen-");
+        SharedModelGenerator g = new SharedModelGenerator();
+        Map<String, String> a = with(with(with(args(out), "version", "1.1.0"), "requirements", "true"),
+            "exclude", "acme::common::KeepSecretsSafe,acme::common::Secret");
+        g.setArgs(with(a, "files", a.get("files") + "," + corpus().resolve("source/meta.ledger.json")));
+        g.execute(loader());
+
+        assertEquals(Files.readString(corpus().resolve("../dependency-conformance/artifacts/acme-common-v1-requirements.json").normalize(), StandardCharsets.UTF_8),
+            Files.readString(out.resolve("acme-common.metaobjects.json"), StandardCharsets.UTF_8));
+        assertEquals(Files.readString(corpus().resolve("expected/with-requirements/metaobjects.pkg.json"), StandardCharsets.UTF_8)
+            .replace("@@METAMODEL_VERSION@@", RegistryManifest.METAMODEL_VERSION),
+            Files.readString(out.resolve("metaobjects.pkg.json"), StandardCharsets.UTF_8));
+    }
+
     @Test public void aBlankVersionArgIsRefused() throws Exception {
         Path out = Files.createTempDirectory("shared-model-gen-");
         SharedModelGenerator g = new SharedModelGenerator();

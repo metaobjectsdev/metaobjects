@@ -1,0 +1,74 @@
+{
+  "metadata.root": {
+    "children": [
+      {
+        "object.value": {
+          "name": "Address",
+          "package": "acme::common",
+          "children": [
+            {
+              "field.string": {
+                "name": "city"
+              }
+            },
+            {
+              "field.string": {
+                "name": "street"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "AnswerPayload",
+          "package": "acme::common",
+          "children": [
+            {
+              "field.string": {
+                "name": "text"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "requirement.functional": {
+          "name": "AnswersAreShort",
+          "package": "acme::common",
+          "@counterexample": "An answer that runs to three paragraphs.",
+          "@level": 5,
+          "@statement": "Every answer fits on one line.",
+          "@status": "live"
+        }
+      },
+      {
+        "object.value": {
+          "name": "AskPayload",
+          "package": "acme::common",
+          "children": [
+            {
+              "field.string": {
+                "name": "question"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Audited",
+          "package": "acme::common",
+          "abstract": true,
+          "children": [
+            {
+              "field.timestamp": {
+                "name": "createdAt"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

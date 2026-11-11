@@ -23,7 +23,8 @@ import java.nio.file.Path
  * Args: `outputDir`, `name` (the dependency key a consumer syncs under; the artifact is
  * `<name>.metaobjects.json`), `include` (comma-separated scope patterns, such as
  * `acme::common::**`), `files` (comma-separated metadata files that may contribute), and
- * optionally `exclude` (applied after `include`) and `version` (default: the project's version).
+ * optionally `exclude` (applied after `include`), `version` (default: the project's version) and
+ * `requirements` (`true` publishes the selected `requirement.*` nodes as well; default `false`).
  */
 open class KotlinSharedModelGenerator : FileEmittingGenerator() {
 
@@ -35,7 +36,10 @@ open class KotlinSharedModelGenerator : FileEmittingGenerator() {
         // The providers the project's own load used, so its extra attributes load here too.
         val providers = loader.loaderOptions.providers
 
-        val model = SharedModel.build(SharedModel.Input(name, files, include, exclude, providers))
+        // Publishing the ledger is opt-in: "true" adds the selected requirement.* nodes.
+        val requirements = hasArg(ARG_REQUIREMENTS) && getArg(ARG_REQUIREMENTS).trim().toBoolean()
+
+        val model = SharedModel.build(SharedModel.Input(name, files, include, exclude, providers, requirements))
 
         // Resolved after the selection has passed every check, so a model that cannot be published
         // says so before a missing version does.
@@ -68,5 +72,6 @@ open class KotlinSharedModelGenerator : FileEmittingGenerator() {
         const val ARG_EXCLUDE = "exclude"
         const val ARG_FILES = "files"
         const val ARG_VERSION = "version"
+        const val ARG_REQUIREMENTS = "requirements"
     }
 }

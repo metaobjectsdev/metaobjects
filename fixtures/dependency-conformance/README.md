@@ -18,6 +18,7 @@ transport-cases.json # the npm / python / maven / nuget transport arm (Node `met
 README.md
 artifacts/           # pinned dependency artifacts, referenced by cases via `treeFiles`
   acme-common-v1.json
+  acme-common-v1-requirements.json
   acme-common-v1-widened.json
   acme-common-v2-email-removed.json
 ```
@@ -122,6 +123,10 @@ belong to the other.
 `field.string @maxLength: 120`). `acme-common-v1-widened.json` is identical except
 `@maxLength: 200` (a compatible widening). `acme-common-v2-email-removed.json` is
 identical except the whole `email` field child is absent (a breaking removal).
+`acme-common-v1-requirements.json` is the base artifact plus the publisher's ledger, published
+with `requirements: true`: `requirement.functional Customers` (live, claiming `Customer`, with a
+`ReachableByEmail` child claiming `Customer.email`) and `requirement.architectural AuditedRows`
+(live, claiming `Audited`). The shared-model corpus produces it byte for byte.
 
 Verify the bytes from the repo root:
 
@@ -133,6 +138,7 @@ Expected, exactly:
 
 ```
 sha256-10fbf886e22faceca32c56e5e647c3ff1c82f503e638cba3bd3aa9390f7c409d fixtures/dependency-conformance/artifacts/acme-common-v1.json
+sha256-4a812237fec408e10eaf1dfa25550cc642c9b3c0e41dc72581db8ba93c87eb57 fixtures/dependency-conformance/artifacts/acme-common-v1-requirements.json
 sha256-fa00b9f3c54a2c302cf269af051589afc0a3217999ac82c54c77e33494638c36 fixtures/dependency-conformance/artifacts/acme-common-v1-widened.json
 sha256-c4ba364bff0071b164b127326c095d6d32915b57781271e0be64a7003c27ce7a fixtures/dependency-conformance/artifacts/acme-common-v2-email-removed.json
 ```

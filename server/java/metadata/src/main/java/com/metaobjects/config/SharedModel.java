@@ -31,7 +31,11 @@ import com.metaobjects.loader.MetaDataSource;
 import com.metaobjects.loader.References;
 import com.metaobjects.registry.MetaDataTypeProvider;
 import com.metaobjects.registry.RegistryManifest;
+import com.metaobjects.MetaRoot;
+import com.metaobjects.validation.SymbolTable;
 import com.metaobjects.requirement.MetaRequirement;
+import com.metaobjects.requirement.RequirementCheck;
+import com.metaobjects.requirement.RequirementClaims;
 import com.metaobjects.template.TemplateConstants;
 
 import java.nio.charset.StandardCharsets;
@@ -131,9 +135,17 @@ public final class SharedModel {
      * @param exclude   applied after {@code include}
      * @param providers the publisher's own vocabulary providers, so its extra attributes load as
      *                  they did for the project's main load; empty = core vocabulary
+     * @param requirements publish the selected {@code requirement.*} nodes too; false (the default)
+     *                  publishes shapes only. {@code template.*} is never published.
      */
     public record Input(String name, List<Path> files, List<String> include, List<String> exclude,
-                        List<MetaDataTypeProvider> providers) {
+                        List<MetaDataTypeProvider> providers, boolean requirements) {
+        /** Shapes only: no requirements, as before the option existed. */
+        public Input(String name, List<Path> files, List<String> include, List<String> exclude,
+                     List<MetaDataTypeProvider> providers) {
+            this(name, files, include, exclude, providers, false);
+        }
+
         public Input {
             files = List.copyOf(files);
             include = include == null ? List.of() : List.copyOf(include);
@@ -179,14 +191,16 @@ public final class SharedModel {
         List<MetaData> selected = new ArrayList<>();
         for (MetaData node : root.getChildren(MetaData.class, false)) {
             if (node instanceof MetaAttribute) continue;
-            if (MetaRequirement.TYPE_REQUIREMENT.equals(node.getType())
-                    || TemplateConstants.TYPE_TEMPLATE.equals(node.getType())) continue;
+            if (TemplateConstants.TYPE_TEMPLATE.equals(node.getType())) continue;
+            // A published ledger is the publisher's decision: off unless asked for.
+            if (!input.requirements() && MetaRequirement.TYPE_REQUIREMENT.equals(node.getType())) continue;
             if (Scope.matchesScope(node.getName(), scope)) selected.add(node);
         }
         if (selected.isEmpty()) {
+            String dropped = input.requirements() ? "template.*" : "requirement.* and template.*";
             throw new Refusal(Reason.EMPTY_SELECTION,
                 "shared-model \"" + input.name() + "\": selected no nodes (include/exclude, always excluding "
-                    + "requirement.* and template.*) - nothing to publish. Check `include`.", List.of());
+                    + dropped + ") - nothing to publish. Check `include`.", List.of());
         }
 
         // Step 3: closure.
@@ -285,6 +299,7 @@ public final class SharedModel {
 
     private static List<Pair> checkClosure(MetaData root, List<MetaData> selected, Set<String> selectedKeys) {
         Set<Pair> seen = new LinkedHashSet<>();
+        SymbolTable symbols = root instanceof MetaRoot mr ? SymbolTable.build(mr) : null;
         for (MetaData top : selected) {
             String referrerKey = top.getName();
             List<MetaData> walk = new ArrayList<>();
@@ -300,11 +315,28 @@ public final class SharedModel {
                     Object value = attr.getValue();
                     if (value instanceof String s) candidates.add(s);
                 }
-                if (candidates.isEmpty()) continue;
-                String referrerPkg = References.effectivePackageOf(node);
-                for (String raw : candidates) {
-                    MetaData resolved = References.resolveObjectRef(root, References.splitChildTail(raw).owner(), referrerPkg).node();
-                    if (resolved == null) continue; // already validated at load: defensive only
+                List<MetaData> targets = new ArrayList<>();
+                if (!candidates.isEmpty()) {
+                    String referrerPkg = References.effectivePackageOf(node);
+                    for (String raw : candidates) {
+                        MetaData resolved = References.resolveObjectRef(root, References.splitChildTail(raw).owner(), referrerPkg).node();
+                        if (resolved != null) targets.add(resolved); // else already refused at load: defensive only
+                    }
+                }
+                // A selected requirement's @implementedBy claims are followed too. They are not loader
+                // references (a planned claim may name a node that does not exist yet), but an exported
+                // requirement claiming a node the export leaves out would dangle in every consumer that
+                // inherits it. Owner segment only, in the requirement's effective package (ADR-0042); a
+                // claim that resolves nothing names nothing the export could carry.
+                if (node instanceof MetaRequirement && symbols != null) {
+                    String claimPkg = RequirementCheck.effectivePackage(node);
+                    for (String ref : ownImplementedBy(node)) {
+                        MetaData owner = RequirementClaims.resolveClaimTarget((MetaRoot) root, symbols,
+                            RequirementClaims.splitMemberRef(ref).owner(), claimPkg);
+                        if (owner != null) targets.add(owner);
+                    }
+                }
+                for (MetaData resolved : targets) {
                     String targetKey = resolved.getName();
                     if (selectedKeys.contains(targetKey)) continue;
                     seen.add(new Pair(referrerKey, targetKey));
@@ -314,5 +346,21 @@ public final class SharedModel {
         List<Pair> pairs = new ArrayList<>(seen);
         pairs.sort(Comparator.comparing(Pair::referrer).thenComparing(Pair::target));
         return pairs;
+    }
+
+    /** The {@code @implementedBy} values declared on this node's OWN layer. ADR-0039 sanctioned own-only
+     *  case, as for the ref-bearing attrs: the closure walks exactly what will be emitted. */
+    private static List<String> ownImplementedBy(MetaData node) {
+        List<String> out = new ArrayList<>();
+        for (MetaAttribute<?> attr : node.getMetaAttrs(false)) {
+            if (!MetaRequirement.ATTR_IMPLEMENTED_BY.equals(attr.getName())) continue;
+            Object value = attr.getValue();
+            if (value instanceof List<?> list) {
+                for (Object v : list) if (v instanceof String s) out.add(s);
+            } else if (value instanceof String s && !s.isBlank()) {
+                out.add(s);
+            }
+        }
+        return out;
     }
 }

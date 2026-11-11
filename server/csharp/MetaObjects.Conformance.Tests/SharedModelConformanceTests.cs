@@ -67,7 +67,8 @@ public class SharedModelConformanceTests
         var req = new SharedModelInput(
             input.GetProperty("name").GetString()!,
             Strings(input, "files").Select(f => Path.Combine(CorpusDir(), f)).ToList(),
-            Strings(input, "include"), Strings(input, "exclude"), providers);
+            Strings(input, "include"), Strings(input, "exclude"), providers,
+            input.TryGetProperty("requirements", out var reqs) && reqs.GetBoolean());
 
         if (c.TryGetProperty("expectRefusal", out var refusal))
         {

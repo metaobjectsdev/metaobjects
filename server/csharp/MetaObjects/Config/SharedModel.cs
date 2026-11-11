@@ -21,6 +21,7 @@ using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using MetaObjects.Core.Requirement;
 using MetaObjects.Loader;
 using MetaObjects.Meta;
 
@@ -69,12 +70,15 @@ public sealed class SharedModelRefusal(
 /// <param name="Exclude">Applied after <paramref name="Include"/>.</param>
 /// <param name="Providers">The publisher's own vocabulary providers, so its extra attributes load as they
 /// did for the project's main load; empty is the library's own vocabulary.</param>
+/// <param name="Requirements">Publish the selected <c>requirement.*</c> nodes too. False (the default) publishes
+/// shapes only. <c>template.*</c> is never published.</param>
 public sealed record SharedModelInput(
     string Name,
     IReadOnlyList<string> Files,
     IReadOnlyList<string>? Include = null,
     IReadOnlyList<string>? Exclude = null,
-    IReadOnlyList<IMetaDataTypeProvider>? Providers = null);
+    IReadOnlyList<IMetaDataTypeProvider>? Providers = null,
+    bool Requirements = false);
 
 /// <summary>
 /// A selection that passed every check, serialized. The document is exactly the bytes that were re-loaded
@@ -121,14 +125,17 @@ public static class SharedModel
         // Step 2: select. The root has no super chain (ADR-0039 sanctioned own read).
         var scope = Scope.CompileScope(input.Include, input.Exclude);
         var selected = root.OwnChildren()
-            .Where(n => n.Type != TYPE_REQUIREMENT && n.Type != TYPE_TEMPLATE)
+            .Where(n => n.Type != TYPE_TEMPLATE)
+            // A published ledger is the publisher's decision: off unless asked for.
+            .Where(n => input.Requirements || n.Type != TYPE_REQUIREMENT)
             .Where(n => Scope.MatchesScope(n.ResolutionKey(), scope))
             .ToList();
         if (selected.Count == 0)
         {
+            var dropped = input.Requirements ? "template.*" : "requirement.* and template.*";
             throw new SharedModelRefusal(SharedModelRefusalReason.EmptySelection,
                 $"shared-model \"{input.Name}\": selected no nodes (include/exclude, always excluding " +
-                "requirement.* and template.*) - nothing to publish. Check `include`.", []);
+                $"{dropped}) - nothing to publish. Check `include`.", []);
         }
 
         // Step 3: closure.
@@ -232,10 +239,30 @@ public static class SharedModel
                 {
                     if (node.OwnAttr(name) is string s) candidates.Add(s);
                 }
+                var targets = new List<MetaData>();
                 foreach (var raw in candidates)
                 {
                     var target = NamingRefs.ResolveObjectRef(root, NamingRefs.SplitChildTail(raw).Owner, referrerPkg);
-                    if (target is null) continue; // already validated at load: defensive only
+                    if (target is not null) targets.Add(target); // else already refused at load: defensive only
+                }
+                // A selected requirement's @implementedBy claims are followed too. They are not loader
+                // references (a planned claim may name a node that does not exist yet), but an exported
+                // requirement claiming a node the export leaves out would dangle in every consumer that
+                // inherits it. Owner segment only, in the requirement's effective package (ADR-0042); a
+                // claim that resolves nothing names nothing the export could carry. ADR-0039 sanctioned
+                // own-only read, as for the ref-bearing attrs above.
+                if (node.Type == TYPE_REQUIREMENT && node.OwnAttr(REQUIREMENT_ATTR_IMPLEMENTED_BY) is IReadOnlyList<string> claims)
+                {
+                    var claimPkg = RequirementCheck.EffectivePackage(node);
+                    foreach (var reference in claims)
+                    {
+                        var owner = RequirementClaims.ResolveClaimTarget(
+                            root, RequirementClaims.SplitMemberRef(reference).Owner, claimPkg);
+                        if (owner is not null) targets.Add(owner);
+                    }
+                }
+                foreach (var target in targets)
+                {
                     var targetKey = target.ResolutionKey();
                     if (selectedKeys.Contains(targetKey)) continue;
                     var pair = new SharedModelPair(referrerKey, targetKey);

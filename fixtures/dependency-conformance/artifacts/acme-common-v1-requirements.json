@@ -1,0 +1,109 @@
+{
+  "metadata.root": {
+    "children": [
+      {
+        "object.value": {
+          "name": "Address",
+          "package": "acme::common",
+          "children": [
+            {
+              "field.string": {
+                "name": "city"
+              }
+            },
+            {
+              "field.string": {
+                "name": "street"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Audited",
+          "package": "acme::common",
+          "abstract": true,
+          "children": [
+            {
+              "field.timestamp": {
+                "name": "createdAt"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "requirement.architectural": {
+          "name": "AuditedRows",
+          "package": "acme::common",
+          "@counterexample": "An audited row with no creation time.",
+          "@implementedBy": [
+            "Audited"
+          ],
+          "@statement": "Every audited row records when it was created.",
+          "@status": "live"
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Customer",
+          "package": "acme::common",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "customers"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "email",
+                "@maxLength": 120
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "requirement.functional": {
+          "name": "Customers",
+          "package": "acme::common",
+          "@counterexample": "Two rows for one customer.",
+          "@implementedBy": [
+            "Customer"
+          ],
+          "@level": 4,
+          "@statement": "A customer is recorded once.",
+          "@status": "live",
+          "children": [
+            {
+              "requirement.functional": {
+                "name": "ReachableByEmail",
+                "@counterexample": "A customer with no way to reach them.",
+                "@implementedBy": [
+                  "Customer.email"
+                ],
+                "@level": 5,
+                "@statement": "A customer carries an email address we can write to.",
+                "@status": "live"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

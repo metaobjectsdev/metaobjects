@@ -13,13 +13,19 @@
 // `buildSharedModel` (design §4.3 steps 1 to 5), in order:
 //   1. Standalone load of `files` with the run's composed registry (the SAME vocabulary the
 //      project's own metadata loaded with), strict.
-//   2. Select top-level nodes: never `requirement.*` / `template.*` (a publisher's
-//      ledger and prompts are not a consumer's shapes), and matching the compiled
-//      include/exclude scope.
+//   2. Select top-level nodes matching the compiled include/exclude scope. Never
+//      `template.*` (a publisher's prompts are not a consumer's shapes), and never
+//      `requirement.*` unless the publisher opts in with `requirements` (default off):
+//      a published ledger is design a consumer can choose to inherit, so publishing
+//      one is the publisher's decision, and an existing export keeps its bytes.
 //   3. Closure check: every `extends` target and every REF_BEARING_ATTR_NAMES value
 //      of a selected node (and of its own descendants) must resolve to a SELECTED
 //      node, else the selection is not self-contained and the build fails naming the
-//      (referrer, target) pairs.
+//      (referrer, target) pairs. A selected requirement's `@implementedBy` claims are
+//      followed too. They are deliberately not loader references (a planned claim
+//      may name a node that does not exist yet), so they are not in
+//      REF_BEARING_ATTR_NAMES, but an exported requirement that claimed a node the
+//      export leaves out would dangle in every consumer that inherits it.
 //   4. Serialize the selection with `serializeSharedDocument` — raw own-layer form,
 //      `extends` preserved, sorted by resolution key.
 //   5. Re-load the emitted document standalone with CORE providers only, strict — a
@@ -46,6 +52,9 @@ import {
   TYPE_REQUIREMENT,
   TYPE_TEMPLATE,
   METAMODEL_VERSION,
+  REQUIREMENT_ATTR_IMPLEMENTED_BY,
+  resolveClaimTarget,
+  effectiveRequirementPackage,
 } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
 import type { EmittedFile } from "../generator.js";
@@ -90,6 +99,9 @@ export interface SharedModelInput {
   readonly include: readonly string[];
   /** Applied after `include`. */
   readonly exclude?: readonly string[];
+  /** Publish the selected `requirement.*` nodes as well. Default false: the export holds
+   *  shapes only, exactly as before this option existed. `template.*` is never published. */
+  readonly requirements?: boolean;
   /** The run's composed registry (`ctx.registry`), so the publisher's own
    *  consumer-supplied providers are honoured exactly as they were for the project's
    *  main load. Absent: core vocabulary. */
@@ -177,9 +189,27 @@ function checkClosure(
         const value = node.ownAttr(attrName);
         if (typeof value === "string") candidates.push(value);
       }
+      const targets: MetaData[] = [];
       for (const raw of candidates) {
         const resolved = resolveObjectRef(standaloneRoot, refOwner(raw), referrerPkg).node;
-        if (resolved === undefined) continue; // already validated at load — defensive only
+        if (resolved !== undefined) targets.push(resolved); // else already refused at load — defensive only
+      }
+      if (node.type === TYPE_REQUIREMENT) {
+        // `@implementedBy` resolves with the requirement's own resolver, in the
+        // requirement's effective package (ADR-0042), owner segment only: a member
+        // claim (`Customer.email`) is closed when its owner is selected. A claim that
+        // resolves nothing here names nothing the export could carry (a planned
+        // requirement may name a node that does not exist yet), so it is not a pair.
+        // ADR-0039 sanctioned own-only case, as for the ref-bearing attrs above.
+        const claims = node.ownAttr(REQUIREMENT_ATTR_IMPLEMENTED_BY);
+        const claimPkg = effectiveRequirementPackage(node);
+        for (const ref of Array.isArray(claims) ? claims : []) {
+          if (typeof ref !== "string") continue;
+          const owner = resolveClaimTarget(standaloneRoot, ref.split(CHILD_REF_SEPARATOR)[0] ?? "", claimPkg);
+          if (owner !== undefined) targets.push(owner);
+        }
+      }
+      for (const resolved of targets) {
         const targetKey = resolved.resolutionKey();
         if (selectedKeys.has(targetKey)) continue;
         const dedupeKey = `${referrerKey}${DEDUPE_KEY_SEPARATOR}${targetKey}`;
@@ -225,12 +255,14 @@ export async function buildSharedModel(input: SharedModelInput): Promise<SharedM
   const compiled = compileScope({ include: input.include, exclude: input.exclude ?? [] });
   const selected = standaloneRoot
     .ownChildren()
-    .filter((node) => node.type !== TYPE_REQUIREMENT && node.type !== TYPE_TEMPLATE)
+    .filter((node) => node.type !== TYPE_TEMPLATE)
+    .filter((node) => input.requirements === true || node.type !== TYPE_REQUIREMENT)
     .filter((node) => matchesScope(node.resolutionKey(), compiled));
   if (selected.length === 0) {
+    const dropped = input.requirements === true ? "template.*" : "requirement.* and template.*";
     throw new Error(
       `sharedModelFile("${input.name}"): selected no nodes (include/exclude, always ` +
-        `excluding requirement.* and template.*) — nothing to publish. Check \`include\`.`,
+        `excluding ${dropped}) — nothing to publish. Check \`include\`.`,
     );
   }
 

@@ -1,0 +1,44 @@
+{
+  "metadata.root": {
+    "package": "acme::common",
+    "children": [
+      {
+        "requirement.functional": {
+          "name": "Customers",
+          "@level": 4,
+          "@status": "live",
+          "@statement": "A customer is recorded once.",
+          "@counterexample": "Two rows for one customer.",
+          "@implementedBy": [
+            "Customer"
+          ],
+          "children": [
+            {
+              "requirement.functional": {
+                "name": "ReachableByEmail",
+                "@level": 5,
+                "@status": "live",
+                "@statement": "A customer carries an email address we can write to.",
+                "@counterexample": "A customer with no way to reach them.",
+                "@implementedBy": [
+                  "Customer.email"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "requirement.architectural": {
+          "name": "AuditedRows",
+          "@status": "live",
+          "@statement": "Every audited row records when it was created.",
+          "@counterexample": "An audited row with no creation time.",
+          "@implementedBy": [
+            "Audited"
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -33,6 +33,7 @@ interface Case {
     readonly include: readonly string[];
     readonly exclude?: readonly string[];
     readonly version: string;
+    readonly requirements?: boolean;
     readonly providers?: readonly string[];
   };
   readonly expectArtifact?: string;
@@ -82,6 +83,7 @@ async function publish(c: Case) {
     files: c.input.files.map((f) => resolve(CORPUS_DIR, f)),
     include: c.input.include,
     ...(c.input.exclude !== undefined ? { exclude: c.input.exclude } : {}),
+    ...(c.input.requirements !== undefined ? { requirements: c.input.requirements } : {}),
     ...(providers.length > 0 ? { registry: composeRegistry([...coreProviders, ...providers]) } : {}),
   });
   return renderSharedModelFiles(model, c.input.version);

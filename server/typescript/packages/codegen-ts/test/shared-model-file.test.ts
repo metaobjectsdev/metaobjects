@@ -299,6 +299,17 @@ describe("sharedModelFile()", () => {
     );
   });
 
+  test("requirements: true publishes the selected requirement, and the default leaves it out", async () => {
+    const opts = { name: "acme-common", include: ["acme::common::**"], exclude: ["acme::common::Secret"], version: "1.0.0" };
+    await gen(sharedModelFile(opts), tmp);
+    expect(JSON.parse(readFileSync(join(tmp, "metaobjects.pkg.json"), "utf-8")).nodes)
+      .not.toContain("acme::common::KeepSecretsSafe");
+    await gen(sharedModelFile({ ...opts, requirements: true }), tmp);
+    expect(JSON.parse(readFileSync(join(tmp, "metaobjects.pkg.json"), "utf-8")).nodes)
+      .toContain("acme::common::KeepSecretsSafe");
+    expect(readFileSync(join(tmp, "acme-common.metaobjects.json"), "utf-8")).toContain('"requirement.functional"');
+  });
+
   test("empty selection fails with a clear error", async () => {
     await expect(
       gen(sharedModelFile({ name: "acme-common", include: ["acme::nothing::**"] }), tmp),
