@@ -35,7 +35,7 @@
 // cross-port vocabulary, and it is IN the manifest, marked rather than removed.
 //   • kind 1 — implemented so far only in some ports (the 13 generic `view.*`
 //     entries and their attrs): the type carries `implementedIn: ["typescript"]`.
-//   • kind 2 — language-specific by nature (`@dbSetName`, the JVM's `@object` /
+//   • kind 2 — language-specific by nature (the JVM's `@object` /
 //     `@objectAdapter`): the attr carries `ports: [...]`.
 // Every port registers both kinds and loads them strictly; a port not named loads
 // them and does nothing with them. An unregistered name still fails.

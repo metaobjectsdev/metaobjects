@@ -16,12 +16,12 @@ _npm `1.3.0` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates
 
 **`metamodelVersion` moves to `1.3`.** This release adds vocabulary (`field.duration`,
 `validator.exactlyOne`, `@constraintName`, `@condition`, `@maxLength` on `field.enum`,
-`@sequenceStart`, `@sequenceName`, `@flattenedColumnPrefix`, the `pascal` column rule, and
-`@dbSetName`, a C#-only attr) and nothing that loaded before stops loading. The registry gains two
+`@sequenceStart`, `@sequenceName`, `@flattenedColumnPrefix`, the `pascal` column rule and
+`@collectionName`) and nothing that loaded before stops loading. The registry gains two
 fields on a type or attr entry, carried into the registry manifest: `implementedIn` (cross-port
 vocabulary only the named ports implement so far, e.g. the `view.*` controls, `["typescript"]`) and
-`ports` (vocabulary only the named ports ever act on, e.g. `@dbSetName`, `["csharp"]`, and
-`@objectAdapter`, `["java", "kotlin"]`: the JVM runtime both share acts on it). The manifest's row
+`ports` (vocabulary only the named ports ever act on, e.g. `@objectAdapter`, `["java", "kotlin"]`:
+the JVM runtime both share acts on it). The manifest's row
 set grows by the `implementedIn` rows that used to be carved out. A port that reports `1.2` does not
 know that vocabulary; upgrade every port together.
 
@@ -50,6 +50,8 @@ Each item below is described in full under Added, Changed or Fixed; this list is
 - **`@sequenceStart` records a start; in 1.3.0 it does not move an existing counter.** A later
   release is planned to move a counter that sits below the declared start forward to it, never
   backward.
+- **`@dbSetName` is `@collectionName`.** The attr was never published under its first name, so
+  there is no alias: a model that set `@dbSetName` in a pre-release build renames it.
 - **`metamodelVersion` is `1.3`.** Upgrade every port together.
 
 ### Added
@@ -83,22 +85,29 @@ Each item below is described in full under Added, Changed or Fixed; this list is
   canonical grows by those rows. `meta types` marks them `[ts; pending elsewhere]` / `[java;
   pending elsewhere]` (it used to say `[ts-only]`, "the cross-port contract does not carry it"; its
   JSON change is under Changed), and the metamodel docs now cover the view controls.
-  `@objectAdapter` joins `@dbSetName` as port-scoped (`"ports": ["java", "kotlin"]`). C#, Java,
+  `@objectAdapter` is port-scoped (`"ports": ["java", "kotlin"]`, below). C#, Java,
   Kotlin and Python now register the `metaobjects-ui-web` attrs (`view.textarea @rows` and the
   `view.image` attrs), and C# and Python register `@object` / `@objectAdapter`, so a model that
   uses any of them loads strictly in every port. Gated by the conformance fixtures
   `view-kind1-controls`, `object-kind1-jvm-binding-attrs` and
   `error-kind1-view-unregistered-attr`, and by the registry canonical.
-- **Port-scoped vocabulary, and `@dbSetName`.** A registry attr may name the ports
-  that act on it (`"ports": ["csharp"]` on its `spec/metamodel` entry, carried into the registry
+- **Port-scoped vocabulary.** A registry attr may name the ports
+  that act on it (`"ports": ["java", "kotlin"]` on its `spec/metamodel` entry, carried into the registry
   manifest). Every port registers and type-checks it, so a model that carries it loads under every
   port's strict loader; a port not named does nothing with it. An attr the registry does not carry
   still fails, and a wrong value type fails in every port (Java now refuses a list given to a scalar
-  string attr, as the other ports did). `meta types` marks such an attr `[csharp-only]` and its JSON
-  carries `ports`. The first one is `@dbSetName`: the EF Core DbSet property name the generated C#
-  context gives an `object.entity`, `object.projection` or `object.report` (`"@dbSetName":
-  "Diagnosis"`), in place of the derived plural; the routes, the reverse finders and the api
-  reference read the property name through it.
+  string attr, as the other ports did). `meta types` marks such an attr `[java+kotlin]` (one port:
+  `[csharp-only]`) and its JSON carries `ports`. `@objectAdapter` is the one there is.
+- **`@collectionName`, and the `naming.collections` pluralizer.** An `object.entity`,
+  `object.projection` or `object.report` may name its collection in its own casing
+  (`"@collectionName": "CaseHistory"`); it need not be a grammatical plural. The generated C#
+  context uses it as the DbSet property name in place of the derived plural, and the routes, the
+  reverse finders and the api reference read the property through it. Absent, the project's
+  pluralizer derives the name: `"naming": { "collections": "standard" }` (the default) or `"none"`
+  in `.metaobjects/config.json`, or one the application registers (`registerPluralizer` in
+  TypeScript, `NamingStrategies.RegisterPluralizer` in C#, `NamingStrategies.registerPluralizer` in
+  Java, `register_pluralizer` in Python). Every port registers the attr and reads the key, and
+  refuses an unknown pluralizer when it reads the config.
 
 - **An int-backed enum can be an array.** `@intValueMap` together with `isArray: true` (the
   map on the field, or inherited from a shared enum) now loads in every port instead of
@@ -635,8 +644,8 @@ Each item below is described in full under Added, Changed or Fixed; this list is
 - **C#: one generated context maps each relation to one object.** Two concrete
   objects of one context that resolve to the same table, view, procedure or function in the same
   `@schema` are refused with `ERR_DUPLICATE_SQL_NAME`, naming both; before, they silently shared it
-  once `@dbSetName` split their DbSet names. The same name in two schemas is two relations, and an
-  object that extends another and inherits its source is one EF hierarchy. A `@dbSetName` that is not
+  once `@collectionName` split their DbSet names. The same name in two schemas is two relations, and an
+  object that extends another and inherits its source is one EF hierarchy. A `@collectionName` that is not
   a C# identifier, or names `Database`, `Model`, `ChangeTracker` or `ContextId`, is refused by name.
 - **TypeScript: the collision refusal checks only the names the run emits.** The pluralized module
   names are checked when entity modules, queries or a UI tier are wired, and the REST segments when
@@ -682,7 +691,7 @@ Each item below is described in full under Added, Changed or Fixed; this list is
   Changed.
 - **A generated name collides only in the scope that carries it**. The run-wide
   refusal of two objects whose short names pluralize alike is gone. C#: DbSet names are unique
-  within one generated context (the error says "rename one, or set @dbSetName"), route segments
+  within one generated context (the error says "rename one, or set @collectionName"), route segments
   within one routes entry, reverse finders within their class. TypeScript: the pluralized names
   within the entity modules' scope (one directory under the flat layout, one per package under
   the package layout), REST segments across the app. Python and JVM keep one run-wide scope,
@@ -858,7 +867,7 @@ Each item below is described in full under Added, Changed or Fixed; this list is
   cross-port wire contract and keeps the shared rule (`/api/diagnosises`) until every port
   changes together. An adopter that aliased the old DbSet name can drop the alias. **Upgrade
   note:** code that names `Diagnosises` or `FindDiagnosisesBy…` stops compiling; use the new name,
-  or set `"@dbSetName": "Diagnosises"` on the entity to keep the old one.
+  or set `"@collectionName": "Diagnosises"` on the entity to keep the old one.
 
 - **TypeScript: a derived flattened `field.object` no longer produces flat member keys (#524
   follow-up).** A flattened field that carries an `origin.*` owns no column (the Drizzle table and

@@ -316,9 +316,9 @@ public final class RegistryManifest {
     //  - metadata.base is Java's internal inheritance anchor — other ports
     //    register only metadata.root (the deferred inheritsFrom anchor).
     //  - NOT carved out: vocabulary only some ports act on. Cross-port vocabulary
-    //    only some ports implement so far (the generic view.* controls, @object)
-    //    carries `implementedIn`; language-specific vocabulary (@dbSetName,
-    //    @objectAdapter) carries `ports`. Both are IN the manifest.
+    //    only some ports implement so far (the generic view.* controls, @object,
+    //    @collectionName) carries `implementedIn`; language-specific vocabulary
+    //    (@objectAdapter) carries `ports`. Both are IN the manifest.
     // ------------------------------------------------------------------
 
     /**

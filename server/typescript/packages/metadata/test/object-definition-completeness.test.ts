@@ -86,11 +86,11 @@ const REPORT_ATTRS: Record<string, ExpectedAttr> = {
   spine: { valueType: "string", required: false },
 };
 
-// Language-specific attrs every port loads: @dbSetName (C#) on entity /
-// projection / report, and the JVM's @object / @objectAdapter on object.base, which
-// every subtype composes.
-const DB_SET_NAME: Record<string, ExpectedAttr> = {
-  dbSetName: { valueType: "string", required: false },
+// Cross-port attrs some ports act on: @collectionName (implementedIn C# + TypeScript) on entity /
+// projection / report, and the JVM's @object / @objectAdapter on object.base, which every subtype
+// composes.
+const COLLECTION_NAME: Record<string, ExpectedAttr> = {
+  collectionName: { valueType: "string", required: false },
 };
 
 const JVM_BINDING: Record<string, ExpectedAttr> = {
@@ -99,10 +99,10 @@ const JVM_BINDING: Record<string, ExpectedAttr> = {
 };
 
 function expectedAttrsFor(subType: string): Record<string, ExpectedAttr> {
-  if (subType === OBJECT_SUBTYPE_ENTITY) return { ...DISCRIMINATOR, ...DB_SET_NAME, ...JVM_BINDING };
+  if (subType === OBJECT_SUBTYPE_ENTITY) return { ...DISCRIMINATOR, ...COLLECTION_NAME, ...JVM_BINDING };
   if (subType === OBJECT_SUBTYPE_VALUE) return { ...NORMALIZE, ...JVM_BINDING };
-  if (subType === OBJECT_SUBTYPE_PROJECTION) return { ...PROJECTION_FILTER, ...DB_SET_NAME, ...JVM_BINDING };
-  if (subType === OBJECT_SUBTYPE_REPORT) return { ...REPORT_ATTRS, ...DB_SET_NAME, ...JVM_BINDING };
+  if (subType === OBJECT_SUBTYPE_PROJECTION) return { ...PROJECTION_FILTER, ...COLLECTION_NAME, ...JVM_BINDING };
+  if (subType === OBJECT_SUBTYPE_REPORT) return { ...REPORT_ATTRS, ...COLLECTION_NAME, ...JVM_BINDING };
   // base carries only the JVM bindings (discriminator moved to entity only).
   return { ...JVM_BINDING };
 }

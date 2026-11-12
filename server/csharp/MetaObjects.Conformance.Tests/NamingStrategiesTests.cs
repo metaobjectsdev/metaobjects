@@ -140,4 +140,29 @@ public class NamingStrategiesTests
             Directory.Delete(dir, recursive: true);
         }
     }
+
+    // naming.collections selects a pluralizer by name; an unknown one is refused at read.
+    [Fact]
+    public void The_config_reader_selects_a_pluralizer_and_refuses_an_unknown_one()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "mo-naming-collections-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(dir, ".metaobjects"));
+        try
+        {
+            var config = Path.Combine(dir, ".metaobjects", "config.json");
+            File.WriteAllText(config, """{ "schema_version": 1, "naming": { "collections": "none" } }""");
+            Assert.Equal("none", NeutralConfig.Read(dir)!.Naming.Collections);
+
+            File.WriteAllText(config, """{ "schema_version": 1 }""");
+            Assert.Null(NeutralConfig.Read(dir)!.Naming.Collections);
+
+            File.WriteAllText(config, """{ "schema_version": 1, "naming": { "collections": "klingon" } }""");
+            var ex = Assert.Throws<MetaModelException>(() => NeutralConfig.Read(dir));
+            Assert.Contains("\"naming.collections\" names \"klingon\"", ex.Message);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
 }

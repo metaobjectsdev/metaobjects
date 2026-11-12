@@ -104,7 +104,7 @@ public class DbContextGenerator : IGenerator
                 ? new[] { (DbSetPropertyName(o, ctx), o.ResolutionKey()), (CSharpNaming.ViewDbSetName(o), o.ResolutionKey()) }
                 : new[] { (DbSetPropertyName(o, ctx), o.ResolutionKey()) }),
             "DbSet property", "one generated context",
-            "rename one, or set @dbSetName on one of them");
+            "rename one, or set @collectionName on one of them");
         // In one context each relation (or routine) is one object's. Two objects
         // that resolve to one (schema, name) would silently read and write one table.
         AssertOnePhysicalAddress(objects, ctx);
@@ -614,7 +614,7 @@ public class DbContextGenerator : IGenerator
     }
 
     /// <summary>
-    /// Hook — the DbSet property name for an object: its <c>@dbSetName</c>, else the derived
+    /// Hook — the DbSet property name for an object: its <c>@collectionName</c>, else the derived
     /// plural (<see cref="CSharpNaming.DbSetName"/>). The context's collision check compares
     /// this name, so an override that renames the property is checked as it emits it.
     /// </summary>

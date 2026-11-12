@@ -1,6 +1,6 @@
 // A language-specific attribute is in the shared registry with the ports that act on
-// it (`@dbSetName`, the C# EF DbSet property name: ports ["csharp"]). Every port registers and
-// type-checks it, so a model that carries it loads under the strict loader here, and TypeScript,
+// it (`@objectAdapter`, the JVM ObjectAdapter class: ports ["java", "kotlin"]). Every port registers
+// and type-checks it, so a model that carries it loads under the strict loader here, and TypeScript,
 // a port not named, does nothing with it. Strictness is unchanged: an attribute the registry does
 // not carry still fails, and a wrong value type fails.
 
@@ -23,23 +23,27 @@ async function codes(json: string): Promise<string[]> {
   return res.errors.map((e) => (e as { code?: string }).code ?? "");
 }
 
-describe("a C#-only attribute", () => {
+describe("a JVM-only attribute", () => {
   test("loads under the strict loader", async () => {
-    expect(await codes(model(`"@dbSetName": "Diagnosis",`))).toEqual([]);
+    expect(await codes(model(`"@objectAdapter": "com.acme.DiagnosisAdapter",`))).toEqual([]);
   });
 
-  test("is type-checked: a list is not a DbSet name", async () => {
-    expect(await codes(model(`"@dbSetName": ["Diagnosis"],`))).not.toEqual([]);
+  test("is type-checked: a list is not a class name", async () => {
+    expect(await codes(model(`"@objectAdapter": ["com.acme.DiagnosisAdapter"],`))).not.toEqual([]);
+  });
+
+  test("the never-released @dbSetName is not vocabulary (it is @collectionName)", async () => {
+    expect(await codes(model(`"@dbSetName": "Diagnosis",`))).toContain("ERR_UNKNOWN_ATTR");
   });
 
   test("an attribute the registry does not carry still fails", async () => {
-    expect(await codes(model(`"@dbSetNameX": "Diagnosis",`))).toContain("ERR_UNKNOWN_ATTR");
+    expect(await codes(model(`"@objectAdapterX": "com.acme.DiagnosisAdapter",`))).toContain("ERR_UNKNOWN_ATTR");
   });
 
   test("the vocabulary names the ports that act on it", async () => {
     const entity = buildVocabularyCatalog(composeRegistry(coreProviders))
       .types.find((t) => t.type === "object" && t.subType === "entity")!;
-    expect(entity.attrs.find((a) => a.name === "dbSetName")?.ports).toEqual(["csharp"]);
+    expect(entity.attrs.find((a) => a.name === "objectAdapter")?.ports).toEqual(["java", "kotlin"]);
   });
 });
 

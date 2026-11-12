@@ -143,13 +143,13 @@ export const OBJECT_DEFINITION: ProviderDefinition = {
         {
           "type": "attr",
           "subType": "string",
-          "name": "dbSetName",
+          "name": "collectionName",
           "min": 0,
           "max": 1,
-          "ports": [
+          "implementedIn": [
             "csharp"
           ],
-          "description": "C#-only (EF Core): the DbSet property name the generated context gives this object, in place of the plural derived from its name. Set it when two objects in one generated context would otherwise claim the same property. Every port loads and type-checks it; only C# acts on it."
+          "description": "The name of this object's collection, in the object's own casing (e.g. 'CaseHistory', 'Queues'): the C# DbSet property the generated context gives it. It need not be a grammatical plural. Absent, the project's pluralizer derives it from the object's name (naming.collections in .metaobjects/config.json; built in: standard, none; an application may register its own)."
         }
       ]
     },
@@ -189,13 +189,13 @@ export const OBJECT_DEFINITION: ProviderDefinition = {
         {
           "type": "attr",
           "subType": "string",
-          "name": "dbSetName",
+          "name": "collectionName",
           "min": 0,
           "max": 1,
-          "ports": [
+          "implementedIn": [
             "csharp"
           ],
-          "description": "C#-only (EF Core): the DbSet property name the generated context gives this object, in place of the plural derived from its name. Set it when two objects in one generated context would otherwise claim the same property. Every port loads and type-checks it; only C# acts on it."
+          "description": "The name of this object's collection, in the object's own casing (e.g. 'CaseHistory', 'Queues'): the C# DbSet property the generated context gives it. It need not be a grammatical plural. Absent, the project's pluralizer derives it from the object's name (naming.collections in .metaobjects/config.json; built in: standard, none; an application may register its own)."
         }
       ]
     },
@@ -259,13 +259,13 @@ export const OBJECT_DEFINITION: ProviderDefinition = {
         {
           "type": "attr",
           "subType": "string",
-          "name": "dbSetName",
+          "name": "collectionName",
           "min": 0,
           "max": 1,
-          "ports": [
+          "implementedIn": [
             "csharp"
           ],
-          "description": "C#-only (EF Core): the DbSet property name the generated context gives this object, in place of the plural derived from its name. Set it when two objects in one generated context would otherwise claim the same property. Every port loads and type-checks it; only C# acts on it."
+          "description": "The name of this object's collection, in the object's own casing (e.g. 'CaseHistory', 'Queues'): the C# DbSet property the generated context gives it. It need not be a grammatical plural. Absent, the project's pluralizer derives it from the object's name (naming.collections in .metaobjects/config.json; built in: standard, none; an application may register its own)."
         }
       ]
     }

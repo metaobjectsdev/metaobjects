@@ -261,7 +261,7 @@ still fails everywhere.
   as `PRESENTATION_ONLY` / `NATIVE_BINDING`; both reasons are retired. The parity gaps are
   listed in `docs/CONFORMANCE.md`, "Split coverage".
 - **Kind 2 — language-specific by nature.** The attr carries `"ports": [...]`:
-  `@dbSetName` (`["csharp"]`) and `@objectAdapter` (`["java", "kotlin"]`, ADR-0005).
+  `@objectAdapter` (`["java", "kotlin"]`, ADR-0005).
 
 ### EXCLUDED from v1 — deferred follow-ons (documented, not silent)
 

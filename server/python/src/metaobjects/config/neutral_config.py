@@ -9,6 +9,7 @@ from metaobjects.errors import ErrorCode, ParseError
 from metaobjects.naming import (
     NamingRules,
     registered_column_naming_strategies,
+    registered_pluralizers,
     registered_table_naming_rules,
     unknown_naming_strategy_message,
 )
@@ -302,7 +303,7 @@ def _read_libraries(raw: dict[str, object], path: Path) -> list[str]:
 
 #: Every key the `naming` block accepts, and the ONLY ones it accepts (ADR-0058
 #: Decision 1 — an unknown key is refused, not ignored, unlike unknown TOP-level keys).
-_NAMING_KEYS = ("columns", "tables")
+_NAMING_KEYS = ("columns", "tables", "collections")
 
 
 def _read_naming(raw: dict[str, object], path: Path) -> NamingRules:
@@ -341,7 +342,13 @@ def _read_naming(raw: dict[str, object], path: Path) -> NamingRules:
             f"{path}: {unknown_naming_strategy_message('tables', str(tables))}",
             code=ErrorCode.ERR_COLLECTION_NOT_FOUND,
         )
-    return NamingRules(columns=columns, tables=tables)
+    collections = naming.get("collections", NamingRules.collections)
+    if not isinstance(collections, str) or collections not in registered_pluralizers():
+        raise ParseError(
+            f"{path}: {unknown_naming_strategy_message('collections', str(collections))}",
+            code=ErrorCode.ERR_COLLECTION_NOT_FOUND,
+        )
+    return NamingRules(columns=columns, tables=tables, collections=collections)
 
 
 #: Every key the `enums` block accepts, and the ONLY ones it accepts (refused, not ignored, like `naming`).

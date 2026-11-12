@@ -138,11 +138,11 @@ public sealed class DbContextForeignKeyConfigTests
     [Fact]
     public void Fk_property_is_named_by_typed_lambda_not_nameof()
     {
-        // The pair shares one context only once @dbSetName gives Address another DbSet; the
+        // The pair shares one context only once @collectionName gives Address another DbSet; the
         // entity type Addresses still meets a DbSet property of its own name, which is the
         // hazard the typed lambda pins.
         var renamed = DbSetNameCollisionModel.Replace(
-            "\"name\": \"Address\", \"children\"", "\"name\": \"Address\", \"@dbSetName\": \"AddressRows\", \"children\"");
+            "\"name\": \"Address\", \"children\"", "\"name\": \"Address\", \"@collectionName\": \"AddressRows\", \"children\"");
         var src = Assert.Single(new DbContextGenerator().Generate(Ctx(Load(renamed)))).Content;
 
         Assert.Contains(
