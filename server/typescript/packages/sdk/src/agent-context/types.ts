@@ -4,15 +4,6 @@ export type ServerLang = (typeof SERVER_LANGS)[number];
 export const CLIENT_FRAMEWORKS = ["react", "tanstack", "angular"] as const;
 export type ClientFramework = (typeof CLIENT_FRAMEWORKS)[number];
 
-/**
- * Opt-in capability concerns, detected from OBSERVED project state (never a config
- * flag — a flag goes stale, observed metadata cannot). Each token gates a
- * `references/<token>.md` fragment the same way a language/framework token does.
- * Add a new concern here; nothing else in the assembler needs to change.
- */
-export const CONCERN_TOKENS = ["requirements"] as const;
-export type ConcernToken = (typeof CONCERN_TOKENS)[number];
-
 /** Always-present token: schema migrations are TS-owned for every port (ADR-0015). */
 export const MIGRATION_TOKEN = "migration";
 
@@ -30,8 +21,7 @@ export type SkillName = (typeof SKILL_NAMES)[number];
 export interface Stack {
   servers: ServerLang[]; // deduped, in SERVER_LANGS order
   clients: ClientFramework[]; // deduped, in CLIENT_FRAMEWORKS order
-  concerns: ConcernToken[]; // deduped, in CONCERN_TOKENS order — observed capability usage
-  /** servers ∪ clients ∪ concerns ∪ {"migration"} — the install-selection set for reference fragments. */
+  /** servers ∪ clients ∪ {"migration"} — the install-selection set for reference fragments. */
   tokens: ReadonlySet<string>;
 }
 

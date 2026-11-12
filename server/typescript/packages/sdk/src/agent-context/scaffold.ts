@@ -283,3 +283,33 @@ export function agentContextStaleness(opts: {
     (guides.length > 0 ? ` This is a minor upgrade: read the upgrade guide first (${guides.join("; ")}).` : "")
   );
 }
+
+/** The installed requirements pages: one per skill that ships one. */
+const REQUIREMENTS_PAGE_SUFFIX = "/references/requirements.md";
+
+/**
+ * A one-line nudge when the model declares requirements and the scaffolded agent context has
+ * no requirements pages, or `null` when there is nothing to say.
+ *
+ * Every release from this one installs those pages whatever the model declares. Before it they
+ * installed only when `meta init` saw a `requirement.*` node, which a new project has not
+ * written yet, so a project scaffolded then and given requirements later has skills that
+ * promise pages that are not there. The version nudge says the context is old; this says what
+ * it is missing. Silent when no skills were scaffolded at all (`--no-skills`): there is no
+ * skill to be missing a page.
+ */
+export function agentContextCoverage(opts: {
+  manifest: Manifest | undefined;
+  declaresRequirements: boolean;
+}): string | null {
+  const { manifest, declaresRequirements } = opts;
+  if (manifest === undefined || !declaresRequirements) return null;
+  const paths = Object.keys(manifest.files);
+  if (!paths.some((p) => p.startsWith(".claude/skills/"))) return null;
+  if (paths.some((p) => p.endsWith(REQUIREMENTS_PAGE_SUFFIX))) return null;
+  return (
+    "The model declares requirement.* nodes, but the MetaObjects agent context was scaffolded " +
+    "without its requirements pages (when to set a requirement's @status, the requirement-tests " +
+    "generator). Re-run 'meta init --docs-only --refresh-docs' to install them."
+  );
+}

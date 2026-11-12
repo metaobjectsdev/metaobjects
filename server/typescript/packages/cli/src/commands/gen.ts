@@ -8,7 +8,8 @@ import { formatGenResult, formatGenResultToon, type GenFileEntry, type GenFileSt
 import { formatGenResultJson } from "../lib/output-json.js";
 import type { OutputFormat } from "../lib/format.js";
 import { log } from "../lib/log.js";
-import { warnIfAgentContextStale } from "../lib/agent-context-staleness.js";
+import { warnIfAgentContextMissesRequirements, warnIfAgentContextStale } from "../lib/agent-context-staleness.js";
+import { requirementTestsAdvice } from "../lib/requirement-tests-advice.js";
 import { warnIfManifestIgnored } from "../lib/manifest-ignored-check.js";
 import { scanSourceForAntiPatterns } from "../lib/anti-patterns.js";
 import {
@@ -16,7 +17,7 @@ import {
   type AdvisoryFindingRow, type AdvisorySection,
 } from "../lib/advisory.js";
 import { loadMemory, resolveCollection } from "@metaobjectsdev/sdk";
-import { declaredGeneratorNames, runGen, undeclaredGeneratorsMessage } from "@metaobjectsdev/codegen-ts";
+import { declaredGeneratorNames, runGen, undeclaredGeneratorsMessage, walkRequirements } from "@metaobjectsdev/codegen-ts";
 import type { WriteStatus } from "@metaobjectsdev/codegen-ts";
 import { packageOfResolutionKey } from "@metaobjectsdev/metadata";
 import type { MetaRoot } from "@metaobjectsdev/metadata";
@@ -294,6 +295,17 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
   }
 
   for (const w of result.warnings) { log.warn(w); warnings.push(w); }
+
+  // Requirements the project declares (its own and the inherited ones it keeps, as the
+  // requirement-tests generator itself walks them) and nothing that tests them: say which line
+  // to wire. And when the scaffolded agent context predates the requirements pages, say how to
+  // install them. Both advisory; neither reaches the exit code.
+  const requirementCount = walkRequirements(metadata, genCollection.inLedger).length;
+  let declaredNames: string[] = [];
+  try { declaredNames = declaredGeneratorNames(forgeConfig, catalog); } catch { /* reported by runGen */ }
+  const testsAdvice = requirementTestsAdvice(declaredNames, requirementCount);
+  if (testsAdvice !== undefined) { log.warn(testsAdvice); warnings.push(testsAdvice); }
+  advise(warnIfAgentContextMissesRequirements(projectRoot, requirementCount > 0));
 
   // A first-run POINTER, not a warning: an empty selection is the designed state of a
   // fresh `meta init`, so calling it a problem would make every new project start with

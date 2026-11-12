@@ -18,6 +18,7 @@ stays native to the language.
 - Install (Node, dev-only)
 - Output format
 - The workflow
+- Renames and destructive changes
 - Dialects
 - Live-DB drift: `meta verify --db`
 - Index modeling (Postgres)
@@ -109,8 +110,9 @@ meta migrate baseline --from-db --db postgresql://... --dialect postgres
 
 2. **Review the SQL.** Read the emitted `up.sql` (forward) and `down.sql`
    (rollback) before applying. Destructive changes (drop column / drop table) are
-   opt-in — the engine blocks them unless explicitly allowed, and routes ambiguous
-   rename-vs-drop+add decisions through a prompt rather than guessing.
+   opt-in — the engine refuses them until you allow each kind by name (`--allow`,
+   below), and an ambiguous rename-vs-drop+add aborts unless you declare the rename
+   or choose with `--on-ambiguous`. It never guesses.
 
 3. **Apply** the pending migrations against the DB; migration history is tracked in
    a ledger table:
@@ -123,6 +125,39 @@ meta migrate baseline --from-db --db postgresql://... --dialect postgres
    meta migrate --db postgresql://... --rollback <target>     # run down.sql for migrations newer than <target>
    meta migrate --db postgresql://... --rollback ""           # roll back everything (empty target)
    ```
+
+## Renames and destructive changes
+
+A renamed field or object is a renamed column or table, and the diff cannot tell that
+from a drop plus an add unless the names are close. Declare the rename and the data is
+kept:
+
+```bash
+meta migrate --dialect postgres --slug rename-origin --rename-column shipment.origin_city=origin_port
+meta migrate --dialect postgres --slug rename-stop   --rename-table stop=port_call
+```
+
+- `--rename-column [schema.]table.old=new` and `--rename-table [schema.]old=new` are
+  repeatable. For a column, `table` is the table's name in the metadata, so it is the
+  **new** name when the table is renamed in the same run. A declared rename needs no
+  `--allow drop-column`, and one that finds nothing to rename is refused rather than
+  falling back to drop and add. Change a column's type, nullability or default in a
+  later run, not in the rename's.
+- `--allow <csv>` permits a destructive change by kind. A refusal names the token it
+  needs. The tokens: `drop-column`, `drop-table`, `type-change`, `drop-index`, `drop-fk`,
+  `drop-check`, `drop-view`, `drop-view-cascade`, `drop-column-read-by-view`,
+  `adopt-view`, `nullable-to-not-null`, `drop-identity-default`, `drop-comment`,
+  `drop-unmanaged`. Changing an enum's values replaces its CHECK, so it needs
+  `--allow drop-check`. `drop-column` deletes the column's data: for a rename use
+  `--rename-column`, never `--allow drop-column`.
+- `--on-ambiguous abort|rename|drop-add` (default `abort`) decides a pair the
+  heuristic offers as a possible rename. Declaring the rename is clearer than `rename`.
+- `migrate.allow` and `migrate.onAmbiguous` in `.metaobjects/config.json` set the same
+  things for every run. Prefer the flag: a standing allowance hides the next destructive
+  change from review.
+
+`docs/features/migrations-and-drift.md`, "Renames and populated tables", covers what a
+rename carries with it (constraint names, views) and changes that need a backfill.
 
 ## Dialects
 

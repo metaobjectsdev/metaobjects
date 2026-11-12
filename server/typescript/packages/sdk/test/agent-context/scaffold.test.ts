@@ -2,7 +2,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test, expect, describe } from "bun:test";
-import { hashContents, hashAgentContextRoot, planScaffold, agentContextStaleness, AGENT_CONTEXT_MANIFEST_PATH, type Manifest } from "../../src/agent-context/scaffold.js";
+import { hashContents, hashAgentContextRoot, planScaffold, agentContextStaleness, agentContextCoverage, AGENT_CONTEXT_MANIFEST_PATH, type Manifest } from "../../src/agent-context/scaffold.js";
 import { makeStack } from "../../src/agent-context/resolve.js";
 import type { AssembledFile } from "../../src/agent-context/types.js";
 
@@ -268,7 +268,7 @@ describe("agentContextStaleness by content hash", () => {
   });
   test("planScaffold stamps the content hash it is given", () => {
     const d = planScaffold({
-      stack: { servers: [], clients: [], concerns: [], tokens: new Set() }, assembled: [], prior: undefined,
+      stack: { servers: [], clients: [], tokens: new Set() }, assembled: [], prior: undefined,
       readCurrent: () => undefined, generatedBy: "1.1.0", contentHash: "abc",
     });
     expect(d.manifest.contentHash).toBe("abc");
@@ -287,5 +287,29 @@ describe("hashAgentContextRoot", () => {
     writeFileSync(join(root, "b.md"), "three");
     expect(hashAgentContextRoot(root, "v1.1.0")).not.toBe(h1);
     rmSync(root, { recursive: true, force: true });
+  });
+});
+
+describe("agentContextCoverage", () => {
+  const withFiles = (paths: string[]): Manifest => ({
+    version: 1, servers: ["typescript"], clients: [], files: Object.fromEntries(paths.map((p) => [p, "h"])),
+  });
+  const SKILL = ".claude/skills/metaobjects-authoring/SKILL.md";
+  const PAGE = ".claude/skills/metaobjects-authoring/references/requirements.md";
+
+  test("requirements declared, skills scaffolded without the pages → names the refresh", () => {
+    const w = agentContextCoverage({ manifest: withFiles([".metaobjects/AGENTS.md", SKILL]), declaresRequirements: true });
+    expect(w).toContain("requirement.* nodes");
+    expect(w).toContain("meta init --docs-only --refresh-docs");
+  });
+  test("silent when the pages are installed", () => {
+    expect(agentContextCoverage({ manifest: withFiles([SKILL, PAGE]), declaresRequirements: true })).toBeNull();
+  });
+  test("silent when the model declares no requirements", () => {
+    expect(agentContextCoverage({ manifest: withFiles([SKILL]), declaresRequirements: false })).toBeNull();
+  });
+  test("silent with no manifest, or one scaffolded with --no-skills", () => {
+    expect(agentContextCoverage({ manifest: undefined, declaresRequirements: true })).toBeNull();
+    expect(agentContextCoverage({ manifest: withFiles([".metaobjects/AGENTS.md"]), declaresRequirements: true })).toBeNull();
   });
 });

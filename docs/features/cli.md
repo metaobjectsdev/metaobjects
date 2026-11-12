@@ -25,7 +25,7 @@ command surface splits in two:
 
 | Capability | Tool | Invocation | Notes |
 |---|---|---|---|
-| Project scaffold (`init`) | Node `meta` | `meta init` | TS projects |
+| Project scaffold (`init`) | Node `meta` | `meta init` | TS projects; `--dialect sqlite\|postgres\|mysql\|d1` writes the codegen `dialect` in `metaobjects.config.ts` and, for sqlite, postgres and d1, `migrate.dialect` in `.metaobjects/config.json` (d1 is `--d1`; MySQL schema is not `meta migrate`'s) |
 | **Agent-context scaffold** (`agent-docs`) | **Node `meta`** | `npx meta agent-docs --server <lang>` | **any backend** — single assembler (ADR-0033); non-Node CLIs redirect here |
 | **Schema migrate** | **Node `meta`** | `meta migrate` | **any backend** — schema is Node-only (ADR-0015) |
 | **Schema drift** (`verify --db`) | **Node `meta`** | `meta verify --db` | **any backend** — live-DB drift, Node-only |
@@ -857,7 +857,11 @@ The C#, Java/Kotlin, and Python CLIs keep a **non-executing `agent-docs` pointer
 stub** that prints `agent-context scaffolding moved to the meta CLI — run: npx meta
 agent-docs --server <lang>` to stderr and exits non-zero. The **live staleness check**
 in `gen`/`verify` stays per-port (it only *reads* the scaffold to nudge when it drifts);
-its message now points at `npx meta agent-docs --server <lang>`.
+its message now points at `npx meta agent-docs --server <lang>`. In the Node `meta`, `gen`
+and `verify` also advise (exit code unchanged) when the model declares `requirement.*` nodes
+and the scaffolded context has no requirements pages, naming `meta init --docs-only
+--refresh-docs`; `gen` advises separately when no `requirement-tests` generator is wired,
+naming `requirementTests()` and `meta eject requirement-tests`.
 
 ## Running Kotlin codegen via Maven
 

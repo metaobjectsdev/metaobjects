@@ -12,6 +12,8 @@ export interface InitFlags {
   printOnly: boolean;
   refreshDocs: boolean;
   d1: boolean;
+  /** `--dialect`; validated by `init()`, not here, so every door refuses the same values. */
+  dialect: string | undefined;
   servers: string[];
   clients: string[];
   noSkills: boolean;
@@ -28,6 +30,7 @@ export const INIT_OPTIONS = {
   "print-only": { type: "boolean", default: false },
   "refresh-docs": { type: "boolean", default: false },
   d1: { type: "boolean", default: false },
+  dialect: { type: "string" },
   server: { type: "string", multiple: true },
   client: { type: "string", multiple: true },
   "no-skills": { type: "boolean", default: false },
@@ -50,6 +53,7 @@ export function parseInitArgs(argv: string[]): InitFlags {
     printOnly: !!values["print-only"],
     refreshDocs: !!values["refresh-docs"],
     d1: !!values.d1,
+    dialect: values.dialect as string | undefined,
     servers: (values.server as string[] | undefined) ?? [],
     clients: (values.client as string[] | undefined) ?? [],
     noSkills: !!values["no-skills"],

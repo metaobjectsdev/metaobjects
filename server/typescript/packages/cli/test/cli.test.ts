@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 // wireRoot defaults TRUE (root-wiring is on by default so the scaffolded always-on actually loads; --no-wire-root opts out).
-const defaultInitFlags = { force: false, quiet: false, printOnly: false, refreshDocs: false, d1: false, servers: [], clients: [], noSkills: false, wireRoot: true, docsOnly: false, configOnly: false, withDocs: false };
+const defaultInitFlags = { force: false, quiet: false, printOnly: false, refreshDocs: false, d1: false, dialect: undefined, servers: [], clients: [], noSkills: false, wireRoot: true, docsOnly: false, configOnly: false, withDocs: false };
 
 describe("parseInitArgs", () => {
   test("default flags (wireRoot on by default, others off)", () => {
@@ -23,6 +23,9 @@ describe("parseInitArgs", () => {
   });
   test("multiple flags compose", () => {
     expect(parseInitArgs(["--force", "--quiet"])).toEqual({ ...defaultInitFlags, force: true, quiet: true });
+  });
+  test("--dialect is carried as given (init() validates it)", () => {
+    expect(parseInitArgs(["--dialect", "postgres"])).toEqual({ ...defaultInitFlags, dialect: "postgres" });
   });
   test("--d1 toggles d1", () => {
     expect(parseInitArgs(["--d1"])).toEqual({ ...defaultInitFlags, d1: true });

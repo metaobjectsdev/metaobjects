@@ -54,6 +54,25 @@ Each item below is described in full under Added, Changed or Fixed; this list is
 
 ### Added
 
+- **A working loop first in the agent context.** The always-on file `meta init` scaffolds
+  (`.metaobjects/AGENTS.md` and `CLAUDE.md`) now opens with the whole loop for the declared
+  stack, in order: configure and run the generators (one step per declared server, with the
+  import or class names to wire, plus the web client when one is declared), the schema
+  (`meta migrate --from-db` for the first migration, `apply-pending` at boot, and a later
+  change with `--rename-column`, `--rename-table` and `--allow`), requirements, and the verify
+  commands to run before calling work done. It shrinks from about 19 KB to about 5 KB. The
+  principles it carried move, word for word, to `metaobjects-codegen/references/principles.md`,
+  and the port-sync and upgrade paragraphs to `metaobjects-verify/references/upgrading.md`. It
+  no longer tells an agent to read a skill's `SKILL.md` by path, and says the loop needs no
+  skill. The skill trigger evals gain mid-task cases.
+- **`meta init --dialect sqlite|postgres|mysql|d1`.** Writes the codegen `dialect` and, for
+  sqlite, postgres and d1, `migrate.dialect`, and the next steps print that dialect's first
+  migration. `--dialect d1` is `--d1`; the two together with different dialects are refused.
+  MySQL is codegen only, as before: the next steps say `meta migrate` does not own its schema.
+- **`meta gen` names `requirementTests()` when nothing tests the requirements.** A model that
+  declares `requirement.*` nodes, with no `requirement-tests` generator wired, gets one advisory
+  line naming the import. The exit code is unchanged.
+
 - **Cross-port vocabulary that only some ports implement so far (`implementedIn`).** A registry
   type or attr may name the ports that implement it so far (`"implementedIn": ["typescript"]` on
   its `spec/metamodel` entry, carried into the registry manifest). It is still cross-port
@@ -498,6 +517,18 @@ Each item below is described in full under Added, Changed or Fixed; this list is
   fields.
 
 ### Changed
+
+- **The requirements reference pages install in every stack.** They used to install only when
+  `meta init` saw a `requirement.*` node, which a new project has not written yet, so a project
+  that declared requirements later had skills pointing at pages that were not there. `meta gen`
+  and `meta verify` now say so for a context scaffolded that way, and name
+  `meta init --docs-only --refresh-docs`.
+- **A shorter scaffolded `metaobjects.config.ts` comment.** It now shows the import line for the
+  usual data layer (`entityFile`, `namesFile`, `barrel`) and the catalog command, and drops the
+  rest.
+- **`meta gen --list` off a terminal is unchanged.** Its default there stays the TOON document,
+  which tools and the skills parse for `wire.import` and `layer`; the agent context gives a
+  one-line filter for a compact view instead.
 
 - **A new top-level requirement declared into a dependency's package is refused** with
   `ERR_DEPENDENCY_PACKAGE_NOT_OWNED`, as a new object there already was. An overlay of the

@@ -90,9 +90,34 @@ dist/
 *.tsbuildinfo
 `;
 
-// Codegen dialect only: Cloudflare D1 is SQLite, so `--d1` scaffolds "sqlite" here (the "d1" value
-// lives in `migrate.dialect` of .metaobjects/config.json, and codegen refuses it).
-function buildMetaobjectsConfigBody(dialect: "sqlite" | "postgres" = "sqlite", withDocs = false): string {
+/** `meta init --dialect`: the database the project targets. */
+export const INIT_DIALECTS = ["sqlite", "postgres", "mysql", "d1"] as const;
+export type InitDialect = (typeof INIT_DIALECTS)[number];
+type CodegenDialect = "sqlite" | "postgres" | "mysql";
+
+/**
+ * The dialect an init run targets, from `--dialect` and `--d1`. `--d1` is `--dialect d1`, so
+ * the two may be combined only when they agree. Throws on an unknown value or a conflict,
+ * before anything is written.
+ */
+export function resolveInitDialect(opts: { dialect?: string | undefined; d1?: boolean | undefined }): InitDialect {
+  const { dialect, d1 } = opts;
+  if (dialect !== undefined && !(INIT_DIALECTS as readonly string[]).includes(dialect)) {
+    throw new Error(`--dialect ${dialect} is not one of ${INIT_DIALECTS.join(", ")}.`);
+  }
+  if (d1 === true && dialect !== undefined && dialect !== "d1") {
+    throw new Error(`--d1 targets Cloudflare D1, and --dialect ${dialect} says otherwise. Pass one of them.`);
+  }
+  return d1 === true ? "d1" : ((dialect as InitDialect | undefined) ?? "sqlite");
+}
+
+/** Codegen's `dialect`: Cloudflare D1 is SQLite at the SQL level, and codegen refuses "d1"
+ *  (the "d1" value lives in `migrate.dialect` of .metaobjects/config.json). */
+function codegenDialectOf(dialect: InitDialect): CodegenDialect {
+  return dialect === "d1" ? "sqlite" : dialect;
+}
+
+function buildMetaobjectsConfigBody(dialect: CodegenDialect = "sqlite", withDocs = false): string {
   const docsImport = withDocs
     ? `import { docsFile, apiDocsFile } from "@metaobjectsdev/codegen-ts/generators";\n`
     : "";
@@ -104,47 +129,23 @@ export default defineConfig({
   outDir:  "${SCAFFOLD_OUT_DIR}",
   dialect: "${dialect}",
 
-  // NOTHING IS GENERATED UNTIL YOU CHOOSE IT.
+  // Nothing is generated until it is listed in \`generators\`. The usual data layer
+  // (Drizzle tables, Zod schemas, physical-name constants and a barrel):
   //
-  // MetaObjects does not decide which code your application needs — you do, or the
-  // agent working in this repo does. The catalog is:
+  //   import { entityFile, namesFile, barrel } from "@metaobjectsdev/codegen-ts/generators";
   //
-  //   meta gen --list --format json --probe
+  // then call each one in the list below: entityFile(), namesFile(), barrel().
   //
-  // \`--probe\` runs every generator against YOUR model and reports how many files each
-  // would emit, so you can see what your metadata is already asking for. Group by
-  // \`layer\`: model / persistence / api / client / docs / capability.
+  // The catalog, with each generator's import line and what it would emit for this model:
   //
-  // Every row carries the import line that runs its generator as shipped
-  // (\`wire.import\`). Add it at the top of this file:
+  //   meta gen --list --probe
   //
-  //   import { entityFile, queriesFile, barrel } from "@metaobjectsdev/codegen-ts/generators";
+  // Documentation is chosen the same way (docsFile(), apiDocsFile(), agentDocsFile()), with
+  // a docs target beside \`generators\`: targets: { docs: { outDir: "${DEFAULT_DOCS_DIR}" } },
   //
-  // then call each one in the array below: entityFile(), queriesFile(), barrel(). A
-  // generator's options are in its documentation. The row also lists what to install
-  // and the config keys the generator reads (\`dbImport\`, \`apiPrefix\`, \`extStyle\`, …).
-  // Add them here as you go.
-  //
-  // Need one to emit something different? Own it:
-  //
-  //   meta eject entity
-  //
-  // copies that generator into ./codegen/generators/ — YOURS to edit — and prints the
-  // local import to swap in for the package one. \`meta gen\` then runs your copy.
-  //
-  // Documentation is chosen the same way: the \`docs\` layer of the catalog (docsFile(),
-  // apiDocsFile(), …) writes to a \`docs\` target you declare beside \`generators\`:
-  //
-  //   targets: { docs: { outDir: "${DEFAULT_DOCS_DIR}" } },
-  //
-  // Nothing is generated that this file does not declare, documentation included.
-  //
-  // Need an output nothing in that catalog emits — a client, a service layer? Write
-  // your own generator; that is the normal path:
-  //
-  //   meta generator new data-dictionary --scope model
-  //
-  // writes a working, commented generator into ./codegen/generators/ and adds it here.
+  // To change what a generator emits, own it: \`meta eject entity\` copies it into
+  // ./codegen/generators/ and prints the local import to swap in. Need an output nothing in
+  // that catalog emits? Write your own: \`meta generator new <name> --scope model\`.
 ${docsTarget}  generators: ${generators},
 });
 `;
@@ -155,7 +156,8 @@ Initialized metaobjects/ + .metaobjects/ + metaobjects.config.ts
 codegen/generators/ is EMPTY on purpose: no code is generated until you choose it.
 `;
 
-const NEXT_STEPS = `
+function nextSteps(dialect: InitDialect): string {
+  return `
 Next steps:
   0. Everything here is ESM — package.json needs "type": "module" (init sets it
      unless the project has CommonJS sources; without it the first tsc fails).
@@ -171,10 +173,27 @@ Next steps:
                                 #   scaffolds a working one and wires it
   4. meta gen                  # generate from exactly what you wired, documentation
                                 #   included (the docs layer of the catalog)
-  5. Create your tables: meta migrate --from-db --db file:dev.sqlite --dialect sqlite --slug init --apply
-     A new database later (a fresh clone, CI, tests) replays the committed migrations:
-       meta migrate apply-pending --db file:other.sqlite
-`;
+${MIGRATE_STEP[dialect]}`;
+}
+
+/** Step 5 of the next steps, per dialect: the first migration and the replay. */
+const MIGRATE_STEP: Record<InitDialect, string> = {
+  sqlite:
+    "  5. Create your tables: meta migrate --from-db --db file:dev.sqlite --dialect sqlite --slug init --apply\n" +
+    "     A new database later (a fresh clone, CI, tests) replays the committed migrations:\n" +
+    "       meta migrate apply-pending --db file:other.sqlite\n",
+  postgres:
+    "  5. Create your tables (an empty, reachable database):\n" +
+    "       meta migrate --from-db --db postgres://<user>@<host>/<db> --dialect postgres --slug init --apply\n" +
+    "     A new database later (a fresh clone, CI, tests) replays the committed migrations:\n" +
+    "       meta migrate apply-pending --db postgres://<user>@<host>/<other-db>\n",
+  d1:
+    "  5. Create your tables: meta migrate --dialect d1 --slug init writes migrations/<seq>_init.sql;\n" +
+    "     apply it with wrangler d1 migrations apply <binding>.\n",
+  mysql:
+    "  5. Schema: meta migrate does not own MySQL schema, so create and change the tables with\n" +
+    "     your own migration tool. The generated code targets MySQL.\n",
+};
 
 export interface InitOptions {
   cwd: string;
@@ -183,6 +202,8 @@ export interface InitOptions {
   printOnly?: boolean;
   refreshDocs?: boolean;
   d1?: boolean;
+  /** `--dialect`: see {@link resolveInitDialect}. Unset with no `d1` is sqlite. */
+  dialect?: string | undefined;
   servers?: string[];
   clients?: string[];
   noSkills?: boolean;
@@ -511,9 +532,14 @@ async function writeCodegenTsconfig(opts: InitOptions, result: InitResult): Prom
  * cannot drift on the config's default content.
  */
 async function writeConfigFile(opts: InitOptions, result: InitResult, agentDir: string, agentDirExists: boolean): Promise<void> {
-  const freshConfig = opts.d1
+  // An explicit sqlite/postgres dialect is written so `meta migrate` needs no --dialect; an
+  // unflagged init keeps the defaults it always wrote. MySQL schema is not migrate's.
+  const dialect = resolveInitDialect(opts);
+  const freshConfig = dialect === "d1"
     ? ConfigSchema.parse({ ...DEFAULT_CONFIG, migrate: buildD1MigrateBlock(opts.cwd) })
-    : DEFAULT_CONFIG;
+    : opts.dialect !== undefined && dialect !== "mysql"
+      ? ConfigSchema.parse({ ...DEFAULT_CONFIG, migrate: { dialect } })
+      : DEFAULT_CONFIG;
   const writeFresh = (): Promise<void> =>
     writeFile(join(agentDir, "config.json"), JSON.stringify(freshConfig, null, 2) + "\n", "utf8");
 
@@ -582,6 +608,7 @@ export async function init(opts: InitOptions): Promise<InitResult> {
   // detection, so a dropped value does not degrade, it inverts three statements in the
   // generated context.
   assertKnownStackValues({ servers: opts.servers ?? [], clients: opts.clients ?? [] });
+  resolveInitDialect(opts);
   const result: InitResult = { created: [], preserved: [], removed: [], warnings: [] };
   const agentDir = join(opts.cwd, DEFAULT_METAOBJECTS_DIR);
   const metaobjectsDir = join(opts.cwd, DEFAULT_METADATA_DIR);
@@ -695,7 +722,7 @@ export async function init(opts: InitOptions): Promise<InitResult> {
   // Scaffold metaobjects.config.ts at the project root. Never overwrite if it exists.
   const forgeConfigPath = join(opts.cwd, "metaobjects.config.ts");
   if (!(await fileExists(forgeConfigPath))) {
-    await writeFile(forgeConfigPath, buildMetaobjectsConfigBody("sqlite", opts.withDocs === true), "utf8");
+    await writeFile(forgeConfigPath, buildMetaobjectsConfigBody(codegenDialectOf(resolveInitDialect(opts)), opts.withDocs === true), "utf8");
     result.created.push("metaobjects.config.ts");
   } else if (opts.withDocs === true) {
     result.warnings.push(
@@ -884,8 +911,8 @@ function buildD1MigrateBlock(cwd: string): Record<string, unknown> {
  * every one. With nothing wired there is no `dbImport` and no stub, so the message is
  * the same on every path again.
  */
-export function nextStepsBlock(): string {
-  return SCAFFOLD_SUMMARY + NEXT_STEPS;
+export function nextStepsBlock(dialect: InitDialect = "sqlite"): string {
+  return SCAFFOLD_SUMMARY + nextSteps(dialect);
 }
 
 async function dirExists(p: string): Promise<boolean> {
@@ -913,6 +940,7 @@ export async function initCommand(args: string[], cwd: string): Promise<number> 
     // Also here, so a bad value is a USAGE error (exit 2) rather than the exit 1 an
     // init failure gets. `init()` refuses it too, which is what covers every other door.
     assertKnownStackValues({ servers: flags.servers ?? [], clients: flags.clients ?? [] });
+    resolveInitDialect(flags);
   } catch (err) {
     log.error(describeError(err));
     return 2;
@@ -926,6 +954,7 @@ export async function initCommand(args: string[], cwd: string): Promise<number> 
       printOnly: flags.printOnly,
       refreshDocs: flags.refreshDocs,
       d1: flags.d1,
+      dialect: flags.dialect,
       servers: flags.servers,
       clients: flags.clients,
       noSkills: flags.noSkills,
@@ -979,7 +1008,7 @@ export async function initCommand(args: string[], cwd: string): Promise<number> 
         }
         for (const w of result.warnings) log.warn(w);
       } else {
-        log.info(nextStepsBlock());
+        log.info(nextStepsBlock(resolveInitDialect(flags)));
         // Surface any scaffold warnings (e.g. the #77 monorepo-subdir agent-context
         // discovery warning) — these are otherwise dropped on the normal init path.
         for (const w of result.warnings) log.warn(w);

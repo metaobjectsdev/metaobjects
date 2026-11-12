@@ -519,7 +519,11 @@ FLAGS:
   --force               Overwrite existing files
   --quiet               Suppress output
   --print-only          Print what would be written, don't write
-  --d1                  Include D1 (Cloudflare) migration config
+  --dialect <d>         sqlite (default) | postgres | mysql | d1. Sets codegen's \`dialect\` in
+                        metaobjects.config.ts and, for sqlite/postgres/d1, \`migrate.dialect\`
+                        in .metaobjects/config.json, so neither is edited by hand. d1 is
+                        --d1; mysql is codegen only (meta migrate does not own MySQL schema)
+  --d1                  Include D1 (Cloudflare) migration config (same as --dialect d1)
   --no-wire-root        Skip wiring root metaobjects.config.ts
   --config-only         Write only .metaobjects/config.json (no TS scaffold) — declares
                         metadata sources for the Node CLI from a Maven- or pip-rooted project

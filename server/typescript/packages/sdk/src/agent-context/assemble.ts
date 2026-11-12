@@ -2,15 +2,16 @@ import { readFileSync, readdirSync, existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { pinDocsRefs } from "@metaobjectsdev/metadata";
 import {
-  SKILL_NAMES, SERVER_LANGS, CLIENT_FRAMEWORKS, CONCERN_TOKENS, type AssembledFile, type Stack,
+  SKILL_NAMES, SERVER_LANGS, CLIENT_FRAMEWORKS, type AssembledFile, type Stack,
 } from "./types.js";
 
-// Language/framework/concern reference fragments are stack-scoped, and so is a
-// `<token>-<topic>.md` split out of one; any other fragment (e.g. capability-checklist)
-// is universal and always installs. Adding a
-// future concern token to CONCERN_TOKENS (types.ts) is all that's needed to gate
-// its matching references/<token>.md fragment here.
-const SCOPED_FRAGMENT_TOKENS = new Set<string>([...SERVER_LANGS, ...CLIENT_FRAMEWORKS, ...CONCERN_TOKENS]);
+// Language/framework reference fragments are stack-scoped, and so is a `<token>-<topic>.md`
+// split out of one; any other fragment (capability-checklist, requirements, ...) is universal
+// and always installs. The requirements pages used to be gated on the project declaring a
+// `requirement.*` node, observed when `meta init` ran — which is before a new project has
+// written any, so the pages a project needed once it did were never installed and nothing
+// said so. A page on disk costs nothing until it is opened.
+const SCOPED_FRAGMENT_TOKENS = new Set<string>([...SERVER_LANGS, ...CLIENT_FRAMEWORKS]);
 
 /**
  * The stack token a fragment is scoped by, or undefined for a universal fragment.
@@ -28,30 +29,9 @@ interface ServerMeta {
   displayName: string;
   install: string;
   codegenCommand: string;
-  /** The gen command that writes THIS port's api docs, when its generator list declares
-   *  the api-docs generator — `mvn metaobjects:generate`, `metaobjects gen`, `dotnet meta
-   *  gen`, `meta gen`. There is no separate docs command on any port (ADR-0034 Amendment
-   *  9: documentation is one more entry in the generator list); this is still named per
-   *  server because the always-on pointer tells a reader to run it, and a pointer naming
-   *  a command the stack does not have is worse than no pointer. */
-  docsCommand: string;
-  /** Appended after each mention of `docsCommand`: the condition under which it writes the
-   *  api pages, with its leading space, or `""` when it always does. The Maven `generate`
-   *  goal writes them only when the pom's generator list declares the api-docs generator,
-   *  and a pointer that omits that sends a reader to run a command that writes nothing. */
-  docsCondition: string;
-  /** What to do before running `docsCommand` when the api pages are missing, with no
-   *  trailing punctuation, or `""` when running it is the whole remedy. A Maven pom writes
-   *  them only once it declares the api-docs generator, and a missing entry is the usual
-   *  reason the file is absent, so the Not-there line names that entry instead of only the
-   *  command. */
-  docsMissing: string;
-  /** The docs-root-relative directory THIS port's docs command writes its api pages into.
-   *  It is NOT `api` outside TypeScript — Python defaults to `api/python`, C# to
-   *  `api/csharp`, the Maven plugin to `api/<lang>` — so a pointer naming `api/AGENT-API.md`
-   *  to a Python project sends a reader to a path that does not exist. Naming the command
-   *  correctly and the FILE wrongly is the same defect one field over. */
-  apiSubDir: string;
+  /** The "before you call it done" line for this port: its own drift gate, which also runs the
+   *  requirement gate. Markdown, no trailing period. */
+  verifyStep: string;
 }
 
 function readServerMeta(contentRoot: string, server: string): ServerMeta | undefined {
@@ -60,53 +40,46 @@ function readServerMeta(contentRoot: string, server: string): ServerMeta | undef
   return JSON.parse(readFileSync(p, "utf8")) as ServerMeta;
 }
 
-function stackLine(
-  contentRoot: string,
-  stack: Stack,
-): {
-  line: string;
-  codegenCommand: string;
-  docsCommand: string;
-  docsCondition: string;
-  docsMissing: string;
-  apiSubDir: string;
-} {
-  const primary = stack.servers[0];
-  const meta = primary ? readServerMeta(contentRoot, primary) : undefined;
+/** Describe only what the stack declares — never a migration binding (the tool states
+ *  invariants; the project states bindings). See issue #1. */
+function stackLine(stack: Stack): string {
   const serverPart = stack.servers.length ? stack.servers.join(", ") + " server" : "no server";
   const clientPart = stack.clients.length ? stack.clients.join(", ") + " client" : "no client";
-  return {
-    // Describe only what the stack actually declares — never assert a migration
-    // binding (the tool states invariants; the project states bindings). The
-    // "schema + migrations are metadata-derived" invariant lives in the template
-    // principle, and the always-installed metaobjects-verify/migration reference
-    // fragment carries the project-agnostic how. See issue #1.
-    line: `Stack: ${serverPart}, ${clientPart}.`,
-    codegenCommand: meta ? meta.codegenCommand : "meta gen",
-    docsCommand: meta ? meta.docsCommand : "meta gen",
-    docsCondition: meta ? meta.docsCondition : "",
-    docsMissing: meta ? meta.docsMissing : "",
-    apiSubDir: meta ? meta.apiSubDir : "api",
-  };
+  return `Stack: ${serverPart}, ${clientPart}.`;
 }
 
+/** What the loop says when the stack declares nothing it could give a generate step for. */
+const NO_STACK_LOOP =
+  "No server language is declared for this project, so this file names no generate step. " +
+  "Declare it and refresh: `meta init --docs-only --refresh-docs --server " +
+  "<typescript|java|kotlin|csharp|python>`.\n\n";
+
 /**
- * True when this stack runs the Node `meta` toolchain over a `metaobjects.config.ts`.
- *
- * This is the condition for the `agent/` docs surface EXISTING AT ALL: `meta gen` writes
- * those three pages, when `agentDocsFile()` is in `generators`, from a loadable gen
- * config — the physical names, the dialect and the view dispatch all come from it. A
- * TypeScript server has one; so does any stack
- * declaring a web CLIENT, because the React/TanStack tiers are generated by `meta gen`
- * whatever the backend is. A port-only stack (java alone, python alone) has none, and for
- * it the pointer must name only the one file its own docs command writes.
- *
- * The pointer landed verbatim in every stack before this existed, so a Python project was
- * told to read four files that cannot exist and to run a command that cannot make them —
- * on the one page an agent is told to trust.
+ * The working loop's generate steps, one fragment per declared server
+ * (`templates/loops/<server>.md`, in SERVER_LANGS order) plus the web-client fragment when the
+ * stack declares a client. A polyglot stack gets each of its ports; a stack gets none it does
+ * not declare, so a Python project is never told to edit a `metaobjects.config.ts`.
  */
-function hasNodeDocsSurface(stack: Stack): boolean {
-  return stack.servers.includes("typescript") || stack.clients.length > 0;
+function stackLoops(contentRoot: string, stack: Stack): string {
+  const parts = stack.servers.map((s) => readFileSync(join(contentRoot, "templates", "loops", `${s}.md`), "utf8"));
+  if (stack.clients.length > 0) parts.push(readFileSync(join(contentRoot, "templates", "loops", "client.md"), "utf8"));
+  return parts.length > 0 ? parts.join("\n") : NO_STACK_LOOP;
+}
+
+/** One "before you call it done" bullet per declared server, and one for a web client generated
+ *  by the Node CLI when no TypeScript server already covers it. */
+function verifySteps(contentRoot: string, stack: Stack): string {
+  const lines: string[] = [];
+  for (const s of stack.servers) {
+    const meta = readServerMeta(contentRoot, s);
+    // Java and Kotlin share one Maven goal; say it once.
+    const line = meta === undefined ? undefined : `- ${meta.verifyStep}.\n`;
+    if (line !== undefined && !lines.includes(line)) lines.push(line);
+  }
+  if (stack.clients.length > 0 && !stack.servers.includes("typescript")) {
+    lines.push("- `npx meta verify --codegen` (the generated web client).\n");
+  }
+  return lines.join("");
 }
 
 /**
@@ -169,15 +142,10 @@ export function assemble(opts: { contentRoot: string; stack: Stack; docsRef?: st
 
   // 1. Always-on (AGENTS.md + CLAUDE.md, identical contents).
   const tpl = readFileSync(join(contentRoot, "templates", "always-on.md.mustache"), "utf8");
-  const { line, codegenCommand, docsCommand, docsCondition, docsMissing, apiSubDir } = stackLine(
-    contentRoot,
-    stack,
-  );
-  const docsMissingAction = docsMissing === "" ? "Run" : `${docsMissing}, then run`;
   const alwaysOn = applyTemplate(
     tpl,
-    { stackLine: line, codegenCommand, docsCommand, docsCondition, docsMissingAction, apiSubDir },
-    { nodeDocsSurface: hasNodeDocsSurface(stack) },
+    { stackLine: stackLine(stack), stackLoops: stackLoops(contentRoot, stack), verifySteps: verifySteps(contentRoot, stack) },
+    {},
   );
   out.push({ path: ".metaobjects/AGENTS.md", contents: alwaysOn });
   out.push({ path: ".metaobjects/CLAUDE.md", contents: alwaysOn });
@@ -190,9 +158,8 @@ export function assemble(opts: { contentRoot: string; stack: Stack; docsRef?: st
 
     const refDir = join(skillDir, "references");
     if (existsSync(refDir) && statSync(refDir).isDirectory()) {
-      // Stack-scoped: a language/framework/concern fragment installs only when its
-      // token is in the resolved stack (Stack.tokens = servers ∪ clients ∪ concerns
-      // ∪ {migration}). Non-scoped fragments (e.g. capability-checklist) are
+      // Stack-scoped: a language/framework fragment installs only when its
+      // token is in the resolved stack (Stack.tokens = servers ∪ clients ∪ {migration}). Non-scoped fragments (e.g. capability-checklist) are
       // universal and always install. Keeps each skill's references/ to what the
       // project actually uses, so the SKILL.md "read every references/*.md" footer
       // stays accurate.
