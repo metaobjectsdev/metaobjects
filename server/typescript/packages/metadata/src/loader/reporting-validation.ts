@@ -100,11 +100,15 @@ import {
   REPORTING_ATTR_DEFAULT,
   REPORTING_ATTR_VIA,
   MEASURE_SUBTYPE_AGGREGATE,
+  MEASURE_SUBTYPE_DERIVED,
+  REPORTING_ATTR_EXPR,
+  DERIVED_FNS,
 } from "../core/reporting/reporting-constants.js";
 import { MetaDimension } from "../core/reporting/meta-dimension.js";
 import { MetaMeasure } from "../core/reporting/meta-measure.js";
 import { MetaSegment } from "../core/reporting/meta-segment.js";
-import { isFlattenedField, measureResultSubType } from "../core/reporting/report-shape.js";
+import { isFlattenedField, measureResultSubType, resolveDimensionOf } from "../core/reporting/report-shape.js";
+import { derivedExprFields } from "../core/reporting/derived-expr.js";
 import {
   reportDerivedFieldName,
   reportDimensionItems,
@@ -624,6 +628,10 @@ function checkMeasure(ctx: MemberCtx, measure: MetaMeasure): void {
     checkRatioOperands(ctx, measure, err);
     return;
   }
+  if (measure.isDerived()) {
+    checkDerivedExpr(ctx, measure, err);
+    return;
+  }
   if (measure.subType !== MEASURE_SUBTYPE_AGGREGATE) return;
 
   const checked = checkAggregateColumns(ctx, measure, err);
@@ -805,6 +813,54 @@ function checkRatioOperands(ctx: MemberCtx, ratio: MetaMeasure, err: (message: s
             `measures (a count, a sum, an avg, or a min or max of a numeric field).`,
         );
       }
+    }
+  }
+}
+
+/**
+ * M11 — a measure.derived's @expr is FR-037 R5's arithmetic over operands a report can read:
+ * each `{ field }` names a numeric measure.aggregate or measure.ratio of the same entity, or a
+ * numeric attribute dimension of it (R13 then requires the report to list that dimension). A
+ * derived measure never reads another derived measure, and a name both a measure and a
+ * dimension carry is refused rather than guessed. One error per offending operand.
+ */
+function checkDerivedExpr(ctx: MemberCtx, measure: MetaMeasure, err: (message: string) => void): void {
+  const raw = measure.attr(REPORTING_ATTR_EXPR);
+  if (raw === undefined) return; // missing @expr is ERR_MISSING_REQUIRED_ATTR
+  const expr = measure.expr();
+  if (expr === undefined) {
+    err(
+      `@expr is not an arithmetic expression. Each node is { field: <measure or ` +
+        `dimension> }, { value: <number> } or { fn: ${DERIVED_FNS.join(" | ")}, args: [<a>, <b>] }.`,
+    );
+    return;
+  }
+  const entityKey = ctx.declaring.resolutionKey();
+  for (const name of derivedExprFields(expr)) {
+    const target = childOfType(ctx.host, TYPE_MEASURE, name);
+    const dim = childOfType(ctx.host, TYPE_DIMENSION, name);
+    if (target !== undefined && dim !== undefined) {
+      err(`@expr names '${name}', which is both a measure and a dimension of '${entityKey}'. Rename one.`);
+    } else if (target !== undefined) {
+      if (target.subType === MEASURE_SUBTYPE_DERIVED) {
+        err(`@expr names '${name}', a measure.derived. A derived measure reads aggregates, ratios and dimensions, not another derived measure.`);
+      } else if (target instanceof MetaMeasure && isMetaObject(ctx.host) && isMetaRoot(ctx.root)) {
+        const result = measureResultSubType(target, ctx.host, ctx.root);
+        if (result !== undefined && !NUMERIC_FIELD_SUBTYPES.includes(result)) {
+          err(`@expr names measure '${name}', whose result is a ${result}, not a number.`);
+        }
+      }
+    } else if (dim instanceof MetaDimension) {
+      if (dim.isTime()) {
+        err(`@expr names '${name}', a dimension.time. Arithmetic reads a numeric attribute dimension.`);
+      } else if (isMetaObject(ctx.host) && isMetaRoot(ctx.root)) {
+        const of = resolveDimensionOf(dim, ctx.host, ctx.root);
+        if (of !== undefined && !NUMERIC_FIELD_SUBTYPES.includes(of.field.subType)) {
+          err(`@expr names dimension '${name}', whose @of is a field.${of.field.subType}, not a number.`);
+        }
+      }
+    } else {
+      err(`@expr names '${name}', which is no measure or dimension of '${entityKey}'.`);
     }
   }
 }
@@ -1047,6 +1103,8 @@ function checkReport(root: MetaData, report: MetaData, sink: ErrorSink): void {
 
   // R12 — amounts in different units are never combined.
   checkValueObjectUnits(report, from, err);
+  // R13 — a derived measure reads only dimensions the report groups by.
+  checkDerivedDimensions(report, from, err);
 
   // R7 — @segment names a segment of @from.
   const segment = report.attr(OBJECT_REPORT_ATTR_SEGMENT);
@@ -1125,10 +1183,7 @@ function checkValueObjectUnits(report: MetaData, from: MetaData, err: (message: 
   for (const item of reportMeasureNames(report)) {
     const listed = childOfType(from, TYPE_MEASURE, item.slice(item.lastIndexOf(CHILD_REF_SEPARATOR) + 1));
     if (!(listed instanceof MetaMeasure)) continue;
-    const aggregates = listed.isRatio()
-      ? [listed.numerator(), listed.denominator()].map((n) => (n === undefined ? undefined : childOfType(from, TYPE_MEASURE, n)))
-      : [listed];
-    for (const m of aggregates) {
+    for (const m of aggregatesRead(listed, from)) {
       if (!(m instanceof MetaMeasure) || m.subType !== MEASURE_SUBTYPE_AGGREGATE || checked.has(m)) continue;
       checked.add(m);
       const agg = m.agg();
@@ -1151,6 +1206,47 @@ function checkValueObjectUnits(report: MetaData, from: MetaData, err: (message: 
             `@from whose @of is '${parts.owner}.${fieldName}.${unit.name}'.`,
         );
       }
+    }
+  }
+}
+
+/**
+ * The measures `listed` aggregates through: itself for a measure.aggregate, its two operands for a
+ * ratio, and for a measure.derived each measure its @expr names (a ratio there read through its
+ * operands). Unresolved names are left out; the member rules report them.
+ */
+function aggregatesRead(listed: MetaMeasure, from: MetaData): MetaData[] {
+  const measure = (n: string | undefined): MetaData | undefined =>
+    n === undefined ? undefined : childOfType(from, TYPE_MEASURE, n);
+  const operandsOf = (m: MetaData | undefined): (MetaData | undefined)[] =>
+    m instanceof MetaMeasure && m.isRatio() ? [measure(m.numerator()), measure(m.denominator())] : [m];
+  if (listed.isDerived()) {
+    const expr = listed.expr();
+    return (expr === undefined ? [] : derivedExprFields(expr))
+      .flatMap((n) => operandsOf(measure(n)))
+      .filter((m): m is MetaData => m !== undefined);
+  }
+  return operandsOf(listed).filter((m): m is MetaData => m !== undefined);
+}
+
+/**
+ * R13 — a measure.derived that reads an attribute dimension reads that dimension's value for each
+ * group, so the report must list the dimension in @dimensions. A name that is also a measure is
+ * M11's to report.
+ */
+function checkDerivedDimensions(report: MetaData, from: MetaData, err: (message: string) => void): void {
+  const listedDims = new Set(reportDimensionItems(report).map((i) => i.name));
+  for (const item of reportMeasureNames(report)) {
+    const m = childOfType(from, TYPE_MEASURE, item.slice(item.lastIndexOf(CHILD_REF_SEPARATOR) + 1));
+    const expr = m instanceof MetaMeasure && m.isDerived() ? m.expr() : undefined;
+    if (expr === undefined) continue;
+    for (const name of derivedExprFields(expr)) {
+      if (listedDims.has(name) || childOfType(from, TYPE_MEASURE, name) !== undefined) continue;
+      if (childOfType(from, TYPE_DIMENSION, name) === undefined) continue;
+      err(
+        `: measure '${m!.name}' reads dimension '${name}', which @dimensions does not list. A derived measure ` +
+          `reads a dimension's value for each group, so the report must group by it.`,
+      );
     }
   }
 }

@@ -5,6 +5,7 @@
 // the same messages. Rendering the result as SQL is report-sql.ts's concern.
 
 import {
+  MEASURE_SUBTYPE_AGGREGATE,
   IDENTITY_REFERENCE_ATTR_REFERENCES,
   IDENTITY_SUBTYPE_REFERENCE,
   RELATIONSHIP_ATTR_OBJECT_REF,
@@ -184,7 +185,7 @@ export function resolveAggregate(
 /** A ratio operand: a `measure.aggregate` declared on (or inherited by) `from`. */
 export function ratioOperand(from: MetaObject, ratio: MetaMeasure, name: string | undefined, where: string): MetaMeasure {
   const m = name === undefined ? undefined : (declared(from, TYPE_MEASURE, name) as MetaMeasure | undefined);
-  if (m === undefined || m.isRatio()) {
+  if (m === undefined || m.subType !== MEASURE_SUBTYPE_AGGREGATE) {
     throw new Error(
       `${where}: ratio '${ratio.name}' operand '${name ?? ""}' is not a measure.aggregate on '${from.name}'.`,
     );

@@ -1,0 +1,103 @@
+{
+  "metadata.root": {
+    "package": "acme::studio",
+    "children": [
+      {
+        "object.value": {
+          "name": "Money",
+          "children": [
+            {
+              "field.decimal": {
+                "name": "amount",
+                "@required": true,
+                "@precision": 12,
+                "@scale": 2
+              }
+            },
+            {
+              "field.string": {
+                "name": "currency",
+                "@required": true,
+                "@maxLength": 3
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "TimeEntry",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "time_entries"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.object": {
+                "name": "amount",
+                "@objectRef": "Money",
+                "@storage": "flattened",
+                "@required": true
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "revenue",
+                "@agg": "sum",
+                "@of": "TimeEntry.amount.amount"
+              }
+            },
+            {
+              "measure.derived": {
+                "name": "revenueWithTax",
+                "@expr": {
+                  "fn": "multiply",
+                  "args": [
+                    {
+                      "field": "revenue"
+                    },
+                    {
+                      "value": 1.2
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.report": {
+          "name": "RevenueWithTax",
+          "@from": "TimeEntry",
+          "@dimensions": [],
+          "@measures": [
+            "revenueWithTax"
+          ],
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_revenuewithtax"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

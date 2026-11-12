@@ -173,6 +173,22 @@ export const REPORTING_DEFINITION: ProviderDefinition = {
       ]
     },
     {
+      "type": "measure",
+      "subType": "derived",
+      "description": "A named arithmetic expression (FR-044 R13) over measures of the same entity and the report's numeric attribute dimensions, typed decimal. @expr is FR-037 R5's first arithmetic wave: add, subtract, multiply and divide, each of two operands. divide lowers as a ratio does, so a zero divisor yields null. A report listing a derived measure that reads a dimension must list that dimension.",
+      "whenToUse": "A number computed from other measures or from a grouped value: utilization percent (billable hours x 100 / capacity), budget burn (cost / budget), net revenue (revenue - refunds).",
+      "children": [
+        {
+          "type": "attr",
+          "subType": "expression",
+          "name": "expr",
+          "min": 1,
+          "max": 1,
+          "description": "The arithmetic: { field: name } names a numeric measure.aggregate or measure.ratio of the same entity, or one of its numeric attribute dimensions (never another measure.derived); { value: n } is a number; { fn: add | subtract | multiply | divide, args: [a, b] } combines two operands."
+        }
+      ]
+    },
+    {
       "type": "segment",
       "subType": "filter",
       "description": "A named, reusable row filter on the declaring entity (FR-044). Measures and reports reference it by name; exporters emit it as a named segment.",

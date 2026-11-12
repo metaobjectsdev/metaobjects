@@ -486,7 +486,8 @@ interface MeasureDerivation {
 
 /** Table B for one measure. Undefined when its `@of` does not resolve. */
 function deriveMeasure(m: MetaMeasure, from: MetaObject, root: MetaRoot): MeasureDerivation | undefined {
-  if (m.isRatio()) return { subType: FIELD_SUBTYPE_DECIMAL };
+  // A quotient, and (R13) an arithmetic expression, are decimal whatever their operands.
+  if (m.isRatio() || m.isDerived()) return { subType: FIELD_SUBTYPE_DECIMAL };
   const agg = m.agg();
   if (agg === AGG_COUNT) return { subType: FIELD_SUBTYPE_LONG };
   // any / all are boolean whatever the source (the loader's M4 refuses a non-boolean @of).

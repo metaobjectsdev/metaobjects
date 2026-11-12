@@ -20,7 +20,13 @@ import type { MetaObject } from "../object/meta-object.js";
 import { OBJECT_REPORT_ATTR_FILTER, OBJECT_REPORT_ATTR_SEGMENT, OBJECT_REPORT_ATTR_SPINE } from "../object/object-constants.js";
 import {
   DIMENSION_SUBTYPE_TIME,
+  MEASURE_SUBTYPE_DERIVED,
   MEASURE_SUBTYPE_RATIO,
+  REPORTING_ATTR_EXPR,
+  DERIVED_FN_ADD,
+  DERIVED_FN_SUBTRACT,
+  DERIVED_FN_MULTIPLY,
+  DERIVED_FN_DIVIDE,
   REPORTING_ATTR_AGG,
   REPORTING_ATTR_DEFAULT,
   REPORTING_ATTR_DENOMINATOR,
@@ -33,6 +39,7 @@ import {
   REPORTING_ATTR_VIA,
 } from "./reporting-constants.js";
 import { reportSpine } from "./report-accessors.js";
+import { isDerivedExpr, type DerivedExprNode } from "./derived-expr.js";
 import { reportReadSource } from "./report-read-model.js";
 import { reportSpineEntity, type ReportField, type ReportShape } from "./report-shape.js";
 
@@ -107,7 +114,23 @@ function defaultClause(measure: MetaData): string {
  * `@default` ends either with the value it reads when there is nothing to aggregate; a
  * defaulted ratio is never null, so its null rule gives way to that clause.
  */
+/** R13: an arithmetic expression in words, fully parenthesised below the top so the reading is exact. */
+function describeExpr(node: DerivedExprNode, top = true): string {
+  if ("field" in node) return tick(node.field);
+  if ("value" in node) return tick(String(node.value));
+  const op =
+    node.fn === DERIVED_FN_ADD ? "+" : node.fn === DERIVED_FN_SUBTRACT ? "-" : node.fn === DERIVED_FN_MULTIPLY ? "×" : "÷";
+  const text = `${describeExpr(node.args[0], false)} ${op} ${describeExpr(node.args[1], false)}`;
+  return top ? text : `(${text})`;
+}
+
 export function describeMeasure(measure: MetaData): string {
+  if (measure.subType === MEASURE_SUBTYPE_DERIVED) {
+    const expr = measure.attr(REPORTING_ATTR_EXPR);
+    if (!isDerivedExpr(expr)) return "";
+    const divides = (n: DerivedExprNode): boolean => "fn" in n && (n.fn === DERIVED_FN_DIVIDE || n.args.some(divides));
+    return divides(expr) ? `${describeExpr(expr)}, null when a divisor is 0` : describeExpr(expr);
+  }
   const fallback = defaultClause(measure);
   if (measure.subType === MEASURE_SUBTYPE_RATIO) {
     const numerator = measure.attr(REPORTING_ATTR_NUMERATOR);
@@ -191,6 +214,7 @@ const AGGREGATE_ATTRS = [
   REPORTING_ATTR_DEFAULT,
 ] as const;
 const RATIO_ATTRS = [REPORTING_ATTR_NUMERATOR, REPORTING_ATTR_DENOMINATOR, REPORTING_ATTR_DEFAULT] as const;
+const DERIVED_ATTRS = [REPORTING_ATTR_EXPR] as const;
 const SEGMENT_ATTRS = [REPORTING_ATTR_FILTER] as const;
 
 /**
@@ -200,7 +224,10 @@ const SEGMENT_ATTRS = [REPORTING_ATTR_FILTER] as const;
  */
 export function reportingDescribedAttrs(node: MetaData): readonly string[] {
   if (node.type === TYPE_DIMENSION) return node.subType === DIMENSION_SUBTYPE_TIME ? TIME_DIMENSION_ATTRS : DIMENSION_ATTRS;
-  if (node.type === TYPE_MEASURE) return node.subType === MEASURE_SUBTYPE_RATIO ? RATIO_ATTRS : AGGREGATE_ATTRS;
+  if (node.type === TYPE_MEASURE) {
+    if (node.subType === MEASURE_SUBTYPE_DERIVED) return DERIVED_ATTRS;
+    return node.subType === MEASURE_SUBTYPE_RATIO ? RATIO_ATTRS : AGGREGATE_ATTRS;
+  }
   if (node.type === TYPE_SEGMENT) return SEGMENT_ATTRS;
   return [];
 }

@@ -87,6 +87,7 @@ import {
   docOf,
   grainsOf,
   measureMembers,
+  measuresRead,
   memberKey,
   segmentSpec,
   valueObjectMemberError,
@@ -896,10 +897,8 @@ class CubeModelBuilder {
       if (f.role !== "measure" || m === undefined) continue;
       listed.add(m.name);
       need(m);
-      if (m.isRatio()) {
-        need(ratioOperand(from.entity, m, m.numerator(), where));
-        need(ratioOperand(from.entity, m, m.denominator(), where));
-      }
+      // A ratio's operands, and a derived measure's operands and theirs, are members its SQL reads.
+      for (const o of measuresRead(from.entity, m, where)) need(o);
     }
     return from.measures
       .filter((m) => needed.has(m.name))

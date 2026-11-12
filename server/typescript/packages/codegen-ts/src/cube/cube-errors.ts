@@ -13,6 +13,8 @@ export const ERR_CUBE_NAME_COLLISION = "ERR_CUBE_NAME_COLLISION";
 export const ERR_CUBE_UNESCAPABLE_LITERAL = "ERR_CUBE_UNESCAPABLE_LITERAL";
 /** FR-044 R12: an `@of` names a value-object member, which the exporter does not map. */
 export const ERR_CUBE_VALUE_OBJECT_MEMBER = "ERR_CUBE_VALUE_OBJECT_MEMBER";
+/** FR-044 R13: a `measure.derived` reads a dimension, which a Cube measure cannot. */
+export const ERR_CUBE_DERIVED_DIMENSION = "ERR_CUBE_DERIVED_DIMENSION";
 /** The generator's dialect is not one it writes Cube SQL for (postgres, mysql). */
 export const ERR_CUBE_UNSUPPORTED_DIALECT = "ERR_CUBE_UNSUPPORTED_DIALECT";
 
@@ -28,6 +30,7 @@ export const CUBE_ERROR_CODES = [
   ERR_CUBE_UNESCAPABLE_LITERAL,
   ERR_CUBE_UNSUPPORTED_DIALECT,
   ERR_CUBE_VALUE_OBJECT_MEMBER,
+  ERR_CUBE_DERIVED_DIMENSION,
 ] as const;
 export type CubeErrorCode = (typeof CUBE_ERROR_CODES)[number];
 

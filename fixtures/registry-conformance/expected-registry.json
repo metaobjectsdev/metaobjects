@@ -3364,6 +3364,22 @@
     },
     {
       "type": "measure",
+      "subType": "derived",
+      "description": "A named arithmetic expression (FR-044 R13) over measures of the same entity and the report's numeric attribute dimensions, typed decimal. @expr is FR-037 R5's first arithmetic wave: add, subtract, multiply and divide, each of two operands. divide lowers as a ratio does, so a zero divisor yields null. A report listing a derived measure that reads a dimension must list that dimension.",
+      "whenToUse": "A number computed from other measures or from a grouped value: utilization percent (billable hours x 100 / capacity), budget burn (cost / budget), net revenue (revenue - refunds).",
+      "attrs": [
+        {
+          "name": "expr",
+          "valueType": "expression",
+          "isArray": false,
+          "required": true,
+          "description": "The arithmetic: { field: name } names a numeric measure.aggregate or measure.ratio of the same entity, or one of its numeric attribute dimensions (never another measure.derived); { value: n } is a number; { fn: add | subtract | multiply | divide, args: [a, b] } combines two operands."
+        }
+      ],
+      "children": []
+    },
+    {
+      "type": "measure",
       "subType": "ratio",
       "description": "A named quotient of two numeric measure.aggregate siblings (FR-044), lowered as numerator / NULLIF(denominator, 0) and typed decimal. A zero denominator yields null.",
       "whenToUse": "Averages per unit that are not a plain avg: average days engaged per starter.",
