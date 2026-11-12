@@ -784,17 +784,47 @@ public static partial class ValidationPasses
                         // A ref names one of the projection's own fields
                         // first (a passthrough, an origin.first, another computed — never itself, never
                         // an aggregate), else a base field.
+                        // ADR-0039: own — origin.* never inherits (ADR-0029), so a field's origin is declared on it.
+                        Func<string, MetaData?> ownOriginOf = name => obj.Children()
+                            .FirstOrDefault(f => f.Type == TYPE_FIELD && f.Name == name)?.OwnChildren()
+                            .FirstOrDefault(c => c.Type == TYPE_ORIGIN);
                         Func<string, string?> resolveField = name =>
                         {
                             if (!ReferenceEquals(obj, computedBase) && name != field.Name
                                 && obj.Children().FirstOrDefault(f => f.Type == TYPE_FIELD && f.Name == name) is { } own)
                             {
-                                var ownOrigin = own.OwnChildren().FirstOrDefault(c => c.Type == TYPE_ORIGIN);
-                                return ownOrigin?.SubType == ORIGIN_SUBTYPE_AGGREGATE ? null : own.SubType;
+                                return ownOriginOf(name)?.SubType == ORIGIN_SUBTYPE_AGGREGATE ? null : own.SubType;
                             }
                             return computedBase!.Children()
                                 .FirstOrDefault(f => f.Type == TYPE_FIELD && f.Name == name)?.SubType;
                         };
+                        // A sibling computed ref is inlined by the view, so the refs must not lead back here.
+                        Func<string, List<string>> computedRefs = name => ownOriginOf(name) is { SubType: ORIGIN_SUBTYPE_COMPUTED } o
+                            ? ExpressionGrammar.FieldRefs(o.OwnAttr(ORIGIN_COMPUTED_ATTR_EXPR)).Where(r => r != name).ToList()
+                            : [];
+                        Func<string, HashSet<string>> reach = start =>
+                        {
+                            var seen = new HashSet<string>(StringComparer.Ordinal);
+                            var pending = computedRefs(start);
+                            while (pending.Count > 0)
+                            {
+                                var r = pending[^1];
+                                pending.RemoveAt(pending.Count - 1);
+                                if (seen.Add(r)) pending.AddRange(computedRefs(r));
+                            }
+                            return seen;
+                        };
+                        HashSet<string> reached = !ReferenceEquals(obj, computedBase) ? reach(field.Name) : [];
+                        if (reached.Contains(field.Name))
+                        {
+                            // One error per cycle, on its first-declared member.
+                            var first = obj.Children().FirstOrDefault(f => f.Type == TYPE_FIELD && reached.Contains(f.Name) && reach(f.Name).Contains(field.Name));
+                            if (first?.Name == field.Name)
+                                errors.Add(new MetaError(
+                                    $"origin.computed on {obj.Name}.{field.Name}: @expr refers back to this field through other computed fields; a view cannot inline a cycle.",
+                                    ErrorCode.ERR_INVALID_ORIGIN, Envelope: src));
+                            continue;
+                        }
                         var inferred = ExpressionGrammar.InferExprType(expr, resolveField);
                         if (inferred.Errors.Count > 0)
                         {
@@ -2253,6 +2283,13 @@ public static partial class ValidationPasses
     /// </summary>
     private static string? ConditionProblem(object condition, MetaObject obj)
     {
+        var unrenderable = MetaObjects.Core.Attr.ExpressionGrammar.Nodes(condition)
+            .FirstOrDefault(n => n.ContainsKey(ExpressionGrammar.EXPR_CASE) || n.ContainsKey(ExpressionGrammar.EXPR_NOW));
+        if (unrenderable is not null)
+        {
+            var kind = unrenderable.ContainsKey(ExpressionGrammar.EXPR_CASE) ? ExpressionGrammar.EXPR_CASE : ExpressionGrammar.EXPR_NOW;
+            return $"is not a valid expression: a condition takes no '{kind}' node, since a CHECK can hold neither a CASE nor the current time.";
+        }
         var fields = new Dictionary<string, MetaField>(StringComparer.Ordinal);
         foreach (var f in obj.Fields()) fields.TryAdd(f.Name, f);
         var inferred = MetaObjects.Core.Attr.ExpressionGrammar.InferExprType(

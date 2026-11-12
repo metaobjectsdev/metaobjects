@@ -283,8 +283,9 @@ public class ExpressionAttribute extends MetaAttribute<Map<String, Object>> {
             return out;
         }
         if (n.containsKey(EXPR_NOW)) {
-            if (!(n.get(EXPR_NOW) instanceof String)) {
-                out.add("expression '" + EXPR_NOW + "' must be an ISO-8601 duration string");
+            Object duration = n.get(EXPR_NOW);
+            if (!(duration instanceof String) || !ReportingConstants.ISO_DURATION_RE.matcher((String) duration).matches()) {
+                out.add("expression '" + EXPR_NOW + "' must be an ISO-8601 duration string (e.g. '-P7D'), got " + duration);
                 return out;
             }
             List<String> extra = new ArrayList<>();
@@ -292,6 +293,10 @@ public class ExpressionAttribute extends MetaAttribute<Map<String, Object>> {
             if (!extra.isEmpty()) {
                 out.add("expression '" + EXPR_NOW + "' takes only '" + EXPR_NOW_START_OF + "' beside it, not "
                     + String.join(", ", extra));
+            } else if (n.containsKey(EXPR_NOW_START_OF)
+                    && !ReportingConstants.RELATIVE_START_OF_UNITS.contains(n.get(EXPR_NOW_START_OF))) {
+                out.add("expression '" + EXPR_NOW_START_OF + "' must be one of "
+                    + String.join(", ", ReportingConstants.RELATIVE_START_OF_UNITS) + ", got " + n.get(EXPR_NOW_START_OF));
             }
             return out;
         }
@@ -407,7 +412,7 @@ public class ExpressionAttribute extends MetaAttribute<Map<String, Object>> {
             if (t == null) {
                 return new InferResult(null, List.of(
                     "expression field '" + String.valueOf(n.get("field"))
-                        + "' does not resolve to a base entity field"));
+                        + "' does not resolve to a projection field (not an aggregate) or a base entity field"));
             }
             return new InferResult(t, List.of());
         }
@@ -429,7 +434,8 @@ public class ExpressionAttribute extends MetaAttribute<Map<String, Object>> {
                 if (operand == null && w.type != null && !BooleanField.SUBTYPE_BOOLEAN.equals(w.type)) {
                     errors.add("a searched '" + EXPR_CASE + "' needs a boolean '" + EXPR_CASE_WHEN + "', got " + w.type);
                 }
-                if (operand != null && operand.type != null && w.type != null && !w.type.equals(operand.type)) {
+                if (operand != null && operand.type != null && w.type != null
+                        && !((Map<?, ?>) arm.get(EXPR_CASE_WHEN)).containsKey("value") && !w.type.equals(operand.type)) {
                     errors.add("a simple '" + EXPR_CASE + "' compares its " + operand.type + " '" + EXPR_CASE_OPERAND
                         + "' with a " + w.type + " '" + EXPR_CASE_WHEN + "'");
                 }

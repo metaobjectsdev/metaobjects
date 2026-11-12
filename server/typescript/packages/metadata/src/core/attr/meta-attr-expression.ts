@@ -30,7 +30,9 @@ import { type AttrValue } from "../../shared/meta-data.js";
 import { DATA_TYPE_OBJECT, type DataType } from "../../data-type.js";
 import { ATTR_SUBTYPE_EXPRESSION } from "./attr-constants.js";
 import { registerAttrClass } from "../../attr-class-map.js";
-import { FILTER_RELATIVE_NOW, FILTER_RELATIVE_START_OF } from "../reporting/reporting-constants.js";
+import {
+  FILTER_RELATIVE_NOW, FILTER_RELATIVE_START_OF, ISO_DURATION_RE, RELATIVE_START_OF_UNITS,
+} from "../reporting/reporting-constants.js";
 
 // --- Expression-only op/fn names (the comparison + and/or/isNull names are the
 // --- shared filter vocabulary above; these three are new). ---
@@ -81,9 +83,16 @@ export function validateExprNode(node: unknown): string[] {
       ? [] : ["expression 'value' must be a scalar literal (string/number/boolean/null)"];
   }
   if (EXPR_NOW in node) {
-    if (typeof node[EXPR_NOW] !== "string") return [`expression '${EXPR_NOW}' must be an ISO-8601 duration string`];
+    const duration = node[EXPR_NOW];
+    if (typeof duration !== "string" || !ISO_DURATION_RE.test(duration)) {
+      return [`expression '${EXPR_NOW}' must be an ISO-8601 duration string (e.g. '-P7D'), got ${JSON.stringify(duration)}`];
+    }
     const extra = Object.keys(node).filter((k) => k !== EXPR_NOW && k !== EXPR_NOW_START_OF);
-    return extra.length === 0 ? [] : [`expression '${EXPR_NOW}' takes only '${EXPR_NOW_START_OF}' beside it, not ${extra.join(", ")}`];
+    if (extra.length > 0) return [`expression '${EXPR_NOW}' takes only '${EXPR_NOW_START_OF}' beside it, not ${extra.join(", ")}`];
+    const startOf = node[EXPR_NOW_START_OF];
+    return EXPR_NOW_START_OF in node && !(RELATIVE_START_OF_UNITS as readonly unknown[]).includes(startOf)
+      ? [`expression '${EXPR_NOW_START_OF}' must be one of ${RELATIVE_START_OF_UNITS.join(", ")}, got ${JSON.stringify(startOf)}`]
+      : [];
   }
   if (EXPR_CASE in node) {
     const arms = node[EXPR_CASE];
@@ -155,7 +164,7 @@ export function inferExprType(node: ExprNode, resolveField: (name: string) => st
   if ("field" in n) {
     const t = resolveField(n.field as string);
     return t === undefined
-      ? { type: undefined, errors: [`expression field '${String(n.field)}' does not resolve to a base entity field`] }
+      ? { type: undefined, errors: [`expression field '${String(n.field)}' does not resolve to a projection field (not an aggregate) or a base entity field`] }
       : { type: t, errors: [] };
   }
   if ("value" in n) return { type: literalType(n.value as ExprLiteral), errors: [] };
@@ -173,7 +182,7 @@ export function inferExprType(node: ExprNode, resolveField: (name: string) => st
       if (operand === undefined && w.type !== undefined && w.type !== FIELD_SUBTYPE_BOOLEAN) {
         errors.push(`a searched '${EXPR_CASE}' needs a boolean '${EXPR_CASE_WHEN}', got ${w.type}`);
       }
-      if (operand?.type !== undefined && w.type !== undefined && w.type !== operand.type) {
+      if (operand?.type !== undefined && w.type !== undefined && !("value" in arm.when) && w.type !== operand.type) {
         errors.push(`a simple '${EXPR_CASE}' compares its ${operand.type} '${EXPR_CASE_OPERAND}' with a ${w.type} '${EXPR_CASE_WHEN}'`);
       }
       const t = inferExprType(arm.then, resolveField);

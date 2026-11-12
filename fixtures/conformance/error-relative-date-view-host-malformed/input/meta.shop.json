@@ -1,0 +1,129 @@
+{
+  "metadata.root": {
+    "package": "acme::shop",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Program",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "programs"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "relationship.association": {
+                "name": "purchases",
+                "@objectRef": "Purchase",
+                "@cardinality": "many"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Purchase",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "purchases"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "programId"
+              }
+            },
+            {
+              "field.timestamp": {
+                "name": "purchasedAt"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "programRef",
+                "@references": "Program",
+                "@fields": [
+                  "programId"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "ProgramPurchaseCounts",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "program_purchase_counts"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id",
+                "extends": "Program.id"
+              }
+            },
+            {
+              "field.int": {
+                "name": "recentPurchaseCount",
+                "children": [
+                  {
+                    "origin.aggregate": {
+                      "@agg": "count",
+                      "@of": "Purchase.id",
+                      "@via": "Program.purchases",
+                      "@filter": {
+                        "purchasedAt": {
+                          "gte": {
+                            "now": "7 days ago"
+                          }
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "extends": "Program.id"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

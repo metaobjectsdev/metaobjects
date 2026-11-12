@@ -1,0 +1,25 @@
+{
+  "errors": [
+    {
+      "code": "ERR_BAD_ATTR_VALUE",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.checks.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[0]['object.entity'].children[7]['validator.atLeastOne']"
+      }
+    },
+    {
+      "code": "ERR_BAD_ATTR_VALUE",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.checks.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[0]['object.entity'].children[8]['validator.atLeastOne']"
+      }
+    }
+  ],
+  "warnings": []
+}

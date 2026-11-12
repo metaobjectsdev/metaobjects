@@ -147,7 +147,16 @@ Each item below is described in full under Added, Changed or Fixed; this list is
   - an `origin.computed` expression may use `now` and `case` (searched, or simple with an
     `operand`), and a ref in it may name another of the projection's own fields (a passthrough,
     an `origin.first` or another `origin.computed`, never itself or an aggregate) before a base
-    field (`origin-computed-case-over-joined`, `error-origin-computed-case-mixed-types`).
+    field (`origin-computed-case-over-joined`, `error-origin-computed-case-mixed-types`). A
+    simple `case` compares a literal `when` with any `operand`, so an enum or long operand maps
+    its codes to labels;
+  - the loaders refuse what a view cannot lower: a `now` whose value is not an ISO-8601 duration
+    or whose `startOf` is not day, week or month (`error-origin-computed-now-bad-duration`); a
+    searched `case` whose `when` is not boolean (`error-origin-computed-case-non-boolean-when`);
+    computed fields that refer to each other in a cycle (`error-origin-computed-cycle`); and a
+    malformed relative date in a view host's `@filter` (`error-relative-date-view-host-malformed`);
+  - a validator `@condition` still refuses `case` and `now` (`ERR_BAD_ATTR_VALUE`,
+    `error-validator-condition-now`): it becomes a database CHECK, which can hold neither.
 
 - **An int-backed enum can be an array.** `@intValueMap` together with `isArray: true` (the
   map on the field, or inherited from a shared enum) now loads in every port instead of

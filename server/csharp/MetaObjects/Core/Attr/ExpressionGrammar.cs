@@ -67,12 +67,16 @@ public static class ExpressionGrammar
 
     /// <summary>The field names an expression tree references, in order of appearance.</summary>
     public static List<string> FieldRefs(object? node)
+        => Nodes(node).Select(n => Get(n, KEY_FIELD)).OfType<string>().ToList();
+
+    /// <summary>Every node of an expression tree, root first.</summary>
+    public static List<IReadOnlyDictionary<string, object?>> Nodes(object? node)
     {
-        var refs = new List<string>();
+        var nodes = new List<IReadOnlyDictionary<string, object?>>();
         void Walk(object? x)
         {
             if (x is not IReadOnlyDictionary<string, object?> n) return;
-            if (Get(n, KEY_FIELD) is string f) refs.Add(f);
+            nodes.Add(n);
             Walk(Get(n, KEY_LEFT));
             Walk(Get(n, KEY_RIGHT));
             Walk(Get(n, KEY_ARG));
@@ -84,7 +88,7 @@ public static class ExpressionGrammar
                     if (arm is IReadOnlyDictionary<string, object?> a) { Walk(Get(a, EXPR_CASE_WHEN)); Walk(Get(a, EXPR_CASE_THEN)); }
         }
         Walk(node);
-        return refs;
+        return nodes;
     }
 
     // -------------------------------------------------------------------------
@@ -122,9 +126,13 @@ public static class ExpressionGrammar
 
         if (n.ContainsKey(EXPR_NOW))
         {
-            if (Get(n, EXPR_NOW) is not string) return [$"expression '{EXPR_NOW}' must be an ISO-8601 duration string"];
+            if (Get(n, EXPR_NOW) is not string duration || !ISO_DURATION_RE.IsMatch(duration))
+                return [$"expression '{EXPR_NOW}' must be an ISO-8601 duration string (e.g. '-P7D'), got {Str(Get(n, EXPR_NOW))}"];
             var extra = n.Keys.Where(k => k != EXPR_NOW && k != EXPR_NOW_START_OF).ToList();
-            return extra.Count == 0 ? [] : [$"expression '{EXPR_NOW}' takes only '{EXPR_NOW_START_OF}' beside it, not {string.Join(", ", extra)}"];
+            if (extra.Count > 0) return [$"expression '{EXPR_NOW}' takes only '{EXPR_NOW_START_OF}' beside it, not {string.Join(", ", extra)}"];
+            return n.ContainsKey(EXPR_NOW_START_OF) && (Get(n, EXPR_NOW_START_OF) is not string unit || !RELATIVE_START_OF_UNITS.Contains(unit))
+                ? [$"expression '{EXPR_NOW_START_OF}' must be one of {string.Join(", ", RELATIVE_START_OF_UNITS)}, got {Str(Get(n, EXPR_NOW_START_OF))}"]
+                : [];
         }
 
         if (n.ContainsKey(EXPR_CASE))
@@ -209,7 +217,7 @@ public static class ExpressionGrammar
             var name = (string)Get(n, KEY_FIELD)!;
             var t = resolveField(name);
             return t is null
-                ? new InferResult(null, [$"expression field '{name}' does not resolve to a base entity field"])
+                ? new InferResult(null, [$"expression field '{name}' does not resolve to a projection field (not an aggregate) or a base entity field"])
                 : new InferResult(t, []);
         }
 
@@ -234,7 +242,8 @@ public static class ExpressionGrammar
                 errors.AddRange(w.Errors);
                 if (operand is null && w.Type is not null && w.Type != FIELD_SUBTYPE_BOOLEAN)
                     errors.Add($"a searched '{EXPR_CASE}' needs a boolean '{EXPR_CASE_WHEN}', got {w.Type}");
-                if (operand is { Type: { } ot } && w.Type is not null && w.Type != ot)
+                if (operand is { Type: { } ot } && w.Type is not null && Get(arm, EXPR_CASE_WHEN) is IReadOnlyDictionary<string, object?> wn
+                    && !wn.ContainsKey(KEY_VALUE) && w.Type != ot)
                     errors.Add($"a simple '{EXPR_CASE}' compares its {ot} '{EXPR_CASE_OPERAND}' with a {w.Type} '{EXPR_CASE_WHEN}'");
                 var t = InferExprType(Get(arm, EXPR_CASE_THEN), resolveField);
                 errors.AddRange(t.Errors);

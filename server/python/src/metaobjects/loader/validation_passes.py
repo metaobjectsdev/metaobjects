@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import math
 import re
-from typing import Callable, NamedTuple
+from typing import Any, Callable, NamedTuple
 
 from ..errors import ErrorCode, MetaError
 from ..source.error_source import LoaderWarning
@@ -25,7 +25,12 @@ from .validate_source_parameter_ref import validate_source_parameter_ref
 from .validate_source_escapes import validate_source_escapes
 from .validate_reporting import validate_reporting
 from ..codegen.runtime.duration_wire import DURATION_RE
-from ..meta.core.reporting.reporting_constants import FILTER_RELATIVE_NOW, FILTER_RELATIVE_START_OF
+from ..meta.core.reporting.reporting_constants import (
+    FILTER_RELATIVE_NOW,
+    FILTER_RELATIVE_START_OF,
+    ISO_DURATION_RE,
+    RELATIVE_START_OF_UNITS,
+)
 from ..meta.core.field.field_constants import (
     ENUM_MEMBER_PATTERN,
     FIELD_ATTR_COERCE_DEFAULT,
@@ -1196,12 +1201,19 @@ def validate_expr_node(node: object) -> list[str]:
             else ["expression 'value' must be a scalar literal (string/number/boolean/null)"]
         )
     if EXPR_NOW in node:
-        if not isinstance(node[EXPR_NOW], str):
-            return [f"expression '{EXPR_NOW}' must be an ISO-8601 duration string"]
+        duration = node[EXPR_NOW]
+        if not isinstance(duration, str) or ISO_DURATION_RE.match(duration) is None:
+            return [f"expression '{EXPR_NOW}' must be an ISO-8601 duration string (e.g. '-P7D'), got {duration!r}"]
         extra = [k for k in node if k not in (EXPR_NOW, EXPR_NOW_START_OF)]
-        return [] if not extra else [
-            f"expression '{EXPR_NOW}' takes only '{EXPR_NOW_START_OF}' beside it, not {', '.join(extra)}"
-        ]
+        if extra:
+            return [f"expression '{EXPR_NOW}' takes only '{EXPR_NOW_START_OF}' beside it, not {', '.join(extra)}"]
+        start_of = node.get(EXPR_NOW_START_OF)
+        if EXPR_NOW_START_OF in node and not (isinstance(start_of, str) and start_of in RELATIVE_START_OF_UNITS):
+            return [
+                f"expression '{EXPR_NOW_START_OF}' must be one of "
+                f"{', '.join(RELATIVE_START_OF_UNITS)}, got {start_of!r}"
+            ]
+        return []
     if EXPR_CASE in node:
         arms = node[EXPR_CASE]
         if not isinstance(arms, list) or not arms:
@@ -1283,7 +1295,7 @@ def infer_expr_type(
     if "field" in n:
         t = resolve_field(n["field"])
         return (
-            InferResult(None, [f"expression field '{n['field']}' does not resolve to a base entity field"])
+            InferResult(None, [f"expression field '{n['field']}' does not resolve to a projection field (not an aggregate) or a base entity field"])
             if t is None
             else InferResult(t, [])
         )
@@ -1303,7 +1315,10 @@ def infer_expr_type(
             errors.extend(w.errors)
             if operand is None and w.type is not None and w.type != FIELD_SUBTYPE_BOOLEAN:
                 errors.append(f"a searched '{EXPR_CASE}' needs a boolean '{EXPR_CASE_WHEN}', got {w.type}")
-            if operand is not None and operand.type is not None and w.type is not None and w.type != operand.type:
+            if (
+                operand is not None and operand.type is not None and w.type is not None
+                and "value" not in arm[EXPR_CASE_WHEN] and w.type != operand.type
+            ):
                 errors.append(
                     f"a simple '{EXPR_CASE}' compares its {operand.type} '{EXPR_CASE_OPERAND}' "
                     f"with a {w.type} '{EXPR_CASE_WHEN}'"
@@ -2662,14 +2677,29 @@ def _validate_origin_paths(
                         for own in _obj.children():
                             if own.type != TYPE_FIELD or own.name != name:
                                 continue
-                            for oc in own.own_children():
-                                if oc.type == TYPE_ORIGIN and oc.sub_type == ORIGIN_SUBTYPE_AGGREGATE:
-                                    return None
+                            own_origin = _own_origin_of(own)
+                            if own_origin is not None and own_origin.sub_type == ORIGIN_SUBTYPE_AGGREGATE:
+                                return None
                             return own.sub_type
                     for f in _base.children():
                         if f.type == TYPE_FIELD and f.name == name:
                             return f.sub_type
                     return None
+
+                reached = _computed_reach(obj, node.name) if obj is not base else set()
+                if node.name in reached:
+                    # One error per cycle, on its first-declared member.
+                    first = next(
+                        f for f in obj.children()
+                        if f.type == TYPE_FIELD and f.name in reached
+                        and node.name in _computed_reach(obj, f.name)
+                    )
+                    if first.name == node.name:
+                        errors.append(MetaError(
+                            f"origin.computed on {obj.name}.{node.name}: @expr refers back to this "
+                            f"field through other computed fields; a view cannot inline a cycle.",
+                            ErrorCode.ERR_INVALID_ORIGIN, envelope=src))
+                    continue
 
                 inferred = infer_expr_type(expr, _resolve_field)
                 if inferred.errors:
@@ -3938,16 +3968,58 @@ def _validate_identity_sequence(root: MetaData, errors: list[MetaError]) -> None
 # become a CHECK guard (see _condition_problem) — all ERR_BAD_ATTR_VALUE. Read RESOLVING
 # (ADR-0039). Mirrors TS validateCrossFieldValidators.
 def _expr_field_refs(node: object, out: set[str]) -> None:
+    for n in _expr_nodes(node):
+        if isinstance(n.get("field"), str):
+            out.add(n["field"])
+
+
+def _expr_nodes(node: object, out: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
+    """Every node of an attr.expression tree, root first."""
+    out = [] if out is None else out
     if not isinstance(node, dict):
-        return
-    if isinstance(node.get("field"), str):
-        out.add(node["field"])
-    for key in ("left", "right", "arg"):
-        _expr_field_refs(node.get(key), out)
+        return out
+    out.append(node)
+    for key in ("left", "right", "arg", EXPR_CASE_OPERAND, EXPR_CASE_ELSE):
+        _expr_nodes(node.get(key), out)
     args = node.get("args")
     if isinstance(args, list):
         for a in args:
-            _expr_field_refs(a, out)
+            _expr_nodes(a, out)
+    arms = node.get(EXPR_CASE)
+    if isinstance(arms, list):
+        for arm in arms:
+            if isinstance(arm, dict):
+                _expr_nodes(arm.get(EXPR_CASE_WHEN), out)
+                _expr_nodes(arm.get(EXPR_CASE_THEN), out)
+    return out
+
+
+def _own_origin_of(field: MetaData) -> MetaData | None:
+    # ADR-0039: own — origin.* never inherits (ADR-0029), so a field's origin is declared on it.
+    return next((c for c in field.own_children() if c.type == TYPE_ORIGIN), None)
+
+
+def _computed_reach(obj: MetaData, start: str) -> set[str]:
+    """The projection's computed fields reachable from ``start``'s @expr through sibling
+    computed refs (a view inlines each one, so the walk must not return to its start)."""
+
+    def refs(name: str) -> set[str]:
+        out: set[str] = set()
+        field = next((f for f in obj.children() if f.type == TYPE_FIELD and f.name == name), None)
+        origin = _own_origin_of(field) if field is not None else None
+        if origin is not None and origin.sub_type == ORIGIN_SUBTYPE_COMPUTED:
+            _expr_field_refs(origin.attr(ORIGIN_ATTR_EXPR), out)
+        out.discard(name)
+        return out
+
+    seen: set[str] = set()
+    pending = list(refs(start))
+    while pending:
+        r = pending.pop()
+        if r not in seen:
+            seen.add(r)
+            pending.extend(refs(r))
+    return seen
 
 
 # What a literal compared with a field.duration must be.
@@ -3986,6 +4058,13 @@ def _condition_problem(condition: object, obj: MetaData) -> str | None:
         @values, for field.duration, an ISO-8601 duration;
       - no comparison has a null literal: ``x = NULL`` is never true, so use isNull / isNotNull.
     Mirrors TS conditionProblem."""
+    for n in _expr_nodes(condition):
+        if EXPR_CASE in n or EXPR_NOW in n:
+            kind = EXPR_CASE if EXPR_CASE in n else EXPR_NOW
+            return (
+                f"is not a valid expression: a condition takes no '{kind}' node, "
+                f"since a CHECK can hold neither a CASE nor the current time."
+            )
     fields = {f.name: f for f in obj.fields()}
     inferred = infer_expr_type(
         condition, lambda name: fields[name].sub_type if name in fields else None
