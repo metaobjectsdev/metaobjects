@@ -26,7 +26,7 @@ import { dialectModule } from "../dialect-module.js";
 import {
   namesRef, physicalNameExpr, sourceSchemaExpr, indexNameExpr, columnExpr,
 } from "../names.js";
-import { resolveTableSchema } from "@metaobjectsdev/metadata";
+import { resolveTableSchema, VALIDATOR_ATTR_CONSTRAINT_NAME } from "@metaobjectsdev/metadata";
 import { renderEnumIntCustomType } from "./enum-int-codec.js";
 import { renderDurationCustomType } from "./duration-wire-helper.js";
 import { renderRelationsBlock } from "./relations-block.js";
@@ -194,6 +194,17 @@ export function renderDrizzleSchema(
     const colExpr = columnNameExpr(field, spec.dbName);
     const values = spec.checkConstraintValues;
     const sqlSym = imp("sql@drizzle-orm");
+    // A declared @constraintName (ADR-0039 resolving) names the CHECK, as migrate-ts's
+    // withDeclaredName does: the literal name, the expression as either arm below spells it.
+    const declared = field.attr(VALIDATOR_ATTR_CONSTRAINT_NAME);
+    if (typeof declared === "string" && declared.length > 0) {
+      return {
+        name: code`${JSON.stringify(declared)}`,
+        expr: names === undefined || values === undefined
+          ? code`${spec.checkConstraint ?? ""}`
+          : code`\${${sqlSym}.raw(${colExpr})} IN (${values})`,
+      };
+    }
     // No artifact in this run (the documented ADR-0034 opt-out) — spell both halves, which
     // is what this file did unconditionally before.
     if (names === undefined || values === undefined) {

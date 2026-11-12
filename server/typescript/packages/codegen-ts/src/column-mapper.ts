@@ -47,6 +47,7 @@ import {
   AGG_ALL,
   AGG_COLLECT,
   resolveEnumMaxLength,
+  VALIDATOR_ATTR_DB_CHECK,
 } from "@metaobjectsdev/metadata";
 import { columnNameFromField } from "./naming.js";
 import { enumValues, intValueMapOf, intValueForMember } from "./enum-meta.js";
@@ -1030,8 +1031,10 @@ export function mapColumnType(
   if (dollarTypeRef !== undefined) result.dollarTypeRef = dollarTypeRef;
   if (leadingComment !== undefined) result.leadingComment = leadingComment;
 
-  // Enum fields: emit a CHECK constraint listing the valid member values.
-  if (subType === FIELD_SUBTYPE_ENUM && !isArray) {
+  // Enum fields: emit a CHECK constraint listing the valid member values — unless the enum opts
+  // out (`@dbCheck: false`, ADR-0039 resolving), exactly as migrate-ts's buildChecks decides, or
+  // `drizzle-kit push` would re-add the CHECK `meta migrate` leaves out.
+  if (subType === FIELD_SUBTYPE_ENUM && !isArray && field.attr(VALIDATOR_ATTR_DB_CHECK) !== false) {
     const values = enumValues(field);
     if (values !== undefined && values.length > 0) {
       const intMap = intValueMapOf(field);
