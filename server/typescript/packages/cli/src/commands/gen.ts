@@ -13,7 +13,7 @@ import { requirementTestsAdvice } from "../lib/requirement-tests-advice.js";
 import { warnIfManifestIgnored } from "../lib/manifest-ignored-check.js";
 import { scanSourceForAntiPatterns } from "../lib/anti-patterns.js";
 import {
-  antiPatternRows, ranSection, skippedSection, warnCapped,
+  antiPatternRows, ranSection, skippedSection, warnAdvisory,
   type AdvisoryFindingRow, type AdvisorySection,
 } from "../lib/advisory.js";
 import { loadMemory, resolveCollection } from "@metaobjectsdev/sdk";
@@ -400,13 +400,13 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
 
   // The human-readable half of the advisory pass, printed after the file listing
   // where a reader expects it. Capped for a terminal; the structured payload above
-  // already carried every finding, and the tail line says so.
+  // already carried every finding, so a structured run prints only a pointer here.
   if (antiPatterns.total > 0) {
     log.warn(
       `\nmeta gen — ${antiPatterns.total} place(s) hand-roll what MetaObjects can model ` +
         `(advisory — declaring the construct lets codegen own it):`,
     );
-    warnCapped(antiPatterns.rows.map((r) => `  ${r.message}`), flags.limit, { structured: fmt !== "text" });
+    warnAdvisory(antiPatterns.rows.map((r) => `  ${r.message}`), flags.limit, { structured: fmt !== "text" });
   }
 
   const hasFailure = files.some((f) => f.status === "conflict" || f.status === "refused");

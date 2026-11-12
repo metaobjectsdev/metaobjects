@@ -38,7 +38,7 @@ import {
   IDENTITY_SUBTYPE_PRIMARY, OBJECT_SUBTYPE_ENTITY, OBJECT_SUBTYPE_VALUE,
   FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_INT, FIELD_SUBTYPE_STRING,
   FIELD_SUBTYPE_ENUM, FIELD_SUBTYPE_URI, FIELD_SUBTYPE_INET, FIELD_SUBTYPE_DURATION,
-  FIELD_SUBTYPE_DATE, FIELD_SUBTYPE_TIME, FIELD_SUBTYPE_TIMESTAMP,
+  FIELD_SUBTYPE_DATE, FIELD_SUBTYPE_TIME, FIELD_SUBTYPE_TIMESTAMP, FIELD_SUBTYPE_UUID,
   FIELD_ATTR_REQUIRED, FIELD_ATTR_DEFAULT, FIELD_ATTR_MAX_LENGTH, FIELD_ATTR_VALUES,
   FIELD_ATTR_LENIENT, FIELD_ATTR_STRING_FORMAT, FIELD_ATTR_LOCAL_TIME,
   STRING_FORMAT_EMAIL, STRING_FORMAT_HOSTNAME,
@@ -109,6 +109,27 @@ async function updateSchemaOf(entity: MetaObject): Promise<GeneratedModule[strin
 
 const accepts = (schema: GeneratedModule[string], value: unknown) =>
   schema.safeParse(value).success;
+
+describe("field.uuid write schemas check the 8-4-4-4-12 shape", () => {
+  // A bare z.string() let a malformed uuid FK reach Postgres, which answered 500
+  // ("invalid input syntax for type uuid") where a 400 was due.
+  test("insert and update accept a well-formed uuid, any version bits, and reject anything else", async () => {
+    const clientId = metaField(FIELD_SUBTYPE_UUID, "clientId");
+    clientId.setAttr(FIELD_ATTR_REQUIRED, true);
+    const insert = await insertSchemaOf(entityWith("Project", clientId));
+    const update = await updateSchemaOf(entityWith("Project", clientId));
+
+    for (const ok of ["3f2504e0-4f89-41d3-9a0c-0305e82c3301", "00000000-0000-0000-0000-000000000001", "3F2504E0-4F89-41D3-9A0C-0305E82C3301"]) {
+      expect(accepts(insert, { clientId: ok })).toBe(true);
+      expect(accepts(update, { clientId: ok })).toBe(true);
+    }
+    for (const bad of ["nope", "", "3f2504e0-4f89-41d3-9a0c-0305e82c330", "3f2504e04f8941d39a0c0305e82c3301"]) {
+      expect(accepts(insert, { clientId: bad })).toBe(false);
+      expect(accepts(update, { clientId: bad })).toBe(false);
+    }
+    expect(accepts(update, {})).toBe(true);
+  });
+});
 
 describe("FR-036 Pin 2 — validator.regex @pattern is FULL-MATCH, not a search", () => {
   // The emitter wraps an authored pattern as `^(?:…)$`. The non-capturing group

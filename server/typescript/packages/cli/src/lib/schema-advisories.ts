@@ -14,6 +14,10 @@ export function schemaAdvisoryLines(advisories: readonly SchemaAdvisory[] | unde
       case "sequence-not-applied":
         return `${t}.${a.column}: SQLite and D1 have no sequence, so the primary key's @sequenceStart / `
           + `@sequenceName is not applied and the key counts from 1.`;
+      case "view-names-renamed-column":
+        return `view ${a.view} still names ${t}.${a.column}, which this migration renames to ${a.to}. `
+          + `A rename never rewrites a view body, so this view is recreated as declared and the `
+          + `migration fails at apply; change its definition (its @sql) to ${a.to} first.`;
     }
   });
 }

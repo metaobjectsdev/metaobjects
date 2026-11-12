@@ -58,7 +58,12 @@ export const ProgramInsertSchema = z.object({
   summary: z.string().max(2000).optional(),
   priceCents: z.number().int().optional(),
   coverKey: z.string().max(80).optional(),
-  authorId: z.string(),
+  authorId: z
+    .string()
+    .regex(
+      /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/,
+      "Invalid uuid",
+    ),
   syllabus: z.array(SyllabusSectionInsertSchema).optional(),
   instructorProfile: InstructorProfileInsertSchema.optional(),
 });
@@ -69,7 +74,13 @@ export const ProgramUpdateSchema = z.object({
   summary: z.string().max(2000).optional().nullable(),
   priceCents: z.number().int().optional().nullable(),
   coverKey: z.string().max(80).optional().nullable(),
-  authorId: z.string().optional(),
+  authorId: z
+    .string()
+    .regex(
+      /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/,
+      "Invalid uuid",
+    )
+    .optional(),
   syllabus: z.array(SyllabusSectionInsertSchema).optional().nullable(),
   instructorProfile: InstructorProfileInsertSchema.optional().nullable(),
 });

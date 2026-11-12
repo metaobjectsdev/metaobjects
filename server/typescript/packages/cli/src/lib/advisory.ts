@@ -120,8 +120,8 @@ export const RULE_REFERENTIAL_ACTION_CONFLICT = "overridden-referential-action";
 const ADVISORY_HELP: ReadonlyArray<{ matches: (rule: string) => boolean; line: (n: number) => string }> = [
   {
     matches: (r) => r === RULE_UNINDEXED_FK,
-    line: (n) =>
-      `${n} foreign key(s) with no covering index — see antiPatterns.rows[] (rule "${RULE_UNINDEXED_FK}"); each names the index.lookup to declare`,
+    line: () =>
+      `foreign key(s) with no covering index — see antiPatterns.rows[] (rule "${RULE_UNINDEXED_FK}"), one row naming each key and the index.lookup to declare`,
   },
   {
     matches: (r) => r === RULE_REFERENTIAL_ACTION_CONFLICT,
@@ -290,4 +290,19 @@ export function warnCapped(
       ? `  …and ${withheld} more — every finding is in the --format payload on stdout.`
       : `  …and ${withheld} more. Raise the cap with --limit <n>, or --limit ${ADVISORY_LIMIT_ALL}.`,
   );
+}
+
+/**
+ * Print an advisory section's findings: `warnCapped` in text mode, and in structured mode
+ * only a pointer. Every advisory row is already in the payload on stdout, and printing each
+ * again on stderr doubled a large run's output (one adopter's `meta verify` ran to ~350
+ * lines). The section's header line, printed by the caller, still says how many.
+ */
+export function warnAdvisory(
+  lines: readonly string[],
+  limit: number,
+  opts: { structured: boolean },
+): void {
+  if (!opts.structured) return warnCapped(lines, limit, opts);
+  if (lines.length > 0) log.warn("  (listed in the --format payload on stdout)");
 }

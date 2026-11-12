@@ -115,8 +115,9 @@ An `object.projection` uses the same rule, so `OrderSummary` is at
 their fetch URLs from the TypeScript `$path`, and every backend now mounts that
 same spelling, so a React/TanStack client works against any port's server.
 A view-backed `object.report` has a generated list route at the same rule and, in
-TypeScript, a generated list hook (`use<Report>List`); it has no grid, form or detail
-hook.
+TypeScript, a generated list hook named `use` + the plural of the report's name
+(`useMemberUtilizations` for `MemberUtilization`; `use<Report>List` only when the plural is
+the name itself, as in `useSeriesList`); it has no grid, form or detail hook.
 
 **This is a change, and it was a breaking one.** Each port used to spell the
 segment differently and they agreed only on single regular words — which was

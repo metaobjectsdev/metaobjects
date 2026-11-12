@@ -38,6 +38,10 @@ export interface UnindexedFkFinding {
   /** `<entity FQN>.<reference name>`. */
   construct: string;
   message: string;
+  /** `<Entity>.<reference>` (or `<Entity> (<fk>)`), the key in the author's terms. */
+  label: string;
+  /** The `index.lookup` to declare, as `{ name: …, fields: … }`. */
+  declaration: string;
 }
 
 export interface UnindexedFkOptions {
@@ -108,6 +112,8 @@ export function scanForUnindexedForeignKeys(root: MetaData, opts: UnindexedFkOpt
       out.push({
         file: files[0] ?? "",
         construct: `${fqn}.${ref?.name ?? fk.name}`,
+        label,
+        declaration: `{ name: ${indexName}, fields: ${fieldList} }`,
         message:
           `${label}: foreign key (${fields.join(", ")}) → ${fk.refTable} has no index covering it, ` +
           `so joins from ${fk.refTable} and its ON DELETE checks scan ${table.name}. ` +
@@ -116,4 +122,27 @@ export function scanForUnindexedForeignKeys(root: MetaData, opts: UnindexedFkOpt
     }
   }
   return out;
+}
+
+/**
+ * Every unindexed foreign key as ONE finding. The keys share a cause and a fix, so a model
+ * with 25 of them read as 25 separate problems and buried everything else `meta verify`
+ * said. The summary still names each key and the exact `index.lookup` to declare for it.
+ * `construct` lists every key's `<entity FQN>.<reference>`, comma-separated; `file` is the
+ * one file they share, or "" when they span several.
+ */
+export function summarizeUnindexedFks(
+  findings: readonly UnindexedFkFinding[],
+): { file: string; construct: string; message: string } | undefined {
+  if (findings.length === 0) return undefined;
+  const files = new Set(findings.map((f) => f.file));
+  return {
+    file: files.size === 1 ? findings[0]!.file : "",
+    construct: findings.map((f) => f.construct).join(", "),
+    message:
+      `${findings.length} foreign key(s) have no index covering their columns, so joins from the ` +
+      `referenced table and its ON DELETE checks scan the referencing one. To index them, declare ` +
+      `an ${INDEX_LOOKUP} on each: ` +
+      findings.map((f) => `${f.label} ${f.declaration}`).join("; "),
+  };
 }

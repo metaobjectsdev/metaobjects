@@ -495,6 +495,12 @@ Each item below is described in full under Added, Changed or Fixed; this list is
 
 ### Documentation
 
+- **Index names and list-hook names, corrected.** The authoring reference's index examples are
+  table-scoped (`userByEmail`, not `byEmail`) and say an index name is schema-wide, so a repeated
+  one fails `meta migrate` with `ERR_DUPLICATE_SQL_NAME`. The generated list hook is
+  `use<plural>`, or `use<Name>List` when the plural equals the name; the reporting page had it
+  backwards, and the codegen and runtime-UI skills named only one form.
+
 - **Separate-repo model sharing (FR-023 Phase 2) close-out.** The feature page's Phase 2 section is now
   the shipped per-port matrix (consume, check, publish, runtime load, transports), the deferred list
   names what is still not built, and the verify, codegen, authoring, audit and capability-sheet skills
@@ -517,6 +523,14 @@ Each item below is described in full under Added, Changed or Fixed; this list is
   fields.
 
 ### Changed
+
+- **Quieter `meta verify` advisories.** The anti-pattern scanner skips comment lines; it flags
+  minor-unit math (`* 100`, `/ 100`, `.toFixed(2)`, `parseFloat`) only when the operand is
+  money-named, so hours formatted to two places no longer read as money; and a `.reduce` counts
+  as a hand-rolled aggregate only when it accumulates with `+` outside `.tsx`/`.jsx` UI source.
+  Unindexed foreign keys are one finding naming every key and its `index.lookup`, not one per
+  key. With a `--format` payload on stdout, the text on stderr gives each section's header and a
+  pointer instead of repeating every finding.
 
 - **The requirements reference pages install in every stack.** They used to install only when
   `meta init` saw a `requirement.*` node, which a new project has not written yet, so a project
@@ -662,6 +676,22 @@ Each item below is described in full under Added, Changed or Fixed; this list is
   maps them. A default (`snake_case`) page gains the column of each multi-word field.
 
 ### Fixed
+
+- **Generated routes on Postgres answer 400, not 500, for bad uuid input.** On an entity with a
+  uuid foreign key, `?search=` ran ILIKE against the uuid column (the allowlist carries it as
+  `subType: "string", format: "uuid"`), and Postgres has no `uuid ~~* text` operator. The search
+  now skips string rules that carry a `format`. A malformed uuid in `:id` reached Postgres as a
+  literal ("invalid input syntax for type uuid"); `coerceIdForColumn` now rejects it, so GET,
+  PATCH and DELETE answer 400 `{"error":"invalid_id"}` as a malformed numeric id already did. A
+  `field.uuid` in the generated insert and update Zod schemas now checks the 8-4-4-4-12 shape, so
+  a malformed uuid foreign key in a POST or PATCH body answers 400 `validation`. SQLite stores a
+  uuid as text, so none of this showed there; a new integration test runs the stock
+  `routesFile()` output against Postgres with uuid keys and a uuid foreign key. Owned copies
+  pick the fix up when re-ejected.
+- **`meta migrate` warns when a renamed column is still named by a view.** A rename never
+  rewrites a view body, so a view whose `@sql` still names the old column is recreated as
+  declared and the migration fails at apply. The plan now names the view, the column and its new
+  name, and the "recreated only because" note no longer lists that view among the harmless ones.
 
 - **An enum's `@default` is what an untouched record stores**. C#: a scalar enum
   started at `default(TEnum)`, not at `@default`, while the EF sentinel was `@default`, so EF

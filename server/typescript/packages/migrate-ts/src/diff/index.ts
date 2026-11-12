@@ -15,6 +15,7 @@ import { detectColumnRenames, detectTableRenames } from "./rename-heuristic.js";
 import { firstViewSqlDifference, viewSqlEquals } from "../view-sql-compare.js";
 import { viewReplaceIsLegal, type ViewReplaceProbe } from "../view-replace.js";
 import { liveViewReadsTable, sqlNamesIdentifier } from "../view-reads.js";
+import { viewsNamingRenamedColumns } from "../view-change-reason.js";
 import { expectedFromShadow, shadowIdentityProbe, type ShadowSchemaSource } from "../shadow-expected.js";
 import { checkExprEquals, checkExprRespelledNullSafe, renameExprIdentifiers } from "../check-expr-compare.js";
 import { checkMatchesLive, columnDefaultMatchesLive, indexExprMatchesLive, NO_EXPR_CANON, type ExprCanon, type ExprCanonProbe, type IndexExprCanon } from "../expr-canon.js";
@@ -407,6 +408,7 @@ export async function diff(
     advisories: [
       ...intervalAsStringAdvisories(expectedTables, (id) => actualTables.get(id) ?? predecessors.get(id)),
       ...(args.dialect === "sqlite" || args.dialect === "d1" ? sequenceNotAppliedAdvisories(changes) : []),
+      ...viewsNamingRenamedColumns(changes),
     ],
     ...(args.dialect === "postgres" ? { exprCanonPath } : {}),
     ...(shadowAnswer !== undefined && "unavailable" in shadowAnswer ? { shadowUnavailable: shadowAnswer.unavailable } : {}),

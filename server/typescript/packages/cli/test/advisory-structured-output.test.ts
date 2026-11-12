@@ -167,8 +167,11 @@ describe("meta gen --format json carries the advisory findings", () => {
       // The count is stated where a reader will see it, not left to be counted.
       expect(payload.help.join(" ")).toContain(String(FINDINGS));
 
-      // The human copy still goes to stderr, where it always did.
+      // stderr keeps the section header and points at the payload; it does not print each
+      // finding a second time (a large run's output doubled when it did).
       expect(err).toContain("hand-roll what MetaObjects can model");
+      expect(err).toContain("listed in the --format payload on stdout");
+      expect(err).not.toContain("meta types field.currency");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

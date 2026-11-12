@@ -403,7 +403,7 @@ like a keyless read-only projection. For a report `<R>` the generators you have 
 | `queriesFile()` | `<R>.queries.ts` | `list<Plural>` only. No by-id query |
 | `routesFile()` / `routesFileHono()` | `<R>.routes.ts` / `<R>.routes.hono.ts` | GET list; `POST` answers 405; no `/:id` route |
 | `namesFile()` | `<R>.names.ts` | the view and column names |
-| `tanstackQuery()` | `<R>.hooks.ts`, `<R>.meta.ts` | the list hook (`use<R>List`, with the report's filter type) and its descriptor. No detail hook, no mutation |
+| `tanstackQuery()` | `<R>.hooks.ts`, `<R>.meta.ts` | the list hook (`use<plural of R>`, or `use<R>List` when the plural is the name; with the report's filter type) and its descriptor. No detail hook, no mutation |
 | `barrel()` | `index.ts` | one export |
 
 Every derived field with filter operators is filterable and sortable. A derived field that can
