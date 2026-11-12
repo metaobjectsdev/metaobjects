@@ -27,7 +27,7 @@ every runtime `ObjectManager` and `verify` read it, so they always produce the s
 |---|---|---|---|
 | `columns` | `snake_case`, `literal`, `kebab-case`, `pascal`, or a name your application registered | a field with no `@column` | `snake_case` |
 | `tables` | `snake_case`, `literal`, or a name your application registered | a source with no `@table`/`@view`/`@proc`/`@function`: its `name`, else the object's name made plural | `snake_case` |
-| `collections` | `standard`, `none`, or a name your application registered | an object with no `@collectionName`: the collection name the generated C# DbSet takes | `standard` |
+| `collections` | `standard`, `none`, or a name your application registered | an object with no `@collectionName`: the collection name the generated C# DbSet takes and a backwards `@via` hop is named by | `standard` |
 
 An unknown key fails when the file is read, and so does a name no registered strategy answers.
 Index and constraint names are unchanged.

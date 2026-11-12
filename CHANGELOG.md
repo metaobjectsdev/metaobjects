@@ -108,6 +108,14 @@ Each item below is described in full under Added, Changed or Fixed; this list is
   TypeScript, `NamingStrategies.RegisterPluralizer` in C#, `NamingStrategies.registerPluralizer` in
   Java, `register_pluralizer` in Python). Every port registers the attr and reads the key, and
   refuses an unknown pluralizer when it reads the config.
+- **Reverse `@via` hops.** An origin's `@via` hop may walk an `identity.reference` backwards, from
+  the entity it targets to the entity holding it, named by the holder's collection name in lower
+  camel case (`Patient.consents` walks `Consent.patient`; a declared `"@collectionName":
+  "CaseHistory"` gives `Case.caseHistory`). The hop is to-many, so a passthrough across it is
+  refused and an aggregate over it is allowed, and two references that answer one name are refused
+  (`ERR_AMBIGUOUS_PATH`). A declared relationship or reference of the same name still wins. Every
+  port's loader implements it, gated by `origin-reverse-reference-hop`,
+  `origin-reverse-hop-collection-name` and `error-origin-reverse-hop-ambiguous`.
 
 - **An int-backed enum can be an array.** `@intValueMap` together with `isArray: true` (the
   map on the field, or inherited from a shared enum) now loads in every port instead of
