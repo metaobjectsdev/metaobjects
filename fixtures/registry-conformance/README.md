@@ -257,7 +257,8 @@ still fails everywhere.
   generic `view.*` controls (`checkbox`, `date`, `dropdown`, `hidden`, `hotlink`, `image`,
   `month`, `number`, `password`, `radio`, `text`, `textarea`, `web`) and their attrs
   (`view.textarea @rows`, `view.image @accept/@aspectRatio/@maxBytes/@maxEdge/@store`) are
-  `["typescript"]`; `object.* @object` (ADR-0001) is `["java"]`. They used to be carved out
+  `["typescript"]`; `object.* @object` (ADR-0001) is `["java"]`; `object.* @collectionName` is
+  `["csharp"]`. They used to be carved out
   as `PRESENTATION_ONLY` / `NATIVE_BINDING`; both reasons are retired. The parity gaps are
   listed in `docs/CONFORMANCE.md`, "Split coverage".
 - **Kind 2 — language-specific by nature.** The attr carries `"ports": [...]`:

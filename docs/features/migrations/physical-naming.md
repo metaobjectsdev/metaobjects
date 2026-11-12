@@ -62,9 +62,10 @@ and is `pascal` otherwise:
 
 Table rules register the same way (`namingStrategies.tables`, `RegisterTables`, `registerTables`,
 `register_table_naming_rule`) and name a source with no physical name; the entity-name fallback
-is still made plural after the rule. Pluralizers register the same way (`registerPluralizer`, `RegisterPluralizer`,
-`registerPluralizer`, `register_pluralizer`): an object name in, in its declared casing, its
-collection name out. `standard` is the cross-port plural and `none` keeps the name as it is. A built-in name cannot be replaced. Register the same
+is still made plural after the rule. Pluralizers register the same way (`registerPluralizer`,
+`RegisterPluralizer`, `registerPluralizer`, `register_pluralizer`): an object name in, in its
+declared casing, its collection name out. `standard` is the cross-port plural and `none` keeps the
+name as it is. A built-in name cannot be replaced. Register the same
 strategy in every port that reads the database, because each port resolves the names itself.
 Every port looks a strategy up by name each time it applies one, so registering again under the
 same name replaces it for everything that runs afterwards. A test that registers its own calls

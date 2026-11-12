@@ -148,6 +148,9 @@ canonical (`fixtures/registry-conformance/expected-registry.json`).
   - `view.image`, and its `@accept`, `@aspectRatio`, `@maxBytes`, `@maxEdge`, `@store`
 - *Implemented in Java only* (`implementedIn: ["java"]`): `object.* @object` (ADR-0001), the
   native class an object binds to. Java's runtime acts on it; Java's own behaviour is unchanged.
+- *Implemented in C# only* (`implementedIn: ["csharp"]`): `object.* @collectionName`, the
+  collection name the generated DbSet takes. Every port registers it and reads the `naming.collections`
+  key that names the default pluralizer; C# codegen does not apply that pluralizer yet.
 - *Loads strictly in every port.* Each port registers the `metaobjects-ui-web` provider
   (`view.textarea @rows`, the `view.image` attrs) and `@object` / `@objectAdapter` on
   `object.*`, loads all three fixtures strictly, and emits `implementedIn` in its manifest, which
