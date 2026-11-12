@@ -13,6 +13,7 @@ import {
   FIELD_SUBTYPE_INT,
   FIELD_SUBTYPE_LONG,
   measureDerivedSubType,
+  resolveDimensionOf,
   reportShape,
   reportSpine,
   reportSpineHops,
@@ -32,14 +33,13 @@ import {
   pathsToJoins,
   projectionViewName,
   shortAliasFor,
-  sourceColumnNameFor,
   walkViaPath,
   type ExtractContext,
   type Path,
 } from "./extract-view-spec.js";
 import {
   authoredText,
-  dimensionOfField,
+  reportColumnName,
   ratioOperand,
   resolveAggregate,
   resolveDimensionViaPath,
@@ -74,7 +74,7 @@ function aggregateOf(
   ctx: ExtractContext,
 ): ReportAggregate {
   const where = `report '${report.name}' measure '${measure.name}'`;
-  const { agg, distinct, fields, condition } = resolveAggregate(measure, from, root, baseAlias, ctx, where);
+  const { agg, distinct, fields, columns, condition } = resolveAggregate(measure, from, root, baseAlias, ctx, where);
   const cast = castFor(agg, fields[0]);
   // Table D: `@default` is read through the measure itself, so a ratio operand that the report
   // does not list still carries its own.
@@ -89,7 +89,7 @@ function aggregateOf(
   return {
     agg,
     distinct,
-    refs: fields.map((f) => `${baseAlias}.${sourceColumnNameFor(f, ctx)}`),
+    refs: columns.map((c) => `${baseAlias}.${c}`),
     ...(condition !== undefined ? { filter: condition } : {}),
     ...(cast !== undefined ? { cast } : {}),
     ...(defaultValue !== undefined ? { defaultValue } : {}),
@@ -239,14 +239,14 @@ export function extractReportSpec(report: MetaObject, root: MetaRoot, ctx: Extra
     const dbColAlias = columnNameFromField(f.name, ctx.columnNamingStrategy);
     if (f.role === "dimension") {
       const dim = f.dimension;
-      // A time dimension below the hour grain carries no typeSource; resolve by reportShape's rule.
-      const of = f.typeSource ?? (dim === undefined ? undefined : dimensionOfField(dim, from, root));
+      // Resolved by reportShape's rule; a member of a flattened value object reads its own column.
+      const of = dim === undefined ? undefined : resolveDimensionOf(dim, from, root);
       if (of === undefined) throw new Error(`report '${report.name}': dimension '${f.name}' @of does not resolve.`);
       const path = pathOf.get(f);
       const alias = path === undefined ? baseAlias : aliasAtEndOf(path, joins);
-      const ref = `${alias}.${sourceColumnNameFor(of, ctx)}`;
+      const ref = `${alias}.${reportColumnName(of, ctx)}`;
       if (f.grain !== undefined) {
-        return { kind: "timeDimension", fieldName: f.name, dbColAlias, ref, grain: f.grain, temporal: temporalOf(of) };
+        return { kind: "timeDimension", fieldName: f.name, dbColAlias, ref, grain: f.grain, temporal: temporalOf(of.field) };
       }
       return { kind: "dimension", fieldName: f.name, dbColAlias, ref };
     }

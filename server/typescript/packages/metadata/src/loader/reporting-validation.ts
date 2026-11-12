@@ -59,6 +59,7 @@ import {
   FIELD_SUBTYPE_DATE,
   FIELD_SUBTYPE_TIMESTAMP,
   FIELD_ATTR_OBJECT_REF,
+  FIELD_ATTR_STORAGE,
 } from "../core/field/field-constants.js";
 import {
   IDENTITY_SUBTYPE_REFERENCE,
@@ -103,7 +104,7 @@ import {
 import { MetaDimension } from "../core/reporting/meta-dimension.js";
 import { MetaMeasure } from "../core/reporting/meta-measure.js";
 import { MetaSegment } from "../core/reporting/meta-segment.js";
-import { measureResultSubType } from "../core/reporting/report-shape.js";
+import { isFlattenedField, measureResultSubType } from "../core/reporting/report-shape.js";
 import {
   reportDerivedFieldName,
   reportDimensionItems,
@@ -246,6 +247,53 @@ function fieldOf(obj: MetaData, name: string): MetaData | undefined {
   return childOfType(obj, TYPE_FIELD, name);
 }
 
+/**
+ * R12 — the column an `@of` path names on `entity`: `field`, or `field.member` for a member of a
+ * value object stored flattened (one column per member). Reports the first failure through
+ * `err` and returns undefined. `fieldMissing` words the message for an absent `field`.
+ */
+function ofColumn(
+  entity: MetaData,
+  path: readonly string[],
+  item: string,
+  err: (message: string) => void,
+  fieldMissing: () => string,
+): MetaData | undefined {
+  const field = fieldOf(entity, path[0]!);
+  if (field === undefined) {
+    err(fieldMissing());
+    return undefined;
+  }
+  const memberName = path[1];
+  if (memberName === undefined) return field;
+  const valueObject = field.subType === FIELD_SUBTYPE_OBJECT ? refTargetOf(field) : undefined;
+  if (valueObject === undefined) {
+    err(`@of '${item}' names member '${memberName}' of '${path[0]!}', a field.${field.subType} with no value object.`);
+    return undefined;
+  }
+  if (!isFlattenedField(field)) {
+    const storage = field.attr(FIELD_ATTR_STORAGE);
+    err(
+      `@of '${item}' names a member of '${path[0]!}', whose value object is stored as ` +
+        `${typeof storage === "string" ? storage : "jsonb (the default)"}. A report reads a member only under ` +
+        `@storage: flattened, where the member has a column of its own.`,
+    );
+    return undefined;
+  }
+  const member = fieldOf(valueObject, memberName);
+  if (member === undefined) {
+    err(`@of '${item}' names no member '${memberName}' on value object '${valueObject.resolutionKey()}'.`);
+    return undefined;
+  }
+  return member;
+}
+
+/** The object a field's `@objectRef` resolves to (ADR-0059 R3 package rule), when it is one. */
+function refTargetOf(field: MetaData): MetaData | undefined {
+  const target = refTarget(field, FIELD_ATTR_OBJECT_REF);
+  return target !== undefined && target.type === TYPE_OBJECT ? target : undefined;
+}
+
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
@@ -382,8 +430,8 @@ function checkDimension(ctx: MemberCtx, dim: MetaDimension): void {
   const of = dim.of();
   if (of === undefined) return; // missing @of is ERR_MISSING_REQUIRED_ATTR (attr schema pass)
   const parts = splitDotted(of);
-  if (parts === undefined || parts.path.length !== 1) {
-    err(`@of '${of}' must be Entity.field.`);
+  if (parts === undefined || parts.path.length > 2) {
+    err(`@of '${of}' must be Entity.field or Entity.field.member.`);
     return;
   }
   // D1 — after @via, a bare Owner resolves in the package of the entity @via reaches: the path
@@ -409,17 +457,13 @@ function checkDimension(ctx: MemberCtx, dim: MetaDimension): void {
   // the host IS the checked entity: a dimension inherited from a base is checked against the
   // inheritor's own (possibly overriding) field.
   const lookup = via === undefined ? ofEntity : named!;
-  const field = fieldOf(lookup, fieldName);
-  if (field === undefined) {
-    const declaredOnTerminal = lookup !== ofEntity && fieldOf(ofEntity, fieldName) !== undefined;
-    err(
-      declaredOnTerminal
-        ? `@of '${of}' names no field '${fieldName}' on '${shown(ctx, lookup)}': only '${shown(ctx, ofEntity)}', ` +
-            `the entity @via reaches, declares it. Name it '${ofEntity.name}.${fieldName}'.`
-        : `@of '${of}' names no field '${fieldName}' on '${shown(ctx, lookup)}'.`,
-    );
-    return;
-  }
+  const field = ofColumn(lookup, parts.path, of, err, () =>
+    lookup !== ofEntity && fieldOf(ofEntity, fieldName) !== undefined
+      ? `@of '${of}' names no field '${fieldName}' on '${shown(ctx, lookup)}': only '${shown(ctx, ofEntity)}', ` +
+          `the entity @via reaches, declares it. Name it '${ofEntity.name}.${fieldName}'.`
+      : `@of '${of}' names no field '${fieldName}' on '${shown(ctx, lookup)}'.`,
+  );
+  if (field === undefined) return;
 
   // D5 — a dimension groups by a scalar. A field.object (or a field carrying @objectRef) is a JSON
   // document: no port serves a report over one, and a document is not a value to group rows by.
@@ -668,8 +712,8 @@ function checkAggregateColumns(
   const fields: MetaData[] = [];
   for (const item of columns) {
     const parts = splitDotted(item);
-    if (parts === undefined || parts.path.length !== 1) {
-      err(`@of '${item}' must be Entity.field.`);
+    if (parts === undefined || parts.path.length > 2) {
+      err(`@of '${item}' must be Entity.field or Entity.field.member.`);
       return undefined;
     }
     const named = resolveObjectRef(ctx.root, parts.owner, pkgOf(ctx.declaring)).node;
@@ -680,11 +724,14 @@ function checkAggregateColumns(
       );
       return undefined;
     }
-    const field = fieldOf(ctx.host, parts.path[0]!);
-    if (field === undefined) {
-      err(`@of '${item}' names no field '${parts.path[0]!}' on '${ctx.declaring.resolutionKey()}'.`);
-      return undefined;
-    }
+    const field = ofColumn(
+      ctx.host,
+      parts.path,
+      item,
+      err,
+      () => `@of '${item}' names no field '${parts.path[0]!}' on '${ctx.declaring.resolutionKey()}'.`,
+    );
+    if (field === undefined) return undefined;
     // M10 — a measure aggregates scalars. A field.object (or a field carrying @objectRef) is a JSON
     // document, which no port aggregates in a report.
     if (field.subType === FIELD_SUBTYPE_OBJECT || objectRefOf(field) !== undefined) {
@@ -998,6 +1045,9 @@ function checkReport(root: MetaData, report: MetaData, sink: ErrorSink): void {
     if (measureName !== undefined) claim(measureName, `measure '${measureName}'`);
   }
 
+  // R12 — amounts in different units are never combined.
+  checkValueObjectUnits(report, from, err);
+
   // R7 — @segment names a segment of @from.
   const segment = report.attr(OBJECT_REPORT_ATTR_SEGMENT);
   if (typeof segment === "string" && childOfType(from, TYPE_SEGMENT, segment) === undefined) {
@@ -1053,6 +1103,56 @@ function checkReport(root: MetaData, report: MetaData, sink: ErrorSink): void {
   // S1 / F2 — the report's row scope over @from.
   const filter = report.attr(OBJECT_REPORT_ATTR_FILTER);
   if (isPlainObject(filter)) checkFilter(filter, from, fromKey, label, report, "", sink);
+}
+
+/**
+ * R12 — a measure that sums, averages or takes the min or max of a numeric member of a flattened
+ * value object (Money's amount) combines rows only when the report groups by each non-numeric
+ * member of that value object (Money's currency): otherwise amounts in different currencies are
+ * added. Checked for every listed measure.aggregate and every operand of a listed ratio; the
+ * grouping is an attribute dimension of @from, with no @via, whose @of names the same
+ * `field.member`. A measure whose @of fails M1 is skipped (M1 reports it).
+ */
+function checkValueObjectUnits(report: MetaData, from: MetaData, err: (message: string) => void): void {
+  const grouped = new Set<string>();
+  for (const item of reportDimensionItems(report)) {
+    const dim = childOfType(from, TYPE_DIMENSION, item.name);
+    if (!(dim instanceof MetaDimension) || dim.isTime() || dim.via() !== undefined) continue;
+    const path = splitDotted(dim.of() ?? "")?.path;
+    if (path?.length === 2) grouped.add(path.join(CHILD_REF_SEPARATOR));
+  }
+  const checked = new Set<MetaData>();
+  for (const item of reportMeasureNames(report)) {
+    const listed = childOfType(from, TYPE_MEASURE, item.slice(item.lastIndexOf(CHILD_REF_SEPARATOR) + 1));
+    if (!(listed instanceof MetaMeasure)) continue;
+    const aggregates = listed.isRatio()
+      ? [listed.numerator(), listed.denominator()].map((n) => (n === undefined ? undefined : childOfType(from, TYPE_MEASURE, n)))
+      : [listed];
+    for (const m of aggregates) {
+      if (!(m instanceof MetaMeasure) || m.subType !== MEASURE_SUBTYPE_AGGREGATE || checked.has(m)) continue;
+      checked.add(m);
+      const agg = m.agg();
+      if (agg !== AGG_SUM && agg !== AGG_AVG && agg !== AGG_MIN && agg !== AGG_MAX) continue;
+      const of = m.ofColumns()[0] ?? "";
+      const parts = splitDotted(of);
+      if (parts?.path.length !== 2) continue;
+      const [fieldName, memberName] = parts.path as [string, string];
+      const field = fieldOf(from, fieldName);
+      const valueObject = field !== undefined && isFlattenedField(field) ? refTargetOf(field) : undefined;
+      const member = valueObject === undefined ? undefined : fieldOf(valueObject, memberName);
+      if (valueObject === undefined || member === undefined || !NUMERIC_FIELD_SUBTYPES.includes(member.subType)) continue;
+      // ADR-0039: resolving — a unit member the value object inherits qualifies its amounts too.
+      for (const unit of valueObject.children().filter((c) => c.type === TYPE_FIELD)) {
+        if (NUMERIC_FIELD_SUBTYPES.includes(unit.subType) || grouped.has(`${fieldName}.${unit.name}`)) continue;
+        err(
+          `: measure '${m.name}' takes @agg '${agg}' of '${of}', a member of value object ` +
+            `'${valueObject.resolutionKey()}', but the report does not group by its member '${unit.name}', so ` +
+            `amounts with different '${unit.name}' values would be combined. List an attribute dimension of ` +
+            `@from whose @of is '${parts.owner}.${fieldName}.${unit.name}'.`,
+        );
+      }
+    }
+  }
 }
 
 /**

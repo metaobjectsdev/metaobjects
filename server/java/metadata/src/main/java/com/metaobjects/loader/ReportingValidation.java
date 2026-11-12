@@ -253,6 +253,43 @@ final class ReportingValidation {
         return childOfType(obj, MetaField.TYPE_FIELD, name);
     }
 
+    /**
+     * R12 — the column an {@code @of} path names on {@code entity}: {@code field}, or
+     * {@code field.member} for a member of a value object stored flattened (one column per
+     * member). Reports the first failure through {@code err} and returns {@code null}.
+     */
+    private static MetaData ofColumn(MetaData entity, List<String> path, String item, Consumer<String> err,
+            java.util.function.Supplier<String> fieldMissing) {
+        MetaData field = fieldOf(entity, path.get(0));
+        if (field == null) {
+            err.accept(fieldMissing.get());
+            return null;
+        }
+        if (path.size() == 1) return field;
+        String memberName = path.get(1);
+        MetaObject valueObject = ObjectField.SUBTYPE_OBJECT.equals(field.getSubType())
+                ? References.refTarget(field, MetaObject.ATTR_OBJECT_REF) : null;
+        if (valueObject == null) {
+            err.accept("@of '" + item + "' names member '" + memberName + "' of '" + path.get(0) + "', a field."
+                    + field.getSubType() + " with no value object.");
+            return null;
+        }
+        if (!ReportShape.isFlattenedField(field)) {
+            String storage = stringAttr(field, ObjectField.ATTR_STORAGE);
+            err.accept("@of '" + item + "' names a member of '" + path.get(0) + "', whose value object is stored as "
+                    + (storage == null ? "jsonb (the default)" : storage) + ". A report reads a member only under "
+                    + "@storage: flattened, where the member has a column of its own.");
+            return null;
+        }
+        MetaData member = fieldOf(valueObject, memberName);
+        if (member == null) {
+            err.accept("@of '" + item + "' names no member '" + memberName + "' on value object '"
+                    + valueObject.getName() + "'.");
+            return null;
+        }
+        return member;
+    }
+
     /** An object operand carrying a {@code now} key — a relative-date value, well-formed
      *  ({@code { now }} plus an optional {@code startOf}) or not. A malformed one is refused, never read as data. */
     private static boolean isRelativeValue(Object v) {
@@ -434,8 +471,8 @@ final class ReportingValidation {
         String of = dim.getOf();
         if (of == null) return; // missing @of is ERR_MISSING_REQUIRED_ATTR (attr schema pass)
         Dotted parts = splitDotted(of);
-        if (parts == null || parts.path().size() != 1) {
-            err.accept("@of '" + of + "' must be Entity.field.");
+        if (parts == null || parts.path().size() > 2) {
+            err.accept("@of '" + of + "' must be Entity.field or Entity.field.member.");
             return;
         }
         // D1 — after @via, a bare Owner resolves in the package of the entity @via reaches: the
@@ -459,16 +496,14 @@ final class ReportingValidation {
         // field, or the dimension names a column the base table lacks. Without @via the host IS
         // the checked entity.
         MetaData lookup = via == null ? ofEntity : named;
-        MetaData field = fieldOf(lookup, fieldName);
-        if (field == null) {
-            boolean declaredOnTerminal = lookup != ofEntity && fieldOf(ofEntity, fieldName) != null;
-            err.accept(declaredOnTerminal
+        final MetaData terminalEntity = ofEntity;
+        MetaData field = ofColumn(lookup, parts.path(), of, err, () ->
+                lookup != terminalEntity && fieldOf(terminalEntity, fieldName) != null
                     ? "@of '" + of + "' names no field '" + fieldName + "' on '" + shown(ctx, lookup) + "': only '"
-                        + shown(ctx, ofEntity) + "', the entity @via reaches, declares it. Name it '"
-                        + ofEntity.getShortName() + "." + fieldName + "'."
+                        + shown(ctx, terminalEntity) + "', the entity @via reaches, declares it. Name it '"
+                        + terminalEntity.getShortName() + "." + fieldName + "'."
                     : "@of '" + of + "' names no field '" + fieldName + "' on '" + shown(ctx, lookup) + "'.");
-            return;
-        }
+        if (field == null) return;
 
         // D5 — a dimension groups by a scalar. A field.object (or a field carrying @objectRef) is
         // a JSON document: no port serves a report over one, and a document is not a value to
@@ -720,8 +755,8 @@ final class ReportingValidation {
         List<MetaData> fields = new ArrayList<>();
         for (String item : columns) {
             Dotted parts = splitDotted(item);
-            if (parts == null || parts.path().size() != 1) {
-                err.accept("@of '" + item + "' must be Entity.field.");
+            if (parts == null || parts.path().size() > 2) {
+                err.accept("@of '" + item + "' must be Entity.field or Entity.field.member.");
                 return null;
             }
             MetaData named = ValidationPhase.resolveRootObject(ctx.root(), parts.owner(), pkgOf(ctx.declaring()));
@@ -730,12 +765,9 @@ final class ReportingValidation {
                         + "'. A measure aggregates its own entity's rows; declare it on the entity that owns the column.");
                 return null;
             }
-            MetaData field = fieldOf(ctx.host(), parts.path().get(0));
-            if (field == null) {
-                err.accept("@of '" + item + "' names no field '" + parts.path().get(0) + "' on '"
-                        + ctx.declaring().getName() + "'.");
-                return null;
-            }
+            MetaData field = ofColumn(ctx.host(), parts.path(), item, err, () -> "@of '" + item
+                    + "' names no field '" + parts.path().get(0) + "' on '" + ctx.declaring().getName() + "'.");
+            if (field == null) return null;
             // M10 — a measure aggregates scalars. A field.object (or a field carrying @objectRef)
             // is a JSON document, which no port aggregates in a report.
             if (isDocumentField(field)) {
@@ -1032,6 +1064,9 @@ final class ReportingValidation {
             if (measureName != null) claim.accept(measureName, "measure '" + measureName + "'");
         }
 
+        // R12 — amounts in different units are never combined.
+        checkValueObjectUnits(report, from, message -> sink.push(report, ErrorCode.ERR_INVALID_REPORT, label, message));
+
         // R7 — @segment names a segment of @from.
         String segment = stringAttr(report, MetaObject.ATTR_REPORT_SEGMENT);
         if (segment != null && childOfType(from, ReportingConstants.TYPE_SEGMENT, segment) == null) {
@@ -1103,6 +1138,64 @@ final class ReportingValidation {
      * ERR_REPORT_FOREIGN_MEASURE (it is another entity's measure) or ERR_INVALID_REPORT (it
      * is nobody's) and returns {@code null}.
      */
+    /**
+     * R12 — a measure that sums, averages or takes the min or max of a numeric member of a
+     * flattened value object (Money's amount) combines rows only when the report groups by each
+     * non-numeric member of that value object (Money's currency). Checked for every listed
+     * measure.aggregate and every operand of a listed ratio; the grouping is an attribute
+     * dimension of @from, with no @via, whose @of names the same {@code field.member}. A measure
+     * whose @of fails M1 is skipped (M1 reports it).
+     */
+    private static void checkValueObjectUnits(MetaObject report, MetaObject from, Consumer<String> err) {
+        Set<String> grouped = new HashSet<>();
+        for (ReportDimensionItem item : ReportAccessors.reportDimensionItems(report)) {
+            if (!(childOfType(from, ReportingConstants.TYPE_DIMENSION, item.name()) instanceof MetaDimension dim)
+                    || dim.isTime() || dim.getVia() != null || dim.getOf() == null) continue;
+            Dotted parts = splitDotted(dim.getOf());
+            if (parts != null && parts.path().size() == 2) grouped.add(String.join(SEP, parts.path()));
+        }
+        Set<MetaData> checked = java.util.Collections.newSetFromMap(new IdentityHashMap<>());
+        for (String item : ReportAccessors.reportMeasureNames(report)) {
+            String name = item.substring(item.lastIndexOf(SEP) + 1);
+            if (!(childOfType(from, ReportingConstants.TYPE_MEASURE, name) instanceof MetaMeasure listed)) continue;
+            List<MetaData> aggregates = new ArrayList<>();
+            if (listed.isRatio()) {
+                for (String operand : new String[] {listed.getNumerator(), listed.getDenominator()}) {
+                    if (operand != null) aggregates.add(childOfType(from, ReportingConstants.TYPE_MEASURE, operand));
+                }
+            } else {
+                aggregates.add(listed);
+            }
+            for (MetaData candidate : aggregates) {
+                if (!(candidate instanceof MetaMeasure m)
+                        || !ReportingConstants.MEASURE_SUBTYPE_AGGREGATE.equals(m.getSubType()) || !checked.add(m)) continue;
+                String agg = m.getAgg();
+                if (!List.of(ReportingConstants.AGG_SUM, ReportingConstants.AGG_AVG, ReportingConstants.AGG_MIN,
+                        ReportingConstants.AGG_MAX).contains(agg)) continue;
+                String of = m.getOfColumns().isEmpty() ? "" : m.getOfColumns().get(0);
+                Dotted parts = splitDotted(of);
+                if (parts == null || parts.path().size() != 2) continue;
+                String fieldName = parts.path().get(0);
+                MetaData field = fieldOf(from, fieldName);
+                MetaObject valueObject = field != null && ReportShape.isFlattenedField(field)
+                        ? References.refTarget(field, MetaObject.ATTR_OBJECT_REF) : null;
+                MetaData member = valueObject == null ? null : fieldOf(valueObject, parts.path().get(1));
+                if (member == null || !NUMERIC_FIELD_SUBTYPES.contains(member.getSubType())) continue;
+                // ADR-0039: resolving — a unit member the value object inherits qualifies its amounts too.
+                for (MetaData unit : valueObject.getChildren(MetaData.class, true)) {
+                    if (!MetaField.TYPE_FIELD.equals(unit.getType())
+                            || NUMERIC_FIELD_SUBTYPES.contains(unit.getSubType())
+                            || grouped.contains(fieldName + SEP + unit.getShortName())) continue;
+                    err.accept(": measure '" + m.getShortName() + "' takes @agg '" + agg + "' of '" + of
+                            + "', a member of value object '" + valueObject.getName() + "', but the report does not "
+                            + "group by its member '" + unit.getShortName() + "', so amounts with different '"
+                            + unit.getShortName() + "' values would be combined. List an attribute dimension of @from "
+                            + "whose @of is '" + parts.owner() + SEP + fieldName + SEP + unit.getShortName() + "'.");
+                }
+            }
+        }
+    }
+
     private static String checkReportMeasure(MetaRoot root, MetaObject report, MetaObject from, String item,
                                              String label, ErrorSink sink) {
         String fromKey = from.getName();

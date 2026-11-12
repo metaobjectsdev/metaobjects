@@ -15,8 +15,10 @@ import {
   reportingViaHops,
   resolveDimensionOf,
   refTarget,
-  resolveReportingFieldRef,
+  resolveReportingColumnRef,
+  resolveFlattenedColumnName,
   type MeasureAgg,
+  type ReportingColumnRef,
   type MetaData,
   REPORTING_ATTR_VIA,
   type MetaDimension,
@@ -25,7 +27,7 @@ import {
   type MetaObject,
   type MetaRoot,
 } from "@metaobjectsdev/metadata";
-import { packageOf, walkViaPath, type ExtractContext, type Path } from "./extract-view-spec.js";
+import { packageOf, sourceColumnNameFor, walkViaPath, type ExtractContext, type Path } from "./extract-view-spec.js";
 import { andOf, declared, resolveReportFilter, segmentClause } from "./report-sql.js";
 import type { ViewFilterClause } from "./view-spec.js";
 
@@ -44,6 +46,16 @@ export function authoredText(node: MetaData, attr: string): string | undefined {
  */
 export function dimensionOfField(dim: MetaDimension, from: MetaObject, root: MetaRoot): MetaField | undefined {
   return resolveDimensionOf(dim, from, root)?.field;
+}
+
+/**
+ * The column an `@of` reference reads: the field's own, or for `Entity.field.member` (FR-044
+ * R12) the member's flattened column, spelled by core naming as `meta migrate` creates it.
+ */
+export function reportColumnName(ref: Pick<ReportingColumnRef, "field" | "embedding">, ctx: ExtractContext): string {
+  return ref.embedding === undefined
+    ? sourceColumnNameFor(ref.field, ctx)
+    : resolveFlattenedColumnName(ref.embedding, ref.field, ctx.columnNamingStrategy);
 }
 
 /**
@@ -124,8 +136,12 @@ export function resolveDimensionViaPath(
 export interface ResolvedAggregate {
   readonly agg: MeasureAgg;
   readonly distinct: boolean;
-  /** The `@of` fields, read from `from`: one, or a tuple. */
+  /** The `@of` fields, read from `from`: one, or a tuple. A value-object member is the member field. */
   readonly fields: readonly MetaField[];
+  /** The column each of `fields` reads (a member's is its flattened column). */
+  readonly columns: readonly string[];
+  /** True when an `@of` names a value-object member (FR-044 R12). */
+  readonly readsMember: boolean;
   /** Its `@segment` filter, then its `@filter`, ANDed, over `alias`. Absent when neither. */
   readonly condition?: ViewFilterClause;
 }
@@ -143,16 +159,26 @@ export function resolveAggregate(
   // The same rule as reportShape: the entity half resolves in the DECLARING entity's package,
   // and the column is read from `from` (a measure aggregates `from`'s own rows).
   const declaring = reportingMemberOwner(measure, from);
-  const fields = measure.ofColumns().map((ref) => {
-    const f = resolveReportingFieldRef(ref, declaring, root, from);
-    if (f === undefined) throw new Error(`${where}: @of '${ref}' does not resolve.`);
-    return f;
+  const refs = measure.ofColumns().map((ref) => {
+    const r = resolveReportingColumnRef(ref, declaring, root, from);
+    if (r === undefined) throw new Error(`${where}: @of '${ref}' does not resolve.`);
+    return r;
   });
+  const fields = refs.map((r) => r.field);
+  const columns = refs.map((r) => reportColumnName(r, ctx));
+  const readsMember = refs.some((r) => r.embedding !== undefined);
   const condition = andOf([
     segmentClause(measure.segmentName(), from, alias, ctx, where),
     resolveReportFilter(measure.filter(), from, alias, ctx, `${where} @filter`),
   ]);
-  return { agg, distinct: measure.distinct(), fields, ...(condition !== undefined ? { condition } : {}) };
+  return {
+    agg,
+    distinct: measure.distinct(),
+    fields,
+    columns,
+    readsMember,
+    ...(condition !== undefined ? { condition } : {}),
+  };
 }
 
 /** A ratio operand: a `measure.aggregate` declared on (or inherited by) `from`. */

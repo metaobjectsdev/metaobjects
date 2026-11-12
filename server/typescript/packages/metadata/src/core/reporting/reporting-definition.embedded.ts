@@ -21,7 +21,7 @@ export const REPORTING_DEFINITION: ProviderDefinition = {
           "name": "of",
           "min": 1,
           "max": 1,
-          "description": "Dotted Entity.field reference naming the grouped column (e.g. 'Purchase.programId', or 'Program.title' with @via)."
+          "description": "Dotted Entity.field reference naming the grouped column (e.g. 'Purchase.programId', or 'Program.title' with @via). Entity.field.member names a member of a value object stored with @storage: flattened (e.g. 'Payment.amount.currency'), which has a column of its own."
         },
         {
           "type": "attr",
@@ -45,7 +45,7 @@ export const REPORTING_DEFINITION: ProviderDefinition = {
           "name": "of",
           "min": 1,
           "max": 1,
-          "description": "Dotted Entity.field reference naming the date or timestamp column."
+          "description": "Dotted Entity.field reference naming the date or timestamp column, or Entity.field.member for a member of a flattened value object."
         },
         {
           "type": "attr",
@@ -104,7 +104,7 @@ export const REPORTING_DEFINITION: ProviderDefinition = {
           "isArray": true,
           "min": 0,
           "max": 1,
-          "description": "Dotted Entity.field reference(s) on the declaring entity. A bare string is one column; more than one requires @agg: count and @distinct: true. Required for every @agg except any/all, which may omit it to quantify their @filter / @segment over the rows."
+          "description": "Dotted Entity.field reference(s) on the declaring entity, or Entity.field.member for a member of a value object stored with @storage: flattened (e.g. 'Payment.amount.amount'). A report that takes sum, avg, min or max of a numeric member must group by every non-numeric member of the same value object (its currency), so amounts in different units are never combined. A bare string is one column; more than one requires @agg: count and @distinct: true. Required for every @agg except any/all, which may omit it to quantify their @filter / @segment over the rows."
         },
         {
           "type": "attr",

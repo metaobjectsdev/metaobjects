@@ -12,6 +12,10 @@ import { CHILD_REF_SEPARATOR, PACKAGE_SEPARATOR } from "../../shared/structural.
 import type { MetaObject } from "../object/meta-object.js";
 import type { MetaField } from "../field/meta-field.js";
 import {
+  FIELD_ATTR_OBJECT_REF,
+  FIELD_ATTR_STORAGE,
+  FIELD_SUBTYPE_OBJECT,
+  STORAGE_FLATTENED,
   FIELD_SUBTYPE_BOOLEAN,
   FIELD_SUBTYPE_CURRENCY,
   FIELD_SUBTYPE_DATE,
@@ -138,7 +142,7 @@ export function resolveDimensionOf(
   dim: MetaDimension,
   from: MetaObject,
   root: MetaRoot,
-): { readonly named: MetaObject; readonly field: MetaField } | undefined {
+): ReportingColumnRef | undefined {
   const of = dim.of() ?? "";
   const via = dim.via();
   if (via === undefined) return resolveReportingFieldRefNamed(of, reportingMemberOwner(dim, from), root, from);
@@ -179,16 +183,60 @@ function resolveReportingFieldRefNamed(
   declaring: MetaData,
   root: MetaRoot,
   host?: MetaObject,
-): { readonly named: MetaObject; readonly field: MetaField } | undefined {
-  // `Entity.field`; a package qualifier uses `::`, so the member separator is the LAST dot.
-  const dot = ref.lastIndexOf(CHILD_REF_SEPARATOR);
+): ReportingColumnRef | undefined {
+  // `Entity.field` or `Entity.field.member`; a package qualifier uses `::` and holds no `.`, so
+  // the owner ends at the first `.` after the last `::`.
+  const lastSep = ref.lastIndexOf(PACKAGE_SEPARATOR);
+  const dot = ref.indexOf(CHILD_REF_SEPARATOR, lastSep === -1 ? 0 : lastSep + PACKAGE_SEPARATOR.length);
   if (dot <= 0) return undefined;
+  const path = ref.slice(dot + 1).split(CHILD_REF_SEPARATOR);
+  if (path.length > 2) return undefined;
   const named = resolveObjectRef(root, ref.slice(0, dot), packageOfKey(declaring.resolutionKey())).node;
   if (!isMetaObject(named)) return undefined;
   if (host !== undefined && !isSelfOrAncestor(named, host)) return undefined;
   // ADR-0039: resolving, so a field inherited through extends is found.
-  const field = (host ?? named).fields().find((f) => f.name === ref.slice(dot + 1));
-  return field === undefined ? undefined : { named, field };
+  const field = (host ?? named).fields().find((f) => f.name === path[0]);
+  if (field === undefined) return undefined;
+  if (path[1] === undefined) return { named, field };
+  const member = flattenedMemberOf(field, path[1]);
+  return member === undefined ? undefined : { named, field: member, embedding: field };
+}
+
+/** A resolved `@of` column: the field read, and for `Entity.field.member` the flattened
+ *  `field.object` that embeds it (its column is the member's flattened column). */
+export interface ReportingColumnRef {
+  readonly named: MetaObject;
+  readonly field: MetaField;
+  readonly embedding?: MetaField;
+}
+
+/** True for a `field.object` whose `@storage` is `flattened` (ADR-0039: resolving read). */
+export function isFlattenedField(field: MetaData): boolean {
+  return field.subType === FIELD_SUBTYPE_OBJECT && field.attr(FIELD_ATTR_STORAGE) === STORAGE_FLATTENED;
+}
+
+/**
+ * FR-044 R12: member `name` of the value object a flattened `field.object` embeds, read with the
+ * resolving accessor so a member the value object inherits counts. Undefined when `embedding`
+ * is not flattened, names no value object, or the value object has no such member.
+ */
+export function flattenedMemberOf(embedding: MetaField, name: string): MetaField | undefined {
+  if (!isFlattenedField(embedding)) return undefined;
+  const valueObject = refTarget(embedding, FIELD_ATTR_OBJECT_REF);
+  return isMetaObject(valueObject) ? valueObject.fields().find((f) => f.name === name) : undefined;
+}
+
+/**
+ * {@link resolveReportingFieldRef}, keeping the embedding field of an `Entity.field.member`
+ * reference, which a lowering needs to name the member's column.
+ */
+export function resolveReportingColumnRef(
+  ref: string,
+  declaring: MetaData,
+  root: MetaRoot,
+  host?: MetaObject,
+): ReportingColumnRef | undefined {
+  return resolveReportingFieldRefNamed(ref, declaring, root, host);
 }
 
 /**

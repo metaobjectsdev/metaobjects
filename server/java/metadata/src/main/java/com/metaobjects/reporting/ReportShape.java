@@ -259,7 +259,10 @@ public final class ReportShape {
      * and as the TypeScript {@code resolveReportingFieldRef}:
      *
      * <ol>
-     *   <li>A package qualifier uses {@code ::}, so the member separator is the LAST dot.
+     *   <li>The reference is {@code Entity.field} or, for a member of a value object stored
+     *       flattened, {@code Entity.field.member} (FR-044 R12). A package qualifier uses
+     *       {@code ::} and holds no dot, so the entity half ends at the first dot after the
+     *       last {@code ::}.
      *       The entity half resolves relative to the package of {@code declaring}, the
      *       entity that declares the member ({@link #memberOwner}; ADR-0042).</li>
      *   <li>With {@code host} (a measure, or a dimension without {@code @via}: the reference
@@ -274,12 +277,44 @@ public final class ReportShape {
         MetaObject named = resolveFieldRefEntity(ref, declaring, root);
         if (named == null) return null;
         if (host != null && !isSelfOrAncestor(named, host)) return null;
-        String fieldName = ref.substring(ref.lastIndexOf(SEP) + SEP.length());
-        // ADR-0039: resolving, so a field inherited through extends is found.
-        for (MetaField<?> f : (host != null ? host : named).getMetaFields()) {
-            if (fieldName.equals(f.getName())) return f;
+        String[] path = ref.substring(ownerEnd(ref) + SEP.length()).split(java.util.regex.Pattern.quote(SEP), -1);
+        if (path.length > 2) return null;
+        MetaField<?> field = fieldNamed(host != null ? host : named, path[0]);
+        if (field == null || path.length == 1) return field;
+        return flattenedMemberOf(field, path[1]);
+    }
+
+    /** A field of {@code obj} by name (ADR-0039: resolving, so a field inherited through extends is found). */
+    private static MetaField<?> fieldNamed(MetaObject obj, String name) {
+        for (MetaField<?> f : obj.getMetaFields()) {
+            if (name.equals(f.getName())) return f;
         }
         return null;
+    }
+
+    /**
+     * FR-044 R12: member {@code name} of the value object a flattened {@code field.object}
+     * embeds (resolving, so an inherited member counts). {@code null} when the field is not
+     * flattened, names no value object, or the value object has no such member.
+     */
+    public static MetaField<?> flattenedMemberOf(MetaField<?> embedding, String name) {
+        if (!isFlattenedField(embedding)) return null;
+        MetaObject valueObject = References.refTarget(embedding, MetaObject.ATTR_OBJECT_REF);
+        return valueObject == null ? null : fieldNamed(valueObject, name);
+    }
+
+    /** True for a {@code field.object} whose {@code @storage} is {@code flattened} (ADR-0039: resolving). */
+    public static boolean isFlattenedField(MetaData field) {
+        if (!com.metaobjects.field.ObjectField.SUBTYPE_OBJECT.equals(field.getSubType())
+                || !field.hasMetaAttr(com.metaobjects.field.ObjectField.ATTR_STORAGE)) return false;
+        return com.metaobjects.field.ObjectField.STORAGE_FLATTENED.equals(
+                field.getMetaAttr(com.metaobjects.field.ObjectField.ATTR_STORAGE).getValue());
+    }
+
+    /** Index of the dot that ends a reference's entity half: the first dot after the last {@code ::}. */
+    private static int ownerEnd(String ref) {
+        int lastSep = ref.lastIndexOf(PKG_SEP);
+        return ref.indexOf(SEP, lastSep == -1 ? 0 : lastSep + PKG_SEP.length());
     }
 
     /**
@@ -291,7 +326,7 @@ public final class ReportShape {
      */
     public static MetaObject resolveFieldRefEntity(String ref, MetaData declaring, MetaRoot root) {
         if (ref == null) return null;
-        int dot = ref.lastIndexOf(SEP);
+        int dot = ownerEnd(ref);
         if (dot <= 0) return null;
         return ValidationPhase.resolveRootObject(root, ref.substring(0, dot), packageOf(declaring));
     }

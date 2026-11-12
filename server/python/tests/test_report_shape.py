@@ -877,3 +877,25 @@ def test_agg_any_all_without_of_derive_nullable_boolean_rows_unless_defaulted() 
         ("allSlow", "boolean", True),
         ("anySlowFailure", "boolean", False),
     ]
+
+
+def test_a_value_object_member_derives_the_members_type() -> None:
+    """FR-044 R12: ``Payment.amount.currency`` and ``Payment.amount.amount`` read Money's
+    members, so the derived fields take the member's subtype, nullability and type source.
+    The same rows as the TypeScript report-shape derivation of this fixture."""
+    path = CORPUS.parent / "conformance" / "reporting-value-object-members" / "input" / "meta.billing.json"
+    root = _load(InMemoryStringSource(path.read_text(encoding="utf-8"), "meta.billing.json"))
+    rows = [
+        f"{f.name} {f.sub_type} {f.required} "
+        + ("-" if f.type_source is None else f"{f.type_source.parent.name}.{f.type_source.name}")
+        for f in report_shape(_object(root, "RevenueByMonth"), root).fields
+    ]
+    assert rows == [
+        "currency string True Money.currency",
+        "kind string False Payment.kind",
+        "receivedOnMonth date True -",
+        "revenue decimal False -",
+        "largest decimal True Money.amount",
+        "averagePayment decimal False -",
+        "payments long True -",
+    ]

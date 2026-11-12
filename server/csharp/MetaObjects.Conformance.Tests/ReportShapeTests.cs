@@ -139,6 +139,22 @@ public class ReportShapeTests
     }
 
     [Fact]
+    public void A_value_object_member_derives_the_members_type()
+    {
+        // FR-044 R12: `Payment.amount.currency` and `Payment.amount.amount` read Money's members,
+        // so the derived fields take the member's subtype, nullability and type source. The
+        // same rows as the TypeScript report-shape derivation of this fixture.
+        var root = LoadFixture("reporting-value-object-members");
+        var rows = Shape(root, "RevenueByMonth").Fields.Select(f =>
+            $"{f.Name} {f.SubType} {f.Required} {(f.TypeSource is null ? "-" : $"{f.TypeSource.Parent!.Name}.{f.TypeSource.Name}")}");
+        Assert.Equal(
+            ["currency string True Money.currency", "kind string False Payment.kind", "receivedOnMonth date True -",
+             "revenue decimal False -", "largest decimal True Money.amount", "averagePayment decimal False -",
+             "payments long True -"],
+            rows.ToList());
+    }
+
+    [Fact]
     public void A_sourceless_report_has_a_shape_and_no_view()
     {
         var result = new MetaDataLoader().Load([new InMemoryStringSource(

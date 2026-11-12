@@ -11,6 +11,8 @@ export const ERR_CUBE_INVALID_NAME = "ERR_CUBE_INVALID_NAME";
 export const ERR_CUBE_MEMBER_COLLISION = "ERR_CUBE_MEMBER_COLLISION";
 export const ERR_CUBE_NAME_COLLISION = "ERR_CUBE_NAME_COLLISION";
 export const ERR_CUBE_UNESCAPABLE_LITERAL = "ERR_CUBE_UNESCAPABLE_LITERAL";
+/** FR-044 R12: an `@of` names a value-object member, which the exporter does not map. */
+export const ERR_CUBE_VALUE_OBJECT_MEMBER = "ERR_CUBE_VALUE_OBJECT_MEMBER";
 /** The generator's dialect is not one it writes Cube SQL for (postgres, mysql). */
 export const ERR_CUBE_UNSUPPORTED_DIALECT = "ERR_CUBE_UNSUPPORTED_DIALECT";
 
@@ -25,6 +27,7 @@ export const CUBE_ERROR_CODES = [
   ERR_CUBE_NAME_COLLISION,
   ERR_CUBE_UNESCAPABLE_LITERAL,
   ERR_CUBE_UNSUPPORTED_DIALECT,
+  ERR_CUBE_VALUE_OBJECT_MEMBER,
 ] as const;
 export type CubeErrorCode = (typeof CUBE_ERROR_CODES)[number];
 

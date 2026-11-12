@@ -40,7 +40,21 @@ import { intValueMapOf } from "../enum-meta.js";
 import { sourceColumnNameFor, type ExtractContext } from "../projection/extract-view-spec.js";
 import { ratioOperand, resolveAggregate } from "../projection/report-resolve.js";
 import { cond, mysqlTupleCount, resolveReportFilter, type SqlRenderer } from "../projection/report-sql.js";
-import { CubeModelError, ERR_CUBE_UNMAPPABLE_DIMENSION } from "./cube-errors.js";
+import { CubeModelError, ERR_CUBE_UNMAPPABLE_DIMENSION, ERR_CUBE_VALUE_OBJECT_MEMBER } from "./cube-errors.js";
+
+/**
+ * FR-044 R12: a report reads a member of a flattened value object only beside a grouping by the
+ * value object's other members (its currency), and Cube cannot hold a query to that, so the
+ * exporter refuses every `@of` that names a member rather than let Cube add amounts across units.
+ */
+export function valueObjectMemberError(where: string, of: string): CubeModelError {
+  return new CubeModelError(
+    ERR_CUBE_VALUE_OBJECT_MEMBER,
+    `${where} @of '${of}' names a member of a value object, which the Cube exporter does not map: a Cube ` +
+      `query could sum it without grouping by the value object's unit member (a currency). Read it through a ` +
+      `report with a view source, or remove the member from the exported entity.`,
+  );
+}
 import type {
   CubeDialect,
   CubeDimensionSpec,
@@ -223,8 +237,9 @@ function aggregateSpec(
   const d = mc.dialect;
   const renderer = cubeSqlRenderer(where);
   // The view's own resolution: @of read from the cube's entity, then its condition.
-  const { agg, distinct, fields, condition } = resolveAggregate(m, entity, mc.root, CUBE_SELF, mc.extract, where);
-  const cols = fields.map((f) => cubeColumn(sourceColumnNameFor(f, mc.extract), d, renderer));
+  const { agg, distinct, columns, condition, readsMember } = resolveAggregate(m, entity, mc.root, CUBE_SELF, mc.extract, where);
+  if (readsMember) throw valueObjectMemberError(where, m.ofColumns().join(", "));
+  const cols = columns.map((c) => cubeColumn(c, d, renderer));
   const c = condition === undefined ? undefined : cond(condition, d, renderer);
   // Only @agg any / all may omit @of (rule M0); they are handled below.
   if (cols.length === 0 && agg !== AGG_ANY && agg !== AGG_ALL) throw new Error(`${where}: has no @of.`);
