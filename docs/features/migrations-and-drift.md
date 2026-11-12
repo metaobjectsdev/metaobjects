@@ -754,6 +754,12 @@ the case of an `@sql` body that joins it. `meta migrate` finds it by name in the
 stored definition, and recreates the view only when that definition also names the changed
 column. The same two costs apply.
 
+A rename never rewrites a view body. When a migration renames a column and a view's `@sql`
+still names the old one, that view is recreated as declared and the migration fails at apply.
+`meta migrate` prints an advisory for it (`view <name> still names <table>.<column>, which this
+migration renames to <new>`), so the view, column and new name are all shown. The advisory does not block the plan. Change the view's `@sql` to the
+new name before you apply.
+
 SQLite and D1 have no `CREATE OR REPLACE VIEW`: every replaced view is written as `DROP VIEW`
 and `CREATE VIEW` there, so there is no refusal to avoid and no probe. They refuse something
 else: a `DROP COLUMN`, or the rebuild of a table, while a view that reads the table stands. So
