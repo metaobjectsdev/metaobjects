@@ -182,6 +182,12 @@ max over only the active rows — the filtered-scalar shape a plain aggregate ca
 ]}}
 ```
 
+**`sum` / `avg` / `min` / `max` need a scalar `@of`.** A value-object field (`field.object`,
+flattened or jsonb) is several columns or a document, so there is no one column to reduce, and a
+Money-shaped sum would add amounts in different currencies. The loader refuses it in every port
+(`ERR_INVALID_ORIGIN`); model the amount as its own scalar field and group by its currency.
+`count` still counts rows.
+
 **More `origin.aggregate` reductions (#195).** Beyond the scalar reduces, `@agg` also takes
 `any` / `all` (predicate quantifiers over a `@filter` — `@of` forbidden; empty set →
 `any=false`, `all=true`) and `collect` (an array rollup of `@of` into an `isArray` field,

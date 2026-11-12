@@ -10,6 +10,27 @@ here.**
 
 ## [Unreleased]
 
+### Fixed
+
+- **A projection view keeps the columns a reverse `@via` hop feeds.** An origin `@via` that walks
+  an `identity.reference` backwards (`Project.timeEntries`, #560) loaded, but `meta migrate` left
+  its `origin.aggregate` / `origin.first` columns out of `CREATE VIEW` without a word. The view
+  emitter now resolves the hop the way the loader does and joins from the holder of the
+  reference. Gated by a Postgres test that creates the view and reads it.
+- **`origin.aggregate` `sum`/`avg`/`min`/`max` over a value-object field is refused at load.**
+  `@of: Invoice.total` on a flattened Money field loaded and emitted `SUM(i.total)`, a column that
+  does not exist. Every port now refuses it with `ERR_INVALID_ORIGIN` and says to aggregate a
+  scalar field; gated by the `error-origin-aggregate-value-object` conformance fixture. Refusing,
+  rather than summing the flattened amount column, keeps a sum from adding amounts in different
+  currencies. `count` is unaffected.
+
+### Changed
+
+- **Agent context routes report work to the reporting vocabulary.** The `meta init` agent guide
+  and the `metaobjects-authoring` skill now send grouped totals, dashboard numbers and read-only
+  report views to `object.report` (`references/declaring-reports.md`) before the `@sql` escape,
+  which they describe as the last resort for bodies the vocabulary cannot express.
+
 ## [1.3.0] — 2026-11-11
 
 _npm `1.3.0` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._

@@ -124,6 +124,11 @@ public abstract class MetaOrigin extends MetaData {
     public static final String AGG_ALL     = "all";
     public static final String AGG_COLLECT = "collect";
 
+    /** The {@code @agg} values that reduce the VALUES of the {@code @of} column (count only counts
+     *  non-null rows). Mirrors the TS COLUMN_VALUE_AGGREGATES. */
+    public static final java.util.List<String> COLUMN_VALUE_AGGREGATES =
+        java.util.List.of(AGG_SUM, AGG_AVG, AGG_MIN, AGG_MAX);
+
     /**
      * Closed set of valid {@code @agg} values. Used by
      * {@link com.metaobjects.loader.ValidationPhase} for enum-membership checks.

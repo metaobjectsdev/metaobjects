@@ -94,4 +94,6 @@ column because the filter tier runs against the view.
 **When you need an independent exposure** — a subset, renamed columns, a row-filtered
 view, a versioned or external shape — that is an `object.projection`. It, the `origin.*`
 vocabulary, the structured `@filter` / `@expr` shapes and the `@sql` / `@unmanaged` escapes
-are in `references/read-views-and-projections.md`.
+are in `references/read-views-and-projections.md`. A grouped or aggregate view (totals per client
+or per month) is an `object.report` (`references/declaring-reports.md`); `@sql` is for what neither
+can express (a recursive CTE, a window function, a set operation).

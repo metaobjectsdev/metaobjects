@@ -31,10 +31,10 @@ This file covers what almost every model needs. The topics below live in
 | `references/identities-and-indexes.md` | declaring a primary, secondary or reference identity, an FK, or a non-unique `index.lookup` |
 | `references/sources.md` | the `source.rdb` shape and `@kind`; a store MetaObjects does not manage; a derived or computed column (reach for an entity read-view first) |
 | `references/abstracts-and-overlay.md` | a shared `abstract` base, `extends`, or a layered `overlay` file |
-| `references/declaring-reports.md` | declaring `dimension.*`, `measure.*`, `segment.filter` or an `object.report` |
+| `references/declaring-reports.md` | **open first** for a report, dashboard, totals, `GROUP BY`, "per client / per month" or a read-only summary view: declaring `dimension.*`, `measure.*`, `segment.filter` or an `object.report` |
 | `references/model-first-rationale.md` | someone argues that hand-writing a layer is cheaper this once |
 | `references/relationships.md` | a many-to-many link or self-join, or a "rows that reference this one" query |
-| `references/read-views-and-projections.md` | an `object.projection`, `origin.*` vocabulary, `@filter` / `@expr`, or an `@sql` / `@unmanaged` view |
+| `references/read-views-and-projections.md` | an `object.projection`, `origin.*` vocabulary, `@filter` / `@expr`, or an `@sql` / `@unmanaged` view (a grouped or aggregate view is `declaring-reports.md` first) |
 | `references/inheritance-tph.md` | several entities are variants of one thing sharing a single table (`@discriminator`) |
 | `references/metadata-dependencies.md` | the project builds on another package's metadata (`dependencies`, cross-package `overlay`) |
 | `references/reporting.md` | what a declared report gives you: what columns a report gets, time grains, null rules, rows with no facts (`@spine`), defaults (`@default`), engine differences |

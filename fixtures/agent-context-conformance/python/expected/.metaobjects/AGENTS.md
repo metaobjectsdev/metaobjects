@@ -69,6 +69,9 @@ Commit the metadata, the generated code, `.metaobjects/migrations/` and
 - Once the project declares a `template.prompt`, every LLM prompt is one: the text in a
   template, the data in a payload, a structured reply read through its generated extractor
   (`metaobjects-prompts`).
+- A grouped total, dashboard number or read-only report view (per client, per month) is an
+  `object.report` over `dimension.*` / `measure.*` (`metaobjects-authoring`,
+  `references/declaring-reports.md`). A hand-written `@sql` view body is the last resort.
 - Never invent metadata vocabulary. Search it: `npx meta types <term>`, and
   `npx meta types <type>.<subType> --detail` for one construct's valid attributes.
 - Metadata nodes are fused-key maps, `{"field.string": {"name": "email"}}`. Attribute names are

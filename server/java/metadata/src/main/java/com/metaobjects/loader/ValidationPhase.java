@@ -3114,6 +3114,23 @@ public final class ValidationPhase {
             }
             OriginTarget ofTarget = validateFromOrOfPath(of, root, obj, field.getName(),
                 "origin.aggregate.@of", src);
+            // A sum/avg/min/max reduces ONE column. A value-object field is several columns
+            // (flattened) or a document (jsonb), so there is no column to reduce, and summing a
+            // Money-shaped value would add amounts in different currencies.
+            // ADR-0039: resolving (hasMetaAttr defaults to includeParentData) — @objectRef may be
+            // inherited via extends.
+            if (agg != null && MetaOrigin.COLUMN_VALUE_AGGREGATES.contains(agg)
+                    && (ObjectField.SUBTYPE_OBJECT.equals(ofTarget.field.getSubType())
+                        || ofTarget.field.hasMetaAttr(ObjectField.ATTR_OBJECTREF))) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_INVALID_ORIGIN
+                        + ": origin.aggregate @agg:" + agg + " on " + obj.getName() + "." + field.getName()
+                        + ": @of \"" + of + "\" is a value-object field (field." + ofTarget.field.getSubType()
+                        + "), which has no single column to aggregate. Aggregate a scalar field instead:"
+                        + " model the amount as its own field (and group by its currency).",
+                    ErrorCode.ERR_INVALID_ORIGIN,
+                    ResolvedSource.from(src, obj.getShortName() + "::" + field.getName(), of));
+            }
             // #195 — collect preserves the element type: the array field's own subType
             // must equal the @of column's subType (the #185 doctrine on the element).
             if (isCollect && !field.getSubType().equals(ofTarget.field.getSubType())) {

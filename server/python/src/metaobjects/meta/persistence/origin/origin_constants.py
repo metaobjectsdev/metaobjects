@@ -51,6 +51,9 @@ ORIGIN_ATTR_AGG = "agg"
 AGG_ANY = "any"
 AGG_ALL = "all"
 AGG_COLLECT = "collect"
+# The @agg values that reduce the VALUES of the @of column (count only counts
+# non-null rows). Mirrors the TS COLUMN_VALUE_AGGREGATES.
+COLUMN_VALUE_AGGREGATES = ("sum", "avg", "min", "max")
 ORIGIN_ATTR_OF = "of"
 # @filter (attr.filter object): an optional PORTABLE structured predicate scoping the
 # aggregated rows (same shape as a preset filter). On @agg:any|all it is the QUANTIFIED
