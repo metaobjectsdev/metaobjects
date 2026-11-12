@@ -72,7 +72,7 @@ export function findReferenceBetween(
 /**
  * The name a `@via` hop takes when it walks the REVERSE of an
  * identity.reference, from the referenced entity back to the one that declares it:
- * the holder's collection name, lowerFirst(<Holder's collection name>) — its @collectionName, else the project's pluralizer — `consents` for
+ * the holder's collection name (its @collectionName, else the project's pluralizer), lowerFirst — `consents` for
  * `Consent`, so `Patient.consents` walks Consent.patient backwards. One rule for every port.
  */
 export function reverseHopName(holder: MetaObject): string {

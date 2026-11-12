@@ -4588,6 +4588,13 @@ public final class ValidationPhase {
     // ADR-0042 — package-local object-reference resolution.
     // =========================================================================
 
+    /** Every root-level object, in declaration order. */
+    private static java.util.List<MetaObject> rootObjects(MetaRoot root) {
+        java.util.List<MetaObject> out = new java.util.ArrayList<>();
+        for (MetaData c : root.getChildren(MetaData.class, false)) if (c instanceof MetaObject) out.add((MetaObject) c);
+        return out;
+    }
+
     /**
      * ADR-0042 — resolve a metadata OBJECT reference to a top-level {@link MetaObject}
      * under the package-local contract, or {@code null} when nothing matches:
@@ -4607,13 +4614,6 @@ public final class ValidationPhase {
      *
      * @param referrerPkg the effective package of the node carrying the ref ("" for root-level)
      */
-    /** Every root-level object, in declaration order. */
-    private static java.util.List<MetaObject> rootObjects(MetaRoot root) {
-        java.util.List<MetaObject> out = new java.util.ArrayList<>();
-        for (MetaData c : root.getChildren(MetaData.class, false)) if (c instanceof MetaObject) out.add((MetaObject) c);
-        return out;
-    }
-
     public static MetaObject resolveRootObject(MetaRoot root, String ref, String referrerPkg) {
         if (ref == null) return null;
         // ADR-0059 R2 — the one resolver: ::Rest, ..::Rest, pkg::Name, bare Name. An over-dropping
