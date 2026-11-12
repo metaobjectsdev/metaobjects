@@ -38,7 +38,7 @@ This file covers what almost every model needs. The topics below live in
 | `references/inheritance-tph.md` | several entities are variants of one thing sharing a single table (`@discriminator`) |
 | `references/metadata-dependencies.md` | the project builds on another package's metadata (`dependencies`, cross-package `overlay`) |
 | `references/reporting.md` | what a declared report gives you: what columns a report gets, time grains, null rules, rows with no facts (`@spine`), defaults (`@default`), engine differences |
-| `references/requirements.md` | installed only when the project declares `requirement.*` nodes |
+| `references/requirements.md` | you add, change or review a `requirement.*` node |
 
 ## The operating principle: model-first, generate-first
 
@@ -483,7 +483,7 @@ Every requirement must be **violable**: if you cannot say what breaking it looks
 
 **A commit that adds, changes or removes behaviour updates the ledger in the same commit** (the new or changed claim, its `@status` and `@implementedBy`), or says in the commit message why it does not. `verify` checks that links resolve, not that the ledger is current.
 
-If the project declares any `requirement.*` node, `references/requirements.md` is installed with the full authoring rules. If it does not and you are adding the first one, the shape is:
+`references/requirements.md` has the full authoring rules. The shape of one node:
 
 ```yaml
 - requirement.architectural:

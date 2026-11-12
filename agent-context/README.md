@@ -6,10 +6,11 @@ the slim always-on Markdown (`.metaobjects/AGENTS.md` + `CLAUDE.md`) and the six
 `metaobjects-*` Claude skills (each a universal `SKILL.md` plus the
 `references/<token>.md` fragments matching the project's resolved stack).
 
-- `servers/<lang>.meta.json` — per-server install + codegen command (drives the always-on).
-- `templates/always-on.md.mustache` — the slim always-on body (`{{stackLine}}`, `{{codegenCommand}}`).
+- `servers/<lang>.meta.json` — per-server install, codegen command and the always-on's verify step (`verifyStep`).
+- `templates/always-on.md.mustache` — the slim always-on body: a working loop first (`{{stackLine}}`, `{{stackLoops}}`, `{{verifySteps}}`), then the rules. The full principles it shortens live in `metaobjects-codegen/references/principles.md`.
+- `templates/loops/<server>.md`, `templates/loops/client.md` — the generate steps of that loop, one per declared server (and one for a web client), concatenated by the assembler.
 - `skills/<skill>/SKILL.md` — universal skill body.
-- `skills/<skill>/references/<token>.md` — language/framework or concern fragment; installed iff `<token>` is in the stack (`Stack.tokens`; concern tokens are OBSERVED from project state, e.g. `requirements` for a project declaring `requirement.*` nodes — see `SDK`'s `CONCERN_TOKENS`).
+- `skills/<skill>/references/<token>.md` — language/framework fragment; installed iff `<token>` is in the stack (`Stack.tokens`). The requirements pages are universal topic files: they install in every stack, because whether a project declares `requirement.*` nodes changes after `meta init` runs.
 - `skills/<skill>/references/<token>-<topic>.md` — a topic split out of a `<token>.md` fragment; scoped by the same token.
 - `skills/<skill>/references/<topic>.md` — any other name is a universal topic file and installs in every stack; the skill's `SKILL.md` says when to open it.
 

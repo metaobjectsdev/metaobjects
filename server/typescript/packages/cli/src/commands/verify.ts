@@ -27,7 +27,7 @@ import {
 import { scanForUnprovenancedLibraryPrefix } from "../lib/library-prefix-advisory.js";
 import { scanForUnindexedForeignKeys, type UnindexedFkFinding } from "../lib/fk-index-advisory.js";
 import { scanForReferentialActionConflicts, type ReferentialActionConflictFinding } from "../lib/referential-action-advisory.js";
-import { warnIfAgentContextStale } from "../lib/agent-context-staleness.js";
+import { warnIfAgentContextMissesRequirements, warnIfAgentContextStale } from "../lib/agent-context-staleness.js";
 import { warnIfManifestIgnored } from "../lib/manifest-ignored-check.js";
 import { scanSourceForAntiPatterns } from "../lib/anti-patterns.js";
 import { scanForMissingBaseUrl, type BaseUrlFinding } from "../lib/base-url-advisory.js";
@@ -807,6 +807,9 @@ export async function verifyCommand(
     // passes cannot be told apart from a gate that checked nothing, and the
     // recorded-gap counts are the whole reason to keep a ledger.
     const s = summariseRequirements(root, scan);
+    // Advisory: requirements declared, and the scaffolded agent context has no requirements
+    // pages (it predates their installing unconditionally). Never reaches the exit code.
+    if (s !== undefined && s.total > 0) warnIfAgentContextMissesRequirements(projectRoot, true);
     if (s !== undefined) {
       const order = [...REQUIREMENT_STATUSES];
       const parts = order

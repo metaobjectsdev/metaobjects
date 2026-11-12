@@ -25,7 +25,7 @@ command surface splits in two:
 
 | Capability | Tool | Invocation | Notes |
 |---|---|---|---|
-| Project scaffold (`init`) | Node `meta` | `meta init` | TS projects |
+| Project scaffold (`init`) | Node `meta` | `meta init` | TS projects; `--dialect sqlite\|postgres\|mysql\|d1` writes the codegen `dialect` in `metaobjects.config.ts` and, for sqlite, postgres and d1, `migrate.dialect` in `.metaobjects/config.json` (d1 is `--d1`; MySQL schema is not `meta migrate`'s) |
 | **Agent-context scaffold** (`agent-docs`) | **Node `meta`** | `npx meta agent-docs --server <lang>` | **any backend** — single assembler (ADR-0033); non-Node CLIs redirect here |
 | **Schema migrate** | **Node `meta`** | `meta migrate` | **any backend** — schema is Node-only (ADR-0015) |
 | **Schema drift** (`verify --db`) | **Node `meta`** | `meta verify --db` | **any backend** — live-DB drift, Node-only |

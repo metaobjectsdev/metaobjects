@@ -2,8 +2,5 @@
   "displayName": "TypeScript",
   "install": "npm install -D @metaobjectsdev/cli @metaobjectsdev/codegen-ts",
   "codegenCommand": "npx meta gen",
-  "docsCommand": "npx meta gen",
-  "docsCondition": "",
-  "docsMissing": "",
-  "apiSubDir": "api"
+  "verifyStep": "`npx meta verify --codegen` (the generated code and docs pages; the requirement gate runs on every `meta verify`)"
 }

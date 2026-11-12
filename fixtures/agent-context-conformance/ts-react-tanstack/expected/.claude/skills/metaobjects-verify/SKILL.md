@@ -334,4 +334,5 @@ what's wrong.
 
 ---
 
-For the migration tooling read `references/migration.md`.
+For the migration tooling read `references/migration.md`. Before upgrading MetaObjects, or
+when a project runs more than one port, read `references/upgrading.md`.

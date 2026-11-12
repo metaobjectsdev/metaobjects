@@ -239,10 +239,10 @@ describe("`metaobjects/` is a config default and nothing else", () => {
   });
 
   test("a comment-only mention is not a violation — proven against a real file", () => {
-    // `detect-stack.ts` explains, in a comment, that it reads the resolved
-    // collection "rather than assuming `metaobjects/`". Saying so is the
-    // opposite of a violation, and the guard must not convict it.
-    const file = join(PACKAGES, "cli", "src", "lib", "detect-stack.ts");
+    // `fmt-engine.ts` explains, in a comment, that it resolves the collection
+    // "never a hardcoded `metaobjects/`". Saying so is the opposite of a
+    // violation, and the guard must not convict it.
+    const file = join(PACKAGES, "cli", "src", "lib", "fmt-engine.ts");
     const raw = readFileSync(file, "utf8");
     expect(raw).toContain(`${DEFAULT_METADATA_DIR}/`); // the mention is really there
     expect(violationLines(stripComments(raw))).toEqual([]); // and it is in a comment

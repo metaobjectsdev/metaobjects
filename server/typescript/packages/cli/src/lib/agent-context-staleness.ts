@@ -6,7 +6,7 @@ import { join } from "node:path";
 // star one, so the root barrel now hands out the dependency manifest under this
 // name. `init.ts` already imports these from the subpath; this was the last site
 // reading them from the root.
-import { AGENT_CONTEXT_MANIFEST_PATH, agentContextStaleness, hashAgentContextRoot, resolveAgentContextRoot, type Manifest } from "@metaobjectsdev/sdk/agent-context";
+import { AGENT_CONTEXT_MANIFEST_PATH, agentContextCoverage, agentContextStaleness, hashAgentContextRoot, resolveAgentContextRoot, type Manifest } from "@metaobjectsdev/sdk/agent-context";
 import { docsRefForVersion } from "@metaobjectsdev/metadata";
 import { cliVersion } from "./version.js";
 import { log } from "./log.js";
@@ -29,16 +29,35 @@ export function currentContentHash(): { currentContentHash?: string } {
  * there too; undefined when it said nothing.
  */
 export function warnIfAgentContextStale(cwd: string): string | undefined {
-  const p = join(cwd, AGENT_CONTEXT_MANIFEST_PATH);
-  let manifest: Manifest | undefined;
-  if (existsSync(p)) {
-    try {
-      manifest = JSON.parse(readFileSync(p, "utf8")) as Manifest;
-    } catch {
-      return undefined; // unreadable/corrupt — say nothing
-    }
-  }
+  const read = readAgentContextManifest(cwd);
+  if (read === "unreadable") return undefined; // corrupt — say nothing
+  const manifest = read;
   const msg = agentContextStaleness({ manifest, currentVersion: cliVersion(), ...currentContentHash() });
+  if (msg === null) return undefined;
+  log.warn(msg);
+  return msg;
+}
+
+/** The scaffolded manifest, `undefined` when there is none, `"unreadable"` when it is corrupt. */
+function readAgentContextManifest(cwd: string): Manifest | undefined | "unreadable" {
+  const p = join(cwd, AGENT_CONTEXT_MANIFEST_PATH);
+  if (!existsSync(p)) return undefined;
+  try {
+    return JSON.parse(readFileSync(p, "utf8")) as Manifest;
+  } catch {
+    return "unreadable";
+  }
+}
+
+/**
+ * Advisory: the model declares requirements and the scaffolded agent context has no
+ * requirements pages. Same contract as {@link warnIfAgentContextStale}: never throws, never
+ * blocks, returns the line it printed.
+ */
+export function warnIfAgentContextMissesRequirements(cwd: string, declaresRequirements: boolean): string | undefined {
+  const read = readAgentContextManifest(cwd);
+  if (read === "unreadable") return undefined;
+  const msg = agentContextCoverage({ manifest: read, declaresRequirements });
   if (msg === null) return undefined;
   log.warn(msg);
   return msg;

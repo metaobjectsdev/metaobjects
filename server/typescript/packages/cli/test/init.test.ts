@@ -568,6 +568,33 @@ describe("initCommand --config-only", () => {
   });
 });
 
+describe("init --dialect", () => {
+  const read = (rel: string): string => readFileSync(join(cwd, rel), "utf8");
+  test("postgres: codegen dialect, migrate.dialect and a postgres next step", async () => {
+    expect(await initCommand(["--dialect", "postgres"], cwd)).toBe(0);
+    expect(read("metaobjects.config.ts")).toContain('dialect: "postgres"');
+    expect(JSON.parse(read(".metaobjects/config.json")).migrate.dialect).toBe("postgres");
+    expect(nextStepsBlock("postgres")).toContain("--dialect postgres");
+    expect(nextStepsBlock("postgres")).not.toContain("file:dev.sqlite");
+  });
+  test("d1: codegen sqlite (D1 is SQLite), migrate.dialect d1 — the same as --d1", async () => {
+    expect(await initCommand(["--dialect", "d1"], cwd)).toBe(0);
+    expect(read("metaobjects.config.ts")).toContain('dialect: "sqlite"');
+    expect(JSON.parse(read(".metaobjects/config.json")).migrate.dialect).toBe("d1");
+  });
+  test("mysql: codegen only — no migrate block, and the next step says migrate does not own it", async () => {
+    expect(await initCommand(["--dialect", "mysql"], cwd)).toBe(0);
+    expect(read("metaobjects.config.ts")).toContain('dialect: "mysql"');
+    expect(JSON.parse(read(".metaobjects/config.json")).migrate).toBeUndefined();
+    expect(nextStepsBlock("mysql")).toContain("does not own MySQL schema");
+  });
+  test("an unknown dialect, or --d1 with another dialect, is a usage error and writes nothing", async () => {
+    expect(await initCommand(["--dialect", "oracle"], cwd)).toBe(2);
+    expect(await initCommand(["--d1", "--dialect", "postgres"], cwd)).toBe(2);
+    expect(existsSync(join(cwd, ".metaobjects"))).toBe(false);
+  });
+});
+
 describe("init --d1", () => {
   test("scaffolds config with migrate.dialect = 'd1' and prefilled binding from wrangler.toml", async () => {
     writeFileSync(join(cwd, "wrangler.toml"), [
