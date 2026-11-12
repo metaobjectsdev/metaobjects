@@ -12,6 +12,7 @@ import {
 import type { RenderContext } from "@metaobjectsdev/codegen-ts/engine";
 import { getPkInfo, pkInfoOf, subTypeToTsType } from "@metaobjectsdev/codegen-ts/engine";
 import { supportsReturning } from "@metaobjectsdev/codegen-ts/engine";
+import { flatKeyOfPath } from "@metaobjectsdev/codegen-ts/engine";
 import {
   findByIdFnName,
   listFnName,
@@ -49,7 +50,7 @@ export function renderListFn(entity: MetaObject, ctx: RenderContext, readVar?: s
   const entityName = entity.name;
   // Pluralize the PascalCase entity name, preserving capitalization
   // (e.g., "Category" -> "Categories", not "Categorys").
-  const fnName = listFnName(entityName);
+  const fnName = listFnName(entity);
 
   return code`
 export async function ${fnName}(db: Db, opts?: { limit?: number; offset?: number }): Promise<${entityName}[]> {
@@ -231,9 +232,11 @@ interface ReverseFk {
 export function reverseFksFor(entity: MetaObject): ReverseFk[] {
   const out: ReverseFk[] = [];
   for (const ref of entity.referenceIdentities()) {
-    const fkField = ref.fields[0];
+    const fkPath = ref.fields[0];
     const targetRef = ref.targetEntity;
-    if (!fkField || !targetRef) continue;
+    if (!fkPath || !targetRef) continue;
+    // A reference over a flattened value-object member names its flat key on the table.
+    const fkField = flatKeyOfPath(entity, fkPath);
     const bound = refTarget(ref, IDENTITY_REFERENCE_ATTR_REFERENCES);
     const target = isMetaObject(bound) ? bound : undefined;
     out.push({ fkField, targetEntity: target?.name ?? stripPackage(targetRef), target });
@@ -255,8 +258,8 @@ export function renderReverseFinderFns(entity: MetaObject, fk: ReverseFk, ctx: R
   const ownField = entity.findField(fk.fkField);
   const valueType = subTypeToTsType(targetPk?.fieldSubType ?? ownField?.subType ?? "long");
 
-  const singleName = reverseFinderFnName(entityName, fk.fkField);
-  const batchName = reverseFinderInFnName(entityName, fk.fkField);
+  const singleName = reverseFinderFnName(entity, fk.fkField);
+  const batchName = reverseFinderInFnName(entity, fk.fkField);
   const eqSym = imp("eq@drizzle-orm");
   const inArraySym = imp("inArray@drizzle-orm");
 

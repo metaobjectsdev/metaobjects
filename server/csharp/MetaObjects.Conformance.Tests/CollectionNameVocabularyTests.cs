@@ -1,5 +1,5 @@
-// @collectionName is shared vocabulary: an object's collection name (the EF Core DbSet property).
-// It is in the shared registry marked implementedIn ["csharp"], so every port loads and
+// @collectionName is shared vocabulary: an object's collection name (the EF Core DbSet property, the REST segment).
+// It is in the shared registry marked implementedIn ["csharp", "typescript"], so every port loads and
 // type-checks it. It loads under the strict
 // loader on object.entity / projection / report.
 

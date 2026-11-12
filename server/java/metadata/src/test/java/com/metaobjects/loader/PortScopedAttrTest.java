@@ -10,8 +10,8 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 /**
- * {@code @collectionName} is shared vocabulary marked {@code implementedIn: ["csharp"]}
- * (the DbSet property it names is generated there). Java registers and
+ * {@code @collectionName} is shared vocabulary marked {@code implementedIn: ["csharp", "typescript"]}
+ * (the DbSet property, REST segment and generated names it sets are generated there). Java registers and
  * type-checks it, so a model that carries it loads strictly here. The never-released
  * {@code @dbSetName} it replaced is not vocabulary; an attribute the registry does not carry still
  * fails, and a wrong value type fails.

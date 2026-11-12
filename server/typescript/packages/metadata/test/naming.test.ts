@@ -23,7 +23,7 @@ import { MetaDataLoader } from "../src/loader/meta-data-loader.js";
 import { InMemoryStringSource } from "../src/loader/meta-data-source.js";
 import {
   resolveTableSchema, resolveTableName, primaryRdbSource,
-  pluralize, pluralizeTableNameLegacy,
+  pluralize, pluralizeTableNameLegacy, collectionSegmentOf,
 } from "../src/naming.js";
 import { MetaModelError } from "../src/errors.js";
 import { MetaObject } from "../src/core/object/meta-object.js";
@@ -385,6 +385,26 @@ describe("fixtures/naming-conformance/already-plural-pluralize.json", () => {
     (name, apiPlural, legacyPlural) => {
       expect(pluralize(name)).toBe(apiPlural);
       expect(pluralizeTableNameLegacy(name)).toBe(legacyPlural);
+    },
+  );
+});
+
+// The REST collection segment, shared with C#: an unconfigured project keeps the segment every
+// port has always served, and an acronym-ending name never splits its plural suffix off as a word.
+describe("fixtures/naming-conformance/collection-segments.json", () => {
+  const fixturePath = resolve(
+    dirname(fileURLToPath(import.meta.url)),
+    "..", "..", "..", "..", "..",
+    "fixtures", "naming-conformance", "collection-segments.json",
+  );
+  const { cases } = JSON.parse(readFileSync(fixturePath, "utf8")) as {
+    cases: { name: string; collectionName?: string; pluralizer?: string; segment: string }[];
+  };
+
+  it.each(cases.map((c) => [c.name, c.collectionName ?? null, c.pluralizer ?? null, c.segment] as const))(
+    "%s (declared %s, pluralizer %s) -> %s",
+    (name, declared, configured, segment) => {
+      expect(collectionSegmentOf(name, declared ?? undefined, configured ?? undefined)).toBe(segment);
     },
   );
 });

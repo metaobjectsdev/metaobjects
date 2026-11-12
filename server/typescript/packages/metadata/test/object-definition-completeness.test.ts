@@ -86,7 +86,7 @@ const REPORT_ATTRS: Record<string, ExpectedAttr> = {
   spine: { valueType: "string", required: false },
 };
 
-// Cross-port attrs some ports act on: @collectionName (implementedIn C#) on entity /
+// Cross-port attrs some ports act on: @collectionName (implementedIn C# and TypeScript) on entity /
 // projection / report, and the JVM's @object / @objectAdapter on object.base, which every subtype
 // composes.
 const COLLECTION_NAME: Record<string, ExpectedAttr> = {

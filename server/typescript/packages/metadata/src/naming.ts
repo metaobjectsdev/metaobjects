@@ -448,6 +448,40 @@ export function collectionNameOf(obj: MetaData): string {
   return declaredCollectionName(obj) ?? pluralizer(physicalNamingOf(obj).collections ?? DEFAULT_PLURALIZER)(obj.name);
 }
 
+/**
+ * The REST collection segment an object is served under: {@link collectionSegmentOf} over its
+ * name, its own `@collectionName` and the project's `naming.collections`. Every route, `$path`
+ * and REST path in the documentation reads it.
+ */
+export function collectionSegment(obj: MetaData): string {
+  return collectionSegmentOf(obj.name, declaredCollectionName(obj), physicalNamingOf(obj).collections);
+}
+
+/**
+ * The REST collection segment for an object named `name` (shared with C#:
+ * `fixtures/naming-conformance/collection-segments.json`):
+ *   - a declared `@collectionName` wins, snake_cased ({@link snakeCollectionName});
+ *   - else a configured pluralizer's output over the name, snake_cased the same way;
+ *   - else the rule every port has always served: snake_case, then {@link pluralize}.
+ * A pluralizer is applied only when the project configures one, so an unconfigured project's
+ * segments never move (`FAQ` stays `faqs`, never `fa_qs`).
+ */
+export function collectionSegmentOf(name: string, declared?: string, configuredPluralizer?: string): string {
+  if (declared !== undefined) return snakeCollectionName(declared);
+  if (configuredPluralizer !== undefined) return snakeCollectionName(pluralizer(configuredPluralizer)(name));
+  return pluralize(toSnakeCase(name));
+}
+
+/**
+ * snake_case a collection name with an acronym-aware split: a trailing plural `s` / `es` after a
+ * capital is a suffix of the acronym, not a word of its own (`FAQs` -> `faqs`, `TaxIDs` ->
+ * `tax_ids`, `PDFBoxes` -> `pdf_boxes`). Any other name is {@link toSnakeCase}.
+ */
+export function snakeCollectionName(s: string): string {
+  const m = /^(.*[A-Z])(e?s)$/.exec(s);
+  return m !== null ? toSnakeCase(m[1]!) + m[2]! : toSnakeCase(s);
+}
+
 /** The collection name an object declares itself (`@collectionName`); undefined when it declares none. */
 export function declaredCollectionName(obj: MetaData): string | undefined {
   // ADR-0039: own — a collection name is the declaring object's alone (see collectionNameOf).

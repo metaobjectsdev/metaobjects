@@ -9,8 +9,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * The Kotlin half of vocabulary another port implements: `@collectionName` (`implementedIn:
- * ["csharp"]`) loads under the strict loader the Kotlin generators read; a wrong value type, the
+ * The Kotlin half of vocabulary other ports implement: `@collectionName` (`implementedIn:
+ * ["csharp", "typescript"]`) loads under the strict loader the Kotlin generators read; a wrong value type, the
  * never-released `@dbSetName` and an attribute the registry does not carry still fail.
  */
 class PortScopedAttrKtTest {

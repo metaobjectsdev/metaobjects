@@ -350,10 +350,14 @@ public static class CSharpNaming
     public static string RoutesClassName(MetaObject entity) => Pascal(entity.Name) + "Routes";
 
     /// <summary>
-    /// The REST collection URL segment for an entity: the ENTITY NAME
+    /// The REST collection URL segment for an entity: its declared <c>@collectionName</c>, or the
+    /// configured <c>naming.collections</c> pluralizer's output, snake_cased
+    /// (<see cref="CollectionNames.Segment"/>); with neither, the ENTITY NAME
     /// <c>ToSnakeCase</c>d and then <c>Pluralize</c>d (<c>Author</c> →
     /// <c>authors</c>, <c>PostCategory</c> → <c>post_categories</c>). Never the
-    /// physical <c>@table</c>. One rule, identical in all five ports.
+    /// physical <c>@table</c>. The unconfigured rule is identical in all five ports; the
+    /// collection-name rule is shared with TypeScript
+    /// (<c>fixtures/naming-conformance/collection-segments.json</c>).
     /// <para>
     /// It was <c>Pluralize(name).ToLowerInvariant()</c>, which served
     /// <c>PostCategory</c> at <c>/postcategories</c> — the capitals carried the
@@ -362,11 +366,14 @@ public static class CSharpNaming
     /// See <c>fixtures/api-contract-conformance/m2m/</c> for the gating scenario.
     /// </para>
     /// </summary>
-    public static string RoutePath(MetaObject entity) => PluralizeCrossPort(ToSnakeCase(entity.Name));
+    public static string RoutePath(MetaObject entity) =>
+        CollectionNames.Segment(entity, name => PluralizeCrossPort(ToSnakeCase(name)));
 
     /// <summary>
     /// The DbSet property name for an object: its <c>@collectionName</c> when it declares one, else
-    /// <c>Pluralize(Pascal(name))</c>. Every site that names the property (the context, the
+    /// the configured pluralizer (<c>naming.collections</c>) over <c>Pascal(name)</c>, else
+    /// <c>Pluralize(Pascal(name))</c> (which keeps C#'s <c>-sis</c> rule, so an unconfigured project's
+    /// DbSets are unchanged). Every site that names the property (the context, the
     /// routes, the reverse finders, the api reference) reads it here, so they always agree.
     /// </summary>
     public static string DbSetName(MetaObject entity)
@@ -374,7 +381,9 @@ public static class CSharpNaming
         // ADR-0039: own — @collectionName names THIS object's property; an abstract base's value
         // inherited by every subtype would hand them all one name.
         if (entity.OwnAttr(OBJECT_ATTR_COLLECTION_NAME) is not string { Length: > 0 } declared)
-            return Pluralize(Pascal(entity.Name));
+            return CollectionNames.ConfiguredPluralizer(entity) is { } configured
+                ? NamingStrategies.Pluralizer(configured)(Pascal(entity.Name))
+                : Pluralize(Pascal(entity.Name));
         // Refused here, the one place every generator reads it from, rather than as a compile
         // error in the generated context (or a property that hides DbContext.Database).
         if (!System.Text.RegularExpressions.Regex.IsMatch(declared, "^[A-Za-z_][A-Za-z0-9_]*$") || ReservedDbSetNames.Contains(declared))
@@ -444,7 +453,7 @@ public static class CSharpNaming
 
     /// <summary>ADR-0038 — the single-value reverse finder name: <c>Find&lt;EPlural&gt;By&lt;FkField&gt;</c>.</summary>
     public static string ReverseFinderName(MetaObject entity, string fkFieldName) =>
-        $"Find{Pluralize(Pascal(entity.Name))}By{ReverseFinderFkSegment(fkFieldName)}";
+        $"Find{DbSetName(entity)}By{ReverseFinderFkSegment(fkFieldName)}";
 
     /// <summary>ADR-0038 — the batched (anti-N+1) reverse finder name: <c>Find&lt;EPlural&gt;By&lt;FkField&gt;In</c>.</summary>
     public static string ReverseFinderInName(MetaObject entity, string fkFieldName) =>
