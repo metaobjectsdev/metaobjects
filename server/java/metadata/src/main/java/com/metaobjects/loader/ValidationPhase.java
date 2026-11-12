@@ -2454,6 +2454,13 @@ public final class ValidationPhase {
      * Mirrors TS conditionProblem.
      */
     private static String conditionProblem(Object condition, java.util.Map<String, MetaField<?>> fields) {
+        for (java.util.Map<?, ?> n : exprNodes(condition, new ArrayList<>())) {
+            if (n.containsKey(ExpressionAttribute.EXPR_CASE) || n.containsKey(ExpressionAttribute.EXPR_NOW)) {
+                return "is not a valid expression: a condition takes no '"
+                    + (n.containsKey(ExpressionAttribute.EXPR_CASE) ? ExpressionAttribute.EXPR_CASE : ExpressionAttribute.EXPR_NOW)
+                    + "' node, since a CHECK can hold neither a CASE nor the current time.";
+            }
+        }
         ExpressionAttribute.InferResult inferred = ExpressionAttribute.inferExprType(
             condition, name -> fields.containsKey(name) ? fields.get(name).getSubType() : null);
         if (!inferred.errors.isEmpty()) {
@@ -2533,11 +2540,63 @@ public final class ValidationPhase {
 
     /** The field names an expression tree (ExpressionAttribute's Map form) references. */
     private static void collectExprFieldRefs(Object node, java.util.Set<String> out) {
-        if (node instanceof java.util.Map<?, ?> m) {
+        for (java.util.Map<?, ?> m : exprNodes(node, new ArrayList<>())) {
             if (m.get("field") instanceof String f) out.add(f);
-            for (String k : List.of("left", "right", "arg")) collectExprFieldRefs(m.get(k), out);
-            if (m.get("args") instanceof java.util.Collection<?> args) for (Object a : args) collectExprFieldRefs(a, out);
         }
+    }
+
+    /** Every node of an expression tree (ExpressionAttribute's Map form), root first. */
+    private static List<java.util.Map<?, ?>> exprNodes(Object node, List<java.util.Map<?, ?>> out) {
+        if (node instanceof java.util.Map<?, ?> m) {
+            out.add(m);
+            for (String k : List.of("left", "right", "arg", ExpressionAttribute.EXPR_CASE_OPERAND,
+                    ExpressionAttribute.EXPR_CASE_ELSE)) exprNodes(m.get(k), out);
+            if (m.get("args") instanceof java.util.Collection<?> args) for (Object a : args) exprNodes(a, out);
+            if (m.get(ExpressionAttribute.EXPR_CASE) instanceof java.util.Collection<?> arms) {
+                for (Object arm : arms) {
+                    if (arm instanceof java.util.Map<?, ?> am) {
+                        exprNodes(am.get(ExpressionAttribute.EXPR_CASE_WHEN), out);
+                        exprNodes(am.get(ExpressionAttribute.EXPR_CASE_THEN), out);
+                    }
+                }
+            }
+        }
+        return out;
+    }
+
+    /** A field's origin. ADR-0039: own — origin.* never inherits (ADR-0029), so it is declared on the field. */
+    private static MetaOrigin ownOriginOf(MetaField<?> field) {
+        for (MetaData oc : field.getChildren(MetaData.class, false)) {
+            if (oc instanceof MetaOrigin o) return o;
+        }
+        return null;
+    }
+
+    /** The projection's computed fields reachable from {@code start}'s @expr through sibling
+     *  computed refs (a view inlines each one, so the walk must not return to its start). */
+    private static java.util.Set<String> computedReach(MetaObject obj, String start) {
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        java.util.Deque<String> pending = new java.util.ArrayDeque<>(computedRefs(obj, start));
+        while (!pending.isEmpty()) {
+            String r = pending.pop();
+            if (seen.add(r)) pending.addAll(computedRefs(obj, r));
+        }
+        return seen;
+    }
+
+    private static java.util.Set<String> computedRefs(MetaObject obj, String name) {
+        java.util.Set<String> refs = new java.util.HashSet<>();
+        for (MetaField<?> f : obj.getChildren(MetaField.class, true)) {
+            if (!name.equals(f.getShortName())) continue;
+            MetaOrigin o = ownOriginOf(f);
+            if (o != null && ComputedOrigin.SUBTYPE_COMPUTED.equals(o.getSubType())
+                    && o.hasMetaAttr(MetaOrigin.ATTR_EXPR, false)) {
+                collectExprFieldRefs(o.getMetaAttr(MetaOrigin.ATTR_EXPR, false).getValue(), refs);
+            }
+            break;
+        }
+        refs.remove(name);
+        return refs;
     }
 
     // =========================================================================
@@ -3200,8 +3259,43 @@ public final class ValidationPhase {
             MetaObject base = deriveBaseEntity(obj, root, field.getName(), src);
             if (base == null) return;
             final MetaObject baseEntity = base;
+            // A ref names one of the projection's own fields first (a passthrough — joined or
+            // not —, an origin.first or another origin.computed), else a base field. Never
+            // itself, never an aggregate (it would need the grouped row).
+            final String selfName = field.getShortName();
+            if (obj != baseEntity) {
+                java.util.Set<String> reached = computedReach(obj, selfName);
+                if (reached.contains(selfName)) {
+                    // One error per cycle, on its first-declared member.
+                    for (MetaField<?> f : obj.getChildren(MetaField.class, true)) {
+                        if (!reached.contains(f.getShortName())
+                                || !computedReach(obj, f.getShortName()).contains(selfName)) continue;
+                        if (f.getShortName().equals(selfName)) {
+                            throw new MetaDataException(
+                                ErrorMessageConstants.ERR_INVALID_ORIGIN
+                                    + ": origin.computed on " + obj.getName() + "." + field.getName()
+                                    + ": @expr refers back to this field through other computed fields;"
+                                    + " a view cannot inline a cycle.",
+                                ErrorCode.ERR_INVALID_ORIGIN, src);
+                        }
+                        break;
+                    }
+                    return;
+                }
+            }
             ExpressionAttribute.InferResult inferred = ExpressionAttribute.inferExprType(
-                expr, name -> resolvedFieldSubType(baseEntity, name));
+                expr, name -> {
+                    if (obj != baseEntity && !name.equals(selfName)) {
+                        for (MetaField<?> own : obj.getChildren(MetaField.class, true)) {
+                            if (!name.equals(own.getShortName())) continue;
+                            MetaOrigin ownOrigin = ownOriginOf(own);
+                            if (ownOrigin != null
+                                    && AggregateOrigin.SUBTYPE_AGGREGATE.equals(ownOrigin.getSubType())) return null;
+                            return own.getSubType();
+                        }
+                    }
+                    return resolvedFieldSubType(baseEntity, name);
+                });
             if (!inferred.errors.isEmpty()) {
                 throw new MetaDataException(
                     ErrorMessageConstants.ERR_INVALID_ORIGIN
@@ -4386,6 +4480,26 @@ public final class ValidationPhase {
      *
      * @param projection the projection node that owns the field carrying the origin
      */
+    /**
+     * The entity an origin.aggregate's or origin.first's {@code @filter} keys name: the {@code @of}
+     * entity, else the {@code @via} terminal. Null when neither resolves (the origin pass reports why).
+     */
+    static MetaObject originFilterEntity(com.metaobjects.origin.MetaOrigin origin, MetaRoot root) {
+        if (!(origin.getParent() instanceof MetaField) || !(origin.getParent().getParent() instanceof MetaObject)) return null;
+        MetaObject projection = (MetaObject) origin.getParent().getParent();
+        String fieldName = origin.getParent().getName();
+        try {
+            String of = origin.getOf();
+            if (of != null && !of.isEmpty()) {
+                return validateFromOrOfPath(of, root, projection, fieldName, "", origin.getSource()).entity;
+            }
+            String via = origin.getVia();
+            return via == null || via.isEmpty() ? null : validateViaPath(via, root, projection, fieldName, origin.getSource()).terminal();
+        } catch (MetaDataException e) {
+            return null;
+        }
+    }
+
     /** FR-024 B5/B6 — the resolved target of a {@code @from}/{@code @of} ref: the
      *  named root entity and the resolved field node on it (inherited included). */
     private static final class OriginTarget {

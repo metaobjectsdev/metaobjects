@@ -79,7 +79,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <p><strong>Allowed children</strong></p>
 <p><em>No structural children.</em></p>
 <h3>attr.expression</h3>
-<p>A structured expression tree over a base entity&#39;s own fields (closed node grammar: field/value refs, comparisons sharing the filter op vocabulary, isNull/isNotNull, and/or/not, coalesce). Backs origin.computed; a filter object embeds canonically. Additive node kinds (arithmetic/case/via-joined refs) are #159.</p>
+<p>A structured expression tree (closed node grammar: field/value refs, comparisons sharing the filter op vocabulary, isNull/isNotNull, and/or/not, coalesce, case, now). Backs origin.computed; a filter object embeds canonically. A { field } ref names one of the projection&#39;s own fields (a passthrough, joined or not, an origin.first or another origin.computed — never an aggregate, never itself), else a field of the base entity. { case: [ { when, then }, ... ], else? } is a searched CASE (each when boolean); with operand: <expr> it is a simple CASE (each when a value compared with operand by equality); every then/else shares one type. { now: &quot;<ISO-8601 duration>&quot;, startOf? } is the current instant shifted by the duration, its kind (date, local or instant timestamp) taken from the field it is compared with. Arithmetic is #159.</p>
 <p><strong>Owning provider:</strong> metaobjects-core-types</p>
 <p><strong>Attributes</strong></p>
 <p><em>No subtype-specific attributes.</em></p>

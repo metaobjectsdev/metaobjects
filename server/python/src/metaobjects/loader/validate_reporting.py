@@ -69,8 +69,10 @@ from ..meta.core.object.object_constants import (
     OBJECT_REPORT_ATTR_SEGMENT,
     OBJECT_REPORT_ATTR_SPINE,
     OBJECT_SUBTYPE_ENTITY,
+    OBJECT_SUBTYPE_PROJECTION,
     OBJECT_SUBTYPE_REPORT,
 )
+from ..meta.persistence.origin.origin_constants import ORIGIN_SUBTYPE_AGGREGATE, ORIGIN_SUBTYPE_FIRST
 from ..meta.core.relationship.relationship_constants import (
     CARDINALITY_ONE,
     RELATIONSHIP_ATTR_CARDINALITY,
@@ -118,6 +120,7 @@ from ..shared.base_types import (
     TYPE_IDENTITY,
     TYPE_MEASURE,
     TYPE_OBJECT,
+    TYPE_ORIGIN,
     TYPE_RELATIONSHIP,
     TYPE_SEGMENT,
     TYPE_SOURCE,
@@ -210,7 +213,7 @@ def validate_reporting(root: MetaData, errors: list[MetaError]) -> None:
         _check_report(root, report, sink)
 
     # F1 on every host that is not a reporting host.
-    _check_no_relative_dates(root, sink)
+    _check_no_relative_dates(root, root, sink)
     errors.extend(sink.errors)
 
 
@@ -861,40 +864,40 @@ def _check_filter(
                 )
                 continue
             relative = _relative_operand(operand)
-            if relative is None:
-                continue
-            if not set(relative) <= {FILTER_RELATIVE_NOW, FILTER_RELATIVE_START_OF}:
-                err(
-                    f"@filter on '{key}' has a malformed relative date {_js_json(relative)}; a relative date is "
-                    f'{{ now: "<ISO-8601 duration>" }} with an optional startOf, and no other keys.'
-                )
-                continue
-            if field.sub_type not in _TEMPORAL_FIELD_SUBTYPES:
-                err(
-                    f"@filter on '{key}' uses a relative date ({{ now: ... }}), but '{key}' is field.{field.sub_type}; "
-                    f"relative dates apply only to field.date and field.timestamp."
-                )
-                continue
-            if op not in _RELATIVE_DATE_OPS:
-                err(
-                    f"@filter on '{key}' puts a relative date under op '{op}'; relative dates are legal only under "
-                    f"gt, gte, lt and lte."
-                )
-                continue
-            duration = relative[FILTER_RELATIVE_NOW]
-            if not isinstance(duration, str) or ISO_DURATION_RE.match(duration) is None:
-                err(
-                    f"@filter on '{key}' has relative date '{_quote_value(duration)}', which is not an ISO-8601 "
-                    f"duration (e.g. '-P7D', '-PT12H')."
-                )
-                continue
-            if FILTER_RELATIVE_START_OF in relative:
-                start_of = relative[FILTER_RELATIVE_START_OF]
-                if not isinstance(start_of, str) or start_of not in RELATIVE_START_OF_UNITS:
-                    err(
-                        f"@filter on '{key}' has startOf '{_quote_value(start_of)}'; startOf is one of "
-                        f"{', '.join(RELATIVE_START_OF_UNITS)}."
-                    )
+            problem = None if relative is None else _relative_date_problem(key, op, relative, field.sub_type)
+            if problem is not None:
+                err(problem)
+
+
+def _relative_date_problem(key: str, op: str, relative: dict[str, object], sub_type: str | None) -> str | None:
+    """F2 — why a relative-date operand under ``op`` on ``key`` is refused, or None when it is
+    well-formed: its exact shape, the field's type (when the key resolves), a range op, an
+    ISO-8601 duration and a startOf unit, in that order. One mistake, one message."""
+    if not set(relative) <= {FILTER_RELATIVE_NOW, FILTER_RELATIVE_START_OF}:
+        return (
+            f"@filter on '{key}' has a malformed relative date {_js_json(relative)}; a relative date is "
+            f'{{ now: "<ISO-8601 duration>" }} with an optional startOf, and no other keys.'
+        )
+    if sub_type is not None and sub_type not in _TEMPORAL_FIELD_SUBTYPES:
+        return (
+            f"@filter on '{key}' uses a relative date ({{ now: ... }}), but '{key}' is field.{sub_type}; "
+            f"relative dates apply only to field.date and field.timestamp."
+        )
+    if op not in _RELATIVE_DATE_OPS:
+        return (
+            f"@filter on '{key}' puts a relative date under op '{op}'; relative dates are legal only under "
+            f"gt, gte, lt and lte."
+        )
+    duration = relative[FILTER_RELATIVE_NOW]
+    if not isinstance(duration, str) or ISO_DURATION_RE.match(duration) is None:
+        return (
+            f"@filter on '{key}' has relative date '{_quote_value(duration)}', which is not an ISO-8601 "
+            f"duration (e.g. '-P7D', '-PT12H')."
+        )
+    start_of = relative.get(FILTER_RELATIVE_START_OF)
+    if FILTER_RELATIVE_START_OF in relative and (not isinstance(start_of, str) or start_of not in RELATIVE_START_OF_UNITS):
+        return f"@filter on '{key}' has startOf '{_quote_value(start_of)}'; startOf is one of {', '.join(RELATIVE_START_OF_UNITS)}."
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -1170,11 +1173,54 @@ def _is_reporting_filter_host(node: MetaData) -> bool:
     )
 
 
-def _check_no_relative_dates(node: MetaData, sink: _ErrorSink) -> None:
+def _is_relative_view_filter_host(node: MetaData) -> bool:
+    """A projection and an origin.first / origin.aggregate lower relative dates into the view."""
+    return (node.type == TYPE_OBJECT and node.sub_type == OBJECT_SUBTYPE_PROJECTION) or (
+        node.type == TYPE_ORIGIN and node.sub_type in (ORIGIN_SUBTYPE_FIRST, ORIGIN_SUBTYPE_AGGREGATE)
+    )
+
+
+def _check_relative_shapes(
+    filter_value: object, host: MetaData, sub_type_of: Callable[[str], str | None], sink: _ErrorSink
+) -> None:
+    """F2 on every relative operand of a projection's or an origin's filter; ``sub_type_of``
+    resolves a key to its field's subtype, None when it does not resolve (reported elsewhere)."""
+    if not isinstance(filter_value, dict):
+        return
+    for key, clause in filter_value.items():
+        if key in (_FILTER_COMPOSE_AND, _FILTER_COMPOSE_OR):
+            if isinstance(clause, list):
+                for sub in clause:
+                    _check_relative_shapes(sub, host, sub_type_of, sink)
+            continue
+        if not isinstance(clause, dict):
+            continue
+        for op, operand in clause.items():
+            relative = _relative_operand(operand)
+            problem = None if relative is None else _relative_date_problem(key, op, relative, sub_type_of(key))
+            if problem is not None:
+                sink.push(host, _ERR_BAD_ATTR_FILTER, _node_label(host), f": {problem}")
+
+
+def _check_no_relative_dates(root: MetaData, node: MetaData, sink: _ErrorSink) -> None:
     """F1 — walk the whole tree and refuse a ``{ now: ... }`` value in any attr.filter
-    outside a reporting host (a projection @filter, a dataGrid preset, an
-    origin.aggregate/first @filter): those hosts have no lowering for it."""
-    if not _is_reporting_filter_host(node):
+    outside a host that lowers it (a dataGrid preset, for one). A projection's and an
+    origin.first / origin.aggregate's @filter lower relative dates into the view: a projection's
+    keys name its own fields, an origin's name fields of the related entity."""
+    if _is_relative_view_filter_host(node):
+        from .validation_passes import origin_filter_entity
+
+        target = origin_filter_entity(node, root) if node.type == TYPE_ORIGIN else node
+
+        def sub_type_of(key: str) -> str | None:
+            field = _field_of(target, key) if target is not None else None
+            return field.sub_type if field is not None else None
+
+        # ADR-0039: own — only locally declared filters are lowered.
+        for attr in node.own_meta_attrs():
+            if attr.sub_type == ATTR_SUBTYPE_FILTER:
+                _check_relative_shapes(getattr(attr, "value", None), node, sub_type_of, sink)
+    elif not _is_reporting_filter_host(node):
         # ADR-0039: own — only locally declared filters are lowered, and the walk
         # visits every declared node exactly once (an inherited filter is checked
         # where it is declared; origin.* never inherits, ADR-0029).
@@ -1187,11 +1233,11 @@ def _check_no_relative_dates(node: MetaData, sink: _ErrorSink) -> None:
                     _ERR_BAD_ATTR_FILTER,
                     _node_label(node),
                     f": @{attr.name} uses a relative date ({{ now: ... }}), which is legal only in the "
-                    f"@filter of a segment, measure.aggregate or object.report.",
+                    f"@filter of a segment, measure.aggregate, object.report, object.projection, origin.aggregate or origin.first.",
                 )
     # ADR-0039: own — a tree walk; each declared node is visited once, at its declaration.
     for child in node.own_children():
-        _check_no_relative_dates(child, sink)
+        _check_no_relative_dates(root, child, sink)
 
 
 def dimension_via_terminal(root: MetaData, declaring: MetaData, via: str) -> MetaData | None:

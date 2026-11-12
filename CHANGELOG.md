@@ -37,8 +37,9 @@ _npm `1.3.0` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates
 
 **`metamodelVersion` moves to `1.3`.** This release adds vocabulary (`field.duration`,
 `validator.exactlyOne`, `@constraintName`, `@condition`, `@maxLength` on `field.enum`,
-`@sequenceStart`, `@sequenceName`, `@flattenedColumnPrefix`, the `pascal` column rule and
-`@collectionName`) and nothing that loaded before stops loading. The registry gains two
+`@sequenceStart`, `@sequenceName`, `@flattenedColumnPrefix`, the `pascal` column rule,
+`@collectionName`, and the `case` and `now` expression nodes) and nothing that loaded before
+stops loading. The registry gains two
 fields on a type or attr entry, carried into the registry manifest: `implementedIn` (cross-port
 vocabulary only the named ports implement so far, e.g. the `view.*` controls, `["typescript"]`) and
 `ports` (vocabulary only the named ports ever act on, e.g. `@objectAdapter`, `["java", "kotlin"]`:
@@ -137,6 +138,32 @@ Each item below is described in full under Added, Changed or Fixed; this list is
   (`ERR_AMBIGUOUS_PATH`). A declared relationship or reference of the same name still wins. Every
   port's loader implements it, gated by `origin-reverse-reference-hop`,
   `origin-reverse-hop-collection-name` and `error-origin-reverse-hop-ambiguous`.
+- **Expressions and relative dates in views.** These load and validate in every port's loader,
+  each gated by shared conformance fixtures:
+  - a projection's and an `origin.first` / `origin.aggregate`'s `@filter` take a relative date
+    (`{ "now": "-P7D" }`), checked for its shape (`projection-filter-relative-now`,
+    `origin-filter-relative-now`); the fixtures `error-relative-date-origin-host` and
+    `error-relative-date-wrong-host`, which asserted the refusal, are removed;
+  - an `origin.computed` expression may use `now` and `case` (searched, or simple with an
+    `operand`), and a ref in it may name another of the projection's own fields (a passthrough,
+    an `origin.first` or another `origin.computed`, never itself or an aggregate) before a base
+    field (`origin-computed-case-over-joined`, `error-origin-computed-case-mixed-types`). A
+    simple `case` compares a literal `when` with any `operand`, so an enum or long operand maps
+    its codes to labels. A `case`'s results and a `coalesce`'s arguments unify a numeric literal
+    with any numeric field and a `now` with a date or timestamp (`origin-computed-literal-unifies`);
+  - the loaders refuse what a view cannot lower: a `now` whose value is not an ISO-8601 duration
+    or whose `startOf` is not day, week or month (`error-origin-computed-now-bad-duration`); a
+    searched `case` whose `when` is not boolean (`error-origin-computed-case-non-boolean-when`);
+    computed fields that refer to each other in a cycle (`error-origin-computed-cycle`); and a
+    malformed relative date in a view host's `@filter` (`error-relative-date-view-host-malformed`),
+    or one on a field that is not a `field.date` or `field.timestamp`, where a projection's key
+    names its own field and an origin's names a field of its `@of` entity or `@via` terminal
+    (`error-relative-date-non-temporal-field`); and an expression node that carries a key its
+    kind does not take, such as a misspelled `else` on a `case` or a `field` node that also
+    carries `case` (`ERR_UNKNOWN_EXPR_NODE`, `error-origin-computed-case-unknown-key`,
+    `error-origin-computed-node-mixed-keys`);
+  - a validator `@condition` still refuses `case` and `now` (`ERR_BAD_ATTR_VALUE`,
+    `error-validator-condition-now`): it becomes a database CHECK, which can hold neither.
 
 - **An int-backed enum can be an array.** `@intValueMap` together with `isArray: true` (the
   map on the field, or inherited from a shared enum) now loads in every port instead of

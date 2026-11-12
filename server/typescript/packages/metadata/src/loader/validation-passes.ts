@@ -135,6 +135,12 @@ import {
   COLUMN_VALUE_AGGREGATES,
 } from "../persistence/origin/origin-constants.js";
 import {
+  EXPR_CASE,
+  EXPR_CASE_ELSE,
+  EXPR_CASE_OPERAND,
+  EXPR_CASE_THEN,
+  EXPR_CASE_WHEN,
+  EXPR_NOW,
   inferExprType,
   validateExprNode,
   type ExprNode,
@@ -684,6 +690,21 @@ function _validateFromPath(
     return undefined;
   }
   return { entity: sourceObj, field: sourceField };
+}
+
+/**
+ * The entity an origin.aggregate's or origin.first's `@filter` keys name: the `@of` entity,
+ * else the `@via` terminal. Undefined when neither resolves (validateOriginPaths reports why).
+ */
+export function originFilterEntity(origin: MetaData, root: MetaData): MetaData | undefined {
+  const field = origin.parent;
+  const projection = field?.parent;
+  if (field === undefined || projection === undefined) return undefined;
+  // ADR-0039: own — origin.* never inherits (ADR-0029).
+  const of_ = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_OF);
+  if (typeof of_ === "string" && of_ !== "") return _validateFromPath(of_, root, projection, field.name, origin.source, [])?.entity;
+  const via = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_VIA);
+  return typeof via === "string" && via !== "" ? _validateViaPath(via, root, projection, field.name, origin.source, [])?.terminal : undefined;
 }
 
 /** A fully-walked `@via` path: the relationship hop nodes in path order, and
@@ -1623,8 +1644,49 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
           // Type inference against the base entity's EFFECTIVE fields (ADR-0039).
           const base = _deriveBaseEntity(obj, root, field.name, src, errors);
           if (base === undefined) continue;
-          const resolveField = (name: string): string | undefined =>
-            base.children().find((f) => f.type === TYPE_FIELD && f.name === name)?.subType;
+          // A ref names one of the projection's own fields first (a
+          // passthrough — joined or not —, an origin.first or another origin.computed), else a base
+          // field. Never itself, never an aggregate (it would need the grouped row).
+          const ownOriginOf = (name: string): MetaData | undefined =>
+            // ADR-0039: own — origin.* never inherits (ADR-0029), so a field's origin is declared on it.
+            obj.children().find((f) => f.type === TYPE_FIELD && f.name === name)?.ownChildren().find((c) => c.type === TYPE_ORIGIN);
+          const resolveField = (name: string): string | undefined => {
+            if (obj !== base && name !== field.name) {
+              const own = obj.children().find((f) => f.type === TYPE_FIELD && f.name === name);
+              const ownOrigin = ownOriginOf(name);
+              if (own !== undefined && ownOrigin?.subType !== ORIGIN_SUBTYPE_AGGREGATE) return own.subType;
+              if (own !== undefined) return undefined;
+            }
+            return base.children().find((f) => f.type === TYPE_FIELD && f.name === name)?.subType;
+          };
+          // A sibling computed ref is inlined by the view, so the refs must not lead back here.
+          const computedRefs = (name: string): string[] => {
+            const o = ownOriginOf(name);
+            // ADR-0039: own — origin.* never inherits (ADR-0029), so @expr is declared on the origin.
+            return o?.subType === ORIGIN_SUBTYPE_COMPUTED
+              ? expressionFieldRefs(o.ownAttr(ORIGIN_COMPUTED_ATTR_EXPR)).filter((r) => r !== name)
+              : [];
+          };
+          const reach = (start: string): Set<string> => {
+            const seen = new Set<string>();
+            const pending = computedRefs(start);
+            for (let r = pending.pop(); r !== undefined; r = pending.pop()) {
+              if (!seen.has(r)) pending.push(...computedRefs(r));
+              seen.add(r);
+            }
+            return seen;
+          };
+          const reached = obj !== base ? reach(field.name) : new Set<string>();
+          if (reached.has(field.name)) {
+            // One error per cycle, on its first-declared member.
+            const first = obj.children().find((f) => f.type === TYPE_FIELD && reached.has(f.name) && reach(f.name).has(field.name));
+            if (first?.name === field.name) {
+              errors.push(new ParseError(
+                `origin.computed on ${obj.name}.${field.name}: @expr refers back to this field through other computed fields; a view cannot inline a cycle.`,
+                { code: "ERR_INVALID_ORIGIN", source: src }));
+            }
+            continue;
+          }
           const inferred = inferExprType(expr as ExprNode, resolveField);
           if (inferred.errors.length > 0) {
             for (const m of inferred.errors) {
@@ -1758,14 +1820,27 @@ export function validateDerivedFieldProvidability(root: MetaData): ParseError[] 
 // Read RESOLVING (ADR-0039): an entity's validators and fields include inherited ones.
 // ---------------------------------------------------------------------------
 
-/** The field names an attr.expression tree references. */
-function expressionFieldRefs(node: unknown, out: string[] = []): string[] {
+/** Every node of an attr.expression tree, root first. */
+function expressionNodes(node: unknown, out: Record<string, unknown>[] = []): Record<string, unknown>[] {
   if (typeof node !== "object" || node === null) return out;
   const n = node as Record<string, unknown>;
-  if (typeof n["field"] === "string") out.push(n["field"]);
-  for (const key of ["left", "right", "arg"]) expressionFieldRefs(n[key], out);
-  for (const key of ["args"]) if (Array.isArray(n[key])) for (const a of n[key] as unknown[]) expressionFieldRefs(a, out);
+  out.push(n);
+  for (const key of ["left", "right", "arg", EXPR_CASE_OPERAND, EXPR_CASE_ELSE]) expressionNodes(n[key], out);
+  if (Array.isArray(n["args"])) for (const a of n["args"] as unknown[]) expressionNodes(a, out);
+  if (Array.isArray(n[EXPR_CASE])) {
+    for (const arm of n[EXPR_CASE] as unknown[]) {
+      if (typeof arm === "object" && arm !== null) {
+        expressionNodes((arm as Record<string, unknown>)[EXPR_CASE_WHEN], out);
+        expressionNodes((arm as Record<string, unknown>)[EXPR_CASE_THEN], out);
+      }
+    }
+  }
   return out;
+}
+
+/** The field names an attr.expression tree references. */
+function expressionFieldRefs(node: unknown): string[] {
+  return expressionNodes(node).flatMap((n) => (typeof n["field"] === "string" ? [n["field"]] : []));
 }
 
 /** What a literal compared with a field.duration must be. */
@@ -1788,6 +1863,10 @@ const _CONDITION_NUMBER_SUBTYPES = new Set<string>([
  *  - no comparison has a null literal: `x = NULL` is never true, so use isNull / isNotNull.
  */
 function conditionProblem(condition: unknown, obj: MetaObject): string | undefined {
+  const unrenderable = expressionNodes(condition).find((n) => EXPR_CASE in n || EXPR_NOW in n);
+  if (unrenderable !== undefined) {
+    return `is not a valid expression: a condition takes no '${EXPR_CASE in unrenderable ? EXPR_CASE : EXPR_NOW}' node, since a CHECK can hold neither a CASE nor the current time.`;
+  }
   const fields = new Map(obj.fields().map((f) => [f.name, f] as const));
   const inferred = inferExprType(condition as ExprNode, (name) => fields.get(name)?.subType);
   if (inferred.errors.length > 0) return `is not a valid expression: ${inferred.errors.join("; ")}.`;

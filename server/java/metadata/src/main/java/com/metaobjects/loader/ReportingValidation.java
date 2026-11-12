@@ -163,7 +163,7 @@ final class ReportingValidation {
         }
 
         // F1 on every host that is not a reporting host.
-        checkNoRelativeDates(root, sink);
+        checkNoRelativeDates(root, root, sink);
 
         // Java-only: closed-set membership the TS registry enforces generically.
         checkClosedSets(root, sink);
@@ -862,41 +862,42 @@ final class ReportingValidation {
                     continue;
                 }
                 Map<?, ?> relative = relativeOperand(opEntry.getValue());
-                if (relative == null) continue;
-                if (!ReportingConstants.isWellFormedRelativeKeys(relative.keySet())) {
-                    err.accept("@filter on '" + key + "' has a malformed relative date " + GSON.toJson(relative)
-                            + "; a relative date is { now: \"<ISO-8601 duration>\" } with an optional startOf, and no other keys.");
-                    continue;
-                }
-                if (!TEMPORAL_FIELD_SUBTYPES.contains(field.getSubType())) {
-                    err.accept("@filter on '" + key + "' uses a relative date ({ now: ... }), but '" + key
-                            + "' is field." + field.getSubType()
-                            + "; relative dates apply only to field.date and field.timestamp.");
-                    continue;
-                }
-                if (!RELATIVE_DATE_OPS.contains(op)) {
-                    err.accept("@filter on '" + key + "' puts a relative date under op '" + op
-                            + "'; relative dates are legal only under gt, gte, lt and lte.");
-                    continue;
-                }
-                Object duration = relative.get(ReportingConstants.FILTER_RELATIVE_NOW);
-                if (!(duration instanceof String)
-                        || !ReportingConstants.ISO_DURATION_RE.matcher((String) duration).matches()) {
-                    err.accept("@filter on '" + key + "' has relative date '" + quoteValue(duration)
-                            + "', which is not an ISO-8601 duration (e.g. '-P7D', '-PT12H').");
-                    continue;
-                }
-                if (relative.containsKey(ReportingConstants.FILTER_RELATIVE_START_OF)) {
-                    Object startOf = relative.get(ReportingConstants.FILTER_RELATIVE_START_OF);
-                    if (!(startOf instanceof String)
-                            || !ReportingConstants.RELATIVE_START_OF_UNITS.contains(startOf)) {
-                        err.accept("@filter on '" + key + "' has startOf '" + quoteValue(startOf)
-                                + "'; startOf is one of "
-                                + String.join(", ", ReportingConstants.RELATIVE_START_OF_UNITS) + ".");
-                    }
-                }
+                String problem = relative == null ? null : relativeDateProblem(key, op, relative, field.getSubType());
+                if (problem != null) err.accept(problem);
             }
         }
+    }
+
+    /**
+     * F2 — why a relative-date operand under {@code op} on {@code key} is refused, or null when
+     * it is well-formed: its exact shape, the field's type (when the key resolves), a range op,
+     * an ISO-8601 duration and a startOf unit, in that order. One mistake, one message.
+     */
+    private static String relativeDateProblem(String key, String op, Map<?, ?> relative, String subType) {
+        if (!ReportingConstants.isWellFormedRelativeKeys(relative.keySet())) {
+            return "@filter on '" + key + "' has a malformed relative date " + GSON.toJson(relative)
+                    + "; a relative date is { now: \"<ISO-8601 duration>\" } with an optional startOf, and no other keys.";
+        }
+        if (subType != null && !TEMPORAL_FIELD_SUBTYPES.contains(subType)) {
+            return "@filter on '" + key + "' uses a relative date ({ now: ... }), but '" + key
+                    + "' is field." + subType + "; relative dates apply only to field.date and field.timestamp.";
+        }
+        if (!RELATIVE_DATE_OPS.contains(op)) {
+            return "@filter on '" + key + "' puts a relative date under op '" + op
+                    + "'; relative dates are legal only under gt, gte, lt and lte.";
+        }
+        Object duration = relative.get(ReportingConstants.FILTER_RELATIVE_NOW);
+        if (!(duration instanceof String) || !ReportingConstants.ISO_DURATION_RE.matcher((String) duration).matches()) {
+            return "@filter on '" + key + "' has relative date '" + quoteValue(duration)
+                    + "', which is not an ISO-8601 duration (e.g. '-P7D', '-PT12H').";
+        }
+        Object startOf = relative.get(ReportingConstants.FILTER_RELATIVE_START_OF);
+        if (relative.containsKey(ReportingConstants.FILTER_RELATIVE_START_OF)
+                && (!(startOf instanceof String) || !ReportingConstants.RELATIVE_START_OF_UNITS.contains(startOf))) {
+            return "@filter on '" + key + "' has startOf '" + quoteValue(startOf)
+                    + "'; startOf is one of " + String.join(", ", ReportingConstants.RELATIVE_START_OF_UNITS) + ".";
+        }
+        return null;
     }
 
     // ---------------------------------------------------------------------------
@@ -1148,6 +1149,37 @@ final class ReportingValidation {
     // F1 — relative-date values only on reporting hosts
     // ---------------------------------------------------------------------------
 
+    /** The view hosts whose {@code @filter} may carry a relative-date value too: a projection's
+     *  and an origin.first / origin.aggregate's, which lower it into the view. */
+    private static boolean isRelativeViewFilterHost(MetaData node) {
+        return (MetaObject.TYPE_OBJECT.equals(node.getType()) && MetaObject.SUBTYPE_PROJECTION.equals(node.getSubType()))
+                || (com.metaobjects.origin.MetaOrigin.TYPE_ORIGIN.equals(node.getType())
+                    && (com.metaobjects.origin.FirstOrigin.SUBTYPE_FIRST.equals(node.getSubType())
+                        || com.metaobjects.origin.AggregateOrigin.SUBTYPE_AGGREGATE.equals(node.getSubType())));
+    }
+
+    /** F2 on every relative operand of a projection's or an origin's filter; {@code subTypeOf}
+     *  resolves a key to its field's subtype, null when it does not resolve (reported elsewhere). */
+    private static void checkRelativeShapes(Object filter, MetaData host,
+                                            java.util.function.Function<String, String> subTypeOf, ErrorSink sink) {
+        if (!(filter instanceof Map)) return;
+        for (Map.Entry<?, ?> entry : ((Map<?, ?>) filter).entrySet()) {
+            String key = String.valueOf(entry.getKey());
+            Object clause = entry.getValue();
+            if (FILTER_COMPOSE_AND.equals(key) || FILTER_COMPOSE_OR.equals(key)) {
+                if (clause instanceof List) for (Object sub : (List<?>) clause) checkRelativeShapes(sub, host, subTypeOf, sink);
+                continue;
+            }
+            if (!(clause instanceof Map)) continue;
+            for (Map.Entry<?, ?> opEntry : ((Map<?, ?>) clause).entrySet()) {
+                Map<?, ?> relative = relativeOperand(opEntry.getValue());
+                String problem = relative == null ? null
+                        : relativeDateProblem(key, String.valueOf(opEntry.getKey()), relative, subTypeOf.apply(key));
+                if (problem != null) sink.push(host, ErrorCode.ERR_BAD_ATTR_FILTER, nodeLabel(host), ": " + problem);
+            }
+        }
+    }
+
     /** True for the hosts whose {@code @filter} may carry a relative-date value. */
     private static boolean isReportingFilterHost(MetaData node) {
         return ReportingConstants.TYPE_SEGMENT.equals(node.getType())
@@ -1158,26 +1190,38 @@ final class ReportingValidation {
 
     /**
      * F1 — walk the whole tree and refuse a {@code { now: ... }} value in any attr.filter
-     * outside a reporting host (a projection {@code @filter}, a dataGrid preset, an
-     * origin.aggregate/first {@code @filter}): those hosts have no lowering for it.
+     * outside a host that lowers it (a dataGrid preset, for one), and check every relative value
+     * in a projection's or an origin.aggregate/first's {@code @filter}, which lower it into the view.
      */
-    private static void checkNoRelativeDates(MetaData node, ErrorSink sink) {
+    private static void checkNoRelativeDates(MetaRoot root, MetaData node, ErrorSink sink) {
         // ADR-0039: own — a tree walk; each declared node (and each locally declared attr)
         // is visited once, at its declaration (an inherited filter is checked where it is
         // declared; origin.* never inherits, ADR-0029). Attrs are children in this port.
         List<MetaData> own = node.getChildren(MetaData.class, false);
-        if (!isReportingFilterHost(node)) {
+        if (isRelativeViewFilterHost(node)) {
+            // A projection's and an origin's @filter lower relative dates into the view. A
+            // projection's keys name its own fields; an origin's name fields of the related entity.
+            MetaData target = node instanceof com.metaobjects.origin.MetaOrigin
+                    ? ValidationPhase.originFilterEntity((com.metaobjects.origin.MetaOrigin) node, root) : node;
+            java.util.function.Function<String, String> subTypeOf = key -> {
+                MetaData f = target == null ? null : fieldOf(target, key);
+                return f == null ? null : f.getSubType();
+            };
+            for (MetaData c : own) {
+                if (c instanceof FilterAttribute) checkRelativeShapes(((MetaAttribute<?>) c).getValue(), node, subTypeOf, sink);
+            }
+        } else if (!isReportingFilterHost(node)) {
             for (MetaData c : own) {
                 if (c instanceof FilterAttribute
                         && filterContainsRelativeValue(((MetaAttribute<?>) c).getValue())) {
                     sink.push(node, ErrorCode.ERR_BAD_ATTR_FILTER, nodeLabel(node),
                             ": @" + c.getShortName() + " uses a relative date ({ now: ... }), which is legal only in "
-                                    + "the @filter of a segment, measure.aggregate or object.report.");
+                                    + "the @filter of a segment, measure.aggregate, object.report, object.projection, origin.aggregate or origin.first.");
                 }
             }
         }
         for (MetaData c : own) {
-            if (!(c instanceof MetaAttribute)) checkNoRelativeDates(c, sink);
+            if (!(c instanceof MetaAttribute)) checkNoRelativeDates(root, c, sink);
         }
     }
 

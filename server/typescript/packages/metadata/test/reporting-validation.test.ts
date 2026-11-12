@@ -902,7 +902,7 @@ describe("validateReporting — relative dates", () => {
     expect(await codes(m)).toEqual([]);
   });
 
-  test("F1: a relative value in a projection @filter is refused", async () => {
+  test("F1 (now): a relative value in a projection @filter is accepted", async () => {
     const m = edit((x) =>
       x["metadata.root"].children.push({
         "object.projection": {
@@ -917,8 +917,7 @@ describe("validateReporting — relative dates", () => {
         },
       }),
     );
-    const msg = await single(m, "ERR_BAD_ATTR_FILTER");
-    expect(msg).toContain("object.projection 'acme::shop::RecentPurchase'");
+    expect(await codes(m)).toEqual([]);
   });
 
   test("F1: a relative value in a dataGrid preset is refused", async () => {
@@ -938,7 +937,7 @@ describe("validateReporting — relative dates", () => {
     expect(jsonPathOf(errors[0]!.source)).toContain("['layout.dataGrid']");
   });
 
-  test("F1: a relative value in an origin.aggregate @filter is refused", async () => {
+  test("F1 (now): a relative value in an origin.aggregate @filter is accepted", async () => {
     const m = edit((x) =>
       x["metadata.root"].children.push({
         "object.projection": {
@@ -963,9 +962,7 @@ describe("validateReporting — relative dates", () => {
         },
       }),
     );
-    const { errors } = await loadInline(m);
-    expect(errors.map((e) => e.code)).toEqual(["ERR_BAD_ATTR_FILTER"]);
-    expect(errors[0]!.message).toContain("origin.aggregate");
+    expect(await codes(m)).toEqual([]);
   });
 
   test("F2: an operand with a `now` key plus other keys is refused on a reporting host", async () => {
@@ -1064,12 +1061,12 @@ describe("validateReporting — relative dates", () => {
     expect(errors.map((e) => e.message).filter((msg) => msg.includes("relative date"))).toEqual([]);
   });
 
-  test("F1: a field named `now` inside and/or does not hide a real relative value beside it", async () => {
+  test("F1: a field named `now` inside and/or does not hide a malformed relative value beside it", async () => {
     const m = edit((x) =>
       x["metadata.root"].children.push({
         "object.projection": {
           name: "NowView",
-          "@filter": { or: [{ now: { eq: 1 } }, { purchasedAt: { gte: { now: "-P7D" } } }] },
+          "@filter": { or: [{ now: { eq: 1 } }, { purchasedAt: { gte: { now: "7 days ago" } } }] },
           children: [
             { "source.rdb": { "@kind": "view", "@view": "now_view" } },
             field("long", "id", { extends: "Purchase.id" }),

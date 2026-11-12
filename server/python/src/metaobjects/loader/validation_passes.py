@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import math
 import re
-from typing import Callable, NamedTuple
+from typing import Any, Callable, NamedTuple
 
 from ..errors import ErrorCode, MetaError
 from ..source.error_source import LoaderWarning
@@ -25,6 +25,12 @@ from .validate_source_parameter_ref import validate_source_parameter_ref
 from .validate_source_escapes import validate_source_escapes
 from .validate_reporting import validate_reporting
 from ..codegen.runtime.duration_wire import DURATION_RE
+from ..meta.core.reporting.reporting_constants import (
+    FILTER_RELATIVE_NOW,
+    FILTER_RELATIVE_START_OF,
+    ISO_DURATION_RE,
+    RELATIVE_START_OF_UNITS,
+)
 from ..meta.core.field.field_constants import (
     ENUM_MEMBER_PATTERN,
     FIELD_ATTR_COERCE_DEFAULT,
@@ -1145,6 +1151,15 @@ SORT_ORDER_VALUES: tuple[str, ...] = ("asc", "desc")
 EXPR_OP_IS_NOT_NULL = "isNotNull"
 EXPR_OP_NOT = "not"
 EXPR_FN_COALESCE = "coalesce"
+# { case: [{ when, then }, …], else?, operand? } — searched, or simple with operand; and
+# { now: "<ISO-8601 duration>", startOf? } — the relative-date value, as a leaf.
+EXPR_CASE = "case"
+EXPR_CASE_WHEN = "when"
+EXPR_CASE_THEN = "then"
+EXPR_CASE_ELSE = "else"
+EXPR_CASE_OPERAND = "operand"
+EXPR_NOW = FILTER_RELATIVE_NOW
+EXPR_NOW_START_OF = FILTER_RELATIVE_START_OF
 
 # Filter-op / compose names shared with the filter vocabulary (see query-constants.ts).
 _FILTER_OP_EQ = "eq"
@@ -1163,6 +1178,20 @@ _COMPARISON_OPS: frozenset[str] = frozenset(
 _NULL_OPS: frozenset[str] = frozenset({_FILTER_OP_IS_NULL, EXPR_OP_IS_NOT_NULL})
 _VARIADIC_LOGIC_OPS: frozenset[str] = frozenset({_FILTER_COMPOSE_AND, _FILTER_COMPOSE_OR})
 
+# Each node kind (keyed by the key that names it) and the only keys it may carry.
+_NODE_KEYS: dict[str, tuple[str, ...]] = {
+    "field": ("field",),
+    "value": ("value",),
+    EXPR_NOW: (EXPR_NOW, EXPR_NOW_START_OF),
+    EXPR_CASE: (EXPR_CASE, EXPR_CASE_ELSE, EXPR_CASE_OPERAND),
+    "fn": ("fn", "args"),
+    "op": ("op", "left", "right", "arg", "args"),
+}
+_EXPR_NUMERIC_SUBTYPES: frozenset[str] = frozenset({
+    FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT,
+    FIELD_SUBTYPE_DECIMAL, FIELD_SUBTYPE_CURRENCY,
+})
+
 
 def validate_expr_node(node: object) -> list[str]:
     """Structural well-formedness of an expression tree (known node kinds, ops,
@@ -1175,6 +1204,11 @@ def validate_expr_node(node: object) -> list[str]:
             else type(node).__name__
         )
         return [f"expression node must be an object, got {kind}"]
+    node_kind = next((k for k in _NODE_KEYS if k in node), None)
+    if node_kind is not None:
+        extra = [k for k in node if k not in _NODE_KEYS[node_kind]]
+        if extra:
+            return [f"expression '{node_kind}' node takes only {', '.join(_NODE_KEYS[node_kind])}, not {', '.join(extra)}"]
     if "field" in node:
         f = node["field"]
         return [] if isinstance(f, str) and len(f) > 0 else ["expression 'field' must be a non-empty string"]
@@ -1185,6 +1219,33 @@ def validate_expr_node(node: object) -> list[str]:
             if (v is None or isinstance(v, (str, int, float, bool)))
             else ["expression 'value' must be a scalar literal (string/number/boolean/null)"]
         )
+    if EXPR_NOW in node:
+        duration = node[EXPR_NOW]
+        if not isinstance(duration, str) or ISO_DURATION_RE.match(duration) is None:
+            return [f"expression '{EXPR_NOW}' must be an ISO-8601 duration string (e.g. '-P7D'), got {duration!r}"]
+        start_of = node.get(EXPR_NOW_START_OF)
+        if EXPR_NOW_START_OF in node and not (isinstance(start_of, str) and start_of in RELATIVE_START_OF_UNITS):
+            return [
+                f"expression '{EXPR_NOW_START_OF}' must be one of "
+                f"{', '.join(RELATIVE_START_OF_UNITS)}, got {start_of!r}"
+            ]
+        return []
+    if EXPR_CASE in node:
+        arms = node[EXPR_CASE]
+        if not isinstance(arms, list) or not arms:
+            return [f"'{EXPR_CASE}' requires a non-empty array of {{ {EXPR_CASE_WHEN}, {EXPR_CASE_THEN} }} arms"]
+        errs: list[str] = []
+        for arm in arms:
+            if not isinstance(arm, dict) or set(arm) != {EXPR_CASE_WHEN, EXPR_CASE_THEN}:
+                errs.append(f"every '{EXPR_CASE}' arm must be {{ {EXPR_CASE_WHEN}, {EXPR_CASE_THEN} }}")
+                continue
+            errs.extend(validate_expr_node(arm[EXPR_CASE_WHEN]))
+            errs.extend(validate_expr_node(arm[EXPR_CASE_THEN]))
+        if EXPR_CASE_ELSE in node:
+            errs.extend(validate_expr_node(node[EXPR_CASE_ELSE]))
+        if EXPR_CASE_OPERAND in node:
+            errs.extend(validate_expr_node(node[EXPR_CASE_OPERAND]))
+        return errs
     if "fn" in node:
         if node["fn"] != EXPR_FN_COALESCE:
             return [f"unknown expression fn '{node['fn']}'"]
@@ -1210,7 +1271,7 @@ def validate_expr_node(node: object) -> list[str]:
                 return [m for a in args for m in validate_expr_node(a)]
             return [f"op '{op}' requires a non-empty args array"]
         return [f"unknown expression op '{op}'"]
-    return ["expression node must be one of {field}, {value}, {op,…}, {fn,…}"]
+    return ["expression node must be one of {field}, {value}, {op,…}, {fn,…}, {case,…}, {now}"]
 
 
 def _literal_type(v: object) -> str | None:
@@ -1223,6 +1284,36 @@ def _literal_type(v: object) -> str | None:
     if isinstance(v, (int, float)):
         return FIELD_SUBTYPE_INT if float(v).is_integer() else FIELD_SUBTYPE_DOUBLE
     return None  # null literal
+
+
+def _is_adaptable(node: object) -> bool:
+    """A numeric literal or a ``now`` node: it takes the type of the result it sits beside."""
+    assert isinstance(node, dict)
+    value = node.get("value")
+    return ("value" in node and isinstance(value, (int, float)) and not isinstance(value, bool)) or EXPR_NOW in node
+
+
+def _adapts_to(node: object, to: str) -> bool:
+    """Whether an adaptable node takes ``to``: a whole number any numeric type, a fractional number only
+    double, float or decimal, ``now`` a date or timestamp."""
+    assert isinstance(node, dict)
+    if EXPR_NOW in node:
+        return to in (FIELD_SUBTYPE_DATE, FIELD_SUBTYPE_TIMESTAMP)
+    if _literal_type(node["value"]) == FIELD_SUBTYPE_INT:
+        return to in _EXPR_NUMERIC_SUBTYPES
+    return to in (FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT, FIELD_SUBTYPE_DECIMAL)
+
+
+def _unify_types(nodes: list[object], types: list[str | None]) -> tuple[str | None, list[str] | None]:
+    """The one type of a case's results or a coalesce's args, and every type when they do not unify."""
+    typed = [(node, t) for node, t in zip(nodes, types) if t is not None]
+    anchor = next((t for node, t in typed if not _is_adaptable(node)), None)
+    unified = anchor if anchor is not None else (typed[0][1] if typed else None)
+    fits = all(
+        t == unified or (anchor is not None and _is_adaptable(node) and _adapts_to(node, anchor))
+        for node, t in typed
+    )
+    return (unified, None) if fits else (unified, list(dict.fromkeys(t for _, t in typed)))
 
 
 class InferResult(NamedTuple):
@@ -1250,21 +1341,55 @@ def infer_expr_type(
     if "field" in n:
         t = resolve_field(n["field"])
         return (
-            InferResult(None, [f"expression field '{n['field']}' does not resolve to a base entity field"])
+            InferResult(None, [f"expression field '{n['field']}' does not resolve to a projection field (not an aggregate) or a base entity field"])
             if t is None
             else InferResult(t, [])
         )
     if "value" in n:
         return InferResult(_literal_type(n["value"]), [])
+    # now: an instant; compared with a date or local timestamp it takes that kind at lowering.
+    if EXPR_NOW in n:
+        return InferResult(FIELD_SUBTYPE_TIMESTAMP, [])
+    if EXPR_CASE in n:
+        errors: list[str] = []
+        operand = infer_expr_type(n[EXPR_CASE_OPERAND], resolve_field) if EXPR_CASE_OPERAND in n else None
+        if operand is not None:
+            errors.extend(operand.errors)
+        results: list[str | None] = []
+        result_nodes: list[object] = []
+        for arm in n[EXPR_CASE]:
+            w = infer_expr_type(arm[EXPR_CASE_WHEN], resolve_field)
+            errors.extend(w.errors)
+            if operand is None and w.type is not None and w.type != FIELD_SUBTYPE_BOOLEAN:
+                errors.append(f"a searched '{EXPR_CASE}' needs a boolean '{EXPR_CASE_WHEN}', got {w.type}")
+            if (
+                operand is not None and operand.type is not None and w.type is not None
+                and "value" not in arm[EXPR_CASE_WHEN] and w.type != operand.type
+            ):
+                errors.append(
+                    f"a simple '{EXPR_CASE}' compares its {operand.type} '{EXPR_CASE_OPERAND}' "
+                    f"with a {w.type} '{EXPR_CASE_WHEN}'"
+                )
+            t = infer_expr_type(arm[EXPR_CASE_THEN], resolve_field)
+            errors.extend(t.errors)
+            results.append(t.type)
+            result_nodes.append(arm[EXPR_CASE_THEN])
+        if EXPR_CASE_ELSE in n:
+            e = infer_expr_type(n[EXPR_CASE_ELSE], resolve_field)
+            errors.extend(e.errors)
+            results.append(e.type)
+            result_nodes.append(n[EXPR_CASE_ELSE])
+        unified, differing = _unify_types(result_nodes, results)
+        if differing is not None:
+            errors.append(f"'{EXPR_CASE}' results have differing types ({', '.join(differing)})")
+        return InferResult(unified, errors)
 
     if "fn" in n:  # coalesce
         arg_results = [infer_expr_type(a, resolve_field) for a in n["args"]]
         errors = [e for r in arg_results for e in r.errors]
-        arg_types = [r.type for r in arg_results if r.type is not None]
-        unified = arg_types[0] if arg_types else None
-        if unified is not None and any(t != unified for t in arg_types):
-            distinct = ", ".join(dict.fromkeys(arg_types))
-            errors.append(f"'{EXPR_FN_COALESCE}' arguments have differing types ({distinct})")
+        unified, differing = _unify_types(n["args"], [r.type for r in arg_results])
+        if differing is not None:
+            errors.append(f"'{EXPR_FN_COALESCE}' arguments have differing types ({', '.join(differing)})")
         return InferResult(unified, errors)
 
     op = n["op"]
@@ -1635,6 +1760,25 @@ def _validate_entity_field_ref(
         )
         return None
     return (entity, field_node)
+
+
+def origin_filter_entity(origin: MetaData, root: MetaData) -> MetaData | None:
+    """The entity an origin.aggregate's or origin.first's ``@filter`` keys name: the ``@of``
+    entity, else the ``@via`` terminal. None when neither resolves (the origin pass reports why)."""
+    field = origin.parent
+    projection = field.parent if field is not None else None
+    if field is None or projection is None:
+        return None
+    pkg = referrer_package_of(projection)
+    referrer = f"{projection.fqn()}::{field.name}"
+    # ADR-0039 sanctioned own: origin.* never inherits (ADR-0029).
+    of_ref = origin.attr(ORIGIN_ATTR_OF)
+    if isinstance(of_ref, str) and of_ref:
+        target = _validate_entity_field_ref(of_ref, ORIGIN_ATTR_OF, "", root, pkg, [], origin, referrer)
+        return target[0] if target is not None else None
+    via = origin.attr(ORIGIN_ATTR_VIA)
+    walked = _validate_via_path(via, "", root, pkg, [], origin, referrer) if isinstance(via, str) and via else None
+    return walked.terminal if walked is not None else None
 
 
 class WalkedViaPath(NamedTuple):
@@ -2587,11 +2731,39 @@ def _validate_origin_paths(
                 if base is None:
                     continue
 
-                def _resolve_field(name: str, _base: MetaData = base) -> str | None:
+                # A ref names one of the projection's own fields first (a passthrough — joined
+                # or not —, an origin.first or another origin.computed), else a base field.
+                # Never itself, never an aggregate (it would need the grouped row).
+                def _resolve_field(
+                    name: str, _base: MetaData = base, _obj: MetaData = obj, _self: str = node.name
+                ) -> str | None:
+                    if _obj is not _base and name != _self:
+                        for own in _obj.children():
+                            if own.type != TYPE_FIELD or own.name != name:
+                                continue
+                            own_origin = _own_origin_of(own)
+                            if own_origin is not None and own_origin.sub_type == ORIGIN_SUBTYPE_AGGREGATE:
+                                return None
+                            return own.sub_type
                     for f in _base.children():
                         if f.type == TYPE_FIELD and f.name == name:
                             return f.sub_type
                     return None
+
+                reached = _computed_reach(obj, node.name) if obj is not base else set()
+                if node.name in reached:
+                    # One error per cycle, on its first-declared member.
+                    first = next(
+                        f for f in obj.children()
+                        if f.type == TYPE_FIELD and f.name in reached
+                        and node.name in _computed_reach(obj, f.name)
+                    )
+                    if first.name == node.name:
+                        errors.append(MetaError(
+                            f"origin.computed on {obj.name}.{node.name}: @expr refers back to this "
+                            f"field through other computed fields; a view cannot inline a cycle.",
+                            ErrorCode.ERR_INVALID_ORIGIN, envelope=src))
+                    continue
 
                 inferred = infer_expr_type(expr, _resolve_field)
                 if inferred.errors:
@@ -3860,16 +4032,58 @@ def _validate_identity_sequence(root: MetaData, errors: list[MetaError]) -> None
 # become a CHECK guard (see _condition_problem) — all ERR_BAD_ATTR_VALUE. Read RESOLVING
 # (ADR-0039). Mirrors TS validateCrossFieldValidators.
 def _expr_field_refs(node: object, out: set[str]) -> None:
+    for n in _expr_nodes(node):
+        if isinstance(n.get("field"), str):
+            out.add(n["field"])
+
+
+def _expr_nodes(node: object, out: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
+    """Every node of an attr.expression tree, root first."""
+    out = [] if out is None else out
     if not isinstance(node, dict):
-        return
-    if isinstance(node.get("field"), str):
-        out.add(node["field"])
-    for key in ("left", "right", "arg"):
-        _expr_field_refs(node.get(key), out)
+        return out
+    out.append(node)
+    for key in ("left", "right", "arg", EXPR_CASE_OPERAND, EXPR_CASE_ELSE):
+        _expr_nodes(node.get(key), out)
     args = node.get("args")
     if isinstance(args, list):
         for a in args:
-            _expr_field_refs(a, out)
+            _expr_nodes(a, out)
+    arms = node.get(EXPR_CASE)
+    if isinstance(arms, list):
+        for arm in arms:
+            if isinstance(arm, dict):
+                _expr_nodes(arm.get(EXPR_CASE_WHEN), out)
+                _expr_nodes(arm.get(EXPR_CASE_THEN), out)
+    return out
+
+
+def _own_origin_of(field: MetaData) -> MetaData | None:
+    # ADR-0039: own — origin.* never inherits (ADR-0029), so a field's origin is declared on it.
+    return next((c for c in field.own_children() if c.type == TYPE_ORIGIN), None)
+
+
+def _computed_reach(obj: MetaData, start: str) -> set[str]:
+    """The projection's computed fields reachable from ``start``'s @expr through sibling
+    computed refs (a view inlines each one, so the walk must not return to its start)."""
+
+    def refs(name: str) -> set[str]:
+        out: set[str] = set()
+        field = next((f for f in obj.children() if f.type == TYPE_FIELD and f.name == name), None)
+        origin = _own_origin_of(field) if field is not None else None
+        if origin is not None and origin.sub_type == ORIGIN_SUBTYPE_COMPUTED:
+            _expr_field_refs(origin.attr(ORIGIN_ATTR_EXPR), out)
+        out.discard(name)
+        return out
+
+    seen: set[str] = set()
+    pending = list(refs(start))
+    while pending:
+        r = pending.pop()
+        if r not in seen:
+            seen.add(r)
+            pending.extend(refs(r))
+    return seen
 
 
 # What a literal compared with a field.duration must be.
@@ -3908,6 +4122,13 @@ def _condition_problem(condition: object, obj: MetaData) -> str | None:
         @values, for field.duration, an ISO-8601 duration;
       - no comparison has a null literal: ``x = NULL`` is never true, so use isNull / isNotNull.
     Mirrors TS conditionProblem."""
+    for n in _expr_nodes(condition):
+        if EXPR_CASE in n or EXPR_NOW in n:
+            kind = EXPR_CASE if EXPR_CASE in n else EXPR_NOW
+            return (
+                f"is not a valid expression: a condition takes no '{kind}' node, "
+                f"since a CHECK can hold neither a CASE nor the current time."
+            )
     fields = {f.name: f for f in obj.fields()}
     inferred = infer_expr_type(
         condition, lambda name: fields[name].sub_type if name in fields else None

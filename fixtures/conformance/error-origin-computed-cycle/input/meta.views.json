@@ -1,0 +1,95 @@
+{
+  "metadata.root": {
+    "package": "acme::views",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Case",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "cases"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.int": {
+                "name": "status"
+              }
+            },
+            {
+              "field.date": {
+                "name": "effectiveFrom"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "Loop",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_loop"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id",
+                "extends": "acme::views::Case.id"
+              }
+            },
+            {
+              "field.int": {
+                "name": "a",
+                "children": [
+                  {
+                    "origin.computed": {
+                      "@expr": {
+                        "field": "b"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.int": {
+                "name": "b",
+                "children": [
+                  {
+                    "origin.computed": {
+                      "@expr": {
+                        "field": "a"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "extends": "acme::views::Case.id"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

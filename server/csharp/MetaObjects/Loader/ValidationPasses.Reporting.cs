@@ -96,7 +96,7 @@ public static partial class ValidationPasses
         }
 
         // F1 on every host that is not a reporting host.
-        CheckNoRelativeDates(root, registry, sink);
+        CheckNoRelativeDates(root, root, registry, sink);
         return sink.Errors.AsReadOnly();
     }
 
@@ -762,40 +762,38 @@ public static partial class ValidationPasses
                     continue;
                 }
                 var relative = RelativeOperand(operand);
-                if (relative is null) continue;
-                if (!IsExactRelativeValue(relative))
-                {
-                    Err($"@filter on '{key}' has a malformed relative date {JsonStringify(relative)}; a relative date is " +
-                        "{ now: \"<ISO-8601 duration>\" } with an optional startOf, and no other keys.");
-                    continue;
-                }
-                if (!ReportingTemporalFieldSubtypes.Contains(field.SubType))
-                {
-                    Err($"@filter on '{key}' uses a relative date ({{ now: ... }}), but '{key}' is field.{field.SubType}; " +
-                        "relative dates apply only to field.date and field.timestamp.");
-                    continue;
-                }
-                if (!ReportingRelativeDateOps.Contains(op))
-                {
-                    Err($"@filter on '{key}' puts a relative date under op '{op}'; relative dates are legal only under " +
-                        "gt, gte, lt and lte.");
-                    continue;
-                }
-                var duration = relative[FILTER_RELATIVE_NOW];
-                if (duration is not string d || !ISO_DURATION_RE.IsMatch(d))
-                {
-                    Err($"@filter on '{key}' has relative date '{QuoteValue(duration)}', which is not an ISO-8601 " +
-                        "duration (e.g. '-P7D', '-PT12H').");
-                    continue;
-                }
-                if (relative.TryGetValue(FILTER_RELATIVE_START_OF, out var startOf)
-                    && (startOf is not string unit || !RELATIVE_START_OF_UNITS.Contains(unit)))
-                {
-                    Err($"@filter on '{key}' has startOf '{QuoteValue(startOf)}'; startOf is one of " +
-                        $"{string.Join(", ", RELATIVE_START_OF_UNITS)}.");
-                }
+                var problem = relative is null ? null : RelativeDateProblem(key, op, relative, field.SubType);
+                if (problem is not null) Err(problem);
             }
         }
+    }
+
+    /// <summary>
+    /// F2 — why a relative-date operand under <paramref name="op"/> on <paramref name="key"/> is
+    /// refused, or null when it is well-formed: its exact shape, the field's type (when the key
+    /// resolves), a range op, an ISO-8601 duration and a startOf unit, in that order.
+    /// </summary>
+    private static string? RelativeDateProblem(
+        string key, string op, IReadOnlyDictionary<string, object?> relative, string? subType)
+    {
+        if (!IsExactRelativeValue(relative))
+            return $"@filter on '{key}' has a malformed relative date {JsonStringify(relative)}; a relative date is " +
+                   "{ now: \"<ISO-8601 duration>\" } with an optional startOf, and no other keys.";
+        if (subType is not null && !ReportingTemporalFieldSubtypes.Contains(subType))
+            return $"@filter on '{key}' uses a relative date ({{ now: ... }}), but '{key}' is field.{subType}; " +
+                   "relative dates apply only to field.date and field.timestamp.";
+        if (!ReportingRelativeDateOps.Contains(op))
+            return $"@filter on '{key}' puts a relative date under op '{op}'; relative dates are legal only under " +
+                   "gt, gte, lt and lte.";
+        var duration = relative[FILTER_RELATIVE_NOW];
+        if (duration is not string d || !ISO_DURATION_RE.IsMatch(d))
+            return $"@filter on '{key}' has relative date '{QuoteValue(duration)}', which is not an ISO-8601 " +
+                   "duration (e.g. '-P7D', '-PT12H').";
+        if (relative.TryGetValue(FILTER_RELATIVE_START_OF, out var startOf)
+            && (startOf is not string unit || !RELATIVE_START_OF_UNITS.Contains(unit)))
+            return $"@filter on '{key}' has startOf '{QuoteValue(startOf)}'; startOf is one of " +
+                   $"{string.Join(", ", RELATIVE_START_OF_UNITS)}.";
+        return null;
     }
 
     // -------------------------------------------------------------------------
@@ -1061,6 +1059,36 @@ public static partial class ValidationPasses
     // F1 — relative-date values only on reporting hosts
     // -------------------------------------------------------------------------
 
+    /// <summary>The view hosts whose <c>@filter</c> may carry a relative-date value too.</summary>
+    private static bool IsRelativeViewFilterHost(MetaData node) =>
+        (node.Type == TYPE_OBJECT && node.SubType == OBJECT_SUBTYPE_PROJECTION) ||
+        (node.Type == TYPE_ORIGIN && (node.SubType == ORIGIN_SUBTYPE_FIRST || node.SubType == ORIGIN_SUBTYPE_AGGREGATE));
+
+    /// <summary>F2 on every relative operand of a projection's or an origin's filter;
+    /// <paramref name="subTypeOf"/> resolves a key to its field's subtype, null when it does not
+    /// resolve (reported elsewhere).</summary>
+    private static void CheckRelativeShapes(
+        object? filter, MetaData host, Func<string, string?> subTypeOf, ReportingErrorSink sink)
+    {
+        if (filter is not IReadOnlyDictionary<string, object?> f) return;
+        foreach (var (key, clause) in f)
+        {
+            if (key == FILTER_COMPOSE_OR || key == FILTER_COMPOSE_AND)
+            {
+                if (clause is IReadOnlyList<object?> subs) foreach (var sub in subs) CheckRelativeShapes(sub, host, subTypeOf, sink);
+                continue;
+            }
+            if (clause is not IReadOnlyDictionary<string, object?> ops) continue;
+            foreach (var (op, operand) in ops)
+            {
+                var relative = RelativeOperand(operand);
+                var problem = relative is null ? null : RelativeDateProblem(key, op, relative, subTypeOf(key));
+                if (problem is not null)
+                    sink.Push(host, ErrorCode.ERR_BAD_ATTR_FILTER, ReportingNodeLabel(host), $": {problem}");
+            }
+        }
+    }
+
     /// <summary>True for the hosts whose <c>@filter</c> may carry a relative-date value.</summary>
     private static bool IsReportingFilterHost(MetaData node) =>
         node.Type == TYPE_SEGMENT ||
@@ -1069,12 +1097,26 @@ public static partial class ValidationPasses
 
     /// <summary>
     /// F1 — walk the whole tree and refuse a <c>{ now: ... }</c> value in any attr.filter
-    /// outside a reporting host (a projection @filter, a dataGrid preset, an
-    /// origin.aggregate/first @filter): those hosts have no lowering for it.
+    /// outside a host that lowers it (a dataGrid preset, for one), and check every relative value
+    /// in a projection's or an origin.aggregate/first's @filter, which lower it into the view.
     /// </summary>
-    private static void CheckNoRelativeDates(MetaData node, TypeRegistry registry, ReportingErrorSink sink)
+    private static void CheckNoRelativeDates(MetaData root, MetaData node, TypeRegistry registry, ReportingErrorSink sink)
     {
-        if (!IsReportingFilterHost(node))
+        if (IsRelativeViewFilterHost(node))
+        {
+            // `now`: a projection's and an origin's @filter lower relative dates into the view. A
+            // projection's keys name its own fields; an origin's name fields of the related entity.
+            var target = node.Type == TYPE_ORIGIN ? OriginFilterEntity(node, root) : node;
+            string? SubTypeOf(string key) => target is null ? null : ReportingFieldOf(target, key)?.SubType;
+            // ADR-0039: own — only locally declared filters are lowered (origin.* never inherits, ADR-0029).
+            foreach (var (attrName, value) in node.OwnAttrs())
+            {
+                bool isFilterAttr =
+                    registry.FindAttrSchema(node.Type, node.SubType, attrName)?.ValueType == ATTR_SUBTYPE_FILTER;
+                if (isFilterAttr) CheckRelativeShapes(value, node, SubTypeOf, sink);
+            }
+        }
+        else if (!IsReportingFilterHost(node))
         {
             // ADR-0039: own — only locally declared filters are lowered, and the walk
             // visits every declared node exactly once (an inherited filter is checked
@@ -1090,11 +1132,11 @@ public static partial class ValidationPasses
                         ErrorCode.ERR_BAD_ATTR_FILTER,
                         ReportingNodeLabel(node),
                         $": @{attrName} uses a relative date ({{ now: ... }}), which is legal only in the " +
-                        "@filter of a segment, measure.aggregate or object.report.");
+                        "@filter of a segment, measure.aggregate, object.report, object.projection, origin.aggregate or origin.first.");
                 }
             }
         }
         // ADR-0039: own — a tree walk; each declared node is visited once, at its declaration.
-        foreach (var child in node.OwnChildren()) CheckNoRelativeDates(child, registry, sink);
+        foreach (var child in node.OwnChildren()) CheckNoRelativeDates(root, child, registry, sink);
     }
 }

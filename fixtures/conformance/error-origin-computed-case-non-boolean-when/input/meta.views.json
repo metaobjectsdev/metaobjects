@@ -1,0 +1,93 @@
+{
+  "metadata.root": {
+    "package": "acme::views",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Case",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "cases"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.int": {
+                "name": "status"
+              }
+            },
+            {
+              "field.date": {
+                "name": "effectiveFrom"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "BadWhen",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_badwhen"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id",
+                "extends": "acme::views::Case.id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "label",
+                "children": [
+                  {
+                    "origin.computed": {
+                      "@expr": {
+                        "case": [
+                          {
+                            "when": {
+                              "field": "status"
+                            },
+                            "then": {
+                              "value": "open"
+                            }
+                          }
+                        ],
+                        "else": {
+                          "value": "closed"
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "extends": "acme::views::Case.id"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

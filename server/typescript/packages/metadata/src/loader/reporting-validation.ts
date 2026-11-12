@@ -36,9 +36,11 @@ import {
   TYPE_DIMENSION,
   TYPE_MEASURE,
   TYPE_SEGMENT,
+  TYPE_ORIGIN,
 } from "../shared/base-types.js";
 import {
   OBJECT_SUBTYPE_ENTITY,
+  OBJECT_SUBTYPE_PROJECTION,
   OBJECT_SUBTYPE_REPORT,
   OBJECT_REPORT_ATTR_FILTER,
   OBJECT_REPORT_ATTR_SEGMENT,
@@ -77,9 +79,10 @@ import {
   opsForField,
 } from "../core/query/query-constants.js";
 import { ATTR_SUBTYPE_FILTER } from "../core/attr/attr-constants.js";
+import { originFilterEntity } from "./validation-passes.js";
 import { isMetaObject, isMetaRoot, isReadOnlySource, isWritableSource } from "../shared/node-guards.js";
 import { SOURCE_KIND_VIEW } from "../persistence/source/source-constants.js";
-import { AGG_ALL, AGG_ANY } from "../persistence/origin/origin-constants.js";
+import { AGG_ALL, AGG_ANY, ORIGIN_SUBTYPE_FIRST, ORIGIN_SUBTYPE_AGGREGATE } from "../persistence/origin/origin-constants.js";
 import {
   FILTER_RELATIVE_NOW,
   FILTER_RELATIVE_START_OF,
@@ -163,7 +166,7 @@ export function validateReporting(root: MetaData): ParseError[] {
   }
 
   // F1 on every host that is not a reporting host.
-  checkNoRelativeDates(root, sink);
+  checkNoRelativeDates(root, root, sink);
   return sink.errors;
 }
 
@@ -810,47 +813,50 @@ function checkFilter(
         continue;
       }
       const relative = relativeOperand(operand);
-      if (relative === undefined) continue;
-      if (!isExactRelativeValue(relative)) {
-        err(
-          `@filter on '${key}' has a malformed relative date ${JSON.stringify(relative)}; a relative date is ` +
-            `{ now: "<ISO-8601 duration>" } with an optional startOf, and no other keys.`,
-        );
-        continue;
-      }
-      if (!TEMPORAL_FIELD_SUBTYPES.includes(field.subType)) {
-        err(
-          `@filter on '${key}' uses a relative date ({ now: ... }), but '${key}' is field.${field.subType}; ` +
-            `relative dates apply only to field.date and field.timestamp.`,
-        );
-        continue;
-      }
-      if (!RELATIVE_DATE_OPS.includes(op)) {
-        err(
-          `@filter on '${key}' puts a relative date under op '${op}'; relative dates are legal only under ` +
-            `gt, gte, lt and lte.`,
-        );
-        continue;
-      }
-      const duration = relative[FILTER_RELATIVE_NOW];
-      if (typeof duration !== "string" || !ISO_DURATION_RE.test(duration)) {
-        err(
-          `@filter on '${key}' has relative date '${quoteValue(duration)}', which is not an ISO-8601 ` +
-            `duration (e.g. '-P7D', '-PT12H').`,
-        );
-        continue;
-      }
-      if (FILTER_RELATIVE_START_OF in relative) {
-        const startOf = relative[FILTER_RELATIVE_START_OF];
-        if (typeof startOf !== "string" || !(RELATIVE_START_OF_UNITS as readonly string[]).includes(startOf)) {
-          err(
-            `@filter on '${key}' has startOf '${quoteValue(startOf)}'; startOf is one of ` +
-              `${RELATIVE_START_OF_UNITS.join(", ")}.`,
-          );
-        }
-      }
+      const problem = relative === undefined ? undefined : relativeDateProblem(key, op, relative, field.subType);
+      if (problem !== undefined) err(problem);
     }
   }
+}
+
+/**
+ * F2 — why a relative-date operand under `op` on `key` is refused, or undefined when it is
+ * well-formed: its exact shape, the field's type (when the key resolves), a range op, an
+ * ISO-8601 duration and a startOf unit, in that order. One mistake, one message.
+ */
+function relativeDateProblem(
+  key: string,
+  op: string,
+  relative: Record<string, unknown>,
+  subType: string | undefined,
+): string | undefined {
+  if (!isExactRelativeValue(relative)) {
+    return (
+      `@filter on '${key}' has a malformed relative date ${JSON.stringify(relative)}; a relative date is ` +
+      `{ now: "<ISO-8601 duration>" } with an optional startOf, and no other keys.`
+    );
+  }
+  if (subType !== undefined && !TEMPORAL_FIELD_SUBTYPES.includes(subType)) {
+    return (
+      `@filter on '${key}' uses a relative date ({ now: ... }), but '${key}' is field.${subType}; ` +
+      `relative dates apply only to field.date and field.timestamp.`
+    );
+  }
+  if (!RELATIVE_DATE_OPS.includes(op)) {
+    return `@filter on '${key}' puts a relative date under op '${op}'; relative dates are legal only under gt, gte, lt and lte.`;
+  }
+  const duration = relative[FILTER_RELATIVE_NOW];
+  if (typeof duration !== "string" || !ISO_DURATION_RE.test(duration)) {
+    return (
+      `@filter on '${key}' has relative date '${quoteValue(duration)}', which is not an ISO-8601 ` +
+      `duration (e.g. '-P7D', '-PT12H').`
+    );
+  }
+  const startOf = relative[FILTER_RELATIVE_START_OF];
+  if (FILTER_RELATIVE_START_OF in relative && (typeof startOf !== "string" || !(RELATIVE_START_OF_UNITS as readonly string[]).includes(startOf))) {
+    return `@filter on '${key}' has startOf '${quoteValue(startOf)}'; startOf is one of ${RELATIVE_START_OF_UNITS.join(", ")}.`;
+  }
+  return undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -1113,6 +1119,37 @@ function checkReportMeasure(
 // F1 — relative-date values only on reporting hosts
 // ---------------------------------------------------------------------------
 
+/** The view hosts whose `@filter` may carry a relative-date value too. */
+function isRelativeViewFilterHost(node: MetaData): boolean {
+  return (
+    (node.type === TYPE_OBJECT && node.subType === OBJECT_SUBTYPE_PROJECTION) ||
+    (node.type === TYPE_ORIGIN && (node.subType === ORIGIN_SUBTYPE_FIRST || node.subType === ORIGIN_SUBTYPE_AGGREGATE))
+  );
+}
+
+/** F2 on every relative operand of a projection's or an origin's filter; `subTypeOf` resolves a
+ *  key to its field's subtype, undefined when it does not resolve (reported elsewhere). */
+function checkRelativeShapes(
+  filter: unknown,
+  host: MetaData,
+  subTypeOf: (key: string) => string | undefined,
+  sink: ErrorSink,
+): void {
+  if (!isPlainObject(filter)) return;
+  for (const [key, clause] of Object.entries(filter)) {
+    if (key === FILTER_COMPOSE_OR || key === FILTER_COMPOSE_AND) {
+      if (Array.isArray(clause)) for (const sub of clause) checkRelativeShapes(sub, host, subTypeOf, sink);
+      continue;
+    }
+    if (!isPlainObject(clause)) continue;
+    for (const [op, operand] of Object.entries(clause)) {
+      const relative = relativeOperand(operand);
+      const problem = relative === undefined ? undefined : relativeDateProblem(key, op, relative, subTypeOf(key));
+      if (problem !== undefined) sink.push(host, ERR_BAD_ATTR_FILTER, nodeLabel(host), `: ${problem}`);
+    }
+  }
+}
+
 /** True for the hosts whose `@filter` may carry a relative-date value. */
 function isReportingFilterHost(node: MetaData): boolean {
   return (
@@ -1124,11 +1161,20 @@ function isReportingFilterHost(node: MetaData): boolean {
 
 /**
  * F1 — walk the whole tree and refuse a `{ now: ... }` value in any attr.filter
- * outside a reporting host (a projection @filter, a dataGrid preset, an
- * origin.aggregate/first @filter): those hosts have no lowering for it.
+ * outside a host that lowers it (a dataGrid preset, for one), and check every relative value
+ * in a projection's or an origin.aggregate/first's @filter, which lower it into the view.
  */
-function checkNoRelativeDates(node: MetaData, sink: ErrorSink): void {
-  if (!isReportingFilterHost(node)) {
+function checkNoRelativeDates(root: MetaData, node: MetaData, sink: ErrorSink): void {
+  if (isRelativeViewFilterHost(node)) {
+    // `now`: a projection's and an origin's @filter lower relative dates into the view. A
+    // projection's keys name its own fields; an origin's name fields of the related entity.
+    const target = node.type === TYPE_ORIGIN ? originFilterEntity(node, root) : node;
+    const subTypeOf = (key: string): string | undefined => (target === undefined ? undefined : fieldOf(target, key)?.subType);
+    // ADR-0039: own — only locally declared filters are lowered (origin.* never inherits, ADR-0029).
+    for (const attr of node.ownMetaAttrs()) {
+      if (attr.subType === ATTR_SUBTYPE_FILTER) checkRelativeShapes(attr.value, node, subTypeOf, sink);
+    }
+  } else if (!isReportingFilterHost(node)) {
     // ADR-0039: own — only locally declared filters are lowered, and the walk
     // visits every declared node exactly once (an inherited filter is checked
     // where it is declared; origin.* never inherits, ADR-0029).
@@ -1139,11 +1185,11 @@ function checkNoRelativeDates(node: MetaData, sink: ErrorSink): void {
           ERR_BAD_ATTR_FILTER,
           nodeLabel(node),
           `: @${attr.name} uses a relative date ({ now: ... }), which is legal only in the ` +
-            `@filter of a segment, measure.aggregate or object.report.`,
+            `@filter of a segment, measure.aggregate, object.report, object.projection, origin.aggregate or origin.first.`,
         );
       }
     }
   }
   // ADR-0039: own — a tree walk; each declared node is visited once, at its declaration.
-  for (const child of node.ownChildren()) checkNoRelativeDates(child, sink);
+  for (const child of node.ownChildren()) checkNoRelativeDates(root, child, sink);
 }

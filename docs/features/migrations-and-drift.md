@@ -430,6 +430,7 @@ attributes shape it, all database-only (no generated code reads them):
   it out.
 - **`@condition`** on a cross-field validator (`comparison`, `requiredWhen`, `presentIff`,
   `atLeastOne`, `exactlyOne`) is an expression, in the grammar `origin.computed` uses, over the entity's fields.
+  It refuses `case` and `now` (`ERR_BAD_ATTR_VALUE`): a database CHECK can hold neither.
   The rule holds only where the condition does: the CHECK is `(NOT condition) OR (rule)`, with
   the negation folded in (`kind = 'Owned'` becomes `kind <> 'Owned'`). It is checked at load
   (`ERR_BAD_ATTR_VALUE`): every field it names is a field of the entity, it is a boolean

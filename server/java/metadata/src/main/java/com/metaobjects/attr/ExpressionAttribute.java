@@ -7,9 +7,16 @@ import com.google.gson.JsonPrimitive;
 import com.google.gson.JsonSyntaxException;
 import com.metaobjects.DataTypes;
 import com.metaobjects.field.BooleanField;
+import com.metaobjects.field.CurrencyField;
+import com.metaobjects.field.DateField;
+import com.metaobjects.field.DecimalField;
 import com.metaobjects.field.DoubleField;
+import com.metaobjects.field.FloatField;
 import com.metaobjects.field.IntegerField;
+import com.metaobjects.field.LongField;
 import com.metaobjects.field.StringField;
+import com.metaobjects.field.TimestampField;
+import com.metaobjects.reporting.ReportingConstants;
 import com.metaobjects.query.FilterOps;
 import com.metaobjects.registry.MetaDataRegistry;
 
@@ -218,6 +225,8 @@ public class ExpressionAttribute extends MetaAttribute<Map<String, Object>> {
     //   { "op": isNull|isNotNull|not, "arg": … } — null-test / negation
     //   { "op": and|or, "args": [ … ] }          — variadic logic
     //   { "fn": coalesce, "args": [ … ] }        — coalesce
+    //   { "case": [ { when, then }, … ], else?, operand? } — searched, or simple with operand
+    //   { "now": "<ISO-8601 duration>", startOf? } — the relative-date value, as a leaf
     // =======================================================================
 
     /** Expression-only op/fn names — the comparison + and/or/isNull names are the
@@ -225,6 +234,13 @@ public class ExpressionAttribute extends MetaAttribute<Map<String, Object>> {
     public static final String EXPR_OP_IS_NOT_NULL = "isNotNull";
     public static final String EXPR_OP_NOT = "not";
     public static final String EXPR_FN_COALESCE = "coalesce";
+    public static final String EXPR_CASE = "case";
+    public static final String EXPR_CASE_WHEN = "when";
+    public static final String EXPR_CASE_THEN = "then";
+    public static final String EXPR_CASE_ELSE = "else";
+    public static final String EXPR_CASE_OPERAND = "operand";
+    public static final String EXPR_NOW = ReportingConstants.FILTER_RELATIVE_NOW;
+    public static final String EXPR_NOW_START_OF = ReportingConstants.FILTER_RELATIVE_START_OF;
 
     /** Boolean composition keys — mirror {@code FilterAttribute}'s private compose keys. */
     static final String COMPOSE_AND = "and";
@@ -243,6 +259,23 @@ public class ExpressionAttribute extends MetaAttribute<Map<String, Object>> {
         FilterOps.FILTER_OP_IS_NULL, EXPR_OP_IS_NOT_NULL);
     private static final Set<String> VARIADIC_LOGIC_OPS = orderedSet(COMPOSE_AND, COMPOSE_OR);
 
+    /** Each node kind (keyed by the key that names it) and the only keys it may carry. */
+    private static final Map<String, List<String>> NODE_KEYS = nodeKeys();
+    private static final Set<String> NUMERIC_SUBTYPES = orderedSet(
+        IntegerField.SUBTYPE_INT, LongField.SUBTYPE_LONG, DoubleField.SUBTYPE_DOUBLE, FloatField.SUBTYPE_FLOAT,
+        DecimalField.SUBTYPE_DECIMAL, CurrencyField.SUBTYPE_CURRENCY);
+
+    private static Map<String, List<String>> nodeKeys() {
+        Map<String, List<String>> m = new LinkedHashMap<>();
+        m.put("field", List.of("field"));
+        m.put("value", List.of("value"));
+        m.put(EXPR_NOW, List.of(EXPR_NOW, EXPR_NOW_START_OF));
+        m.put(EXPR_CASE, List.of(EXPR_CASE, EXPR_CASE_ELSE, EXPR_CASE_OPERAND));
+        m.put("fn", List.of("fn", "args"));
+        m.put("op", List.of("op", "left", "right", "arg", "args"));
+        return java.util.Collections.unmodifiableMap(m);
+    }
+
     /**
      * Structural well-formedness of an expression tree (known node kinds, ops,
      * arity). Returns an empty list when valid; each entry is a human-readable
@@ -257,6 +290,17 @@ public class ExpressionAttribute extends MetaAttribute<Map<String, Object>> {
         }
         @SuppressWarnings("unchecked")
         Map<String, Object> n = (Map<String, Object>) node;
+        for (Map.Entry<String, List<String>> kind : NODE_KEYS.entrySet()) {
+            if (!n.containsKey(kind.getKey())) continue;
+            List<String> extra = new ArrayList<>();
+            for (String k : n.keySet()) if (!kind.getValue().contains(k)) extra.add(k);
+            if (!extra.isEmpty()) {
+                out.add("expression '" + kind.getKey() + "' node takes only " + String.join(", ", kind.getValue())
+                    + ", not " + String.join(", ", extra));
+                return out;
+            }
+            break;
+        }
         if (n.containsKey("field")) {
             Object f = n.get("field");
             if (!(f instanceof String) || ((String) f).isEmpty()) {
@@ -269,6 +313,39 @@ public class ExpressionAttribute extends MetaAttribute<Map<String, Object>> {
             if (!(v == null || v instanceof String || v instanceof Number || v instanceof Boolean)) {
                 out.add("expression 'value' must be a scalar literal (string/number/boolean/null)");
             }
+            return out;
+        }
+        if (n.containsKey(EXPR_NOW)) {
+            Object duration = n.get(EXPR_NOW);
+            if (!(duration instanceof String) || !ReportingConstants.ISO_DURATION_RE.matcher((String) duration).matches()) {
+                out.add("expression '" + EXPR_NOW + "' must be an ISO-8601 duration string (e.g. '-P7D'), got " + duration);
+                return out;
+            }
+            if (n.containsKey(EXPR_NOW_START_OF)
+                    && !ReportingConstants.RELATIVE_START_OF_UNITS.contains(n.get(EXPR_NOW_START_OF))) {
+                out.add("expression '" + EXPR_NOW_START_OF + "' must be one of "
+                    + String.join(", ", ReportingConstants.RELATIVE_START_OF_UNITS) + ", got " + n.get(EXPR_NOW_START_OF));
+            }
+            return out;
+        }
+        if (n.containsKey(EXPR_CASE)) {
+            Object arms = n.get(EXPR_CASE);
+            if (!(arms instanceof List) || ((List<?>) arms).isEmpty()) {
+                out.add("'" + EXPR_CASE + "' requires a non-empty array of { " + EXPR_CASE_WHEN + ", "
+                    + EXPR_CASE_THEN + " } arms");
+                return out;
+            }
+            for (Object arm : (List<?>) arms) {
+                if (!(arm instanceof Map) || !((Map<?, ?>) arm).containsKey(EXPR_CASE_WHEN)
+                        || !((Map<?, ?>) arm).containsKey(EXPR_CASE_THEN) || ((Map<?, ?>) arm).size() != 2) {
+                    out.add("every '" + EXPR_CASE + "' arm must be { " + EXPR_CASE_WHEN + ", " + EXPR_CASE_THEN + " }");
+                    continue;
+                }
+                out.addAll(validateExprNode(((Map<?, ?>) arm).get(EXPR_CASE_WHEN)));
+                out.addAll(validateExprNode(((Map<?, ?>) arm).get(EXPR_CASE_THEN)));
+            }
+            if (n.containsKey(EXPR_CASE_ELSE)) out.addAll(validateExprNode(n.get(EXPR_CASE_ELSE)));
+            if (n.containsKey(EXPR_CASE_OPERAND)) out.addAll(validateExprNode(n.get(EXPR_CASE_OPERAND)));
             return out;
         }
         if (n.containsKey("fn")) {
@@ -318,7 +395,7 @@ public class ExpressionAttribute extends MetaAttribute<Map<String, Object>> {
             out.add("unknown expression op '" + op + "'");
             return out;
         }
-        out.add("expression node must be one of {field}, {value}, {op,…}, {fn,…}");
+        out.add("expression node must be one of {field}, {value}, {op,…}, {fn,…}, {case,…}, {now}");
         return out;
     }
 
@@ -363,30 +440,65 @@ public class ExpressionAttribute extends MetaAttribute<Map<String, Object>> {
             if (t == null) {
                 return new InferResult(null, List.of(
                     "expression field '" + String.valueOf(n.get("field"))
-                        + "' does not resolve to a base entity field"));
+                        + "' does not resolve to a projection field (not an aggregate) or a base entity field"));
             }
             return new InferResult(t, List.of());
         }
         if (n.containsKey("value")) {
             return new InferResult(literalType(n.get("value")), List.of());
         }
+        // now: an instant; compared with a date or local timestamp it takes that kind at lowering.
+        if (n.containsKey(EXPR_NOW)) return new InferResult(TimestampField.SUBTYPE_TIMESTAMP, List.of());
+        if (n.containsKey(EXPR_CASE)) {
+            List<String> errors = new ArrayList<>();
+            InferResult operand = n.containsKey(EXPR_CASE_OPERAND)
+                ? inferExprType(n.get(EXPR_CASE_OPERAND), resolveField) : null;
+            if (operand != null) errors.addAll(operand.errors);
+            List<String> results = new ArrayList<>();
+            List<Object> resultNodes = new ArrayList<>();
+            for (Object armObj : (List<?>) n.get(EXPR_CASE)) {
+                Map<?, ?> arm = (Map<?, ?>) armObj;
+                InferResult w = inferExprType(arm.get(EXPR_CASE_WHEN), resolveField);
+                errors.addAll(w.errors);
+                if (operand == null && w.type != null && !BooleanField.SUBTYPE_BOOLEAN.equals(w.type)) {
+                    errors.add("a searched '" + EXPR_CASE + "' needs a boolean '" + EXPR_CASE_WHEN + "', got " + w.type);
+                }
+                if (operand != null && operand.type != null && w.type != null
+                        && !((Map<?, ?>) arm.get(EXPR_CASE_WHEN)).containsKey("value") && !w.type.equals(operand.type)) {
+                    errors.add("a simple '" + EXPR_CASE + "' compares its " + operand.type + " '" + EXPR_CASE_OPERAND
+                        + "' with a " + w.type + " '" + EXPR_CASE_WHEN + "'");
+                }
+                InferResult t = inferExprType(arm.get(EXPR_CASE_THEN), resolveField);
+                errors.addAll(t.errors);
+                results.add(t.type);
+                resultNodes.add(arm.get(EXPR_CASE_THEN));
+            }
+            if (n.containsKey(EXPR_CASE_ELSE)) {
+                InferResult e = inferExprType(n.get(EXPR_CASE_ELSE), resolveField);
+                errors.addAll(e.errors);
+                results.add(e.type);
+                resultNodes.add(n.get(EXPR_CASE_ELSE));
+            }
+            List<String> differing = new ArrayList<>();
+            String unified = unifyTypes(resultNodes, results, differing);
+            if (!differing.isEmpty()) {
+                errors.add("'" + EXPR_CASE + "' results have differing types (" + String.join(", ", differing) + ")");
+            }
+            return new InferResult(unified, errors);
+        }
         if (n.containsKey("fn")) { // coalesce
             List<String> errors = new ArrayList<>();
             List<String> argTypes = new ArrayList<>();
-            for (Object a : (List<?>) n.get("args")) {
+            List<Object> args = new ArrayList<>((List<?>) n.get("args"));
+            for (Object a : args) {
                 InferResult r = inferExprType(a, resolveField);
                 errors.addAll(r.errors);
-                if (r.type != null) argTypes.add(r.type);
+                argTypes.add(r.type);
             }
-            String unified = argTypes.isEmpty() ? null : argTypes.get(0);
-            if (unified != null) {
-                boolean differ = false;
-                for (String t : argTypes) if (!unified.equals(t)) { differ = true; break; }
-                if (differ) {
-                    Set<String> distinct = new LinkedHashSet<>(argTypes);
-                    errors.add("'" + EXPR_FN_COALESCE + "' arguments have differing types ("
-                        + String.join(", ", distinct) + ")");
-                }
+            List<String> differing = new ArrayList<>();
+            String unified = unifyTypes(args, argTypes, differing);
+            if (!differing.isEmpty()) {
+                errors.add("'" + EXPR_FN_COALESCE + "' arguments have differing types (" + String.join(", ", differing) + ")");
             }
             return new InferResult(unified, errors);
         }
@@ -421,6 +533,45 @@ public class ExpressionAttribute extends MetaAttribute<Map<String, Object>> {
             return new InferResult(BooleanField.SUBTYPE_BOOLEAN, errors);
         }
         return new InferResult(null, List.of("unknown expression op '" + op + "'"));
+    }
+
+    /** A numeric literal or a {@code now} node: it takes the type of the result it sits beside. */
+    private static boolean isAdaptable(Object node) {
+        Map<?, ?> n = (Map<?, ?>) node;
+        return (n.containsKey("value") && n.get("value") instanceof Number) || n.containsKey(EXPR_NOW);
+    }
+
+    /** Whether an adaptable node takes {@code to}: a whole number any numeric type, a fractional number only
+     *  double, float or decimal, {@code now} a date or timestamp. */
+    private static boolean adaptsTo(Object node, String to) {
+        Map<?, ?> n = (Map<?, ?>) node;
+        if (n.containsKey(EXPR_NOW)) return DateField.SUBTYPE_DATE.equals(to) || TimestampField.SUBTYPE_TIMESTAMP.equals(to);
+        if (IntegerField.SUBTYPE_INT.equals(literalType(n.get("value")))) return NUMERIC_SUBTYPES.contains(to);
+        return DoubleField.SUBTYPE_DOUBLE.equals(to) || FloatField.SUBTYPE_FLOAT.equals(to) || DecimalField.SUBTYPE_DECIMAL.equals(to);
+    }
+
+    /** The one type of a case's results or a coalesce's args; fills {@code differing} with every
+     *  type when they do not unify. */
+    private static String unifyTypes(List<Object> nodes, List<String> types, List<String> differing) {
+        String anchor = null;
+        String first = null;
+        for (int i = 0; i < nodes.size(); i++) {
+            String t = types.get(i);
+            if (t == null) continue;
+            if (first == null) first = t;
+            if (anchor == null && !isAdaptable(nodes.get(i))) anchor = t;
+        }
+        String unified = anchor != null ? anchor : first;
+        Set<String> all = new LinkedHashSet<>();
+        boolean fits = true;
+        for (int i = 0; i < nodes.size(); i++) {
+            String t = types.get(i);
+            if (t == null) continue;
+            all.add(t);
+            if (!t.equals(unified) && !(anchor != null && isAdaptable(nodes.get(i)) && adaptsTo(nodes.get(i), anchor))) fits = false;
+        }
+        if (!fits) differing.addAll(all);
+        return unified;
     }
 
     /** Coarse runtime shape label for a malformed top-level node (parity with the

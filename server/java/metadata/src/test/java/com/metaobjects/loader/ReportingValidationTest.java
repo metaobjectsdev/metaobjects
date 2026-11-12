@@ -170,8 +170,6 @@ public class ReportingValidationTest extends SharedRegistryTestBase {
                 "report 'acme::shop::DailyRevenue': @filter on 'purchasedAt' has relative date '90 days', which is not an ISO-8601 duration (e.g. '-P7D', '-PT12H')."});
         expect.put("error-relative-date-non-temporal", new String[]{"ERR_BAD_ATTR_FILTER",
                 "report 'acme::shop::DailyRevenue': @filter on 'amountCents' uses a relative date ({ now: ... }), but 'amountCents' is field.currency; relative dates apply only to field.date and field.timestamp."});
-        expect.put("error-relative-date-wrong-host", new String[]{"ERR_BAD_ATTR_FILTER",
-                "object.projection 'acme::shop::RecentPurchase': @filter uses a relative date ({ now: ... }), which is legal only in the @filter of a segment, measure.aggregate or object.report."});
         expect.put("error-report-declares-field", new String[]{"ERR_INVALID_REPORT",
                 "report 'acme::shop::StoreTotals' declares field.long 'rowCount'; a report's fields and identity are derived from @dimensions and @measures, never declared."});
         expect.put("error-report-dimension-grain", new String[]{"ERR_INVALID_REPORT",
@@ -431,7 +429,7 @@ public class ReportingValidationTest extends SharedRegistryTestBase {
 
     @Test
     public void aFieldNamedNowIsAFieldNotARelativeDate() throws IOException {
-        JsonObject doc = fixtureDoc("error-relative-date-wrong-host");
+        JsonObject doc = fixtureDoc("projection-filter-relative-now");
         JsonObject projection = rootNode(doc, "object.projection", "RecentPurchase");
         // Replace the projection's relative-date filter with one on a field literally named `now`.
         projection.getAsJsonArray("children").add(json("{\"field.timestamp\":{\"name\":\"now\",\"extends\":\"Purchase.purchasedAt\"}}"));

@@ -1,0 +1,25 @@
+{
+  "errors": [
+    {
+      "code": "ERR_BAD_ATTR_FILTER",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.shop.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[2]['object.projection'].children[2]['field.int'].children[0]['origin.aggregate']"
+      }
+    },
+    {
+      "code": "ERR_BAD_ATTR_FILTER",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.shop.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[3]['object.projection']"
+      }
+    }
+  ],
+  "warnings": []
+}
