@@ -1,0 +1,58 @@
+{
+  "metadata.root": {
+    "package": "acme::billing",
+    "children": [
+      {
+        "object.value": {
+          "name": "Money",
+          "children": [
+            { "field.decimal": { "name": "amount", "@precision": 12, "@scale": 2 } },
+            { "field.string": { "name": "currency", "@maxLength": 3 } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Project",
+          "children": [
+            { "source.rdb": { "@table": "projects" } },
+            { "field.long": { "name": "id" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } },
+            { "relationship.association": { "name": "invoices", "@objectRef": "Invoice", "@cardinality": "many" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Invoice",
+          "children": [
+            { "source.rdb": { "@table": "invoices" } },
+            { "field.long": { "name": "id" } },
+            { "field.long": { "name": "projectId" } },
+            { "field.object": { "name": "total", "@objectRef": "Money", "@storage": "flattened" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } },
+            { "identity.reference": { "name": "project", "@fields": "projectId", "@references": "Project" } }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "ProjectInvoicing",
+          "children": [
+            { "source.rdb": { "@kind": "view", "@view": "v_project_invoicing" } },
+            { "field.long": { "name": "id", "extends": "Project.id" } },
+            {
+              "field.decimal": {
+                "name": "invoicedTotal",
+                "children": [
+                  { "origin.aggregate": { "@agg": "sum", "@of": "Invoice.total", "@via": "Project.invoices" } }
+                ]
+              }
+            },
+            { "identity.primary": { "name": "id", "extends": "Project.id" } }
+          ]
+        }
+      }
+    ]
+  }
+}

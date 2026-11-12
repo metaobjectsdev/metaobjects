@@ -105,6 +105,7 @@ from ..meta.persistence.origin.origin_constants import (
     AGG_ANY,
     AGG_COLLECT,
     ASSEMBLY_ORIGIN_SUBTYPES,
+    COLUMN_VALUE_AGGREGATES,
     ORIGIN_ATTR_AGG,
     ORIGIN_ATTR_CONVERT,
     ORIGIN_ATTR_DISTINCT,
@@ -2500,6 +2501,23 @@ def _validate_origin_paths(
                 of_target = _validate_entity_field_ref(
                     of_ref, ORIGIN_ATTR_OF, ctx, root, host_pkg, errors, origin, referrer
                 )
+                # A sum/avg/min/max reduces ONE column. A value-object field is several
+                # columns (flattened) or a document (jsonb), so there is no column to reduce,
+                # and summing a Money-shaped value would add amounts in different currencies.
+                # Resolving read: @objectRef may be inherited via extends (ADR-0039).
+                if (
+                    of_target is not None
+                    and agg in COLUMN_VALUE_AGGREGATES
+                    and (of_target[1].sub_type == FIELD_SUBTYPE_OBJECT
+                         or of_target[1].get_meta_attr(FIELD_ATTR_OBJECT_REF) is not None)
+                ):
+                    errors.append(MetaError(
+                        f"origin.aggregate @agg:{agg} on {obj.name}.{node.name}: @of \"{of_ref}\" is a "
+                        f"value-object field (field.{of_target[1].sub_type}), which has no single column "
+                        f"to aggregate. Aggregate a scalar field instead: model the amount as its own "
+                        f"field (and group by its currency).",
+                        ErrorCode.ERR_INVALID_ORIGIN,
+                        envelope=resolved_source(origin.source, referrer, of_ref)))
                 # #195 — collect preserves the element type: the array field's own subType
                 # must equal the @of column's subType (the #185 doctrine on the element).
                 if is_collect and of_target is not None and node.sub_type != of_target[1].sub_type:

@@ -703,6 +703,20 @@ public static partial class ValidationPasses
                         // NOTE (FR-024 B6): NO extends/origin agreement on aggregates.
                         var ofTarget = ValidateFromPath(of, root, obj, field.Name, errors,
                             "origin.aggregate.@of", src);
+                        // A sum/avg/min/max reduces ONE column. A value-object field is several columns
+                        // (flattened) or a document (jsonb), so there is no column to reduce, and summing a
+                        // Money-shaped value would add amounts in different currencies.
+                        // ADR-0039: resolving — @objectRef may be inherited via extends.
+                        if (ofTarget is ResolvedFromTarget valueTarget
+                            && agg is not null && Array.IndexOf(COLUMN_VALUE_AGGREGATES, agg) >= 0
+                            && (valueTarget.Field.SubType == FIELD_SUBTYPE_OBJECT
+                                || valueTarget.Field.Attr(FIELD_ATTR_OBJECT_REF) is not null))
+                            errors.Add(new MetaError(
+                                $"origin.aggregate @agg:{agg} on {obj.Name}.{field.Name}: @of \"{of}\" is a value-object " +
+                                $"field (field.{valueTarget.Field.SubType}), which has no single column to aggregate. " +
+                                "Aggregate a scalar field instead: model the amount as its own field (and group by its currency).",
+                                ErrorCode.ERR_INVALID_ORIGIN,
+                                Envelope: ResolvedSource.From(src, $"{obj.Fqn()}::{field.Name}", of)));
                         // #195 — collect preserves the element type: the array field's own
                         // subType must equal the @of column's subType (the #185 doctrine).
                         if (isCollect && ofTarget is ResolvedFromTarget collectTarget

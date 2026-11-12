@@ -132,6 +132,7 @@ import {
   AGG_ALL,
   AGG_COLLECT,
   ASSEMBLY_ORIGIN_SUBTYPES,
+  COLUMN_VALUE_AGGREGATES,
 } from "../persistence/origin/origin-constants.js";
 import {
   inferExprType,
@@ -1543,6 +1544,21 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
           // an aggregate computes something new (count/sum/…); spec §4 defines
           // agreement for passthrough only.
           const ofTarget = _validateFromPath(of_, root, obj, field.name, src, errors, "origin.aggregate.@of");
+          // A sum/avg/min/max reduces ONE column. A value-object field is several columns
+          // (flattened) or a document (jsonb), so there is no column to reduce, and summing
+          // a Money-shaped value across rows would add amounts in different currencies.
+          if (
+            ofTarget !== undefined &&
+            (COLUMN_VALUE_AGGREGATES as readonly unknown[]).includes(agg) &&
+            // ADR-0039: resolving — @objectRef may be inherited via extends.
+            (ofTarget.field.subType === FIELD_SUBTYPE_OBJECT || ofTarget.field.attr(FIELD_ATTR_OBJECT_REF) !== undefined)
+          ) {
+            errors.push(new ParseError(
+              `origin.aggregate @agg:${String(agg)} on ${obj.name}.${field.name}: @of "${of_}" is a value-object ` +
+                `field (field.${ofTarget.field.subType}), which has no single column to aggregate. Aggregate a ` +
+                `scalar field instead: model the amount as its own field (and group by its currency).`,
+              { code: "ERR_INVALID_ORIGIN", source: resolvedSource(src, `${obj.fqn()}::${field.name}`, of_) }));
+          }
           // #195 — collect preserves the element type: the array field's own subType
           // must equal the @of column's subType (the #185 doctrine on the element).
           if (isCollect && ofTarget !== undefined && field.subType !== ofTarget.field.subType) {

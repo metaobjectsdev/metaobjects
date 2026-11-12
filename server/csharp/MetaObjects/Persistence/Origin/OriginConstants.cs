@@ -105,6 +105,11 @@ public static class OriginConstants
     public const string AGG_ALL     = "all";
     public const string AGG_COLLECT = "collect";
 
+    /// <summary>The @agg values that reduce the VALUES of the @of column (count only counts
+    /// non-null rows). Mirrors the TS COLUMN_VALUE_AGGREGATES.</summary>
+    public static readonly string[] COLUMN_VALUE_AGGREGATES =
+        [AGGREGATE_FN_SUM, AGGREGATE_FN_AVG, AGGREGATE_FN_MIN, AGGREGATE_FN_MAX];
+
     /// <summary>The full @agg attribute vocabulary (matches origin.json allowedValues).</summary>
     public static readonly string[] ORIGIN_AGG_VALUES =
         [AGGREGATE_FN_COUNT, AGGREGATE_FN_SUM, AGGREGATE_FN_AVG, AGGREGATE_FN_MIN, AGGREGATE_FN_MAX,
