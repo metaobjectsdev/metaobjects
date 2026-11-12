@@ -114,6 +114,18 @@ meta migrate baseline --from-db --db postgresql://... --dialect postgres
    below), and an ambiguous rename-vs-drop+add aborts unless you declare the rename
    or choose with `--on-ambiguous`. It never guesses.
 
+3. **Apply** the pending migrations against the DB; migration history is tracked in
+   a ledger table:
+
+   ```bash
+   meta migrate --dialect postgres --slug add-user-shipping --db postgresql://... --apply
+                                                              # generate ...and apply it
+   meta migrate apply-pending --db postgresql://... --dialect postgres
+                                                              # replay committed migrations, no diff (fresh DB / CI)
+   meta migrate --db postgresql://... --rollback <target>     # run down.sql for migrations newer than <target>
+   meta migrate --db postgresql://... --rollback ""           # roll back everything (empty target)
+   ```
+
 ## Renames and destructive changes
 
 A renamed field or object is a renamed column or table, and the diff cannot tell that
@@ -146,18 +158,6 @@ meta migrate --dialect postgres --slug rename-stop   --rename-table stop=port_ca
 
 `docs/features/migrations-and-drift.md`, "Renames and populated tables", covers what a
 rename carries with it (constraint names, views) and changes that need a backfill.
-
-3. **Apply** the pending migrations against the DB; migration history is tracked in
-   a ledger table:
-
-   ```bash
-   meta migrate --dialect postgres --slug add-user-shipping --db postgresql://... --apply
-                                                              # generate ...and apply it
-   meta migrate apply-pending --db postgresql://... --dialect postgres
-                                                              # replay committed migrations, no diff (fresh DB / CI)
-   meta migrate --db postgresql://... --rollback <target>     # run down.sql for migrations newer than <target>
-   meta migrate --db postgresql://... --rollback ""           # roll back everything (empty target)
-   ```
 
 ## Dialects
 
