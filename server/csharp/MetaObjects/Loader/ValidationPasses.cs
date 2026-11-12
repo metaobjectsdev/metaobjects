@@ -1139,13 +1139,6 @@ public static partial class ValidationPasses
     // Origin helper: _validateViaPath
     // -------------------------------------------------------------------------
 
-    /// Validate an explicit `@via` "Entity.rel[.rel...]" path. Returns the walked
-    /// relationship hop nodes (in path order) on full success — FR-024 B5 runs
-    /// the cardinality checks over them — or null when any error was pushed.
-    /// A fully-walked <c>@via</c> path: the relationship hop nodes in path order, plus the
-    /// entity they terminate at. Returned as a pair (rather than re-walking for the terminal)
-    /// because a second walk means a second copy of the ADR-0042 package-resolution rule —
-    /// mirrors the TS <c>WalkedViaPath</c>.
     /// <summary>
     /// The entity an origin.aggregate's or origin.first's <c>@filter</c> keys name: the <c>@of</c>
     /// entity, else the <c>@via</c> terminal. Null when neither resolves (ValidateOriginPaths reports why).
@@ -1161,6 +1154,13 @@ public static partial class ValidationPasses
             : null;
     }
 
+    /// Validate an explicit `@via` "Entity.rel[.rel...]" path. Returns the walked
+    /// relationship hop nodes (in path order) on full success — FR-024 B5 runs
+    /// the cardinality checks over them — or null when any error was pushed.
+    /// A fully-walked <c>@via</c> path: the relationship hop nodes in path order, plus the
+    /// entity they terminate at. Returned as a pair (rather than re-walking for the terminal)
+    /// because a second walk means a second copy of the ADR-0042 package-resolution rule —
+    /// mirrors the TS <c>WalkedViaPath</c>.
     private readonly record struct WalkedViaPath(List<MetaData> Hops, MetaData Terminal, IReadOnlySet<MetaData> Reverse);
 
     private static WalkedViaPath? ValidateViaPath(

@@ -4480,8 +4480,6 @@ public final class ValidationPhase {
      *
      * @param projection the projection node that owns the field carrying the origin
      */
-    /** FR-024 B5/B6 — the resolved target of a {@code @from}/{@code @of} ref: the
-     *  named root entity and the resolved field node on it (inherited included). */
     /**
      * The entity an origin.aggregate's or origin.first's {@code @filter} keys name: the {@code @of}
      * entity, else the {@code @via} terminal. Null when neither resolves (the origin pass reports why).
@@ -4502,6 +4500,8 @@ public final class ValidationPhase {
         }
     }
 
+    /** FR-024 B5/B6 — the resolved target of a {@code @from}/{@code @of} ref: the
+     *  named root entity and the resolved field node on it (inherited included). */
     private static final class OriginTarget {
         final MetaObject entity;
         final MetaField<?> field;
