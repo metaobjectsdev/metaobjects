@@ -857,7 +857,11 @@ The C#, Java/Kotlin, and Python CLIs keep a **non-executing `agent-docs` pointer
 stub** that prints `agent-context scaffolding moved to the meta CLI — run: npx meta
 agent-docs --server <lang>` to stderr and exits non-zero. The **live staleness check**
 in `gen`/`verify` stays per-port (it only *reads* the scaffold to nudge when it drifts);
-its message now points at `npx meta agent-docs --server <lang>`.
+its message now points at `npx meta agent-docs --server <lang>`. In the Node `meta`, `gen`
+and `verify` also advise (exit code unchanged) when the model declares `requirement.*` nodes
+and the scaffolded context has no requirements pages, naming `meta init --docs-only
+--refresh-docs`; `gen` advises separately when no `requirement-tests` generator is wired,
+naming `requirementTests()` and `meta eject requirement-tests`.
 
 ## Running Kotlin codegen via Maven
 
