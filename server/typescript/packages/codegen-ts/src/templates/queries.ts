@@ -12,6 +12,7 @@ import {
 import type { RenderContext } from "../render-context.js";
 import { getPkInfo, pkInfoOf, subTypeToTsType } from "../pk-resolver.js";
 import { supportsReturning } from "../dialect-module.js";
+import { flatKeyOfPath } from "../flattened.js";
 import {
   findByIdFnName,
   listFnName,
@@ -231,9 +232,11 @@ interface ReverseFk {
 export function reverseFksFor(entity: MetaObject): ReverseFk[] {
   const out: ReverseFk[] = [];
   for (const ref of entity.referenceIdentities()) {
-    const fkField = ref.fields[0];
+    const fkPath = ref.fields[0];
     const targetRef = ref.targetEntity;
-    if (!fkField || !targetRef) continue;
+    if (!fkPath || !targetRef) continue;
+    // A reference over a flattened value-object member names its flat key on the table.
+    const fkField = flatKeyOfPath(entity, fkPath);
     const bound = refTarget(ref, IDENTITY_REFERENCE_ATTR_REFERENCES);
     const target = isMetaObject(bound) ? bound : undefined;
     out.push({ fkField, targetEntity: target?.name ?? stripPackage(targetRef), target });

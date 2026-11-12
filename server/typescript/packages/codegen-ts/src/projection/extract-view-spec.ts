@@ -57,6 +57,11 @@ import {
   findReverseReferenceHops,
   resolveRelationshipReference,
   resolveObjectRef,
+  resolveFieldPathColumn,
+  ORIGIN_ATTR_SEGMENT,
+  FILTER_OPERAND_FIELD,
+  FILTER_OP_IS_DISTINCT_FROM,
+  FILTER_OP_IS_NOT_DISTINCT_FROM,
   refTarget,
   type AggregateFunction,
   type ReferenceLookup,
@@ -161,10 +166,19 @@ function resolveAggregateFilter(
       continue;
     }
     const field = entity.fields().find((f) => f.name === key);
-    if (!field) continue;
+    // The loader resolves every key; one that reaches here unresolved would drop a predicate.
+    if (!field) throw new Error(`origin @filter key "${key}" names no field of "${entity.name}".`);
     const opObj = desugarClause(val);
     const op = Object.keys(opObj)[0];
-    if (!op) continue;
+    if (!op) throw new Error(`origin @filter on "${key}" has no operator.`);
+    const operand = opObj[op];
+    if (op === FILTER_OP_IS_DISTINCT_FROM || op === FILTER_OP_IS_NOT_DISTINCT_FROM
+      || (typeof operand === "object" && operand !== null && !Array.isArray(operand)
+        && FILTER_OPERAND_FIELD in operand)) {
+      throw new Error(
+        `origin @filter on "${key}" compares with a base-row field, which the view lowering does not support yet.`,
+      );
+    }
     clauses.push({
       kind: "cmp",
       ref: `${alias}.${sourceColumnNameFor(field, ctx)}`,
@@ -695,7 +709,11 @@ function baseColumnNameFor(
  */
 export function joinColumnFor(entity: MetaObject, fieldName: string, ctx: ExtractContext): string {
   const f = entity.fields().find((x) => x.name === fieldName);
-  return f ? sourceColumnNameFor(f, ctx) : columnNameFromField(fieldName, ctx.columnNamingStrategy);
+  if (f) return sourceColumnNameFor(f, ctx);
+  // A reference may name a member of a flattened value object (`address.countryId`): its
+  // column is on the entity's own table, under the embedding's prefix.
+  return resolveFieldPathColumn(entity, fieldName, ctx.columnNamingStrategy)
+    ?? columnNameFromField(fieldName, ctx.columnNamingStrategy);
 }
 
 /** The physical column of an entity's primary-key field — the LEFT-JOIN phantom guard
@@ -1084,6 +1102,46 @@ function findAliasInTree(
   return recurse(joinTree.joins);
 }
 
+/**
+ * The alias of the join a walked `@via` path ends on: follow its hops down the join tree by
+ * relationship name (pathsToJoins collapsed every path into this trie, so the walk is exact).
+ * Undefined when the path is empty or does not end on `targetEntity` — the caller then refuses.
+ */
+function aliasForVia(joinTree: JoinTree, path: Path, targetEntity: string): string | undefined {
+  if (path.length === 0) return joinTree.baseEntity === targetEntity ? joinTree.baseAlias : undefined;
+  let nodes: readonly JoinNode[] = joinTree.joins;
+  let node: JoinNode | undefined;
+  for (const step of path) {
+    node = nodes.find((n) => n.relationship === step.relationship);
+    if (node === undefined) return undefined;
+    nodes = node.children;
+  }
+  return node !== undefined && node.targetEntity === targetEntity ? node.alias : undefined;
+}
+
+/**
+ * The loaders accept this field's origin, but the view lowering cannot express it. Refuse it
+ * by name: dropping the column would leave a view without a column the generated type declares.
+ */
+function cannotLower(projection: MetaObject, field: MetaData, why: string): never {
+  throw new Error(
+    `Projection ${projection.name}: field "${field.name}" cannot be lowered into the view: ${why}.`,
+  );
+}
+
+/** An origin's `@filter`, resolved for this field, or refused naming the field it is on. */
+function originFilterFor(
+  projection: MetaObject,
+  field: MetaData,
+  ...args: Parameters<typeof resolveAggregateFilter>
+): ReturnType<typeof resolveAggregateFilter> {
+  try {
+    return resolveAggregateFilter(...args);
+  } catch (e) {
+    cannotLower(projection, field, (e as Error).message.replace(/\.$/, ""));
+  }
+}
+
 function buildSelectSpec(
   projection: MetaObject,
   base: MetaObject,
@@ -1133,51 +1191,72 @@ function buildSelectSpec(
       continue;
     }
 
+    // ADR-0039: own (category 4) — origin.* never inherits (ADR-0029).
+    if (origin.ownAttr(ORIGIN_ATTR_SEGMENT) !== undefined) {
+      cannotLower(projection, field, "its @segment is not lowered into a view yet");
+    }
+
     if (origin.subType === ORIGIN_SUBTYPE_PASSTHROUGH) {
       // ADR-0039: own (category 4) — origin.* never inherits (ADR-0029).
       const from = origin.ownAttr(ORIGIN_PASSTHROUGH_ATTR_FROM) as string;
       const dotIdx = from.indexOf(".");
-      if (dotIdx < 1) continue;
+      if (dotIdx < 1) cannotLower(projection, field, 'its @of/@from is not "Entity.field"');
       // @from may be package-qualified ("pkg::Entity.field"). Resolve package-aware and
       // key the alias lookup on the SAME resolutionKey() the joinTree stored (#244).
       const fieldName = from.slice(dotIdx + 1);
       const targetEntity = resolveEntityRef(root, from.slice(0, dotIdx), projPkg);
-      if (!targetEntity) continue;
-      const sourceAlias = findAliasInTree(joinTree, targetEntity.resolutionKey());
-      if (sourceAlias === undefined) continue;
+      if (!targetEntity) cannotLower(projection, field, "its @of/@from names no entity");
+      // The alias of the join this origin's own @via walked: two references onto one target
+      // join it twice, and the entity alone cannot say which join a field reads.
+      // ADR-0039: own (category 4) — origin.* never inherits (ADR-0029).
+      const via = origin.ownAttr(ORIGIN_PASSTHROUGH_ATTR_VIA) as string | undefined;
+      const sourceAlias = via !== undefined
+        ? aliasForVia(joinTree, walkViaPath(via, root, projPkg, ctx), targetEntity.resolutionKey())
+        : findAliasInTree(joinTree, targetEntity.resolutionKey());
+      if (sourceAlias === undefined) cannotLower(projection, field, "the entity it reads is not joined into the view");
       // EFFECTIVE fields — the source column may be inherited via `extends`
       // (e.g. created_at/updated_at/created_by from an audited base), which
-      // ownChildren() would miss.
+      // ownChildren() would miss. A member of a flattened value object (`address.city`) is a
+      // column of the entity's own table.
       const targetField = targetEntity.fields().find((f) => f.name === fieldName);
-      if (!targetField) continue;
+      const sourceColumn = targetField !== undefined
+        ? sourceColumnNameFor(targetField, ctx)
+        : resolveFieldPathColumn(targetEntity, fieldName, ctx.columnNamingStrategy);
+      if (sourceColumn === undefined) cannotLower(projection, field, "its @of/@from names no field of that entity");
+      // A derived field of the entity has no column on its table; the view would have to inline
+      // its origin where the passthrough reaches it.
+      // ADR-0039: own — origin.* never inherits (ADR-0029).
+      if (targetField?.ownChildren().some((c) => c.type === TYPE_ORIGIN) === true) {
+        cannotLower(projection, field, `its @from reads "${targetEntity.name}.${fieldName}", a derived field, which the view lowering does not inline yet`);
+      }
       columns.push({
         kind: "passthrough",
         fieldName: field.name,
         dbColAlias: dbCol,
         sourceAlias,
-        sourceColumn: sourceColumnNameFor(targetField, ctx),
+        sourceColumn,
       });
     } else if (origin.subType === ORIGIN_SUBTYPE_AGGREGATE) {
       // ADR-0039: own (category 4) — origin.* never inherits (ADR-0029).
       const agg = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_AGG) as string | undefined;
-      if (!agg) continue;
+      if (!agg) cannotLower(projection, field, "it declares no @agg");
       const filterAttr = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_FILTER);
 
       if (agg === AGG_ANY || agg === AGG_ALL) {
         // #195 predicate quantifier — no @of; the related entity is @via's terminal
         // hop, and @filter is the (required) quantified predicate.
         const via = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_VIA) as string | undefined;
-        if (!via) continue;
+        if (!via) cannotLower(projection, field, "it declares no @via");
         const relatedEntity = viaTerminalEntity(via, root, projPkg);
-        if (!relatedEntity) continue;
-        const sourceAlias = findAliasInTree(joinTree, relatedEntity.resolutionKey());
-        if (sourceAlias === undefined) continue;
+        if (!relatedEntity) cannotLower(projection, field, "its @via does not resolve");
+        const sourceAlias = aliasForVia(joinTree, walkViaPath(via, root, projPkg, ctx), relatedEntity.resolutionKey());
+        if (sourceAlias === undefined) cannotLower(projection, field, "the entity it reads is not joined into the view");
         const joinedPk = primaryKeyColumn(relatedEntity, ctx);
-        if (joinedPk === undefined) continue;
+        if (joinedPk === undefined) cannotLower(projection, field, "the related entity has no primary key");
         const pred = filterAttr !== undefined
-          ? resolveAggregateFilter(filterAttr, relatedEntity, sourceAlias, ctx)
+          ? originFilterFor(projection, field, filterAttr, relatedEntity, sourceAlias, ctx)
           : undefined;
-        if (pred === undefined) continue; // loader requires @filter on any/all
+        if (pred === undefined) cannotLower(projection, field, "its @filter does not resolve");
         columns.push({
           kind: "predicateAgg",
           fieldName: field.name,
@@ -1204,27 +1283,27 @@ function buildSelectSpec(
         // ERR_COLLECT_MEMBER_UNRESOLVED before codegen runs); they are defence for a
         // caller that reached codegen without loading, never a silent-drop path.
         const via = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_VIA) as string | undefined;
-        if (!via) continue;
+        if (!via) cannotLower(projection, field, "it declares no @via");
         const relatedEntity = viaTerminalEntity(via, root, projPkg);
-        if (!relatedEntity) continue;
-        const sourceAlias = findAliasInTree(joinTree, relatedEntity.resolutionKey());
-        if (sourceAlias === undefined) continue;
+        if (!relatedEntity) cannotLower(projection, field, "its @via does not resolve");
+        const sourceAlias = aliasForVia(joinTree, walkViaPath(via, root, projPkg, ctx), relatedEntity.resolutionKey());
+        if (sourceAlias === undefined) cannotLower(projection, field, "the entity it reads is not joined into the view");
         const joinedPk = primaryKeyColumn(relatedEntity, ctx);
-        if (joinedPk === undefined) continue;
+        if (joinedPk === undefined) cannotLower(projection, field, "the related entity has no primary key");
         // ADR-0059 R7 — the VO the loader bound for @objectRef, resolved where it was declared.
         // ADR-0039: resolving — @objectRef may be inherited via extends.
         const vo = refTarget(field, FIELD_ATTR_OBJECT_REF);
-        if (!vo) continue;
+        if (!vo) cannotLower(projection, field, "its @objectRef does not resolve");
         // ADR-0039: resolving — a value object may inherit members via extends, and the
         // terminal entity may inherit fields. The VO's member list IS the exposure: a
         // field the terminal has but the VO omits is deliberately not projected (#270).
         const members: { memberName: string; sourceColumn: string }[] = [];
         for (const m of vo.children().filter((c): c is MetaField => c.type === TYPE_FIELD)) {
           const target = relatedEntity.fields().find((f) => f.name === m.name);
-          if (target === undefined) continue; // loader: ERR_COLLECT_MEMBER_UNRESOLVED
+          if (target === undefined) cannotLower(projection, field, "a member of its value object is not a field of the related entity");
           members.push({ memberName: m.name, sourceColumn: sourceColumnNameFor(target, ctx) });
         }
-        if (members.length === 0) continue;
+        if (members.length === 0) cannotLower(projection, field, "no member of its value object resolves on the related entity");
         columns.push({
           kind: "collectObjectAgg",
           fieldName: field.name,
@@ -1241,22 +1320,26 @@ function buildSelectSpec(
 
       // collect + the scalar reduces (count/sum/avg/min/max) all name @of.
       const of_ = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_OF) as string | undefined;
-      if (!of_) continue;
+      if (!of_) cannotLower(projection, field, "it declares no @of");
       const dotIdx = of_.indexOf(".");
-      if (dotIdx < 1) continue;
+      if (dotIdx < 1) cannotLower(projection, field, 'its @of/@from is not "Entity.field"');
       const fieldName = of_.slice(dotIdx + 1);
       const targetEntity = resolveEntityRef(root, of_.slice(0, dotIdx), projPkg);
-      if (!targetEntity) continue;
-      const sourceAlias = findAliasInTree(joinTree, targetEntity.resolutionKey());
-      if (sourceAlias === undefined) continue;
+      if (!targetEntity) cannotLower(projection, field, "its @of/@from names no entity");
+      // The join its own @via walked (see the passthrough branch). ADR-0039: own (category 4).
+      const aggVia = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_VIA) as string | undefined;
+      const sourceAlias = aggVia !== undefined
+        ? aliasForVia(joinTree, walkViaPath(aggVia, root, projPkg, ctx), targetEntity.resolutionKey())
+        : findAliasInTree(joinTree, targetEntity.resolutionKey());
+      if (sourceAlias === undefined) cannotLower(projection, field, "the entity it reads is not joined into the view");
       const targetField = targetEntity.fields().find((f) => f.name === fieldName);
-      if (!targetField) continue;
+      if (!targetField) cannotLower(projection, field, "its @of/@from names no field of that entity");
 
       if (agg === AGG_COLLECT) {
         // #195 array rollup — collect @of across the related set. @distinct = set
         // semantics; @orderBy (non-distinct) sets element order, else value-ascending.
         const joinedPk = primaryKeyColumn(targetEntity, ctx);
-        if (joinedPk === undefined) continue;
+        if (joinedPk === undefined) cannotLower(projection, field, "the related entity has no primary key");
         const distinct = origin.ownAttr(ORIGIN_ATTR_DISTINCT) === true;
         const orderBy = resolveOrderByKeys(origin.ownAttr(ORIGIN_ATTR_ORDER_BY), targetEntity, ctx);
         columns.push({
@@ -1276,7 +1359,7 @@ function buildSelectSpec(
         // Optional scoping filter — resolved against the aggregated entity (the @of
         // entity, reached at `sourceAlias`), e.g. max(version) over only active rows.
         const filter = filterAttr !== undefined
-          ? resolveAggregateFilter(filterAttr, targetEntity, sourceAlias, ctx)
+          ? originFilterFor(projection, field, filterAttr, targetEntity, sourceAlias, ctx)
           : undefined;
         columns.push({
           kind: "aggregate",
@@ -1287,26 +1370,28 @@ function buildSelectSpec(
           sourceColumn: sourceColumnNameFor(targetField, ctx),
           ...(filter !== undefined ? { filter } : {}),
         });
+      } else {
+        cannotLower(projection, field, `@agg "${agg}" has no view lowering`);
       }
     } else if (origin.subType === ORIGIN_SUBTYPE_COMPUTED) {
       // #195 row-level computed value from the base entity's own fields (@expr tree,
       // no @via). ADR-0039: own — origin.* never inherits (ADR-0029).
       const rawExpr = origin.ownAttr(ORIGIN_COMPUTED_ATTR_EXPR);
       const expr = resolveExprNode(rawExpr, base, joinTree.baseAlias, ctx);
-      if (expr === undefined) continue;
+      if (expr === undefined) cannotLower(projection, field, "its @expr uses a node the view lowering does not support yet");
       columns.push({ kind: "computed", fieldName: field.name, dbColAlias: dbCol, expr });
     } else if (origin.subType === ORIGIN_SUBTYPE_FIRST) {
       // #195 correlated latest-row — argmax-then-project. Resolves to a correlated
       // subquery (NOT a join). ADR-0039: own — origin.* never inherits (ADR-0029).
       const of_ = origin.ownAttr(ORIGIN_FIRST_ATTR_OF) as string | undefined;
-      if (!of_) continue;
+      if (!of_) cannotLower(projection, field, "it declares no @of");
       const dotIdx = of_.indexOf(".");
-      if (dotIdx < 1) continue;
+      if (dotIdx < 1) cannotLower(projection, field, 'its @of/@from is not "Entity.field"');
       const ofFieldName = of_.slice(dotIdx + 1);
       const childEntity = resolveEntityRef(root, of_.slice(0, dotIdx), projPkg);
-      if (!childEntity) continue;
+      if (!childEntity) cannotLower(projection, field, "its @of names no entity");
       const ofField = childEntity.fields().find((f) => f.name === ofFieldName);
-      if (!ofField) continue;
+      if (!ofField) cannotLower(projection, field, "its @of names no field of that entity");
       // The base↔child correlation FK — resolved exactly as buildJoinTree resolves a
       // single hop (the identity.reference is the FK-direction SSOT). Single-hop @via;
       // a multi-hop @via on origin.first is not lowered here (rare, and validated away).
@@ -1344,23 +1429,23 @@ function buildSelectSpec(
         );
       }
       const ref = refs[0];
-      if (!ref) continue;
+      if (!ref) cannotLower(projection, field, "no identity.reference correlates the base with the @of entity");
       const fkField = ref.referenceIdentity.fields[0];
-      if (!fkField) continue;
+      if (!fkField) cannotLower(projection, field, "its correlating reference names no field");
       const pkField = ref.referenceIdentity.resolvedTargetPkField(root) ?? "id";
       const referenceHolder: "source" | "target" =
         ref.holder.name === base.name ? "source" : "target";
       const fkHolder = referenceHolder === "source" ? base : childEntity;
       const pkHolder = referenceHolder === "source" ? childEntity : base;
       const childPk = primaryKeyColumn(childEntity, ctx);
-      if (childPk === undefined) continue;
+      if (childPk === undefined) cannotLower(projection, field, "the @of entity has no primary key");
       // A FRESH alias — the subquery is an independent correlated scope, never the
       // JOIN-tree alias (reserved against usedAliases so it can never collide).
       const childAlias = shortAliasFor(childEntity.name, usedAliases);
       const orderBy = resolveOrderByKeys(origin.ownAttr(ORIGIN_ATTR_ORDER_BY), childEntity, ctx);
       const filterAttr = origin.ownAttr(ORIGIN_FIRST_ATTR_FILTER);
       const filter = filterAttr !== undefined
-        ? resolveAggregateFilter(filterAttr, childEntity, childAlias, ctx)
+        ? originFilterFor(projection, field, filterAttr, childEntity, childAlias, ctx)
         : undefined;
       columns.push({
         kind: "first",
@@ -1377,6 +1462,8 @@ function buildSelectSpec(
         orderBy,
         ...(filter !== undefined ? { filter } : {}),
       });
+    } else {
+      cannotLower(projection, field, `origin.${origin.subType} has no view lowering`);
     }
   }
 

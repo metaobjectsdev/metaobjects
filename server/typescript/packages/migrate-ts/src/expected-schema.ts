@@ -67,7 +67,7 @@ import {
   STORAGE_FLATTENED,
   DOC_ATTR_DESCRIPTION,
   applyColumnNamingStrategy, physicalNamingOf,
-  resolveTableName, resolveColumnName, resolveFlattenedColumnName, resolveTableSchema, resolveIndexName,
+  resolveTableName, resolveColumnName, resolveFlattenedColumnName, resolveFieldPathColumn, resolveTableSchema, resolveIndexName,
   resolveEnumMaxLength,
   IDENTITY_ATTR_SEQUENCE_NAME,
   IDENTITY_ATTR_SEQUENCE_START,
@@ -1237,9 +1237,13 @@ function buildForeignKeys(
     const fkFieldJsNames = readIdentityFields(refChild);
     if (fkFieldJsNames.length === 0) continue;
 
+    // An entry may name a member of a flattened value object (`address.countryId`), whose
+    // column is on this table under the embedding's prefix.
     const fkCols = fkFieldJsNames.map((jsName) => {
       const fkField = findField(holder, jsName);
-      return fkField ? resolveColumnName(fkField, strategy) : applyColumnNamingStrategy(jsName, strategy);
+      return fkField
+        ? resolveColumnName(fkField, strategy)
+        : resolveFieldPathColumn(holder, jsName, strategy) ?? applyColumnNamingStrategy(jsName, strategy);
     });
 
     // Target columns: prefer explicit multi-field dotted form, else delegate
