@@ -3119,7 +3119,7 @@ public final class ValidationPhase {
             // Money-shaped value would add amounts in different currencies.
             // ADR-0039: resolving (hasMetaAttr defaults to includeParentData) — @objectRef may be
             // inherited via extends.
-            if (MetaOrigin.COLUMN_VALUE_AGGREGATES.contains(agg)
+            if (agg != null && MetaOrigin.COLUMN_VALUE_AGGREGATES.contains(agg)
                     && (ObjectField.SUBTYPE_OBJECT.equals(ofTarget.field.getSubType())
                         || ofTarget.field.hasMetaAttr(ObjectField.ATTR_OBJECTREF))) {
                 throw new MetaDataException(
