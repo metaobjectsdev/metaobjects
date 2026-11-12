@@ -1085,7 +1085,8 @@ public class EntityGenerator : IGenerator
         var importedShapes = valueShapes.Where(vo => !ctx.Root.InScope(vo)).ToList();
         // G2 (rc.20): a narrowed run (Include) declares the enums of the objects it accepts and of
         // every value object it emits beyond them (a reached closure POCO), not the whole model's;
-        // another entry declares the rest. Un-narrowed, the set is unchanged.
+        // another entry declares the rest, and an enum both use is declared once (below).
+        // Un-narrowed, the set is unchanged.
         var reached = ctx.Scope is null ? importedShapes : valueShapes.ToList();
 
         foreach (var shared in Fr019SharedEnum.CollectSharedEnums(ctx.Root, reached, ctx.Scope))
@@ -1095,6 +1096,13 @@ public class EntityGenerator : IGenerator
         var files = new List<EmittedFile>();
         foreach (var e in Fr019SharedEnum.MaterializedSharedEnums(ctx.Root, reached, ctx.Scope))
         {
+            // G2 (rc.20, fix round 1): an enum two narrowed entries both use is declared by ONE of them,
+            // so the entries' outputs build together (no CS0101). Decided from the model alone, so each
+            // entry reaches the same answer in its own run: the enum's home is its first consumer by
+            // resolution key, and the entry that emits that object declares it.
+            if (ctx.Scope is { } scope && SharedEnumHome(ctx, e, importedShapes) is { } home
+                && !scope(home) && !valueShapes.Contains(home))
+                continue;
             // rc.19 R65: a shared enum is declared in its package's namespace; consumers name it
             // global::-qualified (Fr019SharedEnum.SharedEnumTypeReference).
             var ns = Fr019SharedEnum.MaterializedNamespace(e, ctx.Config);
@@ -1114,6 +1122,17 @@ public class EntityGenerator : IGenerator
         }
         return files;
     }
+
+    /// <summary>
+    /// The object a narrowed run's shared enum is declared beside (G2): the first, by resolution key,
+    /// of every object this project generates (and every imported value object this run emits) that has
+    /// a field of the enum. Null when nothing consumes it.
+    /// </summary>
+    private static MetaObject? SharedEnumHome(GenContext ctx, SharedEnum e, IReadOnlyList<MetaObject> importedShapes) =>
+        ctx.Root.Objects().Where(ctx.Root.InScope).Concat(importedShapes)
+            .Where(o => o.Fields().Any(f => Fr019SharedEnum.SharedEnumForField(f)?.Name == e.Name))
+            .OrderBy(o => o.ResolutionKey(), StringComparer.Ordinal)
+            .FirstOrDefault();
 
     /// <summary>
     /// A shared enum's declaration: the declaration's doc attrs as the type's XML doc, each

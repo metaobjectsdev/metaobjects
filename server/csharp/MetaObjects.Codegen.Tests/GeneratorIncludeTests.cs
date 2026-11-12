@@ -160,5 +160,49 @@ public class GeneratorIncludeTests
         Assert.DoesNotContain("OrderStatus.g.cs", customers);
         Assert.DoesNotContain("Mood.g.cs", customers);
     }
+
+    // G2, rc.20 fix round 1: an enum both narrowed entries use is declared by exactly one of them,
+    // the one that emits its first consumer by resolution key, so their outputs build together.
+    private const string BothUse = """
+    { "metadata.root": { "package": "acme", "children": [
+      { "field.enum": { "name": "Level", "abstract": true, "@values": ["LOW", "HIGH"] } },
+      { "object.entity": { "name": "Order", "children": [
+        { "source.rdb": { "@table": "orders" } },
+        { "field.long": { "name": "id" } },
+        { "field.enum": { "name": "level", "extends": "Level" } },
+        { "identity.primary": { "@fields": "id" } }
+      ]}},
+      { "object.entity": { "name": "Customer", "children": [
+        { "source.rdb": { "@table": "customers" } },
+        { "field.long": { "name": "id" } },
+        { "field.enum": { "name": "level", "extends": "Level" } },
+        { "identity.primary": { "@fields": "id" } }
+      ]}}
+    ]}}
+    """;
+
+    [Fact]
+    public void An_enum_both_narrowed_entries_use_is_declared_once()
+    {
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(BothUse, id: "both.json")]);
+        Assert.Empty(r.Errors);
+        // One run, one claim registry, as two entries of one generator list share.
+        var ctx = new GenContext
+        {
+            Entities = r.Root.Objects(), Root = r.Root,
+            Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated" },
+        };
+        var orders = new EntityGenerator { Include = o => o.Name is "Order" }.Generate(ctx).ToList();
+        var customers = new EntityGenerator { Include = o => o.Name is "Customer" }.Generate(ctx).ToList();
+        // Customer sorts first (acme::Customer < acme::Order), so its entry declares Level.
+        Assert.Contains(customers, f => f.Path.EndsWith("Level.g.cs", StringComparison.Ordinal));
+        Assert.DoesNotContain(orders, f => f.Path.EndsWith("Level.g.cs", StringComparison.Ordinal));
+        // Order still names it.
+        Assert.Contains("global::Acme.Level", Assert.Single(orders, f => f.Path.EndsWith("Order.g.cs", StringComparison.Ordinal)).Content);
+        var errors = PackageNamespaceTests.CompileErrors(orders.Concat(customers));
+        Assert.True(errors.Count == 0, "the two entries' output should build together, but got:\n" + string.Join("\n", errors));
+        // Un-narrowed, it is declared as before.
+        Assert.Single(new EntityGenerator().Generate(ctx), f => f.Path.EndsWith("Level.g.cs", StringComparison.Ordinal));
+    }
 }
 
