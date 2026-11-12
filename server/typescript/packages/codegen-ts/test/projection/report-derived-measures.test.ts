@@ -81,6 +81,41 @@ describe("FR-044 R13: derived measures in a report view", () => {
     expect(sql).toContain("(m.`weekly_capacity_hours` * 52) / 12 AS `capacity_hours`");
   });
 
+  test("mysql keeps the parentheses around a dividend that is a difference of integral sums", async () => {
+    const doc = JSON.parse(readFileSync(FIXTURE, "utf8")) as Json;
+    const children = (doc["metadata.root"] as { children: Json[] }).children;
+    const entity = children.find((c) => (c["object.entity"] as Json | undefined)?.name === "TimeEntry")!;
+    const ec = (entity["object.entity"] as { children: Json[] }).children;
+    const hours = ec.findIndex((c) => (c["field.decimal"] as Json | undefined)?.name === "hours");
+    ec[hours] = { "field.long": { name: "hours", "@required": true } };
+    ec.push(
+      { "measure.aggregate": { name: "allHours", "@agg": "sum", "@of": "TimeEntry.hours" } },
+      { "measure.aggregate": { name: "billedHours", "@agg": "sum", "@of": "TimeEntry.hours", "@filter": { billable: true } } },
+    );
+    ec.push({
+      "measure.derived": {
+        name: "hoursGapPerBudget",
+        "@expr": {
+          fn: "divide",
+          args: [{ fn: "subtract", args: [{ field: "allHours" }, { field: "billedHours" }] }, { field: "projectBudget" }],
+        },
+      },
+    });
+    children.push({
+      "object.report": {
+        name: "HoursGap",
+        "@from": "TimeEntry",
+        "@dimensions": ["projectId", "projectBudget"],
+        "@measures": ["allHours", "billedHours", "hoursGapPerBudget"],
+        children: [{ "source.rdb": { "@kind": "view", "@view": "v_hoursgap" } }],
+      },
+    });
+    const { root, errors } = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify(doc))]);
+    expect(errors).toEqual([]);
+    const sql = buildReportViews(root, { dialect: "mysql" }).find((v) => v.name === "v_hoursgap")?.sql ?? "";
+    expect(sql).toMatch(/\(CAST\(.* AS SIGNED\) - CAST\(.* AS SIGNED\)\) \/ NULLIF\(p\.`budget`, 0\) AS `hours_gap_per_budget`/);
+  });
+
   test("Cube: a derived measure over measures is a number member reading them", async () => {
     const model = buildCubeModel(await load(true), { dialect: "postgres", columnNamingStrategy: "snake_case" });
     const cube = model.cubes.find((c) => c.name.toLowerCase().includes("timeentr"))!;

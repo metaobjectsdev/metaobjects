@@ -134,8 +134,7 @@ function derived(t: ReportDerivedTerm, d: ReportDialect, factRef: string | undef
       let sql: string;
       if (t.fn === DERIVED_FN_DIVIDE) {
         // Inside CAST(...) the dividend needs no parentheses of its own; MySQL has no cast.
-        const real = realOf(derived(t.left, d, factRef), d);
-        const dividend = real.startsWith("CAST(") ? real : derived(t.left, d, factRef, false);
+        const dividend = d === "mysql" ? derived(t.left, d, factRef, false) : realOf(derived(t.left, d, factRef), d);
         const divisor =
           t.right.kind === "value" && t.right.value !== 0
             ? derived(t.right, d, factRef, false)

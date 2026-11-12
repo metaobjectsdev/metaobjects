@@ -11,7 +11,7 @@ here.**
 ## [Unreleased]
 
 **New metamodel vocabulary: `measure.derived` and its `@expr`.** It is additive: nothing that
-loaded before stops loading. If this ships after 1.3.0, the release moves `metamodelVersion`.
+loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersion` 1.3 if it merges before the 1.3.0 publish; if it lands after, the next release moves `metamodelVersion`.
 
 ### Added
 
