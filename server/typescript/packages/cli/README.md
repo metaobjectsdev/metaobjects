@@ -116,6 +116,7 @@ Flags:
 - `--quiet` — suppress next-steps output
 - `--print-only` — show what would be created without writing
 - `--refresh-docs` — refresh AGENTS.md + CLAUDE.md after a CLI upgrade
+- `--dialect sqlite|postgres|mysql|d1` — the database the project targets. Writes the codegen `dialect`, and `migrate.dialect` in `.metaobjects/config.json` for sqlite, postgres and d1 (`--d1` is `--dialect d1`; a conflicting pair is refused). MySQL is codegen-only: `meta migrate` does not own its schema. Default `sqlite`; the next steps print that dialect's first migration.
 
 ### `meta gen [<entity>...]`
 
