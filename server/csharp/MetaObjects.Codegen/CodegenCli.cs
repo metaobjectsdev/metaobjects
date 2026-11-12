@@ -815,7 +815,7 @@ public static class CodegenCli
         var tables = NamingStrategies.Tables;
         foreach (var t in tables.OrderBy(t => t == used.Tables ? 0 : 1))
             foreach (var c in columns.OrderBy(c => c == used.Columns ? 0 : 1))
-                if (new PhysicalNaming(c, t) is var candidate && candidate != used)
+                if (new PhysicalNaming(c, t) { Collections = used.Collections } is var candidate && candidate != used)
                     yield return candidate;
     }
 

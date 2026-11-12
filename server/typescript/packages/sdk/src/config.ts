@@ -7,6 +7,7 @@ import {
   DEFAULT_PHYSICAL_NAMING,
   isRegisteredColumnNamingStrategy,
   isRegisteredTableNamingRule,
+  isRegisteredPluralizer,
   unknownNamingStrategyMessage,
   DEFAULT_WIRE_FORMAT,
   DEFAULT_ENUM_DEFAULTS,
@@ -227,6 +228,8 @@ export const ConfigSchema = z.object({
    * the PROJECT, read here by every port, because every port reads and writes the one database
    * `meta migrate` created: codegen, migrate, the runtime and verify all resolve through it.
    * Absent means `snake_case` for both, which is what `meta migrate` has always created.
+   * `collections` names the pluralizer (`standard`, `none` or one registered with
+   * `registerPluralizer`) an object without `@collectionName` takes its collection name from.
    *
    * Each value is the NAME of a registered strategy (ADR-0058 Amendment 1): a built-in
    * (`columns`: `snake_case`, `literal`, `kebab-case`, `pascal`; `tables`: `snake_case`,
@@ -245,6 +248,11 @@ export const ConfigSchema = z.object({
       tables: z.string()
         .superRefine((n, ctx) => {
           if (!isRegisteredTableNamingRule(n)) ctx.addIssue({ code: "custom", message: unknownNamingStrategyMessage("tables", n) });
+        })
+        .optional(),
+      collections: z.string()
+        .superRefine((n, ctx) => {
+          if (!isRegisteredPluralizer(n)) ctx.addIssue({ code: "custom", message: unknownNamingStrategyMessage("collections", n) });
         })
         .optional(),
     })
@@ -316,6 +324,7 @@ export function physicalNamingFromConfig(cfg: Pick<Config, "naming">): PhysicalN
   return {
     columns: cfg.naming?.columns ?? DEFAULT_PHYSICAL_NAMING.columns,
     tables: cfg.naming?.tables ?? DEFAULT_PHYSICAL_NAMING.tables,
+    ...(cfg.naming?.collections !== undefined ? { collections: cfg.naming.collections } : {}),
   };
 }
 

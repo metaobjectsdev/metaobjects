@@ -3,8 +3,10 @@
 // type-checks it. It loads under the strict
 // loader on object.entity / projection / report.
 
+using System.Text.Json;
 using MetaObjects;
 using MetaObjects.Loader;
+using MetaObjects.Meta;
 using Xunit;
 
 namespace MetaObjects.Conformance.Tests;
@@ -45,5 +47,40 @@ public sealed class CollectionNameVocabularyTests
         var registry = Provider.ComposeRegistry(CoreTypes.LibraryProviders);
         var attr = registry.Find("object", "entity")!.Attributes.Single(a => a.Name == "collectionName");
         Assert.Equal(new[] { "csharp" }, attr.ImplementedIn);
+    }
+    [Fact]
+    public void The_standard_pluralizer_matches_the_shared_naming_conformance_corpus()
+    {
+        string repoRoot = Path.GetDirectoryName(Path.GetDirectoryName(CorpusRoot.Path)!)!;
+        using var doc = JsonDocument.Parse(File.ReadAllText(
+            Path.Combine(repoRoot, "fixtures", "naming-conformance", "already-plural-pluralize.json")));
+        var cases = doc.RootElement.GetProperty("cases").EnumerateArray().ToList();
+        Assert.NotEmpty(cases);
+        foreach (var c in cases)
+        {
+            string name = c.GetProperty("name").GetString()!;
+            Assert.Equal((name, c.GetProperty("apiPlural").GetString()), (name, CollectionNames.StandardPluralize(name)));
+        }
+    }
+
+    [Theory]
+    [InlineData(null, "CaseHistories")]
+    [InlineData("standard", "CaseHistories")]
+    [InlineData("none", "CaseHistory")]
+    public void An_object_without_collectionName_takes_the_project_pluralizer(string? collections, string expected)
+    {
+        const string model = """
+            { "metadata.root": { "package": "acme", "children": [
+              { "object.entity": { "name": "CaseHistory", "children": [ { "field.long": { "name": "id" } } ] } },
+              { "object.entity": { "name": "Diagnosis", "@collectionName": "DiagnosisRows", "children": [ { "field.long": { "name": "id" } } ] } }
+            ] } }
+            """;
+        var result = new MetaDataLoader(Provider.ComposeRegistry(CoreTypes.LibraryProviders), strict: true)
+            .Load([new InMemoryStringSource(model, id: "meta.json")]);
+        Assert.Empty(result.Errors.Select(e => e.Code + ": " + e.Message));
+        result.Root.PhysicalNaming = PhysicalNaming.Default with { Collections = collections };
+        var objects = result.Root.Objects().ToDictionary(o => o.Name);
+        Assert.Equal(expected, CollectionNames.Of(objects["CaseHistory"]));
+        Assert.Equal("DiagnosisRows", CollectionNames.Of(objects["Diagnosis"]));
     }
 }

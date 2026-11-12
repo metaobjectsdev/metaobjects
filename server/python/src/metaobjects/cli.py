@@ -2320,7 +2320,7 @@ def naming_candidates(used: NamingRules) -> list[NamingRules]:
         candidate
         for t in tables
         for c in columns
-        if (candidate := NamingRules(columns=c, tables=t)) != used
+        if (candidate := NamingRules(columns=c, tables=t, collections=used.collections)) != used
     ]
 
 
