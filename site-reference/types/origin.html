@@ -93,7 +93,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td></td>
 <td></td>
 <td>metaobjects-core-types</td>
-<td>Optional structured predicate scoping which related rows the aggregate spans (required for any/all, where it is the quantified predicate). A portable attr.filter object (eq/ne/in/isNull with and/or), desugared to canonical { field: { op: value } } at parse time; codegen renders it per target (e.g. SQL FILTER (WHERE ...) or SQLite CASE WHEN for a relational view).</td>
+<td>Optional structured predicate scoping which related rows the aggregate spans (required for any/all, where it is the quantified predicate). A portable attr.filter object (eq/ne/in/isNull with and/or), desugared to canonical { field: { op: value } } at parse time; codegen renders it per target (e.g. SQL FILTER (WHERE ...) or SQLite CASE WHEN for a relational view). A clause value may also be a relative date ({ now: &quot;<ISO-8601 duration>&quot;, startOf? }) on a date or timestamp field.</td>
 </tr>
 <tr>
 <td><code>@of</code></td>
@@ -186,7 +186,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td></td>
 <td></td>
 <td>metaobjects-core-types</td>
-<td>Optional structured predicate scoping which related rows are eligible for selection. A portable attr.filter object (eq/ne/in/isNull with and/or), desugared to canonical { field: { op: value } } at parse time.</td>
+<td>Optional structured predicate scoping which related rows are eligible for selection. A portable attr.filter object (eq/ne/in/isNull with and/or), desugared to canonical { field: { op: value } } at parse time. A clause value may also be a relative date ({ now: &quot;<ISO-8601 duration>&quot;, startOf? }) on a date or timestamp field.</td>
 </tr>
 <tr>
 <td><code>@of</code></td>

@@ -781,9 +781,20 @@ public static partial class ValidationPasses
                         // Type inference against the base entity's EFFECTIVE fields (ADR-0039).
                         var computedBase = DeriveBaseEntity(obj, root, field.Name, src, errors);
                         if (computedBase is null) continue;
+                        // A ref names one of the projection's own fields
+                        // first (a passthrough, an origin.first, another computed — never itself, never
+                        // an aggregate), else a base field.
                         Func<string, string?> resolveField = name =>
-                            computedBase!.Children()
+                        {
+                            if (!ReferenceEquals(obj, computedBase) && name != field.Name
+                                && obj.Children().FirstOrDefault(f => f.Type == TYPE_FIELD && f.Name == name) is { } own)
+                            {
+                                var ownOrigin = own.OwnChildren().FirstOrDefault(c => c.Type == TYPE_ORIGIN);
+                                return ownOrigin?.SubType == ORIGIN_SUBTYPE_AGGREGATE ? null : own.SubType;
+                            }
+                            return computedBase!.Children()
                                 .FirstOrDefault(f => f.Type == TYPE_FIELD && f.Name == name)?.SubType;
+                        };
                         var inferred = ExpressionGrammar.InferExprType(expr, resolveField);
                         if (inferred.Errors.Count > 0)
                         {

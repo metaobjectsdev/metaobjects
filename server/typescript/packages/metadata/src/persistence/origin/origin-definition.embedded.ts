@@ -93,7 +93,7 @@ export const ORIGIN_DEFINITION: ProviderDefinition = {
           "name": "filter",
           "min": 0,
           "max": 1,
-          "description": "Optional structured predicate scoping which related rows the aggregate spans (required for any/all, where it is the quantified predicate). A portable attr.filter object (eq/ne/in/isNull with and/or), desugared to canonical { field: { op: value } } at parse time; codegen renders it per target (e.g. SQL FILTER (WHERE ...) or SQLite CASE WHEN for a relational view)."
+          "description": "Optional structured predicate scoping which related rows the aggregate spans (required for any/all, where it is the quantified predicate). A portable attr.filter object (eq/ne/in/isNull with and/or), desugared to canonical { field: { op: value } } at parse time; codegen renders it per target (e.g. SQL FILTER (WHERE ...) or SQLite CASE WHEN for a relational view). A clause value may also be a relative date ({ now: \"<ISO-8601 duration>\", startOf? }) on a date or timestamp field."
         },
         {
           "type": "attr",
@@ -168,7 +168,7 @@ export const ORIGIN_DEFINITION: ProviderDefinition = {
           "name": "filter",
           "min": 0,
           "max": 1,
-          "description": "Optional structured predicate scoping which related rows are eligible for selection. A portable attr.filter object (eq/ne/in/isNull with and/or), desugared to canonical { field: { op: value } } at parse time."
+          "description": "Optional structured predicate scoping which related rows are eligible for selection. A portable attr.filter object (eq/ne/in/isNull with and/or), desugared to canonical { field: { op: value } } at parse time. A clause value may also be a relative date ({ now: \"<ISO-8601 duration>\", startOf? }) on a date or timestamp field."
         }
       ]
     }

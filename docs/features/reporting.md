@@ -969,7 +969,7 @@ only beside `now`.
 
 | Rule | Code | Refused |
 |---|---|---|
-| **F1** | `ERR_BAD_ATTR_FILTER` | A relative value anywhere except the `@filter` of a `segment`, a `measure.aggregate` or an `object.report`. In a `layout.dataGrid` preset, a projection `@filter` or an `origin.aggregate` `@filter` it fails the load, because no lowering exists for those hosts. |
+| **F1** | `ERR_BAD_ATTR_FILTER` | A relative value anywhere except the `@filter` of a `segment`, a `measure.aggregate`, an `object.report`, an `object.projection`, an `origin.first` or an `origin.aggregate`. In a `layout.dataGrid` preset it fails the load, because no lowering exists for that host. On a projection or an origin, whose filter keys resolve elsewhere, the loader checks the value's own shape (F2's operator, duration and `startOf` rules) and the field type is checked where the filter is lowered. |
 | **F2** | `ERR_BAD_ATTR_FILTER` | A relative value on any field except a `field.date` or `field.timestamp`; under any operator except `gt, gte, lt, lte`; as an object that carries keys besides `now` and `startOf`; with a duration that does not match the ISO-8601 pattern `^[+-]?P(?!$)(\d+Y)?(\d+M)?(\d+W)?(\d+D)?(T(?=\d)(\d+H)?(\d+M)?(\d+S)?)?$`; or with a `startOf` other than `day`, `week` or `month`. |
 
 An operator-less `{ "occurredAt": { "now": "-P7D" } }` is read as `eq`, and `eq` is not one

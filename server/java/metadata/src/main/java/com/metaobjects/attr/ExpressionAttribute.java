@@ -10,6 +10,8 @@ import com.metaobjects.field.BooleanField;
 import com.metaobjects.field.DoubleField;
 import com.metaobjects.field.IntegerField;
 import com.metaobjects.field.StringField;
+import com.metaobjects.field.TimestampField;
+import com.metaobjects.reporting.ReportingConstants;
 import com.metaobjects.query.FilterOps;
 import com.metaobjects.registry.MetaDataRegistry;
 
@@ -218,6 +220,8 @@ public class ExpressionAttribute extends MetaAttribute<Map<String, Object>> {
     //   { "op": isNull|isNotNull|not, "arg": … } — null-test / negation
     //   { "op": and|or, "args": [ … ] }          — variadic logic
     //   { "fn": coalesce, "args": [ … ] }        — coalesce
+    //   { "case": [ { when, then }, … ], else?, operand? } — searched, or simple with operand
+    //   { "now": "<ISO-8601 duration>", startOf? } — the relative-date value, as a leaf
     // =======================================================================
 
     /** Expression-only op/fn names — the comparison + and/or/isNull names are the
@@ -225,6 +229,13 @@ public class ExpressionAttribute extends MetaAttribute<Map<String, Object>> {
     public static final String EXPR_OP_IS_NOT_NULL = "isNotNull";
     public static final String EXPR_OP_NOT = "not";
     public static final String EXPR_FN_COALESCE = "coalesce";
+    public static final String EXPR_CASE = "case";
+    public static final String EXPR_CASE_WHEN = "when";
+    public static final String EXPR_CASE_THEN = "then";
+    public static final String EXPR_CASE_ELSE = "else";
+    public static final String EXPR_CASE_OPERAND = "operand";
+    public static final String EXPR_NOW = ReportingConstants.FILTER_RELATIVE_NOW;
+    public static final String EXPR_NOW_START_OF = ReportingConstants.FILTER_RELATIVE_START_OF;
 
     /** Boolean composition keys — mirror {@code FilterAttribute}'s private compose keys. */
     static final String COMPOSE_AND = "and";
@@ -269,6 +280,39 @@ public class ExpressionAttribute extends MetaAttribute<Map<String, Object>> {
             if (!(v == null || v instanceof String || v instanceof Number || v instanceof Boolean)) {
                 out.add("expression 'value' must be a scalar literal (string/number/boolean/null)");
             }
+            return out;
+        }
+        if (n.containsKey(EXPR_NOW)) {
+            if (!(n.get(EXPR_NOW) instanceof String)) {
+                out.add("expression '" + EXPR_NOW + "' must be an ISO-8601 duration string");
+                return out;
+            }
+            List<String> extra = new ArrayList<>();
+            for (String k : n.keySet()) if (!EXPR_NOW.equals(k) && !EXPR_NOW_START_OF.equals(k)) extra.add(k);
+            if (!extra.isEmpty()) {
+                out.add("expression '" + EXPR_NOW + "' takes only '" + EXPR_NOW_START_OF + "' beside it, not "
+                    + String.join(", ", extra));
+            }
+            return out;
+        }
+        if (n.containsKey(EXPR_CASE)) {
+            Object arms = n.get(EXPR_CASE);
+            if (!(arms instanceof List) || ((List<?>) arms).isEmpty()) {
+                out.add("'" + EXPR_CASE + "' requires a non-empty array of { " + EXPR_CASE_WHEN + ", "
+                    + EXPR_CASE_THEN + " } arms");
+                return out;
+            }
+            for (Object arm : (List<?>) arms) {
+                if (!(arm instanceof Map) || !((Map<?, ?>) arm).containsKey(EXPR_CASE_WHEN)
+                        || !((Map<?, ?>) arm).containsKey(EXPR_CASE_THEN)) {
+                    out.add("every '" + EXPR_CASE + "' arm must be { " + EXPR_CASE_WHEN + ", " + EXPR_CASE_THEN + " }");
+                    continue;
+                }
+                out.addAll(validateExprNode(((Map<?, ?>) arm).get(EXPR_CASE_WHEN)));
+                out.addAll(validateExprNode(((Map<?, ?>) arm).get(EXPR_CASE_THEN)));
+            }
+            if (n.containsKey(EXPR_CASE_ELSE)) out.addAll(validateExprNode(n.get(EXPR_CASE_ELSE)));
+            if (n.containsKey(EXPR_CASE_OPERAND)) out.addAll(validateExprNode(n.get(EXPR_CASE_OPERAND)));
             return out;
         }
         if (n.containsKey("fn")) {
@@ -318,7 +362,7 @@ public class ExpressionAttribute extends MetaAttribute<Map<String, Object>> {
             out.add("unknown expression op '" + op + "'");
             return out;
         }
-        out.add("expression node must be one of {field}, {value}, {op,…}, {fn,…}");
+        out.add("expression node must be one of {field}, {value}, {op,…}, {fn,…}, {case,…}, {now}");
         return out;
     }
 
@@ -369,6 +413,41 @@ public class ExpressionAttribute extends MetaAttribute<Map<String, Object>> {
         }
         if (n.containsKey("value")) {
             return new InferResult(literalType(n.get("value")), List.of());
+        }
+        // now: an instant; compared with a date or local timestamp it takes that kind at lowering.
+        if (n.containsKey(EXPR_NOW)) return new InferResult(TimestampField.SUBTYPE_TIMESTAMP, List.of());
+        if (n.containsKey(EXPR_CASE)) {
+            List<String> errors = new ArrayList<>();
+            InferResult operand = n.containsKey(EXPR_CASE_OPERAND)
+                ? inferExprType(n.get(EXPR_CASE_OPERAND), resolveField) : null;
+            if (operand != null) errors.addAll(operand.errors);
+            List<String> results = new ArrayList<>();
+            for (Object armObj : (List<?>) n.get(EXPR_CASE)) {
+                Map<?, ?> arm = (Map<?, ?>) armObj;
+                InferResult w = inferExprType(arm.get(EXPR_CASE_WHEN), resolveField);
+                errors.addAll(w.errors);
+                if (operand == null && w.type != null && !BooleanField.SUBTYPE_BOOLEAN.equals(w.type)) {
+                    errors.add("a searched '" + EXPR_CASE + "' needs a boolean '" + EXPR_CASE_WHEN + "', got " + w.type);
+                }
+                if (operand != null && operand.type != null && w.type != null && !w.type.equals(operand.type)) {
+                    errors.add("a simple '" + EXPR_CASE + "' compares its " + operand.type + " '" + EXPR_CASE_OPERAND
+                        + "' with a " + w.type + " '" + EXPR_CASE_WHEN + "'");
+                }
+                InferResult t = inferExprType(arm.get(EXPR_CASE_THEN), resolveField);
+                errors.addAll(t.errors);
+                if (t.type != null) results.add(t.type);
+            }
+            if (n.containsKey(EXPR_CASE_ELSE)) {
+                InferResult e = inferExprType(n.get(EXPR_CASE_ELSE), resolveField);
+                errors.addAll(e.errors);
+                if (e.type != null) results.add(e.type);
+            }
+            String unified = results.isEmpty() ? null : results.get(0);
+            if (unified != null && results.stream().anyMatch(t -> !unified.equals(t))) {
+                errors.add("'" + EXPR_CASE + "' results have differing types ("
+                    + String.join(", ", new LinkedHashSet<>(results)) + ")");
+            }
+            return new InferResult(unified, errors);
         }
         if (n.containsKey("fn")) { // coalesce
             List<String> errors = new ArrayList<>();

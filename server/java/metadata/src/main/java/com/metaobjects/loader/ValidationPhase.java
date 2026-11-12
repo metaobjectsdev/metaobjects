@@ -3200,8 +3200,24 @@ public final class ValidationPhase {
             MetaObject base = deriveBaseEntity(obj, root, field.getName(), src);
             if (base == null) return;
             final MetaObject baseEntity = base;
+            // A ref names one of the projection's own fields first (a passthrough — joined or
+            // not —, an origin.first or another origin.computed), else a base field. Never
+            // itself, never an aggregate (it would need the grouped row).
+            final String selfName = field.getShortName();
             ExpressionAttribute.InferResult inferred = ExpressionAttribute.inferExprType(
-                expr, name -> resolvedFieldSubType(baseEntity, name));
+                expr, name -> {
+                    if (obj != baseEntity && !name.equals(selfName)) {
+                        for (MetaField<?> own : obj.getChildren(MetaField.class, true)) {
+                            if (!name.equals(own.getShortName())) continue;
+                            for (MetaData oc : own.getChildren(MetaData.class, false)) {
+                                if (oc instanceof MetaOrigin
+                                        && AggregateOrigin.SUBTYPE_AGGREGATE.equals(oc.getSubType())) return null;
+                            }
+                            return own.getSubType();
+                        }
+                    }
+                    return resolvedFieldSubType(baseEntity, name);
+                });
             if (!inferred.errors.isEmpty()) {
                 throw new MetaDataException(
                     ErrorMessageConstants.ERR_INVALID_ORIGIN

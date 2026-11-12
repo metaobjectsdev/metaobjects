@@ -23,19 +23,29 @@ import {
   opsForSubType, type FilterOp,
 } from "../query/query-constants.js";
 import {
-  FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_INT, FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_BOOLEAN,
+  FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_INT, FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_BOOLEAN, FIELD_SUBTYPE_TIMESTAMP,
 } from "../field/field-constants.js";
 import { MetaAttr, type ValueError, runtimeTypeName } from "./meta-attr.js";
 import { type AttrValue } from "../../shared/meta-data.js";
 import { DATA_TYPE_OBJECT, type DataType } from "../../data-type.js";
 import { ATTR_SUBTYPE_EXPRESSION } from "./attr-constants.js";
 import { registerAttrClass } from "../../attr-class-map.js";
+import { FILTER_RELATIVE_NOW, FILTER_RELATIVE_START_OF } from "../reporting/reporting-constants.js";
 
 // --- Expression-only op/fn names (the comparison + and/or/isNull names are the
 // --- shared filter vocabulary above; these three are new). ---
 export const EXPR_OP_IS_NOT_NULL = "isNotNull";
 export const EXPR_OP_NOT = "not";
 export const EXPR_FN_COALESCE = "coalesce";
+// `case`: { case: [ { when, then }, ... ], else?, operand? } — searched, or simple with operand.
+export const EXPR_CASE = "case";
+export const EXPR_CASE_WHEN = "when";
+export const EXPR_CASE_THEN = "then";
+export const EXPR_CASE_ELSE = "else";
+export const EXPR_CASE_OPERAND = "operand";
+// `now`: { now: "<ISO-8601 duration>", startOf? } — the relative-date value, as a leaf.
+export const EXPR_NOW = FILTER_RELATIVE_NOW;
+export const EXPR_NOW_START_OF = FILTER_RELATIVE_START_OF;
 
 const COMPARISON_OPS: ReadonlySet<string> = new Set([
   FILTER_OP_EQ, FILTER_OP_NE, FILTER_OP_GT, FILTER_OP_GTE, FILTER_OP_LT, FILTER_OP_LTE,
@@ -50,7 +60,9 @@ export type ExprNode =
   | { op: string; left: ExprNode; right: ExprNode }   // comparison
   | { op: string; arg: ExprNode }                     // isNull / isNotNull / not
   | { op: string; args: ExprNode[] }                  // and / or
-  | { fn: string; args: ExprNode[] };                 // coalesce
+  | { fn: string; args: ExprNode[] }                  // coalesce
+  | { case: { when: ExprNode; then: ExprNode }[]; else?: ExprNode; operand?: ExprNode } // case
+  | { now: string; startOf?: string };                // now
 
 function isObj(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
@@ -67,6 +79,26 @@ export function validateExprNode(node: unknown): string[] {
     const v = node.value;
     return v === null || typeof v === "string" || typeof v === "number" || typeof v === "boolean"
       ? [] : ["expression 'value' must be a scalar literal (string/number/boolean/null)"];
+  }
+  if (EXPR_NOW in node) {
+    if (typeof node[EXPR_NOW] !== "string") return [`expression '${EXPR_NOW}' must be an ISO-8601 duration string`];
+    const extra = Object.keys(node).filter((k) => k !== EXPR_NOW && k !== EXPR_NOW_START_OF);
+    return extra.length === 0 ? [] : [`expression '${EXPR_NOW}' takes only '${EXPR_NOW_START_OF}' beside it, not ${extra.join(", ")}`];
+  }
+  if (EXPR_CASE in node) {
+    const arms = node[EXPR_CASE];
+    if (!Array.isArray(arms) || arms.length === 0) return [`'${EXPR_CASE}' requires a non-empty array of { ${EXPR_CASE_WHEN}, ${EXPR_CASE_THEN} } arms`];
+    const errs: string[] = [];
+    for (const arm of arms) {
+      if (!isObj(arm) || !(EXPR_CASE_WHEN in arm) || !(EXPR_CASE_THEN in arm)) {
+        errs.push(`every '${EXPR_CASE}' arm must be { ${EXPR_CASE_WHEN}, ${EXPR_CASE_THEN} }`);
+        continue;
+      }
+      errs.push(...validateExprNode(arm[EXPR_CASE_WHEN]), ...validateExprNode(arm[EXPR_CASE_THEN]));
+    }
+    if (EXPR_CASE_ELSE in node) errs.push(...validateExprNode(node[EXPR_CASE_ELSE]));
+    if (EXPR_CASE_OPERAND in node) errs.push(...validateExprNode(node[EXPR_CASE_OPERAND]));
+    return errs;
   }
   if ("fn" in node) {
     if (node.fn !== EXPR_FN_COALESCE) return [`unknown expression fn '${String(node.fn)}'`];
@@ -90,7 +122,7 @@ export function validateExprNode(node: unknown): string[] {
     }
     return [`unknown expression op '${op}'`];
   }
-  return ["expression node must be one of {field}, {value}, {op,…}, {fn,…}"];
+  return ["expression node must be one of {field}, {value}, {op,…}, {fn,…}, {case,…}, {now}"];
 }
 
 /** The subtype of a scalar literal (coarse: an integer number → int, else double). */
@@ -127,6 +159,39 @@ export function inferExprType(node: ExprNode, resolveField: (name: string) => st
       : { type: t, errors: [] };
   }
   if ("value" in n) return { type: literalType(n.value as ExprLiteral), errors: [] };
+  // now: an instant; compared with a date or local timestamp it takes that kind at lowering.
+  if (EXPR_NOW in n) return { type: FIELD_SUBTYPE_TIMESTAMP, errors: [] };
+  if (EXPR_CASE in n) {
+    const errors: string[] = [];
+    const arms = n[EXPR_CASE] as { when: ExprNode; then: ExprNode }[];
+    const operand = EXPR_CASE_OPERAND in n ? inferExprType(n[EXPR_CASE_OPERAND] as ExprNode, resolveField) : undefined;
+    if (operand !== undefined) errors.push(...operand.errors);
+    const results: (string | undefined)[] = [];
+    for (const arm of arms) {
+      const w = inferExprType(arm.when, resolveField);
+      errors.push(...w.errors);
+      if (operand === undefined && w.type !== undefined && w.type !== FIELD_SUBTYPE_BOOLEAN) {
+        errors.push(`a searched '${EXPR_CASE}' needs a boolean '${EXPR_CASE_WHEN}', got ${w.type}`);
+      }
+      if (operand?.type !== undefined && w.type !== undefined && w.type !== operand.type) {
+        errors.push(`a simple '${EXPR_CASE}' compares its ${operand.type} '${EXPR_CASE_OPERAND}' with a ${w.type} '${EXPR_CASE_WHEN}'`);
+      }
+      const t = inferExprType(arm.then, resolveField);
+      errors.push(...t.errors);
+      results.push(t.type);
+    }
+    if (EXPR_CASE_ELSE in n) {
+      const e = inferExprType(n[EXPR_CASE_ELSE] as ExprNode, resolveField);
+      errors.push(...e.errors);
+      results.push(e.type);
+    }
+    const types = results.filter((t): t is string => t !== undefined);
+    const unified = types[0];
+    if (unified !== undefined && types.some((t) => t !== unified)) {
+      errors.push(`'${EXPR_CASE}' results have differing types (${[...new Set(types)].join(", ")})`);
+    }
+    return { type: unified, errors };
+  }
 
   if ("fn" in n) { // coalesce
     const argResults = (n.args as ExprNode[]).map((a) => inferExprType(a, resolveField));

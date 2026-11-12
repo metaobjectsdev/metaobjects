@@ -69,8 +69,10 @@ from ..meta.core.object.object_constants import (
     OBJECT_REPORT_ATTR_SEGMENT,
     OBJECT_REPORT_ATTR_SPINE,
     OBJECT_SUBTYPE_ENTITY,
+    OBJECT_SUBTYPE_PROJECTION,
     OBJECT_SUBTYPE_REPORT,
 )
+from ..meta.persistence.origin.origin_constants import ORIGIN_SUBTYPE_AGGREGATE, ORIGIN_SUBTYPE_FIRST
 from ..meta.core.relationship.relationship_constants import (
     CARDINALITY_ONE,
     RELATIONSHIP_ATTR_CARDINALITY,
@@ -118,6 +120,7 @@ from ..shared.base_types import (
     TYPE_IDENTITY,
     TYPE_MEASURE,
     TYPE_OBJECT,
+    TYPE_ORIGIN,
     TYPE_RELATIONSHIP,
     TYPE_SEGMENT,
     TYPE_SOURCE,
@@ -1170,11 +1173,70 @@ def _is_reporting_filter_host(node: MetaData) -> bool:
     )
 
 
+def _is_relative_view_filter_host(node: MetaData) -> bool:
+    """A projection and an origin.first / origin.aggregate lower relative dates into the view."""
+    return (node.type == TYPE_OBJECT and node.sub_type == OBJECT_SUBTYPE_PROJECTION) or (
+        node.type == TYPE_ORIGIN and node.sub_type in (ORIGIN_SUBTYPE_FIRST, ORIGIN_SUBTYPE_AGGREGATE)
+    )
+
+
+def _check_relative_shapes(filter_value: object, host: MetaData, sink: _ErrorSink) -> None:
+    """F2's value rules (exact shape, range op, ISO-8601 duration, startOf unit) on every relative
+    operand of a filter, without its field-type rule."""
+    if not isinstance(filter_value, dict):
+        return
+
+    def err(message: str) -> None:
+        sink.push(host, _ERR_BAD_ATTR_FILTER, _node_label(host), f": {message}")
+
+    for key, clause in filter_value.items():
+        if key in (_FILTER_COMPOSE_AND, _FILTER_COMPOSE_OR):
+            if isinstance(clause, list):
+                for sub in clause:
+                    _check_relative_shapes(sub, host, sink)
+            continue
+        if not isinstance(clause, dict):
+            continue
+        for op, operand in clause.items():
+            relative = _relative_operand(operand)
+            if relative is None:
+                continue
+            duration = relative.get(FILTER_RELATIVE_NOW)
+            if not set(relative) <= {FILTER_RELATIVE_NOW, FILTER_RELATIVE_START_OF}:
+                err(
+                    f"@filter on '{key}' has a malformed relative date {_js_json(relative)}; a relative date is "
+                    f'{{ now: "<ISO-8601 duration>" }} with an optional startOf, and no other keys.'
+                )
+            elif op not in _RELATIVE_DATE_OPS:
+                err(
+                    f"@filter on '{key}' puts a relative date under op '{op}'; relative dates are legal only under "
+                    f"gt, gte, lt and lte."
+                )
+            elif not isinstance(duration, str) or ISO_DURATION_RE.match(duration) is None:
+                err(
+                    f"@filter on '{key}' has relative date '{_quote_value(duration)}', which is not an ISO-8601 "
+                    f"duration (e.g. '-P7D', '-PT12H')."
+                )
+            elif FILTER_RELATIVE_START_OF in relative:
+                start_of = relative[FILTER_RELATIVE_START_OF]
+                if not isinstance(start_of, str) or start_of not in RELATIVE_START_OF_UNITS:
+                    err(
+                        f"@filter on '{key}' has startOf '{_quote_value(start_of)}'; startOf is one of "
+                        f"{', '.join(RELATIVE_START_OF_UNITS)}."
+                    )
+
+
 def _check_no_relative_dates(node: MetaData, sink: _ErrorSink) -> None:
     """F1 — walk the whole tree and refuse a ``{ now: ... }`` value in any attr.filter
-    outside a reporting host (a projection @filter, a dataGrid preset, an
-    origin.aggregate/first @filter): those hosts have no lowering for it."""
-    if not _is_reporting_filter_host(node):
+    outside a host that lowers it (a dataGrid preset, for one). A projection's and an
+    origin.first / origin.aggregate's @filter lower relative dates into the view: their keys
+    resolve elsewhere, so only the value's own shape is checked here."""
+    if _is_relative_view_filter_host(node):
+        # ADR-0039: own — only locally declared filters are lowered.
+        for attr in node.own_meta_attrs():
+            if attr.sub_type == ATTR_SUBTYPE_FILTER:
+                _check_relative_shapes(getattr(attr, "value", None), node, sink)
+    elif not _is_reporting_filter_host(node):
         # ADR-0039: own — only locally declared filters are lowered, and the walk
         # visits every declared node exactly once (an inherited filter is checked
         # where it is declared; origin.* never inherits, ADR-0029).

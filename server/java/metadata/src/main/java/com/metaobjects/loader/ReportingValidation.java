@@ -1148,6 +1148,54 @@ final class ReportingValidation {
     // F1 — relative-date values only on reporting hosts
     // ---------------------------------------------------------------------------
 
+    /** The view hosts whose {@code @filter} may carry a relative-date value too: a projection's
+     *  and an origin.first / origin.aggregate's, which lower it into the view. */
+    private static boolean isRelativeViewFilterHost(MetaData node) {
+        return (MetaObject.TYPE_OBJECT.equals(node.getType()) && MetaObject.SUBTYPE_PROJECTION.equals(node.getSubType()))
+                || (com.metaobjects.origin.MetaOrigin.TYPE_ORIGIN.equals(node.getType())
+                    && (com.metaobjects.origin.FirstOrigin.SUBTYPE_FIRST.equals(node.getSubType())
+                        || com.metaobjects.origin.AggregateOrigin.SUBTYPE_AGGREGATE.equals(node.getSubType())));
+    }
+
+    /** F2's value rules (exact shape, range op, ISO-8601 duration, startOf unit) on every
+     *  relative operand of a filter, without its field-type rule. */
+    private static void checkRelativeShapes(Object filter, MetaData host, ErrorSink sink) {
+        if (!(filter instanceof Map)) return;
+        for (Map.Entry<?, ?> entry : ((Map<?, ?>) filter).entrySet()) {
+            String key = String.valueOf(entry.getKey());
+            Object clause = entry.getValue();
+            if ("and".equals(key) || "or".equals(key)) {
+                if (clause instanceof List) for (Object sub : (List<?>) clause) checkRelativeShapes(sub, host, sink);
+                continue;
+            }
+            if (!(clause instanceof Map)) continue;
+            for (Map.Entry<?, ?> opEntry : ((Map<?, ?>) clause).entrySet()) {
+                String op = String.valueOf(opEntry.getKey());
+                Map<?, ?> relative = relativeOperand(opEntry.getValue());
+                if (relative == null) continue;
+                Object duration = relative.get(ReportingConstants.FILTER_RELATIVE_NOW);
+                Object startOf = relative.get(ReportingConstants.FILTER_RELATIVE_START_OF);
+                String message = null;
+                if (!ReportingConstants.isWellFormedRelativeKeys(relative.keySet())) {
+                    message = "@filter on '" + key + "' has a malformed relative date " + GSON.toJson(relative)
+                            + "; a relative date is { now: \"<ISO-8601 duration>\" } with an optional startOf, and no other keys.";
+                } else if (!RELATIVE_DATE_OPS.contains(op)) {
+                    message = "@filter on '" + key + "' puts a relative date under op '" + op
+                            + "'; relative dates are legal only under gt, gte, lt and lte.";
+                } else if (!(duration instanceof String)
+                        || !ReportingConstants.ISO_DURATION_RE.matcher((String) duration).matches()) {
+                    message = "@filter on '" + key + "' has relative date '" + quoteValue(duration)
+                            + "', which is not an ISO-8601 duration (e.g. '-P7D', '-PT12H').";
+                } else if (relative.containsKey(ReportingConstants.FILTER_RELATIVE_START_OF)
+                        && (!(startOf instanceof String) || !ReportingConstants.RELATIVE_START_OF_UNITS.contains(startOf))) {
+                    message = "@filter on '" + key + "' has startOf '" + quoteValue(startOf)
+                            + "'; startOf is one of " + String.join(", ", ReportingConstants.RELATIVE_START_OF_UNITS) + ".";
+                }
+                if (message != null) sink.push(host, ErrorCode.ERR_BAD_ATTR_FILTER, nodeLabel(host), ": " + message);
+            }
+        }
+    }
+
     /** True for the hosts whose {@code @filter} may carry a relative-date value. */
     private static boolean isReportingFilterHost(MetaData node) {
         return ReportingConstants.TYPE_SEGMENT.equals(node.getType())
@@ -1166,7 +1214,14 @@ final class ReportingValidation {
         // is visited once, at its declaration (an inherited filter is checked where it is
         // declared; origin.* never inherits, ADR-0029). Attrs are children in this port.
         List<MetaData> own = node.getChildren(MetaData.class, false);
-        if (!isReportingFilterHost(node)) {
+        if (isRelativeViewFilterHost(node)) {
+            // A projection's and an origin's @filter lower relative dates into the view. Their
+            // keys resolve elsewhere (projection fields, base paths, the related entity), so the
+            // value's own shape is checked here and the field's type where it is lowered.
+            for (MetaData c : own) {
+                if (c instanceof FilterAttribute) checkRelativeShapes(((MetaAttribute<?>) c).getValue(), node, sink);
+            }
+        } else if (!isReportingFilterHost(node)) {
             for (MetaData c : own) {
                 if (c instanceof FilterAttribute
                         && filterContainsRelativeValue(((MetaAttribute<?>) c).getValue())) {

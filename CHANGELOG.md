@@ -37,8 +37,9 @@ _npm `1.3.0` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates
 
 **`metamodelVersion` moves to `1.3`.** This release adds vocabulary (`field.duration`,
 `validator.exactlyOne`, `@constraintName`, `@condition`, `@maxLength` on `field.enum`,
-`@sequenceStart`, `@sequenceName`, `@flattenedColumnPrefix`, the `pascal` column rule and
-`@collectionName`) and nothing that loaded before stops loading. The registry gains two
+`@sequenceStart`, `@sequenceName`, `@flattenedColumnPrefix`, the `pascal` column rule,
+`@collectionName`, and the `case` and `now` expression nodes) and nothing that loaded before
+stops loading. The registry gains two
 fields on a type or attr entry, carried into the registry manifest: `implementedIn` (cross-port
 vocabulary only the named ports implement so far, e.g. the `view.*` controls, `["typescript"]`) and
 `ports` (vocabulary only the named ports ever act on, e.g. `@objectAdapter`, `["java", "kotlin"]`:
@@ -137,6 +138,16 @@ Each item below is described in full under Added, Changed or Fixed; this list is
   (`ERR_AMBIGUOUS_PATH`). A declared relationship or reference of the same name still wins. Every
   port's loader implements it, gated by `origin-reverse-reference-hop`,
   `origin-reverse-hop-collection-name` and `error-origin-reverse-hop-ambiguous`.
+- **Expressions and relative dates in views.** These load and validate in every port's loader,
+  each gated by shared conformance fixtures:
+  - a projection's and an `origin.first` / `origin.aggregate`'s `@filter` take a relative date
+    (`{ "now": "-P7D" }`), checked for its shape (`projection-filter-relative-now`,
+    `origin-filter-relative-now`); the fixtures `error-relative-date-origin-host` and
+    `error-relative-date-wrong-host`, which asserted the refusal, are removed;
+  - an `origin.computed` expression may use `now` and `case` (searched, or simple with an
+    `operand`), and a ref in it may name another of the projection's own fields (a passthrough,
+    an `origin.first` or another `origin.computed`, never itself or an aggregate) before a base
+    field (`origin-computed-case-over-joined`, `error-origin-computed-case-mixed-types`).
 
 - **An int-backed enum can be an array.** `@intValueMap` together with `isArray: true` (the
   map on the field, or inherited from a shared enum) now loads in every port instead of

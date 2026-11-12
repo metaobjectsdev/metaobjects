@@ -1,0 +1,260 @@
+{
+  "metadata.root": {
+    "package": "acme::views",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Status",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "statuses"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "name"
+              }
+            },
+            {
+              "field.string": {
+                "name": "displayName"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Case",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "cases"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "statusId"
+              }
+            },
+            {
+              "field.int": {
+                "name": "priorType"
+              }
+            },
+            {
+              "field.int": {
+                "name": "cumulativeStatus"
+              }
+            },
+            {
+              "field.int": {
+                "name": "status"
+              }
+            },
+            {
+              "field.date": {
+                "name": "effectiveFrom"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "statusId",
+                "@fields": [
+                  "statusId"
+                ],
+                "@references": "acme::views::Status"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "CaseLabels",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_caselabels"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id",
+                "extends": "acme::views::Case.id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "statusName",
+                "children": [
+                  {
+                    "origin.passthrough": {
+                      "@from": "acme::views::Status.name",
+                      "@via": "acme::views::Case.statusId"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.string": {
+                "name": "statusDisplay",
+                "children": [
+                  {
+                    "origin.passthrough": {
+                      "@from": "acme::views::Status.displayName",
+                      "@via": "acme::views::Case.statusId"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.string": {
+                "name": "label",
+                "children": [
+                  {
+                    "origin.computed": {
+                      "@expr": {
+                        "fn": "coalesce",
+                        "args": [
+                          {
+                            "field": "statusDisplay"
+                          },
+                          {
+                            "field": "statusName"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.int": {
+                "name": "outcome",
+                "children": [
+                  {
+                    "origin.computed": {
+                      "@expr": {
+                        "case": [
+                          {
+                            "when": {
+                              "op": "eq",
+                              "left": {
+                                "field": "cumulativeStatus"
+                              },
+                              "right": {
+                                "value": 0
+                              }
+                            },
+                            "then": {
+                              "field": "status"
+                            }
+                          }
+                        ],
+                        "else": {
+                          "field": "cumulativeStatus"
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.string": {
+                "name": "benefitTypeName",
+                "children": [
+                  {
+                    "origin.computed": {
+                      "@expr": {
+                        "operand": {
+                          "field": "priorType"
+                        },
+                        "case": [
+                          {
+                            "when": {
+                              "value": 1
+                            },
+                            "then": {
+                              "value": "Medical"
+                            }
+                          },
+                          {
+                            "when": {
+                              "value": 2
+                            },
+                            "then": {
+                              "value": "Pharmacy"
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.boolean": {
+                "name": "started",
+                "children": [
+                  {
+                    "origin.computed": {
+                      "@expr": {
+                        "op": "gte",
+                        "left": {
+                          "now": "P0D"
+                        },
+                        "right": {
+                          "field": "effectiveFrom"
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "extends": "acme::views::Case.id"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

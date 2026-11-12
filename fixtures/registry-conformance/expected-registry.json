@@ -32,7 +32,7 @@
     {
       "type": "attr",
       "subType": "expression",
-      "description": "A structured expression tree over a base entity's own fields (closed node grammar: field/value refs, comparisons sharing the filter op vocabulary, isNull/isNotNull, and/or/not, coalesce). Backs origin.computed; a filter object embeds canonically. Additive node kinds (arithmetic/case/via-joined refs) are #159.",
+      "description": "A structured expression tree (closed node grammar: field/value refs, comparisons sharing the filter op vocabulary, isNull/isNotNull, and/or/not, coalesce, case, now). Backs origin.computed; a filter object embeds canonically. A { field } ref names one of the projection's own fields (a passthrough, joined or not, an origin.first or another origin.computed — never an aggregate, never itself), else a field of the base entity. { case: [ { when, then }, ... ], else? } is a searched CASE (each when boolean); with operand: <expr> it is a simple CASE (each when a value compared with operand by equality); every then/else shares one type. { now: \"<ISO-8601 duration>\", startOf? } is the current instant shifted by the duration, its kind (date, local or instant timestamp) taken from the field it is compared with. Arithmetic is #159.",
       "attrs": [],
       "children": []
     },
@@ -3975,7 +3975,7 @@
           "valueType": "filter",
           "isArray": false,
           "required": false,
-          "description": "Optional structured predicate scoping which related rows the aggregate spans (required for any/all, where it is the quantified predicate). A portable attr.filter object (eq/ne/in/isNull with and/or), desugared to canonical { field: { op: value } } at parse time; codegen renders it per target (e.g. SQL FILTER (WHERE ...) or SQLite CASE WHEN for a relational view)."
+          "description": "Optional structured predicate scoping which related rows the aggregate spans (required for any/all, where it is the quantified predicate). A portable attr.filter object (eq/ne/in/isNull with and/or), desugared to canonical { field: { op: value } } at parse time; codegen renders it per target (e.g. SQL FILTER (WHERE ...) or SQLite CASE WHEN for a relational view). A clause value may also be a relative date ({ now: \"<ISO-8601 duration>\", startOf? }) on a date or timestamp field."
         },
         {
           "name": "of",
@@ -4036,7 +4036,7 @@
           "valueType": "filter",
           "isArray": false,
           "required": false,
-          "description": "Optional structured predicate scoping which related rows are eligible for selection. A portable attr.filter object (eq/ne/in/isNull with and/or), desugared to canonical { field: { op: value } } at parse time."
+          "description": "Optional structured predicate scoping which related rows are eligible for selection. A portable attr.filter object (eq/ne/in/isNull with and/or), desugared to canonical { field: { op: value } } at parse time. A clause value may also be a relative date ({ now: \"<ISO-8601 duration>\", startOf? }) on a date or timestamp field."
         },
         {
           "name": "of",

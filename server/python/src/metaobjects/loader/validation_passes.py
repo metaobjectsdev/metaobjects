@@ -25,6 +25,7 @@ from .validate_source_parameter_ref import validate_source_parameter_ref
 from .validate_source_escapes import validate_source_escapes
 from .validate_reporting import validate_reporting
 from ..codegen.runtime.duration_wire import DURATION_RE
+from ..meta.core.reporting.reporting_constants import FILTER_RELATIVE_NOW, FILTER_RELATIVE_START_OF
 from ..meta.core.field.field_constants import (
     ENUM_MEMBER_PATTERN,
     FIELD_ATTR_COERCE_DEFAULT,
@@ -1145,6 +1146,15 @@ SORT_ORDER_VALUES: tuple[str, ...] = ("asc", "desc")
 EXPR_OP_IS_NOT_NULL = "isNotNull"
 EXPR_OP_NOT = "not"
 EXPR_FN_COALESCE = "coalesce"
+# { case: [{ when, then }, …], else?, operand? } — searched, or simple with operand; and
+# { now: "<ISO-8601 duration>", startOf? } — the relative-date value, as a leaf.
+EXPR_CASE = "case"
+EXPR_CASE_WHEN = "when"
+EXPR_CASE_THEN = "then"
+EXPR_CASE_ELSE = "else"
+EXPR_CASE_OPERAND = "operand"
+EXPR_NOW = FILTER_RELATIVE_NOW
+EXPR_NOW_START_OF = FILTER_RELATIVE_START_OF
 
 # Filter-op / compose names shared with the filter vocabulary (see query-constants.ts).
 _FILTER_OP_EQ = "eq"
@@ -1185,6 +1195,29 @@ def validate_expr_node(node: object) -> list[str]:
             if (v is None or isinstance(v, (str, int, float, bool)))
             else ["expression 'value' must be a scalar literal (string/number/boolean/null)"]
         )
+    if EXPR_NOW in node:
+        if not isinstance(node[EXPR_NOW], str):
+            return [f"expression '{EXPR_NOW}' must be an ISO-8601 duration string"]
+        extra = [k for k in node if k not in (EXPR_NOW, EXPR_NOW_START_OF)]
+        return [] if not extra else [
+            f"expression '{EXPR_NOW}' takes only '{EXPR_NOW_START_OF}' beside it, not {', '.join(extra)}"
+        ]
+    if EXPR_CASE in node:
+        arms = node[EXPR_CASE]
+        if not isinstance(arms, list) or not arms:
+            return [f"'{EXPR_CASE}' requires a non-empty array of {{ {EXPR_CASE_WHEN}, {EXPR_CASE_THEN} }} arms"]
+        errs: list[str] = []
+        for arm in arms:
+            if not isinstance(arm, dict) or EXPR_CASE_WHEN not in arm or EXPR_CASE_THEN not in arm:
+                errs.append(f"every '{EXPR_CASE}' arm must be {{ {EXPR_CASE_WHEN}, {EXPR_CASE_THEN} }}")
+                continue
+            errs.extend(validate_expr_node(arm[EXPR_CASE_WHEN]))
+            errs.extend(validate_expr_node(arm[EXPR_CASE_THEN]))
+        if EXPR_CASE_ELSE in node:
+            errs.extend(validate_expr_node(node[EXPR_CASE_ELSE]))
+        if EXPR_CASE_OPERAND in node:
+            errs.extend(validate_expr_node(node[EXPR_CASE_OPERAND]))
+        return errs
     if "fn" in node:
         if node["fn"] != EXPR_FN_COALESCE:
             return [f"unknown expression fn '{node['fn']}'"]
@@ -1210,7 +1243,7 @@ def validate_expr_node(node: object) -> list[str]:
                 return [m for a in args for m in validate_expr_node(a)]
             return [f"op '{op}' requires a non-empty args array"]
         return [f"unknown expression op '{op}'"]
-    return ["expression node must be one of {field}, {value}, {op,…}, {fn,…}"]
+    return ["expression node must be one of {field}, {value}, {op,…}, {fn,…}, {case,…}, {now}"]
 
 
 def _literal_type(v: object) -> str | None:
@@ -1256,6 +1289,38 @@ def infer_expr_type(
         )
     if "value" in n:
         return InferResult(_literal_type(n["value"]), [])
+    # now: an instant; compared with a date or local timestamp it takes that kind at lowering.
+    if EXPR_NOW in n:
+        return InferResult(FIELD_SUBTYPE_TIMESTAMP, [])
+    if EXPR_CASE in n:
+        errors: list[str] = []
+        operand = infer_expr_type(n[EXPR_CASE_OPERAND], resolve_field) if EXPR_CASE_OPERAND in n else None
+        if operand is not None:
+            errors.extend(operand.errors)
+        results: list[str] = []
+        for arm in n[EXPR_CASE]:
+            w = infer_expr_type(arm[EXPR_CASE_WHEN], resolve_field)
+            errors.extend(w.errors)
+            if operand is None and w.type is not None and w.type != FIELD_SUBTYPE_BOOLEAN:
+                errors.append(f"a searched '{EXPR_CASE}' needs a boolean '{EXPR_CASE_WHEN}', got {w.type}")
+            if operand is not None and operand.type is not None and w.type is not None and w.type != operand.type:
+                errors.append(
+                    f"a simple '{EXPR_CASE}' compares its {operand.type} '{EXPR_CASE_OPERAND}' "
+                    f"with a {w.type} '{EXPR_CASE_WHEN}'"
+                )
+            t = infer_expr_type(arm[EXPR_CASE_THEN], resolve_field)
+            errors.extend(t.errors)
+            if t.type is not None:
+                results.append(t.type)
+        if EXPR_CASE_ELSE in n:
+            e = infer_expr_type(n[EXPR_CASE_ELSE], resolve_field)
+            errors.extend(e.errors)
+            if e.type is not None:
+                results.append(e.type)
+        unified = results[0] if results else None
+        if unified is not None and any(t != unified for t in results):
+            errors.append(f"'{EXPR_CASE}' results have differing types ({', '.join(dict.fromkeys(results))})")
+        return InferResult(unified, errors)
 
     if "fn" in n:  # coalesce
         arg_results = [infer_expr_type(a, resolve_field) for a in n["args"]]
@@ -2587,7 +2652,20 @@ def _validate_origin_paths(
                 if base is None:
                     continue
 
-                def _resolve_field(name: str, _base: MetaData = base) -> str | None:
+                # A ref names one of the projection's own fields first (a passthrough — joined
+                # or not —, an origin.first or another origin.computed), else a base field.
+                # Never itself, never an aggregate (it would need the grouped row).
+                def _resolve_field(
+                    name: str, _base: MetaData = base, _obj: MetaData = obj, _self: str = node.name
+                ) -> str | None:
+                    if _obj is not _base and name != _self:
+                        for own in _obj.children():
+                            if own.type != TYPE_FIELD or own.name != name:
+                                continue
+                            for oc in own.own_children():
+                                if oc.type == TYPE_ORIGIN and oc.sub_type == ORIGIN_SUBTYPE_AGGREGATE:
+                                    return None
+                            return own.sub_type
                     for f in _base.children():
                         if f.type == TYPE_FIELD and f.name == name:
                             return f.sub_type

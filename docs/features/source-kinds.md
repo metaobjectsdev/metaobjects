@@ -196,6 +196,14 @@ round out the read-model vocabulary: **`origin.computed`** carries a closed `@ex
 expression grammar (a derived scalar computed from other fields), and **`origin.first`** picks
 one related row's column along a `@via` path (an argmax-style projection; nullable).
 
+**Expressions and relative dates.** An `origin.computed` `@expr` may use `case`
+(`{ "case": [ { "when": …, "then": … } ], "else": … }`, or with an `operand` for the simple
+form) and `now` (the current instant), and a `{ "field": … }` ref in it names one of the
+projection's own fields first (a passthrough, an `origin.first` or another `origin.computed`,
+never itself or an aggregate), else a base field. An `origin.first` or `origin.aggregate`
+`@filter`, like a projection's, may hold a relative date (`{ "now": "-P7D" }`, see
+[reporting.md](reporting.md#relative-dates-in-filters)). Every port's loader validates these.
+
 **Projection row-scope `@filter` (#207).** Distinct from the *per-aggregate* `@filter` above,
 an **object-level `@filter` on an `object.projection`** scopes the whole view's rows — it
 lowers to the view's outer `WHERE`. This is the metadata-managed way to express a

@@ -1623,8 +1623,18 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
           // Type inference against the base entity's EFFECTIVE fields (ADR-0039).
           const base = _deriveBaseEntity(obj, root, field.name, src, errors);
           if (base === undefined) continue;
-          const resolveField = (name: string): string | undefined =>
-            base.children().find((f) => f.type === TYPE_FIELD && f.name === name)?.subType;
+          // A ref names one of the projection's own fields first (a
+          // passthrough — joined or not —, an origin.first or another origin.computed), else a base
+          // field. Never itself, never an aggregate (it would need the grouped row).
+          const resolveField = (name: string): string | undefined => {
+            if (obj !== base && name !== field.name) {
+              const own = obj.children().find((f) => f.type === TYPE_FIELD && f.name === name);
+              const ownOrigin = own?.ownChildren().find((c) => c.type === TYPE_ORIGIN);
+              if (own !== undefined && ownOrigin?.subType !== ORIGIN_SUBTYPE_AGGREGATE) return own.subType;
+              if (own !== undefined) return undefined;
+            }
+            return base.children().find((f) => f.type === TYPE_FIELD && f.name === name)?.subType;
+          };
           const inferred = inferExprType(expr as ExprNode, resolveField);
           if (inferred.errors.length > 0) {
             for (const m of inferred.errors) {
