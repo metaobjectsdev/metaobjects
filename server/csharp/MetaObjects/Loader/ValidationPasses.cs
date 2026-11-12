@@ -1146,6 +1146,21 @@ public static partial class ValidationPasses
     /// entity they terminate at. Returned as a pair (rather than re-walking for the terminal)
     /// because a second walk means a second copy of the ADR-0042 package-resolution rule —
     /// mirrors the TS <c>WalkedViaPath</c>.
+    /// <summary>
+    /// The entity an origin.aggregate's or origin.first's <c>@filter</c> keys name: the <c>@of</c>
+    /// entity, else the <c>@via</c> terminal. Null when neither resolves (ValidateOriginPaths reports why).
+    /// </summary>
+    private static MetaData? OriginFilterEntity(MetaData origin, MetaData root)
+    {
+        if (origin.Parent is not { } field || field.Parent is not { } projection) return null;
+        // ADR-0039: own — origin.* never inherits (ADR-0029).
+        if (origin.OwnAttr(ORIGIN_AGGREGATE_ATTR_OF) is string of && of != "")
+            return ValidateFromPath(of, root, projection, field.Name, [], "", origin.Source)?.Entity;
+        return origin.OwnAttr(ORIGIN_AGGREGATE_ATTR_VIA) is string via && via != ""
+            ? ValidateViaPath(via, root, projection, field.Name, [], origin.Source)?.Terminal
+            : null;
+    }
+
     private readonly record struct WalkedViaPath(List<MetaData> Hops, MetaData Terminal, IReadOnlySet<MetaData> Reverse);
 
     private static WalkedViaPath? ValidateViaPath(

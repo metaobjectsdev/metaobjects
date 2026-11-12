@@ -4482,6 +4482,26 @@ public final class ValidationPhase {
      */
     /** FR-024 B5/B6 — the resolved target of a {@code @from}/{@code @of} ref: the
      *  named root entity and the resolved field node on it (inherited included). */
+    /**
+     * The entity an origin.aggregate's or origin.first's {@code @filter} keys name: the {@code @of}
+     * entity, else the {@code @via} terminal. Null when neither resolves (the origin pass reports why).
+     */
+    static MetaObject originFilterEntity(com.metaobjects.origin.MetaOrigin origin, MetaRoot root) {
+        if (!(origin.getParent() instanceof MetaField) || !(origin.getParent().getParent() instanceof MetaObject)) return null;
+        MetaObject projection = (MetaObject) origin.getParent().getParent();
+        String fieldName = origin.getParent().getName();
+        try {
+            String of = origin.getOf();
+            if (of != null && !of.isEmpty()) {
+                return validateFromOrOfPath(of, root, projection, fieldName, "", origin.getSource()).entity;
+            }
+            String via = origin.getVia();
+            return via == null || via.isEmpty() ? null : validateViaPath(via, root, projection, fieldName, origin.getSource()).terminal();
+        } catch (MetaDataException e) {
+            return null;
+        }
+    }
+
     private static final class OriginTarget {
         final MetaObject entity;
         final MetaField<?> field;

@@ -1,0 +1,191 @@
+{
+  "metadata.root": {
+    "package": "acme::views",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Status",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "statuses"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "name"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Case",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "cases"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "statusId"
+              }
+            },
+            {
+              "field.int": {
+                "name": "priorType"
+              }
+            },
+            {
+              "field.int": {
+                "name": "cumulativeStatus"
+              }
+            },
+            {
+              "field.int": {
+                "name": "status"
+              }
+            },
+            {
+              "field.date": {
+                "name": "effectiveFrom"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "statusId",
+                "@fields": "statusId",
+                "@references": "acme::views::Status"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "CaseUnify",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_case_unify"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id",
+                "extends": "acme::views::Case.id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "statusOrZero",
+                "children": [
+                  {
+                    "origin.computed": {
+                      "@expr": {
+                        "case": [
+                          {
+                            "when": {
+                              "op": "eq",
+                              "left": {
+                                "field": "status"
+                              },
+                              "right": {
+                                "value": 0
+                              }
+                            },
+                            "then": {
+                              "value": 0
+                            }
+                          }
+                        ],
+                        "else": {
+                          "field": "statusId"
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.long": {
+                "name": "statusIdOrZero",
+                "children": [
+                  {
+                    "origin.computed": {
+                      "@expr": {
+                        "fn": "coalesce",
+                        "args": [
+                          {
+                            "field": "statusId"
+                          },
+                          {
+                            "value": 0
+                          }
+                        ]
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.date": {
+                "name": "effectiveOrToday",
+                "children": [
+                  {
+                    "origin.computed": {
+                      "@expr": {
+                        "fn": "coalesce",
+                        "args": [
+                          {
+                            "field": "effectiveFrom"
+                          },
+                          {
+                            "now": "P0D"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "extends": "acme::views::Case.id"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

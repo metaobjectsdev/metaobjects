@@ -7,8 +7,13 @@ import com.google.gson.JsonPrimitive;
 import com.google.gson.JsonSyntaxException;
 import com.metaobjects.DataTypes;
 import com.metaobjects.field.BooleanField;
+import com.metaobjects.field.CurrencyField;
+import com.metaobjects.field.DateField;
+import com.metaobjects.field.DecimalField;
 import com.metaobjects.field.DoubleField;
+import com.metaobjects.field.FloatField;
 import com.metaobjects.field.IntegerField;
+import com.metaobjects.field.LongField;
 import com.metaobjects.field.StringField;
 import com.metaobjects.field.TimestampField;
 import com.metaobjects.reporting.ReportingConstants;
@@ -254,6 +259,23 @@ public class ExpressionAttribute extends MetaAttribute<Map<String, Object>> {
         FilterOps.FILTER_OP_IS_NULL, EXPR_OP_IS_NOT_NULL);
     private static final Set<String> VARIADIC_LOGIC_OPS = orderedSet(COMPOSE_AND, COMPOSE_OR);
 
+    /** Each node kind (keyed by the key that names it) and the only keys it may carry. */
+    private static final Map<String, List<String>> NODE_KEYS = nodeKeys();
+    private static final Set<String> NUMERIC_SUBTYPES = orderedSet(
+        IntegerField.SUBTYPE_INT, LongField.SUBTYPE_LONG, DoubleField.SUBTYPE_DOUBLE, FloatField.SUBTYPE_FLOAT,
+        DecimalField.SUBTYPE_DECIMAL, CurrencyField.SUBTYPE_CURRENCY);
+
+    private static Map<String, List<String>> nodeKeys() {
+        Map<String, List<String>> m = new LinkedHashMap<>();
+        m.put("field", List.of("field"));
+        m.put("value", List.of("value"));
+        m.put(EXPR_NOW, List.of(EXPR_NOW, EXPR_NOW_START_OF));
+        m.put(EXPR_CASE, List.of(EXPR_CASE, EXPR_CASE_ELSE, EXPR_CASE_OPERAND));
+        m.put("fn", List.of("fn", "args"));
+        m.put("op", List.of("op", "left", "right", "arg", "args"));
+        return java.util.Collections.unmodifiableMap(m);
+    }
+
     /**
      * Structural well-formedness of an expression tree (known node kinds, ops,
      * arity). Returns an empty list when valid; each entry is a human-readable
@@ -268,6 +290,17 @@ public class ExpressionAttribute extends MetaAttribute<Map<String, Object>> {
         }
         @SuppressWarnings("unchecked")
         Map<String, Object> n = (Map<String, Object>) node;
+        for (Map.Entry<String, List<String>> kind : NODE_KEYS.entrySet()) {
+            if (!n.containsKey(kind.getKey())) continue;
+            List<String> extra = new ArrayList<>();
+            for (String k : n.keySet()) if (!kind.getValue().contains(k)) extra.add(k);
+            if (!extra.isEmpty()) {
+                out.add("expression '" + kind.getKey() + "' node takes only " + String.join(", ", kind.getValue())
+                    + ", not " + String.join(", ", extra));
+                return out;
+            }
+            break;
+        }
         if (n.containsKey("field")) {
             Object f = n.get("field");
             if (!(f instanceof String) || ((String) f).isEmpty()) {
@@ -288,12 +321,7 @@ public class ExpressionAttribute extends MetaAttribute<Map<String, Object>> {
                 out.add("expression '" + EXPR_NOW + "' must be an ISO-8601 duration string (e.g. '-P7D'), got " + duration);
                 return out;
             }
-            List<String> extra = new ArrayList<>();
-            for (String k : n.keySet()) if (!EXPR_NOW.equals(k) && !EXPR_NOW_START_OF.equals(k)) extra.add(k);
-            if (!extra.isEmpty()) {
-                out.add("expression '" + EXPR_NOW + "' takes only '" + EXPR_NOW_START_OF + "' beside it, not "
-                    + String.join(", ", extra));
-            } else if (n.containsKey(EXPR_NOW_START_OF)
+            if (n.containsKey(EXPR_NOW_START_OF)
                     && !ReportingConstants.RELATIVE_START_OF_UNITS.contains(n.get(EXPR_NOW_START_OF))) {
                 out.add("expression '" + EXPR_NOW_START_OF + "' must be one of "
                     + String.join(", ", ReportingConstants.RELATIVE_START_OF_UNITS) + ", got " + n.get(EXPR_NOW_START_OF));
@@ -309,7 +337,7 @@ public class ExpressionAttribute extends MetaAttribute<Map<String, Object>> {
             }
             for (Object arm : (List<?>) arms) {
                 if (!(arm instanceof Map) || !((Map<?, ?>) arm).containsKey(EXPR_CASE_WHEN)
-                        || !((Map<?, ?>) arm).containsKey(EXPR_CASE_THEN)) {
+                        || !((Map<?, ?>) arm).containsKey(EXPR_CASE_THEN) || ((Map<?, ?>) arm).size() != 2) {
                     out.add("every '" + EXPR_CASE + "' arm must be { " + EXPR_CASE_WHEN + ", " + EXPR_CASE_THEN + " }");
                     continue;
                 }
@@ -427,6 +455,7 @@ public class ExpressionAttribute extends MetaAttribute<Map<String, Object>> {
                 ? inferExprType(n.get(EXPR_CASE_OPERAND), resolveField) : null;
             if (operand != null) errors.addAll(operand.errors);
             List<String> results = new ArrayList<>();
+            List<Object> resultNodes = new ArrayList<>();
             for (Object armObj : (List<?>) n.get(EXPR_CASE)) {
                 Map<?, ?> arm = (Map<?, ?>) armObj;
                 InferResult w = inferExprType(arm.get(EXPR_CASE_WHEN), resolveField);
@@ -441,37 +470,35 @@ public class ExpressionAttribute extends MetaAttribute<Map<String, Object>> {
                 }
                 InferResult t = inferExprType(arm.get(EXPR_CASE_THEN), resolveField);
                 errors.addAll(t.errors);
-                if (t.type != null) results.add(t.type);
+                results.add(t.type);
+                resultNodes.add(arm.get(EXPR_CASE_THEN));
             }
             if (n.containsKey(EXPR_CASE_ELSE)) {
                 InferResult e = inferExprType(n.get(EXPR_CASE_ELSE), resolveField);
                 errors.addAll(e.errors);
-                if (e.type != null) results.add(e.type);
+                results.add(e.type);
+                resultNodes.add(n.get(EXPR_CASE_ELSE));
             }
-            String unified = results.isEmpty() ? null : results.get(0);
-            if (unified != null && results.stream().anyMatch(t -> !unified.equals(t))) {
-                errors.add("'" + EXPR_CASE + "' results have differing types ("
-                    + String.join(", ", new LinkedHashSet<>(results)) + ")");
+            List<String> differing = new ArrayList<>();
+            String unified = unifyTypes(resultNodes, results, differing);
+            if (!differing.isEmpty()) {
+                errors.add("'" + EXPR_CASE + "' results have differing types (" + String.join(", ", differing) + ")");
             }
             return new InferResult(unified, errors);
         }
         if (n.containsKey("fn")) { // coalesce
             List<String> errors = new ArrayList<>();
             List<String> argTypes = new ArrayList<>();
-            for (Object a : (List<?>) n.get("args")) {
+            List<Object> args = new ArrayList<>((List<?>) n.get("args"));
+            for (Object a : args) {
                 InferResult r = inferExprType(a, resolveField);
                 errors.addAll(r.errors);
-                if (r.type != null) argTypes.add(r.type);
+                argTypes.add(r.type);
             }
-            String unified = argTypes.isEmpty() ? null : argTypes.get(0);
-            if (unified != null) {
-                boolean differ = false;
-                for (String t : argTypes) if (!unified.equals(t)) { differ = true; break; }
-                if (differ) {
-                    Set<String> distinct = new LinkedHashSet<>(argTypes);
-                    errors.add("'" + EXPR_FN_COALESCE + "' arguments have differing types ("
-                        + String.join(", ", distinct) + ")");
-                }
+            List<String> differing = new ArrayList<>();
+            String unified = unifyTypes(args, argTypes, differing);
+            if (!differing.isEmpty()) {
+                errors.add("'" + EXPR_FN_COALESCE + "' arguments have differing types (" + String.join(", ", differing) + ")");
             }
             return new InferResult(unified, errors);
         }
@@ -506,6 +533,43 @@ public class ExpressionAttribute extends MetaAttribute<Map<String, Object>> {
             return new InferResult(BooleanField.SUBTYPE_BOOLEAN, errors);
         }
         return new InferResult(null, List.of("unknown expression op '" + op + "'"));
+    }
+
+    /** A numeric literal or a {@code now} node: it takes the type of the result it sits beside. */
+    private static boolean isAdaptable(Object node) {
+        Map<?, ?> n = (Map<?, ?>) node;
+        return (n.containsKey("value") && n.get("value") instanceof Number) || n.containsKey(EXPR_NOW);
+    }
+
+    /** Whether an adaptable node takes {@code to}: a number takes any numeric type, {@code now} a date or timestamp. */
+    private static boolean adaptsTo(Object node, String to) {
+        return ((Map<?, ?>) node).containsKey(EXPR_NOW)
+            ? DateField.SUBTYPE_DATE.equals(to) || TimestampField.SUBTYPE_TIMESTAMP.equals(to)
+            : NUMERIC_SUBTYPES.contains(to);
+    }
+
+    /** The one type of a case's results or a coalesce's args; fills {@code differing} with every
+     *  type when they do not unify. */
+    private static String unifyTypes(List<Object> nodes, List<String> types, List<String> differing) {
+        String anchor = null;
+        String first = null;
+        for (int i = 0; i < nodes.size(); i++) {
+            String t = types.get(i);
+            if (t == null) continue;
+            if (first == null) first = t;
+            if (anchor == null && !isAdaptable(nodes.get(i))) anchor = t;
+        }
+        String unified = anchor != null ? anchor : first;
+        Set<String> all = new LinkedHashSet<>();
+        boolean fits = true;
+        for (int i = 0; i < nodes.size(); i++) {
+            String t = types.get(i);
+            if (t == null) continue;
+            all.add(t);
+            if (!t.equals(unified) && !(anchor != null && isAdaptable(nodes.get(i)) && adaptsTo(nodes.get(i), anchor))) fits = false;
+        }
+        if (!fits) differing.addAll(all);
+        return unified;
     }
 
     /** Coarse runtime shape label for a malformed top-level node (parity with the

@@ -692,6 +692,21 @@ function _validateFromPath(
   return { entity: sourceObj, field: sourceField };
 }
 
+/**
+ * The entity an origin.aggregate's or origin.first's `@filter` keys name: the `@of` entity,
+ * else the `@via` terminal. Undefined when neither resolves (validateOriginPaths reports why).
+ */
+export function originFilterEntity(origin: MetaData, root: MetaData): MetaData | undefined {
+  const field = origin.parent;
+  const projection = field?.parent;
+  if (field === undefined || projection === undefined) return undefined;
+  // ADR-0039: own — origin.* never inherits (ADR-0029).
+  const of_ = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_OF);
+  if (typeof of_ === "string" && of_ !== "") return _validateFromPath(of_, root, projection, field.name, origin.source, [])?.entity;
+  const via = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_VIA);
+  return typeof via === "string" && via !== "" ? _validateViaPath(via, root, projection, field.name, origin.source, [])?.terminal : undefined;
+}
+
 /** A fully-walked `@via` path: the relationship hop nodes in path order, and
  *  the TERMINAL entity reached after the last hop. Both fall out of one walk,
  *  so they are returned together — recovering the terminal with a second walk

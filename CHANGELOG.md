@@ -149,12 +149,19 @@ Each item below is described in full under Added, Changed or Fixed; this list is
     an `origin.first` or another `origin.computed`, never itself or an aggregate) before a base
     field (`origin-computed-case-over-joined`, `error-origin-computed-case-mixed-types`). A
     simple `case` compares a literal `when` with any `operand`, so an enum or long operand maps
-    its codes to labels;
+    its codes to labels. A `case`'s results and a `coalesce`'s arguments unify a numeric literal
+    with any numeric field and a `now` with a date or timestamp (`origin-computed-literal-unifies`);
   - the loaders refuse what a view cannot lower: a `now` whose value is not an ISO-8601 duration
     or whose `startOf` is not day, week or month (`error-origin-computed-now-bad-duration`); a
     searched `case` whose `when` is not boolean (`error-origin-computed-case-non-boolean-when`);
     computed fields that refer to each other in a cycle (`error-origin-computed-cycle`); and a
-    malformed relative date in a view host's `@filter` (`error-relative-date-view-host-malformed`);
+    malformed relative date in a view host's `@filter` (`error-relative-date-view-host-malformed`),
+    or one on a field that is not a `field.date` or `field.timestamp`, where a projection's key
+    names its own field and an origin's names a field of its `@of` entity or `@via` terminal
+    (`error-relative-date-non-temporal-field`); and an expression node that carries a key its
+    kind does not take, such as a misspelled `else` on a `case` or a `field` node that also
+    carries `case` (`ERR_UNKNOWN_EXPR_NODE`, `error-origin-computed-case-unknown-key`,
+    `error-origin-computed-node-mixed-keys`);
   - a validator `@condition` still refuses `case` and `now` (`ERR_BAD_ATTR_VALUE`,
     `error-validator-condition-now`): it becomes a database CHECK, which can hold neither.
 

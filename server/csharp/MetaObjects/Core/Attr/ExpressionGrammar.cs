@@ -65,6 +65,22 @@ public static class ExpressionGrammar
         FILTER_COMPOSE_AND, FILTER_COMPOSE_OR,
     };
 
+    /// <summary>Each node kind (keyed by the key that names it) and the only keys it may carry.</summary>
+    private static readonly (string Kind, string[] Keys)[] NodeKeys =
+    [
+        (KEY_FIELD, [KEY_FIELD]),
+        (KEY_VALUE, [KEY_VALUE]),
+        (EXPR_NOW, [EXPR_NOW, EXPR_NOW_START_OF]),
+        (EXPR_CASE, [EXPR_CASE, EXPR_CASE_ELSE, EXPR_CASE_OPERAND]),
+        (KEY_FN, [KEY_FN, KEY_ARGS]),
+        (KEY_OP, [KEY_OP, KEY_LEFT, KEY_RIGHT, KEY_ARG, KEY_ARGS]),
+    ];
+
+    private static readonly HashSet<string> NumericSubtypes = new(StringComparer.Ordinal)
+    {
+        FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT, FIELD_SUBTYPE_DECIMAL, FIELD_SUBTYPE_CURRENCY,
+    };
+
     /// <summary>The field names an expression tree references, in order of appearance.</summary>
     public static List<string> FieldRefs(object? node)
         => Nodes(node).Select(n => Get(n, KEY_FIELD)).OfType<string>().ToList();
@@ -110,6 +126,14 @@ public static class ExpressionGrammar
             return [$"expression node must be an object, got {kind}"];
         }
 
+        var nodeKind = NodeKeys.FirstOrDefault(k => n.ContainsKey(k.Kind));
+        if (nodeKind.Kind is not null)
+        {
+            var extraKeys = n.Keys.Where(k => !nodeKind.Keys.Contains(k)).ToList();
+            if (extraKeys.Count > 0)
+                return [$"expression '{nodeKind.Kind}' node takes only {string.Join(", ", nodeKind.Keys)}, not {string.Join(", ", extraKeys)}"];
+        }
+
         if (n.ContainsKey(KEY_FIELD))
         {
             return Get(n, KEY_FIELD) is string fs && fs.Length > 0
@@ -128,8 +152,6 @@ public static class ExpressionGrammar
         {
             if (Get(n, EXPR_NOW) is not string duration || !ISO_DURATION_RE.IsMatch(duration))
                 return [$"expression '{EXPR_NOW}' must be an ISO-8601 duration string (e.g. '-P7D'), got {Str(Get(n, EXPR_NOW))}"];
-            var extra = n.Keys.Where(k => k != EXPR_NOW && k != EXPR_NOW_START_OF).ToList();
-            if (extra.Count > 0) return [$"expression '{EXPR_NOW}' takes only '{EXPR_NOW_START_OF}' beside it, not {string.Join(", ", extra)}"];
             return n.ContainsKey(EXPR_NOW_START_OF) && (Get(n, EXPR_NOW_START_OF) is not string unit || !RELATIVE_START_OF_UNITS.Contains(unit))
                 ? [$"expression '{EXPR_NOW_START_OF}' must be one of {string.Join(", ", RELATIVE_START_OF_UNITS)}, got {Str(Get(n, EXPR_NOW_START_OF))}"]
                 : [];
@@ -142,7 +164,8 @@ public static class ExpressionGrammar
             var errs = new List<string>();
             foreach (var arm in arms)
             {
-                if (arm is not IReadOnlyDictionary<string, object?> a || !a.ContainsKey(EXPR_CASE_WHEN) || !a.ContainsKey(EXPR_CASE_THEN))
+                if (arm is not IReadOnlyDictionary<string, object?> a || !a.ContainsKey(EXPR_CASE_WHEN) || !a.ContainsKey(EXPR_CASE_THEN)
+                    || a.Keys.Any(k => k != EXPR_CASE_WHEN && k != EXPR_CASE_THEN))
                 {
                     errs.Add($"every '{EXPR_CASE}' arm must be {{ {EXPR_CASE_WHEN}, {EXPR_CASE_THEN} }}");
                     continue;
@@ -235,6 +258,7 @@ public static class ExpressionGrammar
             InferResult? operand = n.ContainsKey(EXPR_CASE_OPERAND) ? InferExprType(Get(n, EXPR_CASE_OPERAND), resolveField) : null;
             if (operand is { } o) errors.AddRange(o.Errors);
             var results = new List<string?>();
+            var resultNodes = new List<object?>();
             foreach (var armObj in arms)
             {
                 var arm = (IReadOnlyDictionary<string, object?>)armObj!;
@@ -248,17 +272,18 @@ public static class ExpressionGrammar
                 var t = InferExprType(Get(arm, EXPR_CASE_THEN), resolveField);
                 errors.AddRange(t.Errors);
                 results.Add(t.Type);
+                resultNodes.Add(Get(arm, EXPR_CASE_THEN));
             }
             if (n.ContainsKey(EXPR_CASE_ELSE))
             {
                 var e = InferExprType(Get(n, EXPR_CASE_ELSE), resolveField);
                 errors.AddRange(e.Errors);
                 results.Add(e.Type);
+                resultNodes.Add(Get(n, EXPR_CASE_ELSE));
             }
-            var types = results.Where(t => t is not null).Select(t => t!).ToList();
-            string? unified = types.Count > 0 ? types[0] : null;
-            if (unified is not null && types.Any(t => t != unified))
-                errors.Add($"'{EXPR_CASE}' results have differing types ({string.Join(", ", types.Distinct())})");
+            var (unified, differing) = UnifyTypes(resultNodes, results);
+            if (differing is not null)
+                errors.Add($"'{EXPR_CASE}' results have differing types ({string.Join(", ", differing)})");
             return new InferResult(unified, errors);
         }
 
@@ -267,10 +292,9 @@ public static class ExpressionGrammar
             var args = (IReadOnlyList<object?>)Get(n, KEY_ARGS)!;
             var argResults = args.Select(a => InferExprType(a, resolveField)).ToList();
             var errors = argResults.SelectMany(a => a.Errors).ToList();
-            var argTypes = argResults.Select(a => a.Type).Where(t => t is not null).Select(t => t!).ToList();
-            string? unified = argTypes.Count > 0 ? argTypes[0] : null;
-            if (unified is not null && argTypes.Any(t => t != unified))
-                errors.Add($"'{EXPR_FN_COALESCE}' arguments have differing types ({string.Join(", ", argTypes.Distinct())})");
+            var (unified, differing) = UnifyTypes(args, argResults.Select(a => a.Type).ToList());
+            if (differing is not null)
+                errors.Add($"'{EXPR_FN_COALESCE}' arguments have differing types ({string.Join(", ", differing)})");
             return new InferResult(unified, errors);
         }
 
@@ -310,6 +334,29 @@ public static class ExpressionGrammar
 
     private static object? Get(IReadOnlyDictionary<string, object?> n, string key)
         => n.TryGetValue(key, out var v) ? v : null;
+
+    /// <summary>A numeric literal or a <c>now</c> node: it takes the type of the result it sits beside.</summary>
+    private static bool IsAdaptable(object? node) =>
+        node is IReadOnlyDictionary<string, object?> n
+        && ((n.ContainsKey(KEY_VALUE) && Get(n, KEY_VALUE) is long or int or double) || n.ContainsKey(EXPR_NOW));
+
+    /// <summary>Whether an adaptable node takes <paramref name="to"/>: a number takes any numeric
+    /// type, <c>now</c> a date or timestamp.</summary>
+    private static bool AdaptsTo(object? node, string to) =>
+        node is IReadOnlyDictionary<string, object?> n && n.ContainsKey(EXPR_NOW)
+            ? to == FIELD_SUBTYPE_DATE || to == FIELD_SUBTYPE_TIMESTAMP
+            : NumericSubtypes.Contains(to);
+
+    /// <summary>The one type of a case's results or a coalesce's args, or every type when they do not unify.</summary>
+    private static (string? Type, List<string>? Differing) UnifyTypes(IReadOnlyList<object?> nodes, IReadOnlyList<string?> types)
+    {
+        var typed = nodes.Zip(types).Where(r => r.Second is not null).Select(r => (Node: r.First, Type: r.Second!)).ToList();
+        var anchor = typed.FirstOrDefault(r => !IsAdaptable(r.Node));
+        string? unified = anchor.Type ?? (typed.Count > 0 ? typed[0].Type : null);
+        bool fits = typed.All(r => r.Type == unified
+            || (anchor.Type is not null && IsAdaptable(r.Node) && AdaptsTo(r.Node, anchor.Type)));
+        return fits ? (unified, null) : (unified, typed.Select(r => r.Type).Distinct().ToList());
+    }
 
     /// <summary>A scalar literal (string / number / boolean / null). Numbers arrive
     /// as long or double from DataConverter.ParseNumber.</summary>

@@ -23,7 +23,8 @@ import {
   opsForSubType, type FilterOp,
 } from "../query/query-constants.js";
 import {
-  FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_INT, FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_BOOLEAN, FIELD_SUBTYPE_TIMESTAMP,
+  FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT,
+  FIELD_SUBTYPE_DECIMAL, FIELD_SUBTYPE_CURRENCY, FIELD_SUBTYPE_BOOLEAN, FIELD_SUBTYPE_DATE, FIELD_SUBTYPE_TIMESTAMP,
 } from "../field/field-constants.js";
 import { MetaAttr, type ValueError, runtimeTypeName } from "./meta-attr.js";
 import { type AttrValue } from "../../shared/meta-data.js";
@@ -55,6 +56,20 @@ const COMPARISON_OPS: ReadonlySet<string> = new Set([
 const NULL_OPS: ReadonlySet<string> = new Set([FILTER_OP_IS_NULL, EXPR_OP_IS_NOT_NULL]);
 const VARIADIC_LOGIC_OPS: ReadonlySet<string> = new Set([FILTER_COMPOSE_AND, FILTER_COMPOSE_OR]);
 
+/** Each node kind (keyed by the key that names it) and the only keys it may carry. */
+const NODE_KEYS: ReadonlyMap<string, readonly string[]> = new Map([
+  ["field", ["field"]],
+  ["value", ["value"]],
+  [EXPR_NOW, [EXPR_NOW, EXPR_NOW_START_OF]],
+  [EXPR_CASE, [EXPR_CASE, EXPR_CASE_ELSE, EXPR_CASE_OPERAND]],
+  ["fn", ["fn", "args"]],
+  ["op", ["op", "left", "right", "arg", "args"]],
+]);
+const ARM_KEYS: readonly string[] = [EXPR_CASE_WHEN, EXPR_CASE_THEN];
+const NUMERIC_SUBTYPES: ReadonlySet<string> = new Set([
+  FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT, FIELD_SUBTYPE_DECIMAL, FIELD_SUBTYPE_CURRENCY,
+]);
+
 export type ExprLiteral = string | number | boolean | null;
 export type ExprNode =
   | { field: string }
@@ -74,6 +89,9 @@ function isObj(v: unknown): v is Record<string, unknown> {
  *  Returns [] when valid. No entity/type context — see `inferExprType` for typing. */
 export function validateExprNode(node: unknown): string[] {
   if (!isObj(node)) return [`expression node must be an object, got ${node === null ? "null" : Array.isArray(node) ? "array" : typeof node}`];
+  const kind = [...NODE_KEYS.entries()].find(([k]) => k in node);
+  const extra = kind === undefined ? [] : Object.keys(node).filter((k) => !kind[1].includes(k));
+  if (kind !== undefined && extra.length > 0) return [`expression '${kind[0]}' node takes only ${kind[1].join(", ")}, not ${extra.join(", ")}`];
   if ("field" in node) {
     return typeof node.field === "string" && node.field.length > 0 ? [] : ["expression 'field' must be a non-empty string"];
   }
@@ -87,8 +105,6 @@ export function validateExprNode(node: unknown): string[] {
     if (typeof duration !== "string" || !ISO_DURATION_RE.test(duration)) {
       return [`expression '${EXPR_NOW}' must be an ISO-8601 duration string (e.g. '-P7D'), got ${JSON.stringify(duration)}`];
     }
-    const extra = Object.keys(node).filter((k) => k !== EXPR_NOW && k !== EXPR_NOW_START_OF);
-    if (extra.length > 0) return [`expression '${EXPR_NOW}' takes only '${EXPR_NOW_START_OF}' beside it, not ${extra.join(", ")}`];
     const startOf = node[EXPR_NOW_START_OF];
     return EXPR_NOW_START_OF in node && !(RELATIVE_START_OF_UNITS as readonly unknown[]).includes(startOf)
       ? [`expression '${EXPR_NOW_START_OF}' must be one of ${RELATIVE_START_OF_UNITS.join(", ")}, got ${JSON.stringify(startOf)}`]
@@ -99,7 +115,7 @@ export function validateExprNode(node: unknown): string[] {
     if (!Array.isArray(arms) || arms.length === 0) return [`'${EXPR_CASE}' requires a non-empty array of { ${EXPR_CASE_WHEN}, ${EXPR_CASE_THEN} } arms`];
     const errs: string[] = [];
     for (const arm of arms) {
-      if (!isObj(arm) || !(EXPR_CASE_WHEN in arm) || !(EXPR_CASE_THEN in arm)) {
+      if (!isObj(arm) || !(EXPR_CASE_WHEN in arm) || !(EXPR_CASE_THEN in arm) || Object.keys(arm).some((k) => !ARM_KEYS.includes(k))) {
         errs.push(`every '${EXPR_CASE}' arm must be { ${EXPR_CASE_WHEN}, ${EXPR_CASE_THEN} }`);
         continue;
       }
@@ -142,6 +158,28 @@ function literalType(v: ExprLiteral): string | undefined {
   return undefined; // null literal
 }
 
+/** A numeric literal or a `now` node: it takes the type of the result it sits beside. */
+function isAdaptable(node: unknown): boolean {
+  const n = node as Record<string, unknown>;
+  return ("value" in n && typeof n.value === "number") || EXPR_NOW in n;
+}
+
+/** Whether an adaptable node takes `to`: a number takes any numeric type, `now` a date or timestamp. */
+function adaptsTo(node: unknown, to: string): boolean {
+  return EXPR_NOW in (node as Record<string, unknown>)
+    ? to === FIELD_SUBTYPE_DATE || to === FIELD_SUBTYPE_TIMESTAMP
+    : NUMERIC_SUBTYPES.has(to);
+}
+
+/** The one type of a case's results or a coalesce's args, or `differing` when they do not unify. */
+function unifyTypes(nodes: readonly unknown[], types: readonly (string | undefined)[]): { type: string | undefined; differing?: string[] } {
+  const typed = nodes.flatMap((node, i) => { const type = types[i]; return type === undefined ? [] : [{ node, type }]; });
+  const anchor = typed.find((r) => !isAdaptable(r.node));
+  const unified = (anchor ?? typed[0])?.type;
+  const fits = typed.every((r) => r.type === unified || (anchor !== undefined && isAdaptable(r.node) && adaptsTo(r.node, anchor.type)));
+  return fits ? { type: unified } : { type: unified, differing: [...new Set(typed.map((r) => r.type))] };
+}
+
 export interface InferResult {
   /** The inferred field subType of the expression's root, or undefined if untypable. */
   type: string | undefined;
@@ -176,6 +214,7 @@ export function inferExprType(node: ExprNode, resolveField: (name: string) => st
     const operand = EXPR_CASE_OPERAND in n ? inferExprType(n[EXPR_CASE_OPERAND] as ExprNode, resolveField) : undefined;
     if (operand !== undefined) errors.push(...operand.errors);
     const results: (string | undefined)[] = [];
+    const resultNodes: unknown[] = [];
     for (const arm of arms) {
       const w = inferExprType(arm.when, resolveField);
       errors.push(...w.errors);
@@ -188,29 +227,29 @@ export function inferExprType(node: ExprNode, resolveField: (name: string) => st
       const t = inferExprType(arm.then, resolveField);
       errors.push(...t.errors);
       results.push(t.type);
+      resultNodes.push(arm.then);
     }
     if (EXPR_CASE_ELSE in n) {
       const e = inferExprType(n[EXPR_CASE_ELSE] as ExprNode, resolveField);
       errors.push(...e.errors);
       results.push(e.type);
+      resultNodes.push(n[EXPR_CASE_ELSE]);
     }
-    const types = results.filter((t): t is string => t !== undefined);
-    const unified = types[0];
-    if (unified !== undefined && types.some((t) => t !== unified)) {
-      errors.push(`'${EXPR_CASE}' results have differing types (${[...new Set(types)].join(", ")})`);
+    const unified = unifyTypes(resultNodes, results);
+    if (unified.differing !== undefined) {
+      errors.push(`'${EXPR_CASE}' results have differing types (${unified.differing.join(", ")})`);
     }
-    return { type: unified, errors };
+    return { type: unified.type, errors };
   }
 
   if ("fn" in n) { // coalesce
     const argResults = (n.args as ExprNode[]).map((a) => inferExprType(a, resolveField));
     const errors = argResults.flatMap((a) => a.errors);
-    const argTypes = argResults.map((a) => a.type).filter((t): t is string => t !== undefined);
-    const unified = argTypes[0];
-    if (unified !== undefined && argTypes.some((t) => t !== unified)) {
-      errors.push(`'${EXPR_FN_COALESCE}' arguments have differing types (${[...new Set(argTypes)].join(", ")})`);
+    const unified = unifyTypes(n.args as ExprNode[], argResults.map((a) => a.type));
+    if (unified.differing !== undefined) {
+      errors.push(`'${EXPR_FN_COALESCE}' arguments have differing types (${unified.differing.join(", ")})`);
     }
-    return { type: unified, errors };
+    return { type: unified.type, errors };
   }
 
   const op = n.op as string;

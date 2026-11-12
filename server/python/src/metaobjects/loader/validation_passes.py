@@ -1178,6 +1178,20 @@ _COMPARISON_OPS: frozenset[str] = frozenset(
 _NULL_OPS: frozenset[str] = frozenset({_FILTER_OP_IS_NULL, EXPR_OP_IS_NOT_NULL})
 _VARIADIC_LOGIC_OPS: frozenset[str] = frozenset({_FILTER_COMPOSE_AND, _FILTER_COMPOSE_OR})
 
+# Each node kind (keyed by the key that names it) and the only keys it may carry.
+_NODE_KEYS: dict[str, tuple[str, ...]] = {
+    "field": ("field",),
+    "value": ("value",),
+    EXPR_NOW: (EXPR_NOW, EXPR_NOW_START_OF),
+    EXPR_CASE: (EXPR_CASE, EXPR_CASE_ELSE, EXPR_CASE_OPERAND),
+    "fn": ("fn", "args"),
+    "op": ("op", "left", "right", "arg", "args"),
+}
+_EXPR_NUMERIC_SUBTYPES: frozenset[str] = frozenset({
+    FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT,
+    FIELD_SUBTYPE_DECIMAL, FIELD_SUBTYPE_CURRENCY,
+})
+
 
 def validate_expr_node(node: object) -> list[str]:
     """Structural well-formedness of an expression tree (known node kinds, ops,
@@ -1190,6 +1204,11 @@ def validate_expr_node(node: object) -> list[str]:
             else type(node).__name__
         )
         return [f"expression node must be an object, got {kind}"]
+    node_kind = next((k for k in _NODE_KEYS if k in node), None)
+    if node_kind is not None:
+        extra = [k for k in node if k not in _NODE_KEYS[node_kind]]
+        if extra:
+            return [f"expression '{node_kind}' node takes only {', '.join(_NODE_KEYS[node_kind])}, not {', '.join(extra)}"]
     if "field" in node:
         f = node["field"]
         return [] if isinstance(f, str) and len(f) > 0 else ["expression 'field' must be a non-empty string"]
@@ -1204,9 +1223,6 @@ def validate_expr_node(node: object) -> list[str]:
         duration = node[EXPR_NOW]
         if not isinstance(duration, str) or ISO_DURATION_RE.match(duration) is None:
             return [f"expression '{EXPR_NOW}' must be an ISO-8601 duration string (e.g. '-P7D'), got {duration!r}"]
-        extra = [k for k in node if k not in (EXPR_NOW, EXPR_NOW_START_OF)]
-        if extra:
-            return [f"expression '{EXPR_NOW}' takes only '{EXPR_NOW_START_OF}' beside it, not {', '.join(extra)}"]
         start_of = node.get(EXPR_NOW_START_OF)
         if EXPR_NOW_START_OF in node and not (isinstance(start_of, str) and start_of in RELATIVE_START_OF_UNITS):
             return [
@@ -1220,7 +1236,7 @@ def validate_expr_node(node: object) -> list[str]:
             return [f"'{EXPR_CASE}' requires a non-empty array of {{ {EXPR_CASE_WHEN}, {EXPR_CASE_THEN} }} arms"]
         errs: list[str] = []
         for arm in arms:
-            if not isinstance(arm, dict) or EXPR_CASE_WHEN not in arm or EXPR_CASE_THEN not in arm:
+            if not isinstance(arm, dict) or set(arm) != {EXPR_CASE_WHEN, EXPR_CASE_THEN}:
                 errs.append(f"every '{EXPR_CASE}' arm must be {{ {EXPR_CASE_WHEN}, {EXPR_CASE_THEN} }}")
                 continue
             errs.extend(validate_expr_node(arm[EXPR_CASE_WHEN]))
@@ -1270,6 +1286,33 @@ def _literal_type(v: object) -> str | None:
     return None  # null literal
 
 
+def _is_adaptable(node: object) -> bool:
+    """A numeric literal or a ``now`` node: it takes the type of the result it sits beside."""
+    assert isinstance(node, dict)
+    value = node.get("value")
+    return ("value" in node and isinstance(value, (int, float)) and not isinstance(value, bool)) or EXPR_NOW in node
+
+
+def _adapts_to(node: object, to: str) -> bool:
+    """Whether an adaptable node takes ``to``: a number takes any numeric type, ``now`` a date or timestamp."""
+    assert isinstance(node, dict)
+    if EXPR_NOW in node:
+        return to in (FIELD_SUBTYPE_DATE, FIELD_SUBTYPE_TIMESTAMP)
+    return to in _EXPR_NUMERIC_SUBTYPES
+
+
+def _unify_types(nodes: list[object], types: list[str | None]) -> tuple[str | None, list[str] | None]:
+    """The one type of a case's results or a coalesce's args, and every type when they do not unify."""
+    typed = [(node, t) for node, t in zip(nodes, types) if t is not None]
+    anchor = next((t for node, t in typed if not _is_adaptable(node)), None)
+    unified = anchor if anchor is not None else (typed[0][1] if typed else None)
+    fits = all(
+        t == unified or (anchor is not None and _is_adaptable(node) and _adapts_to(node, anchor))
+        for node, t in typed
+    )
+    return (unified, None) if fits else (unified, list(dict.fromkeys(t for _, t in typed)))
+
+
 class InferResult(NamedTuple):
     """The inferred field subType of an expression's root (or None if untypable),
     plus any type/resolution/op-legality errors (empty when it types cleanly)."""
@@ -1309,7 +1352,8 @@ def infer_expr_type(
         operand = infer_expr_type(n[EXPR_CASE_OPERAND], resolve_field) if EXPR_CASE_OPERAND in n else None
         if operand is not None:
             errors.extend(operand.errors)
-        results: list[str] = []
+        results: list[str | None] = []
+        result_nodes: list[object] = []
         for arm in n[EXPR_CASE]:
             w = infer_expr_type(arm[EXPR_CASE_WHEN], resolve_field)
             errors.extend(w.errors)
@@ -1325,26 +1369,24 @@ def infer_expr_type(
                 )
             t = infer_expr_type(arm[EXPR_CASE_THEN], resolve_field)
             errors.extend(t.errors)
-            if t.type is not None:
-                results.append(t.type)
+            results.append(t.type)
+            result_nodes.append(arm[EXPR_CASE_THEN])
         if EXPR_CASE_ELSE in n:
             e = infer_expr_type(n[EXPR_CASE_ELSE], resolve_field)
             errors.extend(e.errors)
-            if e.type is not None:
-                results.append(e.type)
-        unified = results[0] if results else None
-        if unified is not None and any(t != unified for t in results):
-            errors.append(f"'{EXPR_CASE}' results have differing types ({', '.join(dict.fromkeys(results))})")
+            results.append(e.type)
+            result_nodes.append(n[EXPR_CASE_ELSE])
+        unified, differing = _unify_types(result_nodes, results)
+        if differing is not None:
+            errors.append(f"'{EXPR_CASE}' results have differing types ({', '.join(differing)})")
         return InferResult(unified, errors)
 
     if "fn" in n:  # coalesce
         arg_results = [infer_expr_type(a, resolve_field) for a in n["args"]]
         errors = [e for r in arg_results for e in r.errors]
-        arg_types = [r.type for r in arg_results if r.type is not None]
-        unified = arg_types[0] if arg_types else None
-        if unified is not None and any(t != unified for t in arg_types):
-            distinct = ", ".join(dict.fromkeys(arg_types))
-            errors.append(f"'{EXPR_FN_COALESCE}' arguments have differing types ({distinct})")
+        unified, differing = _unify_types(n["args"], [r.type for r in arg_results])
+        if differing is not None:
+            errors.append(f"'{EXPR_FN_COALESCE}' arguments have differing types ({', '.join(differing)})")
         return InferResult(unified, errors)
 
     op = n["op"]
@@ -1715,6 +1757,25 @@ def _validate_entity_field_ref(
         )
         return None
     return (entity, field_node)
+
+
+def origin_filter_entity(origin: MetaData, root: MetaData) -> MetaData | None:
+    """The entity an origin.aggregate's or origin.first's ``@filter`` keys name: the ``@of``
+    entity, else the ``@via`` terminal. None when neither resolves (the origin pass reports why)."""
+    field = origin.parent
+    projection = field.parent if field is not None else None
+    if field is None or projection is None:
+        return None
+    pkg = referrer_package_of(projection)
+    referrer = f"{projection.fqn()}::{field.name}"
+    # ADR-0039 sanctioned own: origin.* never inherits (ADR-0029).
+    of_ref = origin.attr(ORIGIN_ATTR_OF)
+    if isinstance(of_ref, str) and of_ref:
+        target = _validate_entity_field_ref(of_ref, ORIGIN_ATTR_OF, "", root, pkg, [], origin, referrer)
+        return target[0] if target is not None else None
+    via = origin.attr(ORIGIN_ATTR_VIA)
+    walked = _validate_via_path(via, "", root, pkg, [], origin, referrer) if isinstance(via, str) and via else None
+    return walked.terminal if walked is not None else None
 
 
 class WalkedViaPath(NamedTuple):
