@@ -41,9 +41,11 @@ const MODEL = [
               { "field.long": { name: "id" } },
               { "field.long": { name: "customerId", "@required": true } },
               { "field.long": { name: "parentId" } },
+              { "field.long": { name: "originalId" } },
               { "identity.primary": { name: "id", "@fields": ["id"], "@generation": "increment" } },
               { "identity.reference": { name: "customer", "@fields": ["customerId"], "@references": "acme::crm::Customer" } },
               { "identity.reference": { name: "parent", "@fields": ["parentId"], "@references": "acme::sales::Order" } },
+              { "identity.reference": { name: "original", "@fields": ["originalId"], "@references": "Order" } },
             ],
           },
         },
@@ -93,5 +95,7 @@ describe("docsFile — cross-page links follow package placement (item 11)", () 
     const order = (await render()).get("acme/sales/Order.md")!;
     expect(order).toContain("**Reference:** `customerId` → [`acme::crm::Customer`](../crm/Customer.md)");
     expect(order).toContain("**Reference:** `parentId` → [`acme::sales::Order`](./Order.md)");
+    // A bare reference keeps its authored spelling as the label, and links all the same.
+    expect(order).toContain("**Reference:** `originalId` → [`Order`](./Order.md)");
   });
 });

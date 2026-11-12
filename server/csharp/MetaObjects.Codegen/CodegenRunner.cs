@@ -29,7 +29,7 @@ public static class CodegenRunner
         public IReadOnlySet<string> OverwritePaths { get; init; } = new HashSet<string>();
 
         /// <summary>Absolute paths every generator of the run emitted (refused ones included): what a
-        /// self-hosted runner hands <see cref="OrphanSweep.SweepMarked"/> (G5, rc.20).</summary>
+        /// self-hosted runner that makes several runs passes the union of to <see cref="OrphanSweep.Sweep"/> (G5, rc.20).</summary>
         public IReadOnlySet<string> EmittedPaths { get; init; } = new HashSet<string>();
     }
 

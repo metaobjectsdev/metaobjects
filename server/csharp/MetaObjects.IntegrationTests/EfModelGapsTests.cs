@@ -962,7 +962,7 @@ public sealed class EfModelGapsTests
     }
 
     // rc.19 fix round (I4): EF reads [assembly: DesignTimeServicesReference] only from the startup and
-    // migrations assemblies. With the context in a third assembly (a library, as P3's Core) the
+    // migrations assemblies. With the context in a third assembly (a library, as an adopter's core project) the
     // reference generated beside it is never read: the migrations project needs the line itself.
     [Theory]
     [InlineData(false)]
@@ -1259,7 +1259,7 @@ public sealed class EfModelGapsTests
     }
 
     // G1, rc.20 — an OwnedTypeConfig override decides how an object field is mapped. One that maps
-    // it as a jsonb property (P3 does, for every non-flattened value object) has no owned navigation,
+    // it as a jsonb property (an adopter's hook may, for every non-flattened value object) has no owned navigation,
     // so the owned type's annotation line would throw a NullReferenceException in OnModelCreating
     // and no model would build. The comment goes on the property's column instead; a mapping the
     // generator cannot see gets no comment line at all.
