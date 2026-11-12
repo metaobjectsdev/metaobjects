@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_BAD_ATTR_FILTER",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.tasks.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[2]['object.projection']"
+      }
+    }
+  ],
+  "warnings": []
+}

@@ -1,0 +1,124 @@
+{
+  "metadata.root": {
+    "package": "acme::tasks",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Case",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "cases"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "status"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "relationship.composition": {
+                "name": "tasks",
+                "@cardinality": "many",
+                "@objectRef": "acme::tasks::Task"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Task",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "tasks"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "title"
+              }
+            },
+            {
+              "field.long": {
+                "name": "caseId"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "caseId",
+                "@fields": [
+                  "caseId"
+                ],
+                "@references": "acme::tasks::Case"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "OpenTasks",
+          "@filter": {
+            "caseId.status": {
+              "eq": "open"
+            }
+          },
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_open_tasks"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id",
+                "extends": "acme::tasks::Task.id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "title",
+                "extends": "acme::tasks::Task.title"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "extends": "acme::tasks::Task.id"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

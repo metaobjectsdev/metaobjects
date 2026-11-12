@@ -266,7 +266,8 @@ public final class ValidationPhase {
         pass(collected, () -> validateObjectFieldStorage(root));
         validateEnumMaxLength(root, collected);
         validateIdentitySequence(root, collected);
-        validateCrossFieldValidators(root, collected);
+        validateCrossFieldValidators(root, collected,
+            loader != null && loader.getLoaderOptions() != null && loader.getLoaderOptions().isStrict());
         pass(collected, () -> validateFieldMap(root));
         pass(collected, () -> validateIdentityFieldsAndGeneration(root));
         // FR-024 B3/B4a — subtype rules (identity-name, value purity, projection licensing).
@@ -1638,9 +1639,9 @@ public final class ValidationPhase {
         // a TOOL-SYNTHESIZED body; with @sql the author owns the body (and its
         // WHERE), so wrapping it is deferred cleverness (design doc D5) — reject.
         if (hasSqlHost && MetaObject.SUBTYPE_PROJECTION.equals(obj.getSubType())) {
-            // ADR-0039: own — the @filter is declared locally on this projection
-            // (mirrors validateProjectionFilter).
-            if (obj.hasMetaAttr(MetaObject.ATTR_FILTER, false)) {
+            // The effective @filter (mirrors validateProjectionFilter) — an inherited row scope
+            // cannot be applied to an author-owned body either, so it is refused, never dropped.
+            if (com.metaobjects.object.EffectiveProjectionFilter.of(obj) != null) {
                 throw new MetaDataException(
                     ErrorMessageConstants.ERR_ORIGIN_UNDER_SQL_BODY
                         + ": projection \"" + obj.getName()
@@ -2367,6 +2368,15 @@ public final class ValidationPhase {
     // every violation collected. Mirrors TS validateCrossFieldValidators.
     // =========================================================================
     static void validateCrossFieldValidators(MetaRoot root, List<MetaDataException> out) {
+        validateCrossFieldValidators(root, out, false);
+    }
+
+    /**
+     * @param strict a strict load already refuses an atLeastOne {@code @max} as an unregistered
+     *               attr while parsing, so the check here runs only on the default load,
+     *               keeping one error per node
+     */
+    static void validateCrossFieldValidators(MetaRoot root, List<MetaDataException> out, boolean strict) {
         java.util.Set<String> crossField = java.util.Set.of(
             com.metaobjects.validator.ComparisonValidator.SUBTYPE_COMPARISON,
             com.metaobjects.validator.RequiredWhenValidator.SUBTYPE_REQUIRED_WHEN,
@@ -2380,6 +2390,19 @@ public final class ValidationPhase {
                     : obj.getChildren(com.metaobjects.validator.MetaValidator.class, false)) {
                 if (!crossField.contains(v.getSubType())) continue;
                 String label = v.getSubType() + " \"" + obj.getShortName() + "." + v.getShortName() + "\"";
+                // validator.atLeastOne takes no @max: "exactly one of these fields" is
+                // validator.exactlyOne. A strict load already refuses the unregistered attr; this
+                // refuses it under the default load too, where it would be kept and ignored.
+                // ADR-0039: own — checked on the validator that declares it.
+                if (!strict && com.metaobjects.validator.AtLeastOneValidator.SUBTYPE_AT_LEAST_ONE.equals(v.getSubType())
+                        && v.hasMetaAttr(com.metaobjects.validator.MetaValidator.ATTR_MAX, false)) {
+                    out.add(new MetaDataException(
+                        "ERR_UNKNOWN_ATTR: validator." + label
+                            + " carries @max, which atLeastOne does not take. For \"exactly one of these fields\", "
+                            + "declare validator.exactlyOne instead; for \"at least one\", remove @max.",
+                        ErrorCode.ERR_UNKNOWN_ATTR, v.getSource()));
+                    continue;
+                }
                 if (com.metaobjects.validator.ExactlyOneValidator.SUBTYPE_EXACTLY_ONE.equals(v.getSubType())) {
                     Object raw = v.hasMetaAttr(com.metaobjects.validator.ExactlyOneValidator.ATTR_FIELDS)
                         ? v.getMetaAttr(com.metaobjects.validator.ExactlyOneValidator.ATTR_FIELDS).getValue() : null;
@@ -3883,18 +3906,21 @@ public final class ValidationPhase {
             if (!(rootChild instanceof MetaObject)) continue;
             MetaObject obj = (MetaObject) rootChild;
             if (!MetaObject.SUBTYPE_PROJECTION.equals(obj.getSubType())) continue;
-            // ADR-0039: own — the @filter is declared locally on this projection.
-            if (!obj.hasMetaAttr(MetaObject.ATTR_FILTER, false)) continue;
-            Object raw = obj.getMetaAttr(MetaObject.ATTR_FILTER, false).getValue();
+            // The EFFECTIVE @filter — every level of an extends chain, supers first, ANDed — is
+            // what the view applies, so it is what is checked (an inherited gate is checked
+            // against the extender's fields too).
+            Object raw = com.metaobjects.object.EffectiveProjectionFilter.of(obj);
             // A non-object shape is rejected by the attr schema check (FilterAttribute).
             if (!(raw instanceof java.util.Map)) continue;
 
-            // Classify the projection's OWN fields (the declared set IS the exposure —
+            // Classify the projection's EFFECTIVE fields (the declared set IS the exposure —
             // FR-024/ADR-0028): aggregate-derived-ness by the field's OWN origin child.
-            // origin.* never inherits (ADR-0029), so both reads are own (category 4).
+            // ADR-0039: resolving — a field inherited from a super projection is a column of
+            // this view and carries its own origin child, read own below (origin.* never
+            // inherits, ADR-0029).
             java.util.Set<String> declared = new java.util.HashSet<>();
             java.util.Set<String> aggregateDerived = new java.util.HashSet<>();
-            for (MetaField<?> f : obj.getChildren(MetaField.class, false)) {
+            for (MetaField<?> f : obj.getChildren(MetaField.class, true)) {
                 String name = f.getShortName();
                 declared.add(name);
                 for (MetaData originChild : f.getChildren(MetaData.class, false)) {
@@ -3906,6 +3932,33 @@ public final class ValidationPhase {
                             && !ComputedOrigin.SUBTYPE_COMPUTED.equals(os)) {
                         aggregateDerived.add(name);
                     }
+                }
+            }
+            // A field of the BASE entity the view does not output is filterable too (a WHERE
+            // reads the base row); a projection field of the same name wins. No base, no
+            // fallback: the origin passes report why one cannot be derived.
+            MetaObject base = deriveBaseEntityOrNull(obj, root, "@filter", obj.getSource());
+            if (base != null && base != obj) {
+                for (MetaField<?> f : base.getChildren(MetaField.class, true)) {
+                    String name = f.getShortName();
+                    if (declared.add(name) && entityFieldAggregates(f)) aggregateDerived.add(name);
+                }
+                // A key that is a PATH of to-one hops from the base, then a field of the entity
+                // reached (`caseId.status`). Not output; the view joins what it walks.
+                for (String key : filterKeys(raw)) {
+                    if (declared.contains(key)) continue;
+                    com.metaobjects.relationship.FilterPath.Result path =
+                        com.metaobjects.relationship.FilterPath.resolve(base, key);
+                    if (path == null) continue;
+                    if (path.error() != null) {
+                        throw new MetaDataException(
+                            ErrorMessageConstants.ERR_BAD_ATTR_FILTER
+                                + ": projection '" + obj.getShortName() + "' @filter path '" + key
+                                + "' does not resolve: " + path.error() + ".",
+                            ErrorCode.ERR_BAD_ATTR_FILTER, obj.getSource());
+                    }
+                    declared.add(key);
+                    if (entityFieldAggregates(path.path().field())) aggregateDerived.add(key);
                 }
             }
             checkProjectionFilterRefs(obj, (java.util.Map<?, ?>) raw, declared, aggregateDerived);
@@ -4047,6 +4100,37 @@ public final class ValidationPhase {
         }
     }
 
+    /**
+     * An entity field a projection {@code @filter} reaches (on the base, or through a path)
+     * cannot be filtered when it is an aggregate: a WHERE runs before any grouping. Its own
+     * stored column, an origin.computed or an origin.first are WHERE-legal.
+     */
+    private static boolean entityFieldAggregates(MetaField<?> f) {
+        // ADR-0039: own — origin.* never inherits (ADR-0029).
+        for (MetaData c : f.getChildren(MetaData.class, false)) {
+            if (c instanceof MetaOrigin) return AggregateOrigin.SUBTYPE_AGGREGATE.equals(c.getSubType());
+        }
+        return false;
+    }
+
+    /** Every field key of a (desugared) filter, through and/or. */
+    static java.util.List<String> filterKeys(Object filter) {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        collectFilterKeys(filter, out);
+        return out;
+    }
+
+    private static void collectFilterKeys(Object filter, java.util.List<String> out) {
+        if (!(filter instanceof java.util.Map<?, ?> m)) return;
+        for (java.util.Map.Entry<?, ?> e : m.entrySet()) {
+            String key = String.valueOf(e.getKey());
+            if ("and".equals(key) || "or".equals(key)) {
+                if (e.getValue() instanceof Iterable<?> subs) for (Object sub : subs) collectFilterKeys(sub, out);
+            } else {
+                out.add(key);
+            }
+        }
+    }
 
     private static void checkProjectionFilterRefs(MetaObject obj, java.util.Map<?, ?> filter,
                                                   java.util.Set<String> declared,
@@ -4071,8 +4155,8 @@ public final class ValidationPhase {
                     ErrorMessageConstants.ERR_BAD_ATTR_FILTER
                         + ": projection '" + obj.getShortName()
                         + "' @filter references '" + key + "', which is not a declared field of"
-                        + " the projection. A view-level @filter may only reference the"
-                        + " projection's own declared fields.",
+                        + " the projection or of its base entity. A view-level @filter may only"
+                        + " reference those fields.",
                     ErrorCode.ERR_BAD_ATTR_FILTER, obj.getSource());
             }
             if (aggregateDerived.contains(key)) {
@@ -4696,6 +4780,12 @@ public final class ValidationPhase {
             }
         }
         if (resolvedField == null) {
+            // A member of a flattened value object (`Plan.address.city`) is a column of the owning table.
+            com.metaobjects.field.FlattenedMember flattened =
+                com.metaobjects.field.FlattenedMember.resolve(sourceObj, targetFieldName);
+            if (flattened != null) resolvedField = flattened.member();
+        }
+        if (resolvedField == null) {
             // FR5d — entity resolved, field on it did not. target = full ref.
             throw new MetaDataException(
                 ErrorMessageConstants.ERR_INVALID_ORIGIN
@@ -4885,6 +4975,7 @@ public final class ValidationPhase {
      *
      * @param referrerPkg the effective package of the node carrying the ref ("" for root-level)
      */
+
     public static MetaObject resolveRootObject(MetaRoot root, String ref, String referrerPkg) {
         if (ref == null) return null;
         // ADR-0059 R2 — the one resolver: ::Rest, ..::Rest, pkg::Name, bare Name. An over-dropping
@@ -5118,6 +5209,12 @@ public final class ValidationPhase {
             }
         }
         if (targets.size() == 1) return targets.iterator().next();
+        // A projection that extends another projection, and anchors nothing of its own, has the
+        // base entity its super has (its inherited identity and fields are anchored there).
+        MetaData sup = obj.hasSuperData() ? obj.getSuperData() : null;
+        if (targets.isEmpty() && sup instanceof MetaObject && MetaObject.SUBTYPE_PROJECTION.equals(sup.getSubType())) {
+            return deriveBaseEntity((MetaObject) sup, root, fieldName, originSource);
+        }
         if (targets.size() > 1) {
             StringBuilder names = new StringBuilder();
             for (MetaObject t : targets) { if (names.length() > 0) names.append(", "); names.append('"').append(t.getName()).append('"'); }
@@ -5528,6 +5625,7 @@ public final class ValidationPhase {
     // =========================================================================
 
     static void validateDerivedFieldProvidability(MetaRoot root) {
+        java.util.Set<MetaData> reached = projectionReachedEntityFields(root);
         for (MetaData c : root.getChildren(MetaData.class, false)) {
             if (!(c instanceof MetaObject)) continue;
             MetaObject obj = (MetaObject) c;
@@ -5539,21 +5637,74 @@ public final class ValidationPhase {
             if (hasReadCapable) continue;
             for (MetaData fc : obj.getChildren(MetaData.class, false)) {
                 if (!(fc instanceof MetaField)) continue;
-                boolean hasOrigin = false;
+                MetaData origin = null;
                 for (MetaData oc : fc.getChildren(MetaData.class, false)) {
-                    if (oc instanceof MetaOrigin) { hasOrigin = true; break; }
+                    if (oc instanceof MetaOrigin) { origin = oc; break; }
                 }
-                if (hasOrigin) {
+                if (origin != null) {
+                    // A derived field a projection reaches (its @filter or a passthrough @from)
+                    // is lowered inline there, so it needs no read source. Only the inlinable origins.
+                    if ((FirstOrigin.SUBTYPE_FIRST.equals(origin.getSubType())
+                            || ComputedOrigin.SUBTYPE_COMPUTED.equals(origin.getSubType()))
+                            && reached.contains(fc)) {
+                        continue;
+                    }
                     throw new MetaDataException(
                         "ERR_DERIVED_FIELD_NO_READ_SOURCE"
                             + ": derived field \"" + obj.getName() + "." + fc.getName()
                             + "\" carries an origin.* but entity \"" + obj.getName()
-                            + "\" declares no read-capable source — declare a read-only source "
-                            + "or move the field to an object.projection (FR-024 §7).",
+                            + "\" declares no read-capable source — declare a read-only source, "
+                            + "move the field to an object.projection (FR-024 §7), or reach it from a "
+                            + "projection's @filter or @from (an origin.first or origin.computed is then inlined there).",
                         ErrorCode.ERR_DERIVED_FIELD_NO_READ_SOURCE, fc.getSource());
                 }
             }
         }
+    }
+
+    /**
+     * The entity fields projections REACH without outputting them: a projection {@code @filter}
+     * key naming a base field or a to-one path, and a passthrough {@code @from}. A derived field
+     * reached this way is lowered inline where it is reached. Mirrors TS
+     * {@code projectionReachedEntityFields}.
+     */
+    static java.util.Set<MetaData> projectionReachedEntityFields(MetaRoot root) {
+        java.util.Set<MetaData> reached = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+        for (MetaData c : root.getChildren(MetaData.class, false)) {
+            if (!(c instanceof MetaObject) || !MetaObject.SUBTYPE_PROJECTION.equals(c.getSubType())) continue;
+            MetaObject obj = (MetaObject) c;
+            MetaObject base = deriveBaseEntityOrNull(obj, root, "@filter", obj.getSource());
+            // The effective filter: an extender reaches what its supers' filters name, too.
+            Object filter = com.metaobjects.object.EffectiveProjectionFilter.of(obj);
+            if (base != null && base != obj) {
+                for (String key : filterKeys(filter)) {
+                    com.metaobjects.relationship.FilterPath.Result path =
+                        com.metaobjects.relationship.FilterPath.resolve(base, key);
+                    if (path != null) {
+                        if (path.path() != null) reached.add(path.path().field());
+                        continue;
+                    }
+                    for (MetaField<?> f : base.getChildren(MetaField.class, true)) {
+                        if (key.equals(f.getShortName())) { reached.add(f); break; }
+                    }
+                }
+            }
+            // ADR-0039: resolving — inherited fields carry their own origins.
+            for (MetaField<?> field : obj.getChildren(MetaField.class, true)) {
+                for (MetaData oc : field.getChildren(MetaData.class, false)) {
+                    if (!(oc instanceof PassthroughOrigin)) continue;
+                    String from = ((PassthroughOrigin) oc).getFrom();
+                    if (from == null) continue;
+                    try {
+                        reached.add(validateFromOrOfPath(from, root, obj, field.getName(), "origin.passthrough.@from",
+                            oc.getSource()).field);
+                    } catch (MetaDataException silent) {
+                        // The origin pass reports an unresolved @from.
+                    }
+                }
+            }
+        }
+        return reached;
     }
 
     // =========================================================================

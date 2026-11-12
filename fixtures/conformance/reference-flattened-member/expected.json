@@ -1,0 +1,133 @@
+{
+  "metadata.root": {
+    "package": "acme::plans",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Country",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "countries"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "name"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "Address",
+          "children": [
+            {
+              "field.string": {
+                "name": "city"
+              }
+            },
+            {
+              "field.long": {
+                "name": "countryId"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Plan",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "plans"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.object": {
+                "name": "address",
+                "@objectRef": "acme::plans::Address",
+                "@storage": "flattened"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "countryId",
+                "@fields": [
+                  "address.countryId"
+                ],
+                "@references": "acme::plans::Country"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "PlanExtract",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_plan_extract"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id",
+                "extends": "acme::plans::Plan.id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "countryName",
+                "children": [
+                  {
+                    "origin.passthrough": {
+                      "@from": "acme::plans::Country.name",
+                      "@via": "acme::plans::Plan.countryId"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "extends": "acme::plans::Plan.id"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

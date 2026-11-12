@@ -37,10 +37,12 @@ from ..field.field_constants import (
 from ..field.meta_field import MetaField
 from ..identity.identity_constants import (
     IDENTITY_ATTR_FIELDS,
+    IDENTITY_REFERENCE_ATTR_ENFORCE,
     IDENTITY_REFERENCE_ATTR_REFERENCES,
     IDENTITY_SUBTYPE_REFERENCE,
 )
 from ..object.meta_object import MetaObject
+from ..object.object_constants import OBJECT_ATTR_DISCRIMINATOR
 from ..relationship.relationship_constants import (
     RELATIONSHIP_ATTR_OBJECT_REF,
     RELATIONSHIP_ATTR_SOURCE_REF_FIELD,
@@ -336,9 +338,9 @@ def _via_joins_inner(hops: list[str], from_: MetaObject, root: MetaRoot) -> bool
     """True when every hop of ``hops``, walked from ``from_``, is a belongs-to hop over a
     required foreign key: the hops the view joins INNER, so every row of the report has a
     match. This is the join-type rule of the view lowering (TypeScript ``walkViaPath``, #209):
-    the reference is held by the entity the hop leaves, its first FK field is required, and
-    every earlier hop is INNER too. ``@enforce: false`` does not change it. A hop that does
-    not resolve, an ambiguous reference or a has-many hop is not INNER."""
+    the reference is held by the entity the hop leaves, is enforced, its first FK field is
+    required, its target hides no rows (:func:`_hides_rows`), and every earlier hop matches
+    too. A hop that does not resolve, an ambiguous reference or a has-many hop does not."""
     current = from_
     for hop_name in hops:
         # ADR-0039: resolving children(), so a hop inherited through extends is found.
@@ -374,14 +376,36 @@ def _via_joins_inner(hops: list[str], from_: MetaObject, root: MetaRoot) -> bool
                 target,
                 source_ref_field if isinstance(source_ref_field, str) else None,
             )
-        if reference is None:
+        # ADR-0039: resolving — @enforce may be inherited; absent is enforced.
+        if reference is None or reference.get_meta_attr(IDENTITY_REFERENCE_ATTR_ENFORCE) is False:
             return False
         fk_fields = reference_fields(reference)
         fk = current.find_field(fk_fields[0]) if fk_fields else None
         if fk is None or not _is_required_field(fk):
             return False
+        if _hides_rows(target):
+            return False
         current = target
     return True
+
+
+def _hides_rows(obj: MetaData) -> bool:
+    """True when a join onto ``obj`` carries a row scope of its own: a TPH subtype, or an
+    abstract level beneath a TPH base (both scoped by the discriminator), whose FK may name a
+    sibling's row. The model has no soft-delete or query-filter vocabulary, so this is the only
+    row-hiding scope."""
+    # ADR-0039: own — the discriminator is declared on the level that owns it.
+    if OBJECT_ATTR_DISCRIMINATOR in obj.own_attrs():
+        return False
+    seen = {id(obj)}
+    sup = obj.super_data
+    while sup is not None and id(sup) not in seen:
+        seen.add(id(sup))
+        # ADR-0039: own — the TPH base is the ancestor that declares @discriminator.
+        if OBJECT_ATTR_DISCRIMINATOR in sup.own_attrs():
+            return True
+        sup = sup.super_data
+    return False
 
 
 def _dimension_required(

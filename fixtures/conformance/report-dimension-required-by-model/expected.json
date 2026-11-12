@@ -1,0 +1,437 @@
+{
+  "metadata.root": {
+    "package": "acme::reports",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Realm",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "realms"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "field.string": {
+                "name": "name",
+                "@required": true
+              }
+            },
+            {
+              "field.string": {
+                "name": "motto"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Session",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "sessions"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "field.long": {
+                "name": "realmId",
+                "@required": true
+              }
+            },
+            {
+              "field.long": {
+                "name": "maybeRealmId"
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "fkRealm",
+                "@fields": [
+                  "realmId"
+                ],
+                "@references": "acme::reports::Realm"
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "fkMaybeRealm",
+                "@fields": [
+                  "maybeRealmId"
+                ],
+                "@references": "acme::reports::Realm"
+              }
+            },
+            {
+              "relationship.association": {
+                "name": "realm",
+                "@cardinality": "one",
+                "@objectRef": "acme::reports::Realm",
+                "@sourceRefField": "realmId"
+              }
+            },
+            {
+              "relationship.association": {
+                "name": "maybeRealm",
+                "@cardinality": "one",
+                "@objectRef": "acme::reports::Realm",
+                "@sourceRefField": "maybeRealmId"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Snap",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "snaps"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "field.long": {
+                "name": "sessionId",
+                "@required": true
+              }
+            },
+            {
+              "field.long": {
+                "name": "unenforcedSessionId",
+                "@required": true
+              }
+            },
+            {
+              "field.long": {
+                "name": "maybeSessionId"
+              }
+            },
+            {
+              "field.long": {
+                "name": "orgId",
+                "@required": true
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "fkSession",
+                "@fields": [
+                  "sessionId"
+                ],
+                "@references": "acme::reports::Session"
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "fkMaybeSession",
+                "@fields": [
+                  "maybeSessionId"
+                ],
+                "@references": "acme::reports::Session"
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "fkOrg",
+                "@fields": [
+                  "orgId"
+                ],
+                "@references": "acme::reports::Org"
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "fkLoose",
+                "@enforce": false,
+                "@fields": [
+                  "unenforcedSessionId"
+                ],
+                "@references": "acme::reports::Session"
+              }
+            },
+            {
+              "relationship.association": {
+                "name": "session",
+                "@cardinality": "one",
+                "@objectRef": "acme::reports::Session"
+              }
+            },
+            {
+              "relationship.association": {
+                "name": "stamp",
+                "@cardinality": "one",
+                "@objectRef": "acme::reports::Stamp"
+              }
+            },
+            {
+              "measure.aggregate": {
+                "name": "snaps",
+                "@agg": "count",
+                "@of": [
+                  "acme::reports::Snap.id"
+                ]
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "sessionKey",
+                "@of": "acme::reports::Snap.sessionId"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "sessionRealmId",
+                "@of": "acme::reports::Session.realmId",
+                "@via": "acme::reports::Snap.fkSession"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "realmName",
+                "@of": "acme::reports::Realm.name",
+                "@via": "acme::reports::Snap.fkSession.fkRealm"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "looseRealmName",
+                "@of": "acme::reports::Realm.name",
+                "@via": "acme::reports::Snap.fkLoose.fkRealm"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "maybeRealmName",
+                "@of": "acme::reports::Realm.name",
+                "@via": "acme::reports::Snap.fkSession.fkMaybeRealm"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "optionalFirstRealmName",
+                "@of": "acme::reports::Realm.name",
+                "@via": "acme::reports::Snap.fkMaybeSession.fkRealm"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "realmMotto",
+                "@of": "acme::reports::Realm.motto",
+                "@via": "acme::reports::Snap.fkSession.fkRealm"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "orgName",
+                "@of": "acme::reports::Org.orgName",
+                "@via": "acme::reports::Snap.fkOrg"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "relSessionRealmId",
+                "@of": "acme::reports::Session.realmId",
+                "@via": "acme::reports::Snap.session"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "relRealmName",
+                "@of": "acme::reports::Realm.name",
+                "@via": "acme::reports::Snap.session.realm"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "mixedRealmName",
+                "@of": "acme::reports::Realm.name",
+                "@via": "acme::reports::Snap.session.fkRealm"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "relMaybeRealmName",
+                "@of": "acme::reports::Realm.name",
+                "@via": "acme::reports::Snap.session.maybeRealm"
+              }
+            },
+            {
+              "dimension.attribute": {
+                "name": "stampLabel",
+                "@of": "acme::reports::Stamp.label",
+                "@via": "acme::reports::Snap.stamp"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Stamp",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "stamps"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "field.long": {
+                "name": "snapId",
+                "@required": true
+              }
+            },
+            {
+              "field.string": {
+                "name": "label",
+                "@required": true
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "fkSnap",
+                "@fields": [
+                  "snapId"
+                ],
+                "@references": "acme::reports::Snap"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Party",
+          "@discriminator": "kind",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "parties"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "kind",
+                "@required": true
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Org",
+          "extends": "acme::reports::Party",
+          "@discriminatorValue": "ORG",
+          "children": [
+            {
+              "field.string": {
+                "name": "orgName",
+                "@required": true
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.report": {
+          "name": "SnapRealms",
+          "@dimensions": [
+            "sessionKey",
+            "sessionRealmId",
+            "realmName",
+            "looseRealmName",
+            "maybeRealmName",
+            "optionalFirstRealmName",
+            "realmMotto",
+            "orgName",
+            "relSessionRealmId",
+            "relRealmName",
+            "mixedRealmName",
+            "relMaybeRealmName",
+            "stampLabel"
+          ],
+          "@from": "acme::reports::Snap",
+          "@measures": [
+            "snaps"
+          ],
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_snap_realms"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
+

@@ -1,0 +1,38 @@
+{
+  "metadata.root": {
+    "package": "acme::plans",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Plan",
+          "children": [
+            { "source.rdb": { "@table": "plans" } },
+            { "field.long": { "name": "id" } },
+            { "field.boolean": { "name": "consented" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "GatedPlans",
+          "abstract": true,
+          "@filter": { "consented": true },
+          "children": [
+            { "field.long": { "name": "planId", "extends": "Plan.id" } },
+            { "identity.primary": { "name": "id", "extends": "Plan.id" } }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "HandWrittenPlans",
+          "extends": "GatedPlans",
+          "children": [
+            { "source.rdb": { "@kind": "view", "@view": "v_hand_written_plans", "@sql": "SELECT id AS plan_id FROM plans" } }
+          ]
+        }
+      }
+    ]
+  }
+}

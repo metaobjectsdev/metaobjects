@@ -1,0 +1,154 @@
+{
+  "metadata.root": {
+    "package": "acme::plans",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Plan",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "plans"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "name"
+              }
+            },
+            {
+              "field.string": {
+                "name": "code"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Week",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "weeks"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "planId"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "plan",
+                "@fields": [
+                  "planId"
+                ],
+                "@references": "acme::plans::Plan"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "PlanExtract",
+          "abstract": true,
+          "children": [
+            {
+              "field.long": {
+                "name": "planId",
+                "extends": "acme::plans::Plan.id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "label",
+                "children": [
+                  {
+                    "origin.passthrough": {
+                      "@from": "acme::plans::Plan.name"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.int": {
+                "name": "weekCount",
+                "children": [
+                  {
+                    "origin.aggregate": {
+                      "@agg": "count",
+                      "@of": "acme::plans::Week.id",
+                      "@via": "acme::plans::Plan.weeks"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "extends": "acme::plans::Plan.id"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "DataAggregationPlans",
+          "extends": "acme::plans::PlanExtract",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_da_plans"
+              }
+            },
+            {
+              "field.string": {
+                "name": "code",
+                "children": [
+                  {
+                    "origin.passthrough": {
+                      "@from": "acme::plans::Plan.code"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
+

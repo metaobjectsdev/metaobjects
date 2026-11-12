@@ -165,6 +165,10 @@ from ..meta.persistence.db.db_constants import (
 from ..source import resolved_source
 from ..naming_refs import did_you_mean_hint, resolve_object_ref, referrer_package_of
 from ..naming_refs import ref_target as bound_ref_target
+from ..meta.core.object.collection_names import collection_name_of
+from ..meta.core.field.flattened_member import resolve_flattened_member
+from ..meta.core.object.effective_projection_filter import effective_projection_filter
+from ..meta.core.relationship.filter_path import resolve_filter_path
 from ..meta.core.relationship.relationship_references import (
     reference_candidates_for,
     reference_fields,
@@ -277,7 +281,7 @@ def run_validations(
     # identity.primary @sequenceStart / @sequenceName need @generation "increment".
     _validate_identity_sequence(root, errors)
     # cross-field validators — exactlyOne names two or more fields; @condition names entity fields.
-    _validate_cross_field_validators(root, errors)
+    _validate_cross_field_validators(root, errors, strict)
     # field.map — exactly one of @valueType (scalar) or @objectRef (VO), and
     # @valueType (when set) must name a known scalar subtype.
     _validate_field_map(root, errors)
@@ -1636,6 +1640,26 @@ def _check_correlated_operands(
                     ErrorCode.ERR_BAD_ATTR_FILTER, envelope=source))
 
 
+def _entity_field_aggregates(f: MetaData) -> bool:
+    # ADR-0039: own — origin.* never inherits (ADR-0029).
+    return any(c.type == TYPE_ORIGIN and c.sub_type == ORIGIN_SUBTYPE_AGGREGATE for c in f.own_children())
+
+
+def _filter_keys(filter_value: object, out: list[str] | None = None) -> list[str]:
+    """Every field key of a (desugared) filter, through and/or."""
+    out = [] if out is None else out
+    if not isinstance(filter_value, dict):
+        return out
+    for key, val in filter_value.items():
+        if key in (_FILTER_COMPOSE_AND, _FILTER_COMPOSE_OR):
+            if isinstance(val, list):
+                for sub in val:
+                    _filter_keys(sub, out)
+        else:
+            out.append(key)
+    return out
+
+
 def _validate_projection_filter(
     root: MetaData,
     errors: list[MetaError],
@@ -1645,44 +1669,64 @@ def _validate_projection_filter(
     for obj in root.own_children():
         if obj.type != TYPE_OBJECT or obj.sub_type != OBJECT_SUBTYPE_PROJECTION:
             continue
-        # ADR-0039 sanctioned own: the @filter is declared locally on this projection.
-        filter_value = obj.attr(OBJECT_PROJECTION_ATTR_FILTER)
+        # The EFFECTIVE @filter — every level of an extends chain, supers first, ANDed — is
+        # what the view applies, so it is what is checked.
+        filter_value = effective_projection_filter(obj)
         # Non-object shapes are rejected by the attr-schema pass (ERR_BAD_ATTR_VALUE).
         if not isinstance(filter_value, dict):
             continue
 
-        # Classify the projection's OWN fields (the declared set IS the exposure —
-        # FR-024/ADR-0028): the declared-field name set + the aggregate-derived
-        # subset. origin.* never inherits (ADR-0029), so the origin reads are own.
-        declared: set[str] = set()
-        aggregate_derived: set[str] = set()
-        for f in obj.own_children():
+        # The projection's EFFECTIVE fields (the declared set IS the exposure — FR-024 /
+        # ADR-0028), each marked aggregate-derived or not. ADR-0039: resolving — a field
+        # inherited from a super projection is a column of this view; its origin is read own.
+        fields: dict[str, bool] = {}
+        for f in obj.children():
             if f.type != TYPE_FIELD:
                 continue
-            declared.add(f.name)
-            origin = next(
-                (c for c in f.own_children() if c.type == TYPE_ORIGIN), None
-            )
-            if (
+            origin = next((c for c in f.own_children() if c.type == TYPE_ORIGIN), None)
+            fields[f.name] = (
                 origin is not None
                 and origin.sub_type != ORIGIN_SUBTYPE_PASSTHROUGH
                 and origin.sub_type != ORIGIN_SUBTYPE_COMPUTED
-            ):
-                aggregate_derived.add(f.name)
+            )
+        reported: set[str] = set()
+        # A field of the BASE entity the view does not output is filterable too (a WHERE reads
+        # the base row); a projection field of the same name wins. No base, no fallback: the
+        # origin passes report why one cannot be derived.
+        base = _derive_base_entity(obj, root, obj.package or "", "@filter", obj.source, [])
+        if base is not None and base is not obj:
+            for f in base.children():
+                if f.type == TYPE_FIELD and f.name not in fields:
+                    fields[f.name] = _entity_field_aggregates(f)
+            # A key that is a PATH of to-one hops from the base, then a field of the entity
+            # reached (``caseId.status``). Not output; the view joins what it walks.
+            for key in _filter_keys(filter_value):
+                if key in fields:
+                    continue
+                path = resolve_filter_path(base, key)
+                if path is None:
+                    continue
+                if isinstance(path, str):
+                    errors.append(MetaError(
+                        f'projection "{obj.name}" @filter path "{key}" does not resolve: {path}.',
+                        ErrorCode.ERR_BAD_ATTR_FILTER, envelope=obj.source))
+                    fields[key] = False
+                    reported.add(key)
+                    continue
+                fields[key] = _entity_field_aggregates(path.field)
 
-        _check_projection_filter_refs(
-            filter_value, declared, aggregate_derived, obj, errors
-        )
+        _check_projection_filter_refs(filter_value, fields, reported, obj, errors)
 
 
 def _check_projection_filter_refs(
     filter_obj: dict,
-    declared: set[str],
-    aggregate_derived: set[str],
+    fields: dict[str, bool],
+    reported: set[str],
     obj: MetaData,
     errors: list[MetaError],
 ) -> None:
-    """Recursively check each field-ref key of a (possibly composed) @filter."""
+    """Recursively check each field-ref key of a (possibly composed) @filter. *fields* maps each
+    referable name to whether it is aggregate-derived; *reported* names keys already refused."""
     for key, clause in filter_obj.items():
         if key == _FILTER_COMPOSE_AND or key == _FILTER_COMPOSE_OR:
             # Recurse into each OBJECT sub-clause. A non-array clause / non-object
@@ -1692,24 +1736,24 @@ def _check_projection_filter_refs(
                 continue
             for sub in clause:
                 if isinstance(sub, dict):
-                    _check_projection_filter_refs(
-                        sub, declared, aggregate_derived, obj, errors
-                    )
+                    _check_projection_filter_refs(sub, fields, reported, obj, errors)
             continue
 
         # A field-ref key.
-        if key not in declared:
+        if key in reported:
+            continue
+        if key not in fields:
             errors.append(
                 MetaError(
                     f"projection '{obj.name}' @filter references '{key}', which is not "
-                    f"a declared field of the projection. A view-level @filter may only "
-                    f"reference the projection's own declared fields.",
+                    f"a declared field of the projection or of its base entity. A view-level "
+                    f"@filter may only reference those fields.",
                     ErrorCode.ERR_BAD_ATTR_FILTER,
                     envelope=obj.source,
                 )
             )
             continue
-        if key in aggregate_derived:
+        if fields[key]:
             errors.append(
                 MetaError(
                     f"projection '{obj.name}' @filter references '{key}', an "
@@ -1855,6 +1899,11 @@ def _validate_entity_field_ref(
         )
         return None
     field_node = next((f for f in entity.fields() if f.name == field_name), None)
+    if field_node is None:
+        # A member of a flattened value object, through the field that embeds it.
+        flattened = resolve_flattened_member(entity, field_name)
+        if flattened is not None:
+            field_node = flattened.member
     if field_node is None:
         # FR5d — entity resolved, field on it did not. target = full ref.
         known = sorted(f.name for f in entity.fields())
@@ -2156,6 +2205,11 @@ def _derive_base_entity(
             targets.append(owner)
     if len(targets) == 1:
         return targets[0]
+    # 3) A projection extending another projection, declaring no anchor of its own, has the
+    # base entity its super has (its inherited identity and fields are anchored there).
+    sup = obj.super_data
+    if not targets and sup is not None and sup.type == TYPE_OBJECT and sup.sub_type == OBJECT_SUBTYPE_PROJECTION:
+        return _derive_base_entity(sup, root, sup.package or referrer_pkg, field_name, origin_source, errors)
     if len(targets) > 1:
         names = ", ".join(f'"{t.name}"' for t in targets)
         errors.append(
@@ -3667,9 +3721,50 @@ def _validate_identity_passthrough(root: MetaData, errors: list[MetaError]) -> N
 # Mirrors TS validateDerivedFieldProvidability.
 
 
+def _projection_reached_entity_fields(root: MetaData) -> set[int]:
+    """ids of the entity fields projections REACH without outputting them: a projection
+    ``@filter`` key naming a base field or a to-one path, and a passthrough ``@from``. A derived
+    field reached this way is lowered inline where it is reached. Mirrors the TS
+    ``projectionReachedEntityFields``."""
+    reached: set[int] = set()
+    for obj in root.own_children():
+        if obj.type != TYPE_OBJECT or obj.sub_type != OBJECT_SUBTYPE_PROJECTION:
+            continue
+        pkg = obj.package or ""
+        base = _derive_base_entity(obj, root, pkg, "@filter", obj.source, [])
+        # The effective filter: an extender reaches what its supers' filters name, too.
+        filter_value = effective_projection_filter(obj)
+        if base is not None and base is not obj:
+            for key in _filter_keys(filter_value):
+                path = resolve_filter_path(base, key)
+                if path is not None:
+                    if not isinstance(path, str):
+                        reached.add(id(path.field))
+                    continue
+                f = next((c for c in base.children() if c.type == TYPE_FIELD and c.name == key), None)
+                if f is not None:
+                    reached.add(id(f))
+        # ADR-0039: resolving — inherited fields carry their own origins (read own).
+        for field in (c for c in obj.children() if c.type == TYPE_FIELD):
+            for origin in field.own_children():
+                if origin.type != TYPE_ORIGIN or origin.sub_type != ORIGIN_SUBTYPE_PASSTHROUGH:
+                    continue
+                from_ref = origin.attr(ORIGIN_ATTR_FROM)
+                if not isinstance(from_ref, str):
+                    continue
+                # Silent: the origin pass reports an unresolved @from.
+                target = _validate_entity_field_ref(
+                    from_ref, ORIGIN_ATTR_FROM, "", root, pkg, [], origin, ""
+                )
+                if target is not None:
+                    reached.add(id(target[1]))
+    return reached
+
+
 def _validate_derived_field_providability(
     root: MetaData, errors: list[MetaError]
 ) -> None:
+    reached = _projection_reached_entity_fields(root)
     # ADR-0039: root scan (sanctioned own — never extended); the read-capable-source
     # check uses the resolving obj.children() (inherited sources count); the derived-
     # field check inspects OWN fields with OWN origins (sanctioned own — origin.*
@@ -3690,15 +3785,22 @@ def _validate_derived_field_providability(
         # ADR-0039 sanctioned own: derived-field providability inspects the object's
         # OWN fields carrying an OWN origin.* child (origin.* never inherits, ADR-0029).
         for field in (c for c in obj.own_children() if c.type == TYPE_FIELD):
-            if not any(c.type == TYPE_ORIGIN for c in field.own_children()):
+            origin = next((c for c in field.own_children() if c.type == TYPE_ORIGIN), None)
+            if origin is None:
+                continue
+            # A derived field a projection reaches (its @filter or a passthrough @from) is
+            # lowered inline there, so it needs no read source. Only the inlinable origins.
+            if origin.sub_type in (ORIGIN_SUBTYPE_FIRST, ORIGIN_SUBTYPE_COMPUTED) and id(field) in reached:
                 continue
             errors.append(
                 MetaError(
                     f'derived field "{obj.name}.{field.name}" carries an origin.* but '
                     f'entity "{obj.name}" declares no read-capable source — derived fields '
                     f"do not exist on the writable table. Declare a read-only source "
-                    f'(e.g. source.rdb @kind "view" @role "replica") to provide it, or move '
-                    f"the field to an object.projection (FR-024 §7).",
+                    f'(e.g. source.rdb @kind "view" @role "replica") to provide it, move '
+                    f"the field to an object.projection (FR-024 §7), or reach it from a "
+                    f"projection's @filter or @from (an origin.first or origin.computed is then "
+                    f"inlined there).",
                     ErrorCode.ERR_DERIVED_FIELD_NO_READ_SOURCE,
                     envelope=field.source,
                 )
@@ -4303,7 +4405,9 @@ def _condition_problem(condition: object, obj: MetaData) -> str | None:
     return visit(condition)
 
 
-def _validate_cross_field_validators(root: MetaData, errors: list[MetaError]) -> None:
+def _validate_cross_field_validators(root: MetaData, errors: list[MetaError], strict: bool = False) -> None:
+    """Cross-field validator rules. *strict*: a strict load already refuses an atLeastOne ``@max``
+    as an unregistered attr, so that check runs only on the default load (one error per node)."""
     from ..meta.core.validator import validator_constants as vc
 
     for obj in root.children():
@@ -4312,6 +4416,25 @@ def _validate_cross_field_validators(root: MetaData, errors: list[MetaError]) ->
         field_names = {f.name for f in obj.fields()}
         for v in obj.own_children():
             if v.type != TYPE_VALIDATOR or v.sub_type not in vc.CROSS_FIELD_VALIDATOR_SUBTYPES:
+                continue
+            # validator.atLeastOne takes no @max: "exactly one of these fields" is
+            # validator.exactlyOne. A strict load already refuses the unregistered attr; this
+            # refuses it under the default load too, where it would be kept and ignored.
+            # ADR-0039: own — checked on the validator that declares it.
+            if (
+                not strict
+                and v.sub_type == vc.VALIDATOR_SUBTYPE_AT_LEAST_ONE
+                and vc.VALIDATOR_ATTR_MAX in v.own_attrs()
+            ):
+                errors.append(MetaError(
+                    code=ErrorCode.ERR_UNKNOWN_ATTR,
+                    message=(
+                        f'validator.atLeastOne "{obj.name}.{v.name}" carries @max, which atLeastOne does '
+                        'not take. For "exactly one of these fields", declare validator.exactlyOne instead; '
+                        'for "at least one", remove @max.'
+                    ),
+                    envelope=v.source,
+                ))
                 continue
             if v.sub_type == vc.VALIDATOR_SUBTYPE_EXACTLY_ONE:
                 fields = v.get_meta_attr(vc.VALIDATOR_ATTR_FIELDS)

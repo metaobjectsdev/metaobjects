@@ -6,7 +6,8 @@
 //
 // This reads the join types out of the view SQL the lowering emits and holds `reportShape` to
 // them. The expected table is derived by hand from the #209 rule: a hop is INNER when the
-// entity it leaves holds a required foreign key and every hop before it is INNER.
+// entity it leaves holds a required foreign key and every hop before it is INNER. `required` is
+// stricter: an unenforced reference, or one onto a TPH subtype, is never required.
 // A dimension's `@via` crosses only identity.reference and `@cardinality: one` hops (a to-many
 // hop does not load), so the hop that is LEFT OUTER for a reason other than a nullable key is
 // the to-one relationship whose foreign key sits on the entity it reaches.
@@ -62,7 +63,9 @@ const DIMENSIONS: Record<string, { of: string; via?: string; joins: JoinKeyword[
   // identity.reference hops.
   sessionRealmId: { of: "Session.realmId", via: "Snap.fkSession", joins: ["INNER"], required: true },
   realmName: { of: "Realm.name", via: "Snap.fkSession.fkRealm", joins: ["INNER", "INNER"], required: true },
-  looseRealmName: { of: "Realm.name", via: "Snap.fkLoose.fkRealm", joins: ["INNER", "INNER"], required: true },
+  // An @enforce: false hop can name a missing row, so it is not required even where the view
+  // joins it INNER: a nullable type over a column that is never null is the safe direction.
+  looseRealmName: { of: "Realm.name", via: "Snap.fkLoose.fkRealm", joins: ["INNER", "INNER"], required: false },
   maybeRealmName: { of: "Realm.name", via: "Snap.fkSession.fkMaybeRealm", joins: ["INNER", "LEFT OUTER"], required: false },
   // INNER all the way, over a field that is itself optional.
   realmMotto: { of: "Realm.motto", via: "Snap.fkSession.fkRealm", joins: ["INNER", "INNER"], required: false },

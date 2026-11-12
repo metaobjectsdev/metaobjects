@@ -29,10 +29,8 @@ from __future__ import annotations
 
 from ..errors import ErrorCode, MetaError
 from ..meta.core.field.meta_field import MetaField
-from ..meta.core.object.object_constants import (
-    OBJECT_PROJECTION_ATTR_FILTER,
-    OBJECT_SUBTYPE_PROJECTION,
-)
+from ..meta.core.object.effective_projection_filter import effective_projection_filter
+from ..meta.core.object.object_constants import OBJECT_SUBTYPE_PROJECTION
 from ..meta.meta_data import MetaData
 from ..meta.persistence.source.meta_source import MetaSource
 from ..meta.persistence.source.source_constants import (
@@ -188,9 +186,9 @@ def validate_source_escapes(
         # body (and its WHERE), so wrapping it is deferred cleverness
         # (design doc D5) — reject.
         if has_sql_host and obj.sub_type == OBJECT_SUBTYPE_PROJECTION:
-            # ADR-0039: own — the @filter is declared locally on this
-            # projection (mirrors _validate_projection_filter).
-            filter_value = obj.attr(OBJECT_PROJECTION_ATTR_FILTER)
+            # The EFFECTIVE @filter: a gate inherited from a super projection
+            # lowers to the same outer WHERE (mirrors _validate_projection_filter).
+            filter_value = effective_projection_filter(obj)
             if filter_value is not None:
                 errors.append(
                     MetaError(

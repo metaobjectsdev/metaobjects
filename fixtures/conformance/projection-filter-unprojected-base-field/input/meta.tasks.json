@@ -1,0 +1,74 @@
+{
+  "metadata.root": {
+    "package": "acme::tasks",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Task",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "tasks"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "title"
+              }
+            },
+            {
+              "field.boolean": {
+                "name": "deleted"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "LiveTasks",
+          "@filter": {
+            "deleted": false
+          },
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_live_tasks"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id",
+                "extends": "acme::tasks::Task.id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "title",
+                "extends": "acme::tasks::Task.title"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "extends": "acme::tasks::Task.id"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -733,7 +733,7 @@ export class MetaDataLoader {
       errors.push(...validateIdentitySequence(root));
 
       // Cross-field validators: exactlyOne names two or more fields; @condition names real fields.
-      errors.push(...validateCrossFieldValidators(root));
+      errors.push(...validateCrossFieldValidators(root, this._strict));
 
       // Tenth pass: one-primary multi-source rule — if an object has ≥1 source,
       // exactly one must carry role "primary" (ERR_SOURCE_NO_PRIMARY /

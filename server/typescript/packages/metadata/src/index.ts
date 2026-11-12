@@ -166,11 +166,14 @@ export type { IdentityPassthroughResolution } from "./core/identity/validate-ide
 // Relationship
 export { MetaRelationship } from "./core/relationship/meta-relationship.js";
 // Cross-entity reference lookup
+export { resolveFlattenedMember, resolveFieldPathColumn, type FlattenedMember } from "./core/field/flattened-member.js";
 export {
   findReferenceBetween, findReferencesBetween, findReverseReferenceHops, reverseHopName,
   type ReverseReferenceHop,
 } from "./core/relationship/find-reference.js";
 export type { ReferenceLookup } from "./core/relationship/find-reference.js";
+export { resolveFilterPath, type FilterPath } from "./core/relationship/filter-path.js";
+export { effectiveProjectionFilter } from "./core/object/effective-projection-filter.js";
 export {
   referenceCandidatesFor,
   referencePairingKeys,
