@@ -109,11 +109,6 @@ function defaultClause(measure: MetaData): string {
   return typeof declared === "number" ? `; ${tick(String(declared))} when there is nothing to aggregate` : "";
 }
 
-/**
- * A measure in words: the aggregate and its row scope, or the ratio and its null rule. A
- * `@default` ends either with the value it reads when there is nothing to aggregate; a
- * defaulted ratio is never null, so its null rule gives way to that clause.
- */
 /** R13: an arithmetic expression in words, fully parenthesised below the top so the reading is exact. */
 function describeExpr(node: DerivedExprNode, top = true): string {
   if ("field" in node) return tick(node.field);
@@ -124,6 +119,12 @@ function describeExpr(node: DerivedExprNode, top = true): string {
   return top ? text : `(${text})`;
 }
 
+/**
+ * A measure in words: the aggregate and its row scope, the ratio and its null rule, or (R13) the
+ * derived measure's arithmetic. A `@default` ends an aggregate or ratio with the value it reads
+ * when there is nothing to aggregate; a defaulted ratio is never null, so its null rule gives way
+ * to that clause.
+ */
 export function describeMeasure(measure: MetaData): string {
   if (measure.subType === MEASURE_SUBTYPE_DERIVED) {
     const expr = measure.attr(REPORTING_ATTR_EXPR);
