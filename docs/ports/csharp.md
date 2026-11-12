@@ -461,7 +461,7 @@ alone writes a start added as `RESTART WITH n`, a changed one as `RESTART WITH m
 as `RESTART WITH 1`, each handing out ids live rows may hold. A Postgres context with an increment
 key gets `IdentityStartMigrationsSqlGenerator.g.cs`, which carries the rewrite: every start-only
 change is `ALTER TABLE … ALTER COLUMN … SET START WITH n` (a removed start is set back to the
-identity default), and the current value never moves. Register it after `UseNpgsql(...)`, wherever
+identity default), and in 1.3 the current value does not move (a later release is planned to move a counter below the declared start forward to it). Register it after `UseNpgsql(...)`, wherever
 the context is configured — the app's registration (pooled or not), an
 `IDesignTimeDbContextFactory`, or the context's own `OnConfiguring`:
 
