@@ -1162,7 +1162,7 @@ public static partial class ValidationPasses
     /// entity they terminate at. Returned as a pair (rather than re-walking for the terminal)
     /// because a second walk means a second copy of the ADR-0042 package-resolution rule —
     /// mirrors the TS <c>WalkedViaPath</c>.
-    private readonly record struct WalkedViaPath(List<MetaData> Hops, MetaData Terminal, IReadOnlySet<MetaData> Reverse);
+    private readonly record struct WalkedViaPath(List<MetaData> Hops, MetaData Terminal, IReadOnlyDictionary<MetaData, string> Reverse);
 
     private static WalkedViaPath? ValidateViaPath(
         string viaAttr,
@@ -1209,7 +1209,7 @@ public static partial class ValidationPasses
         // entity name; each successful relationship hop appends a segment.
         var validSegments = new List<string> { entityName };
         var hops = new List<MetaData>();
-        var reverse = new HashSet<MetaData>(ReferenceEqualityComparer.Instance);
+        var reverse = new Dictionary<MetaData, string>(ReferenceEqualityComparer.Instance);
 
         foreach (var relName in relSegments)
         {
@@ -1228,7 +1228,7 @@ public static partial class ValidationPasses
                 {
                     validSegments.Add(relName);
                     hops.Add(reversed[0].Reference);
-                    reverse.Add(reversed[0].Reference);
+                    reverse[reversed[0].Reference] = relName;
                     currentObj = reversed[0].Holder;
                     continue;
                 }
@@ -1299,8 +1299,8 @@ public static partial class ValidationPasses
 
     /// A hop's effective @cardinality, or null when not declared. A reference hop
     /// (a forward FK) is inherently to-one — a child names the parent it points at.
-    private static string? HopCardinality(MetaData rel, IReadOnlySet<MetaData>? reverse = null)
-        => reverse is not null && reverse.Contains(rel)
+    private static string? HopCardinality(MetaData rel, IReadOnlyDictionary<MetaData, string>? reverse = null)
+        => reverse is not null && reverse.ContainsKey(rel)
             ? CARDINALITY_MANY // A reference walked backwards reaches every row that references the walked-from one
             : IsReferenceHop(rel)
                 ? CARDINALITY_ONE
@@ -1431,15 +1431,15 @@ public static partial class ValidationPasses
     /// EVERY hop. A hop is to-many only when it DECLARES @cardinality "many".
     private static void CheckPassthroughCardinality(
         IReadOnlyList<MetaData> hops, MetaData obj, string fieldName, ErrorSource originSource, List<MetaError> errors,
-        IReadOnlySet<MetaData>? reverse = null)
+        IReadOnlyDictionary<MetaData, string>? reverse = null)
     {
         foreach (var rel in hops)
         {
             if (HopCardinality(rel, reverse) == CARDINALITY_MANY)
             {
                 errors.Add(new MetaError(
-                    $"origin.passthrough on {obj.Name}.{fieldName}: @via hop \"{rel.Name}\" is to-many " +
-                    (reverse?.Contains(rel) == true
+                    $"origin.passthrough on {obj.Name}.{fieldName}: @via hop \"{(reverse is not null && reverse.TryGetValue(rel, out var hop) ? hop : rel.Name)}\" is to-many " +
+                    (reverse?.ContainsKey(rel) == true
                         ? $"(reverse hop over identity.reference \"{rel.Name}\")"
                         : $"(@cardinality \"{CARDINALITY_MANY}\")") +
                     " — a row-multiplying passthrough — you meant aggregate (ADR-0029).",
@@ -1455,7 +1455,7 @@ public static partial class ValidationPasses
     /// (every hop declares @cardinality "one").
     private static void CheckAggregateCardinality(
         IReadOnlyList<MetaData> hops, MetaData obj, string fieldName, ErrorSource originSource, List<MetaError> errors,
-        IReadOnlySet<MetaData>? reverse = null)
+        IReadOnlyDictionary<MetaData, string>? reverse = null)
     {
         if (hops.Count == 0) return;
         bool provablyToOne = hops.All(rel => HopCardinality(rel, reverse) == CARDINALITY_ONE);
@@ -1635,6 +1635,107 @@ public static partial class ValidationPasses
             cur = cur.SuperData;
         }
         return false;
+    }
+
+
+    // =========================================================================
+    // Origin segments and correlated filters, on every origin.first / origin.aggregate:
+    // @segment names a segment of the related entity (ERR_INVALID_ORIGIN); an @filter operand
+    // { field: "<name>" } names a base-row field with a column-comparing op, and the null-safe
+    // ops take only such an operand (ERR_BAD_ATTR_FILTER). Ported from validation-passes.ts
+    // validateOriginSegmentsAndCorrelation.
+    // =========================================================================
+
+    private static readonly string[] CorrelatedFilterOps =
+        ["eq", "ne", "gt", "gte", "lt", "lte", FILTER_OP_IS_DISTINCT_FROM, FILTER_OP_IS_NOT_DISTINCT_FROM];
+
+    public static IReadOnlyList<MetaError> ValidateOriginSegmentsAndCorrelation(MetaData root)
+    {
+        var errors = new List<MetaError>();
+        foreach (var obj in root.OwnChildren().Where(c => c.Type == TYPE_OBJECT
+                     && (c.SubType == OBJECT_SUBTYPE_PROJECTION || c.SubType == OBJECT_SUBTYPE_ENTITY)))
+        {
+            foreach (var field in obj.OwnChildren().Where(c => c.Type == TYPE_FIELD))
+            {
+                foreach (var origin in field.OwnChildren().Where(c => c.Type == TYPE_ORIGIN
+                             && (c.SubType == ORIGIN_SUBTYPE_FIRST || c.SubType == ORIGIN_SUBTYPE_AGGREGATE)))
+                {
+                    var where = $"origin.{origin.SubType} on {obj.Name}.{field.Name}";
+                    if (origin.OwnAttr(ORIGIN_ATTR_SEGMENT) is string segment
+                        && OriginRelatedEntity(origin, obj, root) is { } related
+                        && !related.Children().Any(c => c.Type == TYPE_SEGMENT && c.Name == segment))
+                    {
+                        errors.Add(new MetaError(
+                            $"{where}: @segment \"{segment}\" is not a segment declared on \"{related.Name}\", the entity whose rows it scopes.",
+                            ErrorCode.ERR_INVALID_ORIGIN, Envelope: origin.Source));
+                    }
+                    if (origin.OwnAttr(ORIGIN_FIRST_ATTR_FILTER) is not IReadOnlyDictionary<string, object?> filter) continue;
+                    var silent = new List<MetaError>();
+                    if (DeriveBaseEntity(obj, root, field.Name, origin.Source, silent) is not { } baseEntity) continue;
+                    CheckCorrelatedOperands(filter, baseEntity, where, origin.Source, errors);
+                }
+            }
+        }
+        return errors.AsReadOnly();
+    }
+
+    private static MetaData? OriginRelatedEntity(MetaData origin, MetaData obj, MetaData root)
+    {
+        var pkg = NamingRefs.EffectivePackage(obj);
+        if (origin.OwnAttr(ORIGIN_FIRST_ATTR_OF) is string of && of.LastIndexOf('.') > 0)
+            return NamingRefs.ResolveObjectRef(root, of[..of.LastIndexOf('.')], pkg);
+        if (origin.OwnAttr(ORIGIN_AGGREGATE_ATTR_VIA) is not string via) return null;
+        var segments = via.Split('.');
+        var current = NamingRefs.ResolveObjectRef(root, segments[0], pkg);
+        foreach (var hop in segments.Skip(1))
+        {
+            if (current is null) return null;
+            var rel = current.Children().FirstOrDefault(c => (c.Type == TYPE_RELATIONSHIP || c.Type == TYPE_IDENTITY) && c.Name == hop);
+            current = rel is not null
+                ? NamingRefs.RefTarget(rel, rel.Type == TYPE_RELATIONSHIP ? RELATIONSHIP_ATTR_OBJECT_REF : IDENTITY_REFERENCE_ATTR_REFERENCES)
+                : current is MetaObject target && root is MetaRoot r
+                    ? ReverseReferenceHops.Find(target, hop, r.Objects()).FirstOrDefault()?.Holder
+                    : null;
+        }
+        return current;
+    }
+
+    private static void CheckCorrelatedOperands(
+        IReadOnlyDictionary<string, object?> filter, MetaData baseEntity, string where, ErrorSource source, List<MetaError> errors)
+    {
+        foreach (var (key, clause) in filter)
+        {
+            if (key == FILTER_COMPOSE_AND || key == FILTER_COMPOSE_OR)
+            {
+                if (clause is IReadOnlyList<object?> subs)
+                    foreach (var sub in subs)
+                        if (sub is IReadOnlyDictionary<string, object?> subFilter)
+                            CheckCorrelatedOperands(subFilter, baseEntity, where, source, errors);
+                continue;
+            }
+            if (clause is not IReadOnlyDictionary<string, object?> ops) continue;
+            foreach (var (op, value) in ops)
+            {
+                var nullSafe = op == FILTER_OP_IS_DISTINCT_FROM || op == FILTER_OP_IS_NOT_DISTINCT_FROM;
+                if (value is not IReadOnlyDictionary<string, object?> operand || !operand.ContainsKey(FILTER_OPERAND_FIELD))
+                {
+                    if (nullSafe)
+                        errors.Add(new MetaError(
+                            $"{where}: @filter on \"{key}\" uses \"{op}\", which compares with a base-row field: write {{ {op}: {{ {FILTER_OPERAND_FIELD}: \"<base field>\" }} }}.",
+                            ErrorCode.ERR_BAD_ATTR_FILTER, Envelope: source));
+                    continue;
+                }
+                var name = operand[FILTER_OPERAND_FIELD] as string;
+                if (!CorrelatedFilterOps.Contains(op))
+                    errors.Add(new MetaError(
+                        $"{where}: @filter on \"{key}\" compares with a base-row field using \"{op}\"; a correlated operand takes {string.Join(", ", CorrelatedFilterOps)}.",
+                        ErrorCode.ERR_BAD_ATTR_FILTER, Envelope: source));
+                else if (name is null || !baseEntity.Children().Any(c => c.Type == TYPE_FIELD && c.Name == name))
+                    errors.Add(new MetaError(
+                        $"{where}: @filter on \"{key}\" names base-row field \"{name}\", which \"{baseEntity.Name}\" does not declare.",
+                        ErrorCode.ERR_BAD_ATTR_FILTER, Envelope: source));
+            }
+        }
     }
 
     // =========================================================================

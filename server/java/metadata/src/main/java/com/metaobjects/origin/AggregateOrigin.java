@@ -63,6 +63,8 @@ public class AggregateOrigin extends MetaOrigin {
             // Optional scoping filter (attr.filter object) → SQL FILTER (WHERE ...).
             def.optionalAttributeWithConstraints(ATTR_FILTER)
                .ofType(FilterAttribute.SUBTYPE_FILTER).asSingle();
+            def.optionalAttributeWithConstraints(ATTR_SEGMENT)
+               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
             // #195 collect support: @distinct (dedupe) + @orderBy (element order).
             def.optionalAttributeWithConstraints(ATTR_DISTINCT)
                .ofType(BooleanAttribute.SUBTYPE_BOOLEAN).asSingle();

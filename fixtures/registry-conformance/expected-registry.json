@@ -3991,7 +3991,7 @@
           "valueType": "filter",
           "isArray": false,
           "required": false,
-          "description": "Optional structured predicate scoping which related rows the aggregate spans (required for any/all, where it is the quantified predicate). A portable attr.filter object (eq/ne/in/isNull with and/or), desugared to canonical { field: { op: value } } at parse time; codegen renders it per target (e.g. SQL FILTER (WHERE ...) or SQLite CASE WHEN for a relational view). A clause value may also be a relative date ({ now: \"<ISO-8601 duration>\", startOf? }) on a date or timestamp field."
+          "description": "Optional structured predicate scoping which related rows the aggregate spans (required for any/all, where it is the quantified predicate). A portable attr.filter object (eq/ne/in/isNull with and/or), desugared to canonical { field: { op: value } } at parse time; codegen renders it per target (e.g. SQL FILTER (WHERE ...) or SQLite CASE WHEN for a relational view). A clause value may also be a relative date ({ now: \"<ISO-8601 duration>\", startOf? }) on a date or timestamp field, or { field: \"<base field>\" }, a field of the base row, compared with eq/ne/gt/gte/lt/lte or the null-safe isDistinctFrom / isNotDistinctFrom."
         },
         {
           "name": "of",
@@ -4006,6 +4006,13 @@
           "isArray": true,
           "required": false,
           "description": "Ordering keys as 'field[:asc|desc]' (default asc) over the related entity's fields; nulls sort last. On @agg:collect sets element order (non-distinct only); on origin.first (required) selects the row. Semantic — carries no SQL syntax."
+        },
+        {
+          "name": "segment",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "Optional name of a segment.filter declared on the related entity (the @of entity, else the @via terminal). Its predicate scopes the related rows, ANDed with @filter, exactly as measure.aggregate @segment does; it may use relative dates."
         },
         {
           "name": "via",
@@ -4052,7 +4059,7 @@
           "valueType": "filter",
           "isArray": false,
           "required": false,
-          "description": "Optional structured predicate scoping which related rows are eligible for selection. A portable attr.filter object (eq/ne/in/isNull with and/or), desugared to canonical { field: { op: value } } at parse time. A clause value may also be a relative date ({ now: \"<ISO-8601 duration>\", startOf? }) on a date or timestamp field."
+          "description": "Optional structured predicate scoping which related rows are eligible for selection. A portable attr.filter object (eq/ne/in/isNull with and/or), desugared to canonical { field: { op: value } } at parse time. A clause value may also be a relative date ({ now: \"<ISO-8601 duration>\", startOf? }) on a date or timestamp field, or { field: \"<base field>\" }, a field of the base row, compared with eq/ne/gt/gte/lt/lte or the null-safe isDistinctFrom / isNotDistinctFrom."
         },
         {
           "name": "of",
@@ -4067,6 +4074,13 @@
           "isArray": true,
           "required": true,
           "description": "Ordering keys as 'field[:asc|desc]' (default asc) over the related entity's fields; nulls sort last. Selects the single row (the first after ordering). The related PK ascending is appended as the deterministic tie-breaker. Semantic — carries no SQL syntax."
+        },
+        {
+          "name": "segment",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "Optional name of a segment.filter declared on the related entity (the @of entity). Its predicate scopes the related rows, ANDed with @filter, exactly as measure.aggregate @segment does; it may use relative dates."
         },
         {
           "name": "via",

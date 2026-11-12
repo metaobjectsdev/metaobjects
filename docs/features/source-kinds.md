@@ -204,6 +204,14 @@ never itself or an aggregate), else a base field. An `origin.first` or `origin.a
 `@filter`, like a projection's, may hold a relative date (`{ "now": "-P7D" }`, see
 [reporting.md](reporting.md#relative-dates-in-filters)). Every port's loader validates these.
 
+**Segments and correlated filters.** An `origin.first` or `origin.aggregate` may scope its
+related rows by a `@segment` declared on that entity (ANDed with its `@filter`), and its
+`@filter` may compare a related column with a base-row field
+(`{ "statusId": { "eq": { "field": "statusId" } } }`); the null-safe `isDistinctFrom` /
+`isNotDistinctFrom` take only such an operand. Every port's loader validates them
+(`ERR_INVALID_ORIGIN` for a `@segment` the entity does not declare, `ERR_BAD_ATTR_FILTER` for
+an unknown base field or another op).
+
 **Projection row-scope `@filter` (#207).** Distinct from the *per-aggregate* `@filter` above,
 an **object-level `@filter` on an `object.projection`** scopes the whole view's rows — it
 lowers to the view's outer `WHERE`. This is the metadata-managed way to express a

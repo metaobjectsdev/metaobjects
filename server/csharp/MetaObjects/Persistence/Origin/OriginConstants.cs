@@ -114,4 +114,12 @@ public static class OriginConstants
     public static readonly string[] ORIGIN_AGG_VALUES =
         [AGGREGATE_FN_COUNT, AGGREGATE_FN_SUM, AGGREGATE_FN_AVG, AGGREGATE_FN_MIN, AGGREGATE_FN_MAX,
          AGG_ANY, AGG_ALL, AGG_COLLECT];
+
+    /// <summary>A segment.filter of the related entity scoping the related rows.</summary>
+    public const string ORIGIN_ATTR_SEGMENT = "segment";
+    /// <summary>The null-safe comparisons with a base-row field operand.</summary>
+    public const string FILTER_OP_IS_DISTINCT_FROM = "isDistinctFrom";
+    public const string FILTER_OP_IS_NOT_DISTINCT_FROM = "isNotDistinctFrom";
+    /// <summary>The key of a correlated operand: <c>{ field: "&lt;base field&gt;" }</c>.</summary>
+    public const string FILTER_OPERAND_FIELD = "field";
 }

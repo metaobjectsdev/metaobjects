@@ -1,0 +1,41 @@
+{
+  "metadata.root": {
+    "package": "acme::care",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Patient",
+          "children": [
+            { "source.rdb": { "@table": "patients" } },
+            { "field.long": { "name": "id" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Consent",
+          "children": [
+            { "source.rdb": { "@table": "consents" } },
+            { "field.long": { "name": "id" } },
+            { "field.long": { "name": "patientId" } },
+            { "field.boolean": { "name": "onFile" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } },
+            { "identity.reference": { "name": "patient", "@fields": "patientId", "@references": "acme::care::Patient" } }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "PatientConsentRow",
+          "children": [
+            { "source.rdb": { "@kind": "view", "@view": "v_patient_consent_row" } },
+            { "field.long": { "name": "id", "extends": "acme::care::Patient.id" } },
+            { "field.boolean": { "name": "onFile", "children": [ { "origin.passthrough": { "@from": "acme::care::Consent.onFile", "@via": "acme::care::Patient.consents" } } ] } },
+            { "identity.primary": { "name": "id", "extends": "acme::care::Patient.id" } }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -10,7 +10,7 @@
 // Private:  _findObject, _findField, _findRelationship,
 //           _validateFromPath, _validateViaPath  (helpers, not exported).
 
-import { TYPE_VALIDATOR } from "../shared/base-types.js";
+import { TYPE_VALIDATOR, TYPE_SEGMENT } from "../shared/base-types.js";
 import {
   CROSS_FIELD_VALIDATOR_SUBTYPES,
   VALIDATOR_ATTR_CONDITION,
@@ -128,6 +128,11 @@ import {
   ORIGIN_FIRST_ATTR_OF,
   ORIGIN_FIRST_ATTR_VIA,
   ORIGIN_FIRST_ATTR_FILTER,
+  ORIGIN_ATTR_SEGMENT,
+  FILTER_OP_IS_DISTINCT_FROM,
+  FILTER_OP_IS_NOT_DISTINCT_FROM,
+  CORRELATED_FILTER_OPS,
+  FILTER_OPERAND_FIELD,
   AGG_ANY,
   AGG_ALL,
   AGG_COLLECT,
@@ -717,8 +722,8 @@ interface WalkedViaPath {
   hops: MetaData[];
   terminal: MetaData;
   /** The hops walked BACKWARDS: an identity.reference of the next entity, walked from
-   *  the entity it targets, so the hop is to-many. */
-  reverse: ReadonlySet<MetaData>;
+   *  the entity it targets, so the hop is to-many — keyed to the hop name the path wrote. */
+  reverse: ReadonlyMap<MetaData, string>;
 }
 
 /**
@@ -777,7 +782,7 @@ function _validateViaPath(
   // entity name; each successful relationship hop appends a segment.
   const validSegments: string[] = [entityName];
   const hops: MetaData[] = [];
-  const reverse = new Set<MetaData>();
+  const reverse = new Map<MetaData, string>();
   for (const relName of relSegments) {
     // FR-024: a hop may name a relationship OR a reference-only FK
     // (identity.reference) — the reference IS a navigable many-to-one edge.
@@ -790,7 +795,7 @@ function _validateViaPath(
       if (reversed.length === 1) {
         validSegments.push(relName);
         hops.push(reversed[0]!.referenceIdentity);
-        reverse.add(reversed[0]!.referenceIdentity);
+        reverse.set(reversed[0]!.referenceIdentity, relName);
         currentObj = reversed[0]!.holder;
         continue;
       }
@@ -877,7 +882,7 @@ function _validateViaPath(
 
 /** A hop's effective @cardinality, or undefined when not declared. A reference
  *  hop (a forward FK) is inherently to-one — a child names the parent it points at. */
-function _hopCardinality(rel: MetaData, reverse?: ReadonlySet<MetaData>): string | undefined {
+function _hopCardinality(rel: MetaData, reverse?: ReadonlyMap<MetaData, string>): string | undefined {
   // A reference walked backwards reaches every row that references the walked-from one.
   if (reverse?.has(rel) === true) return CARDINALITY_MANY;
   if (_isReferenceHop(rel)) return CARDINALITY_ONE;
@@ -1078,13 +1083,13 @@ function _checkPassthroughCardinality(
   fieldName: string,
   originSource: ErrorSource,
   errors: ParseError[],
-  reverse?: ReadonlySet<MetaData>,
+  reverse?: ReadonlyMap<MetaData, string>,
 ): void {
   for (const rel of hops) {
     if (_hopCardinality(rel, reverse) === CARDINALITY_MANY) {
       errors.push(
         new ParseError(
-          `origin.passthrough on ${obj.name}.${fieldName}: @via hop "${rel.name}" is to-many ` +
+          `origin.passthrough on ${obj.name}.${fieldName}: @via hop "${reverse?.get(rel) ?? rel.name}" is to-many ` +
             (reverse?.has(rel)
               ? `(reverse hop over identity.reference "${rel.name}")`
               : `(@cardinality "${CARDINALITY_MANY}")`) +
@@ -1109,7 +1114,7 @@ function _checkAggregateCardinality(
   fieldName: string,
   originSource: ErrorSource,
   errors: ParseError[],
-  reverse?: ReadonlySet<MetaData>,
+  reverse?: ReadonlyMap<MetaData, string>,
 ): void {
   if (hops.length === 0) return;
   const provablyToOne = hops.every((rel) => _hopCardinality(rel, reverse) === CARDINALITY_ONE);
@@ -1807,6 +1812,103 @@ export function validateDerivedFieldProvidability(root: MetaData): ParseError[] 
     }
   }
   return errors;
+}
+
+
+/**
+ * Origin segments and correlated filters, on every origin.first / origin.aggregate:
+ *   - `@segment` names a segment.filter declared on the related entity (the @of entity, else
+ *     the @via terminal) — ERR_INVALID_ORIGIN otherwise;
+ *   - an `@filter` operand `{ field: "<name>" }` names a field of the base row (the projection's
+ *     base entity, or the entity hosting the field), with an op that compares two columns;
+ *     the null-safe ops take only such an operand — ERR_BAD_ATTR_FILTER otherwise.
+ */
+export function validateOriginSegmentsAndCorrelation(root: MetaData): ParseError[] {
+  const errors: ParseError[] = [];
+  for (const obj of root.children().filter((c) => c.type === TYPE_OBJECT
+    && (c.subType === OBJECT_SUBTYPE_PROJECTION || c.subType === OBJECT_SUBTYPE_ENTITY))) {
+    for (const field of obj.ownChildren().filter((c) => c.type === TYPE_FIELD)) {
+      for (const origin of field.ownChildren().filter((c) => c.type === TYPE_ORIGIN
+        && (c.subType === ORIGIN_SUBTYPE_FIRST || c.subType === ORIGIN_SUBTYPE_AGGREGATE))) {
+        const where = `origin.${origin.subType} on ${obj.name}.${field.name}`;
+        const segment = origin.ownAttr(ORIGIN_ATTR_SEGMENT);
+        if (typeof segment === "string") {
+          const related = originRelatedEntity(origin, obj, root);
+          if (related !== undefined && !related.children().some((c) => c.type === TYPE_SEGMENT && c.name === segment)) {
+            errors.push(new ParseError(
+              `${where}: @segment "${segment}" is not a segment declared on "${related.name}", the entity whose rows it scopes.`,
+              { code: "ERR_INVALID_ORIGIN", source: origin.source },
+            ));
+          }
+        }
+        const filter = origin.ownAttr(ORIGIN_FIRST_ATTR_FILTER);
+        if (filter === undefined) continue;
+        const silent: ParseError[] = [];
+        const base = _deriveBaseEntity(obj, root, field.name, origin.source, silent);
+        if (base === undefined) continue;
+        checkCorrelatedOperands(filter, base, where, origin.source, errors);
+      }
+    }
+  }
+  return errors;
+}
+
+/** The entity whose rows an origin.first / origin.aggregate spans: its @of entity, else its @via terminal. */
+function originRelatedEntity(origin: MetaData, obj: MetaData, root: MetaData): MetaData | undefined {
+  const of_ = origin.ownAttr(ORIGIN_FIRST_ATTR_OF);
+  const referrerPkg = obj.package ?? obj.fileDefaultPackage ?? "";
+  if (typeof of_ === "string" && of_.lastIndexOf(".") > 0) {
+    const owner = resolveObjectRef(root, of_.slice(0, of_.lastIndexOf(".")), referrerPkg).node;
+    return owner;
+  }
+  const via = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_VIA);
+  if (typeof via !== "string") return undefined;
+  const [head, ...hops] = via.split(".");
+  let current = resolveObjectRef(root, head ?? "", referrerPkg).node;
+  for (const hop of hops) {
+    if (current === undefined) return undefined;
+    const rel = current.children().find((c) => (c.type === TYPE_RELATIONSHIP || c.type === TYPE_IDENTITY) && c.name === hop);
+    current = rel === undefined
+      ? findReverseReferenceHops(current as MetaObject, hop, isMetaRoot(root) ? root.objects() : [])[0]?.holder
+      : refTarget(rel, rel.type === TYPE_RELATIONSHIP ? RELATIONSHIP_ATTR_OBJECT_REF : IDENTITY_REFERENCE_ATTR_REFERENCES);
+  }
+  return current;
+}
+
+function checkCorrelatedOperands(filter: unknown, base: MetaData, where: string, source: ErrorSource, errors: ParseError[]): void {
+  if (typeof filter !== "object" || filter === null || Array.isArray(filter)) return;
+  for (const [key, clause] of Object.entries(filter as Record<string, unknown>)) {
+    if (key === FILTER_COMPOSE_AND || key === FILTER_COMPOSE_OR) {
+      if (Array.isArray(clause)) for (const sub of clause) checkCorrelatedOperands(sub, base, where, source, errors);
+      continue;
+    }
+    if (typeof clause !== "object" || clause === null || Array.isArray(clause)) continue;
+    for (const [op, value] of Object.entries(clause as Record<string, unknown>)) {
+      const isOperand = typeof value === "object" && value !== null && !Array.isArray(value) && FILTER_OPERAND_FIELD in value;
+      const nullSafe = op === FILTER_OP_IS_DISTINCT_FROM || op === FILTER_OP_IS_NOT_DISTINCT_FROM;
+      if (!isOperand) {
+        if (nullSafe) {
+          errors.push(new ParseError(
+            `${where}: @filter on "${key}" uses "${op}", which compares with a base-row field: write { ${op}: { ${FILTER_OPERAND_FIELD}: "<base field>" } }.`,
+            { code: "ERR_BAD_ATTR_FILTER", source },
+          ));
+        }
+        continue;
+      }
+      const name = (value as Record<string, unknown>)[FILTER_OPERAND_FIELD];
+      if (!CORRELATED_FILTER_OPS.includes(op)) {
+        errors.push(new ParseError(
+          `${where}: @filter on "${key}" compares with a base-row field using "${op}"; a correlated operand takes ${CORRELATED_FILTER_OPS.join(", ")}.`,
+          { code: "ERR_BAD_ATTR_FILTER", source },
+        ));
+      } else if (typeof name !== "string" || !base.children().some((c) => c.type === TYPE_FIELD && c.name === name)) {
+        errors.push(new ParseError(
+          `${where}: @filter on "${key}" names base-row field "${String(name)}", which "${base.name}" does not declare.`,
+          { code: "ERR_BAD_ATTR_FILTER", source },
+        ));
+      }
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------

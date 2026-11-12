@@ -276,6 +276,9 @@ public final class ValidationPhase {
         pass(collected, () -> validateDataGridLayouts(root));
         // #207 — projection row-scope @filter field-ref validation (fail-closed).
         pass(collected, () -> validateProjectionFilter(root));
+        // Origin @segment names a segment of the related entity; a correlated @filter operand
+        // names a base-row field.
+        pass(collected, () -> validateOriginSegmentsAndCorrelation(root));
         // FR-044 — the reporting vocabulary's cross-node rules (D1-D4, M1-M6, S1, R1-R7,
         // F1/F2). Collects every finding; a broken rule yields exactly one error. The pass
         // already drops its own repeats (ReportingValidation's sink, keyed by node + message),
@@ -3909,6 +3912,142 @@ public final class ValidationPhase {
         }
     }
 
+    /**
+     * Origin segments and correlated filters, on every origin.first / origin.aggregate:
+     * <ul>
+     *   <li>{@code @segment} names a segment.filter declared on the related entity (the
+     *       {@code @of} entity, else the {@code @via} terminal) — ERR_INVALID_ORIGIN otherwise;</li>
+     *   <li>an {@code @filter} operand {@code { field: "<name>" }} names a field of the base row
+     *       (the projection's base entity, or the entity hosting the field), with an op that
+     *       compares two columns; the null-safe ops take only such an operand —
+     *       ERR_BAD_ATTR_FILTER otherwise.</li>
+     * </ul>
+     * Mirrors TS {@code validateOriginSegmentsAndCorrelation}.
+     */
+    static void validateOriginSegmentsAndCorrelation(MetaRoot root) {
+        for (MetaObject obj : rootObjects(root)) {
+            if (!MetaObject.SUBTYPE_PROJECTION.equals(obj.getSubType())
+                    && !MetaObject.SUBTYPE_ENTITY.equals(obj.getSubType())) continue;
+            for (MetaField<?> field : obj.getChildren(MetaField.class, false)) {
+                for (MetaData oc : field.getChildren(MetaData.class, false)) {
+                    if (!(oc instanceof MetaOrigin)) continue;
+                    if (!FirstOrigin.SUBTYPE_FIRST.equals(oc.getSubType())
+                            && !AggregateOrigin.SUBTYPE_AGGREGATE.equals(oc.getSubType())) continue;
+                    MetaOrigin origin = (MetaOrigin) oc;
+                    String where = "origin." + origin.getSubType() + " on " + obj.getName() + "." + field.getShortName();
+                    if (origin.hasMetaAttr(MetaOrigin.ATTR_SEGMENT, false)) {
+                        String segment = origin.getMetaAttr(MetaOrigin.ATTR_SEGMENT, false).getValueAsString();
+                        MetaObject related = originRelatedEntity(origin, obj, root);
+                        if (related != null && !declaresSegment(related, segment)) {
+                            throw new MetaDataException(
+                                ErrorMessageConstants.ERR_INVALID_ORIGIN + ": " + where + ": @segment \"" + segment
+                                    + "\" is not a segment declared on \"" + related.getName()
+                                    + "\", the entity whose rows it scopes.",
+                                ErrorCode.ERR_INVALID_ORIGIN, origin.getSource());
+                        }
+                    }
+                    if (!origin.hasMetaAttr(MetaOrigin.ATTR_FILTER, false)) continue;
+                    Object filter = origin.getMetaAttr(MetaOrigin.ATTR_FILTER, false).getValue();
+                    MetaObject base = deriveBaseEntityOrNull(obj, root, field.getName(), origin.getSource());
+                    if (base == null) continue;
+                    checkCorrelatedOperands(filter, base, where, origin.getSource());
+                }
+            }
+        }
+    }
+
+    private static boolean declaresSegment(MetaObject entity, String segment) {
+        // ADR-0039: resolving — a segment may be inherited through extends.
+        for (MetaData c : entity.getChildren(MetaData.class, true)) {
+            if (com.metaobjects.reporting.ReportingConstants.TYPE_SEGMENT.equals(c.getType())
+                    && segment.equals(c.getShortName())) return true;
+        }
+        return false;
+    }
+
+    /** The entity whose rows an origin.first / origin.aggregate spans: its {@code @of} entity,
+     *  else its {@code @via} terminal. {@code null} when neither resolves (reported elsewhere). */
+    private static MetaObject originRelatedEntity(MetaOrigin origin, MetaObject obj, MetaRoot root) {
+        String referrerPkg = obj.getPackage() == null ? "" : obj.getPackage();
+        String of = origin.hasMetaAttr(MetaOrigin.ATTR_OF, false)
+            ? origin.getMetaAttr(MetaOrigin.ATTR_OF, false).getValueAsString() : null;
+        if (of != null && of.lastIndexOf('.') > 0) {
+            return resolveRootObject(root, of.substring(0, of.lastIndexOf('.')), referrerPkg);
+        }
+        String via = origin.hasMetaAttr(MetaOrigin.ATTR_VIA, false)
+            ? origin.getMetaAttr(MetaOrigin.ATTR_VIA, false).getValueAsString() : null;
+        if (via == null) return null;
+        String[] parts = via.split("\\.");
+        MetaObject current = resolveRootObject(root, parts[0], referrerPkg);
+        for (int i = 1; i < parts.length && current != null; i++) {
+            MetaRelationship rel = findRelationship(current, parts[i]);
+            MetaData hop = rel != null ? rel : findReference(current, parts[i]);
+            if (hop != null) {
+                current = References.refTarget(hop,
+                    isReferenceHop(hop) ? MetaIdentity.ATTR_REFERENCES : MetaRelationship.ATTR_OBJECT_REF);
+            } else {
+                java.util.List<ReverseReferenceHops.Hop> reversed =
+                    ReverseReferenceHops.find(current, parts[i], rootObjects(root));
+                current = reversed.isEmpty() ? null : reversed.get(0).holder();
+            }
+        }
+        return current;
+    }
+
+    private static void checkCorrelatedOperands(Object filter, MetaObject base, String where,
+                                                com.metaobjects.source.ErrorSource source) {
+        if (!(filter instanceof java.util.Map<?, ?> m)) return;
+        for (java.util.Map.Entry<?, ?> e : m.entrySet()) {
+            String key = String.valueOf(e.getKey());
+            if ("and".equals(key) || "or".equals(key)) {
+                if (e.getValue() instanceof Iterable<?> subs) {
+                    for (Object sub : subs) checkCorrelatedOperands(sub, base, where, source);
+                }
+                continue;
+            }
+            if (!(e.getValue() instanceof java.util.Map<?, ?> clause)) continue;
+            for (java.util.Map.Entry<?, ?> opEntry : clause.entrySet()) {
+                String op = String.valueOf(opEntry.getKey());
+                Object value = opEntry.getValue();
+                boolean isOperand = value instanceof java.util.Map<?, ?> vm && vm.containsKey(MetaOrigin.FILTER_OPERAND_FIELD);
+                boolean nullSafe = MetaOrigin.FILTER_OP_IS_DISTINCT_FROM.equals(op)
+                    || MetaOrigin.FILTER_OP_IS_NOT_DISTINCT_FROM.equals(op);
+                if (!isOperand) {
+                    if (nullSafe) {
+                        throw new MetaDataException(
+                            ErrorMessageConstants.ERR_BAD_ATTR_FILTER + ": " + where + ": @filter on \"" + key
+                                + "\" uses \"" + op + "\", which compares with a base-row field: write { " + op + ": { "
+                                + MetaOrigin.FILTER_OPERAND_FIELD + ": \"<base field>\" } }.",
+                            ErrorCode.ERR_BAD_ATTR_FILTER, source);
+                    }
+                    continue;
+                }
+                Object name = ((java.util.Map<?, ?>) value).get(MetaOrigin.FILTER_OPERAND_FIELD);
+                if (!MetaOrigin.CORRELATED_FILTER_OPS.contains(op)) {
+                    throw new MetaDataException(
+                        ErrorMessageConstants.ERR_BAD_ATTR_FILTER + ": " + where + ": @filter on \"" + key
+                            + "\" compares with a base-row field using \"" + op + "\"; a correlated operand takes "
+                            + String.join(", ", MetaOrigin.CORRELATED_FILTER_OPS) + ".",
+                        ErrorCode.ERR_BAD_ATTR_FILTER, source);
+                }
+                boolean known = false;
+                if (name instanceof String) {
+                    for (MetaField<?> f : base.getChildren(MetaField.class, true)) {
+                        if (name.equals(f.getShortName())) { known = true; break; }
+                    }
+                }
+                if (!known) {
+                    throw new MetaDataException(
+                        ErrorMessageConstants.ERR_BAD_ATTR_FILTER + ": " + where + ": @filter on \"" + key
+                            + "\" names base-row field \"" + name + "\", which \"" + base.getShortName()
+                            + "\" does not declare.",
+                        ErrorCode.ERR_BAD_ATTR_FILTER, source);
+                }
+            }
+        }
+    }
+
+
     private static void checkProjectionFilterRefs(MetaObject obj, java.util.Map<?, ?> filter,
                                                   java.util.Set<String> declared,
                                                   java.util.Set<String> aggregateDerived) {
@@ -4586,7 +4725,7 @@ public final class ValidationPhase {
      * mirrors the TS {@code WalkedViaPath}.
      */
     private record WalkedViaPath(java.util.List<MetaData> hops, MetaObject terminal,
-                                 java.util.Set<MetaData> reverse) { }
+                                 java.util.Map<MetaData, String> reverse) { }
 
     private static WalkedViaPath validateViaPath(String viaAttr, MetaRoot root,
                                         MetaObject projection, String fieldName,
@@ -4626,7 +4765,8 @@ public final class ValidationPhase {
         // each successful relationship hop appends a segment.
         java.util.List<String> validSegments = new java.util.ArrayList<>();
         validSegments.add(entityName);
-        java.util.Set<MetaData> reverse = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+        // The references walked BACKWARDS, each keyed to the hop name the path wrote.
+        java.util.Map<MetaData, String> reverse = new java.util.IdentityHashMap<>();
         for (int i = 1; i < segments.length; i++) {
             String relName = segments[i];
             // FR-024: a hop may name a relationship OR a reference-only FK
@@ -4643,7 +4783,7 @@ public final class ValidationPhase {
                 if (reversed.size() == 1) {
                     validSegments.add(relName);
                     hops.add(reversed.get(0).reference());
-                    reverse.add(reversed.get(0).reference());
+                    reverse.put(reversed.get(0).reference(), relName);
                     currentObj = reversed.get(0).holder();
                     continue;
                 }
@@ -4906,8 +5046,8 @@ public final class ValidationPhase {
 
     /** As {@link #hopCardinality(MetaData)}; a reference in {@code reverse} was walked backwards,
      *  so it reaches every row that references the walked-from one: to-many. */
-    private static String hopCardinality(MetaData rel, java.util.Set<MetaData> reverse) {
-        if (reverse != null && reverse.contains(rel)) return MetaRelationship.CARDINALITY_MANY;
+    private static String hopCardinality(MetaData rel, java.util.Map<MetaData, String> reverse) {
+        if (reverse != null && reverse.containsKey(rel)) return MetaRelationship.CARDINALITY_MANY;
         if (isReferenceHop(rel)) return MetaRelationship.CARDINALITY_ONE;
         return rel.hasMetaAttr(MetaRelationship.ATTR_CARDINALITY)
             ? rel.getMetaAttr(MetaRelationship.ATTR_CARDINALITY).getValueAsString()
@@ -4995,6 +5135,17 @@ public final class ValidationPhase {
             ErrorCode.ERR_INVALID_ORIGIN, originSource);
     }
 
+    /** {@link #deriveBaseEntity}, silent: {@code null} when no base can be derived (the origin
+     *  passes report why). */
+    private static MetaObject deriveBaseEntityOrNull(MetaObject obj, MetaRoot root, String fieldName,
+                                                     com.metaobjects.source.ErrorSource originSource) {
+        try {
+            return deriveBaseEntity(obj, root, fieldName, originSource);
+        } catch (MetaDataException e) {
+            return null;
+        }
+    }
+
     /** True when {@code target} is {@code base} or {@code host}, or on either's extends chain. */
     private static boolean isBaseRelationTarget(MetaObject target, MetaObject base, MetaObject host) {
         for (MetaData cur = base; cur != null; cur = cur.getSuperData()) if (cur == target) return true;
@@ -5049,16 +5200,18 @@ public final class ValidationPhase {
 
     private static void checkPassthroughCardinality(java.util.List<MetaData> hops,
             MetaObject obj, String fieldName, com.metaobjects.source.ErrorSource originSource,
-            java.util.Set<MetaData> reverse) {
+            java.util.Map<MetaData, String> reverse) {
         for (MetaData rel : hops) {
             if (MetaRelationship.CARDINALITY_MANY.equals(hopCardinality(rel, reverse))) {
+                boolean reversed = reverse != null && reverse.containsKey(rel);
                 throw new MetaDataException(
                     "ERR_ORIGIN_CARDINALITY"
-                        + ": origin.passthrough on " + obj.getName() + "." + fieldName
-                        + ": @via hop \"" + rel.getName() + "\" is to-many"
-                        + (reverse != null && reverse.contains(rel)
-                            ? " (reverse hop over identity.reference \"" + rel.getName() + "\")" : "")
-                        + " — you meant aggregate (ADR-0029).",
+                        + ": origin.passthrough on " + obj.getShortName() + "." + fieldName
+                        + ": @via hop \"" + (reversed ? reverse.get(rel) : rel.getShortName()) + "\" is to-many "
+                        + (reversed
+                            ? "(reverse hop over identity.reference \"" + rel.getShortName() + "\")"
+                            : "(@cardinality \"" + MetaRelationship.CARDINALITY_MANY + "\")")
+                        + " — a row-multiplying passthrough — you meant aggregate (ADR-0029).",
                     ErrorCode.ERR_ORIGIN_CARDINALITY, originSource);
             }
         }
@@ -5072,7 +5225,7 @@ public final class ValidationPhase {
 
     private static void checkAggregateCardinality(java.util.List<MetaData> hops,
             MetaObject obj, String fieldName, com.metaobjects.source.ErrorSource originSource,
-            java.util.Set<MetaData> reverse) {
+            java.util.Map<MetaData, String> reverse) {
         if (hops.isEmpty()) return;
         boolean provablyToOne = true;
         for (MetaData rel : hops) {

@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import math
 import re
+from collections.abc import Mapping
 from typing import Any, Callable, NamedTuple
 
 from ..errors import ErrorCode, MetaError
@@ -95,6 +96,7 @@ from ..shared.base_types import (
     TYPE_OBJECT,
     TYPE_ORIGIN,
     TYPE_RELATIONSHIP,
+    TYPE_SEGMENT,
     TYPE_REQUIREMENT,
     TYPE_SOURCE,
     TYPE_TEMPLATE,
@@ -118,6 +120,11 @@ from ..meta.persistence.origin.origin_constants import (
     ORIGIN_ATTR_EXPR,
     ORIGIN_ATTR_FILTER,
     ORIGIN_ATTR_FROM,
+    ORIGIN_ATTR_SEGMENT,
+    CORRELATED_FILTER_OPS,
+    FILTER_OP_IS_DISTINCT_FROM,
+    FILTER_OP_IS_NOT_DISTINCT_FROM,
+    FILTER_OPERAND_FIELD,
     ORIGIN_ATTR_OF,
     ORIGIN_ATTR_ORDER_BY,
     ORIGIN_ATTR_VIA,
@@ -218,6 +225,9 @@ def run_validations(
     _validate_datagrid_filter_values(root, errors)
     # #207 — object.projection view-level @filter reference validation.
     _validate_projection_filter(root, errors)
+    # Origin @segment names a segment of the related entity; a correlated @filter operand names
+    # a base-row field.
+    _validate_origin_segments_and_correlation(root, errors)
     # FR-044 — the reporting vocabulary (dimension / measure / segment /
     # object.report) and relative-date filter values (rules D1-F2).
     validate_reporting(root, errors)
@@ -1528,6 +1538,104 @@ def _check_datagrid_filter_clauses(
 # origin.* never inherits (ADR-0029/0039), mirroring the TS ownAttr/ownChildren.
 
 
+def _validate_origin_segments_and_correlation(root: MetaData, errors: list[MetaError]) -> None:
+    """Origin segments and correlated filters, on every origin.first / origin.aggregate:
+
+    * ``@segment`` names a segment.filter declared on the related entity (the ``@of`` entity,
+      else the ``@via`` terminal) — ERR_INVALID_ORIGIN otherwise;
+    * an ``@filter`` operand ``{ field: "<name>" }`` names a field of the base row (the
+      projection's base entity, or the entity hosting the field), with an op that compares two
+      columns; the null-safe ops take only such an operand — ERR_BAD_ATTR_FILTER otherwise.
+
+    Mirrors the TS ``validateOriginSegmentsAndCorrelation``.
+    """
+    for obj in root.own_children():
+        if obj.type != TYPE_OBJECT or obj.sub_type not in (OBJECT_SUBTYPE_PROJECTION, OBJECT_SUBTYPE_ENTITY):
+            continue
+        pkg = obj.package or ""
+        # ADR-0039 sanctioned own: origin.* never inherits; each is judged where declared.
+        for field in (c for c in obj.own_children() if c.type == TYPE_FIELD):
+            for origin in field.own_children():
+                if origin.type != TYPE_ORIGIN or origin.sub_type not in (
+                    ORIGIN_SUBTYPE_FIRST, ORIGIN_SUBTYPE_AGGREGATE
+                ):
+                    continue
+                where = f"origin.{origin.sub_type} on {obj.name}.{field.name}"
+                segment = origin.attr(ORIGIN_ATTR_SEGMENT)
+                if isinstance(segment, str):
+                    related = _origin_related_entity(origin, root, pkg)
+                    if related is not None and not any(
+                        # ADR-0039: resolving — a segment may be inherited through extends.
+                        c.type == TYPE_SEGMENT and c.name == segment for c in related.children()
+                    ):
+                        errors.append(MetaError(
+                            f'{where}: @segment "{segment}" is not a segment declared on '
+                            f'"{related.name}", the entity whose rows it scopes.',
+                            ErrorCode.ERR_INVALID_ORIGIN, envelope=origin.source))
+                filter_value = origin.attr(ORIGIN_ATTR_FILTER)
+                if filter_value is None:
+                    continue
+                base = _derive_base_entity(obj, root, pkg, field.name, origin.source, [])
+                if base is not None:
+                    _check_correlated_operands(filter_value, base, where, origin.source, errors)
+
+
+def _origin_related_entity(origin: MetaData, root: MetaData, pkg: str) -> MetaData | None:
+    """The entity an origin.first / origin.aggregate spans: its ``@of`` entity, else its ``@via``
+    terminal. ``None`` when neither resolves (the origin pass reports why)."""
+    of_ref = origin.attr(ORIGIN_ATTR_OF)
+    if isinstance(of_ref, str):
+        target = _validate_entity_field_ref(of_ref, ORIGIN_ATTR_OF, "", root, pkg, [], origin, "")
+        if target is not None:
+            return target[0]
+    via = origin.attr(ORIGIN_ATTR_VIA)
+    if isinstance(via, str):
+        walked = _validate_via_path(via, "", root, pkg, [], origin, "")
+        if walked is not None:
+            return walked.terminal
+    return None
+
+
+def _check_correlated_operands(
+    filter_value: object, base: MetaData, where: str, source: object, errors: list[MetaError]
+) -> None:
+    if not isinstance(filter_value, dict):
+        return
+    for key, clause in filter_value.items():
+        if key in (_FILTER_COMPOSE_AND, _FILTER_COMPOSE_OR):
+            if isinstance(clause, list):
+                for sub in clause:
+                    _check_correlated_operands(sub, base, where, source, errors)
+            continue
+        if not isinstance(clause, dict):
+            continue
+        for op, value in clause.items():
+            is_operand = isinstance(value, dict) and FILTER_OPERAND_FIELD in value
+            null_safe = op in (FILTER_OP_IS_DISTINCT_FROM, FILTER_OP_IS_NOT_DISTINCT_FROM)
+            if not is_operand:
+                if null_safe:
+                    errors.append(MetaError(
+                        f'{where}: @filter on "{key}" uses "{op}", which compares with a base-row field: '
+                        f'write {{ {op}: {{ {FILTER_OPERAND_FIELD}: "<base field>" }} }}.',
+                        ErrorCode.ERR_BAD_ATTR_FILTER, envelope=source))
+                continue
+            name = value[FILTER_OPERAND_FIELD]
+            if op not in CORRELATED_FILTER_OPS:
+                errors.append(MetaError(
+                    f'{where}: @filter on "{key}" compares with a base-row field using "{op}"; a '
+                    f"correlated operand takes {', '.join(CORRELATED_FILTER_OPS)}.",
+                    ErrorCode.ERR_BAD_ATTR_FILTER, envelope=source))
+                continue
+            # ADR-0039: resolving — a base field may be inherited.
+            if not (isinstance(name, str) and any(
+                c.type == TYPE_FIELD and c.name == name for c in base.children()
+            )):
+                errors.append(MetaError(
+                    f'{where}: @filter on "{key}" names base-row field "{name}", which "{base.name}" '
+                    f"does not declare.",
+                    ErrorCode.ERR_BAD_ATTR_FILTER, envelope=source))
+
+
 def _validate_projection_filter(
     root: MetaData,
     errors: list[MetaError],
@@ -1789,8 +1897,9 @@ class WalkedViaPath(NamedTuple):
 
     hops: list[MetaData]
     terminal: MetaData
-    #: ids of the hops that walk an identity.reference backwards (to-many by construction).
-    reverse: frozenset[int] = frozenset()
+    #: ids of the hops that walk an identity.reference backwards (to-many by construction),
+    #: each mapped to the hop name the path wrote.
+    reverse: Mapping[int, str] | None = None
 
 
 def _validate_via_path(
@@ -1850,7 +1959,7 @@ def _validate_via_path(
     # resolve so authors can fix multi-hop typos quickly.
     valid_segments: list[str] = [current_name]
     hops: list[MetaData] = []
-    reverse: set[int] = set()
+    reverse: dict[int, str] = {}
     for rel_name in segments[1:]:
         rels = _relationships_by_name(current_entity)
         # FR-024: a hop may name a relationship OR a reference-only FK
@@ -1866,7 +1975,7 @@ def _validate_via_path(
                 holder, ref = reversed_hops[0]
                 valid_segments.append(rel_name)
                 hops.append(ref)
-                reverse.add(id(ref))
+                reverse[id(ref)] = rel_name
                 current_entity = holder
                 continue
             if len(reversed_hops) > 1:
@@ -1935,7 +2044,7 @@ def _validate_via_path(
         current_entity = next_entity
 
     # current_entity is the terminal: every earlier exit returned None.
-    return WalkedViaPath(hops, current_entity, frozenset(reverse))
+    return WalkedViaPath(hops, current_entity, reverse)
 
 
 # ---------------------------------------------------------------------------
@@ -1945,11 +2054,11 @@ def _validate_via_path(
 # ---------------------------------------------------------------------------
 
 
-def _hop_cardinality(rel: MetaData, reverse: frozenset[int] = frozenset()) -> str | None:
+def _hop_cardinality(rel: MetaData, reverse: Mapping[int, str] | None = None) -> str | None:
     """A hop's effective @cardinality, or None when not declared. A reference hop
     (a forward FK) is inherently to-one — a child names the parent it points at; walked
     backwards (in *reverse*) it is to-many."""
-    if id(rel) in reverse:
+    if reverse and id(rel) in reverse:
         return CARDINALITY_MANY
     if _is_reference_hop(rel):
         return CARDINALITY_ONE
@@ -2126,10 +2235,11 @@ def _infer_via_single_hop(
 
 def _check_passthrough_cardinality(
     hops: list[MetaData],
+    obj: MetaData,
     field_name: str,
     origin_source: object,
     errors: list[MetaError],
-    reverse: frozenset[int] = frozenset(),
+    reverse: Mapping[int, str] | None = None,
 ) -> None:
     """ADR-0029 decision 6 — a passthrough via-path must be effectively to-one at
     EVERY hop. A hop is to-many only when it DECLARES @cardinality "many"."""
@@ -2137,10 +2247,11 @@ def _check_passthrough_cardinality(
         if _hop_cardinality(rel, reverse) == CARDINALITY_MANY:
             errors.append(
                 MetaError(
-                    f"origin.passthrough on {field_name}: @via hop '{rel.name}' is to-many "
+                    f'origin.passthrough on {obj.name}.{field_name}: @via hop '
+                    f'"{reverse[id(rel)] if reverse and id(rel) in reverse else rel.name}" is to-many '
                     + (
                         f'(reverse hop over identity.reference "{rel.name}")'
-                        if id(rel) in reverse
+                        if reverse and id(rel) in reverse
                         else f'(@cardinality "{CARDINALITY_MANY}")'
                     )
                     + " — a row-multiplying passthrough — you meant aggregate (ADR-0029).",
@@ -2156,7 +2267,7 @@ def _check_aggregate_cardinality(
     field_name: str,
     origin_source: object,
     errors: list[MetaError],
-    reverse: frozenset[int] = frozenset(),
+    reverse: Mapping[int, str] | None = None,
 ) -> None:
     """ADR-0029 decision 6 — an aggregate via-path must contain at least one
     to-many hop. Conservative: fires only when PROVABLY to-one (every hop
@@ -2457,7 +2568,7 @@ def _validate_origin_paths(
                     walked = _validate_via_path(via, ctx, root, host_pkg, errors, origin, referrer)
                     if walked is not None:
                         _check_passthrough_cardinality(
-                            walked.hops, node.name, origin.source, errors, walked.reverse
+                            walked.hops, obj, node.name, origin.source, errors, walked.reverse
                         )
                 elif from_target is not None and not is_value_host:
                     # FR-024 §6 — no @via: derive the base entity; a @from on the
@@ -2475,7 +2586,7 @@ def _validate_origin_paths(
                         )
                         if hops is not None:
                             _check_passthrough_cardinality(
-                                hops, node.name, origin.source, errors
+                                hops, obj, node.name, origin.source, errors
                             )
 
             elif origin.sub_type == ORIGIN_SUBTYPE_AGGREGATE:
