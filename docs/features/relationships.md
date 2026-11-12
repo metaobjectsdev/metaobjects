@@ -173,10 +173,12 @@ reverse-engineered model can `@via` its reference directly:
 ```
 
 A reference hop is inherently **to-one** (a child names the parent it points at), so it
-is valid in a `passthrough` and rejected in an `aggregate`. Inverse navigation
-(parent → many children) still needs a `relationship.composition` on the parent — a bare
-FK has no inverse edge. Explicit `@via` resolves either kind; single-hop-unique
-inference stays relationship-only.
+is valid in a `passthrough` and rejected in an `aggregate`. An origin `@via` hop may
+also walk an `identity.reference` **backwards** (parent → many children), named by the
+holder's collection name in lowerCamel (`Patient.consents`). A reverse hop is to-many, so
+it is valid in an `aggregate` and rejected in a `passthrough` (`ERR_ORIGIN_CARDINALITY`);
+two candidate holders give `ERR_AMBIGUOUS_PATH`, and a declared relationship or reference
+of the same name wins. Single-hop-unique inference stays relationship-only.
 
 ## When one entity has two references to the same target
 

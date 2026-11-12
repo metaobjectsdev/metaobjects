@@ -1,0 +1,17 @@
+{
+  "errors": [
+    {
+      "code": "ERR_AMBIGUOUS_PATH",
+      "source": {
+        "format": "resolved",
+        "files": [
+          "meta.care.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[2]['object.projection'].children[2]['field.int'].children[0]['origin.aggregate']",
+        "referrer": "PatientConsentSummary::consentCount",
+        "target": "acme::care::Patient.consents"
+      }
+    }
+  ],
+  "warnings": []
+}

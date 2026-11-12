@@ -2906,9 +2906,9 @@ public final class ValidationPhase {
             checkPassthroughType(field, fromTarget.field, from, origin.isConvert(), obj, origin.getSource());
             String via = origin.getVia();
             if (via != null && !via.isEmpty()) {
-                java.util.List<MetaData> hops =
-                    validateViaPath(via, root, obj, field.getName(), origin.getSource()).hops();
-                checkPassthroughCardinality(hops, obj, field.getName(), origin.getSource());
+                WalkedViaPath walked =
+                    validateViaPath(via, root, obj, field.getName(), origin.getSource());
+                checkPassthroughCardinality(walked.hops(), obj, field.getName(), origin.getSource(), walked.reverse());
             } else if (!isValueHost) {
                 // FR-024 §6 — no @via: derive the base entity; a @from targeting the
                 // base relation itself is a plain base column; else infer single-hop.
@@ -3022,9 +3022,9 @@ public final class ValidationPhase {
                             + ": requires an explicit @via (a quantifier has no @of to infer the path from).",
                         ErrorCode.ERR_INVALID_ORIGIN, src);
                 }
-                java.util.List<MetaData> hops =
-                    validateViaPath(via, root, obj, field.getName(), src).hops();
-                checkAggregateCardinality(hops, obj, field.getName(), src);
+                WalkedViaPath walked =
+                    validateViaPath(via, root, obj, field.getName(), src);
+                checkAggregateCardinality(walked.hops(), obj, field.getName(), src, walked.reverse());
                 return;
             }
 
@@ -3102,7 +3102,7 @@ public final class ValidationPhase {
                 // validateViaPath with its own error, so nothing downstream runs and no
                 // second, misleadingly-scoped error is produced.
                 WalkedViaPath woWalked = validateViaPath(woVia, root, obj, field.getName(), src);
-                checkAggregateCardinality(woWalked.hops(), obj, field.getName(), src);
+                checkAggregateCardinality(woWalked.hops(), obj, field.getName(), src, woWalked.reverse());
                 // @orderBy keys resolve against the @via TERMINAL entity, not @of.
                 validateOrderByKeys(originOrderBy(origin), woWalked.terminal(), obj, field.getName(),
                     "origin.aggregate @agg:collect", src,
@@ -3133,9 +3133,9 @@ public final class ValidationPhase {
 
             String via = origin.getVia();
             if (via != null && !via.isEmpty()) {
-                java.util.List<MetaData> hops =
-                    validateViaPath(via, root, obj, field.getName(), src).hops();
-                checkAggregateCardinality(hops, obj, field.getName(), src);
+                WalkedViaPath walked =
+                    validateViaPath(via, root, obj, field.getName(), src);
+                checkAggregateCardinality(walked.hops(), obj, field.getName(), src, walked.reverse());
                 return;
             }
             // FR-024 §6 — no @via on an aggregate: inference applies only when @of
@@ -3242,9 +3242,9 @@ public final class ValidationPhase {
             // @via — explicit (validated + cardinality) or single-hop-unique inferred.
             String via = origin.getVia();
             if (via != null && !via.isEmpty()) {
-                java.util.List<MetaData> hops =
-                    validateViaPath(via, root, obj, field.getName(), src).hops();
-                checkAggregateCardinality(hops, obj, field.getName(), src);
+                WalkedViaPath walked =
+                    validateViaPath(via, root, obj, field.getName(), src);
+                checkAggregateCardinality(walked.hops(), obj, field.getName(), src, walked.reverse());
             } else {
                 // (A value host never reaches here — the #210 assembly-origin
                 // check above already rejected origin.first on a value.)
@@ -4040,7 +4040,7 @@ public final class ValidationPhase {
      * boolean-true. Reads only the own attribute (not effective) — matches the
      * own-only validation contract used throughout this class.
      */
-    private static boolean isAbstract(MetaData node) {
+    static boolean isAbstract(MetaData node) {
         if (!node.hasMetaAttr(MetaData.ATTR_IS_ABSTRACT, false)) {
             return false;
         }
@@ -4454,7 +4454,8 @@ public final class ValidationPhase {
      * because a second walk means a second copy of the ADR-0042 package-resolution rule —
      * mirrors the TS {@code WalkedViaPath}.
      */
-    private record WalkedViaPath(java.util.List<MetaData> hops, MetaObject terminal) { }
+    private record WalkedViaPath(java.util.List<MetaData> hops, MetaObject terminal,
+                                 java.util.Set<MetaData> reverse) { }
 
     private static WalkedViaPath validateViaPath(String viaAttr, MetaRoot root,
                                         MetaObject projection, String fieldName,
@@ -4494,6 +4495,7 @@ public final class ValidationPhase {
         // each successful relationship hop appends a segment.
         java.util.List<String> validSegments = new java.util.ArrayList<>();
         validSegments.add(entityName);
+        java.util.Set<MetaData> reverse = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
         for (int i = 1; i < segments.length; i++) {
             String relName = segments[i];
             // FR-024: a hop may name a relationship OR a reference-only FK
@@ -4501,6 +4503,34 @@ public final class ValidationPhase {
             MetaRelationship rel = findRelationship(currentObj, relName);
             MetaData hop = (rel != null) ? rel : findReference(currentObj, relName);
             if (hop == null) {
+                // A hop may walk an identity.reference BACKWARDS, from the entity it targets to
+                // the entity that declares it, named by that entity's collection name
+                // (`Patient.consents` for Consent.patient). A declared relationship or reference
+                // of the same name wins (above).
+                java.util.List<ReverseReferenceHops.Hop> reversed =
+                    ReverseReferenceHops.find(currentObj, relName, rootObjects(root));
+                if (reversed.size() == 1) {
+                    validSegments.add(relName);
+                    hops.add(reversed.get(0).reference());
+                    reverse.add(reversed.get(0).reference());
+                    currentObj = reversed.get(0).holder();
+                    continue;
+                }
+                if (reversed.size() > 1) {
+                    StringBuilder names = new StringBuilder();
+                    for (ReverseReferenceHops.Hop r : reversed) {
+                        if (names.length() > 0) names.append(", ");
+                        names.append('"').append(r.reference().getShortName()).append('"');
+                    }
+                    throw new MetaDataException(
+                        "ERR_AMBIGUOUS_PATH: origin.@via \"" + viaAttr + "\" on "
+                            + projectionName + "." + fieldName + ": the reverse hop \"" + relName + "\" from "
+                            + currentObj.getName() + " matches " + reversed.size()
+                            + " identity.reference nodes onto it (" + names + ") — ambiguous. Declare a relationship on "
+                            + currentObj.getName() + " for this hop, or keep one reference.",
+                        ErrorCode.ERR_AMBIGUOUS_PATH,
+                        ResolvedSource.from(envelope, referrer, viaAttr));
+                }
                 String prefix = String.join(".", validSegments);
                 throw new MetaDataException(
                     ErrorMessageConstants.ERR_INVALID_ORIGIN
@@ -4551,12 +4581,19 @@ public final class ValidationPhase {
             currentObj = nextObj;
         }
         // currentObj is the terminal: every earlier exit threw.
-        return new WalkedViaPath(hops, currentObj);
+        return new WalkedViaPath(hops, currentObj, reverse);
     }
 
     // =========================================================================
     // ADR-0042 — package-local object-reference resolution.
     // =========================================================================
+
+    /** Every root-level object, in declaration order. */
+    private static java.util.List<MetaObject> rootObjects(MetaRoot root) {
+        java.util.List<MetaObject> out = new java.util.ArrayList<>();
+        for (MetaData c : root.getChildren(MetaData.class, false)) if (c instanceof MetaObject) out.add((MetaObject) c);
+        return out;
+    }
 
     /**
      * ADR-0042 — resolve a metadata OBJECT reference to a top-level {@link MetaObject}
@@ -4733,6 +4770,13 @@ public final class ValidationPhase {
      *  read the RAW own attr rather than {@link MetaRelationship#getCardinality()}
      *  (which defaults to "one"). */
     private static String hopCardinality(MetaData rel) {
+        return hopCardinality(rel, null);
+    }
+
+    /** As {@link #hopCardinality(MetaData)}; a reference in {@code reverse} was walked backwards,
+     *  so it reaches every row that references the walked-from one: to-many. */
+    private static String hopCardinality(MetaData rel, java.util.Set<MetaData> reverse) {
+        if (reverse != null && reverse.contains(rel)) return MetaRelationship.CARDINALITY_MANY;
         if (isReferenceHop(rel)) return MetaRelationship.CARDINALITY_ONE;
         return rel.hasMetaAttr(MetaRelationship.ATTR_CARDINALITY)
             ? rel.getMetaAttr(MetaRelationship.ATTR_CARDINALITY).getValueAsString()
@@ -4869,12 +4913,21 @@ public final class ValidationPhase {
     /** ADR-0029 dec 6 — a passthrough via-path must be to-one at every hop. */
     private static void checkPassthroughCardinality(java.util.List<MetaData> hops,
             MetaObject obj, String fieldName, com.metaobjects.source.ErrorSource originSource) {
+        checkPassthroughCardinality(hops, obj, fieldName, originSource, null);
+    }
+
+    private static void checkPassthroughCardinality(java.util.List<MetaData> hops,
+            MetaObject obj, String fieldName, com.metaobjects.source.ErrorSource originSource,
+            java.util.Set<MetaData> reverse) {
         for (MetaData rel : hops) {
-            if (MetaRelationship.CARDINALITY_MANY.equals(hopCardinality(rel))) {
+            if (MetaRelationship.CARDINALITY_MANY.equals(hopCardinality(rel, reverse))) {
                 throw new MetaDataException(
                     "ERR_ORIGIN_CARDINALITY"
                         + ": origin.passthrough on " + obj.getName() + "." + fieldName
-                        + ": @via hop \"" + rel.getName() + "\" is to-many — you meant aggregate (ADR-0029).",
+                        + ": @via hop \"" + rel.getName() + "\" is to-many"
+                        + (reverse != null && reverse.contains(rel)
+                            ? " (reverse hop over identity.reference \"" + rel.getName() + "\")" : "")
+                        + " — you meant aggregate (ADR-0029).",
                     ErrorCode.ERR_ORIGIN_CARDINALITY, originSource);
             }
         }
@@ -4883,10 +4936,16 @@ public final class ValidationPhase {
     /** ADR-0029 dec 6 — an aggregate via-path must have ≥1 to-many hop (conservative). */
     private static void checkAggregateCardinality(java.util.List<MetaData> hops,
             MetaObject obj, String fieldName, com.metaobjects.source.ErrorSource originSource) {
+        checkAggregateCardinality(hops, obj, fieldName, originSource, null);
+    }
+
+    private static void checkAggregateCardinality(java.util.List<MetaData> hops,
+            MetaObject obj, String fieldName, com.metaobjects.source.ErrorSource originSource,
+            java.util.Set<MetaData> reverse) {
         if (hops.isEmpty()) return;
         boolean provablyToOne = true;
         for (MetaData rel : hops) {
-            if (!MetaRelationship.CARDINALITY_ONE.equals(hopCardinality(rel))) { provablyToOne = false; break; }
+            if (!MetaRelationship.CARDINALITY_ONE.equals(hopCardinality(rel, reverse))) { provablyToOne = false; break; }
         }
         if (provablyToOne) {
             throw new MetaDataException(

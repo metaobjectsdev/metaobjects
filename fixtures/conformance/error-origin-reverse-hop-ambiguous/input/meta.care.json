@@ -1,0 +1,121 @@
+{
+  "metadata.root": {
+    "package": "acme::care",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Patient",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "patients"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Consent",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "consents"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "patientId"
+              }
+            },
+            {
+              "field.boolean": {
+                "name": "onFile"
+              }
+            },
+            {
+              "field.long": {
+                "name": "witnessId"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "patient",
+                "@fields": "patientId",
+                "@references": "acme::care::Patient"
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "witness",
+                "@fields": "witnessId",
+                "@references": "acme::care::Patient"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "PatientConsentSummary",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_patient_consent_summary"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id",
+                "extends": "acme::care::Patient.id"
+              }
+            },
+            {
+              "field.int": {
+                "name": "consentCount",
+                "children": [
+                  {
+                    "origin.aggregate": {
+                      "@agg": "count",
+                      "@of": "acme::care::Consent.id",
+                      "@via": "acme::care::Patient.consents"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "extends": "acme::care::Patient.id"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

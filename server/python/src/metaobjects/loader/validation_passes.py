@@ -65,6 +65,7 @@ from ..meta.persistence.db.db_constants import (
     FIELD_ATTR_DB_COLUMN_TYPE,
     VALID_DB_COLUMN_TYPES,
 )
+from ..meta.core.object.collection_names import collection_name_of
 from ..meta.core.object.meta_object import MetaObject
 from ..meta.core.relationship.meta_relationship import MetaRelationship
 from ..meta.meta_data import MetaData
@@ -1527,6 +1528,37 @@ def _find_reference(obj: MetaObject, name: str) -> MetaData | None:
     return None
 
 
+def _reverse_hop_name(holder: MetaData) -> str:
+    """The name a ``@via`` hop takes when it walks an identity.reference BACKWARDS, from the
+    referenced entity to the one that declares it: lowerFirst of the holder's collection name
+    (``consents`` for ``Consent``, so ``Patient.consents`` walks Consent.patient backwards)."""
+    plural = collection_name_of(holder)
+    return plural[:1].lower() + plural[1:]
+
+
+def _find_reverse_reference_hops(
+    target: MetaData, hop_name: str, root: MetaData
+) -> list[tuple[MetaData, MetaData]]:
+    """Every (holder, identity.reference) where a concrete root object whose reverse hop name is
+    *hop_name* declares a reference onto *target*. One is the hop; none means the hop is not a
+    reverse; more than one is ambiguous. A declared relationship or reference of the same name on
+    *target* always wins; callers look those up first. Mirrors TS ``findReverseReferenceHops``."""
+    found: list[tuple[MetaData, MetaData]] = []
+    for holder in root.children():
+        if holder.type != TYPE_OBJECT or holder.is_abstract or _reverse_hop_name(holder) != hop_name:
+            continue
+        # ADR-0039: resolving — an inherited reference counts.
+        for ref in holder.children():
+            if (
+                ref.type == TYPE_IDENTITY
+                and ref.sub_type == IDENTITY_SUBTYPE_REFERENCE
+                # Compare the bound target, never a short name.
+                and bound_ref_target(ref, IDENTITY_REFERENCE_ATTR_REFERENCES) is target
+            ):
+                found.append((holder, ref))
+    return found
+
+
 def _is_reference_hop(hop: MetaData) -> bool:
     """True for an ``identity.reference`` node (a ``@via`` reference hop)."""
     return hop.type == TYPE_IDENTITY and hop.sub_type == IDENTITY_SUBTYPE_REFERENCE
@@ -1612,6 +1644,8 @@ class WalkedViaPath(NamedTuple):
 
     hops: list[MetaData]
     terminal: MetaData
+    #: ids of the hops that walk an identity.reference backwards (to-many by construction).
+    reverse: frozenset[int] = frozenset()
 
 
 def _validate_via_path(
@@ -1671,12 +1705,37 @@ def _validate_via_path(
     # resolve so authors can fix multi-hop typos quickly.
     valid_segments: list[str] = [current_name]
     hops: list[MetaData] = []
+    reverse: set[int] = set()
     for rel_name in segments[1:]:
         rels = _relationships_by_name(current_entity)
         # FR-024: a hop may name a relationship OR a reference-only FK
         # (identity.reference) — the reference IS a navigable many-to-one edge.
         rel_node = rels.get(rel_name) or _find_reference(current_entity, rel_name)
         if rel_node is None:
+            # A hop may walk an identity.reference BACKWARDS, from the entity it targets to the
+            # entity that declares it, named by that entity's collection name
+            # (``Patient.consents`` for Consent.patient). A declared relationship or reference of
+            # the same name wins (above).
+            reversed_hops = _find_reverse_reference_hops(current_entity, rel_name, root)
+            if len(reversed_hops) == 1:
+                holder, ref = reversed_hops[0]
+                valid_segments.append(rel_name)
+                hops.append(ref)
+                reverse.add(id(ref))
+                current_entity = holder
+                continue
+            if len(reversed_hops) > 1:
+                names = ", ".join(f'"{r.name}"' for _, r in reversed_hops)
+                errors.append(
+                    MetaError(
+                        f'{context} @via=\'{via}\' — the reverse hop "{rel_name}" from {current_entity.name} '
+                        f"matches {len(reversed_hops)} identity.reference nodes onto it ({names}) — ambiguous. "
+                        f"Declare a relationship on {current_entity.name} for this hop, or keep one reference.",
+                        ErrorCode.ERR_AMBIGUOUS_PATH,
+                        envelope=resolved_source(origin_node.source, referrer, via),
+                    )
+                )
+                return None
             prefix = ".".join(valid_segments)
             errors.append(
                 MetaError(
@@ -1731,7 +1790,7 @@ def _validate_via_path(
         current_entity = next_entity
 
     # current_entity is the terminal: every earlier exit returned None.
-    return WalkedViaPath(hops, current_entity)
+    return WalkedViaPath(hops, current_entity, frozenset(reverse))
 
 
 # ---------------------------------------------------------------------------
@@ -1741,9 +1800,12 @@ def _validate_via_path(
 # ---------------------------------------------------------------------------
 
 
-def _hop_cardinality(rel: MetaData) -> str | None:
+def _hop_cardinality(rel: MetaData, reverse: frozenset[int] = frozenset()) -> str | None:
     """A hop's effective @cardinality, or None when not declared. A reference hop
-    (a forward FK) is inherently to-one — a child names the parent it points at."""
+    (a forward FK) is inherently to-one — a child names the parent it points at; walked
+    backwards (in *reverse*) it is to-many."""
+    if id(rel) in reverse:
+        return CARDINALITY_MANY
     if _is_reference_hop(rel):
         return CARDINALITY_ONE
     # ADR-0039: resolving (@cardinality may be inherited via extends) — mirrors the
@@ -1918,17 +1980,25 @@ def _infer_via_single_hop(
 
 
 def _check_passthrough_cardinality(
-    hops: list[MetaData], field_name: str, origin_source: object, errors: list[MetaError]
+    hops: list[MetaData],
+    field_name: str,
+    origin_source: object,
+    errors: list[MetaError],
+    reverse: frozenset[int] = frozenset(),
 ) -> None:
     """ADR-0029 decision 6 — a passthrough via-path must be effectively to-one at
     EVERY hop. A hop is to-many only when it DECLARES @cardinality "many"."""
     for rel in hops:
-        if _hop_cardinality(rel) == CARDINALITY_MANY:
+        if _hop_cardinality(rel, reverse) == CARDINALITY_MANY:
             errors.append(
                 MetaError(
                     f"origin.passthrough on {field_name}: @via hop '{rel.name}' is to-many "
-                    f'(@cardinality "{CARDINALITY_MANY}") — a row-multiplying passthrough — '
-                    f"you meant aggregate (ADR-0029).",
+                    + (
+                        f'(reverse hop over identity.reference "{rel.name}")'
+                        if id(rel) in reverse
+                        else f'(@cardinality "{CARDINALITY_MANY}")'
+                    )
+                    + " — a row-multiplying passthrough — you meant aggregate (ADR-0029).",
                     ErrorCode.ERR_ORIGIN_CARDINALITY,
                     envelope=origin_source,
                 )
@@ -1937,14 +2007,18 @@ def _check_passthrough_cardinality(
 
 
 def _check_aggregate_cardinality(
-    hops: list[MetaData], field_name: str, origin_source: object, errors: list[MetaError]
+    hops: list[MetaData],
+    field_name: str,
+    origin_source: object,
+    errors: list[MetaError],
+    reverse: frozenset[int] = frozenset(),
 ) -> None:
     """ADR-0029 decision 6 — an aggregate via-path must contain at least one
     to-many hop. Conservative: fires only when PROVABLY to-one (every hop
     declares @cardinality "one")."""
     if not hops:
         return
-    if all(_hop_cardinality(rel) == CARDINALITY_ONE for rel in hops):
+    if all(_hop_cardinality(rel, reverse) == CARDINALITY_ONE for rel in hops):
         errors.append(
             MetaError(
                 f"origin.aggregate on {field_name}: every @via hop is to-one "
@@ -2236,9 +2310,10 @@ def _validate_origin_paths(
                 via = origin.attr(ORIGIN_ATTR_VIA)
                 if isinstance(via, str) and via:
                     walked = _validate_via_path(via, ctx, root, host_pkg, errors, origin, referrer)
-                    hops = walked.hops if walked is not None else None
-                    if hops is not None:
-                        _check_passthrough_cardinality(hops, node.name, origin.source, errors)
+                    if walked is not None:
+                        _check_passthrough_cardinality(
+                            walked.hops, node.name, origin.source, errors, walked.reverse
+                        )
                 elif from_target is not None and not is_value_host:
                     # FR-024 §6 — no @via: derive the base entity; a @from on the
                     # base relation itself is a plain base column (no checks);
@@ -2333,9 +2408,8 @@ def _validate_origin_paths(
                             ErrorCode.ERR_INVALID_ORIGIN, envelope=src))
                     else:
                         walked = _validate_via_path(via, ctx, root, host_pkg, errors, origin, referrer)
-                        hops = walked.hops if walked is not None else None
-                        if hops is not None:
-                            _check_aggregate_cardinality(hops, node.name, src, errors)
+                        if walked is not None:
+                            _check_aggregate_cardinality(walked.hops, node.name, src, errors, walked.reverse)
                     continue
 
                 # --- @of: REQUIRED for count/sum/avg/min/max; OPTIONAL for collect ---
@@ -2411,7 +2485,7 @@ def _validate_origin_paths(
                     walked = _validate_via_path(
                         via_attr, ctx, root, host_pkg, errors, origin, referrer)
                     if walked is not None:
-                        _check_aggregate_cardinality(walked.hops, node.name, src, errors)
+                        _check_aggregate_cardinality(walked.hops, node.name, src, errors, walked.reverse)
                         # @orderBy keys resolve against the @via TERMINAL entity, not @of.
                         _validate_order_by_keys(
                             order_by, walked.terminal, obj, node.name,
@@ -2442,9 +2516,8 @@ def _validate_origin_paths(
                 via = origin.attr(ORIGIN_ATTR_VIA)
                 if isinstance(via, str) and via:
                     walked = _validate_via_path(via, ctx, root, host_pkg, errors, origin, referrer)
-                    hops = walked.hops if walked is not None else None
-                    if hops is not None:
-                        _check_aggregate_cardinality(hops, node.name, src, errors)
+                    if walked is not None:
+                        _check_aggregate_cardinality(walked.hops, node.name, src, errors, walked.reverse)
                     continue
                 # FR-024 §6 — no @via on an aggregate: inference applies only
                 # when @of targets a non-base entity. (A value host never
@@ -2554,9 +2627,8 @@ def _validate_origin_paths(
                 via = origin.attr(ORIGIN_ATTR_VIA)
                 if isinstance(via, str) and via:
                     walked = _validate_via_path(via, ctx, root, host_pkg, errors, origin, referrer)
-                    hops = walked.hops if walked is not None else None
-                    if hops is not None:
-                        _check_aggregate_cardinality(hops, node.name, src, errors)
+                    if walked is not None:
+                        _check_aggregate_cardinality(walked.hops, node.name, src, errors, walked.reverse)
                 elif of_target is not None:
                     # (A value host never reaches here — the #210 assembly-origin
                     # check above already rejected origin.first on a value.)
