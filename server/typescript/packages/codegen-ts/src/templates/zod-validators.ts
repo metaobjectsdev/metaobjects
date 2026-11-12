@@ -926,6 +926,9 @@ export type ${patchName} = ${z}.input<typeof ${updateSchemaName}>;${preservingBl
 const HOSTNAME_REGEX_LITERAL =
   "/^(?=.{1,253}$)([a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)(?:\\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/";
 
+/** The wire shape of a `field.uuid` value: 8-4-4-4-12 hex, either case. */
+const UUID_REGEX_LITERAL = "/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/";
+
 /** Zod expression for a scalar value subtype (used for a field.map's @valueType). */
 function zodScalarFor(subType: string): string {
   if (subType === FIELD_SUBTYPE_INT || subType === FIELD_SUBTYPE_LONG || subType === FIELD_SUBTYPE_CURRENCY) return "z.number().int()";
@@ -1152,6 +1155,14 @@ function zodFieldExpr(
       break;
     }
     case FIELD_SUBTYPE_UUID:
+      // The 8-4-4-4-12 hex shape, the same check the filter parser applies to a uuid
+      // operand. Without it a malformed value (`"nope"` in a uuid FK) reached Postgres and
+      // answered 500 ("invalid input syntax for type uuid") instead of a 400. Deliberately
+      // not Zod's `.uuid()`: Zod 4 also demands RFC version bits, which would refuse
+      // well-formed keys such as 00000000-0000-0000-0000-000000000001. The TPH read shape
+      // keeps a bare string, as it does for every other format check.
+      baseStr = readShape ? "z.string()" : `z.string().regex(${UUID_REGEX_LITERAL}, "Invalid uuid")`;
+      break;
     default:
       baseStr = "z.string()";
       break;

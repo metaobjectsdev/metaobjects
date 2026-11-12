@@ -265,6 +265,20 @@ describe("parseFilterParams — happy path", () => {
     expect(sqlText).not.toContain(" like ");
   });
 
+  test("search skips string rules that carry a format (a uuid FK is not text)", () => {
+    const withFk: FilterAllowlist = {
+      ...allowlist,
+      ownerId: { ops: ["eq", "in", "isNull"], subType: "string", leadingWildcard: false, format: "uuid" },
+    };
+    const r = parseFilterParams({
+      query: { search: "term" },
+      table: { ...table, ownerId: sql.identifier("owner_id") as any }, allowlist: withFk, sortAllowlist, dialect: "postgres",
+    });
+    const sqlText = collectSqlText(r.searchWhere);
+    expect(sqlText).toContain("email");
+    expect(sqlText).not.toContain("owner_id");
+  });
+
   test("search on sqlite dispatches like (not ilike) for string fields", () => {
     const r = parseFilterParams({
       query: { search: "term" },

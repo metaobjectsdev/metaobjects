@@ -617,8 +617,7 @@ encodings"), applied to the column types above:
 
 No port generates a by-id query, a `findById` on a repository seam, a create or update
 schema, a write method, a form or a grid for a report. Only TypeScript has a generated client
-tier, so only TypeScript generates a hook: the list hook, `use<R>List` (or `use<R>s` when the
-name is not already plural), typed with the report's row, its filter and its sort. It has no
+tier, so only TypeScript generates a hook: the list hook, `use` + the plural of the name (`useMemberUtilizations` for `MemberUtilization`), or `use<R>List` when the name's plural is the name itself (`useSeriesList`), typed with the report's row, its filter and its sort. It has no
 detail hook and no mutation hook, because the report has no item route and no write. The
 hook generator asks `servesClientHooks`, which is true for a served report; the grid
 generators ask `servesClientTier`, which is false for one. A hook generator you own was

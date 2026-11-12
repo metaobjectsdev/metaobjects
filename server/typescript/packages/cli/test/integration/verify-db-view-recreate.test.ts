@@ -108,7 +108,7 @@ describe("D3 — a view recreated only around a table change", () => {
   });
 
   const NOTE =
-    "1 view(s) match the metadata and are recreated only because the migration alters a table they read: v_programs";
+    "1 view(s) keep their declared definition and are recreated only because the migration alters a table they read: v_programs";
   const MIGRATE = ["--dialect", "sqlite", "--slug", "title-required", "--allow", "nullable-to-not-null", "--dry-run"];
 
   // Both planners: the default diffs the metadata against the committed snapshot; --from-db

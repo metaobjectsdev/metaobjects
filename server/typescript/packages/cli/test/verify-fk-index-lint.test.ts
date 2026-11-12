@@ -131,7 +131,7 @@ describe("meta verify — unindexed foreign keys (advisory)", () => {
     expect(payload.summary).toContain("1 advisory finding(s)");
     expect(payload.summary).not.toContain("anti-pattern");
     const help = payload.help.join("\n");
-    expect(help).toContain("1 foreign key(s) with no covering index");
+    expect(help).toContain("foreign key(s) with no covering index");
     expect(help).toContain("index.lookup");
     expect(help).not.toContain("hand-roll");
   });
@@ -169,5 +169,48 @@ describe("meta verify — the suggested FK index name is unique per table", () =
     expect(out).toContain("name: citationByAuditEntryId");
     expect(out).toContain("name: approvalByAuditEntryId");
     expect(out).not.toContain("name: byAuditEntryId");
+  });
+
+  test("several unindexed keys are one summary finding that still names each", async () => {
+    const root = await mkdtemp(join(tmpdir(), "verify-fk-index-summary-"));
+    dirs.push(root);
+    await mkdir(join(root, "metaobjects"), { recursive: true });
+    const entity = (name: string, table: string) => ({ "object.entity": { name, children: [
+      { "source.rdb": { "@table": table } },
+      { "field.long": { name: "id" } },
+      { "field.long": { name: "auditEntryId", "@required": true } },
+      { "identity.primary": { name: "pk", "@fields": ["id"], "@generation": "increment" } },
+      { "identity.reference": { name: "fkAudit", "@fields": ["auditEntryId"], "@references": "AuditEntry" } },
+    ] } });
+    await writeFile(join(root, "metaobjects", "meta.audit.json"), JSON.stringify({ "metadata.root": {
+      package: "audit",
+      children: [
+        { "object.entity": { name: "AuditEntry", children: [
+          { "source.rdb": { "@table": "audit_entries" } },
+          { "field.long": { name: "id" } },
+          { "identity.primary": { name: "pk", "@fields": ["id"], "@generation": "increment" } },
+        ] } },
+        entity("Citation", "citations"),
+        entity("Approval", "approvals"),
+      ],
+    } }), "utf8");
+    const lines: string[] = [];
+    const log = console.log;
+    const err = console.error;
+    console.log = (...a: unknown[]) => { lines.push(a.map(String).join(" ")); };
+    console.error = () => {};
+    try {
+      expect(await verifyCommand([], root, undefined, "json")).toBe(0);
+    } finally {
+      console.log = log;
+      console.error = err;
+    }
+    const payload = JSON.parse(lines.join("\n")) as { antiPatterns: { rows: { rule: string; construct: string; message: string }[] } };
+    const rows = payload.antiPatterns.rows.filter((r) => r.rule === "unindexed-foreign-key");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.construct.split(", ").sort()).toEqual(["audit::Approval.fkAudit", "audit::Citation.fkAudit"]);
+    expect(rows[0]!.message).toStartWith("2 foreign key(s) have no index");
+    expect(rows[0]!.message).toContain("name: citationByAuditEntryId");
+    expect(rows[0]!.message).toContain("name: approvalByAuditEntryId");
   });
 });

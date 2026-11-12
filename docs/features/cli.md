@@ -583,8 +583,12 @@ the construct that replaces it:
 | Hand-rolled pattern | Suggested construct |
 |---|---|
 | an aggregate computed by hand (SQL `AVG`/`SUM`, a summing `.reduce(...)`) | For grouped, served or reported figures: `object.report` (dimensions + measures, read-only list route). For a per-row figure on one entity: `object.projection` with `origin.aggregate` and a generated query. |
-| money as a float / hand-rolled minor units (a money-named field with `* 100`, `/ 100`, `.toFixed(2)`, `parseFloat`) | `field.currency` |
+| money as a float / hand-rolled minor units (`* 100`, `/ 100`, `.toFixed(2)`, `parseFloat` on a money-named operand) | `field.currency` |
 | a fixed value set enforced by a SQL `CHECK (... IN (...))` | `field.enum` |
+
+The scan skips comment lines. A `.reduce` counts only when it accumulates into its first
+parameter with `+`, and `.tsx`/`.jsx` UI files are not scanned for it, so on-screen totals
+are not flagged.
 
 It is **warnings only** — it never changes the exit code (bias to under-flagging;
 a >15% false-positive rate is a project kill criterion). This pass is

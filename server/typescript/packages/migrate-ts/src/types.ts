@@ -639,10 +639,14 @@ export interface DiffResult {
  *  - `sequence-not-applied`: a column created on SQLite or D1 whose primary key declares
  *    `@sequenceStart` or `@sequenceName`. SQLite has no sequence, so neither is applied; the
  *    key counts from 1. Reported when the column is created, not on every run.
+ *  - `view-names-renamed-column`: a view this migration (re)creates whose body still names a
+ *    column the same migration renames, on a table it reads. The body is written as declared
+ *    (an `@sql` view's text is never rewritten), so the CREATE VIEW fails at apply.
  */
 export type SchemaAdvisory =
   | { kind: "interval-as-string"; table: string; schema?: string; column: string }
-  | { kind: "sequence-not-applied"; table: string; schema?: string; column: string };
+  | { kind: "sequence-not-applied"; table: string; schema?: string; column: string }
+  | { kind: "view-names-renamed-column"; table: string; schema?: string; column: string; to: string; view: string };
 
 /**
  * Where Postgres's own spelling of an expected expression came from.

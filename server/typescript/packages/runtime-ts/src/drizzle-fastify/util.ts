@@ -2,6 +2,9 @@
  * Shared utilities for drizzle-fastify route helpers.
  */
 
+import { FIELD_SUBTYPE_UUID } from "@metaobjectsdev/metadata";
+import { matchesFormat } from "./filter-value-format.js";
+
 /**
  * Coerce a path-param id to number when numeric, else keep the string key.
  *
@@ -26,8 +29,8 @@ export function parseId(raw: string): number | string {
  * matches no row (libsql throws outright) — so a row that is plainly present in the list
  * response 404s on its own detail route.
  *
- * Returns `undefined` only when the id is malformed FOR A NUMERIC column — the one case
- * in which a bad id is actually knowable — so the caller can answer 400. With no column
+ * Returns `undefined` when the id is malformed for a numeric column or a Postgres uuid
+ * column — the cases in which a bad id is actually knowable — so the caller can answer 400. With no column
  * to inspect (a raw-SQL view with no declared columns) it falls back to `parseId`.
  */
 export function coerceIdForColumn(colRef: unknown, raw: string): number | string | undefined {
@@ -35,6 +38,12 @@ export function coerceIdForColumn(colRef: unknown, raw: string): number | string
   if (dataType === "number") {
     const n = Number(raw);
     return Number.isFinite(n) && raw.trim() !== "" ? n : undefined;
+  }
+  // A Postgres uuid column rejects a malformed literal at execution time
+  // ("invalid input syntax for type uuid"), which surfaced as a 500. The id's shape
+  // is knowable here, so a malformed one answers 400 like a malformed numeric id.
+  if ((colRef as { columnType?: string }).columnType === "PgUUID" && !matchesFormat(FIELD_SUBTYPE_UUID, raw)) {
+    return undefined;
   }
   if (dataType !== undefined) return raw; // string / uuid / bigint / … — compare as given
   return parseId(raw);

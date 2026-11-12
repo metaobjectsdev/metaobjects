@@ -42,10 +42,16 @@ An `identity.secondary` can index an **expression** instead of plain columns: us
 index method — `gin` / `gist` / `hash`; default `btree`) and `@where` (a partial-index
 predicate).
 
+**Name every `identity.secondary` and `index.lookup` after its table.** The name is used
+verbatim as the database index name, and index names are unique across the whole schema,
+not per table. Two entities that both declare `byName` load and generate cleanly, then
+`meta migrate` stops with `ERR_DUPLICATE_SQL_NAME`. Prefix the entity (`clientByName`,
+`tagByName`).
+
 ```json
 { "identity.primary":   { "name": "id", "@fields": ["id"], "@generation": "increment" } }
-{ "identity.secondary": { "name": "byEmail", "@fields": ["email"] } }
-{ "identity.secondary": { "name": "byEmailCI", "@expr": "lower(email)" } }
+{ "identity.secondary": { "name": "userByEmail", "@fields": ["email"] } }
+{ "identity.secondary": { "name": "userByEmailCI", "@expr": "lower(email)" } }
 { "identity.reference": { "name": "fkAuthor", "@fields": ["authorId"], "@references": "Author", "@enforce": true } }
 ```
 
@@ -73,10 +79,10 @@ The db provider contributes physical-tuning attrs alongside either form: `@order
 `btree`), and `@where` (partial-index predicate).
 
 ```json
-{ "index.lookup": { "name": "byCreatedAt", "@fields": ["createdAt"], "@orders": ["desc"] } }
-{ "index.lookup": { "name": "byStatusCreatedAt", "@fields": ["status", "createdAt"] } }
-{ "index.lookup": { "name": "byEmailCI", "@expr": "lower(email)" } }
-{ "identity.secondary": { "name": "uniqLowerEmail", "@expr": "lower(email)" } }
+{ "index.lookup": { "name": "orderByCreatedAt", "@fields": ["createdAt"], "@orders": ["desc"] } }
+{ "index.lookup": { "name": "orderByStatusCreatedAt", "@fields": ["status", "createdAt"] } }
+{ "index.lookup": { "name": "userByEmailCI", "@expr": "lower(email)" } }
+{ "identity.secondary": { "name": "userUniqLowerEmail", "@expr": "lower(email)" } }
 ```
 
 `index.lookup` is a sibling of `identity.*` — declare it as a direct child of an `object.entity`,

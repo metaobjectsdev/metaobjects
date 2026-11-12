@@ -67,7 +67,7 @@ cross.
   served `object.report` that means: `entity`, `queries`, `names` and `barrel` write no report
   files; `routes` and `routes-hono` mount `GET /:id` and the item refusals on a report, and on
   SQLite send a ratio as a number; `hooks` writes no report hook, so a page that calls
-  `use<Report>List` has nothing to import. `meta eject --list` shows which copies differ;
+  the report's list hook has nothing to import. `meta eject --list` shows which copies differ;
   `meta eject <name> --force` takes the new reference, or three-way merge a copy you edited. An
   owned `mount-read-only.ts` under `codegen/runtime/` needs the same resync (`itemRoutes`,
   `resource` and `decimalColumns`). Only TypeScript has a generated client tier; the other

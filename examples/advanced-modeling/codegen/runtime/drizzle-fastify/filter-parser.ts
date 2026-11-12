@@ -130,7 +130,12 @@ export function parseFilterParams(opts: ParseFilterOpts): ParseFilterResult {
   if (typeof opts.query.search === "string" && opts.query.search !== "") {
     const term = `%${opts.query.search}%`;
     const stringCols = Object.entries(opts.allowlist)
-      .filter(([, rule]) => (rule as FilterFieldRule).subType === "string")
+      // A rule with a `format` (uuid, …) is a typed column on the wire as a string, not
+      // text: ILIKE on a Postgres uuid column is "operator does not exist" (a 500).
+      .filter(([, rule]) => {
+        const r = rule as FilterFieldRule;
+        return r.subType === "string" && r.format === undefined;
+      })
       .map(([field]) => opts.table[field]);
     if (stringCols.length > 0) {
       // `?search` is a TS-only extension (docs/features/api-contract.md) and is

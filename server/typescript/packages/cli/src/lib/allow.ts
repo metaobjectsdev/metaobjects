@@ -2,7 +2,7 @@
 // both `meta migrate` and `meta verify --db`. Keeping a single copy avoids the
 // two commands drifting on which `--allow` tokens exist or how a change reads.
 
-import { allowOptionFor, describeSqlType, isViewRecreateOnly, suggestColumnRenames } from "@metaobjectsdev/migrate-ts";
+import { allowOptionFor, describeSqlType, isViewRecreateOnly, suggestColumnRenames, viewsNamingRenamedColumns } from "@metaobjectsdev/migrate-ts";
 import type { AllowOptions, Change, ColumnRenameSuggestion, ViewChangeReason } from "@metaobjectsdev/migrate-ts";
 import type { BlockedEntry } from "./output.js";
 
@@ -151,13 +151,19 @@ function tableList(tables: readonly string[]): string {
 
 /**
  * One line naming the views a migration drops and recreates only because it alters a table
- * they read. Their definitions match the metadata, and the migration needs the pair, but
+ * they read. Their declared definitions are unchanged, and the migration needs the pair, but
  * without this line the DROP VIEW / CREATE VIEW in the SQL reads like a view change (D3).
  */
 export function viewRecreateNote(changes: readonly Change[]): string | undefined {
-  const views = changes.flatMap((c) => c.kind === "create-view" && isViewRecreateOnly(c) ? [c.view.name] : []);
+  // A view whose body still names a column this migration renames does NOT match the change,
+  // whatever its fingerprint says: an `@sql` body is compared with itself. The advisory
+  // `viewsNamingRenamedColumns` reports it; this line must not vouch for it.
+  const stale = new Set(viewsNamingRenamedColumns(changes).flatMap((a) =>
+    a.kind === "view-names-renamed-column" ? [a.view] : []));
+  const views = changes.flatMap((c) =>
+    c.kind === "create-view" && isViewRecreateOnly(c) && !stale.has(c.view.name) ? [c.view.name] : []);
   if (views.length === 0) return undefined;
-  return `${views.length} view(s) match the metadata and are recreated only because the migration ` +
+  return `${views.length} view(s) keep their declared definition and are recreated only because the migration ` +
     `alters a table they read: ${views.join(", ")}`;
 }
 

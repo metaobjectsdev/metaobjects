@@ -102,7 +102,7 @@ export type { WriteMigrationFlywayOptions, WriteMigrationFlywayResult } from "./
 // there is no standalone view-migration emitter (the source-aware-diff / view-diff
 // / view-ddl-{postgres,sqlite} stack was folded into the schema-diff path).
 export { normalizeViewSql, viewSqlEquals } from "./view-sql-compare.js";
-export { isViewRecreateOnly, withoutViewRecreates } from "./view-change-reason.js";
+export { isViewRecreateOnly, withoutViewRecreates, viewsNamingRenamedColumns } from "./view-change-reason.js";
 // Whether a live Postgres view can be replaced in place is asked of the database, in a
 // transaction that is always rolled back. Pass the probe to `diff` on a live plan.
 export { postgresViewReplaceProbe } from "./view-replace-probe.js";

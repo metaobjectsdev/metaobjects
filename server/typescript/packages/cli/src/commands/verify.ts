@@ -21,11 +21,12 @@ import {
   type AdvisoryDiagnosticRow, type AdvisoryFindingRow, type AdvisorySection,
   libraryPrefixRows,
   unindexedFkRows,
+  warnAdvisory,
   referentialActionConflictRows,
   advisoryHelpLines,
 } from "../lib/advisory.js";
 import { scanForUnprovenancedLibraryPrefix } from "../lib/library-prefix-advisory.js";
-import { scanForUnindexedForeignKeys, type UnindexedFkFinding } from "../lib/fk-index-advisory.js";
+import { scanForUnindexedForeignKeys, summarizeUnindexedFks, type UnindexedFkFinding } from "../lib/fk-index-advisory.js";
 import { scanForReferentialActionConflicts, type ReferentialActionConflictFinding } from "../lib/referential-action-advisory.js";
 import { warnIfAgentContextMissesRequirements, warnIfAgentContextStale } from "../lib/agent-context-staleness.js";
 import { warnIfManifestIgnored } from "../lib/manifest-ignored-check.js";
@@ -1118,12 +1119,13 @@ export async function verifyCommand(
       // advisory only — a model the schema builder refuses is migrate's to report.
     }
 
+    const unindexedFkSummary = summarizeUnindexedFks(unindexedFks);
     antiPatternSection = ranSection([
       ...antiPatternRows(findings),
       ...missingBaseUrlRows(baseUrl),
       ...removedPropRows(removedProps),
       ...libraryPrefixRows(libraryPrefix),
-      ...unindexedFkRows(unindexedFks),
+      ...unindexedFkRows(unindexedFkSummary === undefined ? [] : [unindexedFkSummary]),
       ...referentialActionConflictRows(actionConflicts),
     ]);
     if (findings.length > 0) {
@@ -1131,42 +1133,42 @@ export async function verifyCommand(
         `meta verify — ${findings.length} place(s) hand-roll what MetaObjects can model ` +
           `(advisory — does not fail the build):`,
       );
-      warnCapped(findings.map((f) => `  ${f.message}`), flags.limit, { structured });
+      warnAdvisory(findings.map((f) => `  ${f.message}`), flags.limit, { structured });
     }
     if (baseUrl.length > 0) {
       log.warn(
         `meta verify — ${baseUrl.length} entity-fetcher provider(s) mounted with no baseUrl ` +
           `while apiPrefix is "${forgeConfig?.apiPrefix ?? ""}" (advisory — does not fail the build):`,
       );
-      warnCapped(baseUrl.map((f) => `  ${f.message}`), flags.limit, { structured });
+      warnAdvisory(baseUrl.map((f) => `  ${f.message}`), flags.limit, { structured });
     }
     if (removedProps.length > 0) {
       log.warn(
         `meta verify — ${removedProps.length} provider(s) still mounted with a prop 1.0 ` +
           `renamed away (advisory — does not fail the build, but the runtime will):`,
       );
-      warnCapped(removedProps.map((f) => `  ${f.message}`), flags.limit, { structured });
+      warnAdvisory(removedProps.map((f) => `  ${f.message}`), flags.limit, { structured });
     }
-    if (unindexedFks.length > 0) {
+    if (unindexedFkSummary !== undefined) {
       log.warn(
         `meta verify — ${unindexedFks.length} foreign key(s) with no index on the referencing ` +
           `column(s) (advisory — does not fail the build):`,
       );
-      warnCapped(unindexedFks.map((f) => `  ${f.message}`), flags.limit, { structured });
+      warnAdvisory([`  ${unindexedFkSummary.message}`], flags.limit, { structured });
     }
     if (actionConflicts.length > 0) {
       log.warn(
         `meta verify — ${actionConflicts.length} foreign key(s) whose two sides declare relationships ` +
           `that disagree on its referential action (advisory — does not fail the build):`,
       );
-      warnCapped(actionConflicts.map((f) => `  ${f.message}`), flags.limit, { structured });
+      warnAdvisory(actionConflicts.map((f) => `  ${f.message}`), flags.limit, { structured });
     }
     if (libraryPrefix.length > 0) {
       log.warn(
         `meta verify — ${libraryPrefix.length} node(s) declared under "metaobjects::" with ` +
           `no ejection provenance (advisory — does not fail the build):`,
       );
-      warnCapped(libraryPrefix.map((f) => `  ${f.message}`), flags.limit, { structured });
+      warnAdvisory(libraryPrefix.map((f) => `  ${f.message}`), flags.limit, { structured });
     }
   }
 
