@@ -54,6 +54,7 @@ import {
   FIELD_ATTR_COLUMN,
   OBJECT_PROJECTION_ATTR_FILTER,
   findReferencesBetween,
+  findReverseReferenceHops,
   resolveRelationshipReference,
   resolveObjectRef,
   refTarget,
@@ -353,11 +354,16 @@ function findReferenceHop(obj: MetaData, name: string): MetaData | undefined {
 }
 
 /** Resolve a `@via` hop (relationship OR reference) to its target + cardinality.
- *  A reference hop is a to-one forward FK; its target is `@references`. */
+ *  A reference hop is a to-one forward FK; its target is `@references`. A hop naming
+ *  neither may walk an identity.reference BACKWARDS (#560): `Project.timeEntries` is the
+ *  reference TimeEntry holds onto Project, named by TimeEntry's collection name — a to-many
+ *  hop whose target is the holder (`reverse`). It resolves only when exactly one reference
+ *  answers the name; the loader refuses an ambiguous one (ERR_AMBIGUOUS_PATH). */
 function resolveHop(
   obj: MetaData,
   name: string,
-): { hop: MetaData; target: MetaObject | undefined; cardinality: "one" | "many" } | undefined {
+  root: MetaRoot,
+): { hop: MetaData; target: MetaObject | undefined; cardinality: "one" | "many"; reverse?: true } | undefined {
   // ADR-0059 R3/R7 — a hop's target is the object its reference attribute binds to, resolved
   // in the package of the node that declares that attribute, never the walked entity's.
   const rel = findRelationship(obj, name);
@@ -377,7 +383,11 @@ function resolveHop(
     const target = refTarget(ref, IDENTITY_REFERENCE_ATTR_REFERENCES);
     return { hop: ref, target: isMetaObject(target) ? target : undefined, cardinality: "one" };
   }
-  return undefined;
+  if (!isMetaObject(obj)) return undefined;
+  const reverse = findReverseReferenceHops(obj, name, root.objects());
+  if (reverse.length !== 1) return undefined;
+  const { holder, referenceIdentity } = reverse[0]!;
+  return { hop: referenceIdentity, target: holder, cardinality: "many", reverse: true };
 }
 
 /**
@@ -404,7 +414,10 @@ function resolveHopReference(
   hop: MetaData,
   hopName: string,
   target: MetaObject,
+  reverse = false,
 ): ReferenceLookup | ReferenceLookup[] {
+  // #560 — a reverse hop walks the reference `target` holds onto `holder`.
+  if (reverse) return { holder: target, other: holder, referenceIdentity: hop as unknown as MetaReferenceIdentity };
   if (hop.type === TYPE_IDENTITY && hop.subType === IDENTITY_SUBTYPE_REFERENCE) {
     return { holder, other: target, referenceIdentity: hop as unknown as MetaReferenceIdentity };
   }
@@ -424,11 +437,11 @@ function resolveHopReference(
  * reads it for the reference's full `@fields` list, where a view join reads the first.
  */
 export function hopReferenceIdentity(holder: MetaObject, hopName: string, root: MetaRoot): MetaReferenceIdentity | undefined {
-  const resolved = resolveHop(holder, hopName);
+  const resolved = resolveHop(holder, hopName, root);
   if (!resolved) return undefined;
   const target = resolved.target;
   if (!target) return undefined;
-  const ref = resolveHopReference(holder, resolved.hop, hopName, target);
+  const ref = resolveHopReference(holder, resolved.hop, hopName, target, resolved.reverse);
   if (Array.isArray(ref)) return ref.length === 1 ? ref[0]!.referenceIdentity : undefined;
   return ref.referenceIdentity;
 }
@@ -705,7 +718,7 @@ function viaTerminalEntity(via: string, root: MetaRoot, referrerPkg: string): Me
   let currentObj = resolveEntityRef(root, rawEntity, referrerPkg);
   if (!currentObj) return undefined;
   for (const relName of segments.slice(1)) {
-    const resolved = resolveHop(currentObj, relName);
+    const resolved = resolveHop(currentObj, relName, root);
     if (!resolved) return undefined;
     const target = resolved.target;
     if (!target) return undefined;
@@ -858,9 +871,9 @@ export function walkViaPath(via: string, root: MetaRoot, referrerPkg: string, ct
     // FR-024: a hop may name a relationship OR a reference-only FK
     // (identity.reference — a to-one forward-FK edge). ADR-0039: resolving —
     // a traversed relationship/reference may inherit its target via extends.
-    const resolved = resolveHop(currentObj, relName);
+    const resolved = resolveHop(currentObj, relName, root);
     if (!resolved) break;
-    const { hop, target, cardinality } = resolved;
+    const { hop, target, cardinality, reverse } = resolved;
     if (!target) break;
 
     // #368: two identity.reference declarations onto the same target are legal
@@ -869,7 +882,7 @@ export function walkViaPath(via: string, root: MetaRoot, referrerPkg: string, ct
     // one from the target alone, so an explicit `@via: "Match.homeTeamRef"` (or a
     // relationship disambiguated by @sourceRefField/name-pairing) resolves cleanly.
     // Only a relationship hop that even the ladder cannot choose reaches the throw.
-    const resolvedRef = resolveHopReference(currentObj as MetaObject, hop, relName, target);
+    const resolvedRef = resolveHopReference(currentObj as MetaObject, hop, relName, target, reverse);
     let ref: ReferenceLookup | undefined;
     if (Array.isArray(resolvedRef)) {
       if (resolvedRef.length > 1) {
@@ -919,8 +932,9 @@ export function walkViaPath(via: string, root: MetaRoot, referrerPkg: string, ct
 
     const resolvedPkField = ref.referenceIdentity.resolvedTargetPkField(root) ?? "id";
 
+    // A reverse hop's reference is always on the far side, even on a self-reference.
     const referenceHolder: "source" | "target" =
-      ref.holder.name === currentObj.name ? "source" : "target";
+      !reverse && ref.holder.name === currentObj.name ? "source" : "target";
 
     // FK lives on the holder; PK on the entity it references. Resolve both to
     // physical columns now so the ON clause is naming-strategy correct.
