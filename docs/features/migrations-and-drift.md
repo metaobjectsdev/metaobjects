@@ -306,10 +306,11 @@ from the catalog. A live sequence whose start or name differs from the declarati
 in place, never dropped:
 
 - a different start records it (`ALTER SEQUENCE … START WITH n`) and nothing else. It never
-  restarts the sequence and never moves its current value, because live rows already hold the
-  ids it handed out: `@sequenceStart` is the first value of a fresh sequence, the same in
-  every port. The down migration restores the old start value, again without touching the
-  counter.
+  restarts the sequence, and in this release it does not move its current value, because live
+  rows already hold the ids it handed out: `@sequenceStart` is the first value of a fresh
+  sequence, the same in every port. The down migration restores the old start value, again
+  without touching the counter. A later release is planned to move a counter that sits below
+  the declared start forward to it (never backward), so do not rely on the counter staying put.
 - a different name renames it (`ALTER SEQUENCE … RENAME TO …`); the down renames it back.
 
 Only what the model declares is compared, on every path (a live database, a shadow database,

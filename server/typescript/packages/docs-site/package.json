@@ -1,6 +1,6 @@
 {
   "name": "@metaobjectsdev/docs-site",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "HTML documentation-site generator for metaobjects models — a model explorer (what the software does, model map, requirement pages, matrix, trace, gaps) and a classic multi-page site with kind-aware ER diagrams. Powers the `docs-site` generator (`docsSiteFile()`).",
   "type": "module",
   "main": "./dist/index.js",
