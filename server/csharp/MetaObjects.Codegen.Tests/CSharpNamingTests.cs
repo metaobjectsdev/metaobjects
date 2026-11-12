@@ -268,7 +268,7 @@ public class CSharpNamingTests
     {
         var sources = objects.Select((o, i) =>
         {
-            var objAttrs = (o.Abstract ? "\"abstract\": true, " : "") + (o.DbSetName is { } d ? $"\"@dbSetName\": \"{d}\", " : "");
+            var objAttrs = (o.Abstract ? "\"abstract\": true, " : "") + (o.DbSetName is { } d ? $"\"@collectionName\": \"{d}\", " : "");
             var schema = o.Schema is { } sc ? $@", ""@schema"": ""{sc}""" : "";
             var source = o.Source
                 ? $@"{{ ""source.rdb"": {{ ""@table"": ""{o.Name.ToLowerInvariant()}s""{schema} }} }},"
@@ -372,7 +372,7 @@ public class CSharpNamingTests
             var root = PackagedObjects(ReadObject(c.GetProperty("entityA")), ReadObject(c.GetProperty("entityB")));
             var ex = Assert.Throws<InvalidOperationException>(() => Run(new DbContextGenerator(), root));
             Assert.Contains($"DbSet property \"{c.GetProperty("collidesOn").GetString()}\"", ex.Message);
-            Assert.Contains("@dbSetName", ex.Message);
+            Assert.Contains("@collectionName", ex.Message);
         }
     }
 
@@ -410,7 +410,7 @@ public class CSharpNamingTests
         Assert.Contains("Payers { get; set; }", context);
     }
 
-    // A @dbSetName that is no C# identifier, or names a DbContext member, would fail at compile
+    // A @collectionName that is no C# identifier, or names a DbContext member, would fail at compile
     // time (or hide Database / Model); codegen refuses it by name.
     [Theory]
     [InlineData("Payer Rows")]
@@ -421,12 +421,12 @@ public class CSharpNamingTests
     {
         var root = PackagedObjects(new NamedObject("core", "Payer", false, true, DbSetName: bad));
         var ex = Assert.Throws<InvalidOperationException>(() => Run(new DbContextGenerator(), root));
-        Assert.Contains("@dbSetName", ex.Message);
+        Assert.Contains("@collectionName", ex.Message);
         Assert.Contains($"\"{bad}\"", ex.Message);
     }
 
     // One context, one relation per (schema, name). Two objects that map to one
-    // table would silently share it; the DbSet rule no longer catches them once @dbSetName splits
+    // table would silently share it; the DbSet rule no longer catches them once @collectionName splits
     // the property names.
     [Theory]
     [InlineData("billing")]

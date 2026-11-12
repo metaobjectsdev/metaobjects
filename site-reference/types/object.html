@@ -113,13 +113,13 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 </tr>
 </thead>
 <tbody><tr>
-<td><code>@dbSetName</code></td>
+<td><code>@collectionName</code></td>
 <td>string</td>
 <td>no</td>
 <td></td>
 <td></td>
 <td>metaobjects-core-types</td>
-<td>C#-only (EF Core): the DbSet property name the generated context gives this object, in place of the plural derived from its name. Set it when two objects in one generated context would otherwise claim the same property. Every port loads and type-checks it; only C# acts on it.</td>
+<td>The name of this object&#39;s collection, in the object&#39;s own casing (e.g. &#39;CaseHistory&#39;, &#39;Queues&#39;): the C# DbSet property the generated context gives it. It need not be a grammatical plural. Absent, the project&#39;s pluralizer derives it from the object&#39;s name (naming.collections in .metaobjects/config.json; built in: standard, none; an application may register its own).</td>
 </tr>
 <tr>
 <td><code>@discriminator</code></td>
@@ -191,13 +191,13 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 </tr>
 </thead>
 <tbody><tr>
-<td><code>@dbSetName</code></td>
+<td><code>@collectionName</code></td>
 <td>string</td>
 <td>no</td>
 <td></td>
 <td></td>
 <td>metaobjects-core-types</td>
-<td>C#-only (EF Core): the DbSet property name the generated context gives this object, in place of the plural derived from its name. Set it when two objects in one generated context would otherwise claim the same property. Every port loads and type-checks it; only C# acts on it.</td>
+<td>The name of this object&#39;s collection, in the object&#39;s own casing (e.g. &#39;CaseHistory&#39;, &#39;Queues&#39;): the C# DbSet property the generated context gives it. It need not be a grammatical plural. Absent, the project&#39;s pluralizer derives it from the object&#39;s name (naming.collections in .metaobjects/config.json; built in: standard, none; an application may register its own).</td>
 </tr>
 <tr>
 <td><code>@filter</code></td>
@@ -254,13 +254,13 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 </tr>
 </thead>
 <tbody><tr>
-<td><code>@dbSetName</code></td>
+<td><code>@collectionName</code></td>
 <td>string</td>
 <td>no</td>
 <td></td>
 <td></td>
 <td>metaobjects-core-types</td>
-<td>C#-only (EF Core): the DbSet property name the generated context gives this object, in place of the plural derived from its name. Set it when two objects in one generated context would otherwise claim the same property. Every port loads and type-checks it; only C# acts on it.</td>
+<td>The name of this object&#39;s collection, in the object&#39;s own casing (e.g. &#39;CaseHistory&#39;, &#39;Queues&#39;): the C# DbSet property the generated context gives it. It need not be a grammatical plural. Absent, the project&#39;s pluralizer derives it from the object&#39;s name (naming.collections in .metaobjects/config.json; built in: standard, none; an application may register its own).</td>
 </tr>
 <tr>
 <td><code>@dimensions</code></td>

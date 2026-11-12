@@ -26,7 +26,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 
 | Corpus | Fixtures | TS | Java | Kotlin | C# | Python |
 |---|---|---|---|---|---|---|
-| [`fixtures/conformance/`](../fixtures/conformance/) (metamodel) | 454 | ✓ | ✓ | inherits via `metadata-ktx` | ✓ | ✓ |
+| [`fixtures/conformance/`](../fixtures/conformance/) (metamodel) | 455 | ✓ | ✓ | inherits via `metadata-ktx` | ✓ | ✓ |
 | [`fixtures/yaml-conformance/`](../fixtures/yaml-conformance/) | 16 | 16 / 16 | 15 / 16 (1 ledgered: `yaml-quoted-leading-zero` — Java pipeline strips quotes off `"007"`) | inherits via Java | 15 / 16 (1 ledgered: `error-yaml-coerced-hex-in-string` — YamlDotNet doesn't coerce `0xFF`) | 16 / 16 |
 | [`fixtures/verify-conformance/`](../fixtures/verify-conformance/) | 45 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/verify-strict-conformance/`](../fixtures/verify-strict-conformance/) | 1 | ✓ | — | — | — | ✓ |
@@ -148,6 +148,9 @@ canonical (`fixtures/registry-conformance/expected-registry.json`).
   - `view.image`, and its `@accept`, `@aspectRatio`, `@maxBytes`, `@maxEdge`, `@store`
 - *Implemented in Java only* (`implementedIn: ["java"]`): `object.* @object` (ADR-0001), the
   native class an object binds to. Java's runtime acts on it; Java's own behaviour is unchanged.
+- *Implemented in C# only* (`implementedIn: ["csharp"]`): `object.* @collectionName`, the
+  collection name the generated DbSet takes. Every port registers it and reads the `naming.collections`
+  key that names the default pluralizer; C# codegen does not apply that pluralizer yet.
 - *Loads strictly in every port.* Each port registers the `metaobjects-ui-web` provider
   (`view.textarea @rows`, the `view.image` attrs) and `@object` / `@objectAdapter` on
   `object.*`, loads all three fixtures strictly, and emits `implementedIn` in its manifest, which
@@ -155,7 +158,7 @@ canonical (`fixtures/registry-conformance/expected-registry.json`).
   `registry-conformance.test.ts` in TypeScript; `RegistryManifestConformanceTest` in Java and
   Kotlin; `test_registry_conformance.py` in Python).
 - *Port-scoped, for comparison* (`ports`, language-specific by nature, never "pending"):
-  `@dbSetName` (`["csharp"]`) and `@objectAdapter` (`["java", "kotlin"]`).
+  `@objectAdapter` (`["java", "kotlin"]`).
 
 **Native index vocabulary and `@description` in the ORM models.** `meta migrate` creates
 every index (`identity.secondary`, `index.lookup`, a field's `@unique`, with `@where`, `@using`,
@@ -351,7 +354,7 @@ unit-test runners (`bun test`, `dotnet test`, `pytest`, `mvn test`) pull Docker.
 
 ## Fixture-to-doc mapping
 
-### `fixtures/conformance/` — metamodel loader + canonical serializer (454)
+### `fixtures/conformance/` — metamodel loader + canonical serializer (455)
 
 | Fixture prefix | Feature doc |
 |---|---|
@@ -376,6 +379,7 @@ unit-test runners (`bun test`, `dotnet test`, `pytest`, `mvn test`) pull Docker.
 | `requirement-*`, `error-unknown-attr-requirement` | [features/requirements.md](features/requirements.md) (vocabulary only — the gate has its own corpus, `requirement-check-conformance/`; see "Split coverage" above) |
 | `reporting-*`, `error-dimension-*`, `error-measure-*`, `error-ratio-*`, `error-segment-*`, `error-report-*`, `error-relative-date-*` | [features/reporting.md](features/reporting.md) (the `dimension` / `measure` / `segment` / `object.report` vocabulary and its load-time rules; design in the [FR-044 spec](superpowers/specs/2026-10-02-fr-044-core-reporting-design.md)) |
 | `provider-extension-*`, `provider-custom-vocabulary-*` | [features/extending-with-providers.md](features/extending-with-providers.md) (a project's own provider: a new subtype plus attributes on an existing type load with it and are refused without it, every port writing the provider in its own language) |
+| `object-collection-name` | [features/migrations/physical-naming.md](features/migrations/physical-naming.md) (`@collectionName` and the `collections` pluralizer) |
 | `smoke-empty-metadata` | [features/entities.md](features/entities.md) |
 
 ### `fixtures/yaml-conformance/` (16)
@@ -712,7 +716,7 @@ JSON and verify payload feeds it unchanged.
 
 ## Orphaned fixtures (tested but not yet documented)
 
-The fixtures in the nine corpora mapped above (metamodel 454 + yaml 16 + verify 45
+The fixtures in the nine corpora mapped above (metamodel 455 + yaml 16 + verify 45
 + render 18 + persistence 62 + api-contract 123 + source-resolution 25 + scope 10 +
 dependency 47) each map to a feature doc, and so do the two requirement corpora, `shared-model-conformance`, the
 `cube-model` corpus and `explorer-conformance`, whose case lists live in their own READMEs. None are orphaned today. The remaining

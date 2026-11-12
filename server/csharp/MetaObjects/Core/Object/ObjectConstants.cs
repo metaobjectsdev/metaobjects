@@ -47,12 +47,10 @@ public static class ObjectConstants
     /// </summary>
     public const string OBJECT_ATTR_DISCRIMINATOR_VALUE = "discriminatorValue";
 
-    /// <summary>
-    /// The collection property a per-context ORM mapping gives an object (the EF Core DbSet
-    /// property name), in place of the plural derived from its name. On object.entity and on the
-    /// view-backed object.projection / object.report that get a DbSet.
-    /// </summary>
-    public const string OBJECT_ATTR_DB_SET_NAME = "dbSetName";
+    /// <summary>The object's collection name (the EF Core DbSet property), in place of the plural
+    /// derived from its name. On
+    /// object.entity, object.projection and object.report.</summary>
+    public const string OBJECT_ATTR_COLLECTION_NAME = "collectionName";
 
     /// <summary>
     /// The native class an object binds to (ADR-0001). Cross-port vocabulary only

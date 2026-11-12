@@ -85,10 +85,10 @@ public abstract class MetaObject extends MetaData {
     /** FR-014: this subtype's discriminator value (matched against the root's {@code @discriminator} field). */
     public static final String ATTR_DISCRIMINATOR_VALUE = "discriminatorValue";
 
-    /** C#-only vocabulary (ports ["csharp"]): the EF Core DbSet property name. Loaded and
-     *  type-checked on object.entity / projection / report so a shared model loads here; no JVM
-     *  generator acts on it. */
-    public static final String ATTR_DB_SET_NAME = "dbSetName";
+    /** An object's collection name: the plural an author declares when the default pluralizer
+     *  gets it wrong. The C# DbSet property reads it; Java loads and type-checks it on
+     *  object.entity / projection / report. */
+    public static final String ATTR_COLLECTION_NAME = "collectionName";
 
     /**
      * #207: an optional row-scope predicate on an {@code object.projection} — a
@@ -153,7 +153,7 @@ public abstract class MetaObject extends MetaData {
             def.optionalAttributeWithConstraints(ATTR_DISCRIMINATOR_VALUE).ofType(StringAttribute.SUBTYPE_STRING).asSingle();
             // object.json declares it on entity / projection / report; the strict spec scoping
             // prunes it from the subtypes that do not.
-            def.optionalAttributeWithConstraints(ATTR_DB_SET_NAME).ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+            def.optionalAttributeWithConstraints(ATTR_COLLECTION_NAME).ofType(StringAttribute.SUBTYPE_STRING).asSingle();
 
             // Java-only runtime hint (never in the conformance corpus): the FQN of an
             // ObjectAdapter that takes over value access. Inherited by entity + value.

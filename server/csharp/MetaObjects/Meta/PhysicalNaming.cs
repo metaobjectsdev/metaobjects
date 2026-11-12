@@ -158,6 +158,14 @@ public static class NamingStrategies
     private static readonly object Gate = new();
     private static readonly List<ColumnNamingStrategy> ColumnList = [];
     private static readonly List<TableNamingRule> TableList = [];
+    private static readonly List<(string Name, Func<string, string> Apply)> PluralizerList = [];
+
+    /// <summary>The pluralizers every port builds in: <c>standard</c> (the cross-port
+    /// rule: already-plural detection, then the suffix rule) and <c>none</c> (the name as it is).</summary>
+    public static IReadOnlyList<string> BuiltInPluralizers { get; } = ["standard", "none"];
+
+    /// <summary>The pluralizer an object without <c>@collectionName</c> gets when <c>naming.collections</c> is absent.</summary>
+    public const string DefaultPluralizer = "standard";
 
     /// <summary>The column rules every port builds in, in the order the conformance corpus lists them.</summary>
     public static IReadOnlyList<ColumnNamingStrategy> BuiltInColumns { get; } =
@@ -170,7 +178,40 @@ public static class NamingStrategies
     {
         ColumnList.AddRange(BuiltInColumns);
         TableList.AddRange(BuiltInTables);
+        PluralizerList.AddRange(BuiltInPluralizerFunctions());
     }
+
+    private static IEnumerable<(string Name, Func<string, string> Apply)> BuiltInPluralizerFunctions() =>
+        [("standard", CollectionNames.StandardPluralize), ("none", n => n)];
+
+    /// <summary>
+    /// Registers a pluralizer under <paramref name="name"/>: an object name in, its
+    /// collection name out. <c>"naming": { "collections": "&lt;name&gt;" }</c> then selects it; an
+    /// object's own <c>@collectionName</c> always wins. A built-in cannot be replaced; registering
+    /// one of your own again replaces it.
+    /// </summary>
+    public static void RegisterPluralizer(string name, Func<string, string> apply)
+    {
+        Validate(name, apply, BuiltInPluralizers.Contains(name), "collection-naming (pluralizer)");
+        lock (Gate) { Upsert(PluralizerList, (Name: name, Apply: apply), p => p.Name); }
+    }
+
+    /// <summary>Every registered pluralizer's name: the built-ins, then the application's.</summary>
+    public static IReadOnlyList<string> Pluralizers
+    {
+        get { lock (Gate) { return [.. PluralizerList.Select(p => p.Name)]; } }
+    }
+
+    /// <summary>The pluralizer registered as <paramref name="name"/>, if any.</summary>
+    public static bool TryGetPluralizer(string name, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out Func<string, string>? apply)
+    {
+        lock (Gate) { apply = PluralizerList.FirstOrDefault(p => p.Name == name).Apply; }
+        return apply is not null;
+    }
+
+    /// <summary>The pluralizer registered as <paramref name="name"/>. Throws, naming it, when nothing answers it.</summary>
+    public static Func<string, string> Pluralizer(string name) =>
+        TryGetPluralizer(name, out var p) ? p : throw new MetaModelException(UnknownMessage("collections", name), ErrorCode.ERR_BAD_ATTR_VALUE);
 
     /// <summary>Every registered column strategy: the built-ins in corpus order, then the application's in registration order.</summary>
     public static IReadOnlyList<ColumnNamingStrategy> Columns
@@ -243,6 +284,8 @@ public static class NamingStrategies
             ColumnList.AddRange(BuiltInColumns);
             TableList.Clear();
             TableList.AddRange(BuiltInTables);
+            PluralizerList.Clear();
+            PluralizerList.AddRange(BuiltInPluralizerFunctions());
         }
     }
 
@@ -254,10 +297,13 @@ public static class NamingStrategies
     public static string UnknownMessage(string key, string name)
     {
         var columns = key == "columns";
-        var builtIns = columns ? BuiltInColumns.Select(s => s.Name).ToList() : BuiltInTables.Select(s => s.Name).ToList();
-        var registered = (columns ? Columns.Select(s => s.Name) : Tables.Select(s => s.Name))
+        var collections = key == "collections";
+        var builtIns = columns ? BuiltInColumns.Select(s => s.Name).ToList()
+            : collections ? [.. BuiltInPluralizers] : BuiltInTables.Select(s => s.Name).ToList();
+        var registered = (columns ? Columns.Select(s => s.Name) : collections ? Pluralizers : Tables.Select(s => s.Name))
             .Where(n => !builtIns.Contains(n)).ToList();
-        return $"\"naming.{key}\" names \"{name}\", which no {(columns ? "column" : "table")}-naming strategy registered in the "
+        var kind = columns ? "column-naming" : collections ? "collection-naming (pluralizer)" : "table-naming";
+        return $"\"naming.{key}\" names \"{name}\", which no {kind} strategy registered in the "
             + $"{Port} port answers (built in: {string.Join(", ", builtIns)}; registered by the application: "
             + $"{(registered.Count == 0 ? "none" : string.Join(", ", registered))}). Register it before "
             + ".metaobjects/config.json is read, or correct the name.";
@@ -285,6 +331,11 @@ public static class NamingStrategies
 /// </summary>
 public sealed record PhysicalNaming(ColumnNamingStrategy Columns, TableNamingRule Tables)
 {
+    /// <summary>The pluralizer an object without <c>@collectionName</c> takes its
+    /// collection name from (<c>naming.collections</c>); null when the project names none, which
+    /// means <see cref="NamingStrategies.DefaultPluralizer"/>.</summary>
+    public string? Collections { get; init; }
+
     /// <summary>The default in every port: snake_case columns, snake_case tables.</summary>
     public static readonly PhysicalNaming Default = new(ColumnNamingStrategy.SnakeCase, TableNamingRule.SnakeCase);
 

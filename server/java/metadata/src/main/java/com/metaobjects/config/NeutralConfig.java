@@ -303,6 +303,7 @@ public final class NeutralConfig {
         // otherwise bind a whole schema to the wrong names and report success).
         String columns = PhysicalNaming.DEFAULT_COLUMNS;
         String tables = PhysicalNaming.DEFAULT_TABLES;
+        String collections = null;
         JsonElement naming = root.get("naming");
         if (naming != null && !(naming.isJsonObject())) {
             throw new MetaDataException(
@@ -312,10 +313,10 @@ public final class NeutralConfig {
         if (naming != null) {
             JsonObject namingObj = naming.getAsJsonObject();
             for (String key : namingObj.keySet()) {
-                if (!"columns".equals(key) && !"tables".equals(key)) {
+                if (!"columns".equals(key) && !"tables".equals(key) && !"collections".equals(key)) {
                     throw new MetaDataException(
                             origin + ": \"naming\" has unknown key \"" + key
-                                    + "\"; expected \"columns\" and/or \"tables\"",
+                                    + "\"; expected \"columns\", \"tables\" and/or \"collections\"",
                             ErrorCode.ERR_BAD_ATTR_VALUE);
                 }
             }
@@ -337,10 +338,20 @@ public final class NeutralConfig {
                 }
                 tables = tablesEl.getAsString();
             }
+            // The pluralizer an object without @collectionName takes its collection name from.
+            JsonElement collectionsEl = namingObj.get("collections");
+            if (collectionsEl != null) {
+                if (!collectionsEl.isJsonPrimitive() || !collectionsEl.getAsJsonPrimitive().isString()) {
+                    throw new MetaDataException(
+                            origin + ": \"naming.collections\" must be a string naming a pluralizer",
+                            ErrorCode.ERR_BAD_ATTR_VALUE);
+                }
+                collections = collectionsEl.getAsString();
+            }
         }
         // PhysicalNaming.of validates the values against the NamingStrategies registry (a
         // built-in or an application-registered name; ADR-0058 Amendment 1).
-        PhysicalNaming physicalNaming = PhysicalNaming.of(columns, tables);
+        PhysicalNaming physicalNaming = PhysicalNaming.of(columns, tables, collections);
 
         WireFormat wireFormat = parseWire(root.get("wire"), origin);
 

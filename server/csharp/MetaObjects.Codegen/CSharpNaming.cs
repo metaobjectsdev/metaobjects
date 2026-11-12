@@ -365,21 +365,21 @@ public static class CSharpNaming
     public static string RoutePath(MetaObject entity) => PluralizeCrossPort(ToSnakeCase(entity.Name));
 
     /// <summary>
-    /// The DbSet property name for an object: its <c>@dbSetName</c> when it declares one, else
+    /// The DbSet property name for an object: its <c>@collectionName</c> when it declares one, else
     /// <c>Pluralize(Pascal(name))</c>. Every site that names the property (the context, the
     /// routes, the reverse finders, the api reference) reads it here, so they always agree.
     /// </summary>
     public static string DbSetName(MetaObject entity)
     {
-        // ADR-0039: own — @dbSetName names THIS object's property; an abstract base's value
+        // ADR-0039: own — @collectionName names THIS object's property; an abstract base's value
         // inherited by every subtype would hand them all one name.
-        if (entity.OwnAttr(OBJECT_ATTR_DB_SET_NAME) is not string { Length: > 0 } declared)
+        if (entity.OwnAttr(OBJECT_ATTR_COLLECTION_NAME) is not string { Length: > 0 } declared)
             return Pluralize(Pascal(entity.Name));
         // Refused here, the one place every generator reads it from, rather than as a compile
         // error in the generated context (or a property that hides DbContext.Database).
         if (!System.Text.RegularExpressions.Regex.IsMatch(declared, "^[A-Za-z_][A-Za-z0-9_]*$") || ReservedDbSetNames.Contains(declared))
             throw new InvalidOperationException(
-                $"{entity.ResolutionKey()}: @dbSetName \"{declared}\" cannot be the DbSet property name — it must be a C# identifier " +
+                $"{entity.ResolutionKey()}: @collectionName \"{declared}\" cannot be the DbSet property name — it must be a C# identifier " +
                 "(letters, digits and underscores, not starting with a digit) and not a DbContext member (Database, Model, ChangeTracker, ContextId).");
         return declared;
     }

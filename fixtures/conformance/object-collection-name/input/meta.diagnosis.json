@@ -2,7 +2,7 @@
   "metadata.root": {
     "package": "acme::clinical",
     "children": [
-      { "object.entity": { "name": "Diagnosis", "@dbSetName": "Diagnosis", "children": [
+      { "object.entity": { "name": "Diagnosis", "@collectionName": "Diagnosis", "children": [
         { "source.rdb": { "@table": "diagnoses" } },
         { "field.long": { "name": "id" } },
         { "field.string": { "name": "code" } },
@@ -10,11 +10,11 @@
         { "dimension.attribute": { "name": "code", "@of": "Diagnosis.code" } },
         { "measure.aggregate": { "name": "diagnoses", "@agg": "count", "@of": "Diagnosis.id" } }
       ] } },
-      { "object.projection": { "name": "DiagnosisSummary", "@dbSetName": "DiagnosisSummary", "children": [
+      { "object.projection": { "name": "DiagnosisSummary", "@collectionName": "DiagnosisSummary", "children": [
         { "source.rdb": { "@kind": "view", "@view": "v_diagnosis_summary" } },
         { "field.string": { "name": "code" } }
       ] } },
-      { "object.report": { "name": "DiagnosisCounts", "@dbSetName": "DiagnosisCounts", "@from": "Diagnosis",
+      { "object.report": { "name": "DiagnosisCounts", "@collectionName": "DiagnosisCounts", "@from": "Diagnosis",
         "@dimensions": ["code"], "@measures": ["diagnoses"], "children": [
         { "source.rdb": { "@kind": "view", "@view": "v_diagnosis_counts" } }
       ] } }

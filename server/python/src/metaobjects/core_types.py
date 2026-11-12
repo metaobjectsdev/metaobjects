@@ -59,7 +59,7 @@ from .meta.core.object.meta_object import MetaObject
 from .meta.core.object.object_constants import (
     OBJECT_ATTR_DISCRIMINATOR,
     OBJECT_ATTR_DISCRIMINATOR_VALUE,
-    OBJECT_ATTR_DB_SET_NAME,
+    OBJECT_ATTR_COLLECTION_NAME,
     OBJECT_ATTR_OBJECT,
     OBJECT_ATTR_OBJECT_ADAPTER,
     OBJECT_PROJECTION_ATTR_FILTER,
@@ -297,10 +297,10 @@ _OBJECT_COMMON_ATTRS = [
         value_type=ATTR_SUBTYPE_STRING,
         required=False,
     ),
-    # @dbSetName, C#-only vocabulary every port loads and type-checks. object.json
+    # @collectionName, vocabulary every port loads and type-checks. object.json
     # declares it on entity / projection / report; the strict per-subtype scoping
     # (apply_spec_descriptions) prunes it from the others.
-    AttrSchema(name=OBJECT_ATTR_DB_SET_NAME, value_type=ATTR_SUBTYPE_STRING, required=False),
+    AttrSchema(name=OBJECT_ATTR_COLLECTION_NAME, value_type=ATTR_SUBTYPE_STRING, required=False),
     # @object / @objectAdapter: the JVM's native binding attrs, declared on object.base
     # in object.json and so kept on every subtype. Loaded and type-checked; unused here.
     AttrSchema(name=OBJECT_ATTR_OBJECT, value_type=ATTR_SUBTYPE_STRING, required=False),

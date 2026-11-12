@@ -5,7 +5,7 @@
       {
         "object.entity": {
           "name": "Diagnosis",
-          "@dbSetName": "Diagnosis",
+          "@objectAdapter": "com.acme.clinical.DiagnosisAdapter",
           "children": [
             {
               "source.rdb": {
@@ -51,7 +51,7 @@
       {
         "object.projection": {
           "name": "DiagnosisSummary",
-          "@dbSetName": "DiagnosisSummary",
+          "@objectAdapter": "com.acme.clinical.DiagnosisSummaryAdapter",
           "children": [
             {
               "source.rdb": {
@@ -70,7 +70,6 @@
       {
         "object.report": {
           "name": "DiagnosisCounts",
-          "@dbSetName": "DiagnosisCounts",
           "@dimensions": [
             "code"
           ],
@@ -78,6 +77,7 @@
           "@measures": [
             "diagnoses"
           ],
+          "@objectAdapter": "com.acme.clinical.DiagnosisCountsAdapter",
           "children": [
             {
               "source.rdb": {

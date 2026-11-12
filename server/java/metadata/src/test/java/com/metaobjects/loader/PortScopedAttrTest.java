@@ -10,9 +10,10 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 /**
- * {@code @dbSetName} (the C# EF DbSet property name) is in the shared registry with
- * {@code ports: ["csharp"]}. Java registers and type-checks it, so a model that carries it loads
- * strictly here, and Java does nothing with it. An attribute the registry does not carry still
+ * {@code @collectionName} is shared vocabulary marked {@code implementedIn: ["csharp"]}
+ * (the DbSet property it names is generated there). Java registers and
+ * type-checks it, so a model that carries it loads strictly here. The never-released
+ * {@code @dbSetName} it replaced is not vocabulary; an attribute the registry does not carry still
  * fails, and a wrong value type fails.
  */
 public class PortScopedAttrTest {
@@ -44,17 +45,22 @@ public class PortScopedAttrTest {
     }
 
     @Test
-    public void aCsharpOnlyAttributeLoadsStrictly() {
-        assertTrue(loads("\"@dbSetName\": \"Diagnosis\","));
+    public void aCollectionNameLoadsStrictly() {
+        assertTrue(loads("\"@collectionName\": \"Diagnoses\","));
     }
 
     @Test
     public void itIsTypeChecked() {
-        assertFalse(loads("\"@dbSetName\": [\"Diagnosis\"],"));
+        assertFalse(loads("\"@collectionName\": [\"Diagnoses\"],"));
+    }
+
+    @Test
+    public void theNeverReleasedDbSetNameIsNotVocabulary() {
+        assertFalse(loads("\"@dbSetName\": \"Diagnoses\","));
     }
 
     @Test
     public void anAttributeTheRegistryDoesNotCarryStillFails() {
-        assertFalse(loads("\"@dbSetNameX\": \"Diagnosis\","));
+        assertFalse(loads("\"@collectionNameX\": \"Diagnoses\","));
     }
 }

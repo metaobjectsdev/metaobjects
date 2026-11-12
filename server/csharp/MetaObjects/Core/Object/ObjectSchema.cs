@@ -55,18 +55,17 @@ public static class ObjectSchema
     ];
 
     /// <summary>
-    /// @dbSetName — the DbSet property name the generated context gives the object, in place of
-    /// the derived plural. Registered on object.entity, object.projection and object.report
-    /// (see CoreTypes); the description is single-sourced from spec/metamodel/object.json.
+    /// @collectionName, the name of the object's collection in its own casing (the C# DbSet
+    /// property). Registered on object.entity, object.projection and
+    /// object.report (see CoreTypes); the description is single-sourced from spec/metamodel/object.json.
     /// </summary>
-    public static readonly AttrSchema DbSetNameAttr =
+    public static readonly AttrSchema CollectionNameAttr =
         new AttrSchema(
-            Name: ObjectConstants.OBJECT_ATTR_DB_SET_NAME,
+            Name: ObjectConstants.OBJECT_ATTR_COLLECTION_NAME,
             ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
             Required: false,
             Description:
-                "The name of the collection property a per-context ORM mapping gives this object " +
-                "(the C# EF Core DbSet property), in place of the plural derived from its name.");
+                "The name of this object's collection, in the object's own casing: the C# DbSet property.");
 
     /// <summary>
     /// #207 — the optional row-scope @filter on an object.projection (a portable

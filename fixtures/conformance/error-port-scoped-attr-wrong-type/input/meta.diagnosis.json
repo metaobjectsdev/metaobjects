@@ -2,7 +2,7 @@
   "metadata.root": {
     "package": "acme::clinical",
     "children": [
-      { "object.entity": { "name": "Diagnosis", "@dbSetName": ["Diagnosis"], "children": [
+      { "object.entity": { "name": "Diagnosis", "@objectAdapter": ["com.acme.clinical.DiagnosisAdapter"], "children": [
         { "field.long": { "name": "id" } },
         { "identity.primary": { "name": "pk", "@fields": ["id"] } }
       ] } }

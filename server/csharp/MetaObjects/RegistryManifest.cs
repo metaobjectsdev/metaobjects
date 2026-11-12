@@ -41,7 +41,7 @@ public static class RegistryManifest
     //  - NOT carved out: vocabulary only some ports act on. Kind 1
     //    (implemented in some ports so far — the generic `view.*` controls,
     //    `@object`) carries `implementedIn`; kind 2 (language-specific —
-    //    `@dbSetName`, `@objectAdapter`) carries `ports`. Both are IN the manifest.
+    //    `@objectAdapter`) carries `ports`. Both are IN the manifest.
     // ------------------------------------------------------------------
 
     // Wave 3b — the in/out boundary is an EXPLICIT CLASSIFICATION (a reason

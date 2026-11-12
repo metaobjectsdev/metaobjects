@@ -105,6 +105,10 @@ class NamingRules:
 
     columns: str = DEFAULT_COLUMN_NAMING
     tables: str = DEFAULT_TABLE_NAMING
+    #: The pluralizer an object without ``@collectionName`` takes its collection name from
+    #: (``naming.collections``). Not a physical name; it rides here because it is the same
+    #: project setting, read the same way.
+    collections: str = "standard"
 
 
 def naming_rules_of(node: MetaData) -> NamingRules:
@@ -201,17 +205,59 @@ _TABLE_RULES: dict[str, NamingFunction] = {
     TABLE_NAMING_LITERAL: lambda n: n,
 }
 
+#: The pluralizers every port builds in. ``standard`` is the cross-port rule (already-plural
+#: detection, then the suffix rule); ``none`` keeps the object name (a project whose collections
+#: are named like its objects).
+PLURALIZER_STANDARD = "standard"
+PLURALIZER_NONE = "none"
+BUILTIN_PLURALIZERS = (PLURALIZER_STANDARD, PLURALIZER_NONE)
+#: The pluralizer a project gets when ``naming.collections`` is absent.
+DEFAULT_PLURALIZER = PLURALIZER_STANDARD
+
+
+def _standard_pluralize(name: str) -> str:
+    # Local import: the API-docs naming module imports this one.
+    from metaobjects.apidocs.naming import pluralize
+
+    return pluralize(name)
+
+
+_PLURALIZERS: dict[str, NamingFunction] = {
+    PLURALIZER_STANDARD: _standard_pluralize,
+    PLURALIZER_NONE: lambda n: n,
+}
+
+
+def _registry(kind: str) -> dict[str, NamingFunction]:
+    return _COLUMN_STRATEGIES if kind == "columns" else _TABLE_RULES if kind == "tables" else _PLURALIZERS
+
+
+def _builtins(kind: str) -> tuple[str, ...]:
+    return (
+        BUILTIN_COLUMN_NAMING_STRATEGIES
+        if kind == "columns"
+        else BUILTIN_TABLE_NAMING_RULES
+        if kind == "tables"
+        else BUILTIN_PLURALIZERS
+    )
+
 
 class UnknownNamingStrategyError(ValueError):
     """A name no registered naming strategy answers (ADR-0058 Amendment 1)."""
 
 
 def _kind_label(kind: str) -> str:
-    return "column-naming" if kind == "columns" else "table-naming"
+    return (
+        "column-naming"
+        if kind == "columns"
+        else "table-naming"
+        if kind == "tables"
+        else "collection-naming (pluralizer)"
+    )
 
 
 def _register(kind: str, name: str, apply: NamingFunction) -> None:
-    builtins = BUILTIN_COLUMN_NAMING_STRATEGIES if kind == "columns" else BUILTIN_TABLE_NAMING_RULES
+    builtins = _builtins(kind)
     if not isinstance(name, str) or not name:
         raise ValueError(f"a {_kind_label(kind)} strategy needs a non-empty name")
     if name in builtins:
@@ -222,7 +268,7 @@ def _register(kind: str, name: str, apply: NamingFunction) -> None:
     if not callable(apply):
         raise ValueError(f'{_kind_label(kind)} strategy "{name}" must be a function from a name to a name')
     # Registering a name again replaces it: an application registers once at startup.
-    (_COLUMN_STRATEGIES if kind == "columns" else _TABLE_RULES)[name] = apply
+    _registry(kind)[name] = apply
 
 
 def register_column_naming_strategy(name: str, apply: NamingFunction) -> None:
@@ -244,6 +290,26 @@ def register_table_naming_rule(name: str, apply: NamingFunction) -> None:
     _register("tables", name, apply)
 
 
+def register_pluralizer(name: str, apply: NamingFunction) -> None:
+    """Register a named pluralizer: an object name (Pascal, as declared) in, its collection name
+    out. ``"naming": {"collections": "<name>"}`` selects it; see
+    :func:`register_column_naming_strategy`."""
+    _register("collections", name, apply)
+
+
+def registered_pluralizers() -> tuple[str, ...]:
+    """Every registered pluralizer: the built-ins, then the application's."""
+    return tuple(_PLURALIZERS)
+
+
+def pluralizer(name: str) -> NamingFunction:
+    """The pluralizer registered as *name*; raises like :func:`column_naming_strategy`."""
+    fn = _PLURALIZERS.get(name)
+    if fn is None:
+        raise UnknownNamingStrategyError(unknown_naming_strategy_message("collections", name))
+    return fn
+
+
 def reset_naming_strategies_for_testing() -> None:
     """TEST-ONLY: forget every strategy the application registered, leaving the built-ins. The
     registry is process-wide, so a test that registers one resets it when it is done rather than
@@ -252,6 +318,8 @@ def reset_naming_strategies_for_testing() -> None:
         del _COLUMN_STRATEGIES[name]
     for name in [n for n in _TABLE_RULES if n not in BUILTIN_TABLE_NAMING_RULES]:
         del _TABLE_RULES[name]
+    for name in [n for n in _PLURALIZERS if n not in BUILTIN_PLURALIZERS]:
+        del _PLURALIZERS[name]
 
 
 def registered_column_naming_strategies() -> tuple[str, ...]:
@@ -266,14 +334,11 @@ def registered_table_naming_rules() -> tuple[str, ...]:
 
 def unknown_naming_strategy_message(kind: str, name: str) -> str:
     """What every port says when a config names a strategy no registered strategy answers:
-    the same words in every port, with that port's name. *kind* is ``columns`` or ``tables``.
+    the same words in every port, with that port's name. *kind* is ``columns``, ``tables`` or
+    ``collections``.
     """
-    builtins = BUILTIN_COLUMN_NAMING_STRATEGIES if kind == "columns" else BUILTIN_TABLE_NAMING_RULES
-    registered = [
-        n
-        for n in (registered_column_naming_strategies() if kind == "columns" else registered_table_naming_rules())
-        if n not in builtins
-    ]
+    builtins = _builtins(kind)
+    registered = [n for n in _registry(kind) if n not in builtins]
     return (
         f'"naming.{kind}" names "{name}", which no {_kind_label(kind)} strategy registered in the '
         f"{_NAMING_PORT} port answers (built in: {', '.join(builtins)}; registered by the "
