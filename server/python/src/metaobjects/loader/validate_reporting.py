@@ -1233,7 +1233,7 @@ def _check_no_relative_dates(root: MetaData, node: MetaData, sink: _ErrorSink) -
                     _ERR_BAD_ATTR_FILTER,
                     _node_label(node),
                     f": @{attr.name} uses a relative date ({{ now: ... }}), which is legal only in the "
-                    f"@filter of a segment, measure.aggregate or object.report.",
+                    f"@filter of a segment, measure.aggregate, object.report, object.projection, origin.aggregate or origin.first.",
                 )
     # ADR-0039: own — a tree walk; each declared node is visited once, at its declaration.
     for child in node.own_children():

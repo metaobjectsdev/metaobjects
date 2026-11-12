@@ -1170,6 +1170,7 @@ function checkNoRelativeDates(root: MetaData, node: MetaData, sink: ErrorSink): 
     // projection's keys name its own fields; an origin's name fields of the related entity.
     const target = node.type === TYPE_ORIGIN ? originFilterEntity(node, root) : node;
     const subTypeOf = (key: string): string | undefined => (target === undefined ? undefined : fieldOf(target, key)?.subType);
+    // ADR-0039: own — only locally declared filters are lowered (origin.* never inherits, ADR-0029).
     for (const attr of node.ownMetaAttrs()) {
       if (attr.subType === ATTR_SUBTYPE_FILTER) checkRelativeShapes(attr.value, node, subTypeOf, sink);
     }
@@ -1184,7 +1185,7 @@ function checkNoRelativeDates(root: MetaData, node: MetaData, sink: ErrorSink): 
           ERR_BAD_ATTR_FILTER,
           nodeLabel(node),
           `: @${attr.name} uses a relative date ({ now: ... }), which is legal only in the ` +
-            `@filter of a segment, measure.aggregate or object.report.`,
+            `@filter of a segment, measure.aggregate, object.report, object.projection, origin.aggregate or origin.first.`,
         );
       }
     }

@@ -1662,6 +1662,7 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
           // A sibling computed ref is inlined by the view, so the refs must not lead back here.
           const computedRefs = (name: string): string[] => {
             const o = ownOriginOf(name);
+            // ADR-0039: own — origin.* never inherits (ADR-0029), so @expr is declared on the origin.
             return o?.subType === ORIGIN_SUBTYPE_COMPUTED
               ? expressionFieldRefs(o.ownAttr(ORIGIN_COMPUTED_ATTR_EXPR)).filter((r) => r !== name)
               : [];

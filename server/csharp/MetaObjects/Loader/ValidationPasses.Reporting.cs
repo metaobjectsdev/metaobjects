@@ -1108,6 +1108,7 @@ public static partial class ValidationPasses
             // projection's keys name its own fields; an origin's name fields of the related entity.
             var target = node.Type == TYPE_ORIGIN ? OriginFilterEntity(node, root) : node;
             string? SubTypeOf(string key) => target is null ? null : ReportingFieldOf(target, key)?.SubType;
+            // ADR-0039: own — only locally declared filters are lowered (origin.* never inherits, ADR-0029).
             foreach (var (attrName, value) in node.OwnAttrs())
             {
                 bool isFilterAttr =
@@ -1131,7 +1132,7 @@ public static partial class ValidationPasses
                         ErrorCode.ERR_BAD_ATTR_FILTER,
                         ReportingNodeLabel(node),
                         $": @{attrName} uses a relative date ({{ now: ... }}), which is legal only in the " +
-                        "@filter of a segment, measure.aggregate or object.report.");
+                        "@filter of a segment, measure.aggregate, object.report, object.projection, origin.aggregate or origin.first.");
                 }
             }
         }

@@ -1216,7 +1216,7 @@ final class ReportingValidation {
                         && filterContainsRelativeValue(((MetaAttribute<?>) c).getValue())) {
                     sink.push(node, ErrorCode.ERR_BAD_ATTR_FILTER, nodeLabel(node),
                             ": @" + c.getShortName() + " uses a relative date ({ now: ... }), which is legal only in "
-                                    + "the @filter of a segment, measure.aggregate or object.report.");
+                                    + "the @filter of a segment, measure.aggregate, object.report, object.projection, origin.aggregate or origin.first.");
                 }
             }
         }

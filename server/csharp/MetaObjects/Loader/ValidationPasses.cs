@@ -799,6 +799,7 @@ public static partial class ValidationPasses
                                 .FirstOrDefault(f => f.Type == TYPE_FIELD && f.Name == name)?.SubType;
                         };
                         // A sibling computed ref is inlined by the view, so the refs must not lead back here.
+                        // ADR-0039: own — origin.* never inherits (ADR-0029), so @expr is declared on the origin.
                         Func<string, List<string>> computedRefs = name => ownOriginOf(name) is { SubType: ORIGIN_SUBTYPE_COMPUTED } o
                             ? ExpressionGrammar.FieldRefs(o.OwnAttr(ORIGIN_COMPUTED_ATTR_EXPR)).Where(r => r != name).ToList()
                             : [];
