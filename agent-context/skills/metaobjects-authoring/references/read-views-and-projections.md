@@ -1,6 +1,6 @@
 # Projections, `origin.*`, and managed views
 
-> Part of the `metaobjects-authoring` skill. The skill covers the entity read-view, which is the right answer for most grids. Read this when you need an independent exposure (`object.projection`), the `origin.*` vocabulary, `@filter` / `@expr` shapes, or an `@sql` / `@unmanaged` view.
+> Part of the `metaobjects-authoring` skill. The skill covers the entity read-view, which is the right answer for most grids. Read this when you need an independent exposure (`object.projection`), the `origin.*` vocabulary, `@filter` / `@expr` shapes, or an `@sql` / `@unmanaged` view. A grouped total or report (per client, per month) is an `object.report`: `declaring-reports.md`.
 
 ## Contents
 - Read-view or projection?
@@ -125,8 +125,9 @@ non-aggregate-derived** projection fields: naming an undeclared field fails the 
 
 **The `CREATE VIEW` body is generated from those `origin.*` children by the Node
 `meta migrate` — never hand-author view SQL for a shape origins can express** (an unmodeled
-view is *unmanaged*, so `meta verify --db` can't even catch the drift). For a genuinely
-irreducible body (recursive CTE, window function, set operation) that origins can't express,
+view is *unmanaged*, so `meta verify --db` can't even catch the drift). **An `@sql` body that
+`GROUP BY`s: check `declaring-reports.md` first** (`object.report`, `@spine`, `@default`).
+For a genuinely irreducible body (recursive CTE, window function, set operation) that origins can't express,
 carry it in the `source.rdb` **`@sql`** escape (#208, ADR-0043) — a hand-written body the
 tool registers, fingerprints, and drift-checks (adopt a pre-existing view with
 `meta migrate --allow adopt-view`) — rather than a hand-edited migration file where it goes

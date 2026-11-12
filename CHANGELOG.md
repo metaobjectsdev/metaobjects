@@ -10,6 +10,13 @@ here.**
 
 ## [Unreleased]
 
+### Changed
+
+- **Agent context routes report work to the reporting vocabulary.** The `meta init` agent guide
+  and the `metaobjects-authoring` skill now send grouped totals, dashboard numbers and read-only
+  report views to `object.report` (`references/declaring-reports.md`) before the `@sql` escape,
+  which they describe as the last resort for bodies the vocabulary cannot express.
+
 ## [1.3.0] — 2026-11-11
 
 _npm `1.3.0` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._
