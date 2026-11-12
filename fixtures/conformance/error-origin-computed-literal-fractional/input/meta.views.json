@@ -1,0 +1,137 @@
+{
+  "metadata.root": {
+    "package": "acme::views",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Status",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "statuses"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "name"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Case",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "cases"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "statusId"
+              }
+            },
+            {
+              "field.int": {
+                "name": "priorType"
+              }
+            },
+            {
+              "field.int": {
+                "name": "cumulativeStatus"
+              }
+            },
+            {
+              "field.int": {
+                "name": "status"
+              }
+            },
+            {
+              "field.date": {
+                "name": "effectiveFrom"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "statusId",
+                "@fields": "statusId",
+                "@references": "acme::views::Status"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "FracCoalesce",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_frac_coalesce"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id",
+                "extends": "acme::views::Case.id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "x",
+                "children": [
+                  {
+                    "origin.computed": {
+                      "@expr": {
+                        "fn": "coalesce",
+                        "args": [
+                          {
+                            "field": "statusId"
+                          },
+                          {
+                            "value": 1.5
+                          }
+                        ]
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "extends": "acme::views::Case.id"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

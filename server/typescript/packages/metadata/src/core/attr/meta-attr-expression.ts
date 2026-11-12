@@ -164,11 +164,12 @@ function isAdaptable(node: unknown): boolean {
   return ("value" in n && typeof n.value === "number") || EXPR_NOW in n;
 }
 
-/** Whether an adaptable node takes `to`: a number takes any numeric type, `now` a date or timestamp. */
+/** Whether an adaptable node takes `to`: a whole number any numeric type, a fractional number only double, float or decimal, `now` a date or timestamp. */
 function adaptsTo(node: unknown, to: string): boolean {
-  return EXPR_NOW in (node as Record<string, unknown>)
-    ? to === FIELD_SUBTYPE_DATE || to === FIELD_SUBTYPE_TIMESTAMP
-    : NUMERIC_SUBTYPES.has(to);
+  const n = node as Record<string, unknown>;
+  if (EXPR_NOW in n) return to === FIELD_SUBTYPE_DATE || to === FIELD_SUBTYPE_TIMESTAMP;
+  if (literalType(n.value as ExprLiteral) === FIELD_SUBTYPE_INT) return NUMERIC_SUBTYPES.has(to);
+  return to === FIELD_SUBTYPE_DOUBLE || to === FIELD_SUBTYPE_FLOAT || to === FIELD_SUBTYPE_DECIMAL;
 }
 
 /** The one type of a case's results or a coalesce's args, or `differing` when they do not unify. */

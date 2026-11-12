@@ -340,12 +340,15 @@ public static class ExpressionGrammar
         node is IReadOnlyDictionary<string, object?> n
         && ((n.ContainsKey(KEY_VALUE) && Get(n, KEY_VALUE) is long or int or double) || n.ContainsKey(EXPR_NOW));
 
-    /// <summary>Whether an adaptable node takes <paramref name="to"/>: a number takes any numeric
-    /// type, <c>now</c> a date or timestamp.</summary>
-    private static bool AdaptsTo(object? node, string to) =>
-        node is IReadOnlyDictionary<string, object?> n && n.ContainsKey(EXPR_NOW)
-            ? to == FIELD_SUBTYPE_DATE || to == FIELD_SUBTYPE_TIMESTAMP
-            : NumericSubtypes.Contains(to);
+    /// <summary>Whether an adaptable node takes <paramref name="to"/>: a whole number any numeric
+    /// type, a fractional number only double, float or decimal, <c>now</c> a date or timestamp.</summary>
+    private static bool AdaptsTo(object? node, string to)
+    {
+        var n = (IReadOnlyDictionary<string, object?>)node!;
+        if (n.ContainsKey(EXPR_NOW)) return to == FIELD_SUBTYPE_DATE || to == FIELD_SUBTYPE_TIMESTAMP;
+        if (LiteralType(Get(n, KEY_VALUE)) == FIELD_SUBTYPE_INT) return NumericSubtypes.Contains(to);
+        return to == FIELD_SUBTYPE_DOUBLE || to == FIELD_SUBTYPE_FLOAT || to == FIELD_SUBTYPE_DECIMAL;
+    }
 
     /// <summary>The one type of a case's results or a coalesce's args, or every type when they do not unify.</summary>
     private static (string? Type, List<string>? Differing) UnifyTypes(IReadOnlyList<object?> nodes, IReadOnlyList<string?> types)

@@ -541,11 +541,13 @@ public class ExpressionAttribute extends MetaAttribute<Map<String, Object>> {
         return (n.containsKey("value") && n.get("value") instanceof Number) || n.containsKey(EXPR_NOW);
     }
 
-    /** Whether an adaptable node takes {@code to}: a number takes any numeric type, {@code now} a date or timestamp. */
+    /** Whether an adaptable node takes {@code to}: a whole number any numeric type, a fractional number only
+     *  double, float or decimal, {@code now} a date or timestamp. */
     private static boolean adaptsTo(Object node, String to) {
-        return ((Map<?, ?>) node).containsKey(EXPR_NOW)
-            ? DateField.SUBTYPE_DATE.equals(to) || TimestampField.SUBTYPE_TIMESTAMP.equals(to)
-            : NUMERIC_SUBTYPES.contains(to);
+        Map<?, ?> n = (Map<?, ?>) node;
+        if (n.containsKey(EXPR_NOW)) return DateField.SUBTYPE_DATE.equals(to) || TimestampField.SUBTYPE_TIMESTAMP.equals(to);
+        if (IntegerField.SUBTYPE_INT.equals(literalType(n.get("value")))) return NUMERIC_SUBTYPES.contains(to);
+        return DoubleField.SUBTYPE_DOUBLE.equals(to) || FloatField.SUBTYPE_FLOAT.equals(to) || DecimalField.SUBTYPE_DECIMAL.equals(to);
     }
 
     /** The one type of a case's results or a coalesce's args; fills {@code differing} with every

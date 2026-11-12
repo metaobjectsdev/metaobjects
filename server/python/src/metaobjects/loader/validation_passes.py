@@ -1294,11 +1294,14 @@ def _is_adaptable(node: object) -> bool:
 
 
 def _adapts_to(node: object, to: str) -> bool:
-    """Whether an adaptable node takes ``to``: a number takes any numeric type, ``now`` a date or timestamp."""
+    """Whether an adaptable node takes ``to``: a whole number any numeric type, a fractional number only
+    double, float or decimal, ``now`` a date or timestamp."""
     assert isinstance(node, dict)
     if EXPR_NOW in node:
         return to in (FIELD_SUBTYPE_DATE, FIELD_SUBTYPE_TIMESTAMP)
-    return to in _EXPR_NUMERIC_SUBTYPES
+    if _literal_type(node["value"]) == FIELD_SUBTYPE_INT:
+        return to in _EXPR_NUMERIC_SUBTYPES
+    return to in (FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT, FIELD_SUBTYPE_DECIMAL)
 
 
 def _unify_types(nodes: list[object], types: list[str | None]) -> tuple[str | None, list[str] | None]:
