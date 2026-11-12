@@ -361,7 +361,7 @@ public static class ReportShapes
     /// </summary>
     private static (string SubType, MetaField? TypeSource)? DeriveMeasure(MetaMeasure m, MetaObject from, MetaRoot root)
     {
-        if (m.IsRatio()) return (FIELD_SUBTYPE_DECIMAL, null);
+        if (m.IsRatio() || m.IsDerived()) return (FIELD_SUBTYPE_DECIMAL, null);
         string? agg = m.Agg();
         if (agg == AGG_COUNT) return (FIELD_SUBTYPE_LONG, null);
         // any / all are boolean whatever the source (the loader's M4 refuses a non-boolean @of).

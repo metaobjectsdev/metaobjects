@@ -899,3 +899,36 @@ def test_a_value_object_member_derives_the_members_type() -> None:
         "averagePayment decimal False -",
         "payments long True -",
     ]
+
+
+def test_a_derived_measure_is_a_nullable_decimal() -> None:
+    """FR-044 R13: a measure.derived is typed decimal, not required, with no type source,
+    whatever its operands. The same rows as the TypeScript derivation of this fixture."""
+    path = CORPUS.parent / "conformance" / "reporting-derived-measures" / "input" / "meta.studio.json"
+    root = _load(InMemoryStringSource(path.read_text(encoding="utf-8"), "meta.studio.json"))
+
+    def rows(name: str) -> list[str]:
+        return [
+            f"{f.name} {f.sub_type} {f.required} "
+            + ("-" if f.type_source is None else f"{f.type_source.parent.name}.{f.type_source.name}")
+            for f in report_shape(_object(root, name), root).fields
+        ]
+
+    assert rows("MemberUtilization") == [
+        "memberId long False Member.id",
+        "memberName string True Member.firstName",
+        "weeklyCapacityHours decimal True Member.weeklyCapacityHours",
+        "workedOnMonth date True -",
+        "totalHours decimal True -",
+        "billableHours decimal True -",
+        "capacityHours decimal False -",
+        "utilization decimal False -",
+        "nonBillableHours decimal False -",
+        "billableSharePct decimal False -",
+    ]
+    assert rows("ProjectBurn") == [
+        "projectId long False Project.id",
+        "projectBudget decimal False Project.budget",
+        "cost decimal False -",
+        "budgetBurn decimal False -",
+    ]

@@ -82,7 +82,7 @@ describe("FR-044 R13: derived measures in a report view", () => {
   });
 
   test("Cube: a derived measure over measures is a number member reading them", async () => {
-    const model = buildCubeModel(await load(true), { dialect: "postgres" });
+    const model = buildCubeModel(await load(true), { dialect: "postgres", columnNamingStrategy: "snake_case" });
     const cube = model.cubes.find((c) => c.name.toLowerCase().includes("timeentr"))!;
     const derived = cube.measures.find((m) => m.name === "nonBillableHours")!;
     expect(derived.type).toBe("number");
@@ -93,6 +93,6 @@ describe("FR-044 R13: derived measures in a report view", () => {
 
   test("Cube: a derived measure that reads a dimension is refused", async () => {
     const root = await load();
-    expect(() => buildCubeModel(root, { dialect: "postgres" })).toThrow(/ERR_CUBE_DERIVED_DIMENSION/);
+    expect(() => buildCubeModel(root, { dialect: "postgres", columnNamingStrategy: "snake_case" })).toThrow(/ERR_CUBE_DERIVED_DIMENSION/);
   });
 });

@@ -32,9 +32,24 @@ public abstract class MetaMeasure extends MetaData {
         super(ReportingConstants.TYPE_MEASURE, subType, name);
     }
 
-    /** True for {@code measure.ratio}; false for {@code measure.aggregate}. */
+    /** True for {@code measure.ratio}. */
     public boolean isRatio() {
         return ReportingConstants.MEASURE_SUBTYPE_RATIO.equals(getSubType());
+    }
+
+    /** True for {@code measure.derived} (R13). */
+    public boolean isDerived() {
+        return ReportingConstants.MEASURE_SUBTYPE_DERIVED.equals(getSubType());
+    }
+
+    /** A {@code measure.derived}'s {@code @expr} when it is a well-formed arithmetic expression, else {@code null}. */
+    public Map<String, Object> getExpr() {
+        if (!hasMetaAttr(ReportingConstants.ATTR_EXPR)) return null;
+        Object v = getMetaAttr(ReportingConstants.ATTR_EXPR).getValue();
+        if (!DerivedExpr.isDerivedExpr(v)) return null;
+        @SuppressWarnings("unchecked")
+        Map<String, Object> expr = (Map<String, Object>) v;
+        return expr;
     }
 
     /** The aggregate function ({@code measure.aggregate} only), or {@code null} when absent

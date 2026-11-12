@@ -43,6 +43,6 @@ describe("FR-044 R12: value-object members in a report view", () => {
 
   test("the Cube exporter refuses a member rather than let a query add amounts across currencies", async () => {
     const root = await load();
-    expect(() => buildCubeModel(root, { dialect: "postgres" })).toThrow(/ERR_CUBE_VALUE_OBJECT_MEMBER/);
+    expect(() => buildCubeModel(root, { dialect: "postgres", columnNamingStrategy: "snake_case" })).toThrow(/ERR_CUBE_VALUE_OBJECT_MEMBER/);
   });
 });

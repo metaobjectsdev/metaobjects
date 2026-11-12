@@ -89,7 +89,8 @@ from ..meta.core.reporting.report_accessors import (
     report_measure_names,
     report_spine,
 )
-from ..meta.core.reporting.report_shape import is_flattened_field, measure_result_sub_type
+from ..meta.core.reporting.derived_expr import derived_expr_fields
+from ..meta.core.reporting.report_shape import is_flattened_field, measure_result_sub_type, resolve_dimension_of
 from ..meta.core.reporting.reporting_constants import (
     AGG_AVG,
     AGG_COUNT,
@@ -103,10 +104,13 @@ from ..meta.core.reporting.reporting_constants import (
     RELATIVE_START_OF_UNITS,
     GRAIN_HOUR,
     ISO_DURATION_RE,
+    DERIVED_FNS,
     MEASURE_SUBTYPE_AGGREGATE,
+    MEASURE_SUBTYPE_DERIVED,
     REPORT_DIMENSION_GRAIN_SEPARATOR,
     REPORTING_ATTR_DEFAULT,
     REPORTING_ATTR_DENOMINATOR,
+    REPORTING_ATTR_EXPR,
     REPORTING_ATTR_NUMERATOR,
     REPORTING_ATTR_VIA,
 )
@@ -697,6 +701,9 @@ def _check_measure(ctx: _MemberCtx, measure: MetaMeasure) -> None:
     if measure.is_ratio():
         _check_ratio_operands(ctx, measure, err)
         return
+    if measure.is_derived():
+        _check_derived_expr(ctx, measure, err)
+        return
     if measure.sub_type != MEASURE_SUBTYPE_AGGREGATE:
         return
 
@@ -855,6 +862,52 @@ def _check_ratio_operands(ctx: _MemberCtx, ratio: MetaMeasure, err: Callable[[st
                     f"@{attr_name} '{ref}' is a {result} measure; a ratio divides numbers, so its operands must be "
                     f"numeric measures (a count, a sum, an avg, or a min or max of a numeric field)."
                 )
+
+
+def _check_derived_expr(ctx: _MemberCtx, measure: MetaMeasure, err: Callable[[str], None]) -> None:
+    """M11 — a measure.derived's @expr is FR-037 R5's arithmetic over operands a report can read:
+    each ``{ field }`` names a numeric measure.aggregate or measure.ratio of the same entity, or a
+    numeric attribute dimension of it (R13 then requires the report to list that dimension). A
+    derived measure never reads another derived measure, and a name both a measure and a
+    dimension carry is refused rather than guessed. One error per offending operand."""
+    # ADR-0039: resolving (get_meta_attr — Python attr() is own-only).
+    if measure.get_meta_attr(REPORTING_ATTR_EXPR) is None:
+        return  # missing @expr is ERR_MISSING_REQUIRED_ATTR
+    expr = measure.expr()
+    if expr is None:
+        err(
+            "@expr is not an arithmetic expression. Each node is { field: <measure or dimension> }, "
+            f"{{ value: <number> }} or {{ fn: {' | '.join(DERIVED_FNS)}, args: [<a>, <b>] }}."
+        )
+        return
+    entity_key = ctx.declaring.resolution_key()
+    host_ok = isinstance(ctx.host, MetaObject) and isinstance(ctx.root, MetaRoot)
+    for name in derived_expr_fields(expr):
+        target = _child_of_type(ctx.host, TYPE_MEASURE, name)
+        dim = _child_of_type(ctx.host, TYPE_DIMENSION, name)
+        if target is not None and dim is not None:
+            err(f"@expr names '{name}', which is both a measure and a dimension of '{entity_key}'. Rename one.")
+        elif target is not None:
+            if target.sub_type == MEASURE_SUBTYPE_DERIVED:
+                err(
+                    f"@expr names '{name}', a measure.derived. A derived measure reads aggregates, ratios and "
+                    "dimensions, not another derived measure."
+                )
+            elif isinstance(target, MetaMeasure) and host_ok:
+                result = measure_result_sub_type(target, ctx.host, ctx.root)  # type: ignore[arg-type]
+                if result is not None and result not in _NUMERIC_FIELD_SUBTYPES:
+                    err(f"@expr names measure '{name}', whose result is a {result}, not a number.")
+        elif isinstance(dim, MetaDimension):
+            if dim.is_time():
+                err(f"@expr names '{name}', a dimension.time. Arithmetic reads a numeric attribute dimension.")
+            elif host_ok:
+                resolved = resolve_dimension_of(dim, ctx.host, ctx.root)  # type: ignore[arg-type]
+                if resolved is not None and resolved[1].sub_type not in _NUMERIC_FIELD_SUBTYPES:
+                    err(
+                        f"@expr names dimension '{name}', whose @of is a field.{resolved[1].sub_type}, not a number."
+                    )
+        else:
+            err(f"@expr names '{name}', which is no measure or dimension of '{entity_key}'.")
 
 
 # ---------------------------------------------------------------------------
@@ -1063,6 +1116,8 @@ def _check_report(root: MetaData, report: MetaData, sink: _ErrorSink) -> None:
 
     # R12 — amounts in different units are never combined.
     _check_value_object_units(report, from_, err)
+    # R13 — a derived measure reads only dimensions the report groups by.
+    _check_derived_dimensions(report, from_, err)
 
     # R7 — @segment names a segment of @from.
     # ADR-0039: resolving (get_meta_attr — Python attr() is own-only).
@@ -1160,13 +1215,7 @@ def _check_value_object_units(report: MetaData, from_: MetaData, err: Callable[[
         listed = _child_of_type(from_, TYPE_MEASURE, measure_item.rsplit(CHILD_REF_SEP, 1)[-1])
         if not isinstance(listed, MetaMeasure):
             continue
-        operands = [listed.numerator(), listed.denominator()] if listed.is_ratio() else None
-        candidates = (
-            [listed]
-            if operands is None
-            else [_child_of_type(from_, TYPE_MEASURE, n) for n in operands if n is not None]
-        )
-        for m in candidates:
+        for m in _aggregates_read(listed, from_):
             if not isinstance(m, MetaMeasure) or m.sub_type != MEASURE_SUBTYPE_AGGREGATE or id(m) in checked:
                 continue
             checked.add(id(m))
@@ -1195,6 +1244,48 @@ def _check_value_object_units(report: MetaData, from_: MetaData, err: Callable[[
                     f"amounts with different '{unit.name}' values would be combined. List an attribute dimension of "
                     f"@from whose @of is '{parts.owner}.{field_name}.{unit.name}'."
                 )
+
+
+def _aggregates_read(listed: MetaMeasure, from_: MetaData) -> list[MetaData]:
+    """The measures ``listed`` aggregates through: itself for a measure.aggregate, its two
+    operands for a ratio, and for a measure.derived each measure its @expr names (a ratio there
+    read through its operands). Unresolved names are left out; the member rules report them."""
+
+    def measure(n: str | None) -> MetaData | None:
+        return None if n is None else _child_of_type(from_, TYPE_MEASURE, n)
+
+    def operands_of(m: MetaData | None) -> list[MetaData | None]:
+        if isinstance(m, MetaMeasure) and m.is_ratio():
+            return [measure(m.numerator()), measure(m.denominator())]
+        return [m]
+
+    if listed.is_derived():
+        expr = listed.expr()
+        read = [o for n in (derived_expr_fields(expr) if expr is not None else []) for o in operands_of(measure(n))]
+    else:
+        read = operands_of(listed)
+    return [m for m in read if m is not None]
+
+
+def _check_derived_dimensions(report: MetaData, from_: MetaData, err: Callable[[str], None]) -> None:
+    """R13 — a measure.derived that reads an attribute dimension reads that dimension's value for
+    each group, so the report must list the dimension in @dimensions. A name that is also a
+    measure is M11's to report."""
+    listed_dims = {item.name for item in report_dimension_items(report)}
+    for measure_item in report_measure_names(report):
+        m = _child_of_type(from_, TYPE_MEASURE, measure_item.rsplit(CHILD_REF_SEP, 1)[-1])
+        expr = m.expr() if isinstance(m, MetaMeasure) and m.is_derived() else None
+        if m is None or expr is None:
+            continue
+        for name in derived_expr_fields(expr):
+            if name in listed_dims or _child_of_type(from_, TYPE_MEASURE, name) is not None:
+                continue
+            if _child_of_type(from_, TYPE_DIMENSION, name) is None:
+                continue
+            err(
+                f": measure '{m.name}' reads dimension '{name}', which @dimensions does not list. A derived "
+                "measure reads a dimension's value for each group, so the report must group by it."
+            )
 
 
 def _check_report_measure(

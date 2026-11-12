@@ -558,6 +558,11 @@ public static partial class ValidationPasses
             CheckRatioOperands(ctx, measure, Err);
             return;
         }
+        if (measure.IsDerived())
+        {
+            CheckDerivedExpr(ctx, measure, Err);
+            return;
+        }
         if (measure.SubType != MEASURE_SUBTYPE_AGGREGATE) return;
 
         bool clean = CheckAggregateColumns(ctx, measure, Err, out var ofField);
@@ -731,6 +736,66 @@ public static partial class ValidationPasses
             {
                 err($"@{attr} '{@ref}' is a {result} measure; a ratio divides numbers, so its operands must be numeric " +
                     "measures (a count, a sum, an avg, or a min or max of a numeric field).");
+            }
+        }
+    }
+
+    /// <summary>
+    /// M11 — a measure.derived's @expr is FR-037 R5's arithmetic over operands a report can read:
+    /// each <c>{ field }</c> names a numeric measure.aggregate or measure.ratio of the same entity,
+    /// or a numeric attribute dimension of it (R13 then requires the report to list that
+    /// dimension). A derived measure never reads another derived measure, and a name both a
+    /// measure and a dimension carry is refused rather than guessed. One error per offending operand.
+    /// </summary>
+    private static void CheckDerivedExpr(MemberCtx ctx, MetaMeasure measure, Action<string> err)
+    {
+        if (measure.Attr(REPORTING_ATTR_EXPR) is null) return; // missing @expr is ERR_MISSING_REQUIRED_ATTR
+        var expr = measure.Expr();
+        if (expr is null)
+        {
+            err("@expr is not an arithmetic expression. Each node is { field: <measure or dimension> }, " +
+                $"{{ value: <number> }} or {{ fn: {string.Join(" | ", DERIVED_FNS)}, args: [<a>, <b>] }}.");
+            return;
+        }
+        string entityKey = ctx.Declaring.ResolutionKey();
+        foreach (string name in DerivedExpr.Fields(expr))
+        {
+            var target = ReportingChildOfType(ctx.Host, TYPE_MEASURE, name);
+            var dim = ReportingChildOfType(ctx.Host, TYPE_DIMENSION, name);
+            if (target is not null && dim is not null)
+            {
+                err($"@expr names '{name}', which is both a measure and a dimension of '{entityKey}'. Rename one.");
+            }
+            else if (target is not null)
+            {
+                if (target.SubType == MEASURE_SUBTYPE_DERIVED)
+                {
+                    err($"@expr names '{name}', a measure.derived. A derived measure reads aggregates, ratios and " +
+                        "dimensions, not another derived measure.");
+                }
+                else if (target is MetaMeasure operand && ctx.Host is MetaObject from && ctx.Root is MetaRoot root &&
+                         ReportShapes.MeasureResultSubType(operand, from, root) is { } result &&
+                         !ReportingNumericFieldSubtypes.Contains(result))
+                {
+                    err($"@expr names measure '{name}', whose result is a {result}, not a number.");
+                }
+            }
+            else if (dim is MetaDimension d)
+            {
+                if (d.IsTime())
+                {
+                    err($"@expr names '{name}', a dimension.time. Arithmetic reads a numeric attribute dimension.");
+                }
+                else if (ctx.Host is MetaObject from && ctx.Root is MetaRoot root &&
+                         ReportShapes.ResolveDimensionOf(d, from, root) is { } of &&
+                         !ReportingNumericFieldSubtypes.Contains(of.Field.SubType))
+                {
+                    err($"@expr names dimension '{name}', whose @of is a field.{of.Field.SubType}, not a number.");
+                }
+            }
+            else
+            {
+                err($"@expr names '{name}', which is no measure or dimension of '{entityKey}'.");
             }
         }
     }
@@ -977,6 +1042,9 @@ public static partial class ValidationPasses
         // R12 — amounts in different units are never combined.
         CheckValueObjectUnits(report, from, m => Err(m));
 
+        // R13 — a derived measure reads only dimensions the report groups by.
+        CheckDerivedDimensions(report, from, m => Err(m));
+
         // R7 — @segment names a segment of @from.
         // ADR-0039: resolving — a report may inherit @segment via extends.
         if (report.Attr(OBJECT_REPORT_ATTR_SEGMENT) is string segment &&
@@ -1065,11 +1133,7 @@ public static partial class ValidationPasses
         {
             string name = item[(item.LastIndexOf(CHILD_REF_SEPARATOR, StringComparison.Ordinal) + 1)..];
             if (ReportingChildOfType(from, TYPE_MEASURE, name) is not MetaMeasure listed) continue;
-            IEnumerable<MetaData?> aggregates = listed.IsRatio()
-                ? new[] { listed.Numerator(), listed.Denominator() }
-                    .Select(n => n is null ? null : ReportingChildOfType(from, TYPE_MEASURE, n))
-                : [listed];
-            foreach (var candidate in aggregates)
+            foreach (var candidate in AggregatesRead(listed, from))
             {
                 if (candidate is not MetaMeasure m || m.SubType != MEASURE_SUBTYPE_AGGREGATE || !checkedMeasures.Add(m)) continue;
                 string? agg = m.Agg();
@@ -1091,6 +1155,46 @@ public static partial class ValidationPasses
                         $"amounts with different '{unit.Name}' values would be combined. List an attribute dimension of " +
                         $"@from whose @of is '{parts.Value.Owner}.{fieldName}.{unit.Name}'.");
                 }
+            }
+        }
+    }
+
+    /// <summary>
+    /// The measures <paramref name="listed"/> aggregates through: itself for a measure.aggregate,
+    /// its two operands for a ratio, and for a measure.derived each measure its @expr names (a
+    /// ratio there read through its operands). Unresolved names are left out; the member rules
+    /// report them.
+    /// </summary>
+    private static IEnumerable<MetaData> AggregatesRead(MetaMeasure listed, MetaData from)
+    {
+        MetaData? Measure(string? n) => n is null ? null : ReportingChildOfType(from, TYPE_MEASURE, n);
+        IEnumerable<MetaData?> OperandsOf(MetaData? m) =>
+            m is MetaMeasure r && r.IsRatio() ? [Measure(r.Numerator()), Measure(r.Denominator())] : [m];
+        var read = listed.IsDerived()
+            ? (listed.Expr() is { } expr ? DerivedExpr.Fields(expr) : []).SelectMany(n => OperandsOf(Measure(n)))
+            : OperandsOf(listed);
+        return read.Where(m => m is not null).Select(m => m!);
+    }
+
+    /// <summary>
+    /// R13 — a measure.derived that reads an attribute dimension reads that dimension's value for
+    /// each group, so the report must list the dimension in @dimensions. A name that is also a
+    /// measure is M11's to report.
+    /// </summary>
+    private static void CheckDerivedDimensions(MetaData report, MetaData from, Action<string> err)
+    {
+        var listedDims = ReportAccessors.ReportDimensionItems(report).Select(i => i.Name).ToHashSet(StringComparer.Ordinal);
+        foreach (string item in ReportAccessors.ReportMeasureNames(report))
+        {
+            string name = item[(item.LastIndexOf(CHILD_REF_SEPARATOR, StringComparison.Ordinal) + 1)..];
+            if (ReportingChildOfType(from, TYPE_MEASURE, name) is not MetaMeasure m || !m.IsDerived() ||
+                m.Expr() is not { } expr) continue;
+            foreach (string read in DerivedExpr.Fields(expr))
+            {
+                if (listedDims.Contains(read) || ReportingChildOfType(from, TYPE_MEASURE, read) is not null) continue;
+                if (ReportingChildOfType(from, TYPE_DIMENSION, read) is null) continue;
+                err($": measure '{m.Name}' reads dimension '{read}', which @dimensions does not list. A derived " +
+                    "measure reads a dimension's value for each group, so the report must group by it.");
             }
         }
     }

@@ -13,8 +13,15 @@ namespace MetaObjects.Meta;
 // ADR-0039: every getter below uses the RESOLVING Attr() accessor.
 public class MetaMeasure(TypeId typeId, string name) : MetaData(typeId, name)
 {
-    /// <summary>True for <c>measure.ratio</c>; false for <c>measure.aggregate</c>.</summary>
+    /// <summary>True for <c>measure.ratio</c>.</summary>
     public bool IsRatio() => SubType == MEASURE_SUBTYPE_RATIO;
+
+    /// <summary>True for <c>measure.derived</c> (R13).</summary>
+    public bool IsDerived() => SubType == MEASURE_SUBTYPE_DERIVED;
+
+    /// <summary>A <c>measure.derived</c>'s <c>@expr</c>, when it is a well-formed arithmetic expression.</summary>
+    public IReadOnlyDictionary<string, object?>? Expr() =>
+        Attr(REPORTING_ATTR_EXPR) is IReadOnlyDictionary<string, object?> e && DerivedExpr.IsDerivedExpr(e) ? e : null;
 
     /// <summary>The aggregate function (<c>measure.aggregate</c> only); null outside the closed set.</summary>
     public string? Agg() =>

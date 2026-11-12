@@ -40,6 +40,7 @@ import com.metaobjects.loader.parser.BaseMetaDataParser;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.query.FilterOps;
 import com.metaobjects.relationship.MetaRelationship;
+import com.metaobjects.reporting.DerivedExpr;
 import com.metaobjects.reporting.MetaDimension;
 import com.metaobjects.reporting.MetaMeasure;
 import com.metaobjects.reporting.MetaSegment;
@@ -681,6 +682,10 @@ final class ReportingValidation {
             checkRatioOperands(ctx, measure, err);
             return;
         }
+        if (measure.isDerived()) {
+            checkDerivedExpr(ctx, measure, err);
+            return;
+        }
         if (!ReportingConstants.MEASURE_SUBTYPE_AGGREGATE.equals(measure.getSubType())) return;
 
         AggregateColumns checked = checkAggregateColumns(ctx, measure, err);
@@ -839,6 +844,55 @@ final class ReportingValidation {
                             + " measure; a ratio divides numbers, so its operands must be numeric measures "
                             + "(a count, a sum, an avg, or a min or max of a numeric field).");
                 }
+            }
+        }
+    }
+
+    /**
+     * M11 — a measure.derived's @expr is FR-037 R5's arithmetic over operands a report can read:
+     * each {@code { field }} names a numeric measure.aggregate or measure.ratio of the same entity,
+     * or a numeric attribute dimension of it (R13 then requires the report to list that
+     * dimension). A derived measure never reads another derived measure, and a name both a
+     * measure and a dimension carry is refused rather than guessed. One error per offending operand.
+     */
+    private static void checkDerivedExpr(MemberCtx ctx, MetaMeasure measure, Consumer<String> err) {
+        if (!measure.hasMetaAttr(ReportingConstants.ATTR_EXPR)) return; // ERR_MISSING_REQUIRED_ATTR
+        Map<String, Object> expr = measure.getExpr();
+        if (expr == null) {
+            err.accept("@expr is not an arithmetic expression. Each node is { field: <measure or dimension> }, "
+                    + "{ value: <number> } or { fn: " + String.join(" | ", ReportingConstants.DERIVED_FNS)
+                    + ", args: [<a>, <b>] }.");
+            return;
+        }
+        String entityKey = ctx.declaring().getName();
+        for (String name : DerivedExpr.fields(expr)) {
+            MetaData target = childOfType(ctx.host(), ReportingConstants.TYPE_MEASURE, name);
+            MetaData dim = childOfType(ctx.host(), ReportingConstants.TYPE_DIMENSION, name);
+            if (target != null && dim != null) {
+                err.accept("@expr names '" + name + "', which is both a measure and a dimension of '" + entityKey
+                        + "'. Rename one.");
+            } else if (target != null) {
+                if (ReportingConstants.MEASURE_SUBTYPE_DERIVED.equals(target.getSubType())) {
+                    err.accept("@expr names '" + name + "', a measure.derived. A derived measure reads aggregates, "
+                            + "ratios and dimensions, not another derived measure.");
+                } else if (target instanceof MetaMeasure operand) {
+                    String result = ReportShape.measureResultSubType(operand, ctx.host(), ctx.root());
+                    if (result != null && !NUMERIC_FIELD_SUBTYPES.contains(result)) {
+                        err.accept("@expr names measure '" + name + "', whose result is a " + result + ", not a number.");
+                    }
+                }
+            } else if (dim instanceof MetaDimension d) {
+                if (d.isTime()) {
+                    err.accept("@expr names '" + name + "', a dimension.time. Arithmetic reads a numeric attribute dimension.");
+                } else {
+                    MetaField<?> of = ReportShape.resolveDimensionOf(d, ctx.host(), ctx.root());
+                    if (of != null && !NUMERIC_FIELD_SUBTYPES.contains(of.getSubType())) {
+                        err.accept("@expr names dimension '" + name + "', whose @of is a field." + of.getSubType()
+                                + ", not a number.");
+                    }
+                }
+            } else {
+                err.accept("@expr names '" + name + "', which is no measure or dimension of '" + entityKey + "'.");
             }
         }
     }
@@ -1067,6 +1121,9 @@ final class ReportingValidation {
         // R12 — amounts in different units are never combined.
         checkValueObjectUnits(report, from, message -> sink.push(report, ErrorCode.ERR_INVALID_REPORT, label, message));
 
+        // R13 — a derived measure reads only dimensions the report groups by.
+        checkDerivedDimensions(report, from, message -> sink.push(report, ErrorCode.ERR_INVALID_REPORT, label, message));
+
         // R7 — @segment names a segment of @from.
         String segment = stringAttr(report, MetaObject.ATTR_REPORT_SEGMENT);
         if (segment != null && childOfType(from, ReportingConstants.TYPE_SEGMENT, segment) == null) {
@@ -1158,20 +1215,12 @@ final class ReportingValidation {
         for (String item : ReportAccessors.reportMeasureNames(report)) {
             String name = item.substring(item.lastIndexOf(SEP) + 1);
             if (!(childOfType(from, ReportingConstants.TYPE_MEASURE, name) instanceof MetaMeasure listed)) continue;
-            List<MetaData> aggregates = new ArrayList<>();
-            if (listed.isRatio()) {
-                for (String operand : new String[] {listed.getNumerator(), listed.getDenominator()}) {
-                    if (operand != null) aggregates.add(childOfType(from, ReportingConstants.TYPE_MEASURE, operand));
-                }
-            } else {
-                aggregates.add(listed);
-            }
-            for (MetaData candidate : aggregates) {
+            for (MetaData candidate : aggregatesRead(listed, from)) {
                 if (!(candidate instanceof MetaMeasure m)
                         || !ReportingConstants.MEASURE_SUBTYPE_AGGREGATE.equals(m.getSubType()) || !checked.add(m)) continue;
                 String agg = m.getAgg();
-                if (!List.of(ReportingConstants.AGG_SUM, ReportingConstants.AGG_AVG, ReportingConstants.AGG_MIN,
-                        ReportingConstants.AGG_MAX).contains(agg)) continue;
+                if (agg == null || !List.of(ReportingConstants.AGG_SUM, ReportingConstants.AGG_AVG,
+                        ReportingConstants.AGG_MIN, ReportingConstants.AGG_MAX).contains(agg)) continue;
                 String of = m.getOfColumns().isEmpty() ? "" : m.getOfColumns().get(0);
                 Dotted parts = splitDotted(of);
                 if (parts == null || parts.path().size() != 2) continue;
@@ -1192,6 +1241,58 @@ final class ReportingValidation {
                             + unit.getShortName() + "' values would be combined. List an attribute dimension of @from "
                             + "whose @of is '" + parts.owner() + SEP + fieldName + SEP + unit.getShortName() + "'.");
                 }
+            }
+        }
+    }
+
+    /**
+     * The measures {@code listed} aggregates through: itself for a measure.aggregate, its two
+     * operands for a ratio, and for a measure.derived each measure its @expr names (a ratio there
+     * read through its operands). Unresolved names are left out; the member rules report them.
+     */
+    private static List<MetaData> aggregatesRead(MetaMeasure listed, MetaObject from) {
+        List<MetaData> direct = new ArrayList<>();
+        if (listed.isDerived()) {
+            Map<String, Object> expr = listed.getExpr();
+            if (expr != null) {
+                for (String n : DerivedExpr.fields(expr)) direct.add(childOfType(from, ReportingConstants.TYPE_MEASURE, n));
+            }
+        } else {
+            direct.add(listed);
+        }
+        List<MetaData> out = new ArrayList<>();
+        for (MetaData m : direct) {
+            if (m instanceof MetaMeasure r && r.isRatio()) {
+                for (String operand : new String[] {r.getNumerator(), r.getDenominator()}) {
+                    MetaData o = operand == null ? null : childOfType(from, ReportingConstants.TYPE_MEASURE, operand);
+                    if (o != null) out.add(o);
+                }
+            } else if (m != null) {
+                out.add(m);
+            }
+        }
+        return out;
+    }
+
+    /**
+     * R13 — a measure.derived that reads an attribute dimension reads that dimension's value for
+     * each group, so the report must list the dimension in @dimensions. A name that is also a
+     * measure is M11's to report.
+     */
+    private static void checkDerivedDimensions(MetaObject report, MetaObject from, Consumer<String> err) {
+        Set<String> listedDims = new HashSet<>();
+        for (ReportDimensionItem item : ReportAccessors.reportDimensionItems(report)) listedDims.add(item.name());
+        for (String item : ReportAccessors.reportMeasureNames(report)) {
+            String name = item.substring(item.lastIndexOf(SEP) + 1);
+            if (!(childOfType(from, ReportingConstants.TYPE_MEASURE, name) instanceof MetaMeasure m) || !m.isDerived()) continue;
+            Map<String, Object> expr = m.getExpr();
+            if (expr == null) continue;
+            for (String read : DerivedExpr.fields(expr)) {
+                if (listedDims.contains(read) || childOfType(from, ReportingConstants.TYPE_MEASURE, read) != null) continue;
+                if (childOfType(from, ReportingConstants.TYPE_DIMENSION, read) == null) continue;
+                err.accept(": measure '" + m.getShortName() + "' reads dimension '" + read + "', which @dimensions "
+                        + "does not list. A derived measure reads a dimension's value for each group, so the report "
+                        + "must group by it.");
             }
         }
     }

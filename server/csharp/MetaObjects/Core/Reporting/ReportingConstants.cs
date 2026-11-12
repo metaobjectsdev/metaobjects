@@ -33,13 +33,16 @@ public static class ReportingConstants
     /// <summary>One aggregate over the declaring entity's own rows.</summary>
     public const string MEASURE_SUBTYPE_AGGREGATE = "aggregate";
 
-    /// <summary>
-    /// A quotient of two <c>measure.aggregate</c> siblings, <c>numerator / NULLIF(denominator, 0)</c>.
-    /// <c>measure.derived</c> is deliberately NOT registered: it waits for FR-037 R5.
-    /// </summary>
+    /// <summary>A quotient of two <c>measure.aggregate</c> siblings, <c>numerator / NULLIF(denominator, 0)</c>.</summary>
     public const string MEASURE_SUBTYPE_RATIO = "ratio";
 
-    public static readonly string[] MEASURE_SUBTYPES = [MEASURE_SUBTYPE_AGGREGATE, MEASURE_SUBTYPE_RATIO];
+    /// <summary>
+    /// FR-044 R13: arithmetic (<c>@expr</c>) over the entity's measures and its numeric attribute
+    /// dimensions — FR-037 R5's first arithmetic wave.
+    /// </summary>
+    public const string MEASURE_SUBTYPE_DERIVED = "derived";
+
+    public static readonly string[] MEASURE_SUBTYPES = [MEASURE_SUBTYPE_AGGREGATE, MEASURE_SUBTYPE_RATIO, MEASURE_SUBTYPE_DERIVED];
 
     /// <summary>
     /// A named, reusable row filter. The only concrete segment subtype: every <c>*.base</c>
@@ -81,6 +84,17 @@ public static class ReportingConstants
 
     /// <summary>Integer a measure reads when it would otherwise be null (<c>measure.aggregate</c> / <c>measure.ratio</c>).</summary>
     public const string REPORTING_ATTR_DEFAULT = "default";
+
+    /// <summary>The arithmetic of a <c>measure.derived</c> (an attr.expression, R13).</summary>
+    public const string REPORTING_ATTR_EXPR = "expr";
+
+    public const string DERIVED_FN_ADD = "add";
+    public const string DERIVED_FN_SUBTRACT = "subtract";
+    public const string DERIVED_FN_MULTIPLY = "multiply";
+    public const string DERIVED_FN_DIVIDE = "divide";
+
+    /// <summary>The operations a <c>measure.derived</c> <c>@expr</c> takes, each of two operands.</summary>
+    public static readonly string[] DERIVED_FNS = [DERIVED_FN_ADD, DERIVED_FN_SUBTRACT, DERIVED_FN_MULTIPLY, DERIVED_FN_DIVIDE];
 
     // -----------------------------------------------------------------------
     // Closed sets — mirrored by `allowedValues` in spec/metamodel/reporting.json.

@@ -719,3 +719,25 @@ describe("reportShape: @agg any / all without @of (R6)", () => {
     ]);
   });
 });
+
+describe("reportShape: measure.derived (FR-044 R13)", () => {
+  test("a derived measure is a nullable decimal with no type source, whatever its operands", async () => {
+    const fixture = join(REPO_ROOT, "fixtures", "conformance", "reporting-derived-measures", "input", "meta.studio.json");
+    const result = await loadUris([pathToFileURL(fixture).href]);
+    expect(result.errors).toEqual([]);
+    const rows = (name: string) =>
+      reportShape(report(result.root, name), result.root).fields.map(
+        (f) => `${f.name} ${f.subType} ${f.required} ${f.typeSource ? `${f.typeSource.parent!.name}.${f.typeSource.name}` : "-"}`,
+      );
+    expect(rows("MemberUtilization")).toEqual([
+      "memberId long false Member.id", "memberName string true Member.firstName",
+      "weeklyCapacityHours decimal true Member.weeklyCapacityHours", "workedOnMonth date true -",
+      "totalHours decimal true -", "billableHours decimal true -", "capacityHours decimal false -",
+      "utilization decimal false -", "nonBillableHours decimal false -", "billableSharePct decimal false -",
+    ]);
+    expect(rows("ProjectBurn")).toEqual([
+      "projectId long false Project.id", "projectBudget decimal false Project.budget", "cost decimal false -",
+      "budgetBurn decimal false -",
+    ]);
+  });
+});

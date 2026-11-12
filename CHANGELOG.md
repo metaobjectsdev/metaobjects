@@ -10,6 +10,38 @@ here.**
 
 ## [Unreleased]
 
+**New metamodel vocabulary: `measure.derived` and its `@expr`.** It is additive: nothing that
+loaded before stops loading. If this ships after 1.3.0, the release moves `metamodelVersion`.
+
+### Added
+
+- **Report measures over Money and other value-object members (FR-044 R12).** A dimension's or
+  measure's `@of` may name `Entity.field.member`, a member of a value object stored with
+  `@storage: flattened` (`Payment.amount.amount`, `Payment.amount.currency`); the report reads
+  the member's own column. A `sum`, `avg`, `min` or `max` of a numeric member loads only when the
+  report lists a dimension over each non-numeric member of the same value object (its
+  currency), so amounts in different currencies are never combined; the rule follows the
+  measure into ratio and derived-measure operands. A member of a jsonb value object, an unknown
+  member and a deeper path are refused at load, and the Cube exporter refuses member paths.
+  Loader rules and report-shape derivation in TypeScript, C#, Java and Python.
+- **`measure.derived`: arithmetic between measures (FR-044 R13).** `@expr` is FR-037 R5's
+  first arithmetic wave: `add`, `subtract`, `multiply` and `divide` over two operands, where an
+  operand is `{ "field": <name> }` (a numeric `measure.aggregate` or `measure.ratio` of the
+  entity, or a numeric attribute dimension the report lists) or `{ "value": <number> }`. It
+  expresses a ratio scaled to a percent and a measure over a grouped quantity (utilization =
+  billable hours × 100 ÷ (weekly capacity × 52 ÷ 12); budget burn = cost ÷ budget). The result
+  is a nullable `decimal`; `divide` reads null on a zero divisor. `meta migrate` lowers it on
+  Postgres, SQLite, MySQL and D1, every port reads and serves it, and the Cube exporter writes
+  one over measures as a `number` member (one reading a dimension is refused). Loader rule M11,
+  report rule R13 and a conformance fixture per refusal, in every loader port.
+
+### Changed
+
+- **Agent context routes report work to the reporting vocabulary.** The `meta init` agent guide
+  and the `metaobjects-authoring` skill now send grouped totals, dashboard numbers and read-only
+  report views to `object.report` (`references/declaring-reports.md`) before the `@sql` escape,
+  which they describe as the last resort for bodies the vocabulary cannot express.
+
 ### Fixed
 
 - **A projection view keeps the columns a reverse `@via` hop feeds.** An origin `@via` that walks
@@ -23,13 +55,6 @@ here.**
   scalar field; gated by the `error-origin-aggregate-value-object` conformance fixture. Refusing,
   rather than summing the flattened amount column, keeps a sum from adding amounts in different
   currencies. `count` is unaffected.
-
-### Changed
-
-- **Agent context routes report work to the reporting vocabulary.** The `meta init` agent guide
-  and the `metaobjects-authoring` skill now send grouped totals, dashboard numbers and read-only
-  report views to `object.report` (`references/declaring-reports.md`) before the `@sql` escape,
-  which they describe as the last resort for bodies the vocabulary cannot express.
 
 ## [1.3.0] — 2026-11-11
 

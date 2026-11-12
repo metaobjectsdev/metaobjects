@@ -24,8 +24,9 @@ with `@spine`. See [Exporting to Cube](#exporting-to-cube) and [cube-export.md](
 
 **What does not exist yet.** No grid, form or other UI-tier output is generated for a report
 in any port; TypeScript's list hook is the one client piece (the 1.2 `reporting` library
-adds the rest). There is no dbt MetricFlow exporter (it is built when an adopter asks), no `measure.derived`,
-no query-time choice of dimensions or measures (a report is a fixed combination, compiled
+adds the rest). There is no dbt MetricFlow exporter (it is built when an adopter asks), no product
+measure (`sum(hours × rate)`, an aggregate over a per-row expression), no member read out of a
+jsonb value object, no query-time choice of dimensions or measures (a report is a fixed combination, compiled
 once), and no time-zone vocabulary: time grains and relative dates are UTC.
 
 **Entirely opt-in.** Nothing here applies to a model that declares none of it. The change
@@ -47,8 +48,7 @@ mean what they appear to mean: a measure of one table in a report over another, 
 
 ## What is registered
 
-Exactly these names, and nothing else (`measure.derived` is **not** registered; it waits for
-FR-037 R5's arithmetic wave and will need its own agreement):
+Exactly these names, and nothing else:
 
 | Node | Lives on | Attributes |
 |---|---|---|
@@ -56,6 +56,7 @@ FR-037 R5's arithmetic wave and will need its own agreement):
 | `dimension.time` | `object.entity` | `@of` (required), `@via`, `@grains` (required, array) |
 | `measure.aggregate` | `object.entity` | `@agg` (required), `@of` (required, array, except `any` / `all`), `@distinct`, `@filter`, `@segment`, `@default` |
 | `measure.ratio` | `object.entity` | `@numerator` (required), `@denominator` (required), `@default` |
+| `measure.derived` | `object.entity` | `@expr` (required, an arithmetic expression) |
 | `segment.filter` | `object.entity` | `@filter` (required) |
 | `object.report` | root | `@from` (required), `@dimensions` (array), `@measures` (required, array), `@segment`, `@filter`, `@spine` |
 
@@ -65,6 +66,8 @@ Closed sets:
   in every lowering.
 - `@agg`: `count, sum, avg, min, max, any, all`. `any` and `all` are boolean OR and AND
   (Postgres `bool_or` / `bool_and`) and are the names `origin.aggregate` already uses.
+- `@expr` operations: `add, subtract, multiply, divide`, each of exactly two operands (see
+  [Arithmetic over measures](#arithmetic-over-measures-measurederived)).
 
 `@spine` is a path written like a dimension's `@via`. A measure's `@default` is an integer.
 
@@ -279,6 +282,8 @@ physical column name is your naming strategy applied to the **derived field name
 | `min` / `max` | the measure's name | the `@of` field's type | no |
 | `any` / `all` | the measure's name | `boolean` | no |
 | `measure.ratio` | the measure's name | `decimal` | no |
+| `measure.derived` | the measure's name | `decimal` | no |
+| a dimension or `min` / `max` over `Entity.field.member` | as for a field | the member's type | the dimension rule, read on the member (a required member of a required value object is required) |
 | any measure above except `count`, declaring `@default` | the measure's name | as above | yes: it reads its `@default` instead of null |
 | in a `@spine` report, a dimension over a column of the spine entity | the dimension's name | the `@of` field's type | yes when the `@of` field is required (`@required` or a `validator.required` child) or one of the spine entity's `identity.primary` `@fields`; no for a dimension reached beyond the spine entity |
 
@@ -326,6 +331,82 @@ applied. The aggregates:
 
 A report with no dimensions is one row over the whole table. Over an **empty** table that row
 still exists: counts are `0`, sums and ratios are null, or their `@default`.
+
+### Money and other value-object members
+
+A `field.object` stored with `@storage: flattened` has a column per member (`amount_amount`,
+`amount_currency` for a `Money` named `amount`). A dimension's or measure's `@of` may name one
+of them as `Entity.field.member`:
+
+```jsonc
+{ "dimension.attribute": { "name": "currency", "@of": "Payment.amount.currency" } },
+{ "measure.aggregate":   { "name": "revenue", "@agg": "sum", "@of": "Payment.amount.amount" } },
+{ "object.report": { "name": "RevenueByMonth", "@from": "Payment",
+                     "@dimensions": ["currency", "receivedOn:month"], "@measures": ["revenue"] } }
+```
+
+**Amounts in different currencies are never added together.** A report that takes `sum`,
+`avg`, `min` or `max` of a numeric member must list, in `@dimensions`, an attribute dimension
+(with no `@via`) over **every non-numeric member of the same value object**: for `Money`, its
+currency. Otherwise the load fails (R12) and names the dimension to add. The rule follows a
+measure into a ratio's operands and a derived measure's, so `revenue / payments` is held to it
+too. A `count` of a member is not constrained, since it adds nothing up.
+
+A member of a value object stored as jsonb (`@storage: jsonb`, or no `@storage`) is refused at
+load: it has no column of its own to group or aggregate. So is a path deeper than one member,
+a member the value object does not declare, and a member path on a field that is not a value
+object. The Cube exporter refuses a member path (`ERR_CUBE_VALUE_OBJECT_MEMBER`).
+
+### Arithmetic over measures (`measure.derived`)
+
+A `measure.derived` computes a number from other measures of the same entity and from numeric
+attribute dimensions the report groups by. Its `@expr` is the first arithmetic wave of FR-037
+R5, a closed subset of the attr.expression grammar:
+
+- `{ "field": "<name>" }` names a `measure.aggregate` or `measure.ratio` of the entity whose
+  result is numeric, or one of its numeric `dimension.attribute`s. It never names another
+  `measure.derived`.
+- `{ "value": <number> }` is a literal.
+- `{ "fn": "add" | "subtract" | "multiply" | "divide", "args": [<a>, <b>] }` combines two
+  operands.
+
+```jsonc
+// On TimeEntry: utilization is billable hours as a percent of the member's monthly capacity
+// (weekly capacity x 52 / 12); budget burn is cost over the project's budget.
+{ "dimension.attribute": { "name": "weeklyCapacityHours",
+                           "@of": "Member.weeklyCapacityHours", "@via": "TimeEntry.member" } },
+{ "dimension.attribute": { "name": "projectBudget", "@of": "Project.budget", "@via": "TimeEntry.project" } },
+{ "measure.aggregate": { "name": "billableHours", "@agg": "sum", "@of": "TimeEntry.hours",
+                         "@filter": { "billable": true }, "@default": 0 } },
+{ "measure.aggregate": { "name": "cost", "@agg": "sum", "@of": "TimeEntry.cost" } },
+{ "measure.derived": { "name": "utilization", "@expr":
+    { "fn": "divide", "args": [
+      { "fn": "multiply", "args": [{ "field": "billableHours" }, { "value": 100 }] },
+      { "fn": "divide", "args": [
+        { "fn": "multiply", "args": [{ "field": "weeklyCapacityHours" }, { "value": 52 }] },
+        { "value": 12 } ] } ] } } },
+{ "measure.derived": { "name": "budgetBurn", "@expr":
+    { "fn": "divide", "args": [{ "field": "cost" }, { "field": "projectBudget" }] } } }
+```
+
+A report listing `utilization` must list `weeklyCapacityHours` (and, for a monthly figure,
+`workedOn:month`); one listing `budgetBurn` must list `projectBudget`. A derived measure may not
+read another derived measure, so a shared sub-expression is written out where it is used. Each
+measure operand is inlined as its full aggregate (its own `@filter`, `@segment` and `@default`),
+so an operand need not be listed in `@measures`. A dimension operand reads the grouped column,
+which is why **the report must list that dimension** (R13): otherwise its value could differ
+from row to row inside one group. The conformance fixture `reporting-derived-measures` carries
+both reports.
+
+The result is always `decimal` and nullable. `divide` divides as a ratio does: the dividend is
+cast to the engine's exact or real type (Postgres `NUMERIC`, SQLite `REAL`), and a divisor that
+is not a nonzero literal is wrapped in `NULLIF(…, 0)`, so dividing by zero reads null. A null
+operand makes the whole expression null; give the operand measure a `@default` when an empty
+group should read `0`. A derived measure takes no `@default`.
+
+The Cube exporter writes a derived measure over measures as a `number` member reading them
+(`{totalHours} - {billableHours}`), and refuses one that reads a dimension
+(`ERR_CUBE_DERIVED_DIMENSION`), since a Cube measure cannot read a grouped column.
 
 ### Dimensions, time grains and joins
 
@@ -834,6 +915,7 @@ no file.
 | `dimension.time` | a `time` dimension, with `@grains` carried as `meta.grains` |
 | `measure.aggregate` | a measure, its `@segment` and `@filter` as one `filters` entry |
 | `measure.ratio` | a `number` measure over its two operand measures |
+| `measure.derived` over measures and literals | a `number` measure over them (one that reads a dimension is refused) |
 | a measure's `@default` | `COALESCE` over the measure (a `measure.aggregate` keeps its aggregate as a `public: false` `<m>Raw` member) |
 | `segment.filter` | a segment |
 | a served `object.report` | a `rollup` pre-aggregation on its `@from` cube, and a segment for its `@filter` |
@@ -858,7 +940,7 @@ a rule differently fails the corpus.
 
 | Rule | Refused |
 |---|---|
-| **D1** | An `@of` that is not `Entity.field`, that names the wrong entity, or whose field does not exist. Without `@via`, `Entity` is the owning entity; with `@via`, it is the `@via` terminal, and a bare `Entity` resolves in the terminal's package. With `@via`, the field must be declared on, or inherited by, the entity `@of` names: naming a base for a field only the reached subtype declares is refused, and the message names the subtype to write. When the reached subtype redeclares a field the base has, the subtype's declaration (its column and type) is what the view selects. |
+| **D1** | An `@of` that is not `Entity.field` or `Entity.field.member` (a member of a flattened value object, below), that names the wrong entity, or whose field does not exist. Without `@via`, `Entity` is the owning entity; with `@via`, it is the `@via` terminal, and a bare `Entity` resolves in the terminal's package. With `@via`, the field must be declared on, or inherited by, the entity `@of` names: naming a base for a field only the reached subtype declares is refused, and the message names the subtype to write. When the reached subtype redeclares a field the base has, the subtype's declaration (its column and type) is what the view selects. |
 | **D2** | An `@via` that is not `Owner.hop[.hop...]` starting at the owning entity, or that crosses a hop which is not a `relationship.*` with `@cardinality: one` or an `identity.reference`, or a hop whose target resolves to no object. |
 | **D3** | A `dimension.time` whose `@of` is not a `field.date` or `field.timestamp`. |
 | **D4** | A `dimension.time` over a `field.date` that declares `hour` (a date has no hour). |
@@ -878,7 +960,7 @@ row, and a `SUM` over the result would double-count. A to-one hop cannot fan out
 | Rule | Refused |
 |---|---|
 | **M0** | A `measure.aggregate` with no `@of` whose `@agg` is not `any` or `all`, or an `any` or `all` with no `@of` that declares neither `@filter` nor `@segment`. |
-| **M1** | An `@of` item that is not `Entity.field`, names an entity other than the owning one (or one it extends), or names a field that does not exist. A measure aggregates its own entity's rows. |
+| **M1** | An `@of` item that is not `Entity.field` or `Entity.field.member`, names an entity other than the owning one (or one it extends), or names a field that does not exist. A measure aggregates its own entity's rows. For a member path (also under D1): the field is not a value object, the value object is not stored `@storage: flattened`, the member does not exist, or the path is deeper than one member. |
 | **M2** | More than one `@of` item without both `@agg: count` and `@distinct: true`. |
 | **M3** | `@distinct: true` with any `@agg` other than `count`. |
 | **M4** | `sum` or `avg` over a non-numeric field (numeric is `int, long, double, float, decimal, currency`); `min` or `max` over a `boolean`, `object` or `map` field; `any` or `all` over a field that is not a `boolean`. |
@@ -887,7 +969,8 @@ row, and a `SUM` over the result would double-count. A to-one hop cannot fan out
 | **M7** | A `@default` on an `@agg: count`. A count is never null, so the default could never apply. |
 | **M8** | A `@default` on an `@agg: min` or `max` over a field that is not numeric (not one of `int, long, double, float, decimal, currency`). |
 | **M9** | A `@default` on an `@agg: any` or `all` other than `0` (false) or `1` (true). |
-| **M10** | An `@of` naming a `field.object`, or any field carrying `@objectRef`, for any `@agg`. A measure aggregates scalars: aggregate a scalar field of the value instead. |
+| **M10** | An `@of` naming a `field.object`, or any field carrying `@objectRef`, for any `@agg`. A measure aggregates scalars: aggregate a scalar member of the value instead (`Entity.field.member`). |
+| **M11** | A `measure.derived` whose `@expr` is not the arithmetic grammar (a node other than `field`, `value` or a two-operand `add`/`subtract`/`multiply`/`divide`), or names an operand that is no measure or dimension of the entity, is another `measure.derived`, is a measure with a non-numeric result, is a `dimension.time`, is a dimension whose `@of` is not numeric, or is both a measure and a dimension. One error per offending operand. A `@default` on a derived measure is `ERR_UNKNOWN_ATTR`. |
 
 A measure that breaks several of M1 to M4 reports only the first, in that order, so one
 mistake gives one error. M7, M8 and M9 run only when none of M1 to M4 fired.
@@ -918,6 +1001,8 @@ port. A ratio's `@default` is checked for this only.
 | **R9** | `ERR_INVALID_REPORT` | A `@spine` report with no dimension, or a listed dimension whose `@via` does not begin with the spine's hops (no `@via` at all included). Hop names are compared as written; the owner segment is not. |
 | **R10** | `ERR_INVALID_REPORT` | A read-only report source whose effective `@kind` is not `view` (`materializedView`, `storedProc`, `tableFunction`), on the `source.rdb`. A report is read through a view; for a view or materialized view you create yourself, declare `@kind: view` with `@unmanaged: true`. |
 | **R11** | `ERR_INVALID_REPORT` | A report declared `abstract: true`. Its fields are derived from its own `@dimensions` and `@measures`, so there is nothing for a subtype to add, and no port reads or serves an abstract report. |
+| **R12** | `ERR_INVALID_REPORT` | A listed `sum`, `avg`, `min` or `max` of a numeric value-object member (directly, or as a ratio's or derived measure's operand) when `@dimensions` lacks an attribute dimension, with no `@via`, over each non-numeric member of that value object (its currency). |
+| **R13** | `ERR_INVALID_REPORT` | A listed `measure.derived` that reads a dimension `@dimensions` does not list. |
 
 `purchasedAt:day` and `purchasedAt:week` together are legal, since they derive different
 fields (`purchasedAtDay`, `purchasedAtWeek`).

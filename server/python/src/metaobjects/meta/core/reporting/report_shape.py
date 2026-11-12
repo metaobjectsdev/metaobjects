@@ -479,7 +479,8 @@ def _measure_field(item: str, report: MetaObject, from_: MetaObject, root: MetaR
 def _derive_measure(m: MetaMeasure, from_: MetaObject, root: MetaRoot) -> tuple[str, MetaField | None] | None:
     """Table B for one measure: its subtype, and the ``@of`` field it carries type attrs from
     (if any). None when its ``@of`` does not resolve."""
-    if m.is_ratio():
+    # A quotient, and (R13) an arithmetic expression, are decimal whatever their operands.
+    if m.is_ratio() or m.is_derived():
         return FIELD_SUBTYPE_DECIMAL, None
     agg = m.agg()
     if agg == AGG_COUNT:

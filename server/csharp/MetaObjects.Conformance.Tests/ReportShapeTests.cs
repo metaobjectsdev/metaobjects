@@ -155,6 +155,26 @@ public class ReportShapeTests
     }
 
     [Fact]
+    public void A_derived_measure_is_a_nullable_decimal()
+    {
+        // FR-044 R13: a measure.derived is typed decimal, not required, with no type source,
+        // whatever its operands. The same rows as the TypeScript derivation of this fixture.
+        var root = LoadFixture("reporting-derived-measures");
+        string Rows(string report) => string.Join(", ", Shape(root, report).Fields.Select(f =>
+            $"{f.Name} {f.SubType} {f.Required} {(f.TypeSource is null ? "-" : $"{f.TypeSource.Parent!.Name}.{f.TypeSource.Name}")}"));
+        Assert.Equal(
+            "memberId long False Member.id, memberName string True Member.firstName, " +
+            "weeklyCapacityHours decimal True Member.weeklyCapacityHours, workedOnMonth date True -, " +
+            "totalHours decimal True -, billableHours decimal True -, capacityHours decimal False -, " +
+            "utilization decimal False -, nonBillableHours decimal False -, billableSharePct decimal False -",
+            Rows("MemberUtilization"));
+        Assert.Equal(
+            "projectId long False Project.id, projectBudget decimal False Project.budget, cost decimal False -, " +
+            "budgetBurn decimal False -",
+            Rows("ProjectBurn"));
+    }
+
+    [Fact]
     public void A_sourceless_report_has_a_shape_and_no_view()
     {
         var result = new MetaDataLoader().Load([new InMemoryStringSource(

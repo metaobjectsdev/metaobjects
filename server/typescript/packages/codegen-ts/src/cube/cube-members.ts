@@ -52,6 +52,16 @@ import {
   ERR_CUBE_UNMAPPABLE_DIMENSION,
   ERR_CUBE_VALUE_OBJECT_MEMBER,
 } from "./cube-errors.js";
+import type {
+  CubeDialect,
+  CubeDimensionSpec,
+  CubeDimensionType,
+  CubeMeasureSpec,
+  CubeMeasureType,
+  CubeSegmentSpec,
+} from "./cube-model-spec.js";
+import { CUBE_SELF, cubeColumn, cubeSqlRenderer, memberRef } from "./cube-sql.js";
+import type { ReportDialect } from "../projection/time-sql.js";
 
 /**
  * FR-044 R12: a report reads a member of a flattened value object only beside a grouping by the
@@ -66,16 +76,6 @@ export function valueObjectMemberError(where: string, of: string): CubeModelErro
       `report with a view source, or remove the member from the exported entity.`,
   );
 }
-import type {
-  CubeDialect,
-  CubeDimensionSpec,
-  CubeDimensionType,
-  CubeMeasureSpec,
-  CubeMeasureType,
-  CubeSegmentSpec,
-} from "./cube-model-spec.js";
-import { CUBE_SELF, cubeColumn, cubeSqlRenderer, memberRef } from "./cube-sql.js";
-import type { ReportDialect } from "../projection/time-sql.js";
 
 /** What every member mapping reads: the model, the dialect, the column naming strategy. */
 export interface MemberContext {

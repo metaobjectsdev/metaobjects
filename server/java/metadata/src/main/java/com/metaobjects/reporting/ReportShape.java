@@ -507,6 +507,23 @@ public final class ReportShape {
         return false;
     }
 
+    /**
+     * The field a dimension's {@code @of} names, read after its {@code @via} (rule D1), or
+     * {@code null} when either does not resolve. R13 reads it to check a dimension operand is numeric.
+     */
+    public static MetaField<?> resolveDimensionOf(MetaDimension dim, MetaObject from, MetaRoot root) {
+        if (dim.getOf() == null) return null;
+        MetaData ofDeclaring = memberOwner(dim, from);
+        MetaObject ofHost = from;
+        if (dim.getVia() != null) {
+            MetaObject terminal = reportingViaTerminal(dim.getVia(), ofDeclaring, from, root);
+            if (terminal == null) return null;
+            ofDeclaring = terminal;
+            ofHost = terminal;
+        }
+        return resolveFieldRef(dim.getOf(), ofDeclaring, root, ofHost);
+    }
+
     private static Field dimensionField(ReportDimensionItem item, MetaObject from, MetaRoot root, MetaObject report,
                                         List<String> spine) {
         MetaDimension dim = declaredMember(from, MetaDimension.class, item.name());
@@ -579,7 +596,7 @@ public final class ReportShape {
 
     /** Table B for one measure. {@code null} when its {@code @of} does not resolve. */
     private static MeasureDerivation deriveMeasure(MetaMeasure m, MetaObject from, MetaRoot root) {
-        if (m.isRatio()) return new MeasureDerivation(DecimalField.SUBTYPE_DECIMAL, null);
+        if (m.isRatio() || m.isDerived()) return new MeasureDerivation(DecimalField.SUBTYPE_DECIMAL, null);
         String agg = m.getAgg();
         if (ReportingConstants.AGG_COUNT.equals(agg)) return new MeasureDerivation(LongField.SUBTYPE_LONG, null);
         // any / all are boolean whatever the source (the loader's M4 refuses a non-boolean @of).
