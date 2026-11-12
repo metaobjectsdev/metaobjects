@@ -39,7 +39,7 @@ public final class ReverseReferenceHops {
     public static List<Hop> find(MetaObject target, String hopName, List<MetaObject> objects) {
         List<Hop> found = new ArrayList<>();
         for (MetaObject holder : objects) {
-            if (isAbstract(holder) || !hopName.equals(hopName(holder))) continue;
+            if (ValidationPhase.isAbstract(holder) || !hopName.equals(hopName(holder))) continue;
             // ADR-0039: resolving — a reference may be inherited through extends.
             for (MetaData c : holder.getChildren(MetaData.class, true)) {
                 if (!(c instanceof MetaIdentity) || !MetaIdentity.SUBTYPE_REFERENCE.equals(c.getSubType())) continue;
@@ -50,12 +50,5 @@ public final class ReverseReferenceHops {
             }
         }
         return found;
-    }
-
-    private static boolean isAbstract(MetaData node) {
-        // ADR-0039: own — abstractness is a declaration-layer marker.
-        if (!node.hasMetaAttr(MetaData.ATTR_IS_ABSTRACT, false)) return false;
-        Object v = node.getMetaAttr(MetaData.ATTR_IS_ABSTRACT, false).getValue();
-        return v instanceof Boolean ? (Boolean) v : v instanceof String && "true".equalsIgnoreCase((String) v);
     }
 }

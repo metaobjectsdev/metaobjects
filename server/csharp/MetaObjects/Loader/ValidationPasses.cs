@@ -1368,7 +1368,10 @@ public static partial class ValidationPasses
             {
                 errors.Add(new MetaError(
                     $"origin.passthrough on {obj.Name}.{fieldName}: @via hop \"{rel.Name}\" is to-many " +
-                    $"(@cardinality \"{CARDINALITY_MANY}\") — a row-multiplying passthrough — you meant aggregate (ADR-0029).",
+                    (reverse?.Contains(rel) == true
+                        ? $"(reverse hop over identity.reference \"{rel.Name}\")"
+                        : $"(@cardinality \"{CARDINALITY_MANY}\")") +
+                    " — a row-multiplying passthrough — you meant aggregate (ADR-0029).",
                     ErrorCode.ERR_ORIGIN_CARDINALITY,
                     Envelope: originSource));
                 return;

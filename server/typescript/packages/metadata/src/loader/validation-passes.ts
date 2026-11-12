@@ -1063,7 +1063,10 @@ function _checkPassthroughCardinality(
       errors.push(
         new ParseError(
           `origin.passthrough on ${obj.name}.${fieldName}: @via hop "${rel.name}" is to-many ` +
-            `(@cardinality "${CARDINALITY_MANY}") — a row-multiplying passthrough — you meant aggregate (ADR-0029).`,
+            (reverse?.has(rel)
+              ? `(reverse hop over identity.reference "${rel.name}")`
+              : `(@cardinality "${CARDINALITY_MANY}")`) +
+            ` — a row-multiplying passthrough — you meant aggregate (ADR-0029).`,
           { code: "ERR_ORIGIN_CARDINALITY", source: originSource },
         ),
       );

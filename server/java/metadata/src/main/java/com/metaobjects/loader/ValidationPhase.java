@@ -4040,7 +4040,7 @@ public final class ValidationPhase {
      * boolean-true. Reads only the own attribute (not effective) — matches the
      * own-only validation contract used throughout this class.
      */
-    private static boolean isAbstract(MetaData node) {
+    static boolean isAbstract(MetaData node) {
         if (!node.hasMetaAttr(MetaData.ATTR_IS_ABSTRACT, false)) {
             return false;
         }
@@ -4924,7 +4924,10 @@ public final class ValidationPhase {
                 throw new MetaDataException(
                     "ERR_ORIGIN_CARDINALITY"
                         + ": origin.passthrough on " + obj.getName() + "." + fieldName
-                        + ": @via hop \"" + rel.getName() + "\" is to-many — you meant aggregate (ADR-0029).",
+                        + ": @via hop \"" + rel.getName() + "\" is to-many"
+                        + (reverse != null && reverse.contains(rel)
+                            ? " (reverse hop over identity.reference \"" + rel.getName() + "\")" : "")
+                        + " — you meant aggregate (ADR-0029).",
                     ErrorCode.ERR_ORIGIN_CARDINALITY, originSource);
             }
         }

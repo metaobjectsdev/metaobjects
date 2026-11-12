@@ -1993,8 +1993,12 @@ def _check_passthrough_cardinality(
             errors.append(
                 MetaError(
                     f"origin.passthrough on {field_name}: @via hop '{rel.name}' is to-many "
-                    f'(@cardinality "{CARDINALITY_MANY}") — a row-multiplying passthrough — '
-                    f"you meant aggregate (ADR-0029).",
+                    + (
+                        f'(reverse hop over identity.reference "{rel.name}")'
+                        if id(rel) in reverse
+                        else f'(@cardinality "{CARDINALITY_MANY}")'
+                    )
+                    + " — a row-multiplying passthrough — you meant aggregate (ADR-0029).",
                     ErrorCode.ERR_ORIGIN_CARDINALITY,
                     envelope=origin_source,
                 )
