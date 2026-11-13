@@ -358,9 +358,9 @@ function isTimeGrain(grain: string | undefined): grain is TimeGrain {
  * belongs-to hop (the reference is held by the entity the hop leaves) whose first FK field is
  * required, whose reference is enforced (not `@enforce: false`, which can name a row that does
  * not exist), onto a target that hides no rows (not a TPH subtype, whose join carries the
- * discriminator). That is exactly when the view's LEFT OUTER joins return what INNER would, so
- * the column is never null-extended. Every generated view join is LEFT OUTER; this is read from
- * the model, never from the join type. A hop that does not resolve, an ambiguous reference or a
+ * discriminator). That is exactly when a LEFT OUTER join returns what INNER would, so the column
+ * is never null-extended, whichever join type the view lowering picks; this is read from the
+ * model, never from the join type. A hop that does not resolve, an ambiguous reference or a
  * has-many hop is not certain.
  */
 function viaAlwaysMatches(hops: readonly string[], from: MetaObject, root: MetaRoot): boolean {

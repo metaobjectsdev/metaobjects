@@ -237,8 +237,8 @@ public static class ReportShapes
     /// is certain to match: a belongs-to hop (the reference is held by the entity the hop leaves)
     /// whose first FK field is required, whose reference is enforced (not <c>@enforce: false</c>,
     /// which can name a row that does not exist), onto a target that hides no rows (not a TPH
-    /// subtype, whose join carries the discriminator). That is exactly when the view's LEFT OUTER
-    /// joins return what INNER would. Every generated view join is LEFT OUTER; this reads the model,
+    /// subtype, whose join carries the discriminator). That is exactly when a LEFT OUTER join
+    /// returns what INNER would, whichever join type the view lowering picks; this reads the model,
     /// never the join type. Ported from report-shape.ts <c>viaAlwaysMatches</c>.
     /// </summary>
     private static bool ViaAlwaysMatches(IReadOnlyList<string> hops, MetaObject from, MetaRoot root)
