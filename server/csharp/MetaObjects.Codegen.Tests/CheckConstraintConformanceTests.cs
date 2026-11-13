@@ -87,7 +87,9 @@ public class CheckConstraintConformanceTests
         Assert.Contains("t.HasCheckConstraint(\"gadgets_rank_numeric_chk\", \"\\\"rank\\\" <= 99\")", context);
         // FR-017 TPH: a subtype's columns are on its base's table, and so are their CHECKs.
         Assert.Contains("modelBuilder.Entity<global::Acme.Checks.Device>().ToTable(t => t.HasCheckConstraint(\"devices_mode_chk\", \"\\\"mode\\\" IN ('AUTO', 'MANUAL')\"));", context);
-        Assert.Contains("t.HasCheckConstraint(\"devices_unit_reqwhen_chk\", ", context);
+        Assert.Contains("t.HasCheckConstraint(\"devices_sensor_unit_reqwhen_chk\", ", context);
+        // rc.21 fix round (I1): siblings that disagree on a shared column each guard their own CHECK.
+        Assert.Contains("t.HasCheckConstraint(\"devices_switch_grade_chk\", \"(\\\"kind\\\" <> 'SWITCH') OR (\\\"grade\\\" IN ('X', 'Y'))\")", context);
         Assert.DoesNotContain("devices_legacy_position_chk", context);
     }
 
@@ -115,5 +117,24 @@ public class CheckConstraintConformanceTests
         var errors = comp.GetDiagnostics().Where(d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error)
             .Select(d => $"{d.Id}: {d.GetMessage()}").ToList();
         Assert.True(errors.Count == 0, string.Join("\n", errors));
+    }
+
+    // rc.21 fix round (I2): two different CHECKs under one default name are refused, naming both.
+    [Fact]
+    public void Two_checks_under_one_name_are_refused()
+    {
+        var load = new MetaDataLoader().Load([new InMemoryStringSource("""
+            { "metadata.root": { "package": "acme", "children": [
+              { "object.entity": { "name": "Window", "children": [
+                { "source.rdb": { "@table": "windows" } },
+                { "field.long": { "name": "id" } },
+                { "field.int": { "name": "a" } }, { "field.int": { "name": "b" } }, { "field.int": { "name": "c" } },
+                { "identity.primary": { "name": "id", "@fields": "id" } },
+                { "validator.comparison": { "name": "ab", "@left": "a", "@op": "lt", "@right": "b" } },
+                { "validator.comparison": { "name": "ac", "@left": "a", "@op": "lt", "@right": "c" } } ] } } ] } }
+            """, id: "w.json")]);
+        Assert.Empty(load.Errors);
+        var ex = Assert.Throws<InvalidOperationException>(() => CheckConstraints.For(load.Root.Objects().Single(), Ctx(load.Root, "postgres").Config));
+        Assert.Contains("both named 'windows_a_cmp_chk'", ex.Message);
     }
 }

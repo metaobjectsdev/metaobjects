@@ -30,12 +30,18 @@ The rules the corpus pins (ruling R55, which follows `meta migrate`):
   nor a cross-field CHECK naming one (`band`, an `origin.computed` reached by the `HighGadgets`
   projection's `@filter`);
 - FR-017 TPH (`input/meta.tph.json`): the discriminator base's table carries its concrete
-  subtypes' CHECKs (`devices`). A subtype-only column's field-level CHECK is the text a base
-  column gets, unguarded — a CHECK refuses only FALSE, and a sibling's row holds NULL there. A
-  cross-field validator a subtype (or an abstract level, or a parent subtype) adds is guarded by
-  the discriminator, as an `@condition` ANDed with its own, listing every concrete subtype it
-  reaches (`powerRating` reaches `METER` and `SENSOR`). Subtypes in name order, fields
-  deduplicated by name as the column fold is;
+  subtypes' CHECKs (`devices`), subtypes in name order (a concrete subtype is one declaring its own
+  `@discriminatorValue`; `SmartMeter` is a concrete child of the concrete `Meter`). A column ONE
+  field node owns (`voltage`, declared once on the abstract `Powered`), or that sibling nodes
+  declare with identical CHECKs (`note`), gets the base-column text, unguarded: a CHECK refuses
+  only FALSE, and a sibling's row holds NULL there. Sibling nodes that DISAGREE (`grade` with
+  different `@values`, `serial` with different patterns) each get their own CHECK, guarded by the
+  discriminator values of the subtypes carrying that node (`Meter`'s reaches `METER` and
+  `SMART_METER`) and named `<table>_<declarer>_<col>_…`. A cross-field validator a subtype (or an
+  abstract level, or a parent subtype) adds is guarded the same way, as an `@condition` ANDed with
+  its own, and named after its declarer, so the same rule on two siblings does not collide
+  (`devices_sensor_note_reqwhen_chk`, `devices_switch_note_reqwhen_chk`). Two different CHECKs
+  under one name are refused at build;
 - a string-stored enum gets its membership CHECK and its `validator.length` CHECK, under
   `skipRedundant` too (`channel`); no regex CHECK on SQLite; `IS DISTINCT FROM` on Postgres, `IS NOT`
   on SQLite; `num_nonnulls` on Postgres, a sum of presence tests on SQLite.

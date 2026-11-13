@@ -7,10 +7,35 @@
           "name": "Device",
           "@discriminator": "kind",
           "children": [
-            { "source.rdb": { "@table": "devices" } },
-            { "field.long": { "name": "id" } },
-            { "field.enum": { "name": "kind", "@required": true, "@values": ["METER", "SENSOR", "SWITCH"] } },
-            { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
+            {
+              "source.rdb": {
+                "@table": "devices"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.enum": {
+                "name": "kind",
+                "@required": true,
+                "@values": [
+                  "METER",
+                  "SENSOR",
+                  "SMART_METER",
+                  "SWITCH"
+                ]
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id",
+                "@generation": "increment"
+              }
+            }
           ]
         }
       },
@@ -20,9 +45,33 @@
           "abstract": true,
           "extends": "Device",
           "children": [
-            { "field.int": { "name": "voltage", "children": [ { "validator.numeric": { "@min": 1, "@max": 480 } } ] } },
-            { "field.int": { "name": "watts" } },
-            { "validator.atLeastOne": { "name": "powerRating", "@fields": ["voltage", "watts"] } }
+            {
+              "field.int": {
+                "name": "voltage",
+                "children": [
+                  {
+                    "validator.numeric": {
+                      "@min": 1,
+                      "@max": 480
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.int": {
+                "name": "watts"
+              }
+            },
+            {
+              "validator.atLeastOne": {
+                "name": "powerRating",
+                "@fields": [
+                  "voltage",
+                  "watts"
+                ]
+              }
+            }
           ]
         }
       },
@@ -32,7 +81,57 @@
           "extends": "Powered",
           "@discriminatorValue": "METER",
           "children": [
-            { "field.string": { "name": "serial", "@required": true, "children": [ { "validator.regex": { "@pattern": "^M[0-9]+$" } } ] } }
+            {
+              "field.string": {
+                "name": "serial",
+                "@required": true,
+                "children": [
+                  {
+                    "validator.regex": {
+                      "@pattern": "^M[0-9]+$"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.enum": {
+                "name": "grade",
+                "@values": [
+                  "A",
+                  "B"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "SmartMeter",
+          "extends": "Meter",
+          "@discriminatorValue": "SMART_METER",
+          "children": [
+            {
+              "field.string": {
+                "name": "firmware",
+                "children": [
+                  {
+                    "validator.length": {
+                      "@min": 1
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "validator.requiredWhen": {
+                "name": "gradedFirmware",
+                "@field": "firmware",
+                "@when": "grade",
+                "@equals": "A"
+              }
+            }
           ]
         }
       },
@@ -42,9 +141,61 @@
           "extends": "Powered",
           "@discriminatorValue": "SENSOR",
           "children": [
-            { "field.enum": { "name": "mode", "@required": true, "@values": ["AUTO", "MANUAL"] } },
-            { "field.string": { "name": "unit" } },
-            { "validator.requiredWhen": { "name": "manualUnit", "@field": "unit", "@when": "mode", "@equals": "MANUAL" } }
+            {
+              "field.string": {
+                "name": "serial",
+                "children": [
+                  {
+                    "validator.regex": {
+                      "@pattern": "^S[0-9]+$"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.string": {
+                "name": "note",
+                "children": [
+                  {
+                    "validator.length": {
+                      "@max": 40
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.enum": {
+                "name": "mode",
+                "@required": true,
+                "@values": [
+                  "AUTO",
+                  "MANUAL"
+                ]
+              }
+            },
+            {
+              "field.string": {
+                "name": "unit"
+              }
+            },
+            {
+              "validator.requiredWhen": {
+                "name": "manualUnit",
+                "@field": "unit",
+                "@when": "mode",
+                "@equals": "MANUAL"
+              }
+            },
+            {
+              "validator.requiredWhen": {
+                "name": "manualNote",
+                "@field": "note",
+                "@when": "mode",
+                "@equals": "MANUAL"
+              }
+            }
           ]
         }
       },
@@ -54,10 +205,72 @@
           "extends": "Device",
           "@discriminatorValue": "SWITCH",
           "children": [
-            { "field.string": { "name": "label", "children": [ { "validator.length": { "@min": 1, "@max": 12 } } ] } },
-            { "field.enum": { "name": "legacyPosition", "@values": ["ON", "OFF"], "@dbCheck": false } },
-            { "validator.comparison": { "name": "labelled", "@left": "label", "@op": "ne", "@right": "kind",
-                "@condition": { "op": "isNotNull", "arg": { "field": "label" } } } }
+            {
+              "field.enum": {
+                "name": "grade",
+                "@values": [
+                  "X",
+                  "Y"
+                ]
+              }
+            },
+            {
+              "field.string": {
+                "name": "note",
+                "children": [
+                  {
+                    "validator.length": {
+                      "@max": 40
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.string": {
+                "name": "label",
+                "children": [
+                  {
+                    "validator.length": {
+                      "@min": 1,
+                      "@max": 12
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.enum": {
+                "name": "legacyPosition",
+                "@values": [
+                  "ON",
+                  "OFF"
+                ],
+                "@dbCheck": false
+              }
+            },
+            {
+              "validator.comparison": {
+                "name": "labelled",
+                "@left": "label",
+                "@op": "ne",
+                "@right": "kind",
+                "@condition": {
+                  "op": "isNotNull",
+                  "arg": {
+                    "field": "label"
+                  }
+                }
+              }
+            },
+            {
+              "validator.requiredWhen": {
+                "name": "offNote",
+                "@field": "note",
+                "@when": "legacyPosition",
+                "@equals": "OFF"
+              }
+            }
           ]
         }
       }

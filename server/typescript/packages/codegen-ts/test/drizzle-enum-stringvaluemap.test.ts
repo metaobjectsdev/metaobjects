@@ -69,3 +69,31 @@ describe("Drizzle codegen — @stringValueMap field.enum customType", () => {
     expect(out).toContain('dataType: () => "varchar(12)"');
   });
 });
+
+// rc.21 fix round (I1): sibling TPH subtypes declaring one column with different @values each
+// get their own enum CHECK, guarded by their discriminator value, as `meta migrate` derives it.
+describe("Drizzle codegen — TPH siblings sharing a column with different @values", () => {
+  test("each owner's CHECK is guarded by its discriminator value", async () => {
+    const json = JSON.stringify({ "metadata.root": { package: "acme", children: [
+      { "object.entity": { name: "Device", "@discriminator": "kind", children: [
+        { "source.rdb": { "@table": "devices" } },
+        { "field.long": { name: "id" } },
+        { "field.enum": { name: "kind", "@values": ["METER", "SWITCH"] } },
+        { "identity.primary": { name: "id", "@fields": "id" } } ] } },
+      { "object.entity": { name: "Meter", extends: "Device", "@discriminatorValue": "METER", children: [
+        { "field.enum": { name: "grade", "@values": ["A", "B"] } } ] } },
+      { "object.entity": { name: "Switch", extends: "Device", "@discriminatorValue": "SWITCH", children: [
+        { "field.enum": { name: "grade", "@values": ["X", "Y"] } } ] } } ] } });
+    const res = await new MetaDataLoader().load([new InMemoryStringSource(json)]);
+    expect(res.errors).toEqual([]);
+    const ctx = makeRenderContext({
+      dialect: "postgres", loadedRoot: res.root, outDir: "/x", dbImport: "~/db",
+      pkMap: buildPkMap(res.root), relationMap: buildRelationMap(res.root),
+    });
+    const out = renderDrizzleSchema(res.root.findObject("Device")!, ctx).toString();
+    expect(out).toContain(`"devices_meter_grade_chk"`);
+    expect(out).toContain(`("kind" <> 'METER') OR (grade IN ('A', 'B'))`);
+    expect(out).toContain(`"devices_switch_grade_chk"`);
+    expect(out).not.toContain(`"devices_grade_chk"`);
+  });
+});

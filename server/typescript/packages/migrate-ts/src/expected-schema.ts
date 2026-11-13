@@ -895,24 +895,8 @@ function buildChecks(
   root?: MetaData,
 ): CheckDescriptor[] {
   const checks: CheckDescriptor[] = [];
-  // FR-017 TPH: a discriminator base's table also holds every concrete subtype's folded
-  // columns, so it carries their CHECKs too — in name order, so every port lists them alike.
-  const subtypes = root === undefined ? [] : [...tphConcreteSubtypes(entity, root)]
-    .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-  // A subtype-only column's CHECK is the text a base column gets, with no discriminator guard:
-  // a CHECK refuses only FALSE, and a sibling subtype's row holds NULL there, for which every
-  // field-level expression is NULL. Deduplicated by field name, as the column fold is.
-  const baseFieldNames = new Set(entity.fields().map((f) => f.name));
-  const subtypeFields: MetaField[] = [];
-  for (const sub of subtypes) {
-    // ADR-0039: effective fields — a field on an abstract intermediate level is a column too.
-    for (const field of sub.fields()) {
-      if (baseFieldNames.has(field.name)) continue;
-      baseFieldNames.add(field.name);
-      subtypeFields.push(field);
-    }
-  }
-  for (const field of [...entity.fields(), ...subtypeFields]) {
+  const fieldChecks = (field: MetaField): CheckDescriptor[] => {
+    const out: CheckDescriptor[] = [];
     // No field-level CHECKs on array columns: the derived expressions assume a
     // SCALAR column. `"labels" IN ('A','B')` against a text[] is a type error at
     // CREATE TABLE; `length(col)`/range checks are equally scalar-shaped. Array
@@ -920,10 +904,10 @@ function buildChecks(
     // per-port validators), matching codegen-ts's column-mapper which also skips
     // the enum literal-union for isArray columns.
     // ADR-0039: resolving — array-ness may be inherited via extends.
-    if (field.resolvedIsArray()) continue;
+    if (field.resolvedIsArray()) return out;
     // A derived (origin-bearing) field is no column of the table (the column builder skips it
     // too): a CHECK on it fails CREATE TABLE. Its validators apply where it is read.
-    if (field.isDerived()) continue;
+    if (field.isDerived()) return out;
     const col = resolveColumnName(field, strategy);
     const qcol = quoteCheckCol(col);
     // Enum membership check. An INT-BACKED enum (@intValueMap, design D5) stores
@@ -959,7 +943,7 @@ function buildChecks(
           expression = `${qcol} IN (${values.map((v) => `'${storedEnumValue(field, v).replace(/'/g, "''")}'`).join(", ")})`;
         }
         const enumCheck = { name: `${tableName}_${col}_chk`, expression };
-        checks.push(withDeclaredName(enumCheck, field));
+        out.push(withDeclaredName(enumCheck, field));
       }
     }
     // Validator-derived checks.
@@ -976,7 +960,66 @@ function buildChecks(
       const check = keep
         ? validatorCheck(v, qcol, tableName, col, dialect)
         : validatorCheck(v, qcol, tableName, col, dialect, skipRedundant, enforcedMax);
-      if (check) checks.push(withDeclaredName(check, v));
+      if (check) out.push(withDeclaredName(check, v));
+    }
+    return out;
+  };
+  for (const field of entity.fields()) checks.push(...fieldChecks(field));
+  // FR-017 TPH: a discriminator base's table also holds every concrete subtype's folded columns,
+  // so it carries their CHECKs too — subtypes in name order, so every port lists them alike. A
+  // concrete subtype is one that declares its own @discriminatorValue (the loader requires one on
+  // every concrete subtype, ERR_DISCRIMINATOR_VALUE_MISSING), the set the C# port takes.
+  const discriminator = entity.attr(OBJECT_ATTR_DISCRIMINATOR);
+  const subtypes = root === undefined ? [] : [...tphConcreteSubtypes(entity, root)]
+    // ADR-0039: own — a concrete subtype declares its OWN value.
+    .filter((c) => c.ownAttr(OBJECT_ATTR_DISCRIMINATOR_VALUE) !== undefined)
+    .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  const valueOf = (sub: MetaObject): string => String(sub.ownAttr(OBJECT_ATTR_DISCRIMINATOR_VALUE));
+  const discriminatorIn = (values: readonly string[]): ExprNode => {
+    const eq = (value: string): ExprNode =>
+      ({ op: "eq", left: { field: discriminator }, right: { value } }) as unknown as ExprNode;
+    return values.length === 1 ? eq(values[0]!) : ({ op: "or", args: values.map(eq) } as unknown as ExprNode);
+  };
+  if (typeof discriminator === "string" && subtypes.length > 0) {
+    // A column ONE field node owns (declared once, on a subtype or on an abstract level its
+    // subtypes share) gets the text a base column gets, with no guard: a CHECK refuses only FALSE,
+    // and a sibling's row holds NULL there, for which every field-level expression is NULL. So does
+    // a column several sibling nodes declare with identical CHECKs. Sibling nodes that disagree
+    // (different @values, a different pattern) each get their own CHECKs, guarded by the
+    // discriminator values of the subtypes carrying that node and named after the declaring object
+    // (`<table>_<declarer>_<col>_…`), so neither refuses the other's rows.
+    const baseFieldNames = new Set(entity.fields().map((f) => f.name));
+    const groups = new Map<string, { node: MetaField; values: string[] }[]>();
+    for (const sub of subtypes) {
+      // ADR-0039: effective fields — a field on an abstract level or a parent subtype is a column too.
+      for (const field of sub.fields()) {
+        if (baseFieldNames.has(field.name)) continue;
+        const owners = groups.get(field.name) ?? [];
+        if (!groups.has(field.name)) groups.set(field.name, owners);
+        const owner = owners.find((o) => o.node === field);
+        if (owner === undefined) owners.push({ node: field, values: [valueOf(sub)] });
+        else owner.values.push(valueOf(sub));
+      }
+    }
+    const same = (a: CheckDescriptor[], b: CheckDescriptor[]): boolean =>
+      a.length === b.length && a.every((c, i) => c.name === b[i]!.name && c.expression === b[i]!.expression);
+    for (const owners of groups.values()) {
+      const per = owners.map((o) => ({ ...o, checks: fieldChecks(o.node) }));
+      if (per.every((p) => same(p.checks, per[0]!.checks))) {
+        checks.push(...per[0]!.checks);
+        continue;
+      }
+      for (const { node, values, checks: nodeChecks } of per) {
+        for (const check of nodeChecks) {
+          const guarded = wrapCondition(check, discriminatorIn(values), entity, strategy, dialect);
+          if (DECLARED_CHECKS.has(check)) {
+            DECLARED_CHECKS.add(guarded);
+            checks.push(guarded);
+          } else {
+            checks.push({ ...guarded, name: qualifiedCheckName(check.name, tableName, node.parent) });
+          }
+        }
+      }
     }
   }
   // Entity-scoped cross-field validators (comparison / requiredWhen / presentIff / atLeastOne).
@@ -991,31 +1034,63 @@ function buildChecks(
   // FALSE (not NULL) over a sibling's NULL columns (atLeastOne, requiredWhen). The guard lists
   // every concrete subtype the validator reaches (an abstract level's, or a parent subtype's,
   // reaches each of its concrete descendants), as an @condition ANDed with the validator's own.
-  const discriminator = entity.attr(OBJECT_ATTR_DISCRIMINATOR);
+  // Its default name carries the declaring object, so the same rule on two siblings, or on a
+  // sibling and the base, does not collide.
   if (typeof discriminator === "string" && subtypes.length > 0) {
     const baseValidators = new Set<MetaData>(entity.validators());
     const reached = new Map<MetaValidator, { holder: MetaObject; values: string[] }>();
     for (const sub of subtypes) {
-      // ADR-0039: effective — @discriminatorValue may be inherited (sub-subtype).
-      const value = String(sub.attr(OBJECT_ATTR_DISCRIMINATOR_VALUE));
       // ADR-0039: effective validators — one declared on an abstract level or a parent subtype applies here too.
       for (const v of sub.validators()) {
         if (baseValidators.has(v)) continue;
         const entry = reached.get(v);
-        if (entry === undefined) reached.set(v, { holder: sub, values: [value] });
-        else entry.values.push(value);
+        if (entry === undefined) reached.set(v, { holder: sub, values: [valueOf(sub)] });
+        else entry.values.push(valueOf(sub));
       }
     }
     for (const [v, { holder, values }] of reached) {
       const check = crossFieldCheck(v, holder, tableName, strategy, dialect);
       if (!check) continue;
-      const eq = (value: string): ExprNode =>
-        ({ op: "eq", left: { field: discriminator }, right: { value } }) as unknown as ExprNode;
-      const guard = values.length === 1 ? eq(values[0]!) : ({ op: "or", args: values.map(eq) } as unknown as ExprNode);
-      checks.push(withDeclaredName(withCondition(check, v, holder, strategy, dialect, guard), v));
+      const guarded = withCondition(check, v, holder, strategy, dialect, discriminatorIn(values));
+      checks.push(declaredCheckName(v) !== undefined
+        ? withDeclaredName(guarded, v)
+        : { ...guarded, name: qualifiedCheckName(check.name, tableName, v.parent) });
     }
   }
-  return checks;
+  return distinctChecks(entity, checks);
+}
+
+/** A default CHECK name made unique to the object that declares the rule: `<table>_<declarer>_…`. */
+function qualifiedCheckName(name: string, tableName: string, declarer: MetaData | undefined): string {
+  const tag = (declarer?.name ?? "subtype").toLowerCase();
+  return name.startsWith(`${tableName}_`) ? `${tableName}_${tag}_${name.slice(tableName.length + 1)}` : `${tag}_${name}`;
+}
+
+/**
+ * One table's CHECKs, an exact repeat (same name, same expression) kept once, and two different
+ * CHECKs under one name refused: the database would refuse the second at CREATE TABLE.
+ */
+function distinctChecks(entity: MetaObject, checks: CheckDescriptor[]): CheckDescriptor[] {
+  const byName = new Map<string, CheckDescriptor>();
+  const out: CheckDescriptor[] = [];
+  for (const c of checks) {
+    const seen = byName.get(c.name);
+    if (seen !== undefined) {
+      if (seen.expression === c.expression) continue;
+      // A DECLARED name's collision is checkDeclaredCheckNames' to report, with its own error.
+      if (DECLARED_CHECKS.has(c) || DECLARED_CHECKS.has(seen)) {
+        out.push(c);
+        continue;
+      }
+      throw new Error(
+        `object.entity '${entity.name}': two CHECK constraints are both named '${c.name}' ` +
+          `(${seen.expression} | ${c.expression}). Give one of the validators (or enums) a @constraintName.`,
+      );
+    }
+    byName.set(c.name, c);
+    out.push(c);
+  }
+  return out;
 }
 
 /**
@@ -1169,7 +1244,13 @@ function withCondition(
   const condition: ExprNode | undefined = guard === undefined
     ? own
     : own === undefined ? guard : ({ op: "and", args: [guard, own] } as unknown as ExprNode);
-  if (condition === undefined) return check;
+  return condition === undefined ? check : wrapCondition(check, condition, entity, strategy, dialect);
+}
+
+/** The CHECK holds only where `condition` does: the negated condition OR the rule. */
+function wrapCondition(
+  check: CheckDescriptor, condition: ExprNode, entity: MetaObject, strategy: ColumnNamingStrategy, dialect: Dialect | undefined,
+): CheckDescriptor {
   const column = (name: string): string | undefined => {
     const field = entity.fields().find((f) => f.name === name);
     return field === undefined ? undefined : quoteCheckCol(resolveColumnName(field, strategy));

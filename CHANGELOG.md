@@ -633,8 +633,13 @@ vocabulary; upgrade every port together.
   cross-field validator a subtype declared was enforced nowhere. The base's table now carries
   them. A subtype-only column's field-level CHECK is the text a base column gets, with no
   discriminator guard: a CHECK refuses only FALSE, and a sibling subtype's row holds NULL there.
-  A subtype's cross-field validator is guarded by the discriminator, as an `@condition` ANDed with
-  its own, listing every concrete subtype it reaches. The Drizzle schema already declared the
+  Sibling subtypes that declare one column with DIFFERENT checks (different `@values`, a different
+  pattern) each get their own, guarded by their discriminator values and named
+  `<table>_<declarer>_<col>_…`; identical ones share one. A subtype's cross-field validator is
+  guarded by the discriminator, as an `@condition` ANDed with its own, listing every concrete
+  subtype it reaches, and its default name carries its declarer. Two different CHECKs under one
+  name on a table (a pre-existing hazard too: two comparisons with one left field) are now refused
+  when the schema is built, naming both, instead of a CREATE TABLE the database refuses. The Drizzle schema already declared the
   subtype enum CHECKs, so the two now agree. Pinned by `input/meta.tph.json` in the shared CHECK
   corpus. **Upgrade note:** the next `meta migrate` (or EF migration) adds these CHECKs to an
   existing TPH table; a legacy row outside a rule needs `@dbCheck: false` on that node first.
