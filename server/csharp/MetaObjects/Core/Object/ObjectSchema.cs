@@ -102,4 +102,20 @@ public static class ObjectSchema
                 "returns — lowered to an outer SQL WHERE. Resolves against the " +
                 "projection's own declared fields; an aggregate-derived field is not " +
                 "addressable (fail-closed).");
+
+    /// <summary>
+    /// rc.21 part B — @union / @unionAll (U15) and @grain / @grainOrdinal (U14) on an
+    /// object.projection. Descriptions are single-sourced from spec/metamodel/object.json.
+    /// </summary>
+    public static readonly IReadOnlyList<AttrSchema> ProjectionShapeAttrs =
+    [
+        new AttrSchema(Name: ObjectConstants.OBJECT_PROJECTION_ATTR_UNION, ValueType: AttrConstants.ATTR_SUBTYPE_STRING, Required: false, IsArray: true,
+            Description: "rc.21: the view is this projection's rows UNIONed with each named projection's rows."),
+        new AttrSchema(Name: ObjectConstants.OBJECT_PROJECTION_ATTR_UNION_ALL, ValueType: AttrConstants.ATTR_SUBTYPE_BOOLEAN, Required: false,
+            Description: "rc.21: with @union, keep duplicate rows (UNION ALL)."),
+        new AttrSchema(Name: ObjectConstants.OBJECT_PROJECTION_ATTR_GRAIN, ValueType: AttrConstants.ATTR_SUBTYPE_STRING, Required: false,
+            Description: "rc.21: the view has one row per element of this base-entity field.object array."),
+        new AttrSchema(Name: ObjectConstants.OBJECT_PROJECTION_ATTR_GRAIN_ORDINAL, ValueType: AttrConstants.ATTR_SUBTYPE_STRING, Required: false,
+            Description: "rc.21: with @grain, the projection field that holds the element's 1-based position."),
+    ];
 }

@@ -29,23 +29,17 @@ public static class DbSchema
 
     /// <summary>
     /// R6 Plan 2b: <c>@dbColumnType</c> — physical DB column-type override on every field
-    /// subtype. The closed value set (ADR-0036 Wave 1) is <see cref="DbConstants.VALID_DB_COLUMN_TYPES"/>
-    /// — surfaced as the manifest's <c>allowedValues</c>; the subtype × value pairing is
+    /// subtype. The bare values are <see cref="DbConstants.VALID_DB_COLUMN_TYPES"/> plus the sized text
+    /// spellings (rc.21), so the manifest carries no <c>allowedValues</c>; the subtype × value pairing is
     /// validated own-only by the loader (ValidateDbColumnType → ERR_BAD_ATTR_VALUE).
     /// </summary>
     public static readonly AttrSchema DbColumnTypeSchema = new AttrSchema(
         Name: DbConstants.FIELD_ATTR_DB_COLUMN_TYPE,
         ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
         Required: false,
-        AllowedValues: [.. DbConstants.VALID_DB_COLUMN_TYPES],
-        Description:
-            "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, " +
-            "both on field.string (uuid = native Postgres uuid column over a string-typed field; " +
-            "jsonb = genuinely-open JSON column). The logical field type and its native binding are " +
-            "unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from " +
-            "a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — " +
-            "timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive " +
-            "opt-out), per ADR-0036 Wave 2.");
+        // rc.21 part B (U2): no allowedValues — the sized spellings (varchar(n), character(n)) are no
+        // closed set; ValidateDbColumnType parses the value (DbConstants.ParseDbColumnType).
+        Description: "Physical DB column-type override (ADR-0013 escape hatch). Legal values, all on field.string: uuid (a native Postgres uuid column over a string-typed field), jsonb (a genuinely-open JSON column), and the text spellings text, varchar / character varying (unbounded), varchar(n) / character varying(n) and character(n) (rc.21: Postgres's own names, lowercase; a @maxLength over n is refused). The view cast and the column use the spelling; meta migrate treats an unbounded varchar and text as one type. The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2.");
 
     /// <summary>
     /// ADR-0036 Wave 2: <c>@localTime</c> — the naive-timestamp opt-out on <c>field.timestamp</c>

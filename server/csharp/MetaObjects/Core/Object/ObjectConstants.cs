@@ -81,6 +81,11 @@ public static class ObjectConstants
     /// max 1). Mirrors TS OBJECT_PROJECTION_ATTR_FILTER.
     /// </summary>
     public const string OBJECT_PROJECTION_ATTR_FILTER = "filter";
+    /// <summary>rc.21 part B: a projection UNIONed with others (U15), and one with a row per array element (U14).</summary>
+    public const string OBJECT_PROJECTION_ATTR_UNION = "union";
+    public const string OBJECT_PROJECTION_ATTR_UNION_ALL = "unionAll";
+    public const string OBJECT_PROJECTION_ATTR_GRAIN = "grain";
+    public const string OBJECT_PROJECTION_ATTR_GRAIN_ORDINAL = "grainOrdinal";
 
     // -----------------------------------------------------------------------
     // FR-044 — object.report attrs. Mirrors TS OBJECT_REPORT_ATTR_*.

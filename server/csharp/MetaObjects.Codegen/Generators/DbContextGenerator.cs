@@ -676,9 +676,20 @@ public class DbContextGenerator : IGenerator
                 lhs + ".HasColumnType(\"uuid\").HasConversion(v => global::System.Guid.Parse(v!), g => g.ToString(\"D\"));",
             DbConstants.DB_COLUMN_TYPE_JSONB =>
                 lhs + ".HasColumnType(\"jsonb\");",
+            // rc.21 part B (U2): a text spelling is the column type, as `meta migrate` creates it.
+            { } spelling when DbConstants.ParseDbColumnType(spelling) is { Kind: "text" or "varchar" or "char" } p =>
+                lhs + $".HasColumnType(\"{TextColumnType(p)}\");",
             _ => null,
         };
     }
+
+    /// <summary>rc.21 part B (U2): the Postgres column type a text <c>@dbColumnType</c> spelling names.</summary>
+    private static string TextColumnType(DbConstants.ParsedDbColumnType p) => p.Kind switch
+    {
+        "char" => $"character({p.Length})",
+        "varchar" => p.Length is { } n ? $"character varying({n})" : "character varying",
+        _ => "text",
+    };
 
     // FR-017 — EF TPH single-table inheritance config for a discriminator base. The
     // discriminator property is the base's @discriminator field (PascalCased); the

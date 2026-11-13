@@ -513,6 +513,23 @@ public static partial class ValidationPasses
                         }
                         var fromTarget = ValidateFromPath(from, root, obj, field.Name, errors,
                             "origin.passthrough.@from", origin.Source);
+                        // rc.21 part B (U14): on a @grain projection, a @from on the grain field's value
+                        // object reads a member of the array element; there is no path to walk.
+                        if (fromTarget is ResolvedFromTarget gt && GrainValueObject(obj, root) is { } grainVo
+                            && ReferenceEquals(gt.Entity, grainVo))
+                        {
+                            bool gconvert = origin.OwnAttr(ORIGIN_PASSTHROUGH_ATTR_CONVERT) is true;
+                            CheckPassthroughType(field, gt.Field, from, gconvert, obj, origin.Source, errors);
+                            if ((gt.Field is MetaField gmf && gmf.ResolvedIsArray()) || gt.Field.SubType is FIELD_SUBTYPE_OBJECT or FIELD_SUBTYPE_MAP)
+                                errors.Add(new MetaError(
+                                    $"origin.passthrough on {obj.Name}.{field.Name}: @from \"{from}\" is not a scalar member of the @grain element.",
+                                    ErrorCode.ERR_INVALID_ORIGIN, Envelope: origin.Source));
+                            if (origin.OwnAttr(ORIGIN_PASSTHROUGH_ATTR_VIA) is not null)
+                                errors.Add(new MetaError(
+                                    $"origin.passthrough on {obj.Name}.{field.Name}: @from \"{from}\" reads the @grain element, which takes no @via.",
+                                    ErrorCode.ERR_INVALID_ORIGIN, Envelope: origin.Source));
+                            continue;
+                        }
                         // FR-024 B6 — extends/origin agreement (host-agnostic; runs
                         // whether @via is explicit, inferred, or a base-relation column).
                         if (fromTarget is ResolvedFromTarget ft1)
@@ -770,18 +787,28 @@ public static partial class ValidationPasses
                         // rc.19 computed-over-joined: a ref names one of the projection's own fields
                         // first (a passthrough, an origin.first, another computed — never itself, never
                         // an aggregate), else a base field.
-                        Func<string, string?> resolveField = name =>
+                        // rc.21 part B: also a scalar origin.aggregate (U13, read on the grouped row) and,
+                        // on a projection, a PATH of to-one hops from the base (U3). Never a collect.
+                        Func<string, MetaData?> fieldNode = name =>
                         {
                             if (!ReferenceEquals(obj, computedBase) && name != field.Name
                                 && obj.Children().FirstOrDefault(f => f.Type == TYPE_FIELD && f.Name == name) is { } own)
-                            {
-                                var ownOrigin = own.OwnChildren().FirstOrDefault(c => c.Type == TYPE_ORIGIN);
-                                return ownOrigin?.SubType == ORIGIN_SUBTYPE_AGGREGATE ? null : own.SubType;
-                            }
-                            return computedBase!.Children()
-                                .FirstOrDefault(f => f.Type == TYPE_FIELD && f.Name == name)?.SubType;
+                                return own;
+                            var baseField = computedBase!.Children().FirstOrDefault(f => f.Type == TYPE_FIELD && f.Name == name);
+                            if (baseField is not null || ReferenceEquals(obj, computedBase) || !name.Contains('.')) return baseField;
+                            return computedBase is MetaObject bo ? FilterPaths.Resolve(bo, name, out _)?.Field : null;
                         };
-                        var inferred = ExpressionGrammar.InferExprType(expr, resolveField);
+                        Func<string, string?> resolveField = name =>
+                        {
+                            if (fieldNode(name) is not { } node) return null;
+                            var nodeOrigin = node.OwnChildren().FirstOrDefault(c => c.Type == TYPE_ORIGIN);
+                            if (!ReferenceEquals(node, field) && nodeOrigin?.SubType == ORIGIN_SUBTYPE_AGGREGATE
+                                && nodeOrigin.OwnAttr(ORIGIN_AGGREGATE_ATTR_AGG) as string == AGG_COLLECT) return null;
+                            return node.SubType;
+                        };
+                        Func<string, bool> isIntStoredEnum = name =>
+                            fieldNode(name) is { } node && node.SubType == FIELD_SUBTYPE_ENUM && node.Attr(FIELD_ATTR_INT_VALUE_MAP) is not null;
+                        var inferred = ExpressionGrammar.InferExprType(expr, resolveField, isIntStoredEnum);
                         if (inferred.Errors.Count > 0)
                         {
                             foreach (var m in inferred.Errors)
@@ -794,6 +821,10 @@ public static partial class ValidationPasses
                             errors.Add(new MetaError(
                                 $"origin.computed on {obj.Name}.{field.Name}: @expr infers field.{inferred.Type} but the field is declared field.{field.SubType} — a computed column's type is derived from its expression and must match (no @convert escape).",
                                 ErrorCode.ERR_COMPUTED_TYPE_MISMATCH, Envelope: src));
+                    }
+                    else if (origin.SubType == ORIGIN_SUBTYPE_FUNCTION)
+                    {
+                        ValidateFunctionOrigin(origin, obj, field, root, errors);
                     }
                     else if (origin.SubType == ORIGIN_SUBTYPE_FIRST)
                     {
@@ -1607,10 +1638,17 @@ public static partial class ValidationPasses
                 }
             }
             foreach (var field in obj.Children().Where(c => c.Type == TYPE_FIELD))
+            {
                 foreach (var origin in field.OwnChildren().Where(c => c.Type == TYPE_ORIGIN && c.SubType == ORIGIN_SUBTYPE_PASSTHROUGH))
                     if (origin.OwnAttr(ORIGIN_PASSTHROUGH_ATTR_FROM) is string from
                         && ValidateFromPath(from, root, obj, field.Name, silent, "origin.passthrough.@from", origin.Source) is { } target)
                         reached.Add(target.Field);
+                // rc.21 part B (U3): a computed expression's path ref reaches the field at its end.
+                if (baseEntity is MetaObject bo2 && !ReferenceEquals(baseEntity, obj))
+                    foreach (var origin in field.OwnChildren().Where(c => c.Type == TYPE_ORIGIN && c.SubType == ORIGIN_SUBTYPE_COMPUTED))
+                        foreach (var name in ExpressionGrammar.FieldRefs(origin.OwnAttr(ORIGIN_COMPUTED_ATTR_EXPR)).Where(n => n.Contains('.')))
+                            if (FilterPaths.Resolve(bo2, name, out _) is { } p) reached.Add(p.Field);
+            }
         }
         return reached;
     }
@@ -1649,7 +1687,132 @@ public static partial class ValidationPasses
                     if (origin.OwnAttr(ORIGIN_FIRST_ATTR_FILTER) is not IReadOnlyDictionary<string, object?> filter) continue;
                     var silent = new List<MetaError>();
                     if (DeriveBaseEntity(obj, root, field.Name, origin.Source, silent) is not { } baseEntity) continue;
-                    CheckCorrelatedOperands(filter, baseEntity, where, origin.Source, errors);
+                    CheckCorrelatedOperands(filter, baseEntity, where, origin.Source, errors, obj.SubType == OBJECT_SUBTYPE_PROJECTION);
+                }
+            }
+        }
+        return errors.AsReadOnly();
+    }
+
+    /// <summary>
+    /// rc.21 part B (U10) — origin.function: its name and schema are plain identifiers (never free
+    /// SQL); each argument names a scalar field of the host entity, or of the projection (not an
+    /// aggregate, not the field itself) or its base. Mirrors TS <c>_validateFunctionOrigin</c>.
+    /// </summary>
+    private static void ValidateFunctionOrigin(MetaData origin, MetaData obj, MetaData field, MetaData root, List<MetaError> errors)
+    {
+        var src = origin.Source;
+        var where = $"origin.function on {obj.Name}.{field.Name}";
+        foreach (var attr in new[] { ORIGIN_FUNCTION_ATTR_FUNCTION, ORIGIN_FUNCTION_ATTR_SCHEMA })
+        {
+            var v = origin.OwnAttr(attr);
+            if (v is not null && (v is not string sv || !ORIGIN_FUNCTION_IDENTIFIER.IsMatch(sv)))
+                errors.Add(new MetaError(
+                    $"{where}: @{attr} {System.Text.Json.JsonSerializer.Serialize(v?.ToString())} is not a plain identifier ([A-Za-z_][A-Za-z0-9_]*); a function is named, never written as SQL.",
+                    ErrorCode.ERR_INVALID_ORIGIN, Envelope: src));
+        }
+        var raw = origin.OwnAttr(ORIGIN_FUNCTION_ATTR_ARGS);
+        var args = raw switch { null => new List<object?>(), IReadOnlyList<object?> l => l.ToList(), _ => new List<object?> { raw } };
+        var isProjection = obj.SubType == OBJECT_SUBTYPE_PROJECTION;
+        var baseEntity = isProjection ? DeriveBaseEntity(obj, root, field.Name, src, new List<MetaError>()) : obj;
+        foreach (var a in args)
+        {
+            var name = a as string;
+            var own = name is not null && name != field.Name
+                ? obj.Children().FirstOrDefault(c => c.Type == TYPE_FIELD && c.Name == name) : null;
+            var ownOrigin = own?.OwnChildren().FirstOrDefault(c => c.Type == TYPE_ORIGIN);
+            var arg = own ?? (name is not null && baseEntity is not null
+                ? baseEntity.Children().FirstOrDefault(c => c.Type == TYPE_FIELD && c.Name == name) : null);
+            if (arg is null || name == field.Name)
+                errors.Add(new MetaError(
+                    $"{where}: @args names \"{a}\", which is not a field of {(isProjection ? "the projection or its base entity" : $"\"{obj.Name}\"")}.",
+                    ErrorCode.ERR_INVALID_ORIGIN, Envelope: src));
+            else if (ownOrigin?.SubType == ORIGIN_SUBTYPE_AGGREGATE)
+                errors.Add(new MetaError(
+                    $"{where}: @args names \"{a}\", an origin.aggregate; a function takes values of the row, not of the group.",
+                    ErrorCode.ERR_INVALID_ORIGIN, Envelope: src));
+            else if (arg.SubType is FIELD_SUBTYPE_OBJECT or FIELD_SUBTYPE_MAP || (arg is MetaField af && af.ResolvedIsArray()))
+                errors.Add(new MetaError(
+                    $"{where}: @args names \"{a}\", a field.{arg.SubType}{(arg is MetaField af2 && af2.ResolvedIsArray() ? " array" : "")}; a function argument is a scalar.",
+                    ErrorCode.ERR_INVALID_ORIGIN, Envelope: src));
+        }
+    }
+
+    /// <summary>rc.21 part B (U14): the value object a <c>@grain</c> projection's rows are elements of.</summary>
+    private static MetaData? GrainValueObject(MetaData obj, MetaData root)
+    {
+        if (obj.SubType != OBJECT_SUBTYPE_PROJECTION || obj.Attr(OBJECT_PROJECTION_ATTR_GRAIN) is not string grain) return null;
+        var baseEntity = DeriveBaseEntity(obj, root, "@grain", obj.Source, new List<MetaError>());
+        var field = baseEntity?.Children().FirstOrDefault(c => c.Type == TYPE_FIELD && c.Name == grain);
+        return field is null ? null : NamingRefs.RefTarget(field, FIELD_ATTR_OBJECT_REF);
+    }
+
+    /// <summary>
+    /// rc.21 part B — @union shapes (U15) and @grain projections (U14). Mirrors TS
+    /// <c>validateProjectionUnionAndGrain</c>, message for message.
+    /// </summary>
+    public static IReadOnlyList<MetaError> ValidateProjectionUnionAndGrain(MetaData root)
+    {
+        var errors = new List<MetaError>();
+        foreach (var obj in root.OwnChildren().Where(c => c.Type == TYPE_OBJECT && c.SubType == OBJECT_SUBTYPE_PROJECTION))
+        {
+            void Bad(string message) => errors.Add(new MetaError($"object.projection {obj.Name}: {message}", ErrorCode.ERR_BAD_ATTR_VALUE, Envelope: obj.Source));
+            // ADR-0039: own — a projection's @union / @grain names ITS view's shape.
+            var union = obj.OwnAttr(OBJECT_PROJECTION_ATTR_UNION);
+            if (obj.OwnAttr(OBJECT_PROJECTION_ATTR_UNION_ALL) is not null && union is null)
+                Bad($"@{OBJECT_PROJECTION_ATTR_UNION_ALL} needs @{OBJECT_PROJECTION_ATTR_UNION}.");
+            if (union is not null)
+            {
+                var pkg = NamingRefs.EffectivePackage(obj);
+                var mine = obj.Children().Where(c => c.Type == TYPE_FIELD).ToList();
+                var names = union is IReadOnlyList<object?> l ? l.ToList() : new List<object?> { union };
+                static string Describe(MetaData f)
+                {
+                    var arr = f is MetaField mf && mf.ResolvedIsArray() ? "[]" : "";
+                    var col = f.Attr(FIELD_ATTR_COLUMN) is string c ? $" @column {c}" : "";
+                    return $"{f.Name}: field.{f.SubType}{arr}{col}";
+                }
+                foreach (var nameObj in names)
+                {
+                    var member = nameObj is string name ? NamingRefs.ResolveObjectRef(root, name, pkg) : null;
+                    if (member is null || member.Type != TYPE_OBJECT || member.SubType != OBJECT_SUBTYPE_PROJECTION)
+                    {
+                        Bad($"@{OBJECT_PROJECTION_ATTR_UNION} names \"{nameObj}\", which is not an object.projection.");
+                        continue;
+                    }
+                    if (ReferenceEquals(member, obj))
+                    {
+                        Bad($"@{OBJECT_PROJECTION_ATTR_UNION} names the projection itself.");
+                        continue;
+                    }
+                    var a = mine.Select(Describe).ToList();
+                    var b = member.Children().Where(c => c.Type == TYPE_FIELD).Select(Describe).ToList();
+                    if (!a.SequenceEqual(b))
+                        Bad($"@{OBJECT_PROJECTION_ATTR_UNION} member \"{member.Name}\" has a different shape: " +
+                            $"({string.Join(", ", b)}) where this view is ({string.Join(", ", a)}). A union's members have the same fields, in order.");
+                }
+            }
+            var grain = obj.OwnAttr(OBJECT_PROJECTION_ATTR_GRAIN);
+            var ordinal = obj.OwnAttr(OBJECT_PROJECTION_ATTR_GRAIN_ORDINAL);
+            if (ordinal is not null && grain is null) Bad($"@{OBJECT_PROJECTION_ATTR_GRAIN_ORDINAL} needs @{OBJECT_PROJECTION_ATTR_GRAIN}.");
+            if (grain is string g)
+            {
+                var baseEntity = DeriveBaseEntity(obj, root, "@grain", obj.Source, new List<MetaError>());
+                var field = baseEntity?.Children().FirstOrDefault(c => c.Type == TYPE_FIELD && c.Name == g);
+                var isArray = field is MetaField gf && gf.ResolvedIsArray();
+                var storage = field?.Attr(FIELD_ATTR_STORAGE) as string;
+                if (field is null || field.SubType != FIELD_SUBTYPE_OBJECT || !isArray || (storage is not null && storage != STORAGE_JSONB)
+                    || NamingRefs.RefTarget(field, FIELD_ATTR_OBJECT_REF) is null)
+                    Bad($"@{OBJECT_PROJECTION_ATTR_GRAIN} \"{g}\" must name a field.object array (isArray, jsonb storage, with @objectRef) of the base entity{(baseEntity is null ? "" : $" \"{baseEntity.Name}\"")}.");
+                foreach (var f in obj.Children().Where(c => c.Type == TYPE_FIELD))
+                    if (f.OwnChildren().Any(c => c.Type == TYPE_ORIGIN && c.SubType == ORIGIN_SUBTYPE_AGGREGATE))
+                        Bad($"\"{f.Name}\" is an origin.aggregate; a @grain view has one row per element and groups nothing.");
+                if (ordinal is not null)
+                {
+                    var f = obj.Children().FirstOrDefault(c => c.Type == TYPE_FIELD && c.Name == ordinal as string);
+                    if (f is null || (f.SubType != FIELD_SUBTYPE_INT && f.SubType != FIELD_SUBTYPE_LONG)
+                        || f.OwnChildren().Any(c => c.Type == TYPE_ORIGIN) || f.SuperRef is not null)
+                        Bad($"@{OBJECT_PROJECTION_ATTR_GRAIN_ORDINAL} \"{ordinal}\" must name a field.int or field.long of the projection, with no origin and no extends.");
                 }
             }
         }
@@ -1678,7 +1841,8 @@ public static partial class ValidationPasses
     }
 
     private static void CheckCorrelatedOperands(
-        IReadOnlyDictionary<string, object?> filter, MetaData baseEntity, string where, ErrorSource source, List<MetaError> errors)
+        IReadOnlyDictionary<string, object?> filter, MetaData baseEntity, string where, ErrorSource source, List<MetaError> errors,
+        bool onProjection)
     {
         foreach (var (key, clause) in filter)
         {
@@ -1687,7 +1851,7 @@ public static partial class ValidationPasses
                 if (clause is IReadOnlyList<object?> subs)
                     foreach (var sub in subs)
                         if (sub is IReadOnlyDictionary<string, object?> subFilter)
-                            CheckCorrelatedOperands(subFilter, baseEntity, where, source, errors);
+                            CheckCorrelatedOperands(subFilter, baseEntity, where, source, errors, onProjection);
                 continue;
             }
             if (clause is not IReadOnlyDictionary<string, object?> ops) continue;
@@ -1708,9 +1872,20 @@ public static partial class ValidationPasses
                         $"{where}: @filter on \"{key}\" compares with a base-row field using \"{op}\"; a correlated operand takes {string.Join(", ", CorrelatedFilterOps)}.",
                         ErrorCode.ERR_BAD_ATTR_FILTER, Envelope: source));
                 else if (name is null || !baseEntity.Children().Any(c => c.Type == TYPE_FIELD && c.Name == name))
+                {
+                    // rc.21 part B (U4): on a projection, a PATH of to-one hops from the base row.
+                    string? why = null;
+                    var path = name is not null && name.Contains('.') && onProjection && baseEntity is MetaObject bo
+                        ? FilterPaths.Resolve(bo, name, out why) : null;
+                    if (path is not null) continue;
                     errors.Add(new MetaError(
-                        $"{where}: @filter on \"{key}\" names base-row field \"{name}\", which \"{baseEntity.Name}\" does not declare.",
+                        why is not null
+                            ? $"{where}: @filter on \"{key}\" compares with the base-row path \"{name}\": {why}."
+                            : name is not null && name.Contains('.') && !onProjection
+                                ? $"{where}: @filter on \"{key}\" compares with the path \"{name}\"; a path operand is legal only on a projection, whose view joins it."
+                                : $"{where}: @filter on \"{key}\" names base-row field \"{name}\", which \"{baseEntity.Name}\" does not declare.",
                         ErrorCode.ERR_BAD_ATTR_FILTER, Envelope: source));
+                }
             }
         }
     }
@@ -1741,7 +1916,8 @@ public static partial class ValidationPasses
                 if (origin is null) continue;
                 // rc.19 entity-derived: a derived field a projection reaches (its @filter or a passthrough
                 // @from) is lowered inline there, so it needs no read source. Only the inlinable origins.
-                if ((origin.SubType == ORIGIN_SUBTYPE_FIRST || origin.SubType == ORIGIN_SUBTYPE_COMPUTED) && reached.Contains(field))
+                if ((origin.SubType == ORIGIN_SUBTYPE_FIRST || origin.SubType == ORIGIN_SUBTYPE_COMPUTED
+                        || origin.SubType == ORIGIN_SUBTYPE_FUNCTION) && reached.Contains(field))
                     continue;
                 errors.Add(new MetaError(
                     $"derived field \"{obj.Name}.{field.Name}\" carries an origin.* but entity \"{obj.Name}\" declares no " +
@@ -1982,7 +2158,7 @@ public static partial class ValidationPasses
                 var origin = f.OwnChildren().FirstOrDefault(c => c.Type == TYPE_ORIGIN);
                 if (origin is not null &&
                     origin.SubType != ORIGIN_SUBTYPE_PASSTHROUGH &&
-                    origin.SubType != ORIGIN_SUBTYPE_COMPUTED)
+                    (origin.SubType != ORIGIN_SUBTYPE_COMPUTED || ComputedReadsAggregate(f, obj, new HashSet<string>(StringComparer.Ordinal))))
                 {
                     aggregateDerived.Add(f.Name);
                 }
@@ -2030,6 +2206,26 @@ public static partial class ValidationPasses
     /// when it is an aggregate (a WHERE runs before grouping); its column, an origin.computed or an
     /// origin.first (a correlated scalar subquery) can (entity-derived). origin.* never inherits.
     /// </summary>
+    /// <summary>
+    /// rc.21 part B (U13): whether an origin.computed reads an origin.aggregate of its projection,
+    /// directly or through another computed — a value of the grouped row a WHERE cannot hold.
+    /// </summary>
+    private static bool ComputedReadsAggregate(MetaData f, MetaData obj, HashSet<string> seen)
+    {
+        if (!seen.Add(f.Name)) return false;
+        // ADR-0039: own — origin.* never inherits (ADR-0029).
+        var origin = f.OwnChildren().FirstOrDefault(c => c.Type == TYPE_ORIGIN);
+        if (origin?.SubType != ORIGIN_SUBTYPE_COMPUTED) return false;
+        foreach (var name in ExpressionGrammar.FieldRefs(origin.OwnAttr(ORIGIN_COMPUTED_ATTR_EXPR)))
+        {
+            if (name == f.Name) continue;
+            var other = obj.Children().FirstOrDefault(c => c.Type == TYPE_FIELD && c.Name == name);
+            if (other is null) continue;
+            if (EntityFieldAggregates(other) || ComputedReadsAggregate(other, obj, seen)) return true;
+        }
+        return false;
+    }
+
     private static bool EntityFieldAggregates(MetaData f) =>
         f.OwnChildren().FirstOrDefault(c => c.Type == TYPE_ORIGIN) is { SubType: ORIGIN_SUBTYPE_AGGREGATE };
 
@@ -2418,6 +2614,9 @@ public static partial class ValidationPasses
     /// </summary>
     private static string? ConditionProblem(object condition, MetaObject obj)
     {
+        // rc.21 part B: a CHECK holds only the subset every port's CHECK emitter renders.
+        if (MetaObjects.Core.Attr.ExpressionGrammar.ExprViewOnlyNode(condition) is { } viewOnly)
+            return $"uses {viewOnly}, which a CHECK condition cannot hold: it takes fields, literals, comparisons, null tests, and / or / not, and coalesce.";
         var fields = new Dictionary<string, MetaField>(StringComparer.Ordinal);
         foreach (var f in obj.Fields()) fields.TryAdd(f.Name, f);
         var inferred = MetaObjects.Core.Attr.ExpressionGrammar.InferExprType(
@@ -3446,33 +3645,35 @@ public static partial class ValidationPasses
     {
         if (node is MetaField field && field.DbColumnType is { } value)
         {
-            // Rule 1: recognized value.
-            if (!VALID_DB_COLUMN_TYPES.Contains(value))
+            // Rule 1: recognized value (rc.21: the text spellings, sized ones included).
+            var parsed = ParseDbColumnType(value);
+            if (parsed is null)
             {
                 errors.Add(new MetaError(
                     $"field '{field.Name}' @{FIELD_ATTR_DB_COLUMN_TYPE} '{value}' is not a valid value; " +
-                    $"allowed: {string.Join(", ", VALID_DB_COLUMN_TYPES)}",
+                    $"allowed: {string.Join(", ", VALID_DB_COLUMN_TYPES.Concat(DB_COLUMN_TYPE_SIZED_SPELLINGS))}",
                     ErrorCode.ERR_BAD_ATTR_VALUE,
                     Envelope: field.Source));
             }
-            else
+            else if (field.SubType != FIELD_SUBTYPE_STRING)
             {
-                // Rule 2: legal (subtype × value) pairing.
-                var requiredSubType = value switch
-                {
-                    DB_COLUMN_TYPE_UUID or DB_COLUMN_TYPE_JSONB => FIELD_SUBTYPE_STRING,
-                    _ => null, // unreachable (Rule 1)
-                };
-                if (requiredSubType is not null && field.SubType != requiredSubType)
-                {
-                    errors.Add(new MetaError(
-                        $"field '{field.Name}' @{FIELD_ATTR_DB_COLUMN_TYPE} '{value}' is not valid on " +
-                        $"field.{field.SubType} (requires field.{requiredSubType}); allowed pairings: " +
-                        $"{DB_COLUMN_TYPE_UUID}→field.{FIELD_SUBTYPE_STRING}, " +
-                        $"{DB_COLUMN_TYPE_JSONB}→field.{FIELD_SUBTYPE_STRING}",
-                        ErrorCode.ERR_BAD_ATTR_VALUE,
-                        Envelope: field.Source));
-                }
+                // Rule 2: legal (subtype × value) pairing — every value is field.string's.
+                errors.Add(new MetaError(
+                    $"field '{field.Name}' @{FIELD_ATTR_DB_COLUMN_TYPE} '{value}' is not valid on " +
+                    $"field.{field.SubType} (requires field.{FIELD_SUBTYPE_STRING}); every @{FIELD_ATTR_DB_COLUMN_TYPE} value is a field.{FIELD_SUBTYPE_STRING}'s",
+                    ErrorCode.ERR_BAD_ATTR_VALUE,
+                    Envelope: field.Source));
+            }
+            else if (parsed.Length is { } n && field.Attr(FIELD_ATTR_MAX_LENGTH) is { } maxObj
+                && Convert.ToInt64(maxObj, System.Globalization.CultureInfo.InvariantCulture) > n)
+            {
+                // Rule 3 (rc.21): a sized spelling holds n characters; a longer @maxLength (resolving)
+                // would let the app accept a value the column refuses.
+                errors.Add(new MetaError(
+                    $"field.string '{field.Name}' declares @{FIELD_ATTR_MAX_LENGTH}: {maxObj} over '@{FIELD_ATTR_DB_COLUMN_TYPE}: {value}', " +
+                    $"which holds {n}; a value the field accepts would not fit the column.",
+                    ErrorCode.ERR_BAD_ATTR_VALUE,
+                    Envelope: field.Source));
             }
         }
 

@@ -526,6 +526,8 @@ public class MetaDataLoader
             // aggregate-derived field-ref fails closed with ERR_BAD_ATTR_FILTER.
             errors.AddRange(ValidationPasses.ValidateProjectionFilter(root));
             errors.AddRange(ValidationPasses.ValidateOriginSegmentsAndCorrelation(root));
+            // rc.21 part B — @union shapes and @grain projections.
+            errors.AddRange(ValidationPasses.ValidateProjectionUnionAndGrain(root));
 
             // Pass 7c (FR-044): reporting vocabulary cross-node rules (dimensions, measures,
             // segments, reports, relative-date filter values).
