@@ -596,6 +596,7 @@ public class RoutesGenerator : PerEntityGenerator
         bool hasItem = pkType is not null;
 
         var discProp = CSharpNaming.Pascal(tph.DiscriminatorField);
+        var discField = baseEntity.FindField(tph.DiscriminatorField);
         // #484 — the polymorphic base rows carry every subtype's columns, so a credential declared
         // on the base OR on any subtype is omitted from them.
         var baseCredentials = CredentialNames(baseEntity)
@@ -707,7 +708,7 @@ public class RoutesGenerator : PerEntityGenerator
             // --- Per-subtype CRUD sets ---
             var hierarchy = tph.Subtypes.Select(s => s.Entity).Prepend(baseEntity).ToList();
             foreach (var st in tph.Subtypes)
-                AppendTphSubtypeRoutes(sb, st, hierarchy, ctx.Root, baseRoute, baseCls, dbSet, pkType!, pkProp!, discProp, ctx.Warn);
+                AppendTphSubtypeRoutes(sb, st, hierarchy, ctx.Root, baseRoute, baseCls, dbSet, pkType!, pkProp!, discProp, discField, ctx.Warn);
         }
 
         sb.AppendLine();
@@ -1104,17 +1105,22 @@ public class RoutesGenerator : PerEntityGenerator
     // The reset statements AppendCreateServerOwned emits for one entity (empty when it has none, so an
     // entity with an assigned key, no navigation and no discriminator keeps its output byte-identical).
     // A TPH subtype class declares no M:N property of its own — the navigations it carries are its
-    // discriminator base class's — so a subtype route passes that base as navOwner.
-    private static List<string> ServerOwnedCreateResets(MetaObject entity, MetaRoot root, string? discProp = null, MetaObject? navOwner = null)
+    // discriminator base class's — so a subtype route passes that base as navOwner. The key and
+    // discriminator resets are SKIPPED when that field is itself @mutability: readOnly: the entity
+    // declares it with a private setter (EntityGenerator.SetterFor), so the assignment would be
+    // CS0122 — and it is redundant, because System.Text.Json never binds a private setter.
+    private static List<string> ServerOwnedCreateResets(MetaObject entity, MetaRoot root, MetaField? discField = null, MetaObject? navOwner = null)
     {
         var list = new List<string>();
         if (entity.PrimaryIdentity() is MetaPrimaryIdentity pk
             && pk.Generation is MetaObjects.Core.Identity.IdentityConstants.GENERATION_INCREMENT
                 or MetaObjects.Core.Identity.IdentityConstants.GENERATION_UUID
             && pk.Fields is [var keyName]
-            && entity.Fields().FirstOrDefault(f => f.Name == keyName) is { } keyField)
+            && entity.Fields().FirstOrDefault(f => f.Name == keyName) is { } keyField
+            && !keyField.IsReadOnlyMutability)
             list.Add($"input.{CSharpNaming.Pascal(keyField.Name)} = default!;");
-        if (discProp is not null) list.Add($"input.{discProp} = default!;");
+        if (discField is not null && !discField.IsReadOnlyMutability)
+            list.Add($"input.{CSharpNaming.Pascal(discField.Name)} = default!;");
         foreach (var nav in M2MNavigationBuilder.For(navOwner ?? entity, root, _ => { }))
         {
             var target = CSharpNaming.Pascal(nav.Target.Name);
@@ -1444,7 +1450,7 @@ public class RoutesGenerator : PerEntityGenerator
     // that never touches the PK or the discriminator.
     private static void AppendTphSubtypeRoutes(
         StringBuilder sb, TphSubtypePlan st, IReadOnlyList<MetaObject> hierarchy, MetaRoot root, string baseRoute, string baseCls, string dbSet,
-        string pkType, string pkProp, string discProp, Action<string> onWarn)
+        string pkType, string pkProp, string discProp, MetaField? discField, Action<string> onWarn)
     {
         // #362 — field.object columns on a TPH subtype stay out of scope (Program D §6), but a
         // field.map @objectRef is NOT: it reaches the settable set, so its value objects reach
@@ -1517,7 +1523,7 @@ public class RoutesGenerator : PerEntityGenerator
             CreatedResult("prefix + \"/" + subRoute + "/\" + input." + pkProp, "input", credentials), [], mapVoFields, autoSetFields,
             parseBody: HasDecimalField(st.Entity),
             deniedNavs: deniedFields.Select(f => CSharpNaming.Pascal(f.Name)).ToList(), credentials: credentials,
-            serverOwned: ServerOwnedCreateResets(st.Entity, root, discProp, hierarchy[0]),
+            serverOwned: ServerOwnedCreateResets(st.Entity, root, discField, hierarchy[0]),
             readOnlyRequired: RequiredReadOnlyProps(st.Entity));
 
         // Per-subtype update (PATCH + PUT): partial merge of the JSON body onto the scoped

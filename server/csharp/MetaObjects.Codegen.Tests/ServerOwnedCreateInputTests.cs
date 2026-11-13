@@ -83,6 +83,28 @@ public class ServerOwnedCreateInputTests
     ]}}
     """;
 
+    // A legal way to say "the server owns this": the generated increment key and the TPH
+    // discriminator are themselves @mutability: readOnly. The entity then declares both with
+    // PRIVATE setters (A_readOnly_field_of_every_shape_has_a_private_setter), so a create that
+    // reset them (`input.Id = default!;`) would not compile in the adopter's build — CS0122.
+    private const string ReadOnlyKeyAndDiscriminatorModel = """
+    { "metadata.root": { "package": "acme::input", "children": [
+      { "object.entity": { "name": "Seal", "@discriminator": "kind", "children": [
+        { "source.rdb":       { "@table": "seals" } },
+        { "field.long":       { "name": "id", "@mutability": "readOnly" } },
+        { "field.enum":       { "name": "kind", "@values": ["A", "B"], "@mutability": "readOnly" } },
+        { "field.string":     { "name": "label", "@maxLength": 40 } },
+        { "identity.primary": { "@fields": "id", "@generation": "increment" } }
+      ]}},
+      { "object.entity": { "name": "ASeal", "extends": "Seal", "@discriminatorValue": "A", "children": [
+        { "field.int": { "name": "qty" } }
+      ]}},
+      { "object.entity": { "name": "BSeal", "extends": "Seal", "@discriminatorValue": "B", "children": [
+        { "field.string": { "name": "note", "@maxLength": 40 } }
+      ]}}
+    ]}}
+    """;
+
     private static string Emit(string model, string generator, string file)
     {
         var r = new MetaDataLoader().Load([new InMemoryStringSource(model, id: "input.json")]);
@@ -161,5 +183,54 @@ public class ServerOwnedCreateInputTests
         Assert.Contains("input.Id = default!;", a);
         Assert.Contains("input.Kind = default!;", a);
         Assert.True(a.IndexOf("input.Kind = default!;", StringComparison.Ordinal) < a.IndexOf(".Add(input);", StringComparison.Ordinal), a);
+    }
+
+    [Fact]
+    public void A_readOnly_key_and_readOnly_discriminator_get_no_reset_and_the_model_compiles()
+    {
+        // System.Text.Json never binds a private setter, so the resets would be redundant —
+        // and CS0122. Oracle: the Roslyn compile of the generated tree (the adopter's build);
+        // the wrong behavior rejected is `input.Id = default!;` / `input.Kind = default!;`
+        // assigning private-setter properties.
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(ReadOnlyKeyAndDiscriminatorModel, id: "ro-key.json")]);
+        Assert.Empty(r.Errors);
+        var ctx = new GenContext
+        {
+            Entities = r.Root.Objects(),
+            Root = r.Root,
+            Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", ColumnNamingStrategy = ColumnNamingStrategy.Literal },
+        };
+        var sources = new EntityGenerator().Generate(ctx)
+            .Concat(new DbContextGenerator().Generate(ctx))
+            .Concat(new FilterAllowlistGenerator().Generate(ctx))
+            .Concat(new RoutesGenerator().Generate(ctx))
+            .ToList();
+        var routes = sources.Single(f => f.Path == "SealRoutes.g.cs").Content;
+        var post = routes[routes.IndexOf("app.MapPost(", StringComparison.Ordinal)..];
+        Assert.DoesNotContain("input.Id = default!;", post);
+        Assert.DoesNotContain("input.Kind = default!;", post);
+
+        var trees = sources
+            .Select(f => CSharpSyntaxTree.ParseText(f.Content, new CSharpParseOptions(LanguageVersion.CSharp12), path: f.Path))
+            .ToList();
+        var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var tpa = (string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!;
+        foreach (var p in tpa.Split(Path.PathSeparator)) if (p.Length > 0) paths.Add(p);
+        paths.Add(typeof(Microsoft.EntityFrameworkCore.DbContext).Assembly.Location);
+        paths.Add(typeof(Microsoft.EntityFrameworkCore.ModelBuilder).Assembly.Location);
+        paths.Add(typeof(Microsoft.EntityFrameworkCore.RelationalDatabaseFacadeExtensions).Assembly.Location);
+        paths.Add(typeof(Microsoft.EntityFrameworkCore.PrimaryKeyAttribute).Assembly.Location);
+        paths.Add(typeof(MetaObjects.Codegen.Runtime.FilterParser).Assembly.Location);
+        var refs = paths.Where(File.Exists)
+            .Select(p => (MetadataReference)MetadataReference.CreateFromFile(p)).ToList();
+        var comp = CSharpCompilation.Create(
+            "ro_key_disc_compile_" + Guid.NewGuid().ToString("N"), trees, refs,
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        var errors = comp.GetDiagnostics()
+            .Where(d => d.Severity == DiagnosticSeverity.Error)
+            .Select(d => $"{d.Id}: {d.GetMessage()} @ {d.Location}")
+            .ToList();
+        Assert.True(errors.Count == 0,
+            "readOnly key + readOnly discriminator model must compile:\n" + string.Join("\n", errors));
     }
 }
