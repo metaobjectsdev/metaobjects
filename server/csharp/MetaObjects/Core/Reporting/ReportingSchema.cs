@@ -67,6 +67,12 @@ public static class ReportingSchema
         MeasureDefault(),
     ];
 
+    /// <summary>measure.derived — the required @expr (R13); no @default.</summary>
+    private static readonly IReadOnlyList<AttrSchema> MeasureDerivedAttrs =
+    [
+        new(Name: ReportingConstants.REPORTING_ATTR_EXPR, ValueType: AttrConstants.ATTR_SUBTYPE_EXPRESSION, Required: true),
+    ];
+
     /// <summary>segment.filter — the required @filter.</summary>
     private static readonly IReadOnlyList<AttrSchema> SegmentFilterAttrs =
     [
@@ -87,6 +93,7 @@ public static class ReportingSchema
         {
             [ReportingConstants.MEASURE_SUBTYPE_AGGREGATE] = MeasureAggregateAttrs,
             [ReportingConstants.MEASURE_SUBTYPE_RATIO] = MeasureRatioAttrs,
+            [ReportingConstants.MEASURE_SUBTYPE_DERIVED] = MeasureDerivedAttrs,
         };
 
     /// <summary>Attrs per segment subtype.</summary>

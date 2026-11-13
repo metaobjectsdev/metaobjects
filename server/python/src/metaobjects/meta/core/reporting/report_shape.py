@@ -19,7 +19,11 @@ from ....shared.separators import PACKAGE_SEP
 from ...meta_data import MetaData
 from ...meta_root import MetaRoot
 from ..field.field_constants import (
+    FIELD_ATTR_OBJECT_REF,
     FIELD_ATTR_REQUIRED,
+    FIELD_ATTR_STORAGE,
+    FIELD_SUBTYPE_OBJECT,
+    STORAGE_FLATTENED,
     FIELD_SUBTYPE_BOOLEAN,
     FIELD_SUBTYPE_CURRENCY,
     FIELD_SUBTYPE_DATE,
@@ -154,9 +158,14 @@ def _resolve_reporting_field_ref_named(
     """:func:`resolve_reporting_field_ref`, also returning the entity the reference's
     entity half NAMES (which, with ``host``, may be an ancestor of the entity the field is
     read from). Table C reads that entity's primary identity."""
-    # ``Entity.field``; a package qualifier uses ``::``, so the member separator is the LAST dot.
-    dot = ref.rfind(CHILD_REF_SEP)
+    # ``Entity.field`` or ``Entity.field.member`` (FR-044 R12); a package qualifier uses ``::``
+    # and holds no dot, so the entity half ends at the first dot after the last ``::``.
+    last_sep = ref.rfind(PACKAGE_SEP)
+    dot = ref.find(CHILD_REF_SEP, 0 if last_sep == -1 else last_sep + len(PACKAGE_SEP))
     if dot <= 0:
+        return None
+    path = ref[dot + len(CHILD_REF_SEP):].split(CHILD_REF_SEP)
+    if len(path) > 2:
         return None
     named = resolve_object_ref(root, ref[:dot], _package_of_key(declaring.resolution_key()))
     if not isinstance(named, MetaObject):
@@ -164,9 +173,27 @@ def _resolve_reporting_field_ref_named(
     if host is not None and not _is_self_or_ancestor(named, host):
         return None
     # ADR-0039: resolving fields(), so a field inherited through extends is found.
-    member = ref[dot + len(CHILD_REF_SEP):]
-    field = next((f for f in (host if host is not None else named).fields() if f.name == member), None)
+    field = next((f for f in (host if host is not None else named).fields() if f.name == path[0]), None)
+    if field is not None and len(path) == 2:
+        field = flattened_member_of(field, path[1])
     return None if field is None else (named, field)
+
+
+def is_flattened_field(field: MetaData) -> bool:
+    """True for a ``field.object`` whose ``@storage`` is ``flattened`` (ADR-0039: resolving)."""
+    return field.sub_type == FIELD_SUBTYPE_OBJECT and field.get_meta_attr(FIELD_ATTR_STORAGE) == STORAGE_FLATTENED
+
+
+def flattened_member_of(embedding: MetaField, name: str) -> MetaField | None:
+    """FR-044 R12: member *name* of the value object a flattened ``field.object`` embeds
+    (resolving, so an inherited member counts). ``None`` when the field is not flattened,
+    names no value object, or the value object has no such member."""
+    if not is_flattened_field(embedding):
+        return None
+    value_object = ref_target(embedding, FIELD_ATTR_OBJECT_REF)
+    if not isinstance(value_object, MetaObject):
+        return None
+    return next((f for f in value_object.fields() if f.name == name), None)
 
 
 def resolve_dimension_of(
@@ -452,7 +479,8 @@ def _measure_field(item: str, report: MetaObject, from_: MetaObject, root: MetaR
 def _derive_measure(m: MetaMeasure, from_: MetaObject, root: MetaRoot) -> tuple[str, MetaField | None] | None:
     """Table B for one measure: its subtype, and the ``@of`` field it carries type attrs from
     (if any). None when its ``@of`` does not resolve."""
-    if m.is_ratio():
+    # A quotient, and (R13) an arithmetic expression, are decimal whatever their operands.
+    if m.is_ratio() or m.is_derived():
         return FIELD_SUBTYPE_DECIMAL, None
     agg = m.agg()
     if agg == AGG_COUNT:

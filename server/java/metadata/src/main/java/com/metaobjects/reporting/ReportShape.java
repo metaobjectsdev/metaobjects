@@ -259,7 +259,10 @@ public final class ReportShape {
      * and as the TypeScript {@code resolveReportingFieldRef}:
      *
      * <ol>
-     *   <li>A package qualifier uses {@code ::}, so the member separator is the LAST dot.
+     *   <li>The reference is {@code Entity.field} or, for a member of a value object stored
+     *       flattened, {@code Entity.field.member} (FR-044 R12). A package qualifier uses
+     *       {@code ::} and holds no dot, so the entity half ends at the first dot after the
+     *       last {@code ::}.
      *       The entity half resolves relative to the package of {@code declaring}, the
      *       entity that declares the member ({@link #memberOwner}; ADR-0042).</li>
      *   <li>With {@code host} (a measure, or a dimension without {@code @via}: the reference
@@ -274,12 +277,44 @@ public final class ReportShape {
         MetaObject named = resolveFieldRefEntity(ref, declaring, root);
         if (named == null) return null;
         if (host != null && !isSelfOrAncestor(named, host)) return null;
-        String fieldName = ref.substring(ref.lastIndexOf(SEP) + SEP.length());
-        // ADR-0039: resolving, so a field inherited through extends is found.
-        for (MetaField<?> f : (host != null ? host : named).getMetaFields()) {
-            if (fieldName.equals(f.getName())) return f;
+        String[] path = ref.substring(ownerEnd(ref) + SEP.length()).split(java.util.regex.Pattern.quote(SEP), -1);
+        if (path.length > 2) return null;
+        MetaField<?> field = fieldNamed(host != null ? host : named, path[0]);
+        if (field == null || path.length == 1) return field;
+        return flattenedMemberOf(field, path[1]);
+    }
+
+    /** A field of {@code obj} by name (ADR-0039: resolving, so a field inherited through extends is found). */
+    private static MetaField<?> fieldNamed(MetaObject obj, String name) {
+        for (MetaField<?> f : obj.getMetaFields()) {
+            if (name.equals(f.getName())) return f;
         }
         return null;
+    }
+
+    /**
+     * FR-044 R12: member {@code name} of the value object a flattened {@code field.object}
+     * embeds (resolving, so an inherited member counts). {@code null} when the field is not
+     * flattened, names no value object, or the value object has no such member.
+     */
+    public static MetaField<?> flattenedMemberOf(MetaField<?> embedding, String name) {
+        if (!isFlattenedField(embedding)) return null;
+        MetaObject valueObject = References.refTarget(embedding, MetaObject.ATTR_OBJECT_REF);
+        return valueObject == null ? null : fieldNamed(valueObject, name);
+    }
+
+    /** True for a {@code field.object} whose {@code @storage} is {@code flattened} (ADR-0039: resolving). */
+    public static boolean isFlattenedField(MetaData field) {
+        if (!com.metaobjects.field.ObjectField.SUBTYPE_OBJECT.equals(field.getSubType())
+                || !field.hasMetaAttr(com.metaobjects.field.ObjectField.ATTR_STORAGE)) return false;
+        return com.metaobjects.field.ObjectField.STORAGE_FLATTENED.equals(
+                field.getMetaAttr(com.metaobjects.field.ObjectField.ATTR_STORAGE).getValue());
+    }
+
+    /** Index of the dot that ends a reference's entity half: the first dot after the last {@code ::}. */
+    private static int ownerEnd(String ref) {
+        int lastSep = ref.lastIndexOf(PKG_SEP);
+        return ref.indexOf(SEP, lastSep == -1 ? 0 : lastSep + PKG_SEP.length());
     }
 
     /**
@@ -291,7 +326,7 @@ public final class ReportShape {
      */
     public static MetaObject resolveFieldRefEntity(String ref, MetaData declaring, MetaRoot root) {
         if (ref == null) return null;
-        int dot = ref.lastIndexOf(SEP);
+        int dot = ownerEnd(ref);
         if (dot <= 0) return null;
         return ValidationPhase.resolveRootObject(root, ref.substring(0, dot), packageOf(declaring));
     }
@@ -472,6 +507,23 @@ public final class ReportShape {
         return false;
     }
 
+    /**
+     * The field a dimension's {@code @of} names, read after its {@code @via} (rule D1), or
+     * {@code null} when either does not resolve. R13 reads it to check a dimension operand is numeric.
+     */
+    public static MetaField<?> resolveDimensionOf(MetaDimension dim, MetaObject from, MetaRoot root) {
+        if (dim.getOf() == null) return null;
+        MetaData ofDeclaring = memberOwner(dim, from);
+        MetaObject ofHost = from;
+        if (dim.getVia() != null) {
+            MetaObject terminal = reportingViaTerminal(dim.getVia(), ofDeclaring, from, root);
+            if (terminal == null) return null;
+            ofDeclaring = terminal;
+            ofHost = terminal;
+        }
+        return resolveFieldRef(dim.getOf(), ofDeclaring, root, ofHost);
+    }
+
     private static Field dimensionField(ReportDimensionItem item, MetaObject from, MetaRoot root, MetaObject report,
                                         List<String> spine) {
         MetaDimension dim = declaredMember(from, MetaDimension.class, item.name());
@@ -544,7 +596,7 @@ public final class ReportShape {
 
     /** Table B for one measure. {@code null} when its {@code @of} does not resolve. */
     private static MeasureDerivation deriveMeasure(MetaMeasure m, MetaObject from, MetaRoot root) {
-        if (m.isRatio()) return new MeasureDerivation(DecimalField.SUBTYPE_DECIMAL, null);
+        if (m.isRatio() || m.isDerived()) return new MeasureDerivation(DecimalField.SUBTYPE_DECIMAL, null);
         String agg = m.getAgg();
         if (ReportingConstants.AGG_COUNT.equals(agg)) return new MeasureDerivation(LongField.SUBTYPE_LONG, null);
         // any / all are boolean whatever the source (the loader's M4 refuses a non-boolean @of).

@@ -139,6 +139,42 @@ public class ReportShapeTests
     }
 
     [Fact]
+    public void A_value_object_member_derives_the_members_type()
+    {
+        // FR-044 R12: `Payment.amount.currency` and `Payment.amount.amount` read Money's members,
+        // so the derived fields take the member's subtype, nullability and type source. The
+        // same rows as the TypeScript report-shape derivation of this fixture.
+        var root = LoadFixture("reporting-value-object-members");
+        var rows = Shape(root, "RevenueByMonth").Fields.Select(f =>
+            $"{f.Name} {f.SubType} {f.Required} {(f.TypeSource is null ? "-" : $"{f.TypeSource.Parent!.Name}.{f.TypeSource.Name}")}");
+        Assert.Equal(
+            ["currency string True Money.currency", "kind string False Payment.kind", "receivedOnMonth date True -",
+             "revenue decimal False -", "largest decimal True Money.amount", "averagePayment decimal False -",
+             "payments long True -"],
+            rows.ToList());
+    }
+
+    [Fact]
+    public void A_derived_measure_is_a_nullable_decimal()
+    {
+        // FR-044 R13: a measure.derived is typed decimal, not required, with no type source,
+        // whatever its operands. The same rows as the TypeScript derivation of this fixture.
+        var root = LoadFixture("reporting-derived-measures");
+        string Rows(string report) => string.Join(", ", Shape(root, report).Fields.Select(f =>
+            $"{f.Name} {f.SubType} {f.Required} {(f.TypeSource is null ? "-" : $"{f.TypeSource.Parent!.Name}.{f.TypeSource.Name}")}"));
+        Assert.Equal(
+            "memberId long False Member.id, memberName string True Member.firstName, " +
+            "weeklyCapacityHours decimal True Member.weeklyCapacityHours, workedOnMonth date True -, " +
+            "totalHours decimal True -, billableHours decimal True -, capacityHours decimal False -, " +
+            "utilization decimal False -, nonBillableHours decimal False -, billableSharePct decimal False -",
+            Rows("MemberUtilization"));
+        Assert.Equal(
+            "projectId long False Project.id, projectBudget decimal False Project.budget, cost decimal False -, " +
+            "budgetBurn decimal False -",
+            Rows("ProjectBurn"));
+    }
+
+    [Fact]
     public void A_sourceless_report_has_a_shape_and_no_view()
     {
         var result = new MetaDataLoader().Load([new InMemoryStringSource(

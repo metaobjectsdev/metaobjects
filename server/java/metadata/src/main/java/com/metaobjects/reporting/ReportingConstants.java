@@ -51,9 +51,10 @@ public final class ReportingConstants {
 
     /** One aggregate over the declaring entity's own rows. */
     public static final String MEASURE_SUBTYPE_AGGREGATE = "aggregate";
-    /** A quotient of two {@code measure.aggregate} siblings. {@code measure.derived} is
-     *  deliberately NOT registered: it waits for FR-037 R5. */
+    /** A quotient of two {@code measure.aggregate} siblings. */
     public static final String MEASURE_SUBTYPE_RATIO = "ratio";
+    /** FR-044 R13: arithmetic ({@code @expr}) over measures and numeric attribute dimensions. */
+    public static final String MEASURE_SUBTYPE_DERIVED = "derived";
 
     /** A named, reusable row filter — the only concrete segment subtype. */
     public static final String SEGMENT_SUBTYPE_FILTER = "filter";
@@ -85,6 +86,16 @@ public final class ReportingConstants {
      * registration: a field's is an untyped string re-read by the field's subtype.
      */
     public static final String ATTR_DEFAULT = "default";
+    /** The arithmetic of a {@code measure.derived} (an attr.expression, R13). */
+    public static final String ATTR_EXPR = "expr";
+
+    public static final String DERIVED_FN_ADD = "add";
+    public static final String DERIVED_FN_SUBTRACT = "subtract";
+    public static final String DERIVED_FN_MULTIPLY = "multiply";
+    public static final String DERIVED_FN_DIVIDE = "divide";
+    /** The operations a {@code measure.derived} {@code @expr} takes, each of two operands. */
+    public static final List<String> DERIVED_FNS =
+            List.of(DERIVED_FN_ADD, DERIVED_FN_SUBTRACT, DERIVED_FN_MULTIPLY, DERIVED_FN_DIVIDE);
 
     // ------------------------------------------------------------------
     // Closed sets — mirrored by allowedValues in spec/metamodel/reporting.json.

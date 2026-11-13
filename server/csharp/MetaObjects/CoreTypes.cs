@@ -647,8 +647,8 @@ public static class CoreTypes
         // of `object.entity` (spec/metamodel/object.json), never root-level, so no root
         // wildcard is added above. Three types in one provider file (reporting.json)
         // because they are one vocabulary: a report names dimensions and measures, and
-        // both may reference a segment. `measure.derived` is NOT registered (waits for
-        // FR-037 R5). Descriptions + whenToUse come from the embedded reporting.json via
+        // both may reference a segment. `measure.derived` is FR-037 R5's first arithmetic
+        // wave (R13). Descriptions + whenToUse come from the embedded reporting.json via
         // ApplySpecDescriptions; the placeholder descriptions below are overwritten there.
         foreach (string subType in DIMENSION_SUBTYPES)
         {

@@ -9,6 +9,9 @@ import {
   AGG_ANY,
   AGG_COUNT,
   CHILD_REF_SEPARATOR,
+  DERIVED_FN_ADD,
+  DERIVED_FN_DIVIDE,
+  DERIVED_FN_SUBTRACT,
   DOC_ATTR_DESCRIPTION,
   DOC_ATTR_TITLE,
   FIELD_SUBTYPE_BOOLEAN,
@@ -35,12 +38,20 @@ import {
   type MetaObject,
   type MetaRoot,
   type MetaSegment,
+  type DerivedExprNode,
+  TYPE_MEASURE,
+  derivedExprFields,
 } from "@metaobjectsdev/metadata";
 import { intValueMapOf } from "../enum-meta.js";
 import { sourceColumnNameFor, type ExtractContext } from "../projection/extract-view-spec.js";
 import { ratioOperand, resolveAggregate } from "../projection/report-resolve.js";
-import { cond, mysqlTupleCount, resolveReportFilter, type SqlRenderer } from "../projection/report-sql.js";
-import { CubeModelError, ERR_CUBE_UNMAPPABLE_DIMENSION } from "./cube-errors.js";
+import { cond, declared, mysqlTupleCount, resolveReportFilter, type SqlRenderer } from "../projection/report-sql.js";
+import {
+  CubeModelError,
+  ERR_CUBE_DERIVED_DIMENSION,
+  ERR_CUBE_UNMAPPABLE_DIMENSION,
+  ERR_CUBE_VALUE_OBJECT_MEMBER,
+} from "./cube-errors.js";
 import type {
   CubeDialect,
   CubeDimensionSpec,
@@ -51,6 +62,20 @@ import type {
 } from "./cube-model-spec.js";
 import { CUBE_SELF, cubeColumn, cubeSqlRenderer, memberRef } from "./cube-sql.js";
 import type { ReportDialect } from "../projection/time-sql.js";
+
+/**
+ * FR-044 R12: a report reads a member of a flattened value object only beside a grouping by the
+ * value object's other members (its currency), and Cube cannot hold a query to that, so the
+ * exporter refuses every `@of` that names a member rather than let Cube add amounts across units.
+ */
+export function valueObjectMemberError(where: string, of: string): CubeModelError {
+  return new CubeModelError(
+    ERR_CUBE_VALUE_OBJECT_MEMBER,
+    `${where} @of '${of}' names a member of a value object, which the Cube exporter does not map: a Cube ` +
+      `query could sum it without grouping by the value object's unit member (a currency). Read it through a ` +
+      `report with a view source, or remove the member from the exported entity.`,
+  );
+}
 
 /** What every member mapping reads: the model, the dialect, the column naming strategy. */
 export interface MemberContext {
@@ -185,10 +210,58 @@ function withDefault(sql: string, n: number, boolean: boolean, d: ReportDialect)
   return `COALESCE(${sql}, ${String(n)})`;
 }
 
+/**
+ * FR-044 R13: the measures a `measure.derived`'s `@expr` names, resolved on `entity`. A Cube measure
+ * reads other measures, never a group's dimension value, so a name that is not a measure is refused.
+ */
+function derivedOperands(entity: MetaObject, m: MetaMeasure, where: string): MetaMeasure[] {
+  const expr = m.expr();
+  if (expr === undefined) throw new Error(`${where}: measure '${m.name}' @expr is not an arithmetic expression.`);
+  return derivedExprFields(expr).map((name) => {
+    const operand = declared(entity, TYPE_MEASURE, name) as MetaMeasure | undefined;
+    if (operand === undefined) {
+      throw new CubeModelError(
+        ERR_CUBE_DERIVED_DIMENSION,
+        `${where}: measure '${m.name}' reads dimension '${name}'. A Cube measure reads other measures, not a ` +
+          `group's dimension value, so the exporter cannot write it; read the dimension in the report view instead.`,
+      );
+    }
+    return operand;
+  });
+}
+
+/** Every measure `m`'s Cube SQL references, transitively: a ratio's operands, a derived measure's
+ *  operands and theirs. Not `m` itself. */
+export function measuresRead(entity: MetaObject, m: MetaMeasure, where: string): MetaMeasure[] {
+  const direct = m.isRatio()
+    ? [ratioOperand(entity, m, m.numerator(), where), ratioOperand(entity, m, m.denominator(), where)]
+    : m.isDerived()
+      ? derivedOperands(entity, m, where)
+      : [];
+  return direct.flatMap((o) => [o, ...measuresRead(entity, o, where)]);
+}
+
+/** R13: a derived measure's Cube SQL over its operand members; `divide` divides as a ratio does. */
+function derivedSql(node: DerivedExprNode, d: ReportDialect, top = true): string {
+  if ("field" in node) return memberRef(node.field);
+  if ("value" in node) return node.value < 0 ? `(${String(node.value)})` : String(node.value);
+  const l = derivedSql(node.args[0], d, false);
+  const r = derivedSql(node.args[1], d, false);
+  const sql =
+    node.fn === DERIVED_FN_DIVIDE
+      ? `${d === "postgres" ? `CAST(${l} AS NUMERIC)` : l} / NULLIF(${r}, 0)`
+      : `${l} ${node.fn === DERIVED_FN_ADD ? "+" : node.fn === DERIVED_FN_SUBTRACT ? "-" : "*"} ${r}`;
+  return top ? sql : `(${sql})`;
+}
+
 /** Table D, and the zero-rows / measure-defaults plan's Table D: one measure over `entity`'s own rows. */
 export function measureMembers(entity: MetaObject, m: MetaMeasure, where: string, mc: MemberContext): MeasureMembers {
   // ADR-0039: defaultValue() resolves, so a measure inherited through extends keeps its default.
   const n = m.defaultValue();
+  if (m.isDerived()) {
+    derivedOperands(entity, m, where); // refuses a dimension operand
+    return { measure: { name: m.name, sql: derivedSql(m.expr()!, mc.dialect), type: "number", ...docOf(m) } };
+  }
   if (m.isRatio()) {
     // Member references: each operand is its full Cube expression, condition included, and an
     // operand with its own @default is its COALESCE member, so that default reaches the ratio
@@ -223,8 +296,9 @@ function aggregateSpec(
   const d = mc.dialect;
   const renderer = cubeSqlRenderer(where);
   // The view's own resolution: @of read from the cube's entity, then its condition.
-  const { agg, distinct, fields, condition } = resolveAggregate(m, entity, mc.root, CUBE_SELF, mc.extract, where);
-  const cols = fields.map((f) => cubeColumn(sourceColumnNameFor(f, mc.extract), d, renderer));
+  const { agg, distinct, columns, condition, readsMember } = resolveAggregate(m, entity, mc.root, CUBE_SELF, mc.extract, where);
+  if (readsMember) throw valueObjectMemberError(where, m.ofColumns().join(", "));
+  const cols = columns.map((c) => cubeColumn(c, d, renderer));
   const c = condition === undefined ? undefined : cond(condition, d, renderer);
   // Only @agg any / all may omit @of (rule M0); they are handled below.
   if (cols.length === 0 && agg !== AGG_ANY && agg !== AGG_ALL) throw new Error(`${where}: has no @of.`);

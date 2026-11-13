@@ -1229,6 +1229,19 @@ metadata.root:
                             A dashboard average that fails the whole report for
                             the one day nothing was started.
                       - requirement.functional:
+                          name: measureDerived
+                          title: Derived measure
+                          level: 4
+                          status: planned
+                          statement: >-
+                            A derived measure is arithmetic over the entity's
+                            other measures and the report's dimensions, and a
+                            division by zero is empty, not an error.
+                          counterexample: >-
+                            A utilization percentage hand-written in SQL beside
+                            the report, so a renamed hours measure breaks it
+                            only at run time.
+                      - requirement.functional:
                           name: segmentFilter
                           title: Named filter
                           level: 4

@@ -5,26 +5,41 @@
 import { MetaData } from "../../shared/meta-data.js";
 import {
   MEASURE_AGGS,
+  MEASURE_SUBTYPE_DERIVED,
   MEASURE_SUBTYPE_RATIO,
   REPORTING_ATTR_AGG,
   REPORTING_ATTR_DEFAULT,
   REPORTING_ATTR_DENOMINATOR,
   REPORTING_ATTR_DISTINCT,
+  REPORTING_ATTR_EXPR,
   REPORTING_ATTR_FILTER,
   REPORTING_ATTR_NUMERATOR,
   REPORTING_ATTR_OF,
   REPORTING_ATTR_SEGMENT,
   type MeasureAgg,
 } from "./reporting-constants.js";
+import { isDerivedExpr, type DerivedExprNode } from "./derived-expr.js";
 
 function optionalString(v: unknown): string | undefined {
   return typeof v === "string" ? v : undefined;
 }
 
 export class MetaMeasure extends MetaData {
-  /** True for `measure.ratio`; false for `measure.aggregate`. */
+  /** True for `measure.ratio`. */
   isRatio(): boolean {
     return this.subType === MEASURE_SUBTYPE_RATIO;
+  }
+
+  /** True for `measure.derived`. */
+  isDerived(): boolean {
+    return this.subType === MEASURE_SUBTYPE_DERIVED;
+  }
+
+  /** `measure.derived`'s `@expr`, when it is a well-formed arithmetic expression (rule M11
+   *  refuses any other). ADR-0039: resolving. */
+  expr(): DerivedExprNode | undefined {
+    const v = this.attr(REPORTING_ATTR_EXPR);
+    return isDerivedExpr(v) ? v : undefined;
   }
 
   /** The aggregate function (`measure.aggregate` only). */

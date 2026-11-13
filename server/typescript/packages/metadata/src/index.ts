@@ -47,6 +47,7 @@ export * from "./core/reporting/reporting-constants.js";
 export { MetaDimension } from "./core/reporting/meta-dimension.js";
 export { MetaMeasure } from "./core/reporting/meta-measure.js";
 export { MetaSegment } from "./core/reporting/meta-segment.js";
+export { isDerivedExpr, derivedExprFields, type DerivedExprNode } from "./core/reporting/derived-expr.js";
 export {
   reportFrom,
   reportSpine,
@@ -65,6 +66,9 @@ export {
   reportingMemberOwner,
   reportingViaHops,
   resolveReportingFieldRef,
+  resolveReportingColumnRef,
+  flattenedMemberOf,
+  type ReportingColumnRef,
   resolveDimensionOf,
   type ReportField,
   type ReportFieldRole,

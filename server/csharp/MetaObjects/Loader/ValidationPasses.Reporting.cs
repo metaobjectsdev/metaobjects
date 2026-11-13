@@ -175,6 +175,52 @@ public static partial class ValidationPasses
     private static MetaData? ReportingFieldOf(MetaData obj, string name) =>
         ReportingChildOfType(obj, TYPE_FIELD, name);
 
+    /// <summary>
+    /// R12 — the column an <c>@of</c> path names on <paramref name="entity"/>: <c>field</c>, or
+    /// <c>field.member</c> for a member of a value object stored flattened (one column per member).
+    /// Reports the first failure through <paramref name="err"/> and returns null.
+    /// </summary>
+    private static MetaData? OfColumn(
+        MetaData entity, string[] path, string item, Action<string> err, Func<string> fieldMissing)
+    {
+        var field = ReportingFieldOf(entity, path[0]);
+        if (field is null)
+        {
+            err(fieldMissing());
+            return null;
+        }
+        if (path.Length == 1) return field;
+        string memberName = path[1];
+        var valueObject = field.SubType == FIELD_SUBTYPE_OBJECT ? ReportingRefTargetOf(field) : null;
+        if (valueObject is null)
+        {
+            err($"@of '{item}' names member '{memberName}' of '{path[0]}', a field.{field.SubType} with no value object.");
+            return null;
+        }
+        if (!IsFlattenedField(field))
+        {
+            string storage = field.Attr(FIELD_ATTR_STORAGE) as string ?? "jsonb (the default)";
+            err($"@of '{item}' names a member of '{path[0]}', whose value object is stored as {storage}. " +
+                "A report reads a member only under @storage: flattened, where the member has a column of its own.");
+            return null;
+        }
+        var member = ReportingFieldOf(valueObject, memberName);
+        if (member is null)
+        {
+            err($"@of '{item}' names no member '{memberName}' on value object '{valueObject.ResolutionKey()}'.");
+            return null;
+        }
+        return member;
+    }
+
+    /// <summary>The object a field's <c>@objectRef</c> resolves to (ADR-0059 R3), when it is one.</summary>
+    private static MetaData? ReportingRefTargetOf(MetaData field) =>
+        NamingRefs.RefTarget(field, FIELD_ATTR_OBJECT_REF) is { Type: TYPE_OBJECT } target ? target : null;
+
+    /// <summary>True for a <c>field.object</c> whose <c>@storage</c> is <c>flattened</c> (ADR-0039: resolving).</summary>
+    internal static bool IsFlattenedField(MetaData field) =>
+        field.SubType == FIELD_SUBTYPE_OBJECT && field.Attr(FIELD_ATTR_STORAGE) as string == STORAGE_FLATTENED;
+
     private static IReadOnlyDictionary<string, object?>? AsPlainObject(object? v) =>
         v as IReadOnlyDictionary<string, object?>;
 
@@ -329,9 +375,9 @@ public static partial class ValidationPasses
         string? of = dim.Of();
         if (of is null) return; // missing @of is ERR_MISSING_REQUIRED_ATTR (attr schema pass)
         var parts = ReportingSplitDotted(of);
-        if (parts is null || parts.Value.Path.Length != 1)
+        if (parts is null || parts.Value.Path.Length > 2)
         {
-            Err($"@of '{of}' must be Entity.field.");
+            Err($"@of '{of}' must be Entity.field or Entity.field.member.");
             return;
         }
         // D1 — after @via, a bare Owner resolves in the package of the entity @via reaches:
@@ -357,16 +403,12 @@ public static partial class ValidationPasses
         // @via terminal: a base the terminal extends must itself carry the field, or the dimension
         // names a column the base table lacks. Without @via the host IS the checked entity.
         var lookup = via is null ? ofEntity : named!;
-        var field = ReportingFieldOf(lookup, fieldName);
-        if (field is null)
-        {
-            bool declaredOnTerminal = !ReferenceEquals(lookup, ofEntity) && ReportingFieldOf(ofEntity, fieldName) is not null;
-            Err(declaredOnTerminal
+        var field = OfColumn(lookup, parts.Value.Path, of, Err, () =>
+            !ReferenceEquals(lookup, ofEntity) && ReportingFieldOf(ofEntity, fieldName) is not null
                 ? $"@of '{of}' names no field '{fieldName}' on '{Shown(ctx, lookup)}': only '{Shown(ctx, ofEntity)}', " +
                   $"the entity @via reaches, declares it. Name it '{ofEntity.Name}.{fieldName}'."
                 : $"@of '{of}' names no field '{fieldName}' on '{Shown(ctx, lookup)}'.");
-            return;
-        }
+        if (field is null) return;
 
         // D5 — a dimension groups by a scalar. A field.object (or a field carrying @objectRef) is a JSON
         // document: no port serves a report over one, and a document is not a value to group rows by.
@@ -516,6 +558,11 @@ public static partial class ValidationPasses
             CheckRatioOperands(ctx, measure, Err);
             return;
         }
+        if (measure.IsDerived())
+        {
+            CheckDerivedExpr(ctx, measure, Err);
+            return;
+        }
         if (measure.SubType != MEASURE_SUBTYPE_AGGREGATE) return;
 
         bool clean = CheckAggregateColumns(ctx, measure, Err, out var ofField);
@@ -597,9 +644,9 @@ public static partial class ValidationPasses
         foreach (string item in columns)
         {
             var parts = ReportingSplitDotted(item);
-            if (parts is null || parts.Value.Path.Length != 1)
+            if (parts is null || parts.Value.Path.Length > 2)
             {
-                err($"@of '{item}' must be Entity.field.");
+                err($"@of '{item}' must be Entity.field or Entity.field.member.");
                 return false;
             }
             var named = NamingRefs.ResolveObjectRef(ctx.Root, parts.Value.Owner, NamingRefs.EffectivePackage(ctx.Declaring));
@@ -609,12 +656,9 @@ public static partial class ValidationPasses
                     "A measure aggregates its own entity's rows; declare it on the entity that owns the column.");
                 return false;
             }
-            var ofField = ReportingFieldOf(ctx.Host, parts.Value.Path[0]);
-            if (ofField is null)
-            {
-                err($"@of '{item}' names no field '{parts.Value.Path[0]}' on '{ctx.Declaring.ResolutionKey()}'.");
-                return false;
-            }
+            var ofField = OfColumn(ctx.Host, parts.Value.Path, item, err,
+                () => $"@of '{item}' names no field '{parts.Value.Path[0]}' on '{ctx.Declaring.ResolutionKey()}'.");
+            if (ofField is null) return false;
             // M10 — a measure aggregates scalars. A field.object (or a field carrying @objectRef) is a JSON
             // document, which no port aggregates in a report.
             if (ofField.SubType == FIELD_SUBTYPE_OBJECT || ReportingObjectRefOf(ofField) is not null)
@@ -692,6 +736,66 @@ public static partial class ValidationPasses
             {
                 err($"@{attr} '{@ref}' is a {result} measure; a ratio divides numbers, so its operands must be numeric " +
                     "measures (a count, a sum, an avg, or a min or max of a numeric field).");
+            }
+        }
+    }
+
+    /// <summary>
+    /// M11 — a measure.derived's @expr is FR-037 R5's arithmetic over operands a report can read:
+    /// each <c>{ field }</c> names a numeric measure.aggregate or measure.ratio of the same entity,
+    /// or a numeric attribute dimension of it (R13 then requires the report to list that
+    /// dimension). A derived measure never reads another derived measure, and a name both a
+    /// measure and a dimension carry is refused rather than guessed. One error per offending operand.
+    /// </summary>
+    private static void CheckDerivedExpr(MemberCtx ctx, MetaMeasure measure, Action<string> err)
+    {
+        if (measure.Attr(REPORTING_ATTR_EXPR) is null) return; // missing @expr is ERR_MISSING_REQUIRED_ATTR
+        var expr = measure.Expr();
+        if (expr is null)
+        {
+            err("@expr is not an arithmetic expression. Each node is { field: <measure or dimension> }, " +
+                $"{{ value: <number> }} or {{ fn: {string.Join(" | ", DERIVED_FNS)}, args: [<a>, <b>] }}.");
+            return;
+        }
+        string entityKey = ctx.Declaring.ResolutionKey();
+        foreach (string name in DerivedExpr.Fields(expr))
+        {
+            var target = ReportingChildOfType(ctx.Host, TYPE_MEASURE, name);
+            var dim = ReportingChildOfType(ctx.Host, TYPE_DIMENSION, name);
+            if (target is not null && dim is not null)
+            {
+                err($"@expr names '{name}', which is both a measure and a dimension of '{entityKey}'. Rename one.");
+            }
+            else if (target is not null)
+            {
+                if (target.SubType == MEASURE_SUBTYPE_DERIVED)
+                {
+                    err($"@expr names '{name}', a measure.derived. A derived measure reads aggregates, ratios and " +
+                        "dimensions, not another derived measure.");
+                }
+                else if (target is MetaMeasure operand && ctx.Host is MetaObject from && ctx.Root is MetaRoot root &&
+                         ReportShapes.MeasureResultSubType(operand, from, root) is { } result &&
+                         !ReportingNumericFieldSubtypes.Contains(result))
+                {
+                    err($"@expr names measure '{name}', whose result is a {result}, not a number.");
+                }
+            }
+            else if (dim is MetaDimension d)
+            {
+                if (d.IsTime())
+                {
+                    err($"@expr names '{name}', a dimension.time. Arithmetic reads a numeric attribute dimension.");
+                }
+                else if (ctx.Host is MetaObject from && ctx.Root is MetaRoot root &&
+                         ReportShapes.ResolveDimensionOf(d, from, root) is { } of &&
+                         !ReportingNumericFieldSubtypes.Contains(of.Field.SubType))
+                {
+                    err($"@expr names dimension '{name}', whose @of is a field.{of.Field.SubType}, not a number.");
+                }
+            }
+            else
+            {
+                err($"@expr names '{name}', which is no measure or dimension of '{entityKey}'.");
             }
         }
     }
@@ -935,6 +1039,12 @@ public static partial class ValidationPasses
             if (measureName is not null) Claim(measureName, $"measure '{measureName}'");
         }
 
+        // R12 — amounts in different units are never combined.
+        CheckValueObjectUnits(report, from, m => Err(m));
+
+        // R13 — a derived measure reads only dimensions the report groups by.
+        CheckDerivedDimensions(report, from, m => Err(m));
+
         // R7 — @segment names a segment of @from.
         // ADR-0039: resolving — a report may inherit @segment via extends.
         if (report.Attr(OBJECT_REPORT_ATTR_SEGMENT) is string segment &&
@@ -1000,6 +1110,95 @@ public static partial class ValidationPasses
     /// ERR_REPORT_FOREIGN_MEASURE (it is another entity's measure) or ERR_INVALID_REPORT
     /// (it is nobody's) and returns null.
     /// </summary>
+    /// <summary>
+    /// R12 — a measure that sums, averages or takes the min or max of a numeric member of a
+    /// flattened value object (Money's amount) combines rows only when the report groups by each
+    /// non-numeric member of that value object (Money's currency). Checked for every listed
+    /// measure.aggregate and every operand of a listed ratio; the grouping is an attribute
+    /// dimension of @from, with no @via, whose @of names the same <c>field.member</c>. A measure
+    /// whose @of fails M1 is skipped (M1 reports it).
+    /// </summary>
+    private static void CheckValueObjectUnits(MetaData report, MetaData from, Action<string> err)
+    {
+        var grouped = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var item in ReportAccessors.ReportDimensionItems(report))
+        {
+            if (ReportingChildOfType(from, TYPE_DIMENSION, item.Name) is not MetaDimension dim ||
+                dim.IsTime() || dim.Via() is not null) continue;
+            var path = ReportingSplitDotted(dim.Of() ?? "")?.Path;
+            if (path is { Length: 2 }) grouped.Add(string.Join(CHILD_REF_SEPARATOR, path));
+        }
+        var checkedMeasures = new HashSet<MetaData>(ReferenceEqualityComparer.Instance);
+        foreach (string item in ReportAccessors.ReportMeasureNames(report))
+        {
+            string name = item[(item.LastIndexOf(CHILD_REF_SEPARATOR, StringComparison.Ordinal) + 1)..];
+            if (ReportingChildOfType(from, TYPE_MEASURE, name) is not MetaMeasure listed) continue;
+            foreach (var candidate in AggregatesRead(listed, from))
+            {
+                if (candidate is not MetaMeasure m || m.SubType != MEASURE_SUBTYPE_AGGREGATE || !checkedMeasures.Add(m)) continue;
+                string? agg = m.Agg();
+                if (agg != AGG_SUM && agg != AGG_AVG && agg != AGG_MIN && agg != AGG_MAX) continue;
+                string of = m.OfColumns().FirstOrDefault() ?? "";
+                var parts = ReportingSplitDotted(of);
+                if (parts is not { Path.Length: 2 }) continue;
+                string fieldName = parts.Value.Path[0];
+                var field = ReportingFieldOf(from, fieldName);
+                var valueObject = field is not null && IsFlattenedField(field) ? ReportingRefTargetOf(field) : null;
+                var member = valueObject is null ? null : ReportingFieldOf(valueObject, parts.Value.Path[1]);
+                if (valueObject is null || member is null || !ReportingNumericFieldSubtypes.Contains(member.SubType)) continue;
+                // ADR-0039: resolving — a unit member the value object inherits qualifies its amounts too.
+                foreach (var unit in valueObject.Children().Where(c => c.Type == TYPE_FIELD))
+                {
+                    if (ReportingNumericFieldSubtypes.Contains(unit.SubType) || grouped.Contains($"{fieldName}.{unit.Name}")) continue;
+                    err($": measure '{m.Name}' takes @agg '{agg}' of '{of}', a member of value object " +
+                        $"'{valueObject.ResolutionKey()}', but the report does not group by its member '{unit.Name}', so " +
+                        $"amounts with different '{unit.Name}' values would be combined. List an attribute dimension of " +
+                        $"@from whose @of is '{parts.Value.Owner}.{fieldName}.{unit.Name}'.");
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// The measures <paramref name="listed"/> aggregates through: itself for a measure.aggregate,
+    /// its two operands for a ratio, and for a measure.derived each measure its @expr names (a
+    /// ratio there read through its operands). Unresolved names are left out; the member rules
+    /// report them.
+    /// </summary>
+    private static IEnumerable<MetaData> AggregatesRead(MetaMeasure listed, MetaData from)
+    {
+        MetaData? Measure(string? n) => n is null ? null : ReportingChildOfType(from, TYPE_MEASURE, n);
+        IEnumerable<MetaData?> OperandsOf(MetaData? m) =>
+            m is MetaMeasure r && r.IsRatio() ? [Measure(r.Numerator()), Measure(r.Denominator())] : [m];
+        var read = listed.IsDerived()
+            ? (listed.Expr() is { } expr ? DerivedExpr.Fields(expr) : []).SelectMany(n => OperandsOf(Measure(n)))
+            : OperandsOf(listed);
+        return read.Where(m => m is not null).Select(m => m!);
+    }
+
+    /// <summary>
+    /// R13 — a measure.derived that reads an attribute dimension reads that dimension's value for
+    /// each group, so the report must list the dimension in @dimensions. A name that is also a
+    /// measure is M11's to report.
+    /// </summary>
+    private static void CheckDerivedDimensions(MetaData report, MetaData from, Action<string> err)
+    {
+        var listedDims = ReportAccessors.ReportDimensionItems(report).Select(i => i.Name).ToHashSet(StringComparer.Ordinal);
+        foreach (string item in ReportAccessors.ReportMeasureNames(report))
+        {
+            string name = item[(item.LastIndexOf(CHILD_REF_SEPARATOR, StringComparison.Ordinal) + 1)..];
+            if (ReportingChildOfType(from, TYPE_MEASURE, name) is not MetaMeasure m || !m.IsDerived() ||
+                m.Expr() is not { } expr) continue;
+            foreach (string read in DerivedExpr.Fields(expr))
+            {
+                if (listedDims.Contains(read) || ReportingChildOfType(from, TYPE_MEASURE, read) is not null) continue;
+                if (ReportingChildOfType(from, TYPE_DIMENSION, read) is null) continue;
+                err($": measure '{m.Name}' reads dimension '{read}', which @dimensions does not list. A derived " +
+                    "measure reads a dimension's value for each group, so the report must group by it.");
+            }
+        }
+    }
+
     private static string? CheckReportMeasure(
         MetaData root, MetaData report, MetaData from, string item, string label, ReportingErrorSink sink)
     {

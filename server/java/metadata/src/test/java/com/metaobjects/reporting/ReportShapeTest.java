@@ -229,6 +229,48 @@ public class ReportShapeTest extends SharedRegistryTestBase {
     }
 
     @Test
+    public void aValueObjectMemberDerivesTheMembersType() throws IOException {
+        // FR-044 R12: `Payment.amount.currency` and `Payment.amount.amount` read Money's members,
+        // so the derived fields take the member's subtype, nullability and type source. The same
+        // rows as the TypeScript report-shape derivation of this fixture.
+        Path input = corpusDir().resolveSibling("conformance")
+                .resolve("reporting-value-object-members/input/meta.billing.json");
+        MetaRoot root = loadJson(new String(Files.readAllBytes(input), StandardCharsets.UTF_8));
+        List<String> rows = ReportShape.of(object(root, "RevenueByMonth"), root).fields().stream()
+                .map(f -> f.name() + " " + f.subType() + " " + f.required() + " "
+                        + (f.typeSourceKey() == null ? "-" : f.typeSourceKey()))
+                .collect(Collectors.toList());
+        assertEquals(List.of("currency string true acme::billing::Money.currency",
+                "kind string false acme::billing::Payment.kind", "receivedOnMonth date true -",
+                "revenue decimal false -", "largest decimal true acme::billing::Money.amount",
+                "averagePayment decimal false -", "payments long true -"), rows);
+    }
+
+    @Test
+    public void aDerivedMeasureIsANullableDecimal() throws IOException {
+        // FR-044 R13: a measure.derived is typed decimal, not required, with no type source,
+        // whatever its operands. The same rows as the TypeScript derivation of this fixture.
+        Path input = corpusDir().resolveSibling("conformance")
+                .resolve("reporting-derived-measures/input/meta.studio.json");
+        MetaRoot root = loadJson(new String(Files.readAllBytes(input), StandardCharsets.UTF_8));
+        java.util.function.Function<String, List<String>> rows = name ->
+                ReportShape.of(object(root, name), root).fields().stream()
+                        .map(f -> f.name() + " " + f.subType() + " " + f.required() + " "
+                                + (f.typeSourceKey() == null ? "-" : f.typeSourceKey()))
+                        .collect(Collectors.toList());
+        assertEquals(List.of("memberId long false acme::studio::Member.id",
+                "memberName string true acme::studio::Member.firstName",
+                "weeklyCapacityHours decimal true acme::studio::Member.weeklyCapacityHours",
+                "workedOnMonth date true -", "totalHours decimal true -", "billableHours decimal true -",
+                "capacityHours decimal false -", "utilization decimal false -",
+                "nonBillableHours decimal false -", "billableSharePct decimal false -"),
+                rows.apply("MemberUtilization"));
+        assertEquals(List.of("projectId long false acme::studio::Project.id",
+                "projectBudget decimal false acme::studio::Project.budget", "cost decimal false -",
+                "budgetBurn decimal false -"), rows.apply("ProjectBurn"));
+    }
+
+    @Test
     public void aReportWithNoDimensionsHasOnlyMeasures() {
         ReportShape shape = ReportShape.of(object(canonical, "FitnessTotals"), canonical);
         assertEquals(List.of("weeks", "totalMinutes", "longShare"),

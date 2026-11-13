@@ -83,10 +83,12 @@ from .meta.core.reporting.reporting_constants import (
     DIMENSION_SUBTYPE_TIME,
     MEASURE_AGGS,
     MEASURE_SUBTYPE_AGGREGATE,
+    MEASURE_SUBTYPE_DERIVED,
     MEASURE_SUBTYPE_RATIO,
     REPORTING_ATTR_AGG,
     REPORTING_ATTR_DEFAULT,
     REPORTING_ATTR_DENOMINATOR,
+    REPORTING_ATTR_EXPR,
     REPORTING_ATTR_DISTINCT,
     REPORTING_ATTR_FILTER,
     REPORTING_ATTR_GRAINS,
@@ -459,6 +461,18 @@ core_provider.add(
             AttrSchema(name=REPORTING_ATTR_NUMERATOR, value_type=ATTR_SUBTYPE_STRING, required=True),
             AttrSchema(name=REPORTING_ATTR_DENOMINATOR, value_type=ATTR_SUBTYPE_STRING, required=True),
             AttrSchema(name=REPORTING_ATTR_DEFAULT, value_type=ATTR_SUBTYPE_INT, required=False),
+        ],
+        child_rules=[ChildRule(TYPE_ATTR, "*")],
+    )
+)
+# FR-044 R13: measure.derived — FR-037 R5's first arithmetic wave; no @default.
+core_provider.add(
+    TypeDefinition(
+        type=TYPE_MEASURE,
+        sub_type=MEASURE_SUBTYPE_DERIVED,
+        factory=MetaMeasure,
+        attrs=[
+            AttrSchema(name=REPORTING_ATTR_EXPR, value_type=ATTR_SUBTYPE_EXPRESSION, required=True),
         ],
         child_rules=[ChildRule(TYPE_ATTR, "*")],
     )

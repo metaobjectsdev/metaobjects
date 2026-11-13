@@ -476,7 +476,7 @@ public class ReportingValidationTest extends SharedRegistryTestBase {
         List<MetaDataException> got = ValidationPhase.validateReporting(loadJson(doc));
         assertEquals(List.of("ERR_INVALID_MEASURE"), codes(got));
         assertEquals("measure 'revenue' on entity 'acme::shop::Purchase': @of 'Purchase.amountCents,Purchase.id' "
-                + "must be Entity.field.", got.get(0).getMessage());
+                + "names no field 'amountCents,Purchase' on 'acme::shop::Purchase'.", got.get(0).getMessage());
     }
 
     // ---------------------------------------------------------------------------

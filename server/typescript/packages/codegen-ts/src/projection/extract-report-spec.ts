@@ -12,7 +12,11 @@ import {
   FIELD_SUBTYPE_FLOAT,
   FIELD_SUBTYPE_INT,
   FIELD_SUBTYPE_LONG,
+  MEASURE_SUBTYPE_AGGREGATE,
+  TYPE_MEASURE,
+  type DerivedExprNode,
   measureDerivedSubType,
+  resolveDimensionOf,
   reportShape,
   reportSpine,
   reportSpineHops,
@@ -32,21 +36,20 @@ import {
   pathsToJoins,
   projectionViewName,
   shortAliasFor,
-  sourceColumnNameFor,
   walkViaPath,
   type ExtractContext,
   type Path,
 } from "./extract-view-spec.js";
 import {
   authoredText,
-  dimensionOfField,
+  reportColumnName,
   ratioOperand,
   resolveAggregate,
   resolveDimensionViaPath,
   viaHopError,
 } from "./report-resolve.js";
-import type { ReportAggregate, ReportColumn, ReportViewSpec } from "./report-spec.js";
-import { reportScope, temporalOf } from "./report-sql.js";
+import type { ReportAggregate, ReportColumn, ReportDerivedTerm, ReportViewSpec } from "./report-spec.js";
+import { declared, reportScope, temporalOf } from "./report-sql.js";
 import type { JoinNode } from "./view-spec.js";
 
 // `temporalOf` lives with the other report SQL helpers; this module keeps exporting it.
@@ -74,7 +77,7 @@ function aggregateOf(
   ctx: ExtractContext,
 ): ReportAggregate {
   const where = `report '${report.name}' measure '${measure.name}'`;
-  const { agg, distinct, fields, condition } = resolveAggregate(measure, from, root, baseAlias, ctx, where);
+  const { agg, distinct, fields, columns, condition } = resolveAggregate(measure, from, root, baseAlias, ctx, where);
   const cast = castFor(agg, fields[0]);
   // Table D: `@default` is read through the measure itself, so a ratio operand that the report
   // does not list still carries its own.
@@ -89,7 +92,7 @@ function aggregateOf(
   return {
     agg,
     distinct,
-    refs: fields.map((f) => `${baseAlias}.${sourceColumnNameFor(f, ctx)}`),
+    refs: columns.map((c) => `${baseAlias}.${c}`),
     ...(condition !== undefined ? { filter: condition } : {}),
     ...(cast !== undefined ? { cast } : {}),
     ...(defaultValue !== undefined ? { defaultValue } : {}),
@@ -235,34 +238,62 @@ export function extractReportSpec(report: MetaObject, root: MetaRoot, ctx: Extra
   const tree = pathsToJoins(spinePath === undefined ? dimensionPaths : [spinePath, ...dimensionPaths], used);
   const joins = spinePath === undefined ? tree : allLeft(tree);
 
+  // R13: a derived measure reads a listed attribute dimension through the column the view groups by.
+  const dimensionRefs = new Map<string, string>();
   const columns = shape.fields.map((f): ReportColumn => {
     const dbColAlias = columnNameFromField(f.name, ctx.columnNamingStrategy);
     if (f.role === "dimension") {
       const dim = f.dimension;
-      // A time dimension below the hour grain carries no typeSource; resolve by reportShape's rule.
-      const of = f.typeSource ?? (dim === undefined ? undefined : dimensionOfField(dim, from, root));
+      // Resolved by reportShape's rule; a member of a flattened value object reads its own column.
+      const of = dim === undefined ? undefined : resolveDimensionOf(dim, from, root);
       if (of === undefined) throw new Error(`report '${report.name}': dimension '${f.name}' @of does not resolve.`);
       const path = pathOf.get(f);
       const alias = path === undefined ? baseAlias : aliasAtEndOf(path, joins);
-      const ref = `${alias}.${sourceColumnNameFor(of, ctx)}`;
+      const ref = `${alias}.${reportColumnName(of, ctx)}`;
       if (f.grain !== undefined) {
-        return { kind: "timeDimension", fieldName: f.name, dbColAlias, ref, grain: f.grain, temporal: temporalOf(of) };
+        return { kind: "timeDimension", fieldName: f.name, dbColAlias, ref, grain: f.grain, temporal: temporalOf(of.field) };
       }
+      if (dim !== undefined) dimensionRefs.set(dim.name, ref);
       return { kind: "dimension", fieldName: f.name, dbColAlias, ref };
     }
     const measure = f.measure!;
-    if (measure.isRatio()) {
+    const ratioTerm = (ratio: MetaMeasure): Extract<ReportDerivedTerm, { kind: "ratio" }> => {
       const operand = (name: string | undefined): ReportAggregate =>
-        aggregateOf(ratioOperand(from, measure, name, `report '${report.name}'`), report, from, baseAlias, root, ctx);
-      const defaultValue = measure.defaultValue();
+        aggregateOf(ratioOperand(from, ratio, name, `report '${report.name}'`), report, from, baseAlias, root, ctx);
+      const defaultValue = ratio.defaultValue();
       return {
         kind: "ratio",
-        fieldName: f.name,
-        dbColAlias,
-        numerator: operand(measure.numerator()),
-        denominator: operand(measure.denominator()),
+        numerator: operand(ratio.numerator()),
+        denominator: operand(ratio.denominator()),
         ...(defaultValue !== undefined ? { defaultValue } : {}),
       };
+    };
+    if (measure.isRatio()) {
+      const { kind: _kind, ...ratio } = ratioTerm(measure);
+      return { kind: "ratio", fieldName: f.name, dbColAlias, ...ratio };
+    }
+    if (measure.isDerived()) {
+      const where = `report '${report.name}': measure '${f.name}'`;
+      const expr = measure.expr();
+      if (expr === undefined) throw new Error(`${where}: @expr is not an arithmetic expression.`);
+      const term = (node: DerivedExprNode): ReportDerivedTerm => {
+        if ("value" in node) return { kind: "value", value: node.value };
+        if ("fn" in node) return { kind: "op", fn: node.fn, left: term(node.args[0]), right: term(node.args[1]) };
+        const operand = declared(from, TYPE_MEASURE, node.field) as MetaMeasure | undefined;
+        if (operand !== undefined) {
+          if (operand.isRatio()) return ratioTerm(operand);
+          if (operand.subType === MEASURE_SUBTYPE_AGGREGATE) {
+            return { kind: "aggregate", aggregate: aggregateOf(operand, report, from, baseAlias, root, ctx) };
+          }
+          throw new Error(`${where}: @expr names '${node.field}', a measure.${operand.subType}.`);
+        }
+        const ref = dimensionRefs.get(node.field);
+        if (ref === undefined) {
+          throw new Error(`${where}: @expr names '${node.field}', which is no measure of '${from.name}' and no dimension the report lists.`);
+        }
+        return { kind: "ref", ref };
+      };
+      return { kind: "derived", fieldName: f.name, dbColAlias, term: term(expr) };
     }
     return { kind: "aggregate", fieldName: f.name, dbColAlias, aggregate: aggregateOf(measure, report, from, baseAlias, root, ctx) };
   });

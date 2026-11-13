@@ -256,6 +256,11 @@ children and the cardinality of that subtype. Documentation attributes
 <td><a href="types/measure.html#measureaggregate">types/measure.md#measureaggregate</a></td>
 </tr>
 <tr>
+<td><code>measure.derived</code></td>
+<td>A named arithmetic expression (FR-044 R13) over measures of the same entity and the report&#39;s numeric attribute dimensions, typed decimal. @expr is FR-037 R5&#39;s first arithmetic wave: add, subtract, multiply and divide, each of two operands. divide lowers as a ratio does, so a zero divisor yields null. A report listing a derived measure that reads a dimension must list that dimension.</td>
+<td><a href="types/measure.html#measurederived">types/measure.md#measurederived</a></td>
+</tr>
+<tr>
 <td><code>measure.ratio</code></td>
 <td>A named quotient of two numeric measure.aggregate siblings (FR-044), lowered as numerator / NULLIF(denominator, 0) and typed decimal. A zero denominator yields null.</td>
 <td><a href="types/measure.html#measureratio">types/measure.md#measureratio</a></td>
