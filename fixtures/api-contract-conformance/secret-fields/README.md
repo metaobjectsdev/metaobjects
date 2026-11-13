@@ -11,6 +11,7 @@ The model is one `Account`:
 | `name`      | (nothing)                   | accepted               | returned              |
 | `tokenHash` | `@formExclude: true`        | **ignored**            | returned              |
 | `pinHash`   | child `view.password`       | **ignored**            | **never returned**    |
+| `role`      | `@mutability: readOnly`     | **ignored**            | returned              |
 
 ## The contract
 
@@ -22,6 +23,8 @@ The model is one `Account`:
 - **A present `null` is a write**, so it does not reach a denied column either.
 - **A credential is never returned**: not by list, not by get, not in the echo of a create or
   an update. The key is absent from the object, not `null`.
+- **A `readOnly` field is ignored on every write the same way**, and returned like any other
+  field: the server owns its value (here, the seeded `role`), so a create leaves it `null`.
 - **`@formExclude` alone does not hide a field.** It says how the field is written, and the
   field is still part of the resource.
 - The application still writes these fields through its own code (the generated queries, the
@@ -43,7 +46,7 @@ secret-fields/
 ├── seed.json                         # two rows, both secrets set
 └── scenarios/
     ├── read-omits-credential.yaml    # GET by id and list: pinHash absent, tokenHash present
-    └── write-ignores-excluded.yaml   # POST / PATCH / PUT / present-null leave tokenHash alone
+    └── write-ignores-excluded.yaml   # POST / PATCH / PUT / present-null leave tokenHash and the readOnly role alone
 ```
 
 Generated lane only: what is under test is whether each port's GENERATOR emits routes that

@@ -26,6 +26,10 @@ export interface ExpectBody {
   namesUnordered?: string[];
   row?: Record<string, unknown>;
   hasId?: boolean;
+  /** The response body is an object and NONE of the listed keys is present on it (not even as
+   *  `null`). Used by the input scenarios to prove a key the client may not set never reached
+   *  storage and came back in the echo. */
+  absent?: string[];
   /** Assert the listed RESPONSE fields all equal EACH OTHER (never a literal) —
    *  format-agnostic. Used by @autoSet scenarios to prove two stamped columns
    *  hold the same value without pinning the exact timestamp. */
@@ -287,6 +291,13 @@ export function assertResponse(
     const row = body as Record<string, unknown>;
     if (typeof row["id"] !== "number")
       throw new Error(`${scenarioName} / ${request.id}: expected numeric id in body, got: ${stringify(body)}`);
+  }
+  if (want.absent) {
+    if (body === null || typeof body !== "object" || Array.isArray(body))
+      throw new Error(`${scenarioName} / ${request.id}: expected object for absent, got: ${stringify(body)}`);
+    const present = want.absent.filter((k) => Object.hasOwn(body, k));
+    if (present.length > 0)
+      throw new Error(`${scenarioName} / ${request.id}: expected no ${present.join(", ")} in body, got: ${stringify(body)}`);
   }
   if (want.fieldsEqual) {
     const row = body as Record<string, unknown>;

@@ -646,6 +646,9 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         }
         src.append("/** GENERATED — wire DTO for ").append(shortName)
            .append(". Do not hand-edit; regenerated from metadata. */\n");
+        // The DTO is the create request body: an undeclared key is DROPPED, never rejected, whatever
+        // FAIL_ON_UNKNOWN_PROPERTIES the host's ObjectMapper carries (a plain ObjectMapper has it on).
+        src.append("@com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)\n");
         src.append("public record ").append(recordName).append("(\n");
 
         // Filter ObjectField — see class javadoc. Same reason as the Kotlin port's

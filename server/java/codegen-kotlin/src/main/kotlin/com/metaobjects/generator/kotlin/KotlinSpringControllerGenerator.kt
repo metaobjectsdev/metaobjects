@@ -542,6 +542,9 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 }
                 // #484: a @formExclude / credential column is never bound from the request body.
                 if (KotlinGenUtil.isApiWriteDenied(field)) continue
+                // A readOnly column is server-owned: a client value is DROPPED, the column keeps
+                // its default (the same rule as the PATCH settable set).
+                if (KotlinGenUtil.isReadOnlyMutability(field)) continue
                 // NOTE: a `field.string @dbColumnType=jsonb` open bag IS written here (create
                 // binds it from the @Valid DTO's kotlinx JsonElement property, gated by the
                 // jsonb-open-bag-roundtrip corpus). PATCH cannot (the raw-JsonNode path can't bind
@@ -1127,7 +1130,12 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 append("            it[${plan.discriminatorField}] = $disc\n")
                 // `@generation: uuid` key minted app-side — see the vanilla create.
                 if (uuidGeneratedPk(base, pkFieldName)) append("            it[$pkFieldName] = java.util.UUID.randomUUID()\n")
-                for (f in writableFields) {
+                // Only what THIS route's subtype may set on create: its effective (base + own)
+                // columns, never a readOnly or derived one and never a sibling subtype's column.
+                val createNames = st.entity.metaFields
+                    .filter { !KotlinGenUtil.isReadOnlyMutability(it) && !KotlinGenUtil.isDerivedField(it) }
+                    .map { it.name }.toSet()
+                for (f in writableFields.filter { it in createNames }) {
                     // A column is non-null in the union table iff it is a BASE @required field
                     // (subtype-only columns are folded NULLABLE). For a non-null column the union
                     // DTO field is still nullable, so force non-null on create (create bodies for

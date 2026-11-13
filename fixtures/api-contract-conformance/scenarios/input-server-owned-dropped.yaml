@@ -1,0 +1,86 @@
+name: input-server-owned-dropped
+description: >
+  A write route hands storage only what the client may set. A client-sent `id` on a
+  server-generated key, a key the entity does not declare (`isAdmin`) and, on update, a
+  `writeOnce` field are all DROPPED SILENTLY: the request answers as if the key were absent
+  (201/200, never 400), and none of them reaches storage. This is the rule TypeScript has
+  always followed and Python adopted in 1.2.1, where the generated routes handed the
+  repository the raw request body.
+
+  Each body carries an ordinary settable field DELIBERATELY: it is applied, and that pairing
+  is what makes the assertion about the server-owned keys and not about the request being
+  ignored whole. `absent` asserts the undeclared key is not echoed back (a stored key would
+  be), and the GETs of the client's ids prove no row was written or re-keyed under them.
+requests:
+  - id: r1
+    method: POST
+    path: /api/authors
+    body:
+      id: 999
+      name: "Barbara Liskov"
+      createdAt: "2026-02-01T10:00:00"
+      isAdmin: true
+    expect:
+      status: 201
+      body:
+        row:
+          name: "Barbara Liskov"
+        hasId: true
+        absent: [isAdmin]
+  - id: r2
+    method: GET
+    path: /api/authors/999
+    expect:
+      status: 404
+  - id: r3
+    method: PATCH
+    path: /api/authors/1
+    body:
+      id: 998
+      name: "Ada L. (input probe)"
+      isAdmin: true
+    expect:
+      status: 200
+      body:
+        row:
+          id: 1
+          name: "Ada L. (input probe)"
+        absent: [isAdmin]
+  - id: r4
+    method: PUT
+    path: /api/authors/2
+    body:
+      id: 997
+      name: "Alan T. (input probe)"
+      createdAt: "2026-01-02T10:00:00"
+      issuedCurrency: "JPY"
+      isAdmin: true
+    expect:
+      status: 200
+      body:
+        row:
+          id: 2
+          name: "Alan T. (input probe)"
+          # writeOnce: frozen after create, so the PUT's value never lands.
+          issuedCurrency: "GBP"
+        absent: [isAdmin]
+  - id: r5
+    method: GET
+    path: /api/authors/998
+    expect:
+      status: 404
+  - id: r6
+    method: GET
+    path: /api/authors/997
+    expect:
+      status: 404
+  - id: r7
+    method: GET
+    path: /api/authors/1
+    expect:
+      status: 200
+      body:
+        row:
+          id: 1
+          name: "Ada L. (input probe)"
+        absent: [isAdmin]

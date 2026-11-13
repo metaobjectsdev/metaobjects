@@ -27,6 +27,7 @@ fixtures/api-contract-conformance/
     ├── get-by-id.yaml
     ├── get-by-id-not-found.yaml
     ├── create-201.yaml
+    ├── input-server-owned-dropped.yaml # a client id, a made-up key and a writeOnce change are dropped, never 400
     ├── create-constraint-violation-400.yaml # FR-036 POST field-constraint → 400 {error:"validation"}
     ├── update-patch-and-put.yaml
     ├── update-constraint-violation-400.yaml # FR-036 PATCH present-value constraint → 400
@@ -52,17 +53,17 @@ fixtures/api-contract-conformance/
     └── filter-invalid-value.yaml   # uncoercible value → 400; the fourth envelope, previously ungated
 ```
 
-Beside the 31 core scenarios above sit ten **sub-corpora**, each a directory with its
-own `meta.json`, `seed.json`, `scenarios/` and `README.md` (92 scenarios in all, 123 with the
+Beside the 32 core scenarios above sit ten **sub-corpora**, each a directory with its
+own `meta.json`, `seed.json`, `scenarios/` and `README.md` (93 scenarios in all, 125 with the
 core):
 
 | Directory | Scenarios | Gates | Lanes |
 |---|---|---|---|
-| `tph/` | 10 | single-table inheritance | both |
+| `tph/` | 11 | single-table inheritance | both |
 | `m2m/` | 9 | M:N traversal, and TPH x M:N together | both |
 | `jsonb/` | 5 | typed value-object columns, and the numbers inside them (a double stays a JSON number; a decimal is a canonical string, option A of the 1.1.0 review) | both |
 | `write-through/` | 2 | an entity that writes a table and reads a view | generated only |
-| `secret-fields/` | 2 | #484: a `@formExclude` or credential (`view.password`) field is ignored on create, PATCH and PUT, and a credential is never returned | generated only |
+| `secret-fields/` | 2 | #484: a `@formExclude` or credential (`view.password`) field is ignored on create, PATCH and PUT, and a credential is never returned; a `readOnly` field is ignored the same way and still returned | generated only |
 | `enum-default/` | 2 | a create that omits a `field.enum` carrying `@default` stores the default (echo and GET by id), and a supplied member is kept | generated only |
 | `projection/` | 12 | a read-only `object.projection`: reads served, every write `405`; no declared identity means no `/{id}` route; a key not named `id` addresses the row; decimal and float filters. Its `docs-routes.json` pins the routes each port documents | generated only |
 | `report/` | 37 | a view-backed `object.report` (FR-044): list, filter, sort and paging on derived fields, `POST` is `405`, no `/{id}` route; a `@spine` report keeps a row with no facts, and a measure with `@default` filters and sorts as its default; a dimension over an array or a map is neither filterable nor sortable. Also carries `schema.postgres.sql`, the TypeScript-produced table and views the C# lane executes | generated only |
@@ -121,6 +122,7 @@ requests:
 | `error`      | the response body has `error: "<value>"`                               |
 | `field`      | **only meaningful alongside `error`** — the envelope's `field` names the rejected filter/sort field. Declared as a sibling of `error` and checked inside that branch, because the `error` branch returns; a runner that checked it as an independent key would skip it whenever `error` matched first. |
 | `empty`      | the response body is empty / null (204 No Content)                     |
+| `absent`     | the response body is an object; none of the listed keys is present (not even as `null`). Pins that a key a client sent but may not set never comes back. |
 | `fieldsEqual`| the response body is an object; assert the listed field names are all equal to **each other** (raw, field-vs-field — no literal, so timestamp non-determinism is a non-issue). Used by the `@autoSet` gate (#203/ADR-0045). |
 | `fieldsNotEqual`| the response body is an object; assert the two listed fields **differ** from each other. Used by the `@autoSet` gate (e.g. after a PATCH, `autoCreatedAt` (onCreate, preserved) != `autoUpdatedAt` (onUpdate, bumped)). |
 

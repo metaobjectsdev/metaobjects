@@ -240,6 +240,13 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             .addModifiers(KModifier.DATA)
             .addKdoc("GENERATED — do not hand-edit. Regenerated from metadata.\n")
             .apply {
+                // The class IS the create request body: an undeclared key is DROPPED, never rejected,
+                // whatever FAIL_ON_UNKNOWN_PROPERTIES the host's ObjectMapper carries.
+                addAnnotation(
+                    AnnotationSpec.builder(ClassName("com.fasterxml.jackson.annotation", "JsonIgnoreProperties"))
+                        .addMember("ignoreUnknown = true")
+                        .build(),
+                )
                 // `wire.nullMembers: omit` (ADR-0019 Amendment 2): a value object's null members are left
                 // out. Under native/emit Jackson writes them as null with the key present.
                 if (obj.subType == MetaObject.SUBTYPE_VALUE && wire.omitNullMembers()) {

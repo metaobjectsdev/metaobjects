@@ -202,6 +202,19 @@ def assert_response(
                 f"but both = {a_value!r}"
             )
 
+    if "absent" in expect_body:
+        # The listed keys must not be on the object at all (not even as null): a key the
+        # client may not set never reached storage and so never comes back in the echo.
+        if not isinstance(body, dict):
+            raise AssertionError(
+                f"{scenario_name} / {request_id}: expected object for absent, got: {body!r}"
+            )
+        present = [k for k in expect_body["absent"] if k in body]
+        if present:
+            raise AssertionError(
+                f"{scenario_name} / {request_id}: expected no {present!r} in body, got: {body!r}"
+            )
+
     if expect_body.get("hasId") is True:
         if not isinstance(body, dict):
             raise AssertionError(

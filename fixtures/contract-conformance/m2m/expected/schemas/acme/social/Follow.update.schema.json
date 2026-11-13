@@ -3,14 +3,5 @@
   "$id": "schemas/acme/social/Follow.update.schema.json",
   "title": "Follow.update",
   "type": "object",
-  "properties": {
-    "followerId": {
-      "type": "integer",
-      "format": "int64"
-    },
-    "followeeId": {
-      "type": "integer",
-      "format": "int64"
-    }
-  }
+  "properties": {}
 }

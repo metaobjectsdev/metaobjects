@@ -559,6 +559,29 @@ set (`@mutability: writeOnce` on PATCH, the TPH discriminator, `@autoSet: onCrea
 a generated edit form submits every field it was given, so a `400` would fail every save. A required field
 that is also ignored can never be created through the API, so mark such a field optional.
 
+The same rule covers every key a client never sets, in every port, on the plain and the TPH per-subtype
+routes:
+
+| Key in the body | Create | PATCH, PUT |
+|---|---|---|
+| a server-generated primary key (`@generation`) | dropped | dropped (the URL names the row) |
+| an assigned primary key | **kept** (the caller chooses it) | dropped (the URL names the row) |
+| `@mutability: readOnly`, a derived field | dropped | dropped |
+| `@mutability: writeOnce` | kept | dropped |
+| the TPH discriminator | dropped (the route's subtype is its only source) | dropped |
+| a column only a sibling TPH subtype declares | dropped | dropped |
+| a key the entity does not declare | dropped | dropped |
+
+None of these is a `400`, and none reaches the repository. Each port does it in its own idiom: TypeScript
+parses with the Zod input schema (which drops unknown keys) and writes the parsed value; Python keeps only
+the keys its input model validated; Java nulls the dropped components of the bound DTO before
+`repository.create` and its DTOs carry `@JsonIgnoreProperties(ignoreUnknown = true)`, so the answer does not
+depend on the host's `ObjectMapper`; Kotlin writes only the route's settable columns; C# resets the bound
+entity's generated key, TPH discriminator and M:N navigations before `Add`, and gives a `readOnly` property
+a private setter, which System.Text.Json never binds. The shared scenarios `input-server-owned-dropped` and
+`tph/tph-input-server-owned-dropped` pin it, and `secret-fields/` pins a `readOnly` column beside the
+credential.
+
 Only the generated HTTP boundary changes. The entity, its DTO and the generated queries still carry the
 field, so your own code writes a hash or token and reads it back. Allowlists are unchanged: a field is
 filterable or sortable only if you wrote `@filterable` or `@sortable` on it, so do not put those on a credential

@@ -92,6 +92,26 @@ async def _json_body(request: Request) -> dict[str, Any] | None:
         return None
 
 
+def _validated_input(valid: BaseModel, raw: dict[str, Any]) -> dict[str, Any]:
+    """GENERATED — *raw* cut down to the keys *valid* validated, at every depth. A key the
+    input model does not declare (an undeclared name, a server-generated id, a readOnly field)
+    is dropped silently and never reaches the repository; values stay the body's own."""
+    return {
+        _k: _validated_value(getattr(valid, _k), raw[_k])
+        for _k in valid.model_fields_set
+    }
+
+
+def _validated_value(valid: Any, raw: Any) -> Any:
+    if isinstance(valid, BaseModel) and isinstance(raw, dict):
+        return _validated_input(valid, raw)
+    if isinstance(valid, list) and isinstance(raw, list):
+        return [_validated_value(v, r) for v, r in zip(valid, raw)]
+    if isinstance(valid, dict) and isinstance(raw, dict):
+        return {k: _validated_value(v, raw[k]) for k, v in valid.items() if k in raw}
+    return raw
+
+
 _FROZEN_FIELDS: frozenset[str] = frozenset()
 
 
@@ -199,9 +219,13 @@ def create_subscriber(
     # FR-036: run the generated field constraints (length / pattern /
     # numeric bounds) before persisting; a violation is the cross-port 400.
     try:
-        SubscriberCreate(**dto)
+        _valid = SubscriberCreate(**dto)
     except ValidationError:
         return JSONResponse(status_code=400, content={"error": "validation"})
+    # SECURITY (1.2.1): only what the input model validated reaches the repository. A key
+    # it does not declare (an undeclared name, a server-generated id, a readOnly or derived
+    # field, a frozen one on update) is dropped silently, never 400'd.
+    dto = _validated_input(_valid, dto)
     # #203/ADR-0045: stamp @autoSet columns (server-owned; caller ignored).
     _asnow = _dt.datetime.now(_dt.timezone.utc)
     dto["createdAt"] = _asnow
@@ -240,9 +264,13 @@ def update_subscriber(
     # FR-036: validate PRESENT, non-null values with the create rules (the
     # all-optional patch model never fires required-checks on ABSENT fields).
     try:
-        SubscriberPatch(**dto)
+        _valid = SubscriberPatch(**dto)
     except ValidationError:
         return JSONResponse(status_code=400, content={"error": "validation"})
+    # SECURITY (1.2.1): only what the input model validated reaches the repository. A key
+    # it does not declare (an undeclared name, a server-generated id, a readOnly or derived
+    # field, a frozen one on update) is dropped silently, never 400'd.
+    dto = _validated_input(_valid, dto)
     dto.pop("createdAt", None)  # onCreate @autoSet is write-once (server-owned)
     try:
         saved = repo.update(subscriber_id, dto)

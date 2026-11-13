@@ -1,11 +1,13 @@
 package acme.ai
 
+import com.fasterxml.jackson.`annotation`.JsonIgnoreProperties
 import kotlin.String
 import kotlin.jvm.JvmStatic
 
 /**
  * GENERATED — do not hand-edit. Regenerated from metadata.
  */
+@JsonIgnoreProperties(ignoreUnknown = true)
 public data class Greeting(
   public val text: String? = null,
 ) {

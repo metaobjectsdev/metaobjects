@@ -177,6 +177,17 @@ final class ApiContractAssertions {
                         + ": expected row." + e.getKey() + "=" + e.getValue() + ", got " + actual);
             }
         }
+        // The listed keys must not be on the object at all (not even as null): a key the client
+        // may not set never reached storage and so never comes back in the echo.
+        if (want.get("absent") instanceof List<?> absentKeys) {
+            if (!(body instanceof Map<?, ?> row))
+                throw new AssertionError(scenarioName + " / " + request.id()
+                    + ": expected object for absent, got: " + body);
+            List<?> present = absentKeys.stream().filter(row::containsKey).toList();
+            if (!present.isEmpty())
+                throw new AssertionError(scenarioName + " / " + request.id()
+                    + ": expected no " + present + " in body, got: " + body);
+        }
         if (Boolean.TRUE.equals(want.get("hasId"))) {
             if (!(body instanceof Map<?, ?> row))
                 throw new AssertionError(scenarioName + " / " + request.id()

@@ -188,6 +188,16 @@ export async function startServer(connectionUri: string, root: MetaRoot): Promis
     return reply;
   });
 
+  // The keys a client may write, as the generated routes' Insert/Update schemas have them: the
+  // server-generated `id`, the @autoSet columns and any key the entity does not declare are
+  // DROPPED silently (never 400'd), and `issuedCurrency` (writeOnce) is settable on create only.
+  const CREATE_KEYS = ["name", "bio", "createdAt", "issuedCurrency"] as const;
+  const UPDATE_KEYS = ["name", "bio", "createdAt"] as const;
+  const pick = (body: unknown, keys: readonly string[]): Record<string, unknown> => {
+    const src = (body ?? {}) as Record<string, unknown>;
+    return Object.fromEntries(keys.filter((k) => Object.hasOwn(src, k)).map((k) => [k, src[k]]));
+  };
+
   // POST /api/authors
   fastify.post(ROUTE_BASE, async (req, reply) => {
     // #203 / ADR-0045 — the TS runtime ObjectManager does NOT stamp @autoSet
@@ -195,7 +205,7 @@ export async function startServer(connectionUri: string, root: MetaRoot): Promis
     // the generated lane's InsertSchema. Both onCreate + onUpdate columns get the
     // SAME captured now() on create; any caller-supplied value is ignored.
     const now = new Date().toISOString();
-    const body = { ...(req.body as Record<string, unknown>), autoCreatedAt: now, autoUpdatedAt: now };
+    const body = { ...pick(req.body, CREATE_KEYS), autoCreatedAt: now, autoUpdatedAt: now };
     const row = await om.create(ENTITY, body);
     reply.code(201).send(row);
     return reply;
@@ -215,12 +225,7 @@ export async function startServer(connectionUri: string, root: MetaRoot): Promis
     // plain z.object() discards unknown keys). Dropping it also covers the
     // present-NULL arm for free: clearing is a write, so an explicit null must
     // not reach the column either.
-    const {
-      autoCreatedAt: _dropOnCreate,
-      issuedCurrency: _dropWriteOnce,
-      ...rest
-    } = (req.body as Record<string, unknown>) ?? {};
-    const body = { ...rest, autoUpdatedAt: new Date().toISOString() };
+    const body = { ...pick(req.body, UPDATE_KEYS), autoUpdatedAt: new Date().toISOString() };
     // A ValidationError (e.g. FR-035 present-null on a @required field) propagates
     // to the shared setErrorHandler above → 400 {error:"validation"}.
     const row = await om.update(ENTITY, Number(id), body, { ifMissing: "ignore" });

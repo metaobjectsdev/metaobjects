@@ -152,6 +152,15 @@ object ApiContractAssertions {
                     throw AssertionError("$scenarioName / ${request.id}: expected row.$k=$v, got $actual")
             }
         }
+        // The listed keys must not be on the object at all (not even as null): a key the client
+        // may not set never reached storage and so never comes back in the echo.
+        (want["absent"] as? List<*>)?.let { keys ->
+            val row = body as? Map<*, *>
+                ?: throw AssertionError("$scenarioName / ${request.id}: expected object for absent, got: $body")
+            val present = keys.filter { row.containsKey(it) }
+            if (present.isNotEmpty())
+                throw AssertionError("$scenarioName / ${request.id}: expected no $present in body, got: $body")
+        }
         if (want["hasId"] == true) {
             val row = body as? Map<*, *>
                 ?: throw AssertionError("$scenarioName / ${request.id}: expected object, got: $body")

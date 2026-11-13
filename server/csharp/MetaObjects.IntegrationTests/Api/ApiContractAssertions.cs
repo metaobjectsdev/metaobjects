@@ -151,6 +151,18 @@ internal static class ApiContractAssertions
                         $"{scenarioName} / {request.Id}: expected row.{kvp.Key}={Render(kvp.Value)}, got {Render(actual)}");
             }
         }
+        // The listed keys must not be on the object at all (not even as null): a key the client
+        // may not set never reached storage and so never comes back in the echo.
+        if (want.TryGetValue("absent", out var absentObj) && absentObj is List<object?> absentKeys)
+        {
+            if (body is not Dictionary<string, object?> absentRow)
+                throw new Xunit.Sdk.XunitException(
+                    $"{scenarioName} / {request.Id}: expected object for absent, got: {Render(body)}");
+            var present = absentKeys.Select(k => k?.ToString() ?? "").Where(absentRow.ContainsKey).ToList();
+            if (present.Count > 0)
+                throw new Xunit.Sdk.XunitException(
+                    $"{scenarioName} / {request.Id}: expected no {string.Join(", ", present)} in body, got: {Render(body)}");
+        }
         if (want.TryGetValue("hasId", out var hasIdObj) && hasIdObj is bool hi && hi)
         {
             if (body is not Dictionary<string, object?> row)

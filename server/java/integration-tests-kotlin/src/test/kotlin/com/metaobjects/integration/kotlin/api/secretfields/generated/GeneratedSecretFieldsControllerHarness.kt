@@ -112,7 +112,7 @@ class GeneratedSecretFieldsControllerHarness(
             // Ids are assigned by the identity column in seed order (1, 2), so a later POST does not collide.
             // Mixed-case columns are quoted (naming.columns: literal), as in the write-through harness.
             for (r in rows) {
-                exec("INSERT INTO accounts (\"name\", \"tokenHash\", \"pinHash\") VALUES (${sqlStr(r["name"])}, ${sqlStr(r["tokenHash"])}, ${sqlStr(r["pinHash"])})")
+                exec("INSERT INTO accounts (\"name\", \"tokenHash\", \"pinHash\", \"role\") VALUES (${sqlStr(r["name"])}, ${sqlStr(r["tokenHash"])}, ${sqlStr(r["pinHash"])}, ${sqlStr(r["role"])})")
             }
         }
 
@@ -128,9 +128,9 @@ class GeneratedSecretFieldsControllerHarness(
         val database = db ?: error("reset() must be called before storedRows()")
         return transaction(database) {
             val out = mutableListOf<Map<String, Any?>>()
-            exec("SELECT id, \"tokenHash\", \"pinHash\" FROM accounts ORDER BY id") { rs ->
+            exec("SELECT id, \"tokenHash\", \"pinHash\", \"role\" FROM accounts ORDER BY id") { rs ->
                 while (rs.next()) {
-                    out += mapOf("id" to rs.getLong(1), "tokenHash" to rs.getString(2), "pinHash" to rs.getString(3))
+                    out += mapOf("id" to rs.getLong(1), "tokenHash" to rs.getString(2), "pinHash" to rs.getString(3), "role" to rs.getString(4))
                 }
             }
             out

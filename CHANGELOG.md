@@ -13,6 +13,43 @@ here.**
 **New metamodel vocabulary: `measure.derived` and its `@expr`.** It is additive: nothing that
 loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersion` 1.3 if it merges before the 1.3.0 publish; if it lands after, the next release moves `metamodelVersion`.
 
+### Security
+
+- **Generated create routes wrote fields a client must never set, in Java, Kotlin, C# and
+  Python; the TypeScript update shape let a client re-key a row.** An external review of 1.2.0
+  found that the Python routes passed raw request input to the repository (fixed for Python in
+  1.2.1). An audit of the other ports found the same class of hole on create, in the plain and
+  the TPH per-subtype handlers:
+  - **Java** (`codegen-spring`): create forwarded a client-sent generated `id`, `readOnly` and
+    derived fields to `repository.create`, and in TPH also the discriminator and a sibling
+    subtype's columns to `createWithType`.
+  - **Kotlin** (`codegen-kotlin`): create wrote `readOnly` columns, and TPH create wrote every
+    column of the union table, a sibling subtype's included.
+  - **C#** (`MetaObjects.Codegen`): create bound the request to the entity and added it as
+    sent, so a client-sent generated `id` was inserted, a POST to one subtype's route with
+    another subtype's `type` created a row of that other subtype, M:N navigation collections in
+    the body were inserted with the row, and a `readOnly` field other than a plain scalar (an
+    enum, array, value object or map, or any TPH subtype field) had a public setter. A `readOnly`
+    property now has a private setter on every shape.
+  - **TypeScript** (`codegen-ts`): an ASSIGNED primary key stayed in `<Entity>UpdateSchema`, so
+    PATCH or PUT could change the row's key. A generated key was already refused.
+
+  Every port now drops these keys silently before the write, as the TypeScript create already
+  did: a server-generated key, a `readOnly` or derived field, and in TPH the discriminator (the
+  route's subtype is its only source) and every column the route's subtype does not declare. An
+  assigned key is still the caller's on create. No port answers them with a 400. A key the
+  entity does not declare is also dropped, never rejected, in every port: Java DTOs and Kotlin
+  entity classes now carry `@JsonIgnoreProperties(ignoreUnknown = true)`, so the answer no
+  longer depends on the host's `ObjectMapper` (a plain one answered 400). The Python 1.2.1 fix
+  is carried forward to this line, and the Python TPH create now drops a body's discriminator
+  instead of answering 400 for a foreign one.
+
+  Gated by two new shared api-contract scenarios, `input-server-owned-dropped` (generated and
+  reference lanes) and `tph/tph-input-server-owned-dropped` (both TPH lanes), which send a
+  client `id`, a foreign discriminator, a `writeOnce` change and a made-up `isAdmin`, and by a
+  `readOnly` `role` column in the `secret-fields` corpus. Scenarios gain an `absent: [keys]`
+  assertion. Adopters with ejected (owned) generators need the same change made by hand.
+
 ### Added
 
 - **Report measures over Money and other value-object members (FR-044 R12).** A dimension's or

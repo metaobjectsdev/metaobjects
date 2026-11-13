@@ -3,14 +3,5 @@
   "$id": "schemas/acme/social/ScopedAccountTag.update.schema.json",
   "title": "ScopedAccountTag.update",
   "type": "object",
-  "properties": {
-    "accountId": {
-      "type": "integer",
-      "format": "int64"
-    },
-    "tagId": {
-      "type": "integer",
-      "format": "int64"
-    }
-  }
+  "properties": {}
 }
