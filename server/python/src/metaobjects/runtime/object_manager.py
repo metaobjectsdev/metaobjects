@@ -1429,7 +1429,8 @@ _AUTO_SET_TEMPORAL_SUBTYPES = (
 
 def _read_fields(entity: MetaObject) -> list[MetaField]:
     """The fields a read selects. An entity that is not write-through reads its own table,
-    which has no column for a derived (``origin.*``) field; every other object reads a view
+    which has no column for a derived (``origin.*``) field: an entity's primary source is
+    always writable (the loader refuses a read-only primary). Every other object reads a view
     that carries them."""
     if entity.sub_type == OBJECT_SUBTYPE_ENTITY and not entity.is_write_through():
         return [f for f in entity.fields() if not f.is_derived()]

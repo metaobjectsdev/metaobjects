@@ -195,7 +195,8 @@ public class DbContextGenerator : IGenerator
             // #214 — these config lines target the table-mapped class, which omits the derived
             // (origin.*) fields; so must the config, or it would reference properties the class
             // does not declare (a compile error). A write-through entity's derived fields are
-            // mapped on its read model (registered below).
+            // mapped on its read model (registered below). An entity's primary source is always
+            // writable (the loader refuses a read-only primary), so this class always maps a table.
             IEnumerable<MetaField> configFields = e.Fields().Where(f => !f.IsDerived());
             // #214 [0] — the per-field EF TYPE converters (owned-VO / enum / primitive
             // collection / decimal precision / timestamp column type / field.uri / field.inet /
@@ -1447,7 +1448,8 @@ public class DbContextGenerator : IGenerator
         {
             // #214 — an entity's table-mapped class omits the derived (origin.*) fields, so
             // naming one here would reference a property the class does not declare (a
-            // compile error in the generated file).
+            // compile error in the generated file). An entity's primary source is always
+            // writable (the loader refuses a read-only primary), so its class maps a table.
             if (entity.FindField(name) is not { } field)
             {
                 return [];

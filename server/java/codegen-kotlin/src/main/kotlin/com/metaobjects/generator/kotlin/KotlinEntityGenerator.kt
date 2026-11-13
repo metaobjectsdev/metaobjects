@@ -264,7 +264,8 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         // annotations are suppressed too (no @field:NotNull to reject the omitted value). Mirrors the
         // Java port dropping @NotNull for derived-on-write-through. A projection is read-only
         // (not an entity), so its derived fields keep their origin-aware non-null read type. An
-        // entity with no read view never reads a derived field back at all, so it defaults too.
+        // entity with no read view never reads a derived field back at all, so it defaults too:
+        // its primary source is always writable (the loader refuses a read-only primary).
         val entityHost = obj.subType == MetaObject.SUBTYPE_ENTITY
 
         val ctorBuilder = FunSpec.constructorBuilder()

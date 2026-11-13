@@ -252,6 +252,8 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             val fkColumns = if (isViewKind(sourceRdb)) emptyList() else fkMap[entity.name].orEmpty()
             val refDecorations =
                 if (isViewKind(sourceRdb)) emptyMap() else refDecorationMap[entity.name].orEmpty()
+            // An entity's primary source is always writable (the loader refuses a read-only
+            // primary), so an entity reaching here emits a table, which stores no derived field.
             val usedInstantTzHelper = emit(
                 entity, sourceRdb, outRoot, loader, fkColumns, refDecorations,
                 excludeDerivedFields = entity.subType == MetaObject.SUBTYPE_ENTITY,
