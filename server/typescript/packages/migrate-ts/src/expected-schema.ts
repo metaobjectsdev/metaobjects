@@ -683,7 +683,7 @@ function buildTable(
     columns,
     indexes: buildSecondaryIndexes(entity, tableName, strategy),
     foreignKeys: buildForeignKeys(entity, tableName, resolveTargetTable, root, strategy, fkCtx, onConflict),
-    checks: buildChecks(entity, tableName, strategy, dialect, skipRedundantChecks),
+    checks: buildChecks(entity, tableName, strategy, dialect, skipRedundantChecks, root),
     primaryKey,
   };
   const entityDesc = readDescription(entity);
@@ -891,9 +891,27 @@ function buildChecks(
   strategy: ColumnNamingStrategy,
   dialect: Dialect | undefined,
   skipRedundant: boolean,
+  root?: MetaData,
 ): CheckDescriptor[] {
   const checks: CheckDescriptor[] = [];
-  for (const field of entity.fields()) {
+  // FR-017 TPH: a discriminator base's table also holds every concrete subtype's folded
+  // columns, so it carries their CHECKs too — in name order, so every port lists them alike.
+  const subtypes = root === undefined ? [] : [...tphConcreteSubtypes(entity, root)]
+    .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  // A subtype-only column's CHECK is the text a base column gets, with no discriminator guard:
+  // a CHECK refuses only FALSE, and a sibling subtype's row holds NULL there, for which every
+  // field-level expression is NULL. Deduplicated by field name, as the column fold is.
+  const baseFieldNames = new Set(entity.fields().map((f) => f.name));
+  const subtypeFields: MetaField[] = [];
+  for (const sub of subtypes) {
+    // ADR-0039: effective fields — a field on an abstract intermediate level is a column too.
+    for (const field of sub.fields()) {
+      if (baseFieldNames.has(field.name)) continue;
+      baseFieldNames.add(field.name);
+      subtypeFields.push(field);
+    }
+  }
+  for (const field of [...entity.fields(), ...subtypeFields]) {
     // No field-level CHECKs on array columns: the derived expressions assume a
     // SCALAR column. `"labels" IN ('A','B')` against a text[] is a type error at
     // CREATE TABLE; `length(col)`/range checks are equally scalar-shaped. Array
@@ -965,6 +983,35 @@ function buildChecks(
   for (const v of entity.validators()) {
     const check = crossFieldCheck(v, entity, tableName, strategy, dialect);
     if (check) checks.push(withDeclaredName(withCondition(check, v, entity, strategy, dialect), v));
+  }
+  // FR-017 TPH: a cross-field validator a subtype adds holds for that subtype's rows only —
+  // the discriminator guards it, because unlike a field-level CHECK most cross-field rules are
+  // FALSE (not NULL) over a sibling's NULL columns (atLeastOne, requiredWhen). The guard lists
+  // every concrete subtype the validator reaches (an abstract level's, or a parent subtype's,
+  // reaches each of its concrete descendants), as an @condition ANDed with the validator's own.
+  const discriminator = entity.attr(OBJECT_ATTR_DISCRIMINATOR);
+  if (typeof discriminator === "string" && subtypes.length > 0) {
+    const baseValidators = new Set<MetaData>(entity.validators());
+    const reached = new Map<MetaValidator, { holder: MetaObject; values: string[] }>();
+    for (const sub of subtypes) {
+      // ADR-0039: effective — @discriminatorValue may be inherited (sub-subtype).
+      const value = String(sub.attr(OBJECT_ATTR_DISCRIMINATOR_VALUE));
+      // ADR-0039: effective validators — one declared on an abstract level or a parent subtype applies here too.
+      for (const v of sub.validators()) {
+        if (baseValidators.has(v)) continue;
+        const entry = reached.get(v);
+        if (entry === undefined) reached.set(v, { holder: sub, values: [value] });
+        else entry.values.push(value);
+      }
+    }
+    for (const [v, { holder, values }] of reached) {
+      const check = crossFieldCheck(v, holder, tableName, strategy, dialect);
+      if (!check) continue;
+      const eq = (value: string): ExprNode =>
+        ({ op: "eq", left: { field: discriminator }, right: { value } }) as unknown as ExprNode;
+      const guard = values.length === 1 ? eq(values[0]!) : ({ op: "or", args: values.map(eq) } as unknown as ExprNode);
+      checks.push(withDeclaredName(withCondition(check, v, holder, strategy, dialect, guard), v));
+    }
   }
   return checks;
 }
@@ -1110,9 +1157,15 @@ function checkDeclaredCheckNames(tables: readonly TableDescriptor[], dialect: Di
  */
 function withCondition(
   check: CheckDescriptor, v: MetaValidator, entity: MetaObject, strategy: ColumnNamingStrategy, dialect: Dialect | undefined,
+  guard?: ExprNode,
 ): CheckDescriptor {
-  const condition = v.attr(VALIDATOR_ATTR_CONDITION);
-  if (condition === undefined || condition === null || typeof condition !== "object") return check;
+  const declared = v.attr(VALIDATOR_ATTR_CONDITION);
+  const own = declared === undefined || declared === null || typeof declared !== "object" ? undefined : (declared as ExprNode);
+  // A TPH subtype's validator holds only where its discriminator guard does (buildChecks).
+  const condition: ExprNode | undefined = guard === undefined
+    ? own
+    : own === undefined ? guard : ({ op: "and", args: [guard, own] } as unknown as ExprNode);
+  if (condition === undefined) return check;
   const column = (name: string): string | undefined => {
     const field = entity.fields().find((f) => f.name === name);
     return field === undefined ? undefined : quoteCheckCol(resolveColumnName(field, strategy));
@@ -1126,7 +1179,7 @@ function withCondition(
     const n = intMap === undefined || typeof value !== "string" ? undefined : intMap[value];
     return typeof n === "number" ? String(n) : undefined;
   };
-  const unless = renderExpressionSql(negateExpression(condition as ExprNode), column, dialect, stored);
+  const unless = renderExpressionSql(negateExpression(condition), column, dialect, stored);
   return { ...check, expression: `(${unless}) OR (${check.expression})` };
 }
 

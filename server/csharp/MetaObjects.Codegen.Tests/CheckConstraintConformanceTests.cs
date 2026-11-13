@@ -60,7 +60,8 @@ public class CheckConstraintConformanceTests
     {
         var ctx = Ctx(Load(), dialect, skipRedundant);
         var actual = ctx.Root.Objects()
-            .Where(o => o.IsEntity() && o.DbTable is not null)
+            // A TPH subtype has no table of its own: its CHECKs are its base's (FR-017).
+            .Where(o => o.IsEntity() && o.DbTable is not null && !InstanceArtifacts.IsAbstract(o) && !TphPlanBuilder.IsTphSubtype(o, ctx.Root))
             .Select(o => (Table: CSharpNaming.Table(o), Checks: CheckConstraints.For(o, ctx.Config)))
             .Where(t => t.Checks.Count > 0)
             .ToDictionary(t => t.Table, t => t.Checks.Select(c => (c.Name, c.Expression)).ToList());
@@ -84,6 +85,10 @@ public class CheckConstraintConformanceTests
         Assert.DoesNotContain("gadgets_legacy_state_chk", context);
         Assert.DoesNotContain("\\\"rank\\\" >= 1", context);
         Assert.Contains("t.HasCheckConstraint(\"gadgets_rank_numeric_chk\", \"\\\"rank\\\" <= 99\")", context);
+        // FR-017 TPH: a subtype's columns are on its base's table, and so are their CHECKs.
+        Assert.Contains("modelBuilder.Entity<global::Acme.Checks.Device>().ToTable(t => t.HasCheckConstraint(\"devices_mode_chk\", \"\\\"mode\\\" IN ('AUTO', 'MANUAL')\"));", context);
+        Assert.Contains("t.HasCheckConstraint(\"devices_unit_reqwhen_chk\", ", context);
+        Assert.DoesNotContain("devices_legacy_position_chk", context);
     }
 
     [Fact]

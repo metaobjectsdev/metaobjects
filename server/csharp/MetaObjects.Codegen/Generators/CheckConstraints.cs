@@ -45,7 +45,15 @@ public static class CheckConstraints
         var strategy = config.ColumnNamingStrategy;
         var table = CSharpNaming.Table(entity);
         var checks = new List<CheckConstraint>();
-        foreach (var field in entity.Fields())
+        // FR-017 TPH: a discriminator base's table also holds every concrete subtype's folded
+        // columns (name-sorted subtypes, deduplicated by field name, as the column fold is), so it
+        // carries their CHECKs too. A subtype-only column's CHECK is the text a base column gets,
+        // with no discriminator guard: a CHECK refuses only FALSE, and a sibling subtype's row
+        // holds NULL there, for which every field-level expression is NULL.
+        var root = entity.Root() as MetaRoot;
+        var tph = root is null ? null : TphPlanBuilder.For(entity, root);
+        var fields = tph is null ? entity.Fields() : entity.Fields().Concat(TphPlanBuilder.CollectSubtypeFields(entity, root!));
+        foreach (var field in fields)
         {
             // No field-level CHECK on an array column: every expression below is scalar-shaped.
             if (field.ResolvedIsArray()) continue;
@@ -87,7 +95,45 @@ public static class CheckConstraints
             if (CrossFieldCheck(v, entity, table, strategy, dialect) is { } check)
                 checks.Add(Named(WithCondition(check, v, entity, strategy, dialect), v));
         }
+        if (tph is not null) checks.AddRange(SubtypeCrossFieldChecks(entity, tph, table, strategy, dialect));
         return checks;
+    }
+
+    /// <summary>
+    /// FR-017 TPH: a cross-field validator a subtype adds holds for that subtype's rows only, so the
+    /// discriminator guards it — unlike a field-level CHECK, most cross-field rules are FALSE (not
+    /// NULL) over a sibling's NULL columns (atLeastOne, requiredWhen). The guard lists every concrete
+    /// subtype the validator reaches (one on an abstract level, or on a parent subtype, reaches each
+    /// of its concrete descendants), as an <c>@condition</c> ANDed with the validator's own.
+    /// </summary>
+    private static IEnumerable<CheckConstraint> SubtypeCrossFieldChecks(
+        MetaObject entity, TphPlan tph, string table, ColumnNamingStrategy strategy, string? dialect)
+    {
+        var baseValidators = new HashSet<MetaValidator>(entity.Validators(), ReferenceEqualityComparer.Instance);
+        var reached = new List<(MetaValidator Validator, MetaObject Holder, List<string> Values)>();
+        foreach (var st in tph.Subtypes)
+            // ADR-0039: resolving — a validator on an abstract level or a parent subtype applies here too.
+            foreach (var v in st.Entity.Validators())
+            {
+                if (baseValidators.Contains(v)) continue;
+                var i = reached.FindIndex(r => ReferenceEquals(r.Validator, v));
+                if (i < 0) reached.Add((v, st.Entity, [st.Value]));
+                else reached[i].Values.Add(st.Value);
+            }
+        foreach (var (v, holder, values) in reached)
+        {
+            if (CrossFieldCheck(v, holder, table, strategy, dialect) is not { } check) continue;
+            IReadOnlyDictionary<string, object?> Eq(string value) => new Dictionary<string, object?>
+            {
+                [KeyOp] = FILTER_OP_EQ,
+                [KeyLeft] = new Dictionary<string, object?> { [KeyField] = tph.DiscriminatorField },
+                [KeyRight] = new Dictionary<string, object?> { [KeyValue] = value },
+            };
+            var guard = values.Count == 1
+                ? Eq(values[0])
+                : new Dictionary<string, object?> { [KeyOp] = FILTER_COMPOSE_OR, [KeyArgs] = values.Select(x => (object?)Eq(x)).ToList() };
+            yield return Named(WithCondition(check, v, holder, strategy, dialect, guard), v);
+        }
     }
 
     /// <summary>Whether a validator or field.enum opts out of its CHECK (<c>@dbCheck: false</c>, resolving).
@@ -215,9 +261,16 @@ public static class CheckConstraints
     /// A cross-field validator's <c>@condition</c>: the rule applies only when it holds, so the
     /// CHECK is the negated condition OR the rule.
     /// </summary>
-    private static CheckConstraint WithCondition(CheckConstraint check, MetaValidator v, MetaObject entity, ColumnNamingStrategy strategy, string? dialect)
+    private static CheckConstraint WithCondition(
+        CheckConstraint check, MetaValidator v, MetaObject entity, ColumnNamingStrategy strategy, string? dialect,
+        IReadOnlyDictionary<string, object?>? guard = null)
     {
-        if (v.Attr(VALIDATOR_ATTR_CONDITION) is not IReadOnlyDictionary<string, object?> condition) return check;
+        var own = v.Attr(VALIDATOR_ATTR_CONDITION) as IReadOnlyDictionary<string, object?>;
+        // A TPH subtype's validator holds only where its discriminator guard does (SubtypeCrossFieldChecks).
+        var condition = guard is null
+            ? own
+            : own is null ? guard : new Dictionary<string, object?> { [KeyOp] = FILTER_COMPOSE_AND, [KeyArgs] = new List<object?> { guard, own } };
+        if (condition is null) return check;
         string? Column(string name) =>
             entity.Fields().FirstOrDefault(f => f.Name == name) is { } f ? Quote(CSharpNaming.Column(f, strategy)) : null;
         // An int-backed enum stores a member as its integer; a duration in the form its column stores.

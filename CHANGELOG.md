@@ -557,6 +557,19 @@ vocabulary; upgrade every port together.
 
 ### Fixed
 
+- **Fix, TypeScript and C#: a TPH subtype's columns get their CHECKs (rc.21).** `meta migrate`,
+  `meta verify --db` and the C# EF context built the CHECKs of a discriminator base's table from
+  the base's own fields only, so an enum or validator on a column a concrete subtype (or an
+  abstract level under the base) folds into the shared table had no database CHECK, and a
+  cross-field validator a subtype declared was enforced nowhere. The base's table now carries
+  them. A subtype-only column's field-level CHECK is the text a base column gets, with no
+  discriminator guard: a CHECK refuses only FALSE, and a sibling subtype's row holds NULL there.
+  A subtype's cross-field validator is guarded by the discriminator, as an `@condition` ANDed with
+  its own, listing every concrete subtype it reaches. The Drizzle schema already declared the
+  subtype enum CHECKs, so the two now agree. Pinned by `input/meta.tph.json` in the shared CHECK
+  corpus. **Upgrade note:** the next `meta migrate` (or EF migration) adds these CHECKs to an
+  existing TPH table; a legacy row outside a rule needs `@dbCheck: false` on that node first.
+
 - **Fix, C#: a described `field.object` an `OwnedTypeConfig` override maps as a column no longer
   breaks the model build (G1).** `DbContextGenerator` assumed a non-flattened object field with no
   map is owned JSON, and whenever the field or its value object carried a `@description` it

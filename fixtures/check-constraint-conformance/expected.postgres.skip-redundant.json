@@ -72,5 +72,39 @@
       "name": "gadgets_phone_atleastone_chk",
       "expression": "(\"level\" <> 2) OR (\"phone\" IS NOT NULL OR \"fax\" IS NOT NULL)"
     }
+  ],
+  "devices": [
+    {
+      "name": "devices_kind_chk",
+      "expression": "\"kind\" IN ('METER', 'SENSOR', 'SWITCH')"
+    },
+    {
+      "name": "devices_voltage_numeric_chk",
+      "expression": "\"voltage\" >= 1 AND \"voltage\" <= 480"
+    },
+    {
+      "name": "devices_serial_regex_chk",
+      "expression": "\"serial\" ~ '^M[0-9]+$'"
+    },
+    {
+      "name": "devices_mode_chk",
+      "expression": "\"mode\" IN ('AUTO', 'MANUAL')"
+    },
+    {
+      "name": "devices_label_length_chk",
+      "expression": "length(\"label\") >= 1 AND length(\"label\") <= 12"
+    },
+    {
+      "name": "devices_voltage_atleastone_chk",
+      "expression": "((\"kind\" <> 'METER') AND (\"kind\" <> 'SENSOR')) OR (\"voltage\" IS NOT NULL OR \"watts\" IS NOT NULL)"
+    },
+    {
+      "name": "devices_unit_reqwhen_chk",
+      "expression": "(\"kind\" <> 'SENSOR') OR ((\"mode\" IS DISTINCT FROM 'MANUAL') OR (\"unit\" IS NOT NULL))"
+    },
+    {
+      "name": "devices_label_cmp_chk",
+      "expression": "((\"kind\" <> 'SWITCH') OR (\"label\" IS NULL)) OR (\"label\" <> \"kind\")"
+    }
   ]
 }

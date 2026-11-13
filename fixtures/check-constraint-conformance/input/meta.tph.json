@@ -1,0 +1,66 @@
+{
+  "metadata.root": {
+    "package": "acme::checks",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Device",
+          "@discriminator": "kind",
+          "children": [
+            { "source.rdb": { "@table": "devices" } },
+            { "field.long": { "name": "id" } },
+            { "field.enum": { "name": "kind", "@required": true, "@values": ["METER", "SENSOR", "SWITCH"] } },
+            { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Powered",
+          "abstract": true,
+          "extends": "Device",
+          "children": [
+            { "field.int": { "name": "voltage", "children": [ { "validator.numeric": { "@min": 1, "@max": 480 } } ] } },
+            { "field.int": { "name": "watts" } },
+            { "validator.atLeastOne": { "name": "powerRating", "@fields": ["voltage", "watts"] } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Meter",
+          "extends": "Powered",
+          "@discriminatorValue": "METER",
+          "children": [
+            { "field.string": { "name": "serial", "@required": true, "children": [ { "validator.regex": { "@pattern": "^M[0-9]+$" } } ] } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Sensor",
+          "extends": "Powered",
+          "@discriminatorValue": "SENSOR",
+          "children": [
+            { "field.enum": { "name": "mode", "@required": true, "@values": ["AUTO", "MANUAL"] } },
+            { "field.string": { "name": "unit" } },
+            { "validator.requiredWhen": { "name": "manualUnit", "@field": "unit", "@when": "mode", "@equals": "MANUAL" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Switch",
+          "extends": "Device",
+          "@discriminatorValue": "SWITCH",
+          "children": [
+            { "field.string": { "name": "label", "children": [ { "validator.length": { "@min": 1, "@max": 12 } } ] } },
+            { "field.enum": { "name": "legacyPosition", "@values": ["ON", "OFF"], "@dbCheck": false } },
+            { "validator.comparison": { "name": "labelled", "@left": "label", "@op": "ne", "@right": "kind",
+                "@condition": { "op": "isNotNull", "arg": { "field": "label" } } } }
+          ]
+        }
+      }
+    ]
+  }
+}

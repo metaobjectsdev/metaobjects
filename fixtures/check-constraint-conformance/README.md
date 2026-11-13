@@ -1,6 +1,6 @@
 # `check-constraint-conformance/` — the CHECKs one model gets, through either delivery path
 
-One metadata input (`input/`) and the CHECK constraints `meta migrate` derives for it: every
+The metadata input (`input/`) and the CHECK constraints `meta migrate` derives for it: every
 validator that can carry one (`validator.numeric`, `validator.length`, `validator.regex`, the
 cross-field `comparison` / `requiredWhen` / `presentIff` / `atLeastOne`, with an `@condition`)
 and every scalar `field.enum`. Each expected file maps a table to its CHECKs, in order, as a name
@@ -29,6 +29,13 @@ The rules the corpus pins (ruling R55, which follows `meta migrate`):
 - no CHECK on an array column, and none on a derived (origin-bearing) field — it has no column —
   nor a cross-field CHECK naming one (`band`, an `origin.computed` reached by the `HighGadgets`
   projection's `@filter`);
+- FR-017 TPH (`input/meta.tph.json`): the discriminator base's table carries its concrete
+  subtypes' CHECKs (`devices`). A subtype-only column's field-level CHECK is the text a base
+  column gets, unguarded — a CHECK refuses only FALSE, and a sibling's row holds NULL there. A
+  cross-field validator a subtype (or an abstract level, or a parent subtype) adds is guarded by
+  the discriminator, as an `@condition` ANDed with its own, listing every concrete subtype it
+  reaches (`powerRating` reaches `METER` and `SENSOR`). Subtypes in name order, fields
+  deduplicated by name as the column fold is;
 - a string-stored enum gets its membership CHECK and its `validator.length` CHECK, under
   `skipRedundant` too (`channel`); no regex CHECK on SQLite; `IS DISTINCT FROM` on Postgres, `IS NOT`
   on SQLite; `num_nonnulls` on Postgres, a sum of presence tests on SQLite.
