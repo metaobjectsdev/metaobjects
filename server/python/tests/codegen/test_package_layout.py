@@ -152,3 +152,30 @@ def test_flat_output_is_unchanged_for_a_model_without_a_clash(tmp_path: Path) ->
     _gen(root, out, "flat")
     assert sorted(p.name for p in out.glob("*.py")) == ["Digest.py", "Note.py", "__init__.py"]
     assert "from .Note import Note" in (out / "Digest.py").read_text()
+
+
+# -- a tree Python cannot import is refused ------------------------------------------------
+
+
+def _enum_consumer(pkg: str):
+    """A shared enum at the root (so `enums.py` is emitted) and a value object in *pkg*."""
+    return _load(
+        ("", [{"field.enum": {"name": "Tier", "abstract": True, "@values": ["GOLD", "FREE"]}}]),
+        (pkg, [_value("Plan", {"field.enum": {"name": "tier", "extends": "Tier"}})]),
+    )
+
+
+def test_a_package_directory_that_shadows_a_root_module_is_a_name_collision(tmp_path: Path) -> None:
+    # A top-level package `enums` makes `enums/` win over the shared `enums.py`.
+    with pytest.raises(ValueError, match=rf'{ERR_NAME_COLLISION}: the generated package directory "enums/"'):
+        _gen(_enum_consumer("enums::billing"), tmp_path / "out", ip.OUTPUT_LAYOUT_PACKAGE)
+    # The flat layout has no package directories, so the same model generates.
+    _gen(_enum_consumer("enums::billing"), tmp_path / "flat", ip.OUTPUT_LAYOUT_FLAT)
+    assert (tmp_path / "flat" / "Plan.py").is_file()
+
+
+def test_a_package_segment_that_is_not_an_identifier_is_refused(tmp_path: Path) -> None:
+    root = _load(("my-co::billing", [_value("Plan")]))
+    with pytest.raises(ValueError, match=r'"my-co" is not a Python identifier'):
+        _gen(root, tmp_path / "out", ip.OUTPUT_LAYOUT_PACKAGE)
+    assert not (tmp_path / "out").exists() or not any((tmp_path / "out").rglob("*.py"))

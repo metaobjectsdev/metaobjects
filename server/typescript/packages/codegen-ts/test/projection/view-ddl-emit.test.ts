@@ -303,6 +303,27 @@ describe("emitViewDdl — #195 computed expression", () => {
     const sql = emitViewDdl(spec, { dialect: "postgres", baseTableName: "sessions", joinTables: {} });
     expect(sql).toContain("(s.payload_json IS NOT NULL AND COALESCE(s.score, 0) > 90) AS flag");
   });
+
+  test("an inlined first with no outer alias is refused, never emitted against an empty alias", () => {
+    const inlined = (outerAlias?: string): ViewSpec => ({
+      viewName: "v_flags",
+      joinTree: { baseEntity: "Parent", baseAlias: "p", joins: [] },
+      selectSpec: {
+        columns: [
+          { kind: "computed", fieldName: "flag", dbColAlias: "flag",
+            expr: { kind: "nullTest", negated: true, arg: { kind: "first", column: {
+              kind: "first", fieldName: "latest", dbColAlias: "latest", childEntity: "Child", childAlias: "c0",
+              sourceColumn: "label", referenceHolder: "target", fkColumn: "parent_id", pkColumn: "id",
+              childPkColumn: "id", orderBy: [{ column: "id", dir: "desc" }],
+              ...(outerAlias !== undefined ? { outerAlias } : {}) } } } },
+        ],
+      },
+      groupBy: [],
+    });
+    const options = { dialect: "postgres" as const, baseTableName: "parents", joinTables: { Child: "children" } };
+    expect(emitViewDdl(inlined("p"), options)).toContain("WHERE c0.parent_id = p.id");
+    expect(() => emitViewDdl(inlined(), options)).toThrow(/no outer alias/);
+  });
 });
 
 describe("emitViewDdl — #195 correlated first (argmax-then-project)", () => {

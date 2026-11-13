@@ -137,8 +137,15 @@ function renderExpr(node: ViewExprNode, options: EmitOptions): string {
     }
     case "coalesce":
       return `COALESCE(${node.args.map((a) => renderExpr(a, options)).join(", ")})`;
-    case "first":
-      return firstSubquery(node.column, options, node.column.outerAlias ?? "");
+    case "first": {
+      // An inlined `first` correlates with the row it sits in; without that alias the subquery
+      // would compare against `.fk` and the view would fail only when it is applied.
+      const outer = node.column.outerAlias;
+      if (outer === undefined || outer.length === 0) {
+        throw new Error(`view-ddl-emit: an inlined origin.first for "${node.column.fieldName}" has no outer alias to correlate with.`);
+      }
+      return firstSubquery(node.column, options, outer);
+    }
     case "now":
       return relativeNowSql(node.value.duration, node.value.temporal, options.dialect, node.value.startOf);
     case "case": {

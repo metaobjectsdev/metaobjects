@@ -684,7 +684,8 @@ Each item below is described in full under Added, Changed or Fixed; this list is
   its reference, and the C# context passes the same files (and creates them on live Postgres).
 - **C#: a value object stored as JSON carries its comment into the database.** Its `@description`
   (else its value object's) is an owned-type annotation, and the generated design-time services
-  scaffold it as `COMMENT ON COLUMN`, Up and Down. Off Postgres the run warns.
+  scaffold it as `COMMENT ON COLUMN`, Up and Down; a change to that comment alone is a pending model
+  change, so `has-pending-model-changes` and `migrations add` see it. Off Postgres the run warns.
 - **C#: the package output layout and per-package namespaces, as opt-ins.** `csharp.outputLayout:
   "package"` in `.metaobjects/config.json` writes each per-object file under its metadata package
   (`acme::blog::Author` is `acme/blog/Author.g.cs`), and each shared enum becomes its own
@@ -697,7 +698,9 @@ Each item below is described in full under Added, Changed or Fixed; this list is
   (`GenConfig(output_layout=...)` for a self-hosted run) writes each object in the directory of its
   metadata package (`acme::blog::Author` is `generated/acme/blog/Author.py`), with relative imports
   and package `__init__.py` files. The default stays flat. Two objects that would generate one module
-  in one directory are refused with `ERR_NAME_COLLISION`, naming both
+  in one directory are refused with `ERR_NAME_COLLISION`, naming both. So is a tree Python could not
+  import: a package directory beside a module of the same name (a top-level package `enums` would
+  shadow the shared `enums.py`), and a package segment that is not a Python identifier (`my-co`)
   ([#546](https://github.com/metaobjectsdev/metaobjects/issues/546)).
 - **Java and Kotlin: output paths keyed by metadata package, with a refusal.** Every per-object file
   already landed in the directory of its metadata package; two metadata packages that would land in
@@ -767,6 +770,10 @@ Each item below is described in full under Added, Changed or Fixed; this list is
   naming both and the remedy. The package-qualified value-object rename and its
   `ERR_PAYLOAD_NAME_COLLISION` are gone. The check that refused two objects mapping one table in
   one context is removed: EF's own model build reports it, naming both entity types.
+- **TypeScript and Python: two shared enums with one name are `ERR_NAME_COLLISION`.** Every shared
+  enum is generated into one module under its own name, so a second `Tier` from another package
+  was dropped and its fields typed with the first one's members. The pair is now refused, naming
+  both declarations. C# with package namespaces generates each in its own namespace.
 - **A collection-name clash is `ERR_COLLECTION_NAME_COLLISION` in every port.** Java's refusal (which
   Kotlin shares) and C#'s DbSet and route-segment refusals now lead with the shared-ledger code
   that TypeScript and Python already raise, and name `@collectionName` as the remedy.

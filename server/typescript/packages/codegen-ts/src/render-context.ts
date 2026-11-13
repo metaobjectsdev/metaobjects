@@ -17,12 +17,27 @@ import { toCamelCase, variableNameFromEntity } from "./naming.js";
  * carries the package; the declared type keeps its name.
  */
 export function localTypeName(obj: MetaData, root: MetaData): string {
-  const shares = root.children().filter((c) => c.type === TYPE_OBJECT && c.name === obj.name).length > 1;
+  const shares = (shortNameCounts(root).get(obj.name) ?? 0) > 1;
   const key = obj.resolutionKey();
   const suffix = `${PACKAGE_SEPARATOR}${obj.name}`;
   const pkg = key.endsWith(suffix) ? key.slice(0, -suffix.length) : "";
   if (!shares || pkg === "") return obj.name;
   return pkg.split(PACKAGE_SEPARATOR).map((s) => (s.length > 0 ? s[0]!.toUpperCase() + s.slice(1) : s)).join("") + obj.name;
+}
+
+// How many top-level objects carry each short name, counted once per root: localTypeName runs
+// for every value-object import, so a scan per call would make codegen quadratic in model size.
+const SHORT_NAME_COUNTS = new WeakMap<MetaData, ReadonlyMap<string, number>>();
+
+function shortNameCounts(root: MetaData): ReadonlyMap<string, number> {
+  let counts = SHORT_NAME_COUNTS.get(root);
+  if (counts === undefined) {
+    const m = new Map<string, number>();
+    for (const c of root.children()) if (c.type === TYPE_OBJECT) m.set(c.name, (m.get(c.name) ?? 0) + 1);
+    counts = m;
+    SHORT_NAME_COUNTS.set(root, counts);
+  }
+  return counts;
 }
 
 function deprecatedIdentityNames(root: MetaData): ReadonlyMap<string, string> {

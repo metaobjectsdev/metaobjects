@@ -1268,6 +1268,22 @@ public sealed class EfModelGapsTests
     }
 
     [Fact]
+    public void A_json_column_comment_change_alone_is_a_pending_model_change()
+    {
+        // `has-pending-model-changes` and `migrations add` ask HasDifferences, not GetDifferences: a
+        // change that only edits a JSON column's comment must count there too, and no change must not.
+        Assert.True(HasDifferences(CommentModel("A"), CommentModel("B")));
+        Assert.False(HasDifferences(CommentModel("A"), CommentModel("A")));
+    }
+
+    private static bool HasDifferences(GeneratedEfModel from, GeneratedEfModel to)
+    {
+        using var a = Stock(from);
+        using var b = Stock(to);
+        return Differ(DesignTime(b, to.Assembly)).HasDifferences(DesignModel(a), DesignModel(b));
+    }
+
+    [Fact]
     public void A_json_column_without_its_own_description_takes_its_value_objects()
     {
         var (up, _) = ScaffoldComment(CommentModel(null), CommentModel(null, voDoc: "Free-form tags."));

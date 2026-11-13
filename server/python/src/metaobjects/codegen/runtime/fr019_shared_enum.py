@@ -34,6 +34,7 @@ from metaobjects.shared.separators import PACKAGE_SEP
 from metaobjects.codegen import type_map
 from metaobjects.codegen.config import GenConfig
 from metaobjects.codegen.import_path import ModuleScope, import_line
+from metaobjects.codegen.name_claims import ERR_NAME_COLLISION
 
 
 @dataclass(frozen=True)
@@ -44,6 +45,7 @@ class SharedEnum:
     values: list[str]    #: member symbols (the @values SSOT), verbatim
     provided: bool       #: True when the decl carries @provided: true (reference, don't materialize)
     meta_package: str    #: declaring metadata package in "::" form (the provided-config key)
+    declaration: str = ""  #: the decl's resolution key (``<package>::<name>``), its identity
 
 
 def _pascal(name: str) -> str:
@@ -108,13 +110,15 @@ def shared_enum_for_field(field: MetaField) -> SharedEnum | None:
         values=values,
         provided=is_provided(decl),
         meta_package=_meta_package_of(decl),
+        declaration=decl.resolution_key(),
     )
 
 
 def collect_shared_enums(entities: list) -> list[SharedEnum]:
     """All shared (package-level abstract) enum decls CONSUMED by at least one entity field,
     keyed by materialized type name, sorted by name (deterministic). A decl nobody extends is
-    not materialized (no dangling type)."""
+    not materialized (no dangling type). Two decls with one materialized name are
+    ``ERR_NAME_COLLISION`` (they share one module)."""
     out: dict[str, SharedEnum] = {}
     for entity in entities:
         # ADR-0039 — RESOLVING (fields()): mirrors the TS collectSharedEnums
@@ -123,7 +127,17 @@ def collect_shared_enums(entities: list) -> list[SharedEnum]:
             shared = shared_enum_for_field(f)
             if shared is None:
                 continue
-            out.setdefault(shared.name, shared)
+            existing = out.get(shared.name)
+            if existing is None:
+                out[shared.name] = shared
+            elif existing.declaration != shared.declaration:
+                # One shared module holds every shared enum under its own name, so two
+                # declarations with one name would keep the first and silently type the
+                # second's fields with it.
+                raise ValueError(
+                    f'{ERR_NAME_COLLISION}: "{existing.declaration}" and "{shared.declaration}" both '
+                    f'generate the shared enum "{shared.name}" — rename one.'
+                )
     return sorted(out.values(), key=lambda e: e.name)
 
 

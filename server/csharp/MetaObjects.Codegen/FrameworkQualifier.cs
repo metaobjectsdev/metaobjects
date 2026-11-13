@@ -5,8 +5,8 @@
 //
 // Only code is touched. The file is read with a small C# lexer, so line and block comments, regular,
 // verbatim, interpolated and raw string literals and char literals are copied through unchanged; the
-// holes of a regular or verbatim interpolated string are code and are qualified. A using or namespace
-// line is left alone.
+// holes of a regular or verbatim interpolated string are code and are qualified. A using, global using,
+// namespace or preprocessor line is left alone.
 
 using System.Text;
 
@@ -48,7 +48,7 @@ public static class FrameworkQualifier
         while (i < s.Length)
         {
             var c = s[i];
-            if (AtLineStart(s, i) && (Starts(s, i, "using ") || Starts(s, i, "namespace ")) && !inHole)
+            if (AtLineStart(s, i) && (Starts(s, i, "using ") || Starts(s, i, "global using ") || Starts(s, i, "namespace ") || s[i] == '#') && !inHole)
             {
                 var eol = s.IndexOf('\n', i);
                 if (eol < 0) eol = s.Length;

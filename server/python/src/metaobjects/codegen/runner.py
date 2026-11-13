@@ -16,7 +16,8 @@ from .collection_name_collision import assert_no_collection_name_collisions
 from .config import GenConfig
 from .constants import generated_package_init
 from .generator import GenContext, Generator
-from .name_claims import NameClaims
+from .import_path import OUTPUT_LAYOUT_PACKAGE
+from .name_claims import NameClaims, assert_importable_package_tree
 from .instance_artifacts import is_served_report
 from .overwrite_policy import STATUS_OVERWROTE_EDIT, decide_and_write, has_hash_manifest
 
@@ -162,6 +163,11 @@ def run_gen(
                     f"{emitted[full][1]!r} and {gen.name!r}."
                 )
             emitted[full] = (f.content, gen.name)
+
+    if config.output_layout == OUTPUT_LAYOUT_PACKAGE:
+        assert_importable_package_tree(
+            [os.path.relpath(full, config.out_dir).replace(os.sep, "/") for full in emitted]
+        )
 
     # Make the out dir an importable package: emit an @generated __init__.py in
     # every directory that received a generated file (and the intermediate dirs up

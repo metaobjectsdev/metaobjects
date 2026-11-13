@@ -1009,7 +1009,10 @@ public class DbContextGenerator : IGenerator
 
                 private sealed class Differ(IMigrationsModelDiffer inner, ISqlGenerationHelper sql) : IMigrationsModelDiffer
                 {
-                    public bool HasDifferences(IRelationalModel? source, IRelationalModel? target) => inner.HasDifferences(source, target);
+                    // A JSON column's comment is a difference the inner differ cannot see, so a change to it alone
+                    // must still count: has-pending-model-changes and `migrations add` read this, not GetDifferences.
+                    public bool HasDifferences(IRelationalModel? source, IRelationalModel? target) =>
+                        inner.HasDifferences(source, target) || JsonColumnComments(source, target, sql).Any();
 
                     public IReadOnlyList<MigrationOperation> GetDifferences(IRelationalModel? source, IRelationalModel? target)
                     {

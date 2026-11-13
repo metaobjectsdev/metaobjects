@@ -655,7 +655,8 @@ The entity module imports only Drizzle and Zod; the generated routes mount throu
 Fastify are direct user-app deps. `meta init` writes `outputLayout: "package"`, so entity
 output lands under one directory per metadata package — `acme::blog` gives
 `src/generated/acme/blog/Author.ts`, `Author.queries.ts`, `Author.routes.ts` — and two
-objects with one name in two packages are two files. A config without the key gets the
+objects with one name in two packages are two files (a `barrel()`, which exports every
+name from one module, still refuses that pair as `ERR_NAME_COLLISION`). A config without the key gets the
 engine default, `flat`: everything directly under `outDir`, with no per-package
 subdirectory.
 

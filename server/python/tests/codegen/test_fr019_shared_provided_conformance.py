@@ -301,3 +301,20 @@ def test_shared_enum_values_colliding_after_upper_are_a_codegen_error() -> None:
             {"object.value": {"name": "M", "children": [
                 {"field.enum": {"name": "st", "extends": "a::b::State"}}]}},
         ]}})
+
+
+def test_two_shared_enums_with_one_name_in_two_packages_are_a_name_collision() -> None:
+    """One ``enums.py`` holds every shared enum under its own name, so a second ``Tier`` from
+    another package must be refused, never dropped (its fields would be typed with the first)."""
+    def pkg(name: str, values: list[str]) -> InMemoryStringSource:
+        doc = {"metadata.root": {"package": name, "children": [
+            {"field.enum": {"name": "Tier", "abstract": True, "@values": values}},
+            {"object.value": {"name": "Plan", "children": [
+                {"field.enum": {"name": "tier", "extends": f"{name}::Tier"}}]}},
+        ]}}
+        return InMemoryStringSource(json.dumps(doc), id=f"{name}.json", format=MetaDataFormat.JSON)
+
+    root = MetaDataLoader().load([pkg("alpha", ["GOLD", "SILVER"]), pkg("beta", ["FREE", "PRO"])]).root
+    entities = [o for o in root.own_children() if isinstance(o, MetaObject)]
+    with pytest.raises(ValueError, match=r'ERR_NAME_COLLISION: "alpha::Tier" and "beta::Tier"'):
+        materialized_shared_enums(entities)

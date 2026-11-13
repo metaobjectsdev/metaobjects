@@ -16,6 +16,8 @@ value); it is not in the loader's shared error-code ledger.
 """
 from __future__ import annotations
 
+import keyword
+
 from metaobjects.codegen.config import GenConfig
 from metaobjects.codegen.import_path import OUTPUT_LAYOUT_PACKAGE, output_path, package_to_path
 
@@ -69,3 +71,38 @@ def claimed_module_path(
     path (``<dir>/<module>.py``): the one call a generator makes to place a per-object file."""
     claim_module(claims, config, pkg, module, claimant)
     return output_path(config.output_layout, pkg, f"{module}.py")
+
+
+def assert_importable_package_tree(paths: list[str]) -> None:
+    """Refuse a generated tree Python cannot import as written (out-dir-relative *paths*).
+
+    Under the package layout each metadata package segment is a directory and a component of a
+    relative import, so it must be a Python identifier and not a keyword (``my-co`` would emit
+    ``from ..my-co.Note import Note``). And a directory beside a module of the same stem shadows
+    it: a top-level package ``enums`` makes ``enums/`` win over the shared ``enums.py``, so every
+    ``from ..enums import X`` reads the wrong module. Both are refused here, before any write.
+    """
+    modules = {p[: -len(".py")] for p in paths if p.endswith(".py")}
+    directories: set[str] = set()
+    for p in paths:
+        if not p.endswith(".py"):
+            continue
+        d = p.rsplit("/", 1)[0] if "/" in p else ""
+        while d:
+            directories.add(d)
+            d = d.rsplit("/", 1)[0] if "/" in d else ""
+    for d in sorted(directories):
+        segment = d.rsplit("/", 1)[-1]
+        if not segment.isidentifier() or keyword.iskeyword(segment):
+            raise ValueError(
+                f'the generated package directory "{d}" is not importable: "{segment}" is not a '
+                "Python identifier, so a relative import through it cannot be written — rename "
+                "the metadata package segment, or use the flat layout."
+            )
+        if d in modules:
+            raise ValueError(
+                f'{ERR_NAME_COLLISION}: the generated package directory "{d}/" and the module '
+                f'"{d}.py" have one import name, and the directory shadows the module — '
+                f"{PACKAGE_REMEDY} (the metadata package or the object)."
+            )
+

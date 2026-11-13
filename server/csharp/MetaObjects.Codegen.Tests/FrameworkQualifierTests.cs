@@ -21,6 +21,11 @@ public sealed class FrameworkQualifierTests
             Q("using System.Linq;\nnamespace Acme.System;\nvar a = System.Int32.MaxValue;"));
 
     [Fact]
+    public void Global_using_and_preprocessor_lines_are_left_alone()
+        => Assert.Equal("global using System.Text;\n#region Don't touch System.X\n#endregion\nvar a = global::System.Int32.MaxValue;",
+            Q("global using System.Text;\n#region Don't touch System.X\n#endregion\nvar a = System.Int32.MaxValue;"));
+
+    [Fact]
     public void Line_and_block_comments_are_left_alone()
         => Assert.Equal("// System.Foo\n/* System.Bar\n System.Baz */ global::System.Qux.Z();",
             Q("// System.Foo\n/* System.Bar\n System.Baz */ System.Qux.Z();"));
