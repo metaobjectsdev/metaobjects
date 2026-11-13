@@ -136,5 +136,48 @@ public class CheckConstraintConformanceTests
         Assert.Empty(load.Errors);
         var ex = Assert.Throws<InvalidOperationException>(() => CheckConstraints.For(load.Root.Objects().Single(), Ctx(load.Root, "postgres").Config));
         Assert.Contains("both named 'windows_a_cmp_chk'", ex.Message);
+        Assert.Contains("Postgres requires each constraint on a table to have its own name", ex.Message);
+        // rc.21 part B (N1): SQLite and D1 accept the pair (meta migrate keeps both), but EF's model
+        // keys a check constraint by name and would keep only the last, so C# still refuses it there.
+        foreach (var dialect in new[] { "sqlite", "d1" })
+        {
+            var lite = Assert.Throws<InvalidOperationException>(() => CheckConstraints.For(load.Root.Objects().Single(), Ctx(load.Root, dialect).Config));
+            Assert.Contains("EF Core keeps one check constraint per name", lite.Message);
+        }
+    }
+
+    // rc.21 part B (N2): a generated name fitted to Postgres's 63-byte limit, spelled as meta migrate spells it.
+    [Fact]
+    public void FitPgIdentifier_matches_the_TypeScript_spelling()
+    {
+        Assert.Equal("devices_meter_serial_regex_chk", CheckConstraints.FitPgIdentifier("devices_meter_serial_regex_chk"));
+        Assert.Equal("measurement_devices_with_a_rather_long_table_name_mete_559a7830",
+            CheckConstraints.FitPgIdentifier("measurement_devices_with_a_rather_long_table_name_meterdevicekind_serial_chk"));
+        Assert.Equal(new string('é', 27) + "_84fe2e03", CheckConstraints.FitPgIdentifier(new string('é', 40)));
+    }
+
+    [Fact]
+    public void A_qualified_TPH_check_name_over_63_bytes_is_fitted_on_Postgres_only()
+    {
+        const string table = "measurement_devices_with_a_rather_long_table_name";
+        var load = new MetaDataLoader().Load([new InMemoryStringSource($$"""
+            { "metadata.root": { "package": "acme", "children": [
+              { "object.entity": { "name": "Device", "@discriminator": "kind", "children": [
+                { "source.rdb": { "@table": "{{table}}" } },
+                { "field.long": { "name": "id" } },
+                { "field.string": { "name": "kind", "@maxLength": 20 } },
+                { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
+              { "object.entity": { "name": "MeterDeviceKind", "extends": "Device", "@discriminatorValue": "METER", "children": [
+                { "field.enum": { "name": "serial", "@values": ["M1", "M2"] } } ] } },
+              { "object.entity": { "name": "SensorDeviceKind", "extends": "Device", "@discriminatorValue": "SENSOR", "children": [
+                { "field.enum": { "name": "serial", "@values": ["S1", "S2"] } } ] } } ] } }
+            """, id: "d.json")]);
+        Assert.Empty(load.Errors);
+        var device = load.Root.Objects().Single(o => o.Name == "Device");
+        IEnumerable<string> Names(string dialect) => CheckConstraints.For(device, Ctx(load.Root, dialect).Config)
+            .Where(c => c.Expression.Contains("serial")).Select(c => c.Name);
+        Assert.Equal(new[] { "measurement_devices_with_a_rather_long_table_name_mete_559a7830",
+            CheckConstraints.FitPgIdentifier($"{table}_sensordevicekind_serial_chk") }, Names("postgres"));
+        Assert.Equal(new[] { $"{table}_meterdevicekind_serial_chk", $"{table}_sensordevicekind_serial_chk" }, Names("sqlite"));
     }
 }

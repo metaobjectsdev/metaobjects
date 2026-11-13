@@ -344,9 +344,9 @@ export interface CheckNameProblem {
 }
 
 /**
- * A declared CHECK name that cannot be applied as written. Two constraints on one table with
- * one name fail at apply on Postgres ("already exists") and, on SQLite, collapse in a
- * name-keyed diff so every run proposes the CHECK again. A name over 63 bytes is truncated by
+ * A declared CHECK name that cannot be applied as written on Postgres. Two constraints on one
+ * table with one name fail at apply ("already exists"); SQLite and D1 accept them (rc.21, N1),
+ * and their CHECK diff matches a name to a list, so nothing is refused there. A name over 63 bytes is truncated by
  * Postgres when it is created, so the declared name never matches the database and the CHECK
  * drifts forever. Either way the fix is to the metadata, so it is refused while the expected
  * schema is built.

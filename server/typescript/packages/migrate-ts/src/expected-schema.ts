@@ -87,6 +87,7 @@ import type {
 import { qualifiedDbName } from "./qualified-name.js";
 import { SQLITE_ISO_NOW } from "./column-default.js";
 import { viewFingerprint } from "./view-fingerprint.js";
+import { createHash } from "node:crypto";
 import {
   resolveReferentialActions,
   findReferentialActionConflict,
@@ -1016,7 +1017,7 @@ function buildChecks(
             DECLARED_CHECKS.add(guarded);
             checks.push(guarded);
           } else {
-            checks.push({ ...guarded, name: qualifiedCheckName(check.name, tableName, node.parent) });
+            checks.push({ ...guarded, name: qualifiedCheckName(check.name, tableName, node.parent, dialect) });
           }
         }
       }
@@ -1054,23 +1055,47 @@ function buildChecks(
       const guarded = withCondition(check, v, holder, strategy, dialect, discriminatorIn(values));
       checks.push(declaredCheckName(v) !== undefined
         ? withDeclaredName(guarded, v)
-        : { ...guarded, name: qualifiedCheckName(check.name, tableName, v.parent) });
+        : { ...guarded, name: qualifiedCheckName(check.name, tableName, v.parent, dialect) });
     }
   }
-  return distinctChecks(entity, checks);
+  return distinctChecks(entity, checks, dialect);
 }
 
-/** A default CHECK name made unique to the object that declares the rule: `<table>_<declarer>_…`. */
-function qualifiedCheckName(name: string, tableName: string, declarer: MetaData | undefined): string {
+/** A default CHECK name made unique to the object that declares the rule: `<table>_<declarer>_…`.
+ *  On Postgres it is fitted to the 63-byte identifier limit ({@link fitPgIdentifier}). */
+function qualifiedCheckName(name: string, tableName: string, declarer: MetaData | undefined, dialect: Dialect | undefined): string {
   const tag = (declarer?.name ?? "subtype").toLowerCase();
-  return name.startsWith(`${tableName}_`) ? `${tableName}_${tag}_${name.slice(tableName.length + 1)}` : `${tag}_${name}`;
+  const qualified = name.startsWith(`${tableName}_`) ? `${tableName}_${tag}_${name.slice(tableName.length + 1)}` : `${tag}_${name}`;
+  return dialect === "sqlite" || dialect === "d1" ? qualified : fitPgIdentifier(qualified);
+}
+
+/**
+ * rc.21 (N2): a generated name fitted to Postgres's 63-byte identifier limit. A longer name keeps
+ * its first 54 bytes (whole characters) and gains `_` and the first 8 hex digits of the SHA-256
+ * of the whole name, so two long names that share a prefix stay apart, and every port spells it
+ * the same. A name that fits is unchanged. Postgres would otherwise truncate it at CREATE, so the
+ * name the schema expects would never match the database.
+ */
+export function fitPgIdentifier(name: string): string {
+  if (Buffer.byteLength(name, "utf8") <= PG_IDENTIFIER_MAX_BYTES) return name;
+  const hash = createHash("sha256").update(name, "utf8").digest("hex").slice(0, 8);
+  let head = "";
+  for (const ch of name) {
+    if (Buffer.byteLength(head + ch, "utf8") > PG_IDENTIFIER_MAX_BYTES - 9) break;
+    head += ch;
+  }
+  return `${head}_${hash}`;
 }
 
 /**
  * One table's CHECKs, an exact repeat (same name, same expression) kept once, and two different
- * CHECKs under one name refused: the database would refuse the second at CREATE TABLE.
+ * CHECKs under one name refused where the database requires unique names: Postgres would refuse
+ * the second at CREATE TABLE. SQLite and D1 accept both under one name and enforce both (rc.21,
+ * N1: probed on SQLite 3.51 and on Miniflare's D1), so both are kept there; the CHECK diff matches
+ * a name to a list. A name shortened to fit the 63-byte limit that still collides is refused too.
  */
-function distinctChecks(entity: MetaObject, checks: CheckDescriptor[]): CheckDescriptor[] {
+function distinctChecks(entity: MetaObject, checks: CheckDescriptor[], dialect: Dialect | undefined): CheckDescriptor[] {
+  const unique = dialect !== "sqlite" && dialect !== "d1";
   const byName = new Map<string, CheckDescriptor>();
   const out: CheckDescriptor[] = [];
   for (const c of checks) {
@@ -1078,13 +1103,14 @@ function distinctChecks(entity: MetaObject, checks: CheckDescriptor[]): CheckDes
     if (seen !== undefined) {
       if (seen.expression === c.expression) continue;
       // A DECLARED name's collision is checkDeclaredCheckNames' to report, with its own error.
-      if (DECLARED_CHECKS.has(c) || DECLARED_CHECKS.has(seen)) {
+      if (!unique || DECLARED_CHECKS.has(c) || DECLARED_CHECKS.has(seen)) {
         out.push(c);
         continue;
       }
       throw new Error(
         `object.entity '${entity.name}': two CHECK constraints are both named '${c.name}' ` +
-          `(${seen.expression} | ${c.expression}). Give one of the validators (or enums) a @constraintName.`,
+          `(${seen.expression} | ${c.expression}); Postgres requires each constraint on a table to have its own name. ` +
+          `Give one of the validators (or enums) a @constraintName.`,
       );
     }
     byName.set(c.name, c);
@@ -1195,13 +1221,15 @@ function withDeclaredName(check: CheckDescriptor, node: MetaData): CheckDescript
 const PG_IDENTIFIER_MAX_BYTES = 63;
 
 /**
- * Refuse a declared CHECK name another constraint on the same table already has, or (on
- * Postgres) one over 63 bytes. Runs after the conventions have named primary keys, foreign
- * keys and unique constraints. A collision among derived names is left as it always was.
+ * Refuse, on Postgres, a declared CHECK name another constraint on the same table already has, or
+ * one over 63 bytes. Runs after the conventions have named primary keys, foreign keys and unique
+ * constraints. SQLite and D1 require neither (rc.21, N1: two CHECKs under one name are accepted and
+ * both enforced, and a CHECK name is no schema object), so nothing is refused there.
  */
 function checkDeclaredCheckNames(tables: readonly TableDescriptor[], dialect: Dialect | undefined): void {
   const problems: CheckNameProblem[] = [];
   const limited = dialect !== "sqlite" && dialect !== "d1";
+  if (!limited) return;
   for (const t of tables) {
     const declared = new Set(t.checks.filter((c) => DECLARED_CHECKS.has(c)).map((c) => c.name));
     if (declared.size === 0) continue;
@@ -1220,7 +1248,6 @@ function checkDeclaredCheckNames(tables: readonly TableDescriptor[], dialect: Di
     for (const fk of t.foreignKeys) claim(fk.name, `the foreign key "${fk.name}"`);
     for (const ix of t.indexes) if (ix.constraint === "unique") claim(ix.name, `the unique constraint "${ix.name}"`);
     for (const c of t.checks) claim(c.name, `another CHECK named "${c.name}"`);
-    if (!limited) continue;
     for (const name of declared) {
       const bytes = Buffer.byteLength(name, "utf8");
       if (bytes > PG_IDENTIFIER_MAX_BYTES) problems.push({ table: t.name, name, bytes });

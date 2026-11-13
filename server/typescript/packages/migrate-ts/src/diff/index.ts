@@ -1132,12 +1132,21 @@ function diffTableChecks(
   // on a name-matched check is still caught as drop+add. Postgres constraints are always
   // named, so it keeps the exact name-keyed behavior (exprFallback off).
   const exprFallback = dialect === "sqlite" || dialect === "d1";
-  const actualByName = new Map(actual.checks.filter((c) => c.name !== "").map((c) => [c.name, c]));
+  // rc.21 (N1): SQLite and D1 accept two CHECKs under one name, and the expected schema may hold
+  // two there, so a name keys a LIST: the same-name actual with the same rule is taken first.
+  const actualByName = new Map<string, CheckDescriptor[]>();
+  for (const c of actual.checks) {
+    if (c.name === "") continue;
+    const list = actualByName.get(c.name) ?? [];
+    if (!actualByName.has(c.name)) actualByName.set(c.name, list);
+    list.push(c);
+  }
   const consumed = new Set<CheckDescriptor>();
   const textColumns = textColumnsOf(actual);
 
   for (const ec of expected.checks) {
-    const ac = actualByName.get(ec.name);
+    const named = (actualByName.get(ec.name) ?? []).filter((a) => !consumed.has(a));
+    const ac = named.find((a) => checkMatchesLive(canon, ec, a, textColumns)) ?? named[0];
     if (ac) {
       consumed.add(ac);
       if (!checkMatchesLive(canon, ec, ac, textColumns)) {

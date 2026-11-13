@@ -58,15 +58,18 @@ public static class CheckConstraints
                 checks.Add(Named(WithCondition(check, v, entity, strategy, dialect), v));
         }
         if (tph is not null) checks.AddRange(SubtypeCrossFieldChecks(entity, tph, table, strategy, dialect));
-        return Distinct(entity, checks);
+        return Distinct(entity, checks, dialect);
     }
 
     /// <summary>
     /// One table's CHECKs, with an exact repeat (same name, same expression) kept once, and two
-    /// different CHECKs under one name refused: the database would refuse the second at CREATE
-    /// TABLE, and EF would keep only one of them.
+    /// different CHECKs under one name refused on every dialect. On Postgres the database would
+    /// refuse the second at CREATE TABLE. SQLite and D1 accept both (rc.21, N1), but EF's model keys
+    /// a check constraint by name: a second <c>HasCheckConstraint</c> with the same name replaces the
+    /// first (verified on EF Core 8.0.18), so the model would silently hold one of them. That is an
+    /// EF limit, so the C# port keeps the refusal where <c>meta migrate</c> accepts the pair.
     /// </summary>
-    private static IReadOnlyList<CheckConstraint> Distinct(MetaObject entity, List<CheckConstraint> checks)
+    private static IReadOnlyList<CheckConstraint> Distinct(MetaObject entity, List<CheckConstraint> checks, string? dialect)
     {
         var byName = new Dictionary<string, CheckConstraint>(StringComparer.Ordinal);
         var outList = new List<CheckConstraint>();
@@ -75,8 +78,11 @@ public static class CheckConstraints
             if (byName.TryGetValue(c.Name, out var seen))
             {
                 if (seen.Expression == c.Expression) continue;
+                var why = IsSqlite(dialect)
+                    ? "EF Core keeps one check constraint per name, so the model would hold only the last"
+                    : "Postgres requires each constraint on a table to have its own name";
                 throw new InvalidOperationException(
-                    $"object.entity '{entity.Name}': two CHECK constraints are both named '{c.Name}' ({seen.Expression} | {c.Expression}). " +
+                    $"object.entity '{entity.Name}': two CHECK constraints are both named '{c.Name}' ({seen.Expression} | {c.Expression}); {why}. " +
                     "Give one of the validators (or enums) a @constraintName.");
             }
             byName[c.Name] = c;
@@ -173,18 +179,45 @@ public static class CheckConstraints
                 foreach (var (check, declared) in nodeChecks)
                 {
                     var guarded = Wrap(check, DiscriminatorIn(tph, values), entity, strategy, dialect);
-                    yield return declared ? guarded : guarded with { Name = Qualified(check.Name, table, node.Parent) };
+                    yield return declared ? guarded : guarded with { Name = Qualified(check.Name, table, node.Parent, dialect) };
                 }
         }
     }
 
     /// <summary>A default CHECK name made unique to the object that declares the rule: <c>&lt;table&gt;_&lt;declarer&gt;_…</c>.</summary>
-    private static string Qualified(string name, string table, MetaData? declarer)
+    private static string Qualified(string name, string table, MetaData? declarer, string? dialect)
     {
         var tag = (declarer?.Name ?? "subtype").ToLowerInvariant();
-        return name.StartsWith(table + "_", StringComparison.Ordinal)
+        var qualified = name.StartsWith(table + "_", StringComparison.Ordinal)
             ? $"{table}_{tag}_{name[(table.Length + 1)..]}"
             : $"{tag}_{name}";
+        return IsSqlite(dialect) ? qualified : FitPgIdentifier(qualified);
+    }
+
+    /// <summary>Postgres's identifier limit, in bytes (NAMEDATALEN - 1). A longer name is truncated.</summary>
+    private const int PgIdentifierMaxBytes = 63;
+
+    /// <summary>
+    /// rc.21 (N2): a generated name fitted to Postgres's 63-byte identifier limit, spelled as
+    /// <c>meta migrate</c> spells it (<c>fitPgIdentifier</c>). A longer name keeps its first 54
+    /// bytes (whole characters) and gains <c>_</c> and the first 8 hex digits of the SHA-256 of the
+    /// whole name. A name that fits is unchanged.
+    /// </summary>
+    public static string FitPgIdentifier(string name)
+    {
+        var utf8 = System.Text.Encoding.UTF8;
+        if (utf8.GetByteCount(name) <= PgIdentifierMaxBytes) return name;
+        var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(utf8.GetBytes(name)))[..8].ToLowerInvariant();
+        var head = new System.Text.StringBuilder();
+        var bytes = 0;
+        foreach (var rune in name.EnumerateRunes())
+        {
+            var n = rune.Utf8SequenceLength;
+            if (bytes + n > PgIdentifierMaxBytes - 9) break;
+            head.Append(rune.ToString());
+            bytes += n;
+        }
+        return $"{head}_{hash}";
     }
 
     /// <summary>The condition "the discriminator is one of <paramref name="values"/>".</summary>
@@ -228,7 +261,7 @@ public static class CheckConstraints
         {
             if (CrossFieldCheck(v, holder, table, strategy, dialect) is not { } check) continue;
             var guarded = WithCondition(check, v, holder, strategy, dialect, DiscriminatorIn(tph, values));
-            yield return DeclaredName(v) is { } name ? guarded with { Name = name } : guarded with { Name = Qualified(check.Name, table, v.Parent) };
+            yield return DeclaredName(v) is { } name ? guarded with { Name = name } : guarded with { Name = Qualified(check.Name, table, v.Parent, dialect) };
         }
     }
 

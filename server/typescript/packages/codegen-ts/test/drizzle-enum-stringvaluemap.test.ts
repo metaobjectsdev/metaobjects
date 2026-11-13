@@ -97,3 +97,28 @@ describe("Drizzle codegen — TPH siblings sharing a column with different @valu
     expect(out).not.toContain(`"devices_grade_chk"`);
   });
 });
+
+// rc.21 part B (N1): two different CHECKs under one name are refused on Postgres, which requires
+// unique constraint names, as `meta migrate` refuses them; SQLite accepts and enforces both.
+describe("Drizzle codegen — two CHECKs under one name", () => {
+  async function render(dialect: Dialect) {
+    const json = JSON.stringify({ "metadata.root": { children: [ { "object.entity": { name: "Order", children: [
+      { "field.long": { name: "id" } },
+      { "field.enum": { name: "status", "@values": ["A", "B"], "@constraintName": "orders_state_chk" } },
+      { "field.enum": { name: "phase", "@values": ["X", "Y"], "@constraintName": "orders_state_chk" } },
+      { "source.rdb": { name: "src", "@table": "orders" } },
+      { "identity.primary": { name: "pk", "@fields": ["id"] } } ] } } ] } });
+    const res = await new MetaDataLoader().load([new InMemoryStringSource(json)]);
+    expect(res.errors).toEqual([]);
+    const ctx = makeRenderContext({ dialect, loadedRoot: res.root, outDir: "/x", dbImport: "~/db",
+      pkMap: buildPkMap(res.root), relationMap: buildRelationMap(res.root) });
+    return () => renderDrizzleSchema(res.root.findObject("Order")!, ctx).toString();
+  }
+  test("refused on Postgres", async () => {
+    expect(await render("postgres")).toThrow(/both named 'orders_state_chk'.*Postgres requires/);
+  });
+  test("both kept on SQLite", async () => {
+    const out = (await render("sqlite"))();
+    expect(out.match(/"orders_state_chk"/g)?.length).toBe(2);
+  });
+});
