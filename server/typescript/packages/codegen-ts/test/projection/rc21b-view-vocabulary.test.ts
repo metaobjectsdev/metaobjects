@@ -206,3 +206,75 @@ describe("U15 @union", () => {
     }
   });
 });
+
+// rc.21 part B: two fixes the vocabulary needed to build its motivating views.
+describe("a projection over a TPH root reads its subtypes' columns; a unique reverse hop is to-one", () => {
+  const tph = [
+    { "object.entity": { name: "Grant", "@discriminator": "kind", children: [
+      { "source.rdb": { "@table": "grants" } },
+      { "field.long": { name: "id" } },
+      { "field.string": { name: "kind", "@maxLength": 10 } },
+      { "field.long": { name: "cardId" } },
+      { "identity.primary": { "@fields": "id" } } ] } },
+    { "object.entity": { name: "PriorGrant", extends: "Grant", "@discriminatorValue": "PRIOR", children: [
+      { "field.string": { name: "integrationKey" } } ] } },
+    { "object.entity": { name: "Card", children: [
+      { "source.rdb": { "@table": "cards" } },
+      { "field.long": { name: "id" } },
+      { "field.string": { name: "number" } },
+      { "identity.primary": { "@fields": "id" } } ] } },
+    { "object.entity": { name: "CardGrant", children: [
+      { "source.rdb": { "@table": "card_grants" } },
+      { "field.long": { name: "id" } },
+      { "field.long": { name: "cardId" } },
+      { "field.string": { name: "note" } },
+      { "identity.primary": { "@fields": "id" } },
+      { "identity.reference": { name: "cardId", "@fields": "cardId", "@references": "Card" } } ] } },
+  ];
+  async function load(extra: unknown[]) {
+    const { root, errors } = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify({ "metadata.root": { package: "acme", children: [...tph, ...extra] } }))]);
+    return { root, errors: errors.map((e) => e.message) };
+  }
+  test("an extender with no identity keeps the super's anchor, and a subtype column reads the shared table", async () => {
+    const { root, errors } = await load([
+      { "object.projection": { name: "GrantBase", abstract: true, children: [
+        { "field.long": { name: "grantId", extends: "Grant.id" } },
+        { "identity.primary": { name: "id", extends: "Grant.primary" } } ] } },
+      { "object.projection": { name: "GrantRow", extends: "GrantBase", children: [
+        { "source.rdb": { "@kind": "view", "@view": "v_grants" } },
+        { "field.string": { name: "externalKey", extends: "PriorGrant.integrationKey" } } ] } },
+    ]);
+    expect(errors).toEqual([]);
+    const sql = buildProjectionViews(root, { dialect: "postgres" })[0]!.sql;
+    expect(sql).toContain("g.id AS grant_id");
+    expect(sql).toContain("g.integration_key AS external_key");
+    expect(sql).toContain("FROM public.grants g");
+    expect(sql).not.toContain("'PRIOR'");
+  });
+  const viaCard = (unique: boolean) => [
+    { "object.entity": { name: "CardGrant", children: [
+      { "source.rdb": { "@table": "card_grants" } },
+      { "field.long": { name: "id" } },
+      { "field.long": { name: "cardId" } },
+      { "field.string": { name: "note" } },
+      { "identity.primary": { "@fields": "id" } },
+      ...(unique ? [{ "identity.secondary": { name: "card_grants_card_uq", "@fields": "cardId" } }] : []),
+      { "identity.reference": { name: "cardId", "@fields": "cardId", "@references": "Card" } } ] } },
+  ];
+  test("a passthrough over a reverse hop loads when the holder's reference fields are a unique identity, and only then", async () => {
+    const projection = { "object.projection": { name: "CardRow", children: [
+      { "source.rdb": { "@kind": "view", "@view": "v_cards" } },
+      { "field.long": { name: "id", extends: "Card.id" } },
+      { "field.string": { name: "note", children: [ { "origin.passthrough": { "@from": "CardGrant.note", "@via": "Card.cardGrants" } } ] } },
+      { "identity.primary": { name: "id", extends: "Card.primary" } } ] } };
+    const withUnique = async (unique: boolean) => {
+      const doc = { "metadata.root": { package: "acme", children: [...tph.slice(0, 3), ...viaCard(unique), projection] } };
+      const { root, errors } = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify(doc))]);
+      return { root, errors: errors.map((e) => e.message) };
+    };
+    const ok = await withUnique(true);
+    expect(ok.errors).toEqual([]);
+    expect(buildProjectionViews(ok.root, { dialect: "postgres" })[0]!.sql).toContain("LEFT OUTER JOIN public.card_grants c0 ON c0.card_id = c.id");
+    expect((await withUnique(false)).errors.some((m) => /is to-many/.test(m))).toBe(true);
+  });
+});

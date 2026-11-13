@@ -162,4 +162,29 @@ public class ViewVocabularyRc21LoaderTests
             { "field.string": { "name": "c", "@dbColumnType": "VARCHAR" } }, { "identity.primary": { "name": "id", "@fields": "id" } } ] } }
         """);
     }
+
+    // rc.21 part B: a passthrough walks a reference backwards when its holder declares a unique identity over its fields.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void A_passthrough_over_a_reverse_hop_needs_a_unique_identity(bool unique)
+    {
+        var secondary = unique ? """{ "identity.secondary": { "name": "events_order_uq", "@fields": "orderId" } },""" : "";
+        var json = $$"""
+          { "metadata.root": { "package": "acme", "children": [
+            { "object.entity": { "name": "Order", "children": [ { "source.rdb": { "@table": "orders" } }, { "field.long": { "name": "id" } },
+              { "identity.primary": { "@fields": "id" } } ] } },
+            { "object.entity": { "name": "Receipt", "children": [ { "source.rdb": { "@table": "receipts" } }, { "field.long": { "name": "id" } },
+              { "field.long": { "name": "orderId" } }, { "field.string": { "name": "note" } }, { "identity.primary": { "@fields": "id" } }, {{secondary}}
+              { "identity.reference": { "name": "orderId", "@fields": "orderId", "@references": "Order" } } ] } },
+            { "object.projection": { "name": "V", "children": [ { "source.rdb": { "@kind": "view", "@view": "v" } },
+              { "field.long": { "name": "id", "extends": "Order.id" } },
+              { "field.string": { "name": "note", "children": [ { "origin.passthrough": { "@from": "Receipt.note", "@via": "Order.receipts" } } ] } },
+              { "identity.primary": { "name": "id", "extends": "Order.primary" } } ] } } ] } }
+        """;
+        var registry = Provider.ComposeRegistry(new[] { CoreTypes.CoreTypesProvider });
+        var errors = new MetaDataLoader(registry).Load([new InMemoryStringSource(json, format: MetaDataFormat.Json, id: "r.json")]).Errors;
+        if (unique) Assert.Empty(errors);
+        else Assert.Contains(errors, e => e.Code.ToString() == "ERR_ORIGIN_CARDINALITY");
+    }
 }

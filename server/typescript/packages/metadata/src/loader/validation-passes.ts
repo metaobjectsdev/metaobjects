@@ -877,12 +877,38 @@ function _validateViaPath(
 
 /** A hop's effective @cardinality, or undefined when not declared. A reference
  *  hop (a forward FK) is inherently to-one — a child names the parent it points at. */
-function _hopCardinality(rel: MetaData, reverse?: ReadonlySet<MetaData>): string | undefined {
-  // R-walk: a reference walked backwards reaches every row that references the walked-from one.
-  if (reverse?.has(rel) === true) return CARDINALITY_MANY;
+function _hopCardinality(rel: MetaData, reverse?: ReadonlySet<MetaData>, uniqueReverseIsOne = false): string | undefined {
+  // R-walk: a reference walked backwards reaches every row that references the walked-from one —
+  // unless (rc.21 part B) its holder declares a unique identity over exactly the reference's fields,
+  // so at most one row references it: then a passthrough may walk it (the aggregate rule keeps calling
+  // it to-many: an aggregate over it stays legal, as it was).
+  if (reverse?.has(rel) === true) return uniqueReverseIsOne && _reverseHopIsUnique(rel) ? CARDINALITY_ONE : CARDINALITY_MANY;
   if (_isReferenceHop(rel)) return CARDINALITY_ONE;
   const v = rel.attr(RELATIONSHIP_ATTR_CARDINALITY);
   return typeof v === "string" ? v : undefined;
+}
+
+/** The field names an identity or reference declares (`@fields`, a string or a list). */
+function _identityFieldSet(node: MetaData): string[] {
+  const raw = node.attr(IDENTITY_ATTR_FIELDS);
+  const list = Array.isArray(raw) ? raw : typeof raw === "string" ? raw.split(",") : [];
+  return list.map((f) => String(f).trim()).filter((f) => f.length > 0).sort();
+}
+
+/**
+ * rc.21 part B: whether a reference walked backwards reaches at most one row — its holder (or an
+ * ancestor it inherits identities from) declares an identity.primary or identity.secondary whose
+ * fields are exactly the reference's fields. Derived from the model; no new vocabulary.
+ */
+function _reverseHopIsUnique(rel: MetaData): boolean {
+  const holder = rel.parent;
+  if (holder === undefined) return false;
+  const fields = _identityFieldSet(rel).join(",");
+  if (fields === "") return false;
+  // ADR-0039: resolving — a unique identity may be inherited.
+  return holder.children().some((c) => c.type === TYPE_IDENTITY
+    && (c.subType === IDENTITY_SUBTYPE_PRIMARY || c.subType === IDENTITY_SUBTYPE_SECONDARY)
+    && _identityFieldSet(c).join(",") === fields);
 }
 
 /**
@@ -945,6 +971,16 @@ function _deriveBaseEntity(
     }
   }
 
+  // 1b) rc.21 part B (G13): a projection that extends another projection and declares no identity of
+  //     its own keeps the identity its super anchors with: the inherited identity still names the base,
+  //     so an extender's own fields (a TPH subtype's columns, say) do not move it.
+  const ownIdentity = obj.ownChildren().some((c) => c.type === TYPE_IDENTITY);
+  const superProjection = obj.superResolved;
+  if (!ownIdentity && superProjection !== undefined && superProjection.type === TYPE_OBJECT
+    && superProjection.subType === OBJECT_SUBTYPE_PROJECTION && _anchorsByIdentity(superProjection)) {
+    return _deriveBaseEntity(superProjection, root, fieldName, originSource, errors);
+  }
+
   // 2) Fallback: the single distinct entity targeted by plain field-extends —
   //    again preferring the ref-named owner over the physical declaring ancestor.
   const targets = new Set<MetaData>();
@@ -991,6 +1027,14 @@ function _deriveBaseEntity(
     );
   }
   return undefined;
+}
+
+/** rc.21 part B: whether a projection (or a projection it extends) anchors its base with an extended identity. */
+function _anchorsByIdentity(obj: MetaData): boolean {
+  // ADR-0039: own — an anchor is a locally declared extends-bound identity, at some level of the chain.
+  if (obj.ownChildren().some((c) => c.type === TYPE_IDENTITY && c.superResolved?.type === TYPE_IDENTITY)) return true;
+  const sup = obj.superResolved;
+  return sup !== undefined && sup.type === TYPE_OBJECT && sup.subType === OBJECT_SUBTYPE_PROJECTION && _anchorsByIdentity(sup);
 }
 
 /**
@@ -1087,7 +1131,7 @@ function _checkPassthroughCardinality(
   reverse?: ReadonlySet<MetaData>,
 ): void {
   for (const rel of hops) {
-    if (_hopCardinality(rel, reverse) === CARDINALITY_MANY) {
+    if (_hopCardinality(rel, reverse, true) === CARDINALITY_MANY) {
       errors.push(
         new ParseError(
           `origin.passthrough on ${obj.name}.${fieldName}: @via hop "${rel.name}" is to-many ` +

@@ -1272,12 +1272,43 @@ public static partial class ValidationPasses
 
     /// A hop's effective @cardinality, or null when not declared. A reference hop
     /// (a forward FK) is inherently to-one — a child names the parent it points at.
-    private static string? HopCardinality(MetaData rel, IReadOnlySet<MetaData>? reverse = null)
+    private static string? HopCardinality(MetaData rel, IReadOnlySet<MetaData>? reverse = null, bool uniqueReverseIsOne = false)
         => reverse is not null && reverse.Contains(rel)
-            ? CARDINALITY_MANY // R-walk: a reference walked backwards reaches every row that references the walked-from one
+            // R-walk: a reference walked backwards reaches every row that references the walked-from one —
+            // unless (rc.21 part B) its holder declares a unique identity over exactly its fields.
+            // (only a passthrough asks: an aggregate over such a hop stays legal, as it was).
+            ? (uniqueReverseIsOne && ReverseHopIsUnique(rel) ? CARDINALITY_ONE : CARDINALITY_MANY)
             : IsReferenceHop(rel)
                 ? CARDINALITY_ONE
                 : rel.Attr(RELATIONSHIP_ATTR_CARDINALITY) as string;
+
+    /// <summary>The field names an identity or reference declares (<c>@fields</c>), sorted.</summary>
+    private static string IdentityFieldSet(MetaData node)
+    {
+        var raw = node.Attr(IDENTITY_ATTR_FIELDS);
+        IEnumerable<string> list = raw switch
+        {
+            IReadOnlyList<object?> l => l.Select(x => x?.ToString() ?? ""),
+            string s => s.Split(','),
+            _ => [],
+        };
+        return string.Join(",", list.Select(f => f.Trim()).Where(f => f.Length > 0).OrderBy(f => f, StringComparer.Ordinal));
+    }
+
+    /// <summary>
+    /// rc.21 part B: whether a reference walked backwards reaches at most one row — its holder declares
+    /// (resolving) an identity.primary or identity.secondary over exactly the reference's fields. TS
+    /// <c>_reverseHopIsUnique</c>.
+    /// </summary>
+    private static bool ReverseHopIsUnique(MetaData rel)
+    {
+        if (rel.Parent is not { } holder) return false;
+        var fields = IdentityFieldSet(rel);
+        if (fields.Length == 0) return false;
+        return holder.Children().Any(c => c.Type == TYPE_IDENTITY
+            && (c.SubType == IDENTITY_SUBTYPE_PRIMARY || c.SubType == IDENTITY_SUBTYPE_SECONDARY)
+            && IdentityFieldSet(c) == fields);
+    }
 
     /// FR-024: the entity NAMED by a node's dotted extends ref — the OWNER part
     /// of `<owner>.<child>...` resolved as an object. Differs from
@@ -1299,6 +1330,14 @@ public static partial class ValidationPasses
 
     /// Derive the BASE entity a no-`@via` origin path anchors at (spec §5).
     /// Returns null when no base is derivable (an error has been pushed).
+    /// <summary>rc.21 part B: whether a projection (or one it extends) anchors its base with an extended identity.</summary>
+    private static bool AnchorsByIdentity(MetaData obj)
+    {
+        // ADR-0039: own — an anchor is a locally declared extends-bound identity, at some level of the chain.
+        if (obj.OwnChildren().Any(c => c.Type == TYPE_IDENTITY && c.SuperData is { Type: TYPE_IDENTITY })) return true;
+        return obj.SuperData is { Type: TYPE_OBJECT, SubType: OBJECT_SUBTYPE_PROJECTION } sup && AnchorsByIdentity(sup);
+    }
+
     private static MetaData? DeriveBaseEntity(
         MetaData obj, MetaData root, string fieldName, ErrorSource originSource, List<MetaError> errors)
     {
@@ -1319,6 +1358,13 @@ public static partial class ValidationPasses
                 if (owner is not null && owner.Type == TYPE_OBJECT) return owner;
             }
         }
+
+        // 1b) rc.21 part B (G13): an extender with no identity of its own keeps the identity its super
+        //     anchors with, so its own fields (a TPH subtype's columns, say) do not move the base.
+        if (!obj.OwnChildren().Any(c => c.Type == TYPE_IDENTITY)
+            && obj.SuperData is { Type: TYPE_OBJECT, SubType: OBJECT_SUBTYPE_PROJECTION } anchoredSuper
+            && AnchorsByIdentity(anchoredSuper))
+            return DeriveBaseEntity(anchoredSuper, root, fieldName, originSource, errors);
 
         // 2) Fallback: the single distinct entity targeted by plain field-extends —
         //    preferring the ref-named owner over the physical declaring ancestor.
@@ -1412,7 +1458,7 @@ public static partial class ValidationPasses
     {
         foreach (var rel in hops)
         {
-            if (HopCardinality(rel, reverse) == CARDINALITY_MANY)
+            if (HopCardinality(rel, reverse, uniqueReverseIsOne: true) == CARDINALITY_MANY)
             {
                 errors.Add(new MetaError(
                     $"origin.passthrough on {obj.Name}.{fieldName}: @via hop \"{rel.Name}\" is to-many " +

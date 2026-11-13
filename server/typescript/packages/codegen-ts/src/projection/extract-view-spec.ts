@@ -98,7 +98,7 @@ import {
 // #213 — a write-through ENTITY (FR-024 §7 read-view) hosts its own view; the base
 // is the entity itself, not an extends-anchored projection.
 import { isWriteThrough } from "./projection-detector.js";
-import { tphDiscriminatorBase, tphDiscriminatorPin } from "../tph.js";
+import { tphDiscriminatorBase, tphDiscriminatorPin, tphStorageObject } from "../tph.js";
 // #209 — the SAME NOT-NULL predicate that drives a column's `.notNull()` decides
 // whether a belongs-to join is INNER (required FK) vs LEFT OUTER (nullable FK).
 import type { ColumnNamingStrategy } from "../metaobjects-config.js";
@@ -749,6 +749,13 @@ function baseEntityFor(
     const named = refNamedOwner(identity, root);
     if (named !== undefined) return named;
   }
+  // rc.21 part B (G13): an extender with no identity of its own keeps its super's identity anchor, so its
+  // own fields (a TPH subtype's columns, say) do not move the base (mirrors the loader's _deriveBaseEntity).
+  const supAnchor = projection.superResolved;
+  if (!projection.ownChildren().some((c) => c.type === TYPE_IDENTITY) && supAnchor !== undefined && isMetaObject(supAnchor)
+    && supAnchor.subType === OBJECT_SUBTYPE_PROJECTION && anchorsByIdentity(supAnchor, root)) {
+    return baseEntityFor(supAnchor, root);
+  }
   const targets = new Set<MetaObject>();
   // ADR-0039: own — see above; base-entity derivation reads own extends-bound fields.
   for (const f of projection.ownChildren().filter((c) => c.type === TYPE_FIELD)) {
@@ -767,6 +774,14 @@ function baseEntityFor(
       `extends-bound identity (identity.primary { name, extends: "<Entity>.<identity>" }) ` +
       `to anchor the base (FR-024).`,
   );
+}
+
+/** rc.21 part B: whether a projection (or a projection it extends) anchors its base with an extended identity. */
+function anchorsByIdentity(projection: MetaObject, root: MetaRoot): boolean {
+  // ADR-0039: own — an anchor is a locally declared extends-bound identity, at some level of the chain.
+  if (projection.ownChildren().some((c) => c.type === TYPE_IDENTITY && refNamedOwner(c, root) !== undefined)) return true;
+  const sup = projection.superResolved;
+  return sup !== undefined && isMetaObject(sup) && sup.subType === OBJECT_SUBTYPE_PROJECTION && anchorsByIdentity(sup, root);
 }
 
 export function sourceColumnNameFor(
@@ -818,7 +833,10 @@ function baseColumnNameFor(
 ): string {
   const target = field.superData;
   if (target === undefined) return sourceColumnNameFor(field, ctx);
-  if (refNamedOwner(field, root) !== base) return sourceColumnNameFor(field, ctx);
+  const owner = refNamedOwner(field, root);
+  // rc.21 part B: a field bound to a TPH relative of the base (a subtype's column of a projection over the
+  // TPH root) is a column of the same shared table, so it reads that column too.
+  if (owner !== base && (owner === undefined || tphStorageObject(owner) !== tphStorageObject(base))) return sourceColumnNameFor(field, ctx);
   return sourceColumnNameFor(target, ctx);
 }
 
