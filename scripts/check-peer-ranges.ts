@@ -44,11 +44,10 @@
  * Development use belongs in `devDependencies`; a genuine run-time need for the first two
  * must be an optional peer (`peerDependenciesMeta`).
  */
-import { readdirSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
+import { enumerateWorkspacePackages } from "./publish-set.mjs";
 
 const REPO = join(import.meta.dir, "..");
-const ROOTS = ["server/typescript/packages", "client/web/packages"];
 
 /** A version no real release will reach. If the range still matches, it has no ceiling. */
 const BEYOND_ANY_REAL_VERSION = "9999.0.0";
@@ -78,33 +77,29 @@ const violations: Violation[] = [];
 const installOnlyDeps: { pkg: string; dep: string; field: string; why: string }[] = [];
 let checked = 0;
 
-for (const root of ROOTS) {
-  for (const dir of readdirSync(join(REPO, root))) {
-    const manifest = join(REPO, root, dir, "package.json");
-    if (!existsSync(manifest)) continue;
-    const pkg = JSON.parse(readFileSync(manifest, "utf8")) as {
-      name: string; private?: boolean;
-      dependencies?: Record<string, string>;
-      peerDependencies?: Record<string, string>;
-      peerDependenciesMeta?: Record<string, { optional?: boolean }>;
-    };
-    if (pkg.private === true) continue;   // never published — its peers bind nobody
-    const required = [
-      ...Object.keys(pkg.dependencies ?? {}).map((dep) => ({ dep, field: "dependencies" })),
-      ...Object.keys(pkg.peerDependencies ?? {})
-        .filter((dep) => pkg.peerDependenciesMeta?.[dep]?.optional !== true)
-        .map((dep) => ({ dep, field: "peerDependencies (required)" })),
-    ];
-    for (const { dep, field } of required) {
-      const why = installOnly(dep);
-      if (why === undefined || ALLOWED_TYPES_DEPS[`${pkg.name} ${dep}`] !== undefined) continue;
-      installOnlyDeps.push({ pkg: pkg.name, dep, field, why });
-    }
-    for (const [peer, range] of Object.entries(pkg.peerDependencies ?? {})) {
-      checked++;
-      if (Bun.semver.satisfies(BEYOND_ANY_REAL_VERSION, range)) {
-        violations.push({ pkg: pkg.name, peer, range });
-      }
+for (const { pkg: manifest } of enumerateWorkspacePackages(REPO)) {
+  const pkg = manifest as {
+    name: string; private?: boolean;
+    dependencies?: Record<string, string>;
+    peerDependencies?: Record<string, string>;
+    peerDependenciesMeta?: Record<string, { optional?: boolean }>;
+  };
+  if (pkg.private === true) continue;   // never published — its peers bind nobody
+  const required = [
+    ...Object.keys(pkg.dependencies ?? {}).map((dep) => ({ dep, field: "dependencies" })),
+    ...Object.keys(pkg.peerDependencies ?? {})
+      .filter((dep) => pkg.peerDependenciesMeta?.[dep]?.optional !== true)
+      .map((dep) => ({ dep, field: "peerDependencies (required)" })),
+  ];
+  for (const { dep, field } of required) {
+    const why = installOnly(dep);
+    if (why === undefined || ALLOWED_TYPES_DEPS[`${pkg.name} ${dep}`] !== undefined) continue;
+    installOnlyDeps.push({ pkg: pkg.name, dep, field, why });
+  }
+  for (const [peer, range] of Object.entries(pkg.peerDependencies ?? {})) {
+    checked++;
+    if (Bun.semver.satisfies(BEYOND_ANY_REAL_VERSION, range)) {
+      violations.push({ pkg: pkg.name, peer, range });
     }
   }
 }

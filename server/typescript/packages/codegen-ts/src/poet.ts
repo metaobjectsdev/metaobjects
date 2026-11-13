@@ -53,8 +53,6 @@ export abstract class Node {
 export class Code extends Node {
   // Used by joinCode
   public trim = false;
-  /** @internal */
-  oneline = false;
   // Cache the unformatted results of `toString` since we're immutable.
   /** @internal */
   code: string | undefined;
@@ -74,11 +72,6 @@ export class Code extends Node {
   override toString(opts: ToStringOpts = {}): string {
     this.codeWithImports ??= this.generateCodeWithImports(opts);
     return opts.format === false ? this.codeWithImports : maybePretty(this.codeWithImports);
-  }
-
-  asOneline(): Code {
-    this.oneline = true;
-    return this;
   }
 
   get childNodes(): unknown[] {
@@ -124,9 +117,6 @@ export class Code extends Node {
     result += literals[literals.length - 1];
     if (this.trim) {
       result = result.trim();
-    }
-    if (this.oneline) {
-      result = result.replace(/\n/g, "");
     }
     return result;
   }
@@ -337,10 +327,6 @@ export abstract class Import extends Node {
       }
     }
     return Import.implicit(spec);
-  }
-
-  static fromMaybeString(spec: string | Import): Import {
-    return typeof spec === "string" ? Import.from(spec) : spec;
   }
 
   /**
@@ -621,10 +607,6 @@ export function code(literals: TemplateStringsArray, ...placeholders: unknown[])
 
 export function literalOf(object: unknown): Node {
   return new Literal(object);
-}
-
-export function arrayOf(...elements: unknown[]): Node {
-  return literalOf(elements);
 }
 
 export function joinCode(chunks: Code[], opts: { on?: string; trim?: boolean } = {}): Code {
