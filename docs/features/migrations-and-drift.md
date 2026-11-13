@@ -496,7 +496,7 @@ come from the project's **schema conventions**, selected in `.metaobjects/config
 |---|---|---|
 | Primary-key constraint name (Postgres; SQLite and D1 emit an unnamed primary key) | `<table>_pkey` | `PK_<table>` |
 | Foreign-key constraint name | `<table>_<first column>_fk` | `FK_<table>_<principal>_<columns>` |
-| Index on a foreign key | none | `IX_<table>_<columns>`, unless the primary key or another index (a partial one included) already starts with the FK's columns; an FK index another FK index covers is dropped, so FK order does not matter |
+| Index on a foreign key | none (unless [`migrate.foreignKeyIndexes`](#foreign-key-indexes-migrateforeignkeyindexes) is on, which gives each uncovered one `<table>_<columns>_idx`) | `IX_<table>_<columns>`, unless the primary key or another index (a partial one included) already starts with the FK's columns; an FK index another FK index covers is dropped, so FK order does not matter |
 | Unique key (`identity.secondary`, a `@unique` field) | a unique index; a live UNIQUE constraint is also accepted | a UNIQUE constraint when a foreign key references it, else a unique index |
 
 `efcore` is a reference preset. It reproduces one ORM's documented naming to show what the
