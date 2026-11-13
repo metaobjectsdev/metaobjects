@@ -107,6 +107,15 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   filter extras, field names in code, generated data access and hand-edit handling. Every port
   page now says up front that migrations and `verify --db` run in Node, and the README's
   getting-started path says it for Java, Kotlin, C# and Python teams.
+- **The shared render-drift case now holds the email helper too.** 1.3.0 made a template
+  variable that is not on the payload raise `ERR_VAR_NOT_ON_PAYLOAD` at render time, and
+  `fixtures/template-output-render-conformance/runtime-drift/` held it for the `@kind: document`
+  helper and the `template.prompt` helper (the TypeScript `promptRender()` handle and the Python
+  helper over a Mustache body among them). A re-audit of every generated render path in the five
+  ports found none that still renders an unknown variable as empty, but the `@kind: email`
+  helper was not in the case. It now is: `runtime-drift/email-subject/`, `email-html/` and
+  `email-text/` each drift one part of a `WelcomeEmail`, and every port's runner checks that
+  the subject, the html body and the text body each raise. No generated code changes.
 
 ### Changed
 

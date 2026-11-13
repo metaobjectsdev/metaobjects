@@ -303,7 +303,7 @@ public sealed class RenderHelperConformanceTests
     // runtime-drift/ → a variable not on the payload RAISES at render time. The helpers are
     // generated against the clean templates/; runtime-drift/templates/ serves {{nmae}} for
     // name (text edited after codegen, which the build-time gate cannot see). Covers a
-    // template.output and a template.prompt over the same payload.
+    // template.output, a template.prompt and an email template.output over the same payload.
     // ---------------------------------------------------------------------
 
     [Theory]
@@ -322,6 +322,32 @@ public sealed class RenderHelperConformanceTests
         var render = asm.GetType(helperType)!.GetMethod("Render")!;
         var payload = MakeWelcome(asm, "Ada");
         Assert.Equal("Hello Ada", (string)render.Invoke(null, [payload, new FilesystemProvider(clean)])!);
+
+        var ex = Assert.Throws<System.Reflection.TargetInvocationException>(
+            () => render.Invoke(null, [payload, new FilesystemProvider(drifted)]));
+        Assert.Contains("ERR_VAR_NOT_ON_PAYLOAD (nmae)", ex.InnerException!.Message);
+    }
+
+    // runtime-drift/email-<part>/ drifts one part of the WelcomeEmail helper each, so the
+    // subject, the html body and the text body are each shown to raise.
+    [Theory]
+    [InlineData("subject")]
+    [InlineData("html")]
+    [InlineData("text")]
+    public void Runtime_drift_email_part_raises(string part)
+    {
+        var corpus = Corpus();
+        var root = LoadFromFile(Path.Combine(corpus, "runtime-drift", "meta.json"));
+        var clean = Path.Combine(corpus, "templates");
+        var drifted = Path.Combine(corpus, "runtime-drift", "email-" + part);
+
+        var file = Assert.Single(new RenderHelperGenerator(clean).Generate(Ctx(root)), f => f.Path == "WelcomeEmail.render.cs");
+        var asm = CompileToAssembly([file.Content, .. GeneratedValueObjects.Sources(root)]);
+
+        var render = asm.GetType("Acme.Generated.WelcomeEmailRenderHelper")!.GetMethod("Render")!;
+        var payload = MakeWelcome(asm, "Ada");
+        var doc = (EmailDocument)render.Invoke(null, [payload, new FilesystemProvider(clean)])!;
+        Assert.Equal("Welcome Ada", doc.Subject);
 
         var ex = Assert.Throws<System.Reflection.TargetInvocationException>(
             () => render.Invoke(null, [payload, new FilesystemProvider(drifted)]));
