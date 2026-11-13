@@ -8,6 +8,7 @@ import { entityOutputPath } from "../import-path.js";
 import { isTphSubtype } from "../tph.js";
 import { resolveExpose, type ExposeOption } from "../routes-expose.js";
 import { effectivePackage } from "../docs-paths.js";
+import { claimRouteSegment } from "../naming/name-claims.js";
 
 export interface RoutesFileHonoOpts {
   filter?: (entity: MetaObject) => boolean;
@@ -112,6 +113,7 @@ export const routesFileHono = function routesFileHono(opts?: RoutesFileHonoOpts)
       if (!ctx.renderContext) {
         throw new Error("routes-file-hono: renderContext is required (provided by runGen)");
       }
+      claimRouteSegment(ctx, entity);
       return {
         path: entityOutputPath(
           ctx.config.outputLayout ?? "flat",

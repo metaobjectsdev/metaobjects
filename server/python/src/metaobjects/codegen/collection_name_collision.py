@@ -16,7 +16,7 @@ entities and the colliding name.
 """
 from __future__ import annotations
 
-from metaobjects.apidocs.naming import pluralize, route_path
+from metaobjects.apidocs.naming import collection_segment, pluralize
 from metaobjects.errors import ErrorCode
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.meta.core.object.object_constants import OBJECT_SUBTYPE_VALUE
@@ -86,7 +86,7 @@ def _assert_no_route_segment_collisions(entities: list[MetaObject]) -> None:
     for obj in entities:
         if not _emits_collection(obj) or tph_subtype_of(obj) is not None:
             continue
-        segment = route_path(obj.name)
+        segment = collection_segment(obj)
         existing = owner_of_segment.get(segment)
         if existing is None:
             owner_of_segment[segment] = obj

@@ -7,7 +7,7 @@
 // attempt DDL (the SQL view is created/owned by migrate-ts). Both hosts emit the
 // SAME declaration shape, so it lives here once (extracted from projection-decl).
 
-import { code, imp, joinCode, type Code } from "ts-poet";
+import { code, imp, joinCode, type Code, type Import } from "ts-poet";
 import { dialectModule } from "../dialect-module.js";
 import type { Dialect } from "../metaobjects-config.js";
 import {
@@ -35,14 +35,12 @@ export interface ViewDeclOpts {
    */
   readonly declaredEnumIntCodecs?: ReadonlySet<string>;
   /**
-   * ADR-0044/#228 — resolve a `field.object` / `field.map`'s `@objectRef` to the
-   * value object's EMITTED name (bare when unique in the run, package-qualified on
-   * a cross-package short-name collision) AND its import module, TOGETHER, so the
-   * imported symbol and its module can never diverge (a bare `Note` symbol pointing
-   * at an `./AcmeAlphaNote.js` module, or vice-versa). Callers build this from
-   * `RenderContext.resolveValueObjectName` + `valueObjectModuleSpecifier`.
+   * The import of `<VO><suffix>` for a `field.object` / `field.map`'s `@objectRef` (the
+   * interface with `suffix` "", the Zod schema with "InsertSchema"): the bound value object's
+   * module, under its local name, so the symbol and its module can never diverge. Callers
+   * build this from `valueObjectFieldImport`.
    */
-  readonly voRef: (field: MetaField) => { name: string; module: string };
+  readonly voRef: (field: MetaField, suffix: string, typeOnly: boolean) => Import;
   /**
    * Field names of the owning object's PRIMARY identity (see
    * `primaryIdentityFieldNames` in zod-validators). A PK column sits on the FROM
@@ -135,15 +133,13 @@ function viewColumnLine(
     dollarType = `.$type<${dtr.tsType}${dtr.array ? "[]" : ""}>()`;
   } else if (dtr?.kind === "objectRef") {
     // #228 — emitted name + module resolved together (lock-step) from the field's ref.
-    const vo = opts.voRef(f);
-    const voTypeSym = imp(`t:${vo.name}@${vo.module}`);
+    const voTypeSym = opts.voRef(f, "", true);
     dollarType = dtr.array ? code`.$type<${voTypeSym}[]>()` : code`.$type<${voTypeSym}>()`;
   } else if (dtr?.kind === "map") {
     if ("scalar" in dtr.value) {
       dollarType = `.$type<Record<string, ${dtr.value.scalar}>>()`;
     } else {
-      const vo = opts.voRef(f);
-      dollarType = code`.$type<Record<string, ${imp(`t:${vo.name}@${vo.module}`)}>>()`;
+      dollarType = code`.$type<Record<string, ${opts.voRef(f, "", true)}>>()`;
     }
   }
   // A6 — reference the constant whenever the artifact is in the run AND carries this
@@ -241,8 +237,7 @@ export function renderViewReadZodObject(fields: readonly MetaField[], opts: View
     if (hasObjectRef) {
       // #228 — the <Ref>InsertSchema symbol + its module resolved together from the
       // field's ref, so a cross-package collision qualifies both consistently.
-      const vo = opts.voRef(f);
-      const schemaSym = imp(`${vo.name}InsertSchema@${vo.module}`);
+      const schemaSym = opts.voRef(f, "InsertSchema", false);
       const base = f.resolvedIsArray() ? code`${z}.array(${schemaSym})` : code`${schemaSym}`;
       return code`  ${f.name}: ${base}${nullable}`;
     }

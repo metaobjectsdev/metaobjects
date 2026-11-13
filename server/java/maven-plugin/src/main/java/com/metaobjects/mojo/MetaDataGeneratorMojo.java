@@ -59,8 +59,11 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
         // metadata — nothing to collide-check in that case.
         if (loader != null) {
             // FR-023: an object a dependency owns gets no route here, so it cannot collide with one.
-            RouteNaming.assertNoCollectionNameCollisions(
-                    com.metaobjects.generator.util.GeneratorUtil.ownMetaObjects(loader));
+            List<com.metaobjects.object.MetaObject> own =
+                    com.metaobjects.generator.util.GeneratorUtil.ownMetaObjects(loader);
+            // #546: two metadata packages that generate into one output directory.
+            com.metaobjects.generator.util.OutputPackageCollisions.assertDistinct(own);
+            RouteNaming.assertNoCollectionNameCollisions(own);
         }
 
         // Where this EXECUTION's codegen hash manifest lives: anchored on the module

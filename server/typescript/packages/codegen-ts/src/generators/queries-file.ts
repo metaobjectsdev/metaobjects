@@ -6,6 +6,7 @@ import { servesReadApi } from "../api-surface.js";
 import { formatTs } from "../format.js";
 import { entityOutputPath } from "../import-path.js";
 import { effectivePackage } from "../docs-paths.js";
+import { claimModuleNames } from "../naming/name-claims.js";
 
 export interface QueriesFileOpts {
   filter?: (entity: MetaObject) => boolean;
@@ -48,6 +49,7 @@ export const queriesFile = function queriesFile(opts?: QueriesFileOpts): Generat
       if (!ctx.renderContext) {
         throw new Error("queries-file: renderContext is required (provided by runGen)");
       }
+      claimModuleNames(ctx, entity);
       return {
         path: entityOutputPath(ctx.config.outputLayout ?? "flat", effectivePackage(entity), `${entity.name}.queries.ts`),
         content: await formatTs(renderQueriesFile(entity, ctx.renderContext)),

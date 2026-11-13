@@ -54,7 +54,7 @@ class ApiDocsGenerator:
     def generate(self, ctx: GenContext) -> list[EmittedFile]:
         if ctx.loaded_root is None:
             return []
-        model = PythonApiModelBuilder(ctx.config.api_prefix).build(ctx.loaded_root, self.project_name)
+        model = PythonApiModelBuilder(ctx.config.api_prefix, ctx.config.output_layout).build(ctx.loaded_root, self.project_name)
         renderer = PythonApiDocsRenderer()
         layout = Layout.PACKAGE
         # Refused before any page is built: two pages that are one file must not half-write.

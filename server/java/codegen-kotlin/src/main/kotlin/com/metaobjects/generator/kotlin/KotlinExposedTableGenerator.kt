@@ -4,6 +4,7 @@ package com.metaobjects.generator.kotlin
 // com.metaobjects.generator.kotlin when this generator is copied out via
 // `mvn metaobjects:eject` and its own package is renamed — an explicit import, not
 // same-package bare-name resolution, is what keeps the ejected copy compiling.
+import com.metaobjects.identity.PrimaryIdentity
 import com.metaobjects.config.WireFormat
 import com.metaobjects.generator.util.GeneratorUtil
 import com.metaobjects.generator.kotlin.ExposedApi
@@ -890,6 +891,19 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         // view column, even when @generation=increment is declared on the primary
         // identity (a relic of the parent entity's declaration).
         val incrementPk = primary?.isIncrement == true && !isView && singlePrimaryFieldName != null
+        // #544: identity.primary @sequenceStart / @sequenceName. FORWARD-ONLY ruling: a database
+        // created through Exposed begins its key at the declared start; a changed start is a
+        // migration concern and Exposed output has no migration path, so there is nothing else to
+        // emit. ADR-0039: RESOLVING read, so an identity inherited through extends carries it.
+        val sequenceStart: Long? = if (incrementPk) primary?.let { id ->
+            if (id.hasMetaAttr(PrimaryIdentity.ATTR_SEQUENCE_START))
+                (id.getMetaAttr(PrimaryIdentity.ATTR_SEQUENCE_START).value as? Number)?.toLong() else null
+        } else null
+        val sequenceName: String? = if (incrementPk) primary?.let { id ->
+            if (id.hasMetaAttr(PrimaryIdentity.ATTR_SEQUENCE_NAME))
+                id.getMetaAttr(PrimaryIdentity.ATTR_SEQUENCE_NAME).valueAsString?.takeIf { it.isNotEmpty() } else null
+        } else null
+        val declaresSequence = sequenceStart != null || sequenceName != null
         // R6 Plan 2a: a single-field uuid PK with @generation:uuid gets a server-side
         // gen_random_uuid() DEFAULT (the Postgres-side mint). Routed through the SAME
         // generation signal as increment — distinct only in the emitted column suffix.
@@ -1032,6 +1046,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 append("package $pkg\n\n")
             }
             append("import ${ExposedImports.core(api, "Table")}\n")
+            if (declaresSequence) append("import ${ExposedImports.core(api, "Sequence")}\n")
             if (fkColumns.any { it.hasReferenceOption } || needsRefOptForDecor) {
                 append("import ${ExposedImports.core(api, "ReferenceOption")}\n")
             }
@@ -1122,6 +1137,15 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                     scalarColumnSpec(entity, field, columnExprFor(field), api)
                 }
                 val withAuto = when {
+                    // #544: a declared start / name draws the key from an explicit Sequence, which
+                    // `SchemaUtils.create` creates `START WITH n`. The default name is Postgres's own
+                    // `<table>_<column>_seq`, which is also the sequence behind an identity column
+                    // the TypeScript migrate engine created, so the same code runs on both schemas.
+                    isPk && incrementPk && declaresSequence -> {
+                        val seq = sequenceName ?: "${tableName}_${KotlinGenUtil.resolveColumnName(field)}_seq"
+                        val start = if (sequenceStart != null) ", startWith = ${sequenceStart}L" else ""
+                        "$baseSpec.autoIncrement(Sequence(\"$seq\"$start))"
+                    }
                     isPk && incrementPk -> "$baseSpec.autoIncrement()"
                     // uuid PK + @generation:uuid → server-side gen_random_uuid() default.
                     isPk && uuidGeneratedPk -> "$baseSpec$GEN_RANDOM_UUID_DEFAULT_SUFFIX"

@@ -34,7 +34,14 @@ namespace MetaObjects.Codegen.Generators;
 /// file-default package), used to resolve a <c>@provided</c> enum's C# namespace via
 /// <see cref="GenConfig.PackageNamespaces"/> (ADR-0001: bind the namespace to the
 /// metadata package, never an FQN in metadata).</summary>
-public sealed record SharedEnum(string Name, IReadOnlyList<string> Values, bool Provided, string Package);
+public sealed record SharedEnum(string Name, IReadOnlyList<string> Values, bool Provided, string Package)
+{
+    /// <summary>The root-level abstract <c>field.enum</c> this enum is materialized from: its
+    /// package places the file (<see cref="OutputPaths.Of(MetaData, GenConfig, string)"/>), and its <c>@intValueMap</c>,
+    /// <c>@enumDoc</c> and doc attrs are the type's member values and XML docs. Null for
+    /// a descriptor built by hand (an adopter's own provided-enum generator).</summary>
+    public MetaField? Declaration { get; init; }
+}
 
 /// <summary>
 /// FR-019 — resolves the shared/provided status of an enum field and collects the
@@ -71,7 +78,10 @@ public static class Fr019SharedEnum
             // reported provided and emit a reference to a hand-written B the adopter never
             // declared, instead of materializing B. Matches the JVM ports.
             Provided: decl.OwnAttr(FIELD_ATTR_PROVIDED) is true,
-            Package: PackageOf(decl));
+            Package: PackageOf(decl))
+        {
+            Declaration = decl,
+        };
     }
 
     /// <summary>
@@ -92,25 +102,38 @@ public static class Fr019SharedEnum
     /// type name. A declaration nobody extends is not materialized (no dangling type).
     /// Deterministic order: first-consumption order across entities (ordinal by name).
     /// </summary>
-    public static IReadOnlyList<SharedEnum> CollectSharedEnums(MetaRoot root, IEnumerable<MetaObject>? alsoReached = null)
+    public static IReadOnlyList<SharedEnum> CollectSharedEnums(MetaRoot root, IEnumerable<MetaObject>? alsoReached = null,
+        Func<MetaObject, bool>? scope = null)
     {
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var outList = new List<SharedEnum>();
         // FR-023: an enum reaches the output iff an object this project generates uses it, decided by the
         // USING object, never by the enum's own package. `alsoReached` is what that object pulls in that
         // is itself imported (a value object whose POCO is emitted because a generated entity holds one).
-        foreach (var entity in root.Objects().Where(root.InScope).Concat(alsoReached ?? []))
+        // A narrowed run (GenContext.Narrow) uses only the objects its scope accepts, plus what it
+        // emits beyond them (alsoReached); null is every in-scope object.
+        foreach (var entity in root.Objects().Where(o => root.InScope(o) && (scope is null || scope(o))).Concat(alsoReached ?? []))
             foreach (var field in entity.Fields())
             {
                 if (SharedEnumForField(field) is not { } shared) continue;
-                if (seen.Add(shared.Name)) outList.Add(shared);
+                // Keyed by package AND name: two packages may each declare a Tier, and each is its own type.
+                if (seen.Add(shared.Package + "::" + shared.Name)) outList.Add(shared);
             }
-        return outList.OrderBy(e => e.Name, StringComparer.Ordinal).ToList();
+        return outList.OrderBy(e => e.Name, StringComparer.Ordinal).ThenBy(e => e.Package, StringComparer.Ordinal).ToList();
     }
 
     /// <summary>The shared enums that metaobjects MATERIALIZES (non-@provided, consumed).</summary>
-    public static IReadOnlyList<SharedEnum> MaterializedSharedEnums(MetaRoot root, IEnumerable<MetaObject>? alsoReached = null) =>
-        CollectSharedEnums(root, alsoReached).Where(e => !e.Provided).ToList();
+    public static IReadOnlyList<SharedEnum> MaterializedSharedEnums(MetaRoot root, IEnumerable<MetaObject>? alsoReached = null,
+        Func<MetaObject, bool>? scope = null) =>
+        CollectSharedEnums(root, alsoReached, scope).Where(e => !e.Provided).ToList();
+
+    /// <summary>The namespace a materialized (non-<c>@provided</c>) shared enum is declared in: its
+    /// declaring package's, through the package binding, when package namespaces are on; else
+    /// <see cref="GenConfig.Namespace"/>.</summary>
+    public static string MaterializedNamespace(SharedEnum shared, GenConfig config) =>
+        config.PackageNamespacesFromMetadata
+            ? PackageBindingResolver.Resolve(config, shared.Package, shared.Name, fallbackContext: shared.Name)
+            : config.Namespace;
 
     /// <summary>
     /// The C# type reference a consuming field emits for a shared/provided enum:
@@ -122,7 +145,11 @@ public static class Fr019SharedEnum
     /// </summary>
     public static string SharedEnumTypeReference(SharedEnum shared, GenConfig config)
     {
-        if (!shared.Provided) return shared.Name;
+        // Package namespaces on: a materialized enum is global::-qualified in its own namespace.
+        if (!shared.Provided)
+            return config.PackageNamespacesFromMetadata
+                ? ValueObjectNames.Global(MaterializedNamespace(shared, config), shared.Name)
+                : shared.Name;
         // Bind the namespace to the enum's declaring metadata package (ADR-0001):
         //   TypeOverrides → PackageNamespaces → Convention with ProvidedEnumPrepend →
         //   ProvidedEnumNamespace (FR-019 legacy single-string fallback) → Error.

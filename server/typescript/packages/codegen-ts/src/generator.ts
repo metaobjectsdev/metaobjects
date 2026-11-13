@@ -157,6 +157,18 @@ export interface GenContext {
    * supplied none; returns undefined when the model declares no requirement.
    */
   requirementLedger?: () => unknown;
+  /**
+   * The run's one claim registry: claim a name as it is emitted into a shared scope. The first
+   * claimant owns it; another claimant of the same name in the same scope is refused
+   * (`ERR_NAME_COLLISION`), naming both and `remedy`. The same claimant claiming again is not a
+   * collision, and one name in two scopes is two names. Shared by every generator of a `runGen`;
+   * absent on a direct `.generate(ctx)` call, where nothing is claimed. The helpers in
+   * `naming/name-claims.ts` claim the names the reference generators emit.
+   */
+  claim?: (scope: string, name: string, claimant: string, remedy: string) => void;
+  /** This generator's entry in the run's list, `#n`: for a scope that is one entry's own (a
+   *  routes entry's segments). Absent outside `runGen`. */
+  entryLabel?: string;
   warn: (msg: string) => void;
 }
 

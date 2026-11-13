@@ -40,7 +40,7 @@ import {
   hasNested,
 } from "./extract-delegate-emitter.js";
 import type { RenderContext } from "../render-context.js";
-import { valueObjectImport } from "./value-object-import.js";
+import { emittedVoName, importBinding, valueObjectImport } from "./value-object-import.js";
 
 /**
  * Wire-shape validators per field subtype, for a JSON reply from a model.
@@ -201,7 +201,7 @@ export function renderOutputParser(
   // ADR-0056: the strict parse returns the @responseRef value object's OWN interface (declared by
   // entityFile()). The wire schema below validates the reply; the interface types it. `tsc` checks
   // the schema's output is assignable to the interface, so the two cannot drift silently.
-  const { name: dataName, specifier: dataSpecifier } = valueObjectImport(ctx, vo, outPath);
+  const { name: dataName, exported: dataExported, specifier: dataSpecifier } = valueObjectImport(ctx, vo, outPath);
   const errorName = `${base}ValidationError`;
   const parseName = `parse${base}`;
   const safeParseName = `safeParse${base}`;
@@ -304,8 +304,8 @@ export function ${safeParseName}(
   //
   // ADR-0044/#228 — `root.findObject()` (MetaRoot's public runtime API) is a BARE-name-only,
   // first-match lookup with no package awareness. If THIS PAYLOAD's own bare name collides with
-  // a same-short-name value-object elsewhere in the run (the identical signal Option A already
-  // computes: `ctx.valueObjectEmittedName(vo)` diverges from the bare name), a bare lookup could
+  // a same-short-name object elsewhere in the model (the signal the local name already carries:
+  // `emittedVoName(ctx, vo)` diverges from the bare name), a bare lookup could
   // silently resolve to the WRONG package's object at runtime (load-order-dependent — the exact
   // hazard class ADR-0042 closed everywhere else). When it does collide, bake the FQN
   // (`resolutionKey()`) instead and resolve it via the SAME canonical ADR-0042 `resolveObjectRef`
@@ -313,7 +313,7 @@ export function ${safeParseName}(
   // non-colliding payload keeps the bare name + `root.findObject()` path — byte-identical to
   // pre-#228 output.
   const payloadName = vo.name;
-  const emittedPayloadName = ctx ? ctx.valueObjectEmittedName(vo) : payloadName;
+  const emittedPayloadName = emittedVoName(ctx, vo);
   const payloadNameCollides = emittedPayloadName !== payloadName;
   const bakedPayloadName = payloadNameCollides ? vo.resolutionKey() : payloadName;
   const rootMapper = mapperName(vo, ctx);
@@ -374,7 +374,7 @@ export function ${extractLenientWithName}(
   // would otherwise carry an unused import (tsc noUnusedLocals-unsafe).
   return (
     (emitStrict ? `import { z } from "zod";\n` : "") +
-    (emitStrict ? `import type { ${dataName} } from ${JSON.stringify(dataSpecifier)};\n` : "") +
+    (emitStrict ? `import type { ${importBinding(dataExported, dataName)} } from ${JSON.stringify(dataSpecifier)};\n` : "") +
     `import {\n  ${renderImports.join(",\n  ")},\n} from "@metaobjectsdev/render";\n` +
     metadataImport +
     runtimeImport +

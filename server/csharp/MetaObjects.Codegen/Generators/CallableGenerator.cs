@@ -70,8 +70,8 @@ public class CallableGenerator : PerEntityGenerator
         // SourcePrimaryFunction for a tableFunction — so the emitted member says WHAT it is.
         var strategy = ctx.Config.ColumnNamingStrategy;
         var includeNames = ctx.Config.IncludeNames;
-        var procMember = CSharpNaming.SourceNameMember(entity, strategy, includeNames, source.Role);
-        var schemaMember = CSharpNaming.SourceSchemaMember(entity, strategy, includeNames, source.Role);
+        var procMember = CSharpNaming.SourceNameMember(entity, strategy, includeNames, source.Role, ctx.Config);
+        var schemaMember = CSharpNaming.SourceSchemaMember(entity, strategy, includeNames, source.Role, ctx.Config);
         // The schema prefix as it appears INSIDE the FromSqlRaw concatenation on the names
         // arm: `" + XNames.SourcePrimarySchema + "."`. Empty when the callable declares no @schema.
         var schemaPrefixExpr = schemaMember is null
@@ -110,11 +110,15 @@ public class CallableGenerator : PerEntityGenerator
         var fromSql = procMember is null
             ? $"FromSqlInterpolated($\"SELECT * FROM {procName}({sqlArgs})\")"
             : $"FromSqlRaw(\"SELECT * FROM {schemaPrefixExpr}\" + {procMember} + \"({rawPlaceholders})\"{rawArgs})";
-        var ctxType = ctx.Config.ContextTypeName;
+        var pkgMode = ctx.Config.PackageNamespacesFromMetadata;
+        var ctxType = ValueObjectNames.ContextTypeRef(ctx.Config);
         // Use the resolved args VO's C# type name — @parameterRef (and source.ParameterRef)
         // can be a package-qualified FQN ("acme::reporting::FooArgs"), and the "::" separator
         // is invalid in a C# parameter type (CS7000). Pascal(Name) yields the emitted type.
-        var argsType = hasArgs ? ValueObjectNames.TypeName(argsObject!, ctx.Root) : null;
+        var argsType = hasArgs
+            ? (pkgMode ? ValueObjectNames.GlobalRef(argsObject!, ctx.Config) : ValueObjectNames.TypeName(argsObject!, ctx.Root))
+            : null;
+        var resultType = pkgMode ? ValueObjectNames.GlobalRef(entity, ctx.Config) : cls;
         var signature = hasArgs ? $"{ctxType} db, {argsType} args" : $"{ctxType} db";
 
         var sb = new StringBuilder();
@@ -137,6 +141,7 @@ public class CallableGenerator : PerEntityGenerator
         // they differ.
         var fileNs = ctx.Config.Namespace;
         foreach (var ns in new[] { callableNs, argsNs }
+            .Where(n => !pkgMode)
             .Where(n => !string.IsNullOrEmpty(n) && n != fileNs)
             .Distinct(StringComparer.Ordinal)
             .OrderBy(n => n, StringComparer.Ordinal))
@@ -144,29 +149,33 @@ public class CallableGenerator : PerEntityGenerator
             sb.AppendLine($"using {ns};");
         }
         sb.AppendLine();
+        ctx.Claim($"the C# namespace {fileNs}", $"{cls}Callable", entity.ResolutionKey(), "rename one (a callable wrapper is declared in the configured namespace, GenConfig.Namespace, whatever its package, "
+            + "so the two packages do not keep them apart)");
         sb.AppendLine($"namespace {ctx.Config.Namespace};");
         sb.AppendLine();
         var kindNoun = source.EffectiveKind == SOURCE_KIND_STORED_PROC ? "stored procedure" : "table function";
         // The doc summary names the procedure the same way the SQL does — by the constant on
         // the names-ON arm (with the schema, when any, still spelled), literally otherwise.
-        var procDoc = procMember is null
+        var procDocMember = CSharpNaming.SourceNameMember(entity, strategy, includeNames, source.Role);
+        var schemaDocMember = CSharpNaming.SourceSchemaMember(entity, strategy, includeNames, source.Role);
+        var procDoc = procDocMember is null
             ? $"the <c>{procName}</c> {kindNoun}"
-            : $"the {kindNoun} named by <c>{procMember}</c>{(schemaMember is null ? "" : $" in schema <c>{schemaMember}</c>")}";
+            : $"the {kindNoun} named by <c>{procDocMember}</c>{(schemaDocMember is null ? "" : $" in schema <c>{schemaDocMember}</c>")}";
         sb.AppendLine("/// <summary>");
         sb.AppendLine($"/// FR-015: typed wrapper around {procDoc}. Arguments bind in");
         sb.AppendLine($"/// declaration order from the @parameterRef value-object{(hasArgs ? $" (<c>{argsObjectName}</c>)" : string.Empty)}.");
         sb.AppendLine("/// </summary>");
         sb.AppendLine($"public static class {cls}Callable");
         sb.AppendLine("{");
-        sb.AppendLine($"    public static async Task<IReadOnlyList<{cls}>> Call({signature})");
+        sb.AppendLine($"    public static async Task<IReadOnlyList<{resultType}>> Call({signature})");
         sb.AppendLine("    {");
-        sb.AppendLine($"        return await db.Set<{cls}>()");
+        sb.AppendLine($"        return await db.Set<{resultType}>()");
         sb.AppendLine($"            .{fromSql}");
         sb.AppendLine("            .AsNoTracking()");
         sb.AppendLine("            .ToListAsync();");
         sb.AppendLine("    }");
         sb.AppendLine("}");
 
-        return new EmittedFile($"{cls}.callable.g.cs", sb.ToString());
+        return new EmittedFile(OutputPaths.Of(entity, ctx, $"{cls}.callable.g.cs"), sb.ToString());
     }
 }

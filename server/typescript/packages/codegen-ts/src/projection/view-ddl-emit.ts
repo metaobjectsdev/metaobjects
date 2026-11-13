@@ -1,6 +1,9 @@
+import { pgType, type SqlType } from "@metaobjectsdev/migrate-ts/expected";
 import type {
-  JoinNode, ViewSpec, ViewFilterClause, ViewExprNode, ViewOrderKey, SelectColumn,
+  JoinNode, ViewSpec, ViewFilterClause, ViewExprNode, ViewOrderKey, SelectColumn, ColRef,
 } from "./view-spec.js";
+import { isRelativeNow } from "./report-spec.js";
+import { relativeNowSql } from "./time-sql.js";
 
 // Quote an identifier only when it isn't a plain lowercase snake identifier —
 // exactly postgres's own rule. This keeps snake_case output unquoted (the common
@@ -27,6 +30,13 @@ export interface EmitOptions {
   /** Map from entity name → table name for every entity referenced in joins. */
   readonly joinTables: Readonly<Record<string, string>>;
   /**
+   * Map from entity name (the `joinTables` keys, the base entity included) to its declared
+   * `@schema`. Postgres qualifies a relation with it when the entity declares one, so the view
+   * reads that schema's table whatever `search_path` is current when it is created. An entity
+   * with no `@schema` stays a bare name. SQLite and D1 have no schemas here and stay bare.
+   */
+  readonly tableSchemas?: Readonly<Record<string, string | undefined>>;
+  /**
    * When true, return only the view BODY (`SELECT … FROM …`, no `CREATE VIEW … AS`
    * wrapper, no trailing `;`). This is what migrate-ts's expected-schema/diff layer
    * consumes (it re-wraps the body); the full statement is for direct application.
@@ -34,9 +44,19 @@ export interface EmitOptions {
   readonly bodyOnly?: boolean;
 }
 
+/** A relation a view reads, as the FROM / JOIN / subquery names it: schema-qualified on Postgres
+ *  only when the entity declares a `@schema`. */
+export function viewRelation(entity: string, table: string, options: EmitOptions): string {
+  const schema = options.dialect === "postgres" ? options.tableSchemas?.[entity] : undefined;
+  return schema === undefined ? quoteIfNeeded(table) : `${quoteIfNeeded(schema)}.${quoteIfNeeded(table)}`;
+}
+
 /** SQL literal for a filter value, dialect-aware for booleans. */
 function sqlLiteral(value: unknown, dialect: EmitOptions["dialect"]): string {
   if (value === null || value === undefined) return "NULL";
+  // A relative date is the dialect's shifted "now"; a base-row operand is its column.
+  if (isRelativeNow(value)) return relativeNowSql(value.duration, value.temporal, dialect, value.startOf);
+  if (isColRef(value)) return quoteRef(value.ref);
   if (typeof value === "number") return String(value);
   if (typeof value === "boolean") {
     return dialect === "sqlite" ? (value ? "1" : "0") : (value ? "TRUE" : "FALSE");
@@ -48,22 +68,34 @@ const FILTER_OP_SQL: Readonly<Record<string, string>> = {
   eq: "=", ne: "<>", gt: ">", gte: ">=", lt: "<", lte: "<=", like: "LIKE",
 };
 
+/** The null-safe comparisons of a correlated origin `@filter`, per dialect (SQLite's IS / IS NOT are null-safe). */
+function nullSafeOpSql(op: string, dialect: EmitOptions["dialect"]): string | undefined {
+  if (op === "isDistinctFrom") return dialect === "sqlite" ? "IS NOT" : "IS DISTINCT FROM";
+  if (op === "isNotDistinctFrom") return dialect === "sqlite" ? "IS" : "IS NOT DISTINCT FROM";
+  return undefined;
+}
+
+function isColRef(v: unknown): v is ColRef {
+  return typeof v === "object" && v !== null && (v as { kind?: unknown }).kind === "colRef";
+}
+
 /** Render a resolved {@link ViewFilterClause} to a SQL boolean expression. */
-function renderFilterCond(clause: ViewFilterClause, dialect: EmitOptions["dialect"]): string {
+function renderFilterCond(clause: ViewFilterClause, options: EmitOptions): string {
+  const dialect = options.dialect;
   if (clause.kind === "and" || clause.kind === "or") {
-    const joined = clause.clauses.map((c) => renderFilterCond(c, dialect)).join(clause.kind === "and" ? " AND " : " OR ");
+    const joined = clause.clauses.map((c) => renderFilterCond(c, options)).join(clause.kind === "and" ? " AND " : " OR ");
     return `(${joined})`;
   }
   // The left-hand side is a bare `alias.column` for a `cmp`, or a parenthesized
   // inlined computed expression for #207's `exprCmp` (a projection @filter ref to
   // an origin.computed field). The op handling below is identical for both.
-  const lhs = clause.kind === "exprCmp" ? `(${renderExpr(clause.expr, dialect)})` : quoteRef(clause.ref);
+  const lhs = clause.kind === "exprCmp" ? `(${renderExpr(clause.expr, options)})` : quoteRef(clause.ref);
   if (clause.op === "isNull") return clause.value === false ? `${lhs} IS NOT NULL` : `${lhs} IS NULL`;
   if (clause.op === "in") {
     const vals = (Array.isArray(clause.value) ? clause.value : [clause.value]).map((v) => sqlLiteral(v, dialect));
     return `${lhs} IN (${vals.join(", ")})`;
   }
-  const op = FILTER_OP_SQL[clause.op];
+  const op = FILTER_OP_SQL[clause.op] ?? nullSafeOpSql(clause.op, dialect);
   if (!op) throw new Error(`view-ddl-emit: unsupported filter operator "${clause.op}".`);
   return `${lhs} ${op} ${sqlLiteral(clause.value, dialect)}`;
 }
@@ -84,27 +116,44 @@ function renderOrderKeys(keys: readonly ViewOrderKey[], alias: string): string {
 }
 
 /** Lower a resolved computed expression tree (#195 origin.computed) to a SQL scalar expression. */
-function renderExpr(node: ViewExprNode, dialect: EmitOptions["dialect"]): string {
+function renderExpr(node: ViewExprNode, options: EmitOptions): string {
   switch (node.kind) {
     case "col":
       return quoteRef(node.ref);
     case "lit":
-      return sqlLiteral(node.value, dialect);
+      return sqlLiteral(node.value, options.dialect);
     case "cmp": {
       const op = FILTER_OP_SQL[node.op];
       if (!op) throw new Error(`view-ddl-emit: unsupported computed comparison operator "${node.op}".`);
-      return `${renderExpr(node.left, dialect)} ${op} ${renderExpr(node.right, dialect)}`;
+      return `${renderExpr(node.left, options)} ${op} ${renderExpr(node.right, options)}`;
     }
     case "nullTest":
-      return `${renderExpr(node.arg, dialect)} IS ${node.negated ? "NOT " : ""}NULL`;
+      return `${renderExpr(node.arg, options)} IS ${node.negated ? "NOT " : ""}NULL`;
     case "not":
-      return `NOT (${renderExpr(node.arg, dialect)})`;
+      return `NOT (${renderExpr(node.arg, options)})`;
     case "logic": {
       const joiner = node.op === "and" ? " AND " : " OR ";
-      return `(${node.args.map((a) => renderExpr(a, dialect)).join(joiner)})`;
+      return `(${node.args.map((a) => renderExpr(a, options)).join(joiner)})`;
     }
     case "coalesce":
-      return `COALESCE(${node.args.map((a) => renderExpr(a, dialect)).join(", ")})`;
+      return `COALESCE(${node.args.map((a) => renderExpr(a, options)).join(", ")})`;
+    case "first": {
+      // An inlined `first` correlates with the row it sits in; without that alias the subquery
+      // would compare against `.fk` and the view would fail only when it is applied.
+      const outer = node.column.outerAlias;
+      if (outer === undefined || outer.length === 0) {
+        throw new Error(`view-ddl-emit: an inlined origin.first for "${node.column.fieldName}" has no outer alias to correlate with.`);
+      }
+      return firstSubquery(node.column, options, outer);
+    }
+    case "now":
+      return relativeNowSql(node.value.duration, node.value.temporal, options.dialect, node.value.startOf);
+    case "case": {
+      const arms = node.whens.map((w) => ` WHEN ${renderExpr(w.when, options)} THEN ${renderExpr(w.then, options)}`).join("");
+      const head = node.operand !== undefined ? `CASE ${renderExpr(node.operand, options)}` : "CASE";
+      const otherwise = node.else !== undefined ? ` ELSE ${renderExpr(node.else, options)}` : "";
+      return `(${head}${arms}${otherwise} END)`;
+    }
   }
 }
 
@@ -119,11 +168,36 @@ function renderFirst(
   options: EmitOptions,
   baseAlias: string,
 ): string {
+  return `${firstSubquery(c, options, baseAlias)} AS ${quoteIfNeeded(c.dbColAlias)}`;
+}
+
+/** The correlated scalar subquery of an `origin.first`, keyed on the row at `baseAlias`. */
+function firstSubquery(
+  c: Extract<SelectColumn, { kind: "first" }>,
+  options: EmitOptions,
+  baseAlias: string,
+): string {
   const childTable = options.joinTables[c.childEntity];
   if (!childTable) {
     throw new Error(`view-ddl-emit: no table name registered for origin.first child entity "${c.childEntity}".`);
   }
-  const of = `${c.childAlias}.${quoteIfNeeded(c.sourceColumn)}`;
+  // The selected row is the LAST join's; the first hop is the correlated one.
+  const term = c.innerJoins !== undefined && c.innerJoins.length > 0 ? c.innerJoins[c.innerJoins.length - 1]!.alias : c.childAlias;
+  const of = `${term}.${quoteIfNeeded(c.sourceColumn)}`;
+  let prev = c.childAlias;
+  let joins = "";
+  for (const j of c.innerJoins ?? []) {
+    const table = options.joinTables[j.entity];
+    if (!table) throw new Error(`view-ddl-emit: no table name registered for origin.first hop entity "${j.entity}".`);
+    const on = j.referenceHolder === "source"
+      ? `${j.alias}.${quoteIfNeeded(j.pkColumn)} = ${prev}.${quoteIfNeeded(j.fkColumn)}`
+      : `${j.alias}.${quoteIfNeeded(j.fkColumn)} = ${prev}.${quoteIfNeeded(j.pkColumn)}`;
+    const scope = j.tphScope !== undefined
+      ? ` AND ${j.alias}.${quoteIfNeeded(j.tphScope.column)}${tphScopeSql(j.tphScope.values, (v) => sqlLiteral(v, options.dialect))}`
+      : "";
+    joins += ` INNER JOIN ${viewRelation(j.entity, table, options)} ${j.alias} ON ${on}${scope}`;
+    prev = j.alias;
+  }
   const fk = quoteIfNeeded(c.fkColumn);
   const pk = quoteIfNeeded(c.pkColumn);
   // Mirror renderJoin's ON clause, with the child in the subquery and the base outside.
@@ -132,17 +206,17 @@ function renderFirst(
   const correlation = c.referenceHolder === "source"
     ? `${c.childAlias}.${pk} = ${baseAlias}.${fk}`
     : `${c.childAlias}.${fk} = ${baseAlias}.${pk}`;
-  const filterClause = c.filter ? ` AND ${renderFilterCond(c.filter, options.dialect)}` : "";
+  const filterClause = c.filter ? ` AND ${renderFilterCond(c.filter, options)}` : "";
   // The @orderBy keys carry the nulls-last pin; the appended PK tie-breaker never does
   // (a primary key is non-null, so NULLS LAST would be noise). Its ASC direction makes
   // equal-order rows byte-deterministic.
-  const tieBreak = `${c.childAlias}.${quoteIfNeeded(c.childPkColumn)} ASC`;
+  const tieBreak = `${term}.${quoteIfNeeded(c.childPkColumn)} ASC`;
   const orderKeys = c.orderBy.length > 0
-    ? `${renderOrderKeys(c.orderBy, c.childAlias)}, ${tieBreak}`
+    ? `${renderOrderKeys(c.orderBy, term)}, ${tieBreak}`
     : tieBreak;
   return (
-    `(SELECT ${of} FROM ${quoteIfNeeded(childTable)} ${c.childAlias}` +
-    ` WHERE ${correlation}${filterClause} ORDER BY ${orderKeys} LIMIT 1) AS ${quoteIfNeeded(c.dbColAlias)}`
+    `(SELECT ${of} FROM ${viewRelation(c.childEntity, childTable, options)} ${c.childAlias}${joins}` +
+    ` WHERE ${correlation}${filterClause} ORDER BY ${orderKeys} LIMIT 1)`
   );
 }
 
@@ -235,12 +309,17 @@ function sqliteCollectOuter(c: CollectColumn): string {
 const isCollect = (c: SelectColumn): c is CollectColumn =>
   c.kind === "collectAgg" || c.kind === "collectObjectAgg";
 
+/** A column the declared type must win over, cast to it on Postgres (SQLite views are untyped). */
+function cast(sql: string, to: SqlType | undefined, dialect: EmitOptions["dialect"]): string {
+  return to === undefined || dialect !== "postgres" ? sql : `CAST(${sql} AS ${pgType(to)})`;
+}
+
 function renderColumn(c: SelectColumn, options: EmitOptions, baseAlias: string): string {
   const dialect = options.dialect;
   const alias = quoteIfNeeded(c.dbColAlias);
 
   if (c.kind === "passthrough") {
-    return `${c.sourceAlias}.${quoteIfNeeded(c.sourceColumn)} AS ${alias}`;
+    return `${cast(`${c.sourceAlias}.${quoteIfNeeded(c.sourceColumn)}`, c.castTo, dialect)} AS ${alias}`;
   }
 
   if (c.kind === "aggregate") {
@@ -248,7 +327,7 @@ function renderColumn(c: SelectColumn, options: EmitOptions, baseAlias: string):
     // aggregate — use DISTINCT for count() over joined PKs to avoid join inflation.
     // A scoping @filter renders as postgres `FILTER (WHERE …)`; sqlite (no aggregate
     // FILTER pre-3.30) uses the portable `CASE WHEN … END` argument form.
-    const cond = c.filter ? renderFilterCond(c.filter, dialect) : undefined;
+    const cond = c.filter ? renderFilterCond(c.filter, options) : undefined;
     if (c.agg === "count") {
       if (cond && dialect === "sqlite") return `COUNT(DISTINCT CASE WHEN ${cond} THEN ${src} END) AS ${alias}`;
       if (cond) return `COUNT(DISTINCT ${src}) FILTER (WHERE ${cond}) AS ${alias}`;
@@ -263,7 +342,7 @@ function renderColumn(c: SelectColumn, options: EmitOptions, baseAlias: string):
   if (c.kind === "predicateAgg") {
     // #195 any/all. The phantom-row guard (joined.pk IS NOT NULL) EXCLUDES null-extended
     // LEFT-JOIN non-matches, so the empty-related-set pins hold: any=false / all=true.
-    const pred = renderFilterCond(c.pred, dialect);
+    const pred = renderFilterCond(c.pred, options);
     const guard = `${c.sourceAlias}.${quoteIfNeeded(c.joinedPkColumn)} IS NOT NULL`;
     if (dialect === "sqlite") {
       // No boolean aggregates: MAX≡bool_or, MIN≡bool_and over 1/0. The outer CASE yields
@@ -325,11 +404,16 @@ function renderColumn(c: SelectColumn, options: EmitOptions, baseAlias: string):
   }
 
   if (c.kind === "computed") {
-    return `${renderExpr(c.expr, dialect)} AS ${alias}`;
+    return `${cast(renderExpr(c.expr, options), c.castTo, dialect)} AS ${alias}`;
   }
 
   // first — a correlated scalar subquery keyed on the base alias.
   return renderFirst(c, options, baseAlias);
+}
+
+/** A TPH scope's comparison after its column: ` = v` for one value, ` IN (a, b)` for several. */
+export function tphScopeSql(values: readonly (string | number)[], literal: (v: string | number) => string): string {
+  return values.length === 1 ? ` = ${literal(values[0]!)}` : ` IN (${values.map(literal).join(", ")})`;
 }
 
 function renderJoin(
@@ -354,10 +438,13 @@ function renderJoin(
   const onClause = node.referenceHolder === "source"
     ? `${childAlias}.${pkCol} = ${parentAlias}.${fkCol}`
     : `${childAlias}.${fkCol} = ${parentAlias}.${pkCol}`;
-  // #209 — join type derived from FK optionality (extract-view-spec): a required
-  // belongs-to FK → INNER (matches the hand-written INNER-join view); else LEFT OUTER.
-  const joinKw = node.joinType === "inner" ? "INNER JOIN" : "LEFT OUTER JOIN";
-  let sql = `  ${joinKw} ${quoteIfNeeded(table)} ${childAlias} ON ${onClause}`;
+  // Every generated view join is LEFT OUTER.
+  const joinKw = "LEFT OUTER JOIN";
+  // A join onto a TPH level keeps only its rows of the shared table.
+  const scope = node.tphScope !== undefined
+    ? ` AND ${childAlias}.${quoteIfNeeded(node.tphScope.column)}${tphScopeSql(node.tphScope.values, (v) => sqlLiteral(v, options.dialect))}`
+    : "";
+  let sql = `  ${joinKw} ${viewRelation(node.targetEntity, table, options)} ${childAlias} ON ${onClause}${scope}`;
   for (const childJoin of node.children) {
     sql += "\n" + renderJoin(childJoin, childAlias, options);
   }
@@ -368,7 +455,7 @@ export function emitViewDdl(spec: ViewSpec, options: EmitOptions): string {
   const cols = spec.selectSpec.columns
     .map((c) => "    " + renderColumn(c, options, spec.joinTree.baseAlias))
     .join(",\n");
-  const fromClause = `  FROM ${quoteIfNeeded(options.baseTableName)} ${spec.joinTree.baseAlias}`;
+  const fromClause = `  FROM ${viewRelation(spec.joinTree.baseEntity, options.baseTableName, options)} ${spec.joinTree.baseAlias}`;
   const joinsClause = spec.joinTree.joins
     .map((j) => renderJoin(j, spec.joinTree.baseAlias, options))
     .join("\n");
@@ -377,7 +464,7 @@ export function emitViewDdl(spec: ViewSpec, options: EmitOptions): string {
   // filters rows, not aggregate groups — a post-aggregate HAVING is a separate concern).
   const whereClause =
     spec.where !== undefined
-      ? `\n  WHERE ${renderFilterCond(spec.where, options.dialect)}`
+      ? `\n  WHERE ${renderFilterCond(spec.where, options)}`
       : "";
   const groupByClause =
     spec.groupBy.length > 0

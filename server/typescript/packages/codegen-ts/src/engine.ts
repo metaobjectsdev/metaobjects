@@ -32,6 +32,7 @@ export * from "./instance-artifacts.js";
 export * from "./metaobjects-config.js";
 export * from "./names.js";
 export * from "./naming.js";
+export * from "./naming/name-claims.js";
 export * from "./owned-runtime.js";
 export * from "./pk-resolver.js";
 export * from "./projection/build-projection-views.js";

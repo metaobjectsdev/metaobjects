@@ -19,7 +19,11 @@ import { loadScenarios, runScenario } from "../src/api-contract-scenario.ts";
 import { startGeneratedCorpusServer, type CorpusEngine, type GeneratedCorpusSpec } from "../src/api-contract-decimal-server.ts";
 import type { ReportSeed } from "../src/api-contract-report-generated-server.ts";
 import { startMysql, type MysqlContainerHandle } from "../src/mysql-container.ts";
-import { startPostgres } from "../src/postgres-container.ts";
+import { OUTPUT_LAYOUTS, postgresFor, type OutputLayout } from "../src/output-layout.ts";
+import type { RunningPg } from "../src/postgres-container.ts";
+
+/** Which output layout a lane generates in, and where its Postgres databases come from. */
+interface Lane { layout: OutputLayout; startPg: (() => Promise<RunningPg>) | undefined }
 
 const SEED = JSON.parse(readFileSync(join(API_CONTRACT_DURATION_DIR, "seed.json"), "utf8")) as ReportSeed;
 const META_PATH = join(API_CONTRACT_DURATION_DIR, "meta.json");
@@ -42,18 +46,18 @@ let mysqlContainer: MysqlContainerHandle | undefined;
 beforeAll(async () => { mysqlContainer = await startMysql(); }, 240_000);
 afterAll(() => { mysqlContainer?.stop(); }, 60_000);
 
-async function withServer(engine: CorpusEngine, fn: (baseUrl: string) => Promise<void>): Promise<void> {
+async function withServer(engine: CorpusEngine, lane: Lane, fn: (baseUrl: string) => Promise<void>): Promise<void> {
   if (engine === "postgres") {
-    const pg = await startPostgres();
+    const pg = await lane.startPg!();
     try {
-      const server = await startGeneratedCorpusServer(DURATION, engine, META_PATH, pg.connectionUri);
+      const server = await startGeneratedCorpusServer(DURATION, engine, META_PATH, pg.connectionUri, lane.layout);
       try { await server.applySeed(SEED); await fn(server.baseUrl); } finally { await server.close(); }
     } finally {
       await pg.stop();
     }
     return;
   }
-  const server = await startGeneratedCorpusServer(DURATION, engine, META_PATH, engine === "mysql" ? mysqlContainer!.url : undefined);
+  const server = await startGeneratedCorpusServer(DURATION, engine, META_PATH, engine === "mysql" ? mysqlContainer!.url : undefined, lane.layout);
   try { await server.applySeed(SEED); await fn(server.baseUrl); } finally { await server.close(); }
 }
 
@@ -61,11 +65,12 @@ const scenarios = loadScenarios(API_CONTRACT_DURATION_SCENARIOS_DIR);
 
 test("the duration corpus has scenarios", () => { expect(scenarios.length).toBeGreaterThan(0); });
 
-for (const engine of ENGINES) describe(`api contract duration — GENERATED routes on ${engine}`, () => {
+for (const layout of OUTPUT_LAYOUTS) for (const engine of ENGINES) describe(`api contract duration — GENERATED routes on ${engine} [${layout}]`, () => {
+  const lane: Lane = { layout, startPg: engine === "postgres" ? postgresFor(layout) : undefined };
   for (const scenario of scenarios) {
     if (scenario.engines !== undefined && !scenario.engines.includes(engine)) continue;
     test(scenario.name, async () => {
-      await withServer(engine, (baseUrl) => runScenario(scenario, baseUrl));
+      await withServer(engine, lane, (baseUrl) => runScenario(scenario, baseUrl));
     }, { timeout: 120_000 });
   }
 });

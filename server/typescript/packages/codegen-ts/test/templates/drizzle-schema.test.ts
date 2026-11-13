@@ -280,6 +280,28 @@ describe("renderDrizzleSchema — Postgres", () => {
     });
   }
 
+  test("#544: a declared @sequenceStart / @sequenceName reach Drizzle's identity options", () => {
+    const entity = metaObject(OBJECT_SUBTYPE_ENTITY, "Ticket");
+    entity.addChild(metaField(FIELD_SUBTYPE_LONG, "id"));
+    const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
+    primary.setAttr("fields", ["id"]);
+    primary.setAttr("generation", "increment");
+    primary.setAttr("sequenceStart", 1000);
+    primary.setAttr("sequenceName", "Old_Id_seq");
+    entity.addChild(primary);
+    const root = makeRoot([entity]);
+    const ctx = makeRenderContext({
+      dialect: "postgres",
+      loadedRoot: root,
+      outDir: "/x",
+      dbImport: "~/db",
+      pkMap: buildPkMap(root),
+      relationMap: buildRelationMap(root),
+    });
+    const out = renderDrizzleSchema(root.findObject("Ticket")!, ctx).toString();
+    expect(out.replace(/\s+/g, " ")).toContain('.generatedByDefaultAsIdentity({ name: "Old_Id_seq", startWith: 1000, })');
+  });
+
   test("Postgres increment PK emits no serial/bigserial sugar in any form", () => {
     const root = makeRoot([makePost()]);
     const ctx = makeRenderContext({

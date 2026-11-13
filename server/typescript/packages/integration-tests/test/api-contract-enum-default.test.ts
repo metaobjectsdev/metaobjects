@@ -9,7 +9,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { API_CONTRACT_ENUM_DEFAULT_DIR, API_CONTRACT_ENUM_DEFAULT_SCENARIOS_DIR } from "../src/paths.ts";
 import { loadScenarios, assertResponse, type ApiScenario, parseBodyExact } from "../src/api-contract-scenario.ts";
-import { startPostgres } from "../src/postgres-container.ts";
+import { OUTPUT_LAYOUTS, postgresFor } from "../src/output-layout.ts";
 import {
   startGeneratedEnumDefaultServer,
   type GeneratedEnumDefaultServerHandle,
@@ -19,13 +19,14 @@ import {
 const SEED = JSON.parse(readFileSync(join(API_CONTRACT_ENUM_DEFAULT_DIR, "seed.json"), "utf8")) as EnumDefaultSeed;
 const META_PATH = join(API_CONTRACT_ENUM_DEFAULT_DIR, "meta.json");
 
-describe("api contract enum default — GENERATED routes lane", () => {
+for (const layout of OUTPUT_LAYOUTS) describe(`api contract enum default — GENERATED routes lane [${layout}]`, () => {
+  const startDb = postgresFor(layout);
   for (const scenario of loadScenarios(API_CONTRACT_ENUM_DEFAULT_SCENARIOS_DIR)) {
     test(scenario.name, async () => {
-      const pg = await startPostgres();
+      const pg = await startDb();
       let server: GeneratedEnumDefaultServerHandle | null = null;
       try {
-        server = await startGeneratedEnumDefaultServer(pg.connectionUri, META_PATH);
+        server = await startGeneratedEnumDefaultServer(pg.connectionUri, META_PATH, layout);
         await server.applySeed(SEED);
         await runScenario(scenario, server);
       } finally {

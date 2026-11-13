@@ -66,6 +66,13 @@ public class CodegenCompileConformanceTests
 
     private static string CorpusMetadata => CorpusPaths.FitnessMetadata;
 
+    private static string Leaf(string path) => path[(path.LastIndexOf('/') + 1)..];
+
+    // Every package of the corpus, bound to a namespace with a System segment.
+    private static Dictionary<string, string> CorpusPackageNamespaces(MetaRoot root) =>
+        root.Objects().Select(o => PackageBindingResolver.EffectivePackage(o)).Where(p => !string.IsNullOrEmpty(p)).Distinct()
+            .ToDictionary(p => p!, p => "MetaObjects.CompileConformance.System." + string.Concat(p!.Split("::").Select(CSharpNaming.Pascal)));
+
     private static MetaRoot LoadCorpus()
     {
         var result = new MetaDataLoader().Load([new FileSource(CorpusMetadata)]);
@@ -100,9 +107,27 @@ public class CodegenCompileConformanceTests
         { "entity,db-context,filter-allowlist,callable,names,render-helper,output-prompt,output-parser,extractor", true },
     };
 
+    /// <summary>The same selections under the opt-in package layout, with the corpus package bound to
+    /// a namespace that has a <c>System</c> segment: a bare <c>System.*</c> reference in a file in
+    /// it resolves into that namespace, which is what the runner's framework qualification exists for.</summary>
+    public static TheoryData<string, bool> PackageSelections => new()
+    {
+        { "entity,db-context,filter-allowlist,callable,names", true },
+        { "entity,db-context,filter-allowlist,callable", false },
+        { "entity,db-context,filter-allowlist,callable,names,render-helper,output-prompt,output-parser,extractor", true },
+    };
+
     [Theory]
     [MemberData(nameof(Selections))]
-    public void Every_generated_file_compiles_with_zero_errors(string selection, bool includeNames)
+    public void Every_generated_file_compiles_with_zero_errors(string selection, bool includeNames) =>
+        CompileSelection(selection, includeNames, package: false);
+
+    [Theory]
+    [MemberData(nameof(PackageSelections))]
+    public void Every_generated_file_compiles_with_zero_errors_in_the_package_layout(string selection, bool includeNames) =>
+        CompileSelection(selection, includeNames, package: true);
+
+    private static void CompileSelection(string selection, bool includeNames, bool package)
     {
         var root = LoadCorpus();
         var ctx = new GenContext
@@ -117,6 +142,9 @@ public class CodegenCompileConformanceTests
                 ColumnNamingStrategy = CorpusPaths.Naming.Columns,
                 IncludeNames = includeNames,
                 EmitAbstractShapes = false,
+                OutputLayout = package ? OutputLayout.Package : OutputLayout.Flat,
+                PackageNamespacesFromMetadata = package,
+                PackageNamespaces = package ? CorpusPackageNamespaces(root) : new(),
             },
         };
 
@@ -147,7 +175,8 @@ public class CodegenCompileConformanceTests
             generators.Add(new ExtractorGenerator());
         }
 
-        var files = generators.SelectMany(g => g.Generate(ctx)).ToList();
+        // The runner's post-pass: every file goes through it before it is written.
+        var files = generators.SelectMany(g => g.Generate(ctx)).Select(f => FrameworkQualifier.Apply(ctx.Config, f)).ToList();
         Assert.True(files.Count > 0, $"selection '{selection}' generated no files at all");
 
         // FR-044 — every view-backed report of the corpus (twenty-five today) generates a keyless
@@ -165,10 +194,10 @@ public class CodegenCompileConformanceTests
                      "ProgramsEmptyScope", "WeekShapes", "SessionsByProgram", "ProgramSessions", "NodesByParent", "AuthsByKind",
                  })
         {
-            Assert.True(files.Any(f => f.Path == report + ".g.cs"), $"no row class was generated for report {report}");
-            Assert.True(files.Any(f => f.Path == report + "FilterAllowlist.g.cs"),
+            Assert.True(files.Any(f => Leaf(f.Path) == report + ".g.cs"), $"no row class was generated for report {report}");
+            Assert.True(files.Any(f => Leaf(f.Path) == report + "FilterAllowlist.g.cs"),
                 $"no filter allowlist was generated for report {report}");
-            Assert.False(files.Any(f => f.Path.StartsWith(report + "Names", StringComparison.Ordinal)),
+            Assert.False(files.Any(f => Leaf(f.Path).StartsWith(report + "Names", StringComparison.Ordinal)),
                 $"report {report} leaked into the names tier");
         }
 
@@ -176,7 +205,7 @@ public class CodegenCompileConformanceTests
         {
             // A compile gate passes trivially on an empty emit, so name what this selection
             // must have produced rather than trusting a file count.
-            var emitted = files.Select(f => Path.GetFileName(f.Path)).ToHashSet(StringComparer.Ordinal);
+            var emitted = files.Select(f => Leaf(f.Path)).ToHashSet(StringComparer.Ordinal);
             // This port names a template artifact `<templateName>.<tier>.cs` — the authored
             // template name as the stem, as the TS port does, while the JVM ports use
             // `<CapitalizedName><Tier>` because a JVM file name must match its public type.

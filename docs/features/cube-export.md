@@ -568,7 +568,7 @@ there.
 
 | Difference | Why | Effect |
 |---|---|---|
-| Joins | Cube compiles every join to a `LEFT JOIN`. The view joins a required belongs-to reference `INNER`. | A fact row whose reference matches no row forms a null group in Cube and is dropped by the view. A foreign key constraint on the column makes such a row impossible. |
+| Joins | Cube compiles every join to a `LEFT JOIN`. The view's joins are `LEFT OUTER` too, everywhere (they inner-joined a required reference before). | A fact row whose reference matches no row forms a null group in Cube and, through the outer join, in the view as well. A foreign key constraint on the column makes such a row impossible on the conformance data. |
 | Query time zone | A Cube query may pass `timezone`. The view is UTC only. | With a zone other than `UTC`, Cube re-buckets instants, which is its feature, and also shifts naive timestamps and dates, which the view buckets as stored. |
 | Grains | Cube offers every granularity on a time dimension. | `@grains` is carried as `meta.grains`, not enforced. |
 | Ad-hoc queries | Cube lets a caller pick any members. | Nothing here checks the numbers for a combination no report declares. |

@@ -40,6 +40,7 @@ from .api_docs_model import (
 from metaobjects.codegen import type_map
 from metaobjects.codegen.config import DEFAULT_API_PREFIX
 from metaobjects.codegen.model_walk import package_of
+from metaobjects.codegen.import_path import OUTPUT_LAYOUT_FLAT, ModuleScope, import_line
 from .m2m_codegen import (
     build_object_index,
     resolve_m2m_descriptors,
@@ -95,9 +96,20 @@ def _is_email_kind(tmpl: MetaData) -> bool:
 class PythonApiModelBuilder:
     """Builds the :class:`ApiModel` SDK-surface IR from a loaded ``MetaRoot``."""
 
-    def __init__(self, api_prefix: str = DEFAULT_API_PREFIX) -> None:
+    def __init__(
+        self, api_prefix: str = DEFAULT_API_PREFIX, output_layout: str = OUTPUT_LAYOUT_FLAT
+    ) -> None:
         #: The path the documented routes mount under (``apiPrefix``; ``""`` = at the root).
         self.api_prefix = api_prefix
+        #: The run's output layout: the import lines name the module where it lives.
+        self.output_layout = output_layout
+
+    def _imp(self, node: MetaData, module: str, *names: str) -> str:
+        """``from .<dir>.<module> import <names>`` for a module generated for *node*, relative
+        to the generated package's root."""
+        return import_line(
+            ModuleScope(self.output_layout, "").sibling(package_of(node), module), *names
+        )
 
     def build(self, root: MetaData, project: str) -> ApiModel:
         objects = [
@@ -152,7 +164,7 @@ class PythonApiModelBuilder:
                 ApiSymbol(
                     name=model,
                     kind=ApiSymbolKind.MODEL,
-                    module=naming.model_import(obj),
+                    module=self._imp(obj, obj.name, naming.model_class_name(obj)),
                     signature=f"class {model}(BaseModel)",
                     usage=(
                         "the Pydantic v2 entity model"
@@ -170,7 +182,7 @@ class PythonApiModelBuilder:
                 ApiSymbol(
                     name=model,
                     kind=ApiSymbolKind.VALIDATION,
-                    module=naming.model_import(obj),
+                    module=self._imp(obj, obj.name, naming.model_class_name(obj)),
                     signature=f"class {model}(BaseModel)",
                     usage="Pydantic field validation on the create/update shape",
                     fields=self._model_fields(obj),
@@ -183,7 +195,7 @@ class PythonApiModelBuilder:
                 ApiSymbol(
                     name=repo,
                     kind=ApiSymbolKind.DATA_ACCESS,
-                    module=f"from .{naming.router_module_name(obj.name)} import {repo}",
+                    module=self._imp(obj, naming.router_module_name(obj.name), repo),
                     signature=f"class {repo}(Protocol)",
                     usage="data access — the repository Protocol the consumer implements",
                     returns="list / Optional / bool",
@@ -199,9 +211,8 @@ class PythonApiModelBuilder:
                 ApiSymbol(
                     name=fields_const,
                     kind=ApiSymbolKind.FILTER,
-                    module=(
-                        f"from .{naming.filter_allowlist_module_name(obj.name)} "
-                        f"import {fields_const}"
+                    module=self._imp(
+                        obj, naming.filter_allowlist_module_name(obj.name), fields_const
                     ),
                     signature=f"{fields_const}: frozenset[str]",
                     usage="the filterable-field + filter-operator allowlist",
@@ -227,7 +238,7 @@ class PythonApiModelBuilder:
             ApiSymbol(
                 name=model,
                 kind=ApiSymbolKind.MODEL,
-                module=naming.model_import(model_obj),
+                module=self._imp(model_obj, model_obj.name, model),
                 signature=f"class {model}(BaseModel)",
                 usage="the Pydantic v2 report row model",
             ),
@@ -242,7 +253,7 @@ class PythonApiModelBuilder:
         item-verb refusals are 405s, not endpoints, so no write verb is documented;
         a keyless object has no item route and its seam no ``find_by_id``."""
         router_module = naming.router_module_name(obj.name)
-        base_path = f"{self.api_prefix}/" + naming.route_path(obj.name)
+        base_path = f"{self.api_prefix}/" + naming.collection_segment(obj)
         repo = naming.repository_class_name(obj.name)
         fields_const = naming.filter_fields_const(obj.name)
         item = has_item_route(obj)
@@ -260,7 +271,7 @@ class PythonApiModelBuilder:
             ApiSymbol(
                 name=repo,
                 kind=ApiSymbolKind.DATA_ACCESS,
-                module=f"from .{router_module} import {repo}",
+                module=self._imp(obj, router_module, repo),
                 signature=f"class {repo}(Protocol)",
                 usage="data access — the read-only repository Protocol the consumer implements",
                 returns="list / count / Optional" if item else "list / count",
@@ -275,9 +286,8 @@ class PythonApiModelBuilder:
             ApiSymbol(
                 name=fields_const,
                 kind=ApiSymbolKind.FILTER,
-                module=(
-                    f"from .{naming.filter_allowlist_module_name(obj.name)} "
-                    f"import {fields_const}"
+                module=self._imp(
+                    obj, naming.filter_allowlist_module_name(obj.name), fields_const
                 ),
                 signature=f"{fields_const}: frozenset[str]",
                 usage="the filterable-field + filter-operator allowlist",
@@ -294,7 +304,7 @@ class PythonApiModelBuilder:
         object_index: dict[str, MetaObject],
     ) -> None:
         router_module = naming.router_module_name(entity.name)
-        base_path = f"{self.api_prefix}/" + naming.route_path(entity.name)
+        base_path = f"{self.api_prefix}/" + naming.collection_segment(entity)
         # The router registers the item routes with a per-entity path param
         # (`/{<entity>_id}`, e.g. `/{customer_id}`) — document that exact name, not
         # a generic `{id}`, so the docs match the generated FastAPI routes.
@@ -351,7 +361,7 @@ class PythonApiModelBuilder:
                 ApiSymbol(
                     name=payload_class,
                     kind=ApiSymbolKind.PAYLOAD,
-                    module=naming.model_import(payload_vo),
+                    module=self._imp(payload_vo, payload_vo.name, payload_class),
                     signature=f"class {payload_class}(BaseModel)",
                     usage="the typed payload projection bound to the template",
                     fields=self._payload_fields(payload_vo),
@@ -367,7 +377,7 @@ class PythonApiModelBuilder:
                     ApiSymbol(
                         name=render_fn,
                         kind=ApiSymbolKind.RENDER,
-                        module=f"from .{module}_render_helper import {render_fn}",
+                        module=self._imp(tmpl, f"{module}_render_helper", render_fn),
                         signature=f"def {render_fn}(payload: {payload_class}, provider)",
                         usage="renders the output template against a typed payload",
                         returns="EmailDocument" if _is_email_kind(tmpl) else "str",
@@ -389,7 +399,7 @@ class PythonApiModelBuilder:
                     ApiSymbol(
                         name=response_class,
                         kind=ApiSymbolKind.PAYLOAD,
-                        module=naming.model_import(inbound.vo),
+                        module=self._imp(inbound.vo, inbound.vo.name, response_class),
                         signature=f"class {response_class}(BaseModel)",
                         usage="the typed response shape a model reply is parsed into",
                         fields=self._payload_fields(inbound.vo),
@@ -404,7 +414,7 @@ class PythonApiModelBuilder:
                     ApiSymbol(
                         name=parse_fn,
                         kind=ApiSymbolKind.OUTPUT_PARSER,
-                        module=f"from .{module}_response_parser import {parse_fn}",
+                        module=self._imp(tmpl, f"{module}_response_parser", parse_fn),
                         signature=f"def {parse_fn}(text)",
                         usage="parses a model reply back into the typed response shape",
                         returns=response_class,
@@ -416,7 +426,7 @@ class PythonApiModelBuilder:
                 ApiSymbol(
                     name=prompt_fn,
                     kind=ApiSymbolKind.PROMPT,
-                    module=f"from .{module}_response_format import {prompt_fn}",
+                    module=self._imp(tmpl, f"{module}_response_format", prompt_fn),
                     signature=f"def {prompt_fn}(overrides=None)",
                     usage="builds the response-format prompt fragment",
                     returns="str",
@@ -427,7 +437,7 @@ class PythonApiModelBuilder:
                 ApiSymbol(
                     name=extract_fn,
                     kind=ApiSymbolKind.EXTRACTOR,
-                    module=f"from .{module}_extractor import {extract_fn}",
+                    module=self._imp(tmpl, f"{module}_extractor", extract_fn),
                     signature=f"def {extract_fn}(root, text, opts=None)",
                     usage="extracts the strict typed response from dirty model output",
                     returns=response_class,

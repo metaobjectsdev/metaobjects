@@ -6,17 +6,11 @@
 // owned-type navigations, and the template tier's render helpers, parsers, extractors and api-docs
 // — asks this class, so none of them can disagree with the declaration.
 //
-// Naming (ADR-0044's rule, applied to the POCOs): a value object whose short name no other object
-// in the model shares emits bare (PascalCase). When another object shares it — a second value
-// object, or an entity or projection in another package — every value object of that name emits
-// package-qualified (acme::alpha::Note -> AcmeAlphaNote). TypeScript's entityFile() and Python's
-// entity model do the same for their flat modules (#228). C# needs it because the default package
-// binding flattens every package into one namespace and every generated file lands in one
-// directory, so a second `Note` would collide on the type AND on the file name (`Note.g.cs`).
-// Entities and projections keep their names: only the value object moves. A derived name that
-// still collides fails loud (ERR_PAYLOAD_NAME_COLLISION).
+// Naming (ADR-0044 Amendment 1, ADR-0056 Amendment 2): a value object's type is its own name,
+// PascalCased, and is never rewritten. Two objects that share a short name in one namespace are a
+// real collision, refused by the run's claim registry (GenContext.Claim) with the remedy: map the
+// packages to distinct namespaces, or rename one.
 
-using System.Runtime.CompilerServices;
 using MetaObjects.Meta;
 using static MetaObjects.Shared.BaseTypes;
 using static MetaObjects.Shared.Structural;
@@ -27,13 +21,6 @@ namespace MetaObjects.Codegen;
 /// <summary>The emitted C# name and namespace of a value object's POCO (ADR-0056).</summary>
 public static class ValueObjectNames
 {
-    // A codegen-time error, the peer of MetaObjects.Render.Verify's drift codes. Not in the shared
-    // ErrorCode ledger: it is raised by codegen, never by the loader.
-    private const string ERR_PAYLOAD_NAME_COLLISION = "ERR_PAYLOAD_NAME_COLLISION";
-
-    // Loaded metadata is read-only, so the name map is a pure function of the root.
-    private static readonly ConditionalWeakTable<MetaData, IReadOnlyDictionary<string, string>> Cache = new();
-
     /// <summary>True for a value-object shape: an <c>object.value</c>, or an <c>object.projection</c>
     /// with no <c>source.*</c> anywhere in its super chain (#210 — pure shape, like a value object).</summary>
     public static bool IsValueShape(MetaData obj) =>
@@ -42,13 +29,21 @@ public static class ValueObjectNames
             || (obj.SubType == OBJECT_SUBTYPE_PROJECTION && !obj.Children().Any(c => c.Type == TYPE_SOURCE)));
 
     /// <summary>
-    /// The emitted C# type name for <paramref name="obj"/>: the ADR-0044 collision-aware name for an
-    /// <c>object.value</c>, and the PascalCase name for anything else.
+    /// The emitted C# type name for <paramref name="obj"/>: its name, PascalCased. A value object is
+    /// never renamed to avoid a collision. <paramref name="root"/> is unused, and kept so an owned
+    /// generator copy calling it keeps compiling.
     /// </summary>
-    public static string TypeName(MetaData obj, MetaData root) =>
-        obj.SubType == OBJECT_SUBTYPE_VALUE && Names(root).TryGetValue(obj.ResolutionKey(), out var name)
-            ? name
-            : CSharpNaming.Pascal(obj.Name);
+    public static string TypeName(MetaData obj, MetaData root) => CSharpNaming.Pascal(obj.Name);
+
+    /// <summary>
+    /// The value-object name map: <c>ResolutionKey()</c> → emitted C# name. A value object is never
+    /// renamed, so this is the identity map (resolution key → PascalCase name).
+    /// </summary>
+    [Obsolete("A value object is never renamed; use TypeName(obj, root). Removed after one release.")]
+    public static IReadOnlyDictionary<string, string> Names(MetaData root) =>
+        root.Children()
+            .Where(IsValueShape)
+            .ToDictionary(o => o.ResolutionKey(), o => CSharpNaming.Pascal(o.Name), StringComparer.Ordinal);
 
     /// <summary>The namespace <paramref name="obj"/>'s type is emitted into (package binding).</summary>
     public static string Namespace(MetaData obj, GenConfig config) =>
@@ -65,6 +60,80 @@ public static class ValueObjectNames
         var ns = Namespace(obj, config);
         var name = TypeName(obj, root);
         return ns == fromNamespace ? name : $"global::{ns}.{name}";
+    }
+
+    /// <summary>
+    /// How code in <paramref name="fromNamespace"/> names <paramref name="obj"/>'s type when a
+    /// <c>using</c> of its namespace is in scope: bare, unless another object in the model shares its
+    /// short name and it lives in another namespace, then <c>global::</c>-qualified, since a bare
+    /// name would be ambiguous between the two namespaces' types.
+    /// </summary>
+    public static string ShortRef(MetaData obj, MetaData root, GenConfig config, string fromNamespace) =>
+        SharesShortName(obj, root) || config.PackageNamespacesFromMetadata
+            ? TypeRef(obj, root, config, fromNamespace)
+            : TypeName(obj, root);
+
+    /// <summary>
+    /// A name for <paramref name="obj"/> unique in the model, for a PRIVATE member of a generated class
+    /// (a mapper method): its PascalCase name, prefixed with its PascalCased package when another
+    /// object shares the short name. Types are never renamed; this names members only.
+    /// </summary>
+    public static string MemberKey(MetaData obj, MetaData root) =>
+        SharesShortName(obj, root) && PackageBindingResolver.EffectivePackage(obj) is { Length: > 0 } pkg
+            ? string.Concat(pkg.Split(PACKAGE_SEPARATOR).Select(CSharpNaming.Pascal)) + TypeName(obj, root)
+            : TypeName(obj, root);
+
+    private static bool SharesShortName(MetaData obj, MetaData root) =>
+        root.Children().Count(c => c.Type == TYPE_OBJECT && c.Name == obj.Name) > 1;
+
+    /// <summary>
+    /// <paramref name="obj"/>'s type (entity, value object, projection, report),
+    /// <c>global::</c>-qualified: how a generated file outside the type's own declaration names it
+    /// when package namespaces are on, so no namespace can capture the name and no pair of
+    /// <c>using</c>s can make it ambiguous.
+    /// </summary>
+    public static string GlobalRef(MetaData obj, GenConfig config) =>
+        Global(Namespace(obj, config), CSharpNaming.Pascal(obj.Name));
+
+    /// <summary><paramref name="obj"/>'s type as the context names it: PascalCase name in the earlier
+    /// layout (a using brings the namespace in), <c>global::</c>-qualified when package namespaces are on.</summary>
+    public static string Ref(MetaData obj, GenConfig config) =>
+        config.PackageNamespacesFromMetadata ? GlobalRef(obj, config) : CSharpNaming.Pascal(obj.Name);
+
+    /// <summary>A generated class named <paramref name="className"/> in <paramref name="obj"/>'s namespace, as
+    /// the context names it (see <see cref="Ref"/>).</summary>
+    public static string RefOf(MetaData obj, GenConfig config, string className) =>
+        config.PackageNamespacesFromMetadata ? Global(Namespace(obj, config), className) : className;
+
+    /// <summary><paramref name="name"/> in <paramref name="ns"/> as a <c>global::</c>-qualified name.
+    /// A name that is already qualified is returned as is.</summary>
+    public static string Global(string ns, string name) =>
+        name.StartsWith("global::", StringComparison.Ordinal) ? name : $"global::{ns}.{name}";
+
+    /// <summary>
+    /// The namespace a per-object companion of <paramref name="obj"/> (names, filter allowlist,
+    /// routes, reverse finders, report export) is declared in: the object's own when package
+    /// namespaces are on, otherwise <see cref="GenConfig.Namespace"/> as before.
+    /// </summary>
+    public static string CompanionNamespace(MetaData obj, GenConfig config) =>
+        config.PackageNamespacesFromMetadata ? Namespace(obj, config) : config.Namespace;
+
+    /// <summary>
+    /// A companion class of <paramref name="obj"/> as another file names it: bare in the earlier
+    /// layout (its file has the <c>using</c>), <c>global::</c>-qualified when package namespaces are on.
+    /// </summary>
+    public static string CompanionRef(MetaData obj, GenConfig config, string className) =>
+        config.PackageNamespacesFromMetadata ? Global(CompanionNamespace(obj, config), className) : className;
+
+    /// <summary>
+    /// <see cref="GenConfig.ContextTypeName"/> as generated code names it: as written in the earlier
+    /// layout; with package namespaces on, <c>global::</c>-qualified (dotted names are the adopter's own).
+    /// </summary>
+    public static string ContextTypeRef(GenConfig config)
+    {
+        var name = config.ContextTypeName;
+        if (!config.PackageNamespacesFromMetadata || name.StartsWith("global::", StringComparison.Ordinal)) return name;
+        return name.Contains('.') ? "global::" + name : Global(config.Namespace, name);
     }
 
     /// <summary>
@@ -104,52 +173,4 @@ public static class ValueObjectNames
         // projection to a backing store, which disqualifies it as a payload shape.
         return obj.Children().Any(c => c.Type == TYPE_SOURCE) ? null : obj;
     }
-
-    /// <summary>
-    /// The value-object name map: <c>ResolutionKey()</c> → emitted C# name.
-    ///
-    /// Eject (ADR-0034 Amendment 3): public so an owned generator copy — compiled into
-    /// the adopter's own assembly — can look up the same collision-aware name map every
-    /// packaged generator uses, rather than re-deriving it.
-    /// </summary>
-    public static IReadOnlyDictionary<string, string> Names(MetaData root) =>
-        Cache.GetValue(root, Assign);
-
-    private static IReadOnlyDictionary<string, string> Assign(MetaData root)
-    {
-        // ADR-0039: Children() — resolving root scan (behavior-identical; the root has no super).
-        var byShortName = root.Children()
-            .Where(c => c.Type == TYPE_OBJECT)
-            .GroupBy(c => c.Name, StringComparer.Ordinal);
-
-        var names = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var group in byShortName)
-        {
-            var members = group.ToList();
-            foreach (var vo in members.Where(o => o.SubType == OBJECT_SUBTYPE_VALUE))
-                names[vo.ResolutionKey()] = members.Count == 1
-                    ? CSharpNaming.Pascal(vo.Name)
-                    : PackageQualifiedName(PackageBindingResolver.EffectivePackage(vo) ?? "", vo.Name);
-        }
-
-        // Backstop, in FQN order so which pair the message names is a pure function of the model.
-        var ownerOf = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var fqn in names.Keys.OrderBy(k => k, StringComparer.Ordinal))
-        {
-            if (ownerOf.TryGetValue(names[fqn], out var existing))
-                throw new InvalidOperationException(
-                    $"{ERR_PAYLOAD_NAME_COLLISION}: value object name collision: \"{names[fqn]}\" derives from both " +
-                    $"\"{existing}\" and \"{fqn}\" — rename one value object or move it to a package that derives a distinct name");
-            ownerOf[names[fqn]] = fqn;
-        }
-        return names;
-    }
-
-    /// <summary>ADR-0044 — PascalCase each <c>::</c>-segment of the package, concatenated, then the
-    /// PascalCase short name (<c>acme::alpha::Note</c> → <c>AcmeAlphaNote</c>). A root-level node has
-    /// nothing to qualify with and keeps its name; the loader already rejects two of those.</summary>
-    private static string PackageQualifiedName(string pkg, string shortName) =>
-        pkg.Length == 0
-            ? CSharpNaming.Pascal(shortName)
-            : string.Concat(pkg.Split(PACKAGE_SEPARATOR).Select(CSharpNaming.Pascal)) + CSharpNaming.Pascal(shortName);
 }

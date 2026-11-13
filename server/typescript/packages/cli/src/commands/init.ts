@@ -128,6 +128,10 @@ ${docsImport}
 export default defineConfig({
   outDir:  "${SCAFFOLD_OUT_DIR}",
   dialect: "${dialect}",
+  // One directory per metadata package (acme::commerce -> acme/commerce/), so two objects
+  // with one name in two packages are two files. barrel() still exports every name from one
+  // module, so with a barrel listed that pair is ERR_NAME_COLLISION. Omit it for the flat layout.
+  outputLayout: "package",
 
   // Nothing is generated until it is listed in \`generators\`. The usual data layer
   // (Drizzle tables, Zod schemas, physical-name constants and a barrel):

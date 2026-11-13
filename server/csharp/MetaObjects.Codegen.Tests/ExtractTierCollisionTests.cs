@@ -58,7 +58,7 @@ public sealed class ExtractTierCollisionTests
     {
         Entities = root.Objects(),
         Root = root,
-        Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated" },
+        Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", OutputLayout = OutputLayout.Package, PackageNamespacesFromMetadata = true },
     };
 
     [Fact]
@@ -68,24 +68,24 @@ public sealed class ExtractTierCollisionTests
         var ctx = Ctx(root);
 
         var parserFiles = new OutputParserGenerator().Generate(ctx).ToList();
-        var parserSrc = Assert.Single(parserFiles, f => f.Path == "DigestPrompt.response.cs").Content;
+        var parserSrc = Assert.Single(parserFiles, f => f.Path == "acme/app/DigestPrompt.response.cs").Content;
         var extractorFile = Assert.Single(new ExtractorGenerator().Generate(ctx));
         var extractorSrc = extractorFile.Content;
 
         // The extractor class + file are named off the PROMPT, like its parser (ADR-0056 rule 4)
         // — never off the colliding NESTED Note.
-        Assert.Equal("DigestPromptExtractor.cs", extractorFile.Path);
+        Assert.Equal("acme/app/DigestPromptExtractor.cs", extractorFile.Path);
         Assert.Contains("public static class DigestPromptExtractor", extractorSrc);
 
         // ---- mirrors: one file per value object, BOTH collision members present, qualified
         //      (never bare/dropped — the #219-class dedupe-by-name defect) ----
         Assert.Equal(
-            ["AcmeAlphaNoteExtracted.g.cs", "AcmeBetaNoteExtracted.g.cs", "DigestExtracted.g.cs", "DigestPrompt.response.cs"],
+            ["acme/alpha/NoteExtracted.g.cs", "acme/app/DigestExtracted.g.cs", "acme/app/DigestPrompt.response.cs", "acme/beta/NoteExtracted.g.cs"],
             parserFiles.Select(f => f.Path).OrderBy(p => p, StringComparer.Ordinal));
-        var digestMirror = Assert.Single(parserFiles, f => f.Path == "DigestExtracted.g.cs").Content;
+        var digestMirror = Assert.Single(parserFiles, f => f.Path == "acme/app/DigestExtracted.g.cs").Content;
         // The root Digest mirror's fields reference the qualified nested mirror types.
-        Assert.Contains("AcmeAlphaNoteExtracted? fromAlpha { get; init; }", digestMirror);
-        Assert.Contains("AcmeBetaNoteExtracted? fromBeta { get; init; }", digestMirror);
+        Assert.Contains("global::Acme.Alpha.NoteExtracted? fromAlpha { get; init; }", digestMirror);
+        Assert.Contains("global::Acme.Beta.NoteExtracted? fromBeta { get; init; }", digestMirror);
 
         // ---- parser: mappers for both, collision-scoped ----
         Assert.Contains("FromAcmeAlphaNoteExtracted(", parserSrc);
@@ -97,10 +97,10 @@ public sealed class ExtractTierCollisionTests
         Assert.Contains("ToStrict_AcmeBetaNote(", extractorSrc);
         Assert.DoesNotContain("ToStrict_Note(", extractorSrc);
 
-        // No bare "Note" identifier/type token anywhere in the generated files (word-boundary
-        // — "AcmeAlphaNote"/"AcmeBetaNote" do NOT match \bNote\b since "a"/"N" share no boundary).
-        foreach (var f in parserFiles) Assert.DoesNotMatch(@"\bNote\b", f.Content);
-        Assert.DoesNotMatch(@"\bNote\b", extractorSrc);
+        // Every reference to a Note is global::-qualified to its own namespace, never a bare
+        // "Note" that the compiler would bind to whichever namespace happens to be in scope.
+        foreach (var f in parserFiles.Append(extractorFile).Where(f => !f.Path.EndsWith("NoteExtracted.g.cs")))
+            Assert.DoesNotMatch(@"(?<![\w.])Note\b(?!>)(?<!<c>Note)", System.Text.RegularExpressions.Regex.Replace(f.Content, @"///.*|<c>Note</c>", ""));
     }
 
     // Compile + RUN — the strongest proof: each nested VO extracts into ITS OWN shape, never the
@@ -115,7 +115,7 @@ public sealed class ExtractTierCollisionTests
         var asm = Compile([
             .. new OutputParserGenerator().Generate(ctx).Select(f => f.Content),
             Assert.Single(new ExtractorGenerator().Generate(ctx)).Content,
-            .. GeneratedValueObjects.Sources(root),
+            .. GeneratedValueObjects.Sources(root, ctx.Config),
         ]);
 
         var extractorType = asm.GetType("Acme.Generated.DigestPromptExtractor")!;
@@ -128,13 +128,13 @@ public sealed class ExtractTierCollisionTests
         var digest = extract.Invoke(null, new object?[] { digestMo, text })!;
 
         var fromAlpha = digest.GetType().GetProperty("FromAlpha")!.GetValue(digest)!;
-        Assert.Equal("AcmeAlphaNote", fromAlpha.GetType().Name);
+        Assert.Equal("Acme.Alpha.Note", fromAlpha.GetType().FullName);
         Assert.Equal("AA", fromAlpha.GetType().GetProperty("AlphaText")!.GetValue(fromAlpha));
         // Proves no wrong-node cross-wire: alpha's POCO has NO BetaText property at all.
         Assert.Null(fromAlpha.GetType().GetProperty("BetaText"));
 
         var fromBeta = digest.GetType().GetProperty("FromBeta")!.GetValue(digest)!;
-        Assert.Equal("AcmeBetaNote", fromBeta.GetType().Name);
+        Assert.Equal("Acme.Beta.Note", fromBeta.GetType().FullName);
         Assert.Equal("BB", fromBeta.GetType().GetProperty("BetaText")!.GetValue(fromBeta));
         Assert.Null(fromBeta.GetType().GetProperty("AlphaText"));
     }
@@ -161,7 +161,8 @@ public sealed class ExtractTierCollisionTests
         """;
         var r = new MetaDataLoader().Load([new InMemoryStringSource(m, id: "widget.json")]);
         Assert.Empty(r.Errors);
-        var ctx = Ctx(r.Root);
+        // The default layout and namespaces: nothing about a non-colliding payload changes.
+        var ctx = new GenContext { Entities = r.Root.Objects(), Root = r.Root, Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated" } };
 
         var parserSrc = Assert.Single(new OutputParserGenerator().Generate(ctx), f => f.Path.EndsWith(".response.cs")).Content;
         var extractorFile = Assert.Single(new ExtractorGenerator().Generate(ctx));
@@ -230,21 +231,23 @@ public sealed class ExtractTierCollisionTests
             // two same-bare-named "Report"s do NOT collide at compile time (proving the
             // scenario is reachable in a real, recommended multi-package setup).
             PackageNamespaces = new Dictionary<string, string> { ["acme::alpha"] = "Acme.Alpha" },
+            OutputLayout = OutputLayout.Package,
+            PackageNamespacesFromMetadata = true,
         };
         var ctx = new GenContext { Entities = root.Objects(), Root = root, Config = config };
 
-        // EntityGenerator emits BOTH: the entity, and the value object's POCO. The POCO takes the
-        // package-qualified name AcmeBetaReport, because the entity shares its short name
-        // (ValueObjectNames) — two `Report.g.cs` files would collide in the output directory.
+        // EntityGenerator emits BOTH: the entity, and the value object's POCO. The POCO keeps its
+        // name (a value object is never renamed); the two `Report` types sit in their own
+        // packages' directories and namespaces.
         var entityFiles = new EntityGenerator().Generate(ctx).ToList();
-        var entitySrc = Assert.Single(entityFiles, f => f.Path == "Report.g.cs").Content;
-        Assert.Contains("public class AcmeBetaReport", Assert.Single(entityFiles, f => f.Path == "AcmeBetaReport.g.cs").Content);
+        var entitySrc = Assert.Single(entityFiles, f => f.Path == "acme/alpha/Report.g.cs").Content;
+        Assert.Contains("public class Report", Assert.Single(entityFiles, f => f.Path == "acme/beta/Report.g.cs").Content);
         // §A6 (task 4) — GenConfig.IncludeNames is not set here (defaults to false),
         // so the Report entity below does NOT reference ReportNames; this compiles
         // ReportNames in alongside it as an unreferenced sibling class only.
         var namesSrc = Assert.Single(new NamesGenerator().Generate(ctx)).Content;
         var parserFiles = new OutputParserGenerator().Generate(ctx).ToList();
-        var parserSrc = Assert.Single(parserFiles, f => f.Path == "ReportDoc.response.cs").Content;
+        var parserSrc = Assert.Single(parserFiles, f => f.Path == "acme/beta/ReportDoc.response.cs").Content;
 
         // The entity lands in its OWN per-package namespace, distinct from the flat
         // payload namespace — proves the "no compile collision" premise this bug relies on.

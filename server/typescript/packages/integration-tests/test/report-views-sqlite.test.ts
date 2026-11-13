@@ -170,12 +170,12 @@ describe("report views — canonical model on real SQLite", () => {
     expect(third.up.trim()).toBe("");
   });
 
-  test("SQLite lowering shapes: CASE WHEN conditions, json_array tuple, REAL ratio, INNER JOIN", () => {
+  test("SQLite lowering shapes: CASE WHEN conditions, json_array tuple, REAL ratio, LEFT OUTER JOIN", () => {
     const body = viewSql(canonical, "v_program_minutes");
     expect(body).toContain(`COUNT(CASE WHEN w."durationMinutes" >= 60 THEN w."id" END) AS "longWeeks"`);
     expect(body).toContain(`json_array(w."programId", w."durationMinutes")`);
     expect(body).toContain(`CAST(COUNT(CASE WHEN w."durationMinutes" >= 60 THEN w."id" END) AS REAL) / NULLIF(COUNT(w."id"), 0)`);
-    expect(body).toContain(`INNER JOIN "programs" p ON p."id" = w."programId"`);
+    expect(body).toContain(`LEFT OUTER JOIN "programs" p ON p."id" = w."programId"`);
   });
 
   test("v_program_minutes: every measure kind, incl. the tuple distinct count through json_array", async () => {

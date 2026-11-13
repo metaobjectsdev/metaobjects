@@ -135,7 +135,7 @@ open class KotlinReportExportGenerator : MultiFileDirectGeneratorBase<MetaObject
         // #484: a credential column is never exported.
         val credentials = KotlinGenUtil.reportCredentialNames(entity).toSet()
         val fields = entity.metaFields.filter { it.name !in credentials }
-        val segment = KotlinNaming.controllerPath(shortName).substringAfterLast('/')
+        val segment = KotlinNaming.controllerPath(entity).substringAfterLast('/')
         val w = WRITER_NAME
         return buildString {
             if (pkg.isNotEmpty()) append("package $pkg\n\n")

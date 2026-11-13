@@ -30,7 +30,7 @@ value-objects from different packages into one (ADR-0044, #228).
 
 ADR-0056 rule 3: a mirror is keyed by the VALUE OBJECT, never the template. Every mirror
 and mapper — the root's included — is named after the value object's emitted model name
-(:func:`~metaobjects.codegen.value_objects.model_class_name`: ``<Vo>Extracted`` /
+(:func:`~metaobjects.codegen.value_objects.local_name`: ``<Vo>Extracted`` /
 ``_from_<vo>_extracted``), the same name the entity generator declares the model under, so
 a cross-package short-name collision qualifies the mirror exactly as it qualifies the
 model. Mirrors stay module-local (declared in each parser module that needs them), like
@@ -40,7 +40,7 @@ their own copy without clashing.
 from __future__ import annotations
 
 from . import fr010_field_mapping as fm
-from metaobjects.codegen.value_objects import model_class_name
+from metaobjects.codegen.value_objects import local_name
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.meta_data import MetaData
 from metaobjects.naming_refs import ref_target
@@ -65,12 +65,12 @@ def mirror_name(vo: MetaData) -> str:
     """The extracted-mirror dataclass name for a value-object: ``<Model>Extracted``, where
     ``<Model>`` is the value object's emitted model name (collision-qualified when another
     object shares its short name)."""
-    return f"{model_class_name(vo)}Extracted"
+    return f"{local_name(vo)}Extracted"
 
 
 def mapper_name(vo: MetaData) -> str:
     """The mapper function name for a value-object (``_from_<model_snake>_extracted``)."""
-    return f"_from_{_snake(model_class_name(vo))}_extracted"
+    return f"_from_{_snake(local_name(vo))}_extracted"
 
 
 def _snake(name: str) -> str:
@@ -175,7 +175,7 @@ def _one_mirror(vo: MetaData, root: MetaData) -> list[str]:
     lines: list[str] = [
         "@dataclass(frozen=True, slots=True)",
         f"class {mirror_name(vo)}:",
-        f'    """Best-effort extracted twin of ``{model_class_name(vo)}`` — every field nullable',
+        f'    """Best-effort extracted twin of ``{local_name(vo)}`` — every field nullable',
         '    (``None`` where the value was lost or malformed)."""',
     ]
     field_lines = [

@@ -147,27 +147,29 @@ for it, in addition to gating the `@objectRef` **resolver** above:
    it erases `@required` and lets a typo against either real shape type-check.
    Construct the render-time payload instance from the port's REAL generated
    value-object types for this fixture.
-2. **Naming rule:** a value object's type lives at the value object's own location.
-   Where that location is a package the language keeps separate (Java, Kotlin), the
-   package disambiguates and nothing is renamed. Where every value object lands in one
-   flat namespace or directory (TypeScript's flat layout, C#'s default package
-   binding, Python's flat generated package), a value object whose short name
-   collides emits under its package-qualified derived name — PascalCase each
-   `::`-segment of its package, concatenate, append the bare short name.
-   TypeScript counts a collision among value objects; C# and Python count it against
-   every top-level object, because an entity shares their namespace or module
-   directory. A still-colliding derived name is a hard generator error,
-   `ERR_PAYLOAD_NAME_COLLISION`.
+2. **Naming rule:** a value object's type lives at the value object's own location, and
+   it is never renamed (ADR-0044 Amendment 1, ADR-0056 Amendment 2). Where that location
+   is a package the language keeps separate (Java, Kotlin), the package tells the two
+   apart. Where the port can write one flat namespace or directory, the two are placed
+   apart by configuration: TypeScript and Python by the package output layout (one
+   module per package directory), C# by package namespaces (each type in its package's
+   namespace, references across namespaces written `global::`-qualified). A file that
+   meets both binds them under package-qualified local aliases (TypeScript
+   `Note as AcmeAlphaNote`, Python `from ..alpha.Note import Note as AcmeAlphaNote`); the
+   types themselves keep the name `Note`. Two objects that would still emit one name
+   into one scope (the flat layout, or one C# namespace) are refused with
+   `ERR_NAME_COLLISION`, naming both. C# and Python count a clash against every
+   top-level object, because an entity shares their namespace or module directory.
 3. **Expected emitted names for this fixture, per port** (`Digest` itself does
    not collide and stays bare in every port):
 
    | Port | `acme::alpha::Note` | `acme::beta::Note` |
    |---|---|---|
-   | TypeScript (`interface`) | `AcmeAlphaNote` | `AcmeBetaNote` |
-   | C# (POCO) | `AcmeAlphaNote` | `AcmeBetaNote` |
+   | TypeScript (`interface`, package layout) | `acme/alpha/Note.ts` `Note` | `acme/beta/Note.ts` `Note` |
+   | C# (POCO, package layout + package namespaces) | `acme/alpha/Note.g.cs` `Acme.Alpha.Note` | `acme/beta/Note.g.cs` `Acme.Beta.Note` |
    | Java (`record`) | `acme.alpha.Note` | `acme.beta.Note` |
    | Kotlin (data class) | `acme.alpha.Note` | `acme.beta.Note` |
-   | Python (Pydantic model, `<Name>.py`) | `AcmeAlphaNote` | `AcmeBetaNote` |
+   | Python (Pydantic model, package layout) | `acme/alpha/Note.py` `Note` | `acme/beta/Note.py` `Note` |
 
 The render-output pins above (`"Alpha=AA Beta=BB"`) are UNCHANGED by this contract
 — the render engine and the build-time verify field-tree resolve against
@@ -200,10 +202,10 @@ inbound artifacts named for `DigestPrompt`, not `DigestDoc`.
 The generated render helper, collision-aware value-object naming, and render output
 remain identical — see
 [Cross-package short-name collision](#cross-package-short-name-collision--xpkg-collision-digestdoc)
-above for the full contract and expected names (`AcmeAlphaNote`/`AcmeBetaNote` for
-TS/C#/Python; `acme.alpha.Note`/`acme.beta.Note` for Java/Kotlin). The inbound tier's
-lenient mirrors follow the same names (`AcmeAlphaNoteExtracted` in the flat ports),
-keyed by the value object rather than the template (ADR-0056 rule 3).
+above for the full contract and expected names (`Note` in its own package in every
+port). The inbound tier's lenient mirrors are keyed by the value object rather than the
+template (ADR-0056 rule 3): in TypeScript, declarations of one module named by the value
+object's local alias (`AcmeAlphaNoteExtracted`).
 
 ## Expected build-time drift FAILURE — `drift/`
 

@@ -361,6 +361,55 @@ The generated `get_repository` raises until you override it. Any object with the
 `AuthorRepository` methods above works, including an in-memory dict while you try it
 out. Serve the app with `uvicorn my_app.main:app --reload` (`pip install uvicorn`).
 
+### Output layout and name collisions
+
+By default every generated module lands flat in the target's `outDir`. Set `outputLayout`
+at the top level of `metaobjects.config.yaml` to place each module in the directory of its
+metadata package instead:
+
+```yaml
+# metaobjects.config.yaml
+metadata: metaobjects
+outputLayout: package   # "flat" (the default) or "package"
+```
+
+`metaobjects init` writes `outputLayout: package` into a new project. Delete the line for the
+flat layout. Any other value is refused. Embedding the generators in code uses the matching
+`GenConfig(output_layout="package")`.
+
+With the package layout, `acme::blog::Author` is generated as `generated/acme/blog/Author.py`,
+and an object with no package stays at the root of `outDir`. Each directory gets an
+`@generated` `__init__.py` (when `emit_package_init` is on). Imports between generated modules
+become relative: from `acme/blog` to `acme/beta` is `from ..beta.Note import Note`, and a
+module shared by all packages, such as the generated enums, is `from ...enums import ...`. The
+orphan sweep removes a subdirectory when it empties it. The flat layout is unchanged byte for
+byte.
+
+Two objects that would write one module into one directory are refused with
+`ERR_NAME_COLLISION`. The message names both nodes, for example `"acme::alpha::Note" and
+"acme::beta::Note" both generate "Note" in the generated package directory "."`. A value
+object is never renamed to avoid the clash. The remedy is the package layout, which gives
+each its own directory, or renaming one of them.
+
+### REST collection segments and reverse finders
+
+A route is mounted at `<apiPrefix>/<segment>`. With nothing configured the segment is the
+object name in snake_case, then pluralized (`PostCategory` -> `post_categories`). Two things
+change it:
+
+- `@collectionName` on the object, for example `@collectionName: PDFBoxes` serves
+  `/pdf_boxes`.
+- `naming.collections` in `.metaobjects/config.json`, the name of a pluralizer: `standard`,
+  `none` (keep the object name), or one registered with `register_pluralizer`.
+
+A declared name wins over the pluralizer. Either one is snake_cased with an acronym-aware
+split, so `FAQs` becomes `faqs`, not `fa_qs`. The router, the API docs, the M:N routes and the
+collision check all read one function, `collection_segment`. The same name also gives the
+reverse finders: `@collectionName: CaseHistory` on an object turns
+`find_<plural>_by_<fk>` into `find_case_history_by_<fk>` (and `..._in`). A project that sets
+neither keeps every route and finder name it has today. The shared cases are in
+`fixtures/naming-conformance/collection-segments.json`.
+
 ### Decimals and null members on the wire
 
 What the generated routers write is the project setting `wire` in `.metaobjects/config.json`
@@ -815,9 +864,11 @@ each as `<Name>.py`. So the prompt+parse story is two generators:
 
 - `entity` emits one Pydantic v2 `BaseModel` per value object — and per sourceless
   `object.projection` — including every `@payloadRef` and `@responseRef` target and every
-  value object nested in them (`field.object @objectRef`). The package is flat, so a value
-  object whose short name another top-level object shares is package-qualified:
-  `acme::alpha::Note` emits `AcmeAlphaNote.py` / `class AcmeAlphaNote`.
+  value object nested in them (`field.object @objectRef`). A value object is never
+  renamed. Two with the same short name need the package layout (see "Output layout and
+  name collisions"): `acme::alpha::Note` and `acme::beta::Note` each emit `Note.py` into
+  their own directory, and a module that uses both imports them under local aliases such as
+  `Note as AcmeAlphaNote`.
 - `output_parser_generator` emits one `<template_name>_response_parser.py` per
   responding `template.prompt` (one declaring `@responseRef`, ADR-0052). It imports the
   `@responseRef` value object's model from its `<Name>.py`. `template.output` gets no

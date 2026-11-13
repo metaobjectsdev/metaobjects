@@ -47,7 +47,7 @@ def test_api_prefix_in_the_config_reaches_routers_and_docs(tmp_path: Path) -> No
     cfg.write_text(cfg.read_text().replace(
         "generators: []", "generators: [entity, filter-allowlist, routes]") + "apiPrefix: /v1\n")
     assert main(["gen", "--config", str(cfg)]) == 0
-    assert 'APIRouter(prefix="/v1/authors"' in (tmp_path / "generated" / "author_router.py").read_text()
+    assert 'APIRouter(prefix="/v1/authors"' in (tmp_path / "generated" / "app" / "author_router.py").read_text()
     assert "/v1/authors" in (tmp_path / "docs" / "api" / "python" / "app" / "Author.md").read_text()
     assert main(["verify", "--codegen", "--config", str(cfg)]) == 0
 

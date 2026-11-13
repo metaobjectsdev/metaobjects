@@ -72,7 +72,7 @@ public static class CodegenRunner
 
         // No run-wide name-collision check: each generator refuses a name two objects claim in
         // the scope it emits into (DbSet names per context, route segments per routes entry,
-        // finders per class; CSharpNaming.AssertUniqueInScope). The same short name in two
+        // finders per class). The same short name in two
         // packages is two names until both land in one of those scopes.
 
         Directory.CreateDirectory(config.OutDir);
@@ -95,8 +95,9 @@ public static class CodegenRunner
             // An entry with its own directory reports its files by that directory, so a reader
             // can tell the api reference's README.md from one under --out.
             var shown = generator.OutDir is { Length: > 0 } own ? own.TrimEnd('/', '\\') + "/" : "";
-            foreach (var file in generator.Generate(ctx))
+            foreach (var generated in generator.Generate(ctx))
             {
+                var file = FrameworkQualifier.Apply(config, generated);
                 var full = Path.GetFullPath(Path.Combine(genRoot, file.Path));
                 if (!emitted.TryAdd(full, generator.Name))
                     throw new InvalidOperationException(

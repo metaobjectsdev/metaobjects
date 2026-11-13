@@ -294,6 +294,21 @@ class KtFieldListGenerator : FileEmittingGenerator() {
 Wire it with `<classname>com.acme.codegen.KtFieldListGenerator</classname>` from a module
 built with `kotlin-maven-plugin`.
 
+A generator that emits a type, module, barrel entry, route segment or file path into a scope
+it shares with other generators should claim each name as it emits it, so a real clash is
+refused with `ERR_NAME_COLLISION` naming both claimants instead of one file silently
+overwriting another. The call: TypeScript `ctx.claim?.(scope, name, claimant, remedy)`
+(optional — absent on a direct `.generate(ctx)` call outside `runGen`), C#
+`ctx.Claim(scope, name, claimant, remedy)`, Python `ctx.claim(scope, name, claimant,
+remedy)`. The `scope` is a short label for where the name lives (a generated package
+directory, the barrel of a target), the `claimant` the metadata node as its
+`resolutionKey()` (C# `ResolutionKey()`, Python `resolution_key()`), and the `remedy` the
+sentence the refusal prints.
+The same claimant claiming again is not a collision, and one name in two scopes is two
+names. The JVM ports take no claim call: their file writer refuses an output path two
+generators emit with different content in one run (byte-identical duplicates collapse), and
+nothing checks emitted names.
+
 ## Safety-relevant output: set `handEdits: "overwrite"`
 
 A generator whose output enforces something (a redaction rule, an audit log, an auth check)

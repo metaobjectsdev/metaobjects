@@ -2,12 +2,13 @@
 Mirrors server/typescript/packages/codegen-ts/src/generator.ts."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable, Protocol
 
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.meta.meta_data import MetaData
 from .config import GenConfig
+from .name_claims import NameClaims
 
 
 @dataclass
@@ -35,6 +36,14 @@ class GenContext:
     #: (``Collection.in_ledger``)? A dependency's requirement the project did not inherit
     #: gets no generated test. ``None``: every loaded requirement is the project's.
     in_ledger: Callable[[str], bool] | None = None
+    #: The run's one claim registry : a generator claims each module it emits in
+    #: its generated package directory, and a second claimant is refused with
+    #: ``ERR_NAME_COLLISION``. ``run_gen`` shares one across every generator of the run.
+    claims: NameClaims = field(default_factory=NameClaims)
+
+    def claim(self, scope: str, name: str, claimant: str, remedy: str) -> None:
+        """Claim *name* in *scope* for the metadata node *claimant* (its ``resolution_key()``)."""
+        self.claims.claim(scope, name, claimant, remedy)
 
 
 class Generator(Protocol):

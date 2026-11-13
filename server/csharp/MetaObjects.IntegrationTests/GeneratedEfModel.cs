@@ -45,7 +45,7 @@ internal sealed class GeneratedEfModel
     public static GeneratedEfModel Compile(
         string model, string ns, Func<GenConfig, GenConfig>? configure = null,
         EntityGenerator? entities = null, DbContextGenerator? dbContext = null,
-        IEnumerable<string>? handWritten = null)
+        IEnumerable<string>? handWritten = null, string? assemblyName = null)
     {
         var load = new MetaDataLoader().Load([new InMemoryStringSource(model, id: ns + ".json")]);
         if (load.Errors.Count != 0)
@@ -75,7 +75,7 @@ internal sealed class GeneratedEfModel
             if (path.Length > 0 && path.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
                 byFileName[Path.GetFileName(path)] = path;
         var refs = byFileName.Values.Select(p => (MetadataReference)MetadataReference.CreateFromFile(p)).ToList();
-        var comp = CSharpCompilation.Create("gen_" + Guid.NewGuid().ToString("N"), trees, refs,
+        var comp = CSharpCompilation.Create(assemblyName ?? "gen_" + Guid.NewGuid().ToString("N"), trees, refs,
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
         using var ms = new MemoryStream();

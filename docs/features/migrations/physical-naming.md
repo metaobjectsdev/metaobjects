@@ -76,13 +76,12 @@ the port's reset when it is done (`resetNamingStrategiesForTesting()`,
 ### Collection names
 
 An object's collection name is its own `@collectionName`, else the `collections` pluralizer over
-its name. C# and TypeScript generators read it (the other ports load and type-check both, and
-act on neither yet, #549):
+its name. Every port's generators read it:
 
 | Artifact | Port | `Faq` with `@collectionName: "FAQs"` | `Order` under `collections: "none"` |
 |---|---|---|---|
-| REST collection segment | C#, TypeScript | `/faqs` | `/order` |
-| Reverse finder | C#, TypeScript | `FindFAQsByOwner` / `findFAQsByOwner` | `FindOrderByFaq` / `findOrderByFaq` |
+| REST collection segment | every port | `/faqs` | `/order` |
+| Reverse finder | C#, TypeScript, Python | `FindFAQsByOwner` / `findFAQsByOwner` / `find_faqs_by_owner` | `FindOrderByFaq` / `findOrderByFaq` / `find_order_by_faq` |
 | DbSet property | C# | `FAQs` | `Order` |
 | List function, list hook, Drizzle table variable | TypeScript | `listFAQs`, `useFAQs`, `fAQs` | `listOrder`, `useOrderList`, `order` |
 
@@ -90,8 +89,12 @@ The REST segment is the collection name snake_cased, with a trailing plural `s` 
 kept on it (`FAQs` serves `/faqs`, `TaxIDs` serves `/tax_ids`). With neither `@collectionName` nor
 a `collections` setting, every name is what it has always been: the segment is the snake_cased
 name made plural, as every port serves it. A list hook whose name would equal the detail hook's
-takes a `List` suffix. The cases both ports run are in
-`fixtures/naming-conformance/collection-segments.json`. Changing either one changes URLs and
+takes a `List` suffix. Java and Kotlin name a reverse finder by its foreign-key field
+(`findByOwnerId`), so a collection name does not change it. The cases every port runs are in
+`fixtures/naming-conformance/collection-segments.json`. Two objects that would take one
+collection name — the same REST segment, or (in C#) one DbSet property — are refused before
+anything is written, with `ERR_COLLECTION_NAME_COLLISION` naming both and `@collectionName` as
+the remedy, in every port. Changing either one changes URLs and
 generated names an application calls, so treat it as an API change.
 
 A name nothing registered fails when the file is read, naming the setting, the name, the port,

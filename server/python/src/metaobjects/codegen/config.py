@@ -36,8 +36,11 @@ class GenConfig:
     # None keeps the out-dir-relative keys, so a programmatic caller that never had a
     # project root is unchanged. The CLI always sets it.
     project_root: str | None = None
-    # Only "flat" is implemented; a non-default value is REFUSED below rather than
-    # silently ignored (see __post_init__).
+    # "flat" (the default: every generated module in the out dir) or "package" (a per-object
+    # module lands in a subpackage directory keyed by its METADATA package, ``acme::alpha`` ->
+    # ``acme/alpha/``). Anything else is REFUSED in __post_init__. The CLI fills it from the
+    # top-level ``outputLayout`` key of ``metaobjects.config.yaml``; every
+    # path and every relative import goes through ``codegen/import_path.py``.
     output_layout: str = "flat"
     # Python ALWAYS emits the abstract base model — concretes subclass it. Suppression
     # is not implemented in this port (C# has it, behind `dotnet meta gen
@@ -93,10 +96,9 @@ class GenConfig:
 
         Defaults are untouched, so every existing call is unaffected.
         """
-        if self.output_layout != "flat":
+        if self.output_layout not in ("flat", "package"):
             raise ValueError(
-                f"GenConfig.output_layout={self.output_layout!r}: only 'flat' is "
-                "implemented in this port."
+                f"GenConfig.output_layout={self.output_layout!r}: expected 'flat' or 'package'."
             )
         if self.baseline not in ("default", "adopt"):
             # `fresh` is deliberately absent from this port rather than silently accepted:

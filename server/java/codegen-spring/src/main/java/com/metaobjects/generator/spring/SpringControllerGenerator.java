@@ -238,7 +238,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         String dtoName = SpringNaming.dtoName(shortName);
         String repoName = SpringNaming.repositoryName(shortName);
         String controllerName = SpringNaming.controllerName(shortName);
-        String routeBase = SpringNaming.controllerPath(shortName);
+        String routeBase = SpringNaming.controllerPath(entity);
         // PK type derived from identity.primary (uuid → java.util.UUID, long → Long, …);
         // a hard-coded Long made Spring 400 every uuid-keyed by-id request.
         String pkType = SpringTypeMapper.primaryKeyJavaType(entity);
@@ -627,7 +627,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         String dtoName = SpringNaming.dtoName(shortName);
         String repoName = SpringNaming.repositoryName(shortName);
         String controllerName = SpringNaming.controllerName(shortName);
-        String routeBase = SpringNaming.controllerPath(shortName);
+        String routeBase = SpringNaming.controllerPath(entity);
         boolean hasItem = RestSurfaceGate.hasItemRoute(entity);
         String pkType = SpringTypeMapper.primaryKeyJavaType(entity);
 
@@ -1122,7 +1122,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         String dtoName = SpringNaming.dtoName(shortName);
         String repoName = SpringNaming.repositoryName(shortName);
         String controllerName = SpringNaming.controllerName(shortName);
-        String routeBase = SpringNaming.controllerPath(shortName);
+        String routeBase = SpringNaming.controllerPath(base);
         String allowlistName = SpringNaming.filterAllowlistName(shortName);
         // The single TPH table is keyed by the BASE's primary identity — every polymorphic
         // + per-subtype by-id route binds that derived PK type (uuid → java.util.UUID, …).

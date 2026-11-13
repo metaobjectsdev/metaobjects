@@ -98,6 +98,8 @@ public class OutputParserGenerator : IGenerator
     {
         var templateName = tmpl.Name;
         var parserClass = CSharpNaming.ParserClassName(templateName);
+        ctx.Claim($"the C# namespace {ctx.Config.Namespace}", parserClass, tmpl.ResolutionKey(), "rename one (an output parser is declared in the configured namespace, GenConfig.Namespace, whatever its package, "
+            + "so the two packages do not keep them apart)");
         // ADR-0052: the shape parsed INTO is @responseRef — the reply — never @payloadRef,
         // which types the request this prompt renders outbound.
         var payloadRef = responseRef;
@@ -228,7 +230,7 @@ public class OutputParserGenerator : IGenerator
 
         // ADR-0052 D4: the artifact name follows the DIRECTION axis. A parser file named
         // `.output.cs` generated from a prompt reproduces the confusion being removed.
-        return new EmittedFile($"{templateName}.response.cs", sb.ToString());
+        return new EmittedFile(OutputPaths.Of(tmpl, ctx, $"{templateName}.response.cs"), sb.ToString());
     }
 
     /// <summary>

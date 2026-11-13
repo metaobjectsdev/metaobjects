@@ -466,6 +466,22 @@ the pattern and its `**` replacement, so output cannot vanish silently. Upgrade:
 matching direct children as `acme::*Store`; nested children need `acme::**::*Store` as a
 second entry. `@` becomes `*`.
 
+### Output paths and REST collection names
+
+Every per-object file lands in the directory of its metadata package: `acme::blog::Author` is the
+Java package `acme.blog` and the file `acme/blog/Author.java`, so two objects named `Note` in two
+packages are two files. Two different metadata packages that would land in one directory (names
+that differ only in letter case, or `a.b` beside `a::b`) are refused before any generator runs,
+with `ERR_NAME_COLLISION` naming both objects. Nothing is renamed to avoid a clash.
+
+A controller's REST collection segment is the object's `@collectionName` when it declares one
+(snake_cased: `CaseHistory` is `/case_history`), else the pluralizer `naming.collections` names in
+`.metaobjects/config.json`, else the rule every port has always served (`/authors`). A pluralizer
+applies only when the project configures one, so an unconfigured project's routes do not move.
+The api-docs, report export and collision check read the same segment. Reverse finders are named
+by the foreign-key field (`findByAuthorId`), so a collection name does not change them. The Kotlin
+generators share this rule.
+
 ### Shared and `@provided` enums
 
 A package-level abstract `field.enum` that fields extend is one top-level Java `enum`,
@@ -531,8 +547,9 @@ like a keyless read-only projection. Four generators write one file each for a r
 `@GetMapping`, a `@PostMapping` answering 405, no `/{id}` mapping). Every derived field with
 filter operators is filterable and sortable. A DTO component that can never be null carries
 `@NotNull`, as any required field does: a `count`, a measure with `@default`, a dimension
-reached through `@via` whose `@of` field is required and whose every hop is a belongs-to
-reference over a required foreign key (the view joins it `INNER`), and in a `@spine` report a
+reached through `@via` whose `@of` field is required and whose every hop is an enforced belongs-to
+reference over a required foreign key (the join always finds a match, so the view's `LEFT OUTER`
+join never nulls the column), and in a `@spine` report a
 key or `@required` column of the spine entity (`@NotNull Long programKey`).
 No other generator emits for a report: no names
 class, no entity class. `gen` fails, naming the report and the dimension or measure, when a

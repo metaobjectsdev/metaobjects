@@ -94,6 +94,21 @@ public class EntityGenerator : IGenerator
     // synthesized tree that belongs to no root.
     private WireFormat _wire = WireFormat.Default;
 
+    /// <summary>
+    /// Adds a type's file, claiming its type name in its namespace first: two objects that emit one
+    /// type into one namespace are refused, naming both, and neither is renamed. The name is the
+    /// emitted file's (<c>&lt;Type&gt;.g.cs</c>), so an override that renames a class claims the
+    /// name it actually emits.
+    /// </summary>
+    private static void Claimed(List<EmittedFile> files, EmittedFile file, MetaObject owner, GenContext ctx)
+    {
+        var fileName = Path.GetFileName(file.Path);
+        var typeName = fileName.EndsWith(".g.cs", StringComparison.Ordinal) ? fileName[..^".g.cs".Length] : fileName;
+        ctx.Claim($"the C# namespace {ValueObjectNames.Namespace(owner, ctx.Config)}", typeName, owner.ResolutionKey(),
+            "map the packages to distinct namespaces (csharp.packageNamespaces, or GenConfig.PackageNamespaces), or rename one");
+        files.Add(file);
+    }
+
     public virtual IEnumerable<EmittedFile> Generate(GenContext ctx)
     {
         ctx = ctx.Narrow(Include);
@@ -148,8 +163,7 @@ public class EntityGenerator : IGenerator
         // namespace; consuming entity fields REFERENCE them (no nested redeclaration). @provided
         // shared enums emit nothing here (referenced from configured external namespace). With no
         // shared enums in the model (the common inline case) no file is emitted — byte-identical.
-        if (EmitSharedEnumsFile(ctx, valueObjects) is { } sharedEnums)
-            files.Add(sharedEnums);
+        files.AddRange(EmitSharedEnumFiles(ctx, valueObjects));
 
         foreach (var e in mapped)
         {
@@ -167,9 +181,9 @@ public class EntityGenerator : IGenerator
                 // which carry no @discriminatorValue — are included. A standalone abstract
                 // (not in a TPH) stays a baseless shape.
                 if (TphPlanBuilder.IsTphMember(e, ctx.Root))
-                    files.Add(EmitTphSubtypeClass(e, ctx));
+                    Claimed(files, EmitTphSubtypeClass(e, ctx), e, ctx);
                 else
-                    files.Add(EmitAbstractShapeClass(e, ctx));
+                    Claimed(files, EmitAbstractShapeClass(e, ctx), e, ctx);
                 continue;
             }
             // FR-017 TPH: a subtype of a @discriminator base is NOT a standalone table — it
@@ -178,15 +192,15 @@ public class EntityGenerator : IGenerator
             // chain mirrors the metadata `extends` chain (abstract intermediates preserved).
             if (TphPlanBuilder.IsTphSubtype(e, ctx.Root))
             {
-                files.Add(EmitTphSubtypeClass(e, ctx));
+                Claimed(files, EmitTphSubtypeClass(e, ctx), e, ctx);
                 continue;
             }
-            files.Add(EmitMappedClass(e, ctx));
+            Claimed(files, EmitMappedClass(e, ctx), e, ctx);
             // #214 (FR-024 §7) — a write-through entity additionally emits a view-mapped
             // read model carrying the derived (origin.*) fields the write table omits.
             // Reads return this type; the DbContext maps it to the replica view.
             if (e.IsWriteThrough())
-                files.Add(EmitWriteThroughReadModel(e, ctx));
+                Claimed(files, EmitWriteThroughReadModel(e, ctx), e, ctx);
         }
         // A concrete sourceless object (#248) shares the value object's emission: a plain
         // POCO with the validation DataAnnotations and none of the EF mapping attributes.
@@ -194,12 +208,12 @@ public class EntityGenerator : IGenerator
         foreach (var o in unmappedShapes)
             if (EmitValueObjectPoco(o, ctx) is { } poco)
             {
-                files.Add(poco);
+                Claimed(files, poco, o, ctx);
             }
         foreach (var vo in valueObjects)
             if (EmitValueObjectPoco(vo, ctx) is { } poco)
             {
-                files.Add(poco);
+                Claimed(files, poco, vo, ctx);
             }
 
         // ADR-0038 — reverse-relationship navigation as explicit FK finders. For each
@@ -425,7 +439,7 @@ public class EntityGenerator : IGenerator
         // relationship — for a self-join the member is named after the relationship.
         if (!isProjection)
             foreach (var nav in M2MNavigationBuilder.For(entity, ctx.Root, ctx.Warn))
-                members.Add(M2mNavProperty(nav));
+                members.Add(M2mNavProperty(nav, ctx.Config));
 
         if (enumDecls.Count > 0)
         {
@@ -441,7 +455,7 @@ public class EntityGenerator : IGenerator
         }
         EmitClassBodyTrailer(sb, entity, ctx);
         sb.AppendLine("}");
-        return new EmittedFile($"{className}.g.cs", sb.ToString());
+        return new EmittedFile(OutputPaths.Of(entity, ctx, $"{className}.g.cs"), sb.ToString());
     }
 
     // Extension hook — owns the per-class header for a mapped entity/projection: the
@@ -524,7 +538,7 @@ public class EntityGenerator : IGenerator
     protected virtual IEnumerable<string> TphDerivedTypeAttributes(MetaObject root, GenContext ctx) =>
         TphPlanBuilder.For(root, ctx.Root) is { } plan
             ? plan.Subtypes.Select(sub =>
-                $"[System.Text.Json.Serialization.JsonDerivedType(typeof({CSharpNaming.Pascal(sub.Entity.Name)}))]")
+                $"[System.Text.Json.Serialization.JsonDerivedType(typeof({ValueObjectNames.Ref(sub.Entity, ctx.Config)}))]")
             : [];
 
     // Extension hook — class-level attributes of an adopter's own, emitted after the framework's
@@ -584,7 +598,7 @@ public class EntityGenerator : IGenerator
                 // level — see EmitTphSubtypeClass for the other half (that level's OWN
                 // fields must still land on the subtype, or skipping its class would silently
                 // drop them instead of merely failing to compile).
-                var baseClass = CSharpNaming.Pascal(EmittedTphAncestor(entity, ctx).Name);
+                var baseClass = ValueObjectNames.Ref(EmittedTphAncestor(entity, ctx), ctx.Config);
                 var tphKeyword = InstanceArtifacts.IsAbstract(entity) ? "abstract class" : "class";
                 sb.AppendLine($"public {tphKeyword} {className} : {baseClass}");
                 break;
@@ -601,7 +615,7 @@ public class EntityGenerator : IGenerator
     // (DirectMappedParent), else empty. The member loops skip the fields that base carries,
     // so the declaration line MUST name it or those properties exist nowhere on the class.
     private static string MappedBaseClause(MetaObject entity, GenContext ctx) =>
-        DirectMappedParent(entity, ctx.Config) is { } parent ? $" : {CSharpNaming.Pascal(parent.Name)}" : "";
+        DirectMappedParent(entity, ctx.Config) is { } parent ? $" : {ValueObjectNames.Ref(parent, ctx.Config)}" : "";
 
     // A M:N navigation collection property on the source entity. The collection is
     // the relationship name PascalCased; its element type is the target entity.
@@ -616,9 +630,9 @@ public class EntityGenerator : IGenerator
     //
     // Eject (ADR-0034 Amendment 3): public so an owned copy of another generator can
     // emit the SAME M:N nav-property shape this one does, rather than re-deriving it.
-    public static string M2mNavProperty(M2MNavigation nav)
+    public static string M2mNavProperty(M2MNavigation nav, GenConfig? config = null)
     {
-        var target = CSharpNaming.Pascal(nav.Target.Name);
+        var target = config is null ? CSharpNaming.Pascal(nav.Target.Name) : ValueObjectNames.Ref(nav.Target, config);
         var prop = CSharpNaming.Pascal(nav.Name);
         var notMapped = nav.IsSelfJoin ? "    [NotMapped]\n" : "";
         return $"{notMapped}    public ICollection<{target}> {prop} {{ get; set; }} = new List<{target}>();";
@@ -719,7 +733,7 @@ public class EntityGenerator : IGenerator
         }
         EmitClassBodyTrailer(sb, entity, ctx);
         sb.AppendLine("}");
-        return new EmittedFile($"{className}.g.cs", sb.ToString());
+        return new EmittedFile(OutputPaths.Of(entity, ctx, $"{className}.g.cs"), sb.ToString());
     }
 
     // A subtype-only scalar property: [Column]-mapped, with the field's validator
@@ -935,7 +949,7 @@ public class EntityGenerator : IGenerator
         sb.AppendLine();
         EmitClassBodyTrailer(sb, entity, ctx);
         sb.AppendLine("}");
-        return new EmittedFile($"{className}.g.cs", sb.ToString());
+        return new EmittedFile(OutputPaths.Of(entity, ctx, $"{className}.g.cs"), sb.ToString());
     }
 
     // Plain POCO for a value object nested by an owned-type navigation. No [Table] /
@@ -1030,7 +1044,7 @@ public class EntityGenerator : IGenerator
         sb.AppendLine();
         EmitClassBodyTrailer(sb, vo, ctx);
         sb.AppendLine("}");
-        return new EmittedFile($"{className}.g.cs", sb.ToString());
+        return new EmittedFile(OutputPaths.Of(vo, ctx, $"{className}.g.cs"), sb.ToString());
     }
 
     /// <summary>
@@ -1088,34 +1102,136 @@ public class EntityGenerator : IGenerator
     // Referencing a @provided enum with no ProvidedEnumNamespace configured throws here too
     // (the collect walk constructs each consuming reference's type), surfacing the config gap
     // as a codegen-time error before any file is written.
-    protected virtual EmittedFile? EmitSharedEnumsFile(GenContext ctx, IReadOnlyList<MetaObject> valueShapes)
+    protected virtual IEnumerable<EmittedFile> EmitSharedEnumFiles(GenContext ctx, IReadOnlyList<MetaObject> valueShapes)
     {
         // Surface a missing ProvidedEnumNamespace for any consumed @provided enum as a
         // codegen-time error (ADR-0026), even though @provided emits no file content.
         // FR-023: an imported value object this run emits a POCO for (a generated type needs it), so
         // the enums IT uses are part of the output too.
         var importedShapes = valueShapes.Where(vo => !ctx.Root.InScope(vo)).ToList();
+        // A narrowed run (Include) declares the enums of the objects it accepts and of every value
+        // object it emits beyond them (a reached closure POCO), not the whole model's; another entry
+        // declares the rest, and an enum both use is declared once (below). Un-narrowed, the set is
+        // unchanged.
+        var reached = ctx.Scope is null ? importedShapes : valueShapes.ToList();
 
-        foreach (var shared in Fr019SharedEnum.CollectSharedEnums(ctx.Root, importedShapes))
+        foreach (var shared in Fr019SharedEnum.CollectSharedEnums(ctx.Root, reached, ctx.Scope))
             if (shared.Provided)
                 _ = Fr019SharedEnum.SharedEnumTypeReference(shared, ctx.Config);
 
-        var materialized = Fr019SharedEnum.MaterializedSharedEnums(ctx.Root, importedShapes);
-        if (materialized.Count == 0) return null;
+        var declared = new List<SharedEnum>();
+        foreach (var e in Fr019SharedEnum.MaterializedSharedEnums(ctx.Root, reached, ctx.Scope))
+        {
+            // An enum two narrowed entries both use is declared by ONE of them, so the entries'
+            // outputs build together. Decided from the model alone, so each entry reaches the same
+            // answer in its own run: the enum's home is its first consumer by resolution key, and
+            // the entry that emits that object declares it.
+            if (ctx.Scope is { } scope && SharedEnumHome(ctx, e, importedShapes) is { } home
+                && !scope(home) && !valueShapes.Contains(home))
+                continue;
+            var ns = Fr019SharedEnum.MaterializedNamespace(e, ctx.Config);
+            ctx.Claim($"the C# namespace {ns}", e.Name, e.Declaration?.ResolutionKey() ?? e.Name,
+                "map the packages to distinct namespaces (csharp.packageNamespaces, or GenConfig.PackageNamespaces), or rename one");
+            declared.Add(e);
+        }
+        if (declared.Count == 0) return [];
+
+        // The package layout writes each enum as its own <package>/<Enum>.g.cs, with its
+        // @intValueMap integers and XML docs. The flat layout keeps the one Enums.g.cs.
+        if (ctx.Config.OutputLayout == OutputLayout.Package)
+            return declared.Select(e =>
+            {
+                var sb = new StringBuilder();
+                sb.AppendLine("// <auto-generated/>");
+                sb.AppendLine("// Generated by MetaObjects entity-generator (FR-019 shared enum). Do not edit by hand.");
+                sb.AppendLine("// A reused package-level field.enum; consuming entities reference it.");
+                sb.AppendLine("#nullable enable");
+                sb.AppendLine();
+                sb.AppendLine($"namespace {Fr019SharedEnum.MaterializedNamespace(e, ctx.Config)};");
+                sb.AppendLine();
+                sb.Append(SharedEnumDeclaration(e));
+                var fileName = $"{e.Name}.g.cs";
+                return new EmittedFile(e.Declaration is { } decl ? OutputPaths.Of(decl, ctx, fileName) : fileName, sb.ToString());
+            }).ToList();
+
+        var flat = new StringBuilder();
+        flat.AppendLine("// <auto-generated/>");
+        flat.AppendLine("// Generated by MetaObjects entity-generator (FR-019 shared enums). Do not edit by hand.");
+        flat.AppendLine("// One declaration per reused package-level field.enum; consuming entities reference these.");
+        flat.AppendLine("#nullable enable");
+        flat.AppendLine();
+        var groups = declared.GroupBy(e => Fr019SharedEnum.MaterializedNamespace(e, ctx.Config), StringComparer.Ordinal).ToList();
+        if (groups.Count == 1)
+        {
+            // One namespace (the default: GenConfig.Namespace), as ever.
+            flat.AppendLine($"namespace {groups[0].Key};");
+            flat.AppendLine();
+            foreach (var e in groups[0])
+                flat.AppendLine($"public enum {e.Name} {{ {string.Join(", ", e.Values)} }}");
+        }
+        else
+        {
+            foreach (var g in groups.OrderBy(g => g.Key, StringComparer.Ordinal))
+            {
+                flat.AppendLine($"namespace {g.Key}");
+                flat.AppendLine("{");
+                foreach (var e in g)
+                    flat.AppendLine($"    public enum {e.Name} {{ {string.Join(", ", e.Values)} }}");
+                flat.AppendLine("}");
+                flat.AppendLine();
+            }
+        }
+        return [new EmittedFile("Enums.g.cs", flat.ToString())];
+    }
+
+    /// <summary>
+    /// The object a narrowed run's shared enum is declared beside: the first, by resolution key, of
+    /// every object this project generates (and every imported value object this run emits) that has
+    /// a field of the enum. Null when nothing consumes it.
+    /// </summary>
+    private static MetaObject? SharedEnumHome(GenContext ctx, SharedEnum e, IReadOnlyList<MetaObject> importedShapes) =>
+        ctx.Root.Objects().Where(ctx.Root.InScope).Concat(importedShapes)
+            .Where(o => o.Fields().Any(f => Fr019SharedEnum.SharedEnumForField(f) is { } u && u.Name == e.Name && u.Package == e.Package))
+            .OrderBy(o => o.ResolutionKey(), StringComparer.Ordinal)
+            .FirstOrDefault();
+
+    /// <summary>
+    /// A shared enum's declaration: the declaration's doc attrs as the type's XML doc, each
+    /// member's <c>@intValueMap</c> integer as its value, and each member's <c>@enumDoc</c> text as
+    /// its <c>&lt;summary&gt;</c>. A member with no doc keeps the one-line form.
+    /// </summary>
+    private static string SharedEnumDeclaration(SharedEnum e)
+    {
+        var decl = e.Declaration;
+        var ints = decl?.Attr(FIELD_ATTR_INT_VALUE_MAP) as IReadOnlyDictionary<string, object?>;
+        var docs = decl?.Attr(FIELD_ATTR_ENUM_DOC) as IReadOnlyDictionary<string, object?>;
+        string Member(string m) =>
+            ints is not null && ints.TryGetValue(m, out var raw) && raw is not null
+                ? $"{m} = {Convert.ToInt64(raw).ToString(System.Globalization.CultureInfo.InvariantCulture)}"
+                : m;
+        string? DocOf(string m) => docs is not null && docs.TryGetValue(m, out var d) && d?.ToString() is { Length: > 0 } text ? text : null;
 
         var sb = new StringBuilder();
-        sb.AppendLine("// <auto-generated/>");
-        sb.AppendLine("// Generated by MetaObjects entity-generator (FR-019 shared enums). Do not edit by hand.");
-        sb.AppendLine("// One declaration per reused package-level field.enum; consuming entities reference these.");
-        sb.AppendLine("#nullable enable");
-        sb.AppendLine();
-        // Shared enums file is a single artifact holding enums from MULTIPLE packages —
-        // it can't live in a per-package namespace. Lands at the default Namespace.
-        sb.AppendLine($"namespace {ctx.Config.Namespace};");
-        sb.AppendLine();
-        foreach (var e in materialized)
-            sb.AppendLine($"public enum {e.Name} {{ {string.Join(", ", e.Values)} }}");
-        return new EmittedFile("Enums.g.cs", sb.ToString());
+        if (decl is not null)
+        {
+            var (xmlDoc, obsolete) = XmlDocBuilder.Render(decl);
+            if (xmlDoc.Length > 0) sb.AppendLine(xmlDoc);
+            if (obsolete is not null) sb.AppendLine(obsolete);
+        }
+        if (e.Values.All(m => DocOf(m) is null))
+        {
+            sb.AppendLine($"public enum {e.Name} {{ {string.Join(", ", e.Values.Select(Member))} }}");
+            return sb.ToString();
+        }
+        sb.AppendLine($"public enum {e.Name}");
+        sb.AppendLine("{");
+        foreach (var m in e.Values)
+        {
+            if (DocOf(m) is { } doc) sb.AppendLine($"    /// <summary>{XmlDocBuilder.EscapeXml(doc)}</summary>");
+            sb.AppendLine($"    {Member(m)},");
+        }
+        sb.AppendLine("}");
+        return sb.ToString();
     }
 
     // -------------------------------------------------------------------------
@@ -2465,7 +2581,7 @@ public static class DurationWire
         if (field.SubType == FIELD_SUBTYPE_OBJECT)
         {
             var typeName = ValueObjectNames.ResolveFieldRef(field, ctx.Root) is { } target
-                ? ValueObjectNames.TypeName(target, ctx.Root)
+                ? ValueObjectNames.ShortRef(target, ctx.Root, ctx.Config, ValueObjectNames.Namespace(owner, ctx.Config))
                 : CSharpNaming.Pascal(CSharpNaming.StripPkg(field.ObjectRef ?? field.Name));
             if (field.ResolvedIsArray())
             {
@@ -2521,7 +2637,7 @@ public static class DurationWire
         {
             var target = ValueObjectNames.ResolveFieldRef(field, ctx.Root);
             var typeName = target is not null
-                ? ValueObjectNames.TypeName(target, ctx.Root)
+                ? ValueObjectNames.ShortRef(target, ctx.Root, ctx.Config, ValueObjectNames.Namespace(owner, ctx.Config))
                 : CSharpNaming.Pascal(CSharpNaming.StripPkg(field.ObjectRef ?? field.Name));
             if (field.ResolvedIsArray())
             {

@@ -1,7 +1,11 @@
 package com.metaobjects.generator.kotlin
 
+import com.metaobjects.database.PhysicalNaming
+import com.metaobjects.metadata.ktx.loadString
+import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 /**
  * The Kotlin seam DELEGATES the collection-URL spelling to the shared
@@ -35,5 +39,42 @@ class KotlinRouteNamingTest {
     fun `controller path mounts the collection segment under api`() {
         assertEquals("/api/authors", KotlinNaming.controllerPath("Author"))
         assertEquals("/api/post_categories", KotlinNaming.controllerPath("PostCategory"))
+    }
+
+    private fun model(extra: String) = """{
+      "metadata.root": { "package": "acme::blog", "children": [
+        { "object.entity": { "name": "Author", $extra "children": [
+            { "field.long":   { "name": "id" } },
+            { "source.rdb":   { "@table": "authors" } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } }
+        ] } }
+      ] }
+    }""".trimIndent()
+
+    private fun routeFor(extra: String, pluralizer: String?): String {
+        val outDir = Files.createTempDirectory("kroute-")
+        try {
+            val loader = loadString("route", model(extra))
+            if (pluralizer != null) loader.root.setPhysicalNaming(PhysicalNaming.of("snake_case", "snake_case", pluralizer))
+            val gen = KotlinSpringControllerGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loader)
+            val src = Files.readString(outDir.resolve("acme/blog/AuthorController.kt"))
+            val m = Regex("@RequestMapping\\(\"([^\"]*)\"\\)").find(src)
+            assertTrue(m != null, src)
+            return m.groupValues[1]
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `controller path honours a declared collection name and the configured pluralizer`() {
+        // Shared contract: fixtures/naming-conformance/collection-segments.json.
+        val declared = "\"@collectionName\": \"People\","
+        assertEquals("/api/authors", routeFor("", null))
+        assertEquals("/api/people", routeFor(declared, null))
+        assertEquals("/api/author", routeFor("", "none"))
+        assertEquals("/api/people", routeFor(declared, "none"))
     }
 }
