@@ -17,6 +17,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { runGen, defineConfig } from "@metaobjectsdev/codegen-ts";
+import { indexEmitted, type OutputLayout } from "./output-layout.ts";
 import { entityFile, routesFile } from "@metaobjectsdev/test-generators";
 import pg from "pg";
 import { executeSql } from "./postgres-sql.ts";
@@ -35,6 +36,7 @@ export interface GeneratedJsonbServerHandle {
 export async function startGeneratedJsonbServer(
   connectionUri: string,
   metaPath: string,
+  outputLayout: OutputLayout = "flat",
 ): Promise<GeneratedJsonbServerHandle> {
   // Emit INSIDE the package tree (under .gen-tmp/, gitignored) so the emitted
   // route's bare `@metaobjectsdev/runtime-ts/drizzle-fastify` import resolves
@@ -53,6 +55,7 @@ export async function startGeneratedJsonbServer(
     config: defineConfig({
       outDir: tmp,
       extStyle: "none",
+      outputLayout,
       dbImport: "./db",
       dialect: "postgres",
       apiPrefix: "/api",
@@ -60,6 +63,7 @@ export async function startGeneratedJsonbServer(
     }),
     metadata: root,
   });
+  const emitted = indexEmitted(tmp, lr.files, outputLayout);
   if (lr.warnings.length > 0) {
     throw new Error(`codegen produced warnings: ${lr.warnings.join("; ")}`);
   }
@@ -96,7 +100,7 @@ export const db = drizzle(pool);
      )`,
   );
 
-  const routeUrl = pathToFileURL(join(tmp, "Document.routes.ts")).href;
+  const routeUrl = pathToFileURL(emitted.locate("Document.routes.ts")).href;
   const mod = (await import(routeUrl)) as { documentRoutes: (f: FastifyInstance) => Promise<void> };
   const dbMod = (await import(pathToFileURL(join(tmp, "db.ts")).href)) as { pool: pg.Pool };
 

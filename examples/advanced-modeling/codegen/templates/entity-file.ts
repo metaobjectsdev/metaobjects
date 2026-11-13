@@ -28,7 +28,7 @@ import {
 } from "@metaobjectsdev/codegen-ts/engine";
 import { renderExistingViewDecl, renderViewReadZodObject } from "./view-decl.js";
 import { renderDocsFor } from "./jsdoc.js";
-import { valueObjectModuleSpecifier } from "@metaobjectsdev/codegen-ts/engine";
+import { valueObjectFieldImport } from "@metaobjectsdev/codegen-ts/engine";
 import { namesRef, namesConstArg, physicalNameExpr, sourceSchemaExpr } from "@metaobjectsdev/codegen-ts/engine";
 import { hasWritableRdbSource } from "@metaobjectsdev/codegen-ts/engine";
 import { renderValueObjectFile } from "./value-object-file.js";
@@ -160,15 +160,10 @@ export function renderEntityFile(
     const camel = entity.name.charAt(0).toLowerCase() + entity.name.slice(1);
     const fields = entity.fields();
     const entityPkg = effectivePackage(entity);
-    // ADR-0044/#228 — resolve a view column's `@objectRef` to the value object's
-    // EMITTED name + module TOGETHER (lock-step), so the read-view artifact imports
-    // `AcmeAlphaNote` from `./AcmeAlphaNote.js` (not a bare `Note` → `./Note.js`)
-    // under a cross-package short-name collision.
-    const voRef = (field: MetaField): { name: string; module: string } => {
-      const name = ctx.resolveValueObjectName(field);
-      const module = valueObjectModuleSpecifier(name, ctx.packageOf, entityPkg, ctx.outputLayout, ctx.extStyle);
-      return { name, module };
-    };
+    // A view column's `@objectRef`: the bound value object's import under its local name,
+    // through the same helper the entity's own columns use.
+    const voRef = (field: MetaField, suffix: string, typeOnly: boolean) =>
+      valueObjectFieldImport(ctx, field, entityPkg, suffix, typeOnly);
     // ONE selection of the replica source: `projectionViewName` names it, and this is the
     // role its entry has in <Entity>Names.sources. Hardcoding "replica" here would be a
     // second derivation of the very thing extract-view-spec.ts exists to decide once.

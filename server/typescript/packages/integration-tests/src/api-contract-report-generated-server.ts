@@ -15,10 +15,11 @@
 // Generated lane only, and on every port — see the corpus README.
 
 import Fastify, { type FastifyInstance } from "fastify";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { runGen, defineConfig, buildReportViews } from "@metaobjectsdev/codegen-ts";
+import { indexEmitted, type OutputLayout } from "./output-layout.ts";
 import {
   DEFAULT_PHYSICAL_NAMING, resolveColumnName, resolveTableName, type MetaRoot,
 } from "@metaobjectsdev/metadata";
@@ -196,6 +197,7 @@ export const REPORT_CORPUS_MAX_ROWS = 60;
 export async function startGeneratedReportServer(
   connectionUri: string,
   metaPath: string,
+  outputLayout: OutputLayout = "flat",
 ): Promise<GeneratedReportServerHandle> {
   const here = dirname(fileURLToPath(import.meta.url));
   const genTmpRoot = join(here, "..", ".gen-tmp");
@@ -212,6 +214,7 @@ export async function startGeneratedReportServer(
     config: defineConfig({
       outDir: tmp,
       extStyle: "none",
+      outputLayout,
       dbImport: "./db",
       dialect: "postgres",
       apiPrefix: "/api",
@@ -224,7 +227,8 @@ export async function startGeneratedReportServer(
     }),
     metadata: root,
   });
-  if (existsSync(join(tmp, "InvoiceDays.routes.ts"))) {
+  const emitted = indexEmitted(tmp, lr.files, outputLayout);
+  if (emitted.has("InvoiceDays.routes.ts")) {
     rmSync(tmp, { recursive: true, force: true });
     throw new Error("codegen emitted a routes file for the sourceless report InvoiceDays");
   }
@@ -260,7 +264,7 @@ export const db = drizzle(pool);
   // 4. Import the EMITTED route files unmodified and mount every served report.
   const fastify = Fastify();
   for (const r of SERVED_REPORTS) {
-    const mod = (await import(pathToFileURL(join(tmp, `${r.name}.routes.ts`)).href)) as Record<
+    const mod = (await import(pathToFileURL(emitted.locate(`${r.name}.routes.ts`)).href)) as Record<
       string,
       (f: FastifyInstance) => Promise<void>
     >;

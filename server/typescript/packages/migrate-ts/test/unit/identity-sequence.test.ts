@@ -60,8 +60,17 @@ describe("identity.primary sequence start and name", () => {
     expect(changes.filter((c) => c.kind === "alter-sequence")).toHaveLength(1);
     const { up, down } = emit(changes, { dialect: "postgres" });
     expect(up).toContain('ALTER SEQUENCE "Ticket_Id_seq" START WITH 1000000000;');
-    // A changed start is recorded, never applied to the live counter: no setval, no RESTART.
-    expect(up).not.toMatch(/setval|RESTART/);
+    // A changed start moves the counter forward only, to GREATEST(n, max(id) + 1), under the
+    // live name before the rename; it never RESTARTs.
+    expect(up).not.toMatch(/RESTART/);
+    expect(up).toContain(
+      `SELECT setval('"Ticket_Id_seq"'::regclass, t.target, false) FROM (SELECT GREATEST(1000000000, COALESCE(MAX("Id"), 0) + 1) AS target FROM "Ticket") t,`,
+    );
+    expect(up).toContain("p.seqincrement > 0");
+    expect(up).toContain("< t.target;");
+    expect(up.indexOf("setval")).toBeLessThan(up.indexOf("RENAME TO"));
+    // The down restores the start and never moves the counter back.
+    expect(down).not.toMatch(/setval|RESTART/);
     expect(up).toContain('ALTER SEQUENCE "Ticket_Id_seq" RENAME TO "Old_Id_seq";');
     expect(down).toContain('ALTER SEQUENCE "Old_Id_seq" RENAME TO "Ticket_Id_seq";');
     expect(down).toContain('ALTER SEQUENCE "Ticket_Id_seq" START WITH 1;');

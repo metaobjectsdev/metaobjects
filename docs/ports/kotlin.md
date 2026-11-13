@@ -536,6 +536,18 @@ object AuthorTable : Table("authors") {
 }
 ```
 
+An increment key that declares `@sequenceStart` or `@sequenceName` gets a named Exposed sequence,
+so a table Exposed creates begins at the declared start (on both the Exposed 0.x and 1.x lines):
+
+```kotlin
+val id = long("id").autoIncrement(Sequence("Ticket_Id_seq", startWith = 1000000000L))
+```
+
+With neither declared the column stays a bare `autoIncrement()`. Generated Exposed code has no
+migration path, so a start changed on an existing database is `meta migrate`'s job, which moves
+the counter forward only. Output paths and REST collection names follow the Java rules
+([java.md, "Output paths and REST collection names"](java.md#output-paths-and-rest-collection-names)).
+
 …and the Spring wiring is also generated, so consumer Kotlin code is purely
 business logic:
 

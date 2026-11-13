@@ -59,19 +59,19 @@ def _load_root_from_files(*meta_jsons: Path):
     return res.root
 
 
-def _ctx(root) -> GenContext:
+def _ctx(root, layout: str = "flat") -> GenContext:
     return GenContext(
         entities=[c for c in root.own_children() if isinstance(c, MetaObject)],
         loaded_root=root,
         matches=lambda _e: True,
-        config=GenConfig(out_dir="/tmp/out"),
+        config=GenConfig(out_dir="/tmp/out", output_layout=layout),
         warn=lambda _m: None,
     )
 
 
-def _models(root) -> list:
+def _models(root, layout: str = "flat") -> list:
     """The entity generator's models — what every generated render helper imports."""
-    return EntityModelGenerator().generate(_ctx(root))
+    return EntityModelGenerator().generate(_ctx(root, layout))
 
 
 def _materialize_and_import(files, tmp_path):
@@ -79,7 +79,13 @@ def _materialize_and_import(files, tmp_path):
     os.makedirs(pkg_dir, exist_ok=True)
     open(os.path.join(pkg_dir, "__init__.py"), "w").close()
     for f in files:
-        with open(os.path.join(pkg_dir, f.path), "w") as fh:
+        target = os.path.join(pkg_dir, f.path)
+        d = os.path.dirname(target)
+        while d != pkg_dir:
+            os.makedirs(d, exist_ok=True)
+            open(os.path.join(d, "__init__.py"), "a").close()
+            d = os.path.dirname(d)
+        with open(target, "w") as fh:
             fh.write(f.content)
     sys.path.insert(0, str(tmp_path))
     for k in list(sys.modules):
@@ -196,11 +202,11 @@ def test_document_digest_doc_resolves_fqn_nested_object_ref_across_collision(tmp
     )
     templates = str(CORPUS / "templates")
     # Must NOT raise: the FQN refs resolve to their own package's Note.
-    files = [f for f in RenderHelperGenerator(templates).generate(_ctx(root))
-             if f.path == "digest_doc_render_helper.py"]
+    files = [f for f in RenderHelperGenerator(templates).generate(_ctx(root, "package"))
+             if f.path.endswith("digest_doc_render_helper.py")]
     assert len(files) == 1
-    _materialize_and_import([*files, *_models(root)], tmp_path)
-    helper = import_module("_rh_conf_pkg.digest_doc_render_helper")
+    _materialize_and_import([*files, *_models(root, "package")], tmp_path)
+    helper = import_module("_rh_conf_pkg.acme.app.digest_doc_render_helper")
 
     payload = {"fromAlpha": {"alphaText": "AA"}, "fromBeta": {"betaText": "BB"}}
     out = helper.render_digest_doc(payload, FilesystemProvider(templates))
@@ -208,10 +214,10 @@ def test_document_digest_doc_resolves_fqn_nested_object_ref_across_collision(tmp
 
 
 def test_value_object_collision_types_the_helper_with_distinct_models(tmp_path) -> None:
-    """ADR-0044/0056 — the two colliding ``Note`` value objects (``acme::alpha`` /
-    ``acme::beta``) emit as TWO distinct models under their package-qualified names
-    (``AcmeAlphaNote`` / ``AcmeBetaNote``), never one shadowed ``Note``, and the
-    helper's typed ``Digest`` payload composes them and renders."""
+    """The two colliding ``Note`` value objects (``acme::alpha`` /
+    ``acme::beta``) keep their name and live in their own package directory; the
+    flat layout refuses the pair (``ERR_NAME_COLLISION``). The helper's typed
+    ``Digest`` payload composes them and renders."""
     dir_root = CORPUS / "xpkg-collision"
     root = _load_root_from_files(
         dir_root / "meta.alpha.json",
@@ -219,28 +225,29 @@ def test_value_object_collision_types_the_helper_with_distinct_models(tmp_path) 
         dir_root / "meta.app.json",
     )
     templates = str(CORPUS / "templates")
-    models = _models(root)
+    with pytest.raises(ValueError, match="ERR_NAME_COLLISION"):
+        _models(root, "flat")
+    models = _models(root, "package")
     by_path = {f.path: f.content for f in models}
-    assert "Note.py" not in by_path
-    assert "class AcmeAlphaNote(BaseModel):" in by_path["AcmeAlphaNote.py"]
-    assert "class AcmeBetaNote(BaseModel):" in by_path["AcmeBetaNote.py"]
+    assert "class Note(BaseModel):" in by_path["acme/alpha/Note.py"]
+    assert "class Note(BaseModel):" in by_path["acme/beta/Note.py"]
     # Each field binds to its OWN package's shape.
-    assert "fromAlpha: AcmeAlphaNote | None = None" in by_path["Digest.py"]
-    assert "fromBeta: AcmeBetaNote | None = None" in by_path["Digest.py"]
+    assert "fromAlpha: AcmeAlphaNote | None = None" in by_path["acme/app/Digest.py"]
+    assert "fromBeta: AcmeBetaNote | None = None" in by_path["acme/app/Digest.py"]
 
-    helpers = [f for f in RenderHelperGenerator(templates).generate(_ctx(root))
-               if f.path == "digest_doc_render_helper.py"]
+    helpers = [f for f in RenderHelperGenerator(templates).generate(_ctx(root, "package"))
+               if f.path.endswith("digest_doc_render_helper.py")]
     assert "def render_digest_doc(payload: Digest, provider) -> str:" in helpers[0].content
     _materialize_and_import([*helpers, *models], tmp_path)
-    alpha_cls = import_module("_rh_conf_pkg.AcmeAlphaNote").AcmeAlphaNote
-    beta_cls = import_module("_rh_conf_pkg.AcmeBetaNote").AcmeBetaNote
-    digest_cls = import_module("_rh_conf_pkg.Digest").Digest
+    alpha_cls = import_module("_rh_conf_pkg.acme.alpha.Note").Note
+    beta_cls = import_module("_rh_conf_pkg.acme.beta.Note").Note
+    digest_cls = import_module("_rh_conf_pkg.acme.app.Digest").Digest
     # The models are real and DISTINCT: alpha carries alphaText, beta betaText.
     assert set(alpha_cls.model_fields) == {"alphaText"}
     assert set(beta_cls.model_fields) == {"betaText"}
 
     digest = digest_cls(fromAlpha=alpha_cls(alphaText="AA"), fromBeta=beta_cls(betaText="BB"))
-    helper = import_module("_rh_conf_pkg.digest_doc_render_helper")
+    helper = import_module("_rh_conf_pkg.acme.app.digest_doc_render_helper")
     assert helper.render_digest_doc(digest, FilesystemProvider(templates)) == "Alpha=AA Beta=BB"
 
 

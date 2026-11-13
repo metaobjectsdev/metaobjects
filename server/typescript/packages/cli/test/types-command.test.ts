@@ -249,7 +249,6 @@ describe("meta types --format", () => {
     expect(text).toContain("[java; pending elsewhere]");
     expect(text).toContain("[java+kotlin]");
     expect(text).not.toContain("[java-only]");
-    expect(text).toContain("[csharp+ts; pending elsewhere]");
     expect(text).not.toContain("[csharp-only]");
     expect(text).not.toContain("[ts-only]");
     const doc = await json(["object.entity", "--kind", "attr", "--limit", "0"]);
@@ -258,7 +257,8 @@ describe("meta types --format", () => {
     // Implemented in Java only, so the deprecated derived `tsOnly` is false.
     expect(attr("object").tsOnly).toBe(false);
     expect(attr("objectAdapter").ports).toEqual(["java", "kotlin"]);
-    expect(attr("collectionName").implementedIn).toEqual(["csharp", "typescript"]);
+    // Implemented in every port, so it carries no implementedIn.
+    expect(attr("collectionName").implementedIn).toBeUndefined();
     // A view's attr inherits its type's kind-1 marking.
     const img = await json(["view.image", "--kind", "attr", "--limit", "0"]);
     expect(img.matches.find((m: any) => m.name === "view.image @accept").implementedIn).toEqual(["typescript"]);

@@ -1,7 +1,7 @@
 // RenderContext — cross-cutting state passed to every template.
 
 import type { MetaRoot, MetaData } from "@metaobjectsdev/metadata";
-import { FIELD_ATTR_OBJECT_REF, collectionNameOf, declaredCollectionName, physicalNamingOf, refTarget, stripPackage } from "@metaobjectsdev/metadata";
+import { FIELD_ATTR_OBJECT_REF, PACKAGE_SEPARATOR, TYPE_OBJECT, collectionNameOf, declaredCollectionName, physicalNamingOf, refTarget, stripPackage } from "@metaobjectsdev/metadata";
 import type { Dialect } from "./column-mapper.js";
 import { normalizeTimestampMode } from "./dialect-module.js";
 import type { PkInfo } from "./pk-resolver.js";
@@ -9,6 +9,38 @@ import type { RelationMap } from "./relation-resolver.js";
 import type { ColumnNamingStrategy } from "./metaobjects-config.js";
 import type { OutputLayout, ResolvedTarget } from "./import-path.js";
 import { toCamelCase, variableNameFromEntity } from "./naming.js";
+
+/**
+ * The local name a file uses for `obj` when it imports it: `obj.name`, or, when another
+ * top-level object in the model shares that short name, its package PascalCased and prefixed
+ * (`acme::alpha::Note` gives `AcmeAlphaNote`), imported `as` that alias. Only the local binding
+ * carries the package; the declared type keeps its name.
+ */
+export function localTypeName(obj: MetaData, root: MetaData): string {
+  const shares = root.children().filter((c) => c.type === TYPE_OBJECT && c.name === obj.name).length > 1;
+  const key = obj.resolutionKey();
+  const suffix = `${PACKAGE_SEPARATOR}${obj.name}`;
+  const pkg = key.endsWith(suffix) ? key.slice(0, -suffix.length) : "";
+  if (!shares || pkg === "") return obj.name;
+  return pkg.split(PACKAGE_SEPARATOR).map((s) => (s.length > 0 ? s[0]!.toUpperCase() + s.slice(1) : s)).join("") + obj.name;
+}
+
+function deprecatedIdentityNames(root: MetaData): ReadonlyMap<string, string> {
+  const names = new Map<string, string>();
+  for (const c of root.children()) if (c.type === TYPE_OBJECT) names.set(c.resolutionKey(), c.name);
+  return names;
+}
+
+function deprecatedPackageOf(root: MetaData): Map<string, string | undefined> {
+  const out = new Map<string, string | undefined>();
+  for (const c of root.children()) {
+    if (c.type !== TYPE_OBJECT) continue;
+    const key = c.resolutionKey();
+    const suffix = `${PACKAGE_SEPARATOR}${c.name}`;
+    out.set(c.name, key.endsWith(suffix) ? key.slice(0, -suffix.length) : undefined);
+  }
+  return out;
+}
 
 /**
  * How to format relative import specifiers in generated files.
@@ -94,27 +126,24 @@ export interface RenderContext {
   pkMap: Map<string, PkInfo>;
   /** Pre-pass relation map for FK + relations() block emission. */
   relationMap: RelationMap;
-  /** Object name → its metadata package (undefined if the object has no package).
-   *  Built once per run. Value objects are keyed by their ADR-0044 EMITTED name
-   *  (bare when unique, package-qualified on a cross-package short-name collision;
-   *  #228) so `valueObjectModuleSpecifier` resolves the right module; entities and
-   *  other objects are keyed by their bare name. */
-  packageOf: Map<string, string | undefined>;
-  /** ADR-0044/#228 — `resolutionKey()` → emitted TS name for every emitted
-   *  `object.value` in the run. A PURE function of the run's value-object set
-   *  (collision-scoped): a bare short name unique in the set stays bare; a
-   *  cross-package short-name collision qualifies EVERY member. Empty by default
-   *  (bare names — byte-identical to pre-#228 output). */
-  valueObjectNames: ReadonlyMap<string, string>;
-  /** The ADR-0044 emitted name for a value object being DECLARED (its interface,
-   *  Zod schema, and module filename). Non-value objects (entities) are never in
-   *  the collision set, so this returns their bare `name`. */
+  /** The name a value object is DECLARED under (its interface, Zod schema and module file):
+   *  its own name. A value object is never renamed; a real collision is refused
+   *  by the run's claim registry. */
   valueObjectEmittedName: (obj: MetaData) => string;
-  /** The ADR-0044 emitted name for the value object a field's `@objectRef` names, read
-   *  as the loader bound it (ADR-0059 R7: resolved where the attribute was declared).
-   *  Falls back to the bare (package-stripped) ref when it resolves to no emitted value
-   *  object — which is also the byte-identical result whenever there is no
-   *  collision. */
+  /** @deprecated A value object is never renamed, so this map is the identity (`resolutionKey()`
+   *  to the object's own name). Kept one release so owned generator copies keep compiling; read
+   *  `obj.name`. */
+  valueObjectNames: ReadonlyMap<string, string>;
+  /** @deprecated Object name to its metadata package. Kept one release so owned generator copies
+   *  keep compiling; module specifiers are resolved from the node (`valueObjectModuleSpecifier`). */
+  packageOf: Map<string, string | undefined>;
+  /** The value object a field's `@objectRef` names, as the loader bound it (ADR-0059 R7:
+   *  resolved where the attribute was declared). Undefined when it resolves to nothing. */
+  resolveValueObject: (field: MetaData) => MetaData | undefined;
+  /** The LOCAL name a referencing file uses for the value object a field's `@objectRef` names:
+   *  its own name, or its package-qualified name when another object in the model shares the
+   *  short name (imported `as` that alias, so two same-named value objects can meet in one
+   *  file). Falls back to the bare (package-stripped) ref when it resolves to nothing. */
   resolveValueObjectName: (field: MetaData) => string;
   /** FR-019: module specifier to import externally-PROVIDED shared enums from
    *  (`@provided: true` declarations). Undefined when unset — referencing a
@@ -131,8 +160,8 @@ export interface RenderContext {
   httpRuntimeImport?: string;
 }
 
-/** Optional shape — `extStyle`, `omImport`, `columnNamingStrategy`, `apiPrefix`, `outputLayout`, and `packageOf` default if omitted. `packageOf` defaults to an empty Map (correct for flat layout; `runGen` always provides the real map). `collectionName` is built from `pluralizeCollections` + `collectionNameOverrides` (both default to always-pluralize). */
-export type RenderContextInput = Omit<RenderContext, "extStyle" | "omImport" | "columnNamingStrategy" | "timestampMode" | "clientDirective" | "apiPrefix" | "emitAbstractShapes" | "outputLayout" | "includeNames" | "includeReportExport" | "packageOf" | "valueObjectNames" | "valueObjectEmittedName" | "resolveValueObjectName" | "selfTarget" | "entityModuleTarget" | "collectionName"> & {
+/** Optional shape — `extStyle`, `omImport`, `columnNamingStrategy`, `apiPrefix` and `outputLayout` default if omitted. `collectionName` is built from `pluralizeCollections` + `collectionNameOverrides` (both default to always-pluralize). */
+export type RenderContextInput = Omit<RenderContext, "extStyle" | "omImport" | "columnNamingStrategy" | "timestampMode" | "clientDirective" | "apiPrefix" | "emitAbstractShapes" | "outputLayout" | "includeNames" | "includeReportExport" | "valueObjectNames" | "packageOf" | "valueObjectEmittedName" | "resolveValueObject" | "resolveValueObjectName" | "selfTarget" | "entityModuleTarget" | "collectionName"> & {
   extStyle?: ExtStyle;
   omImport?: string;
   columnNamingStrategy?: ColumnNamingStrategy;
@@ -143,11 +172,6 @@ export type RenderContextInput = Omit<RenderContext, "extStyle" | "omImport" | "
   outputLayout?: OutputLayout;
   includeNames?: boolean;
   includeReportExport?: boolean;
-  packageOf?: Map<string, string | undefined>;
-  /** ADR-0044/#228 value-object emitted-name map (resolutionKey → emitted name).
-   *  Defaults to an empty Map — bare names, byte-identical to pre-#228 output.
-   *  `runGen` always provides the real map. */
-  valueObjectNames?: ReadonlyMap<string, string>;
   selfTarget?: ResolvedTarget;
   entityModuleTarget?: ResolvedTarget;
   /** Auto-pluralize collection (table) variable names. Default true. */
@@ -206,10 +230,7 @@ export function makeRenderContext(opts: RenderContextInput): RenderContext {
     pluralize: opts.pluralizeCollections ?? true,
     overrides: { ...modelCollections, ...(opts.collectionNameOverrides ?? {}) },
   };
-  // ADR-0044/#228 — the value-object emitted-name map + its two accessors. When
-  // absent (bare template unit-tests), the map is empty, so both accessors return
-  // bare names and every consumer is byte-identical to pre-#228 output.
-  const valueObjectNames = opts.valueObjectNames ?? new Map<string, string>();
+  const resolveValueObject = (field: MetaData): MetaData | undefined => refTarget(field, FIELD_ATTR_OBJECT_REF);
   return {
     ...opts,
     extStyle: opts.extStyle ?? "js",
@@ -227,13 +248,13 @@ export function makeRenderContext(opts: RenderContextInput): RenderContext {
     outputLayout,
     includeNames: opts.includeNames ?? false,
     includeReportExport: opts.includeReportExport ?? false,
-    packageOf: opts.packageOf ?? new Map(),
-    valueObjectNames,
-    valueObjectEmittedName: (obj: MetaData) => valueObjectNames.get(obj.resolutionKey()) ?? obj.name,
+    valueObjectNames: deprecatedIdentityNames(opts.loadedRoot),
+    packageOf: deprecatedPackageOf(opts.loadedRoot),
+    valueObjectEmittedName: (obj: MetaData) => obj.name,
+    resolveValueObject,
     resolveValueObjectName: (field: MetaData) => {
-      const node = refTarget(field, FIELD_ATTR_OBJECT_REF);
-      const emitted = node !== undefined ? valueObjectNames.get(node.resolutionKey()) : undefined;
-      if (emitted !== undefined) return emitted;
+      const node = resolveValueObject(field);
+      if (node !== undefined) return localTypeName(node, opts.loadedRoot);
       // ADR-0039: resolving — @objectRef may be inherited via extends.
       const ref = field.attr(FIELD_ATTR_OBJECT_REF);
       return stripPackage(typeof ref === "string" ? ref : "");

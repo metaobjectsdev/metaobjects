@@ -20,7 +20,7 @@ import {
 } from "../src/paths.ts";
 import { openApiCheck, type ContractCheck } from "../src/api-contract-openapi-check.ts";
 import { loadScenarios, assertResponse, type ApiScenario, parseBodyExact } from "../src/api-contract-scenario.ts";
-import { startPostgres } from "../src/postgres-container.ts";
+import { OUTPUT_LAYOUTS, postgresFor } from "../src/output-layout.ts";
 import {
   startGeneratedWriteThroughServer,
   type GeneratedWriteThroughServerHandle,
@@ -34,13 +34,14 @@ const META_PATH = join(API_CONTRACT_WRITE_THROUGH_DIR, "meta.json");
 
 const contractCheck: ContractCheck = openApiCheck("write-through");
 
-describe("api contract write-through (#214) — GENERATED routes lane", () => {
+for (const layout of OUTPUT_LAYOUTS) describe(`api contract write-through (#214) — GENERATED routes lane [${layout}]`, () => {
+  const startDb = postgresFor(layout);
   for (const scenario of loadScenarios(API_CONTRACT_WRITE_THROUGH_SCENARIOS_DIR)) {
     test(scenario.name, async () => {
-      const pg = await startPostgres();
+      const pg = await startDb();
       let server: GeneratedWriteThroughServerHandle | null = null;
       try {
-        server = await startGeneratedWriteThroughServer(pg.connectionUri, META_PATH);
+        server = await startGeneratedWriteThroughServer(pg.connectionUri, META_PATH, layout);
         await server.applySeed(SEED);
         await runScenario(scenario, server);
       } finally {

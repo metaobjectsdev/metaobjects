@@ -464,6 +464,22 @@ the pattern and its `**` replacement, so output cannot vanish silently. Upgrade:
 matching direct children as `acme::*Store`; nested children need `acme::**::*Store` as a
 second entry. `@` becomes `*`.
 
+### Output paths and REST collection names
+
+Every per-object file lands in the directory of its metadata package: `acme::blog::Author` is the
+Java package `acme.blog` and the file `acme/blog/Author.java`, so two objects named `Note` in two
+packages are two files. Two different metadata packages that would land in one directory (names
+that differ only in letter case, or `a.b` beside `a::b`) are refused before any generator runs,
+with `ERR_NAME_COLLISION` naming both objects. Nothing is renamed to avoid a clash.
+
+A controller's REST collection segment is the object's `@collectionName` when it declares one
+(snake_cased: `CaseHistory` is `/case_history`), else the pluralizer `naming.collections` names in
+`.metaobjects/config.json`, else the rule every port has always served (`/authors`). A pluralizer
+applies only when the project configures one, so an unconfigured project's routes do not move.
+The api-docs, report export and collision check read the same segment. Reverse finders are named
+by the foreign-key field (`findByAuthorId`), so a collection name does not change them. The Kotlin
+generators share this rule.
+
 ### Shared and `@provided` enums
 
 A package-level abstract `field.enum` that fields extend is one top-level Java `enum`,

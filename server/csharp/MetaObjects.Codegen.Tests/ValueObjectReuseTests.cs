@@ -30,7 +30,7 @@ public sealed class ValueObjectReuseTests
     private static GenContext Ctx(MetaRoot root) => new()
     {
         Entities = root.Objects(), Root = root,
-        Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated" },
+        Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated"},
     };
 
     // ---- the value-object tier ----
@@ -63,15 +63,24 @@ public sealed class ValueObjectReuseTests
       { "object.value": { "name": "Note", "children": [ { "field.string": { "name": "betaText" } } ] } } ] } }
     """;
 
+    private static GenContext PackageCtx(MetaRoot root) => new()
+    {
+        Entities = root.Objects(),
+        Root = root,
+        Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", OutputLayout = OutputLayout.Package, PackageNamespacesFromMetadata = true },
+    };
+
     [Fact]
-    public void Two_value_objects_sharing_a_short_name_emit_package_qualified_pocos()
+    public void Two_value_objects_sharing_a_short_name_keep_it_in_their_own_package_namespaces()
     {
         var root = Load(Alpha, Beta);
-        var files = new EntityGenerator().Generate(Ctx(root)).ToList();
+        var files = new EntityGenerator().Generate(PackageCtx(root)).ToList();
 
-        Assert.Equal(["AcmeAlphaNote.g.cs", "AcmeBetaNote.g.cs"], files.Select(f => f.Path).OrderBy(p => p, StringComparer.Ordinal));
-        Assert.Contains("public class AcmeAlphaNote", files[0].Content + files[1].Content);
-        Assert.Equal("AcmeAlphaNote", ValueObjectNames.TypeName(root.Objects().First(o => o.ResolutionKey() == "acme::alpha::Note"), root));
+        Assert.Equal(["acme/alpha/Note.g.cs", "acme/beta/Note.g.cs"], files.Select(f => f.Path).OrderBy(p => p, StringComparer.Ordinal));
+        Assert.Contains("namespace Acme.Alpha;", files.Single(f => f.Path == "acme/alpha/Note.g.cs").Content);
+        Assert.Contains("namespace Acme.Beta;", files.Single(f => f.Path == "acme/beta/Note.g.cs").Content);
+        // A value object is never renamed.
+        Assert.Equal("Note", ValueObjectNames.TypeName(root.Objects().First(o => o.ResolutionKey() == "acme::alpha::Note"), root));
     }
 
     [Fact]
@@ -82,20 +91,14 @@ public sealed class ValueObjectReuseTests
     }
 
     [Fact]
-    public void A_derived_name_that_still_collides_fails_loud()
+    public void Two_value_objects_sharing_a_short_name_in_one_namespace_fail_loud_naming_both()
     {
-        // acme::alpha::Note qualifies to AcmeAlphaNote — which acme::AlphaNote also derives.
-        var root = Load(Alpha, Beta, """
-        { "metadata.root": { "package": "acme", "children": [
-          { "object.value": { "name": "AlphaNote", "children": [ { "field.string": { "name": "a" } } ] } },
-          { "object.value": { "name": "Note", "children": [ { "field.string": { "name": "b" } } ] } } ] } }
-        """, """
-        { "metadata.root": { "package": "acme::acme", "children": [
-          { "object.value": { "name": "AlphaNote", "children": [ { "field.string": { "name": "c" } } ] } } ] } }
-        """);
+        var root = Load(Alpha, Beta);
 
         var ex = Assert.ThrowsAny<InvalidOperationException>(() => new EntityGenerator().Generate(Ctx(root)).ToList());
-        Assert.Contains("ERR_PAYLOAD_NAME_COLLISION", ex.Message);
+        Assert.Contains("ERR_NAME_COLLISION", ex.Message);
+        Assert.Contains("acme::alpha::Note", ex.Message);
+        Assert.Contains("acme::beta::Note", ex.Message);
     }
 
     // ---- the template tier references it ----

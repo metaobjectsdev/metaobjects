@@ -276,7 +276,7 @@ public class EjectContractTests
                 {
                     Entities = corpus.Root.Objects(),
                     Root = corpus.Root,
-                    Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", IncludeNames = true },
+                    Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", IncludeNames = true, OutputLayout = OutputLayout.Package, PackageNamespacesFromMetadata = true },
                 }).OrderBy(f => f.Path, StringComparer.Ordinal).ToList();
 
             var packaged = Run(SharedModelTestSupport.Configure(

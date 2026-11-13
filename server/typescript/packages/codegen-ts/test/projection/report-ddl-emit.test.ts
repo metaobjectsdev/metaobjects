@@ -54,7 +54,7 @@ function baseSpec(
 const longWeek = cmp("w.durationMinutes", "gte", 60);
 const programJoin: JoinNode = {
   relationship: "program", targetEntity: "Program", alias: "p", cardinality: "one",
-  fkColumn: "programId", pkColumn: "id", referenceHolder: "source", joinType: "inner", children: [],
+  fkColumn: "programId", pkColumn: "id", referenceHolder: "source", joinType: "left", children: [],
 };
 const programMinutes: ReportViewSpec = baseSpec(
   "w",
@@ -96,7 +96,7 @@ describe("emitReportViewDdl — Table G v_program_minutes", () => {
       `    MAX(w."durationMinutes") AS "maxMinutes",`,
       `    CAST(COUNT(w."id") FILTER (WHERE w."durationMinutes" >= 60) AS NUMERIC) / NULLIF(COUNT(w."id"), 0) AS "longShare"`,
       `  FROM "weeks" w`,
-      `  INNER JOIN "programs" p ON p."id" = w."programId"`,
+      `  LEFT OUTER JOIN "programs" p ON p."id" = w."programId"`,
       `  GROUP BY w."programId", p."title"`,
     ));
   });
@@ -116,7 +116,7 @@ describe("emitReportViewDdl — Table G v_program_minutes", () => {
       `    MAX(w."durationMinutes") AS "maxMinutes",`,
       `    CAST(COUNT(CASE WHEN w."durationMinutes" >= 60 THEN w."id" END) AS REAL) / NULLIF(COUNT(w."id"), 0) AS "longShare"`,
       `  FROM "weeks" w`,
-      `  INNER JOIN "programs" p ON p."id" = w."programId"`,
+      `  LEFT OUTER JOIN "programs" p ON p."id" = w."programId"`,
       `  GROUP BY w."programId", p."title"`,
     ));
   });
@@ -136,7 +136,7 @@ describe("emitReportViewDdl — Table G v_program_minutes", () => {
       "    MAX(w.`durationMinutes`) AS `maxMinutes`,",
       "    COUNT(CASE WHEN w.`durationMinutes` >= 60 THEN w.`id` END) / NULLIF(COUNT(w.`id`), 0) AS `longShare`",
       "  FROM `weeks` w",
-      "  INNER JOIN `programs` p ON p.`id` = w.`programId`",
+      "  LEFT OUTER JOIN `programs` p ON p.`id` = w.`programId`",
       "  GROUP BY w.`programId`, p.`title`",
     ));
   });
@@ -857,11 +857,11 @@ describe("Table D goldens (the bodies Task 6's canonical reports must produce)",
       `  LEFT OUTER JOIN "owners" o ON o."id" = p."ownerId"`,
       `  GROUP BY p."title", o."name"`,
     ));
-    // The same report without @spine keeps #209: both required hops are INNER.
+    // The same report without @spine: every join is LEFT OUTER too.
     expect(v["v_Plain"]).toContain(lines(
       `  FROM "weeks" w`,
-      `  INNER JOIN "programs" p ON p."id" = w."programId"`,
-      `  INNER JOIN "owners" o ON o."id" = p."ownerId"`,
+      `  LEFT OUTER JOIN "programs" p ON p."id" = w."programId"`,
+      `  LEFT OUTER JOIN "owners" o ON o."id" = p."ownerId"`,
     ));
   });
 });
@@ -1038,6 +1038,6 @@ describe("a via dimension's bare @of owner across packages", () => {
     expect(errors).toEqual([]);
     const [view] = buildReportViews(literalColumns(root), { dialect: "postgres" });
     expect(view?.sql).toContain(`"name" AS "realmName"`);
-    expect(view?.sql).toContain(`INNER JOIN "realms"`);
+    expect(view?.sql).toContain(`LEFT OUTER JOIN "realms"`);
   });
 });

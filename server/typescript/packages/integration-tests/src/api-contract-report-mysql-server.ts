@@ -8,10 +8,11 @@
 // import the EMITTED <Report>.routes.ts files unmodified and mount them.
 
 import Fastify, { type FastifyInstance } from "fastify";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { runGen, defineConfig, buildReportViews } from "@metaobjectsdev/codegen-ts";
+import { indexEmitted, type OutputLayout } from "./output-layout.ts";
 import { entityFile, reportExport, routesFile } from "@metaobjectsdev/test-generators";
 import mysql from "mysql2/promise";
 import { REPORT_CORPUS_MAX_ROWS, seedInserts, SERVED_REPORTS, type ReportSeed } from "./api-contract-report-generated-server.ts";
@@ -89,7 +90,7 @@ const BASE_TABLES: ReadonlyArray<{ name: string; ddl: string }> = [
   },
 ];
 
-export async function startMysqlReportServer(mysqlUrl: string, metaPath: string): Promise<MysqlReportServerHandle> {
+export async function startMysqlReportServer(mysqlUrl: string, metaPath: string, outputLayout: OutputLayout = "flat"): Promise<MysqlReportServerHandle> {
   const here = dirname(fileURLToPath(import.meta.url));
   const genTmpRoot = join(here, "..", ".gen-tmp");
   mkdirSync(genTmpRoot, { recursive: true });
@@ -104,6 +105,7 @@ export async function startMysqlReportServer(mysqlUrl: string, metaPath: string)
     config: defineConfig({
       outDir: tmp,
       extStyle: "none",
+      outputLayout,
       dbImport: "./db",
       dialect: "mysql",
       apiPrefix: "/api",
@@ -115,7 +117,8 @@ export async function startMysqlReportServer(mysqlUrl: string, metaPath: string)
     }),
     metadata: root,
   });
-  if (existsSync(join(tmp, "InvoiceDays.routes.ts"))) {
+  const emitted = indexEmitted(tmp, lr.files, outputLayout);
+  if (emitted.has("InvoiceDays.routes.ts")) {
     rmSync(tmp, { recursive: true, force: true });
     throw new Error("codegen emitted a routes file for the sourceless report InvoiceDays");
   }
@@ -147,7 +150,7 @@ export const db = drizzle(pool);
 
   const fastify = Fastify();
   for (const r of SERVED_REPORTS) {
-    const mod = (await import(pathToFileURL(join(tmp, `${r.name}.routes.ts`)).href)) as Record<
+    const mod = (await import(pathToFileURL(emitted.locate(`${r.name}.routes.ts`)).href)) as Record<
       string,
       (f: FastifyInstance) => Promise<void>
     >;

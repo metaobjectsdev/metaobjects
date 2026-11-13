@@ -40,12 +40,14 @@ from collections.abc import Callable
 from metaobjects.apidocs.naming import snake_case as _snake_case
 from metaobjects.codegen.constants import generated_header
 from metaobjects.codegen.format import ruff_format
+from metaobjects.codegen.import_path import ModuleScope, import_line
+from metaobjects.codegen.name_claims import claimed_module_path
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator
 from metaobjects.codegen.generators.find_inbound import (
     inbound_templates,
     response_shape,
 )
-from metaobjects.codegen.value_objects import is_field_required, model_class_name
+from metaobjects.codegen.value_objects import is_field_required, local_name, pkg_of
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.meta.meta_data import MetaData
@@ -60,7 +62,7 @@ _GENERATOR_NAME = "extractor-generator"
 def _mapper_name(vo: MetaData) -> str:
     """``_to_strict_<model_snake>`` — the recursive mirror→strict mapper for a VO, named
     after the value object's emitted model (ADR-0056 rule 3)."""
-    return f"_to_strict_{_snake_case(model_class_name(vo))}"
+    return f"_to_strict_{_snake_case(local_name(vo))}"
 
 
 def _value_expr(field: MetaData, root: MetaData, source: str) -> str:
@@ -106,7 +108,7 @@ def _emit_mapper(vo: MetaData, root: MetaData) -> list[str]:
     """One ``_to_strict_<vo>(m) -> <Vo>`` mapper, one-shot-constructing the value object's
     model from the mirror ``m``."""
     fn = _mapper_name(vo)
-    strict = model_class_name(vo)
+    strict = local_name(vo)
     lines: list[str] = [
         f"def {fn}(m) -> {strict}:",
         f'    """Map the all-nullable extracted mirror onto the strict ``{strict}``.',
@@ -124,6 +126,7 @@ def render_extractor(
     root: MetaData,
     *,
     generator: "ExtractorGenerator | None" = None,
+    scope: ModuleScope = ModuleScope(),
 ) -> str | None:
     """Render one ``<snake>_extractor.py`` for a responding ``template.prompt`` node.
 
@@ -147,7 +150,7 @@ def render_extractor(
     extract_lenient_with_fn = f"extract_lenient_{snake}_with_loader"
     extract_lenient_fn = f"extract_lenient_{snake}"
     extract_fn = f"extract_{snake}"
-    root_strict = model_class_name(payload)
+    root_strict = local_name(payload)
 
     fqn = f"{payload.package}::{template_name}" if payload.package else template_name
 
@@ -156,13 +159,13 @@ def render_extractor(
     # module name IS the class name). Reachable through @objectRef, deduped, cycle-safe.
     vos = rde.reachable_vos(payload, root)
     root_mapper = _mapper_name(payload)
-    strict_imports = sorted({model_class_name(vo) for vo in vos})
+    strict_imports = sorted({scope.import_object(vo) for vo in vos})
 
     lines: list[str] = [
         generated_header(template_name, fqn),
         "from __future__ import annotations\n",
-        f"from .{parser_module} import {extract_lenient_with_fn}",
-        *(f"from .{cls} import {cls}" for cls in strict_imports),
+        import_line(scope.sibling(pkg_of(template), parser_module), extract_lenient_with_fn),
+        *strict_imports,
     ]
     lines.append("")
     lines.append("")
@@ -236,12 +239,14 @@ class ExtractorGenerator:
         coercion, post-validation, default-filling)."""
         return _emit_mapper(vo, root)
 
-    def _render_module(self, template: MetaData, root: MetaData) -> str | None:
+    def _render_module(
+        self, template: MetaData, root: MetaData, scope: ModuleScope = ModuleScope()
+    ) -> str | None:
         """EXTENSION SEAM — render the whole extractor module for one responding
         ``template.prompt``. Defaults to :func:`render_extractor` (passing this
         instance so the ``_emit_mapper`` override is honored). Override to
         pre/post-process the emitted source or replace the render path."""
-        return render_extractor(template, root, generator=self)
+        return render_extractor(template, root, generator=self, scope=scope)
 
     def generate(self, ctx: GenContext) -> list[EmittedFile]:
         root = ctx.loaded_root
@@ -250,7 +255,8 @@ class ExtractorGenerator:
         files: list[EmittedFile] = []
         # ADR-0052: the direction rule lives in FindInbound, never re-derived here.
         for tmpl in inbound_templates(root):
-            content = self._render_module(tmpl, root)
+            scope = ModuleScope(ctx.config.output_layout, pkg_of(tmpl))
+            content = self._render_module(tmpl, root, scope)
             if content is None:
                 ctx.warn(
                     f"{_GENERATOR_NAME}: skipping template.prompt "
@@ -259,7 +265,10 @@ class ExtractorGenerator:
                 continue
             files.append(
                 EmittedFile(
-                    path=f"{_snake_case(tmpl.name)}_extractor.py",
+                    path=claimed_module_path(
+                        ctx.claims, ctx.config, pkg_of(tmpl),
+                        f"{_snake_case(tmpl.name)}_extractor", tmpl.resolution_key(),
+                    ),
                     content=ruff_format(content),
                 )
             )

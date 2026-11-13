@@ -1,0 +1,9 @@
+{
+  "metadata.root": {
+    "package": "acme::alpha",
+    "children": [
+      { "object.value": { "name": "Note", "children": [{ "field.string": { "name": "alphaText", "@required": true } }] } },
+      { "object.value": { "name": "Summary", "children": [{ "field.long": { "name": "minId" } }] } }
+    ]
+  }
+}

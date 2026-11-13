@@ -253,7 +253,7 @@ function renderUp(c: Change, recreated: ReadonlySet<string> = new Set()): string
         ? `ALTER TABLE ${quoteQualified(c.table, c.schema)} ALTER COLUMN ${quote(c.column)} SET DEFAULT ${renderDefault(c.to)};`
         : `ALTER TABLE ${quoteQualified(c.table, c.schema)} ALTER COLUMN ${quote(c.column)} DROP DEFAULT;`;
     case "change-column-identity": return renderIdentity(c.table, c.schema, c.column, c.to, c.sequence);
-    case "alter-sequence":         return renderAlterSequence(c.sequenceSchema ?? c.schema, c.sequence, c.toStart, c.toName);
+    case "alter-sequence":         return renderAlterSequence(c.sequenceSchema ?? c.schema, c.sequence, c.toStart, c.toName, c.table, c.schema, c.column);
     case "change-comment":         return renderComment(c.table, c.schema, c.column, c.to);
     case "add-index":              return renderCreateIndex(c.table, c.schema, c.index);
     // #285: an index OWNED by a UNIQUE / PRIMARY KEY / EXCLUDE constraint cannot be
@@ -415,7 +415,7 @@ function renderDown(c: Change, recreated: ReadonlySet<string> = new Set()): stri
     // The down addresses the sequence by the name the up gave it, and runs in reverse order:
     // rename back first, then restore the start.
     case "alter-sequence":
-      // The counter is not moved back: values it has handed out stay handed out.
+      // The counter is never moved back: values it has handed out stay handed out.
       return [
         ...(c.toName !== undefined ? [`ALTER SEQUENCE ${quoteQualified(c.toName, c.sequenceSchema ?? c.schema)} RENAME TO ${quote(c.sequence)};`] : []),
         ...(c.fromStart !== undefined ? [`ALTER SEQUENCE ${quoteQualified(c.sequence, c.sequenceSchema ?? c.schema)} START WITH ${c.fromStart};`] : []),
@@ -503,17 +503,42 @@ function renderTableComments(t: TableDescriptor): string[] {
 }
 
 /**
- * Start first, under the live name; then the rename. A changed start only records the new
- * `START WITH`: the sequence is never restarted and its current value never moves, because
- * live rows already hold the ids it handed out. `@sequenceStart` means the first value of a
- * fresh sequence, the same in every port.
+ * Start first, under the live name; then the rename. A changed start records the new
+ * `START WITH` and moves the counter FORWARD only: to `GREATEST(n, max(id) + 1)` when the next
+ * value the sequence would hand out is below that, and never back. It never `RESTART`s, so no
+ * id a live row holds is handed out again, and a database that gains the start later (a
+ * replayed chain) still hands out ids from `n` on, as a fresh one does. A descending sequence
+ * records the start only. The same rule in every port that changes a live sequence.
  */
-function renderAlterSequence(schema: string | undefined, sequence: string, toStart: number | undefined, toName: string | undefined): string {
+function renderAlterSequence(
+  schema: string | undefined,
+  sequence: string,
+  toStart: number | undefined,
+  toName: string | undefined,
+  table: string,
+  tableSchema: string | undefined,
+  column: string,
+): string {
   const seq = quoteQualified(sequence, schema);
   return [
-    ...(toStart !== undefined ? [`ALTER SEQUENCE ${seq} START WITH ${toStart};`] : []),
+    ...(toStart !== undefined
+      ? [`ALTER SEQUENCE ${seq} START WITH ${toStart};`, renderAdvanceSequence(seq, toStart, table, tableSchema, column)]
+      : []),
     ...(toName !== undefined ? [`ALTER SEQUENCE ${seq} RENAME TO ${quote(toName)};`] : []),
   ].join("\n");
+}
+
+/**
+ * The forward-only move of a changed start: one statement, a no-op when the counter is already
+ * at or past `GREATEST(n, max(id) + 1)`. `is_called` says whether `last_value` was handed out.
+ */
+function renderAdvanceSequence(seq: string, start: number, table: string, tableSchema: string | undefined, column: string): string {
+  const reg = `'${pgEscape(seq)}'::regclass`;
+  return `SELECT setval(${reg}, t.target, false)`
+    + ` FROM (SELECT GREATEST(${start}, COALESCE(MAX(${quote(column)}), 0) + 1) AS target FROM ${quoteQualified(table, tableSchema)}) t,`
+    + ` ${seq} s, pg_sequence p`
+    + ` WHERE p.seqrelid = ${reg} AND p.seqincrement > 0`
+    + ` AND (CASE WHEN s.is_called THEN s.last_value + p.seqincrement ELSE s.last_value END) < t.target;`;
 }
 
 function renderIdentity(

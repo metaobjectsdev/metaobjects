@@ -43,7 +43,7 @@ from dataclasses import dataclass
 from typing import Any
 from pathlib import Path
 
-from metaobjects.apidocs.naming import route_path as _route_path
+from metaobjects.apidocs.naming import collection_segment as _collection_segment
 from metaobjects.apidocs.naming import reverse_finder_fn, reverse_finder_in_fn
 from metaobjects.apidocs.naming import snake_case as _snake_case
 from metaobjects.codegen.constants import GENERATED_MARKER, generated_header
@@ -52,6 +52,9 @@ from metaobjects.codegen.generator import EmittedFile, GenContext, Generator, pe
 from metaobjects.codegen.generators.tph_plan import TphPlan, is_tph_subtype, tph_plan_for
 from metaobjects.codegen.instance_artifacts import has_item_route
 from metaobjects.source_resolution import primary_rdb_source
+from metaobjects.codegen.import_path import OUTPUT_LAYOUT_FLAT, ModuleScope, import_line
+from metaobjects.codegen.name_claims import claimed_module_path
+from metaobjects.codegen.value_objects import pkg_of
 from metaobjects.codegen.type_map import PyType, field_is_array, py_type_for
 from metaobjects.codegen.value_objects import object_ref_target
 from metaobjects.meta.core.field import field_constants as fc
@@ -133,10 +136,10 @@ RUNTIME_SUBPACKAGE = "_runtime"
 RUNTIME_SOURCE_DIR = Path(__file__).resolve().parent.parent / "runtime"
 
 
-def _runtime_module(module: str) -> str:
+def _runtime_module(module: str, scope: ModuleScope = ModuleScope()) -> str:
     """The module path an emitted router imports runtime *module* from."""
     if OWNED_RUNTIME:
-        return f".{RUNTIME_SUBPACKAGE}.{module}"
+        return scope.root(f"{RUNTIME_SUBPACKAGE}.{module}")
     return f"metaobjects.codegen.runtime.{module}"
 
 
@@ -363,7 +366,7 @@ _DURATION_WIRE_ARG = "duration=format_duration"
 _NATIVE_DURATION_ARG = "duration=to_jsonable_python"
 
 
-def _with_duration_import(parts: list[str]) -> list[str]:
+def _with_duration_import(parts: list[str], scope: ModuleScope = ModuleScope()) -> list[str]:
     """*parts* plus the import of the duration formatter, when a wire constant uses it. The
     formatter is the generated package's own ``_duration_wire`` module, which the entity tier
     emits beside any model with a ``field.duration``."""
@@ -374,7 +377,7 @@ def _with_duration_import(parts: list[str]) -> list[str]:
         return parts
     at = next(i for i, line in enumerate(parts) if line.startswith("from ."))
     names = "format_duration, parse_duration" if any("parse_duration}" in line for line in parts) else "format_duration"
-    return [*parts[:at], f"from .{DURATION_WIRE_MODULE} import {names}", *parts[at:]]
+    return [*parts[:at], import_line(scope.root(DURATION_WIRE_MODULE), *names.split(", ")), *parts[at:]]
 
 
 def _m2m_wire_name(target: str) -> str:
@@ -863,10 +866,9 @@ class RouterGenerator:
         entity), so same-pair FKs yield distinct finders with no collision. Returns
         ``Protocol``-body lines (each already 4-space indented). Override to customize."""
         lines: list[str] = []
-        entity_name = entity.name
         for rfk in reverse_fks_for(entity):
-            single = reverse_finder_fn(entity_name, rfk.fk_field)
-            batched = reverse_finder_in_fn(entity_name, rfk.fk_field)
+            single = reverse_finder_fn(entity, rfk.fk_field)
+            batched = reverse_finder_in_fn(entity, rfk.fk_field)
             arg = _snake_case(rfk.fk_field)
             lines.append(f"    def {single}(self, {arg}: Any) -> _list[Any]: ...")
             lines.append(
@@ -1319,6 +1321,7 @@ class RouterGenerator:
         column_naming: str = DEFAULT_COLUMN_NAMING,
         wire: WireFormat = WireFormat(),
         api_prefix: str = DEFAULT_API_PREFIX,
+        scope: ModuleScope = ModuleScope(),
     ) -> str:
         """FR-017 TPH: emit the discriminator base's router — a polymorphic collection
         at the base path + a full per-subtype CRUD set at /<base>/<segment>. The repo
@@ -1333,7 +1336,7 @@ class RouterGenerator:
         M:N resolution at all — the two independent gaps this fix closes)."""
         short_name = entity.name
         snake = _snake_case(short_name)
-        plural = _route_path(short_name)
+        plural = _collection_segment(entity)
         pk_param = f"{snake}_id"
         # PK type from the BASE's declared primary key (subtypes share the
         # base's single table — mirrors the C# TPH pkType threading).
@@ -1464,8 +1467,8 @@ class RouterGenerator:
             # #203/ADR-0045: the router stamps @autoSet columns inline (no runtime dependency).
             parts.append("import datetime as _dt")
             parts.append("")
-        for import_line in sorted(pk.imports):
-            parts.append(import_line)
+        for pk_import in sorted(pk.imports):
+            parts.append(pk_import)
         if pk.imports:
             parts.append("")
         parts.append(_BUILTIN_LIST_ALIAS_IMPORT)
@@ -1475,28 +1478,30 @@ class RouterGenerator:
         parts.append("from fastapi.responses import JSONResponse, Response")
         parts.append("from pydantic import BaseModel, ValidationError")
         parts.append("")
-        parts.append(f"from {_runtime_module('constraint_errors')} import (")
+        parts.append(f"from {_runtime_module('constraint_errors', scope)} import (")
         parts.append("    classify_constraint_error,")
         parts.append(")")
-        parts.append(f"from {_runtime_module('decimal_wire')} import (")
+        parts.append(f"from {_runtime_module('decimal_wire', scope)} import (")
         parts.append("    coerce_decimal_fields,")
         parts.append("    coerce_decimal_predicates,")
         parts.append("    parse_json_object,")
         parts.append("    WireOutput,")
         parts.append("    render_wire,")
         parts.append(")")
-        parts.append(f"from {_runtime_module('filter_parser')} import (")
+        parts.append(f"from {_runtime_module('filter_parser', scope)} import (")
         parts.append("    FilterPredicate,")
         parts.append("    parse_filter,")
         parts.append(")")
         parts.append("")
-        parts.append(f"from .{allowlist_module} import {fields_const}, {ops_const}")
+        parts.append(import_line(scope.sibling(scope.pkg, allowlist_module), fields_const, ops_const))
         # FR-036: each concrete subtype's CREATE + all-optional PATCH validation models
         # drive the field constraints run on the per-subtype POST / PATCH (sibling
         # modules). These are the wire-shaped validation models, NOT the read model.
         for st in plan.subtypes:
             sub = st.entity.name
-            parts.append(f"from .{sub} import {sub}Create, {sub}Patch")
+            parts.append(
+                import_line(scope.sibling(pkg_of(st.entity), sub), f"{sub}Create", f"{sub}Patch")
+            )
         parts.append("")
         parts.append(f'router = APIRouter(prefix="{api_prefix}/{plural}", tags=["{plural}"])')
         parts.append("")
@@ -1723,7 +1728,7 @@ class RouterGenerator:
             ))
             parts.append("")
 
-        return "\n".join(_with_duration_import(parts))
+        return "\n".join(_with_duration_import(parts, scope))
 
     def render_router(
         self,
@@ -1733,6 +1738,7 @@ class RouterGenerator:
         wire: WireFormat | None = None,
         report_export: bool = False,
         api_prefix: str = DEFAULT_API_PREFIX,
+        output_layout: str = OUTPUT_LAYOUT_FLAT,
     ) -> str | None:
         """Render an entity as a FastAPI ``APIRouter`` module.
 
@@ -1765,6 +1771,7 @@ class RouterGenerator:
         # ADR-0019 Amendment 2: the project's `wire` setting, from the loaded root. A caller
         # that holds an object detached from the root (a report's read model) passes it.
         wire = wire if wire is not None else wire_of(entity)
+        scope = ModuleScope(output_layout, pkg_of(entity))
         # FR-017 TPH: a concrete subtype is folded into its base's single table — it
         # emits no standalone router (its CRUD lives under the base's per-subtype segment).
         if object_index is not None and is_tph_subtype(entity):
@@ -1784,7 +1791,7 @@ class RouterGenerator:
             # fixtures/api-contract-conformance/projection/.
             if is_read_only_routed(entity):
                 return self._render_readonly_router(
-                    entity, column_naming, wire, report_export, api_prefix
+                    entity, column_naming, wire, report_export, api_prefix, scope
                 )
             return None
 
@@ -1794,7 +1801,7 @@ class RouterGenerator:
             plan = tph_plan_for(entity, object_index)
             if plan is not None:
                 return self._render_tph_router(
-                    entity, plan, object_index, column_naming, wire, api_prefix
+                    entity, plan, object_index, column_naming, wire, api_prefix, scope
                 )
 
         m2m: list[M2mDescriptor] = (
@@ -1805,7 +1812,7 @@ class RouterGenerator:
 
         short_name = entity.name
         snake = _snake_case(short_name)
-        plural = _route_path(short_name)
+        plural = _collection_segment(entity)
         pk_param = f"{snake}_id"
         pk = _pk_py_type(entity)
         pk_type = pk.expr
@@ -1857,8 +1864,8 @@ class RouterGenerator:
             # #203/ADR-0045: the router stamps @autoSet columns inline (no runtime dependency).
             parts.append("import datetime as _dt")
             parts.append("")
-        for import_line in sorted(pk.imports):
-            parts.append(import_line)
+        for pk_import in sorted(pk.imports):
+            parts.append(pk_import)
         if pk.imports:
             parts.append("")
         parts.append(_BUILTIN_LIST_ALIAS_IMPORT)
@@ -1868,27 +1875,29 @@ class RouterGenerator:
         parts.append("from fastapi.responses import JSONResponse, Response")
         parts.append("from pydantic import BaseModel, ValidationError")
         parts.append("")
-        parts.append(f"from {_runtime_module('constraint_errors')} import (")
+        parts.append(f"from {_runtime_module('constraint_errors', scope)} import (")
         parts.append("    classify_constraint_error,")
         parts.append(")")
-        parts.append(f"from {_runtime_module('decimal_wire')} import (")
+        parts.append(f"from {_runtime_module('decimal_wire', scope)} import (")
         parts.append("    coerce_decimal_fields,")
         parts.append("    coerce_decimal_predicates,")
         parts.append("    parse_json_object,")
         parts.append("    WireOutput,")
         parts.append("    render_wire,")
         parts.append(")")
-        parts.append(f"from {_runtime_module('filter_parser')} import (")
+        parts.append(f"from {_runtime_module('filter_parser', scope)} import (")
         parts.append("    FilterPredicate,")
         parts.append("    parse_filter,")
         parts.append(")")
         parts.append("")
-        parts.append(f"from .{allowlist_module} import {fields_const}, {ops_const}")
+        parts.append(import_line(scope.sibling(scope.pkg, allowlist_module), fields_const, ops_const))
         # FR-036: the generated CREATE + all-optional PATCH validation models drive the
         # field constraints run on POST / PATCH. These are the WIRE-shaped validation
         # models (auto-gen PK / @readOnly omitted from create; PK omitted from patch;
         # both keyed by field.name), NOT the read/entity-shape model.
-        parts.append(f"from .{short_name} import {short_name}Create, {short_name}Patch")
+        parts.append(
+            import_line(scope.sibling(scope.pkg, short_name), f"{short_name}Create", f"{short_name}Patch")
+        )
         parts.append("")
         parts.append(f'router = APIRouter(prefix="{api_prefix}/{plural}", tags=["{plural}"])')
         parts.append("")
@@ -1968,7 +1977,7 @@ class RouterGenerator:
             parts.extend(self._emit_m2m_route(d, snake, pk_param, pk_type, repo_class))
             parts.append("")
 
-        return "\n".join(_with_duration_import(parts))
+        return "\n".join(_with_duration_import(parts, scope))
 
     def _emit_readonly_reject_handlers(
         self,
@@ -2026,6 +2035,7 @@ class RouterGenerator:
         wire: WireFormat = WireFormat(),
         report_export: bool = False,
         api_prefix: str = DEFAULT_API_PREFIX,
+        scope: ModuleScope = ModuleScope(),
     ) -> str:
         """Render a read-only (`@kind: view` / `materializedView`) object as a FastAPI
         ``APIRouter``: GET list + GET by id, and the four write verbs answering 405. An
@@ -2042,7 +2052,7 @@ class RouterGenerator:
         allowlist wiring) by calling the same emitters."""
         short_name = entity.name
         snake = _snake_case(short_name)
-        plural = _route_path(short_name)
+        plural = _collection_segment(entity)
         pk_param = f"{snake}_id"
         # FR-044: a report (and any projection without a single-field identity) has no
         # item address. It gets the collection routes only: no GET /{id}, no item-verb
@@ -2080,8 +2090,8 @@ class RouterGenerator:
         parts.append("from __future__ import annotations")
         parts.append("")
         pk_imports = pk.imports if pk is not None else ()
-        for import_line in sorted(pk_imports):
-            parts.append(import_line)
+        for pk_import in sorted(pk_imports):
+            parts.append(pk_import)
         if pk_imports:
             parts.append("")
         parts.append(_BUILTIN_LIST_ALIAS_IMPORT)
@@ -2095,13 +2105,13 @@ class RouterGenerator:
             parts.append("from fastapi.responses import JSONResponse")
         parts.append("from pydantic import BaseModel")
         parts.append("")
-        parts.append(f"from {_runtime_module('decimal_wire')} import (")
+        parts.append(f"from {_runtime_module('decimal_wire', scope)} import (")
         parts.append("    coerce_decimal_predicates,")
         parts.append("    WireOutput,")
         parts.append("    render_wire,")
         parts.append(")")
         if export:
-            parts.append(f"from {_runtime_module(EXPORT_RUNTIME_MODULE)} import (")
+            parts.append(f"from {_runtime_module(EXPORT_RUNTIME_MODULE, scope)} import (")
             parts.append("    EXPORT_CONTENT_TYPES,")
             parts.append("    EXPORT_FORMATS,")
             parts.append("    content_disposition,")
@@ -2111,15 +2121,15 @@ class RouterGenerator:
             parts.append("    is_truthy_flag,")
             parts.append("    requested_format,")
             parts.append(")")
-        parts.append(f"from {_runtime_module('filter_parser')} import (")
+        parts.append(f"from {_runtime_module('filter_parser', scope)} import (")
         parts.append("    FilterPredicate,")
         parts.append("    parse_filter,")
         parts.append(")")
         parts.append("")
-        parts.append(f"from .{allowlist_module} import {fields_const}, {ops_const}")
+        parts.append(import_line(scope.sibling(scope.pkg, allowlist_module), fields_const, ops_const))
         if export:
-            parts.append(f"from .{snake}_export import export_csv, export_xml")
-            parts.append(f"from .{EXPORT_WRITER_MODULE} import EXPORT_MAX_ROWS")
+            parts.append(import_line(scope.sibling(scope.pkg, f"{snake}_export"), "export_csv", "export_xml"))
+            parts.append(import_line(scope.root(EXPORT_WRITER_MODULE), "EXPORT_MAX_ROWS"))
         parts.append("")
         parts.append(f'router = APIRouter(prefix="{api_prefix}/{plural}", tags=["{plural}"])')
         parts.append("")
@@ -2191,7 +2201,7 @@ class RouterGenerator:
             )
         )
         parts.append("")
-        return "\n".join(_with_duration_import(parts))
+        return "\n".join(_with_duration_import(parts, scope))
 
     def generate(self, ctx: GenContext) -> list[EmittedFile]:
         index = build_object_index(ctx.entities)
@@ -2204,14 +2214,16 @@ class RouterGenerator:
             wire = wire_of(c.loaded_root) if c.loaded_root is not None else None
             source = self.render_router(
                 entity, index, c.config.column_naming, wire, REPORT_EXPORT_GENERATOR in c.generators,
-                c.config.api_prefix,
+                c.config.api_prefix, c.config.output_layout,
             )
             if source is None:
                 return []
             snake = _snake_case(entity.name)
             return [
                 EmittedFile(
-                    path=f"{snake}_router.py",
+                    path=claimed_module_path(
+                        c.claims, c.config, pkg_of(entity), f"{snake}_router", entity.resolution_key()
+                    ),
                     content=ruff_format(source),
                 )
             ]

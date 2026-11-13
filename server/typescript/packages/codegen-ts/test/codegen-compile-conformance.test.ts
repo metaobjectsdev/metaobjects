@@ -31,7 +31,7 @@
 
 import { describe, test, expect, setDefaultTimeout } from "bun:test";
 import { COMPILE_TEST_TIMEOUT_MS } from "./compile-timeout.js";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync, rmSync, readdirSync, statSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import ts from "typescript";
@@ -49,6 +49,7 @@ import { makeRenderContext } from "../src/render-context.js";
 import { buildPkMap } from "../src/pk-resolver.js";
 import { buildRelationMap } from "../src/relation-resolver.js";
 import type { GenContext } from "../src/generator.js";
+import { runGen, defineConfig } from "../src/index.js";
 
 setDefaultTimeout(COMPILE_TEST_TIMEOUT_MS);
 
@@ -246,6 +247,75 @@ describe("codegen-compile conformance — the shared fitness corpus", () => {
         rmSync(dir, { recursive: true, force: true });
       }
     });
+    }
+  }
+});
+
+// The same gate in the PACKAGE layout (`outputLayout: "package"`, which `meta init` writes):
+// every module moves under its package directory, so every relative import between the
+// root-level modules (barrel, prompts, shared enums) and the package-level ones is a
+// different specifier than in the flat layout above. Driven through `runGen` with the
+// same generator set, so it measures the runner's own per-target render context rather
+// than one hand-built here.
+function emittedTs(dir: string): string[] {
+  const out: string[] = [];
+  const walk = (d: string): void => {
+    for (const n of readdirSync(d)) {
+      const f = join(d, n);
+      // `.metaobjects/` is the run's gen-state: a mirror of the output, not output.
+      if (statSync(f).isDirectory()) { if (n !== ".metaobjects") walk(f); }
+      else if (/\.tsx?$/.test(n)) out.push(f);
+    }
+  };
+  walk(dir);
+  return out.sort();
+}
+
+describe("codegen-compile conformance — the shared fitness corpus, package layout", () => {
+  for (const dialect of ["postgres", "sqlite", "mysql"] as const) {
+    for (const [profile, options] of PROFILES) {
+      test(`${dialect} [${profile}]: every generated module compiles with zero diagnostics`, async () => {
+        const root = await loadCorpus();
+        const dir = mkdtempSync(join(import.meta.dir, `tmp-codegen-compile-pkg-${dialect}-`));
+        try {
+          await runGen({
+            config: defineConfig({
+              outDir: dir,
+              extStyle: "js",
+              dbImport: "~/db",
+              dialect,
+              outputLayout: "package",
+              generators: [
+                entityFile({ allowlists: false }), namesFile(), queriesFile(),
+                promptRender(), outputPrompt(), outputParser(), extractor(), barrel(),
+              ],
+            }),
+            metadata: root,
+            projectRoot: dir,
+          });
+          const files = emittedTs(dir);
+          const rel = files.map((f) => f.slice(dir.length + 1).split("\\").join("/"));
+          // The run really folded: the corpus's package is `fitness`.
+          expect(rel).toContain("fitness/ProgramMinutes.ts");
+          expect(rel).toContain("fitness/ProgramBrief.ts");
+          expect(rel).toContain("index.ts");
+          // The template tier is present, so its root-level modules' imports are compiled too.
+          expect(rel.some((r) => r.endsWith("coachNote.response.ts"))).toBe(true);
+          expect(rel.some((r) => r.endsWith("prompts.ts"))).toBe(true);
+          writeFileSync(join(dir, "package.json"), JSON.stringify({ type: "module" }));
+          const program = ts.createProgram(files, { ...options, noEmit: true });
+          const diagnostics = ts.getPreEmitDiagnostics(program).map((d) => {
+            const where =
+              d.file && d.start !== undefined
+                ? `${d.file.fileName.slice(dir.length + 1)}:${d.file.getLineAndCharacterOfPosition(d.start).line + 1} `
+                : "";
+            return `${where}${ts.flattenDiagnosticMessageText(d.messageText, "\n")}`;
+          });
+          expect(diagnostics).toEqual([]);
+        } finally {
+          rmSync(dir, { recursive: true, force: true });
+        }
+      });
     }
   }
 });

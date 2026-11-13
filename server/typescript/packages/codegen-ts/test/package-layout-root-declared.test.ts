@@ -205,3 +205,79 @@ describe("outputLayout: package folds by the DECLARED package, however it was de
     expect(asFlat.every((f) => !f.includes("/"))).toBe(true);
   });
 });
+
+// The shared-enum import in the Zod schema read the bare `.package` too, so a
+// root-declared package in package layout imported `./enums` from a file that
+// lives beside `acme/commerce/enums.ts` under a different relative path — or
+// from the wrong directory altogether. Asserted the same way as the barrel:
+// every relative specifier in every emitted file must name a file the run wrote.
+describe("every relative import resolves in package layout, shared enums included", () => {
+  const ENUM_MODEL = {
+    "metadata.root": {
+      package: PKG,
+      children: [
+        { "field.enum": { name: "Status", abstract: true, "@values": ["OPEN", "CLOSED"] } },
+        {
+          "object.entity": {
+            name: "Ticket",
+            children: [
+              { "source.rdb": { "@table": "tickets" } },
+              { "field.long": { name: "id" } },
+              { "field.enum": { name: "status", extends: "Status" } },
+              { "identity.primary": { name: "pk", "@fields": "id", "@generation": "increment" } },
+            ],
+          },
+        },
+      ],
+    },
+  };
+
+  test("root-declared package with a shared enum", async () => {
+    const { root, errors } = await new MetaDataLoader().load([
+      new InMemoryStringSource(JSON.stringify(ENUM_MODEL), { id: "meta.json" }),
+    ]);
+    expect(errors.map((e) => e.message)).toEqual([]);
+    const dir = mkdtempSync(join(import.meta.dir, "tmp-pkg-enum-"));
+    try {
+      await runGen({
+        config: defineConfig({
+          outDir: dir, extStyle: "none", dbImport: "~/db", dialect: "sqlite", outputLayout: "package",
+          generators: [entityFile(), queriesFile(), routesFile(), namesFile(), barrel()],
+        }),
+        metadata: root,
+      });
+      const files: string[] = [];
+      const walk = (d: string): void => {
+        for (const n of readdirSync(d)) {
+          const f = join(d, n);
+          if (statSync(f).isDirectory()) walk(f);
+          else files.push(relative(dir, f).split("\\").join("/"));
+        }
+      };
+      walk(dir);
+      const emitted = new Set(files.map((f) => f.replace(/\.tsx?$/, "")));
+      const unresolved: string[] = [];
+      let enumImports = 0;
+      for (const f of files) {
+        const text = readFileSync(join(dir, f), "utf8");
+        const from = f.includes("/") ? f.slice(0, f.lastIndexOf("/")) : "";
+        for (const m of text.matchAll(/from\s+"(\.[^"]+)"/g)) {
+          const spec = m[1]!.replace(/\.js$/, "");
+          if (spec.endsWith("enums")) enumImports++;
+          const parts = (from === "" ? [] : from.split("/"));
+          for (const seg of spec.split("/")) {
+            if (seg === ".") continue;
+            if (seg === "..") parts.pop();
+            else parts.push(seg);
+          }
+          const target = parts.join("/");
+          if (!emitted.has(target) && !emitted.has(`${target}/index`)) unresolved.push(`${f} -> ${m[1]}`);
+        }
+      }
+      expect(enumImports).toBeGreaterThan(0);
+      expect(unresolved).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

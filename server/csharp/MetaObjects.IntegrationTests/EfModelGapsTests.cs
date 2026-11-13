@@ -10,6 +10,7 @@
 using MetaObjects.IntegrationTests.Runner;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations.Operations;
 using Npgsql;
 using Xunit;
 
@@ -128,6 +129,82 @@ public sealed class EfModelGapsTests
 
     private static IForeignKey ForeignKey(IEntityType t, params string[] props) =>
         Assert.Single(t.GetForeignKeys(), fk => fk.Properties.Select(p => p.Name).SequenceEqual(props));
+
+    // ── entity-derived: a derived field projections reach, on an entity with no read source ──
+
+    private const string EntityDerivedModel = """
+    { "metadata.root": { "package": "acme", "children": [
+      { "object.entity": { "name": "Patient", "children": [
+        { "source.rdb": { "@table": "patients" } },
+        { "field.long": { "name": "id" } },
+        { "field.boolean": { "name": "hasConsent", "children": [
+          { "origin.first": { "@via": "Patient.consents", "@of": "Consent.onFile", "@orderBy": ["id:desc"] } }
+        ]}},
+        { "identity.primary": { "name": "id", "@fields": "id" } }
+      ]}},
+      { "object.entity": { "name": "Consent", "children": [
+        { "source.rdb": { "@table": "consents" } },
+        { "field.long": { "name": "id" } },
+        { "field.long": { "name": "patientId", "@required": true } },
+        { "field.boolean": { "name": "onFile" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
+        { "identity.reference": { "name": "patientId", "@fields": "patientId", "@references": "Patient" } }
+      ]}},
+      { "object.projection": { "name": "ConsentedPatients", "@filter": { "hasConsent": true }, "children": [
+        { "source.rdb": { "@kind": "view", "@view": "v_consented_patients" } },
+        { "field.long": { "name": "id", "extends": "acme::Patient.id" } },
+        { "identity.primary": { "name": "id", "extends": "acme::Patient.id" } }
+      ]}}
+    ]}}
+    """;
+
+    [Fact]
+    public void An_entity_derived_field_is_no_column_of_the_entity()
+    {
+        // The field has no column: the view a projection reaching it is built from inlines it.
+        var gen = GeneratedEfModel.Compile(EntityDerivedModel, "Acme.EntityDerived");
+        using var db = gen.ModelOnlyContext();
+        var patient = EntityType(db, "Patient");
+        Assert.Null(patient.FindProperty("HasConsent"));
+        Assert.Null(patient.ClrType.GetProperty("HasConsent"));
+    }
+
+    // ── reference half: an identity.reference over a flattened value-object member ──────
+
+    private const string FlattenedReferenceModel = """
+    { "metadata.root": { "package": "acme", "children": [
+      { "object.entity": { "name": "Country", "children": [
+        { "source.rdb": { "@table": "countries" } },
+        { "field.long":   { "name": "id" } },
+        { "identity.primary": { "@fields": "id" } }
+      ]}},
+      { "object.value": { "name": "Address", "children": [
+        { "field.string": { "name": "city" } },
+        { "field.long":   { "name": "countryId" } }
+      ]}},
+      { "object.entity": { "name": "Plan", "children": [
+        { "source.rdb": { "@table": "plans" } },
+        { "field.long":   { "name": "id" } },
+        { "field.object": { "name": "address", "@objectRef": "Address", "@storage": "flattened" } },
+        { "identity.primary": { "@fields": "id" } },
+        { "identity.reference": { "name": "countryId", "@fields": "address.countryId", "@references": "Country",
+            "@onDelete": "restrict" } }
+      ]}}
+    ]}}
+    """;
+
+    [Fact]
+    public void A_reference_over_a_flattened_member_is_a_foreign_key_of_the_owned_type()
+    {
+        var gen = GeneratedEfModel.Compile(FlattenedReferenceModel, "Acme.FlatRef");
+        using var db = gen.ModelOnlyContext();
+        var address = EntityType(db, "Plan").FindNavigation("Address")!.TargetEntityType;
+        // The harness names columns `literal`: the prefix `address_`, then the member as written.
+        Assert.Equal("address_countryId", address.FindProperty("CountryId")!.GetColumnName());
+        var fk = Assert.Single(address.GetForeignKeys(), f => f.PrincipalEntityType.ClrType.Name == "Country");
+        Assert.Equal(new[] { "CountryId" }, fk.Properties.Select(p => p.Name));
+        Assert.Equal(DeleteBehavior.Restrict, fk.DeleteBehavior);
+    }
 
     [Fact]
     public void A_reference_carries_its_constraint_name_and_its_principal_key_into_the_model()
@@ -710,12 +787,14 @@ public sealed class EfModelGapsTests
         Assert.Single(Microsoft.EntityFrameworkCore.Infrastructure.AccessorExtensions
             .GetService<IDesignTimeModel>(db).Model.GetEntityTypes(), t => t.ClrType.Name == name);
 
-    // @sequenceStart: a fresh database's identity begins at it, and NO start-only change
-    // ever restarts the sequence. Npgsql writes all three as RESTART: none → n as `RESTART WITH n`,
-    // n → none as `RESTART WITH 1`, n → m as `RESTART WITH m`, each handing out ids live rows may
-    // hold. Each is `SET START WITH` only, whether the migration is scaffolded through the
-    // rewrite (the differ) or its SQL is generated through it (the SQL generator). The adopter
-    // wires both with the generated `UseIdentityStartMigrations()` at registration.
+    // @sequenceStart: a fresh database's identity begins at it, and NO start-only
+    // change ever restarts the sequence. Npgsql writes all three as RESTART: none → n as
+    // `RESTART WITH n`, n → none as `RESTART WITH 1`, n → m as `RESTART WITH m`, each handing out
+    // ids live rows may hold. The rewrite is a DESIGN-TIME concern: the generated IDesignTimeServices
+    // wraps the context's own model differ, so a scaffolded start-only change is SQL that records
+    // the start and, for a declared start, advances the counter to it when the counter is below it,
+    // and never moves it back. Nothing is registered at runtime: `Migrate()` executes what the
+    // migration already says.
 
     private const string StartVocabularyModel = """
     { "metadata.root": { "package": "acme", "children": [
@@ -737,125 +816,237 @@ public sealed class EfModelGapsTests
             StartVocabularyModel.Replace("__START__", start is { } s ? $", \"@sequenceStart\": {s}" : ""),
             "Acme.Start" + key, c => c with { Dialect = "postgres" }));
 
-    /// <summary>The generated <c>UseIdentityStartMigrations()</c>, as an adopter calls it at registration.</summary>
-    private static DbContextOptionsBuilder UseIdentityStartMigrations(GeneratedEfModel gen, DbContextOptionsBuilder o) =>
-        (DbContextOptionsBuilder)gen.Type("IdentityStartMigrations")
-            .GetMethod("UseIdentityStartMigrations", [typeof(DbContextOptionsBuilder)])!.Invoke(null, [o])!;
+    /// <summary>A context as the app builds it: stock Npgsql, nothing registered.</summary>
+    private static DbContext Stock(GeneratedEfModel gen, string cs = "Host=unused") => gen.NewContext(o => o.UseNpgsql(cs));
 
-    private static DbContext Rewritten(GeneratedEfModel gen, string cs = "Host=unused") =>
-        gen.NewContext(o => UseIdentityStartMigrations(gen, o.UseNpgsql(cs)));
-
-    /// <summary>Npgsql's own differ and SQL generator, with no rewrite.</summary>
-    private static DbContext Stock() => new(new DbContextOptionsBuilder().UseNpgsql("Host=unused").Options);
+    /// <summary>
+    /// The design-time services <c>dotnet ef migrations add</c> builds for <paramref name="db"/>, by
+    /// EF's own builder: the startup assembly is scanned for <c>IDesignTimeServices</c>, and both
+    /// assemblies for <c>[assembly: DesignTimeServicesReference]</c>.
+    /// </summary>
+    private static IServiceProvider DesignTime(DbContext db, System.Reflection.Assembly startup, System.Reflection.Assembly? migrations = null)
+    {
+#pragma warning disable EF1001 // EF's design-time builder is what the dotnet-ef tool runs.
+        var reporter = new Microsoft.EntityFrameworkCore.Design.Internal.OperationReporter(null);
+        return new Microsoft.EntityFrameworkCore.Design.Internal.DesignTimeServicesBuilder(migrations ?? startup, startup, reporter, [])
+            .Build(db);
+#pragma warning restore EF1001
+    }
 
     private static Microsoft.EntityFrameworkCore.Metadata.IRelationalModel DesignModel(DbContext db) =>
         Microsoft.EntityFrameworkCore.Infrastructure.AccessorExtensions.GetService<IDesignTimeModel>(db).Model.GetRelationalModel();
 
-    private static IReadOnlyList<Microsoft.EntityFrameworkCore.Migrations.Operations.MigrationOperation> Diff(
-        DbContext differ, GeneratedEfModel from, GeneratedEfModel to)
+    private static Microsoft.EntityFrameworkCore.Migrations.IMigrationsModelDiffer Differ(IServiceProvider services) =>
+        Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions
+            .GetRequiredService<Microsoft.EntityFrameworkCore.Migrations.IMigrationsModelDiffer>(services);
+
+    /// <summary>The Up (from → to) and Down (to → from) operations a scaffolded migration carries.</summary>
+    private static (IReadOnlyList<MigrationOperation> Up, IReadOnlyList<MigrationOperation> Down) Scaffold(long? from, long? to)
     {
-        using var a = Rewritten(from);
-        using var b = Rewritten(to);
-        var ops = Microsoft.EntityFrameworkCore.Infrastructure.AccessorExtensions
-            .GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrationsModelDiffer>(differ).GetDifferences(DesignModel(a), DesignModel(b));
-        Assert.NotEmpty(ops);
-        return ops;
+        using var a = Stock(StartModel(from));
+        using var b = Stock(StartModel(to));
+        var differ = Differ(DesignTime(b, StartModel(to).Assembly));
+        return (differ.GetDifferences(DesignModel(a), DesignModel(b)), differ.GetDifferences(DesignModel(b), DesignModel(a)));
     }
 
-    private static string Sql(DbContext generator, IReadOnlyList<Microsoft.EntityFrameworkCore.Migrations.Operations.MigrationOperation> ops) =>
-        string.Join("\n", Microsoft.EntityFrameworkCore.Infrastructure.AccessorExtensions
-            .GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrationsSqlGenerator>(generator).Generate(ops).Select(c => c.CommandText));
-
-    /// <summary>
-    /// The migration from one start to another as SQL. <paramref name="scaffolded"/>: the rewrite
-    /// scaffolds it (its differ) and Npgsql's own generator writes the SQL, as for a migration
-    /// added through the rewrite and applied without it. Otherwise Npgsql's differ scaffolds it
-    /// and the rewrite's generator writes the SQL, as for a migration scaffolded before it.
-    /// </summary>
-    private static string MigrationSql(long? from, long? to, bool scaffolded)
+    /// <summary>What a migration's operations run as, on stock Npgsql.</summary>
+    private static string Sql(IReadOnlyList<MigrationOperation> ops)
     {
-        using var rewritten = Rewritten(StartModel(to));
-        using var stock = Stock();
-        return scaffolded
-            ? Sql(stock, Diff(rewritten, StartModel(from), StartModel(to)))
-            : Sql(rewritten, Diff(stock, StartModel(from), StartModel(to)));
+        using var stock = new DbContext(new DbContextOptionsBuilder().UseNpgsql("Host=unused").Options);
+        return string.Join("\n", Microsoft.EntityFrameworkCore.Infrastructure.AccessorExtensions
+            .GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrationsSqlGenerator>(stock).Generate(ops).Select(c => c.CommandText));
     }
 
     [Fact]
-    public void The_identity_start_reaches_the_model()
+    public void The_identity_start_reaches_the_model_with_nothing_registered()
     {
-        using var db = Rewritten(StartModel(1000000000));
+        // The runtime layer is gone: a context that declares a start builds its model on stock Npgsql.
+        using var db = Stock(StartModel(1000000000));
         var id = DesignEntityType(db, "Ticket").FindProperty("Id")!;
         Assert.Equal(1000000000L, Microsoft.EntityFrameworkCore.NpgsqlPropertyExtensions.GetIdentityStartValue(id));
     }
 
-    // Removing the start sets it back to the identity default (1), and leaves the current value.
+    // Each transition scaffolds as SQL, Up and Down, and leaves no AlterColumn for Npgsql to RESTART.
     [Theory]
-    [InlineData(null, 200L, 200L, true)]
-    [InlineData(null, 200L, 200L, false)]
-    [InlineData(100L, 200L, 200L, true)]
-    [InlineData(100L, 200L, 200L, false)]
-    [InlineData(200L, null, 1L, true)]
-    [InlineData(200L, null, 1L, false)]
-    public void A_start_only_change_is_set_start_with_never_restart(long? from, long? to, long expected, bool scaffolded)
+    [InlineData(null, 200L)]
+    [InlineData(100L, 200L)]
+    [InlineData(200L, 100L)]
+    [InlineData(200L, null)]
+    public void A_start_only_change_scaffolds_as_sql_up_and_down(long? from, long? to)
     {
-        var sql = MigrationSql(from, to, scaffolded);
-        Assert.Contains($"ALTER COLUMN id SET START WITH {expected};", sql);
-        Assert.DoesNotContain("RESTART", sql, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
-    public void A_scaffolded_start_change_carries_no_identity_diff_npgsql_could_restart()
-    {
-        using var rewritten = Rewritten(StartModel(200));
-        var ops = Diff(rewritten, StartModel(null), StartModel(200));
-        var sqlOp = Assert.Single(ops.OfType<Microsoft.EntityFrameworkCore.Migrations.Operations.SqlOperation>());
-        Assert.Contains("SET START WITH 200", sqlOp.Sql);
-        // The start was the only change, so no AlterColumn is left for Npgsql to write.
-        Assert.Empty(ops.OfType<Microsoft.EntityFrameworkCore.Migrations.Operations.AlterColumnOperation>());
-    }
-
-    [Theory]
-    [InlineData(null, 2L, true)]    // the table's current value (3) is above the new start
-    [InlineData(null, 2L, false)]
-    [InlineData(100L, 200L, true)]
-    [InlineData(100L, 200L, false)]
-    [InlineData(200L, null, true)]
-    [InlineData(200L, null, false)]
-    public async Task A_start_change_on_a_live_table_never_moves_the_current_value(long? from, long? to, bool scaffolded)
-    {
-        await using var pg = await PostgresContainer.StartAsync();
-        var before = StartModel(from);
-        using (var db = Rewritten(before, pg.ConnectionString))
+        var (up, down) = Scaffold(from, to);
+        foreach (var (ops, start) in new[] { (up, to), (down, from) })
         {
-            await db.Database.EnsureCreatedAsync();
-            foreach (var code in new[] { "a", "b", "c" })
-                db.Add(before.New("Ticket", ("Code", code), ("Status", "open"), ("Email", code + "@x")));
-            db.SaveChanges();
+            Assert.All(ops, op => Assert.IsType<SqlOperation>(op));
+            var sql = Sql(ops);
+            Assert.DoesNotContain("RESTART", sql, StringComparison.OrdinalIgnoreCase);
+            // A removed start is set back to the identity default; only a declared one advances.
+            Assert.Contains($"ALTER TABLE tickets ALTER COLUMN id SET START WITH {start ?? 1};", sql);
+            if (start is { } n)
+                Assert.Contains($"GREATEST({n}, COALESCE(MAX(id), 0) + 1)", sql);
+            else
+                Assert.DoesNotContain("setval", sql);
         }
-        var first = from ?? 1;
-        await Exec(pg.ConnectionString, MigrationSql(from, to, scaffolded));
-        await Exec(pg.ConnectionString, "INSERT INTO tickets (code, status, email) VALUES ('d', 'open', 'd@x')");
-        var ids = (await Rows(pg.ConnectionString, "SELECT id FROM tickets ORDER BY id")).Select(r => (long)r[0]!).ToList();
-        // A fresh database began at the old start; the next id follows the last row.
-        Assert.Equal(new[] { first, first + 1, first + 2, first + 3 }, ids);
     }
 
     [Fact]
-    public void A_context_that_declares_a_start_without_the_rewrite_fails_loudly()
+    public void A_start_change_carried_with_another_change_keeps_the_other_change()
     {
-        using var db = StartModel(200).NewContext(o => o.UseNpgsql("Host=unused"));
-        var e = Assert.Throws<InvalidOperationException>(() => db.Model);
-        Assert.Contains("UseIdentityStartMigrations()", e.Message);
-        // A model that declares none has nothing to restart.
-        using var none = StartModel(null).NewContext(o => o.UseNpgsql("Host=unused"));
-        Assert.NotNull(none.Model);
+        // The start moves to SQL; the rest of the alter stays, with no start change left in it.
+        using var a = Stock(StartModel(null));
+        var widened = GeneratedEfModel.Compile(
+            StartVocabularyModel.Replace("__START__", ", \"@sequenceStart\": 200").Replace("\"name\": \"code\", \"@maxLength\": 20", "\"name\": \"code\", \"@maxLength\": 40"),
+            "Acme.StartWidened", c => c with { Dialect = "postgres" });
+        using var b = Stock(widened);
+        var ops = Differ(DesignTime(b, widened.Assembly)).GetDifferences(DesignModel(a), DesignModel(b));
+        Assert.Contains("SET START WITH 200", Assert.Single(ops.OfType<SqlOperation>(), o => o.Sql.Contains("SET START")).Sql);
+        var alter = Assert.Single(ops.OfType<AlterColumnOperation>());
+        Assert.Equal("code", alter.Name);
+        Assert.DoesNotContain("RESTART", Sql(ops), StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public void A_pooled_context_takes_the_rewrite_from_its_registration()
+    public void Without_the_design_time_services_npgsql_restarts()
     {
-        // EF refuses an OnConfiguring that changes options under pooling; registration may.
+        // The residual risk: a separate migrations assembly that carries no reference to the
+        // services. Pinned so the test above can only pass because of them.
+        using var a = Stock(StartModel(null));
+        using var b = Stock(StartModel(200));
+        var stockDiffer = Microsoft.EntityFrameworkCore.Infrastructure.AccessorExtensions
+            .GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrationsModelDiffer>(b);
+        Assert.Contains("RESTART WITH 200", Sql(stockDiffer.GetDifferences(DesignModel(a), DesignModel(b))));
+    }
+
+    [Fact]
+    public void A_separate_startup_assembly_finds_the_services_through_the_generated_reference()
+    {
+        // The context's assembly is the migrations assembly (EF's default) and the startup project is
+        // another: EF scans only the startup assembly for IDesignTimeServices, so the generated
+        // [assembly: DesignTimeServicesReference] is what finds them.
+        var name = "gen_dts_" + Guid.NewGuid().ToString("N");
+        var gen = GeneratedEfModel.Compile(StartVocabularyModel.Replace("__START__", ", \"@sequenceStart\": 200"), "Acme.StartRef",
+            c => c with { Dialect = "postgres", ContextAssemblyName = name }, assemblyName: name);
+        Assert.Contains($"[assembly: DesignTimeServicesReference(\"Acme.StartRef.AppDbContextDesignTimeServices, {name}\", " +
+            "\"Npgsql.EntityFrameworkCore.PostgreSQL\")]", gen.Sources["AppDbContextDesignTimeServices.g.cs"]);
+        System.Reflection.Assembly? Resolve(object? _, ResolveEventArgs e) => e.Name.StartsWith(name, StringComparison.Ordinal) ? gen.Assembly : null;
+        AppDomain.CurrentDomain.AssemblyResolve += Resolve;
+        try
+        {
+            using var a = Stock(StartModel(null));
+            using var b = Stock(gen);
+            var ops = Differ(DesignTime(b, startup: typeof(EfModelGapsTests).Assembly, migrations: gen.Assembly))
+                .GetDifferences(DesignModel(a), DesignModel(b));
+            Assert.Contains("SET START WITH 200", Assert.Single(ops.OfType<SqlOperation>(), o => o.Sql.Contains("SET START")).Sql);
+        }
+        finally
+        {
+            AppDomain.CurrentDomain.AssemblyResolve -= Resolve;
+        }
+    }
+
+    /// <summary>A separate migrations assembly: empty, or carrying the one line the docs ask for.</summary>
+    private static System.Reflection.Assembly MigrationsAssembly(string? line)
+    {
+        var refs = ((string?)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") ?? "").Split(Path.PathSeparator)
+            .Where(p => p.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+            .GroupBy(Path.GetFileName, StringComparer.OrdinalIgnoreCase).Select(g => g.First())
+            .Select(p => (Microsoft.CodeAnalysis.MetadataReference)Microsoft.CodeAnalysis.MetadataReference.CreateFromFile(p));
+        var source = (line ?? "") + "\nnamespace Acme.Migrations { internal static class Marker { } }";
+        var comp = Microsoft.CodeAnalysis.CSharp.CSharpCompilation.Create("mig_" + Guid.NewGuid().ToString("N"),
+            [Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(source)], refs,
+            new Microsoft.CodeAnalysis.CSharp.CSharpCompilationOptions(Microsoft.CodeAnalysis.OutputKind.DynamicallyLinkedLibrary));
+        using var ms = new MemoryStream();
+        var emit = comp.Emit(ms);
+        Assert.True(emit.Success, string.Join("\n", emit.Diagnostics));
+        return System.Reflection.Assembly.Load(ms.ToArray());
+    }
+
+    // EF reads [assembly: DesignTimeServicesReference] only from the startup and
+    // migrations assemblies. With the context in a third assembly (a library, as an adopter's core project) the
+    // reference generated beside it is never read: the migrations project needs the line itself.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_context_outside_the_startup_and_migrations_assemblies_needs_the_line_in_the_migrations_project(bool withLine)
+    {
+        var name = "gen_lib_" + Guid.NewGuid().ToString("N");
+        var gen = GeneratedEfModel.Compile(StartVocabularyModel.Replace("__START__", ", \"@sequenceStart\": 200"), "Acme.StartLib",
+            c => c with { Dialect = "postgres", ContextAssemblyName = name }, assemblyName: name);
+        var migrations = MigrationsAssembly(withLine
+            ? $"[assembly: Microsoft.EntityFrameworkCore.Design.DesignTimeServicesReference(\"Acme.StartLib.AppDbContextDesignTimeServices, {name}\", \"Npgsql.EntityFrameworkCore.PostgreSQL\")]"
+            : null);
+        System.Reflection.Assembly? Resolve(object? _, ResolveEventArgs e) => e.Name.StartsWith(name, StringComparison.Ordinal) ? gen.Assembly : null;
+        AppDomain.CurrentDomain.AssemblyResolve += Resolve;
+        try
+        {
+            using var a = Stock(StartModel(null));
+            using var b = Stock(gen);
+            var ops = Differ(DesignTime(b, startup: typeof(EfModelGapsTests).Assembly, migrations: migrations))
+                .GetDifferences(DesignModel(a), DesignModel(b));
+            if (withLine)
+            {
+                Assert.Contains("SET START WITH 200", Assert.Single(ops.OfType<SqlOperation>(), o => o.Sql.Contains("SET START")).Sql);
+                Assert.DoesNotContain("RESTART", Sql(ops), StringComparison.OrdinalIgnoreCase);
+            }
+            else
+            {
+                Assert.Contains("RESTART WITH 200", Sql(ops));
+            }
+        }
+        finally
+        {
+            AppDomain.CurrentDomain.AssemblyResolve -= Resolve;
+        }
+    }
+
+    // EF applies every DesignTimeServicesReference it reads, so two contexts'
+    // services in one assembly both run. They wrap the differ once between them, not once each
+    // (each JSON-column COMMENT ON would otherwise be scaffolded twice).
+    [Fact]
+    public void Two_contexts_services_wrap_the_differ_once_between_them()
+    {
+        var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
+        Microsoft.Extensions.DependencyInjection.ServiceCollectionServiceExtensions.AddTransient<
+            Microsoft.EntityFrameworkCore.Migrations.IMigrationsModelDiffer>(services, _ => throw new InvalidOperationException("unused"));
+        foreach (var gen in new[] { StartModel(100), StartModel(200) })
+        {
+            var type = gen.Type("AppDbContextDesignTimeServices");
+            ((Microsoft.EntityFrameworkCore.Design.IDesignTimeServices)Activator.CreateInstance(type)!).ConfigureDesignTimeServices(services);
+        }
+        Assert.Equal(2, services.Count(d => d.ServiceType == typeof(Microsoft.EntityFrameworkCore.Migrations.IMigrationsModelDiffer)));
+    }
+
+    /// <summary>An adopter's own differ, registered on its context: it appends a marker operation.</summary>
+#pragma warning disable EF1001 // An adopter's differ subclasses EF's.
+    private sealed class AdopterDiffer(
+        Microsoft.EntityFrameworkCore.Storage.IRelationalTypeMappingSource typeMappingSource,
+        Microsoft.EntityFrameworkCore.Migrations.IMigrationsAnnotationProvider migrationsAnnotationProvider,
+        Microsoft.EntityFrameworkCore.Update.Internal.IRowIdentityMapFactory rowIdentityMapFactory,
+        Microsoft.EntityFrameworkCore.Update.Internal.CommandBatchPreparerDependencies commandBatchPreparerDependencies)
+        : Microsoft.EntityFrameworkCore.Migrations.Internal.MigrationsModelDiffer(
+            typeMappingSource, migrationsAnnotationProvider, rowIdentityMapFactory, commandBatchPreparerDependencies)
+    {
+        public override IReadOnlyList<MigrationOperation> GetDifferences(
+            Microsoft.EntityFrameworkCore.Metadata.IRelationalModel? source, Microsoft.EntityFrameworkCore.Metadata.IRelationalModel? target) =>
+            [.. base.GetDifferences(source, target), new SqlOperation { Sql = "-- adopter" }];
+    }
+#pragma warning restore EF1001
+
+    [Fact]
+    public void The_differ_an_adopter_already_has_is_kept()
+    {
+        using var a = Stock(StartModel(null));
+        using var b = StartModel(200).NewContext(o => o.UseNpgsql("Host=unused")
+            .ReplaceService<Microsoft.EntityFrameworkCore.Migrations.IMigrationsModelDiffer, AdopterDiffer>());
+        var ops = Differ(DesignTime(b, StartModel(200).Assembly)).GetDifferences(DesignModel(a), DesignModel(b));
+        Assert.Contains(ops.OfType<SqlOperation>(), o => o.Sql == "-- adopter");
+        Assert.Contains(ops.OfType<SqlOperation>(), o => o.Sql.Contains("SET START WITH 200"));
+        Assert.Empty(ops.OfType<AlterColumnOperation>());
+    }
+
+    [Fact]
+    public void A_pooled_context_needs_no_registration()
+    {
         var gen = StartModel(200);
         var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
         var addPool = typeof(Microsoft.Extensions.DependencyInjection.EntityFrameworkServiceCollectionExtensions).GetMethods()
@@ -863,62 +1054,107 @@ public sealed class EfModelGapsTests
                 && m.GetParameters().Select(p => p.ParameterType).SequenceEqual(
                     [typeof(Microsoft.Extensions.DependencyInjection.IServiceCollection), typeof(Action<DbContextOptionsBuilder>), typeof(int)]))
             .MakeGenericMethod(gen.Type("AppDbContext"));
-        addPool.Invoke(null, [services, (Action<DbContextOptionsBuilder>)(o => UseIdentityStartMigrations(gen, o.UseNpgsql("Host=unused"))), 8]);
+        addPool.Invoke(null, [services, (Action<DbContextOptionsBuilder>)(o => o.UseNpgsql("Host=unused")), 8]);
         using var provider = Microsoft.Extensions.DependencyInjection.ServiceCollectionContainerBuilderExtensions.BuildServiceProvider(services);
         using var scope = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.CreateScope(provider);
         var db = (DbContext)Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions
             .GetRequiredService(scope.ServiceProvider, gen.Type("AppDbContext"));
         Assert.NotNull(db.Model);
-        Assert.Equal("IdentityStartMigrationsSqlGenerator", Microsoft.EntityFrameworkCore.Infrastructure.AccessorExtensions
-            .GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrationsSqlGenerator>(db).GetType().Name);
     }
 
-    private sealed class PartialContextGenerator : MetaObjects.Codegen.Generators.DbContextGenerator
+    // One release of compatibility: the earlier runtime registration still compiles and does nothing.
+    [Fact]
+    public void A_caller_of_the_earlier_UseIdentityStartMigrations_still_compiles_and_does_nothing()
     {
-        protected override bool ContextIsPartial(MetaObjects.Codegen.GenContext ctx) => true;
+        var gen = GeneratedEfModel.Compile(StartVocabularyModel.Replace("__START__", ", \"@sequenceStart\": 200"), "Acme.StartCompat",
+            c => c with { Dialect = "postgres" }, handWritten: ["""
+                using Microsoft.EntityFrameworkCore;
+                namespace Acme.StartCompat;
+                public static class LegacyRegistration
+                {
+                    #pragma warning disable CS0618
+                    public static DbContextOptionsBuilder Configure(DbContextOptionsBuilder o) => o.UseNpgsql("Host=unused").UseIdentityStartMigrations();
+                    public static DbContextOptionsBuilder<AppDbContext> Typed(DbContextOptionsBuilder<AppDbContext> o) => o.UseNpgsql("Host=unused").UseIdentityStartMigrations();
+                }
+                """]);
+        var shim = gen.Type("AppDbContextIdentityStartMigrations");
+        var method = shim.GetMethod("UseIdentityStartMigrations", [typeof(DbContextOptionsBuilder)])!;
+        var obsolete = (ObsoleteAttribute)Attribute.GetCustomAttribute(method, typeof(ObsoleteAttribute))!;
+        Assert.Contains("AppDbContextDesignTimeServices", obsolete.Message);
+        var builder = new DbContextOptionsBuilder().UseNpgsql("Host=unused");
+        Assert.Same(builder, method.Invoke(null, [builder]));
+        // It registers nothing: the model builds on stock Npgsql either way.
+        using var db = gen.NewContext(o => { method.Invoke(null, [o.UseNpgsql("Host=unused")]); });
+        Assert.NotNull(db.Model);
+        Assert.DoesNotContain("RESTART", Sql(Differ(DesignTime(db, gen.Assembly))
+            .GetDifferences(DesignModel(Stock(StartModel(null))), DesignModel(db))), StringComparison.OrdinalIgnoreCase);
     }
 
-    private sealed class BasedContextGenerator : MetaObjects.Codegen.Generators.DbContextGenerator
+    /// <summary>A database built at <paramref name="from"/>, <paramref name="seed"/> run on it, then the
+    /// scaffolded start migration applied: the ids of the rows, and of one more inserted after.</summary>
+    private static async Task<List<long>> AfterStartChange(long? from, long? to, string seed)
     {
-        protected override string ContextBaseClass(MetaObjects.Codegen.GenContext ctx) => "AuditingContext";
+        await using var pg = await PostgresContainer.StartAsync();
+        using (var db = Stock(StartModel(from), pg.ConnectionString)) await db.Database.EnsureCreatedAsync();
+        if (seed.Length > 0) await Exec(pg.ConnectionString, seed);
+        await Exec(pg.ConnectionString, Sql(Scaffold(from, to).Up));
+        await Exec(pg.ConnectionString, "INSERT INTO tickets (code, status, email) VALUES ('z', 'open', 'z@x')");
+        return (await Rows(pg.ConnectionString, "SELECT id FROM tickets ORDER BY id")).Select(r => (long)r[0]!).ToList();
+    }
+
+    private const string ThreeRows = "INSERT INTO tickets (code, status, email) VALUES ('a', 'open', 'a@x'), ('b', 'open', 'b@x'), ('c', 'open', 'c@x')";
+
+    [Fact]
+    public async Task A_fresh_database_begins_at_the_start()
+    {
+        await using var pg = await PostgresContainer.StartAsync();
+        using (var db = Stock(StartModel(1000), pg.ConnectionString)) await db.Database.EnsureCreatedAsync();
+        await Exec(pg.ConnectionString, "INSERT INTO tickets (code, status, email) VALUES ('a', 'open', 'a@x')");
+        Assert.Equal(1000L, (long)(await Rows(pg.ConnectionString, "SELECT id FROM tickets"))[0][0]!);
     }
 
     [Fact]
-    public void A_partial_context_configures_itself_in_its_own_OnConfiguring()
+    public async Task A_replayed_database_begins_at_the_start()
     {
-        var gen = GeneratedEfModel.Compile(StartVocabularyModel.Replace("__START__", ", \"@sequenceStart\": 200"), "Acme.StartPartial",
-            c => c with { Dialect = "postgres" }, dbContext: new PartialContextGenerator(), handWritten: ["""
-                using Microsoft.EntityFrameworkCore;
-                namespace Acme.StartPartial;
-                public partial class AppDbContext
-                {
-                    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
-                        optionsBuilder.UseNpgsql("Host=unused").UseIdentityStartMigrations();
-                }
-                """]);
-        using var db = gen.NewContext(_ => { });
-        Assert.NotNull(db.Model);
-        Assert.Equal("IdentityStartMigrationsSqlGenerator", Microsoft.EntityFrameworkCore.Infrastructure.AccessorExtensions
-            .GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrationsSqlGenerator>(db).GetType().Name);
+        // Created without a start, then the start migration: SET START WITH alone leaves the first id at 1.
+        Assert.Equal(new[] { 1000L }, await AfterStartChange(null, 1000, seed: ""));
     }
 
     [Fact]
-    public void A_context_base_class_keeps_its_own_OnConfiguring()
+    public async Task A_populated_table_advances_to_the_start()
     {
-        var gen = GeneratedEfModel.Compile(StartVocabularyModel.Replace("__START__", ", \"@sequenceStart\": 200"), "Acme.StartBased",
-            c => c with { Dialect = "postgres" }, dbContext: new BasedContextGenerator(), handWritten: ["""
-                using Microsoft.EntityFrameworkCore;
-                namespace Acme.StartBased;
-                public abstract class AuditingContext(DbContextOptions options) : DbContext(options)
-                {
-                    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
-                        optionsBuilder.UseNpgsql("Host=unused").UseIdentityStartMigrations();
-                }
-                """]);
-        using var db = gen.NewContext(_ => { });
-        Assert.NotNull(db.Model);
-        Assert.Equal("IdentityStartMigrationsSqlGenerator", Microsoft.EntityFrameworkCore.Infrastructure.AccessorExtensions
-            .GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrationsSqlGenerator>(db).GetType().Name);
+        Assert.Equal(new[] { 1L, 2L, 3L, 1000L }, await AfterStartChange(null, 1000, ThreeRows));
+    }
+
+    [Fact]
+    public async Task A_start_below_the_highest_id_continues_after_it()
+    {
+        // Rows 1-3 and a counter at 4: a start of 2 is below max(id) + 1, so the next id is 4, not 2.
+        Assert.Equal(new[] { 1L, 2L, 3L, 4L }, await AfterStartChange(null, 2, ThreeRows));
+    }
+
+    [Fact]
+    public async Task A_start_above_the_highest_id_begins_at_the_start()
+    {
+        // Rows 1-3 and a counter at 4: a start of 50 is above max(id) + 1, so the counter moves up to it.
+        Assert.Equal(new[] { 1L, 2L, 3L, 50L }, await AfterStartChange(null, 50, ThreeRows));
+    }
+
+    [Fact]
+    public async Task An_explicit_id_above_the_counter_is_never_handed_out_again()
+    {
+        // Rows with ids 1–3 and an explicit 5000, counter at 4: the new start (2) is below both, so
+        // the counter moves past the highest id rather than to the start.
+        Assert.Equal(new[] { 1L, 2L, 3L, 5000L, 5001L },
+            await AfterStartChange(null, 2, ThreeRows + "; INSERT INTO tickets (id, code, status, email) VALUES (5000, 'x', 'open', 'x@x')"));
+    }
+
+    [Theory]
+    [InlineData(200L, 100L)]  // a lower start
+    [InlineData(200L, null)]  // a removed start
+    public async Task A_start_change_never_moves_the_counter_back(long? from, long? to)
+    {
+        Assert.Equal(new[] { 200L, 201L, 202L, 203L }, await AfterStartChange(from, to, ThreeRows));
     }
 
     [Fact]
@@ -982,5 +1218,170 @@ public sealed class EfModelGapsTests
         Assert.Equal("seats > 0", indexes["ux_vehicles_car_seats"].GetFilter());
         Assert.Equal(new[] { false, true }, indexes["ix_vehicles_car_vin_seats"].IsDescending);
         Assert.Equal("The vehicle id number.", car.FindProperty("Vin")!.GetComment());
+    }
+
+    // A JSON column's comment. EF 8's JsonColumn carries no comment, so the generated
+    // model puts the text (the field's @description, else its value object's) on the owned type as
+    // an annotation, and the generated design-time differ scaffolds it as COMMENT ON COLUMN, Up and Down.
+
+    private const string JsonCommentModel = """
+    { "metadata.root": { "package": "acme", "children": [
+      { "object.value": { "name": "Meta", "children": [ { "field.string": { "name": "tag" } } ]__VO_DOC__ } },
+      { "object.entity": { "name": "Ticket", "children": [
+        { "source.rdb": { "@table": "tickets" } },
+        { "field.long":   { "name": "id" } },
+        { "field.object": { "name": "meta", "@objectRef": "Meta", "@storage": "jsonb"__FIELD_DOC__ } },
+        { "identity.primary": { "@fields": "id", "@generation": "increment" } }
+      ]}}
+    ]}}
+    """;
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, GeneratedEfModel> CommentModels = new();
+
+    private static GeneratedEfModel CommentModel(string? fieldDoc, string? voDoc = null) =>
+        CommentModels.GetOrAdd($"{fieldDoc}|{voDoc}", key => GeneratedEfModel.Compile(
+            JsonCommentModel
+                .Replace("__FIELD_DOC__", fieldDoc is null ? "" : $", \"@description\": \"{fieldDoc}\"")
+                .Replace("__VO_DOC__", voDoc is null ? "" : $", \"@description\": \"{voDoc}\""),
+            "Acme.Comment" + CommentModels.Count, c => c with { Dialect = "postgres" }));
+
+    private static (IReadOnlyList<MigrationOperation> Up, IReadOnlyList<MigrationOperation> Down) ScaffoldComment(GeneratedEfModel from, GeneratedEfModel to)
+    {
+        using var a = Stock(from);
+        using var b = Stock(to);
+        var differ = Differ(DesignTime(b, to.Assembly));
+        return (differ.GetDifferences(DesignModel(a), DesignModel(b)), differ.GetDifferences(DesignModel(b), DesignModel(a)));
+    }
+
+    [Fact]
+    public void A_json_column_comment_scaffolds_as_sql_up_and_down()
+    {
+        var (up, down) = ScaffoldComment(CommentModel(null), CommentModel("The ticket's metadata."));
+        Assert.Contains(up.OfType<SqlOperation>(), o => o.Sql == "COMMENT ON COLUMN tickets.meta IS 'The ticket''s metadata.';"
+            || o.Sql == "COMMENT ON COLUMN \"tickets\".\"meta\" IS 'The ticket''s metadata.';");
+        Assert.Contains(down.OfType<SqlOperation>(), o => o.Sql.StartsWith("COMMENT ON COLUMN", StringComparison.Ordinal) && o.Sql.EndsWith(" IS NULL;", StringComparison.Ordinal));
+        // A changed comment is one statement; an unchanged one is none.
+        var (changed, _) = ScaffoldComment(CommentModel("A"), CommentModel("B"));
+        Assert.Single(changed.OfType<SqlOperation>(), o => o.Sql.EndsWith(" IS 'B';", StringComparison.Ordinal));
+        var (same, _) = ScaffoldComment(CommentModel("A"), CommentModel("A"));
+        Assert.DoesNotContain(same.OfType<SqlOperation>(), o => o.Sql.StartsWith("COMMENT ON COLUMN", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void A_json_column_without_its_own_description_takes_its_value_objects()
+    {
+        var (up, _) = ScaffoldComment(CommentModel(null), CommentModel(null, voDoc: "Free-form tags."));
+        Assert.Contains(up.OfType<SqlOperation>(), o => o.Sql.EndsWith(" IS 'Free-form tags.';", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void The_snapshot_records_the_json_column_comment()
+    {
+        // The next migration diffs against the snapshot, so the annotation must survive into it.
+        var gen = CommentModel("Snap.");
+        using var db = Stock(gen);
+        var services = DesignTime(db, gen.Assembly);
+        var code = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions
+            .GetRequiredService<Microsoft.EntityFrameworkCore.Migrations.Design.IMigrationsCodeGeneratorSelector>(services)
+            .Select("C#")
+            .GenerateSnapshot("Acme.Migrations", db.GetType(), "AppDbContextModelSnapshot",
+                Microsoft.EntityFrameworkCore.Infrastructure.AccessorExtensions.GetService<IDesignTimeModel>(db).Model);
+        Assert.Contains("\"MetaObjects:JsonColumnComment\", \"Snap.\"", code);
+    }
+
+    // An OwnedTypeConfig override decides how an object field is mapped. One that maps
+    // it as a jsonb property (an adopter's hook may, for every non-flattened value object) has no owned navigation,
+    // so the owned type's annotation line would throw a NullReferenceException in OnModelCreating
+    // and no model would build. The comment goes on the property's column instead; a mapping the
+    // generator cannot see gets no comment line at all.
+
+    private sealed class JsonbPropertyHook(string config) : MetaObjects.Codegen.Generators.DbContextGenerator
+    {
+        protected override string? OwnedTypeConfig(string owner, MetaObjects.Meta.MetaObject entity, MetaObjects.Meta.MetaField field,
+            MetaObjects.Codegen.GenContext ctx) => config.Replace("__OWNER__", owner);
+    }
+
+    private static GeneratedEfModel HookedCommentModel(string hookLine, string ns) => GeneratedEfModel.Compile(
+        JsonCommentModel.Replace("__FIELD_DOC__", ", \"@description\": \"The ticket's metadata.\"").Replace("__VO_DOC__", ""),
+        ns, c => c with { Dialect = "postgres" }, dbContext: new JsonbPropertyHook(hookLine));
+
+    [Fact]
+    public void A_json_column_a_hook_maps_as_a_property_takes_its_comment_on_the_column()
+    {
+        var gen = HookedCommentModel(
+            "        modelBuilder.Entity<__OWNER__>().Property(x => x.Meta).HasColumnName(\"meta\").HasColumnType(\"jsonb\");", "Acme.HookedProperty");
+        using var db = gen.ModelOnlyContext();
+        // A comment is design-time configuration: the read-optimized runtime model does not keep it.
+        var model = Microsoft.EntityFrameworkCore.Infrastructure.AccessorExtensions
+            .GetService<Microsoft.EntityFrameworkCore.Metadata.IDesignTimeModel>(db).Model;
+        var ticket = model.FindEntityType(gen.Type("Ticket"))!;
+        Assert.Null(ticket.FindNavigation("Meta"));
+        var meta = ticket.FindProperty("Meta")!;
+        Assert.Equal("jsonb", meta.GetColumnType());
+        Assert.Equal("The ticket's metadata.", meta.GetComment());
+        Assert.DoesNotContain("MetaObjects:JsonColumnComment", gen.Sources["AppDbContext.g.cs"]);
+    }
+
+    [Fact]
+    public void A_json_column_a_hook_maps_some_other_way_builds_with_no_comment_line()
+    {
+        var gen = HookedCommentModel("        modelBuilder.Entity<__OWNER__>().Ignore(x => x.Meta);", "Acme.HookedIgnore");
+        using var db = gen.ModelOnlyContext();
+        var ticket = db.Model.FindEntityType(gen.Type("Ticket"))!;
+        Assert.Null(ticket.FindNavigation("Meta"));
+        Assert.Null(ticket.FindProperty("Meta"));
+        Assert.DoesNotContain("The ticket's metadata.", gen.Sources["AppDbContext.g.cs"]);
+    }
+
+    [Fact]
+    public void A_stock_owned_json_column_keeps_its_annotation()
+    {
+        var gen = CommentModel("Owned.");
+        using var db = gen.ModelOnlyContext();
+        var ticket = db.Model.FindEntityType(gen.Type("Ticket"))!;
+        Assert.Equal("Owned.", ticket.FindNavigation("Meta")!.TargetEntityType.FindAnnotation("MetaObjects:JsonColumnComment")?.Value);
+    }
+
+    [Fact]
+    public async Task A_scaffolded_json_column_comment_lands_on_the_live_column()
+    {
+        await using var pg = await PostgresContainer.StartAsync();
+        using (var db = Stock(CommentModel(null), pg.ConnectionString)) await db.Database.EnsureCreatedAsync();
+        await Exec(pg.ConnectionString, Sql(ScaffoldComment(CommentModel(null), CommentModel("The ticket's metadata.")).Up));
+        const string read = "SELECT col_description('tickets'::regclass, (SELECT attnum FROM pg_attribute WHERE attrelid = 'tickets'::regclass AND attname = 'meta'))";
+        Assert.Equal("The ticket's metadata.", (string)(await Rows(pg.ConnectionString, read))[0][0]!);
+        await Exec(pg.ConnectionString, Sql(ScaffoldComment(CommentModel(null), CommentModel("The ticket's metadata.")).Down));
+        Assert.Null((await Rows(pg.ConnectionString, read))[0][0]);
+    }
+
+    // ---- the CHECKs meta migrate derives, declared by the EF model ----
+
+    // ---- the CHECKs meta migrate derives, declared by the EF model ----
+
+    [Fact]
+    public async Task The_checks_the_model_declares_are_the_ones_meta_migrate_creates()
+    {
+        var corpus = Path.Combine(CorpusPaths.Repo, "fixtures", "check-constraint-conformance");
+        var model = File.ReadAllText(Path.Combine(corpus, "input", "meta.checks.json"));
+        var gen = GeneratedEfModel.Compile(model, "Acme.Checks",
+            c => c with { Dialect = "postgres", ColumnNamingStrategy = MetaObjects.Meta.ColumnNamingStrategy.SnakeCase });
+        await using var pg = await PostgresContainer.StartAsync();
+        using (var db = gen.NewContext(o => o.UseNpgsql(pg.ConnectionString)))
+            await db.Database.EnsureCreatedAsync();
+
+        using var expected = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(corpus, "expected.postgres.json")));
+        foreach (var table in expected.RootElement.EnumerateObject())
+        {
+            var names = table.Value.EnumerateArray().Select(c => c.GetProperty("name").GetString()!).OrderBy(n => n, StringComparer.Ordinal);
+            var live = (await Rows(pg.ConnectionString, $"""
+                    SELECT conname FROM pg_constraint WHERE conrelid = '{table.Name}'::regclass AND contype = 'c' ORDER BY conname COLLATE "C"
+                    """)).Select(r => (string)r[0]!);
+            Assert.Equal(names, live);
+        }
+
+        // The database enforces them: a score outside 1..5 is refused by its CHECK.
+        var ex = await Assert.ThrowsAsync<PostgresException>(() => Exec(pg.ConnectionString,
+            "INSERT INTO gadgets (kind, tags, email, score) VALUES ('plain', '{}', 'a@b.c', 9)"));
+        Assert.True(ex.ConstraintName == "gadgets_score_numeric_chk", ex.MessageText);
     }
 }

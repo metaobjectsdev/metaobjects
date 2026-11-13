@@ -9,12 +9,11 @@ import { fileURLToPath } from "node:url";
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import type { MetaData, MetaObject } from "@metaobjectsdev/metadata";
 import {
-  isMetaRoot, OBJECT_SUBTYPE_VALUE, FIELD_SUBTYPE_TIMESTAMP, FIELD_ATTR_FILTERABLE,
+  isMetaRoot, FIELD_SUBTYPE_TIMESTAMP, FIELD_ATTR_FILTERABLE,
   composeRegistry, coreProviders, physicalNamingOf,
 } from "@metaobjectsdev/metadata";
-import { assignEmittedNames } from "./naming/collision-names.js";
 import { assertNoCollectionNameCollisions } from "./naming/collection-name-collision.js";
-import { isAbstract } from "./instance-artifacts.js";
+import { NameClaims } from "./naming/name-claims.js";
 import { dbEmittingObjects, missingDialectMessage } from "./db-emitting.js";
 import { generatableObjects, hasAnyRdbSource } from "./source-detect.js";
 import type { Generator, GenContext, EmittedFile, RunOutputFile } from "./generator.js";
@@ -662,38 +661,9 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // 3. Build shared render state once.
   const pkMap = buildPkMap(root);
   const relationMap = buildRelationMap(root, (m) => warnings.push(m));
-  // ADR-0044/#228 — the ENTITY-tier collision domain is the run's EMITTED
-  // `object.value` SET (NOT any per-payload closure): value-object module
-  // filenames + `packageOf` are per-run/global, so the emitted-name map is built
-  // ONCE over every top-level `object.value` that actually produces a file, keyed
-  // by `resolutionKey()`. A bare short name unique across the set stays bare
-  // (byte-identical to pre-#228 output); a cross-package short-name collision
-  // qualifies every member (`AcmeAlphaNote`), and a still-colliding derived name
-  // fails loud (ERR_PAYLOAD_NAME_COLLISION, thrown by assignEmittedNames). A
-  // NON-emitted abstract value object (abstract + emitAbstractShapes off) produces
-  // no file/reference and is excluded — the entity-file generator's own emit gate
-  // (`isAbstract && !emitAbstractShapes` ⇒ skip) — so it can't over-qualify a
-  // concrete value object that merely shares its bare name in another package.
-  const isEmittedValueObject = (o: MetaObject): boolean =>
-    o.subType === OBJECT_SUBTYPE_VALUE && (!isAbstract(o) || config.emitAbstractShapes);
-  const valueObjectClosure = new Map<string, MetaData>();
-  for (const o of root.objects()) {
-    if (isEmittedValueObject(o)) valueObjectClosure.set(o.resolutionKey(), o);
-  }
-  const valueObjectNames = assignEmittedNames(valueObjectClosure);
-  // `packageOf` keys value objects by their EMITTED name (unique by construction
-  // via the backstop) so `valueObjectModuleSpecifier` resolves the right module
-  // even when two same-bare-named value objects live in different packages (the
-  // #244 misbinding disease). Non-value objects keep their bare name. With no
-  // collision, every emitted name equals its bare name, so this map is
-  // byte-identical to the pre-#228 `[o.name, o.package]` map.
-  const packageOf = new Map<string, string | undefined>();
-  for (const o of root.objects()) {
-    const key = o.subType === OBJECT_SUBTYPE_VALUE
-      ? (valueObjectNames.get(o.resolutionKey()) ?? o.name)
-      : o.name;
-    packageOf.set(key, effectivePackage(o));
-  }
+  // The run's one claim registry: every generator claims each name it emits into a shared
+  // scope, so a real collision is refused naming both claimants, and only for what is wired.
+  const claims = new NameClaims();
 
   // Auto-detect: is the OPT-IN Hono routes generator in the active suite? If so,
   // surface it on every generator's ctx.config so api-docs documents the Hono
@@ -942,8 +912,6 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
       includeReportExport: reportExportTargets.has(selfTarget.name),
       pkMap,
       relationMap,
-      packageOf,
-      valueObjectNames,
       selfTarget,
       entityModuleTarget,
       ...(config.providedEnumModule !== undefined && { providedEnumModule: config.providedEnumModule }),
@@ -988,6 +956,8 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
       ...(selectedManifests !== undefined && { libraries: selectedManifests }),
       ...(generator.readsRunOutput === true && { runOutput: runOutputFiles }),
       ...(requirementLedger !== undefined && { requirementLedger }),
+      claim: (scope, name, claimant, remedy) => claims.claim(scope, name, claimant, remedy),
+      entryLabel: `#${config.generators.indexOf(generator) + 1}`,
       warn: (msg) => warnings.push(`[${generator.name}] ${msg}`),
     };
 

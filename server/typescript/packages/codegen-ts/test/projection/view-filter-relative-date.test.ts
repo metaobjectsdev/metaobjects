@@ -1,10 +1,14 @@
-// FR-044 — a relative-date filter value ({ now: "<ISO duration>" }) is legal only on the
-// reporting hosts (loader rule F1). A programmatic caller skips the loader, so the view
-// lowering must refuse it rather than emit a bogus SQL literal.
+// FR-044 + `now` — a relative-date filter value ({ now: "<ISO duration>" }) is legal in a
+// projection's @filter and an origin's @filter too (rule F1's hosts grew), and the view lowering
+// renders it as the dialect's shifted "now" of the field's kind — never as a bogus literal.
 
 import { describe, test, expect } from "bun:test";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { extractViewSpec } from "../../src/projection/extract-view-spec.js";
+import { emitViewDdl } from "../../src/projection/view-ddl-emit.js";
+
+const sqlOf = (spec: ReturnType<typeof extractViewSpec>, baseTableName: string) =>
+  emitViewDdl(spec, { dialect: "postgres", baseTableName, joinTables: { "test::Order": "orders", "test::Customer": "customers" }, bodyOnly: true });
 
 const MODEL = {
   "metadata.root": {
@@ -37,22 +41,19 @@ const MODEL = {
   },
 };
 
-describe("view lowering refuses a relative-date filter value", () => {
-  test("a { now } operand that bypassed the loader throws a clear error", async () => {
+describe("view lowering renders a relative-date filter value", () => {
+  test("a { now } operand lowers to the shifted now", async () => {
     const result = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify(MODEL))]);
     expect(result.errors).toEqual([]);
     const proj = result.root.findObject("OrderView")!;
-    // The loader would have refused this (F1); mutate the stored filter to simulate a
-    // programmatic caller that skipped it.
     // own, sanctioned (ADR-0039): a test-only MUTATION of the attr value stored on this
     // node — the resolving accessor could hand back an inherited value object, and
     // writing through it would edit a different node than the one under test.
     const filter = proj.ownAttr("filter") as Record<string, Record<string, unknown>>;
     filter.placedAt = { gte: { now: "-P7D" } };
 
-    expect(() => extractViewSpec(proj, result.root, { columnNamingStrategy: "snake_case" })).toThrow(
-      /^Projection OrderView: view @filter on "placedAt": a relative-date filter value.*cannot be lowered to a view/,
-    );
+    const sql = sqlOf(extractViewSpec(proj, result.root, { columnNamingStrategy: "snake_case" }), "orders");
+    expect(sql).toContain("WHERE o.placed_at >= (now() - INTERVAL 'P7D')");
   });
 
   test("a pre-desugar shorthand { field: { now } } is a VALUE, not an op named `now`", async () => {
@@ -66,9 +67,8 @@ describe("view lowering refuses a relative-date filter value", () => {
     const filter = proj.ownAttr("filter") as Record<string, unknown>;
     filter.placedAt = { now: "-P7D" };
 
-    expect(() => extractViewSpec(proj, result.root, { columnNamingStrategy: "snake_case" })).toThrow(
-      /^Projection OrderView: view @filter on "placedAt": a relative-date filter value.*cannot be lowered to a view/,
-    );
+    const sql = sqlOf(extractViewSpec(proj, result.root, { columnNamingStrategy: "snake_case" }), "orders");
+    expect(sql).toContain("WHERE o.placed_at = (now() - INTERVAL 'P7D')");
   });
 
   test("the unmutated projection still extracts", async () => {
@@ -143,7 +143,7 @@ const AGG_MODEL = {
   },
 };
 
-describe("the origin.aggregate @filter refuses a relative-date value too", () => {
+describe("the origin.aggregate @filter renders a relative-date value too", () => {
   async function loadAgg() {
     const result = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify(AGG_MODEL))]);
     expect(result.errors).toEqual([]);
@@ -159,21 +159,18 @@ describe("the origin.aggregate @filter refuses a relative-date value too", () =>
     expect(() => extractViewSpec(proj, root, { columnNamingStrategy: "snake_case" })).not.toThrow();
   });
 
-  test("an op-map operand { gte: { now } } throws", async () => {
+  test("an op-map operand { gte: { now } } lowers inside the aggregate's FILTER", async () => {
     const { root, proj, filter } = await loadAgg();
     filter.placedAt = { gte: { now: "-P7D" } };
-    expect(() => extractViewSpec(proj, root, { columnNamingStrategy: "snake_case" })).toThrow(
-      // The message names the aggregate's filter, not the projection's row-scope one.
-      /field "recentOrders" cannot be lowered into the view: origin\.aggregate @filter over Order on "placedAt": a relative-date filter value.*cannot be lowered to a view/,
-    );
+    const sql = sqlOf(extractViewSpec(proj, root, { columnNamingStrategy: "snake_case" }), "customers");
+    expect(sql).toContain("FILTER (WHERE o.placed_at >= (now() - INTERVAL 'P7D'))");
   });
 
-  test("a shorthand operand { now } throws (read as eq, not as op `now`)", async () => {
+  test("a relative date on a non-temporal field is refused at lowering", async () => {
     const { root, proj, filter } = await loadAgg();
-    filter.placedAt = { now: "-P7D" };
+    filter.customerId = { gte: { now: "-P7D" } };
     expect(() => extractViewSpec(proj, root, { columnNamingStrategy: "snake_case" })).toThrow(
-      // The message names the aggregate's filter, not the projection's row-scope one.
-      /field "recentOrders" cannot be lowered into the view: origin\.aggregate @filter over Order on "placedAt": a relative-date filter value.*cannot be lowered to a view/,
+      /a relative-date value on "customerId" needs a field\.date or field\.timestamp/,
     );
   });
 });

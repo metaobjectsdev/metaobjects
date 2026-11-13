@@ -132,7 +132,7 @@ public static class XmlDocBuilder
         return (s.Substring(0, idx), s.Substring(idx + 1));
     }
 
-    private static string EscapeXml(string s) =>
+    internal static string EscapeXml(string s) =>
         s.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;");
 
     private static string EscapeCsString(string s) =>

@@ -16,6 +16,7 @@ from .collection_name_collision import assert_no_collection_name_collisions
 from .config import GenConfig
 from .constants import generated_package_init
 from .generator import GenContext, Generator
+from .name_claims import NameClaims
 from .instance_artifacts import is_served_report
 from .overwrite_policy import STATUS_OVERWROTE_EDIT, decide_and_write, has_hash_manifest
 
@@ -140,6 +141,7 @@ def run_gen(
     # entity set every route/router-emitting generator below reads from.
     assert_no_collection_name_collisions(safe)
 
+    claims = NameClaims()  # one registry per run, shared by every generator
     emitted: dict[str, tuple[str, str]] = {}  # full_path -> (content, generated_by)
     for gen in generators:
         ctx = GenContext(
@@ -150,6 +152,7 @@ def run_gen(
             warn=_warn_collector(gen.name, result.warnings),
             generators=tuple(g.name for g in generators),
             in_ledger=in_ledger,
+            claims=claims,
         )
         for f in gen.generate(ctx):
             full = os.path.join(config.out_dir, f.path)

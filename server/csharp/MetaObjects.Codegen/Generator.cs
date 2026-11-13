@@ -198,11 +198,39 @@ public sealed record GenConfig
     /// <summary>
     /// The project's SQL dialect (<c>.metaobjects/config.json</c> <c>migrate.dialect</c>:
     /// <c>postgres</c>, <c>sqlite</c>, <c>mysql</c>, <c>d1</c>), or <c>null</c> when it names none.
-    /// Read only where generated code must bind one provider at compile time: the
-    /// <c>@sequenceStart</c> migrations generator subclasses Npgsql's, so it is emitted for
-    /// <c>postgres</c> alone.
+    /// Read only where generated code is provider-specific: the <c>@sequenceStart</c> model
+    /// annotation and the context's design-time services are Npgsql's concern, so they are emitted
+    /// for <c>postgres</c> alone.
     /// </summary>
     public string? Dialect { get; init; }
+
+    /// <summary>
+    /// Leave out a validator CHECK the column already guarantees (a length maximum a
+    /// <c>VARCHAR(n)</c> enforces, a length minimum of zero or less), as <c>meta migrate</c> does
+    /// under <c>migrate.checks.skipRedundant</c>. A declared <c>@constraintName</c> keeps its CHECK
+    /// regardless. Default false.
+    /// </summary>
+    public bool SkipRedundantChecks { get; init; }
+
+    /// <summary>
+    /// The name of the assembly the generated context is compiled into. A Postgres context's
+    /// design-time services (<c>&lt;Context&gt;DesignTimeServices</c>) are found through
+    /// <c>[assembly: DesignTimeServicesReference("&lt;type&gt;, &lt;assembly&gt;")]</c>, and EF resolves
+    /// that name with <c>Type.GetType</c>, which needs the assembly. <c>null</c>, the default, reads it
+    /// from the one <c>.csproj</c> in <see cref="OutDir"/> or the nearest directory above it (its
+    /// <c>&lt;AssemblyName&gt;</c>, else its file name; not one set in <c>Directory.Build.props</c> or
+    /// conditionally) when it is read. When neither gives a name the reference is left out, the run
+    /// warns, and EF finds the services only when the context's project is the startup project. EF
+    /// reads the reference only from the startup and migrations assemblies, so a context in a third
+    /// assembly needs the line in its migrations project; the run warns, with the line, whenever it
+    /// cannot show the line is unnecessary (<see cref="DesignTimeServicesReferences"/>).
+    /// </summary>
+    public string? ContextAssemblyName
+    {
+        get => _contextAssemblyName ?? CSharpProjectAssembly.Find(OutDir);
+        init => _contextAssemblyName = value;
+    }
+    private readonly string? _contextAssemblyName;
 
     /// <summary>
     /// The C# property name of a field, for every generator that names one: the entity and
@@ -263,6 +291,59 @@ public sealed record GenConfig
     /// without a corresponding config entry).
     /// </summary>
     public UnmappedPackageStrategy UnmappedStrategy { get; init; } = UnmappedPackageStrategy.Flatten;
+
+    /// <summary>
+    /// Where each per-object generator writes its file: <see cref="OutputLayout.Flat"/> (the
+    /// default) keeps every file at the root of the output directory; <see cref="OutputLayout.Package"/>
+    /// writes it under the object's metadata package, one directory per <c>::</c> segment
+    /// (<c>acme::alpha::Note</c> gives <c>acme/alpha/Note.g.cs</c>). A root-level object, the
+    /// context and the run-wide helpers stay at the root in both.
+    /// </summary>
+    public OutputLayout OutputLayout { get; init; } = OutputLayout.Flat;
+
+    /// <summary>
+    /// When true, a packaged type's namespace is its metadata package (each <c>::</c> segment
+    /// PascalCased, <c>acme::alpha</c> gives <c>Acme.Alpha</c>) even when <see cref="Namespace"/>
+    /// is configured; <see cref="Namespace"/> then places only the package-less objects and the
+    /// artifacts of no single object (the context, callable wrappers, template tier, run-wide
+    /// helpers). A per-object companion (names, filter allowlist, routes, reverse finders, report
+    /// export, shared enum) is declared in its object's namespace, and every reference to a
+    /// generated type in another namespace is <c>global::</c>-qualified. False keeps the earlier
+    /// rule: the package namespace is derived only when no namespace is configured.
+    /// Explicit <see cref="PackageNamespaces"/>, <see cref="TypeOverrides"/> and
+    /// <see cref="Convention"/> entries win in both.
+    /// </summary>
+    public bool PackageNamespacesFromMetadata { get; init; }
+
+    /// <summary>
+    /// This config with the project's <c>csharp.outputLayout</c> and <c>csharp.packageNamespaces</c>
+    /// (from <c>.metaobjects/config.json</c>) applied, for the runs that read that file: <c>gen</c> and
+    /// <c>verify</c> both call it, so they agree by construction. A null config, or one that sets
+    /// neither key, returns this unchanged: the default output.
+    /// </summary>
+    public GenConfig WithCSharpLayout(MetaObjects.Config.NeutralConfig? project)
+    {
+        if (project is null) return this;
+        var layout = project.OutputLayout == "package" ? OutputLayout.Package : OutputLayout;
+        var setting = project.PackageNamespaces;
+        return this with
+        {
+            OutputLayout = layout,
+            PackageNamespacesFromMetadata = PackageNamespacesFromMetadata || setting.FromMetadata,
+            PackageNamespaces = setting.Map is { Count: > 0 } map
+                ? PackageNamespaces.Concat(map).GroupBy(kv => kv.Key).ToDictionary(g => g.Key, g => g.Last().Value)
+                : PackageNamespaces,
+        };
+    }
+}
+
+/// <summary>Where a per-object generator writes its file (see <see cref="GenConfig.OutputLayout"/>).</summary>
+public enum OutputLayout
+{
+    /// <summary>Every file at the root of the output directory.</summary>
+    Flat,
+    /// <summary>Each file under its object's metadata package.</summary>
+    Package,
 }
 
 /// <summary>Package-binding — convention rule that derives a target namespace from a metadata
@@ -345,6 +426,33 @@ public sealed class GenContext
     public Action<string> Warn { get; init; } = _ => { };
 
     /// <summary>
+    /// The run's one claim registry: every name a generator emits into a shared scope is claimed
+    /// here, at the point it is emitted. Shared by every generator of the run and by every
+    /// <see cref="Narrow"/>ed copy of this context.
+    /// </summary>
+    public NameClaims Claims { get; init; } = new();
+
+    /// <summary>
+    /// Claim <paramref name="name"/> in <paramref name="scope"/> for <paramref name="claimant"/>, as
+    /// it is emitted. The first claimant owns the name; another claimant of the same name in the
+    /// same scope is refused (<c>ERR_NAME_COLLISION</c>, or <paramref name="code"/> when given), naming both and <paramref name="remedy"/>.
+    /// The same claimant claiming again is not a collision, and the same name in two scopes is two
+    /// names. A generator that is not wired claims nothing, so the check follows the wiring.
+    /// </summary>
+    public void Claim(string scope, string name, string claimant, string remedy, string? code = null) =>
+        Claims.Claim(scope, name, claimant, remedy, code);
+
+    /// <summary>
+    /// A label for <paramref name="generator"/>'s entry in this run, for a scope that is one entry's
+    /// own (a routes entry's segments, a context's DbSets): <c>"#n"</c>, its position in
+    /// <see cref="Generators"/>, or a per-instance label when the run does not list it.
+    /// </summary>
+    public string EntryLabel(IGenerator generator) =>
+        Generators.ToList().FindIndex(g => ReferenceEquals(g, generator)) is var i and >= 0
+            ? $"#{i + 1}"
+            : $"@{System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(generator):x}";
+
+    /// <summary>
     /// The generators of this run, in list order. A generator whose output depends on another
     /// being listed asks here (see <see cref="ReportExportMaxRows"/>). Empty for a context nobody
     /// filled in, which is what a hand-built context in a test gets.
@@ -388,10 +496,42 @@ public sealed class GenContext
             Root = Root,
             Config = Config,
             Warn = Warn,
+            Claims = Claims,
             Generators = Generators,
             Applicability = Applicability,
             Scope = Scope is null ? include : o => Scope(o) && include(o),
         };
+}
+
+/// <summary>
+/// The names one run's generators have emitted, by scope. The one mechanism that refuses a real
+/// duplicate (a C# type in one namespace, a file at one output path, a DbSet property in one
+/// context, a route segment in one routes entry, a finder in one class, an index in one schema).
+/// A name is never rewritten to avoid a collision.
+/// </summary>
+public sealed class NameClaims
+{
+    /// <summary>The error code a refused claim carries.</summary>
+    public const string ERR_NAME_COLLISION = "ERR_NAME_COLLISION";
+
+    /// <summary>The shared-ledger code a clash of collection names carries (a DbSet property, a REST
+    /// collection segment), the same in every port.</summary>
+    public const string ERR_COLLECTION_NAME_COLLISION = "ERR_COLLECTION_NAME_COLLISION";
+
+    private readonly Dictionary<(string Scope, string Name), string> _owners = new();
+
+    /// <inheritdoc cref="GenContext.Claim"/>
+    public void Claim(string scope, string name, string claimant, string remedy, string? code = null)
+    {
+        lock (_owners)
+        {
+            if (_owners.TryAdd((scope, name), claimant)) return;
+            var existing = _owners[(scope, name)];
+            if (existing == claimant) return;
+            throw new InvalidOperationException(
+                $"{code ?? ERR_NAME_COLLISION}: \"{existing}\" and \"{claimant}\" both generate \"{name}\" in {scope} — {remedy}.");
+        }
+    }
 }
 
 /// <summary>A codegen unit. Kebab-case <see cref="Name"/> surfaces in diagnostics.</summary>

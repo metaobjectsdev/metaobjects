@@ -245,9 +245,9 @@ CREATE VIEW "v_program_minutes" AS
     MAX(w."durationMinutes") AS "maxMinutes",
     CAST(COUNT(w."id") FILTER (WHERE w."durationMinutes" >= 60) AS NUMERIC) / NULLIF(COUNT(w."id"), 0) AS "longShare"
   FROM "weeks" w
-  INNER JOIN "programs" p ON p."id" = w."programId"
+  LEFT OUTER JOIN "programs" p ON p."id" = w."programId"
   GROUP BY w."programId", p."title";
-COMMENT ON VIEW "v_program_minutes" IS 'metaobjects:v1:sha256:06b54e731e0221acab4b6e0a7cb7f5914662eff39af6ca57031a7df69cbbec93';
+COMMENT ON VIEW "v_program_minutes" IS 'metaobjects:v1:sha256:0efca584388ab2840076b71e68d137d6218b67baa90ff8151a01cb018c503d63';
 
 CREATE VIEW "v_fitness_totals" AS
   SELECT
@@ -442,9 +442,9 @@ CREATE VIEW "v_week_shapes" AS
     COUNT(w."id") FILTER (WHERE (w."durationMinutes" > 30 AND w."durationMinutes" <= 60)) AS "midWeeks",
     CAST(SUM(w."durationMinutes") FILTER (WHERE (w."durationMinutes" >= 60 AND w."label" LIKE 'W%')) AS BIGINT) AS "longWMinutes"
   FROM "weeks" w
-  INNER JOIN "programs" p ON p."id" = w."programId"
+  LEFT OUTER JOIN "programs" p ON p."id" = w."programId"
   GROUP BY p."title";
-COMMENT ON VIEW "v_week_shapes" IS 'metaobjects:v1:sha256:d45ae0c03233df8ba4109d7c45a132e60185a96aaacdefe6e61de445286f6840';
+COMMENT ON VIEW "v_week_shapes" IS 'metaobjects:v1:sha256:14a52bb4c22b9d458efd70d8932533b711d1560a2c8d57efd072787d6ea04312';
 
 CREATE VIEW "v_sessions_by_program" AS
   SELECT
@@ -453,10 +453,10 @@ CREATE VIEW "v_sessions_by_program" AS
     COUNT(s."id") AS "sessions",
     CAST(SUM(s."minutes") AS BIGINT) AS "sessionMinutes"
   FROM "sessions" s
-  INNER JOIN "weeks" w ON w."id" = s."weekId"
-  INNER JOIN "programs" p ON p."id" = w."programId"
+  LEFT OUTER JOIN "weeks" w ON w."id" = s."weekId"
+  LEFT OUTER JOIN "programs" p ON p."id" = w."programId"
   GROUP BY p."title", w."id";
-COMMENT ON VIEW "v_sessions_by_program" IS 'metaobjects:v1:sha256:2df2051342861240b2ddc4d2d1cbdab012a4a255f0191c35a863b9cfa5754e14';
+COMMENT ON VIEW "v_sessions_by_program" IS 'metaobjects:v1:sha256:b07c1d3271ccb826c99e73c37d5a49923babc4489f4e613187032d5d1fac2a0d';
 
 CREATE VIEW "v_program_sessions" AS
   SELECT
@@ -495,9 +495,9 @@ CREATE VIEW "v_gadget_events_by_label" AS
     g0."gadget_code" AS "gadgetLabel",
     COUNT(g."id") AS "gadgetEvents"
   FROM "gadget_events" g
-  INNER JOIN "gadgets" g0 ON g0."id" = g."gadgetId"
+  LEFT OUTER JOIN "gadgets" g0 ON g0."id" = g."gadgetId"
   GROUP BY g0."gadget_code";
-COMMENT ON VIEW "v_gadget_events_by_label" IS 'metaobjects:v1:sha256:ce353e347259448fb4055d7b20cb3de6210ce157c6824d3ab2b0b2dba661cc82';
+COMMENT ON VIEW "v_gadget_events_by_label" IS 'metaobjects:v1:sha256:2d9226e9ded3a64712a5ffcb250b58fc03d68f7e8324e434ee2aca778c60cf4c';
 
 CREATE VIEW "v_entry_totals" AS
   SELECT

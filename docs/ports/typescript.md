@@ -652,9 +652,12 @@ with the literal types intact.
 
 The entity module imports only Drizzle and Zod; the generated routes mount through
 `@metaobjectsdev/runtime-ts`, an ordinary Apache-2.0 package, and Drizzle, Zod and
-Fastify are direct user-app deps. With the default (flat)
-`outputLayout`, entity output lands directly under `outDir` — `src/generated/Author.ts`,
-`Author.queries.ts`, `Author.routes.ts` — with no per-package subdirectory.
+Fastify are direct user-app deps. `meta init` writes `outputLayout: "package"`, so entity
+output lands under one directory per metadata package — `acme::blog` gives
+`src/generated/acme/blog/Author.ts`, `Author.queries.ts`, `Author.routes.ts` — and two
+objects with one name in two packages are two files. A config without the key gets the
+engine default, `flat`: everything directly under `outDir`, with no per-package
+subdirectory.
 
 The generated `Author.routes.ts` imports a module-level `db` singleton from the
 path configured by `dbImport` in `metaobjects.config.ts` (the generated queries take

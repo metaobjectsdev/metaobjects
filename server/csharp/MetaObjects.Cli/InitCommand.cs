@@ -120,6 +120,14 @@ public static class InitCommand
         (Path.GetFileName(Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)) is { Length: > 0 } n
             ? n.Replace("\\", "").Replace("\"", "") : "project") + "\" }";
 
+    /// <summary>The project config a new project starts with: files written under their metadata
+    /// package, and each packaged type in its package's namespace. An existing config is the
+    /// project's and is never edited.</summary>
+    public const string ConfigRel = ".metaobjects/config.json";
+
+    public const string ConfigJson =
+        "{\n  \"schema_version\": 1,\n  \"csharp\": {\n    \"outputLayout\": \"package\",\n    \"packageNamespaces\": true\n  }\n}\n";
+
     public static IReadOnlyList<string> Run(string root, bool withDocs = false)
     {
         var csprojPath = Path.Combine(root, "codegen", "Codegen.csproj");
@@ -130,6 +138,18 @@ public static class InitCommand
         var lines = new List<string>();
         foreach (var rel in CodegenScaffold.Files)
             lines.Add(written.Contains(rel) ? $"  wrote {rel}" : $"  kept {rel} (already yours)");
+        var configPath = Path.Combine(root, ".metaobjects", "config.json");
+        if (File.Exists(configPath))
+            lines.Add(
+                $"  kept {ConfigRel} (already yours). Add \"csharp\": {{ \"outputLayout\": \"package\", " +
+                "\"packageNamespaces\": true }} to it to write each file under its metadata package and bind each " +
+                "packaged type to its package's namespace; without them gen keeps the flat layout.");
+        else
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(configPath)!);
+            File.WriteAllText(configPath, ConfigJson);
+            lines.Add($"  wrote {ConfigRel} (outputLayout \"package\", packageNamespaces true)");
+        }
         lines.Add("");
         lines.Add(
             "codegen/Generators.cs is the generator list `dotnet meta gen` runs. It declares nothing yet, " +

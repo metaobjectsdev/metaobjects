@@ -33,6 +33,7 @@ from metaobjects.meta.meta_data import MetaData
 from metaobjects.shared.separators import PACKAGE_SEP
 from metaobjects.codegen import type_map
 from metaobjects.codegen.config import GenConfig
+from metaobjects.codegen.import_path import ModuleScope, import_line
 
 
 @dataclass(frozen=True)
@@ -131,17 +132,20 @@ def materialized_shared_enums(entities: list) -> list[SharedEnum]:
     return [e for e in collect_shared_enums(entities) if not e.provided]
 
 
-def enum_type_and_import(shared: SharedEnum, config: GenConfig) -> tuple[str, str]:
+def enum_type_and_import(
+    shared: SharedEnum, config: GenConfig, scope: ModuleScope = ModuleScope()
+) -> tuple[str, str]:
     """The ``(type_name, import_line)`` a consuming field emits for a shared/provided enum:
 
-    * materialized → ``("<Name>", "from .enums import <Name>")`` (the shared module).
+    * materialized → ``("<Name>", "from .enums import <Name>")`` (the shared module, imported
+      relative to the file's *scope* — ``from ..enums import <Name>`` from a package directory).
     * ``@provided`` → ``("<Name>", "from <module> import <Name>")``, *module* resolved from
       ``config.provided_enum_packages`` (keyed by the enum's metadata package) then the single
       ``config.provided_enum_namespace`` fallback. A missing config is a codegen-time ``ValueError``
       naming the enum + its package (ADR-0026 / ADR-0001)."""
     name = shared.name
     if not shared.provided:
-        return name, f"from .enums import {name}"
+        return name, import_line(scope.root("enums"), name)
     module = config.provided_enum_packages.get(shared.meta_package) or config.provided_enum_namespace
     if not module:
         raise ValueError(

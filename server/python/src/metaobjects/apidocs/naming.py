@@ -19,6 +19,8 @@ asks (ADR-0056: a template's payload and response types ARE its value objects' m
 """
 from __future__ import annotations
 
+import re
+
 from metaobjects.codegen import value_objects
 from metaobjects.meta.meta_data import MetaData
 from metaobjects.naming import to_snake_case
@@ -33,6 +35,9 @@ __all__ = [
     "filter_fields_const",
     "filter_ops_const",
     "route_path",
+    "collection_segment",
+    "collection_segment_of",
+    "snake_collection_name",
     "pk_param",
     "model_import",
     "render_helper_fn",
@@ -42,6 +47,7 @@ __all__ = [
     "reverse_finder_fk_segment",
     "reverse_finder_fn",
     "reverse_finder_in_fn",
+    "reverse_finder_plural",
 ]
 
 
@@ -141,8 +147,8 @@ def pluralize(name: str) -> str:
 
 
 def model_class_name(obj: MetaData) -> str:
-    """The emitted Pydantic model class name — the object's own short name, or a value
-    object's collision-qualified one (ADR-0044/0056)."""
+    """The emitted Pydantic model class name: the object's own short name (a value object is
+    never renamed)."""
     return value_objects.model_class_name(obj)
 
 
@@ -186,6 +192,44 @@ def route_path(obj_name: str) -> str:
     here, which served ``PostCategory`` at ``/postcategorys``; see
     ``fixtures/api-contract-conformance/m2m/`` for the scenario that gates it."""
     return pluralize(_route_snake_case(obj_name))
+
+
+def snake_collection_name(name: str) -> str:
+    """snake_case a collection name with an acronym-aware split: a trailing plural
+    ``s`` / ``es`` after a capital is a suffix of the acronym, not a word of its own
+    (``FAQs`` -> ``faqs``, ``TaxIDs`` -> ``tax_ids``, ``PDFBoxes`` -> ``pdf_boxes``).
+    Any other name is :func:`metaobjects.naming.to_snake_case`."""
+    m = re.match(r"^(.*[A-Z])(e?s)$", name, re.DOTALL)
+    return to_snake_case(m.group(1)) + m.group(2) if m else to_snake_case(name)
+
+
+def collection_segment_of(
+    name: str, declared: str | None = None, configured_pluralizer: str | None = None
+) -> str:
+    """THE REST collection segment for an object named *name* (shared fixture
+    ``fixtures/naming-conformance/collection-segments.json``): a declared
+    ``@collectionName`` wins, snake-cased by :func:`snake_collection_name`; else a
+    configured pluralizer's output over the name, snake-cased the same way; else the
+    rule Python has always served (:func:`route_path`)."""
+    if declared:
+        return snake_collection_name(declared)
+    if configured_pluralizer is not None:
+        from metaobjects.naming import pluralizer
+
+        return snake_collection_name(pluralizer(configured_pluralizer)(name))
+    return route_path(name)
+
+
+def collection_segment(obj: MetaData) -> str:
+    """The segment *obj* is served under: every route, ``$path`` and REST path in the
+    docs reads it. A pluralizer applies only when the project names one (``None`` keeps
+    the historical rule), exactly as the TypeScript ``collectionSegment``."""
+    from metaobjects.meta.core.object.collection_names import declared_collection_name
+    from metaobjects.naming import naming_rules_of
+
+    return collection_segment_of(
+        obj.name, declared_collection_name(obj), naming_rules_of(obj).collections
+    )
 
 
 def pk_param(obj_name: str) -> str:
@@ -273,12 +317,27 @@ def reverse_finder_fk_segment(fk_field_name: str) -> str:
     return snake
 
 
-def reverse_finder_fn(source_entity_name: str, fk_field_name: str) -> str:
+def reverse_finder_plural(source: MetaData) -> str:
+    """The ``<e_plural>`` of a reverse finder name: the object's declared
+    ``@collectionName``, else the project's configured pluralizer, snake-cased as the REST
+    segment is. With neither, the rule finders have always used (not the REST rule, which
+    splits acronyms differently), so an unconfigured project's names do not move."""
+    from metaobjects.meta.core.object.collection_names import declared_collection_name
+    from metaobjects.naming import naming_rules_of
+
+    declared = declared_collection_name(source)
+    configured = naming_rules_of(source).collections
+    if declared or configured is not None:
+        return collection_segment_of(source.name, declared, configured)
+    return snake_case(_pluralize(source.name))
+
+
+def reverse_finder_fn(source: MetaData, fk_field_name: str) -> str:
     """Reverse single-value finder name: ``find_<e_plural>_by_<fk_segment>``."""
-    e_plural = snake_case(_pluralize(source_entity_name))
+    e_plural = reverse_finder_plural(source)
     return f"find_{e_plural}_by_{reverse_finder_fk_segment(fk_field_name)}"
 
 
-def reverse_finder_in_fn(source_entity_name: str, fk_field_name: str) -> str:
+def reverse_finder_in_fn(source: MetaData, fk_field_name: str) -> str:
     """Reverse batched finder name: ``find_<e_plural>_by_<fk_segment>_in``."""
-    return f"{reverse_finder_fn(source_entity_name, fk_field_name)}_in"
+    return f"{reverse_finder_fn(source, fk_field_name)}_in"

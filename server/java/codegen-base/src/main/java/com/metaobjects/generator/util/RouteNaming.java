@@ -1,13 +1,18 @@
 package com.metaobjects.generator.util;
 
 import com.metaobjects.database.ColumnNaming;
+import com.metaobjects.database.NamingStrategies;
+import com.metaobjects.database.PhysicalNaming;
 import com.metaobjects.generator.GeneratorException;
+import com.metaobjects.object.CollectionNames;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.source.RdbSource;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * THE REST collection-URL segment rule, shared by every JVM generator.
@@ -51,6 +56,38 @@ public final class RouteNaming {
     public static String collectionSegment(String shortName) {
         if (shortName == null || shortName.isEmpty()) return shortName;
         return pluralize(ColumnNaming.toSnakeCase(shortName));
+    }
+
+    /**
+     * The REST collection segment {@code obj} is served under, the cross-port rule shared with
+     * TypeScript and C# ({@code fixtures/naming-conformance/collection-segments.json}): its own
+     * {@code @collectionName} wins, snake_cased by {@link #snakeCollectionName}; else the
+     * pluralizer the project configures ({@code naming.collections}) over its name, snake_cased the
+     * same way; else the rule every port has always served ({@link #collectionSegment(String)}).
+     * A pluralizer is applied only when the project configures one, so an unconfigured project's
+     * segments never move. Every JVM generator that emits a REST path reads this.
+     */
+    public static String collectionSegment(MetaObject obj) {
+        String declared = CollectionNames.declared(obj);
+        if (declared != null) return snakeCollectionName(declared);
+        String configured = PhysicalNaming.of(obj).collections();
+        if (configured != null) {
+            return snakeCollectionName(NamingStrategies.pluralizer(configured).apply(obj.getShortName()));
+        }
+        return collectionSegment(obj.getShortName());
+    }
+
+    private static final Pattern ACRONYM_PLURAL = Pattern.compile("^(.*[A-Z])(e?s)$");
+
+    /**
+     * snake_case a collection name with an acronym-aware split: a trailing plural {@code s} /
+     * {@code es} after a capital is a suffix of the acronym, not a word of its own
+     * ({@code FAQs} -&gt; {@code faqs}, {@code TaxIDs} -&gt; {@code tax_ids}, {@code PDFBoxes} -&gt;
+     * {@code pdf_boxes}). Any other name is {@link ColumnNaming#toSnakeCase}.
+     */
+    public static String snakeCollectionName(String s) {
+        Matcher m = ACRONYM_PLURAL.matcher(s);
+        return m.matches() ? ColumnNaming.toSnakeCase(m.group(1)) + m.group(2) : ColumnNaming.toSnakeCase(s);
     }
 
     /**
@@ -127,6 +164,9 @@ public final class RouteNaming {
         return pluralizeLegacySuffixOnly(word);
     }
 
+    /** The shared-ledger code for two objects that take one collection name (fixtures/conformance/ERROR-CODES.json). */
+    public static final String ERR_COLLECTION_NAME_COLLISION = "ERR_COLLECTION_NAME_COLLISION";
+
     /**
      * Refuse a generation run in which two DISTINCT entities/projections resolve to the
      * same REST collection segment ({@link #collectionSegment}) — e.g. {@code Address}
@@ -151,25 +191,24 @@ public final class RouteNaming {
      *
      * <p>A PURE function of the entity set, never of traversal order: the reported pair
      * is deterministic (first-seen-by-input-order "owner" of a collection segment;
-     * thrown as soon as a second, different entity claims the same one). No formal
-     * {@code ErrorCode} ledger entry — this port's own precedent for a codegen-time (not
-     * loader-time) error is a plain {@link GeneratorException} with a descriptive
-     * message (see {@code GeneratedFileWriter#claim}'s output-path-collision check),
-     * not a registered enum constant.</p>
+     * thrown as soon as a second, different entity claims the same one). The message leads
+     * with the shared-ledger code {@value #ERR_COLLECTION_NAME_COLLISION}, the code every
+     * port raises for this refusal; it is a codegen-time error, so it is a plain
+     * {@link GeneratorException} rather than a loader {@code ErrorCode} constant.</p>
      */
     public static void assertNoCollectionNameCollisions(List<MetaObject> entities) {
         Map<String, MetaObject> ownerOfSegment = new HashMap<>();
         for (MetaObject obj : entities) {
             if (!emitsCollection(obj)) continue;
-            String segment = collectionSegment(obj.getShortName());
+            String segment = collectionSegment(obj);
             MetaObject existing = ownerOfSegment.get(segment);
             if (existing != null) {
                 if (existing != obj) {
                     throw new GeneratorException(
-                        "\"" + existing.getName() + "\" and \"" + obj.getName() + "\" both resolve to the " +
-                        "REST collection segment \"" + segment + "\" — rename one entity so its collection " +
-                        "segment is distinct. Default PHYSICAL table names are unaffected by this rule and " +
-                        "are not involved in the collision.");
+                        ERR_COLLECTION_NAME_COLLISION + ": \"" + existing.getName() + "\" and \"" + obj.getName()
+                        + "\" both resolve to the REST collection segment \"" + segment + "\" — set @collectionName "
+                        + "on one, or rename it, so the segments differ. Default PHYSICAL table names are unaffected "
+                        + "by this rule and are not involved in the collision.");
                 }
             } else {
                 ownerOfSegment.put(segment, obj);

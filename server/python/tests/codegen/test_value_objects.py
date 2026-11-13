@@ -1,18 +1,16 @@
 """ADR-0056 — the value-object naming authority every Python generator asks.
 
-A value object's model is emitted once, as ``<Name>.py`` in the flat generated package, so
-its name must be unique across EVERY top-level object's module, not only across value
-objects. These tests pin the domain (the same rule as C#'s ``ValueObjectNames``).
+A value object's model is emitted once, as ``<Name>.py`` in its package's directory, under its
+own name: it is never renamed. These tests pin that and the local-binding alias.
 """
 from __future__ import annotations
 
 import json
 
-import pytest
-
 import metaobjects.core_types  # noqa: F401 — side-effect: registers attr classes
 from metaobjects import InMemoryStringSource, MetaDataLoader
 from metaobjects.codegen.value_objects import (
+    local_name,
     model_class_name,
     object_ref_class_name,
     value_object_names,
@@ -56,29 +54,22 @@ def test_a_unique_value_object_keeps_its_bare_name() -> None:
     assert model_class_name(_obj(root, "acme::alpha::Note")) == "Note"
 
 
-def test_two_colliding_value_objects_are_both_qualified() -> None:
+def test_a_value_object_is_never_renamed() -> None:
+    """Two same-named value objects keep their own name (the retired shim maps
+    every key to its short name); a clash is ERR_NAME_COLLISION at gen time, and the package
+    layout is what lets them coexist."""
     root = _load(("acme::alpha", [_value("Note")]), ("acme::beta", [_value("Note")]))
-    assert value_object_names(root) == {
-        "acme::alpha::Note": "AcmeAlphaNote",
-        "acme::beta::Note": "AcmeBetaNote",
-    }
+    assert value_object_names(root) == {"acme::alpha::Note": "Note", "acme::beta::Note": "Note"}
+    assert model_class_name(_obj(root, "acme::alpha::Note")) == "Note"
 
 
-def test_a_value_object_sharing_an_entitys_name_moves_and_the_entity_does_not() -> None:
-    """The flat package would otherwise hold two ``Report.py`` modules."""
-    root = _load(("acme::app", [_entity("Report")]), ("acme::ai", [_value("Report")]))
-    assert model_class_name(_obj(root, "acme::app::Report")) == "Report"
-    assert model_class_name(_obj(root, "acme::ai::Report")) == "AcmeAiReport"
-
-
-def test_a_derived_name_landing_on_another_object_fails_loud() -> None:
-    root = _load(
-        ("acme::ai", [_value("Note")]),
-        ("acme::beta", [_value("Note")]),
-        ("acme::app", [_entity("AcmeAiNote")]),
-    )
-    with pytest.raises(ValueError, match="ERR_PAYLOAD_NAME_COLLISION"):
-        value_object_names(root)
+def test_two_objects_sharing_a_short_name_bind_under_package_qualified_aliases() -> None:
+    """Only a LOCAL binding is qualified (`Note as AcmeAlphaNote`); the type is not."""
+    root = _load(("acme::alpha", [_value("Note")]), ("acme::beta", [_value("Note")]),
+                 ("acme::app", [_entity("Report")]))
+    assert local_name(_obj(root, "acme::alpha::Note")) == "AcmeAlphaNote"
+    assert local_name(_obj(root, "acme::beta::Note")) == "AcmeBetaNote"
+    assert local_name(_obj(root, "acme::app::Report")) == "Report"
 
 
 def test_a_field_object_ref_types_as_the_targets_emitted_name() -> None:

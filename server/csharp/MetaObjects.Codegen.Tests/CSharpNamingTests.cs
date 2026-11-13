@@ -294,6 +294,7 @@ public class CSharpNamingTests
         Config = new GenConfig
         {
             OutDir = "/unused", Namespace = "Acme.Generated",
+            OutputLayout = OutputLayout.Package, PackageNamespacesFromMetadata = true,
             PackageNamespaces = new() { ["enterprise"] = "Acme.Enterprise", ["core"] = "Acme.Core" },
         },
     };
@@ -371,7 +372,8 @@ public class CSharpNamingTests
         {
             var root = PackagedObjects(ReadObject(c.GetProperty("entityA")), ReadObject(c.GetProperty("entityB")));
             var ex = Assert.Throws<InvalidOperationException>(() => Run(new DbContextGenerator(), root));
-            Assert.Contains($"DbSet property \"{c.GetProperty("collidesOn").GetString()}\"", ex.Message);
+            Assert.Contains("ERR_COLLECTION_NAME_COLLISION", ex.Message);
+            Assert.Contains($"both generate \"{c.GetProperty("collidesOn").GetString()}\" in the DbSet properties", ex.Message);
             Assert.Contains("@collectionName", ex.Message);
         }
     }
@@ -381,7 +383,8 @@ public class CSharpNamingTests
     {
         var root = PackagedObjects(new("enterprise", "Payer", false, true, "enterprise"), new("core", "Payer", false, true, "core"));
         var ex = Assert.Throws<InvalidOperationException>(() => Run(new RoutesGenerator(), root));
-        Assert.Contains("REST collection segment \"payers\"", ex.Message);
+        Assert.Contains("ERR_COLLECTION_NAME_COLLISION", ex.Message);
+        Assert.Contains("both generate \"payers\" in the REST collection segments", ex.Message);
     }
 
     [Fact]
@@ -391,7 +394,7 @@ public class CSharpNamingTests
         foreach (var pkg in new[] { "enterprise", "core" })
         {
             var context = Assert.Single(Run(new DbContextGenerator { Include = InPackage(pkg) }, root)).Content;
-            Assert.Contains("DbSet<Payer> Payers", context);
+            Assert.Contains("Payers { get; set; }", context);
             Assert.NotEmpty(Run(new RoutesGenerator { Include = InPackage(pkg) }, root));
         }
         var entities = Run(new EntityGenerator(), root).Select(f => f.Content).ToList();
@@ -425,22 +428,17 @@ public class CSharpNamingTests
         Assert.Contains($"\"{bad}\"", ex.Message);
     }
 
-    // One context, one relation per (schema, name). Two objects that map to one
-    // table would silently share it; the DbSet rule no longer catches them once @collectionName splits
-    // the property names.
+    // Two objects that map to one table are EF's to refuse (at model build), not the generator's:
+    // the generator claims only what it emits, a DbSet property per name.
     [Theory]
     [InlineData("billing")]
     [InlineData(null)]
-    public void Two_objects_mapping_one_relation_in_one_context_are_refused_naming_both(string? schema)
+    public void Two_objects_mapping_one_relation_in_one_context_are_left_to_the_model_build(string? schema)
     {
         var root = PackagedObjects(
             new("enterprise", "Payer", false, true, schema, DbSetName: "EnterprisePayers"),
             new("core", "Payer", false, true, schema));
-        var ex = Assert.Throws<InvalidOperationException>(() => Run(new DbContextGenerator(), root));
-        Assert.Contains("ERR_DUPLICATE_SQL_NAME", ex.Message);
-        Assert.Contains("\"enterprise::Payer\"", ex.Message);
-        Assert.Contains("\"core::Payer\"", ex.Message);
-        Assert.Contains(schema is null ? "\"payers\"" : "\"billing\".\"payers\"", ex.Message);
+        Assert.Single(Run(new DbContextGenerator(), root));
     }
 
     [Fact]

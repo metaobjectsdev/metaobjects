@@ -254,7 +254,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         // entity readObj == tableObjectName, so the emitted controller is byte-identical.
         val writeThrough = entity.isWriteThrough
         val readObj = if (writeThrough) KotlinNaming.viewObjectName(shortName) else tableObjectName
-        val routeBase = KotlinNaming.controllerPath(shortName)
+        val routeBase = KotlinNaming.controllerPath(entity)
 
         // Primary key: single-field PKs only for v1. Composite PKs are uncommon for HTTP
         // CRUD (you'd need a URL grammar for composite ids — out of scope; the C# port
@@ -741,7 +741,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         val api = exposedApi()
         val (pkg, shortName) = PackageMapping.splitFqn(base.name)
         val table = shortName + "Table"
-        val routeBase = KotlinNaming.controllerPath(shortName)
+        val routeBase = KotlinNaming.controllerPath(base)
         // The single TPH table is keyed by the BASE's primary identity — every polymorphic
         // + per-subtype by-id route binds the PK field's OWN Kotlin type (uuid → UUID, …),
         // matching the Exposed Column<T> it is compared against (a hard-coded Long does
@@ -2114,7 +2114,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         val api = exposedApi()
         val (pkg, shortName) = PackageMapping.splitFqn(entity.name)
         val readObj = KotlinNaming.tableObjectName(shortName)
-        val routeBase = KotlinNaming.controllerPath(shortName)
+        val routeBase = KotlinNaming.controllerPath(entity)
 
         // ADR-0039: resolving — a projection's identity.primary typically EXTENDS the base
         // entity's, and an own-only read would silently drop GET /{id} from the controller.

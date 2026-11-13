@@ -28,6 +28,7 @@ import {
   GENERATED_HEADER,
   GENERATED_EDIT_NOTE,
   effectivePackage,
+  claimBarrelNames,
 } from "@metaobjectsdev/codegen-ts/engine";
 
 interface BarrelEntry {
@@ -61,11 +62,13 @@ export const barrel = function barrel(opts?: BarrelOpts): Generator {
         throw new Error("barrel: renderContext is required (provided by runGen)");
       }
       const rc = ctx.renderContext;
+      // Every name the barrel re-exports lives in its one namespace.
+      for (const e of entities) claimBarrelNames(ctx, e);
       return {
         path: "index.ts",
         content: await formatTs(
           renderBarrel(
-            entities.map((e) => ({ name: rc.valueObjectEmittedName(e), package: effectivePackage(e) })),
+            entities.map((e) => ({ name: e.name, package: effectivePackage(e) })),
             rc.extStyle,
             rc.selfTarget,
             rc.entityModuleTarget,

@@ -8,9 +8,9 @@
 //   - a passthrough `@from` onto a flattened member reads that column;
 //   - two references onto one target join it twice, and each passthrough reads the join its
 //     own `@via` walked;
-//   - an origin `@segment`, which the view lowering does not express yet, is refused;
-//   - a projection that extends another projection, whose fields and `@filter` the view
-//     lowering does not inherit yet, is refused naming the projection.
+//   - every shared view fixture the loaders accept lowers: origin `@segment`, base-row
+//     operands, relative dates, `case`, entity-derived fields, and a projection that extends
+//     another projection (inheriting its fields and `@filter`).
 
 import { describe, expect, test, setDefaultTimeout } from "bun:test";
 import { COMPILE_TEST_TIMEOUT_MS } from "./compile-timeout.js";
@@ -158,8 +158,8 @@ describe("two references onto one target", () => {
   });
 });
 
-describe("an origin the view lowering does not express yet", () => {
-  test("an origin @segment is refused by name, never dropped", async () => {
+describe("an origin @segment", () => {
+  test("is the related entity's segment, ANDed into the aggregate's FILTER", async () => {
     const root = await load([
       { "object.entity": { name: "Case", children: [
         { "source.rdb": { "@table": "cases" } },
@@ -185,7 +185,7 @@ describe("an origin the view lowering does not express yet", () => {
         { "identity.primary": { name: "pk", extends: "Case.pk" } },
       ]}},
     ]);
-    expect(() => viewSql(root)).toThrow(/CaseSummary: field "firstLive" cannot be lowered into the view: its @segment/);
+    expect(viewSql(root)).toContain("MIN(c0.created_at) FILTER (WHERE c0.active = TRUE) AS first_live");
   });
 });
 
@@ -207,36 +207,19 @@ describe("the shared fixtures, through the view builder", () => {
     "origin-passthrough-flattened-member",
     "origin-passthrough-two-references-one-target",
     "reference-flattened-member",
+    "projection-filter-joined-path",
+    "projection-filter-unprojected-base-field",
+    "projection-extends-abstract-projection",
+    "projection-extends-filtered-projection",
+    "projection-extends-projection-own-identity",
+    "origin-computed-case-over-joined",
+    "origin-computed-literal-unifies",
+    "origin-correlated-filter-and-segment",
+    "origin-segment-scoped",
+    "origin-filter-relative-now",
+    "projection-filter-relative-now",
+    "entity-derived-filter-gate",
   ])("%s lowers", async (name) => {
     expect(viewSql(await loadFixture(name))).toContain("SELECT");
-  });
-
-  test.each([
-    ["origin-computed-case-over-joined", /field "label" cannot be lowered into the view: its @expr/],
-    ["origin-computed-literal-unifies", /field "statusOrZero" cannot be lowered into the view: its @expr/],
-    ["origin-correlated-filter-and-segment", /cannot be lowered into the view: its @segment/],
-    ["origin-segment-scoped", /cannot be lowered into the view: its @segment/],
-    ["origin-filter-relative-now", /relative-date filter value .* cannot be lowered to a view/],
-    ["projection-filter-relative-now", /relative-date filter value .* cannot be lowered to a view/],
-    ["projection-filter-joined-path", /view @filter field "caseId.status" did not resolve to a view column/],
-    ["projection-filter-unprojected-base-field", /view @filter field "deleted" did not resolve to a view column/],
-    ["entity-derived-filter-gate", /did not resolve to a view column/],
-    ["projection-extends-abstract-projection", /Projection DataAggregationPlans cannot be lowered into a view: it extends PlanExtract,/],
-    ["projection-extends-filtered-projection", /Projection ExportPlans cannot be lowered into a view: it extends LivePlans,/],
-    ["projection-extends-projection-own-identity", /Projection ExportPlans cannot be lowered into a view: it extends GatedPlans,/],
-  ] as const)("%s is refused by name", async (name, refusal) => {
-    const root = await loadFixture(name);
-    expect(() => viewSql(root)).toThrow(refusal);
-  });
-
-  test("a correlated operand in an aggregate @filter is refused", async () => {
-    // The fixture's two correlated origins also carry @segment, which is refused first;
-    // without it, the base-row comparison is what the builder meets.
-    const dir = join(CONFORMANCE, "origin-correlated-filter-and-segment", "input");
-    const sources = readdirSync(dir).filter((f) => f.endsWith(".json")).map((f) =>
-      new InMemoryStringSource(readFileSync(join(dir, f), "utf8").replace(/"@segment": "live",\s*/g, ""), { id: f, format: "json" }));
-    const result = await new MetaDataLoader().load(sources);
-    expect(result.errors.map((e) => e.message)).toEqual([]);
-    expect(() => viewSql(result.root)).toThrow(/field "statusPlaced" cannot be lowered into the view: .*base-row field/);
   });
 });

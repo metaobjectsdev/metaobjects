@@ -16,7 +16,7 @@
 //    collision in its own right: Pluralize("Addresses") == "Addresses" too (it is already-
 //    plural, so it is left unchanged), so the "Addresses" entity's OWN DbSet would collide with
 //    the "Address" entity's DbSet (CS0102 duplicate member) — a SEPARATE defect from the nameof
-//    hazard above, caught earlier and refused by the generated context's DbSet-name check (`CSharpNaming.AssertUniqueInScope`)
+//    hazard above, caught earlier and refused by the generated context's DbSet-name check (the claim registry)
 //    (called from `CodegenRunner.Run`, see `Address_and_Addresses_is_refused_as_a_collection_name_collision`
 //    below) before `DbContextGenerator` ever runs. `Fk_property_is_named_by_typed_lambda_not_nameof`
 //    below still exercises `DbContextGenerator` directly (bypassing that runner-level gate, as an
@@ -49,7 +49,7 @@ public sealed class DbContextForeignKeyConfigTests
     /// `Address` + `Addresses`, both persisted, with `Addresses` carrying the reference.
     /// Pluralize("Address") == "Addresses", so the context declares `DbSet&lt;Address&gt; Addresses`
     /// — the exact identifier the FK line for entity `Addresses` has to name. This model is
-    /// ALSO now refused by the generated context's DbSet-name check (`CSharpNaming.AssertUniqueInScope`) (see the
+    /// ALSO now refused by the generated context's DbSet-name check (the claim registry) (see the
     /// class-level comment above) — only `Fk_property_is_named_by_typed_lambda_not_nameof`
     /// below still exercises it, by calling `DbContextGenerator` directly rather than through
     /// the runner-level gate.
@@ -168,7 +168,8 @@ public sealed class DbContextForeignKeyConfigTests
         var ex = Assert.Throws<InvalidOperationException>(
             () => new DbContextGenerator().Generate(Ctx(Load(DbSetNameCollisionModel))).ToList());
         Assert.Contains("Address", ex.Message);
-        Assert.Contains("DbSet property \"Addresses\"", ex.Message);
+        Assert.Contains("ERR_COLLECTION_NAME_COLLISION", ex.Message);
+        Assert.Contains("both generate \"Addresses\" in the DbSet properties", ex.Message);
     }
 
     [Fact]

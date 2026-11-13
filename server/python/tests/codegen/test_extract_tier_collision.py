@@ -78,12 +78,12 @@ def _load_corpus_root() -> MetaRoot:
     return res.root
 
 
-def _ctx(root: MetaRoot) -> GenContext:
+def _ctx(root: MetaRoot, layout: str = "package") -> GenContext:
     return GenContext(
         entities=[c for c in root.own_children() if isinstance(c, MetaObject)],
         loaded_root=root,
         matches=lambda _e: True,
-        config=GenConfig(out_dir="/tmp/out"),
+        config=GenConfig(out_dir="/tmp/out", output_layout=layout),
         warn=lambda _m: None,
     )
 
@@ -101,7 +101,14 @@ def _materialize_and_import(files, tmp_path, pkg_name: str):
     os.makedirs(pkg_dir, exist_ok=True)
     open(os.path.join(pkg_dir, "__init__.py"), "w").close()
     for f in files:
-        with open(os.path.join(pkg_dir, f.path), "w") as fh:
+        target = os.path.join(pkg_dir, f.path)
+        # The package layout nests modules in subpackage directories: each is a package.
+        d = os.path.dirname(target)
+        while d != pkg_dir:
+            os.makedirs(d, exist_ok=True)
+            open(os.path.join(d, "__init__.py"), "a").close()
+            d = os.path.dirname(d)
+        with open(target, "w") as fh:
             fh.write(f.content)
     sys.path.insert(0, str(tmp_path))
     for k in list(sys.modules):
@@ -119,7 +126,7 @@ def test_output_parser_emits_both_colliding_mirrors_and_mappers() -> None:
     files = [
         f
         for f in OutputParserGenerator().generate(_ctx(_load_corpus_root()))
-        if f.path == "digest_prompt_response_parser.py"
+        if f.path.rsplit("/", 1)[-1] == "digest_prompt_response_parser.py"
     ]
     assert len(files) == 1
     src = files[0].content
@@ -156,15 +163,15 @@ def test_extractor_imports_and_maps_both_colliding_value_object_models() -> None
     files = [
         f
         for f in ExtractorGenerator().generate(_ctx(_load_corpus_root()))
-        if f.path == "digest_prompt_extractor.py"
+        if f.path.rsplit("/", 1)[-1] == "digest_prompt_extractor.py"
     ]
     assert len(files) == 1
     src = files[0].content
 
     # Imports BOTH qualified models from the entity generator's own modules — never a
     # bare `Note` (which would bind whichever `Note.py` was written last).
-    assert "from .AcmeAlphaNote import AcmeAlphaNote\n" in src
-    assert "from .AcmeBetaNote import AcmeBetaNote\n" in src
+    assert "from ..alpha.Note import Note as AcmeAlphaNote\n" in src
+    assert "from ..beta.Note import Note as AcmeBetaNote\n" in src
     assert "from .Note import" not in src
 
     # BOTH mirror->strict mappers present, named after the qualified model.
@@ -183,11 +190,13 @@ def test_entity_tier_emits_both_colliding_models_never_bare_note() -> None:
     naming authority rather than deriving its own."""
     files = {f.path: f.content for f in EntityModelGenerator().generate(_ctx(_load_corpus_root()))}
     assert "Note.py" not in files
-    assert "class AcmeAlphaNote(BaseModel):" in files["AcmeAlphaNote.py"]
-    assert "class AcmeBetaNote(BaseModel):" in files["AcmeBetaNote.py"]
-    digest = files["Digest.py"]
-    assert "from .AcmeAlphaNote import AcmeAlphaNote" in digest
-    assert "from .AcmeBetaNote import AcmeBetaNote" in digest
+    # The type is its own name, in its own package directory — never renamed.
+    assert "class Note(BaseModel):" in files["acme/alpha/Note.py"]
+    assert "class Note(BaseModel):" in files["acme/beta/Note.py"]
+    assert "AcmeAlphaNote(BaseModel)" not in "".join(files.values())
+    digest = files["acme/app/Digest.py"]
+    assert "from ..alpha.Note import Note as AcmeAlphaNote" in digest
+    assert "from ..beta.Note import Note as AcmeBetaNote" in digest
 
 
 # ---------------------------------------------------------------------------
@@ -202,7 +211,7 @@ def test_extract_and_extract_lenient_run_each_nested_vo_into_its_own_shape(
     root = _load_corpus_root()
     files = _all_files(root)
     _materialize_and_import(files, tmp_path, "_xpkg_collision_pkg")
-    ex = import_module("_xpkg_collision_pkg.digest_prompt_extractor")
+    ex = import_module("_xpkg_collision_pkg.acme.app.digest_prompt_extractor")
 
     text = json.dumps(
         {"fromAlpha": {"alphaText": "AA"}, "fromBeta": {"betaText": "BB"}}
@@ -221,8 +230,9 @@ def test_extract_and_extract_lenient_run_each_nested_vo_into_its_own_shape(
     assert strict.fromAlpha.alphaText == "AA"
     assert strict.fromBeta.betaText == "BB"
     assert type(strict).__name__ == "Digest"
-    assert type(strict.fromAlpha).__name__ == "AcmeAlphaNote"
-    assert type(strict.fromBeta).__name__ == "AcmeBetaNote"
+    assert type(strict.fromAlpha).__name__ == "Note"
+    assert type(strict.fromBeta).__name__ == "Note"
+    assert type(strict.fromAlpha) is not type(strict.fromBeta)
     # Each nested model carries ONLY its own package's field — proves fromBeta
     # was never cross-wired onto alpha's shape (the pre-fix wrong-node bug).
     assert not hasattr(strict.fromAlpha, "betaText")
@@ -280,9 +290,9 @@ def test_no_churn_non_colliding_nested_vo_keeps_bare_names() -> None:
     for c in (detail, widget, tmpl):
         root.add_child(c)
 
-    parser_src = OutputParserGenerator().generate(_ctx(root))[0].content
-    extractor_src = ExtractorGenerator().generate(_ctx(root))[0].content
-    models = {f.path: f.content for f in EntityModelGenerator().generate(_ctx(root))}
+    parser_src = OutputParserGenerator().generate(_ctx(root, "flat"))[0].content
+    extractor_src = ExtractorGenerator().generate(_ctx(root, "flat"))[0].content
+    models = {f.path: f.content for f in EntityModelGenerator().generate(_ctx(root, "flat"))}
 
     assert "class DetailExtracted:" in parser_src
     assert "class WidgetExtracted:" in parser_src
@@ -404,19 +414,19 @@ def test_colliding_own_payload_name_binds_own_package_bakes_fqn(
     root = _load_two_package_report_collision_root(beta_first=beta_first)
     files = OutputParserGenerator().generate(_ctx(root))
     alpha_src = next(
-        f for f in files if f.path == "report_doc_alpha_response_parser.py"
+        f for f in files if f.path.rsplit("/", 1)[-1] == "report_doc_alpha_response_parser.py"
     ).content
     beta_src = next(
-        f for f in files if f.path == "report_doc_beta_response_parser.py"
+        f for f in files if f.path.rsplit("/", 1)[-1] == "report_doc_beta_response_parser.py"
     ).content
 
     # Each template's STRICT parser binds its OWN package's shape — proves
     # round 2's build-time resolve_payload_vo fix (never load-order-dependent). The
     # two `Report` value objects collide, so each model is package-qualified.
     assert "def parse_report_doc_alpha(text: str) -> AcmeAlphaReport:" in alpha_src
-    assert "from .AcmeAlphaReport import AcmeAlphaReport" in alpha_src
+    assert "from .Report import Report as AcmeAlphaReport" in alpha_src
     assert "def parse_report_doc_beta(text: str) -> AcmeBetaReport:" in beta_src
-    assert "from .AcmeBetaReport import AcmeBetaReport" in beta_src
+    assert "from .Report import Report as AcmeBetaReport" in beta_src
 
     # Each bakes ITS OWN FQN — never the bare "Report", never the other's FQN.
     assert 'PAYLOAD_NAME = "acme::alpha::Report"' in alpha_src
@@ -457,9 +467,9 @@ def test_colliding_own_payload_names_run_verified_each_extracts_its_own_shape(
     )
     _materialize_and_import(files, tmp_path, "_payload_collision_pkg")
     alpha_mod = import_module(
-        "_payload_collision_pkg.report_doc_alpha_response_parser"
+        "_payload_collision_pkg.acme.alpha.report_doc_alpha_response_parser"
     )
-    beta_mod = import_module("_payload_collision_pkg.report_doc_beta_response_parser")
+    beta_mod = import_module("_payload_collision_pkg.acme.beta.report_doc_beta_response_parser")
 
     # Strict, throw-only parse (FR-006) — each binds its OWN package's shape.
     alpha_payload = alpha_mod.parse_report_doc_alpha(json.dumps({"alphaVal": "AV"}))
@@ -498,7 +508,7 @@ def test_no_churn_unique_payload_name_keeps_bare_scan_no_fqn_resolver() -> None:
     files = [
         f
         for f in OutputParserGenerator().generate(_ctx(root))
-        if f.path == "digest_prompt_response_parser.py"
+        if f.path.rsplit("/", 1)[-1] == "digest_prompt_response_parser.py"
     ]
     assert len(files) == 1
     src = files[0].content
@@ -506,3 +516,14 @@ def test_no_churn_unique_payload_name_keeps_bare_scan_no_fqn_resolver() -> None:
     assert "root.own_children()" in src
     assert "resolve_object_ref" not in src
     assert "from metaobjects.naming_refs" not in src
+
+
+def test_flat_layout_refuses_the_colliding_corpus_with_err_name_collision() -> None:
+    """The type is never renamed to dodge a clash, so the flat layout (one directory)
+    cannot hold two `Note` modules: it fails at gen time, naming both nodes and the remedy."""
+    with pytest.raises(ValueError) as exc:
+        EntityModelGenerator().generate(_ctx(_load_corpus_root(), "flat"))
+    msg = str(exc.value)
+    assert "ERR_NAME_COLLISION" in msg
+    assert "acme::alpha::Note" in msg and "acme::beta::Note" in msg
+    assert 'output_layout: "package"' in msg

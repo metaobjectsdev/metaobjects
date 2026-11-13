@@ -226,7 +226,7 @@ public final class JavaApiModelBuilder {
     private void addRestSymbols(List<ApiSymbol> symbols, MetaObject obj,
                                 String javaPkg, String shortName, MetaDataLoader loader) {
         String controllerFqn = fqn(javaPkg, SpringNaming.controllerName(shortName));
-        String base = SpringNaming.controllerPath(shortName);
+        String base = SpringNaming.controllerPath(obj);
         addRest(symbols, controllerFqn, "GET " + base, "list with pagination / sort / filters");
 
         // FR-044 — a served report is a list and nothing else (Table G): it has no identity,

@@ -83,6 +83,9 @@ from dataclasses import dataclass
 from metaobjects.apidocs.naming import snake_case as _snake_case
 from metaobjects.codegen.constants import generated_header
 from metaobjects.codegen.format import ruff_format
+from metaobjects.codegen.import_path import ModuleScope
+from metaobjects.codegen.name_claims import claimed_module_path
+from metaobjects.codegen.value_objects import pkg_of
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator, per_entity
 from metaobjects.meta.core.identity.identity_constants import IDENTITY_SUBTYPE_SECONDARY
 from metaobjects.meta.core.index.index_constants import INDEX_SUBTYPE_LOOKUP
@@ -393,6 +396,7 @@ def render_names(
     *,
     fragment: bool = False,
     warn: Callable[[str], None] | None = None,
+    scope: ModuleScope = ModuleScope(),
 ) -> str | None:
     """Render the names module for ``entity``, or ``None`` when it declares (and
     inherits) no primary ``source.rdb`` at all (#248).
@@ -561,7 +565,7 @@ def render_names(
     if imports:
         assert super_obj is not None  # an import can only name the super module
         lines.append(
-            f"from .{_snake_case(super_obj.name)}_names import (\n"
+            f"from {scope.sibling(pkg_of(super_obj), _snake_case(super_obj.name) + '_names')} import (\n"
             + "".join(f"    {m},\n" for m in sorted(imports))
             + ")"
         )
@@ -594,13 +598,19 @@ class NamesGenerator:
         emitted: set[str] = set()
 
         def one(entity: MetaObject, *, fragment: bool) -> list[EmittedFile]:
-            source = render_names(entity, ctx.config.column_naming, fragment=fragment, warn=ctx.warn)
+            scope = ModuleScope(ctx.config.output_layout, pkg_of(entity))
+            source = render_names(
+                entity, ctx.config.column_naming, fragment=fragment, warn=ctx.warn, scope=scope
+            )
             if source is None:
                 return []
             emitted.add(entity.resolution_key())
             return [
                 EmittedFile(
-                    path=f"{_snake_case(entity.name)}_names.py",
+                    path=claimed_module_path(
+                        ctx.claims, ctx.config, pkg_of(entity),
+                        f"{_snake_case(entity.name)}_names", entity.resolution_key(),
+                    ),
                     content=ruff_format(source),
                 )
             ]

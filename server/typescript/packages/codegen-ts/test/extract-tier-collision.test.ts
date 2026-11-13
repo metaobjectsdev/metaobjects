@@ -1,30 +1,24 @@
 // server/typescript/packages/codegen-ts/test/extract-tier-collision.test.ts
 //
-// ADR-0044 / #228 — the EXTRACT / OUTPUT-PARSER tier brings the runtime-delegating JSON extract
-// path (extract-delegate-emitter.ts, extractor.ts, output-parser.ts) into the SAME collision
-// scope Task 3 gave the entity tier: a value-object mirror interface / mapper / strict-payload
-// type must use the ADR-0044 entity-domain EMITTED name (Task 3's `valueObjectEmittedName`), and
-// the dedupe walks (mirror interfaces, mappers, reachable payload groups, used-helper / has-nested
-// scans) must key on `resolutionKey()` — NOT the bare metadata `name` — so a second same-bare-named
-// value-object across packages is never silently dropped.
+// ADR-0044 / #228, amended — the EXTRACT / OUTPUT-PARSER tier (the runtime-delegating
+// JSON extract path: extract-delegate-emitter.ts, extractor.ts, output-parser.ts) over two value
+// objects that share a short name. No type is renamed: each `Note` keeps its name in its own
+// package's module (the package output layout). A file that meets both binds each under a
+// package-qualified LOCAL alias (`Note as AcmeAlphaNote`), and the mirrors and mappers — this
+// one module's own declarations — are named by that local name. The dedupe walks key on
+// `resolutionKey()`, never the bare `name`, so the second Note is never silently dropped.
 //
 // Two proofs:
 //  1. The shared JSON collision fixture (fixtures/template-output-render-conformance/
-//     xpkg-collision-json/) — a Digest payload with two field.object children pointing at
-//     cross-package same-short-name `Note`s — must emit/import the SAME qualified names Task 3's
-//     entity tier emits (`AcmeAlphaNote` / `AcmeBetaNote`, never bare `Note`), with BOTH mirror
-//     interfaces + mappers present (not one dropped), and the generated code must actually RUN
-//     and extract each nested object into its OWN shape (not the other's).
-//  2. An inline PAYLOAD-level bare-name collision (two `Report`s in two packages, each its own
-//     template's @payloadRef) proves the output-parser.ts runtime-lookup fix: `root.findObject()`
-//     (MetaRoot's public runtime API) is a bare-name-only, first-match lookup, so a payload whose
-//     OWN bare name collides could resolve to the WRONG package's object at runtime, load-order
-//     dependent. Fixed by baking the FQN + resolving via the canonical ADR-0042 `resolveObjectRef`
-//     when (and only when) the payload's own name collides.
+//     xpkg-collision-json/): both mirrors + mappers present, and the generated code RUNS and
+//     extracts each nested object into its OWN shape.
+//  2. A PAYLOAD-level bare-name collision (two `Report`s in two packages, each its own
+//     template's @payloadRef) proves the output-parser.ts runtime lookup bakes the FQN and
+//     resolves it via `resolveObjectRef` when (and only when) the payload's own name is shared.
 
 import { describe, test, expect, afterAll } from "bun:test";
 import { mkdtempSync, writeFileSync, rmSync, readFileSync, readdirSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { runGen } from "../src/runner.js";
 import { defineConfig } from "../src/metaobjects-config.js";
@@ -54,6 +48,7 @@ async function loadCorpusRoot() {
 async function genFiles(
   root: Awaited<ReturnType<typeof loadCorpusRoot>>,
   dir: string,
+  outputLayout: "flat" | "package" = "flat",
 ): Promise<Map<string, string>> {
   const result = await runGen({
     config: defineConfig({
@@ -61,36 +56,39 @@ async function genFiles(
       extStyle: "js",
       dbImport: "../db",
       dialect: "postgres",
+      outputLayout,
       generators: [entityFile(), outputParser(), extractor()],
     }),
     metadata: root,
   });
   expect(result.conflicts).toEqual([]);
   const out = new Map<string, string>();
-  for (const name of readdirSync(dir)) {
-    out.set(name, readFileSync(join(dir, name), "utf8"));
+  for (const e of readdirSync(dir, { recursive: true, withFileTypes: true })) {
+    if (e.isFile()) out.set(relative(dir, join(e.parentPath, e.name)), readFileSync(join(e.parentPath, e.name), "utf8"));
   }
   return out;
 }
 
 describe("extract/output-parser tier — ADR-0044 cross-package collision (#228)", () => {
-  test("xpkg-collision-json: extractor + output-parser use the entity-domain qualified names; both mirrors+mappers emitted; generated code extracts each nested VO into its OWN shape", async () => {
+  test("xpkg-collision-json: both Notes keep their name in their own package's module; the extract tier binds each under a local alias; both mirrors+mappers emitted; generated code extracts each nested VO into its OWN shape", async () => {
     const root = await loadCorpusRoot();
     const dir = mkdtempSync(join(import.meta.dir, "extract-tier-xpkg-"));
     TEMP_DIRS.push(dir);
 
-    const files = await genFiles(root, dir);
+    // the package layout — two Notes are two modules; nothing is renamed.
+    const files = await genFiles(root, dir, "package");
     const names = [...files.keys()].sort();
 
-    // Entity tier (Task 3) — distinct qualified modules, never a collision-losing Note.ts.
-    expect(names).toContain("AcmeAlphaNote.ts");
-    expect(names).toContain("AcmeBetaNote.ts");
-    expect(names).not.toContain("Note.ts");
+    expect(names).toContain("acme/alpha/Note.ts");
+    expect(names).toContain("acme/beta/Note.ts");
+    expect(files.get("acme/alpha/Note.ts")).toContain("export interface Note {");
+    expect(files.get("acme/beta/Note.ts")).toContain("export interface Note {");
 
     const outputSrc = files.get("DigestPrompt.response.ts")!;
     const extractorSrc = files.get("DigestPrompt.extractor.ts")!;
 
-    // Mirror interfaces for BOTH colliding VOs present — neither dropped by bare-name dedupe.
+    // Mirror interfaces for BOTH value objects — declarations of this one module, so each is
+    // named by its value object's local name; neither dropped by bare-name dedupe.
     expect(outputSrc).toContain("export interface AcmeAlphaNoteExtracted {");
     expect(outputSrc).toContain("export interface AcmeBetaNoteExtracted {");
     expect(outputSrc).not.toContain("export interface NoteExtracted {");
@@ -100,23 +98,15 @@ describe("extract/output-parser tier — ADR-0044 cross-package collision (#228)
     // Mappers for BOTH present, each reading its own shape.
     expect(outputSrc).toContain("function fromAcmeAlphaNoteExtracted(");
     expect(outputSrc).toContain("function fromAcmeBetaNoteExtracted(");
-    expect(outputSrc).not.toContain("function fromNoteExtracted(");
 
-    // The root Digest mirror references the qualified nested mirror types.
+    // The root Digest mirror references the nested mirror types.
     expect(outputSrc).toMatch(/fromAlpha:\s*AcmeAlphaNoteExtracted \| null;/);
     expect(outputSrc).toMatch(/fromBeta:\s*AcmeBetaNoteExtracted \| null;/);
 
-    // extractor.ts imports the entity-domain qualified modules (Task 3's entityFile() output) —
-    // never a bare `./Note.js`.
-    expect(extractorSrc).toContain("./AcmeAlphaNote.js");
-    expect(extractorSrc).toContain("./AcmeBetaNote.js");
-    expect(extractorSrc).toContain("./Digest.js");
-    expect(extractorSrc).not.toContain("./Note.js");
-
-    // No bare "Note" identifier/type token anywhere in either generated file (word-boundary —
-    // `AcmeAlphaNote`/`AcmeBetaNote` do NOT match \bNote\b since "a"/"N" share no boundary).
-    expect(outputSrc).not.toMatch(/\bNote\b/);
-    expect(extractorSrc).not.toMatch(/\bNote\b/);
+    // extractor.ts imports each Note from its own package's module, under a local alias.
+    expect(extractorSrc).toContain('import type { Note as AcmeAlphaNote } from "./acme/alpha/Note.js";');
+    expect(extractorSrc).toContain('import type { Note as AcmeBetaNote } from "./acme/beta/Note.js";');
+    expect(extractorSrc).toContain("./acme/app/Digest.js");
 
     // ---- Compile + RUN the generated output ----
     const extractorMod = await import(join(dir, "DigestPrompt.extractor.ts"));
@@ -243,7 +233,8 @@ describe("output-parser runtime payload lookup — ADR-0042 FQN fix for a collid
 
     const dir = mkdtempSync(join(import.meta.dir, "extract-tier-payload-collision-"));
     TEMP_DIRS.push(dir);
-    const files = await genFiles(root, dir);
+    // Two value objects named Report: one module per package.
+    const files = await genFiles(root, dir, "package");
 
     const alphaOut = files.get("ReportDocAlpha.response.ts")!;
     const betaOut = files.get("ReportDocBeta.response.ts")!;

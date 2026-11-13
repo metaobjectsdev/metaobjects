@@ -32,7 +32,7 @@ def _config(tmp_path: Path, naming: dict) -> Path:
 
 def test_the_built_ins_pluralize_or_keep_the_name() -> None:
     assert BUILTIN_PLURALIZERS == ("standard", "none")
-    assert DEFAULT_PLURALIZER == NamingRules().collections == "standard"
+    assert DEFAULT_PLURALIZER == "standard" and NamingRules().collections is None
     assert pluralizer("standard")("Category") == "Categories"
     assert pluralizer("standard")("CaseHistory") == "CaseHistories"
     assert pluralizer("standard")("Address") == "Addresses"
@@ -44,9 +44,9 @@ def test_the_config_reads_a_built_in(tmp_path: Path) -> None:
     assert config is not None and config.naming.collections == "none"
 
 
-def test_absent_is_the_default(tmp_path: Path) -> None:
+def test_absent_stays_absent(tmp_path: Path) -> None:
     config = read_neutral_config(_config(tmp_path, {"columns": "snake_case"}))
-    assert config is not None and config.naming.collections == DEFAULT_PLURALIZER
+    assert config is not None and config.naming.collections is None
 
 
 def test_an_unknown_pluralizer_is_refused_naming_the_kind(tmp_path: Path) -> None:

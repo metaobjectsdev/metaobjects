@@ -126,10 +126,10 @@ CREATE VIEW "v_sales_by_category" AS
     MAX(s."amountCents") AS "maxCents",
     COUNT(s."id") FILTER (WHERE s."amountCents" >= 10000) AS "largeSales"
   FROM "sales" s
-  INNER JOIN "products" p ON p."id" = s."productId"
+  LEFT OUTER JOIN "products" p ON p."id" = s."productId"
   LEFT OUTER JOIN "categories" c ON c."id" = p."categoryId"
   GROUP BY c."name";
-COMMENT ON VIEW "v_sales_by_category" IS 'metaobjects:v1:sha256:02e75adfdefcc1605e134fb92ac35fb2a1cc827d99c47c876e120c11ccbf4b0f';
+COMMENT ON VIEW "v_sales_by_category" IS 'metaobjects:v1:sha256:71901b874d860e44f0ce7d7bbd2d2258fca3b9317f6181872bd15be2dfa74b2a';
 
 CREATE VIEW "v_sales_by_sku" AS
   SELECT
@@ -137,9 +137,9 @@ CREATE VIEW "v_sales_by_sku" AS
     COUNT(s."id") AS "sales",
     CAST(SUM(s."amountCents") AS BIGINT) AS "revenueCents"
   FROM "sales" s
-  INNER JOIN "products" p ON p."id" = s."productId"
+  LEFT OUTER JOIN "products" p ON p."id" = s."productId"
   GROUP BY p."sku";
-COMMENT ON VIEW "v_sales_by_sku" IS 'metaobjects:v1:sha256:921fbbbb5285e6e313e12c1c4bf44427c0a3c5226e86fcd04c95bf23f2fd5379';
+COMMENT ON VIEW "v_sales_by_sku" IS 'metaobjects:v1:sha256:b60ca9c2d26bb2a9edcfd0cad6b52b19731bf0fced4c00cdd30f906399469822';
 
 CREATE VIEW "v_product_refunds" AS
   SELECT
