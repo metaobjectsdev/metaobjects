@@ -1566,7 +1566,8 @@ public class DbContextGenerator : IGenerator
     /// G6 (reference half): the relationship for a reference whose <c>@fields</c> are members of
     /// one flattened value object. The member properties live on the owned type, so the foreign
     /// key is configured on its builder, one statement:
-    /// <c>modelBuilder.Entity&lt;Plan&gt;().OwnsOne(x =&gt; x.Address).HasOne&lt;Country&gt;().WithMany().HasForeignKey(e =&gt; e.CountryId)</c>.
+    /// <c>modelBuilder.Entity&lt;Plan&gt;().OwnsOne(x =&gt; x.Address, b =&gt; b.HasOne&lt;Country&gt;(&lt;nav&gt;).WithMany().HasForeignKey(e =&gt; e.CountryId))</c>,
+    /// where <c>&lt;nav&gt;</c> is the owned type's navigation to the target over those properties, if it has one.
     /// Fields spread over the entity and a value object, or over two value objects, have no EF
     /// mapping: the run warns and configures none.
     /// </summary>
@@ -1583,11 +1584,22 @@ public class DbContextGenerator : IGenerator
         var nav = PropertyName((MetaField)members[0]!.Embedding);
         var props = members.Select(m => PropertyName((MetaField)m!.Member)).ToList();
         var actions = ReferentialActions.Resolve(entity, reference);
-        return [$"        modelBuilder.Entity<{owner}>().OwnsOne(x => x.{nav}).HasOne<{ValueObjectNames.GlobalRef(target, ctx.Config)}>()"
+        var targetRef = ValueObjectNames.GlobalRef(target, ctx.Config);
+        // rc.21 (U6): the owned type is the adopter's to extend (a partial with a navigation to the
+        // target is the usual shape), and EF's convention builds a relationship from such a navigation
+        // the moment the owned type joins the model. A second, navigation-less HasOne over the same
+        // columns would then be a second relationship, with a shadow FK beside it (`<Owner>_<Fk>1`).
+        // So the relationship is configured THROUGH the navigation EF found over these FK properties,
+        // when there is one, and navigation-less otherwise. Read from the model, not reflected.
+        var linq = "global::System.Linq.Enumerable";
+        var fkNames = string.Join(", ", props.Select(p => $"\"{p}\""));
+        var navigation = $"{linq}.FirstOrDefault(b.OwnedEntityType.GetNavigations(), n => n.TargetEntityType.ClrType == typeof({targetRef}) "
+            + $"&& {linq}.SequenceEqual({linq}.Select(n.ForeignKey.Properties, p => p.Name), new[] {{ {fkNames} }}))?.Name";
+        return [$"        modelBuilder.Entity<{owner}>().OwnsOne(x => x.{nav}, b => b.HasOne<{targetRef}>({navigation})"
              + $".WithMany().HasForeignKey({ForeignKeyExpression("e", props)})"
              + PrincipalKeyCall(reference, target)
              + $"{OnDeleteCall(entity, fkFields, actions.OnDelete, ctx)}"
-             + ConstraintNameCall(reference) + ";"];
+             + ConstraintNameCall(reference) + ");"];
     }
 
     /// <summary>

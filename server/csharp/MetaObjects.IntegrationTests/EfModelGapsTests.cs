@@ -206,6 +206,32 @@ public sealed class EfModelGapsTests
         Assert.Equal(DeleteBehavior.Restrict, fk.DeleteBehavior);
     }
 
+    // rc.21 (U6): the owned type carries a navigation to the target (an adopter's hand-written
+    // member here, as a partial class would add). EF's convention builds the relationship from it,
+    // so the reference is configured through that navigation: ONE foreign key over CountryId, no
+    // shadow `CountryId1`, and the declared delete behaviour on it.
+    private sealed class AddressWithCountry : MetaObjects.Codegen.Generators.EntityGenerator
+    {
+        protected override void EmitClassBodyTrailer(System.Text.StringBuilder sb, MetaObjects.Meta.MetaObject entity, MetaObjects.Codegen.GenContext ctx)
+        {
+            if (entity.Name == "Address")
+                sb.AppendLine($"    public {MetaObjects.Codegen.ValueObjectNames.GlobalRef(ctx.Root.FindObject("Country")!, ctx.Config)}? Country {{ get; set; }}");
+        }
+    }
+
+    [Fact]
+    public void A_reference_over_a_flattened_member_uses_the_owned_types_navigation()
+    {
+        var gen = GeneratedEfModel.Compile(FlattenedReferenceModel, "Acme.FlatNav", entities: new AddressWithCountry());
+        using var db = gen.ModelOnlyContext();
+        var address = EntityType(db, "Plan").FindNavigation("Address")!.TargetEntityType;
+        var fk = Assert.Single(address.GetForeignKeys(), f => f.PrincipalEntityType.ClrType.Name == "Country");
+        Assert.Equal(new[] { "CountryId" }, fk.Properties.Select(p => p.Name));
+        Assert.Equal("Country", fk.DependentToPrincipal?.Name);
+        Assert.Equal(DeleteBehavior.Restrict, fk.DeleteBehavior);
+        Assert.DoesNotContain(address.GetProperties(), p => p.Name.StartsWith("CountryId", StringComparison.Ordinal) && p.Name != "CountryId");
+    }
+
     [Fact]
     public void A_reference_carries_its_constraint_name_and_its_principal_key_into_the_model()
     {

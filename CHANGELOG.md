@@ -557,6 +557,18 @@ vocabulary; upgrade every port together.
 
 ### Fixed
 
+- **Fix, C#: a reference over a flattened member configures the owned type's own navigation
+  (rc.21, U6).** `identity.reference { @fields: address.countryId, @references: Country }` emitted
+  `OwnsOne(x => x.Address).HasOne<Country>().WithMany().HasForeignKey(e => e.CountryId)`. When the
+  owned type also carries a `Country` navigation (an adopter's partial class, say), EF's
+  convention builds a relationship from it as the owned type joins the model, so the
+  navigation-less call made a second one, with a shadow FK property (`CountryId1`) and a second
+  foreign key. The relationship is now configured through the navigation EF found on the owned
+  type over the same FK properties, read from the model at build time (`OwnsOne(x => x.Address,
+  b => b.HasOne<Country>(<that navigation's name, or null>)…)`), and navigation-less when there is
+  none. One foreign key, no shadow column, and `@onDelete` / `@constraintName` land on it.
+  Generated output changes for every reference over a flattened member.
+
 - **Fix, TypeScript and C#: `<Entity>Names` has no entry for a derived field with no column
   (rc.21, U7).** A derived (`origin.*`) field of an entity read from its table is no column of
   that table (a projection that reaches it lowers it inline), yet the names artifact emitted a
