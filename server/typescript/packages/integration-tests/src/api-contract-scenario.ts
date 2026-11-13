@@ -26,6 +26,10 @@ export interface ExpectBody {
   namesUnordered?: string[];
   row?: Record<string, unknown>;
   hasId?: boolean;
+  /** The response body is an object and each listed key is MISSING or `null` on it: a value
+   *  the client was not allowed to set never reached storage, so it never comes back in the
+   *  echo (the 1.2.x input scenarios). */
+  unset?: string[];
   /** Assert the listed RESPONSE fields all equal EACH OTHER (never a literal) —
    *  format-agnostic. Used by @autoSet scenarios to prove two stamped columns
    *  hold the same value without pinning the exact timestamp. */
@@ -282,6 +286,14 @@ export function assertResponse(
     const row = body as Record<string, unknown>;
     if (typeof row["id"] !== "number")
       throw new Error(`${scenarioName} / ${request.id}: expected numeric id in body, got: ${stringify(body)}`);
+  }
+  if (want.unset) {
+    if (body === null || typeof body !== "object" || Array.isArray(body))
+      throw new Error(`${scenarioName} / ${request.id}: expected object for unset, got: ${stringify(body)}`);
+    const row = body as Record<string, unknown>;
+    const stored = want.unset.filter((k) => row[k] !== undefined && row[k] !== null);
+    if (stored.length > 0)
+      throw new Error(`${scenarioName} / ${request.id}: expected ${stored.join(", ")} unset, got: ${stringify(body)}`);
   }
   if (want.fieldsEqual) {
     const row = body as Record<string, unknown>;

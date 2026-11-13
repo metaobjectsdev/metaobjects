@@ -44,6 +44,12 @@ internal sealed class TphReferenceServer : IAsyncDisposable
     // rather than rejected (the same treatment autoCreatedAt/autoUpdatedAt get by being
     // absent here). It IS written on create, explicitly, below. Do NOT add it here.
     private static readonly string[] AllCols = { "id", "type", "reference", "quantity", "copayAmount", "approver" };
+    // The subtype-only columns, by discriminator value. A create stores only its own subtype's
+    // (1.2.x input contract: a sibling subtype's column in the body is dropped, not stored).
+    private static readonly Dictionary<string, string> SubtypeCol = new()
+    {
+        ["Bridge"] = "quantity", ["Copay"] = "copayAmount", ["PriorAuth"] = "approver",
+    };
 
     private readonly PostgresContainer _pg;
     private readonly WebApplication _app;
@@ -340,6 +346,7 @@ internal sealed class TphReferenceServer : IAsyncDisposable
         foreach (var col in AllCols)
         {
             if (col is "id" or "type") continue;
+            if (SubtypeCol.ContainsValue(col) && SubtypeCol[discriminator] != col) continue;
             if (body[col] is { } v && v.GetValueKind() != JsonValueKind.Null)
             {
                 cols.Add(col);

@@ -626,9 +626,9 @@ public class EntityGenerator : IGenerator
             // A NON-required decimal array is nullable (no initializer) so PATCH null / an omitted
             // POST value stays a NULL column instead of failing as a required collection.
             if (IsDecimalWireField(field) && !CSharpNaming.IsRequired(entity, field))
-                arr.Append($"    public IList<{baseType}>? {propName} {{ get; set; }}");
+                arr.Append($"    public IList<{baseType}>? {propName} {{ {SetterFor(field)} }}");
             else
-                arr.Append($"    public IList<{baseType}> {propName} {{ get; set; }} = new List<{baseType}>();");
+                arr.Append($"    public IList<{baseType}> {propName} {{ {SetterFor(field)} }} = new List<{baseType}>();");
             return arr.ToString();
         }
 
@@ -653,7 +653,7 @@ public class EntityGenerator : IGenerator
         var init = defaultInit.Length > 0
             ? defaultInit
             : (required && !isValue ? " = default!;" : string.Empty);
-        sb.Append($"    public {baseType}{nullable} {propName} {{ get; set; }}{init}");
+        sb.Append($"    public {baseType}{nullable} {propName} {{ {SetterFor(field)} }}{init}");
         return sb.ToString();
     }
 
@@ -665,9 +665,9 @@ public class EntityGenerator : IGenerator
         var propName = PropertyName(field);
         var colAttr = $"    [Column({CSharpNaming.ColumnRef(entity, field, strategy, config.IncludeNames)})]\n";
         if (field.ResolvedIsArray()) // ADR-0039: resolving — array-ness inheritable via extends
-            return $"{colAttr}    public IList<{typeName}> {propName} {{ get; set; }} = new List<{typeName}>();";
+            return $"{colAttr}    public IList<{typeName}> {propName} {{ {SetterFor(field)} }} = new List<{typeName}>();";
         var nullable = CSharpNaming.IsRequired(entity, field) ? "" : "?";
-        return $"{colAttr}    public {typeName}{nullable} {propName} {{ get; set; }}";
+        return $"{colAttr}    public {typeName}{nullable} {propName} {{ {SetterFor(field)} }}";
     }
 
     // The directly-extended entity (the metadata `extends` target) of a TPH subtype — the
@@ -1528,10 +1528,10 @@ public static class DecimalWire
         var propName = PropertyName(field);
         var colAttr = withAttributes ? $"    [Column({CSharpNaming.ColumnRef(entity, field, strategy, config.IncludeNames)})]\n" : "";
         if (field.ResolvedIsArray()) // ADR-0039: resolving — array-ness inheritable via extends
-            return $"{colAttr}    public IList<{typeName}> {propName} {{ get; set; }} = new List<{typeName}>();";
+            return $"{colAttr}    public IList<{typeName}> {propName} {{ {SetterFor(field)} }} = new List<{typeName}>();";
         var required = CSharpNaming.IsRequired(entity, field);
         var type = required ? typeName : typeName + "?";
-        return $"{colAttr}    public {type} {propName} {{ get; set; }}";
+        return $"{colAttr}    public {type} {propName} {{ {SetterFor(field)} }}";
     }
 
     // A scalar property. withAttributes adds the EF-mapping annotations ([Key] for a
@@ -1589,9 +1589,9 @@ public static class DecimalWire
             // NON-required value-object array is nullable so a null member is omitted on the wire.
             var omittable = valueObject && _wire.NullMembers == NullMemberForm.Omit;
             if ((IsDecimalWireField(field) || omittable) && !CSharpNaming.IsRequired(owner, field))
-                arr.Append($"    public IList<{baseType}>? {propName} {{ get; set; }}");
+                arr.Append($"    public IList<{baseType}>? {propName} {{ {SetterFor(field)} }}");
             else
-                arr.Append($"    public IList<{baseType}> {propName} {{ get; set; }} = new List<{baseType}>();");
+                arr.Append($"    public IList<{baseType}> {propName} {{ {SetterFor(field)} }} = new List<{baseType}>();");
             return arr.ToString();
         }
 
@@ -1660,10 +1660,20 @@ public static class DecimalWire
         // the column from UPDATE). `writeOnce` keeps a PUBLIC setter on purpose — the caller
         // must be able to supply it on insert; freezing it afterwards is the DbContext's
         // SetAfterSaveBehavior(Ignore), not the property's job.
-        var setter = field.IsReadOnlyMutability ? "get; private set;" : "get; set;";
+        var setter = SetterFor(field);
         sb.Append($"    public {type} {propName} {{ {setter} }}{init}");
         return sb.ToString();
     }
+
+    // FR-037 R1 / SECURITY (1.2.x) — the accessor pair of a mapped property. A `readOnly` field
+    // takes a PRIVATE setter on EVERY property shape (scalar, enum, array, value object, map; plain
+    // entity or TPH subtype): EF materializes it on read and application code cannot write it, so
+    // the generated create route's body binding (System.Text.Json skips a non-public setter) can
+    // never hand a client-supplied value to storage. Before 1.2.x only the plain scalar shape did,
+    // so a readOnly enum, array, value-object, map or TPH-subtype field was writable on create.
+    // `writeOnce` keeps a PUBLIC setter on purpose (the caller supplies it on insert).
+    private static string SetterFor(MetaField field) =>
+        field.IsReadOnlyMutability ? "get; private set;" : "get; set;";
 
     // String length + pattern DataAnnotations for a string scalar, combining the field
     // @maxLength attr with validator.length (@min/@max) and validator.regex (@pattern).
@@ -1889,11 +1899,11 @@ public static class DecimalWire
         // null-vs-empty distinction (EF re-serializes the empty list to `[]` on write).
         if (field.ResolvedIsArray()) // ADR-0039: resolving — array-ness inheritable via extends
             return required
-                ? $"    public ICollection<{typeName}> {propName} {{ get; set; }} = new List<{typeName}>();"
-                : $"    public ICollection<{typeName}>? {propName} {{ get; set; }}";
+                ? $"    public ICollection<{typeName}> {propName} {{ {SetterFor(field)} }} = new List<{typeName}>();"
+                : $"    public ICollection<{typeName}>? {propName} {{ {SetterFor(field)} }}";
         return required
-            ? $"    public {typeName} {propName} {{ get; set; }} = default!;"
-            : $"    public {typeName}? {propName} {{ get; set; }}";
+            ? $"    public {typeName} {propName} {{ {SetterFor(field)} }} = default!;"
+            : $"    public {typeName}? {propName} {{ {SetterFor(field)} }}";
     }
 
     // A property for a field.map (an open-keyed map). Emits a single
@@ -1922,8 +1932,8 @@ public static class DecimalWire
         var required = CSharpNaming.IsRequired(owner, field);
         var colAttr = withAttributes ? $"    [Column({CSharpNaming.ColumnRef(owner, field, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames)})]\n" : "";
         return required
-            ? $"{colAttr}    public Dictionary<string, {valueType}> {propName} {{ get; set; }} = new();"
-            : $"{colAttr}    public Dictionary<string, {valueType}>? {propName} {{ get; set; }}";
+            ? $"{colAttr}    public Dictionary<string, {valueType}> {propName} {{ {SetterFor(field)} }} = new();"
+            : $"{colAttr}    public Dictionary<string, {valueType}>? {propName} {{ {SetterFor(field)} }}";
     }
 
     // The CLR scalar type for a projection field whose value is a MIN/MAX aggregate:

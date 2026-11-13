@@ -386,6 +386,7 @@ export function insertSchemaFields(obj: MetaObject): SchemaFieldShape[] {
  * The field SET the `<Name>UpdateSchema` accepts — same iteration + skip rules
  * as `insertSchemaFields`, but mirroring the UpdateSchema branch of
  * `renderZodValidators`:
+ *   • a primary-key field is OMITTED, generated or assigned (the URL names the row);
  *   • a TPH subtype's @discriminator field is OMITTED (clients can't change subtype);
  *   • @autoSet onCreate fields are OMITTED (creation timestamps are immutable);
  *   • @autoSet onUpdate fields are present + optional (server fills them);
@@ -393,6 +394,7 @@ export function insertSchemaFields(obj: MetaObject): SchemaFieldShape[] {
  */
 export function updateSchemaFields(obj: MetaObject): SchemaFieldShape[] {
   const autoGenPkFields = autoGenPkFieldNames(obj);
+  const pkFields = primaryKeyFieldNames(obj);
   const tphPin = tphDiscriminatorPin(obj);
   const out: SchemaFieldShape[] = [];
   for (const child of obj.fields()) {
@@ -408,6 +410,10 @@ export function updateSchemaFields(obj: MetaObject): SchemaFieldShape[] {
     // edit form for an entity carrying one. Clearing counts as a write, so the
     // FR-035 present-null arm never reaches it either.
     if (isWriteOnceMutability(child)) continue;
+    // SECURITY (1.2.x): a primary-key field is the row's identity, which the URL names. An
+    // ASSIGNED key leaves the update shape exactly like a generated one, so a client-sent
+    // key is stripped and can never re-key the row.
+    if (pkFields.has(child.name)) continue;
     // TPH subtype discriminator: omitted from the update schema entirely.
     if (tphPin !== undefined && child.name === tphPin.fieldName) continue;
     const autoSet = child.attr(FIELD_ATTR_AUTO_SET);
@@ -491,6 +497,10 @@ export function renderZodValidators(obj: MetaObject, ctx?: RenderContext): Code 
     // below; a value presented on PATCH is stripped, not 400'd (see
     // updateSchemaFields for the grounding).
     if (isWriteOnceMutability(child)) continue;
+    // SECURITY (1.2.x): the row's identity is the URL's. An ASSIGNED primary key leaves the
+    // update shape too (a generated one never entered it), so a client-sent key is stripped
+    // on PUT/PATCH and can never re-key the row. Mirrors updateSchemaFields.
+    if (pkFields.has(child.name)) continue;
 
     // Update schema: @autoSet onCreate → omit entirely; onUpdate → transform
     if (autoSet === AUTO_SET_ON_CREATE) {
@@ -515,10 +525,8 @@ export function renderZodValidators(obj: MetaObject, ctx?: RenderContext): Code 
       // null — a present null CLEARS the column (`.set({field: null})` writes NULL).
       // Keyed on required-ness, NOT fieldWillBeOptional: a required-with-@default
       // field stays non-nullable so an explicit null on it is a 400 (validation),
-      // never a silent clear. PK fields are excluded: their Drizzle column is
-      // always not-null, so a nullable Zod type would fail `.set()`'s typecheck
-      // (and NOT NULL at runtime) — see primaryKeyFieldNames.
-      if (!isRequired(child) && !pkFields.has(child.name)) expr = code`${expr}.nullable()`;
+      // never a silent clear. PK fields never reach this branch (skipped above).
+      if (!isRequired(child)) expr = code`${expr}.nullable()`;
       updateFieldLines.push(code`  ${child.name}: ${expr}`);
     }
   }

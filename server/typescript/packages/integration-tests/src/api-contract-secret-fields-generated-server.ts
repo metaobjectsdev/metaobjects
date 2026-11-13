@@ -65,7 +65,7 @@ const READ_PATHS = {
 };
 
 export interface SecretFieldsSeed {
-  rows: Array<{ id: number; name: string; tokenHash: string; pinHash: string }>;
+  rows: Array<{ id: number; name: string; tokenHash: string; pinHash: string; role: string }>;
 }
 
 export interface GeneratedSecretFieldsServerHandle {
@@ -124,7 +124,8 @@ export const db = drizzle(pool);
        "id" bigserial PRIMARY KEY,
        "name" varchar(100) NOT NULL,
        "token_hash" varchar(100),
-       "pin_hash" varchar(100)
+       "pin_hash" varchar(100),
+       "role" varchar(20)
      );
      CREATE OR REPLACE VIEW "v_account" AS SELECT "id", "name", "pin_hash" FROM "accounts";
      CREATE TABLE IF NOT EXISTS "payers" ("id" bigserial PRIMARY KEY);
@@ -165,7 +166,7 @@ export const db = drizzle(pool);
       for (const r of seed.rows)
         await executeSql(
           connectionUri,
-          `INSERT INTO "accounts" ("id","name","token_hash","pin_hash") VALUES (${r.id}, ${str(r.name)}, ${str(r.tokenHash)}, ${str(r.pinHash)})`,
+          `INSERT INTO "accounts" ("id","name","token_hash","pin_hash","role") VALUES (${r.id}, ${str(r.name)}, ${str(r.tokenHash)}, ${str(r.pinHash)}, ${str(r.role)})`,
         );
       // The seed names ids explicitly; keep the sequence ahead of them for the POST scenarios.
       await executeSql(connectionUri, `SELECT setval(pg_get_serial_sequence('accounts','id'), (SELECT MAX("id") FROM "accounts"));`);
