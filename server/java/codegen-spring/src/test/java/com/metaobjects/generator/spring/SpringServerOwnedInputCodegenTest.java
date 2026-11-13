@@ -67,6 +67,24 @@ public class SpringServerOwnedInputCodegenTest extends SharedRegistryTestBase {
         }
         """;
 
+    private static final String VO = """
+        {
+          "metadata.root": { "package": "acme::own", "children": [
+            { "object.value": { "name": "Stamp", "children": [
+                { "field.string": { "name": "by" } }
+            ] } },
+            { "object.entity": { "name": "Note", "children": [
+                { "source.rdb": { "@table": "notes" } },
+                { "field.long":   { "name": "id" } },
+                { "field.string": { "name": "body" } },
+                { "field.object": { "name": "stamp", "@objectRef": "Stamp", "@storage": "jsonb",
+                                    "@required": true, "@mutability": "readOnly" } },
+                { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } }
+            ] } }
+          ] }
+        }
+        """;
+
     private Path generate(String name, String fixture) throws Exception {
         Path gen = tmp.newFolder("gen-" + name).toPath();
         MetaDataLoader loader = SpringTestFixtures.loadFixture(tmp.newFolder("ws-" + name).toPath(), name, fixture);
@@ -89,6 +107,17 @@ public class SpringServerOwnedInputCodegenTest extends SharedRegistryTestBase {
         // an assigned key (no @generation) is the caller's on create
         String tag = Files.readString(gen.resolve("acme/own/TagController.java"));
         assertFalse("assigned key must be kept; saw:\n" + tag, tag.contains("dto = new TagDto("));
+    }
+
+    @Test
+    public void aRequiredReadOnlyValueObjectIsNulledAndItsNotNullIgnored() throws Exception {
+        Path gen = generate("vo", VO);
+        String controller = Files.readString(gen.resolve("acme/own/NoteController.java"));
+        assertTrue("readOnly VO component is nulled on create; saw:\n" + controller,
+            controller.contains("dto = new NoteDto(null, dto.body(), null);"));
+        // the strip nulls `stamp`, so its @NotNull must not turn every POST into a 400
+        assertTrue("stamp must be server-owned for create validation; saw:\n" + controller,
+            controller.matches("(?s).*SERVER_OWNED_ON_CREATE = Set\\.of\\([^)]*\"stamp\".*"));
     }
 
     @Test

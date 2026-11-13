@@ -1605,7 +1605,9 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
 
         java.util.Set<String> denied = SpringGeneratorSupport.hierarchyWriteDeniedNames(entity);
         List<String> out = new ArrayList<>();
-        for (MetaField f : SpringGeneratorSupport.scalarFields(entity)) {
+        // Every DTO component, not only scalars: the create strip (createDeniedNames) nulls a
+        // readOnly / derived value-object jsonb component too, so its @NotNull must be ignored here.
+        for (MetaField f : SpringGeneratorSupport.dtoComponentFields(entity)) {
             // #484: a write-denied field is IGNORED on create, so a @NotNull on it describes the
             // response shape and must not reject a body that (necessarily) omits it.
             if (pkFields.contains(f.getName()) || AutoSetSupport.isAutoSet(f)

@@ -386,6 +386,7 @@ export function insertSchemaFields(obj: MetaObject): SchemaFieldShape[] {
  * The field SET the `<Name>UpdateSchema` accepts — same iteration + skip rules
  * as `insertSchemaFields`, but mirroring the UpdateSchema branch of
  * `renderZodValidators`:
+ *   • a primary-key field is OMITTED, generated or assigned (the URL names the row);
  *   • a TPH subtype's @discriminator field is OMITTED (clients can't change subtype);
  *   • @autoSet onCreate fields are OMITTED (creation timestamps are immutable);
  *   • @autoSet onUpdate fields are present + optional (server fills them);
@@ -524,10 +525,8 @@ export function renderZodValidators(obj: MetaObject, ctx?: RenderContext): Code 
       // null — a present null CLEARS the column (`.set({field: null})` writes NULL).
       // Keyed on required-ness, NOT fieldWillBeOptional: a required-with-@default
       // field stays non-nullable so an explicit null on it is a 400 (validation),
-      // never a silent clear. PK fields are excluded: their Drizzle column is
-      // always not-null, so a nullable Zod type would fail `.set()`'s typecheck
-      // (and NOT NULL at runtime) — see primaryKeyFieldNames.
-      if (!isRequired(child) && !pkFields.has(child.name)) expr = code`${expr}.nullable()`;
+      // never a silent clear. PK fields never reach this branch (skipped above).
+      if (!isRequired(child)) expr = code`${expr}.nullable()`;
       updateFieldLines.push(code`  ${child.name}: ${expr}`);
     }
   }

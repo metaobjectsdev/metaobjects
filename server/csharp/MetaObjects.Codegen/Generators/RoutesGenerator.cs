@@ -419,7 +419,7 @@ public class RoutesGenerator : PerEntityGenerator
                 CreatedResult("prefix + \"/" + route + "\"", "input", credentials), voFields, mapVoFields, autoSetFields,
                 writeThrough ? (readDbSet, pkProp!, route) : null, parseBody: HasDecimalField(entity),
                 deniedFields.Select(f => CSharpNaming.Pascal(f.Name)).ToList(), credentials,
-                ServerOwnedCreateResets(entity, ctx.Root));
+                ServerOwnedCreateResets(entity, ctx.Root), RequiredReadOnlyProps(entity));
 
             // PATCH + PUT share the same handler — TS reference exposes both verbs, and both
             // return the updated row (HTTP 200), matching the cross-port api-contract.
@@ -757,8 +757,21 @@ public class RoutesGenerator : PerEntityGenerator
             // entity, so it is never on the create body: exclude it from the required-key set
             // (else an omitted derived @required field would wrongly 400). Vanilla entities have
             // no derived fields → byte-identical.
-            .Where(f => f.IsRequired && f.AutoSet is null && !f.IsDerived() && !isPkOrDisc(f))
+            // 1.2.x security — a readOnly field is never bound from the body (private setter),
+            // so demanding its key would make a @required readOnly entity uncreatable.
+            .Where(f => f.IsRequired && f.AutoSet is null && !f.IsDerived() && !f.IsReadOnlyMutability
+                        && !isPkOrDisc(f))
             .Select(f => f.Name)
+            .ToList();
+
+    // 1.2.x security — the CLR properties of the @required readOnly fields. The client cannot
+    // set them (private setter), so their [Required] describes the stored row, not the create
+    // body: the create validation ignores a violation that names only these members, as Java's
+    // SERVER_OWNED_ON_CREATE filter does. Empty for nearly every model → byte-identical output.
+    private static List<string> RequiredReadOnlyProps(MetaObject obj) =>
+        obj.Fields()
+            .Where(f => f.IsRequired && f.IsReadOnlyMutability && !f.IsDerived())
+            .Select(f => CSharpNaming.Pascal(f.Name))
             .ToList();
 
     // Issue #203 — one @autoSet timestamp column the generated CRUD stamps with now().
@@ -990,7 +1003,8 @@ public class RoutesGenerator : PerEntityGenerator
         bool parseBody = false,
         IReadOnlyList<string>? deniedNavs = null,
         IReadOnlyList<string>? credentials = null,
-        IReadOnlyList<string>? serverOwned = null)
+        IReadOnlyList<string>? serverOwned = null,
+        IReadOnlyList<string>? readOnlyRequired = null)
     {
         // A decimal field can refuse its value while the body is bound (out of declared range, not a
         // number). The framework's own binding answers that with a bare 400 and no body, so an entity
@@ -1001,7 +1015,7 @@ public class RoutesGenerator : PerEntityGenerator
             sb.AppendLine("        {");
             AppendCreateServerOwned(sb, serverOwned);
             AppendCreateIgnoreDenied(sb, deniedNavs);
-            AppendCreateValidation(sb);
+            AppendCreateValidation(sb, readOnlyRequired);
             AppendCreateVoValidation(sb, voFields, mapVoFields);
             AppendCreateAutoSet(sb, autoSetFields);
             AppendCreatePersist(sb, dbSet, createdExpr, reRead, credentials ?? []);
@@ -1038,7 +1052,7 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("            if (input is null) return Results.BadRequest(new { error = \"validation\" });");
         AppendCreateServerOwned(sb, serverOwned);
         AppendCreateIgnoreDenied(sb, deniedNavs);
-        AppendCreateValidation(sb);
+        AppendCreateValidation(sb, readOnlyRequired);
         AppendCreateVoValidation(sb, voFields, mapVoFields);
         AppendCreateAutoSet(sb, autoSetFields);
         AppendCreatePersist(sb, dbSet, createdExpr, reRead, credentials ?? []);
@@ -1256,11 +1270,23 @@ public class RoutesGenerator : PerEntityGenerator
     // bound `input` and rejects a violating body with the cross-port {error:"validation"}
     // envelope BEFORE the row is persisted (ASP.NET minimal-API model binding never runs
     // DataAnnotations on its own). Assumes the bound local `input` is in scope.
-    private static void AppendCreateValidation(StringBuilder sb)
+    // A violation naming only a @required readOnly member (<paramref name="readOnlyRequired"/>)
+    // is ignored: the client cannot set that member, so it cannot satisfy the rule.
+    private static void AppendCreateValidation(StringBuilder sb, IReadOnlyList<string>? readOnlyRequired = null)
     {
         sb.AppendLine("            var __vr = new System.Collections.Generic.List<System.ComponentModel.DataAnnotations.ValidationResult>();");
         sb.AppendLine("            if (!System.ComponentModel.DataAnnotations.Validator.TryValidateObject(");
-        sb.AppendLine("                    input, new System.ComponentModel.DataAnnotations.ValidationContext(input), __vr, true))");
+        if (readOnlyRequired is null || readOnlyRequired.Count == 0)
+        {
+            sb.AppendLine("                    input, new System.ComponentModel.DataAnnotations.ValidationContext(input), __vr, true))");
+        }
+        else
+        {
+            var names = string.Join(", ", readOnlyRequired.Select(n => "\"" + n + "\""));
+            sb.AppendLine("                    input, new System.ComponentModel.DataAnnotations.ValidationContext(input), __vr, true)");
+            sb.AppendLine($"                && __vr.Exists(r => !System.Linq.Enumerable.Any(r.MemberNames)");
+            sb.AppendLine($"                    || System.Linq.Enumerable.Any(r.MemberNames, m => System.Array.IndexOf(new[] {{ {names} }}, m) < 0)))");
+        }
         sb.AppendLine("                return Results.BadRequest(new { error = \"validation\" });");
     }
 
@@ -1491,7 +1517,8 @@ public class RoutesGenerator : PerEntityGenerator
             CreatedResult("prefix + \"/" + subRoute + "/\" + input." + pkProp, "input", credentials), [], mapVoFields, autoSetFields,
             parseBody: HasDecimalField(st.Entity),
             deniedNavs: deniedFields.Select(f => CSharpNaming.Pascal(f.Name)).ToList(), credentials: credentials,
-            serverOwned: ServerOwnedCreateResets(st.Entity, root, discProp, hierarchy[0]));
+            serverOwned: ServerOwnedCreateResets(st.Entity, root, discProp, hierarchy[0]),
+            readOnlyRequired: RequiredReadOnlyProps(st.Entity));
 
         // Per-subtype update (PATCH + PUT): partial merge of the JSON body onto the scoped
         // entity, NEVER touching the PK or the discriminator. Cross-subtype id → 404.

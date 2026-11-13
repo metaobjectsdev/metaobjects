@@ -8,6 +8,8 @@ using MetaObjects.Codegen;
 using MetaObjects.Codegen.Generators;
 using MetaObjects.Loader;
 using MetaObjects.Meta;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Xunit;
 
 namespace MetaObjects.Codegen.Tests;
@@ -69,6 +71,18 @@ public class ServerOwnedCreateInputTests
     ]}}
     """;
 
+    private const string RequiredReadOnlyModel = """
+    { "metadata.root": { "package": "acme::input", "children": [
+      { "object.entity": { "name": "Member", "children": [
+        { "source.rdb":       { "@table": "members" } },
+        { "field.long":       { "name": "id" } },
+        { "field.string":     { "name": "title", "@required": true, "@maxLength": 100 } },
+        { "field.string":     { "name": "role", "@required": true, "@maxLength": 20, "@mutability": "readOnly" } },
+        { "identity.primary": { "@fields": "id", "@generation": "increment" } }
+      ]}}
+    ]}}
+    """;
+
     private static string Emit(string model, string generator, string file)
     {
         var r = new MetaDataLoader().Load([new InMemoryStringSource(model, id: "input.json")]);
@@ -117,6 +131,23 @@ public class ServerOwnedCreateInputTests
         var src = Emit(TphModel, "entity", "AThing.g.cs");
         Assert.Contains("Grade { get; private set; }", src);
         Assert.Contains("Note { get; set; }", src);
+    }
+
+    [Fact]
+    public void A_required_readOnly_field_is_not_demanded_of_the_create_body()
+    {
+        // The client cannot set `role` (private setter), so the create must neither require its
+        // key nor reject the body over its [Required]: otherwise the entity could not be created.
+        var src = Emit(RequiredReadOnlyModel, "routes", "MemberRoutes.g.cs");
+        var post = src[src.IndexOf("app.MapPost(", StringComparison.Ordinal)..];
+        var req = post[post.IndexOf("foreach (var __req in", StringComparison.Ordinal)..];
+        req = req[..req.IndexOf('\n')];
+        Assert.Contains("\"title\"", req);
+        Assert.DoesNotContain("\"role\"", req);
+        Assert.Contains("System.Array.IndexOf(new[] { \"Role\" }, m) < 0", post);
+        var syntaxErrors = CSharpSyntaxTree.ParseText(src).GetDiagnostics()
+            .Where(d => d.Severity == DiagnosticSeverity.Error).Select(d => d.ToString()).ToList();
+        Assert.True(syntaxErrors.Count == 0, string.Join("\n", syntaxErrors));
     }
 
     [Fact]

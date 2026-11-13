@@ -25,7 +25,8 @@ file changes. No vocabulary or `metamodelVersion` change._
     sent, so a client `id` on a generated key and a `@mutability: readOnly` or derived field
     reached it. On a TPH per-subtype route the body's discriminator and a sibling subtype's
     columns did too. The route now rebuilds the DTO with each of those components set to null
-    before the repository call; the route's subtype still comes from the URL.
+    before the repository call; the route's subtype still comes from the URL. A `@required`
+    `readOnly` or derived value-object column no longer fails create validation once nulled.
   - **Kotlin (`codegen-kotlin`).** The create route wrote `readOnly` and derived columns from the
     body, and a TPH per-subtype route wrote a sibling subtype's columns. It now writes only the
     route subtype's own settable columns.
@@ -35,7 +36,8 @@ file changes. No vocabulary or `metamodelVersion` change._
     an M:N navigation graph were written. The route now resets the generated key and the
     discriminator to their defaults and empties the M:N navigations before `Add`, and a
     `readOnly` property of every shape, a TPH subtype's included, has a private setter, which
-    System.Text.Json does not bind.
+    System.Text.Json does not bind. A `@required` `readOnly` field is therefore neither demanded
+    of the create body nor held to its `[Required]` there, so such an entity stays creatable.
   - **TypeScript (`codegen-ts`).** The `<Entity>UpdateSchema` kept an assigned (non-generated)
     primary key, so a PUT or PATCH could re-key the row. The update schema now leaves out every
     primary-key field; the insert schema still takes an assigned key, which is the caller's on
