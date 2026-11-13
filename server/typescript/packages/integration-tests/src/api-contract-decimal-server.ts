@@ -12,7 +12,7 @@
 
 import Fastify, { type FastifyInstance } from "fastify";
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { runGen, defineConfig } from "@metaobjectsdev/codegen-ts";
@@ -28,6 +28,7 @@ import {
   API_CONTRACT_DECIMAL_SQLITE_SCHEMA_SQL_PATH,
 } from "./paths.ts";
 import { splitStatements } from "./sql-script.ts";
+import { indexEmitted, type EmittedFiles, type OutputLayout } from "./output-layout.ts";
 
 export type DecimalEngine = "postgres" | "mysql" | "sqlite" | "d1";
 /** The engines a generated-lane sub-corpus served by this module runs on. */
@@ -79,8 +80,9 @@ export function startDecimalServer(
   metaPath: string,
   /** The Postgres or MySQL connection URL; unused by SQLite and D1. */
   connectionUrl?: string,
+  outputLayout: OutputLayout = "flat",
 ): Promise<DecimalServerHandle> {
-  return startGeneratedCorpusServer(DECIMAL, engine, metaPath, connectionUrl);
+  return startGeneratedCorpusServer(DECIMAL, engine, metaPath, connectionUrl, outputLayout);
 }
 
 /** Generate, provision and mount one generated-lane sub-corpus on `engine`. */
@@ -90,6 +92,7 @@ export async function startGeneratedCorpusServer(
   metaPath: string,
   /** The Postgres or MySQL connection URL; unused by SQLite and D1. */
   connectionUrl?: string,
+  outputLayout: OutputLayout = "flat",
 ): Promise<DecimalServerHandle> {
   const SERVED = spec.served;
   const TABLES = spec.tables;
@@ -109,6 +112,7 @@ export async function startGeneratedCorpusServer(
     config: defineConfig({
       outDir: tmp,
       extStyle: "none",
+      outputLayout,
       dbImport: "./db",
       dialect: engine === "d1" ? "sqlite" : engine, // codegen has no d1 dialect: D1 is SQLite to Drizzle
       apiPrefix: "/api",
@@ -116,7 +120,9 @@ export async function startGeneratedCorpusServer(
     }),
     metadata: root,
   });
-  for (const name of SERVED) if (!existsSync(join(tmp, `${name}.routes.ts`))) fail(`codegen emitted no ${name}.routes.ts`);
+  let emitted: EmittedFiles;
+  try { emitted = indexEmitted(tmp, lr.files, outputLayout); } catch (e) { return fail(e instanceof Error ? e.message : String(e)); }
+  for (const name of SERVED) if (!emitted.has(`${name}.routes.ts`)) fail(`codegen emitted no ${name}.routes.ts`);
   if (lr.warnings.length > 0) fail(`codegen produced warnings: ${lr.warnings.join("; ")}`);
 
   const client = await openEngine(spec, engine, tmp, connectionUrl);
@@ -124,7 +130,7 @@ export async function startGeneratedCorpusServer(
 
   const fastify = Fastify();
   for (const name of SERVED) {
-    const mod = (await import(pathToFileURL(join(tmp, `${name}.routes.ts`)).href)) as Record<string, unknown>;
+    const mod = (await import(pathToFileURL(emitted.locate(`${name}.routes.ts`)).href)) as Record<string, unknown>;
     const registrar = Object.values(mod).find((v): v is (f: FastifyInstance) => Promise<void> => typeof v === "function");
     if (registrar === undefined) fail(`${name}.routes.ts exports no registrar`);
     await fastify.register(registrar!);

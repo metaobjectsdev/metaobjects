@@ -44,10 +44,16 @@ nullability rule and enum naming, so "the same shape" disagreed with itself.
 
 ## Names and locations
 
-A value object's type is named after the value object, never the template. Where the port
-emits every value object into one flat namespace or directory (TypeScript, C#, Python), a value
-object whose short name collides is package-qualified: `acme::alpha::Note` → `AcmeAlphaNote`.
-Java and Kotlin keep `Note` in `acme.alpha`, because the package tells them apart.
+A value object's type is named after the value object, never the template, and it is never
+renamed. Java and Kotlin keep `Note` in `acme.alpha`, because the package tells them apart.
+TypeScript and Python do the same with `outputLayout: package`: each `Note` has its own module
+or directory, and with the flat layout the clash is refused with `ERR_NAME_COLLISION` (see
+[the Python port](../../ports/python.md)). C# does it with package namespaces
+(`csharp.packageNamespaces`, see [the C# port](../../ports/csharp.md)): each `Note` sits in its
+package's namespace, and two in one namespace are refused with `ERR_NAME_COLLISION`. A file that
+meets both `Note`s imports them under package-qualified local aliases (TypeScript
+`import type { Note as AcmeAlphaNote }`, Python `import Note as AcmeAlphaNote`), and TypeScript's
+inbound-tier lenient mirrors take the alias (`AcmeAlphaNoteExtracted`).
 
 | Port | Before | After |
 |---|---|---|
@@ -110,8 +116,9 @@ The tolerant tier's all-nullable mirror is named after the value object too: `<V
 
 **Python**
 - Models come from the `entity` generator's `<Name>.py`. A value object whose short name
-  another top-level object shares — a second value object, or an entity — is now
-  package-qualified (`AcmeAlphaNote.py`); before, both wrote the same module.
+  another top-level object shares — a second value object, or an entity — is no longer
+  renamed. The flat layout refuses the pair with `ERR_NAME_COLLISION`; `outputLayout: package`
+  gives each its own directory. Before, both wrote the same module.
 - A field with a `default:` is typed as its plain type with that default (`user_id: str = ""`),
   where the copy typed it `str | None = None`. Passing `None` to it now fails validation: a
   caller that relied on `None` must pass a value, or the field must drop its `default:` so it

@@ -146,11 +146,7 @@ export const OBJECT_DEFINITION: ProviderDefinition = {
           "name": "collectionName",
           "min": 0,
           "max": 1,
-          "implementedIn": [
-            "csharp",
-            "typescript"
-          ],
-          "description": "The name of this object's collection, in the object's own casing (e.g. 'CaseHistory', 'Queues'): the REST collection segment (snake_cased) and the reverse-finder names in C# and TypeScript, the C# DbSet property, and the TypeScript list function, list hook and Drizzle table variable. It need not be a grammatical plural. Absent, the project's pluralizer derives it from the object's name (naming.collections in .metaobjects/config.json; built in: standard, none; an application may register its own)."
+          "description": "The name of this object's collection, in the object's own casing (e.g. 'CaseHistory', 'Queues'): the REST collection segment (snake_cased) in every port, the reverse-finder names in C#, TypeScript and Python, the C# DbSet property, and the TypeScript list function, list hook and Drizzle table variable. It need not be a grammatical plural. Absent, the project's pluralizer derives it from the object's name (naming.collections in .metaobjects/config.json; built in: standard, none; an application may register its own)."
         }
       ]
     },
@@ -193,11 +189,7 @@ export const OBJECT_DEFINITION: ProviderDefinition = {
           "name": "collectionName",
           "min": 0,
           "max": 1,
-          "implementedIn": [
-            "csharp",
-            "typescript"
-          ],
-          "description": "The name of this object's collection, in the object's own casing (e.g. 'CaseHistory', 'Queues'): the REST collection segment (snake_cased) and the reverse-finder names in C# and TypeScript, the C# DbSet property, and the TypeScript list function, list hook and Drizzle table variable. It need not be a grammatical plural. Absent, the project's pluralizer derives it from the object's name (naming.collections in .metaobjects/config.json; built in: standard, none; an application may register its own)."
+          "description": "The name of this object's collection, in the object's own casing (e.g. 'CaseHistory', 'Queues'): the REST collection segment (snake_cased) in every port, the reverse-finder names in C#, TypeScript and Python, the C# DbSet property, and the TypeScript list function, list hook and Drizzle table variable. It need not be a grammatical plural. Absent, the project's pluralizer derives it from the object's name (naming.collections in .metaobjects/config.json; built in: standard, none; an application may register its own)."
         }
       ]
     },
@@ -264,11 +256,7 @@ export const OBJECT_DEFINITION: ProviderDefinition = {
           "name": "collectionName",
           "min": 0,
           "max": 1,
-          "implementedIn": [
-            "csharp",
-            "typescript"
-          ],
-          "description": "The name of this object's collection, in the object's own casing (e.g. 'CaseHistory', 'Queues'): the REST collection segment (snake_cased) and the reverse-finder names in C# and TypeScript, the C# DbSet property, and the TypeScript list function, list hook and Drizzle table variable. It need not be a grammatical plural. Absent, the project's pluralizer derives it from the object's name (naming.collections in .metaobjects/config.json; built in: standard, none; an application may register its own)."
+          "description": "The name of this object's collection, in the object's own casing (e.g. 'CaseHistory', 'Queues'): the REST collection segment (snake_cased) in every port, the reverse-finder names in C#, TypeScript and Python, the C# DbSet property, and the TypeScript list function, list hook and Drizzle table variable. It need not be a grammatical plural. Absent, the project's pluralizer derives it from the object's name (naming.collections in .metaobjects/config.json; built in: standard, none; an application may register its own)."
         }
       ]
     }

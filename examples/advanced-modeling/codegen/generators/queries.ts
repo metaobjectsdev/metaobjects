@@ -49,6 +49,7 @@ import {
   GENERATED_EDIT_NOTE,
   sidecarLine,
   isTphSubtype,
+  claimModuleNames,
 } from "@metaobjectsdev/codegen-ts/engine";
 import { renderQueriesFile } from "../templates/queries-file.js";
 import {
@@ -168,6 +169,7 @@ export const queriesFile = function queriesFile(opts?: QueriesFileOpts): Generat
       if (!ctx.renderContext) {
         throw new Error("queries-file: renderContext is required (provided by runGen)");
       }
+      claimModuleNames(ctx, entity);
       return {
         path: entityOutputPath(ctx.config.outputLayout ?? "flat", effectivePackage(entity), `${entity.name}.queries.ts`),
         content: await formatTs(renderQueries(entity, ctx.renderContext)),

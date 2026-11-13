@@ -1,19 +1,21 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { runGen } from "../src/runner.js";
 import { defineConfig } from "../src/metaobjects-config.js";
 import { entityFile } from "../src/generators/entity-file.js";
 import { barrel } from "../src/generators/barrel.js";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 
-// ADR-0044 / #228 — the ENTITY tier brings the per-value-object entity module
-// (interface name + output filename) into collision scope, keyed by the RUN's
-// emitted `object.value` SET (NOT a payload closure). Two same-short-name
-// `object.value`s across packages must emit DISTINCT interfaces to DISTINCT
-// module paths, and every value-object-routed reference (Zod `<Ref>InsertSchema`,
-// Drizzle `.$type<>()`, inferred-types field.object) must use the qualified name.
+// ADR-0044 / #228, amended — two same-short-name `object.value`s across
+// packages. Nothing is renamed: under the package layout each `Note` is declared under its own
+// name in its own package's module, and every value-object-routed reference (Zod
+// `<Ref>InsertSchema`, Drizzle `.$type<>()`, inferred-types field.object/field.map) imports the
+// node it names from that module — bound under a package-qualified LOCAL alias
+// (`Note as AcmeAlphaNote`), since another object shares the short name. Under the flat layout,
+// or with a barrel, the two share one namespace and the claim registry refuses them
+// (test/naming/name-claims.test.ts).
 
 async function loadMultiPackageRoot(files: { package: string; children: unknown[] }[]) {
   const sources = files.map(
@@ -28,7 +30,10 @@ let tmp: string;
 beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), "entity-collision-")); });
 afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
 
-async function genFiles(root: Awaited<ReturnType<typeof loadMultiPackageRoot>>): Promise<Map<string, string>> {
+async function genFiles(
+  root: Awaited<ReturnType<typeof loadMultiPackageRoot>>,
+  outputLayout: "flat" | "package" = "flat",
+): Promise<Map<string, string>> {
   const result = await runGen({
     config: defineConfig({
       outDir: tmp,
@@ -37,20 +42,22 @@ async function genFiles(root: Awaited<ReturnType<typeof loadMultiPackageRoot>>):
       // postgres: a single (non-array) field.object jsonb column gets a
       // Drizzle `.$type<VO>()` — the value-object reference site under test.
       dialect: "postgres",
-      generators: [entityFile(), barrel()],
+      outputLayout,
+      // The barrel re-exports every module in one namespace, so it would refuse two Notes.
+      generators: outputLayout === "flat" ? [entityFile(), barrel()] : [entityFile()],
     }),
     metadata: root,
   });
   expect(result.conflicts).toEqual([]);
   const out = new Map<string, string>();
-  for (const name of readdirSync(tmp)) {
-    out.set(name, readFileSync(join(tmp, name), "utf8"));
+  for (const e of readdirSync(tmp, { recursive: true, withFileTypes: true })) {
+    if (e.isFile()) out.set(relative(tmp, join(e.parentPath, e.name)), readFileSync(join(e.parentPath, e.name), "utf8"));
   }
   return out;
 }
 
-describe("entity tier — ADR-0044 cross-package value-object short-name collision (#228)", () => {
-  test("two same-short-name object.values emit distinct qualified interfaces/modules and every reference uses the qualified name", async () => {
+describe("entity tier — cross-package value-object short-name sharing (ADR-0044)", () => {
+  test("two same-short-name object.values keep their names in two modules; every reference binds its own node under a local alias", async () => {
     const root = await loadMultiPackageRoot([
       {
         package: "acme::alpha",
@@ -108,57 +115,36 @@ describe("entity tier — ADR-0044 cross-package value-object short-name collisi
       },
     ]);
 
-    const files = await genFiles(root);
-    const names = [...files.keys()].sort();
+    const files = await genFiles(root, "package");
 
-    // Distinct qualified module files — NEVER a single collision-losing Note.ts.
-    expect(names).toContain("AcmeAlphaNote.ts");
-    expect(names).toContain("AcmeBetaNote.ts");
-    expect(names).not.toContain("Note.ts");
-
-    const alphaNote = files.get("AcmeAlphaNote.ts")!;
-    expect(alphaNote).toContain("export interface AcmeAlphaNote {");
-    expect(alphaNote).toContain("export const AcmeAlphaNoteInsertSchema");
+    // Two modules, each declaring its own value object under its own name.
+    const alphaNote = files.get("acme/alpha/Note.ts")!;
+    expect(alphaNote).toContain("export interface Note {");
+    expect(alphaNote).toContain("export const NoteInsertSchema");
     expect(alphaNote).toMatch(/alphaText:\s*string;/);
-
-    const betaNote = files.get("AcmeBetaNote.ts")!;
-    expect(betaNote).toContain("export interface AcmeBetaNote {");
-    expect(betaNote).toContain("export const AcmeBetaNoteInsertSchema");
+    const betaNote = files.get("acme/beta/Note.ts")!;
+    expect(betaNote).toContain("export interface Note {");
+    expect(betaNote).toContain("export const NoteInsertSchema");
     expect(betaNote).toMatch(/betaText:\s*string;/);
+    for (const content of files.values()) expect(content).not.toMatch(/(interface|const) Acme(Alpha|Beta)Note/);
 
-    // inferred-types field.object reference (VO -> VO) uses the qualified name +
-    // imports the qualified module — NOT the bare `Note`.
-    const alphaWrap = files.get("AlphaWrap.ts")!;
+    // inferred-types field.object reference (VO -> VO): its own package's Note, local alias.
+    const alphaWrap = files.get("acme/alpha/AlphaWrap.ts")!;
     expect(alphaWrap).toMatch(/inner\?:\s*AcmeAlphaNote \| undefined;/);
-    expect(alphaWrap).not.toMatch(/inner\?:\s*Note;/);
-    expect(alphaWrap).toContain("./AcmeAlphaNote.js");
+    expect(alphaWrap).toMatch(/type Note as AcmeAlphaNote[\s\S]*?\} from "\.\/Note\.js";/);
 
-    // Zod <Ref>InsertSchema + Drizzle .$type<>() on the entity use the qualified name.
-    const alphaHost = files.get("AlphaHost.ts")!;
-    expect(alphaHost).toContain("AcmeAlphaNoteInsertSchema");
+    // Zod <Ref>InsertSchema + Drizzle .$type<>() on each entity bind the right Note.
+    const alphaHost = files.get("acme/alpha/AlphaHost.ts")!;
+    expect(alphaHost).toContain("NoteInsertSchema as AcmeAlphaNoteInsertSchema");
     expect(alphaHost).toMatch(/\.\$type<AcmeAlphaNote>/);
-    expect(alphaHost).toContain("./AcmeAlphaNote.js");
-    expect(alphaHost).not.toMatch(/[^a-zA-Z]NoteInsertSchema/);
-    expect(alphaHost).not.toMatch(/\.\$type<Note>/);
-
-    const betaHost = files.get("BetaHost.ts")!;
-    expect(betaHost).toContain("AcmeBetaNoteInsertSchema");
+    expect(alphaHost).toContain('from "./Note.js"');
+    const betaHost = files.get("acme/beta/BetaHost.ts")!;
+    expect(betaHost).toContain("NoteInsertSchema as AcmeBetaNoteInsertSchema");
     expect(betaHost).toMatch(/\.\$type<AcmeBetaNote>/);
-    expect(betaHost).toContain("./AcmeBetaNote.js");
-
-    // Barrel re-exports the COLLISION-SCOPED value-object modules (AcmeAlphaNote /
-    // AcmeBetaNote) — never a bare (duplicated, dangling) `./Note.js`. Entities keep
-    // their bare names. This is the entity-tier collision-scoping closure (#228).
-    const index = files.get("index.ts")!;
-    expect(index).toContain("./AcmeAlphaNote.js");
-    expect(index).toContain("./AcmeBetaNote.js");
-    expect(index).toContain("./AlphaHost.js");
-    expect(index).toContain("./BetaHost.js");
-    expect(index).not.toMatch(/\.\/Note\.js/);
-    expect(index.match(/export \* from/g)?.length ?? 0).toBeGreaterThan(0);
+    expect(betaHost).toContain('from "./Note.js"');
   });
 
-  test("write-through read-view, projection, and field.map references all use the qualified name", async () => {
+  test("write-through read-view, projection, and field.map references all bind the right node", async () => {
     const root = await loadMultiPackageRoot([
       {
         package: "acme::alpha",
@@ -215,28 +201,24 @@ describe("entity tier — ADR-0044 cross-package value-object short-name collisi
       },
     ]);
 
-    const files = await genFiles(root);
+    const files = await genFiles(root, "package");
 
-    // Write-through entity: BOTH the read-view Zod schema (renderViewReadZodObject)
-    // and the `.existing()` view decl (renderExistingViewDecl) must qualify — no bare
-    // `Note` symbol/type may leak into the shipped write-through artifact.
-    const alphaReport = files.get("AlphaReport.ts")!;
+    // Write-through entity: BOTH the read-view Zod schema (renderViewReadZodObject) and the
+    // `.existing()` view decl (renderExistingViewDecl) bind acme::alpha::Note by its alias.
+    const alphaReport = files.get("acme/alpha/AlphaReport.ts")!;
     expect(alphaReport).toContain("export const AlphaReportSchema");       // read-view zod
     expect(alphaReport).toContain("alphaReportView");                       // .existing() view var
-    expect(alphaReport).toContain("AcmeAlphaNoteInsertSchema");
+    expect(alphaReport).toContain("NoteInsertSchema as AcmeAlphaNoteInsertSchema");
     expect(alphaReport).toMatch(/\.\$type<AcmeAlphaNote>/);
-    expect(alphaReport).toContain("./AcmeAlphaNote.js");
-    expect(alphaReport).not.toMatch(/[^a-zA-Z]NoteInsertSchema/);
+    expect(alphaReport).toContain('from "./Note.js"');
     expect(alphaReport).not.toMatch(/\.\$type<Note>/);
-    // field.map reference (Record<string, VO>) qualifies too.
+    // field.map reference (Record<string, VO>) binds it too.
     expect(alphaReport).toMatch(/Record<string,\s*AcmeAlphaNote>/);
-    expect(alphaReport).not.toMatch(/Record<string,\s*Note>/);
 
-    // Projection read model imports the qualified VO schema/module (not bare `Note`).
-    const alphaNoteView = files.get("AlphaNoteView.ts")!;
-    expect(alphaNoteView).toContain("AcmeAlphaNoteInsertSchema");
-    expect(alphaNoteView).toContain("./AcmeAlphaNote.js");
-    expect(alphaNoteView).not.toMatch(/[^a-zA-Z]NoteInsertSchema/);
+    // Projection read model imports the same Note under the same alias.
+    const alphaNoteView = files.get("acme/alpha/AlphaNoteView.ts")!;
+    expect(alphaNoteView).toContain("NoteInsertSchema as AcmeAlphaNoteInsertSchema");
+    expect(alphaNoteView).toContain('from "./Note.js"');
   });
 
   test("no-churn — a non-colliding value object keeps its BARE name/module (qualification never fires)", async () => {

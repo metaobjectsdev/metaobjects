@@ -1,0 +1,84 @@
+{
+  "metadata.root": {
+    "package": "acme::checks",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Gadget",
+          "children": [
+            { "source.rdb": { "@table": "gadgets" } },
+            { "source.rdb": { "@role": "replica", "@kind": "view", "@table": "v_gadgets" } },
+            { "field.long": { "name": "id" } },
+            { "field.enum": { "name": "status", "@values": ["DRAFT", "LIVE"] } },
+            { "field.enum": { "name": "level", "@values": ["LOW", "HIGH"], "@intValueMap": { "LOW": 1, "HIGH": 2 } } },
+            { "field.enum": { "name": "tags", "isArray": true, "@values": ["A", "B"] } },
+            { "field.string": { "name": "kind", "@required": true } },
+            { "field.int": { "name": "score", "children": [ { "validator.numeric": { "@min": 1, "@max": 5 } } ] } },
+            { "field.int": { "name": "floor", "children": [ { "validator.numeric": { "@min": 0 } } ] } },
+            { "field.string": { "name": "code", "@maxLength": 10, "children": [ { "validator.length": { "@min": 2, "@max": 20 } } ] } },
+            { "field.string": { "name": "label", "@maxLength": 40, "children": [ { "validator.length": { "@min": 0, "@max": 30 } } ] } },
+            { "field.string": { "name": "sku", "children": [ { "validator.regex": { "@pattern": "^[A-Z]{3}-'\\d+$", "@constraintName": "gadgets_sku_shape" } } ] } },
+            { "field.string": { "name": "notes" } },
+            { "field.boolean": { "name": "shipped" } },
+            { "field.timestamp": { "name": "shippedAt" } },
+            { "field.timestamp": { "name": "startsAt" } },
+            { "field.timestamp": { "name": "endsAt" } },
+            { "field.duration": { "name": "timeout" } },
+            { "field.string": { "name": "reason" } },
+            { "field.string": { "name": "email" } },
+            { "field.string": { "name": "phone" } },
+            { "field.string": { "name": "fax" } },
+            { "field.enum": { "name": "channel", "@values": ["EMAIL", "SMS"], "children": [ { "validator.length": { "@min": 1, "@max": 5 } } ] } },
+            { "field.string": { "name": "ref", "@maxLength": 10, "children": [ { "validator.length": { "@max": 10, "@constraintName": "gadgets_ref_fits" } } ] } },
+            { "field.string": { "name": "band", "children": [
+                { "validator.length": { "@max": 4 } },
+                { "origin.computed": { "@expr": { "case": [ { "when": { "op": "gte", "left": { "field": "score" }, "right": { "value": 4 } }, "then": { "value": "HIGH" } } ],
+                    "else": { "value": "LOW" } } } } ] } },
+            { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
+            { "validator.comparison": { "name": "window", "@left": "startsAt", "@op": "lte", "@right": "endsAt" } },
+            { "validator.comparison": { "name": "liveWindow", "@left": "endsAt", "@op": "gt", "@right": "startsAt",
+                "@condition": { "op": "and", "args": [
+                  { "op": "eq", "left": { "field": "status" }, "right": { "value": "LIVE" } },
+                  { "op": "isNotNull", "arg": { "field": "level" } } ] } } },
+            { "validator.requiredWhen": { "name": "customNotes", "@field": "notes", "@when": "kind", "@equals": "custom" } },
+            { "validator.requiredWhen": { "name": "slowReason", "@field": "reason", "@when": "timeout", "@equals": "PT1H30M" } },
+            { "validator.presentIff": { "name": "shippedAtIff", "@field": "shippedAt", "@when": "shipped", "@equals": true } },
+            { "validator.exactlyOne": { "name": "contact", "@fields": ["email", "phone"] } },
+            { "validator.atLeastOne": { "name": "anyContact", "@fields": ["phone", "fax"],
+                "@condition": { "op": "eq", "left": { "field": "level" }, "right": { "value": "HIGH" } } } },
+            { "validator.requiredWhen": { "name": "bandFax", "@field": "fax", "@when": "band", "@equals": "HIGH" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Parcel",
+          "children": [
+            { "source.rdb": { "@table": "parcels" } },
+            { "source.rdb": { "@role": "replica", "@kind": "view", "@table": "v_parcel_with_owner" } },
+            { "field.long": { "name": "id" } },
+            { "field.long": { "name": "ownerId", "@required": true } },
+            { "field.string": { "name": "label", "@maxLength": 20, "children": [ { "validator.length": { "@min": 1, "@max": 20 } } ] } },
+            { "field.string": { "name": "ownerName", "children": [
+                { "validator.length": { "@max": 30 } },
+                { "origin.passthrough": { "@from": "Owner.name" } } ] } },
+            { "relationship.association": { "name": "owner", "@objectRef": "Owner", "@cardinality": "one" } },
+            { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
+            { "identity.reference": { "name": "ref_owner", "@fields": ["ownerId"], "@references": "Owner" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Owner",
+          "children": [
+            { "source.rdb": { "@table": "owners" } },
+            { "field.long": { "name": "id" } },
+            { "field.string": { "name": "name" } },
+            { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
+          ]
+        }
+      }
+    ]
+  }
+}

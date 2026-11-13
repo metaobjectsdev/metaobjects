@@ -58,7 +58,7 @@ import { templateSymbolBase } from "../naming.js";
 import { GENERATED_HEADER, GENERATED_EDIT_NOTE } from "../constants.js";
 import type { ExtStyle } from "../metaobjects-config.js";
 import type { RenderContext } from "../render-context.js";
-import { valueObjectImport } from "./value-object-import.js";
+import { importBinding, valueObjectImport } from "./value-object-import.js";
 
 // ADR-0039: resolving — root has no super (children()==ownChildren()); a top-level object/template may itself extend, so resolve rather than work-by-accident.
 function findTemplate(root: MetaData, name: string): MetaData | undefined {
@@ -75,11 +75,11 @@ function findTemplate(root: MetaData, name: string): MetaData | undefined {
  * ADR-0056: the payload type is the @payloadRef value object's OWN interface, imported from
  * the module entityFile() declares it in (`payloadSpecifier`).
  */
-function renderHelperHeader(typeImports: string, payloadTypeName: string, payloadSpecifier: string): string {
+function renderHelperHeader(typeImports: string, payloadBinding: string, payloadSpecifier: string): string {
   return `// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}
 import { render } from "@metaobjectsdev/render";
 import type { ${typeImports} } from "@metaobjectsdev/render";
-import type { ${payloadTypeName} } from ${JSON.stringify(payloadSpecifier)};`;
+import type { ${payloadBinding} } from ${JSON.stringify(payloadSpecifier)};`;
 }
 
 /**
@@ -210,7 +210,7 @@ export function renderRenderHelper(
   const fnName = `render${templateSymbolBase(templateName)}`;
   // ADR-0056 — the payload is the value object's own interface: its emitted name and module
   // come from the one helper every template-tier file uses.
-  const { name: payloadTypeName, specifier: payloadSpecifier } =
+  const { name: payloadTypeName, exported: payloadExported, specifier: payloadSpecifier } =
     valueObjectImport(ctx, vo, outPath, extStyle);
 
   // ADR-0039: resolving — a template may inherit its @* refs/format/kind via extends.
@@ -240,7 +240,7 @@ export function renderRenderHelper(
         ? `\n    textBody: render({ ref: ${JSON.stringify(textBodyRef)}, payload, format: "text", provider, verify: ${ft}${textEngine} }),`
         : "";
 
-    return `${renderHelperHeader("Provider, EmailDocument", payloadTypeName, payloadSpecifier)}
+    return `${renderHelperHeader("Provider, EmailDocument", importBinding(payloadExported, payloadTypeName), payloadSpecifier)}
 
 /**
  * Render the ${templateName} email (subject + html body${typeof textBodyRef === "string" ? " + text body" : ""}) from a
@@ -278,7 +278,7 @@ export function ${fnName}(payload: ${payloadTypeName}, provider: Provider): Emai
   const maxCharsArg =
     maxChars !== undefined && Number.isFinite(maxChars) ? `, maxChars: ${maxChars}` : "";
 
-  return `${renderHelperHeader("Provider", payloadTypeName, payloadSpecifier)}
+  return `${renderHelperHeader("Provider", importBinding(payloadExported, payloadTypeName), payloadSpecifier)}
 
 /**
  * Render the ${templateName} document from a typed ${payloadTypeName} payload. Wraps the

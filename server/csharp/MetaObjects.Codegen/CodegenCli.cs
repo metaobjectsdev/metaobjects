@@ -236,6 +236,7 @@ public static class CodegenCli
         if (loadErrors.Count > 0) return new GenOutcome(loadErrors, null);
 
         var root = projectRoot ?? Directory.GetCurrentDirectory();
+        var neutralConfig = MetaObjects.Config.NeutralConfig.Read(root, validateNaming: false);
         var config = new GenConfig
         {
             OutDir = outDir,
@@ -257,8 +258,9 @@ public static class CodegenCli
             // type, in a different assembly, once ejected — still satisfies the gate.
             IncludeNames = includeNames ?? generators.Any(g => g.Name == "names"),
             SweepOrphans = sweepOrphans,
-            Dialect = MetaObjects.Config.NeutralConfig.Read(root, validateNaming: false)?.MigrateDialect,
-        };
+            Dialect = neutralConfig?.MigrateDialect,
+            SkipRedundantChecks = neutralConfig?.MigrateSkipRedundantChecks ?? false,
+        }.WithCSharpLayout(neutralConfig);
 
         CodegenRunner.RunResult result;
         try
@@ -947,6 +949,7 @@ public static class CodegenCli
         // same way producing the committed output, so this regen agrees with it by
         // construction instead of needing a flag told to match.
         var columnNaming = load.Root.PhysicalNaming.Columns;
+        var neutralConfig = MetaObjects.Config.NeutralConfig.Read(projectRoot, validateNaming: false);
         var config = new GenConfig
         {
             OutDir = a.OutDir,
@@ -956,7 +959,11 @@ public static class CodegenCli
             // The manifest gen keeps: an extra file is classified by what gen recorded writing.
             GenStateDir = Path.Combine(projectRoot, ".metaobjects", ".gen-state"),
             ProjectRoot = projectRoot,
-        };
+            // The dialect gen read: without it a Postgres project's identity start and its design-time
+            // services read as drift.
+            Dialect = neutralConfig?.MigrateDialect,
+            SkipRedundantChecks = neutralConfig?.MigrateSkipRedundantChecks ?? false,
+        }.WithCSharpLayout(neutralConfig);
         var result = CodegenDrift.Compute(config, load.Root, suite, narrowed: a.Selection is { Count: > 0 });
         if (result.Error is not null)
         {

@@ -384,9 +384,9 @@ public final class ReportShape {
 
     /**
      * True when every hop of {@code hops}, walked from {@code from}, is a belongs-to hop over a
-     * required foreign key: the hops the view joins INNER, so every row of the report has a
-     * match. This is the join-type rule of the view lowering (TypeScript {@code walkViaPath},
-     * #209): the reference is held by the entity the hop leaves, is enforced, its first FK field
+     * required foreign key: the hops the view's LEFT OUTER join is guaranteed a match on (every
+     * join is LEFT OUTER; an enforced reference means it never nulls the column either). The
+     * reference is held by the entity the hop leaves, is enforced, its first FK field
      * is required, its target hides no rows ({@link #hidesRows}), and every earlier hop matches
      * too. A hop that does not resolve, an ambiguous reference or a has-many hop does not.
      */
@@ -454,8 +454,9 @@ public final class ReportShape {
     /**
      * Table C ({@code required} of a dimension). Without {@code @spine}: only a dimension over an
      * {@code @of} field whose effective {@code @required} is true and, when it has a {@code @via},
-     * only when every hop is a required belongs-to reference, the hops the view joins INNER
-     * onto targets that hide no rows ({@link #viaJoinsInner}). With
+     * only when every hop is a required, enforced belongs-to reference onto targets that hide no
+     * rows ({@link #viaJoinsInner}) — the hops the view's LEFT OUTER join is guaranteed a match
+     * on, so it never nulls the column. With
      * {@code @spine}: only a dimension whose {@code @via} hops equal the spine's (a column of
      * the spine entity itself, whose rows are the report's rows) over an {@code @of} field that
      * is {@code @required} or a primary-key column of the entity {@code @of} names. A dimension

@@ -3,9 +3,10 @@
 ADR-0056: this is also the ONE place a value object's model is declared. The template
 tier (response parsers, extractors, render helpers) imports ``<Name>.py`` from here and
 declares no model of its own, so a run that wires a template-tier generator needs this
-one too. A value object's emitted name comes from
-:func:`metaobjects.codegen.value_objects.model_class_name` (collision-qualified when
-another object shares its short name)."""
+one too. A value object is never renamed: it emits under its own name, in the directory
+:mod:`metaobjects.codegen.import_path` gives its metadata package (the ``package`` output
+layout), and two objects emitting one module into one directory fail with
+``ERR_NAME_COLLISION``."""
 from __future__ import annotations
 
 import re
@@ -50,10 +51,17 @@ from metaobjects.codegen.type_map import field_is_array, py_type_for
 from metaobjects.codegen.format import ruff_format
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator, per_entity
 from metaobjects.codegen.generators.tph_plan import tph_subtype_binding
+from metaobjects.codegen.import_path import (
+    ModuleScope,
+    import_line,
+    output_path,
+)
+from metaobjects.codegen.name_claims import claim_local_name, claim_module
 from metaobjects.codegen.value_objects import (
-    model_class_name,
-    model_import,
     object_ref_class_name,
+    local_name,
+    object_ref_target,
+    pkg_of,
 )
 
 from ..runtime import fr019_shared_enum as fr019
@@ -104,6 +112,14 @@ DURATION_IMPORTS: tuple[str, ...] = (
     "from pydantic import BeforeValidator, PlainSerializer",
     f"from .{DURATION_WIRE_MODULE} import format_duration, parse_duration_input",
 )
+
+
+def duration_imports(scope: ModuleScope) -> tuple[str, ...]:
+    """:data:`DURATION_IMPORTS` with the codec module imported from where the file lives."""
+    return (
+        *DURATION_IMPORTS[:-1],
+        import_line(scope.root(DURATION_WIRE_MODULE), "format_duration", "parse_duration_input"),
+    )
 
 #: Where the codec source is read from: ``codegen/runtime/`` beside this generator, which is the
 #: packaged ``metaobjects/codegen/runtime`` or, for an ejected copy, the adopter's own
@@ -304,7 +320,12 @@ def _constraint_source(key: str, value: object) -> str:
 
 
 def _type_expr_for_field(
-    field: MetaField, imports: set[str], config: GenConfig, *, wire: bool
+    field: MetaField,
+    imports: set[str],
+    config: GenConfig,
+    *,
+    wire: bool,
+    scope: ModuleScope = ModuleScope(),
 ) -> tuple[str, str | None]:
     """The Python annotation text for *field* (arrays wrapped in ``list[...]``) plus the
     shared-enum class name when the field resolves to one (used to render an enum
@@ -330,8 +351,8 @@ def _type_expr_for_field(
     )
     enum_type_name: str | None = None
     if shared is not None:
-        type_name, import_line = fr019.enum_type_and_import(shared, config)
-        imports.add(import_line)
+        type_name, enum_import = fr019.enum_type_and_import(shared, config, scope)
+        imports.add(enum_import)
         enum_type_name = type_name
         type_expr = f"list[{type_name}]" if field_is_array(field) else type_name
     else:
@@ -351,7 +372,7 @@ def _type_expr_for_field(
         # `wire.durations: native` leaves Pydantic's own timedelta handling in place, both ways;
         # `iso` holds the field to the ISO-8601 wire rule.
         if wire_of(field).durations == WIRE_DURATIONS_ISO:
-            imports.update(DURATION_IMPORTS)
+            imports.update(duration_imports(scope))
             duration_type = DURATION_TYPE
         else:
             imports.add("import datetime")
@@ -367,7 +388,11 @@ def _type_expr_for_field(
         ref_name = object_ref_class_name(field)
         if ref_name is not None:
             bound_name = f"{ref_name}Create" if wire else ref_name
-            imports.add(f"from .{ref_name} import {bound_name}")
+            target = object_ref_target(field)
+            if target is not None:
+                imports.add(scope.import_object(target, "Create" if wire else ""))
+            else:
+                imports.add(import_line(scope.sibling(scope.pkg, ref_name), bound_name))
             if wire:
                 if field.sub_type == fc.FIELD_SUBTYPE_MAP:
                     type_expr = f"dict[str, {bound_name}]"
@@ -420,9 +445,11 @@ def _literal_default_expr(field: MetaField, enum_type_name: str | None) -> str:
     return repr(default_raw)
 
 
-def _field_line(field: MetaField, imports: set[str], config: GenConfig) -> tuple[str, bool]:
+def _field_line(
+    field: MetaField, imports: set[str], config: GenConfig, scope: ModuleScope = ModuleScope()
+) -> tuple[str, bool]:
     """Return (source line, uses_field). Collects required imports into *imports*."""
-    type_expr, enum_type_name = _type_expr_for_field(field, imports, config, wire=False)
+    type_expr, enum_type_name = _type_expr_for_field(field, imports, config, wire=False, scope=scope)
     required = field.attrs().get(fc.FIELD_ATTR_REQUIRED) is True
     # A server-side expression default (now(), gen_random_uuid(), CURRENT_TIMESTAMP)
     # is filled by the DB — the Python model carries no default for it (the field keeps
@@ -867,7 +894,12 @@ def _cross_field_rules_method(
 
 
 def _create_field_line(
-    field: MetaField, imports: set[str], config: GenConfig, *, force_required: bool = False
+    field: MetaField,
+    imports: set[str],
+    config: GenConfig,
+    *,
+    force_required: bool = False,
+    scope: ModuleScope = ModuleScope(),
 ) -> tuple[str, bool]:
     """A CREATE-model field line (FR-036): keyed by the WIRE name (``field.name``) and
     carrying the WIRE-TIER per-field constraints (#224 — includes FR-036 Pin 1
@@ -881,7 +913,7 @@ def _create_field_line(
     ``object.value``'s own ``<Name>Create`` wire model (#224) — the PK/TPH/derived-field
     guards in the caller no-op for a VO carrying none of those. Returns (source line,
     uses_field)."""
-    type_expr, enum_type_name = _type_expr_for_field(field, imports, config, wire=True)
+    type_expr, enum_type_name = _type_expr_for_field(field, imports, config, wire=True, scope=scope)
     required = field.attrs().get(fc.FIELD_ATTR_REQUIRED) is True
     default_raw = field.attrs().get(fc.FIELD_ATTR_DEFAULT)
     literal_default = has_literal_default(field)
@@ -923,14 +955,14 @@ def _create_field_line(
 
 
 def _patch_field_line(
-    field: MetaField, imports: set[str], config: GenConfig
+    field: MetaField, imports: set[str], config: GenConfig, scope: ModuleScope = ModuleScope()
 ) -> tuple[str, bool]:
     """A PATCH-model field line: the field is made Optional (default ``None``) yet
     carries the SAME wire-tier per-field constraints as the create model (#224), so a
     present, non-null value is validated with the create rules (FR-036) while an
     absent field is left untouched. A ``@default`` is never emitted (a patch does not
     default a column). Returns (source line, uses_field)."""
-    type_expr, _enum = _type_expr_for_field(field, imports, config, wire=True)
+    type_expr, _enum = _type_expr_for_field(field, imports, config, wire=True, scope=scope)
     parts = _constraint_parts(_validator_constraints(field, wire=True))
     py_name = field.name  # FR-036 #3 — validation models key by the WIRE name (field.name)
     if parts:
@@ -945,6 +977,12 @@ def _effective_fqn(entity: MetaObject) -> str:
     merge: every node hangs under one package-less merged root, so the ancestor walk
     alone would fold each object onto the alphabetically-first file's package."""
     return entity.resolution_key()
+
+
+def module_scope(entity: MetaObject, config: GenConfig) -> ModuleScope:
+    """Where *entity*'s model module lives (its metadata package under the run's output
+    layout), which every import it emits is relative to."""
+    return ModuleScope(config.output_layout, pkg_of(entity))
 
 
 class EntityModelGenerator:
@@ -971,7 +1009,7 @@ class EntityModelGenerator:
         emitted model name (``model_class_name`` — a value object's may be
         collision-qualified). Override to inject a decorator, a metaclass, or an
         alternate base."""
-        return f"class {model_class_name(entity)}({base_class}):"
+        return f"class {entity.name}({base_class}):"
 
     def _emit_field_lines(
         self,
@@ -989,13 +1027,14 @@ class EntityModelGenerator:
         ``GenConfig`` the ``names`` generator reads, so the two can't disagree about a
         column name within one run. Override to add/transform body lines."""
         cfg = config if config is not None else GenConfig(out_dir="")
+        scope = module_scope(entity, cfg)
         uses_field = False
         lines: list[str] = []
         # ADR-0039 SANCTIONED OWN — codegen subclass-emit: the generated model
         # `extends` its generated base, so only OWN fields are emitted here (the base
         # class already declares inherited ones). Pinned by test_entity_model.py.
         for f in entity.own_fields():
-            line, used = _field_line(f, imports, cfg)
+            line, used = _field_line(f, imports, cfg, scope)
             uses_field = uses_field or used
             lines.append(line)
 
@@ -1007,11 +1046,13 @@ class EntityModelGenerator:
         # different strategy than the rest of the run.
         if object_index is not None:
             for d in resolve_m2m_descriptors(entity, object_index, cfg.column_naming):
-                if d.target_entity == entity.name:
+                if d.target_entity == entity.name and d.target_package == pkg_of(entity):
                     element = f'"{entity.name}"'
                 else:
-                    element = d.target_entity
-                    imports.add(f"from .{d.target_entity} import {d.target_entity}")
+                    element = d.target_local_name
+                    imports.add(
+                        scope.import_named(d.target_package, d.target_entity, d.target_local_name)
+                    )
                 # default_factory, not `= []`: a class-level list literal is one shared object
                 # as far as a linter or a reader can tell (pydantic copies it, a dataclass-style
                 # reader would not).
@@ -1040,6 +1081,7 @@ class EntityModelGenerator:
         those guards simply no-op. Returns ``(lines, uses_field)``. Override to
         add/transform create-model lines."""
         cfg = config if config is not None else GenConfig(out_dir="")
+        scope = module_scope(entity, cfg)
         auto_gen_pk = _auto_gen_pk_field_names(entity)
         assigned_pk = _assigned_pk_field_names(entity)
         binding = tph_subtype_binding(entity)
@@ -1060,7 +1102,7 @@ class EntityModelGenerator:
             if f.is_derived():
                 continue  # FR-024 §7 (#214) — a derived (origin.*) field is view-computed, not create input
             line, used = _create_field_line(
-                f, imports, cfg, force_required=f.name in assigned_pk
+                f, imports, cfg, force_required=f.name in assigned_pk, scope=scope
             )
             uses_field = uses_field or used
             lines.append(line)
@@ -1080,7 +1122,7 @@ class EntityModelGenerator:
         the field lines the create model carries.
         Create only: a Patch body cannot see the merged row. Override to customize."""
         carried = {m.group(1) for line in create_lines if (m := re.match(r"    (\w+):", line))}
-        return _cross_field_rules_method(entity, f"{model_class_name(entity)}Create", carried, imports)
+        return _cross_field_rules_method(entity, f"{entity.name}Create", carried, imports)
 
     def _emit_patch_lines(
         self,
@@ -1096,6 +1138,7 @@ class EntityModelGenerator:
         targets columns, not relations). Returns ``(lines, uses_field)``. Override to
         add/transform patch-model lines."""
         cfg = config if config is not None else GenConfig(out_dir="")
+        scope = module_scope(entity, cfg)
         pk_fields = set(_primary_identity_field_names(entity))
         uses_field = False
         lines: list[str] = []
@@ -1113,7 +1156,7 @@ class EntityModelGenerator:
                 # set is STRIPPED on this path) — and clearing counts as a write, so the
                 # FR-035 present-null arm never reaches them either.
                 continue
-            line, used = _patch_field_line(f, imports, cfg)
+            line, used = _patch_field_line(f, imports, cfg, scope)
             uses_field = uses_field or used
             lines.append(line)
         return lines, uses_field
@@ -1133,10 +1176,14 @@ class EntityModelGenerator:
         Without an index, only scalar/object fields are emitted (back-compat). *config* carries the FR-019 @provided-enum
         resolution; when omitted, only the non-provided shared-materialize path is reachable."""
         imports: set[str] = set()
+        scope = module_scope(entity, config if config is not None else GenConfig(out_dir=""))
         base_class = "BaseModel"
+        base_import: str | None = None
         if entity.super_data is not None:
-            base_class = model_class_name(entity.super_data)
-            imports.add(model_import(entity.super_data))
+            sup = entity.super_data
+            base_class = local_name(sup)
+            base_import = scope.import_object(sup)
+            imports.add(base_import)
 
         lines, uses_field = self._emit_field_lines(entity, imports, object_index, config)
 
@@ -1225,9 +1272,7 @@ class EntityModelGenerator:
             imports.add("import re")
         deferred = self._deferred_nav_imports(
             entity, object_index, config if config is not None else GenConfig(out_dir="")
-        ) - {
-            f"from .{base_class} import {base_class}"
-        }
+        ) - ({base_import} if base_import is not None else set())
         deferred &= imports
         extra_imports = sorted(imports - deferred)
         if deferred:
@@ -1245,7 +1290,7 @@ class EntityModelGenerator:
             parts += [
                 "",
                 "",
-                f"class {model_class_name(entity)}Create(BaseModel):",
+                f"class {entity.name}Create(BaseModel):",
                 '    """GENERATED — CREATE input: auto-gen PK / @mutability readOnly omitted '
                 '(writeOnce is settable here, once); @default/@autoSet optional; present '
                 'values validated (FR-036)."""',
@@ -1278,10 +1323,11 @@ class EntityModelGenerator:
         """
         if object_index is None:
             return set()
+        scope = module_scope(entity, cfg)
         return {
-            f"from .{d.target_entity} import {d.target_entity}"
+            scope.import_named(d.target_package, d.target_entity, d.target_local_name)
             for d in resolve_m2m_descriptors(entity, object_index, cfg.column_naming)
-            if d.target_entity != entity.name
+            if not (d.target_entity == entity.name and d.target_package == pkg_of(entity))
         }
 
     def _render_shared_enums_module(self, entities: list[MetaObject]) -> EmittedFile | None:
@@ -1320,12 +1366,16 @@ class EntityModelGenerator:
 
     def generate(self, ctx: GenContext) -> list[EmittedFile]:
         index = build_object_index(ctx.entities)
-        files = per_entity(
-            lambda e, _c: EmittedFile(
-                path=f"{model_class_name(e)}.py",
-                content=ruff_format(self.render_entity_model(e, index, ctx.config)),
+
+        def emit(e: MetaObject, c: GenContext) -> EmittedFile:
+            claim_module(c.claims, c.config, pkg_of(e), e.name, e.resolution_key())
+            claim_local_name(c.claims, e)
+            return EmittedFile(
+                path=output_path(c.config.output_layout, pkg_of(e), f"{e.name}.py"),
+                content=ruff_format(self.render_entity_model(e, index, c.config)),
             )
-        )(ctx)
+
+        files = per_entity(emit)(ctx)
         matched = [e for e in ctx.entities if ctx.matches(e)]
         enums_module = self._render_shared_enums_module(matched)
         if enums_module is not None:

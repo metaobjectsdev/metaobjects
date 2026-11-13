@@ -29,6 +29,7 @@ from pathlib import Path
 import yaml  # type: ignore[import-untyped]  # PyYAML ships no type stubs
 
 from metaobjects.codegen.config import DEFAULT_API_PREFIX
+from metaobjects.codegen.import_path import OUTPUT_LAYOUT_FLAT, OUTPUT_LAYOUTS
 from metaobjects.naming import removed_naming_source_message
 from metaobjects.source.yaml_core_schema import safe_load_core
 
@@ -56,7 +57,7 @@ _API_PREFIX_RE = re.compile(r"/[A-Za-z0-9._/-]*")
 #: schema by ``test_schema_and_loader_accept_EXACTLY_the_same_keys``.
 TOP_LEVEL_KEYS: tuple[str, ...] = (
     "metadata", "providers", "libraries", "targets", "requirementTests", "apiDocs",
-    "templates", "apiPrefix",
+    "templates", "apiPrefix", "outputLayout",
 )
 
 
@@ -207,6 +208,11 @@ class ProjectConfig:
     #: ``apiPrefix``: the path generated routers mount under, and the api docs name. Same key
     #: as the TypeScript config; here the default is ``/api`` and ``""`` mounts at the root.
     api_prefix: str = DEFAULT_API_PREFIX
+    #: ``outputLayout``: ``flat`` (the default; every generated module in the out dir) or
+    #: ``package`` (a per-object module lands in a subpackage directory keyed by its metadata
+    #: package, ``acme::alpha`` -> ``acme/alpha/``). Same key and values as the TypeScript
+    #: config. ``metaobjects init`` writes ``package`` for a new project.
+    output_layout: str = OUTPUT_LAYOUT_FLAT
 
     def metadata_dir(self) -> str:
         """The metadata dir resolved against ``config_dir`` (absolute path string)."""
@@ -478,6 +484,13 @@ def load_project_config(path: Path) -> ProjectConfig:
         )
     api_prefix = api_prefix.rstrip("/")
 
+    output_layout = raw.get("outputLayout", OUTPUT_LAYOUT_FLAT)
+    if output_layout not in OUTPUT_LAYOUTS:
+        raise ConfigError(
+            f"{path}: 'outputLayout' must be one of {', '.join(OUTPUT_LAYOUTS)}; "
+            f"got {output_layout!r}."
+        )
+
     return ProjectConfig(
         config_dir=path.parent.resolve(),
         metadata=metadata,
@@ -490,4 +503,5 @@ def load_project_config(path: Path) -> ProjectConfig:
         legacy_docs=legacy_docs,
         templates=templates,
         api_prefix=api_prefix,
+        output_layout=output_layout,
     )

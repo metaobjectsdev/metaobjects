@@ -36,7 +36,7 @@ import {
   DB_COLUMN_TYPE_JSONB,
 } from "@metaobjectsdev/metadata";
 import { variableNameFromEntity, toPascalCase } from "../naming.js";
-import { valueObjectModuleSpecifier } from "../import-path.js";
+import { valueObjectFieldImport } from "../import-path.js";
 import { stripPackage } from "@metaobjectsdev/metadata";
 import { enumValues } from "../enum-meta.js";
 import { sharedEnumZodConstName } from "./enums-file.js";
@@ -307,24 +307,19 @@ function valueObjectFieldType(entity: MetaObject, field: MetaField, ctx?: Render
   if (field.subType === FIELD_SUBTYPE_OBJECT) {
     const ref = field.attr(FIELD_ATTR_OBJECT_REF);
     if (typeof ref === "string" && ref.length > 0) {
-      // @objectRef may be authored fully-qualified (acme::sales::Brief) or bare.
-      // ADR-0044/#228 — the referenced interface is named by its EMITTED name
-      // (bare when unique in the run, package-qualified on a cross-package
-      // short-name collision), resolved package-locally from the FIELD's declaring
-      // package. The import MODULE is resolved through the shared
-      // layout/package/extStyle-aware helper (the SAME one the Zod schema +
-      // Drizzle .$type<> use) so all three agree. Without a ctx (bare unit-test
-      // calls) fall back to the bare name + flat same-dir specifier.
-      const entityPkg = effectivePackage(entity);
-      const refName = ctx ? ctx.resolveValueObjectName(field) : stripPackage(ref);
-      const moduleSpec = ctx
-        ? valueObjectModuleSpecifier(refName, ctx.packageOf, entityPkg, ctx.outputLayout, ctx.extStyle)
-        : `./${refName}.js`;
+      // @objectRef may be authored fully-qualified (acme::sales::Brief) or bare. The
+      // referenced interface is the bound value object's, imported under its local name
+      // (aliased when another object shares the short name) through the
+      // shared layout/package/extStyle-aware helper the Zod schema + Drizzle .$type<>
+      // use, so all three agree. Without a ctx (bare unit-test calls) fall back to the
+      // bare name + flat same-dir specifier.
       // `t:` — the interface is a TYPE. Without it ts-poet merges it with the Zod
       // `<Ref>InsertSchema` VALUE from the same module into one value import, which is
       // TS1484 under `verbatimModuleSyntax` (on in a fresh `tsc --init`). Same rule as
       // the shared-enum branch below (#341).
-      const refImp = imp(`t:${refName}@${moduleSpec}`);
+      const refImp = ctx
+        ? valueObjectFieldImport(ctx, field, effectivePackage(entity), "", true)
+        : imp(`t:${stripPackage(ref)}@./${stripPackage(ref)}.js`);
       return field.resolvedIsArray() ? code`${refImp}[]` : code`${refImp}`;
     }
     return field.resolvedIsArray() ? code`unknown[]` : code`unknown`;
@@ -334,12 +329,9 @@ function valueObjectFieldType(entity: MetaObject, field: MetaField, ctx?: Render
   if (field.subType === FIELD_SUBTYPE_MAP) {
     const ref = field.attr(FIELD_ATTR_OBJECT_REF);
     if (typeof ref === "string" && ref.length > 0) {
-      const entityPkg = effectivePackage(entity);
-      const refName = ctx ? ctx.resolveValueObjectName(field) : stripPackage(ref);
-      const moduleSpec = ctx
-        ? valueObjectModuleSpecifier(refName, ctx.packageOf, entityPkg, ctx.outputLayout, ctx.extStyle)
-        : `./${refName}.js`;
-      const refImp = imp(`t:${refName}@${moduleSpec}`);
+      const refImp = ctx
+        ? valueObjectFieldImport(ctx, field, effectivePackage(entity), "", true)
+        : imp(`t:${stripPackage(ref)}@./${stripPackage(ref)}.js`);
       return code`Record<string, ${refImp}>`;
     }
     const vt = field.attr(FIELD_ATTR_VALUE_TYPE);

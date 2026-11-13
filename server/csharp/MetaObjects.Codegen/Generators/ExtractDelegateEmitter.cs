@@ -74,7 +74,7 @@ public static class ExtractDelegateEmitter
 
     /// <summary>The mapper-method name for a value object (<c>From&lt;TypeName&gt;Extracted</c>).</summary>
     private static string MapperName(MetaData vo, MetaData root) =>
-        $"From{ValueObjectNames.TypeName(vo, root)}Extracted";
+        $"From{ValueObjectNames.MemberKey(vo, root)}Extracted";
 
     /// <summary>Every value object a mirror of <paramref name="vo"/> reaches — itself, then each
     /// nested <c>@objectRef</c> target, depth-first — deduped by FQN (cycle-safe).</summary>
@@ -170,7 +170,7 @@ public static class ExtractDelegateEmitter
         foreach (var f in Fr010FieldMapping.Fields(vo))
             sb.AppendLine($"    public {NestedMirrorType(f, root, config, ns)} {f.Name} {{ get; init; }}");
         sb.AppendLine("}");
-        return new EmittedFile($"{name}.g.cs", sb.ToString());
+        return new EmittedFile(OutputPaths.Of(vo, config, $"{name}.g.cs"), sb.ToString());
     }
 
     // =========================================================================

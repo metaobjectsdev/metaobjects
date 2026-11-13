@@ -29,6 +29,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { runGen, defineConfig } from "@metaobjectsdev/codegen-ts";
+import { indexEmitted, type OutputLayout } from "./output-layout.ts";
 import { entityFile, routesFile } from "@metaobjectsdev/test-generators";
 import pg from "pg";
 import { executeSql } from "./postgres-sql.ts";
@@ -60,6 +61,7 @@ export interface GeneratedServerHandle {
 export async function startGeneratedServer(
   connectionUri: string,
   metaPath: string,
+  outputLayout: OutputLayout = "flat",
 ): Promise<GeneratedServerHandle> {
   // Emit INSIDE the package tree (under .gen-tmp/, gitignored) rather than the
   // OS tmpdir. The emitted route imports the bare specifier
@@ -84,6 +86,7 @@ export async function startGeneratedServer(
     config: defineConfig({
       outDir: tmp,
       extStyle: "none",
+      outputLayout,
       dbImport: "./db",
       dialect: "postgres",
       apiPrefix: "/api",
@@ -91,6 +94,7 @@ export async function startGeneratedServer(
     }),
     metadata: root,
   });
+  const emitted = indexEmitted(tmp, lr.files, outputLayout);
   if (lr.warnings.length > 0) {
     throw new Error(`codegen produced warnings: ${lr.warnings.join("; ")}`);
   }
@@ -133,7 +137,7 @@ export const db = drizzle(pool);
   );
 
   // 4. Import the EMITTED route file unmodified and mount it.
-  const routeUrl = pathToFileURL(join(tmp, "Author.routes.ts")).href;
+  const routeUrl = pathToFileURL(emitted.locate("Author.routes.ts")).href;
   const mod = (await import(routeUrl)) as { authorRoutes: (f: FastifyInstance) => Promise<void> };
   const dbMod = (await import(pathToFileURL(join(tmp, "db.ts")).href)) as { pool: pg.Pool };
 

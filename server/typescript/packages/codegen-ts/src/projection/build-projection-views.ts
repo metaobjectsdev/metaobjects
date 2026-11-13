@@ -34,7 +34,7 @@ import type { ReportViewSpec } from "./report-spec.js";
 import type { ReportDialect } from "./time-sql.js";
 import { isReport } from "../source-detect.js";
 import { emitViewDdl } from "./view-ddl-emit.js";
-import type { JoinNode, ViewSpec } from "./view-spec.js";
+import type { JoinNode, SelectColumn, ViewExprNode, ViewFilterClause, ViewSpec } from "./view-spec.js";
 import type { ColumnNamingStrategy } from "../metaobjects-config.js";
 
 /** Structurally matches migrate-ts's `ExpectedViewInput` (name + body sql + optional schema). */
@@ -87,6 +87,7 @@ export function buildProjectionViews(
   // one (#244). Keying by bare name let a cross-package same-name entity overwrite the map.
   const joinTables: Record<string, string> = {};
   for (const obj of root.objects()) joinTables[obj.resolutionKey()] = resolveTableName(obj);
+  const tableSchemas = tableSchemasOf(root);
 
   const out: ExpectedView[] = [];
   // A view-backed object.report satisfies isProjection (a read-only source, no writable one)
@@ -109,7 +110,7 @@ export function buildProjectionViews(
     // for the whole model). Codegen already treats this shape as intended in
     // projection-decl.ts ("standalone views hand-author their SQL").
     if (!viewIsDerived(projection)) continue;
-    emitViewFor(projection, root, joinTables, dialect, columnNamingStrategy, out);
+    emitViewFor(projection, root, joinTables, tableSchemas, dialect, columnNamingStrategy, out);
   }
 
   // #213 hole 2 — a write-through ENTITY (FR-024 §7 read-view: a writable table
@@ -131,12 +132,19 @@ export function buildProjectionViews(
       emitSqlView(entity, cls.source, root, joinTables, out);
       continue;
     }
-    emitViewFor(entity, root, joinTables, dialect, columnNamingStrategy, out);
+    emitViewFor(entity, root, joinTables, tableSchemas, dialect, columnNamingStrategy, out);
   }
 
   // FR-044 — the view of every view-backed object.report, appended AFTER the two loops
   // above so the views a report-free model returns keep their order.
   out.push(...buildReportViews(root, { dialect: opts.dialect }));
+  return out;
+}
+
+/** Every object's declared `@schema`, keyed like `joinTables` (FQN); Postgres qualifies a relation with it when declared. */
+function tableSchemasOf(root: MetaRoot): Record<string, string | undefined> {
+  const out: Record<string, string | undefined> = {};
+  for (const obj of root.objects()) out[obj.resolutionKey()] = resolveTableSchema(obj);
   return out;
 }
 
@@ -166,6 +174,7 @@ export function buildReportViews(root: MetaData, opts: BuildReportViewsOptions):
   const columnNamingStrategy = physicalNamingOf(root).columns;
   const joinTables: Record<string, string> = {};
   for (const obj of root.objects()) joinTables[obj.resolutionKey()] = resolveTableName(obj);
+  const tableSchemas = tableSchemasOf(root);
 
   const out: ExpectedView[] = [];
   for (const report of root.objects().filter(isReport)) {
@@ -192,7 +201,7 @@ export function buildReportViews(root: MetaData, opts: BuildReportViewsOptions):
     const schema = resolveTableSchema(report);
     out.push({
       name: spec.viewName,
-      sql: emitReportViewDdl(spec, { dialect, baseTableName, joinTables, bodyOnly: true }),
+      sql: emitReportViewDdl(spec, { dialect, baseTableName, joinTables, tableSchemas, bodyOnly: true }),
       dependsOn: reportDependsOn(spec, baseTableName, joinTables),
       fqn: report.resolutionKey(),
       ...(schema !== undefined ? { schema } : {}),
@@ -260,6 +269,7 @@ function emitViewFor(
   host: MetaObject,
   root: MetaRoot,
   joinTables: Record<string, string>,
+  tableSchemas: Readonly<Record<string, string | undefined>>,
   dialect: "postgres" | "sqlite",
   columnNamingStrategy: ColumnNamingStrategy,
   out: ExpectedView[],
@@ -267,7 +277,7 @@ function emitViewFor(
   const spec = extractViewSpec(host, root, { columnNamingStrategy });
   const baseTableName = joinTables[spec.joinTree.baseEntity];
   if (!baseTableName) return; // unresolved base — skip (loader/codegen surface the error elsewhere)
-  const body = emitViewDdl(spec, { dialect, baseTableName, joinTables, bodyOnly: true });
+  const body = emitViewDdl(spec, { dialect, baseTableName, joinTables, tableSchemas, bodyOnly: true });
   const schema = resolveTableSchema(host);
   const dependsOn = collectDependsOn(spec, baseTableName, joinTables);
   out.push({
@@ -429,11 +439,41 @@ function collectDependsOn(
     for (const child of node.children) walk(child);
   };
   for (const j of spec.joinTree.joins) walk(j);
-  for (const c of spec.selectSpec.columns) {
-    if (c.kind === "first") {
-      const t = joinTables[c.childEntity];
-      if (t) tables.add(t);
+  // An origin.first subquery reads its tables, whether it is a column or inlined in an expression or filter.
+  const first = (c: Extract<SelectColumn, { kind: "first" }>): void => {
+    const t = joinTables[c.childEntity];
+    if (t) tables.add(t);
+    // Every table the subquery joins along its @via.
+    for (const j of c.innerJoins ?? []) {
+      const jt = joinTables[j.entity];
+      if (jt) tables.add(jt);
     }
+    if (c.filter !== undefined) clause(c.filter);
+  };
+  const expr = (e: ViewExprNode): void => {
+    switch (e.kind) {
+      case "first": first(e.column); return;
+      case "cmp": expr(e.left); expr(e.right); return;
+      case "nullTest": case "not": expr(e.arg); return;
+      case "logic": case "coalesce": e.args.forEach(expr); return;
+      case "case":
+        if (e.operand !== undefined) expr(e.operand);
+        for (const w of e.whens) { expr(w.when); expr(w.then); }
+        if (e.else !== undefined) expr(e.else);
+        return;
+      default: return;
+    }
+  };
+  const clause = (f: ViewFilterClause): void => {
+    if (f.kind === "and" || f.kind === "or") f.clauses.forEach(clause);
+    else if (f.kind === "exprCmp") expr(f.expr);
+  };
+  for (const c of spec.selectSpec.columns) {
+    if (c.kind === "first") first(c);
+    else if (c.kind === "computed") expr(c.expr);
+    else if (c.kind === "aggregate" && c.filter !== undefined) clause(c.filter);
+    else if (c.kind === "predicateAgg") clause(c.pred);
   }
+  if (spec.where !== undefined) clause(spec.where);
   return [...tables];
 }

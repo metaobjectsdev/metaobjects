@@ -207,7 +207,7 @@ CREATE VIEW "v_program_minutes" AS
     MAX(w."durationMinutes") AS "maxMinutes",
     CAST(COUNT(CASE WHEN w."durationMinutes" >= 60 THEN w."id" END) AS REAL) / NULLIF(COUNT(w."id"), 0) AS "longShare"
   FROM "weeks" w
-  INNER JOIN "programs" p ON p."id" = w."programId"
+  LEFT OUTER JOIN "programs" p ON p."id" = w."programId"
   GROUP BY w."programId", p."title";
 
 CREATE VIEW "v_fitness_totals" AS
@@ -386,7 +386,7 @@ CREATE VIEW "v_week_shapes" AS
     COUNT(CASE WHEN (w."durationMinutes" > 30 AND w."durationMinutes" <= 60) THEN w."id" END) AS "midWeeks",
     SUM(CASE WHEN (w."durationMinutes" >= 60 AND w."label" LIKE 'W%') THEN w."durationMinutes" END) AS "longWMinutes"
   FROM "weeks" w
-  INNER JOIN "programs" p ON p."id" = w."programId"
+  LEFT OUTER JOIN "programs" p ON p."id" = w."programId"
   GROUP BY p."title";
 
 CREATE VIEW "v_sessions_by_program" AS
@@ -396,8 +396,8 @@ CREATE VIEW "v_sessions_by_program" AS
     COUNT(s."id") AS "sessions",
     SUM(s."minutes") AS "sessionMinutes"
   FROM "sessions" s
-  INNER JOIN "weeks" w ON w."id" = s."weekId"
-  INNER JOIN "programs" p ON p."id" = w."programId"
+  LEFT OUTER JOIN "weeks" w ON w."id" = s."weekId"
+  LEFT OUTER JOIN "programs" p ON p."id" = w."programId"
   GROUP BY p."title", w."id";
 
 CREATE VIEW "v_program_sessions" AS
@@ -434,7 +434,7 @@ CREATE VIEW "v_gadget_events_by_label" AS
     g0."gadget_code" AS "gadgetLabel",
     COUNT(g."id") AS "gadgetEvents"
   FROM "gadget_events" g
-  INNER JOIN "gadgets" g0 ON g0."id" = g."gadgetId"
+  LEFT OUTER JOIN "gadgets" g0 ON g0."id" = g."gadgetId"
   GROUP BY g0."gadget_code";
 
 CREATE VIEW "v_entry_totals" AS

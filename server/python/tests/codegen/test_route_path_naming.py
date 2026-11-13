@@ -16,6 +16,8 @@ from pathlib import Path
 
 import pytest
 
+from metaobjects.meta.core.object.meta_object import MetaObject
+from metaobjects.shared.base_types import TYPE_OBJECT
 from metaobjects.apidocs.naming import pluralize, reverse_finder_fn, route_path, snake_case
 
 _NAMING_CONFORMANCE_FIXTURE = (
@@ -127,7 +129,7 @@ def test_pluralize_documented_known_miss_lens_reads_as_already_plural() -> None:
 
 
 def test_reverse_finder_fn_does_not_double_pluralize_an_already_plural_source_entity() -> None:
-    assert reverse_finder_fn("ProgramPurchaseStats", "programId") == (
+    assert reverse_finder_fn(MetaObject(TYPE_OBJECT, "entity", "ProgramPurchaseStats"), "programId") == (
         "find_program_purchase_stats_by_program"
     )
 

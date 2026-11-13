@@ -1,7 +1,7 @@
 // FR-044 Plan 2 — lower an `object.report` plus its shape to a dialect-neutral
 // ReportViewSpec (contract Table F). Dimension joins reuse the projection walk
-// (`walkViaPath` / `pathsToJoins`), so hop resolution, ambiguity errors and the #209
-// join type are one implementation. The renderer (report-ddl-emit) turns the spec to SQL.
+// (`walkViaPath` / `pathsToJoins`), so hop resolution, ambiguity errors and the
+// LEFT OUTER join are one implementation. The renderer (report-ddl-emit) turns the spec to SQL.
 
 import {
   AGG_SUM,
@@ -167,12 +167,6 @@ function spinePathOf(
   return path;
 }
 
-/** Table D: under `@spine` every join is LEFT OUTER (the #209 INNER rule is not applied), so no
- *  join can drop a spine row. */
-function allLeft(nodes: readonly JoinNode[]): JoinNode[] {
-  return nodes.map((n) => ({ ...n, joinType: "left", children: allLeft(n.children) }));
-}
-
 export function extractReportSpec(report: MetaObject, root: MetaRoot, ctx: ExtractContext): ReportViewSpec {
   const shape = reportShape(report, root);
   const from = shape.from;
@@ -236,7 +230,8 @@ export function extractReportSpec(report: MetaObject, root: MetaRoot, ctx: Extra
   // moves. The emitter still checks the chain is single (spineFrom) rather than trust the order.
   const dimensionPaths = [...pathOf.values()];
   const tree = pathsToJoins(spinePath === undefined ? dimensionPaths : [spinePath, ...dimensionPaths], used);
-  const joins = spinePath === undefined ? tree : allLeft(tree);
+  // Every join is LEFT OUTER, with or without @spine.
+  const joins = tree;
 
   // R13: a derived measure reads a listed attribute dimension through the column the view groups by.
   const dimensionRefs = new Map<string, string>();

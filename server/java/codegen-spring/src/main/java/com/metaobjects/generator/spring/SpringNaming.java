@@ -205,6 +205,11 @@ public final class SpringNaming {
         return "/api/" + collectionSegment(shortName);
     }
 
+    /** As {@link #controllerPath(String)}, honouring {@code @collectionName} and {@code naming.collections}. */
+    public static String controllerPath(com.metaobjects.object.MetaObject obj) {
+        return "/api/" + RouteNaming.collectionSegment(obj);
+    }
+
     /**
      * Output package for TEMPLATE-keyed artifacts: {@code pkg + ".prompts"}, or the root
      * package when the template has no package. Shared verbatim by the render-helper /

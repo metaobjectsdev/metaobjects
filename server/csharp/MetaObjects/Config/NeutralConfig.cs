@@ -75,6 +75,19 @@ public sealed class NeutralConfig
     /// <summary>`migrate.dialect`: the SQL dialect the project's schema is built for, or null.</summary>
     public string? MigrateDialect { get; private init; }
 
+    /// `csharp.outputLayout`: <c>"flat"</c> (the default, and what an absent key reads as) or
+    /// <c>"package"</c>, where each per-object generator writes under the object's metadata package.
+    public string OutputLayout { get; private init; } = "flat";
+
+    /// `csharp.packageNamespaces`: <c>true</c> binds each packaged type to its metadata package's
+    /// namespace even when `csharp.namespace` is set; an object maps packages to namespaces
+    /// explicitly. Absent or <c>false</c> keeps the earlier rule (a configured namespace turns the
+    /// per-package derivation off).
+    public PackageNamespaceSetting PackageNamespaces { get; private init; } = PackageNamespaceSetting.Off;
+
+    /// <summary><c>migrate.checks.skipRedundant</c>: leave out the CHECKs a column's own type already enforces.</summary>
+    public bool MigrateSkipRedundantChecks { get; private init; }
+
     /// <summary>
     /// FR-023 — <c>requirements.inherit</c>: the dependencies whose requirements this project takes on
     /// as its own ledger (<see cref="ImportScope.InLedger"/>). Empty when absent.
@@ -143,6 +156,12 @@ public sealed class NeutralConfig
     /// raise-don't-degrade behavior is), so callers should match on message,
     /// not code, for this path.
     public static NeutralConfig? Read(string configDir) => Read(configDir, validateNaming: true);
+
+    /// `migrate.checks.skipRedundant`, as the TypeScript `meta migrate` reads it; false when absent or not a boolean.
+    private static bool ReadMigrateSkipRedundant(JsonElement root) =>
+        root.TryGetProperty("migrate", out var migrate) && migrate.ValueKind == JsonValueKind.Object
+        && migrate.TryGetProperty("checks", out var checks) && checks.ValueKind == JsonValueKind.Object
+        && checks.TryGetProperty("skipRedundant", out var skip) && skip.ValueKind == JsonValueKind.True;
 
     /// `migrate.dialect`, as the TypeScript `meta migrate` reads it; null when absent or not a string.
     private static string? ReadMigrateDialect(JsonElement root) =>
@@ -347,7 +366,10 @@ public sealed class NeutralConfig
             {
                 Enums = ReadEnums(root, path),
                 RequirementsInherit = ReadRequirementsInherit(root, path),
+                OutputLayout = ReadOutputLayout(root, path),
+                PackageNamespaces = ReadPackageNamespaces(root, path),
                 MigrateDialect = ReadMigrateDialect(root),
+                MigrateSkipRedundantChecks = ReadMigrateSkipRedundant(root),
             };
         }
     }
@@ -400,6 +422,41 @@ public sealed class NeutralConfig
         return list.EnumerateArray().Select(v => v.GetString()!).ToList();
     }
 
+    private static string ReadOutputLayout(JsonElement root, string path)
+    {
+        if (!root.TryGetProperty("csharp", out var block) || block.ValueKind != JsonValueKind.Object
+            || !block.TryGetProperty("outputLayout", out var v)) return "flat";
+        if (v.ValueKind != JsonValueKind.String || v.GetString() is not ("flat" or "package"))
+            throw new MetaModelException(
+                $"{path}: \"csharp.outputLayout\" must be \"flat\" or \"package\"", ErrorCode.ERR_BAD_ATTR_VALUE);
+        return v.GetString()!;
+    }
+
+    private static PackageNamespaceSetting ReadPackageNamespaces(JsonElement root, string path)
+    {
+        if (!root.TryGetProperty("csharp", out var block) || block.ValueKind != JsonValueKind.Object
+            || !block.TryGetProperty("packageNamespaces", out var v)) return PackageNamespaceSetting.Off;
+        switch (v.ValueKind)
+        {
+            case JsonValueKind.True: return new PackageNamespaceSetting(true, null);
+            case JsonValueKind.False: return PackageNamespaceSetting.Off;
+            case JsonValueKind.Object:
+                var map = new Dictionary<string, string>(StringComparer.Ordinal);
+                foreach (var e in v.EnumerateObject())
+                {
+                    if (e.Value.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(e.Value.GetString()))
+                        throw new MetaModelException(
+                            $"{path}: \"csharp.packageNamespaces.{e.Name}\" must be a non-empty namespace string", ErrorCode.ERR_BAD_ATTR_VALUE);
+                    map[e.Name] = e.Value.GetString()!;
+                }
+                return new PackageNamespaceSetting(false, map);
+            default:
+                throw new MetaModelException(
+                    $"{path}: \"csharp.packageNamespaces\" must be true, false or an object mapping packages to namespaces",
+                    ErrorCode.ERR_BAD_ATTR_VALUE);
+        }
+    }
+
     /// The `csharp` block: the C#-scoped settings `outDir`, where `dotnet meta gen` writes and
     /// `dotnet meta verify` diffs, and `namespace`, the namespace both generate under. The other
     /// ports ignore the block, as they ignore any key they do not own. An unknown key, a
@@ -415,9 +472,10 @@ public sealed class NeutralConfig
         IReadOnlyList<ProviderSpec> providers = [];
         foreach (var p in block.EnumerateObject())
         {
+            if (p.Name is "outputLayout" or "packageNamespaces") continue; // read by their own readers
             if (p.Name is not ("outDir" or "namespace" or "providers"))
                 throw new MetaModelException(
-                    $"{path}: \"csharp\" has an unknown key \"{p.Name}\" (expected \"outDir\", \"namespace\" and/or \"providers\")",
+                    $"{path}: \"csharp\" has an unknown key \"{p.Name}\" (expected \"outDir\", \"namespace\", \"providers\", \"outputLayout\" and/or \"packageNamespaces\")",
                     ErrorCode.ERR_BAD_ATTR_VALUE);
             if (p.Name == "providers")
             {
@@ -556,4 +614,12 @@ public sealed class NeutralConfig
         }
         return new WireFormat(decimals, nullMembers, durations);
     }
+}
+
+/// <summary>`csharp.packageNamespaces`: <see cref="FromMetadata"/> is the <c>true</c> form (each
+/// packaged type takes its metadata package's namespace); <see cref="Map"/> the object form (an
+/// explicit package-to-namespace mapping). Both off is the earlier rule.</summary>
+public sealed record PackageNamespaceSetting(bool FromMetadata, IReadOnlyDictionary<string, string>? Map)
+{
+    public static readonly PackageNamespaceSetting Off = new(false, null);
 }

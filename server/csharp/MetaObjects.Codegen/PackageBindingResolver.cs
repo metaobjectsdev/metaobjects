@@ -63,7 +63,13 @@ public static class PackageBindingResolver
             .Select(ns => $"using {ns};");
 
     private static PackageBindingConvention? EffectiveConvention(GenConfig config) =>
-        config.Convention ?? (config.HasNamespace ? null : DefaultConvention);
+        // The 1.2.0 rule: a configured namespace turns the convention off. With package namespaces
+        // on, a packaged type takes its package's namespace even when a namespace is configured
+        // (which then places only package-less objects and run-wide artifacts), unless the
+        // project asked for an unmapped package to land in the configured namespace.
+        config.Convention ?? (!config.HasNamespace
+            || (config.PackageNamespacesFromMetadata && config.UnmappedStrategy == UnmappedPackageStrategy.Flatten)
+            ? DefaultConvention : null);
 
     /// <summary>The metadata node's EFFECTIVE package — the file-default package captured at parse
     /// time, NOT just the node's own (rarely-set) <c>package:</c> attr. Mirrors the
@@ -85,6 +91,9 @@ public static class PackageBindingResolver
     public static IReadOnlyList<string> CrossPackageReferencedNamespaces(
         MetaObjects.Meta.MetaObject entity, MetaObjects.Meta.MetaRoot root, GenConfig config)
     {
+        // With package namespaces on, every cross-namespace reference is global::-qualified, so no
+        // using is needed.
+        if (config.PackageNamespacesFromMetadata) return [];
         var ownNs = Resolve(config, EffectivePackage(entity), entity.Name);
         var seen = new HashSet<string>(StringComparer.Ordinal);
 

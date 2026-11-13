@@ -37,6 +37,25 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
 
 ### Changed
 
+- **Breaking, TypeScript: a value object is never renamed; one claim registry refuses real
+  collisions** (amending ADR-0044 and ADR-0056). `acme::alpha::Note` is declared as `Note` in its
+  own module; the `AcmeAlphaNote` derived name, `assignEmittedNames` and its
+  `ERR_PAYLOAD_NAME_COLLISION` backstop (`naming/collision-names.ts`) are removed — the
+  entity-tier `ERR_COLLECTION_NAME_COLLISION` pre-pass (`naming/collection-name-collision.ts`)
+  stays, refusing two objects that claim one collection name —
+  and `RenderContext.valueObjectNames` and `RenderContext.packageOf` are `@deprecated` identity
+  shims for one release. Each generator claims what it emits through
+  `ctx.claim(scope, name, claimant, remedy)`: `entityFile()` and `queriesFile()` a module's type
+  and collection names in its directory, `barrel()` its re-exports, the routes generators their
+  REST segments per entry. A second claimant fails with `ERR_NAME_COLLISION` (a codegen-time code
+  declared by `@metaobjectsdev/codegen-ts`), naming both. A file that meets two same-named value
+  objects binds each under a package-qualified local alias (`import type { Note as AcmeAlphaNote }
+  from "../alpha/Note.js"`); the extract tier's mirrors and mappers are named by that alias
+  (`AcmeAlphaNoteExtracted`). `valueObjectModuleSpecifier` takes the value object's node.
+  **Upgrade note:** two same-named value objects in two packages under the flat layout (or behind
+  a barrel) now fail with the collision error; set `outputLayout: "package"` (and drop the barrel,
+  or rename one), and update imports of the old `AcmeAlphaNote` names. An owned generator copy is
+  refreshed with `meta eject --list`.
 - **Agent context routes report work to the reporting vocabulary.** The `meta init` agent guide
   and the `metaobjects-authoring` skill now send grouped totals, dashboard numbers and read-only
   report views to `object.report` (`references/declaring-reports.md`) before the `@sql` escape,
@@ -49,6 +68,12 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   lint gate), and a fresh npm install of the CLI drops from 245 MB to 151 MB of `node_modules`.
   `scripts/check-peer-ranges.ts` now fails a publishable package that requires `@biomejs/biome`
   through `dependencies` or a non-optional peer.
+
+### Deprecated
+
+- **C#: `ValueObjectNames.Names(root)`.** A value object is never renamed, so it now returns the
+  identity map (resolution key to PascalCase name) and is `[Obsolete]` for one release, matching
+  the TypeScript and Python shims. Use `ValueObjectNames.TypeName(obj, root)`.
 
 ### Fixed
 
@@ -99,13 +124,23 @@ Each item below is described in full under Added, Changed or Fixed; this list is
 - **A template that names a variable not on its payload now raises at render time** instead of
   rendering the variable as empty. Regenerate, and fix the name the error reports.
 - **C#, EF Core migrations.** The first `dotnet ef migrations add` after upgrading scaffolds the
-  indexes and comments the context now declares, and a Postgres context that declares
-  `@sequenceStart` needs `UseIdentityStartMigrations()` registered after `UseNpgsql(...)`. A
-  self-hosted codegen runner sets `GenConfig.Dialect`. A nullable enum with `@default` now starts
-  at its default instead of NULL. See the four C# upgrade notes under Changed.
-- **`@sequenceStart` records a start; in 1.3.0 it does not move an existing counter.** A later
-  release is planned to move a counter that sits below the declared start forward to it, never
-  backward.
+  indexes, comments and CHECK constraints the context now declares. A Postgres context gets
+  generated design-time services that scaffold a changed `@sequenceStart` safely; in EF's default
+  layout they need no code, and `dotnet meta gen` prints the one line to add when the migrations
+  live in another project. A self-hosted codegen runner sets `GenConfig.Dialect`. A nullable enum
+  with `@default` now starts at its default instead of NULL. See the C# upgrade notes under
+  Changed.
+- **A changed `@sequenceStart` moves an existing counter forward only.** It records the start and,
+  when the next id would be below `GREATEST(start, max(id) + 1)`, moves the counter there. It never
+  restarts and never moves a counter back.
+- **A value object is never renamed.** One that shared its short name with a value object in
+  another package used to be generated under a package-qualified name (`AcmeAlphaNote`); it now
+  keeps its own name everywhere. Two objects that would emit one name into one scope are refused
+  with `ERR_NAME_COLLISION`, naming both. Place them apart: `outputLayout: "package"` in
+  TypeScript and Python, `csharp.packageNamespaces` in C#. Java and Kotlin never renamed.
+- **`meta init` and `metaobjects init` scaffold the package output layout.** New projects get
+  `outputLayout: "package"` (one directory per metadata package); `dotnet meta init` writes the
+  matching C# keys. An existing project changes nothing: the engine default stays flat.
 - **`@dbSetName` is `@collectionName`.** The attr was never published under its first name, so
   there is no alias: a model that set `@dbSetName` in a pre-release build renames it.
 - **`metamodelVersion` is `1.3`.** Upgrade every port together.
@@ -156,12 +191,13 @@ Each item below is described in full under Added, Changed or Fixed; this list is
   `[csharp-only]`) and its JSON carries `ports`. `@objectAdapter` is the one there is.
 - **`@collectionName`, and the `naming.collections` pluralizer.** An `object.entity`,
   `object.projection` or `object.report` may name its collection in its own casing
-  (`"@collectionName": "CaseHistory"`); it need not be a grammatical plural. In C# and TypeScript it
+  (`"@collectionName": "CaseHistory"`); it need not be a grammatical plural. In every port it
   names the REST collection segment, snake_cased with an acronym-aware split (`FAQs` serves
-  `/faqs`, shared by `fixtures/naming-conformance/collection-segments.json`), and the reverse
-  finders; in C# also the DbSet property (in place of the derived plural, which the api reference
-  reads through it), and in TypeScript the list function, the list hook and the Drizzle table
-  variable. Two objects whose collection names meet are refused by name. A project that declares
+  `/faqs`, shared by `fixtures/naming-conformance/collection-segments.json`, which every port
+  runs), and the api reference and report export follow it. In C#, TypeScript and Python it also
+  names the reverse finders (Java and Kotlin name a finder by its foreign-key field); in C# the
+  DbSet property (in place of the derived plural, which the api reference reads through it), and
+  in TypeScript the list function, the list hook and the Drizzle table variable. Two objects whose collection names meet are refused by name. A project that declares
   neither the attr nor `naming.collections` keeps every generated name and URL. Absent, the project's
   pluralizer derives the name: `"naming": { "collections": "standard" }` (the default) or `"none"`
   in `.metaobjects/config.json`, or one the application registers (`registerPluralizer` in
@@ -226,11 +262,17 @@ Each item below is described in full under Added, Changed or Fixed; this list is
 - **A view the lowering cannot express is refused, not shortened.** The TypeScript view extractor
   skipped any origin it could not lower, so a projection loaded clean and `meta migrate` created a
   view missing a column its generated type declares. Each such shape now fails, naming the
-  projection and the field: an origin `@segment`, a base-row operand in an origin `@filter`, a
-  computed node the lowering does not support, and an unknown origin or aggregate. A projection
-  that extends another projection now fails too, naming the projection: the lowering reads only
-  the fields and `@filter` declared on the projection itself, so the view it created dropped the
-  inherited columns and the inherited row gate.
+  projection and the field: an aggregate-derived entity field read where a row-level value is
+  needed, a computed reference cycle, a relative date on a field that is not temporal, and an
+  unknown origin or aggregate.
+- **The view vocabulary lowers to SQL.** `meta migrate` builds every port's views, and it now
+  writes the shapes the loaders accept: an entity's derived `origin.first` / `origin.computed`
+  field is inlined wherever a projection reaches it (a `@filter` key or path, a passthrough
+  `@from`, a field bound with `extends`); an origin's `@segment` is ANDed with its `@filter`;
+  a base-row operand compares in place, with `isDistinctFrom` / `isNotDistinctFrom` written as
+  `IS [NOT] DISTINCT FROM` on Postgres and `IS NOT` / `IS` on SQLite; relative dates lower in
+  projection and origin filters; searched and simple `case` and a `now` leaf lower in a computed
+  expression, and a computed field may read the projection's other fields.
 - **A reference over a flattened member reads the member's column.** A reference whose `@fields`
   names a member of a flattened value object (`"address.countryId"`) now resolves to that member's
   real column in the foreign key `meta migrate` emits, a view's join, a passthrough `@from` onto
@@ -495,12 +537,13 @@ Each item below is described in full under Added, Changed or Fixed; this list is
   a table rename. On Postgres `meta migrate` creates
   `GENERATED BY DEFAULT AS IDENTITY (SEQUENCE NAME "…" START WITH n)`, reads the live sequence
   back from the catalog, and alters one whose declared start or name differs in place: a new
-  start is recorded (`ALTER SEQUENCE … START WITH n`), and in 1.3.0 the existing counter is not
-  moved, because live rows hold the ids it handed out; a new name is a rename. Every port gives
-  `@sequenceStart` this one meaning, the first value of a fresh sequence; the persistence
-  migration scenario `sequence-start-change-keeps-counter` pins it on live Postgres. A later
-  release is planned to strengthen this to a forward-only move (a counter below the declared
-  start moves up to it, never down), so do not build on the counter staying where it is. Only what
+  start is recorded (`ALTER SEQUENCE … START WITH n`) and the counter moves forward only, to
+  `GREATEST(n, max(id) + 1)` when it sits below that, never back and never by `RESTART`, because
+  live rows hold the ids it handed out; a new name is a rename. The persistence migration scenarios
+  `sequence-start-change-moves-counter-forward` and `sequence-start-change-below-max-id` pin both
+  cases on live Postgres. The Drizzle schema template carries the start and name in the identity
+  column's options, the C# context and the Kotlin Exposed table carry them too, and Java and
+  Python, which write no DDL, leave schema to `meta migrate`. Only what
   the model declares is compared, on the live, shadow and snapshot paths alike, so a model that
   declares neither sees no new change and writes the same SQL and snapshots. Every port
   registers both attributes and refuses either without `@generation: increment`
@@ -637,8 +680,52 @@ Each item below is described in full under Added, Changed or Fixed; this list is
   and Kotlin) and `reset_naming_strategies_for_testing()` (Python) forget the strategies the
   application registered and keep the built-ins.
 
+- **C#: the generated EF context declares the CHECK constraints `meta migrate` creates**, with the
+  same names and expression text: every scalar `field.enum` and every validator that can carry one
+  (`numeric`, `length`, `regex`, `comparison`, `requiredWhen`, `presentIff`, `atLeastOne`,
+  `exactlyOne`), with `@constraintName` and `@condition`. They are declared when `migrate.dialect` is
+  `postgres`, `sqlite` or `d1`, and `migrate.checks.skipRedundant` is followed. A new shared corpus,
+  `fixtures/check-constraint-conformance/`, pins the names and text per dialect; `meta migrate` is
+  its reference, and the C# context passes the same files (and creates them on live Postgres).
+- **C#: a value object stored as JSON carries its comment into the database.** Its `@description`
+  (else its value object's) is an owned-type annotation, and the generated design-time services
+  scaffold it as `COMMENT ON COLUMN`, Up and Down; a change to that comment alone is a pending model
+  change, so `has-pending-model-changes` and `migrations add` see it. Off Postgres the run warns.
+- **C#: the package output layout and per-package namespaces, as opt-ins.** `csharp.outputLayout:
+  "package"` in `.metaobjects/config.json` writes each per-object file under its metadata package
+  (`acme::blog::Author` is `acme/blog/Author.g.cs`), and each shared enum becomes its own
+  `<package>/<Enum>.g.cs`. `csharp.packageNamespaces: true` puts each packaged type in its
+  package's namespace even when `csharp.namespace` is set (an object maps packages explicitly), and
+  every reference across namespaces is written `global::`-qualified. `dotnet meta init` writes
+  both for a new project; a project that sets neither gets byte-identical output
+  ([#546](https://github.com/metaobjectsdev/metaobjects/issues/546)).
+- **Python: the package output layout.** `outputLayout: "package"` in `metaobjects.config.yaml`
+  (`GenConfig(output_layout=...)` for a self-hosted run) writes each object in the directory of its
+  metadata package (`acme::blog::Author` is `generated/acme/blog/Author.py`), with relative imports
+  and package `__init__.py` files. The default stays flat. Two objects that would generate one module
+  in one directory are refused with `ERR_NAME_COLLISION`, naming both. So is a tree Python could not
+  import: a package directory beside a module of the same name (a top-level package `enums` would
+  shadow the shared `enums.py`), and a package segment that is not a Python identifier (`my-co`)
+  ([#546](https://github.com/metaobjectsdev/metaobjects/issues/546)).
+- **Java and Kotlin: output paths keyed by metadata package, with a refusal.** Every per-object file
+  already landed in the directory of its metadata package; two metadata packages that would land in
+  one directory (a case-only difference, or `a.b` beside `a::b`) are now refused before any
+  generator runs, with `ERR_NAME_COLLISION` naming both objects, instead of one file overwriting the
+  other. Tests pin that two same-named objects in two packages are two files
+  ([#546](https://github.com/metaobjectsdev/metaobjects/issues/546)).
+- **Kotlin: Exposed tables begin at `@sequenceStart`.** An increment key that declares
+  `@sequenceStart` or `@sequenceName` is `autoIncrement(Sequence("<name>", startWith = n))` on both
+  Exposed lines, so a table Exposed creates begins at the start; pinned on live Postgres
+  ([#544](https://github.com/metaobjectsdev/metaobjects/issues/544)).
+
 ### Documentation
 
+- **ADR-0015 Amendment 1: EF Core Migrations is a supported second C# path.** `meta migrate` stays
+  the reference engine; the EF context is held to it by the shared CHECK corpus and the identity
+  start rule.
+- **ADR-0044 Amendment 1 and ADR-0056 Amendment 2: a value object is never renamed.** The
+  package-qualified collision name is gone in every port; one claim registry per run refuses a real
+  clash with `ERR_NAME_COLLISION`.
 - **Index names and list-hook names, corrected.** The authoring reference's index examples are
   table-scoped (`userByEmail`, not `byEmail`) and say an index name is schema-wide, so a repeated
   one fails `meta migrate` with `ERR_DUPLICATE_SQL_NAME`. The generated list hook is
@@ -667,6 +754,40 @@ Each item below is described in full under Added, Changed or Fixed; this list is
   fields.
 
 ### Changed
+
+- **`meta init` and `metaobjects init` write `outputLayout: "package"`.** A new project gets one
+  directory per metadata package (`acme::blog` writes `src/generated/acme/blog/Author.ts`), so two
+  objects with one name in two packages are two files. The engine default stays `flat`, so an
+  existing project changes nothing. The Mongo document-store recipe's generator follows the layout.
+- **The codegen-compile gate and the generated-server api-contract lanes run in both output
+  layouts**, flat and package, so a defect that only the non-default layout shows fails a gate.
+- **TypeScript: one claim registry for every emitted name.** A generator claims each name it
+  writes into a shared scope (a module's exported types, an output file, a barrel entry, a route)
+  through `ctx.claim(scope, name, claimant, remedy)`; a second claimant of one name in one scope is
+  refused with `ERR_NAME_COLLISION`, naming both and the remedy. A collection-name clash keeps the
+  shared-ledger code `ERR_COLLECTION_NAME_COLLISION`, checked before any generator runs. The
+  `RenderContext` members `valueObjectNames` (now the identity map) and `packageOf` are deprecated
+  and kept one release so owned generator copies keep compiling; a referencing file reads the
+  local name through `resolveValueObjectName`. Re-eject an owned copy to drop them.
+- **C#: the same claim registry, and value objects keep their names.** Each generator claims the
+  names it emits (a type per namespace, a file per output path, a DbSet per context, a route segment
+  per routes entry, a finder per class); a second claimant is refused with `ERR_NAME_COLLISION`,
+  naming both and the remedy. The package-qualified value-object rename and its
+  `ERR_PAYLOAD_NAME_COLLISION` are gone.
+- **TypeScript and Python: two shared enums with one name are `ERR_NAME_COLLISION`.** Every shared
+  enum is generated into one module under its own name, so a second `Tier` from another package
+  was dropped and its fields typed with the first one's members. The pair is now refused, naming
+  both declarations. C# with package namespaces generates each in its own namespace.
+- **A collection-name clash is `ERR_COLLECTION_NAME_COLLISION` in every port.** Java's refusal (which
+  Kotlin shares) and C#'s DbSet and route-segment refusals now lead with the shared-ledger code
+  that TypeScript and Python already raise, and name `@collectionName` as the remedy.
+- **Every join a generated view or report makes is `LEFT OUTER`.** A row whose reference is null,
+  or whose related row is missing, used to vanish from a view that inner-joined it; it now appears
+  with nulls in the joined columns. A report dimension's `required` flag is read from the model,
+  and no longer changes the join. Expect the regenerated view bodies to differ in `meta migrate`.
+- **A Postgres view qualifies a relation only when its entity declares `@schema`.** A table in the
+  default schema stays unqualified, so the view follows the connection's `search_path` as the
+  table DDL does; SQLite and MySQL view bodies are never qualified.
 
 - **Quieter `meta verify` advisories.** The anti-pattern scanner skips comment lines; it flags
   minor-unit math (`* 100`, `/ 100`, `.toFixed(2)`, `parseFloat`) only when the operand is
@@ -769,17 +890,18 @@ Each item below is described in full under Added, Changed or Fixed; this list is
   exist under other names, rename them in the database or in the metadata first. Comments re-apply
   harmlessly. A database built from the model (`EnsureCreated`, or a fresh migration chain) is
   unaffected. An `@expr` index is never an EF index; `meta migrate` creates it.
-- **C#, upgrade note: identity starts never RESTART, and need one registration call.** A Postgres
-  project's context now carries `identity.primary @sequenceStart` in its model, and every start-only
-  change — a start added, changed or removed — is written `SET START WITH n` (a removed start goes
-  back to the identity default), never `RESTART`, so the current value never moves under ids live
-  rows hold. The first migration after upgrading shows, for each table that declares a start, an
-  `AlterColumn` (or, when scaffolded through the rewrite, a `Sql("ALTER TABLE … SET START WITH n")`)
-  that records the start and changes nothing else; it is safe to apply. Register the rewrite where
-  the context is configured, after `UseNpgsql(...)`: `options.UseNpgsql(cs).UseIdentityStartMigrations()`
-  (pooled or not, in an `IDesignTimeDbContextFactory`, or in a partial context's own
-  `OnConfiguring`). A context that declares a start throws as its model is built on Npgsql without
-  it, naming the call.
+- **C#, upgrade note: identity starts never RESTART, through generated design-time services.** A
+  Postgres project's context now carries `identity.primary @sequenceStart` in its model, and a
+  generated `<Context>DesignTimeServices` makes `dotnet ef migrations add` scaffold every
+  start-only change (a start added, changed or removed) as SQL: `SET START WITH n` (a removed start
+  goes back to the identity default) and, for a declared start, a forward-only move of the counter
+  to `GREATEST(n, max(id) + 1)` when it sits below that. It never writes `RESTART`. The first
+  migration after upgrading shows that SQL for each table that declares a start; it is safe to
+  apply. EF finds the services through an `[assembly: DesignTimeServicesReference]` generated
+  beside them when the migrations live in the context's project, EF's default; for any other
+  migrations or startup project, `dotnet meta gen` warns and prints the line to add there. Nothing
+  is registered at runtime. `UseIdentityStartMigrations()` is kept as an `[Obsolete]` no-op so a
+  call to it compiles; remove it.
 - **C#, upgrade note: a self-hosted codegen runner sets `GenConfig.Dialect`.** `@sequenceStart` and
   the identity-start rewrite are emitted only when the dialect is `postgres`. `CodegenCli` reads it
   from `.metaobjects/config.json` `migrate.dialect`; a runner that builds its own `GenConfig` must
@@ -820,6 +942,34 @@ Each item below is described in full under Added, Changed or Fixed; this list is
   maps them. A default (`snake_case`) page gains the column of each multi-word field.
 
 ### Fixed
+
+- **No CHECK for a derived field.** A validator on a field that carries an `origin` (or a
+  cross-field validator naming one) made `meta migrate` emit a CHECK on a column that does not
+  exist, and `CREATE TABLE` failed. The derived field is skipped; the C# context does the same.
+- **View lowering, in TypeScript (which builds every port's views):**
+  - an origin `@filter` keeps every operator of a field clause (`{ "gte": 1, "lt": 10 }` lost
+    all but the first, so the view counted rows it should not);
+  - a projection that extends a projection outputs the inherited fields and applies the base's
+    `@filter`;
+  - a `@filter` on a base field the view does not output, or on a path of to-one hops, joins only
+    what it names;
+  - a multi-hop `origin.first` `@via` is lowered along its path, correlated on the first hop;
+  - a view over a TPH subtype, or a join onto one, is scoped by its discriminator, and an abstract
+    level by `IN` over its concrete subtypes;
+  - a Postgres view column takes its declared type (a bare `NULL` computed column, an `@convert`
+    passthrough);
+  - two aggregates through two references onto one target each read their own join.
+- **The Zod template's shared-enum import resolves in the package layout** when the owning object's
+  package is inherited from its file or root (`./enums` was one directory short).
+- **A docs page's References and identity-reference links reach the target page** when the target
+  lives in another package.
+- **An entity's derived field is not a column, in every port.** A projection-reached
+  `origin.first` / `origin.computed` on an entity with no read source is left out of table reads
+  and writes by the C# entity and DbContext, the Kotlin entity, Exposed table, repository and
+  controller, Java OMDB's mapping and Python's `ObjectManager`.
+- **C#: a reference over a member of a flattened value object** configures the foreign key on the
+  owned type instead of emitting a property EF rejects. A `field.duration` mapping names framework
+  types `global::`-qualified.
 
 - **Generated routes on Postgres answer 400, not 500, for bad uuid input.** On an entity with a
   uuid foreign key, `?search=` ran ILIKE against the uuid column (the allowlist carries it as
@@ -883,17 +1033,15 @@ Each item below is described in full under Added, Changed or Fixed; this list is
   names). A new persistence scenario, `schema-qualified-same-name`, maps `ledger_entries` and
   `archive.ledger_entries` to two entities and runs on Postgres in every port.
 - **C#: `identity.primary @sequenceStart` reaches the EF model, and no start-only change ever
-  restarts**. On Npgsql a fresh database's identity begins at `@sequenceStart`. A
-  Postgres context with an increment key gets a generated rewrite, registered with
-  `UseIdentityStartMigrations()` (see Changed), that writes a start added, changed or removed as
-  `SET START WITH n`, both when the migration is scaffolded and when its SQL is generated: Npgsql's
-  own generator writes `RESTART WITH n` (or `RESTART WITH 1` for a removed start), which hands out
-  ids live rows already hold. It references Npgsql at compile time, so it and the start are emitted
-  only for a project whose `migrate.dialect` is `postgres`; any other project gets a warning and
-  needs no Npgsql package. TypeScript's `meta migrate` writes the same `START WITH`-only change;
-  Java and Kotlin do not yet carry the start
-  ([#544](https://github.com/metaobjectsdev/metaobjects/issues/544)); see `docs/CONFORMANCE.md`,
-  "Split coverage".
+  restarts**. On Npgsql a fresh database's identity begins at `@sequenceStart`. A Postgres
+  context's generated design-time services (see Changed) scaffold a start added, changed or
+  removed as `SET START WITH n` plus the forward-only counter move, where Npgsql's own generator
+  writes `RESTART WITH n` (or `RESTART WITH 1` for a removed start), which hands out ids live rows
+  already hold. The start and the services are emitted only for a project whose
+  `migrate.dialect` is `postgres`; any other project gets a warning and needs no Npgsql package.
+  TypeScript's `meta migrate` writes the same change, and the Kotlin Exposed table begins a fresh
+  table at the start ([#544](https://github.com/metaobjectsdev/metaobjects/issues/544)); see
+  `docs/CONFORMANCE.md`, "Split coverage".
 - **C#: the EF model carries the index vocabulary and `@description`.** A field's `@unique`, an
   `identity.secondary` and an `index.lookup` are EF indexes under the names `meta migrate` gives
   them, with `@where` (`HasFilter`), `@orders` (`IsDescending`) and `@using` (the Npgsql index

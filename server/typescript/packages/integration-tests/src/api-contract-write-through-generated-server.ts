@@ -21,6 +21,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { runGen, defineConfig } from "@metaobjectsdev/codegen-ts";
+import { indexEmitted, type OutputLayout } from "./output-layout.ts";
 import { entityFile, routesFile } from "@metaobjectsdev/test-generators";
 import pg from "pg";
 import { executeSql } from "./postgres-sql.ts";
@@ -41,6 +42,7 @@ export interface GeneratedWriteThroughServerHandle {
 export async function startGeneratedWriteThroughServer(
   connectionUri: string,
   metaPath: string,
+  outputLayout: OutputLayout = "flat",
 ): Promise<GeneratedWriteThroughServerHandle> {
   const here = dirname(fileURLToPath(import.meta.url));
   const genTmpRoot = join(here, "..", ".gen-tmp");
@@ -57,6 +59,7 @@ export async function startGeneratedWriteThroughServer(
     config: defineConfig({
       outDir: tmp,
       extStyle: "none",
+      outputLayout,
       dbImport: "./db",
       dialect: "postgres",
       apiPrefix: "/api",
@@ -64,6 +67,7 @@ export async function startGeneratedWriteThroughServer(
     }),
     metadata: root,
   });
+  const emitted = indexEmitted(tmp, lr.files, outputLayout);
   if (lr.warnings.length > 0) {
     throw new Error(`codegen produced warnings: ${lr.warnings.join("; ")}`);
   }
@@ -92,7 +96,7 @@ export const db = drizzle(pool);
   `);
 
   // 4. Import the EMITTED Order route file unmodified and mount it.
-  const orderRoutes = (await import(pathToFileURL(join(tmp, "Order.routes.ts")).href)) as {
+  const orderRoutes = (await import(pathToFileURL(emitted.locate("Order.routes.ts")).href)) as {
     orderRoutes: (f: FastifyInstance) => Promise<void>;
   };
   const dbMod = (await import(pathToFileURL(join(tmp, "db.ts")).href)) as { pool: pg.Pool };

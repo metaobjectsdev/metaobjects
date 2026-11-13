@@ -96,10 +96,16 @@ emitter, two hosts.
 
 A derived field must be **providable** — a read-capable source must be able to carry it. A
 derived field on a table-only entity (no read source) is a load error
-(`ERR_DERIVED_FIELD_NO_READ_SOURCE`), with one exception: an `origin.first` or `origin.computed`
-that a projection reaches through its `@filter` or a passthrough `@from` is inlined there, so it
-needs no read source. The entity's table then gets no column for it: generated entity, DbContext,
-Kotlin, Python `ObjectManager` and Java OMDB mappings leave such a field out of table reads and writes.
+(`ERR_DERIVED_FIELD_NO_READ_SOURCE`), with one exception: an entity's `origin.first` or
+`origin.computed` field that some projection **reaches** — through a `@filter` key or to-one
+path, a passthrough `@from`, or a field bound to it with `extends` — needs no read source of its
+own. The projection's view inlines it where it is reached (an `origin.computed` as its expression
+over the reached row, an `origin.first` as a correlated subquery keyed on it); an
+`origin.aggregate` has no row-level form and is refused there. The entity's table gets no column
+for it: the generated entity, DbContext, Kotlin, Python `ObjectManager` and Java OMDB mappings
+leave such a field out of table reads and writes. `fixtures/conformance/entity-derived-filter-gate`
+pins the shape: an agreement flag declared once on `Member` and filtered on by every gated
+projection.
 
 ### Entity read-view vs projection — which to reach for
 
@@ -215,6 +221,11 @@ related rows by a `@segment` declared on that entity (ANDed with its `@filter`),
 (`ERR_INVALID_ORIGIN` for a `@segment` the entity does not declare, `ERR_BAD_ATTR_FILTER` for
 an unknown base field or another op).
 
+All of the above lowers into the view `meta migrate` creates, which every port reads: a segment's
+predicate is ANDed into the related rows' scope, a base-row operand compares against the base
+alias (`IS [NOT] DISTINCT FROM` on Postgres, `IS NOT` / `IS` on SQLite), and a relative date is
+evaluated when the view is queried, on the UTC clock.
+
 **Projection row-scope `@filter` (#207).** Distinct from the *per-aggregate* `@filter` above,
 an **object-level `@filter` on an `object.projection`** scopes the whole view's rows — it
 lowers to the view's outer `WHERE`. This is the metadata-managed way to express a
@@ -259,6 +270,13 @@ outside the tool — see [migrations-and-drift.md](migrations-and-drift.md) and
 
 Postgres default is `public`; SQLite rejects non-default `@schema` values at load
 time.
+
+A generated view follows the tables it reads: on Postgres a projection or report
+view qualifies a relation — its base table and every joined one — with that
+entity's `@schema` only when the entity declares one, so a table in the default
+schema stays unqualified and the view resolves it through the connection's
+`search_path`, exactly as the table DDL does. SQLite and MySQL view bodies never
+qualify.
 
 ## Multi-source via `@role`
 

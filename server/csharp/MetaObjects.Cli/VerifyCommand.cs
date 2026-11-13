@@ -441,6 +441,7 @@ public static class VerifyCommand
         // selection that excludes `names` would reference `<Entity>Names.*` while `gen`
         // itself emits the literal for that identical selection — spurious drift in one
         // direction, a false-clean pass in the other.
+        var neutralConfig = MetaObjects.Config.NeutralConfig.Read(GenCommand.ProjectRootFor(opts.MetadataDir), validateNaming: false);
         var config = new GenConfig
         {
             OutDir = opts.OutDir, Namespace = opts.Namespace ?? opts.ConfiguredNamespace,
@@ -452,7 +453,11 @@ public static class VerifyCommand
             // The manifest gen keeps: an extra file is classified by what gen recorded writing.
             GenStateDir = Path.Combine(GenCommand.ProjectRootFor(opts.MetadataDir), ".metaobjects", ".gen-state"),
             ProjectRoot = GenCommand.ProjectRootFor(opts.MetadataDir),
-        };
+            // The dialect gen read: without it a Postgres project's identity start and its design-time
+            // services read as drift.
+            Dialect = neutralConfig?.MigrateDialect,
+            SkipRedundantChecks = neutralConfig?.MigrateSkipRedundantChecks ?? false,
+        }.WithCSharpLayout(neutralConfig);
         return Codegen.CodegenDrift.Compute(config, load.Root, generators);
     }
 

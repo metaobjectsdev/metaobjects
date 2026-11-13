@@ -40,7 +40,10 @@ from metaobjects.apidocs.naming import snake_case as _snake_case
 from metaobjects.codegen.constants import generated_header
 from metaobjects.codegen.format import ruff_format
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator
+from metaobjects.codegen.import_path import ModuleScope, import_line
 from metaobjects.codegen.instance_artifacts import is_served_report
+from metaobjects.codegen.name_claims import claimed_module_path
+from metaobjects.codegen.value_objects import pkg_of
 from metaobjects.codegen.type_map import field_is_array
 from metaobjects.meta.core.field.credential import is_credential_field
 from metaobjects.meta.core.field import field_constants as fc
@@ -188,7 +191,7 @@ class ReportExportGenerator:
             max_rows=self.max_rows, csv_bom=repr(bool(self.csv_bom)), xml_nulls=self.xml_nulls
         )
 
-    def render_report(self, report: MetaObject) -> str:
+    def render_report(self, report: MetaObject, scope: ModuleScope = ModuleScope()) -> str:
         """The export module of one served report: its columns in derived-field order."""
         cols = ",\n".join(
             f'    ExportColumn("{f.name}", "{_column_kind(f)}")' for f in report.fields()
@@ -201,7 +204,7 @@ class ReportExportGenerator:
             + "from __future__ import annotations\n\n"
             + "from collections.abc import Iterable, Mapping\n"
             + "from typing import Any\n\n"
-            + f"from .{WRITER_MODULE} import ExportColumn, write_csv, write_xml\n\n"
+            + import_line(scope.root(WRITER_MODULE), "ExportColumn", "write_csv", "write_xml") + "\n\n"
             + f'EXPORT_ROOT = "{report.name}"\n'
             + f"EXPORT_COLUMNS = (\n{cols},\n)\n\n\n"
             + "def export_csv(rows: Iterable[Mapping[str, Any]]) -> str:\n"
@@ -226,8 +229,15 @@ class ReportExportGenerator:
         for report in reports:
             files.append(
                 EmittedFile(
-                    path=f"{_snake_case(report.name)}_export.py",
-                    content=ruff_format(self.render_report(report)),
+                    path=claimed_module_path(
+                        ctx.claims, ctx.config, pkg_of(report), f"{_snake_case(report.name)}_export",
+                        report.resolution_key(),
+                    ),
+                    content=ruff_format(
+                        self.render_report(
+                            report, ModuleScope(ctx.config.output_layout, pkg_of(report))
+                        )
+                    ),
                 )
             )
         return files

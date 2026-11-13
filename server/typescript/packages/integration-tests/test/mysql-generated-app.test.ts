@@ -25,6 +25,7 @@ import mysql from "mysql2/promise";
 import { defineConfig, runGen } from "@metaobjectsdev/codegen-ts";
 import { entityFile, queriesFile, routesFile } from "@metaobjectsdev/test-generators";
 import { loadMetadataFile } from "../src/load-metadata.ts";
+import { OUTPUT_LAYOUTS, indexEmitted } from "../src/output-layout.ts";
 import { startMysql, type MysqlContainerHandle } from "../src/mysql-container.ts";
 
 const MODEL = {
@@ -71,157 +72,163 @@ const DDL = `CREATE TABLE authors (
   UNIQUE KEY byEmail (email)
 )`;
 
+// One MySQL container serves both layouts; each layout recreates the table it needs.
 let container: MysqlContainerHandle;
-let tmp = "";
-let fastify: FastifyInstance;
-let admin: mysql.Connection;
-// biome-ignore lint/suspicious/noExplicitAny: the generated queries module, imported dynamically
-let queries: any;
-// biome-ignore lint/suspicious/noExplicitAny: the generated db module, imported dynamically
-let dbMod: any;
+beforeAll(async () => { container = await startMysql(); }, 240_000);
+afterAll(() => { container?.stop(); });
 
-beforeAll(async () => {
-  container = await startMysql();
-  admin = await mysql.createConnection(container.url);
-  await admin.query("DROP TABLE IF EXISTS authors");
-  await admin.query(DDL);
+for (const layout of OUTPUT_LAYOUTS) describe(`generated TypeScript tier on MySQL [${layout}]`, () => {
+  let tmp = "";
+  let fastify: FastifyInstance;
+  let admin: mysql.Connection;
+  // biome-ignore lint/suspicious/noExplicitAny: the generated queries module, imported dynamically
+  let queries: any;
+  // biome-ignore lint/suspicious/noExplicitAny: the generated db module, imported dynamically
+  let dbMod: any;
 
-  // Emit inside the package tree so bare `@metaobjectsdev/*` imports resolve (see
-  // api-contract-generated-server.ts for the same arrangement).
-  const here = dirname(fileURLToPath(import.meta.url));
-  const genRoot = join(here, "..", ".gen-tmp");
-  mkdirSync(genRoot, { recursive: true });
-  tmp = mkdtempSync(join(genRoot, "mysql-generated-"));
-  const metaPath = join(tmp, "meta.library.json");
-  writeFileSync(metaPath, JSON.stringify(MODEL));
+  beforeAll(async () => {
+    admin = await mysql.createConnection(container.url);
+    await admin.query("DROP TABLE IF EXISTS authors");
+    await admin.query(DDL);
 
-  const result = await runGen({
-    config: defineConfig({
-      outDir: tmp,
-      extStyle: "none",
-      dbImport: "./db",
-      dialect: "mysql",
-      apiPrefix: "/api",
-      generators: [entityFile(), queriesFile(), routesFile()],
-    }),
-    metadata: await loadMetadataFile(metaPath),
-  });
-  if (result.warnings.length > 0) throw new Error(`codegen warnings: ${result.warnings.join("; ")}`);
+    // Emit inside the package tree so bare `@metaobjectsdev/*` imports resolve (see
+    // api-contract-generated-server.ts for the same arrangement).
+    const here = dirname(fileURLToPath(import.meta.url));
+    const genRoot = join(here, "..", ".gen-tmp");
+    mkdirSync(genRoot, { recursive: true });
+    tmp = mkdtempSync(join(genRoot, "mysql-generated-"));
+    const metaPath = join(tmp, "meta.library.json");
+    writeFileSync(metaPath, JSON.stringify(MODEL));
 
-  writeFileSync(join(tmp, "db.ts"), `
-import { drizzle } from "drizzle-orm/mysql2";
-import mysql from "mysql2/promise";
-export const pool = mysql.createPool(${JSON.stringify(container.url)});
-export const db = drizzle(pool);
-`);
-  dbMod = await import(pathToFileURL(join(tmp, "db.ts")).href);
-  queries = await import(pathToFileURL(join(tmp, "Author.queries.ts")).href);
-  const routes = await import(pathToFileURL(join(tmp, "Author.routes.ts")).href);
-  fastify = Fastify();
-  await fastify.register(routes.authorRoutes);
-  await fastify.ready();
-}, 240_000);
-
-afterAll(async () => {
-  await fastify?.close();
-  await dbMod?.pool.end();
-  await admin?.end();
-  container?.stop();
-  if (tmp !== "") rmSync(tmp, { recursive: true, force: true });
-});
-
-async function post(body: unknown) {
-  return fastify.inject({ method: "POST", url: "/api/authors", payload: body as object });
-}
-
-describe("generated TypeScript tier on MySQL", () => {
-  test("POST creates, reads the AUTO_INCREMENT key back, and speaks the wire contract", async () => {
-    await admin.query("DELETE FROM authors");
-    const res = await post({
-      name: "Alice", email: "alice@example.com", rank: 10, active: true, status: "ACTIVE",
-      externalId: "0f8fad5b-d9cb-469f-a165-70867728950e", tags: ["poetry", "essays"], score: "12.50",
+    const result = await runGen({
+      config: defineConfig({
+        outDir: tmp,
+        extStyle: "none",
+        outputLayout: layout,
+        dbImport: "./db",
+        dialect: "mysql",
+        apiPrefix: "/api",
+        generators: [entityFile(), queriesFile(), routesFile()],
+      }),
+      metadata: await loadMetadataFile(metaPath),
     });
-    expect(res.statusCode).toBe(201);
-    const body = res.json();
-    expect(typeof body.id).toBe("number");
-    expect(body.rank).toBe(10);
-    expect(body.active).toBe(true);
-    expect(body.tags).toEqual(["poetry", "essays"]);
-    expect(body.score).toBe("12.50"); // wire.decimals native (the default): the MySQL driver string as it is (ADR-0019 Amendment 2)
-    expect(body.externalId).toBe("0f8fad5b-d9cb-469f-a165-70867728950e");
-    expect(body.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+    if (result.warnings.length > 0) throw new Error(`codegen warnings: ${result.warnings.join("; ")}`);
+    const emitted = indexEmitted(tmp, result.files, layout);
 
-    // The DATETIME holds the UTC wall clock of that instant.
-    const [rows] = await admin.query(
-      "SELECT DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%s.%f') AS c FROM authors WHERE id = ?", [body.id]);
-    const stored = (rows as Array<{ c: string }>)[0]!.c;
-    expect(`${stored.slice(0, 23)}Z`).toBe(body.createdAt);
+    writeFileSync(join(tmp, "db.ts"), `
+  import { drizzle } from "drizzle-orm/mysql2";
+  import mysql from "mysql2/promise";
+  export const pool = mysql.createPool(${JSON.stringify(container.url)});
+  export const db = drizzle(pool);
+  `);
+    dbMod = await import(pathToFileURL(join(tmp, "db.ts")).href);
+    queries = await import(pathToFileURL(emitted.locate("Author.queries.ts")).href);
+    const routes = await import(pathToFileURL(emitted.locate("Author.routes.ts")).href);
+    fastify = Fastify();
+    await fastify.register(routes.authorRoutes);
+    await fastify.ready();
+  }, 240_000);
 
-    const got = await fastify.inject({ method: "GET", url: `/api/authors/${body.id}` });
-    expect(got.statusCode).toBe(200);
-    expect(got.json()).toEqual(body);
+  afterAll(async () => {
+    await fastify?.close();
+    await dbMod?.pool.end();
+    await admin?.end();
+    if (tmp !== "") rmSync(tmp, { recursive: true, force: true });
   });
 
-  test("like is case-SENSITIVE, ?search is not, and the reserved-word column filters and sorts", async () => {
-    await admin.query("DELETE FROM authors");
-    for (const [name, rank] of [["Alice", 10], ["alice", 20], ["Bob", 30]] as const) {
-      const r = await post({ name, email: `${name}${rank}@example.com`, rank, active: true, status: "ACTIVE" });
-      expect(r.statusCode).toBe(201);
-    }
-    const names = async (qs: string) =>
-      ((await fastify.inject({ method: "GET", url: `/api/authors?${qs}` })).json() as Array<{ name: string }>)
-        .map((a) => a.name);
+  async function post(body: unknown) {
+    return fastify.inject({ method: "POST", url: "/api/authors", payload: body as object });
+  }
 
-    expect(await names("filter[name][like]=Al%25")).toEqual(["Alice"]);
-    expect((await names("search=ali")).sort()).toEqual(["Alice", "alice"]);
-    expect(await names("filter[rank][gte]=20&sort=rank:desc")).toEqual(["Bob", "alice"]);
-    expect(await names("sort=rank:asc&limit=1&offset=1")).toEqual(["alice"]);
+  describe("generated TypeScript tier on MySQL", () => {
+    test("POST creates, reads the AUTO_INCREMENT key back, and speaks the wire contract", async () => {
+      await admin.query("DELETE FROM authors");
+      const res = await post({
+        name: "Alice", email: "alice@example.com", rank: 10, active: true, status: "ACTIVE",
+        externalId: "0f8fad5b-d9cb-469f-a165-70867728950e", tags: ["poetry", "essays"], score: "12.50",
+      });
+      expect(res.statusCode).toBe(201);
+      const body = res.json();
+      expect(typeof body.id).toBe("number");
+      expect(body.rank).toBe(10);
+      expect(body.active).toBe(true);
+      expect(body.tags).toEqual(["poetry", "essays"]);
+      expect(body.score).toBe("12.50"); // wire.decimals native (the default): the MySQL driver string as it is (ADR-0019 Amendment 2)
+      expect(body.externalId).toBe("0f8fad5b-d9cb-469f-a165-70867728950e");
+      expect(body.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
 
-    const counted = (await fastify.inject({ method: "GET", url: "/api/authors?withCount=1&limit=1" })).json();
-    expect(counted.total).toBe(3);
-    expect(counted.rows).toHaveLength(1);
-  });
+      // The DATETIME holds the UTC wall clock of that instant.
+      const [rows] = await admin.query(
+        "SELECT DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%s.%f') AS c FROM authors WHERE id = ?", [body.id]);
+      const stored = (rows as Array<{ c: string }>)[0]!.c;
+      expect(`${stored.slice(0, 23)}Z`).toBe(body.createdAt);
 
-  test("PATCH updates and reads back; a missing row is 404; DELETE is 204 then 404", async () => {
-    await admin.query("DELETE FROM authors");
-    const created = (await post({ name: "Carol", email: "carol@example.com", rank: 5, active: true, status: "ACTIVE" })).json();
-
-    const patched = await fastify.inject({
-      method: "PATCH", url: `/api/authors/${created.id}`, payload: { status: "RETIRED", bio: "Poet." },
+      const got = await fastify.inject({ method: "GET", url: `/api/authors/${body.id}` });
+      expect(got.statusCode).toBe(200);
+      expect(got.json()).toEqual(body);
     });
-    expect(patched.statusCode).toBe(200);
-    expect(patched.json()).toMatchObject({ id: created.id, status: "RETIRED", bio: "Poet.", name: "Carol" });
 
-    const missing = await fastify.inject({ method: "PATCH", url: "/api/authors/999999", payload: { bio: "x" } });
-    expect(missing.statusCode).toBe(404);
+    test("like is case-SENSITIVE, ?search is not, and the reserved-word column filters and sorts", async () => {
+      await admin.query("DELETE FROM authors");
+      for (const [name, rank] of [["Alice", 10], ["alice", 20], ["Bob", 30]] as const) {
+        const r = await post({ name, email: `${name}${rank}@example.com`, rank, active: true, status: "ACTIVE" });
+        expect(r.statusCode).toBe(201);
+      }
+      const names = async (qs: string) =>
+        ((await fastify.inject({ method: "GET", url: `/api/authors?${qs}` })).json() as Array<{ name: string }>)
+          .map((a) => a.name);
 
-    expect((await fastify.inject({ method: "DELETE", url: `/api/authors/${created.id}` })).statusCode).toBe(204);
-    expect((await fastify.inject({ method: "DELETE", url: `/api/authors/${created.id}` })).statusCode).toBe(404);
-  });
+      expect(await names("filter[name][like]=Al%25")).toEqual(["Alice"]);
+      expect((await names("search=ali")).sort()).toEqual(["Alice", "alice"]);
+      expect(await names("filter[rank][gte]=20&sort=rank:desc")).toEqual(["Bob", "alice"]);
+      expect(await names("sort=rank:asc&limit=1&offset=1")).toEqual(["alice"]);
 
-  test("a unique violation is 409 constraint_violation, and a bad body is 400", async () => {
-    await admin.query("DELETE FROM authors");
-    const first = { name: "Dan", email: "dan@example.com", rank: 1, active: false, status: "ACTIVE" };
-    expect((await post(first)).statusCode).toBe(201);
-    const dup = await post({ ...first, name: "Dan Two" });
-    expect(dup.statusCode).toBe(409);
-    expect(dup.json()).toEqual({ error: "constraint_violation", constraint: "unique" });
-    expect((await post({ ...first, email: "x@example.com", status: "LOST" })).statusCode).toBe(400);
-  });
+      const counted = (await fastify.inject({ method: "GET", url: "/api/authors?withCount=1&limit=1" })).json();
+      expect(counted.total).toBe(3);
+      expect(counted.rows).toHaveLength(1);
+    });
 
-  test("the generated queries module: create / update / delete without RETURNING", async () => {
-    await admin.query("DELETE FROM authors");
-    const { db } = dbMod;
-    const a = await queries.createAuthor(db, { name: "Eve", email: "eve@example.com", rank: 7, active: true, status: "ACTIVE" });
-    expect(a.id).toBeGreaterThan(0);
-    expect(a.createdAt).toBeInstanceOf(Date);
+    test("PATCH updates and reads back; a missing row is 404; DELETE is 204 then 404", async () => {
+      await admin.query("DELETE FROM authors");
+      const created = (await post({ name: "Carol", email: "carol@example.com", rank: 5, active: true, status: "ACTIVE" })).json();
 
-    const u = await queries.updateAuthor(db, a.id, { rank: 8 });
-    expect(u).toMatchObject({ id: a.id, rank: 8 });
-    expect(await queries.updateAuthor(db, 999999, { rank: 1 })).toBeNull();
+      const patched = await fastify.inject({
+        method: "PATCH", url: `/api/authors/${created.id}`, payload: { status: "RETIRED", bio: "Poet." },
+      });
+      expect(patched.statusCode).toBe(200);
+      expect(patched.json()).toMatchObject({ id: created.id, status: "RETIRED", bio: "Poet.", name: "Carol" });
 
-    expect(await queries.deleteAuthorById(db, a.id)).toBe(true);
-    expect(await queries.deleteAuthorById(db, a.id)).toBe(false);
-    expect(await queries.findAuthorById(db, a.id)).toBeNull();
+      const missing = await fastify.inject({ method: "PATCH", url: "/api/authors/999999", payload: { bio: "x" } });
+      expect(missing.statusCode).toBe(404);
+
+      expect((await fastify.inject({ method: "DELETE", url: `/api/authors/${created.id}` })).statusCode).toBe(204);
+      expect((await fastify.inject({ method: "DELETE", url: `/api/authors/${created.id}` })).statusCode).toBe(404);
+    });
+
+    test("a unique violation is 409 constraint_violation, and a bad body is 400", async () => {
+      await admin.query("DELETE FROM authors");
+      const first = { name: "Dan", email: "dan@example.com", rank: 1, active: false, status: "ACTIVE" };
+      expect((await post(first)).statusCode).toBe(201);
+      const dup = await post({ ...first, name: "Dan Two" });
+      expect(dup.statusCode).toBe(409);
+      expect(dup.json()).toEqual({ error: "constraint_violation", constraint: "unique" });
+      expect((await post({ ...first, email: "x@example.com", status: "LOST" })).statusCode).toBe(400);
+    });
+
+    test("the generated queries module: create / update / delete without RETURNING", async () => {
+      await admin.query("DELETE FROM authors");
+      const { db } = dbMod;
+      const a = await queries.createAuthor(db, { name: "Eve", email: "eve@example.com", rank: 7, active: true, status: "ACTIVE" });
+      expect(a.id).toBeGreaterThan(0);
+      expect(a.createdAt).toBeInstanceOf(Date);
+
+      const u = await queries.updateAuthor(db, a.id, { rank: 8 });
+      expect(u).toMatchObject({ id: a.id, rank: 8 });
+      expect(await queries.updateAuthor(db, 999999, { rank: 1 })).toBeNull();
+
+      expect(await queries.deleteAuthorById(db, a.id)).toBe(true);
+      expect(await queries.deleteAuthorById(db, a.id)).toBe(false);
+      expect(await queries.findAuthorById(db, a.id)).toBeNull();
+    });
   });
 });

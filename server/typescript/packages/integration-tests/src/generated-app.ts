@@ -8,7 +8,7 @@
 
 import Fastify, { type FastifyInstance } from "fastify";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import ts from "typescript";
 import type { MetaObject, MetaRoot } from "@metaobjectsdev/metadata";
@@ -18,24 +18,34 @@ import { buildExpectedSchema, diff, emit } from "@metaobjectsdev/migrate-ts";
 import { barrel, entityFile, queriesFile, routesFile } from "@metaobjectsdev/test-generators";
 import type pg from "pg";
 import { executeSql } from "./postgres-sql.ts";
+import { indexEmitted, type EmittedFiles, type OutputLayout } from "./output-layout.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
 export interface GeneratedApp {
   /** Directory holding the emitted modules plus `db.ts`. */
   dir: string;
-  /** Emitted paths, relative to `dir`. */
+  /** Emitted paths, relative to `dir` (under the package layout they carry the package directories). */
   files: string[];
+  /** Locates an emitted file by base name, whatever the layout put it. */
+  emitted: EmittedFiles;
   /** Create the schema the TypeScript toolchain derives, on `connectionUri`. */
   migrate(connectionUri: string): Promise<void>;
-  /** Import one emitted module by entity-relative path (e.g. `Party.ts`). */
+  /** Import one emitted module by its path relative to `dir`. */
   importModule(path: string): Promise<Record<string, unknown>>;
+  /** Import one emitted module by base name (e.g. `Party.ts`), wherever the layout put it. */
+  importEmitted(name: string): Promise<Record<string, unknown>>;
   /** Mount every emitted `*.routes.ts` on one Fastify instance (not listening). */
   bootRoutes(): Promise<FastifyInstance>;
   close(): Promise<void>;
 }
 
-export async function generateApp(root: MetaRoot, connectionUri: string, label: string): Promise<GeneratedApp> {
+export async function generateApp(
+  root: MetaRoot,
+  connectionUri: string,
+  label: string,
+  outputLayout: OutputLayout = "flat",
+): Promise<GeneratedApp> {
   const tmpRoot = join(here, "..", ".gen-tmp");
   mkdirSync(tmpRoot, { recursive: true });
   const dir = mkdtempSync(join(tmpRoot, `${label}-`));
@@ -44,6 +54,7 @@ export async function generateApp(root: MetaRoot, connectionUri: string, label: 
     config: defineConfig({
       outDir: dir,
       extStyle: "none",
+      outputLayout,
       dbImport: "./db",
       dialect: "postgres",
       apiPrefix: "",
@@ -51,7 +62,8 @@ export async function generateApp(root: MetaRoot, connectionUri: string, label: 
     }),
     metadata: root,
   });
-  const files = result.files.map((f) => f.path.startsWith(dir) ? f.path.slice(dir.length + 1) : f.path);
+  const emitted = indexEmitted(dir, result.files, outputLayout);
+  const files = [...emitted.relative];
 
   const bigintTypesImport = pathToFileURL(join(here, "pg-bigint-number-types.ts")).href;
   writeFileSync(
@@ -71,12 +83,14 @@ export const db = drizzle(pool);
   return {
     dir,
     files,
+    emitted,
     migrate: async (uri) => {
       const expected = buildExpectedSchema(root, { dialect: "postgres" });
       const planned = await diff({ expected, actual: { tables: [], views: [] }, dialect: "postgres" });
       await executeSql(uri, emit(planned.changes, { dialect: "postgres" }).up);
     },
     importModule,
+    importEmitted: (name) => importModule(relative(dir, emitted.locate(name))),
     bootRoutes: async () => {
       const fastify = Fastify();
       for (const file of files.filter((f) => f.endsWith(".routes.ts"))) {
@@ -133,7 +147,7 @@ export function compileTrees(trees: ReadonlyArray<{ dir: string; files: string[]
 
 /** The generated resource path of an entity (`<Entity>.$path`) — the contract a client uses. */
 export async function generatedPathOf(app: GeneratedApp, obj: MetaObject): Promise<string> {
-  const mod = await app.importModule(`${obj.name}.ts`);
+  const mod = await app.importEmitted(`${obj.name}.ts`);
   const descriptor = mod[obj.name] as { $path?: unknown } | undefined;
   if (typeof descriptor?.$path !== "string") throw new Error(`${obj.name}.ts exports no ${obj.name}.$path`);
   return descriptor.$path;

@@ -82,7 +82,7 @@ public class ReportExportGenerator : IGenerator
 
         yield return new EmittedFile("ReportExportWriter.g.cs", SharedWriter(ctx, HasDurationColumn(served)));
         foreach (var report in served)
-            yield return new EmittedFile(CSharpNaming.Pascal(report.Name) + "Export.g.cs", ReportModule(report, ctx));
+            yield return new EmittedFile(OutputPaths.Of(report, ctx, CSharpNaming.Pascal(report.Name) + "Export.g.cs"), ReportModule(report, ctx));
     }
 
     private static string Literal(bool b) => b ? "true" : "false";
@@ -99,11 +99,19 @@ public class ReportExportGenerator : IGenerator
         sb.AppendLine("using System.Collections.Generic;");
         sb.AppendLine("using System.IO;");
         sb.AppendLine("using System.Linq;");
-        foreach (var u in PackageBindingResolver.HomeUsings(ctx.Config, [report])) sb.AppendLine(u);
+        // The module lives in its report's namespace when package namespaces are on (a per-object
+        // class); the shared writer stays in GenConfig.Namespace and is then named global::-qualified.
+        var pkgMode = ctx.Config.PackageNamespacesFromMetadata;
+        var ns = ValueObjectNames.CompanionNamespace(report, ctx.Config);
+        if (!pkgMode) foreach (var u in PackageBindingResolver.HomeUsings(ctx.Config, [report])) sb.AppendLine(u);
+        var writer = pkgMode ? ValueObjectNames.Global(ctx.Config.Namespace, "ReportExportWriter") : "ReportExportWriter";
+        var cell = pkgMode ? ValueObjectNames.Global(ctx.Config.Namespace, "ReportExportCell") : "ReportExportCell";
         sb.AppendLine();
-        sb.AppendLine($"namespace {ctx.Config.Namespace};");
+        sb.AppendLine($"namespace {ns};");
         sb.AppendLine();
         sb.AppendLine($"/// <summary>The CSV and XML export of the <c>{report.Name}</c> report: its columns, in derived-field order, over the generated <see cref=\"{cls}\"/> row.</summary>");
+        ctx.Claim($"the C# namespace {ns}", $"{cls}Export", report.ResolutionKey(),
+            "map the packages to distinct namespaces (csharp.packageNamespaces, or GenConfig.PackageNamespaces), or rename one");
         sb.AppendLine($"public static class {cls}Export");
         sb.AppendLine("{");
         sb.AppendLine("    /// <summary>The XML root element.</summary>");
@@ -116,19 +124,19 @@ public class ReportExportGenerator : IGenerator
         sb.AppendLine("    ];");
         sb.AppendLine();
         sb.AppendLine("    /// <summary>One row's cells in wire form, in <see cref=\"Columns\"/> order.</summary>");
-        sb.AppendLine($"    public static ReportExportCell[] Cells({cls} row) =>");
+        sb.AppendLine($"    public static {cell}[] Cells({cls} row) =>");
         sb.AppendLine("    [");
         foreach (var f in fields)
-            sb.AppendLine($"        ReportExportWriter.Cell(row.{CSharpNaming.Pascal(f.Name)}),");
+            sb.AppendLine($"        {writer}.Cell(row.{CSharpNaming.Pascal(f.Name)}),");
         sb.AppendLine("    ];");
         sb.AppendLine();
         sb.AppendLine("    /// <summary>Writes the rows as RFC 4180 CSV.</summary>");
         sb.AppendLine($"    public static void WriteCsv(TextWriter writer, IEnumerable<{cls}> rows) =>");
-        sb.AppendLine("        ReportExportWriter.WriteCsv(writer, Columns, rows.Select(Cells));");
+        sb.AppendLine($"        {writer}.WriteCsv(writer, Columns, rows.Select(Cells));");
         sb.AppendLine();
         sb.AppendLine("    /// <summary>Writes the rows as XML.</summary>");
         sb.AppendLine($"    public static void WriteXml(TextWriter writer, IEnumerable<{cls}> rows) =>");
-        sb.AppendLine("        ReportExportWriter.WriteXml(writer, Root, Columns, rows.Select(Cells));");
+        sb.AppendLine($"        {writer}.WriteXml(writer, Root, Columns, rows.Select(Cells));");
         sb.AppendLine("}");
         return sb.ToString();
     }

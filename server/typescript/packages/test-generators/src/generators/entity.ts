@@ -63,6 +63,7 @@ import {
   GENERATED_EDIT_NOTE,
   sidecarLine,
   isTphSubtype,
+  claimModuleNames,
 } from "@metaobjectsdev/codegen-ts/engine";
 import { renderDrizzleSchema } from "../templates/drizzle-schema.js";
 import { renderEntityConstants } from "../templates/entity-constants.js";
@@ -176,6 +177,9 @@ export const entityFile = function entityFile(opts?: EntityFileOpts): Generator 
     if (isAbstract(entity) && !ctx.renderContext.emitAbstractShapes) {
       return [];
     }
+    // Claim the module's type name in its directory: two objects
+    // emitting one name there are refused, naming both.
+    claimModuleNames(ctx, entity);
     const renderContext: RenderContext = {
       ...ctx.renderContext,
       httpRuntimeImport: opts?.runtimeImport

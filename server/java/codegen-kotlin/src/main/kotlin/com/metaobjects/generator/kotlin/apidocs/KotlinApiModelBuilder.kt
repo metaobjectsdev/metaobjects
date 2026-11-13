@@ -305,7 +305,7 @@ class KotlinApiModelBuilder(
     ) {
         val controller = KotlinNaming.controllerName(shortName)
         val controllerImport = importLine(pkg, controller)
-        val base = KotlinNaming.controllerPath(shortName)
+        val base = KotlinNaming.controllerPath(obj)
         fun rest(verbPath: String, usage: String) {
             symbols.add(
                 ApiSymbol(

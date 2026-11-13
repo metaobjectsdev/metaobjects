@@ -1,4 +1,6 @@
 import type { AggregateFunction } from "@metaobjectsdev/metadata";
+import type { SqlType } from "@metaobjectsdev/migrate-ts/expected";
+import type { RelativeNow } from "./report-spec.js";
 
 /** One node in the JOIN tree. `alias` is an auto-generated unique short alias. */
 export interface JoinNode {
@@ -16,14 +18,21 @@ export interface JoinNode {
   readonly pkColumn: string;
   /** Which side of this hop physically holds the FK: the parent (source) or the child (target). */
   readonly referenceHolder: "source" | "target";
-  /** #209 — `inner` when this is a belongs-to hop whose FK is NOT NULL (required):
-   *  the join can neither drop nor NULL-fill a base row, so it is semantically INNER
-   *  and matches the hand-written INNER-join view it stands in for. `left` otherwise —
-   *  a nullable belongs-to FK, or ANY has-many (inverse-FK) hop, where a base row with
-   *  no match must survive (aggregates COALESCE to 0, not drop the row). */
-  readonly joinType: "inner" | "left";
+  /** Always `left`: a generated view join never drops a base row. A view that requires the
+   *  related row filters on it (`@filter: { "<hop>.id": { isNull: false } }`). */
+  readonly joinType: "left";
+  /** The target is a TPH subtype (or an abstract level) sharing its base's table, so the join
+   *  keeps only its rows (`AND <alias>.<column> = <value>`, or `IN (…)` for several). */
+  readonly tphScope?: TphScope;
   /** Child joins. */
   readonly children: readonly JoinNode[];
+}
+
+/** The rows of a TPH level on its base's shared table: the discriminator column and the values it
+ *  stores for the level (one for a concrete leaf; every concrete subtype beneath an abstract one). */
+export interface TphScope {
+  readonly column: string;
+  readonly values: readonly (string | number)[];
 }
 
 /** Tree of JOINs rooted at the projection's base entity. */
@@ -69,7 +78,25 @@ export type ViewExprNode =
   | { readonly kind: "nullTest"; readonly negated: boolean; readonly arg: ViewExprNode } // isNull / isNotNull
   | { readonly kind: "not"; readonly arg: ViewExprNode }
   | { readonly kind: "logic"; readonly op: "and" | "or"; readonly args: readonly ViewExprNode[] }
-  | { readonly kind: "coalesce"; readonly args: readonly ViewExprNode[] };
+  | { readonly kind: "coalesce"; readonly args: readonly ViewExprNode[] }
+  // An entity's origin.first, inlined where a projection reaches the entity: its correlated
+  // scalar subquery, keyed on `column.outerAlias`.
+  | { readonly kind: "first"; readonly column: FirstColumn }
+  // The current instant shifted by an ISO duration, of the kind of the field it is compared with.
+  | { readonly kind: "now"; readonly value: RelativeNow }
+  // Searched (each `when` a predicate) or, with `operand`, simple (each `when` a value) CASE.
+  | {
+      readonly kind: "case";
+      readonly operand?: ViewExprNode;
+      readonly whens: readonly { readonly when: ViewExprNode; readonly then: ViewExprNode }[];
+      readonly else?: ViewExprNode;
+    };
+
+/** A filter operand that is a column of the base row (`alias.column`), for a correlated origin `@filter`. */
+export interface ColRef {
+  readonly kind: "colRef";
+  readonly ref: string;
+}
 
 /** A resolved ordering key: a physical column (naming-strategy applied) + direction. */
 export interface ViewOrderKey {
@@ -85,6 +112,8 @@ export type SelectColumn =
       readonly dbColAlias: string;       // SQL output column name
       readonly sourceAlias: string;      // join alias of the source
       readonly sourceColumn: string;     // source table's column name (already strategy-applied)
+      /** The declared field's column type when it differs from the source's (`@convert`). Postgres casts to it. */
+      readonly castTo?: SqlType;
     }
   | {
       readonly kind: "aggregate";
@@ -157,6 +186,8 @@ export type SelectColumn =
       readonly fieldName: string;
       readonly dbColAlias: string;
       readonly expr: ViewExprNode;
+      /** The declared field's column type, for a bare NULL that would otherwise read as text. Postgres casts to it. */
+      readonly castTo?: SqlType;
     }
   | {
       // #195 — origin.first — argmax-then-project: the single related row selected by
@@ -176,7 +207,33 @@ export type SelectColumn =
       readonly orderBy: readonly ViewOrderKey[]; // row-selection ordering over the child entity
       /** Optional scoping filter over the child entity (refs use `childAlias`). */
       readonly filter?: ViewFilterClause;
+      /**
+       * The hops of a multi-hop `@via` after the first, INNER-joined inside the subquery (the
+       * selected row must exist along the whole path). `childEntity`/`childAlias` are then the
+       * FIRST hop's (the one correlated to the base), and `sourceColumn`, `childPkColumn`,
+       * `orderBy` and `filter` are over the LAST join's alias. Absent for one hop.
+       */
+      readonly innerJoins?: readonly FirstInnerJoin[];
+      /**
+       * Set when the subquery is inlined in an expression or filter rather than selected as a
+       * column: the alias of the row it correlates to (a reached entity, not the view's base).
+       */
+      readonly outerAlias?: string;
     };
+
+/** The `origin.first` column of a select list. */
+export type FirstColumn = Extract<SelectColumn, { kind: "first" }>;
+
+/** One inner join of a multi-hop `origin.first` subquery, from the alias before it. */
+export interface FirstInnerJoin {
+  readonly entity: string;            // entity key of the joined relation (for table lookup)
+  readonly alias: string;
+  readonly referenceHolder: "source" | "target"; // which side holds the FK: the previous alias, or this one
+  readonly fkColumn: string;
+  readonly pkColumn: string;
+  /** The joined entity is a TPH level: keep only its rows of the shared table. */
+  readonly tphScope?: TphScope;
+}
 
 export interface SelectSpec {
   readonly columns: readonly SelectColumn[];
