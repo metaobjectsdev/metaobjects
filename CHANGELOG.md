@@ -85,7 +85,10 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   non-optional peer; a type package a published `.d.ts` imports goes in its `ALLOWED_TYPES_DEPS`
   with the reason. No `@metaobjectsdev/*` package declares `@types/node`: the 3 MB copy in the
   install comes through the libSQL driver (`@libsql/isomorphic-ws` → `@types/ws`), which is
-  unchanged here.
+  unchanged here. This also repairs the standalone binary (`bun run build:binary`): `--compile`
+  cannot embed dprint-node's native `.node` file, so a binary built from 1.2.0 crashed with
+  `Cannot find module './dprint-node.linux-x64-gnu.node'` on every command that loads the
+  codegen engine, `meta migrate` and `meta verify --db` included.
 
 ### Deprecated
 
