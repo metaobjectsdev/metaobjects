@@ -13,26 +13,6 @@ here.**
 **New metamodel vocabulary: `measure.derived` and its `@expr`.** It is additive: nothing that
 loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersion` 1.3 if it merges before the 1.3.0 publish; if it lands after, the next release moves `metamodelVersion`.
 
-### Changed
-
-- **Breaking, TypeScript: a value object is never renamed; one claim registry refuses real
-  collisions** (amending ADR-0044 and ADR-0056). `acme::alpha::Note` is declared as `Note` in its
-  own module; the `AcmeAlphaNote` derived name, `assignEmittedNames` and the run-wide
-  `ERR_COLLECTION_NAME_COLLISION` pre-pass (`naming/collection-name-collision.ts`) are removed,
-  and `RenderContext.valueObjectNames` and `RenderContext.packageOf` are `@deprecated` identity
-  shims for one release. Each generator claims what it emits through
-  `ctx.claim(scope, name, claimant, remedy)`: `entityFile()` and `queriesFile()` a module's type
-  and collection names in its directory, `barrel()` its re-exports, the routes generators their
-  REST segments per entry. A second claimant fails with `ERR_NAME_COLLISION` (a codegen-time code
-  declared by `@metaobjectsdev/codegen-ts`), naming both. A file that meets two same-named value
-  objects binds each under a package-qualified local alias (`import type { Note as AcmeAlphaNote }
-  from "../alpha/Note.js"`); the extract tier's mirrors and mappers are named by that alias
-  (`AcmeAlphaNoteExtracted`). `valueObjectModuleSpecifier` takes the value object's node.
-  **Upgrade note:** two same-named value objects in two packages under the flat layout (or behind
-  a barrel) now fail with the collision error; set `outputLayout: "package"` (and drop the barrel,
-  or rename one), and update imports of the old `AcmeAlphaNote` names. An owned generator copy is
-  refreshed with `meta eject --list`.
-
 ### Added
 
 - **Report measures over Money and other value-object members (FR-044 R12).** A dimension's or
@@ -57,6 +37,23 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
 
 ### Changed
 
+- **Breaking, TypeScript: a value object is never renamed; one claim registry refuses real
+  collisions** (amending ADR-0044 and ADR-0056). `acme::alpha::Note` is declared as `Note` in its
+  own module; the `AcmeAlphaNote` derived name, `assignEmittedNames` and the run-wide
+  `ERR_COLLECTION_NAME_COLLISION` pre-pass (`naming/collection-name-collision.ts`) are removed,
+  and `RenderContext.valueObjectNames` and `RenderContext.packageOf` are `@deprecated` identity
+  shims for one release. Each generator claims what it emits through
+  `ctx.claim(scope, name, claimant, remedy)`: `entityFile()` and `queriesFile()` a module's type
+  and collection names in its directory, `barrel()` its re-exports, the routes generators their
+  REST segments per entry. A second claimant fails with `ERR_NAME_COLLISION` (a codegen-time code
+  declared by `@metaobjectsdev/codegen-ts`), naming both. A file that meets two same-named value
+  objects binds each under a package-qualified local alias (`import type { Note as AcmeAlphaNote }
+  from "../alpha/Note.js"`); the extract tier's mirrors and mappers are named by that alias
+  (`AcmeAlphaNoteExtracted`). `valueObjectModuleSpecifier` takes the value object's node.
+  **Upgrade note:** two same-named value objects in two packages under the flat layout (or behind
+  a barrel) now fail with the collision error; set `outputLayout: "package"` (and drop the barrel,
+  or rename one), and update imports of the old `AcmeAlphaNote` names. An owned generator copy is
+  refreshed with `meta eject --list`.
 - **Agent context routes report work to the reporting vocabulary.** The `meta init` agent guide
   and the `metaobjects-authoring` skill now send grouped totals, dashboard numbers and read-only
   report views to `object.report` (`references/declaring-reports.md`) before the `@sql` escape,

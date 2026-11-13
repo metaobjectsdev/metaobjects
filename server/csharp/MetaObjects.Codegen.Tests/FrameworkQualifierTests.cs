@@ -35,6 +35,21 @@ public sealed class FrameworkQualifierTests
         => Assert.Equal("var s = \"a \\\" System.Foo\"; global::System.X.Y();", Q("var s = \"a \\\" System.Foo\"; System.X.Y();"));
 
     [Fact]
+    public void A_using_directive_aliasing_a_name_starting_with_var_is_left_alone()
+        => Assert.Equal("using variance = System.Collections.Generic.IEnumerable<int>;",
+            Q("using variance = System.Collections.Generic.IEnumerable<int>;"));
+
+    [Fact]
+    public void A_using_statement_declaring_a_variable_has_its_framework_references_qualified()
+        => Assert.Equal("using var r = new global::System.IO.StringReader(s); global::System.X.Y();",
+            Q("using var r = new System.IO.StringReader(s); System.X.Y();"));
+
+    [Fact]
+    public void A_using_statement_with_parentheses_has_its_framework_references_qualified()
+        => Assert.Equal("using (global::System.IO.Stream s = global::System.IO.File.OpenRead(p)) { }",
+            Q("using (System.IO.Stream s = System.IO.File.OpenRead(p)) { }"));
+
+    [Fact]
     public void A_char_literal_holding_a_quote_does_not_start_a_string()
         => Assert.Equal("var q = '\"'; global::System.X.Y(); var e = '\\'';", Q("var q = '\"'; System.X.Y(); var e = '\\'';"));
 

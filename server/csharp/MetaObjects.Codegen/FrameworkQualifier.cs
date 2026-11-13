@@ -48,7 +48,7 @@ public static class FrameworkQualifier
         while (i < s.Length)
         {
             var c = s[i];
-            if (AtLineStart(s, i) && (Starts(s, i, "using ") || Starts(s, i, "global using ") || Starts(s, i, "namespace ") || s[i] == '#') && !inHole)
+            if (AtLineStart(s, i) && (UsingDirective(s, i) || Starts(s, i, "global using ") || Starts(s, i, "namespace ") || s[i] == '#') && !inHole)
             {
                 var eol = s.IndexOf('\n', i);
                 if (eol < 0) eol = s.Length;
@@ -105,6 +105,17 @@ public static class FrameworkQualifier
     }
 
     private static bool Starts(string s, int i, string t) => string.CompareOrdinal(s, i, t, 0, t.Length) == 0;
+
+    // True when a `using` at i is a directive; `using var x = ..` and `using (..)` are statements.
+    private static bool UsingDirective(string s, int i)
+    {
+        if (!Starts(s, i, "using ")) return false;
+        var j = i + 6;
+        while (j < s.Length && (s[j] == ' ' || s[j] == '\t')) j++;
+        if (j >= s.Length) return true;
+        if (s[j] == '(') return false;
+        return !(Starts(s, j, "var") && (j + 3 >= s.Length || !Word(s[j + 3])));
+    }
 
     // A string literal opens here: a run of $ and @ then quotes, or a bare quote.
     private static bool StringStart(string s, int i, out int dollars, out bool verbatim, out int quotes)
