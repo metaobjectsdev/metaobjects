@@ -442,7 +442,11 @@ async function writeAgentContext(opts: InitOptions, result: InitResult): Promise
     );
   }
 
-  if (opts.wireRoot) await wireRootMemory(opts.cwd, result, dryRun);
+  // A refresh never creates a root memory file the user did not ask for; a first init may
+  // (see wireRootMemory). "Refresh" is the flag OR a prior agent-context manifest — `meta
+  // agent-docs` carries no flag of its own and reaches this same path with docsOnly.
+  const isRefresh = opts.refreshDocs === true || prior !== undefined;
+  if (opts.wireRoot) await wireRootMemory(opts.cwd, result, dryRun, isRefresh);
 }
 
 const ROOT_IMPORT_LINE = "@.metaobjects/AGENTS.md";
@@ -453,7 +457,7 @@ const ROOT_IMPORT_LINE = "@.metaobjects/AGENTS.md";
 const ROOT_IMPORT_BLOCK =
   "Read `.metaobjects/AGENTS.md` before changing this project's metadata, generated code or schema.\n" +
   `${ROOT_IMPORT_LINE}\n`;
-async function wireRootMemory(cwd: string, result: InitResult, dryRun = false): Promise<void> {
+async function wireRootMemory(cwd: string, result: InitResult, dryRun = false, isRefresh = false): Promise<void> {
   const claudePath = join(cwd, "CLAUDE.md");
   const agentsPath = join(cwd, "AGENTS.md");
   const claudeExists = await fileExists(claudePath);
@@ -467,6 +471,20 @@ async function wireRootMemory(cwd: string, result: InitResult, dryRun = false): 
       result.created.push(`${target} (${verbed(dryRun, "created")} with MetaObjects @import)`);
     }
     return;
+  }
+  // A repo that predates the assistant-neutral layout has CLAUDE.md but no AGENTS.md, so every
+  // assistant other than Claude Code misses the context. A first init creates AGENTS.md too; a
+  // refresh never creates a root file — it says so once and leaves the decision to the user.
+  if (claudeExists && !agentsExists) {
+    if (!isRefresh) {
+      await writeUnlessDryRun(cwd, dryRun, "AGENTS.md", `# Project memory\n\n${ROOT_IMPORT_BLOCK}`);
+      result.created.push(`AGENTS.md (${verbed(dryRun, "created")} with MetaObjects @import)`);
+    } else {
+      result.warnings.push(
+        "no root AGENTS.md — assistants other than Claude Code will not load .metaobjects/AGENTS.md; " +
+          "add a root AGENTS.md containing @.metaobjects/AGENTS.md",
+      );
+    }
   }
   // Otherwise append the import to whichever exist (idempotent — never double-add).
   for (const [path, exists] of [[claudePath, claudeExists], [agentsPath, agentsExists]] as const) {

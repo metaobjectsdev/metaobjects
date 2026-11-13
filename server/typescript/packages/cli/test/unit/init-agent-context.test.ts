@@ -78,6 +78,31 @@ describe("init() — agent-context scaffolding", () => {
     expect(existsSync(join(cwd, "CLAUDE.md"))).toBe(false);
   });
 
+  test("--wire-root with only a root CLAUDE.md on a first init also creates AGENTS.md", async () => {
+    // A repo that predates the assistant-neutral layout: CLAUDE.md only. Assistants that
+    // read AGENTS.md would miss the context, so the first init brings the second file.
+    writeFileSync(join(cwd, "CLAUDE.md"), "# my notes\n\nUse pnpm.\n", "utf8");
+    await init({ cwd, servers: javaReact.servers, clients: javaReact.clients, wireRoot: true });
+    const claude = readFileSync(join(cwd, "CLAUDE.md"), "utf8");
+    expect(claude).toContain("# my notes");                    // hand-written content kept
+    expect(claude.match(/@\.metaobjects\/AGENTS\.md/g)?.length).toBe(1);  // import appended once
+    const agents = readFileSync(join(cwd, "AGENTS.md"), "utf8");
+    expect(agents).toContain("@.metaobjects/AGENTS.md");
+    expect(agents).toContain("Read `.metaobjects/AGENTS.md` before changing");
+  });
+
+  test("a refresh over a repo with only a root CLAUDE.md creates no AGENTS.md and advises once", async () => {
+    // Established project (no root files yet), then the legacy-layout CLAUDE.md appears.
+    await init({ cwd, servers: javaReact.servers, clients: javaReact.clients });
+    writeFileSync(join(cwd, "CLAUDE.md"), "# my notes\n", "utf8");
+    const r = await init({ cwd, servers: javaReact.servers, clients: javaReact.clients, wireRoot: true, refreshDocs: true });
+    expect(existsSync(join(cwd, "AGENTS.md"))).toBe(false);    // a refresh creates no root file
+    expect(readFileSync(join(cwd, "CLAUDE.md"), "utf8")).toContain("@.metaobjects/AGENTS.md");  // still wired
+    const advisories = r.warnings.filter((w) => w.includes("no root AGENTS.md"));
+    expect(advisories.length).toBe(1);                          // exactly once, naming the remedy
+    expect(advisories[0]).toContain("add a root AGENTS.md containing @.metaobjects/AGENTS.md");
+  });
+
   test("--skills-dir installs the skills there, names it in the always-on, and a refresh keeps it", async () => {
     await init({ cwd, servers: ["python"], clients: [], skillsDir: ".agents/skills" });
     expect(existsSync(join(cwd, ".agents/skills/metaobjects-codegen/SKILL.md"))).toBe(true);

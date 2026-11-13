@@ -56,7 +56,10 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   that nothing imported, is no longer written; a refresh removes an untouched one and names a
   hand-edited one. The text no longer tells the reader to use a root `CLAUDE.md` only, and
   `--wire-root` on a project with neither root file now creates `AGENTS.md` as well as
-  `CLAUDE.md`, each with a plain pointer line beside the `@` import. A new "Calling the
+  `CLAUDE.md`, each with a plain pointer line beside the `@` import. A first init on a project
+  that has only a root `CLAUDE.md` creates `AGENTS.md` too (assistants other than Claude Code
+  read no `@` import out of `CLAUDE.md`); a refresh creates no root file and instead prints one
+  advisory line naming the missing `AGENTS.md`. A new "Calling the
   generated REST API" block gives the filter form (`?filter[status][eq]=active`, never
   `?status=active`) with its nine operators, sorting and paging (including each port's default
   when `limit` is omitted), and the error bodies. To offset it, the Java and Kotlin generator
