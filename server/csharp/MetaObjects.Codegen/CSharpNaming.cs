@@ -416,7 +416,7 @@ public static class CSharpNaming
     /// object's namespace.</summary>
     public static string NamesRef(MetaObject obj, GenConfig? qualify) =>
         qualify is { PackageNamespacesFromMetadata: true }
-            ? ValueObjectNames.Global(ValueObjectNames.Namespace(obj, qualify), NamesClassName(obj))
+            ? ValueObjectNames.CompanionRef(obj, qualify, NamesClassName(obj))
             : NamesClassName(obj);
 
     /// <summary>Overload taking a bare object name — used when only a super's NAME is in hand.</summary>
@@ -1250,8 +1250,9 @@ public static class CSharpNaming
     /// forbid.</para>
     /// </summary>
     public static string QualifiedOwnerTypeRef(string owner, MetaObject ownerObject, GenConfig config) =>
-        owner.StartsWith("global::", StringComparison.Ordinal) ? owner
-        : Pluralize(owner) == owner ? $"global::{ValueObjectNames.Namespace(ownerObject, config)}.{owner}" : owner;
+        Pluralize(owner) == owner
+            ? ValueObjectNames.Global(ValueObjectNames.Namespace(ownerObject, config), owner)
+            : owner;
 
     private static readonly char[] CSharpEscapeChars = { '\\', '"', '\t', '\n', '\r' };
 
