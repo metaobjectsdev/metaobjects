@@ -30,6 +30,11 @@ namespace MetaObjects.IntegrationTests.Api;
 
 internal sealed class TphReferenceServer : IAsyncDisposable
 {
+    // api.unknownFields: reject (the default, unchanged by this corpus): the union of the base's and every
+    // subtype's declared fields, so a sibling subtype's column is known on another subtype's route.
+    private static readonly HashSet<string> DeclaredKeys = new(StringComparer.Ordinal)
+        { "id", "type", "reference", "issuedCurrency", "autoCreatedAt", "autoUpdatedAt", "quantity", "copayAmount", "approver" };
+
     // segment (lowercased @discriminatorValue) → discriminator value.
     private static readonly Dictionary<string, string> SegmentToValue = new(StringComparer.Ordinal)
     {
@@ -140,6 +145,11 @@ internal sealed class TphReferenceServer : IAsyncDisposable
                 if (method == "POST")
                 {
                     var body = await ReadBodyAsync(ctx);
+                    if (ReferenceValidation.UnknownFields(body.Select(kv => kv.Key), DeclaredKeys) is { } unknownFields)
+                    {
+                        await SendJsonAsync(ctx, 400, unknownFields);
+                        return;
+                    }
                     // FR-036 — the per-subtype CREATE validates every constraint, matching the generated
                     // controller's <Sub>Dto DataAnnotations: the @required keys (the base `reference`, the
                     // BridgeAuth `quantity`), the @maxLength:80 columns and copayAmount's decimal(10,2).
@@ -170,6 +180,11 @@ internal sealed class TphReferenceServer : IAsyncDisposable
                 if (method is "PATCH" or "PUT")
                 {
                     var body = await ReadBodyAsync(ctx);
+                    if (ReferenceValidation.UnknownFields(body.Select(kv => kv.Key), DeclaredKeys) is { } unknownFields)
+                    {
+                        await SendJsonAsync(ctx, 400, unknownFields);
+                        return;
+                    }
                     // FR-036 Program B: a present null on the @required (NOT NULL) base
                     // `reference` column is a 400, matching the generated controller's
                     // not-null merge guard. In the single TPH table only base-required

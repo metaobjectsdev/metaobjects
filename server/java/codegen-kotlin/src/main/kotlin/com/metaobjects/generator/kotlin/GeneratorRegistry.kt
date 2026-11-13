@@ -136,7 +136,8 @@ private val CROSS_FIELD_EMIT: List<String> = listOf(KotlinCrossFieldRules::class
 private val DURATION_WIRE_EMIT: List<String> = listOf(KotlinDurationWireEmitter::class.java.name)
 
 /** The validation envelope file `routes` writes beside its controllers. */
-private val VALIDATION_ISSUES_EMIT: List<String> = listOf(KotlinValidationIssuesEmitter::class.java.name)
+private val VALIDATION_ISSUES_EMIT: List<String> =
+    listOf(KotlinValidationIssuesEmitter::class.java.name, KotlinUnknownBodyKeysEmitter::class.java.name)
 
 /** The rest of `api-docs`: the page IR (one file, `KotlinApiModel.kt`, which also holds the unit, symbol, field
  *  and kind types), the builder that fills it, the renderer and the page paths. */

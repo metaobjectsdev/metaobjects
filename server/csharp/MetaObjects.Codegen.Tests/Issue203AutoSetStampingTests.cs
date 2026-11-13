@@ -132,8 +132,10 @@ public class Issue203AutoSetStampingTests
         Assert.Contains("foreach (var __req in new[] { \"title\" })", src);
         // A @required @autoSet field is server-filled → OPTIONAL on the wire (not a
         // required key), so an omitted createdAt/updatedAt is NOT a 400.
-        Assert.DoesNotContain("\"createdAt\"", src);
-        Assert.DoesNotContain("\"updatedAt\"", src);
+        // (The declared-name set of api.unknownFields lists every field, so look at the required-key line only.)
+        var reqLine = src.Split('\n').Single(l => l.Contains("foreach (var __req in new[]"));
+        Assert.DoesNotContain("\"createdAt\"", reqLine);
+        Assert.DoesNotContain("\"updatedAt\"", reqLine);
     }
 
     [Fact]

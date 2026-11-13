@@ -45,5 +45,6 @@ export function registerAuthorRoutes(
     filterAllowlist: AuthorFilterAllowlist,
     sortAllowlist: AuthorSortAllowlist,
     dialect: "sqlite",
+    knownFields: ["id", "name", "bio"],
   });
 }

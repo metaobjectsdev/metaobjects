@@ -29,7 +29,7 @@ import { GENERATED_HEADER, GENERATED_EDIT_NOTE, sidecarLine } from "../constants
 import { routesHandlerName } from "../naming.js";
 import { isProjection, isWriteThrough } from "../projection/projection-detector.js";
 import { isReport } from "../source-detect.js";
-import { decimalColumnsLine, itemRouteField, paginationLine, writeDeniedColumnsLine } from "../api-surface.js";
+import { decimalColumnsLine, itemRouteField, paginationLine, knownFieldsLine, writeDeniedColumnsLine } from "../api-surface.js";
 import { DEFAULT_ID_FIELD, pkInfoOf } from "../pk-resolver.js";
 import type { RelationEntry } from "../relation-resolver.js";
 import { isTphDiscriminatorBase, tphPlan } from "./tph-discriminator.js";
@@ -248,7 +248,7 @@ export async function ${handlerName}(fastify: ${FastifyInstanceSym}) {
       updateSchema: ${entityName}UpdateSchema,
       filterAllowlist: ${entityName}FilterAllowlist,
       sortAllowlist: ${entityName}SortAllowlist,
-      dialect: ${JSON.stringify(ctx.dialect)},${decimalColumnsLine(entity, "      ", ctx.loadedRoot)}${writeDeniedColumnsLine(entity, "      ")}${paginationLine(entity, "      ", ctx.loadedRoot)}${exposeLinePrefixed}
+      dialect: ${JSON.stringify(ctx.dialect)},${decimalColumnsLine(entity, "      ", ctx.loadedRoot)}${writeDeniedColumnsLine(entity, "      ")}${knownFieldsLine(entity, "      ", ctx.loadedRoot)}${paginationLine(entity, "      ", ctx.loadedRoot)}${exposeLinePrefixed}
     });
 ${m2mMountsPrefixed}  }, { prefix: ${JSON.stringify(ctx.apiPrefix)} });
 }
@@ -273,7 +273,7 @@ export async function ${handlerName}(fastify: ${FastifyInstanceSym}) {
     updateSchema: ${entityName}UpdateSchema,
     filterAllowlist: ${entityName}FilterAllowlist,
     sortAllowlist: ${entityName}SortAllowlist,
-    dialect: ${JSON.stringify(ctx.dialect)},${decimalColumnsLine(entity, "    ", ctx.loadedRoot)}${writeDeniedColumnsLine(entity, "    ")}${paginationLine(entity, "    ", ctx.loadedRoot)}${exposeLineFlat}
+    dialect: ${JSON.stringify(ctx.dialect)},${decimalColumnsLine(entity, "    ", ctx.loadedRoot)}${writeDeniedColumnsLine(entity, "    ")}${knownFieldsLine(entity, "    ", ctx.loadedRoot)}${paginationLine(entity, "    ", ctx.loadedRoot)}${exposeLineFlat}
   });
 ${m2mMountsFlat}}
 `;
@@ -579,7 +579,7 @@ function renderTphRoutesFile(
       updateSchema: ${subUpdateSym},
       filterAllowlist: ${subFilterSym},
       sortAllowlist: ${subSortSym},
-      dialect: ${dialectLit},${decimalColumnsLine(sub, "      ", ctx.loadedRoot, hierarchy)}${writeDeniedColumnsLine(sub, "      ", hierarchy)}${paginationLine(sub, "      ", ctx.loadedRoot)}
+      dialect: ${dialectLit},${decimalColumnsLine(sub, "      ", ctx.loadedRoot, hierarchy)}${writeDeniedColumnsLine(sub, "      ", hierarchy)}${knownFieldsLine(sub, "      ", ctx.loadedRoot, hierarchy)}${paginationLine(sub, "      ", ctx.loadedRoot)}
       discriminator: { column: ${JSON.stringify(discField)}, value: ${JSON.stringify(value)} },${exposeLine(expose, "      ")}
     });`;
     // This subtype's own M:N navigations, mounted beneath its segment and gated on the

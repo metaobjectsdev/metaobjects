@@ -37,4 +37,16 @@ internal static class ReferenceValidation
     /// <summary>A present string over its max length.</summary>
     public static Dictionary<string, object?> TooLong(string field, int max) =>
         Issue("too_big", field, $"{field} must be at most {max} characters");
+
+    /// <summary>
+    /// <c>api.unknownFields: reject</c> (the default, which the core corpus does not change): the body keys the
+    /// entity does not declare, sorted ordinally, as the 400 body, or null when there are none.
+    /// </summary>
+    public static Dictionary<string, object?>? UnknownFields(IEnumerable<string> bodyKeys, ISet<string> declared)
+    {
+        var unknown = bodyKeys.Where(k => !declared.Contains(k)).Distinct(StringComparer.Ordinal).ToList();
+        if (unknown.Count == 0) return null;
+        unknown.Sort(StringComparer.Ordinal);
+        return new Dictionary<string, object?> { ["error"] = "unknown_fields", ["fields"] = unknown.Cast<object?>().ToList() };
+    }
 }

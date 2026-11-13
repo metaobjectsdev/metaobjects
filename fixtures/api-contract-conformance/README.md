@@ -27,7 +27,8 @@ fixtures/api-contract-conformance/
     ├── get-by-id.yaml
     ├── get-by-id-not-found.yaml
     ├── create-201.yaml
-    ├── input-server-owned-dropped.yaml # a client id, a made-up key and a writeOnce change are dropped, never 400
+    ├── input-server-owned-dropped.yaml # a client id and a writeOnce change are dropped, never 400
+    ├── input-unknown-fields-rejected.yaml # an undeclared key → 400 {error:"unknown_fields", fields}; an echoed read model is not refused
     ├── create-constraint-violation-400.yaml # FR-036 POST field-constraint → 400 {error:"validation"}
     ├── validation-lists-issues.yaml # a 400 validation lists every issue: {error, issues:[{code, path, message}]}
     ├── update-patch-and-put.yaml
@@ -54,13 +55,13 @@ fixtures/api-contract-conformance/
     └── filter-invalid-value.yaml   # uncoercible value → 400; the fourth envelope, previously ungated
 ```
 
-Beside the 33 core scenarios above sit eleven **sub-corpora**, each a directory with its
-own `meta.json`, `seed.json`, `scenarios/` and `README.md` (99 scenarios in all, 132 with the
+Beside the 34 core scenarios above sit eleven **sub-corpora**, each a directory with its
+own `meta.json`, `seed.json`, `scenarios/` and `README.md` (101 scenarios in all, 135 with the
 core):
 
 | Directory | Scenarios | Gates | Lanes |
 |---|---|---|---|
-| `tph/` | 12 | single-table inheritance | both |
+| `tph/` | 13 | single-table inheritance | both |
 | `m2m/` | 9 | M:N traversal, and TPH x M:N together | both |
 | `jsonb/` | 5 | typed value-object columns, and the numbers inside them (a double stays a JSON number; a decimal is a canonical string, option A of the 1.1.0 review) | both |
 | `write-through/` | 2 | an entity that writes a table and reads a view | generated only |
@@ -69,7 +70,7 @@ core):
 | `projection/` | 12 | a read-only `object.projection`: reads served, every write `405`; no declared identity means no `/{id}` route; a key not named `id` addresses the row; decimal and float filters. Its `docs-routes.json` pins the routes each port documents | generated only |
 | `report/` | 37 | a view-backed `object.report` (FR-044): list, filter, sort and paging on derived fields, `POST` is `405`, no `/{id}` route; a `@spine` report keeps a row with no facts, and a measure with `@default` filters and sorts as its default; a dimension over an array or a map is neither filterable nor sortable. Also carries `schema.postgres.sql`, the TypeScript-produced table and views the C# lane executes | generated only |
 | `decimal/` | 11 | `field.decimal` is an exact canonical string on the wire (ADR-0019 Amendment 1): read, filter, sort, write and a report over decimals. A scenario's `engines:` key is exact; the `-15` twins run on SQLite and D1 as well. Also carries `schema.postgres.sql` / `schema.sqlite.sql` / `schema.mysql.sql` | generated only |
-| `pagination/` | 5 | `api.pagination` in the sub-corpus's own `.metaobjects/config.json` (default 2, max 4): a list with no `limit` answers the default page, `offset` and `withCount=1` page past it, `limit` at the cap is served and one above it is `400 {"error": "limit_too_large", "maxLimit": 4}` | generated only (TypeScript; the other ports' routes wait on the non-TS REST generator ruling) |
+| `api-settings/` | 6 | the `api` block in the sub-corpus's own `.metaobjects/config.json`: `api.pagination` (default 2, max 4) — a list with no `limit` answers the default page, `offset` and `withCount=1` page past it, `limit` at the cap is served and one above it is `400 {"error": "limit_too_large", "maxLimit": 4}` — and `api.unknownFields: drop`, under which an undeclared body key is ignored rather than refused | generated only |
 | `duration/` | 2 | `field.duration` is a canonical ISO-8601 span on the wire under `"wire": { "durations": "iso" }`: write, read, refuse, and filter and sort as a span on every engine. Also carries `schema.postgres.sql` / `schema.sqlite.sql` / `schema.mysql.sql` | generated only |
 
 `meta.json` declares a single canonical `Author` entity in the `acme::blog`

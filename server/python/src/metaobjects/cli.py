@@ -162,6 +162,7 @@ from metaobjects.render.verify import (
     verify as render_verify,
 )
 from metaobjects.shared.base_types import TYPE_OBJECT, TYPE_TEMPLATE
+from metaobjects.api_settings import ApiSettings
 from metaobjects.wire import WireFormat, wire_block, wire_candidates
 
 
@@ -521,6 +522,7 @@ def _load_root(
     # invocation) read the same values `gen`/`verify --codegen` would.
     result.root.naming = neutral.naming if neutral is not None else NamingRules()
     result.root.wire = neutral.wire if neutral is not None else WireFormat()
+    result.root.api = neutral.api if neutral is not None else ApiSettings()
     return result.root, []
 
 
@@ -584,6 +586,7 @@ def _load_collection_result(
         # it to the loaded root so codegen, the runtime and `verify` agree.
         result.root.naming = collection.naming
         result.root.wire = collection.wire
+        result.root.api = collection.api
     return result
 
 
@@ -2726,6 +2729,30 @@ def _run_field_lint_advisory(args: argparse.Namespace, model: "_VerifyModel | No
         print(f"  {finding.code} [{finding.path}]: {finding.message}", file=sys.stderr)
 
 
+def _run_pagination_advisory(model: "_VerifyModel | None") -> None:
+    """``unbounded-list-pages``: ONE advisory line when the project generates REST list routes
+    and sets no ``api.pagination``, so a request with no ``limit`` is served by the 50-row
+    historic default and ``?limit=`` has no cap. Advisory only: stderr, never the exit code."""
+    if model is None or model.root.api.pagination is not None:
+        return
+    try:
+        from metaobjects.codegen.runtime.shared_predicates import emits_router
+
+        serves = any(
+            isinstance(c, MetaObject) and emits_router(c) for c in model.root.children()
+        )
+    except Exception:  # noqa: BLE001 — an advisory scan never breaks verify
+        return
+    if serves:
+        print(
+            "metaobjects verify — unbounded-list-pages (advisory — does not fail the build): "
+            "generated list routes have no page cap, so a request may ask for any ?limit=. "
+            'Set "api": {"pagination": {"defaultLimit": 50, "maxLimit": 1000}} in '
+            ".metaobjects/config.json.",
+            file=sys.stderr,
+        )
+
+
 #: Raises ``WARN_REQUIREMENT_NOTHING_IMPLEMENTS`` to an error, beside ``--require-implementers``
 #: (Node `meta` parity, ADR-0057).
 REQUIRE_IMPLEMENTERS_ENV = "META_REQUIRE_IMPLEMENTERS"
@@ -2921,6 +2948,8 @@ def _cmd_verify(args: argparse.Namespace) -> int:
         exit_code = max(exit_code, _report_unloaded_model(load_failure, gates_stderr.lines()))
     exit_code = max(exit_code, _verify_requirements(args, model))
     _run_field_lint_advisory(args, model)
+    if exit_code != 2:  # 2 is a refused invocation: its own message is the whole answer
+        _run_pagination_advisory(model)
     return exit_code
 
 

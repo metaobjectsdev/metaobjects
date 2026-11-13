@@ -50,6 +50,9 @@ private val AuthSortDefaultOrder: Map<String, String> = mapOf(
     "reference" to "desc",
 )
 
+/** GENERATED — every field Auth declares, as named on the wire: a body key outside it is refused. */
+private val AuthKnownFields: Set<String> = setOf("id", "type", "reference", "quantity", "copayAmount", "priorAuthNumber")
+
 private fun parseAuthSort(raw: String): Pair<String, SortOrder>? {
     val parts = raw.split(":", limit = 2)
     val field = parts.getOrNull(0) ?: return null
@@ -418,7 +421,15 @@ class AuthController(private val objectMapper: ObjectMapper, private val validat
     }
 
     @PostMapping("/bridge")
-    fun createBridge(@RequestBody dto: Auth): ResponseEntity<Any> = transaction {
+    fun createBridge(@RequestBody body: JsonNode): ResponseEntity<Any> = transaction {
+        if (!body.isObject) return@transaction ResponseEntity.badRequest().body(MetaValidationIssues.Collector().add("invalid_type", emptyList(), "request body must be a JSON object").body() as Any)
+        val unknownKeys = MetaUnknownBodyKeys.refusal(body, AuthKnownFields)
+        if (unknownKeys != null) return@transaction ResponseEntity.badRequest().body(unknownKeys as Any)
+        val dto: Auth = try {
+            objectMapper.treeToValue(body, Auth::class.java)
+        } catch (e: Exception) {
+            return@transaction ResponseEntity.badRequest().body(MetaDecimalWire.unreadableBody(e) as Any)
+        }
         val issues = MetaValidationIssues.Collector()
         issues.addAt(validator.validateValue(BridgeAuthValidation::class.java, "quantity", dto.quantity), "quantity")
         issues.addAt(validator.validateValue(BridgeAuthValidation::class.java, "reference", dto.reference), "reference")
@@ -436,6 +447,8 @@ class AuthController(private val objectMapper: ObjectMapper, private val validat
     fun updateBridge(@PathVariable id: Long, @RequestBody body: JsonNode): ResponseEntity<Any> = transaction {
         val issues = MetaValidationIssues.Collector()
         if (!body.isObject) return@transaction ResponseEntity.badRequest().body(issues.add("invalid_type", emptyList(), "request body must be a JSON object").body() as Any)
+        val unknownKeys = MetaUnknownBodyKeys.refusal(body, AuthKnownFields)
+        if (unknownKeys != null) return@transaction ResponseEntity.badRequest().body(unknownKeys as Any)
         if (body.has("quantity") && body.get("quantity").isNull) issues.add("invalid_type", listOf("quantity"), "field 'quantity' cannot be null")
         if (body.has("reference") && body.get("reference").isNull) issues.add("invalid_type", listOf("reference"), "field 'reference' cannot be null")
         if (listOf("quantity", "reference").any { body.has(it) }) {
@@ -505,7 +518,15 @@ class AuthController(private val objectMapper: ObjectMapper, private val validat
     }
 
     @PostMapping("/copay")
-    fun createCopay(@RequestBody dto: Auth): ResponseEntity<Any> = transaction {
+    fun createCopay(@RequestBody body: JsonNode): ResponseEntity<Any> = transaction {
+        if (!body.isObject) return@transaction ResponseEntity.badRequest().body(MetaValidationIssues.Collector().add("invalid_type", emptyList(), "request body must be a JSON object").body() as Any)
+        val unknownKeys = MetaUnknownBodyKeys.refusal(body, AuthKnownFields)
+        if (unknownKeys != null) return@transaction ResponseEntity.badRequest().body(unknownKeys as Any)
+        val dto: Auth = try {
+            objectMapper.treeToValue(body, Auth::class.java)
+        } catch (e: Exception) {
+            return@transaction ResponseEntity.badRequest().body(MetaDecimalWire.unreadableBody(e) as Any)
+        }
         val issues = MetaValidationIssues.Collector()
         issues.addAt(validator.validateValue(CopayAuthValidation::class.java, "copayAmount", dto.copayAmount), "copayAmount")
         if (!MetaDecimalWire.fits(dto.copayAmount, 10, 2)) issues.add("too_big", listOf("copayAmount"), "decimal does not fit the declared precision and scale")
@@ -524,6 +545,8 @@ class AuthController(private val objectMapper: ObjectMapper, private val validat
     fun updateCopay(@PathVariable id: Long, @RequestBody body: JsonNode): ResponseEntity<Any> = transaction {
         val issues = MetaValidationIssues.Collector()
         if (!body.isObject) return@transaction ResponseEntity.badRequest().body(issues.add("invalid_type", emptyList(), "request body must be a JSON object").body() as Any)
+        val unknownKeys = MetaUnknownBodyKeys.refusal(body, AuthKnownFields)
+        if (unknownKeys != null) return@transaction ResponseEntity.badRequest().body(unknownKeys as Any)
         if (body.has("reference") && body.get("reference").isNull) issues.add("invalid_type", listOf("reference"), "field 'reference' cannot be null")
         if (listOf("copayAmount", "reference").any { body.has(it) }) {
             run {
@@ -593,7 +616,15 @@ class AuthController(private val objectMapper: ObjectMapper, private val validat
     }
 
     @PostMapping("/priorauth")
-    fun createPriorAuth(@RequestBody dto: Auth): ResponseEntity<Any> = transaction {
+    fun createPriorAuth(@RequestBody body: JsonNode): ResponseEntity<Any> = transaction {
+        if (!body.isObject) return@transaction ResponseEntity.badRequest().body(MetaValidationIssues.Collector().add("invalid_type", emptyList(), "request body must be a JSON object").body() as Any)
+        val unknownKeys = MetaUnknownBodyKeys.refusal(body, AuthKnownFields)
+        if (unknownKeys != null) return@transaction ResponseEntity.badRequest().body(unknownKeys as Any)
+        val dto: Auth = try {
+            objectMapper.treeToValue(body, Auth::class.java)
+        } catch (e: Exception) {
+            return@transaction ResponseEntity.badRequest().body(MetaDecimalWire.unreadableBody(e) as Any)
+        }
         val issues = MetaValidationIssues.Collector()
         issues.addAt(validator.validateValue(PriorAuthAuthValidation::class.java, "priorAuthNumber", dto.priorAuthNumber), "priorAuthNumber")
         issues.addAt(validator.validateValue(PriorAuthAuthValidation::class.java, "reference", dto.reference), "reference")
@@ -611,6 +642,8 @@ class AuthController(private val objectMapper: ObjectMapper, private val validat
     fun updatePriorAuth(@PathVariable id: Long, @RequestBody body: JsonNode): ResponseEntity<Any> = transaction {
         val issues = MetaValidationIssues.Collector()
         if (!body.isObject) return@transaction ResponseEntity.badRequest().body(issues.add("invalid_type", emptyList(), "request body must be a JSON object").body() as Any)
+        val unknownKeys = MetaUnknownBodyKeys.refusal(body, AuthKnownFields)
+        if (unknownKeys != null) return@transaction ResponseEntity.badRequest().body(unknownKeys as Any)
         if (body.has("reference") && body.get("reference").isNull) issues.add("invalid_type", listOf("reference"), "field 'reference' cannot be null")
         if (listOf("priorAuthNumber", "reference").any { body.has(it) }) {
             run {

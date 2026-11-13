@@ -514,12 +514,20 @@ internal sealed class AuthorApiServer : IAsyncDisposable
         if (body.GetValueOrDefault("bio") is string b && b.Length > 1000) issues.Add(ReferenceValidation.TooLong("bio", 1000));
     }
 
+    private static readonly HashSet<string> DeclaredKeys = new(StringComparer.Ordinal)
+        { "id", "name", "bio", "createdAt", "issuedCurrency", "autoCreatedAt", "autoUpdatedAt" };
+
     private async Task CreateAuthorAsync(HttpContext ctx)
     {
         var parsed = await ReadJsonBodyAsync(ctx);
         if (parsed is not Dictionary<string, object?> body)
         {
             await SendJsonAsync(ctx, 400, ReferenceValidation.Unreadable());
+            return;
+        }
+        if (ReferenceValidation.UnknownFields(body.Keys, DeclaredKeys) is { } unknownFields)
+        {
+            await SendJsonAsync(ctx, 400, unknownFields);
             return;
         }
         // FR-036 — mirror the corpus Author @maxLength bounds so this lane rejects an
@@ -577,6 +585,11 @@ internal sealed class AuthorApiServer : IAsyncDisposable
         if (parsed is not Dictionary<string, object?> body)
         {
             await SendJsonAsync(ctx, 400, ReferenceValidation.Unreadable());
+            return;
+        }
+        if (ReferenceValidation.UnknownFields(body.Keys, DeclaredKeys) is { } unknownFields)
+        {
+            await SendJsonAsync(ctx, 400, unknownFields);
             return;
         }
         // FR-035 PATCH-2: an explicit null on a @required field (name / createdAt, per

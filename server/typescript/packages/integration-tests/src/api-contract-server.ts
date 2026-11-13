@@ -189,8 +189,15 @@ export async function startServer(connectionUri: string, root: MetaRoot): Promis
   });
 
   // The keys a client may write, as the generated routes' Insert/Update schemas have them: the
-  // server-generated `id`, the @autoSet columns and any key the entity does not declare are
+  // server-generated `id` and the @autoSet columns are declared but server-owned, so they are
   // DROPPED silently (never 400'd), and `issuedCurrency` (writeOnce) is settable on create only.
+  // A key the entity does not declare is refused first: `api.unknownFields` at its default,
+  // `reject`, which this corpus does not change.
+  const DECLARED_KEYS = new Set(["id", "name", "bio", "createdAt", "issuedCurrency", "autoCreatedAt", "autoUpdatedAt"]);
+  const unknownKeys = (body: unknown): string[] =>
+    body !== null && typeof body === "object" && !Array.isArray(body)
+      ? Object.keys(body).filter((k) => !DECLARED_KEYS.has(k)).sort()
+      : [];
   const CREATE_KEYS = ["name", "bio", "createdAt", "issuedCurrency"] as const;
   const UPDATE_KEYS = ["name", "bio", "createdAt"] as const;
   const pick = (body: unknown, keys: readonly string[]): Record<string, unknown> => {
@@ -204,6 +211,8 @@ export async function startServer(connectionUri: string, root: MetaRoot): Promis
     // (that is codegen-only), so the reference server stamps explicitly to match
     // the generated lane's InsertSchema. Both onCreate + onUpdate columns get the
     // SAME captured now() on create; any caller-supplied value is ignored.
+    const unknown = unknownKeys(req.body);
+    if (unknown.length > 0) return reply.code(400).send({ error: "unknown_fields", fields: unknown });
     const now = new Date().toISOString();
     const body = { ...pick(req.body, CREATE_KEYS), autoCreatedAt: now, autoUpdatedAt: now };
     const row = await om.create(ENTITY, body);
@@ -225,6 +234,8 @@ export async function startServer(connectionUri: string, root: MetaRoot): Promis
     // plain z.object() discards unknown keys). Dropping it also covers the
     // present-NULL arm for free: clearing is a write, so an explicit null must
     // not reach the column either.
+    const unknown = unknownKeys(req.body);
+    if (unknown.length > 0) return reply.code(400).send({ error: "unknown_fields", fields: unknown });
     const body = { ...pick(req.body, UPDATE_KEYS), autoUpdatedAt: new Date().toISOString() };
     // A ValidationError (e.g. FR-035 present-null on a @required field) propagates
     // to the shared setErrorHandler above → 400 {error:"validation"}.

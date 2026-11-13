@@ -70,6 +70,7 @@ public final class NeutralConfig {
     private final PhysicalNaming physicalNaming;
     private final WireFormat wireFormat;
     private EnumDefaults enumDefaults = EnumDefaults.DEFAULT;
+    private ApiSettings apiSettings = ApiSettings.DEFAULT;
     private List<String> requirementsInherit = List.of();
 
     private NeutralConfig(List<Map<String, String>> sources, List<Map<String, String>> dependencies,
@@ -144,6 +145,14 @@ public final class NeutralConfig {
      */
     public WireFormat getWireFormat() {
         return wireFormat;
+    }
+
+    /**
+     * The project's {@code api} block ({@code api.pagination}, {@code api.unknownFields}), absent
+     * keys at their defaults (no page size, {@code reject}). Never {@code null}.
+     */
+    public ApiSettings getApiSettings() {
+        return apiSettings;
     }
 
     /** The project's enum storage defaults ({@code enums} in this file). Never {@code null}. */
@@ -360,8 +369,68 @@ public final class NeutralConfig {
         NeutralConfig cfg = new NeutralConfig(specs, dependencies, scopeInclude, migrateScope, physicalNaming,
                 wireFormat);
         cfg.enumDefaults = parseEnums(root.get("enums"), origin);
+        cfg.apiSettings = parseApi(root.get("api"), origin);
         cfg.requirementsInherit = parseRequirementsInherit(root.get("requirements"), origin);
         return cfg;
+    }
+
+    /**
+     * The {@code api} block: {@code pagination} ({@code defaultLimit} and {@code maxLimit}, both
+     * positive integers, {@code defaultLimit <= maxLimit}) and {@code unknownFields}
+     * ({@code "reject"} | {@code "drop"}). Refused like {@code naming}: an unknown key, a
+     * wrong-typed value or a non-object block. The messages match the TypeScript reader's.
+     */
+    private static ApiSettings parseApi(JsonElement api, String origin) {
+        if (api == null) return ApiSettings.DEFAULT;
+        if (!api.isJsonObject()) throw bad(origin + ": \"api\" must be an object");
+        ApiSettings.Pagination pagination = null;
+        ApiSettings.UnknownFields unknownFields = ApiSettings.UnknownFields.REJECT;
+        JsonObject obj = api.getAsJsonObject();
+        for (String key : obj.keySet()) {
+            JsonElement v = obj.get(key);
+            switch (key) {
+                case "pagination" -> pagination = parsePagination(v, origin);
+                case "unknownFields" -> {
+                    unknownFields = v.isJsonPrimitive() && v.getAsJsonPrimitive().isString()
+                            ? ApiSettings.unknownFieldsOf(v.getAsString()) : null;
+                    if (unknownFields == null) {
+                        throw bad(origin + ": \"api.unknownFields\" must be \"reject\" or \"drop\"");
+                    }
+                }
+                default -> throw bad(origin + ": \"api\" has an unknown key \"" + key
+                        + "\" (expected \"pagination\" or \"unknownFields\")");
+            }
+        }
+        return new ApiSettings(pagination, unknownFields);
+    }
+
+    private static ApiSettings.Pagination parsePagination(JsonElement el, String origin) {
+        if (!el.isJsonObject()) throw bad(origin + ": \"api.pagination\" must be an object");
+        JsonObject obj = el.getAsJsonObject();
+        for (String key : obj.keySet()) {
+            if (!"defaultLimit".equals(key) && !"maxLimit".equals(key)) {
+                throw bad(origin + ": \"api.pagination\" has an unknown key \"" + key
+                        + "\" (expected \"defaultLimit\" and \"maxLimit\")");
+            }
+        }
+        if (!obj.has("defaultLimit") || !obj.has("maxLimit")) {
+            throw bad(origin + ": \"api.pagination\" needs both \"defaultLimit\" and \"maxLimit\"");
+        }
+        long defaultLimit = pageSize(obj.get("defaultLimit"), "defaultLimit", origin);
+        long maxLimit = pageSize(obj.get("maxLimit"), "maxLimit", origin);
+        if (defaultLimit > maxLimit) {
+            throw bad(origin + ": \"api.pagination.defaultLimit\" must not exceed \"api.pagination.maxLimit\"");
+        }
+        return new ApiSettings.Pagination(defaultLimit, maxLimit);
+    }
+
+    private static long pageSize(JsonElement v, String key, String origin) {
+        java.math.BigDecimal n = v.isJsonPrimitive() && v.getAsJsonPrimitive().isNumber()
+                ? v.getAsBigDecimal() : null;
+        if (n == null || n.signum() <= 0 || n.stripTrailingZeros().scale() > 0 || n.compareTo(java.math.BigDecimal.valueOf(Integer.MAX_VALUE)) > 0) {
+            throw bad(origin + ": \"api.pagination." + key + "\" must be a positive integer");
+        }
+        return n.longValueExact();
     }
 
     /**

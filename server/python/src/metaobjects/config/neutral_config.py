@@ -5,6 +5,16 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from metaobjects.api_settings import (
+    API_KEY_PAGINATION,
+    API_KEY_UNKNOWN_FIELDS,
+    PAGINATION_KEY_DEFAULT_LIMIT,
+    PAGINATION_KEY_MAX_LIMIT,
+    UNKNOWN_FIELDS_MODES,
+    UNKNOWN_FIELDS_REJECT,
+    ApiPagination,
+    ApiSettings,
+)
 from metaobjects.errors import ErrorCode, ParseError
 from metaobjects.naming import (
     NamingRules,
@@ -95,6 +105,10 @@ class NeutralConfig:
     #: FR-023 — `requirements.inherit`: scope patterns naming the dependencies whose
     #: requirements this project takes on as its own ledger (`Collection.in_ledger`).
     requirements_inherit: list[str] = field(default_factory=list)
+
+    #: The `api` block: `api.pagination` (default page size and cap of a generated list route) and
+    #: `api.unknownFields` (`reject` | `drop`). Attached to the loaded root (`MetaRoot.api`).
+    api: ApiSettings = ApiSettings()
 
 
 def find_project_dir(start: Path) -> Path | None:
@@ -189,6 +203,7 @@ def read_neutral_config(config_dir: Path) -> NeutralConfig | None:
     libraries = _read_libraries(raw, path)
     naming = _read_naming(raw, path)
     wire = _read_wire(raw, path)
+    api = _read_api(raw, path)
     _check_enums(raw, path)
     requirements_inherit = _read_requirements_inherit(raw, path)
 
@@ -202,6 +217,7 @@ def read_neutral_config(config_dir: Path) -> NeutralConfig | None:
         naming=naming,
         wire=wire,
         requirements_inherit=requirements_inherit,
+        api=api,
     )
 
 
@@ -385,6 +401,70 @@ def _check_enums(raw: dict[str, object], path: Path) -> None:
             f"{path}: 'enums.maxLength' must be a positive integer, got {value!r}",
             code=ErrorCode.ERR_BAD_ATTR_VALUE,
         )
+
+
+def _page_size(value: object, key: str, path: Path) -> int:
+    """A positive whole number however JSON spells it (50, 50.0), never a bool."""
+    if isinstance(value, float) and value.is_integer():
+        value = int(value)
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ParseError(
+            f'{path}: "api.pagination.{key}" must be a positive integer',
+            code=ErrorCode.ERR_COLLECTION_NOT_FOUND,
+        )
+    return value
+
+
+def _read_api(raw: dict[str, object], path: Path) -> ApiSettings:
+    """The `api` block. Absent or `{}` => no page size and `reject`. A mistake is refused here
+    rather than falling back to a default that changes what a route answers."""
+    if "api" not in raw:
+        return ApiSettings()
+    api = raw["api"]
+    if not isinstance(api, dict):
+        raise ParseError(f'{path}: "api" must be an object', code=ErrorCode.ERR_COLLECTION_NOT_FOUND)
+    for key in api:
+        if key not in (API_KEY_PAGINATION, API_KEY_UNKNOWN_FIELDS):
+            raise ParseError(
+                f'{path}: "api" has an unknown key "{key}" '
+                f'(expected "{API_KEY_PAGINATION}" or "{API_KEY_UNKNOWN_FIELDS}")',
+                code=ErrorCode.ERR_COLLECTION_NOT_FOUND,
+            )
+    pagination: ApiPagination | None = None
+    if API_KEY_PAGINATION in api:
+        block = api[API_KEY_PAGINATION]
+        if not isinstance(block, dict):
+            raise ParseError(f'{path}: "api.pagination" must be an object', code=ErrorCode.ERR_COLLECTION_NOT_FOUND)
+        for key in block:
+            if key not in (PAGINATION_KEY_DEFAULT_LIMIT, PAGINATION_KEY_MAX_LIMIT):
+                raise ParseError(
+                    f'{path}: "api.pagination" has an unknown key "{key}" '
+                    f'(expected "{PAGINATION_KEY_DEFAULT_LIMIT}" and "{PAGINATION_KEY_MAX_LIMIT}")',
+                    code=ErrorCode.ERR_COLLECTION_NOT_FOUND,
+                )
+        for key in (PAGINATION_KEY_DEFAULT_LIMIT, PAGINATION_KEY_MAX_LIMIT):
+            if key not in block:
+                raise ParseError(
+                    f'{path}: "api.pagination" needs both "{PAGINATION_KEY_DEFAULT_LIMIT}" '
+                    f'and "{PAGINATION_KEY_MAX_LIMIT}"',
+                    code=ErrorCode.ERR_COLLECTION_NOT_FOUND,
+                )
+        default_limit = _page_size(block[PAGINATION_KEY_DEFAULT_LIMIT], PAGINATION_KEY_DEFAULT_LIMIT, path)
+        max_limit = _page_size(block[PAGINATION_KEY_MAX_LIMIT], PAGINATION_KEY_MAX_LIMIT, path)
+        if default_limit > max_limit:
+            raise ParseError(
+                f'{path}: "api.pagination.defaultLimit" must not exceed "api.pagination.maxLimit"',
+                code=ErrorCode.ERR_COLLECTION_NOT_FOUND,
+            )
+        pagination = ApiPagination(default_limit=default_limit, max_limit=max_limit)
+    unknown_fields = api.get(API_KEY_UNKNOWN_FIELDS, UNKNOWN_FIELDS_REJECT)
+    if not isinstance(unknown_fields, str) or unknown_fields not in UNKNOWN_FIELDS_MODES:
+        choices = " or ".join(f'"{m}"' for m in UNKNOWN_FIELDS_MODES)
+        raise ParseError(
+            f'{path}: "api.{API_KEY_UNKNOWN_FIELDS}" must be {choices}',
+            code=ErrorCode.ERR_COLLECTION_NOT_FOUND,
+        )
+    return ApiSettings(pagination=pagination, unknown_fields=unknown_fields)
 
 
 #: Every key the `wire` block accepts, and the ONLY ones it accepts (refused, not ignored, like `naming`).

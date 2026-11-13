@@ -45,6 +45,7 @@ __all__ = [
     "classify_constraint_error",
     "pydantic_issues",
     "required_null_issues",
+    "unknown_body_keys",
     "unreadable_body_issues",
     "value_error_issues",
     "validation_envelope",
@@ -240,6 +241,15 @@ def required_null_issues(dto: dict[str, Any], required: Any) -> list[dict[str, A
         for k in sorted(required)
         if k in dto and dto[k] is None
     ]
+
+
+def unknown_body_keys(body: Any, known: Any) -> list[str]:
+    """The top-level keys of the JSON object *body* that *known* does not name, sorted by
+    code point (``api.unknownFields: reject``). A body that is not a ``dict`` has none: it is
+    left to the unreadable-body answer."""
+    if not isinstance(body, dict):
+        return []
+    return sorted(k for k in body if k not in known)
 
 
 def unreadable_body_issues() -> list[dict[str, Any]]:

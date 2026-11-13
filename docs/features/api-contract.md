@@ -294,11 +294,10 @@ each handler they register instead; an `HTTPException` is rethrown to your
   reads a whole list. `meta verify` advises (rule `unbounded-list-pages`) when a routes
   generator is wired and the project sets no page size.
 
-  **Ports: TypeScript reads `api.pagination` today** (the Fastify and Hono routes, packaged and
-  ejected, gated by `fixtures/api-contract-conformance/pagination/` in the generated lane).
-  The C#, Java, Kotlin and Python routes do not read it yet: their REST generators are under
-  the 2026-09-22 freeze, and carrying the setting there waits on that ruling. Until then a list
-  over a large table in those ports should always send a `limit`.
+  **Every port reads it:** the TypeScript Fastify and Hono routes, the C# minimal-API routes, the
+  Java and Kotlin Spring controllers and the Python FastAPI routers, packaged and ejected (an owned
+  copy picks it up when it is re-ejected). `fixtures/api-contract-conformance/api-settings/` pins
+  it in the generated lane of every port.
 - `withCount=1` — opt-in flag that switches the list response from
   `[<row>...]` to `{ rows: [<row>...], total: <N> }` (needed for grid
   pagination). The grid hook always sends `withCount=1`.
@@ -621,10 +620,9 @@ routes:
 | `@mutability: writeOnce` | kept | dropped |
 | the TPH discriminator | dropped (the route's subtype is its only source) | dropped |
 | a column only a sibling TPH subtype declares | dropped | dropped |
-| a key the entity does not declare | dropped | dropped |
 
 None of these is a `400`, and none reaches the repository. Each port does it in its own idiom: TypeScript
-parses with the Zod input schema (which drops unknown keys) and writes the parsed value; Python keeps only
+parses with the Zod input schema (which drops keys it does not list) and writes the parsed value; Python keeps only
 the keys its input model validated; Java nulls the dropped components of the bound DTO before
 `repository.create` and its DTOs carry `@JsonIgnoreProperties(ignoreUnknown = true)`, so the answer does not
 depend on the host's `ObjectMapper`; Kotlin writes only the route's settable columns; C# resets the bound
@@ -632,6 +630,36 @@ entity's generated key, TPH discriminator and M:N navigations before `Add`, and 
 a private setter, which System.Text.Json never binds. The shared scenarios `input-server-owned-dropped` and
 `tph/tph-input-server-owned-dropped` pin it, and `secret-fields/` pins a `readOnly` column beside the
 credential.
+
+### Unknown request fields: `api.unknownFields`
+
+A key the entity does **not** declare is a different case, and a project setting decides it. In
+`.metaobjects/config.json`:
+
+```json
+{ "api": { "unknownFields": "reject" } }
+```
+
+- **`reject`, the default** (also when the key is absent). A create, PUT or PATCH body with any
+  undeclared top-level key answers `400 { "error": "unknown_fields", "fields": ["isAdmin", "role"] }`,
+  the keys sorted, and nothing is written. The check runs before validation, so a body that is both
+  misspelled and invalid is told about the spelling first.
+- **`drop`.** Undeclared keys are ignored and the rest of the body is written, which is what every
+  port did before 1.3.
+
+A key is undeclared when no field of the entity has that name; on a TPH subtype's routes, when no
+field of the base or of any subtype has it. Every key in the table above is declared, so it is
+**dropped, not refused, under either value**: a client that sends back a row it read (with its `id`,
+its `@autoSet` stamps and its `writeOnce` field) keeps working, and a sibling subtype's column on
+another subtype's route is dropped. Only the top level is checked; a value object's members are
+validated as before. `meta init` writes `"unknownFields": "reject"` for a new project.
+
+Each port checks the raw body before it binds it, so the answer is the same whatever the host
+framework would do with an unknown property: Java and Kotlin read the keys from the request's JSON
+tree, not from Jackson's binding, and answer identically with `FAIL_ON_UNKNOWN_PROPERTIES` on or
+off. The shared scenarios `input-unknown-fields-rejected` and `tph/tph-unknown-fields-rejected`
+pin `reject` in both lanes of every port, and `api-settings/unknown-fields-dropped` pins `drop` in
+the generated lane.
 
 Only the generated HTTP boundary changes. The entity, its DTO and the generated queries still carry the
 field, so your own code writes a hash or token and reads it back. Allowlists are unchanged: a field is

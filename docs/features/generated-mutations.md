@@ -42,8 +42,10 @@ but the semantics are one contract — call them **PATCH-1..7** (FR-035):
   `safeParse` succeeds and the key never reaches the `SET`. The TPH discriminator
   is additionally deleted by hand after parse, the same convention. A malformed
   *value* on a settable key is still `400 {"error":"validation", "issues": [...]}`. A key the entity
-  does not declare at all is dropped the same way. The Python routes hand the
-  repository only the keys their input model validated.
+  does not declare at all is NOT one of these: under `api.unknownFields: reject` (the default)
+  it answers `400 {"error":"unknown_fields","fields":[...]}` before validation, and only under
+  `drop` is it ignored the same way ([api-contract.md](api-contract.md#unknown-request-fields-apiunknownfields)).
+  The Python routes hand the repository only the keys their input model validated.
   This matters for `writeOnce` specifically: the generated edit form submits EVERY
   registered field (`handleSubmit` passes all values, and 0.19.2 switched the
   resolver to `UpdateSchema` on edit rather than diff-and-omit), so rejecting a

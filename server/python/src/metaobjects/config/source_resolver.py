@@ -7,6 +7,7 @@ from typing import Callable
 from metaobjects.errors import ErrorCode, ParseError
 from metaobjects.loader.sources import DirectorySource
 from metaobjects.naming import NamingRules, package_of_resolution_key
+from metaobjects.api_settings import ApiSettings
 from metaobjects.wire import WireFormat
 from metaobjects.scope import compile_scope, matches_scope
 
@@ -157,6 +158,7 @@ def _collection_from_own_files(
     libraries: list[str] = cfg.libraries if cfg is not None else []
     naming: NamingRules = cfg.naming if cfg is not None else NamingRules()
     wire: WireFormat = cfg.wire if cfg is not None else WireFormat()
+    api: ApiSettings = cfg.api if cfg is not None else ApiSettings()
 
     lock = read_lock(root)
     dependencies: list[ResolvedDependency] = (
@@ -188,6 +190,7 @@ def _collection_from_own_files(
         libraries=tuple(libraries),
         naming=naming,
         wire=wire,
+        api=api,
         requirements_inherit=tuple(cfg.requirements_inherit if cfg is not None else []),
     )
 

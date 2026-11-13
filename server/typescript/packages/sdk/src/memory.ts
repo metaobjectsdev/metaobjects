@@ -18,6 +18,7 @@ import {
   type WireFormat,
   type EnumDefaults,
   type ApiPagination,
+  type UnknownFieldsMode,
 } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
 // FR-043 — a node-only subpath (it reaches the filesystem), which is why it is imported
@@ -121,6 +122,8 @@ export interface LoadMemoryOptions {
   enumDefaults?: EnumDefaults;
   /** The project's list page size (`api.pagination`); defaults to the collection's when `files` is not passed. */
   apiPagination?: ApiPagination | undefined;
+  /** `api.unknownFields`; on the no-`files` arm the collection supplies it. */
+  apiUnknownFields?: UnknownFieldsMode | undefined;
 }
 
 /** Default provider bundle threaded by {@link loadMemory} when no options
@@ -176,7 +179,7 @@ export async function loadMemory(
   repoRoot: string,
   options?: LoadMemoryOptions,
 ): Promise<MetaRoot> {
-  const { result, importedPackages, importedNodes, libraries, physicalNaming, wireFormat, enumDefaults, apiPagination } =
+  const { result, importedPackages, importedNodes, libraries, physicalNaming, wireFormat, enumDefaults, apiPagination, apiUnknownFields } =
     await loadCollectionRaw(repoRoot, options, options?.strict === true);
 
   if (result.errors.length > 0) {
@@ -199,6 +202,7 @@ export async function loadMemory(
   if (wireFormat !== undefined) result.root.wireFormat = wireFormat;
   if (enumDefaults !== undefined) result.root.enumDefaults = enumDefaults;
   if (apiPagination !== undefined) result.root.apiPagination = apiPagination;
+  if (apiUnknownFields !== undefined) result.root.apiUnknownFields = apiUnknownFields;
   return result.root;
 }
 
@@ -275,6 +279,7 @@ async function loadCollectionRaw(
   wireFormat: WireFormat | undefined;
   enumDefaults: EnumDefaults | undefined;
   apiPagination: ApiPagination | undefined;
+  apiUnknownFields: UnknownFieldsMode | undefined;
 }> {
   const extra = options?.providers ?? [];
   let providers: readonly MetaDataTypeProvider[];
@@ -305,6 +310,7 @@ async function loadCollectionRaw(
   let wireFormat: WireFormat | undefined = options?.wireFormat;
   let enumDefaults: EnumDefaults | undefined = options?.enumDefaults;
   let apiPagination: ApiPagination | undefined = options?.apiPagination;
+  let apiUnknownFields: UnknownFieldsMode | undefined = options?.apiUnknownFields;
   if (options?.files !== undefined) {
     paths = [...options.files];
     fileIds = options.fileIds;
@@ -327,6 +333,7 @@ async function loadCollectionRaw(
     wireFormat ??= collection.wireFormat;
     enumDefaults ??= collection.enumDefaults;
     apiPagination ??= collection.apiPagination;
+    apiUnknownFields ??= collection.apiUnknownFields;
   }
 
   const loader = new MetaDataLoader({
@@ -352,7 +359,7 @@ async function loadCollectionRaw(
       return id === undefined ? new FileSource(p) : new FileSource(p, { id });
     }),
   ]);
-  return { result, registry, importedPackages, importedNodes, libraries, physicalNaming, wireFormat, enumDefaults, apiPagination };
+  return { result, registry, importedPackages, importedNodes, libraries, physicalNaming, wireFormat, enumDefaults, apiPagination, apiUnknownFields };
 }
 
 /** Every source file that contributed to a node, across the envelope variants that

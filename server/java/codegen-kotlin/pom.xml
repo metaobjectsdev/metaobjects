@@ -260,6 +260,7 @@
                     <include>KotlinDecimalWireEmitter.kt</include>
                     <include>KotlinDurationWireEmitter.kt</include>
                     <include>KotlinValidationIssuesEmitter.kt</include>
+                    <include>KotlinUnknownBodyKeysEmitter.kt</include>
                     <include>KotlinExtractSchemaEmitter.kt</include>
                     <include>KotlinOutputFormatSpecEmitter.kt</include>
                     <include>KotlinCrossFieldRules.kt</include>

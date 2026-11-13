@@ -147,6 +147,14 @@ const BridgeSortAllowlist = { id: {}, reference: {}, quantity: {} } as const sat
 const PriorAuthSortAllowlist = { id: {}, reference: {}, approver: {} } as const satisfies SortAllowlist;
 const CopaySortAllowlist = { id: {}, reference: {} } as const satisfies SortAllowlist;
 
+// `api.unknownFields` at its default, `reject`, which this corpus does not change: every
+// field the hierarchy declares, so a sibling subtype's column is dropped on another subtype's
+// route rather than refused, as the generated per-subtype mounts have it.
+const KNOWN_FIELDS = [
+  "id", "type", "reference", "issuedCurrency", "autoCreatedAt", "autoUpdatedAt",
+  "quantity", "copayAmount", "approver",
+] as const;
+
 export async function startTphServer(connectionUri: string): Promise<TphServerHandle> {
   const pool = new pg.Pool({ connectionString: connectionUri, types: bigintAsNumberTypes });
   const db = drizzle(pool);
@@ -177,19 +185,19 @@ export async function startTphServer(connectionUri: string): Promise<TphServerHa
         fastify: instance, path: "/auths/bridge", db, table: auths,
         insertSchema: BridgeInsert, updateSchema: BridgeUpdate,
         filterAllowlist: BridgeFilterAllowlist, sortAllowlist: BridgeSortAllowlist,
-        dialect: "postgres", discriminator: { column: "type", value: "Bridge" },
+        dialect: "postgres", discriminator: { column: "type", value: "Bridge" }, knownFields: KNOWN_FIELDS,
       });
       mountCrudRoutes({
         fastify: instance, path: "/auths/copay", db, table: auths,
         insertSchema: CopayInsert, updateSchema: CopayUpdate,
         filterAllowlist: CopayFilterAllowlist, sortAllowlist: CopaySortAllowlist,
-        dialect: "postgres", discriminator: { column: "type", value: "Copay" }, decimalColumns: DECIMAL_COLUMNS, decimalWire: DECIMAL_WIRE,
+        dialect: "postgres", discriminator: { column: "type", value: "Copay" }, knownFields: KNOWN_FIELDS, decimalColumns: DECIMAL_COLUMNS, decimalWire: DECIMAL_WIRE,
       });
       mountCrudRoutes({
         fastify: instance, path: "/auths/priorauth", db, table: auths,
         insertSchema: PriorAuthInsert, updateSchema: PriorAuthUpdate,
         filterAllowlist: PriorAuthFilterAllowlist, sortAllowlist: PriorAuthSortAllowlist,
-        dialect: "postgres", discriminator: { column: "type", value: "PriorAuth" },
+        dialect: "postgres", discriminator: { column: "type", value: "PriorAuth" }, knownFields: KNOWN_FIELDS,
       });
     },
     { prefix: "/api" },

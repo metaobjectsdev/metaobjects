@@ -1,7 +1,8 @@
-// api-contract-pagination-generated-server.ts — boots the GENERATED Item routes (the deployed
-// artifact) over HTTP and drives them against the pagination corpus. The page size is not passed
-// here: it reaches the emitted routes from the corpus's own `.metaobjects/config.json`, read by
-// the metadata load, which is the path an adopter's `api.pagination` takes.
+// api-contract-api-settings-generated-server.ts — boots the GENERATED Item routes (the deployed
+// artifact) over HTTP and drives them against the api-settings corpus. The settings are not
+// passed here: the page size and the unknown-field rule reach the emitted routes from the
+// corpus's own `.metaobjects/config.json`, read by the metadata load, which is the path an
+// adopter's `api` block takes.
 //
 // Same shape as api-contract-secret-fields-generated-server.ts: runGen over the corpus meta into
 // a temp dir, provision the table the emitted Drizzle binding reads, mount the EMITTED routes.
@@ -16,24 +17,24 @@ import type pg from "pg";
 import { executeSql } from "./postgres-sql.ts";
 import { loadMetadataFile } from "./load-metadata.ts";
 
-export interface PaginationSeed {
+export interface ApiSettingsSeed {
   rows: Array<{ id: number; title: string }>;
 }
 
-export interface GeneratedPaginationServerHandle {
+export interface GeneratedApiSettingsServerHandle {
   baseUrl: string;
-  applySeed(seed: PaginationSeed): Promise<void>;
+  applySeed(seed: ApiSettingsSeed): Promise<void>;
   close(): Promise<void>;
 }
 
-export async function startGeneratedPaginationServer(
+export async function startGeneratedApiSettingsServer(
   connectionUri: string,
   metaPath: string,
-): Promise<GeneratedPaginationServerHandle> {
+): Promise<GeneratedApiSettingsServerHandle> {
   const here = dirname(fileURLToPath(import.meta.url));
   const genTmpRoot = join(here, "..", ".gen-tmp");
   mkdirSync(genTmpRoot, { recursive: true });
-  const tmp = mkdtempSync(join(genTmpRoot, "api-contract-pagination-"));
+  const tmp = mkdtempSync(join(genTmpRoot, "api-contract-api-settings-"));
 
   const root = await loadMetadataFile(metaPath);
   const lr = await runGen({
@@ -85,7 +86,7 @@ export const db = drizzle(pool);
 
   return {
     baseUrl,
-    applySeed: async (seed: PaginationSeed) => {
+    applySeed: async (seed: ApiSettingsSeed) => {
       await executeSql(connectionUri, `TRUNCATE TABLE "items" RESTART IDENTITY;`);
       for (const r of seed.rows)
         await executeSql(connectionUri, `INSERT INTO "items" ("id","title") VALUES (${r.id}, ${str(r.title)})`);

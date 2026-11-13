@@ -803,6 +803,10 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
         loader.getRoot().setEnumDefaults(resolveProjectConfig(srcDir)
                 .map(com.metaobjects.config.NeutralConfig::getEnumDefaults)
                 .orElse(com.metaobjects.config.EnumDefaults.DEFAULT));
+        // The `api` block (`api.pagination`, `api.unknownFields`), from the same file, read by the generators.
+        loader.getRoot().setApiSettings(resolveProjectConfig(srcDir)
+                .map(com.metaobjects.config.NeutralConfig::getApiSettings)
+                .orElse(com.metaobjects.config.ApiSettings.DEFAULT));
 
         getLog().info("MetaData Mojo > Create Loader: " + loader.toString());
 

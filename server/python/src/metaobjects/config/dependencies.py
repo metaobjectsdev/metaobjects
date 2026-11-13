@@ -17,6 +17,7 @@ from typing import Any, Callable, Sequence
 from metaobjects.errors import ErrorCode, ParseError
 from metaobjects.meta.meta_data import MetaData
 from metaobjects.naming import NamingRules, package_of_resolution_key
+from metaobjects.api_settings import ApiSettings
 from metaobjects.wire import WireFormat
 from metaobjects.registry_manifest import METAMODEL_VERSION
 from metaobjects.shared.base_types import TYPE_OBJECT, TYPE_REQUIREMENT
@@ -676,6 +677,9 @@ class Collection:
     #: ADR-0019 Amendment 2 — this project's `wire` setting, read at the same rung;
     #: attached to the loaded root beside `naming`.
     wire: WireFormat = WireFormat()
+
+    #: This project's `api` setting (page size, unknown-field rule), attached beside `wire`.
+    api: ApiSettings = ApiSettings()
 
     #: FR-023 — the declared `requirements.inherit` patterns, for `in_ledger`.
     requirements_inherit: tuple[str, ...] = ()

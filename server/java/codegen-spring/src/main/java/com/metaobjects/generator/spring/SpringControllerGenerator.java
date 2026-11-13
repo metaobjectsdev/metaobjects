@@ -11,6 +11,7 @@ import com.metaobjects.generator.spring.SpringNaming;
 import com.metaobjects.generator.spring.SpringTypeMapper;
 import com.metaobjects.generator.spring.TphPlan;
 
+import com.metaobjects.config.ApiSettings;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.field.ObjectField;
 import com.metaobjects.query.FilterOps;
@@ -262,6 +263,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("import ").append(runtimePackage).append(".ConstraintErrors;\n");
         src.append("import ").append(runtimePackage).append(".PatchValidationException;\n");
         src.append("import ").append(runtimePackage).append(".UnreadableBody;\n");
+        src.append("import ").append(runtimePackage).append(".UnknownBodyKeys;\n");
         src.append("import ").append(runtimePackage).append(".ValidationIssues;\n");
         // The escape the PATCH loop applies to each assigned key before naming a Bean
         // Validation property — see RecordComponentNames for why it is needed at run time.
@@ -305,6 +307,8 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         // private to this controller (no cross-file collision risk).
         appendSortAllowlist(src, entity, sortFields);
         appendServerOwnedOnCreate(src, entity);
+        ApiSettings api = ApiSettings.of(entity);
+        appendKnownFields(src, api, new ArrayList<>(entity.getMetaFields()));
         // #484: the credential fields this entity's rows carry, hidden from every response body.
         List<String> hidden = SpringGeneratorSupport.credentialNames(entity);
         List<SpringM2mSupport.M2mNav> navs = SpringM2mSupport.resolve(entity, loader);
@@ -333,7 +337,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         // HttpServletRequest carries the raw query string so the bracketed
         // filter[<field>][<op>]=<value> grammar reaches FilterParser intact
         // (Spring's @RequestParam would collapse same-key occurrences).
-        appendListHandler(src, shortName, dtoName, repoName, hidden);
+        appendListHandler(src, shortName, dtoName, repoName, hidden, api.pagination());
 
         // GET /{id} — single by primary key.
         appendGetByIdHandler(src, pkType, hidden);
@@ -350,11 +354,14 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         // direct DTO binding, byte-identical.
         List<MetaField> components = SpringGeneratorSupport.dtoComponentFields(entity);
         List<String> defaultPuts = createDefaultPuts(entity, components);
-        if (defaultPuts.isEmpty()) {
+        // api.unknownFields = reject (the default) binds the raw body too: the undeclared keys are
+        // read off the JSON itself, so the answer does not depend on how the host's ObjectMapper
+        // treats an unknown property.
+        if (defaultPuts.isEmpty() && !api.rejectsUnknownFields()) {
             src.append("    public ResponseEntity<?> create(@RequestBody ").append(dtoName).append(" dto) {\n");
         } else {
             src.append("    public ResponseEntity<?> create(@RequestBody JsonNode body) {\n");
-            appendFillDefaults(src, dtoName, defaultPuts);
+            appendFillDefaults(src, dtoName, defaultPuts, api.rejectsUnknownFields());
         }
         // #484: a @formExclude / credential value is IGNORED (never rejected): the DTO is rebuilt
         // without it, so the column is left to the repository's default.
@@ -416,6 +423,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("    @RequestMapping(value = \"/{id}\", method = { RequestMethod.PATCH, RequestMethod.PUT })\n");
         src.append("    public ResponseEntity<?> update(@PathVariable ").append(pkType)
            .append(" id, @RequestBody JsonNode body) {\n");
+        appendUnknownFieldsGuard(src, api);
         appendPatchBinding(src, patchName, dtoName);
         // Program D (spec section 0): validateValue does NOT cascade @Valid into a nested value
         // object's own constraints, so validate each PRESENT VO element EXPLICITLY. The property's
@@ -730,7 +738,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         if (com.metaobjects.generator.util.GeneratorUtil.isReport(entity)) {
             appendReportListHandler(src, shortName, dtoName, repoName, reportMaxRows, reportExport, routeBase, hidden);
         } else {
-            appendListHandler(src, shortName, dtoName, repoName, hidden);
+            appendListHandler(src, shortName, dtoName, repoName, hidden, ApiSettings.of(entity).pagination());
         }
         if (hasItem) {
             appendGetByIdHandler(src, pkType, hidden);
@@ -843,7 +851,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
      * (Spring's {@code @RequestParam} would collapse same-key occurrences).
      */
     private static void appendListHandler(StringBuilder src, String shortName, String dtoName, String repoName,
-            List<String> hidden) {
+            List<String> hidden, ApiSettings.Pagination page) {
         String allowlistName = SpringNaming.filterAllowlistName(shortName);
         src.append("    @GetMapping\n");
         src.append("    public ResponseEntity<?> list(\n");
@@ -852,7 +860,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("            @RequestParam(required = false) String sort,\n");
         src.append("            @RequestParam(required = false, name = \"withCount\") Integer withCount,\n");
         src.append("            HttpServletRequest request) {\n");
-        src.append("        int actualLimit = limit != null ? limit : 50;\n");
+        appendLimit(src, page);
         src.append("        int actualOffset = offset != null ? offset : 0;\n");
         src.append("        ").append(repoName).append(".SortClause sortClause = null;\n");
         src.append("        if (sort != null) {\n");
@@ -1165,6 +1173,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("import ").append(runtimePackage).append(".ConstraintErrors;\n");
         src.append("import ").append(runtimePackage).append(".PatchValidationException;\n");
         src.append("import ").append(runtimePackage).append(".UnreadableBody;\n");
+        src.append("import ").append(runtimePackage).append(".UnknownBodyKeys;\n");
         src.append("import ").append(runtimePackage).append(".ValidationIssues;\n");
         // The escape the PATCH loop applies to each assigned key before naming a Bean
         // Validation property — see RecordComponentNames for why it is needed at run time.
@@ -1214,6 +1223,12 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         // The polymorphic sort surface is the BASE's own columns, so the declared orders
         // are read off the base too — same owner the allowlist above was built from.
         appendSortDefaultOrders(src, base, sortFields);
+        // A key declared by the base or by ANY subtype is known on every subtype route: a sibling
+        // subtype's column is dropped there (it is not this route's to write), never refused.
+        ApiSettings api = ApiSettings.of(base);
+        List<MetaField> declared = new ArrayList<>(base.getMetaFields());
+        declared.addAll(TphPlan.everySubtypeField(base, loader));
+        appendKnownFields(src, api, declared);
 
         // FR-036 Program B: constructor-inject the ObjectMapper (binds each present PATCH value via
         // <Sub>Patch.fromJson, same wire codecs as create) + the jakarta Validator (per-field
@@ -1254,7 +1269,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("            @RequestParam(required = false) String sort,\n");
         src.append("            @RequestParam(required = false, name = \"withCount\") Integer withCount,\n");
         src.append("            HttpServletRequest request) {\n");
-        src.append("        int actualLimit = limit != null ? limit : 50;\n");
+        appendLimit(src, api.pagination());
         src.append("        int actualOffset = offset != null ? offset : 0;\n");
         src.append("        ").append(repoName).append(".SortClause sortClause = null;\n");
         src.append("        if (sort != null) {\n");
@@ -1327,7 +1342,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             src.append("            @RequestParam(required = false) Integer offset,\n");
             src.append("            @RequestParam(required = false) String sort,\n");
             src.append("            HttpServletRequest request) {\n");
-            src.append("        int actualLimit = limit != null ? limit : 50;\n");
+            appendLimit(src, api.pagination());
             src.append("        int actualOffset = offset != null ? offset : 0;\n");
             src.append("        ").append(repoName).append(".SortClause sortClause = null;\n");
             src.append("        if (sort != null) {\n");
@@ -1377,12 +1392,12 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             // As the vanilla create — fill the subtype's omitted literal @default fields into
             // the raw body, then bind the union DTO. No such field: the direct binding, byte-identical.
             List<String> subDefaultPuts = createDefaultPuts(st.entity(), SpringGeneratorSupport.dtoComponentFields(st.entity()));
-            if (subDefaultPuts.isEmpty()) {
+            if (subDefaultPuts.isEmpty() && !api.rejectsUnknownFields()) {
                 src.append("    public ResponseEntity<?> create").append(suffix)
                    .append("(@RequestBody ").append(dtoName).append(" dto) {\n");
             } else {
                 src.append("    public ResponseEntity<?> create").append(suffix).append("(@RequestBody JsonNode body) {\n");
-                appendFillDefaults(src, dtoName, subDefaultPuts);
+                appendFillDefaults(src, dtoName, subDefaultPuts, api.rejectsUnknownFields());
             }
             src.append("        ValidationIssues __issues = new ValidationIssues();\n");
             for (MetaField vf : createValidated) {
@@ -1454,6 +1469,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
                .append("/{id}\", method = { RequestMethod.PATCH, RequestMethod.PUT })\n");
             src.append("    public ResponseEntity<?> update").append(suffix)
                .append("(@PathVariable ").append(pkType).append(" id, @RequestBody JsonNode body) {\n");
+            appendUnknownFieldsGuard(src, api);
             appendPatchBinding(src, subPatch, subDto);
             appendValueObjectMapValidation(src, st.entity());
             appendPatchVerdict(src);
@@ -1739,11 +1755,12 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
     /** The body of a create handler bound to the raw {@code JsonNode body}: refuse a
      *  non-object body, fill the absent defaulted fields ({@link #createDefaultPuts}), bind
      *  {@code dto}. */
-    private static void appendFillDefaults(StringBuilder src, String dtoName, List<String> puts) {
+    private static void appendFillDefaults(StringBuilder src, String dtoName, List<String> puts, boolean rejectUnknown) {
         src.append("        if (!(body instanceof com.fasterxml.jackson.databind.node.ObjectNode given)) {\n");
         src.append("            return ResponseEntity.badRequest().body(new ValidationIssues()\n");
         src.append("                    .add(ValidationIssues.INVALID_TYPE, java.util.List.of(), \"request body must be a JSON object\").body());\n");
         src.append("        }\n");
+        if (rejectUnknown) appendUnknownFieldsGuard(src, true);
         src.append("        com.fasterxml.jackson.databind.node.ObjectNode filled = given.deepCopy();\n");
         for (String put : puts) src.append("        ").append(put).append("\n");
         src.append("        ").append(dtoName).append(" dto;\n");
@@ -1752,6 +1769,59 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("        } catch (com.fasterxml.jackson.core.JsonProcessingException | IllegalArgumentException e) {\n");
         src.append("            return ResponseEntity.badRequest().body(UnreadableBody.envelope(e));\n");
         src.append("        }\n");
+    }
+
+    /**
+     * The {@code KNOWN_FIELDS} constant of a controller that refuses undeclared body keys
+     * ({@code api.unknownFields: reject}, the default): every declared field name of
+     * {@code declared} (the entity, or for a single-table hierarchy the base and every subtype).
+     * A declared key the client may not set (generated key, readOnly, derived, {@code @autoSet},
+     * a sibling subtype's column) is known: it is dropped, never refused. Emits nothing under
+     * {@code drop}, which keeps the controller byte-identical to one without the setting.
+     */
+    private static void appendKnownFields(StringBuilder src, ApiSettings api, List<MetaField> declared) {
+        if (!api.rejectsUnknownFields()) return;
+        Set<String> names = new java.util.LinkedHashSet<>();
+        for (MetaField f : declared) names.add(f.getName());
+        src.append("    /** Every field the entity declares, as named on the wire: a body key outside it is refused. */\n");
+        src.append("    private static final Set<String> KNOWN_FIELDS = Set.of(");
+        int i = 0;
+        for (String n : names) {
+            if (i++ > 0) src.append(", ");
+            src.append(javaLiteral(n));
+        }
+        src.append(");\n\n");
+    }
+
+    /** The unknown-key check at the head of a PUT/PATCH handler (see {@link #appendUnknownFieldsGuard(StringBuilder, boolean)}). */
+    private static void appendUnknownFieldsGuard(StringBuilder src, ApiSettings api) {
+        if (api.rejectsUnknownFields()) appendUnknownFieldsGuard(src, true);
+    }
+
+    /** Answer {@code 400 unknown_fields} for an undeclared top-level key of {@code body}, checked on the raw JSON before any binding. */
+    private static void appendUnknownFieldsGuard(StringBuilder src, boolean enabled) {
+        if (!enabled) return;
+        src.append("        Map<String, Object> __unknown = UnknownBodyKeys.refusal(body, KNOWN_FIELDS);\n");
+        src.append("        if (__unknown != null) {\n");
+        src.append("            return ResponseEntity.badRequest().body(__unknown);\n");
+        src.append("        }\n");
+    }
+
+    /**
+     * The {@code actualLimit} line of a list handler: no {@code limit} reads the page default
+     * (50 unless the project sets {@code api.pagination}), and a {@code limit} above
+     * {@code api.pagination.maxLimit} is {@code 400 {"error": "limit_too_large", "maxLimit": N}}.
+     */
+    private static void appendLimit(StringBuilder src, ApiSettings.Pagination page) {
+        if (page == null) {
+            src.append("        int actualLimit = limit != null ? limit : 50;\n");
+            return;
+        }
+        src.append("        if (limit != null && limit > ").append(page.maxLimit()).append(") {\n");
+        src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", \"limit_too_large\", \"maxLimit\", ")
+           .append(page.maxLimit()).append("));\n");
+        src.append("        }\n");
+        src.append("        int actualLimit = limit != null ? limit : ").append(page.defaultLimit()).append(";\n");
     }
 
     /** A field no client may set on create regardless of the entity's key: readOnly or derived. */

@@ -185,6 +185,7 @@ class AuthorApiServer(private val pg: PostgresContainer) : AutoCloseable {
         @Suppress("UNCHECKED_CAST")
         val body = readJsonBody(exchange) as? Map<String, Any?>
             ?: return sendJson(exchange, 400, validationBody(listOf(issue("invalid_type", "request body must be a JSON object"))))
+        if (refuseUnknownKeys(exchange, body)) return
         // FR-036: enforce @maxLength (name 100 / bio 1000) at the wire boundary — a too-long
         // present value is a 400 {error:"validation"} BEFORE the insert (mirrors the generated
         // controller's validator.validate on POST).
@@ -220,6 +221,7 @@ class AuthorApiServer(private val pg: PostgresContainer) : AutoCloseable {
         @Suppress("UNCHECKED_CAST")
         val body = readJsonBody(exchange) as? Map<String, Any?>
             ?: return sendJson(exchange, 400, validationBody(listOf(issue("invalid_type", "request body must be a JSON object"))))
+        if (refuseUnknownKeys(exchange, body)) return
         // FR-035 PATCH-2: an explicit null on a @required field (name / createdAt, per
         // meta.json) is a 400 — a present null on the nullable bio clears it, and an
         // omitted required field is untouched (never a 400).
@@ -277,6 +279,27 @@ class AuthorApiServer(private val pg: PostgresContainer) : AutoCloseable {
      * Only present, non-null strings are checked — absent fields and nulls are handled by the
      * per-verb guards. Mirrors the generated controller's field constraints over HTTP.
      */
+    /** Answers 400 unknown_fields (keys in code-point order) when [body] carries a key Author does not declare. */
+    private fun refuseUnknownKeys(exchange: HttpExchange, body: Map<String, Any?>): Boolean {
+        val unknown = body.keys.filter { it !in DECLARED_KEYS }.sortedWith { x, y -> compareCodePoints(x, y) }
+        if (unknown.isEmpty()) return false
+        sendJson(exchange, 400, linkedMapOf("error" to "unknown_fields", "fields" to unknown))
+        return true
+    }
+
+    private fun compareCodePoints(a: String, b: String): Int {
+        var i = 0
+        var j = 0
+        while (i < a.length && j < b.length) {
+            val ca = a.codePointAt(i)
+            val cb = b.codePointAt(j)
+            if (ca != cb) return ca.compareTo(cb)
+            i += Character.charCount(ca)
+            j += Character.charCount(cb)
+        }
+        return (a.length - i).compareTo(b.length - j)
+    }
+
     private fun lengthIssues(body: Map<String, Any?>): MutableList<Map<String, Any>> {
         val out = ArrayList<Map<String, Any>>()
         (body["name"] as? String)?.let { if (it.length > 100) out.add(issue("too_big", "too long", "name")) }
@@ -534,6 +557,9 @@ class AuthorApiServer(private val pg: PostgresContainer) : AutoCloseable {
 
     companion object {
         // Mirrors the TS server's SORT_ALLOWLIST; cross-port contract.
+        /** Every field Author declares, as named on the wire; the corpus sets no api.unknownFields, so any other body key is refused. */
+        private val DECLARED_KEYS = setOf("id", "name", "bio", "createdAt", "issuedCurrency", "autoCreatedAt", "autoUpdatedAt")
+
         private val SORT_ALLOWLIST = setOf("id", "name", "createdAt")
 
         // Cross-port contract: each field's DECLARED @sortableDefaultOrder — the direction

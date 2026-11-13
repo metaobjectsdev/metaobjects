@@ -307,6 +307,7 @@
                                         <include>PatchValidationException.java</include>
                                         <include>RecordComponentNames.java</include>
                                         <include>ReportExport.java</include>
+                                        <include>UnknownBodyKeys.java</include>
                                         <include>UnreadableBody.java</include>
                                         <include>ValidationIssues.java</include>
                                     </includes>

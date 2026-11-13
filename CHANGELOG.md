@@ -38,21 +38,22 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   did: a server-generated key, a `readOnly` or derived field, and in TPH the discriminator (the
   route's subtype is its only source) and every column the route's subtype does not declare. An
   assigned key is still the caller's on create. No port answers them with a 400. A key the
-  entity does not declare is also dropped, never rejected, in every port: Java DTOs and Kotlin
-  entity classes now carry `@JsonIgnoreProperties(ignoreUnknown = true)`, so the answer no
-  longer depends on the host's `ObjectMapper` (a plain one answered 400). The Python 1.2.1 fix
-  is carried forward to this line, and the Python TPH create now drops a body's discriminator
-  instead of answering 400 for a foreign one.
+  entity does not declare is a separate case, now a project setting (`api.unknownFields`,
+  under "Changed" below). Java DTOs and Kotlin entity classes now carry
+  `@JsonIgnoreProperties(ignoreUnknown = true)`, so binding no longer depends on the host's
+  `ObjectMapper` (a plain one answered 400). The Python 1.2.1 fix is carried forward to this
+  line, and the Python TPH create now drops a body's discriminator instead of answering 400 for
+  a foreign one.
 
   Gated by two new shared api-contract scenarios, `input-server-owned-dropped` (generated and
   reference lanes) and `tph/tph-input-server-owned-dropped` (both TPH lanes), which send a
-  client `id`, a foreign discriminator, a `writeOnce` change and a made-up `isAdmin`, and by a
-  `readOnly` `role` column in the `secret-fields` corpus. Scenarios gain an `absent: [keys]`
-  assertion. Adopters with ejected (owned) generators need the same change made by hand.
+  client `id`, a foreign discriminator and a `writeOnce` change, and by a `readOnly` `role`
+  column in the `secret-fields` corpus. Scenarios gain an `absent: [keys]` assertion. Adopters
+  with ejected (owned) generators need the same change made by hand.
 
 ### Added
 
-- **A page size for generated list routes: `api.pagination` (TypeScript).** An external review
+- **A page size for generated list routes: `api.pagination`, in every port.** An external review
   of 1.2.0 found that list endpoints had no hard cap: the TypeScript and C# routes returned the
   whole table when `limit` was omitted, and `?limit=100000` was accepted in every port. Set
   `"api": { "pagination": { "defaultLimit": 50, "maxLimit": 1000 } }` in
@@ -62,12 +63,13 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   that block for a new project. **A project without the setting behaves exactly as before**,
   because a cap added on upgrade would silently truncate a client that reads a whole list;
   `meta verify` advises (rule `unbounded-list-pages`) when a routes generator is wired and no
-  page size is set. Reports keep their own row cap and opaque views their 1000. The TypeScript
-  Fastify and Hono routes read it (packaged and ejected: re-eject `routes` or re-sync an owned
-  copy to pick it up), through a new `pagination` option on the runtime mounts. It is gated by
-  the new `fixtures/api-contract-conformance/pagination/` sub-corpus. The C#, Java, Kotlin and
-  Python routes do not read it yet; carrying it there waits on the ruling on the freeze of the
-  non-TypeScript REST generators. A config key, not vocabulary: `metamodelVersion` does not move.
+  page size is set. Reports keep their own row cap and opaque views their 1000. Every port's
+  generated list routes read it: the TypeScript Fastify and Hono routes (through a new
+  `pagination` option on the runtime mounts), the C# minimal-API routes, the Java and Kotlin
+  Spring controllers and the Python FastAPI routers. An owned (ejected) routes copy picks it up
+  when it is re-ejected. It is gated in the generated lane of every port by the new
+  `fixtures/api-contract-conformance/api-settings/` sub-corpus. A config key, not vocabulary:
+  `metamodelVersion` does not move.
 
 - **Report measures over Money and other value-object members (FR-044 R12).** A dimension's or
   measure's `@of` may name `Entity.field.member`, a member of a value object stored with
@@ -90,6 +92,25 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   report rule R13 and a conformance fixture per refusal, in every loader port.
 
 ### Changed
+
+- **A write with a key the entity does not declare is refused by default: `api.unknownFields`.
+  Existing projects get `reject` when they regenerate.** Until now every port dropped an
+  undeclared body key silently, so a client that misspelled a field (`emial`) got a 200 and lost
+  the value without a word. A generated create, PUT or PATCH route now answers
+  `400 {"error": "unknown_fields", "fields": ["emial"]}` (the undeclared top-level keys, sorted)
+  before validation, and writes nothing. To keep the old behaviour set
+  `"api": { "unknownFields": "drop" }` in `.metaobjects/config.json` and regenerate. A declared
+  key the client may not set (a generated `id`, a `readOnly` or derived field, an `@autoSet`
+  stamp, a `writeOnce` field on update, the TPH discriminator, a sibling subtype's column) is
+  still dropped, not refused, under either value, so a client that sends back a row it read keeps
+  working. `meta init` writes `"unknownFields": "reject"` for a new project. Every port checks the
+  raw body before binding it, so Java and Kotlin answer the same whatever the host's Jackson
+  `FAIL_ON_UNKNOWN_PROPERTIES` says. TypeScript passes the declared field list to the runtime
+  mounts as a new `knownFields` option; a mount given none keeps dropping. Pinned by
+  `input-unknown-fields-rejected` and `tph/tph-unknown-fields-rejected` (both lanes of every
+  port) and `api-settings/unknown-fields-dropped` (`drop`, generated lane). Upgrade notes:
+  [docs/features/migrations/unknown-fields-reject-by-default.md](docs/features/migrations/unknown-fields-reject-by-default.md).
+  A config key, not vocabulary: `metamodelVersion` does not move.
 
 - **A validation 400 lists every issue in every port.** The same model answered a failed create or
   update differently by language: TypeScript listed each problem, while C#, Java, Kotlin and Python

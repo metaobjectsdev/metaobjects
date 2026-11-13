@@ -75,6 +75,7 @@ from metaobjects.meta.persistence.source.source_constants import (
 from metaobjects.codegen.config import DEFAULT_API_PREFIX
 from metaobjects.naming import DEFAULT_COLUMN_NAMING
 from metaobjects.naming_refs import ref_target
+from metaobjects.api_settings import UNKNOWN_FIELDS_REJECT, ApiPagination, api_of
 from metaobjects.wire import WIRE_DURATIONS_ISO, WIRE_NATIVE, WireFormat, wire_of
 from metaobjects.shared.base_types import TYPE_IDENTITY
 
@@ -188,16 +189,57 @@ def _scalar_fields(entity: MetaObject) -> list[MetaField]:
 
 #: ADR-0019 Amendment 1 (W2): a request body's decimal fields are parsed exactly (no float
 #: detour) before validation; a malformed one is the cross-port 400.
-_DECIMAL_COERCE: list[str] = [
+_BODY_CHECK: list[str] = [
     "    if dto is None:  # the body was not a JSON object: the cross-port 400, not FastAPI's 422",
     "        return JSONResponse(",
     "            status_code=400, content=validation_envelope(unreadable_body_issues())",
     "        )",
+]
+
+#: ``api.unknownFields: reject`` (the default): a body key no declared field names is refused
+#: before anything else reads the body. A declared key the client may not set is NOT unknown;
+#: it is dropped later, as under ``drop``.
+_UNKNOWN_FIELDS_CHECK: list[str] = [
+    "    _unknown = unknown_body_keys(dto, _KNOWN_FIELDS)",
+    "    if _unknown:",
+    '        return JSONResponse(status_code=400, content={"error": "unknown_fields", "fields": _unknown})',
+]
+
+_DECIMAL_COERCE_BODY: list[str] = [
     "    try:",
     "        dto = coerce_decimal_fields(dto, _DECIMAL_FIELDS, _DECIMAL_LIMITS, _NESTED_DECIMALS)",
     "    except ValueError as _exc:",
     "        return JSONResponse(status_code=400, content=validation_envelope(value_error_issues(_exc)))",
 ]
+
+#: The start of every write handler: the unreadable-body answer, the unknown-key refusal when the
+#: project rejects them, then the exact decimal parse.
+_DECIMAL_COERCE: list[str] = [*_BODY_CHECK, *_DECIMAL_COERCE_BODY]
+
+
+def _write_prelude(reject: bool) -> list[str]:
+    """The body checks that open a create / PUT / PATCH handler (see :data:`_DECIMAL_COERCE`)."""
+    return [*_BODY_CHECK, *(_UNKNOWN_FIELDS_CHECK if reject else []), *_DECIMAL_COERCE_BODY]
+
+
+def _known_fields_lines(entities: list[MetaObject]) -> list[str]:
+    """``_KNOWN_FIELDS``: every field the body may name, on the wire (RESOLVING ``fields()``,
+    ADR-0039; for a single-table hierarchy the base's and every subtype's)."""
+    names = list(dict.fromkeys(f.name for e in entities for f in e.fields()))
+    return ["", "", f"_KNOWN_FIELDS: frozenset[str] = {_py_set_literal(names, frozen=True)}"]
+
+
+def _list_limit_lines(page: ApiPagination | None) -> list[str]:
+    """The limit handling at the top of a list handler body. With no ``api.pagination`` it is the
+    historic default of 50 and no cap; with one, the project's default page and a refusal above
+    the cap (not a clamp: the client is told it asked for more than the server serves)."""
+    if page is None:
+        return ["    actual_limit = limit if limit is not None else 50"]
+    return [
+        f"    if limit is not None and limit > {page.max_limit}:",
+        f'        return JSONResponse(status_code=400, content={{"error": "limit_too_large", "maxLimit": {page.max_limit}}})',
+        f"    actual_limit = limit if limit is not None else {page.default_limit}",
+    ]
 
 #: The request-body dependency of every write route: the body is read with
 #: ``parse_float=Decimal`` so a JSON number never passes through a ``float`` (W2). A body that
@@ -1063,13 +1105,17 @@ class RouterGenerator:
         denied_strip: list[str] = (),
         report_max_rows: int | None = None,
         report_export: bool = False,
+        reject_unknown: bool = False,
+        pagination: ApiPagination | None = None,
     ) -> list[str]:
         """One CRUD route handler block, dispatched by *name*
         (``list`` / ``get`` / ``create`` / ``update`` / ``delete``). Override to
         change a handler's body / decorators / response shape. *model_name* /
         *patch_model* are the generated create + all-optional PATCH Pydantic models
         used to run field constraints on POST / PATCH (FR-036). *report_max_rows* is
-        passed only for a served report's ``list``: every row up to that cap, refused above it."""
+        passed only for a served report's ``list``: every row up to that cap, refused above it.
+        *reject_unknown* adds the ``api.unknownFields: reject`` refusal to create / update;
+        *pagination* is the project's ``api.pagination`` for a ``list`` that is not a report's."""
         if name == "list" and report_max_rows is not None and report_export:
             return self._report_list_with_export(
                 plural=plural,
@@ -1156,7 +1202,7 @@ class RouterGenerator:
                 "    sort: str | None = Query(None),",
                 '    with_count: int | None = Query(None, alias="withCount"),',
                 ") -> Any:",
-                "    actual_limit = limit if limit is not None else 50",
+                *_list_limit_lines(pagination),
                 "    actual_offset = offset if offset is not None else 0",
                 "    sort_clause: _SortClause | None = None",
                 "    if sort is not None:",
@@ -1196,7 +1242,7 @@ class RouterGenerator:
                 "    dto: Annotated[dict[str, Any] | None, Depends(_json_body)],",
                 f"    repo: Annotated[{repo_class}, Depends(get_repository)],",
                 ") -> Any:",
-                *_DECIMAL_COERCE,
+                *_write_prelude(reject_unknown),
                 *denied_strip,
                 *_validated_input_lines(
                     model_name,
@@ -1220,7 +1266,7 @@ class RouterGenerator:
                 "    dto: Annotated[dict[str, Any] | None, Depends(_json_body)],",
                 f"    repo: Annotated[{repo_class}, Depends(get_repository)],",
                 ") -> Any:",
-                *_DECIMAL_COERCE,
+                *_write_prelude(reject_unknown),
                 *denied_strip,
                 *_validated_input_lines(
                     patch_model,
@@ -1342,13 +1388,18 @@ class RouterGenerator:
         return lines
 
     def _emit_tph_list_body(
-        self, subtype_expr: str, fields_const: str, ops_const: str, repo_var: str = "repo"
+        self,
+        subtype_expr: str,
+        fields_const: str,
+        ops_const: str,
+        repo_var: str = "repo",
+        pagination: ApiPagination | None = None,
     ) -> list[str]:
         """The shared list-handler body (sort + filter parse → repo.list). *subtype_expr*
         is the Python literal threaded as the discriminator scope: ``None`` for the
         polymorphic base, or a quoted ``@discriminatorValue`` for a per-subtype route."""
         return [
-            "    actual_limit = limit if limit is not None else 50",
+            *_list_limit_lines(pagination),
             "    actual_offset = offset if offset is not None else 0",
             "    sort_clause: _SortClause | None = None",
             "    if sort is not None:",
@@ -1391,6 +1442,12 @@ class RouterGenerator:
         ``render_router``, which returns ``None`` for a TPH subtype before reaching
         M:N resolution at all — the two independent gaps this fix closes)."""
         short_name = entity.name
+        # The project's `api` setting: the page size of every list route here and whether an
+        # undeclared body key is refused (the default) or dropped.
+        api = api_of(entity)
+        page = api.pagination
+        reject = api.unknown_fields == UNKNOWN_FIELDS_REJECT
+        prelude = _write_prelude(reject)
         snake = _snake_case(short_name)
         plural = _route_path(short_name)
         pk_param = f"{snake}_id"
@@ -1538,6 +1595,8 @@ class RouterGenerator:
         parts.append("    classify_constraint_error,")
         parts.append("    pydantic_issues,")
         parts.append("    required_null_issues,")
+        if reject:
+            parts.append("    unknown_body_keys,")
         parts.append("    unreadable_body_issues,")
         parts.append("    validation_envelope,")
         parts.append("    value_error_issues,")
@@ -1592,6 +1651,8 @@ class RouterGenerator:
         # the generated module always carries the seam (an entity that later gains a
         # writeOnce field changes one literal, not the module's shape).
         parts.append(f"_FROZEN_FIELDS: frozenset[str] = {frozen_set_body}")
+        if reject:
+            parts.extend(_known_fields_lines([entity, *(st.entity for st in plan.subtypes)]))
         parts.extend(_denied_const_lines(denied_names))
         parts.append("")
         parts.append("")
@@ -1657,7 +1718,7 @@ class RouterGenerator:
             sub = st.entity.name  # the subtype's generated create + PATCH model classes
             sfx = st.route_segment  # handler-name suffix = URL segment (e.g. "bridge"), matches the route
             parts.extend(list_sig(f"list_{plural}_{sfx}", f"/{seg}"))
-            parts.extend(self._emit_tph_list_body(f'"{val}"', fields_const, ops_const))
+            parts.extend(self._emit_tph_list_body(f'"{val}"', fields_const, ops_const, pagination=page))
             parts.append("")
             parts.append("")
             parts.append(f'@router.post("/{seg}", status_code=status.HTTP_201_CREATED)')
@@ -1665,7 +1726,7 @@ class RouterGenerator:
             parts.append("    dto: Annotated[dict[str, Any] | None, Depends(_json_body)],")
             parts.append(f"    repo: Annotated[{repo_class}, Depends(get_repository)],")
             parts.append(") -> Any:")
-            parts.extend(_DECIMAL_COERCE)
+            parts.extend(prelude)
             parts.extend(denied_strip_tph)
             # The route's subtype is the only source of the discriminator: a body value is
             # dropped silently before validation (as the TypeScript route's `.omit` does), so
@@ -1700,7 +1761,7 @@ class RouterGenerator:
             parts.append("    dto: Annotated[dict[str, Any] | None, Depends(_json_body)],")
             parts.append(f"    repo: Annotated[{repo_class}, Depends(get_repository)],")
             parts.append(") -> Any:")
-            parts.extend(_DECIMAL_COERCE)
+            parts.extend(prelude)
             parts.extend(denied_strip_tph)
             parts.extend(_validated_input_lines(
                 f"{sub}Patch",
@@ -1757,7 +1818,7 @@ class RouterGenerator:
 
         # --- Polymorphic base routes LAST (so /{id} doesn't shadow /<segment>). ---
         parts.extend(list_sig(f"list_{plural}", ""))
-        parts.extend(self._emit_tph_list_body("None", fields_const, ops_const))
+        parts.extend(self._emit_tph_list_body("None", fields_const, ops_const, pagination=page))
         parts.append("")
         parts.append("")
         parts.append(f'@router.get("/{{{pk_param}}}")')
@@ -1831,6 +1892,9 @@ class RouterGenerator:
         # ADR-0019 Amendment 2: the project's `wire` setting, from the loaded root. A caller
         # that holds an object detached from the root (a report's read model) passes it.
         wire = wire if wire is not None else wire_of(entity)
+        api = api_of(entity)
+        page = api.pagination
+        reject = api.unknown_fields == UNKNOWN_FIELDS_REJECT
         # FR-017 TPH: a concrete subtype is folded into its base's single table — it
         # emits no standalone router (its CRUD lives under the base's per-subtype segment).
         if object_index is not None and is_tph_subtype(entity):
@@ -1938,6 +2002,8 @@ class RouterGenerator:
         parts.append("    classify_constraint_error,")
         parts.append("    pydantic_issues,")
         parts.append("    required_null_issues,")
+        if reject:
+            parts.append("    unknown_body_keys,")
         parts.append("    unreadable_body_issues,")
         parts.append("    validation_envelope,")
         parts.append("    value_error_issues,")
@@ -1989,6 +2055,8 @@ class RouterGenerator:
         # the generated module always carries the seam (an entity that later gains a
         # writeOnce field changes one literal, not the module's shape).
         parts.append(f"_FROZEN_FIELDS: frozenset[str] = {frozen_set_body}")
+        if reject:
+            parts.extend(_known_fields_lines([entity]))
         denied_names = _denied_names(entity)
         parts.extend(_denied_const_lines(denied_names))
         parts.append("")
@@ -2024,6 +2092,8 @@ class RouterGenerator:
             # not in <Entity>Patch.
             frozen_strip=_frozen_strip_lines(entity),
             denied_strip=_denied_strip_lines(denied_names),
+            reject_unknown=reject,
+            pagination=page,
         )
         for i, hname in enumerate(("list", "get", "create", "update", "delete")):
             if i > 0:
@@ -2250,6 +2320,7 @@ class RouterGenerator:
             # Only a report is capped; passed for it alone so an adopter's `_emit_route_handler`
             # override that does not take the keyword keeps working for a projection.
             **({"report_max_rows": self.report_max_rows} if is_report else {}),
+            **({"pagination": api_of(entity).pagination} if not is_report and api_of(entity).pagination else {}),
             **({"report_export": True} if export else {}),
         )
         for i, hname in enumerate(("list", "get") if item_route else ("list",)):

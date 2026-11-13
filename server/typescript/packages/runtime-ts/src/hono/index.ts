@@ -47,7 +47,7 @@ export type {
 import { isTruthyFlag, coerceIdForColumn, firstRow, extractRowCount } from "../drizzle-fastify/util.js";
 import { supportsReturning, type SqlDialect } from "../sql-dialect.js";
 import { timestampWire } from "../timestamp-wire.js";
-import { stripDeniedColumns, withWire, type WireOptions } from "../wire-format.js";
+import { ERROR_CODE_UNKNOWN_FIELDS, stripDeniedColumns, unknownBodyKeys, withWire, type WireOptions } from "../wire-format.js";
 // Every handler below is wrapped in guardRoute (an unexpected error answers
 // `500 { error: "internal" }`, logged server-side) and reads its body through
 // readJsonBody (a malformed body answers `400 { error: "invalid_json" }`).
@@ -56,6 +56,7 @@ import { guardRoute, readJsonBody } from "./route-guard.js";
 // shared (deprecated) helper so the three adapters can't silently diverge.
 export { parseId } from "../drizzle-fastify/util.js";
 export { pageLimit, ERROR_CODE_LIMIT_TOO_LARGE, type PageSize } from "../drizzle-fastify/list-params.js";
+export { ERROR_CODE_UNKNOWN_FIELDS, unknownBodyKeys } from "../wire-format.js";
 export { timestampWire, canonicalTimestamp } from "../timestamp-wire.js";
 export { decimalWire, withDecimals, decimalToNative, canonicalDecimal, parseDecimalInput, parseDecimalOperand } from "../decimal-wire.js";
 export { withWire, nullMembersWire } from "../wire-format.js";
@@ -108,6 +109,14 @@ export interface CrudRoutesOptions extends WireOptions {
    * schemas stay whole for the application's own writes.
    */
   writeDeniedColumns?: readonly string[];
+  /**
+   * Every key a create or update body may carry: the entity's declared fields (for a
+   * single-table hierarchy, those of the base and every subtype). When set, a body with any
+   * other key answers `400 { "error": "unknown_fields", "fields": [...] }` before validation
+   * (`api.unknownFields: reject`, the default the generated routes emit). Absent, undeclared
+   * keys are dropped silently (`drop`). A known key the client may not set is dropped either way.
+   */
+  knownFields?: readonly string[];
   /** Limit which verbs are mounted. Defaults to all five. */
   expose?: readonly CrudVerb[];
   /**
@@ -281,6 +290,8 @@ export function mountCreateRoute(opts: VerbOptions): void {
   opts.app.post(opts.path, guardRoute(async (c) => {
     const read = await readJsonBody(c);
     if (!read.ok) return read.response;
+    const unknown = unknownBodyKeys(read.body, opts.knownFields);
+    if (unknown.length > 0) return c.json({ error: ERROR_CODE_UNKNOWN_FIELDS, fields: unknown }, 400);
     const parsed = opts.insertSchema.safeParse(stripDeniedColumns(read.body, opts.writeDeniedColumns));
     if (!parsed.success) {
       return c.json(validationErrorBody(parsed.error.issues), 400);
@@ -316,6 +327,8 @@ export function mountUpdateRoute(opts: VerbOptions): void {
     const id = c.req.param("id") ?? "";
     const read = await readJsonBody(c);
     if (!read.ok) return read.response;
+    const unknown = unknownBodyKeys(read.body, opts.knownFields);
+    if (unknown.length > 0) return c.json({ error: ERROR_CODE_UNKNOWN_FIELDS, fields: unknown }, 400);
     const parsed = opts.updateSchema.safeParse(stripDeniedColumns(read.body, opts.writeDeniedColumns));
     if (!parsed.success) {
       return c.json(validationErrorBody(parsed.error.issues), 400);

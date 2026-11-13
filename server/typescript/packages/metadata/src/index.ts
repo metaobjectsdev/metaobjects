@@ -407,8 +407,10 @@ export type { EnumDefaults } from "./enum-length.js";
 export {
   apiPaginationOf, API_KEY_PAGINATION, PAGINATION_KEY_DEFAULT_LIMIT, PAGINATION_KEY_MAX_LIMIT,
   INIT_DEFAULT_LIMIT, INIT_MAX_LIMIT,
+  apiUnknownFieldsOf, API_KEY_UNKNOWN_FIELDS, UNKNOWN_FIELDS_REJECT, UNKNOWN_FIELDS_DROP,
+  UNKNOWN_FIELDS_MODES, DEFAULT_UNKNOWN_FIELDS, ERROR_UNKNOWN_FIELDS,
 } from "./api-pagination.js";
-export type { ApiPagination } from "./api-pagination.js";
+export type { ApiPagination, UnknownFieldsMode } from "./api-pagination.js";
 
 // Wire format (ADR-0019 Amendment 2): the `wire` block of .metaobjects/config.json.
 export {

@@ -38,6 +38,8 @@ import {
   refTarget,
   wireFormatOf,
   apiPaginationOf,
+  apiUnknownFieldsOf,
+  UNKNOWN_FIELDS_REJECT,
   type MetaData,
   type MetaField,
   type MetaObject,
@@ -251,6 +253,25 @@ export function valueObjectShapes(entity: MetaObject): Record<string, ValueObjec
     if (vo !== undefined) out[f.name] = shapeOf(f, vo, [vo]);
   }
   return out;
+}
+
+/**
+ * Every key a write body may carry: the declared fields of `hierarchy` (a TPH subtype's base and
+ * every subtype, else the entity alone), in field order. A sibling subtype's column is declared,
+ * so it is dropped on this subtype's routes rather than refused.
+ */
+export function knownFieldNames(hierarchy: readonly MetaObject[]): string[] {
+  return [...new Set(hierarchy.flatMap((o) => flatSurfaceFields(o).map((f) => f.name)))];
+}
+
+/**
+ * The `knownFields` option of a mount that accepts writes: present when the project refuses
+ * undeclared body keys (`api.unknownFields: reject`, the default), and "" under `drop`, which
+ * keeps the mount dropping them silently. `root` is the loaded root the setting is read from.
+ */
+export function knownFieldsLine(entity: MetaObject, indent: string, root?: MetaData, hierarchy: readonly MetaObject[] = [entity]): string {
+  if (apiUnknownFieldsOf(root ?? entity) !== UNKNOWN_FIELDS_REJECT) return "";
+  return `\n${indent}knownFields: ${JSON.stringify(knownFieldNames(hierarchy))},`;
 }
 
 /**

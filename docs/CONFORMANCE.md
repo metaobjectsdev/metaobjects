@@ -36,7 +36,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/extract-conformance/`](../fixtures/extract-conformance/) | 58 | ✓ | ✓ | inherits the shared JVM engine | ✓ | ✓ |
 | [`fixtures/output-prompt-conformance/`](../fixtures/output-prompt-conformance/) | 17 | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/persistence-conformance/`](../fixtures/persistence-conformance/) | 62 (55 query + 7 migration) | all 62; the 24 `report-*` and the `-15` decimal scenarios also on SQLite, MySQL and D1, `decimal-exact` also on MySQL (a scenario's `engines:` key is exact) | 55 query (migrations TS-only, ADR-0015); the `report-*` and `engines:` scenarios also on SQLite and MySQL | 55 query (via Exposed); the `report-*` and `engines:` scenarios also on SQLite and MySQL | 55 query; the `report-*` and `engines:` scenarios also on SQLite and MySQL | 55 query (pg8000); the `report-*` and `engines:` scenarios also on SQLite (`sqlite3`) and MySQL (PyMySQL) |
-| [`fixtures/api-contract-conformance/`](../fixtures/api-contract-conformance/) | 132 (33 core + 12 tph + 9 m2m + 5 jsonb + 2 write-through + 2 secret-fields + 2 enum-default + 12 projection + 37 report + 11 decimal + 2 duration + 5 pagination) | ✓ (Fastify reference + generated lane); `report/`, `decimal/` and `duration/` also on SQLite, MySQL and D1; `pagination/` TypeScript only (see "Split coverage") | ✓ (embedded HTTP + JDBC); `report/`, `decimal/` and `duration/` generated controllers over OMDB on Postgres, SQLite and MySQL | ✓ (embedded HTTP + Exposed); `report/`, `decimal/` and `duration/` also on SQLite and MySQL | ✓ (Kestrel + Npgsql); `report/`, `decimal/` and `duration/` also on SQLite and MySQL | ✓ (FastAPI + pg8000); `report/`, `decimal/` and `duration/` also on SQLite and MySQL |
+| [`fixtures/api-contract-conformance/`](../fixtures/api-contract-conformance/) | 135 (34 core + 13 tph + 9 m2m + 5 jsonb + 2 write-through + 2 secret-fields + 2 enum-default + 12 projection + 37 report + 11 decimal + 2 duration + 6 api-settings) | ✓ (Fastify reference + generated lane); `report/`, `decimal/` and `duration/` also on SQLite, MySQL and D1 | ✓ (embedded HTTP + JDBC); `report/`, `decimal/` and `duration/` generated controllers over OMDB on Postgres, SQLite and MySQL | ✓ (embedded HTTP + Exposed); `report/`, `decimal/` and `duration/` also on SQLite and MySQL | ✓ (Kestrel + Npgsql); `report/`, `decimal/` and `duration/` also on SQLite and MySQL | ✓ (FastAPI + pg8000); `report/`, `decimal/` and `duration/` also on SQLite and MySQL |
 | [`fixtures/decimal-wire/`](../fixtures/decimal-wire/) | 1 vector file (format, parse, filter operand, 15-digit read) | ✓ (`runtime-ts` and the generated helper) | ✓ (`CanonicalDecimal`) | ✓ (the generated wire file) | ✓ (`DecimalWire`) | ✓ (`decimal_wire`) |
 | [`fixtures/duration-wire/`](../fixtures/duration-wire/) | 1 vector file: the `wire` vectors (parse, precision, refused) every port passes, and the `codecs` groups (Postgres text read and write, stored microseconds) each port passes only for the codecs it has | ✓ (`metadata` / `runtime-ts` and the generated helper) | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/validation-conformance/`](../fixtures/validation-conformance/) | 42 cases + 43 cross-field cases (`cross-field-cases.json`, generated record model only) | ✓ (generated Zod + run-time `runValidators`) | ✓ | ✓ | ✓ | ✓ (generated Pydantic + run-time `run_validators`) |
@@ -110,19 +110,6 @@ The matrix is corpus-shaped, so a feature whose coverage splits — across sever
 corpora, or between its *vocabulary* and its *behaviour* — never gets a row of its
 own, and its boundary ends up discoverable only from the feature doc. The split ones
 are recorded here instead.
-
-**`api.pagination`** (a page size on generated list routes, a `.metaobjects/config.json` key):
-a list with no `limit` answers `defaultLimit` rows and a `limit` above `maxLimit` answers
-`400 {"error": "limit_too_large", "maxLimit": N}`.
-
-- *Honoured and pinned:* TypeScript. The Fastify and Hono routes (packaged and ejected) pass it to
-  the runtime mounts; `fixtures/api-contract-conformance/pagination/` runs in the TypeScript
-  generated lane.
-- *Not read:* C#, Java, Kotlin and Python. Their REST generators are under the 2026-09-22 freeze,
-  and carrying the setting there waits on that ruling. Their list routes keep the per-port
-  behaviour [api-contract.md](features/api-contract.md) records (TypeScript without the setting
-  and C# return every row when `limit` is omitted; Java, Kotlin and Python return 50; no port caps
-  an explicit `limit`), and the `pagination/` sub-corpus has no lane there yet.
 
 **`identity.primary @sequenceStart`** (one semantic in every port): on a fresh
 database the identity or sequence begins at `@sequenceStart`; when the start changes on an
@@ -454,9 +441,9 @@ REAL, a MySQL `DECIMAL` keeps its scale, a MySQL `DATETIME` is the UTC wall cloc
 `report-relative-date` carries a per-engine seed (`seed-data-engine`). `op: relate` and the
 write ops stay Postgres-only. See [features/reporting.md](features/reporting.md#what-the-corpus-gates).
 
-### `fixtures/api-contract-conformance/` (132)
+### `fixtures/api-contract-conformance/` (135)
 
-All 132 scenarios → [features/api-contract.md](features/api-contract.md) (cross-port
+All 135 scenarios → [features/api-contract.md](features/api-contract.md) (cross-port
 REST API URL grammar + JSON wire format). Verifies every backend's emitted CRUD
 routes answer identically over HTTP — list / get / create / patch+put / delete,
 plus pagination (`limit`/`offset`), sort (`sort=field:dir`), the `withCount=1`
@@ -466,9 +453,12 @@ status codes.
 The corpus also covers the 9 cross-port filter operators (`eq`, `ne`, `gt`,
 `gte`, `lt`, `lte`, `in`, `like`, `isNull`) plus the implicit-AND combinator
 and 2 error shapes (`invalid_filter_field` / `invalid_filter_op`) under the
-URL grammar `?filter[<field>][<op>]=<value>` (FR-009). On top of the 31 core
-scenarios the corpus carries ten sub-corpora — `tph/` (10, single-table
-inheritance; a subtype decimal filters and refuses extra digits), `m2m/` (9 — 3 plain, 5 gating TPH x M:N together, the combination
+URL grammar `?filter[<field>][<op>]=<value>` (FR-009). On top of the 34 core
+scenarios (among them the write-input rules: server-owned keys dropped, an undeclared key
+refused under the default `api.unknownFields: reject`, and every validation issue listed)
+the corpus carries eleven sub-corpora — `tph/` (13, single-table
+inheritance; a subtype decimal filters and refuses extra digits, and the input rules hold over
+the whole hierarchy), `m2m/` (9 — 3 plain, 5 gating TPH x M:N together, the combination
 each corpus alone could not reach, and 1 pinning the collection-URL spelling),
 `jsonb/` (5, typed value-object columns; numbers inside them: a double stays a JSON number, a decimal is the canonical string),
 `write-through/` (2, table-write + view-read entities), `secret-fields/` (2, #484: a `@formExclude` or credential `view.password` field is ignored on create, PATCH and PUT, and a credential is never returned), `enum-default/` (2, a create that omits a `field.enum` with `@default` stores the default, and a supplied value is kept), `projection/` (12, a
@@ -477,7 +467,9 @@ identity has no item route; a projection keyed on a field not named `id` is addr
 it, whether its identity names `@fields` or derives them; decimal and float fields filter), `decimal/` (11, ADR-0019 Amendment 1: a decimal, array element and undeclared-precision column included, is one
 canonical string, read exactly, filtered exactly and refused past its declared digits), `duration/` (2, a
 `field.duration` under `"wire": { "durations": "iso" }` is one canonical ISO-8601 string, refused
-in a calendar or clock spelling, and filtered and sorted as a span on every engine) and `report/` (37,
+in a calendar or clock spelling, and filtered and sorted as a span on every engine), `api-settings/` (6,
+the project's `api` block: `api.pagination`'s default page and `limit_too_large` cap, and
+`api.unknownFields: drop`) and `report/` (37,
 FR-044: a view-backed `object.report` is listed, filtered, sorted and paged on
 its derived fields, answers `POST` with 405 and mounts no `/{id}`; a `@spine` report keeps
 a row with no facts, and a measure with `@default` filters and sorts as its default). All 5 ports — TS, Java,
@@ -733,7 +725,7 @@ JSON and verify payload feeds it unchanged.
 ## Orphaned fixtures (tested but not yet documented)
 
 The fixtures in the nine corpora mapped above (metamodel 510 + yaml 16 + verify 45
-+ render 18 + persistence 62 + api-contract 132 + source-resolution 25 + scope 10 +
++ render 18 + persistence 62 + api-contract 135 + source-resolution 25 + scope 10 +
 dependency 47) each map to a feature doc, and so do the two requirement corpora, `shared-model-conformance`, the
 `cube-model` corpus and `explorer-conformance`, whose case lists live in their own READMEs. None are orphaned today. The remaining
 corpora in the totals table gate tooling contracts (registry manifests, provider

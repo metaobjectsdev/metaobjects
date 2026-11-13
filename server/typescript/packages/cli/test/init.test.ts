@@ -182,10 +182,10 @@ describe("init() — happy path", () => {
     expect(config.pending_in_git).toBe(true);
   });
 
-  test("a new project starts with a page size on every generated list route", async () => {
+  test("a new project starts with a page size and refuses undeclared body keys", async () => {
     await init({ cwd });
     const config = JSON.parse(readFileSync(join(cwd, ".metaobjects", "config.json"), "utf8"));
-    expect(config.api).toEqual({ pagination: { defaultLimit: 50, maxLimit: 1000 } });
+    expect(config.api).toEqual({ pagination: { defaultLimit: 50, maxLimit: 1000 }, unknownFields: "reject" });
   });
 
   test("writes a .gitignore under .metaobjects/ that includes .gen-state", async () => {

@@ -52,6 +52,13 @@ final class AuthorApiServer implements AutoCloseable {
     // Mirrors the TS server's SORT_ALLOWLIST; cross-port contract.
     private static final Set<String> SORT_ALLOWLIST = Set.of("id", "name", "createdAt");
 
+    // Every field Author declares (meta.json), as named on the wire. The corpus sets no
+    // `api.unknownFields`, so the default applies: a write body key outside this set is refused
+    // with 400 {"error": "unknown_fields", "fields": [...]} before anything is read or written. A
+    // declared key the client may not set (id, @autoSet, writeOnce on update) is known and dropped.
+    private static final Set<String> DECLARED_KEYS = Set.of(
+        "id", "name", "bio", "createdAt", "issuedCurrency", "autoCreatedAt", "autoUpdatedAt");
+
     // Cross-port contract: each field's DECLARED @sortableDefaultOrder — the direction a
     // {@code ?sort=<field>} carrying no {@code :dir} takes. Hardcoded from meta.json for
     // the same reason the allowlist above is: this is the hand-rolled fixed point the
@@ -445,6 +452,7 @@ final class AuthorApiServer implements AutoCloseable {
             return;
         }
         Map<String, Object> body = (Map<String, Object>) parsed;
+        if (refuseUnknownKeys(exchange, body)) return;
         // FR-036 wire-tier constraint enforcement: reject an over-length name/bio with the
         // cross-port {"error":"validation"} envelope BEFORE persisting (mirrors the generated
         // controller's @Size(max=…) rules).
@@ -497,6 +505,7 @@ final class AuthorApiServer implements AutoCloseable {
             return;
         }
         Map<String, Object> body = (Map<String, Object>) parsed;
+        if (refuseUnknownKeys(exchange, body)) return;
 
         // FR-035 PATCH-2: an explicit null on a @required field (name / createdAt, per
         // meta.json) is a 400 — a present null on the nullable bio clears it, and an
@@ -632,6 +641,15 @@ final class AuthorApiServer implements AutoCloseable {
         OffsetDateTime autoUpdated = rs.getObject("autoUpdatedAt", OffsetDateTime.class);
         row.put("autoUpdatedAt", autoUpdated == null ? null : formatInstant(autoUpdated.toInstant()));
         return row;
+    }
+
+    /** Answers {@code 400 unknown_fields} (keys in code-point order) when {@code body} carries an undeclared key. */
+    private boolean refuseUnknownKeys(HttpExchange exchange, Map<String, Object> body) throws IOException {
+        java.util.TreeSet<String> unknown = new java.util.TreeSet<>(body.keySet());
+        unknown.removeAll(DECLARED_KEYS);
+        if (unknown.isEmpty()) return false;
+        sendJson(exchange, 400, Map.of("error", "unknown_fields", "fields", new ArrayList<>(unknown)));
+        return true;
     }
 
     private Object readJsonBody(HttpExchange exchange) throws IOException {

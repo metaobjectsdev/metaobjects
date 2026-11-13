@@ -2,7 +2,7 @@ import { mkdir, writeFile, readFile, readdir, stat, rm } from "node:fs/promises"
 import { join } from "node:path";
 import { dirname } from "node:path";
 import { existsSync as existsSyncWrap, readFileSync as readFileSyncWrap } from "node:fs";
-import { INIT_DEFAULT_LIMIT, INIT_MAX_LIMIT } from "@metaobjectsdev/metadata";
+import { INIT_DEFAULT_LIMIT, INIT_MAX_LIMIT, UNKNOWN_FIELDS_REJECT } from "@metaobjectsdev/metadata";
 import { DEFAULT_CONFIG, ConfigSchema, saveConfig, PACKAGE_MANIFEST_FILE, DEFAULT_METADATA_DIR, DEFAULT_METAOBJECTS_DIR, DEPS_DIR, LOCK_FILE } from "@metaobjectsdev/sdk";
 import {
   assemble, resolveAgentContextRoot, planScaffold,
@@ -538,10 +538,14 @@ async function writeConfigFile(opts: InitOptions, result: InitResult, agentDir: 
   const dialect = resolveInitDialect(opts);
   // A new project starts with a page size on every generated list route. It is written here
   // and not into DEFAULT_CONFIG: the merge below must not add a cap to an existing project
-  // on `--force`, where it would truncate a client that reads a whole list.
+  // on `--force`, where it would truncate a client that reads a whole list. `unknownFields`
+  // is written out at its default, so the choice is visible where a project would change it.
   const scaffold = {
     ...DEFAULT_CONFIG,
-    api: { pagination: { defaultLimit: INIT_DEFAULT_LIMIT, maxLimit: INIT_MAX_LIMIT } },
+    api: {
+      pagination: { defaultLimit: INIT_DEFAULT_LIMIT, maxLimit: INIT_MAX_LIMIT },
+      unknownFields: UNKNOWN_FIELDS_REJECT,
+    },
   };
   const freshConfig = dialect === "d1"
     ? ConfigSchema.parse({ ...scaffold, migrate: buildD1MigrateBlock(opts.cwd) })

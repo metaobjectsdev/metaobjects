@@ -96,6 +96,9 @@ public sealed class NeutralConfig
     /// absent key at its native default. Never null.
     public WireFormat Wire { get; }
 
+    /// The project's `api` block (`api.pagination`, `api.unknownFields`). Never null: absent is the default.
+    public ApiSettings Api { get; private init; } = ApiSettings.Default;
+
     /// The project's enum storage defaults (`enums` in config.json). Never null: an absent
     /// block is no default, same as an empty `enums: {}`.
     public EnumDefaults Enums { get; private init; } = EnumDefaults.Default;
@@ -346,6 +349,7 @@ public sealed class NeutralConfig
                 Path.GetFullPath(configDir))
             {
                 Enums = ReadEnums(root, path),
+                Api = ReadApi(root, path),
                 RequirementsInherit = ReadRequirementsInherit(root, path),
                 MigrateDialect = ReadMigrateDialect(root),
             };
@@ -556,4 +560,71 @@ public sealed class NeutralConfig
         }
         return new WireFormat(decimals, nullMembers, durations);
     }
+
+    /// The `api` block: `pagination` takes both `defaultLimit` and `maxLimit` as positive integers with
+    /// `defaultLimit <= maxLimit`; `unknownFields` is "reject" (the default) or "drop". Anything else is refused.
+    private static ApiSettings ReadApi(JsonElement root, string path)
+    {
+        if (!root.TryGetProperty("api", out var api)) return ApiSettings.Default;
+        if (api.ValueKind != JsonValueKind.Object)
+            throw new MetaModelException($"{path}: \"api\" must be an object", ErrorCode.ERR_BAD_ATTR_VALUE);
+
+        ApiPagination? pagination = null;
+        var unknown = UnknownFieldsMode.Reject;
+        foreach (var p in api.EnumerateObject())
+        {
+            switch (p.Name)
+            {
+                case "pagination":
+                    pagination = ReadPagination(p.Value, path);
+                    break;
+                case "unknownFields":
+                    unknown = (p.Value.ValueKind == JsonValueKind.String ? p.Value.GetString() : null) switch
+                    {
+                        "reject" => UnknownFieldsMode.Reject,
+                        "drop" => UnknownFieldsMode.Drop,
+                        _ => throw new MetaModelException(
+                            $"{path}: \"api.unknownFields\" must be \"reject\" or \"drop\"", ErrorCode.ERR_BAD_ATTR_VALUE),
+                    };
+                    break;
+                default:
+                    throw new MetaModelException(
+                        $"{path}: \"api\" has an unknown key \"{p.Name}\" (expected \"pagination\" and/or \"unknownFields\")",
+                        ErrorCode.ERR_BAD_ATTR_VALUE);
+            }
+        }
+        return new ApiSettings(pagination, unknown);
+    }
+
+    private static ApiPagination ReadPagination(JsonElement block, string path)
+    {
+        if (block.ValueKind != JsonValueKind.Object)
+            throw new MetaModelException($"{path}: \"api.pagination\" must be an object", ErrorCode.ERR_BAD_ATTR_VALUE);
+        int? defaultLimit = null, maxLimit = null;
+        foreach (var p in block.EnumerateObject())
+        {
+            switch (p.Name)
+            {
+                case "defaultLimit": defaultLimit = PageSizeNumber(p.Value, "defaultLimit", path); break;
+                case "maxLimit": maxLimit = PageSizeNumber(p.Value, "maxLimit", path); break;
+                default:
+                    throw new MetaModelException(
+                        $"{path}: \"api.pagination\" has an unknown key \"{p.Name}\" (expected \"defaultLimit\" and \"maxLimit\")",
+                        ErrorCode.ERR_BAD_ATTR_VALUE);
+            }
+        }
+        if (defaultLimit is null)
+            throw new MetaModelException($"{path}: \"api.pagination.defaultLimit\" must be a positive integer", ErrorCode.ERR_BAD_ATTR_VALUE);
+        if (maxLimit is null)
+            throw new MetaModelException($"{path}: \"api.pagination.maxLimit\" must be a positive integer", ErrorCode.ERR_BAD_ATTR_VALUE);
+        if (defaultLimit > maxLimit)
+            throw new MetaModelException(
+                $"{path}: \"api.pagination.defaultLimit\" must not exceed \"api.pagination.maxLimit\"", ErrorCode.ERR_BAD_ATTR_VALUE);
+        return new ApiPagination(defaultLimit.Value, maxLimit.Value);
+    }
+
+    private static int PageSizeNumber(JsonElement v, string key, string path) =>
+        v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out var n) && n >= 1
+            ? n
+            : throw new MetaModelException($"{path}: \"api.pagination.{key}\" must be a positive integer", ErrorCode.ERR_BAD_ATTR_VALUE);
 }

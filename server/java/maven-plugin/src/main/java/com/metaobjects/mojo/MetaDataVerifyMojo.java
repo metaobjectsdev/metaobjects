@@ -304,6 +304,7 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
      */
     private void runFieldLintAdvisory(MetaDataLoader loader) {
         if (advisoriesDone || noFieldLint || "1".equals(System.getenv(FieldLint.ENV_OPT_OUT))) return;
+        runUnboundedListAdvisory(loader);
         List<FieldLint.Finding> findings = new ArrayList<>();
         try {
             findings.addAll(FieldLint.lintReferenceFields(loader));
@@ -316,6 +317,28 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
                 + " authoring warning(s) (advisory — does not fail the build):");
         for (FieldLint.Finding f : findings) {
             getLog().warn("  " + f.code() + " [" + f.path() + "]: " + f.message());
+        }
+    }
+
+    /**
+     * Advisory {@code unbounded-list-pages}: a project that generates REST controllers and sets no
+     * {@code api.pagination} has list routes that answer 50 rows when {@code limit} is omitted and
+     * accept any {@code limit}. Never fails the build.
+     */
+    private void runUnboundedListAdvisory(MetaDataLoader loader) {
+        try {
+            if (loader.getRoot().getApiSettings().hasPagination()) return;
+            boolean generatesRoutes = false;
+            for (GeneratorParam g : getGenerators() != null ? getGenerators() : List.<GeneratorParam>of()) {
+                String name = g.getClassname();
+                if (name != null && name.endsWith("ControllerGenerator")) generatesRoutes = true;
+            }
+            if (!generatesRoutes) return;
+            getLog().warn("metaobjects:verify — unbounded-list-pages (advisory — does not fail the build): "
+                    + "generated list routes take any limit and have no project-wide page size; "
+                    + "set api.pagination ({\"defaultLimit\": 50, \"maxLimit\": 1000}) in .metaobjects/config.json.");
+        } catch (RuntimeException e) {
+            // an advisory never breaks verify
         }
     }
 

@@ -120,6 +120,19 @@ def _validation_issues(dto: dict[str, Any], *, create: bool) -> list[dict[str, A
     return issues
 
 
+#: Every key the Author entity declares. A body key outside this set is refused first
+#: (`api.unknownFields` at its default, `reject`, which this corpus does not change); a declared key
+#: the client may not set (id, writeOnce, @autoSet) is not unknown and is dropped later.
+_DECLARED_KEYS = frozenset({"id", "name", "bio", "createdAt", "issuedCurrency", "autoCreatedAt", "autoUpdatedAt"})
+
+
+def _unknown_fields_400(dto: dict[str, Any]) -> JSONResponse | None:
+    unknown = sorted(k for k in dto if k not in _DECLARED_KEYS)
+    if not unknown:
+        return None
+    return JSONResponse(status_code=400, content={"error": "unknown_fields", "fields": unknown})
+
+
 def _validation_400(issues: list[dict[str, Any]]) -> JSONResponse:
     return JSONResponse(status_code=400, content={"error": "validation", "issues": issues})
 
@@ -516,6 +529,9 @@ def make_app(repo: AuthorRepository) -> FastAPI:
     def create_author(dto: dict[str, Any]) -> Any:
         # FR-036: reject an over-length / missing field before persisting (cross-port 400,
         # every issue listed).
+        refused = _unknown_fields_400(dto)
+        if refused is not None:
+            return refused
         issues = _validation_issues(dto, create=True)
         if issues:
             return _validation_400(issues)
@@ -529,6 +545,9 @@ def make_app(repo: AuthorRepository) -> FastAPI:
         # per meta.json) is a 400 — a present null on the nullable bio clears it,
         # and an omitted required field is untouched (never a 400). FR-036: an
         # over-length PRESENT value is a 400 too; every issue is listed.
+        refused = _unknown_fields_400(dto)
+        if refused is not None:
+            return refused
         issues = _validation_issues(dto, create=False)
         if issues:
             return _validation_400(issues)

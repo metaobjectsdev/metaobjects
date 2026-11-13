@@ -4,6 +4,7 @@ package com.metaobjects.generator.kotlin
 // com.metaobjects.generator.kotlin when this generator is copied out via
 // `mvn metaobjects:eject` and its own package is renamed — an explicit import, not
 // same-package bare-name resolution, is what keeps the ejected copy compiling.
+import com.metaobjects.config.ApiSettings
 import com.metaobjects.config.WireFormat
 import com.metaobjects.generator.kotlin.ExposedApi
 import com.metaobjects.generator.kotlin.ExposedImports
@@ -124,6 +125,35 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
 
     private var exportWired = false
 
+    /** The project's `api` block for the current run (set in [execute]). */
+    private var apiSettings: ApiSettings = ApiSettings.DEFAULT
+
+    private val rejectUnknown: Boolean get() = apiSettings.rejectsUnknownFields()
+
+    /** `private val <Short>KnownFields`: every declared field name, as named on the wire (only under `reject`). */
+    private fun StringBuilder.appendKnownFields(shortName: String, names: Collection<String>) {
+        if (!rejectUnknown) return
+        append("/** GENERATED — every field ${shortName} declares, as named on the wire: a body key outside it is refused. */\n")
+        append("private val ${shortName}KnownFields: Set<String> = setOf(${names.distinct().joinToString(", ") { "\"$it\"" }})\n\n")
+    }
+
+    /** The unknown-key check of a write handler (after the non-object-body answer), only under `reject`. */
+    private fun StringBuilder.appendUnknownGuard(shortName: String) {
+        if (!rejectUnknown) return
+        append("        val unknownKeys = MetaUnknownBodyKeys.refusal(body, ${shortName}KnownFields)\n")
+        append("        if (unknownKeys != null) return@transaction ResponseEntity.badRequest().body(unknownKeys as Any)\n")
+    }
+
+    /** The refusal of a `limit` above `api.pagination.maxLimit`, at the head of a list handler. */
+    private fun StringBuilder.appendLimitGuard() {
+        val page = apiSettings.pagination() ?: return
+        append("        if (limit != null && limit > ${page.maxLimit()}L) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"limit_too_large\", \"maxLimit\" to ${page.maxLimit()}L) as Any)\n")
+    }
+
+    /** The page size a list handler uses when `limit` is omitted. */
+    private fun defaultLimit(): String =
+        apiSettings.pagination()?.defaultLimit()?.coerceAtMost(Int.MAX_VALUE.toLong())?.toString() ?: "50"
+
     override fun setRun(run: Collection<Generator>) {
         exportWired = EmitsReportExport.includedIn(run)
     }
@@ -151,6 +181,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
 
     override fun execute(loader: MetaDataLoader) {
         parseArgs()
+        apiSettings = loader.root.apiSettings
         val outRoot = Paths.get(outDir.absolutePath)
         // ADR-0019 Amendment 1: every controller reads a decimal filter operand, a decimal PATCH value
         // and an unreadable body through its package's generated MetaDecimalWire (no MetaObjects import).
@@ -224,6 +255,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         for (pkg in decimalWirePackages) KotlinDecimalWireEmitter.write(pkg, outRoot, wire)
         // The validation envelope every controller collects its issues into, beside MetaDecimalWire.
         for (pkg in decimalWirePackages) KotlinValidationIssuesEmitter.write(pkg, outRoot)
+        if (rejectUnknown) for (pkg in decimalWirePackages) KotlinUnknownBodyKeysEmitter.write(pkg, outRoot)
         for (pkg in durationWirePackages) KotlinDurationWireEmitter.write(pkg, outRoot)
     }
 
@@ -312,7 +344,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         // #484: credential fields are removed from every response at the HTTP boundary.
         val creds = credentialNames(entity.metaFields)
         val m2mNavsForMapper = KotlinM2mSupport.resolve(entity, loader, providedEnums)
-        val needsMapper = hasPatchFields || creds.isNotEmpty() || m2mNavsForMapper.any { it.targetCredentialFields.isNotEmpty() }
+        val needsMapper = hasPatchFields || rejectUnknown || creds.isNotEmpty() || m2mNavsForMapper.any { it.targetCredentialFields.isNotEmpty() }
 
         // #203/ADR-0045: @autoSet columns are stamped by the generated controller, not bound from
         // the caller. insert stamps BOTH onCreate+onUpdate (a fresh row's updatedAt == createdAt —
@@ -460,6 +492,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             }
             append("\n")
             appendSortSurface(this, shortName, entity, sortFields)
+            appendKnownFields(shortName, entity.metaFields.map { it.name })
 
             // FR-009 filter pipeline. Three stages:
             //   1. data class ${shortName}FilterPredicate — parsed + validated one
@@ -528,6 +561,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 append("    fun create(@RequestBody body: JsonNode): ResponseEntity<Any> = transaction {\n")
                 append("        val issues = MetaValidationIssues.Collector()\n")
                 append("        if (!body.isObject) return@transaction ResponseEntity.badRequest().body(issues.add(\"invalid_type\", emptyList(), \"request body must be a JSON object\").body() as Any)\n")
+                appendUnknownGuard(shortName)
                 append("        val dto: ${shortName} = try {\n")
                 append("            objectMapper.treeToValue(body, ${shortName}::class.java)\n")
                 append("        } catch (e: Exception) {\n")
@@ -555,6 +589,17 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 append("            return@transaction ResponseEntity.badRequest().body(issues.body() as Any)\n")
                 append("        }\n")
                 append("        issues.addViolations(validator.validate(dto))\n")
+            } else if (rejectUnknown) {
+                // The raw body is read first so an undeclared key is refused whatever the host's ObjectMapper does.
+                append("    fun create(@RequestBody body: JsonNode): ResponseEntity<Any> = transaction {\n")
+                append("        if (!body.isObject) return@transaction ResponseEntity.badRequest().body(MetaValidationIssues.Collector().add(\"invalid_type\", emptyList(), \"request body must be a JSON object\").body() as Any)\n")
+                appendUnknownGuard(shortName)
+                append("        val dto: ${shortName} = try {\n")
+                append("            objectMapper.treeToValue(body, ${shortName}::class.java)\n")
+                append("        } catch (e: Exception) {\n")
+                append("            return@transaction ResponseEntity.badRequest().body(MetaDecimalWire.unreadableBody(e) as Any)\n")
+                append("        }\n")
+                append("        val issues = MetaValidationIssues.Collector().addViolations(validator.validate(dto))\n")
             } else {
                 append("    fun create(@RequestBody dto: ${shortName}): ResponseEntity<Any> = transaction {\n")
                 append("        val issues = MetaValidationIssues.Collector().addViolations(validator.validate(dto))\n")
@@ -626,7 +671,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             // When empty, no update{} block is emitted (an empty Exposed SET throws) — a no-op read-back.
             append("    @RequestMapping(value = [\"/{id}\"], method = [RequestMethod.PATCH, RequestMethod.PUT])\n")
             append("    fun update(@PathVariable id: $pkParamType, @RequestBody body: JsonNode): ResponseEntity<Any> = transaction {\n")
-            appendPatchHead(this, patchSettableFields)
+            appendPatchHead(this, patchSettableFields, shortName)
             val mustStampOnUpdate = onUpdateAutoSetFields.isNotEmpty()
             if (hasPatchFields) {
                 val settableNamesList = patchSettableFields.joinToString(", ") { "\"${it.name}\"" }
@@ -880,7 +925,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         // #484: credential columns (base or subtype-only) are removed from every response; the controller
         // then needs the ObjectMapper even when no subtype has a settable column.
         val creds = credentialNames(markFields)
-        val needsMapper = anyPatchFields || creds.isNotEmpty() ||
+        val needsMapper = anyPatchFields || rejectUnknown || creds.isNotEmpty() ||
             (listOf(baseM2mNavs) + plan.subtypes.map { subtypeM2mNavs(it) }).any { navs -> navs.any { it.targetCredentialFields.isNotEmpty() } }
 
         val src = buildString {
@@ -985,6 +1030,9 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             // The polymorphic sort surface is the BASE's own columns, so the declared
             // orders are read off the base too — same owner the allowlist came from.
             appendSortDefaultOrders(this, shortName, base, sortFields)
+            // A key declared by the base or by ANY subtype is known on every route: a sibling subtype's column is
+            // dropped on another subtype's route, never refused.
+            appendKnownFields(shortName, base.metaFields.map { it.name } + plan.subtypes.flatMap { st -> st.entity.metaFields.map { it.name } })
             append("private fun parse${shortName}Sort(raw: String): Pair<String, SortOrder>? {\n")
             append("    val parts = raw.split(\":\", limit = 2)\n")
             append("    val field = parts.getOrNull(0) ?: return null\n")
@@ -1040,6 +1088,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             append("        @RequestParam(required = false, name = \"withCount\") withCount: Int?,\n")
             append("        request: HttpServletRequest,\n")
             append("    ): ResponseEntity<Any> = transaction {\n")
+            appendLimitGuard()
             append("        val filterResult = parse${shortName}Filter(request.queryString)\n")
             append("        if (filterResult.error != null) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to filterResult.error, \"field\" to filterResult.field) as Any)\n")
             append("        val whereOp = ${shortName}WhereOp(filterResult.predicates)\n")
@@ -1054,9 +1103,9 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             // issue #390: Exposed 1.x's Query.limit(count) dropped the 0.x 2-arg
             // limit(count, offset) overload — offset is now its OWN chained call.
             if (api == ExposedApi.V1) {
-                append("        val rows = q.limit(limit ?: 50).offset((offset ?: 0).toLong()).map { ${wireRow(shortName, creds, "it")} }\n")
+                append("        val rows = q.limit(limit ?: ${defaultLimit()}).offset((offset ?: 0).toLong()).map { ${wireRow(shortName, creds, "it")} }\n")
             } else {
-                append("        val rows = q.limit(limit ?: 50, (offset ?: 0).toLong()).map { ${wireRow(shortName, creds, "it")} }\n")
+                append("        val rows = q.limit(limit ?: ${defaultLimit()}, (offset ?: 0).toLong()).map { ${wireRow(shortName, creds, "it")} }\n")
             }
             append("        if (withCount == 1) ResponseEntity.ok(mapOf(\"rows\" to rows, \"total\" to total) as Any)\n")
             append("        else ResponseEntity.ok(rows as Any)\n")
@@ -1102,6 +1151,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 append("        @RequestParam(required = false) sort: String?,\n")
                 append("        request: HttpServletRequest,\n")
                 append("    ): ResponseEntity<Any> = transaction {\n")
+                appendLimitGuard()
                 append("        val filterResult = parse${shortName}Filter(request.queryString)\n")
                 append("        if (filterResult.error != null) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to filterResult.error, \"field\" to filterResult.field) as Any)\n")
                 append("        val whereOp = ${shortName}WhereOp(filterResult.predicates)\n")
@@ -1118,9 +1168,9 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 // issue #390: Exposed 1.x's Query.limit(count) dropped the 0.x 2-arg
             // limit(count, offset) overload — offset is now its OWN chained call.
             if (api == ExposedApi.V1) {
-                append("        val rows = q.limit(limit ?: 50).offset((offset ?: 0).toLong()).map { ${wireRow(shortName, creds, "it")} }\n")
+                append("        val rows = q.limit(limit ?: ${defaultLimit()}).offset((offset ?: 0).toLong()).map { ${wireRow(shortName, creds, "it")} }\n")
             } else {
-                append("        val rows = q.limit(limit ?: 50, (offset ?: 0).toLong()).map { ${wireRow(shortName, creds, "it")} }\n")
+                append("        val rows = q.limit(limit ?: ${defaultLimit()}, (offset ?: 0).toLong()).map { ${wireRow(shortName, creds, "it")} }\n")
             }
                 append("        ResponseEntity.ok(rows as Any)\n")
                 append("    }\n\n")
@@ -1151,7 +1201,19 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 }
                 if (crossFieldRules.isNotEmpty()) append("    @Suppress(\"UNCHECKED_CAST\")\n")
                 append("    @PostMapping(\"/$seg\")\n")
-                append("    fun create$sfx(@RequestBody dto: $shortName): ResponseEntity<Any> = transaction {\n")
+                if (rejectUnknown) {
+                    // The raw body is read first so an undeclared key is refused whatever the host's ObjectMapper does.
+                    append("    fun create$sfx(@RequestBody body: JsonNode): ResponseEntity<Any> = transaction {\n")
+                    append("        if (!body.isObject) return@transaction ResponseEntity.badRequest().body(MetaValidationIssues.Collector().add(\"invalid_type\", emptyList(), \"request body must be a JSON object\").body() as Any)\n")
+                    appendUnknownGuard(shortName)
+                    append("        val dto: $shortName = try {\n")
+                    append("            objectMapper.treeToValue(body, ${shortName}::class.java)\n")
+                    append("        } catch (e: Exception) {\n")
+                    append("            return@transaction ResponseEntity.badRequest().body(MetaDecimalWire.unreadableBody(e) as Any)\n")
+                    append("        }\n")
+                } else {
+                    append("    fun create$sfx(@RequestBody dto: $shortName): ResponseEntity<Any> = transaction {\n")
+                }
                 append("        val issues = MetaValidationIssues.Collector()\n")
                 for (field in stPatch) {
                     append("        issues.addAt(validator.validateValue($validationRef::class.java, \"${field.name}\", dto.${field.name}), \"${field.name}\")\n")
@@ -1206,7 +1268,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 // no-op read-back.
                 append("    @RequestMapping(value = [\"/$seg/{id}\"], method = [RequestMethod.PATCH, RequestMethod.PUT])\n")
                 append("    fun update$sfx(@PathVariable id: $pkParamType, @RequestBody body: JsonNode): ResponseEntity<Any> = transaction {\n")
-                appendPatchHead(this, stPatch)
+                appendPatchHead(this, stPatch, shortName)
                 // #203/ADR-0045: mirrors the vanilla update handler's mustStampOnUpdate control flow —
                 // an onUpdate @autoSet column must bump on EVERY patch, so the "any present" guard is
                 // dropped when one exists (else the guard would keep a no-settable-field patch from
@@ -1431,9 +1493,10 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
      * The head of a PATCH handler: the issue collector, a non-object body (an issue with an empty path), and an
      * explicit null on a @required field (an issue at that field). Every issue is collected and answered together.
      */
-    private fun appendPatchHead(out: StringBuilder, fields: List<MetaField<*>>) {
+    private fun appendPatchHead(out: StringBuilder, fields: List<MetaField<*>>, shortName: String) {
         out.append("        val issues = MetaValidationIssues.Collector()\n")
         out.append("        if (!body.isObject) return@transaction ResponseEntity.badRequest().body(issues.add(\"invalid_type\", emptyList(), \"request body must be a JSON object\").body() as Any)\n")
+        out.appendUnknownGuard(shortName)
         for (field in fields) {
             if (KotlinGenUtil.isRequiredField(field)) {
                 out.append("        if (body.has(\"${field.name}\") && body.get(\"${field.name}\").isNull) issues.add(\"invalid_type\", listOf(\"${field.name}\"), \"field '${field.name}' cannot be null\")\n")
@@ -2419,6 +2482,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         append("        @RequestParam(required = false, name = \"withCount\") withCount: Int?,\n")
         append("        request: HttpServletRequest,\n")
         append("    ): ResponseEntity<Any> = transaction {\n")
+        appendLimitGuard()
         append("        // FR-009 filter operators — short-circuit 400 on invalid field/op/value.\n")
         append("        val filterResult = parse${shortName}Filter(request.queryString)\n")
         append("        if (filterResult.error != null) {\n")
@@ -2433,7 +2497,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         append("            q = q.orderBy(${sortColumnExpr(readObj, shortName, sortFields, exposedApi())} to dir)\n")
         append("        }\n")
         append("        val total: Long = if (withCount == 1) q.count() else -1L\n")
-        append("        val effectiveLimit = limit ?: 50\n")
+        append("        val effectiveLimit = limit ?: ${defaultLimit()}\n")
         append("        val effectiveOffset = (offset ?: 0).toLong()\n")
         // issue #390: see the vanilla/TPH controllers' identical comment above.
         if (api == ExposedApi.V1) {

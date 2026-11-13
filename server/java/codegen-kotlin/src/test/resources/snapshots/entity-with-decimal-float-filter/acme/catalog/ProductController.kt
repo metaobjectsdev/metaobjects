@@ -62,6 +62,9 @@ private fun parseProductSort(raw: String): Pair<String, SortOrder>? {
     return field to dir
 }
 
+/** GENERATED — every field Product declares, as named on the wire: a body key outside it is refused. */
+private val ProductKnownFields: Set<String> = setOf("id", "name", "price", "rating")
+
 /** GENERATED — cross-port cap on `in`-list size (matches TS DEFAULT_MAX_IN_LIST). */
 private const val MAX_IN_LIST = 100
 
@@ -379,6 +382,8 @@ class ProductController(private val objectMapper: ObjectMapper, private val vali
     fun create(@RequestBody body: JsonNode): ResponseEntity<Any> = transaction {
         val issues = MetaValidationIssues.Collector()
         if (!body.isObject) return@transaction ResponseEntity.badRequest().body(issues.add("invalid_type", emptyList(), "request body must be a JSON object").body() as Any)
+        val unknownKeys = MetaUnknownBodyKeys.refusal(body, ProductKnownFields)
+        if (unknownKeys != null) return@transaction ResponseEntity.badRequest().body(unknownKeys as Any)
         val dto: Product = try {
             objectMapper.treeToValue(body, Product::class.java)
         } catch (e: Exception) {
@@ -415,6 +420,8 @@ class ProductController(private val objectMapper: ObjectMapper, private val vali
     fun update(@PathVariable id: Long, @RequestBody body: JsonNode): ResponseEntity<Any> = transaction {
         val issues = MetaValidationIssues.Collector()
         if (!body.isObject) return@transaction ResponseEntity.badRequest().body(issues.add("invalid_type", emptyList(), "request body must be a JSON object").body() as Any)
+        val unknownKeys = MetaUnknownBodyKeys.refusal(body, ProductKnownFields)
+        if (unknownKeys != null) return@transaction ResponseEntity.badRequest().body(unknownKeys as Any)
         if (body.has("name") && body.get("name").isNull) issues.add("invalid_type", listOf("name"), "field 'name' cannot be null")
         if (listOf("name", "price", "rating").any { body.has(it) }) {
             run {

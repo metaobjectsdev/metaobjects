@@ -1035,6 +1035,18 @@ directly into the generated list handler. A read-only projection
 (`source.rdb @kind: view`) and a view-backed report get the same filter and sort
 on their list route, against an allowlist of their own fields.
 
+The `api` block of `.metaobjects/config.json` reaches the generated routes through the loaded root
+(`MetaRoot.Api`). `api.pagination` (`defaultLimit`, `maxLimit`) gives every entity, TPH and projection
+list route a default page and answers a larger `?limit=` with `400 { "error": "limit_too_large",
+"maxLimit": N }`; a served report keeps its own row ceiling, and with no block the routes are unchanged.
+`api.unknownFields` (`reject`, the default, or `drop`) makes a create, PUT or PATCH answer
+`400 { "error": "unknown_fields", "fields": [...] }` for a body key no field of the entity (for a TPH
+hierarchy, of the base or any subtype) declares; the check is `UnknownFieldCheck` in the helper runtime.
+`dotnet meta init` does not write `.metaobjects/config.json`. `dotnet meta verify --codegen` prints a
+non-failing advisory (`unbounded-list-pages`, stderr, exit code unchanged) when the run includes the routes
+generator and the project sets no `api.pagination`; plain `verify` says nothing, because only `--codegen`
+runs the generator list.
+
 **Known gaps** (full list with workarounds in
 [KNOWN_GAPS.md](https://github.com/metaobjectsdev/metaobjects/blob/main/server/csharp/MetaObjects.Codegen/Generators/KNOWN_GAPS.md)):
 no `filter[or]` / `filter[and]` boolean grouping and a single sort key only (both outside the

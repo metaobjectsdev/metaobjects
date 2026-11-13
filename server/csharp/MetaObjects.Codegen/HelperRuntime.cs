@@ -70,6 +70,7 @@ public static class HelperRuntime
         "ValueObjectValidator.cs",
         "ConstraintErrors.cs",
         "ValidationIssues.cs",
+        "UnknownFieldCheck.cs",
         "Iso8601TimestampConverter.cs",
         "DecimalWire.cs",
         "DurationWire.cs",

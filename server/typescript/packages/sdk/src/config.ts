@@ -26,7 +26,10 @@ import {
   API_KEY_PAGINATION,
   PAGINATION_KEY_DEFAULT_LIMIT,
   PAGINATION_KEY_MAX_LIMIT,
+  API_KEY_UNKNOWN_FIELDS,
+  UNKNOWN_FIELDS_MODES,
   type ApiPagination,
+  type UnknownFieldsMode,
 } from "@metaobjectsdev/metadata";
 
 const DialectEnum = z.enum(["sqlite", "postgres", "d1"]);
@@ -300,6 +303,11 @@ export const ConfigSchema = z.object({
    * with no `limit` returns; an explicit `limit` above `pagination.maxLimit` is refused with
    * `400 { "error": "limit_too_large", "maxLimit": N }`. Absent means no default and no ceiling,
    * as before. `meta init` writes 50 and 1000.
+   *
+   * `unknownFields` is what a generated create, PUT or PATCH route does with a body key the
+   * entity does not declare: `reject` (the default, also when absent) answers
+   * `400 { "error": "unknown_fields", "fields": [...] }`; `drop` ignores the key and writes the
+   * rest. A declared key the client may not set is dropped under either value.
    */
   api: z
     .strictObject({
@@ -318,9 +326,14 @@ export const ConfigSchema = z.object({
           message: `"api.pagination.defaultLimit" must not exceed "api.pagination.maxLimit"`,
         })
         .optional(),
+      unknownFields: z
+        .enum(UNKNOWN_FIELDS_MODES, {
+          error: `"api.${API_KEY_UNKNOWN_FIELDS}" must be ${UNKNOWN_FIELDS_MODES.map((m) => `"${m}"`).join(" or ")}`,
+        })
+        .optional(),
     }, {
       error: (iss) => iss.code === "unrecognized_keys"
-        ? `"api" has an unknown key "${iss.keys[0]}" (expected "${API_KEY_PAGINATION}")`
+        ? `"api" has an unknown key "${iss.keys[0]}" (expected "${API_KEY_PAGINATION}" or "${API_KEY_UNKNOWN_FIELDS}")`
         : iss.code === "invalid_type" ? `"api" must be an object` : undefined,
     })
     .optional(),
@@ -372,6 +385,11 @@ export function physicalNamingFromConfig(cfg: Pick<Config, "naming">): PhysicalN
 export function apiPaginationFromConfig(cfg: Pick<Config, "api">): ApiPagination | undefined {
   const p = cfg.api?.pagination;
   return p === undefined ? undefined : { defaultLimit: p.defaultLimit, maxLimit: p.maxLimit };
+}
+
+/** The unknown-field rule a config declares (`api.unknownFields`); undefined when absent. */
+export function apiUnknownFieldsFromConfig(cfg: Pick<Config, "api">): UnknownFieldsMode | undefined {
+  return cfg.api?.unknownFields;
 }
 
 /** The enum storage defaults a config declares (`enums`); none when absent. */

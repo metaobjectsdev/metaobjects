@@ -50,9 +50,9 @@ export const API_CONTRACT_SECRET_FIELDS_SCENARIOS_DIR = resolve(API_CONTRACT_SEC
 export const API_CONTRACT_ENUM_DEFAULT_DIR = resolve(API_CONTRACT_DIR, "enum-default");
 export const API_CONTRACT_ENUM_DEFAULT_SCENARIOS_DIR = resolve(API_CONTRACT_ENUM_DEFAULT_DIR, "scenarios");
 
-// `api.pagination` page size subcorpus (GENERATED lane only).
-export const API_CONTRACT_PAGINATION_DIR = resolve(API_CONTRACT_DIR, "pagination");
-export const API_CONTRACT_PAGINATION_SCENARIOS_DIR = resolve(API_CONTRACT_PAGINATION_DIR, "scenarios");
+// `api` settings subcorpus (GENERATED lane only): `api.pagination` and `api.unknownFields: drop`.
+export const API_CONTRACT_API_SETTINGS_DIR = resolve(API_CONTRACT_DIR, "api-settings");
+export const API_CONTRACT_API_SETTINGS_SCENARIOS_DIR = resolve(API_CONTRACT_API_SETTINGS_DIR, "scenarios");
 
 export const API_CONTRACT_PROJECTION_DIR = resolve(API_CONTRACT_DIR, "projection");
 export const API_CONTRACT_PROJECTION_SCENARIOS_DIR = resolve(API_CONTRACT_PROJECTION_DIR, "scenarios");
