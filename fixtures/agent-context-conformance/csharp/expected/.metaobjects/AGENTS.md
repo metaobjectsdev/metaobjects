@@ -28,7 +28,7 @@ truth. Code, schema and migrations are generated from it and are disposable.
 2. **Generate.** `dotnet meta gen`. `dotnet meta eject <name>` copies a generator into the repo
    to change what it emits.
 
-### Schema (every stack: the Node `meta` CLI owns it, so Java, C# and Python projects need Node too)
+### Schema (every stack: the Node `meta` CLI owns it, so Java, Kotlin, C# and Python projects need Node too)
 
 Never hand-write DDL, and never `ALTER` a live database by hand.
 
@@ -61,8 +61,7 @@ Commit the metadata, the generated code, `.metaobjects/migrations/` and
 When the project serves the generated routes (any port):
 
 - Filter as `?filter[<field>][<op>]=<value>`: `?filter[status][eq]=active`, never
-  `?status=active` (TypeScript refuses that with 400; the other ports ignore it and return every
-  row). Operators: `eq`, `ne`, `isNull` (`true`/`false`), `in` (comma list, at most 100), `like`
+  `?status=active` (TypeScript refuses that with 400; the other ports ignore it). Operators: `eq`, `ne`, `isNull` (`true`/`false`), `in` (comma list, at most 100), `like`
   (case-sensitive, `%` and `_`), `gt`, `gte`, `lt`, `lte`. Filters AND; only `@filterable`
   fields filter.
 - `?sort=<field>:asc|desc`, `?limit=N&offset=N`; `withCount=1` returns `{"rows", "total"}`.
