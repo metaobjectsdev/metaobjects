@@ -1,5 +1,5 @@
-// A report dimension's `required` comes from the model, not from "every join is
-// INNER" (every generated view join is LEFT OUTER now). The shared table lives in
+// A report dimension's `required` comes from the model, never from the join type the view
+// lowering picks (INNER or LEFT OUTER). The shared table lives in
 // fixtures/conformance/report-dimension-required-by-model/expected-report-required.json; C#
 // (ReportShapeTests) reads the same file.
 

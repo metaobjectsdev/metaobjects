@@ -1928,11 +1928,10 @@ export function validateOriginSegmentsAndCorrelation(root: MetaData): ParseError
 /** The entity whose rows an origin.first / origin.aggregate spans: its @of entity, else its @via terminal. */
 function originRelatedEntity(origin: MetaData, obj: MetaData, root: MetaData): MetaData | undefined {
   const of_ = origin.ownAttr(ORIGIN_FIRST_ATTR_OF);
-  const referrerPkg = obj.package ?? obj.fileDefaultPackage ?? "";
-  if (typeof of_ === "string" && of_.lastIndexOf(".") > 0) {
-    const owner = resolveObjectRef(root, of_.slice(0, of_.lastIndexOf(".")), referrerPkg).node;
-    return owner;
+  if (typeof of_ === "string" && of_ !== "") {
+    return _validateFromPath(of_, root, obj, origin.parent?.name ?? "", origin.source, [])?.entity;
   }
+  const referrerPkg = obj.package ?? obj.fileDefaultPackage ?? "";
   const via = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_VIA);
   if (typeof via !== "string") return undefined;
   const [head, ...hops] = via.split(".");

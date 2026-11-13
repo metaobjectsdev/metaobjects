@@ -50,8 +50,8 @@ public class ReportShapeTests
         return result.Root;
     }
 
-    // Every generated view join is LEFT OUTER, so a joined dimension's required comes from
-    // the model — a required, enforced belongs-to path onto a target that hides no rows. The shared
+    // A joined dimension's required comes from the model, never from the join type the view
+    // lowering picks — a required, enforced belongs-to path onto a target that hides no rows. The shared
     // table is the fixture's expected-report-required.json, which TypeScript reads too.
     [Fact]
     public void A_dimensions_required_is_the_shared_tables()

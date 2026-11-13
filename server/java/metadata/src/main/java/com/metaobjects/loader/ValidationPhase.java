@@ -4065,12 +4065,16 @@ public final class ValidationPhase {
     /** The entity whose rows an origin.first / origin.aggregate spans: its {@code @of} entity,
      *  else its {@code @via} terminal. {@code null} when neither resolves (reported elsewhere). */
     private static MetaObject originRelatedEntity(MetaOrigin origin, MetaObject obj, MetaRoot root) {
-        String referrerPkg = obj.getPackage() == null ? "" : obj.getPackage();
         String of = origin.hasMetaAttr(MetaOrigin.ATTR_OF, false)
             ? origin.getMetaAttr(MetaOrigin.ATTR_OF, false).getValueAsString() : null;
-        if (of != null && of.lastIndexOf('.') > 0) {
-            return resolveRootObject(root, of.substring(0, of.lastIndexOf('.')), referrerPkg);
+        if (of != null && !of.isEmpty()) {
+            try {
+                return validateFromOrOfPath(of, root, obj, origin.getParent().getName(), "", origin.getSource()).entity;
+            } catch (MetaDataException e) {
+                return null;
+            }
         }
+        String referrerPkg = obj.getPackage() == null ? "" : obj.getPackage();
         String via = origin.hasMetaAttr(MetaOrigin.ATTR_VIA, false)
             ? origin.getMetaAttr(MetaOrigin.ATTR_VIA, false).getValueAsString() : null;
         if (via == null) return null;

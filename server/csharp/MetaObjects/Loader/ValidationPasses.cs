@@ -1739,10 +1739,10 @@ public static partial class ValidationPasses
 
     private static MetaData? OriginRelatedEntity(MetaData origin, MetaData obj, MetaData root)
     {
-        var pkg = NamingRefs.EffectivePackage(obj);
-        if (origin.OwnAttr(ORIGIN_FIRST_ATTR_OF) is string of && of.LastIndexOf('.') > 0)
-            return NamingRefs.ResolveObjectRef(root, of[..of.LastIndexOf('.')], pkg);
+        if (origin.OwnAttr(ORIGIN_FIRST_ATTR_OF) is string of && of.Length > 0)
+            return ValidateFromPath(of, root, obj, origin.Parent?.Name ?? "", [], "", origin.Source)?.Entity;
         if (origin.OwnAttr(ORIGIN_AGGREGATE_ATTR_VIA) is not string via) return null;
+        var pkg = NamingRefs.EffectivePackage(obj);
         var segments = via.Split('.');
         var current = NamingRefs.ResolveObjectRef(root, segments[0], pkg);
         foreach (var hop in segments.Skip(1))

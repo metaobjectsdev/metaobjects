@@ -219,7 +219,10 @@ Each item below is described in full under Added, Changed or Fixed; this list is
   skipped any origin it could not lower, so a projection loaded clean and `meta migrate` created a
   view missing a column its generated type declares. Each such shape now fails, naming the
   projection and the field: an origin `@segment`, a base-row operand in an origin `@filter`, a
-  computed node the lowering does not support, and an unknown origin or aggregate.
+  computed node the lowering does not support, and an unknown origin or aggregate. A projection
+  that extends another projection now fails too, naming the projection: the lowering reads only
+  the fields and `@filter` declared on the projection itself, so the view it created dropped the
+  inherited columns and the inherited row gate.
 - **A reference over a flattened member reads the member's column.** A reference whose `@fields`
   names a member of a flattened value object (`"address.countryId"`) now resolves to that member's
   real column in the foreign key `meta migrate` emits, a view's join, a passthrough `@from` onto

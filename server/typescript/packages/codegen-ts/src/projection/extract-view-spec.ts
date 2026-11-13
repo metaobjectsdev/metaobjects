@@ -1527,6 +1527,12 @@ export function extractViewSpec(
   // from the base alias (o.*), derived (origin.*) fields from the joins. A plain
   // projection anchors its base via an extends binding (baseEntityFor).
   const writeThrough = isWriteThrough(projection);
+  if (!writeThrough && projection.superData !== undefined) {
+    throw new Error(
+      `Projection ${projection.name} cannot be lowered into a view: it extends ${projection.superData.name}, ` +
+        `and the view lowering does not inherit the fields or @filter of the projection it extends yet.`,
+    );
+  }
   const base = writeThrough ? projection : baseEntityFor(projection, root);
   const usedAliases = new Set<string>();
   const baseAlias = shortAliasFor(base.name, usedAliases);

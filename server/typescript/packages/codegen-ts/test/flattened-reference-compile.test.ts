@@ -8,7 +8,9 @@
 //   - a passthrough `@from` onto a flattened member reads that column;
 //   - two references onto one target join it twice, and each passthrough reads the join its
 //     own `@via` walked;
-//   - an origin `@segment`, which the view lowering does not express yet, is refused.
+//   - an origin `@segment`, which the view lowering does not express yet, is refused;
+//   - a projection that extends another projection, whose fields and `@filter` the view
+//     lowering does not inherit yet, is refused naming the projection.
 
 import { describe, expect, test, setDefaultTimeout } from "bun:test";
 import { COMPILE_TEST_TIMEOUT_MS } from "./compile-timeout.js";
@@ -219,8 +221,9 @@ describe("the shared fixtures, through the view builder", () => {
     ["projection-filter-joined-path", /view @filter field "caseId.status" did not resolve to a view column/],
     ["projection-filter-unprojected-base-field", /view @filter field "deleted" did not resolve to a view column/],
     ["entity-derived-filter-gate", /did not resolve to a view column/],
-    ["projection-extends-abstract-projection", /cannot derive the base entity/],
-    ["projection-extends-filtered-projection", /cannot derive the base entity/],
+    ["projection-extends-abstract-projection", /Projection DataAggregationPlans cannot be lowered into a view: it extends PlanExtract,/],
+    ["projection-extends-filtered-projection", /Projection ExportPlans cannot be lowered into a view: it extends LivePlans,/],
+    ["projection-extends-projection-own-identity", /Projection ExportPlans cannot be lowered into a view: it extends GatedPlans,/],
   ] as const)("%s is refused by name", async (name, refusal) => {
     const root = await loadFixture(name);
     expect(() => viewSql(root)).toThrow(refusal);
