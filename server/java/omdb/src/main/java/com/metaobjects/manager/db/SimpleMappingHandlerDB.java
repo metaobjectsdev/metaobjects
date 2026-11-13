@@ -148,9 +148,11 @@ public class SimpleMappingHandlerDB implements MappingHandler {
 			String col = getColumnRef( mf );
 			if ( col == null ) continue;
 			
-			// Make sure it's not for view's only
+			// Make sure it's not for view's only. A table never stores a derived (origin.*)
+			// field: only a view computes one.
 			if ( table instanceof TableDef ) {
 				if ( TRUE.equals( getPersistenceAttribute( mf, IS_VIEWONLY ))) continue;
+				if ( mf.isDerived() ) continue;
 			}
 			
 			// Create the column definition

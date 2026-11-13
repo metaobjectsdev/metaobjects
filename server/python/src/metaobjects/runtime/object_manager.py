@@ -43,7 +43,7 @@ from ..codegen.runtime.duration_wire import (
 from ..meta.meta_root import MetaRoot
 from ..meta.core.object.meta_object import MetaObject
 from ..naming_refs import ref_target
-from ..meta.core.object.object_constants import OBJECT_SUBTYPE_REPORT
+from ..meta.core.object.object_constants import OBJECT_SUBTYPE_ENTITY, OBJECT_SUBTYPE_REPORT
 from ..meta.core.reporting.report_read_model import report_read_model
 from ..meta.core.field.meta_field import MetaField
 from ..meta.core.field import field_constants as fc
@@ -709,9 +709,11 @@ class ObjectManager:
         entity = self._require_entity(entity_name)
         # #214: reads route to the replica VIEW for a write-through entity (carrying the
         # derived origin.* columns), else the entity's own primary source. All effective
-        # fields (incl. derived) are selected — the view exposes them.
+        # fields (incl. derived) are selected — the view exposes them. An entity with no read
+        # view reads its table, which stores no derived field, so those are left out.
         table = self._read_source_name(entity)
-        cols = [_column_of(f, self._column_naming) for f in entity.fields()]
+        read_fields = _read_fields(entity)
+        cols = [_column_of(f, self._column_naming) for f in read_fields]
         sql = f'SELECT {", ".join(self._d.quote(c) for c in cols)} FROM {self._read_relation(entity)}'
         params: list[Any] = []
         # FR-017 TPH: a subtype read is scoped to its discriminator value (a row of
@@ -739,10 +741,10 @@ class ObjectManager:
         result = self._driver.select(sql, tuple(params))
         # Map raw column → metadata field name for cross-port row-shape parity.
         # Values stay native (ADR-0019); the boundary canonicalizes them.
-        col_to_field = {_column_of(f, self._column_naming): f.name for f in entity.fields()}
-        self.last_column_oids = self._type_codes(result, col_to_field, entity.fields())
+        col_to_field = {_column_of(f, self._column_naming): f.name for f in read_fields}
+        self.last_column_oids = self._type_codes(result, col_to_field, read_fields)
         # int-backed enums come back as integers; hand the caller the symbol.
-        fields_by_name = {f.name: f for f in entity.fields()}
+        fields_by_name = {f.name: f for f in read_fields}
         return [
             _decode_read_row(fields_by_name, {col_to_field.get(k, k): v for k, v in row.items()}, self._d)
             for row in result.rows
@@ -1423,6 +1425,15 @@ _AUTO_SET_TEMPORAL_SUBTYPES = (
     fc.FIELD_SUBTYPE_DATE,
     fc.FIELD_SUBTYPE_TIME,
 )
+
+
+def _read_fields(entity: MetaObject) -> list[MetaField]:
+    """The fields a read selects. An entity that is not write-through reads its own table,
+    which has no column for a derived (``origin.*``) field; every other object reads a view
+    that carries them."""
+    if entity.sub_type == OBJECT_SUBTYPE_ENTITY and not entity.is_write_through():
+        return [f for f in entity.fields() if not f.is_derived()]
+    return list(entity.fields())
 
 
 def _auto_set_fields(entity: MetaObject) -> tuple[list[MetaField], list[MetaField]]:
