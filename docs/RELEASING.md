@@ -614,6 +614,40 @@ default, so a dispatch meant to report cannot write.
 Then verify: `npm dist-tag ls @metaobjectsdev/<pkg>` — authoritative, where `npm view` is
 CDN-cached and lags right after publish.
 
+## Patch from a maintenance branch (`release/<major>.<minor>`)
+
+**When.** `main` already holds work for the next minor (or major) that must not ship yet, and a
+fix has to go out on the line already released. Cut the patch from a maintenance branch named
+exactly `release/<major>.<minor>` (for example `release/1.2`), branched from that line's last
+release commit, with the fix merged into it by PR. If `main` has nothing unreleased beyond the
+patch, cut from `main` as usual instead.
+
+**What the scripts do differently.** `scripts/release.mjs` and `scripts/finish-release.mjs`
+accept `release/<major>.<minor>` as well as `main` (the rule is
+[`scripts/lib/release-branch.mjs`](../scripts/lib/release-branch.mjs), shared by both):
+
+- The version must be on the branch's own line: `release/1.2` cuts `1.2.x` (and `1.2.x-rc.N`)
+  and refuses anything else, such as `1.3.0`.
+- Every push goes to that branch (`git push origin release/1.2`), never `main`.
+- `finish-release`'s sync check compares HEAD with `origin/release/1.2`, not `origin/main`.
+
+Every other gate is unchanged. Bump the PyPI/NuGet/Maven manifests, run `bun run site:payload`,
+commit and push on the maintenance branch, and push the `python-v*` / `csharp-v*` / `java-v*`
+tags from it, exactly as on `main`.
+
+**The site follows the newest tag.** The website deploys from the newest `vN.N.N` release tag
+(rule 7), wherever it was cut. A patch tag on a maintenance branch therefore becomes what
+metaobjects.dev shows, including its payload and coordinates, until the next release is tagged.
+The converse is enforced: `finish-release` refuses to tag a patch on a line older than a tag
+that already exists (`v1.2.3` once `v1.3.0` exists), because the deploy would never resolve it.
+So a maintenance patch is for a line that is still the newest release. The same holds on npm:
+`release.mjs` publishes to `latest`, and a patch cut after a newer minor shipped would move
+`latest` backwards.
+
+**Then bring the fix to `main`.** A maintenance branch is never merged back wholesale (its
+version bumps and CHANGELOG would collide with `main`'s). Cherry-pick or re-land each fix on
+`main` by PR.
+
 ## Isolated patch (one package)
 
 If only one package changed (e.g. a `cli` bugfix), bump just that package, `rm bun.lock && bun

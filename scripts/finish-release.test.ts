@@ -36,6 +36,8 @@ const SCRIPT = readFileSync(resolve(REPO, "scripts/finish-release.mjs"), "utf8")
 const MAVEN_COORD = readFileSync(resolve(REPO, "scripts/maven-coordinate.mjs"), "utf8");
 // Gate 0 asks the eject release gate, and the fixture ships the real one for the same reason.
 const EJECT_GATE = readFileSync(resolve(REPO, "scripts/eject-release-gate.mjs"), "utf8");
+// Gate 1's branch rule, shared with release.mjs — the real module, for the same reason.
+const RELEASE_BRANCH = readFileSync(resolve(REPO, "scripts/lib/release-branch.mjs"), "utf8");
 const EJECT_MANIFEST = "fixtures/generator-registry-conformance/registry.json";
 /** The shared file as the release branch leaves it: nothing pending. */
 const EJECT_CLEAR = `${JSON.stringify({ eject: { pending: [] } })}\n`;
@@ -173,6 +175,7 @@ function makeRepo(spec: Spec = {}): Fixture {
     "scripts/finish-release.mjs": SCRIPT,
     "scripts/maven-coordinate.mjs": MAVEN_COORD,
     "scripts/eject-release-gate.mjs": EJECT_GATE,
+    "scripts/lib/release-branch.mjs": RELEASE_BRANCH,
   })) {
     const full = join(work, rel);
     mkdirSync(dirname(full), { recursive: true });
@@ -289,6 +292,46 @@ describe("finish-release gate 1: the tree that will be tagged", () => {
     const r = f.run(RELEASE, "--check");
     expect(r.code).not.toBe(0);
     expect(r.out).toContain("HEAD is not origin/main");
+  });
+
+  // A maintenance branch `release/<major>.<minor>` may tag a patch on its own line; the
+  // rule itself is unit-tested in scripts/test-release-branch.mjs. These cases prove the
+  // script wires it: the branch is accepted, a version off its line is refused, and the
+  // sync check compares against origin/<that branch>, never origin/main.
+  const onMaintenance = (name: string, push = true) => {
+    const f = makeRepo();
+    f.git(f.work, "checkout", "--quiet", "-b", name);
+    if (push) f.git(f.work, "push", "--quiet", "-u", "origin", name);
+    return f;
+  };
+
+  test("a maintenance branch on the release's own line passes gate 1", () => {
+    const r = onMaintenance("release/0.24").run(RELEASE, "--check");
+    expect(r.out).toContain("on release/0.24, clean, synced with origin");
+    expect(r.code).toBe(0);
+  });
+
+  test("a maintenance branch refuses a version off its line", () => {
+    const r = onMaintenance("release/0.23").run(RELEASE, "--check");
+    expect(r.code).not.toBe(0);
+    expect(r.out).toContain("cuts only 0.23.x");
+    expect(r.out).not.toContain("synced with origin");
+  });
+
+  test("a maintenance branch syncs against its OWN remote, not origin/main", () => {
+    const f = onMaintenance("release/0.24");
+    writeFileSync(join(f.work, "NOTES.md"), "unpushed\n");
+    f.git(f.work, "add", "-A");
+    f.git(f.work, "commit", "--quiet", "-m", "local only");
+    const r = f.run(RELEASE, "--check");
+    expect(r.code).not.toBe(0);
+    expect(r.out).toContain("HEAD is not origin/release/0.24");
+  });
+
+  test("a maintenance branch never pushed is refused, not crashed on", () => {
+    const r = onMaintenance("release/0.24", false).run(RELEASE, "--check");
+    expect(r.code).not.toBe(0);
+    expect(r.out).toContain("HEAD is not origin/release/0.24");
   });
 
   // The defect: the fetch was `|| true`, so a failure left `origin/main` at a stale
@@ -645,6 +688,21 @@ describe("finish-release gate 7: cutting the tag", () => {
       .toContain(`metaobjects ${RELEASE} / 7.${RELEASE.split(".").slice(1).join(".")}`);
     // Pushed, not merely created: the deploy clones the REMOTE tag.
     expect(f.git(f.origin, "tag", "-l")).toContain(`v${RELEASE}`);
+  });
+
+  test("tags and pushes from a maintenance branch, leaving origin/main where it was", () => {
+    const f = makeRepo();
+    const mainBefore = f.git(f.origin, "rev-parse", "main");
+    f.git(f.work, "checkout", "--quiet", "-b", "release/0.24");
+    writeFileSync(join(f.work, "NOTES.md"), "the patch\n");
+    f.git(f.work, "add", "-A");
+    f.git(f.work, "commit", "--quiet", "-m", "patch on the maintenance line");
+    f.git(f.work, "push", "--quiet", "-u", "origin", "release/0.24");
+    const r = f.run(RELEASE);
+    expect(r.out).toContain(`cut and pushed v${RELEASE}`);
+    expect(r.code).toBe(0);
+    expect(f.git(f.origin, "rev-parse", `v${RELEASE}^{commit}`)).toBe(f.git(f.work, "rev-parse", "HEAD"));
+    expect(f.git(f.origin, "rev-parse", "main")).toBe(mainBefore);
   });
 
   test("--check cuts nothing", () => {

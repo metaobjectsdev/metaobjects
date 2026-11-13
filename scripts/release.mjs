@@ -33,6 +33,7 @@ import { createInterface } from "node:readline/promises";
 import { publishSet } from "./publish-set.mjs";
 import { mavenVersion } from "./maven-coordinate.mjs";
 import { ejectReleaseRefusalAt } from "./eject-release-gate.mjs";
+import { releaseBranchRefusal } from "./lib/release-branch.mjs";
 
 const VERSION = process.argv[2];
 const DRY = process.argv.includes("--dry-run");
@@ -70,10 +71,14 @@ console.log(`\n── Releasing ${VERSION}${DRY ? "  (DRY RUN)" : ""} ──\n`)
 const ejectRefusal = ejectReleaseRefusalAt(VERSION, join(dirname(fileURLToPath(import.meta.url)), ".."));
 if (ejectRefusal !== null) die(ejectRefusal);
 
+// `main`, or a `release/<major>.<minor>` maintenance branch cutting a version on its own
+// line (scripts/lib/release-branch.mjs). Everything below that pushes or compares against
+// the remote uses THIS branch, so a maintenance cut never touches main.
 const branch = out("git rev-parse --abbrev-ref HEAD");
-if (branch !== "main") die(`must be on main (you are on ${branch})`);
+const branchRefusal = releaseBranchRefusal(branch, VERSION);
+if (branchRefusal !== null) die(branchRefusal);
 sh("git fetch origin", { quiet: true });
-if (out("git rev-list --count HEAD..origin/main") !== "0") die("main is behind origin/main — pull first");
+if (out(`git rev-list --count HEAD..origin/${branch}`) !== "0") die(`${branch} is behind origin/${branch} — pull first`);
 
 // Clean tree, except the CHANGELOG (we promote its [Unreleased] section) and untracked noise.
 const dirty = out("git status --porcelain").split("\n")
@@ -129,7 +134,7 @@ const taken = (await Promise.all(set.map(async (p) => {
 if (taken.length)
   die(`${VERSION} is already published for:\n  ${taken.join("\n  ")}\n` +
       `npm versions are permanent — pick the next free version.`);
-ok(`preflight: on main, synced, ${VERSION} free on all ${set.length} packages`);
+ok(`preflight: on ${branch}, synced, ${VERSION} free on all ${set.length} packages`);
 ok(`lockstep set @ ${current}: ${set.length} packages → ${VERSION}`);
 
 // The showcase corpus is what metaobjects.dev publishes as "real `meta gen` output",
@@ -262,7 +267,7 @@ for (const pkg of ordered) {
 
 // --- PHASE 8: push (the tag is NOT cut here) -------------------------------
 // This script publishes npm, which is one of FOUR registries. The PyPI/NuGet/Maven
-// version bump is a separate, later commit — so at this point `main` states the new npm
+// version bump is a separate, later commit — so at this point the branch states the new npm
 // coordinate and three stale ones, and the site payload committed above says exactly
 // that.
 //
@@ -274,8 +279,8 @@ for (const pkg of ordered) {
 //
 // So the tag moves to the END of the coordinated cut: `scripts/finish-release.mjs`,
 // which refuses to tag until the payload's coordinates match what actually shipped.
-sh("git push origin main", { quiet: true });
-ok("pushed main (tag deferred to finish-release)");
+sh(`git push origin ${branch}`, { quiet: true });
+ok(`pushed ${branch} (tag deferred to finish-release)`);
 
 // --- PHASE 11: post-publish smoke (the RC's safety net) -------------------
 // NOT under tmpdir(). Node's resolution walks UP from the scratch dir, so a stale
@@ -299,4 +304,4 @@ console.log(`   3. \`bun scripts/finish-release.mjs ${VERSION}\` — gates the c
 console.log(`   The website pins to v${VERSION}, so tagging before step 1 publishes three stale versions.`);
 console.log(`   Docs version refs are NOT auto-bumped (low-value churn for a patch); batch them when convenient.`);
 console.log(`   The site payload IS auto-bumped and committed here — but only its npm coordinate.`);
-console.log(`   The PyPI/NuGet/Maven bump commit must run \`bun run site:payload\` or gates goes red on main.\n`);
+console.log(`   The PyPI/NuGet/Maven bump commit must run \`bun run site:payload\` or gates goes red on ${branch}.\n`);

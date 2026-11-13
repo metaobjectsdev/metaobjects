@@ -37,6 +37,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { mavenVersion } from "./maven-coordinate.mjs";
 import { ejectReleaseRefusalAt } from "./eject-release-gate.mjs";
+import { releaseBranchRefusal } from "./lib/release-branch.mjs";
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const CHECK_ONLY = process.argv.includes("--check");
@@ -80,8 +81,13 @@ ok("eject contract: the pending list is empty");
 if (out("git status --porcelain") !== "") {
   die("working tree is dirty — commit or stash before tagging, or the tag names a tree you did not review");
 }
-if (out("git rev-parse --abbrev-ref HEAD") !== "main") die("not on main");
-// NOT `|| true`. A swallowed fetch leaves `origin/main` at a STALE remote-tracking ref,
+// `main`, or a `release/<major>.<minor>` maintenance branch tagging a version on its own
+// line (scripts/lib/release-branch.mjs). The sync check below compares against THAT
+// branch's remote, never origin/main.
+const branch = out("git rev-parse --abbrev-ref HEAD");
+const branchRefusal = releaseBranchRefusal(branch, VERSION);
+if (branchRefusal !== null) die(branchRefusal);
+// NOT `|| true`. A swallowed fetch leaves `origin/<branch>` at a STALE remote-tracking ref,
 // and the very next comparison then prints "synced with origin" having verified nothing —
 // with git's own "Could not read from remote repository" scrolling past just above the
 // tick. The realistic case is the port-bump commit pushed from another checkout while
@@ -93,10 +99,12 @@ try {
   die(`git fetch origin failed, so "synced with origin" cannot be verified: ` +
       `${e instanceof Error ? e.message : String(e)}`);
 }
-if (out("git rev-parse HEAD") !== out("git rev-parse origin/main")) {
-  die("HEAD is not origin/main — push first; the deploy clones the REMOTE tag");
+// `|| true` here is not the swallow warned about above: a maintenance branch that was
+// never pushed has no `origin/<branch>`, and that must read as "not synced", not crash.
+if (out("git rev-parse HEAD") !== out(`git rev-parse --verify --quiet origin/${branch} || true`)) {
+  die(`HEAD is not origin/${branch} — push first; the deploy clones the REMOTE tag`);
 }
-ok("on main, clean, synced with origin");
+ok(`on ${branch}, clean, synced with origin`);
 
 // ── 2. the tag is free ───────────────────────────────────────────────────────
 // Never move a tag. A moved tag silently changes what the website deploys, and any
