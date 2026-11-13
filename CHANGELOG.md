@@ -83,8 +83,9 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   `conditionalOutput` and its `toString` import options are not carried over. A fresh npm
   install of the CLI drops from 151 MB (134,641,989 bytes) to 133 MB (115,302,944 bytes) of
   `node_modules`. `scripts/check-peer-ranges.ts` now also fails a publishable package that
-  requires `dprint-node`, `ts-poet` or any `@types/*` package through `dependencies` or a
-  non-optional peer; a type package a published `.d.ts` imports goes in its `ALLOWED_TYPES_DEPS`
+  requires `dprint-node`, `ts-poet` or any `@types/*` package through `dependencies`,
+  `optionalDependencies` or a non-optional peer; a type package a published `.d.ts` imports goes
+  in its `ALLOWED_TYPES_DEPS`
   with the reason. No `@metaobjectsdev/*` package declares `@types/node`: the 3 MB copy in the
   install comes through the libSQL driver (`@libsql/isomorphic-ws` → `@types/ws`), which is
   unchanged here. This also repairs the standalone binary (`bun run build:binary`): `--compile`
