@@ -5,6 +5,8 @@ The reference implementation. Published to npm at `1.2.0` as 14
 runtimes: the generated code and the CLI run on stock Node (via `tsx` or after a `tsc`
 build), and Bun is simply the fastest dev workflow in this repo.
 
+> The Node `meta` CLI is also the schema tool for the other four ports, so a Java, C# or Python team runs `npx meta migrate` and `npx meta verify --db` too. Where the TypeScript output behaves differently from theirs (list defaults, error bodies, filter extensions) is listed in [What differs by language](../features/language-differences.md).
+
 ## Regeneration and hand edits
 
 Three-way merge is a TypeScript feature: on the machine that generated a file, `meta gen`

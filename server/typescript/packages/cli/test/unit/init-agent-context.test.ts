@@ -14,7 +14,8 @@ describe("init() — agent-context scaffolding", () => {
   test("scaffolds always-on + skills + the stack's language reference fragments + a manifest", async () => {
     await init({ cwd, servers: javaReact.servers, clients: javaReact.clients });
     expect(existsSync(join(cwd, ".metaobjects/AGENTS.md"))).toBe(true);
-    expect(existsSync(join(cwd, ".metaobjects/CLAUDE.md"))).toBe(true);
+    // One always-on file: the root AGENTS.md / CLAUDE.md import it, so no duplicate is written.
+    expect(existsSync(join(cwd, ".metaobjects/CLAUDE.md"))).toBe(false);
     expect(existsSync(join(cwd, ".claude/skills/metaobjects-codegen/SKILL.md"))).toBe(true);
     // stack-scoped: only the declared stack's language references install (058be51c);
     // this stack is java + react, so java.md installs and the other language refs do not.
@@ -61,9 +62,82 @@ describe("init() — agent-context scaffolding", () => {
     const after = readFileSync(join(cwd, "CLAUDE.md"), "utf8");
     expect(after.match(/@\.metaobjects\/AGENTS\.md/g)?.length).toBe(1);  // not double-added
   });
-  test("--wire-root creates a root CLAUDE.md with the @import when none exists", async () => {
+  test("--wire-root creates a root AGENTS.md and CLAUDE.md with the @import when neither exists", async () => {
     await init({ cwd, servers: javaReact.servers, clients: javaReact.clients, wireRoot: true });
-    expect(existsSync(join(cwd, "CLAUDE.md"))).toBe(true);
-    expect(readFileSync(join(cwd, "CLAUDE.md"), "utf8")).toContain("@.metaobjects/AGENTS.md");
+    for (const root of ["AGENTS.md", "CLAUDE.md"]) {
+      const body = readFileSync(join(cwd, root), "utf8");
+      expect(body).toContain("@.metaobjects/AGENTS.md");
+      // The plain sentence is what an assistant that does not expand `@` imports acts on.
+      expect(body).toContain("Read `.metaobjects/AGENTS.md` before changing");
+    }
+  });
+  test("--wire-root with only a root AGENTS.md wires that and creates no CLAUDE.md", async () => {
+    writeFileSync(join(cwd, "AGENTS.md"), "# team rules\n", "utf8");
+    await init({ cwd, servers: javaReact.servers, clients: javaReact.clients, wireRoot: true });
+    expect(readFileSync(join(cwd, "AGENTS.md"), "utf8")).toContain("@.metaobjects/AGENTS.md");
+    expect(existsSync(join(cwd, "CLAUDE.md"))).toBe(false);
+  });
+
+  test("--wire-root with only a root CLAUDE.md on a first init also creates AGENTS.md", async () => {
+    // A repo that predates the assistant-neutral layout: CLAUDE.md only. Assistants that
+    // read AGENTS.md would miss the context, so the first init brings the second file.
+    writeFileSync(join(cwd, "CLAUDE.md"), "# my notes\n\nUse pnpm.\n", "utf8");
+    await init({ cwd, servers: javaReact.servers, clients: javaReact.clients, wireRoot: true });
+    const claude = readFileSync(join(cwd, "CLAUDE.md"), "utf8");
+    expect(claude).toContain("# my notes");                    // hand-written content kept
+    expect(claude.match(/@\.metaobjects\/AGENTS\.md/g)?.length).toBe(1);  // import appended once
+    const agents = readFileSync(join(cwd, "AGENTS.md"), "utf8");
+    expect(agents).toContain("@.metaobjects/AGENTS.md");
+    expect(agents).toContain("Read `.metaobjects/AGENTS.md` before changing");
+  });
+
+  test("a refresh over a repo with only a root CLAUDE.md creates no AGENTS.md and advises once", async () => {
+    // Established project (no root files yet), then the legacy-layout CLAUDE.md appears.
+    await init({ cwd, servers: javaReact.servers, clients: javaReact.clients });
+    writeFileSync(join(cwd, "CLAUDE.md"), "# my notes\n", "utf8");
+    const r = await init({ cwd, servers: javaReact.servers, clients: javaReact.clients, wireRoot: true, refreshDocs: true });
+    expect(existsSync(join(cwd, "AGENTS.md"))).toBe(false);    // a refresh creates no root file
+    expect(readFileSync(join(cwd, "CLAUDE.md"), "utf8")).toContain("@.metaobjects/AGENTS.md");  // still wired
+    const advisories = r.warnings.filter((w) => w.includes("no root AGENTS.md"));
+    expect(advisories.length).toBe(1);                          // exactly once, naming the remedy
+    expect(advisories[0]).toContain("add a root AGENTS.md containing @.metaobjects/AGENTS.md");
+  });
+
+  test("--skills-dir installs the skills there, names it in the always-on, and a refresh keeps it", async () => {
+    await init({ cwd, servers: ["python"], clients: [], skillsDir: ".agents/skills" });
+    expect(existsSync(join(cwd, ".agents/skills/metaobjects-codegen/SKILL.md"))).toBe(true);
+    expect(existsSync(join(cwd, ".claude/skills"))).toBe(false);
+    expect(readFileSync(join(cwd, ".metaobjects/AGENTS.md"), "utf8")).toContain("`.agents/skills/<skill>/SKILL.md`");
+    // No flag on the refresh: the manifest's recorded directory wins over the default.
+    await init({ cwd, refreshDocs: true, docsOnly: true });
+    expect(existsSync(join(cwd, ".claude/skills"))).toBe(false);
+    expect(existsSync(join(cwd, ".agents/skills/metaobjects-codegen/SKILL.md"))).toBe(true);
+  });
+
+  test("moving the skills with --skills-dir prunes the untouched copies at the old path", async () => {
+    await init({ cwd, servers: ["python"], clients: [] });
+    expect(existsSync(join(cwd, ".claude/skills/metaobjects-codegen/SKILL.md"))).toBe(true);
+    await init({ cwd, refreshDocs: true, docsOnly: true, skillsDir: ".agents/skills" });
+    expect(existsSync(join(cwd, ".agents/skills/metaobjects-codegen/SKILL.md"))).toBe(true);
+    expect(existsSync(join(cwd, ".claude/skills/metaobjects-codegen/SKILL.md"))).toBe(false);
+  });
+
+  test("a --skills-dir outside the project is refused before anything is written", async () => {
+    await expect(init({ cwd, servers: ["python"], clients: [], skillsDir: "../elsewhere" })).rejects.toThrow(/--skills-dir/);
+    expect(existsSync(join(cwd, ".metaobjects"))).toBe(false);
+  });
+
+  test("a refresh removes the duplicate .metaobjects/CLAUDE.md an earlier release wrote", async () => {
+    await init({ cwd, servers: ["python"], clients: [] });
+    // Simulate the earlier layout: the duplicate on disk and tracked in the manifest.
+    const agents = readFileSync(join(cwd, ".metaobjects/AGENTS.md"), "utf8");
+    writeFileSync(join(cwd, ".metaobjects/CLAUDE.md"), agents, "utf8");
+    const mPath = join(cwd, ".metaobjects/.agent-context.json");
+    const m = JSON.parse(readFileSync(mPath, "utf8"));
+    m.files[".metaobjects/CLAUDE.md"] = m.files[".metaobjects/AGENTS.md"];
+    writeFileSync(mPath, JSON.stringify(m, null, 2), "utf8");
+    const r = await init({ cwd, refreshDocs: true, docsOnly: true });
+    expect(existsSync(join(cwd, ".metaobjects/CLAUDE.md"))).toBe(false);
+    expect(r.removed).toContain(".metaobjects/CLAUDE.md");
   });
 });

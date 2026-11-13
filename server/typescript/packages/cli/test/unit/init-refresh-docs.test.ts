@@ -13,24 +13,17 @@ afterEach(() => {
 });
 
 // NOTE: the legacy single-blob AGENT_DOCS_BODY was replaced by the agent-context
-// assembler (always-on AGENTS.md/CLAUDE.md + per-stack skill fragments + a manifest).
+// assembler (always-on AGENTS.md + per-stack skill fragments + a manifest).
 // The detailed authoring/codegen/tanstack/filter/projection/currency prose now lives
 // in the `metaobjects-*` skill reference fragments, NOT in the always-on body — so
 // the old content-blob assertions are gone. These tests cover the always-on body and
 // the non-destructive refresh contract.
 
 describe("init writes agent docs", () => {
-  test("writes AGENTS.md and CLAUDE.md under .metaobjects/", async () => {
+  test("writes AGENTS.md, and no duplicate CLAUDE.md, under .metaobjects/", async () => {
     await init({ cwd });
     expect(existsSync(join(cwd, ".metaobjects", "AGENTS.md"))).toBe(true);
-    expect(existsSync(join(cwd, ".metaobjects", "CLAUDE.md"))).toBe(true);
-  });
-
-  test("AGENTS.md and CLAUDE.md have identical content", async () => {
-    await init({ cwd });
-    const a = readFileSync(join(cwd, ".metaobjects", "AGENTS.md"), "utf8");
-    const c = readFileSync(join(cwd, ".metaobjects", "CLAUDE.md"), "utf8");
-    expect(a).toBe(c);
+    expect(existsSync(join(cwd, ".metaobjects", "CLAUDE.md"))).toBe(false);
   });
 
   test("scaffolds the agent-context manifest", async () => {
