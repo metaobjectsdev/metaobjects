@@ -91,7 +91,10 @@ a `collections` setting, every name is what it has always been: the segment is t
 name made plural, as every port serves it. A list hook whose name would equal the detail hook's
 takes a `List` suffix. Java and Kotlin name a reverse finder by its foreign-key field
 (`findByOwnerId`), so a collection name does not change it. The cases every port runs are in
-`fixtures/naming-conformance/collection-segments.json`. Changing either one changes URLs and
+`fixtures/naming-conformance/collection-segments.json`. Two objects that would take one
+collection name — the same REST segment, or (in C#) one DbSet property — are refused before
+anything is written, with `ERR_COLLECTION_NAME_COLLISION` naming both and `@collectionName` as
+the remedy, in every port. Changing either one changes URLs and
 generated names an application calls, so treat it as an API change.
 
 A name nothing registered fails when the file is read, naming the setting, the name, the port,

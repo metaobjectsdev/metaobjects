@@ -1050,7 +1050,7 @@ interface TrieNode {
 /** Walk one dotted `@via` (`Owner.hop[.hop…]`) into join steps. Returns [] when the
  *  head or any hop does not resolve. Throws on an ambiguous hop (#368). A report dimension
  *  joins through this same walk as a projection origin, so hop resolution, the ambiguity
- *  errors and the #209 join type are one implementation. */
+ *  errors and the LEFT OUTER join type are one implementation. */
 export function walkViaPath(via: string, root: MetaRoot, referrerPkg: string, ctx: ExtractContext): Path {
   const segments = via.split(".");
   const rawEntity = segments[0];

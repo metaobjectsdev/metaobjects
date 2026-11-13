@@ -283,6 +283,10 @@ manifest contains without moving these boundaries.
   classpath and stubbing them drowns the signal; that tier is compiled and booted over
   real HTTP in the api-contract integration lane instead. The boundary is one
   cross-port rule, not four local concessions.
+- *The gate and the generated-server api-contract lanes run in both output layouts* —
+  the engine default `flat` and `outputLayout: "package"` (which `meta init` writes) —
+  so a defect only the non-default layout shows (a relative import one directory short,
+  two packages landing in one directory) fails a gate rather than an adopter's build.
 - *The prompt tier is out of scope here* because the fitness corpus declares no
   `template.*` nodes. Including those generators would emit nothing and read as
   coverage that is not there.

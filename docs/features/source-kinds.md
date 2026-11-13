@@ -271,6 +271,13 @@ outside the tool — see [migrations-and-drift.md](migrations-and-drift.md) and
 Postgres default is `public`; SQLite rejects non-default `@schema` values at load
 time.
 
+A generated view follows the tables it reads: on Postgres a projection or report
+view qualifies a relation — its base table and every joined one — with that
+entity's `@schema` only when the entity declares one, so a table in the default
+schema stays unqualified and the view resolves it through the connection's
+`search_path`, exactly as the table DDL does. SQLite and MySQL view bodies never
+qualify.
+
 ## Multi-source via `@role`
 
 An entity may have multiple `source.rdb` children. `@role` is exactly

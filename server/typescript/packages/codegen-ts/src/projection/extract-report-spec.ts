@@ -1,7 +1,7 @@
 // FR-044 Plan 2 — lower an `object.report` plus its shape to a dialect-neutral
 // ReportViewSpec (contract Table F). Dimension joins reuse the projection walk
-// (`walkViaPath` / `pathsToJoins`), so hop resolution, ambiguity errors and the #209
-// join type are one implementation. The renderer (report-ddl-emit) turns the spec to SQL.
+// (`walkViaPath` / `pathsToJoins`), so hop resolution, ambiguity errors and the
+// LEFT OUTER join are one implementation. The renderer (report-ddl-emit) turns the spec to SQL.
 
 import {
   AGG_SUM,

@@ -415,7 +415,10 @@ the re-diff is empty afterwards. Postgres keeps `IS [NOT] DISTINCT FROM`.
 
 ### CHECKs from validators: names, conditions, how many
 
-A `validator.*` node and a `field.enum`'s member list each become a CHECK constraint. Three
+A `validator.*` node and a `field.enum`'s member list each become a CHECK constraint. A validator
+on a derived field — one carrying an `origin.*`, or a cross-field validator naming one — makes
+none: the field is no column of the table, so a CHECK on it would fail `CREATE TABLE`; the C#
+context skips the same validators. Three
 attributes shape it, all database-only (no generated code reads them):
 
 - **`@constraintName`** names the CHECK, for a database whose CHECKs were named by hand. On the

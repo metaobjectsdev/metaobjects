@@ -91,7 +91,10 @@ every field. The TS mounts can restrict the update to one verb with
 
 `<entity>` is the **entity name** `snake_case`d and then pluralized. One rule, the
 same in all five ports, and derived from the NAME — never from the physical
-`@table`:
+`@table`. An object that declares `@collectionName` (or a project that configures
+`naming.collections`) names its segment instead, in every port; the rule and what
+each port names with it live in
+[physical-naming.md](migrations/physical-naming.md#collection-names).
 
 | Name | Segment | Why |
 |---|---|---|

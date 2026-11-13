@@ -607,7 +607,8 @@ object ProgramMinutesTable : Table("v_program_minutes") {
   or ratio, a dimension over an optional field, and a dimension reached through `@via` when a
   hop can leave a row without a match. Three cases are never null: a measure that declares
   `@default`; a dimension reached through `@via` whose `@of` field is required and whose every
-  hop is a belongs-to reference over a required foreign key, which the view joins `INNER`; and
+  hop is an enforced belongs-to reference over a required foreign key (the join always finds a
+  match, so the view's `LEFT OUTER` join never nulls the column); and
   in a `@spine` report a dimension over a `@required` or primary-key column of the spine
   entity. Each gets a column with no `.nullable()` and a property with no `?` and no `= null`.
   The rule is the report's, not Kotlin's: see
