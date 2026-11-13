@@ -1188,7 +1188,8 @@ public static partial class ValidationPasses
                 errors.Add(new MetaError(
                     $"origin.@via \"{viaAttr}\" on {projectionName}.{fieldName}: " +
                     $"no such relationship or reference \"{relName}\" on {currentObj.Name}. " +
-                    $"Deepest valid prefix was \"{prefix}\".",
+                    $"Deepest valid prefix was \"{prefix}\"." +
+                    (currentObj is MetaObject from && root is MetaRoot all ? ReverseReferenceHops.Hint(from, all.Objects()) : ""),
                     ErrorCode.ERR_INVALID_ORIGIN,
                     Envelope: ResolvedSource.From(originSource, referrer, viaAttr)));
                 return null;

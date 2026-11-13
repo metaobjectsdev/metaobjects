@@ -25,7 +25,7 @@ import {
 } from "../core/validator/validator-constants.js";
 import type { MetaData } from "../shared/meta-data.js";
 import type { MetaObject } from "../core/object/meta-object.js";
-import { findReverseReferenceHops } from "../core/relationship/find-reference.js";
+import { findReverseReferenceHops, reverseHopHint } from "../core/relationship/find-reference.js";
 import { resolveFlattenedMember } from "../core/field/flattened-member.js";
 import { resolveFilterPath } from "../core/relationship/filter-path.js";
 import { effectiveProjectionFilter } from "../core/object/effective-projection-filter.js";
@@ -799,7 +799,8 @@ function _validateViaPath(
       errors.push(
         new ParseError(
           `origin.@via "${viaAttr}" on ${projectionName}.${fieldName}: no such relationship or reference "${relName}" on ${currentObj.name}. ` +
-          `Deepest valid prefix was "${prefix}".`,
+          `Deepest valid prefix was "${prefix}".` +
+          (isMetaRoot(root) ? reverseHopHint(currentObj as MetaObject, root.objects()) : ""),
           {
             code: "ERR_INVALID_ORIGIN",
             source: resolvedSource(originSource, referrer, viaAttr),

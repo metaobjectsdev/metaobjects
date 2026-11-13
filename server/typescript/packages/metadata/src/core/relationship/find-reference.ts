@@ -110,3 +110,35 @@ export function findReverseReferenceHops(
   }
   return found;
 }
+
+/**
+ * rc.21 — every reverse hop a `@via` may take from `target`: one per identity.reference onto it
+ * from a concrete object, under that object's {@link reverseHopName}. For the "no such
+ * relationship" message, so an author who guessed a hop name (the reference's own name, a plural
+ * the holder's `@collectionName` overrides) sees the one the rule gives.
+ */
+export function reverseReferenceHopsOnto(
+  target: MetaObject,
+  objects: readonly MetaObject[],
+): { hopName: string; hop: ReverseReferenceHop }[] {
+  const found: { hopName: string; hop: ReverseReferenceHop }[] = [];
+  for (const holder of objects) {
+    if (holder.isAbstract) continue;
+    for (const ref of holder.referenceIdentities()) {
+      // ADR-0059 R7: compare the bound target, never a short name.
+      if (refTarget(ref, IDENTITY_REFERENCE_ATTR_REFERENCES) === target) {
+        found.push({ hopName: reverseHopName(holder), hop: { holder, referenceIdentity: ref } });
+      }
+    }
+  }
+  return found;
+}
+
+/** The message suffix naming {@link reverseReferenceHopsOnto}'s hops, or "" when there are none. */
+export function reverseHopHint(target: MetaObject, objects: readonly MetaObject[]): string {
+  const hops = reverseReferenceHopsOnto(target, objects);
+  if (hops.length === 0) return "";
+  return ` The reverse hops from ${target.name} are: ` +
+    hops.map((h) => `"${h.hopName}" (walks ${h.hop.holder.name}.${h.hop.referenceIdentity.name} backwards)`).join(", ") +
+    " — a reverse hop is named by the holder's collection name (its @collectionName, else the plural), first letter lowercased.";
+}

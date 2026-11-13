@@ -164,7 +164,7 @@ export { MetaRelationship } from "./core/relationship/meta-relationship.js";
 // Cross-entity reference lookup
 export { resolveFlattenedMember, resolveFieldPathColumn, type FlattenedMember } from "./core/field/flattened-member.js";
 export {
-  findReferenceBetween, findReferencesBetween, findReverseReferenceHops, reverseHopName,
+  findReferenceBetween, findReferencesBetween, findReverseReferenceHops, reverseHopName, reverseReferenceHopsOnto, reverseHopHint,
   type ReverseReferenceHop,
 } from "./core/relationship/find-reference.js";
 export type { ReferenceLookup } from "./core/relationship/find-reference.js";

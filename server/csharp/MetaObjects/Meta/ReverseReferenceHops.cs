@@ -44,4 +44,34 @@ public static class ReverseReferenceHops
         }
         return found;
     }
+
+    /// <summary>
+    /// rc.21 — every reverse hop a <c>@via</c> may take from <paramref name="target"/>: one per
+    /// identity.reference onto it from a concrete object, under that object's <see cref="HopName"/>.
+    /// For the "no such relationship" message, so an author who guessed a hop name (the reference's
+    /// own name, a plural the holder's <c>@collectionName</c> overrides) sees the one the rule gives.
+    /// </summary>
+    public static IReadOnlyList<(string HopName, ReverseReferenceHop Hop)> OnTo(MetaObject target, IEnumerable<MetaObject> objects)
+    {
+        var found = new List<(string, ReverseReferenceHop)>();
+        foreach (var holder in objects)
+        {
+            if (holder.IsAbstract) continue;
+            foreach (var r in holder.ReferenceIdentities())
+                // ADR-0059 R7: compare the bound target, never a short name.
+                if (ReferenceEquals(NamingRefs.RefTarget(r, IDENTITY_REFERENCE_ATTR_REFERENCES), target))
+                    found.Add((HopName(holder), new ReverseReferenceHop(holder, r)));
+        }
+        return found;
+    }
+
+    /// <summary>The message suffix naming <see cref="OnTo"/>'s hops, or <c>""</c> when there are none.</summary>
+    public static string Hint(MetaObject target, IEnumerable<MetaObject> objects)
+    {
+        var hops = OnTo(target, objects);
+        if (hops.Count == 0) return "";
+        return $" The reverse hops from {target.Name} are: " +
+               string.Join(", ", hops.Select(h => $"\"{h.HopName}\" (walks {h.Hop.Holder.Name}.{h.Hop.Reference.Name} backwards)")) +
+               " — a reverse hop is named by the holder's collection name (its @collectionName, else the plural), first letter lowercased.";
+    }
 }

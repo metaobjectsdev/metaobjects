@@ -86,3 +86,23 @@ describe("R-walk — a @via hop over the reverse of an identity.reference", () =
     expect(String(errors[0]!.message)).toContain('"patient", "witness"');
   });
 });
+
+// rc.21 (U9): the first hop from the base entity already walks a reference backwards; what an
+// author who guesses the name (the reference's own name, a plural a @collectionName overrides)
+// lacked was the name the rule gives. The refusal now lists the reverse hops onto the entity.
+describe("a reverse hop under a guessed name", () => {
+  test("the refusal names the reverse hops onto the entity", async () => {
+    const m = JSON.parse(JSON.stringify(MODEL).replaceAll("acme::care::Patient.consents", "acme::care::Patient.patient"));
+    const { errors } = await load(m);
+    const msg = errors.map((e) => String(e.message)).join("\n");
+    expect(msg).toContain(`no such relationship or reference "patient" on Patient`);
+    expect(msg).toContain(`The reverse hops from Patient are: "consents" (walks Consent.patient backwards)`);
+  });
+
+  test("a @collectionName renames the hop, and the refusal says so", async () => {
+    const m = JSON.parse(JSON.stringify(MODEL).replaceAll("acme::care::Patient.consents", "acme::care::Patient.consents2"));
+    m["metadata.root"].children[1]["object.entity"]["@collectionName"] = "ConsentLog";
+    const { errors } = await load(m);
+    expect(errors.map((e) => String(e.message)).join("\n")).toContain(`"consentLog" (walks Consent.patient backwards)`);
+  });
+});

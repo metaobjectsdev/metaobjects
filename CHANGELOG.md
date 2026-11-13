@@ -557,6 +557,15 @@ vocabulary; upgrade every port together.
 
 ### Fixed
 
+- **Fix, TypeScript and C#: a `@via` hop under a guessed name lists the reverse hops (rc.21, U9).**
+  The first hop from a projection's base entity already walks an `identity.reference` backwards
+  (`Case.caseHistory` for `CaseHistory.caseId`), named by the holder's collection name, first
+  letter lowercased. A holder whose `@collectionName` is singular (`CaseHistory`) makes that name
+  hard to guess, and the refusal (`no such relationship or reference "histories" on Case`) did not
+  say what it was. It now ends `The reverse hops from Case are: "caseHistory" (walks
+  CaseHistory.caseId backwards) — …`. No hop name changes: an `@inverseName` spelling is not
+  accepted, because no registered vocabulary declares one.
+
 - **Fix, TypeScript and C#: a dotted `extends` whose member is missing names the owner's members
   (rc.21, U1).** `extends: "Authorization.id"` on an `identity.primary`, where `Authorization`
   inherits its identity from an abstract base, failed with `ERR_UNRESOLVED_SUPER` and the advice to
