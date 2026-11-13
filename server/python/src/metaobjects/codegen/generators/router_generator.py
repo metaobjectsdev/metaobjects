@@ -434,10 +434,9 @@ def _frozen_names(entity: MetaObject) -> list[str]:
 
     ADR-0045: the OUTERMOST generated write artifact enforces the mode, and for
     FastAPI that is the ROUTER, not the ``<Entity>Patch`` model — the handler binds
-    ``dto`` (the raw body as a dict) and passes THAT to the repository, so a
-    field merely absent from the patch model still reaches the row. @autoSet gets
-    away with it because the router OVERWRITES its key server-side; a writeOnce
-    field has no server value to overwrite, so it must be popped explicitly."""
+    ``dto`` as a dict. Since 1.2.1 the router hands the repository only the keys the
+    patch model validated (:func:`_validated_input_lines`), which already drops these;
+    the explicit pop stays as the FR-037 seam an owned router edits."""
     return [
         f.name
         for f in entity.fields()
@@ -458,6 +457,49 @@ def _frozen_strip_lines(entity: MetaObject, indent: str = "    ") -> list[str]:
         f"{indent}# clearing a column is itself a write.",
         f"{indent}for _frozen in _FROZEN_FIELDS:",
         f"{indent}    dto.pop(_frozen, None)",
+    ]
+
+
+#: 1.2.1 security fix. The request body cut down to what the input model validated, emitted
+#: once per writable router. 1.2.0 validated the body and then handed the RAW body to the
+#: repository, so a client-sent server-generated id, a ``readOnly`` field or a name the entity
+#: does not declare (an ``isAdmin``) reached the write. Pydantic ignores a key a model does not
+#: declare, and the input models leave out every field a client may not set, so keeping only
+#: the keys the model validated (at every depth: a nested value object included) drops all of
+#: them silently, as the TypeScript routes do. The values stay the body's own (decimal-exact)
+#: values, so a repository receives the same value types as in 1.2.0.
+_VALIDATED_INPUT_LINES: list[str] = [
+    "def _validated_input(valid: BaseModel, raw: dict[str, Any]) -> dict[str, Any]:",
+    '    """GENERATED — *raw* cut down to the keys *valid* validated, at every depth. A key the',
+    "    input model does not declare (an undeclared name, a server-generated id, a readOnly field)",
+    '    is dropped silently and never reaches the repository; values stay the body\'s own."""',
+    "    return {_k: _validated_value(getattr(valid, _k), raw[_k]) for _k in valid.model_fields_set}",
+    "",
+    "",
+    "def _validated_value(valid: Any, raw: Any) -> Any:",
+    "    if isinstance(valid, BaseModel) and isinstance(raw, dict):",
+    "        return _validated_input(valid, raw)",
+    "    if isinstance(valid, list) and isinstance(raw, list):",
+    "        return [_validated_value(v, r) for v, r in zip(valid, raw)]",
+    "    if isinstance(valid, dict) and isinstance(raw, dict):",
+    "        return {k: _validated_value(v, raw[k]) for k, v in valid.items() if k in raw}",
+    "    return raw",
+]
+
+
+def _validated_input_lines(model: str, *comment: str) -> list[str]:
+    """Validate ``dto`` against the input *model*, then rebind it to what the model validated
+    (see :data:`_VALIDATED_INPUT_LINES`): the repository never sees any other key."""
+    return [
+        *(f"    # {line}" for line in comment),
+        "    try:",
+        f"        _valid = {model}(**dto)",
+        "    except ValidationError:",
+        '        return JSONResponse(status_code=400, content={"error": "validation"})',
+        "    # SECURITY (1.2.1): only what the input model validated reaches the repository. A key",
+        "    # it does not declare (an undeclared name, a server-generated id, a readOnly or derived",
+        "    # field, a frozen one on update) is dropped silently, never 400'd.",
+        "    dto = _validated_input(_valid, dto)",
     ]
 
 
@@ -1083,12 +1125,11 @@ class RouterGenerator:
                 ") -> Any:",
                 *_DECIMAL_COERCE,
                 *denied_strip,
-                "    # FR-036: run the generated field constraints (length / pattern /",
-                "    # numeric bounds) before persisting; a violation is the cross-port 400.",
-                "    try:",
-                f"        {model_name}(**dto)",
-                "    except ValidationError:",
-                '        return JSONResponse(status_code=400, content={"error": "validation"})',
+                *_validated_input_lines(
+                    model_name,
+                    "FR-036: run the generated field constraints (length / pattern /",
+                    "numeric bounds) before persisting; a violation is the cross-port 400.",
+                ),
                 # #203/ADR-0045: the generated router (the API surface) stamps @autoSet columns
                 # ABOVE the consumer repo seam — onCreate + onUpdate both stamped from one instant
                 # (a fresh row's createdAt == updatedAt), ignoring any caller-supplied value.
@@ -1114,12 +1155,11 @@ class RouterGenerator:
                 "    for _k in _REQUIRED_FIELDS:",
                 "        if _k in dto and dto[_k] is None:",
                 '            return JSONResponse(status_code=400, content={"error": "validation"})',
-                "    # FR-036: validate PRESENT, non-null values with the create rules (the",
-                "    # all-optional patch model never fires required-checks on ABSENT fields).",
-                "    try:",
-                f"        {patch_model}(**dto)",
-                "    except ValidationError:",
-                '        return JSONResponse(status_code=400, content={"error": "validation"})',
+                *_validated_input_lines(
+                    patch_model,
+                    "FR-036: validate PRESENT, non-null values with the create rules (the",
+                    "all-optional patch model never fires required-checks on ABSENT fields).",
+                ),
                 # #203/ADR-0045: bump onUpdate @autoSet columns (server-owned) on EVERY patch,
                 # above the repo seam — a server-inserted present key (compatible with the PATCH
                 # present-key tristate); onCreate columns are never touched here.
@@ -1468,6 +1508,9 @@ class RouterGenerator:
         parts.extend(_JSON_BODY_LINES)
         parts.append("")
         parts.append("")
+        parts.extend(_VALIDATED_INPUT_LINES)
+        parts.append("")
+        parts.append("")
         # FR-037 R1 — the names a PATCH must never write. Emitted even when EMPTY so
         # the generated module always carries the seam (an entity that later gains a
         # writeOnce field changes one literal, not the module's shape).
@@ -1547,11 +1590,9 @@ class RouterGenerator:
             parts.append(") -> Any:")
             parts.extend(_DECIMAL_COERCE)
             parts.extend(denied_strip_tph)
-            parts.append("    # FR-036: run the subtype's field constraints before persisting.")
-            parts.append("    try:")
-            parts.append(f"        {sub}Create(**dto)")
-            parts.append("    except ValidationError:")
-            parts.append('        return JSONResponse(status_code=400, content={"error": "validation"})')
+            parts.extend(_validated_input_lines(
+                f"{sub}Create", "FR-036: run the subtype's field constraints before persisting."
+            ))
             # #203/ADR-0045: stamp @autoSet columns ABOVE the repo seam (empty for a
             # non-@autoSet hierarchy — byte-identical output).
             parts.extend(create_autoset)
@@ -1584,11 +1625,9 @@ class RouterGenerator:
             parts.append("    for _k in _REQUIRED_FIELDS:")
             parts.append("        if _k in dto and dto[_k] is None:")
             parts.append('            return JSONResponse(status_code=400, content={"error": "validation"})')
-            parts.append("    # FR-036: validate PRESENT, non-null values with the subtype's create rules.")
-            parts.append("    try:")
-            parts.append(f"        {sub}Patch(**dto)")
-            parts.append("    except ValidationError:")
-            parts.append('        return JSONResponse(status_code=400, content={"error": "validation"})')
+            parts.extend(_validated_input_lines(
+                f"{sub}Patch", "FR-036: validate PRESENT, non-null values with the subtype's create rules."
+            ))
             # #203/ADR-0045: pop the write-once onCreate column(s), bump onUpdate — ABOVE
             # the repo seam (empty for a non-@autoSet hierarchy — byte-identical output).
             parts.extend(update_autoset)
@@ -1857,6 +1896,9 @@ class RouterGenerator:
         parts.extend(_JSON_BODY_LINES)
         parts.append("")
         parts.append("")
+        parts.extend(_VALIDATED_INPUT_LINES)
+        parts.append("")
+        parts.append("")
         # FR-037 R1 — the names a PATCH must never write. Emitted even when EMPTY so
         # the generated module always carries the seam (an entity that later gains a
         # writeOnce field changes one literal, not the module's shape).
@@ -1892,8 +1934,8 @@ class RouterGenerator:
             create_autoset=create_autoset,
             update_autoset=update_autoset,
             # FR-037 R1 — ADR-0045: the ROUTER is the outermost write artifact for
-            # FastAPI (the handler binds the RAW body dict and hands THAT to the
-            # repository), so the strip has to live here, not in <Entity>Patch.
+            # FastAPI (the handler binds the body as a dict), so the strip lives here,
+            # not in <Entity>Patch.
             frozen_strip=_frozen_strip_lines(entity),
             denied_strip=_denied_strip_lines(denied_names),
         )
