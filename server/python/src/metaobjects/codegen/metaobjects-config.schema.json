@@ -22,6 +22,11 @@
       "pattern": "^(/.*)?$",
       "description": "The path generated routers mount under, and the api docs name: '/api' (default) gives /api/authors, '/v1' gives /v1/authors, '' mounts at /authors."
     },
+    "outputLayout": {
+      "type": "string",
+      "enum": ["flat", "package"],
+      "description": "Where per-object generated modules land: 'flat' (default) puts every module in the output directory; 'package' places each in a subpackage directory keyed by its metadata package (acme::alpha -> acme/alpha/), so two same-named objects in different packages never clash. 'metaobjects init' writes 'package' for a new project."
+    },
     "templates": {
       "type": "string",
       "minLength": 1,

@@ -15,7 +15,7 @@ import {
 } from "../src/paths.ts";
 import { openApiCheck, type ContractCheck } from "../src/api-contract-openapi-check.ts";
 import { loadScenarios, assertResponse, type ApiScenario, parseBodyExact } from "../src/api-contract-scenario.ts";
-import { startPostgres } from "../src/postgres-container.ts";
+import { OUTPUT_LAYOUTS, postgresFor } from "../src/output-layout.ts";
 import {
   startGeneratedSecretFieldsServer,
   type GeneratedSecretFieldsServerHandle,
@@ -29,13 +29,14 @@ const META_PATH = join(API_CONTRACT_SECRET_FIELDS_DIR, "meta.json");
 
 const contractCheck: ContractCheck = openApiCheck("secret-fields");
 
-describe("api contract secret fields (#484) — GENERATED routes lane", () => {
+for (const layout of OUTPUT_LAYOUTS) describe(`api contract secret fields (#484) — GENERATED routes lane [${layout}]`, () => {
+  const startDb = postgresFor(layout);
   for (const scenario of loadScenarios(API_CONTRACT_SECRET_FIELDS_SCENARIOS_DIR)) {
     test(scenario.name, async () => {
-      const pg = await startPostgres();
+      const pg = await startDb();
       let server: GeneratedSecretFieldsServerHandle | null = null;
       try {
-        server = await startGeneratedSecretFieldsServer(pg.connectionUri, META_PATH);
+        server = await startGeneratedSecretFieldsServer(pg.connectionUri, META_PATH, layout);
         await server.applySeed(SEED);
         await runScenario(scenario, server);
         if (scenario.name === "write-ignores-excluded") await expectDeniedColumnsUntouched(server);
@@ -50,10 +51,10 @@ describe("api contract secret fields (#484) — GENERATED routes lane", () => {
   // corpus's Account routes do not reach: a projection field that extends `Account.pinHash`, and
   // an M:N traversal onto a TPH base whose subtype declares a credential.
   test("projection and M:N-onto-TPH reads never return an inherited credential", async () => {
-    const pg = await startPostgres();
+    const pg = await startDb();
     let server: GeneratedSecretFieldsServerHandle | null = null;
     try {
-      server = await startGeneratedSecretFieldsServer(pg.connectionUri, META_PATH);
+      server = await startGeneratedSecretFieldsServer(pg.connectionUri, META_PATH, layout);
       await server.applySeed(SEED);
 
       const list = await getJson(server, "/api/account_views");

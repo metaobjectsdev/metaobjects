@@ -917,6 +917,7 @@ def _run_suite(
     select: Callable[[str], bool] | None = None,
     in_ledger: Callable[[str], bool] | None = None,
     api_prefix: str = DEFAULT_API_PREFIX,
+    output_layout: str = "flat",
     overwrite_hand_edits: frozenset[str] = frozenset(),
     overwrite_paths_out: set[str] | None = None,
 ) -> list[str]:
@@ -960,6 +961,7 @@ def _run_suite(
         gen_state_dir=gen_state_dir,
         column_naming=column_naming,
         api_prefix=api_prefix,
+        output_layout=output_layout,
         # Manifest keys are relative to the PROJECT, which is what the manifest is
         # anchored on — not to ``--out``, which varies per run while the manifest does
         # not. Passed alongside gen_state_dir because the two are one decision: state
@@ -1333,6 +1335,9 @@ _INIT_CONFIG = """\
 # What `metaobjects gen` generates: each target names its outDir and its generators.
 # `metaobjects gen --list` shows the catalog.
 metadata: metaobjects
+# A new project places each generated module in a subpackage keyed by its metadata package
+# (acme::alpha -> generated/acme/alpha/). Delete this line for the flat layout.
+outputLayout: package
 targets:
   app:
     outDir: generated
@@ -1655,7 +1660,7 @@ def _run_gen_targets(
                     root, out_dir, gens, t.entities, gen_state_dir=gen_state_dir,
                     column_naming=column_naming, project_root=project_root, baseline=baseline,
                     refused_out=refused_out, select=select, in_ledger=in_ledger,
-                    api_prefix=config.api_prefix,
+                    api_prefix=config.api_prefix, output_layout=config.output_layout,
                     overwrite_hand_edits=overwrite, overwrite_paths_out=overwrite_paths_out,
                 )
             if spec_gens:
@@ -1664,6 +1669,7 @@ def _run_gen_targets(
                     gen_state_dir=gen_state_dir, column_naming=column_naming,
                     project_root=project_root, baseline=baseline, refused_out=refused_out,
                     select=select, in_ledger=in_ledger, api_prefix=config.api_prefix,
+                    output_layout=config.output_layout,
                 )
         except ValueError as exc:  # intra-target run_gen collision → clean error
             errors.append(f"target '{t.name}': {exc}")

@@ -237,8 +237,50 @@ convention applies: each `::` segment PascalCased and joined with `.` (`acme::bi
 the namespace all the packages share. When they share no root, generation stops and asks for a
 namespace. Setting `--namespace` or `csharp.namespace` switches the default off and puts every type
 no binding places in that one flat namespace. The namespace must be a dotted path of C#
-identifiers. `dotnet meta gen` and `verify` set only that flat namespace; the per-package bindings
-are `GenConfig` properties, set when you run codegen from your own code with `CodegenRunner`.
+identifiers. `dotnet meta gen` and `verify` read that flat namespace and, through
+`csharp.packageNamespaces`, the package bindings (below). The finer per-package bindings
+(`TypeOverrides`, `Convention`, `UnmappedStrategy`) are `GenConfig` properties, set when you run
+codegen from your own code with `CodegenRunner`.
+
+**Package-keyed output (opt-in).** Two more `csharp` keys change where files land and which
+namespace a packaged type takes; a project that sets neither keeps the flat layout and the
+namespace rule above, byte for byte.
+
+```json
+{ "schema_version": 1, "csharp": { "outDir": "Generated", "namespace": "Acme.Blog",
+  "outputLayout": "package", "packageNamespaces": true } }
+```
+
+- `outputLayout`: `"flat"` (the default) writes every file at the root of the output directory;
+  `"package"` writes each per-object file under its metadata package, one directory per `::`
+  segment (`acme::blog::Author` is `acme/blog/Author.g.cs`). That covers the entity, value object,
+  shared enum, names, filter allowlist, routes, reverse finders, callable, report export, the extract
+  mirrors and the template tier. A root-level object, `AppDbContext` and the run-wide helpers stay
+  at the root.
+- `packageNamespaces`: `true` puts each packaged type in its metadata package's namespace
+  (PascalCased `::` segments) even when `csharp.namespace` is set; that namespace then places only
+  package-less objects and the run-wide artifacts. An object (`{ "acme::blog": "Acme.Blog" }`) maps
+  packages to namespaces explicitly, the same as `GenConfig.PackageNamespaces`. Absent or `false`
+  keeps the earlier rule, where a configured namespace turns the per-package derivation off. With
+  `true`, every generated reference to a type in another namespace is written `global::`-qualified,
+  so two same-named types never bind to each other.
+
+`dotnet meta init` writes `.metaobjects/config.json` with both opt-ins for a new project, and never
+edits one that exists. `gen` and `verify` read the same keys, so the drift gate agrees with `gen`.
+
+**A type is never renamed to make room.** Two nodes that would generate the same name in the same
+scope fail, naming both nodes and the remedy. A DbSet property in one context and a REST
+collection segment in one routes entry raise `ERR_COLLECTION_NAME_COLLISION` (the shared-ledger
+code, the same in every port); a type in one C# namespace, a file in one output path, a finder
+in one class and the other scopes raise `ERR_NAME_COLLISION`. The remedy is: map the packages to distinct namespaces, write them apart with
+`outputLayout`, or rename one (`@collectionName` for a DbSet and its route). The earlier
+package-qualified rename of a value object (`AcmeAlphaNote`) is gone; a value object keeps its name
+and sits in its package's namespace. An extract-tier private mapper may carry the package in a
+member name (`FromAcmeAlphaNoteExtracted`), because it is private to its class.
+Each package's shared enum is its own `<package>/<Enum>.g.cs` under the package layout, with its
+`@intValueMap` integers as member values and `@description` as its XML doc; the flat layout keeps
+the one `Enums.g.cs`. An entry narrowed with `Include` declares only the shared enums it uses, and
+an enum several narrowed entries use is declared by exactly one of them.
 
 With that, `dotnet meta gen` writes there, `dotnet meta verify --codegen` diffs against it, and
 a plain `dotnet meta verify` in CI runs the codegen gate with no flags. `--out <dir>` still works
@@ -458,26 +500,28 @@ so a new entity carries the CLR default and EF sends it.
 `identity.primary @sequenceStart` on a single-field `increment` key is the identity's START on
 Npgsql (a fresh database begins there). No start-only change ever restarts the sequence: Npgsql
 alone writes a start added as `RESTART WITH n`, a changed one as `RESTART WITH m`, and a removed one
-as `RESTART WITH 1`, each handing out ids live rows may hold. A Postgres context with an increment
-key gets `IdentityStartMigrationsSqlGenerator.g.cs`, which carries the rewrite: every start-only
-change is `ALTER TABLE … ALTER COLUMN … SET START WITH n` (a removed start is set back to the
-identity default), and in 1.3 the current value does not move (a later release is planned to move a counter below the declared start forward to it). Register it after `UseNpgsql(...)`, wherever
-the context is configured — the app's registration (pooled or not), an
-`IDesignTimeDbContextFactory`, or the context's own `OnConfiguring`:
+as `RESTART WITH 1`, each handing out ids live rows may hold. A Postgres context gets
+`<Context>DesignTimeServices.g.cs`, an `IDesignTimeServices` that wraps the model differ, so
+`dotnet ef migrations add` scaffolds every start-only change as SQL, Up and Down: `ALTER TABLE …
+ALTER COLUMN … SET START WITH n` (a removed start goes back to the identity default) and, for a
+declared start, a move of the counter FORWARD to `GREATEST(n, max(id) + 1)` when it sits below that,
+never back. A database rebuilt by replaying migrations begins at `n` as a fresh one does, and no
+migration hands out an id a live row holds. The same services scaffold a JSON column's comment.
 
-```csharp
-services.AddDbContextPool<AppDbContext>(o => o.UseNpgsql(cs).UseIdentityStartMigrations());
-```
+It is design time only: nothing is registered at runtime, and `Migrate()` runs what the migration
+already holds. EF finds the services through `[assembly: DesignTimeServicesReference(...)]`, which
+is generated beside the class when the context's assembly name is known (the single `.csproj` in
+the output directory or above it, or `GenConfig.ContextAssemblyName`). That covers EF's default
+layout, where the migrations live in the context's project. When the migrations or startup project
+is another one, `dotnet meta gen` warns and prints the one line to add to that project; without it
+a changed start scaffolds as `RESTART`. `dotnet ef migrations add --verbose` prints "Using
+design-time services from assembly …" when they are found.
 
-It applies at both ends: the differ scaffolds the change as that SQL, so a migration added through
-it is safe wherever it runs, and the SQL generator rewrites a migration scaffolded without it. A
-context that declares a start refuses to build its model on Npgsql when the rewrite is not
-registered (an `InvalidOperationException` that names the call), so a missing registration fails at
-`dotnet ef migrations add`, never as a silent RESTART. The file references
-`Npgsql.EntityFrameworkCore.PostgreSQL` at compile time, so it (and the start in the model) is
-emitted only for a project whose `.metaobjects/config.json` names
-`"migrate": { "dialect": "postgres" }` (a self-hosted runner sets `GenConfig.Dialect`). Any other
-project gets neither, with a warning, and never needs the Npgsql package.
+The start in the model, and the services, are emitted only for a project whose
+`.metaobjects/config.json` names `"migrate": { "dialect": "postgres" }` (a self-hosted runner sets
+`GenConfig.Dialect`). Any other project gets neither, with a warning, and never needs the Npgsql
+package. `UseIdentityStartMigrations()`, the registration of an earlier runtime SQL rewrite, is
+kept as an `[Obsolete]` no-op so a call to it still compiles; remove the call.
 
 ### Decimals and null members on the wire
 

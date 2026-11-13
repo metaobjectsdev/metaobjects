@@ -305,12 +305,12 @@ existing column with the same options), and `meta verify --db` reads the live se
 from the catalog. A live sequence whose start or name differs from the declaration is altered
 in place, never dropped:
 
-- a different start records it (`ALTER SEQUENCE … START WITH n`) and nothing else. It never
-  restarts the sequence, and in this release it does not move its current value, because live
-  rows already hold the ids it handed out: `@sequenceStart` is the first value of a fresh
-  sequence, the same in every port. The down migration restores the old start value, again
-  without touching the counter. A later release is planned to move a counter that sits below
-  the declared start forward to it (never backward), so do not rely on the counter staying put.
+- a different start records it (`ALTER SEQUENCE … START WITH n`) and moves the counter forward
+  only: when the next value would be below `GREATEST(n, max(id) + 1)`, a `setval` moves it there.
+  It never restarts the sequence and never moves a counter back, because live rows already hold
+  the ids it handed out. The down migration restores the old start value and leaves the counter
+  where it is. Every port that writes DDL holds the same rule (C# through its generated design-time
+  services, Kotlin's Exposed table on a fresh database).
 - a different name renames it (`ALTER SEQUENCE … RENAME TO …`); the down renames it back.
 
 Only what the model declares is compared, on every path (a live database, a shadow database,
@@ -415,7 +415,10 @@ the re-diff is empty afterwards. Postgres keeps `IS [NOT] DISTINCT FROM`.
 
 ### CHECKs from validators: names, conditions, how many
 
-A `validator.*` node and a `field.enum`'s member list each become a CHECK constraint. Three
+A `validator.*` node and a `field.enum`'s member list each become a CHECK constraint. A validator
+on a derived field — one carrying an `origin.*`, or a cross-field validator naming one — makes
+none: the field is no column of the table, so a CHECK on it would fail `CREATE TABLE`; the C#
+context skips the same validators. Three
 attributes shape it, all database-only (no generated code reads them):
 
 - **`@constraintName`** names the CHECK, for a database whose CHECKs were named by hand. On the

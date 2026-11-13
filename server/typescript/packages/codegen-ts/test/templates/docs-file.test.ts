@@ -339,7 +339,7 @@ describe("renderDocsFile — Identity section", () => {
     expect(out).toContain("## Identity");
     expect(out).toContain("**Primary key:** `id`");
     expect(out).toContain("**Secondary index:** `visitorId`");
-    expect(out).toContain("**Reference:** `authorId` → `Author`");
+    expect(out).toContain("**Reference:** `authorId` → [`Author`](./Author.md)");
   });
 });
 

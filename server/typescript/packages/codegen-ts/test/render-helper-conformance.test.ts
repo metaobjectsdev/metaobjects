@@ -12,8 +12,8 @@
 // Java half; both assert IDENTICAL strings).
 
 import { describe, test, expect, afterAll } from "bun:test";
-import { mkdtempSync, writeFileSync, rmSync, readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { type EmailDocument } from "@metaobjectsdev/render";
 import { FileSystemProvider } from "../src/render-engine/framework-provider.js";
@@ -23,8 +23,6 @@ import { makeRenderContext } from "../src/render-context.js";
 import { buildPkMap } from "../src/pk-resolver.js";
 import { buildRelationMap } from "../src/relation-resolver.js";
 import type { GenContext } from "../src/generator.js";
-import { assignEmittedNames } from "../src/naming/collision-names.js";
-import { OBJECT_SUBTYPE_VALUE, type MetaData } from "@metaobjectsdev/metadata";
 
 // test → codegen-ts → packages → typescript → server → repo-root/fixtures
 const CORPUS = resolve(import.meta.dir, "../../../../../fixtures/template-output-render-conformance");
@@ -50,27 +48,24 @@ async function loadRootFromFiles(...metaJsonPaths: string[]) {
   return res.root;
 }
 
-/** The generator context a real run hands entityFile() — its render context carries the run's
- *  ADR-0044 value-object names, so the generated modules are the ones a real run writes. */
+/** The generator context a real run hands entityFile(), in the package output layout: two value
+ *  objects named Note are two modules, one per package directory(nothing is
+ *  renamed; under the flat layout the claim registry refuses them). */
 function genContext(root: Awaited<ReturnType<typeof loadRootFromFiles>>): GenContext {
-  // The runner's own value-object naming pass (runner.ts): every object.value in the run.
-  const closure = new Map<string, MetaData>(
-    root.objects().filter((o) => o.subType === OBJECT_SUBTYPE_VALUE).map((o) => [o.resolutionKey(), o]),
-  );
   return {
     entities: root.objects(),
     loadedRoot: root,
     matches: () => true,
     projectRoot: "/tmp",
-    config: { outDir: "/tmp", extStyle: "js", dbImport: "~/db", dialect: "sqlite" } as never,
+    config: { outDir: "/tmp", extStyle: "js", dbImport: "~/db", dialect: "sqlite", outputLayout: "package" } as never,
     renderContext: makeRenderContext({
       dialect: "sqlite",
       loadedRoot: root,
       outDir: "/tmp",
       dbImport: "~/db",
+      outputLayout: "package",
       pkMap: buildPkMap(root),
       relationMap: buildRelationMap(root),
-      valueObjectNames: assignEmittedNames(closure),
     }),
     warn: () => {},
   };
@@ -187,9 +182,8 @@ describe("render-helper conformance — shared cross-port corpus", () => {
   // The payload type for this fixture must be GENERATOR-emitted
   // (fixtures/template-output-render-conformance/README.md, xpkg-collision section) — never
   // hand-authored by the port runner. ADR-0056: it is the value objects' OWN interfaces, which
-  // entityFile() emits; in the flat layout it keeps the two same-short-name Notes apart as
-  // `AcmeAlphaNote` / `AcmeBetaNote` (ADR-0044's entity-tier naming, #228), not one merged or
-  // first-wins shape.
+  // entityFile() emits. each keeps its name `Note`, in its own package's module; the
+  // Digest module that meets both binds them under package-qualified local aliases.
   test("document DigestDoc resolves FQN nested @objectRef across a cross-package short-name collision", async () => {
     const dirRoot = join(CORPUS, "xpkg-collision");
     const root = await loadRootFromFiles(
@@ -200,29 +194,35 @@ describe("render-helper conformance — shared cross-port corpus", () => {
     const provider = new FileSystemProvider(join(CORPUS, "templates"));
     const ctx = genContext(root);
     // Must NOT throw: the FQN refs resolve to their own package's Note.
-    const src = renderRenderHelper(root, "DigestDoc", provider, "js", ctx.renderContext, "DigestDoc.render.ts");
+    const src = renderRenderHelper(root, "DigestDoc", provider, "js", ctx.renderContext, "acme/app/DigestDoc.render.ts");
 
     // GENERATOR-emitted value-object modules (not hand-authored) — the corpus contract.
     const files = await entityFile().generate(ctx);
     const byPath = new Map(files.map((f) => [f.path, f.content]));
-    // Two DISTINCT types, each carrying only its OWN value object's required field.
-    expect(byPath.get("AcmeAlphaNote.ts")).toContain("export interface AcmeAlphaNote {");
-    expect(byPath.get("AcmeAlphaNote.ts")).toContain("alphaText: string;");
-    expect(byPath.get("AcmeBetaNote.ts")).toContain("export interface AcmeBetaNote {");
-    expect(byPath.get("AcmeBetaNote.ts")).toContain("betaText: string;");
-    // Neither collision member is emitted under the bare, collision-losing name.
-    expect(byPath.has("Note.ts")).toBe(false);
-    // Digest's own fields point at the qualified names; the helper imports Digest's OWN module.
-    expect(byPath.get("Digest.ts")).toContain("fromAlpha?: AcmeAlphaNote | undefined;");
-    expect(byPath.get("Digest.ts")).toContain("fromBeta?: AcmeBetaNote | undefined;");
+    // Two DISTINCT types, each named Note, each carrying only its OWN value object's field.
+    expect(byPath.get("acme/alpha/Note.ts")).toContain("export interface Note {");
+    expect(byPath.get("acme/alpha/Note.ts")).toContain("alphaText: string;");
+    expect(byPath.get("acme/beta/Note.ts")).toContain("export interface Note {");
+    expect(byPath.get("acme/beta/Note.ts")).toContain("betaText: string;");
+    // Nothing is renamed: no qualified type is declared anywhere.
+    for (const content of byPath.values()) expect(content).not.toMatch(/interface Acme(Alpha|Beta)Note\b/);
+    // Digest's fields point at the two Notes through local aliases; the helper imports Digest.
+    const digest = byPath.get("acme/app/Digest.ts")!;
+    expect(digest).toMatch(/type Note as AcmeAlphaNote,[\s\S]*?\} from "\.\.\/alpha\/Note\.js";/);
+    expect(digest).toMatch(/type Note as AcmeBetaNote,[\s\S]*?\} from "\.\.\/beta\/Note\.js";/);
+    expect(digest).toContain("fromAlpha?: AcmeAlphaNote | undefined;");
+    expect(digest).toContain("fromBeta?: AcmeBetaNote | undefined;");
     expect(src).toContain(`import type { Digest } from "./Digest.js";`);
 
     const dir = mkdtempSync(join(import.meta.dir, "rh-conf-xpkg-"));
     TEMP_DIRS.push(dir);
-    for (const f of files) writeFileSync(join(dir, f.path), f.content);
-    writeFileSync(join(dir, "DigestDoc.render.ts"), src);
+    for (const f of files) {
+      mkdirSync(dirname(join(dir, f.path)), { recursive: true });
+      writeFileSync(join(dir, f.path), f.content);
+    }
+    writeFileSync(join(dir, "acme/app/DigestDoc.render.ts"), src);
 
-    const mod = await import(join(dir, "DigestDoc.render.ts"));
+    const mod = await import(join(dir, "acme/app/DigestDoc.render.ts"));
     const out: string = mod.renderDigestDoc(
       { fromAlpha: { alphaText: "AA" }, fromBeta: { betaText: "BB" } },
       provider,

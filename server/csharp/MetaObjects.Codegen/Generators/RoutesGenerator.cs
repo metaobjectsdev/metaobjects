@@ -86,12 +86,18 @@ public class RoutesGenerator : PerEntityGenerator
             .ToList();
         // One routes entry is mounted under one prefix, so two objects whose segments match
         // serve one path. A TPH subtype is served under its base's segment and claims none.
-        CSharpNaming.AssertUniqueInScope(
-            served.Where(e => e.OwnAttr(OBJECT_ATTR_DISCRIMINATOR_VALUE) is not string { Length: > 0 })
-                .Select(e => (CSharpNaming.RoutePath(e), e.ResolutionKey())),
-            "REST collection segment", "one routes entry",
-            "rename one, or generate them with two routes entries mounted under different prefixes");
-        return served.Select(e => GenerateOne(e, ctx));
+        // Each entry of the run is its own scope: two entries mount under two prefixes.
+        var entry = ctx.EntryLabel(this);
+        foreach (var e in served.Where(e => e.OwnAttr(OBJECT_ATTR_DISCRIMINATOR_VALUE) is not string { Length: > 0 }))
+            ctx.Claim($"the REST collection segments of routes entry {entry}", CSharpNaming.RoutePath(e), e.ResolutionKey(),
+                "rename one, set @collectionName on one of them, or generate them with two routes entries mounted under different prefixes",
+                NameClaims.ERR_COLLECTION_NAME_COLLISION);
+        foreach (var e in served.Where(e => e.OwnAttr(OBJECT_ATTR_DISCRIMINATOR_VALUE) is not string { Length: > 0 }))
+            ctx.Claim($"the C# namespace {ValueObjectNames.CompanionNamespace(e, ctx.Config)}", $"{CSharpNaming.Pascal(e.Name)}Routes", e.ResolutionKey(),
+                ctx.Config.PackageNamespacesFromMetadata
+                    ? "map the packages to distinct namespaces (csharp.packageNamespaces, or GenConfig.PackageNamespaces), or rename one"
+                    : "rename one");
+        return served.Select(e => FixupContext(GenerateOne(e, ctx), ctx));
     }
 
     protected override EmittedFile GenerateOne(MetaObject entity, GenContext ctx)
@@ -197,6 +203,16 @@ public class RoutesGenerator : PerEntityGenerator
     // Every type the route file names bare — the entity itself, its value objects (owned and map
     // values) and the targets and junctions of its M:N traversals — so a split-namespace model gets
     // a `using` for each package namespace the home-namespace file reaches into.
+    // With package namespaces on, the routes file names the context global::-qualified: the context
+    // lives in GenConfig.Namespace and the file in its entity's package namespace. The handler
+    // bodies spell the context type as `AppDbContext db`; this swaps that for the configured type.
+    private static EmittedFile FixupContext(EmittedFile file, GenContext ctx)
+    {
+        if (!ctx.Config.PackageNamespacesFromMetadata) return file;
+        var context = ValueObjectNames.Global(ctx.Config.Namespace, "AppDbContext");
+        return file with { Content = System.Text.RegularExpressions.Regex.Replace(file.Content, @"(?<![\w.])AppDbContext db\b", context + " db") };
+    }
+
     private static IEnumerable<MetaData> ReferencedTypes(IEnumerable<MetaObject> entities, MetaRoot root)
     {
         foreach (var entity in entities)
@@ -248,11 +264,11 @@ public class RoutesGenerator : PerEntityGenerator
         // the generic PATCH merge loop's FindProperty misses them; the create handler's
         // top-level TryValidateObject also does NOT recurse into them. The generator emits
         // typed per-field merge arms + per-field POST validation for each.
-        var voFields = ValueObjectFields(entity, ctx.Root, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames);
+        var voFields = ValueObjectFields(entity, ctx.Root, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames, ctx.Config);
         // #362 — the map analog. Separate from voFields (see MapValueObjectFields): a map is a
         // plain jsonb-converted property, but its VALUES are value objects and need the same
         // graph validation on create and on a present PATCH key.
-        var mapVoFields = MapValueObjectFields(entity, ctx.Root);
+        var mapVoFields = MapValueObjectFields(entity, ctx.Root, ctx.Config);
         // Issue #203 — @autoSet timestamp columns the generated CRUD stamps with now()
         // (insert stamps all; update stamps onUpdate; the merge loop skips them; an
         // InsertPreserving escape hatch is emitted when any exist).
@@ -267,9 +283,9 @@ public class RoutesGenerator : PerEntityGenerator
         // writes [] for a null nav, so a nullable array column is NULLed via raw SQL). Both
         // are C# EXPRESSIONS — the <Entity>Names constant when the names artifact is in this
         // run, the quoted literal otherwise — spliced into that SQL by AppendArrayNullClears.
-        var tableRef = CSharpNaming.NameRef(entity, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames, CSharpNaming.Table(entity));
+        var tableRef = CSharpNaming.NameRef(entity, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames, CSharpNaming.Table(entity), qualify: ctx.Config);
         var pkColumnRef = pkFields.Count == 1 && entity.Fields().FirstOrDefault(f => f.Name == pkFields[0]) is { } pkf
-            ? CSharpNaming.ColumnRef(entity, pkf, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames)
+            ? CSharpNaming.ColumnRef(entity, pkf, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames, ctx.Config)
             : "\"id\"";
         // A report has no identity by definition, so "no primary key" is not a finding on one.
         bool isReport = entity.IsReport();
@@ -317,9 +333,10 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("using Microsoft.AspNetCore.Routing;");
         sb.AppendLine("using Microsoft.EntityFrameworkCore;");
         sb.AppendLine($"using {HelperRuntimeNamespace};");
-        foreach (var u in PackageBindingResolver.HomeUsings(ctx.Config, ReferencedTypes([entity], ctx.Root))) sb.AppendLine(u);
+        if (!ctx.Config.PackageNamespacesFromMetadata)
+            foreach (var u in PackageBindingResolver.HomeUsings(ctx.Config, ReferencedTypes([entity], ctx.Root))) sb.AppendLine(u);
         sb.AppendLine();
-        sb.AppendLine($"namespace {ctx.Config.Namespace};");
+        sb.AppendLine($"namespace {ValueObjectNames.CompanionNamespace(entity, ctx.Config)};");
         sb.AppendLine();
         sb.AppendLine($"public static class {cls}Routes");
         sb.AppendLine("{");
@@ -507,7 +524,7 @@ public class RoutesGenerator : PerEntityGenerator
         // segment = relationship name.
         if (hasItem)
             foreach (var nav in M2MNavigationBuilder.For(entity, ctx.Root, ctx.Warn))
-                AppendM2mRoute(sb, nav, route, pkType!, ctx.Root);
+                AppendM2mRoute(sb, nav, route, pkType!, ctx.Root, config: ctx.Config);
 
         sb.AppendLine();
         sb.AppendLine("        return mount;");
@@ -537,7 +554,7 @@ public class RoutesGenerator : PerEntityGenerator
         AppendOmitResultClass(sb);
         sb.AppendLine("}");
 
-        return new EmittedFile($"{cls}Routes.g.cs", sb.ToString());
+        return new EmittedFile(OutputPaths.Of(entity, ctx, $"{cls}Routes.g.cs"), sb.ToString());
     }
 
     // F22 — the write verbs on a read-only projection, each answering the cross-port
@@ -629,9 +646,10 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("using Microsoft.AspNetCore.Routing;");
         sb.AppendLine("using Microsoft.EntityFrameworkCore;");
         sb.AppendLine($"using {HelperRuntimeNamespace};");
-        foreach (var u in PackageBindingResolver.HomeUsings(ctx.Config, ReferencedTypes(tph.Subtypes.Select(st => st.Entity).Prepend(baseEntity), ctx.Root))) sb.AppendLine(u);
+        if (!ctx.Config.PackageNamespacesFromMetadata)
+            foreach (var u in PackageBindingResolver.HomeUsings(ctx.Config, ReferencedTypes(tph.Subtypes.Select(st => st.Entity).Prepend(baseEntity), ctx.Root))) sb.AppendLine(u);
         sb.AppendLine();
-        sb.AppendLine($"namespace {ctx.Config.Namespace};");
+        sb.AppendLine($"namespace {ValueObjectNames.CompanionNamespace(baseEntity, ctx.Config)};");
         sb.AppendLine();
         sb.AppendLine($"public static class {baseCls}Routes");
         sb.AppendLine("{");
@@ -714,12 +732,12 @@ public class RoutesGenerator : PerEntityGenerator
             // a vanilla entity's traversal at the base route. Mirrors TS
             // renderTphRoutesFile's baseM2mMounts.
             foreach (var nav in M2MNavigationBuilder.For(baseEntity, ctx.Root, ctx.Warn))
-                AppendM2mRoute(sb, nav, baseRoute, pkType!, ctx.Root);
+                AppendM2mRoute(sb, nav, baseRoute, pkType!, ctx.Root, config: ctx.Config);
 
             // --- Per-subtype CRUD sets ---
             var hierarchy = tph.Subtypes.Select(s => s.Entity).Prepend(baseEntity).ToList();
             foreach (var st in tph.Subtypes)
-                AppendTphSubtypeRoutes(sb, st, hierarchy, ctx.Root, baseRoute, baseCls, dbSet, pkType!, pkProp!, discProp, ctx.Warn);
+                AppendTphSubtypeRoutes(sb, st, hierarchy, ctx.Root, baseRoute, baseCls, dbSet, pkType!, pkProp!, discProp, ctx.Warn, ctx.Config);
         }
 
         sb.AppendLine();
@@ -747,7 +765,7 @@ public class RoutesGenerator : PerEntityGenerator
         AppendOmitResultClass(sb);
         sb.AppendLine("}");
 
-        return new EmittedFile($"{baseCls}Routes.g.cs", sb.ToString());
+        return new EmittedFile(OutputPaths.Of(baseEntity, ctx, $"{baseCls}Routes.g.cs"), sb.ToString());
     }
 
     // FR-036 #4 — the wire keys of the @required fields whose keys must be PRESENT (and
@@ -946,7 +964,12 @@ public class RoutesGenerator : PerEntityGenerator
     // map reached neither, so its values were written unchecked on every write path.
     private sealed record MapVoField(string WireName, string Nav, string DeserType);
 
-    private static List<MapVoField> MapValueObjectFields(MetaObject entity, MetaRoot root)
+    // A value object named from the routes file: bare in the earlier layout (the file has a using for
+    // each namespace it reaches), global::-qualified when package namespaces are on.
+    private static string VoTypeRef(MetaData target, MetaRoot root, GenConfig config) =>
+        config.PackageNamespacesFromMetadata ? ValueObjectNames.GlobalRef(target, config) : ValueObjectNames.TypeName(target, root);
+
+    private static List<MapVoField> MapValueObjectFields(MetaObject entity, MetaRoot root, GenConfig config)
     {
         var list = new List<MapVoField>();
         foreach (var f in entity.Fields())
@@ -958,12 +981,12 @@ public class RoutesGenerator : PerEntityGenerator
             list.Add(new MapVoField(
                 WireName: f.Name,
                 Nav: CSharpNaming.Pascal(f.Name),
-                DeserType: $"System.Collections.Generic.Dictionary<string, {ValueObjectNames.TypeName(target, root)}>"));
+                DeserType: $"System.Collections.Generic.Dictionary<string, {VoTypeRef(target, root, config)}>"));
         }
         return list;
     }
 
-    private static List<VoField> ValueObjectFields(MetaObject entity, MetaRoot root, ColumnNamingStrategy strategy, bool includeNames)
+    private static List<VoField> ValueObjectFields(MetaObject entity, MetaRoot root, ColumnNamingStrategy strategy, bool includeNames, GenConfig config)
     {
         var list = new List<VoField>();
         foreach (var f in entity.Fields())
@@ -972,13 +995,13 @@ public class RoutesGenerator : PerEntityGenerator
             if (f.IsDerived()) continue;   // #214 — derived VO fields are view-only, not writable
             var target = ValueObjectNames.ResolveFieldRef(f, root);
             if (target is null || !target.IsValue()) continue;   // value objects only (jsonb-stored)
-            var voType = ValueObjectNames.TypeName(target, root);
+            var voType = VoTypeRef(target, root, config);
             var isArray = f.ResolvedIsArray();                    // ADR-0039: resolving array-ness
             list.Add(new VoField(
                 WireName: f.Name,
                 Nav: CSharpNaming.Pascal(f.Name),
                 DeserType: isArray ? $"System.Collections.Generic.List<{voType}>" : voType,
-                JsonColumnRef: CSharpNaming.ColumnRef(entity, f, strategy, includeNames),
+                JsonColumnRef: CSharpNaming.ColumnRef(entity, f, strategy, includeNames, config),
                 IsArray: isArray,
                 Required: f.IsRequired));
         }
@@ -1521,13 +1544,15 @@ public class RoutesGenerator : PerEntityGenerator
     // that never touches the PK or the discriminator.
     private static void AppendTphSubtypeRoutes(
         StringBuilder sb, TphSubtypePlan st, IReadOnlyList<MetaObject> hierarchy, MetaRoot root, string baseRoute, string baseCls, string dbSet,
-        string pkType, string pkProp, string discProp, Action<string> onWarn)
+        string pkType, string pkProp, string discProp, Action<string> onWarn, GenConfig config)
     {
         // #362 — field.object columns on a TPH subtype stay out of scope (Program D §6), but a
         // field.map @objectRef is NOT: it reaches the settable set, so its value objects reach
         // both write paths and must be validated on each.
-        var mapVoFields = MapValueObjectFields(st.Entity, root);
+        var mapVoFields = MapValueObjectFields(st.Entity, root, config);
         var subCls = CSharpNaming.Pascal(st.Entity.Name);
+        var subType = ValueObjectNames.Ref(st.Entity, config);
+        var subAllow = ValueObjectNames.CompanionRef(st.Entity, config, subCls + "FilterAllowlist");
         var seg = st.RouteSegment;
         var subRoute = baseRoute + "/" + seg;
 
@@ -1549,8 +1574,8 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("        app.MapGet(prefix + \"/" + subRoute + "\", async (HttpContext http, AppDbContext db) =>");
         sb.AppendLine("        {");
         sb.AppendLine("            var qs = http.Request.Query;");
-        sb.AppendLine($"            IQueryable<{subCls}> q = db.{dbSet}.OfType<{subCls}>().AsNoTracking();");
-        sb.AppendLine($"            var filter = EfCoreFilterDispatch.Validate<{subCls}>(FilterParser.Parse(qs, {subCls}FilterAllowlist.Fields, {subCls}FilterAllowlist.OpsByField));");
+        sb.AppendLine($"            IQueryable<{subType}> q = db.{dbSet}.OfType<{subType}>().AsNoTracking();");
+        sb.AppendLine($"            var filter = EfCoreFilterDispatch.Validate<{subType}>(FilterParser.Parse(qs, {subAllow}.Fields, {subAllow}.OpsByField));");
         sb.AppendLine("            if (filter.ErrorEnvelope is not null) return Results.BadRequest(new { error = filter.ErrorEnvelope, field = filter.Field });");
         sb.AppendLine("            q = EfCoreFilterDispatch.ApplyFilter(q, filter.Predicates);");
         sb.AppendLine("            if (qs.TryGetValue(\"sort\", out var sortRaw) && !string.IsNullOrWhiteSpace(sortRaw))");
@@ -1566,14 +1591,14 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("            var rows = await q.ToListAsync();");
         sb.AppendLine("            var withCount = qs.TryGetValue(\"withCount\", out var wc) && (wc == \"1\" || string.Equals(wc, \"true\", System.StringComparison.OrdinalIgnoreCase));");
         sb.AppendLine($"            if (!withCount) return {OkResult("rows", credentials)};");
-        sb.AppendLine($"            var total = await EfCoreFilterDispatch.ApplyFilter(db.{dbSet}.OfType<{subCls}>().AsNoTracking(), filter.Predicates).CountAsync();");
+        sb.AppendLine($"            var total = await EfCoreFilterDispatch.ApplyFilter(db.{dbSet}.OfType<{subType}>().AsNoTracking(), filter.Predicates).CountAsync();");
         sb.AppendLine($"            return {OkResult("new { rows, total }", credentials, envelope: true)};");
         sb.AppendLine("        });");
 
         // Per-subtype get: GET /<base>/<seg>/{id} — scoped (cross-subtype → 404).
         sb.AppendLine();
         sb.AppendLine("        app.MapGet(prefix + \"/" + subRoute + "/{id}\", async (" + pkType + " id, AppDbContext db) =>");
-        sb.AppendLine($"            await db.{dbSet}.OfType<{subCls}>().AsNoTracking().FirstOrDefaultAsync(x => x.{pkProp} == id) is {{ }} found");
+        sb.AppendLine($"            await db.{dbSet}.OfType<{subType}>().AsNoTracking().FirstOrDefaultAsync(x => x.{pkProp} == id) is {{ }} found");
         sb.AppendLine("                ? " + OkResult("found", credentials));
         sb.AppendLine("                : Results.NotFound(new { error = \"not_found\" }));");
 
@@ -1589,7 +1614,7 @@ public class RoutesGenerator : PerEntityGenerator
         });
         sb.AppendLine();
         // VO columns on a TPH subtype are out of scope (Program D §6) — no typed arms.
-        AppendCreateHandler(sb, "/" + subRoute, subCls, dbSet, requiredKeys,
+        AppendCreateHandler(sb, "/" + subRoute, subType, dbSet, requiredKeys,
             CreatedResult("prefix + \"/" + subRoute + "/\" + input." + pkProp, "input", credentials), [], mapVoFields, autoSetFields,
             deniedNavs: deniedFields.Select(f => CSharpNaming.Pascal(f.Name)).ToList(), credentials: credentials,
             serverOwned: ServerOwnedCreateResets(st.Entity, root, _ => { }, discProp, hierarchy[0]), root: root);
@@ -1599,7 +1624,7 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine();
         sb.AppendLine("        async System.Threading.Tasks.Task<IResult> Update" + subCls + "(" + pkType + " id, HttpContext http, AppDbContext db)");
         sb.AppendLine("        {");
-        sb.AppendLine($"            var existing = await db.{dbSet}.OfType<{subCls}>().FirstOrDefaultAsync(x => x.{pkProp} == id);");
+        sb.AppendLine($"            var existing = await db.{dbSet}.OfType<{subType}>().FirstOrDefaultAsync(x => x.{pkProp} == id);");
         sb.AppendLine("            if (existing is null) return Results.NotFound(new { error = \"not_found\" });");
         sb.AppendLine("            System.Text.Json.JsonDocument body;");
         sb.AppendLine("            try { body = await System.Text.Json.JsonDocument.ParseAsync(http.Request.Body); }");
@@ -1628,7 +1653,7 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine();
         sb.AppendLine("        app.MapDelete(prefix + \"/" + subRoute + "/{id}\", async (" + pkType + " id, AppDbContext db) =>");
         sb.AppendLine("        {");
-        sb.AppendLine($"            var existing = await db.{dbSet}.OfType<{subCls}>().FirstOrDefaultAsync(x => x.{pkProp} == id);");
+        sb.AppendLine($"            var existing = await db.{dbSet}.OfType<{subType}>().FirstOrDefaultAsync(x => x.{pkProp} == id);");
         sb.AppendLine("            if (existing is null) return Results.NotFound(new { error = \"not_found\" });");
         sb.AppendLine($"            db.{dbSet}.Remove(existing);");
         AppendSaveChanges(sb);
@@ -1643,9 +1668,9 @@ public class RoutesGenerator : PerEntityGenerator
         // mount is scoped: the junction FK addresses the shared base table, so without
         // the scope a sibling subtype's id would traverse it just as well and the
         // segment in the URL would be decorative (rule c).
-        var sourceScope = new TphM2mSourceScope(dbSet, subCls, pkProp);
+        var sourceScope = new TphM2mSourceScope(dbSet, subType, pkProp);
         foreach (var nav in M2MNavigationBuilder.For(st.Entity, root, onWarn))
-            AppendM2mRoute(sb, nav, subRoute, pkType, root, sourceScope);
+            AppendM2mRoute(sb, nav, subRoute, pkType, root, sourceScope, config);
     }
 
     /// <summary>
@@ -1701,16 +1726,17 @@ public class RoutesGenerator : PerEntityGenerator
     // cross-port contract; mirrors TS mount-m2m.ts's `sourceDiscriminator` Stage 0).
     private static void AppendM2mRoute(
         System.Text.StringBuilder sb, M2MNavigation nav, string sourceRoute, string pkType, MetaRoot root,
-        TphM2mSourceScope? sourceScope = null)
+        TphM2mSourceScope? sourceScope = null, GenConfig? config = null)
     {
         var relSeg = nav.Name;                                    // relationship name segment
         var targetCls = CSharpNaming.Pascal(nav.Target.Name);
+        var targetType = config is { PackageNamespacesFromMetadata: true } ? ValueObjectNames.GlobalRef(nav.Target, config) : targetCls;
         // Defect B — a TPH subtype target is folded into its discriminator base's single
         // table (no DbSet of its own). Bind to the BASE's DbSet and narrow with
         // OfType<Sub>() so the emitted db.<DbSet> always names a real property; every
         // other target keeps binding to its own pluralized DbSet, byte-identical to before.
         var targetFrom = TphPlanBuilder.IsTphSubtype(nav.Target, root)
-            ? $"db.{CSharpNaming.DbSetName(TphPlanBuilder.DiscriminatorRoot(nav.Target)!)}.OfType<{targetCls}>()"
+            ? $"db.{CSharpNaming.DbSetName(TphPlanBuilder.DiscriminatorRoot(nav.Target)!)}.OfType<{targetType}>()"
             : $"db.{CSharpNaming.Pluralize(targetCls)}";
         var junctionDbSet = CSharpNaming.Pluralize(CSharpNaming.Pascal(nav.Junction.Name));
         var srcFkProp = CSharpNaming.Pascal(nav.SourceField);
@@ -1731,7 +1757,7 @@ public class RoutesGenerator : PerEntityGenerator
             // (it just has no relations under this segment): 200 with an empty list,
             // never 404 and never the sibling's rows.
             sb.AppendLine($"            if (!await db.{sourceScope.DbSet}.OfType<{sourceScope.SubtypeClass}>().AnyAsync(x => x.{sourceScope.PkProp} == id))");
-            sb.AppendLine($"                return Results.Ok(new System.Collections.Generic.List<{targetCls}>());");
+            sb.AppendLine($"                return Results.Ok(new System.Collections.Generic.List<{targetType}>());");
         }
         if (nav.Symmetric)
         {
@@ -1751,7 +1777,7 @@ public class RoutesGenerator : PerEntityGenerator
             sb.AppendLine($"                .Select(j => EF.Property<{fkType}>(j, \"{tgtFkProp}\"))");
             sb.AppendLine("                .ToListAsync()).ToHashSet();");
         }
-        sb.AppendLine($"            if (relatedIds.Count == 0) return Results.Ok(new System.Collections.Generic.List<{targetCls}>());");
+        sb.AppendLine($"            if (relatedIds.Count == 0) return Results.Ok(new System.Collections.Generic.List<{targetType}>());");
         sb.AppendLine($"            var rows = await {targetFrom}.AsNoTracking()");
         sb.AppendLine($"                .Where(t => relatedIds.Contains(EF.Property<{fkType}>(t, \"{targetPk}\")))");
         sb.AppendLine("                .ToListAsync();");

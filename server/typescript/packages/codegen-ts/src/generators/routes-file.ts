@@ -8,6 +8,7 @@ import { formatTs } from "../format.js";
 import { entityOutputPath } from "../import-path.js";
 import { resolveExpose, type ExposeOption } from "../routes-expose.js";
 import { effectivePackage } from "../docs-paths.js";
+import { claimRouteSegment } from "../naming/name-claims.js";
 
 export interface RoutesFileOpts {
   filter?: (entity: MetaObject) => boolean;
@@ -59,6 +60,7 @@ export const routesFile = function routesFile(opts?: RoutesFileOpts): Generator 
     if (!ctx.renderContext) {
       throw new Error("routes-file: renderContext is required (provided by runGen)");
     }
+    claimRouteSegment(ctx, entity);
     return {
       path: entityOutputPath(ctx.config.outputLayout ?? "flat", effectivePackage(entity), `${entity.name}.routes.ts`),
       content: await formatTs(renderRoutesFile(entity, ctx.renderContext, resolveExpose(entity, opts?.expose), opts?.reportMaxRows)),

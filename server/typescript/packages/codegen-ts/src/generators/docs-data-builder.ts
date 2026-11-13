@@ -11,6 +11,7 @@ import {
   type MetaReferenceIdentity,
   type MetaRoot,
   TYPE_TEMPLATE,
+  TYPE_OBJECT,
   TEMPLATE_ATTR_PAYLOAD_REF,
   IDENTITY_REFERENCE_ATTR_REFERENCES,
   refTarget,
@@ -196,7 +197,7 @@ function buildConstraintRow(
   entity: MetaObject,
   field: MetaField,
   pkFieldNames: Set<string>,
-  fkMap: Map<string, { targetEntity: string; targetField: string }>,
+  fkMap: Map<string, FkTarget>,
 ): ConstraintRow {
   const isPk = pkFieldNames.has(field.name);
   const required = isPk || isFieldRequired(field);
@@ -262,7 +263,7 @@ function buildFieldRow(
   entity: MetaObject,
   field: MetaField,
   pkFieldNames: Set<string>,
-  fkMap: Map<string, { targetEntity: string; targetField: string }>,
+  fkMap: Map<string, FkTarget>,
   columnOf: (field: MetaField) => string,
 ): FieldDoc {
   const isPk = pkFieldNames.has(field.name);
@@ -349,7 +350,7 @@ function buildFieldRow(
 function buildFieldDetail(
   field: MetaField,
   pkFieldNames: Set<string>,
-  fkMap: Map<string, { targetEntity: string; targetField: string }>,
+  fkMap: Map<string, FkTarget>,
   columnOf: (field: MetaField) => string,
 ): FieldDetailDoc | undefined {
   const desc = field.attr(DOC_ATTR_DESCRIPTION);
@@ -413,7 +414,7 @@ function buildFieldDetail(
   const bullets: string[] = [];
   bullets.push(`**Type:** ${neutralTypeCell(field)}`);
   if (fk !== undefined) {
-    bullets.push(`**References:** [\`${fk.targetEntity}.${fk.targetField}\`](${fk.targetEntity}.md)`);
+    bullets.push(`**References:** [\`${fk.targetEntity}.${fk.targetField}\`](${fk.href})`);
   }
   if (pkFieldNames.has(field.name)) {
     bullets.push("**Primary key**");
@@ -479,17 +480,31 @@ function buildFieldDetail(
   };
 }
 
+/** A foreign key's target, and the href of its page from the page being built. */
+interface FkTarget {
+  readonly targetEntity: string;
+  readonly targetField: string;
+  readonly href: string;
+}
+
 function buildFkMap(
   entity: MetaObject,
   root: MetaRoot,
-): Map<string, { targetEntity: string; targetField: string }> {
-  const out = new Map<string, { targetEntity: string; targetField: string }>();
+  layout: OutputLayout,
+): Map<string, FkTarget> {
+  const out = new Map<string, FkTarget>();
   for (const ref of entity.referenceIdentities()) {
     const fkField = ref.fields[0];
     const targetEntity = ref.targetEntity;
     if (fkField === undefined || targetEntity === undefined) continue;
     const targetField = ref.resolvedTargetPkField(root) ?? "id";
-    out.set(fkField, { targetEntity: stripPackage(targetEntity), targetField });
+    // The link follows the target page's real placement (its package path), from
+    // this page's — the same docPageHref the index and template links use.
+    const bound = refTarget(ref, IDENTITY_REFERENCE_ATTR_REFERENCES);
+    const href = bound !== undefined && bound.type === TYPE_OBJECT
+      ? docPageHref(layout, docPageNode(entity), docPageNode(bound as MetaObject))
+      : `./${stripPackage(targetEntity)}.md`;
+    out.set(fkField, { targetEntity: stripPackage(targetEntity), targetField, href });
   }
   return out;
 }
@@ -516,7 +531,7 @@ function entitySummary(entity: MetaObject): string | undefined {
   return typeof v === "string" && v.length > 0 ? v : undefined;
 }
 
-function describeIdentity(id: MetaIdentity): string {
+function describeIdentity(id: MetaIdentity, entity: MetaObject, layout: OutputLayout): string {
   const fields = id.fields;
   const fieldList = fields.length === 1
     ? `\`${fields[0]}\``
@@ -537,6 +552,14 @@ function describeIdentity(id: MetaIdentity): string {
     // loaded value is canonical.
     const raw = id.authoredAttr(IDENTITY_REFERENCE_ATTR_REFERENCES);
     if (typeof raw === "string" && raw.length > 0) {
+      // The target links to its page, through the same docPageHref the field table's
+      // FK links use, whether the reference is bare or package-qualified (ADR-0059 R7: the node
+      // the loader bound, never a name match). An unbound target stays plain text.
+      const bound = refTarget(id, IDENTITY_REFERENCE_ATTR_REFERENCES);
+      if (bound !== undefined && bound.type === TYPE_OBJECT) {
+        const href = docPageHref(layout, docPageNode(entity), docPageNode(bound as MetaObject));
+        return `**Reference:** ${fieldList} → [\`${raw}\`](${href})`;
+      }
       return `**Reference:** ${fieldList} → \`${raw}\``;
     }
     return `**Reference:** ${fieldList}`;
@@ -600,7 +623,7 @@ export function buildEntityDocData(
   const primary = entity.primaryIdentity();
   const pkFields = primary?.fields ?? [];
   const pkFieldNames = new Set<string>(pkFields);
-  const fkMap = buildFkMap(entity, root);
+  const fkMap = buildFkMap(entity, root, layout);
 
   // ---- Storage rows — NEUTRAL physical persistence MAPPING (ADR-0020): the
   // physical column name, a neutral physical type (declared `@dbColumnType`
@@ -645,7 +668,7 @@ export function buildEntityDocData(
   // ---- Identities
   const ids = entity.identities();
   const identities: IdentityDoc[] | undefined = ids.length > 0
-    ? ids.map((id) => ({ bullet: describeIdentity(id) }))
+    ? ids.map((id) => ({ bullet: describeIdentity(id, entity, layout) }))
     : undefined;
 
   // ---- Relationships

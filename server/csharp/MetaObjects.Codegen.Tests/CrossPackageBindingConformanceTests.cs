@@ -117,7 +117,7 @@ public class CrossPackageBindingConformanceTests
         {
             Entities = root.Objects(),
             Root = root,
-            Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Gen" },
+            Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Gen", OutputLayout = OutputLayout.Package, PackageNamespacesFromMetadata = true },
         };
         var files = new Dictionary<string, string>();
         foreach (var gen in new IGenerator[] { new EntityGenerator(), new DbContextGenerator(), new RoutesGenerator() })
@@ -132,7 +132,7 @@ public class CrossPackageBindingConformanceTests
         var root = Load();
         var files = Generated(root);
         string navigating = string.Concat(
-            files["Post.g.cs"], files["PostRoutes.g.cs"], files["Order.g.cs"], files["OrderRoutes.g.cs"], files["AppDbContext.g.cs"]);
+            files["a/Post.g.cs"], files["a/PostRoutes.g.cs"], files["acme/Order.g.cs"], files["acme/OrderRoutes.g.cs"], files["AppDbContext.g.cs"]);
 
         // The same-short-named objects in the wrong package own a string key and these tables.
         Assert.DoesNotContain("a_tags", navigating);
@@ -140,26 +140,26 @@ public class CrossPackageBindingConformanceTests
         Assert.DoesNotContain("acme_customers", navigating);
         Assert.DoesNotContain("EF.Property<string>", navigating);
 
-        string post = files["PostRoutes.g.cs"];
+        string post = files["a/PostRoutes.g.cs"];
         Assert.Contains("/posts/{id}/tags", post);
         Assert.Contains("relatedIds.Contains(EF.Property<long>(t, \"Id\"))", post);
         Assert.DoesNotContain("\"Code\"", post);
-        Assert.Contains("ICollection<Tag> Tags", files["Post.g.cs"]);
-        Assert.Contains("FeaturedTagId", files["Post.g.cs"]);
+        Assert.Contains("ICollection<global::B.Tag> Tags", files["a/Post.g.cs"]);
+        Assert.Contains("FeaturedTagId", files["a/Post.g.cs"]);
 
-        string order = files["OrderRoutes.g.cs"];
+        string order = files["acme/OrderRoutes.g.cs"];
         Assert.Contains("/orders/{id}/labels", order);
         Assert.Contains("relatedIds.Contains(EF.Property<long>(t, \"Id\"))", order);
         Assert.DoesNotContain("\"Code\"", order);
-        string orderEntity = files["Order.g.cs"];
-        Assert.Contains("ICollection<Label> Labels", orderEntity);
+        string orderEntity = files["acme/Order.g.cs"];
+        Assert.Contains("ICollection<global::Acme.Gen.Label> Labels", orderEntity);
         Assert.Contains("public long? CustomerId", orderEntity);
 
         string dbContext = files["AppDbContext.g.cs"];
-        Assert.Contains("modelBuilder.Entity<Post>().HasMany(x => x.Tags).WithMany().UsingEntity<PostTag>(", dbContext);
-        Assert.Contains("modelBuilder.Entity<Order>().HasMany(x => x.Labels).WithMany().UsingEntity<OrderLabel>(", dbContext);
-        Assert.Contains("l.HasOne<Label>().WithMany().HasForeignKey(j => j.LabelId)", dbContext);
-        Assert.Contains("modelBuilder.Entity<Order>().HasOne<Customer>().WithMany().HasForeignKey(e => e.CustomerId)", dbContext);
-        Assert.Contains("modelBuilder.Entity<Post>().HasOne<Tag>().WithMany().HasForeignKey(e => e.FeaturedTagId)", dbContext);
+        Assert.Contains("modelBuilder.Entity<global::A.Post>().HasMany(x => x.Tags).WithMany().UsingEntity<global::A.PostTag>(", dbContext);
+        Assert.Contains("modelBuilder.Entity<global::Acme.Order>().HasMany(x => x.Labels).WithMany().UsingEntity<global::Acme.Gen.OrderLabel>(", dbContext);
+        Assert.Contains("l.HasOne<global::Acme.Gen.Label>().WithMany().HasForeignKey(j => j.LabelId)", dbContext);
+        Assert.Contains("modelBuilder.Entity<global::Acme.Order>().HasOne<global::Acme.Gen.Customer>().WithMany().HasForeignKey(e => e.CustomerId)", dbContext);
+        Assert.Contains("modelBuilder.Entity<global::A.Post>().HasOne<global::B.Tag>().WithMany().HasForeignKey(e => e.FeaturedTagId)", dbContext);
     }
 }

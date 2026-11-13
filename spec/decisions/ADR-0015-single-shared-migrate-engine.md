@@ -86,6 +86,7 @@ migrations, not SQL):
 - **Explicitly out of scope:** EF Core Migrations, FluentMigrator (C#-coded), Alembic, Django
   (Python-coded) — emitting those means generating per-language migration *code* and they are
   ORM-coupled (EF↔EF Core, Alembic↔SQLAlchemy), which MetaObjects users need not adopt.
+  **EF Core Migrations is no longer out of scope; see Amendment 1.**
 - MetaObjects does **not** reimplement an external runner's history / checksums / ordering — that is
   the runner's job (or the homegrown apply's journal for the zero-dep path).
 
@@ -237,6 +238,34 @@ final step of each port's cutover. Inventory (as of 2026-05-30):
 - **Pending (the broader shared-engine plan):** the runner **output-format adapters** (Flyway/dbmate
   emit) for an external runner; the **`pg_try_advisory_lock` + backoff** contention refinement (the
   shipped lock is blocking); and the **`info`/`state`/`validate`/`repair`/`baseline`** command surfaces.
+
+## Amendment 1 (2026-11-12): EF Core Migrations is a supported second C# path
+
+**Context.** A C# adopter whose schema is owned by EF Core Migrations (`dotnet ef migrations add`,
+`dotnet ef database update`) cannot hand it to `meta migrate` without giving up a chain they
+already run in production. The generated `DbContext` is the model EF diffs, so whatever the
+context declares is what EF scaffolds. Leaving that path unsupported did not keep adopters on
+`meta migrate`. It meant the generated context described a schema that differed from the one
+`meta migrate` would build.
+
+**Decision.** EF Core Migrations is a supported second schema path for C#, beside `meta migrate`,
+and the adopter picks one per database. The engine in Decision 5 stays the single shared engine:
+MetaObjects does not generate migration code, and no port grows a diff engine. What changes is
+that the generated EF model is held to the schema `meta migrate` would build from the same
+metadata. It declares the same CHECKs, indexes, comments, identity starts and column types, so a
+`dotnet ef migrations add` scaffolds the schema the metadata describes. Where EF's own
+migration SQL would contradict a cross-port rule, the generated design-time services replace that
+operation's SQL. The case in point is an identity start: Npgsql writes `RESTART WITH n`, and
+`@sequenceStart` never moves a counter backward.
+
+**Consequences.**
+- `fixtures/check-constraint-conformance/` gates the CHECKs the EF model declares against the
+  ones `meta migrate` emits. A CHECK one path has and the other lacks is a defect on that path.
+- `meta verify --db` still reads any live database, whichever path built it. It is the drift
+  gate for both.
+- Python, Java and Kotlin are unaffected: ADR-0015's single engine stays their only schema path.
+- Removing the C# migrate engine (Decision 7) stands. The EF path is EF's own engine, not a
+  MetaObjects one.
 
 ## Conformance note
 

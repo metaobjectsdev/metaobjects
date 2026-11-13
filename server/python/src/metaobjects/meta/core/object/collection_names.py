@@ -19,9 +19,9 @@ def declared_collection_name(obj: MetaData) -> str | None:
 
 def collection_name_of(obj: MetaData) -> str:
     """*obj*'s own ``@collectionName``, else the configured pluralizer over its name."""
-    from metaobjects.naming import naming_rules_of, pluralizer
+    from metaobjects.naming import DEFAULT_PLURALIZER, naming_rules_of, pluralizer
 
     declared = declared_collection_name(obj)
     if declared is not None:
         return declared
-    return pluralizer(naming_rules_of(obj).collections)(obj.name)
+    return pluralizer(naming_rules_of(obj).collections or DEFAULT_PLURALIZER)(obj.name)

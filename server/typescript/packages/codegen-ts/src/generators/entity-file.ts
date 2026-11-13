@@ -6,6 +6,7 @@ import { formatTs } from "../format.js";
 import { entityOutputPath } from "../import-path.js";
 import { isAbstract } from "../instance-artifacts.js";
 import { effectivePackage } from "../docs-paths.js";
+import { claimModuleNames } from "../naming/name-claims.js";
 
 export interface EntityFileOpts {
   filter?: (entity: MetaObject) => boolean;
@@ -39,14 +40,11 @@ export const entityFile = function entityFile(opts?: EntityFileOpts): Generator 
     if (isAbstract(entity) && !ctx.renderContext.emitAbstractShapes) {
       return [];
     }
-    // ADR-0044/#228 — a value object's output filename follows its EMITTED name
-    // (bare when unique in the run, package-qualified on a cross-package short-name
-    // collision) so two same-bare-named value objects don't collide on one path
-    // (flat layout) and the module resolves to the same emitted symbol every
-    // reference imports. Entities are never in the collision set → bare name.
-    const emittedName = ctx.renderContext.valueObjectEmittedName(entity);
+    // The module's file name and its type name are claimed in its directory; two
+    // objects emitting one name there are refused, naming both. Nothing is renamed.
+    claimModuleNames(ctx, entity);
     return {
-      path: entityOutputPath(ctx.config.outputLayout ?? "flat", effectivePackage(entity), `${emittedName}.ts`),
+      path: entityOutputPath(ctx.config.outputLayout ?? "flat", effectivePackage(entity), `${entity.name}.ts`),
       content: await formatTs(renderEntityFile(entity, ctx.renderContext, { allowlists })),
     };
   });

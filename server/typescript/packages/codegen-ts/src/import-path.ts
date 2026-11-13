@@ -4,8 +4,9 @@
 // docs/superpowers/specs/2026-05-18-phase4d-package-output-placement-design.md.
 
 import { relative as posixRelative } from "node:path/posix";
-import { PACKAGE_SEPARATOR } from "@metaobjectsdev/metadata";
-import { withExt, withExtIfRelative, type ExtStyle } from "./render-context.js";
+import { PACKAGE_SEPARATOR, type MetaData } from "@metaobjectsdev/metadata";
+import { imp, Import } from "ts-poet";
+import { withExt, withExtIfRelative, type ExtStyle, type RenderContext } from "./render-context.js";
 
 export type OutputLayout = "flat" | "package";
 
@@ -50,31 +51,60 @@ export function crossEntitySpecifier(
 }
 
 /**
- * Module specifier to import a value-object's emitted module (`<VO>.ts`) from a
- * file that lives in `fromPkg`. Value objects are emitted by the entity-file
- * generator into the SAME target as entities, so this is the same same-target,
- * package- + extStyle-aware resolution that FK references use.
+ * Module specifier to import value object `vo`'s module (`<VO>.ts`) from a file that lives in
+ * `fromPkg`. Value objects are emitted by the entity-file generator into the SAME target as
+ * entities, so this is the same same-target, package- + extStyle-aware resolution that FK
+ * references use.
  *
- * This is the SINGLE source of truth shared by the three places that reference a
- * VO — the field's TS type (inferred-types), its runtime Zod schema
- * (zod-validators), and its Drizzle `.$type<>()` (drizzle-schema). They MUST
- * resolve a given VO to the identical module or they would import two distinct
- * symbols; routing all three through this function makes divergence impossible.
+ * This is the SINGLE source of truth shared by the places that reference a VO — the field's TS
+ * type (inferred-types), its runtime Zod schema (zod-validators), and its Drizzle `.$type<>()`
+ * (drizzle-schema). They MUST resolve a given VO to the identical module or they would import two
+ * distinct symbols; routing all of them through this function makes divergence impossible.
  *
- * `voPkg` is looked up from `packageOf` (which includes `object.value` nodes —
- * `root.objects()` returns every `TYPE_OBJECT` child). An unknown VO falls back
- * to `fromPkg`, yielding a same-dir `./<VO>` specifier (correct for flat layout
- * and for a same-package reference).
+ * Keyed by the NODE the field's `@objectRef` names, never its short name: two same-named value
+ * objects in two packages are two modules. An unresolved reference (`vo`
+ * undefined) falls back to `voName` in `fromPkg`, a same-dir `./<VO>` specifier.
  */
 export function valueObjectModuleSpecifier(
+  vo: MetaData | undefined,
   voName: string,
-  packageOf: ReadonlyMap<string, string | undefined>,
   fromPkg: string | undefined,
   layout: OutputLayout,
   extStyle: ExtStyle,
 ): string {
-  const voPkg = packageOf.has(voName) ? packageOf.get(voName) : fromPkg;
-  return crossEntitySpecifier(layout, fromPkg, voPkg, voName, extStyle);
+  if (vo === undefined) return crossEntitySpecifier(layout, fromPkg, fromPkg, voName, extStyle);
+  return crossEntitySpecifier(layout, fromPkg, nodePackage(vo), vo.name, extStyle);
+}
+
+/**
+ * The ts-poet import of `<VO><suffix>` (the interface with `suffix` "", the Zod schema with
+ * "InsertSchema") for the value object `field`'s `@objectRef` names, from a file in `fromPkg`.
+ * Bound under the render context's local name: the value object's own name, or its
+ * package-qualified alias when another object shares the short name
+ * (`import type { Note as AcmeAlphaNote }`), so two same-named value objects can meet in one
+ * file without either type being renamed.
+ */
+export function valueObjectFieldImport(
+  ctx: RenderContext,
+  field: MetaData,
+  fromPkg: string | undefined,
+  suffix: string,
+  typeOnly: boolean,
+): Import {
+  const vo = ctx.resolveValueObject(field);
+  const local = ctx.resolveValueObjectName(field);
+  const exported = vo?.name ?? local;
+  const spec = valueObjectModuleSpecifier(vo, local, fromPkg, ctx.outputLayout, ctx.extStyle);
+  if (local === exported) return imp(`${typeOnly ? "t:" : ""}${exported}${suffix}@${spec}`);
+  return Import.importsName(`${local}${suffix}`, spec, typeOnly, `${exported}${suffix}`);
+}
+
+/** A node's effective package (its resolution key minus the short name), as `docs-paths.ts`
+ *  `effectivePackage` reads it; undefined at the root. */
+function nodePackage(node: MetaData): string | undefined {
+  const key = node.resolutionKey();
+  const suffix = `${PACKAGE_SEPARATOR}${node.name}`;
+  return key.endsWith(suffix) ? key.slice(0, -suffix.length) : undefined;
 }
 
 /** Barrel (at outDir root) re-export specifier for an entity.

@@ -13,10 +13,11 @@
 
 import Fastify, { type FastifyInstance } from "fastify";
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { runGen, defineConfig, buildReportViews } from "@metaobjectsdev/codegen-ts";
+import { indexEmitted, type OutputLayout } from "./output-layout.ts";
 import { DEFAULT_PHYSICAL_NAMING } from "@metaobjectsdev/metadata";
 import { entityFile, reportExport, routesFile } from "@metaobjectsdev/test-generators";
 import { loadMetadataFile } from "./load-metadata.ts";
@@ -111,6 +112,7 @@ const BASE_TABLES: ReadonlyArray<{ name: string; ddl: string }> = [
 export async function startSqliteReportServer(
   metaPath: string,
   engine: SqliteReportEngine = "sqlite",
+  outputLayout: OutputLayout = "flat",
 ): Promise<SqliteReportServerHandle> {
   const here = dirname(fileURLToPath(import.meta.url));
   const genTmpRoot = join(here, "..", ".gen-tmp");
@@ -126,6 +128,7 @@ export async function startSqliteReportServer(
     config: defineConfig({
       outDir: tmp,
       extStyle: "none",
+      outputLayout,
       dbImport: "./db",
       dialect: "sqlite", // codegen has no d1 dialect: D1 is SQLite to Drizzle (only the db module differs)
       apiPrefix: "/api",
@@ -137,7 +140,8 @@ export async function startSqliteReportServer(
     }),
     metadata: root,
   });
-  if (existsSync(join(tmp, "InvoiceDays.routes.ts"))) {
+  const emitted = indexEmitted(tmp, lr.files, outputLayout);
+  if (emitted.has("InvoiceDays.routes.ts")) {
     rmSync(tmp, { recursive: true, force: true });
     throw new Error("codegen emitted a routes file for the sourceless report InvoiceDays");
   }
@@ -157,7 +161,7 @@ export async function startSqliteReportServer(
 
   const fastify = Fastify();
   for (const r of SERVED_REPORTS) {
-    const mod = (await import(pathToFileURL(join(tmp, `${r.name}.routes.ts`)).href)) as Record<
+    const mod = (await import(pathToFileURL(emitted.locate(`${r.name}.routes.ts`)).href)) as Record<
       string,
       (f: FastifyInstance) => Promise<void>
     >;

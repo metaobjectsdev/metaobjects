@@ -685,6 +685,13 @@ describe("init --d1", () => {
     expect(configTs).toContain('dialect: "sqlite"');
   });
 
+  test("scaffolds metaobjects.config.ts with outputLayout = 'package' (the engine default stays flat)", async () => {
+    const code = await initCommand([], cwd);
+    expect(code).toBe(0);
+    const configTs = readFileSync(join(cwd, "metaobjects.config.ts"), "utf8");
+    expect(configTs).toContain('outputLayout: "package"');
+  });
+
   test("scaffolds metaobjects.config.ts with outDir = 'src/generated'", async () => {
     const code = await initCommand([], cwd);
     expect(code).toBe(0);

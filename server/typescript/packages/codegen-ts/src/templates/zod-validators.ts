@@ -57,7 +57,7 @@ import { sharedEnumForField } from "../enum-shared.js";
 import { sharedEnumImportSpecifier } from "../enum-import.js";
 import { sharedEnumZodConstName } from "./enums-file.js";
 import type { RenderContext } from "../render-context.js";
-import { valueObjectModuleSpecifier } from "../import-path.js";
+import { valueObjectFieldImport } from "../import-path.js";
 // FR-035: the SAME required-predicate that drives the Drizzle column's .notNull()
 // drives the UpdateSchema's .nullable() exclusion — shared so they cannot drift.
 import { isRequired } from "../column-mapper.js";
@@ -984,20 +984,15 @@ function zodFieldExpr(
   if (field.subType === FIELD_SUBTYPE_OBJECT) {
     const ref = field.attr(FIELD_ATTR_OBJECT_REF);
     if (typeof ref === "string" && ref.length > 0) {
-      // @objectRef may be authored fully-qualified or bare. ADR-0044/#228 — the
-      // referenced <Ref>InsertSchema is named by the value object's EMITTED name
-      // (bare when unique in the run, package-qualified on a cross-package
-      // short-name collision), resolved package-locally from the FIELD's declaring
-      // package. The import MODULE is resolved via the shared
-      // layout/package/extStyle-aware helper (the SAME one the field's TS type +
-      // Drizzle .$type<> use) so all three agree. Without owner/ctx (bare
-      // unit-test calls) fall back to the bare name + flat same-dir.
-      const ownerPkg = (ctx && owner) ? effectivePackage(owner) : undefined;
-      const refName = (ctx && owner) ? ctx.resolveValueObjectName(field) : stripPackage(ref);
-      const moduleSpec = (ctx && owner)
-        ? valueObjectModuleSpecifier(refName, ctx.packageOf, ownerPkg, ctx.outputLayout, ctx.extStyle)
-        : `./${refName}.js`;
-      const refImp = imp(`${refName}InsertSchema@${moduleSpec}`);
+      // @objectRef may be authored fully-qualified or bare. The referenced
+      // <Ref>InsertSchema is the bound value object's, imported under its local name
+      // (aliased when another object shares the short name) through the
+      // shared layout/package/extStyle-aware helper the field's TS type + Drizzle
+      // .$type<> use, so all three agree. Without owner/ctx (bare unit-test calls)
+      // fall back to the bare name + flat same-dir.
+      const refImp = (ctx && owner)
+        ? valueObjectFieldImport(ctx, field, effectivePackage(owner), "InsertSchema", false)
+        : imp(`${stripPackage(ref)}InsertSchema@./${stripPackage(ref)}.js`);
       let base: Code = code`${refImp}`;
       if (field.resolvedIsArray()) base = code`z.array(${base})`;
       return appendValidatorChain(base, field, forceRequired);
@@ -1014,12 +1009,9 @@ function zodFieldExpr(
   if (field.subType === FIELD_SUBTYPE_MAP) {
     const ref = field.attr(FIELD_ATTR_OBJECT_REF);
     if (typeof ref === "string" && ref.length > 0) {
-      const ownerPkg = (ctx && owner) ? effectivePackage(owner) : undefined;
-      const refName = (ctx && owner) ? ctx.resolveValueObjectName(field) : stripPackage(ref);
-      const moduleSpec = (ctx && owner)
-        ? valueObjectModuleSpecifier(refName, ctx.packageOf, ownerPkg, ctx.outputLayout, ctx.extStyle)
-        : `./${refName}.js`;
-      const refImp = imp(`${refName}InsertSchema@${moduleSpec}`);
+      const refImp = (ctx && owner)
+        ? valueObjectFieldImport(ctx, field, effectivePackage(owner), "InsertSchema", false)
+        : imp(`${stripPackage(ref)}InsertSchema@./${stripPackage(ref)}.js`);
       return appendValidatorChain(code`z.record(z.string(), ${refImp})`, field, forceRequired);
     }
     const vt = field.attr(FIELD_ATTR_VALUE_TYPE);
@@ -1095,7 +1087,7 @@ function zodFieldExpr(
         const shared = sharedEnumForField(field);
         if (shared !== undefined && !shared.provided) {
           const constName = sharedEnumZodConstName(shared.name);
-          const spec = sharedEnumImportSpecifier(ctx, owner?.package);
+          const spec = sharedEnumImportSpecifier(ctx, owner ? effectivePackage(owner) : undefined);
           const sharedConst = imp(`${constName}@${spec}`);
           let base: Code = code`${sharedConst}`;
           if (field.resolvedIsArray()) base = code`z.array(${base})`;

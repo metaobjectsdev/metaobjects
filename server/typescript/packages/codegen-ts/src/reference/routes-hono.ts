@@ -75,6 +75,7 @@ import {
   sidecarLine,
   DEFAULT_ID_FIELD,
   isTphSubtype,
+  claimRouteSegment,
 } from "@metaobjectsdev/codegen-ts/engine";
 import { renderRoutesIndex, routesIndexFileName } from "../templates/routes-index.js";
 
@@ -344,6 +345,7 @@ export const routesFileHono = function routesFileHono(opts?: RoutesFileHonoOpts)
     if (!ctx.renderContext) {
       throw new Error("routes-file-hono: renderContext is required (provided by runGen)");
     }
+    claimRouteSegment(ctx, entity);
     const renderContext: RenderContext = {
       ...ctx.renderContext,
       httpRuntimeImport: opts?.runtimeImport

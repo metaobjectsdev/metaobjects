@@ -301,6 +301,16 @@ Two rules the loader/codegen enforce:
   abstract enum is inline as well. Declaring the vocabulary at package level is how
   you ask for one type.
 
+**Two package-level shared enums with one name are refused.** TypeScript and Python
+generate every shared enum into one shared module under its own name, so a second
+`Tier` in another package would keep the first and silently type its fields with the
+first's members; the pair is a codegen error, `ERR_NAME_COLLISION`, naming both
+declarations. Place them apart: the package output layout does not split the shared
+module (rename one). C# puts each in its package's own namespace when
+`csharp.packageNamespaces` is on; without it both would declare one type in one
+namespace, and the pair is refused the same way. Java and Kotlin write each in its
+package's own directory, so the pair never meets.
+
 ## Embedded value objects — `field.object` + `@storage`
 
 `field.object` declares an embedded structured value backed by another `object`

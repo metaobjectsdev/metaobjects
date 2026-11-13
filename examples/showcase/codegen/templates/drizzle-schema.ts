@@ -5,7 +5,7 @@
 import { code, imp, joinCode, type Code } from "@metaobjectsdev/codegen-ts/engine";
 import { MetaObject, MetaField, MetaIndex, isMetaObject } from "@metaobjectsdev/metadata";
 import {
-  IDENTITY_ATTR_FIELDS, IDENTITY_ATTR_GENERATION,
+  IDENTITY_ATTR_FIELDS, IDENTITY_ATTR_GENERATION, IDENTITY_ATTR_SEQUENCE_START, IDENTITY_ATTR_SEQUENCE_NAME,
   IDENTITY_ATTR_EXPR, IDENTITY_ATTR_USING, IDENTITY_ATTR_ORDERS, IDENTITY_ATTR_WHERE,
   GENERATION_INCREMENT, GENERATION_UUID,
   FIELD_ATTR_AUTO_SET,
@@ -16,7 +16,7 @@ import {
   refTarget,
 } from "@metaobjectsdev/metadata";
 import type { RenderContext } from "@metaobjectsdev/codegen-ts/engine";
-import { crossEntitySpecifier, valueObjectModuleSpecifier } from "@metaobjectsdev/codegen-ts/engine";
+import { crossEntitySpecifier, valueObjectFieldImport, valueObjectModuleSpecifier } from "@metaobjectsdev/codegen-ts/engine";
 import {
   mapColumnType, PG_IDENTITY_CAPABLE_FNS, DURATION_COLUMN_FN,
   type ColumnSpec, type EnumIntCustomType,
@@ -152,6 +152,14 @@ export function renderDrizzleSchema(
       : [];
   const pkFieldNames = new Set<string>(pkFieldsList);
   const pkGeneration = primary?.attr(IDENTITY_ATTR_GENERATION) as string | undefined;
+  // #544 — the increment key's declared sequence (ADR-0039: resolving reads), carried into
+  // Drizzle's identity options so a schema Drizzle creates begins at `@sequenceStart` too.
+  const seqStart = primary?.attr(IDENTITY_ATTR_SEQUENCE_START);
+  const seqName = primary?.attr(IDENTITY_ATTR_SEQUENCE_NAME);
+  const pkSequence = {
+    ...(typeof seqStart === "number" ? { start: seqStart } : {}),
+    ...(typeof seqName === "string" ? { name: seqName } : {}),
+  };
 
   const fkMap = buildFkMapForEntity(obj, ctx);
 
@@ -263,7 +271,7 @@ export function renderDrizzleSchema(
     }
     if (spec.durationCustomType !== undefined) usesDurationCodec = true;
     const fieldDocs = renderDocsFor(child);
-    const columnLine = renderColumn(spec, columnNameExpr(child, spec.dbName), child, ctx, isPk, pkGeneration, fkInfo, isComposite, pkg, obj.name);
+    const columnLine = renderColumn(spec, columnNameExpr(child, spec.dbName), child, ctx, isPk, pkGeneration, fkInfo, isComposite, pkg, obj.name, false, child.name, pkSequence);
     columnLines.push(fieldDocs ? code`  ${fieldDocs}\n${columnLine}` : columnLine);
     if (spec.checkConstraint !== undefined) checkConstraints.push(checkEntry(child, spec));
   }
@@ -554,6 +562,8 @@ function renderColumn(
   // `field.object @storage: flattened`: the Drizzle KEY of a member's column (`shipToStreet`);
   // absent, the key is the field's own name.
   keyName: string = field.name,
+  // An increment key's declared `@sequenceStart` / `@sequenceName` (#544); absent, none.
+  pkSequence: { start?: number | undefined; name?: string | undefined } = {},
 ): Code {
   // An int-backed field.enum's column function is a LOCAL generated const (the
   // customType helper emitted into this same file), so it must not be imported
@@ -613,7 +623,7 @@ function renderColumn(
           spec.enumIntCustomType === undefined &&
           PG_IDENTITY_CAPABLE_FNS.has(spec.fnName)
         ) {
-          pkSuffix += ".generatedByDefaultAsIdentity()";
+          pkSuffix += `.generatedByDefaultAsIdentity(${identityOptionsLiteral(pkSequence)})`;
         }
       }
     } else if (pkGeneration === GENERATION_UUID) {
@@ -743,19 +753,14 @@ function renderColumn(
   // immediately after the baseCall so the chain reads `.text(...).$type<...>().notNull()...`
   // which Drizzle accepts in any order but is conventional for "type narrowing
   // first."
-  // Resolve a VO name → an imported type symbol (shared layout/package/extStyle-aware
-  // helper, so the .$type<VO> import matches the field's TS type + Zod schema).
-  // ADR-0044/#228 — resolve the field's @objectRef to the value object's EMITTED
-  // name (bare when unique in the run, package-qualified on a cross-package
-  // short-name collision), resolved package-locally from the FIELD's declaring
-  // package. `name` (the bare dollarTypeRef name) is the byte-identical fallback
-  // when the ref doesn't resolve to an emitted value object.
+  // The field's `@objectRef` → an imported type symbol, through the shared
+  // layout/package/extStyle-aware helper so the .$type<VO> import matches the field's TS type
+  // + Zod schema. An unresolved ref falls back to the bare dollarTypeRef `name` in this package.
   const voSym = (name: string) => {
     const refRaw = field.attr(FIELD_ATTR_OBJECT_REF);
-    const emitted = typeof refRaw === "string"
-      ? ctx.resolveValueObjectName(field)
-      : name;
-    return imp(`t:${emitted}@${valueObjectModuleSpecifier(emitted, ctx.packageOf, entityPackage, ctx.outputLayout, ctx.extStyle)}`);
+    return typeof refRaw === "string"
+      ? valueObjectFieldImport(ctx, field, entityPackage, "", true)
+      : imp(`t:${name}@${valueObjectModuleSpecifier(undefined, name, entityPackage, ctx.outputLayout, ctx.extStyle)}`);
   };
 
   let dollarTypeSegment: Code | string = "";
@@ -778,4 +783,15 @@ function renderColumn(
   return spec.leadingComment !== undefined
     ? code`  // ${spec.leadingComment}\n${columnLine}`
     : columnLine;
+}
+
+/**
+ * Drizzle's identity options for what the model declares, the same two meta migrate writes
+ * (`SEQUENCE NAME … START WITH n`): `{ name: "Old_Id_seq", startWith: 1000 }`, or nothing.
+ */
+function identityOptionsLiteral(seq: { start?: number | undefined; name?: string | undefined }): string {
+  const parts: string[] = [];
+  if (seq.name !== undefined) parts.push(`name: ${JSON.stringify(seq.name)}`);
+  if (seq.start !== undefined) parts.push(`startWith: ${seq.start}`);
+  return parts.length === 0 ? "" : `{ ${parts.join(", ")} }`;
 }

@@ -27,6 +27,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { runGen, defineConfig } from "@metaobjectsdev/codegen-ts";
+import { indexEmitted, type OutputLayout } from "./output-layout.ts";
 import { entityFile, routesFile } from "@metaobjectsdev/test-generators";
 import pg from "pg";
 import { executeSql } from "./postgres-sql.ts";
@@ -59,6 +60,7 @@ export interface GeneratedM2mServerHandle {
 export async function startGeneratedM2mServer(
   connectionUri: string,
   metaPath: string,
+  outputLayout: OutputLayout = "flat",
 ): Promise<GeneratedM2mServerHandle> {
   const here = dirname(fileURLToPath(import.meta.url));
   const genTmpRoot = join(here, "..", ".gen-tmp");
@@ -75,6 +77,7 @@ export async function startGeneratedM2mServer(
     config: defineConfig({
       outDir: tmp,
       extStyle: "none",
+      outputLayout,
       dbImport: "./db",
       dialect: "postgres",
       apiPrefix: "/api",
@@ -82,6 +85,7 @@ export async function startGeneratedM2mServer(
     }),
     metadata: root,
   });
+  const emitted = indexEmitted(tmp, lr.files, outputLayout);
   if (lr.warnings.length > 0) {
     throw new Error(`codegen produced warnings: ${lr.warnings.join("; ")}`);
   }
@@ -117,20 +121,20 @@ export const db = drizzle(pool);
   `);
 
   // 4. Import the EMITTED route files unmodified and mount them.
-  const postRoutes = (await import(pathToFileURL(join(tmp, "Post.routes.ts")).href)) as {
+  const postRoutes = (await import(pathToFileURL(emitted.locate("Post.routes.ts")).href)) as {
     postRoutes: (f: FastifyInstance) => Promise<void>;
   };
-  const personRoutes = (await import(pathToFileURL(join(tmp, "Person.routes.ts")).href)) as {
+  const personRoutes = (await import(pathToFileURL(emitted.locate("Person.routes.ts")).href)) as {
     personRoutes: (f: FastifyInstance) => Promise<void>;
   };
   // FW-8: the TPH discriminator base's routes file carries the polymorphic base
   // path AND every per-subtype path (incl. subtype-scoped M:N mounts) in one module.
-  const accountRoutes = (await import(pathToFileURL(join(tmp, "Account.routes.ts")).href)) as {
+  const accountRoutes = (await import(pathToFileURL(emitted.locate("Account.routes.ts")).href)) as {
     accountRoutes: (f: FastifyInstance) => Promise<void>;
   };
   // PostCategory takes part in no relationship; it is mounted so the corpus can
   // gate the COLLECTION-URL spelling of a multi-word, y-ending entity name.
-  const postCategoryRoutes = (await import(pathToFileURL(join(tmp, "PostCategory.routes.ts")).href)) as {
+  const postCategoryRoutes = (await import(pathToFileURL(emitted.locate("PostCategory.routes.ts")).href)) as {
     postCategoryRoutes: (f: FastifyInstance) => Promise<void>;
   };
   const dbMod = (await import(pathToFileURL(join(tmp, "db.ts")).href)) as { pool: pg.Pool };

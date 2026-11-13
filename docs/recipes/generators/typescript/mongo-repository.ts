@@ -3,7 +3,7 @@
 // its wire contract (<E>InsertSchema, <E>UpdateSchema, <E>FilterAllowlist); this emits the
 // data access over it. The collection name comes from an author-supplied `@mongo` property
 // bag on the entity: `"@mongo": { "collection": "orders" }`.
-import { isSourcelessEntity, perEntity, type Generator } from "@metaobjectsdev/codegen-ts";
+import { effectivePackage, entityOutputPath, isSourcelessEntity, perEntity, type Generator } from "@metaobjectsdev/codegen-ts";
 import type { MetaObject } from "@metaobjectsdev/metadata";
 
 function collectionOf(obj: MetaObject): string {
@@ -103,6 +103,10 @@ export function mongoRepositoryGenerator(): Generator {
   return {
     name: "mongo-repository",
     filter: isSourcelessEntity,
-    generate: perEntity((obj) => ({ path: `${obj.name}.repository.ts`, content: render(obj) })),
+    // Beside the entity file it imports (`./<Entity>.js`), in either output layout.
+    generate: perEntity((obj, ctx) => ({
+      path: entityOutputPath(ctx.renderContext?.outputLayout ?? "flat", effectivePackage(obj), `${obj.name}.repository.ts`),
+      content: render(obj),
+    })),
   };
 }

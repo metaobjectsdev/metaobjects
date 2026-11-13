@@ -108,7 +108,9 @@ class NamingRules:
     #: The pluralizer an object without ``@collectionName`` takes its collection name from
     #: (``naming.collections``). Not a physical name; it rides here because it is the same
     #: project setting, read the same way.
-    collections: str = "standard"
+    #: ``None`` when the config does not name it: the REST segment then keeps the rule every
+    #: port has always served, and the collection NAME falls back to ``DEFAULT_PLURALIZER``.
+    collections: str | None = None
 
 
 def naming_rules_of(node: MetaData) -> NamingRules:

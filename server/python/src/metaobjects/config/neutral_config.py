@@ -359,7 +359,9 @@ def _read_naming(raw: dict[str, object], path: Path) -> NamingRules:
             code=ErrorCode.ERR_COLLECTION_NOT_FOUND,
         )
     collections = naming.get("collections", NamingRules.collections)
-    if not isinstance(collections, str) or collections not in registered_pluralizers():
+    if collections is not None and (
+        not isinstance(collections, str) or collections not in registered_pluralizers()
+    ):
         raise ParseError(
             f"{path}: {unknown_naming_strategy_message('collections', str(collections))}",
             code=ErrorCode.ERR_COLLECTION_NOT_FOUND,

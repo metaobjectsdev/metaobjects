@@ -120,10 +120,10 @@ the schema layer (`meta migrate`'s `ERR_DUPLICATE_SQL_NAME`).
 object is served under, given its name, the `@collectionName` it declares and the project's
 `naming.collections` pluralizer. With neither, the segment is the rule above (snake_case, then
 the API pluralizer), unchanged. A declared name, or a configured pluralizer's output, is
-snake_cased with an acronym-aware split (`FAQs` -> `faqs`). TypeScript
-(`metadata/test/naming.test.ts`) and C# (`MetaObjects.Codegen.Tests/CollectionSegmentTests.cs`)
-run it: they are the two ports whose generators read `@collectionName` and `naming.collections`
-(the other ports are tracked in #549).
+snake_cased with an acronym-aware split (`FAQs` -> `faqs`). Every port runs it: TypeScript
+(`metadata/test/naming.test.ts`), C# (`MetaObjects.Codegen.Tests/CollectionSegmentTests.cs`),
+Java and Kotlin (`codegen-base` `RouteNamingTest.java`, the one rule both JVM generators read) and
+Python (`tests/codegen/test_collection_segments.py`).
 
 ## Per-port runner
 

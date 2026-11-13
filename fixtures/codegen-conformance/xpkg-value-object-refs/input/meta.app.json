@@ -1,0 +1,76 @@
+{
+  "metadata.root": {
+    "package": "acme::app",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Host",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "hosts"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.object": {
+                "name": "fromAlpha",
+                "@objectRef": "acme::alpha::Note",
+                "@storage": "jsonb"
+              }
+            },
+            {
+              "field.object": {
+                "name": "fromBeta",
+                "@objectRef": "acme::beta::Note",
+                "@storage": "jsonb",
+                "isArray": true
+              }
+            },
+            {
+              "field.map": {
+                "name": "byKey",
+                "@objectRef": "acme::beta::Note"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": "id",
+                "@generation": "increment"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "Summary",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "storedProc",
+                "@proc": "fn_summary",
+                "@parameterRef": "acme::alpha::Summary"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "total"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

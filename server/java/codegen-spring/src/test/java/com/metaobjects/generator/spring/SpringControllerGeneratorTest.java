@@ -115,6 +115,36 @@ public class SpringControllerGeneratorTest extends SharedRegistryTestBase {
     }
 
     @Test
+    public void pathHonorsADeclaredCollectionNameAndTheConfiguredPluralizer() throws Exception {
+        // Shared contract: fixtures/naming-conformance/collection-segments.json.
+        String declared = AUTHOR_FIXTURE.replace("\"name\": \"Author\",", "\"name\": \"Author\", \"@collectionName\": \"People\",");
+        assertEquals("/api/people", controllerRouteFor(declared, null));
+        // No @collectionName, naming.collections: none -> the name as it is (snake_cased).
+        assertEquals("/api/author", controllerRouteFor(AUTHOR_FIXTURE, "none"));
+        // A declared name beats the configured pluralizer.
+        assertEquals("/api/people", controllerRouteFor(declared, "none"));
+    }
+
+    private String controllerRouteFor(String fixture, String pluralizer) throws Exception {
+        Path outDir = tempFolder.newFolder().toPath();
+        Path workspace = tempFolder.newFolder().toPath();
+        MetaDataLoader loader = SpringTestFixtures.loadFixture(workspace, "author-collection", fixture);
+        if (pluralizer != null) {
+            loader.getRoot().setPhysicalNaming(
+                com.metaobjects.database.PhysicalNaming.of("snake_case", "snake_case", pluralizer));
+        }
+        SpringControllerGenerator gen = new SpringControllerGenerator();
+        Map<String, String> args = new HashMap<>();
+        args.put("outputDir", outDir.toString());
+        gen.setArgs(args);
+        gen.execute(loader);
+        String src = Files.readString(outDir.resolve("acme/blog/AuthorController.java"));
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("@RequestMapping\\(\"([^\"]*)\"\\)").matcher(src);
+        assertTrue(src, m.find());
+        return m.group(1);
+    }
+
+    @Test
     public void withCountReturnsEnvelopeAndBareRowsBothEmitted() throws Exception {
         Path outDir = tempFolder.newFolder("ctrl-wc").toPath();
         Path workspace = tempFolder.newFolder("ctrl-wc-fx").toPath();

@@ -8,27 +8,19 @@ generated package. Every generator that names it — the entity tier's own
 render helpers, response parsers, extractors and api-docs — asks this module, so none of
 them can disagree with the declaration. The template tier declares no model of its own.
 
-Naming (ADR-0044's rule, applied to the entity tier's flat modules — #228): a value object
-whose short name no other top-level object shares emits bare. When another object shares
-it — a second value object, or an entity or projection in another package — every value
-object of that name emits package-qualified (``acme::alpha::Note`` → ``AcmeAlphaNote``).
-Entities and projections keep their names: only the value object moves. The module is
-flat, so without this a second ``Note`` would collide on the file name (``Note.py``) as
-well as the class. A derived name that still collides fails loud
-(``ERR_PAYLOAD_NAME_COLLISION``). The same rule as C#'s ``ValueObjectNames``.
-
-The name map is a pure function of the loaded root — never of a run's ``--entities`` or
-scope selection — so a value object keeps its name whichever subset is generated.
+Naming (amending ADR-0044 and ADR-0056): a value object is NEVER renamed; its type
+is its own name. Two objects that would emit one module into one generated package are
+refused at gen time with ``ERR_NAME_COLLISION`` (``codegen/name_claims.py``), and the
+``package`` output layout (``codegen/import_path.py``) is the remedy: a different package is a
+different directory. Only a file that REFERENCES two same-named value objects binds each under
+a package-qualified local alias (``Note as AcmeAlphaNote``).
 """
 from __future__ import annotations
 
 import weakref
 from collections.abc import Mapping
 
-from metaobjects.codegen.collision_names import (
-    ERR_PAYLOAD_NAME_COLLISION,
-    package_qualified_name,
-)
+from metaobjects.codegen.collision_names import package_qualified_name
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.core.object.meta_object import MetaObject
@@ -43,6 +35,9 @@ from metaobjects.shared.base_types import TYPE_OBJECT, TYPE_SOURCE
 from metaobjects.shared.separators import PACKAGE_SEP
 
 # Loaded metadata is read-only (never mutated after load), so the name map is cached per root.
+_SHORT_NAME_COUNTS: "weakref.WeakKeyDictionary[MetaData, dict[str, int]]" = (
+    weakref.WeakKeyDictionary()
+)
 _NAMES: "weakref.WeakKeyDictionary[MetaData, Mapping[str, str]]" = weakref.WeakKeyDictionary()
 
 
@@ -125,66 +120,58 @@ def is_field_required(field: MetaField) -> bool:
 
 
 def value_object_names(root: MetaData) -> Mapping[str, str]:
-    """``resolution_key()`` → emitted model name, for every top-level ``object.value``."""
+    """DEPRECATED shim, kept importable for one release for owned (ejected) generator copies.
+
+    A value object is never renamed (amending ADR-0044 and ADR-0056): the map is
+    the identity, ``resolution_key()`` -> the object's own short name, for every top-level
+    ``object.value``. Two objects that would emit one module name into one generated package
+    are refused at gen time with ``ERR_NAME_COLLISION`` (see ``name_claims``); under
+    ``output_layout: "package"`` two packages never clash."""
     names = _NAMES.get(root)
     if names is None:
-        names = _assign(root)
+        # ADR-0039 sanctioned own: top-level object scan on the loader ROOT (never extended,
+        # so own == effective).
+        names = {
+            c.resolution_key(): c.name
+            for c in root.own_children()
+            if c.type == TYPE_OBJECT and c.sub_type == OBJECT_SUBTYPE_VALUE
+        }
         _NAMES[root] = names
     return names
 
 
-def _assign(root: MetaData) -> Mapping[str, str]:
-    by_short: dict[str, list[MetaData]] = {}
-    # ADR-0039 sanctioned own: top-level object scan on the loader ROOT (never extended, so
-    # own == effective).
-    for c in root.own_children():
-        if c.type == TYPE_OBJECT:
-            by_short.setdefault(c.name, []).append(c)
-
-    names: dict[str, str] = {}
-    for short, members in by_short.items():
-        for vo in members:
-            if vo.sub_type != OBJECT_SUBTYPE_VALUE:
-                continue
-            names[vo.resolution_key()] = (
-                short if len(members) == 1 else package_qualified_name(pkg_of(vo), short)
-            )
-
-    # Backstop, in key order so which pair the message names is a pure function of the model.
-    # Seeded with every other object's module name: the package is flat, so a derived
-    # `AcmeAlphaNote` must not land on an entity already called that.
-    owner: dict[str, str] = {
-        c.name: c.resolution_key()
-        for members in by_short.values()
-        for c in members
-        if c.sub_type != OBJECT_SUBTYPE_VALUE
-    }
-    for key in sorted(names):
-        emitted = names[key]
-        existing = owner.get(emitted)
-        if existing is not None:
-            raise ValueError(
-                f"{ERR_PAYLOAD_NAME_COLLISION}: value object name collision: "
-                f'"{emitted}" derives from both "{existing}" and "{key}" — rename one '
-                "value object or move it to a package that derives a distinct name"
-            )
-        owner[emitted] = key
-    return names
-
-
 def model_class_name(obj: MetaData) -> str:
-    """The emitted Pydantic model class name for a top-level object — and, the package being
-    flat, its module name too (``<Name>.py``). The ADR-0044 collision-aware name for an
-    ``object.value``; the object's own name for anything else."""
-    if obj.sub_type == OBJECT_SUBTYPE_VALUE:
-        return value_object_names(root_of(obj)).get(obj.resolution_key(), obj.name)
+    """The emitted Pydantic model class name of a top-level object: its own name. (It used to
+    be package-qualified for a colliding value object; the rename is retired, and this stays
+    importable for owned generator copies.)"""
+    return obj.name
+
+
+def local_name(obj: MetaData) -> str:
+    """The name a generated file BINDS *obj*'s model under: its own name, or — when another
+    top-level object shares its short name, which only the ``package`` layout lets coexist —
+    its package-qualified name (``acme::alpha::Note`` -> ``AcmeAlphaNote``). Used for local
+    bindings only (``from ..alpha.Note import Note as AcmeAlphaNote``, the extract tier's
+    mirrors and mappers); the type itself is never renamed. A pure function of the loaded
+    root, so a file binds the same name whichever subset a run generates."""
+    root = root_of(obj)
+    counts = _SHORT_NAME_COUNTS.get(root)
+    if counts is None:
+        counts = {}
+        # ADR-0039 sanctioned own: top-level object scan on the loader ROOT.
+        for c in root.own_children():
+            if c.type == TYPE_OBJECT:
+                counts[c.name] = counts.get(c.name, 0) + 1
+        _SHORT_NAME_COUNTS[root] = counts
+    if counts.get(obj.name, 1) > 1:
+        return package_qualified_name(pkg_of(obj), obj.name)
     return obj.name
 
 
 def model_import(obj: MetaData) -> str:
-    """``from .<Name> import <Name>`` — how a sibling generated module imports *obj*'s model."""
-    name = model_class_name(obj)
-    return f"from .{name} import {name}"
+    """DEPRECATED flat-layout shim: ``from .<Name> import <Name>``. Generators build their
+    imports through :class:`metaobjects.codegen.import_path.ModuleScope`, which is layout-aware."""
+    return f"from .{obj.name} import {obj.name}"
 
 
 # Sentinel separating "never resolved" from "resolved to nothing" in the cache below.
@@ -213,11 +200,14 @@ def object_ref_target(field: MetaData) -> MetaObject | None:
 
 
 def object_ref_class_name(field: MetaData) -> str | None:
-    """The model class a ``field.object`` / ``field.map`` ``@objectRef`` types as, or ``None``
-    when the field declares no ``@objectRef``. An unresolvable ref (the loader normally
-    rejects one first) falls back to the ref's bare tail."""
+    """The name a ``field.object`` / ``field.map`` ``@objectRef`` types as in the file being
+    rendered, or ``None`` when the field declares no ``@objectRef``: the target's local binding
+    (:func:`local_name` — its own name unless another object shares it). An unresolvable ref
+    (the loader normally rejects one first) falls back to the ref's bare tail."""
     ref = field.attrs().get(fc.FIELD_ATTR_OBJECT_REF)
     if not isinstance(ref, str) or not ref:
         return None
     target = object_ref_target(field)
-    return model_class_name(target) if target is not None else ref.split(PACKAGE_SEP)[-1]
+    if target is None:
+        return ref.split(PACKAGE_SEP)[-1]
+    return local_name(target)

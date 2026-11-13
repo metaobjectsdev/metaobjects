@@ -1,6 +1,6 @@
 # Conformance coverage
 
-The MetaObjects standard ships **38 shared conformance corpora** under
+The MetaObjects standard ships **39 shared conformance corpora** under
 [`fixtures/`](../fixtures/). Every port runs every corpus that is *applicable to
 it* and asserts the same expected behaviour against the same fixtures. **This page
 is the inverse index**: fixture → feature doc + per-port pass status, and it is the
@@ -57,9 +57,10 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/field-lint-conformance/`](../fixtures/field-lint-conformance/) (the `verify` field authoring lint) | 15 | ✓ (reference) | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/requirement-check-conformance/`](../fixtures/requirement-check-conformance/) (the `verify` requirement gate, ADR-0057) | 43 cases | ✓ (reference) | ✓ | inherits via Java (one Maven `metaobjects:verify` goal) | ✓ | ✓ |
 | [`fixtures/requirement-test-identity-conformance/`](../fixtures/requirement-test-identity-conformance/) (the identity, skip state and digest of each generated requirement test, and the filter seam, ADR-0057) | 26 cases | ✓ (reference) | ✓ | identity function inherits via Java; emitted names asserted by its own generator test | ✓ | ✓ |
-| [`fixtures/naming-conformance/`](../fixtures/naming-conformance/) | 8 cases | ✓ | ✓ | inherits via Java (`RouteNaming.pluralize`) | ✓ | ✓ |
+| [`fixtures/naming-conformance/`](../fixtures/naming-conformance/) | 8 cases + 23 collection segments (`@collectionName`, `naming.collections`) | ✓ | ✓ | inherits via Java (`RouteNaming.pluralize`, `RouteNaming.collectionSegment`) | ✓ | ✓ |
 | [`fixtures/wire-conformance/`](../fixtures/wire-conformance/) (the `wire` setting, ADR-0019 Amendment 2) | 6 cases + 8 refusals | ✓ | ✓ | inherits via Java (one config reader) | ✓ | ✓ |
 | [`fixtures/enum-length-conformance/`](../fixtures/enum-length-conformance/) (a string-stored enum's column length: `@maxLength`, else `enums.maxLength`) | 5 cases + 1 overflow + 5 refusals; run by a port that sizes the column | ✓ | ✓ | inherits via Java (one config reader, one resolver) | ✓ | — (sizes no column: emits no DDL or column type; the config reader accepts and shape-checks the `enums` block) |
+| [`fixtures/check-constraint-conformance/`](../fixtures/check-constraint-conformance/) (the CHECK constraints `meta migrate` derives: name and expression text per dialect) | 1 model, 5 expected files (postgres, sqlite, d1, and both skip-redundant variants) | ✓ (reference, `migrate-ts`) | — (no CHECK in a generated model) | — (same) | ✓ (the EF context declares them; live-Postgres `EnsureCreated` lane) | — (same) |
 | [`fixtures/codegen-noop/`](../fixtures/codegen-noop/) (FR-044 — reporting vocabulary: what is lowered, what stays inert) | 1 model pair (`reporting/with` vs `reporting/without`) | ✓ (codegen + migrate) | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/cube-model/`](../fixtures/cube-model/) (FR-044 Plan 4 — the `cube-model` generator's golden Cube files, plus the canonical model's golden) | 46 cases (36 trees + 10 errors) + 1 canonical golden | ✓ (the exporter is TypeScript-only, spec R6; its `cube` lane also loads the files into a real Cube) | — | — | — | — |
 | [`fixtures/contract-conformance/`](../fixtures/contract-conformance/) (FR-022 — the `contract-schema` and `openapi` generators' golden trees and refusals) | 19 cases (14 trees + 5 errors) | ✓ (one neutral engine, ADR-0034 Amendment 10; the generated API lanes also hold real traffic to the documents) | — | — | — | — |
@@ -111,27 +112,29 @@ corpora, or between its *vocabulary* and its *behaviour* — never gets a row of
 own, and its boundary ends up discoverable only from the feature doc. The split ones
 are recorded here instead.
 
-**`identity.primary @sequenceStart`** (one semantic in every port): on a fresh
+**`identity.primary @sequenceStart`** (one semantic in every port that writes DDL): on a fresh
 database the identity or sequence begins at `@sequenceStart`; when the start changes on an
-existing database, the change sets `START WITH` only. It never `RESTART`s, and in 1.3 it does
-not move the current value, because live rows already hold the ids it has handed out (a later
-release is planned to move a counter below the start forward, never backward). The port TODOs below
-are tracked in [#544](https://github.com/metaobjectsdev/metaobjects/issues/544).
+existing database, the change sets `START WITH n` and moves the counter FORWARD only, to
+`GREATEST(n, max(id) + 1)` when it sits below that. It never `RESTART`s and never moves a counter
+back, because live rows already hold the ids it handed out. Tracked in
+[#544](https://github.com/metaobjectsdev/metaobjects/issues/544).
 
+- *Honoured and pinned:* TypeScript (`meta migrate`). A fresh table is created `START WITH n`, and
+  the Drizzle schema template carries the start. A changed start writes `ALTER SEQUENCE … START
+  WITH n` plus an advance-only `setval`. The persistence migration scenarios
+  `sequence-start-change-moves-counter-forward` and `sequence-start-change-below-max-id` pin on
+  live Postgres that the next id is the start, or the highest id plus one when a row already
+  holds an id past the start.
 - *Honoured and pinned:* C#. The generated context carries the start on Npgsql, and the generated
-  rewrite (`UseIdentityStartMigrations()`) writes every start-only change — added, changed or
-  removed — as `ALTER TABLE … ALTER COLUMN … SET START WITH n`, whether the migration is scaffolded
-  through it or its SQL is generated through it (Npgsql alone writes `RESTART WITH n`, or
-  `RESTART WITH 1` for a removed start). `EfModelGapsTests` pins all three transitions on both
-  paths, and on live Postgres that the next id after the change follows the last row.
-- *Honoured and pinned:* TypeScript (`meta migrate`). A fresh table is created `START WITH n`;
-  a changed start writes `ALTER SEQUENCE … START WITH n` only. The persistence migration
-  scenario `sequence-start-change-keeps-counter` pins on live Postgres that the next id after
-  the change follows the last row.
-- *TODO, Java (OMDB) and Kotlin (Exposed):* the vocabulary loads; neither emits or honours the
-  start in its DDL or mapping. Add it with the same semantic and the same pin.
-- *TODO, Python:* the vocabulary loads; the runtime has no DDL path. If it gains one, the same
-  semantic and pin apply.
+  `<Context>DesignTimeServices` makes `dotnet ef migrations add` scaffold a start-only change as
+  `SET START WITH n` plus the same advance-only move (Npgsql alone writes `RESTART WITH n`).
+  `EfModelGapsTests` pins the transitions, and on live Postgres the next id after the change.
+- *Honoured and pinned:* Kotlin (Exposed 0.x and 1.x). A declared start or name generates
+  `autoIncrement(Sequence("<name>", startWith = n))`; a live-Postgres test pins that a fresh
+  table's first id is the start. Exposed generated code has no migration path, so a changed start
+  is `meta migrate`'s job.
+- *Not applicable:* Java (OMDB is pure data access with no DDL, ADR-0015) and Python (no DDL
+  path). The vocabulary loads in both; schema comes from `meta migrate`.
 
 **Cross-port vocabulary implemented in some ports so far (`implementedIn`).** Each entry
 below is in the shared registry and the registry manifest, marked `implementedIn`. A port that
@@ -148,12 +151,6 @@ canonical (`fixtures/registry-conformance/expected-registry.json`).
   - `view.image`, and its `@accept`, `@aspectRatio`, `@maxBytes`, `@maxEdge`, `@store`
 - *Implemented in Java only* (`implementedIn: ["java"]`): `object.* @object` (ADR-0001), the
   native class an object binds to. Java's runtime acts on it; Java's own behaviour is unchanged.
-- *Implemented in C# and TypeScript* (`implementedIn: ["csharp", "typescript"]`): `object.*
-  @collectionName`, an object's collection name: the REST collection segment and reverse-finder
-  names in both, the DbSet in C#, the list function, list hook and Drizzle table variable in
-  TypeScript. Both apply the `naming.collections` pluralizer to an object that declares none
-  (`fixtures/naming-conformance/collection-segments.json`); every port registers and type-checks
-  the attr and the key.
 - *Loads strictly in every port.* Each port registers the `metaobjects-ui-web` provider
   (`view.textarea @rows`, the `view.image` attrs) and `@object` / `@objectAdapter` on
   `object.*`, loads all three fixtures strictly, and emits `implementedIn` in its manifest, which
@@ -286,6 +283,10 @@ manifest contains without moving these boundaries.
   classpath and stubbing them drowns the signal; that tier is compiled and booted over
   real HTTP in the api-contract integration lane instead. The boundary is one
   cross-port rule, not four local concessions.
+- *The gate and the generated-server api-contract lanes run in both output layouts* —
+  the engine default `flat` and `outputLayout: "package"` (which `meta init` writes) —
+  so a defect only the non-default layout shows (a relative import one directory short,
+  two packages landing in one directory) fails a gate rather than an adopter's build.
 - *The prompt tier is out of scope here* because the fitness corpus declares no
   `template.*` nodes. Including those generators would emit nothing and read as
   coverage that is not there.
@@ -615,7 +616,11 @@ only `KotlinSharedModelGeneratorTest`. **C# runs all 15**, in `SharedModelConfor
 > recorded here rather than in a ledger, because ledgering a fixture the design intends to pass
 > is how a port quietly stays behind.
 
-### `fixtures/naming-conformance/` (8 cases)
+### `fixtures/naming-conformance/` (8 cases + 23 collection segments)
+
+`collection-segments.json` (23 cases) pins the REST collection segment from an object's
+`@collectionName` and the project's `naming.collections` pluralizer; every port runs it (see the
+corpus README). The pluralize cases:
 
 All 8 cases → the already-plural pluralize fix (CHANGELOG `## [Unreleased]`):
 an entity whose name is already a plural noun (`Stats`, `Settings`, `Series`)

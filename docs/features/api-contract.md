@@ -91,7 +91,10 @@ every field. The TS mounts can restrict the update to one verb with
 
 `<entity>` is the **entity name** `snake_case`d and then pluralized. One rule, the
 same in all five ports, and derived from the NAME — never from the physical
-`@table`:
+`@table`. An object that declares `@collectionName` (or a project that configures
+`naming.collections`) names its segment instead, in every port; the rule and what
+each port names with it live in
+[physical-naming.md](migrations/physical-naming.md#collection-names).
 
 | Name | Segment | Why |
 |---|---|---|
@@ -291,8 +294,10 @@ each handler they register instead; an `HTTPException` is rethrown to your
   and Python controllers return the first **50**, and no port caps an explicit `limit` on an
   entity (`limit=100000` is honoured as asked). That is the behaviour every existing project
   has, so the setting is opt-in: adding a cap on upgrade would silently truncate a client that
-  reads a whole list. `meta verify` advises (rule `unbounded-list-pages`) when a routes
-  generator is wired and the project sets no page size.
+  reads a whole list. Each port's verify advises (rule `unbounded-list-pages`, never a failure)
+  when a routes generator is wired and the project sets no page size: `meta verify`,
+  `metaobjects verify`, `mvn metaobjects:verify` (Java and Kotlin) and `dotnet meta verify
+  --codegen` (C# knows its generator list only when it runs it).
 
   **Every port reads it:** the TypeScript Fastify and Hono routes, the C# minimal-API routes, the
   Java and Kotlin Spring controllers and the Python FastAPI routers, packaged and ejected (an owned

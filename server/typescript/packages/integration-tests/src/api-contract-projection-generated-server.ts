@@ -23,6 +23,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { runGen, defineConfig } from "@metaobjectsdev/codegen-ts";
+import { indexEmitted, type OutputLayout } from "./output-layout.ts";
 import { entityFile, routesFile } from "@metaobjectsdev/test-generators";
 import pg from "pg";
 import { executeSql } from "./postgres-sql.ts";
@@ -49,6 +50,7 @@ export interface GeneratedProjectionServerHandle {
 export async function startGeneratedProjectionServer(
   connectionUri: string,
   metaPath: string,
+  outputLayout: OutputLayout = "flat",
 ): Promise<GeneratedProjectionServerHandle> {
   const here = dirname(fileURLToPath(import.meta.url));
   const genTmpRoot = join(here, "..", ".gen-tmp");
@@ -65,6 +67,7 @@ export async function startGeneratedProjectionServer(
     config: defineConfig({
       outDir: tmp,
       extStyle: "none",
+      outputLayout,
       dbImport: "./db",
       dialect: "postgres",
       apiPrefix: "/api",
@@ -72,6 +75,7 @@ export async function startGeneratedProjectionServer(
     }),
     metadata: root,
   });
+  const emitted = indexEmitted(tmp, lr.files, outputLayout);
   if (lr.warnings.length > 0) {
     throw new Error(`codegen produced warnings: ${lr.warnings.join("; ")}`);
   }
@@ -115,16 +119,16 @@ export const db = drizzle(pool);
 
   // 4. Import the EMITTED InvoiceSummary route file unmodified and mount it.
   const routes = (await import(
-    pathToFileURL(join(tmp, "InvoiceSummary.routes.ts")).href
+    pathToFileURL(emitted.locate("InvoiceSummary.routes.ts")).href
   )) as { invoiceSummaryRoutes: (f: FastifyInstance) => Promise<void> };
   const ledgerRoutes = (await import(
-    pathToFileURL(join(tmp, "InvoiceLedger.routes.ts")).href
+    pathToFileURL(emitted.locate("InvoiceLedger.routes.ts")).href
   )) as { invoiceLedgerRoutes: (f: FastifyInstance) => Promise<void> };
   const registerRoutes = (await import(
-    pathToFileURL(join(tmp, "InvoiceRegister.routes.ts")).href
+    pathToFileURL(emitted.locate("InvoiceRegister.routes.ts")).href
   )) as { invoiceRegisterRoutes: (f: FastifyInstance) => Promise<void> };
   const stubRoutes = (await import(
-    pathToFileURL(join(tmp, "InvoiceStub.routes.ts")).href
+    pathToFileURL(emitted.locate("InvoiceStub.routes.ts")).href
   )) as { invoiceStubRoutes: (f: FastifyInstance) => Promise<void> };
   const dbMod = (await import(pathToFileURL(join(tmp, "db.ts")).href)) as { pool: pg.Pool };
 

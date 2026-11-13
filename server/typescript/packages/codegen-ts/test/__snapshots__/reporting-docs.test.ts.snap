@@ -61,7 +61,7 @@ flowchart TB
 ## Identity
 
 - **Primary key:** \`id\`
-- **Reference:** \`programId\` → \`Program\`
+- **Reference:** \`programId\` → [\`Program\`](./Program.md)
 
 ## In context
 
@@ -98,7 +98,7 @@ flowchart TB
 ### \`programId\`
 
 - **Type:** \`long\`
-- **References:** [\`Program.id\`](Program.md)
+- **References:** [\`Program.id\`](./Program.md)
 - **Column:** \`program_id\`
 
 

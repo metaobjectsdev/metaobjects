@@ -39,7 +39,9 @@ from metaobjects.codegen.generators.find_inbound import (
     is_xml,
     response_shape,
 )
-from metaobjects.codegen.value_objects import model_class_name, model_import
+from metaobjects.codegen.import_path import ModuleScope
+from metaobjects.codegen.name_claims import claimed_module_path
+from metaobjects.codegen.value_objects import local_name, pkg_of
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.meta.meta_data import MetaData
 
@@ -77,7 +79,9 @@ def _payload_name_collides(root: MetaData, payload: MetaObject) -> bool:
     )
 
 
-def render_output_parser(template: MetaData, root: MetaData) -> str | None:
+def render_output_parser(
+    template: MetaData, root: MetaData, scope: ModuleScope = ModuleScope()
+) -> str | None:
     """Render one parser module for a responding ``template.prompt`` node.
 
     The emitted module imports the ``@responseRef`` value object's model from the
@@ -105,7 +109,7 @@ def render_output_parser(template: MetaData, root: MetaData) -> str | None:
     snake = _snake_case(template_name)
     # ADR-0056: the strict result IS the response value object's own model; the entity
     # generator writes it as `<Vo>.py`, so the module name is the class name.
-    payload_class = model_class_name(payload)
+    payload_class = local_name(payload)
     parse_fn = f"parse_{snake}"
 
     fqn = (
@@ -169,7 +173,7 @@ def render_output_parser(template: MetaData, root: MetaData) -> str | None:
     # otherwise carry an unused import (the tolerant tier's return type is the
     # all-nullable ``…Extracted`` mirror declared right here).
     if emit_strict:
-        lines.append(model_import(payload))
+        lines.append(scope.import_object(payload))
     lines.append("")
     lines.append("")
     if emit_strict:
@@ -300,14 +304,16 @@ class OutputParserGenerator:
         # entity-level filters today.
         self.filter = filter
 
-    def _render_module(self, template: MetaData, root: MetaData) -> str | None:
+    def _render_module(
+        self, template: MetaData, root: MetaData, scope: ModuleScope = ModuleScope()
+    ) -> str | None:
         """EXTENSION SEAM — render the whole parser module for one responding
         ``template.prompt``. Defaults to :func:`render_output_parser` (the strict
         ``parse_*`` + the FR-010 tolerant ``extract_lenient_*`` twins). Override to
         pre/post-process the emitted source, or to replace the strict-parser /
         lenient-extractor emission entirely. Output is byte-identical to the default
         when not overridden."""
-        return render_output_parser(template, root)
+        return render_output_parser(template, root, scope)
 
     def generate(self, ctx: GenContext) -> list[EmittedFile]:
         root = ctx.loaded_root
@@ -318,7 +324,8 @@ class OutputParserGenerator:
         # Only a RESPONDING template.prompt gets a parser file; template.output
         # renders outbound and parses nothing.
         for tmpl in inbound_templates(root):
-            content = self._render_module(tmpl, root)
+            scope = ModuleScope(ctx.config.output_layout, pkg_of(tmpl))
+            content = self._render_module(tmpl, root, scope)
             if content is None:
                 ctx.warn(
                     f"{_GENERATOR_NAME}: skipping template.prompt "
@@ -327,7 +334,10 @@ class OutputParserGenerator:
                 continue
             files.append(
                 EmittedFile(
-                    path=f"{_snake_case(tmpl.name)}_response_parser.py",
+                    path=claimed_module_path(
+                        ctx.claims, ctx.config, pkg_of(tmpl),
+                        f"{_snake_case(tmpl.name)}_response_parser", tmpl.resolution_key(),
+                    ),
                     content=ruff_format(content),
                 )
             )

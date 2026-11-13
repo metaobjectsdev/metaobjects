@@ -1,3 +1,4 @@
+import type { MetaData } from "@metaobjectsdev/metadata";
 import { describe, it, expect } from "bun:test";
 import {
   packageToPath,
@@ -159,29 +160,37 @@ describe("relativeModuleSpecifier — extStyle 'js' extension-ifies relative spe
 });
 
 describe("valueObjectModuleSpecifier", () => {
-  const pkgOf = new Map<string, string | undefined>([
-    ["Triple", "acme::common"],
-    ["SamePkgVo", "acme::ai"],
-  ]);
+  // The node a field's @objectRef names — only its name and resolution key are read.
+  const node = (fqn: string): MetaData => {
+    const name = fqn.split("::").at(-1)!;
+    return { name, resolutionKey: () => fqn } as unknown as MetaData;
+  };
+  const triple = node("acme::common::Triple");
+  const samePkg = node("acme::ai::SamePkgVo");
 
   it("flat layout → same-dir ./<VO> (extStyle none, no .js)", () => {
-    expect(valueObjectModuleSpecifier("Triple", pkgOf, "acme::ai", "flat", "none")).toBe("./Triple");
+    expect(valueObjectModuleSpecifier(triple, "Triple", "acme::ai", "flat", "none")).toBe("./Triple");
   });
 
   it("flat layout honors extStyle js", () => {
-    expect(valueObjectModuleSpecifier("Triple", pkgOf, "acme::ai", "flat", "js")).toBe("./Triple.js");
+    expect(valueObjectModuleSpecifier(triple, "Triple", "acme::ai", "flat", "js")).toBe("./Triple.js");
   });
 
   it("package layout, SAME package → ./<VO>", () => {
-    expect(valueObjectModuleSpecifier("SamePkgVo", pkgOf, "acme::ai", "package", "none")).toBe("./SamePkgVo");
+    expect(valueObjectModuleSpecifier(samePkg, "SamePkgVo", "acme::ai", "package", "none")).toBe("./SamePkgVo");
   });
 
   it("package layout, CROSS package → relative path between packages", () => {
     // The whole point of the fix: NOT a flat ./Triple, but ../common/Triple.
-    expect(valueObjectModuleSpecifier("Triple", pkgOf, "acme::ai", "package", "none")).toBe("../common/Triple");
+    expect(valueObjectModuleSpecifier(triple, "Triple", "acme::ai", "package", "none")).toBe("../common/Triple");
   });
 
-  it("unknown VO falls back to fromPkg (same-dir)", () => {
-    expect(valueObjectModuleSpecifier("Ghost", pkgOf, "acme::ai", "package", "none")).toBe("./Ghost");
+  it("two same-named value objects in two packages resolve to two modules (keyed by node)", () => {
+    expect(valueObjectModuleSpecifier(node("acme::alpha::Note"), "Note", "acme::app", "package", "none")).toBe("../alpha/Note");
+    expect(valueObjectModuleSpecifier(node("acme::beta::Note"), "Note", "acme::app", "package", "none")).toBe("../beta/Note");
+  });
+
+  it("unresolved VO falls back to fromPkg (same-dir)", () => {
+    expect(valueObjectModuleSpecifier(undefined, "Ghost", "acme::ai", "package", "none")).toBe("./Ghost");
   });
 });
