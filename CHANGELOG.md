@@ -11,7 +11,9 @@ here.**
 ## [Unreleased]
 
 **`metamodelVersion` moves to `1.3`.** This release adds vocabulary (`field.duration`,
-`@constraintName`, `@dbCheck`, `@stringValueMap`, `@condition`, `atLeastOne @max`, `@sequenceStart`, `@sequenceName`,
+`@constraintName`, `@dbCheck`, `@stringValueMap`, the rc.21 view vocabulary (`origin.function`, `@union`,
+`@unionAll`, `@grain`, `@grainOrdinal`, the text `@dbColumnType` spellings, and the `cast` node and function
+set of `attr.expression`), `@condition`, `atLeastOne @max`, `@sequenceStart`, `@sequenceName`,
 `@flattenedColumnPrefix`, the `pascal` column rule, and `@dbSetName`, a C#-only attr) and nothing
 that loaded before stops loading. The registry gains two fields on a type or attr entry, carried
 into the registry manifest: `implementedIn` (kind 1: cross-port vocabulary only the named ports
@@ -22,6 +24,40 @@ the kind-1 rows that used to be carved out. A port that reports `1.2` does not k
 vocabulary; upgrade every port together.
 
 ### Added
+
+- **The rc.21 view vocabulary: what a projection needs to replace a hand-written `@sql` view.**
+  Every construct is closed and typed, never free SQL; the TypeScript view emitter lowers them on
+  Postgres and SQLite (SQLite spells each with its own functions, or refuses what it cannot mean),
+  C# validates them at load with the TypeScript rules, and Java and Python register them so a
+  strict load accepts them. In `attr.expression`: `{ cast: <expr>, as: <field subtype>,
+  dbColumnType? }` (an enum casts to an integer only when stored as one, `@intValueMap`, which is
+  how an int-stored enum and an int share a `case`); the functions `greatest`, `least`, `nullif`,
+  `lower`, `upper`, `btrim`, `splitPart`, `concat`, `concatWs`, `substring`, `replace`, `left`,
+  `right` and `length` beside `coalesce`, each argument typed; a `{ field }` ref to a scalar
+  `origin.aggregate` (read on the grouped row, not filterable); and, on a projection, a path of
+  to-one hops (`"patientId.currentMailingAddressId"`) in an expression or as a correlated
+  `@filter` operand, joined but not output. `origin.function` (`@function`, `@schema`, `@args`)
+  is a value computed by a database function the project owns, typed by its argument fields and
+  its carrying field; declared on an entity it is entity-derived (Postgres only). On
+  `object.projection`: `@grain` / `@grainOrdinal`, one row per element of a jsonb `field.object`
+  array, its members read through `origin.passthrough @from: <ValueObject>.<member>`; and
+  `@union` / `@unionAll`, a view that is the UNION (or UNION ALL) of projections of one shape,
+  checked at load. `@dbColumnType` takes the text spellings `text`, `varchar`, `character
+  varying`, `varchar(n)`, `character varying(n)` and `character(n)` on a `field.string` (`meta
+  migrate`, Drizzle, the C# EF context and the view cast honour them; a `@maxLength` over n is
+  refused), and the registry drops its `allowedValues`. A cross-field `@condition` takes only
+  the CHECK subset of the grammar (fields, literals, comparisons, null tests, and/or/not,
+  coalesce), refused at load otherwise. Rulings: the cast names a field subtype, the type
+  `@convert` casts to, with an optional text spelling; two-word functions are camelCase
+  (`splitPart`, `concatWs`) and `btrim` keeps Postgres's name; `concat` ignores NULLs, as SQL's
+  `concat()` does, and there is no separate NULL-propagating `||`; a union defaults to UNION,
+  SQL's own default. Fixtures `fixtures/conformance/projection-view-vocabulary-rc21` and
+  `error-origin-function-free-sql`, `error-projection-union-shape`,
+  `error-projection-grain-not-object-array`, `error-computed-cast-enum-not-int-stored`,
+  `error-db-column-type-sized-max-length`; the live run is
+  `integration-tests/test/view-vocabulary-rc21-pg.test.ts`. **Upgrade note:** `meta migrate` now
+  reads a Postgres `character(n)` column as itself, so a model that declared a plain
+  `field.string` over one sees a type change until it declares `@dbColumnType: character(n)`.
 
 - **`@stringValueMap`: a field.enum member's stored string (rc.21).** A string-stored enum may
   declare the string each member is stored as, `{ member: string }`, for a legacy column whose
@@ -583,6 +619,24 @@ vocabulary; upgrade every port together.
   (TypeScript `prompts.ts` and Python helpers gain a `verify` argument).
 
 ### Fixed
+
+- **Fix, TypeScript and C#: a projection that extends another keeps its super's identity anchor
+  (rc.21).** An extender that declared no identity of its own took its base from its own fields'
+  `extends`, so a projection over a TPH root that added a subtype's column moved its base to the
+  subtype (and its view to that subtype's rows). It now keeps the identity its super anchors with.
+  And a field bound to a TPH relative of the base reads the shared table's column, where it read a
+  column named after the projection field.
+
+- **Fix, TypeScript and C#: a passthrough may walk a reference backwards when at most one row
+  references it (rc.21).** A reverse hop was always to-many, so a passthrough over it was refused
+  (`ERR_ORIGIN_CARDINALITY`). When the holder declares an `identity.primary` or
+  `identity.secondary` over exactly the reference's fields, the hop is to-one for a passthrough;
+  an aggregate over it stays legal.
+
+- **Fix, TypeScript: a grouped view groups the joined columns its expressions read (rc.21).** A
+  computed column or an `origin.first` correlation that read a joined column outside an
+  aggregate was not in the GROUP BY; Postgres refused the view. The base row's columns stay out
+  (its primary key is grouped).
 
 - **Fix, C#: a reference over a flattened member configures the owned type's own navigation
   (rc.21, U6).** `identity.reference { @fields: address.countryId, @references: Country }` emitted

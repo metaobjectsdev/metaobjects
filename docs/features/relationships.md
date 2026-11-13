@@ -244,6 +244,71 @@ boolean on `Patient` declared as `origin.first { @via: Patient.consents, @segmen
 `fixtures/conformance/entity-derived-hipaa-gate` pins the metadata;
 `codegen-ts/test/projection/hipaa-gate-entity-derived.test.ts` pins the view and runs it.
 
+### rc.21: the rest of what a view needs
+
+These constructs let a projection build the views that needed a hand-written `@sql` body. Every
+one is a closed, typed construct: nothing is free SQL. Only the TypeScript view emitter lowers
+them (C# validates them at load; Java and Python accept them under strict load).
+
+**A cast** (`{ cast: <expr>, as: <field subtype>, dbColumnType? }`). `as` is one of `string`,
+`int`, `long`, `double`, `float`, `decimal`, `boolean`, `date`, `timestamp`, `uuid`, and the
+column type is that subtype's. A string cast may name a text `@dbColumnType` spelling (`text`,
+`varchar`, `character varying`, `varchar(n)`, `character varying(n)`, `character(n)`): a typed
+NULL of an unbounded varchar is `{ cast: { value: null }, as: string, dbColumnType: varchar }`.
+An enum casts to an integer only when it is stored as one (`@intValueMap`), which is also how an
+int-stored enum and an int meet in one `case`: `then: { cast: { field: status }, as: int }`.
+
+**Functions** (`{ fn, args }`). Beside `coalesce`: `greatest` and `least` (ordered arguments of
+one type), `nullif` (two of one type), `lower`, `upper`, `btrim` (a string, optionally the
+characters), `splitPart` (string, delimiter, integer), `concat` (scalars; NULL reads as empty),
+`concatWs` (a separator, then scalars), `substring` (string, start, optional length), `replace`,
+`left` and `right` (string, integer), and `length` (string to int). Each argument is typed; a
+NULL literal fits any. On SQLite each is spelled with SQLite's own functions where the meaning
+is the same (`greatest` keeps Postgres's NULL-skipping), and refused where it is not:
+`splitPart` beyond the first part.
+
+**A path in an expression or an operand.** On a projection, `{ field: "patientId.currentMailingAddressId" }`
+in an `origin.computed` expression, or `{ field: "taskId.caseId" }` as a correlated operand in an
+origin's `@filter`, is a path of to-one hops from the base and a field of the entity reached:
+the view joins it without outputting it.
+
+**An expression over an aggregate.** `{ field }` may name a scalar `origin.aggregate` of the
+projection (`count`/`sum`/`avg`/`min`/`max`, `any`/`all`), read on the grouped row:
+`{ fn: greatest, args: [ { field: updatedAt }, { field: lastEvent } ] }`. Such a value is not
+filterable (it exists only after grouping). A grouped view also groups every joined column its
+expressions read.
+
+**A database function the project owns** (`origin.function`). `@function` and `@schema` name it
+(plain identifiers), `@args` the fields passed to it in order; each argument is typed by its
+field and the result by the carrying field's subtype. Declared on an entity, it is
+entity-derived: a projection reaching the entity reads it like any derived field. MetaObjects
+never creates the function (it is owned SQL, created before the view). Postgres only.
+
+```yaml
+- field.int:
+    name: consentState
+    children: [ { origin.function: { "@function": compute_consent_state, "@schema": app, "@args": [id] } } ]
+```
+
+**One row per array element** (`@grain`, `@grainOrdinal`). A projection whose `@grain` names a
+base-entity `field.object` array stored as jsonb has one row per element (`jsonb_array_elements
+… WITH ORDINALITY` on Postgres, `json_each` on SQLite); a base row with no element has no row. A
+field whose `origin.passthrough @from` names the array's value object (`Contact.kind`) reads that
+member of the element, cast to the field's type; the base's own fields read the parent row.
+`@grainOrdinal` names a `field.int`/`field.long` of the projection that holds the 1-based
+position. No `origin.aggregate` on such a projection.
+
+**A union** (`@union`, `@unionAll`). A projection that extends one branch and names the others in
+`@union` is the UNION of their rows; each branch has its own base, joins and `@filter`, and every
+branch has the same fields in order (name, subtype, array-ness, `@column`), checked at load
+(`ERR_BAD_ATTR_VALUE`). Duplicates are removed (UNION, SQL's default) unless `@unionAll: true`.
+
+**Two related rules.** A reference walked backwards is to-one for a passthrough when its holder
+declares a unique identity (`identity.primary` or `identity.secondary`) over exactly its fields.
+And a projection that extends another and declares no identity of its own keeps the identity its
+super anchors with, so a TPH root's projection can add a subtype's column and still read the
+root's shared table.
+
 ## When one entity has two references to the same target
 
 An entity may legitimately declare more than one `identity.reference` onto the same
