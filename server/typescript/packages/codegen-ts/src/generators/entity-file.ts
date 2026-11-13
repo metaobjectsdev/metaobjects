@@ -40,7 +40,7 @@ export const entityFile = function entityFile(opts?: EntityFileOpts): Generator 
     if (isAbstract(entity) && !ctx.renderContext.emitAbstractShapes) {
       return [];
     }
-    // the module's type name are claimed in its directory; two
+    // The module's file name and its type name are claimed in its directory; two
     // objects emitting one name there are refused, naming both. Nothing is renamed.
     claimModuleNames(ctx, entity);
     return {
