@@ -65,7 +65,7 @@ _DB_COLUMN_TYPE_SCHEMA = AttrSchema(
     name=FIELD_ATTR_DB_COLUMN_TYPE,
     value_type=ATTR_SUBTYPE_STRING,
     required=False,
-    allowed_values=VALID_DB_COLUMN_TYPES,
+    # rc.21 part B (U2): no allowed_values — the sized spellings are no closed set.
 )
 
 # @localTime — boolean opt-out into a naive / wall-clock timestamp (ADR-0036 Wave

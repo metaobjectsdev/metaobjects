@@ -64,6 +64,8 @@ from ..meta.persistence.db.db_constants import (
     DB_COLUMN_TYPE_UUID,
     FIELD_ATTR_DB_COLUMN_TYPE,
     VALID_DB_COLUMN_TYPES,
+    DB_COLUMN_TYPE_SIZED_SPELLINGS,
+    parse_db_column_type,
 )
 from ..meta.core.object.meta_object import MetaObject
 from ..meta.core.relationship.meta_relationship import MetaRelationship
@@ -1016,21 +1018,35 @@ def _validate_db_column_type(root: MetaData, errors: list[MetaError]) -> None:
         if not isinstance(value, str):
             continue
 
-        # Rule 1: recognized value.
-        if value not in VALID_DB_COLUMN_TYPES:
+        # Rule 1: recognized value (rc.21: the text spellings, sized ones included).
+        parsed = parse_db_column_type(value)
+        if parsed is None:
             errors.append(
                 MetaError(
                     f"field '{node.name}' attribute '@{FIELD_ATTR_DB_COLUMN_TYPE}' "
                     f"value {value!r} is not a valid value; allowed: "
-                    f"{', '.join(VALID_DB_COLUMN_TYPES)}",
+                    f"{', '.join((*VALID_DB_COLUMN_TYPES, *DB_COLUMN_TYPE_SIZED_SPELLINGS))}",
                     ErrorCode.ERR_BAD_ATTR_VALUE,
                     envelope=node.source,
                 )
             )
             continue
+        # Rule 3 (rc.21): a sized spelling holds n characters; a longer @maxLength (resolving)
+        # would let the app accept a value the column refuses.
+        max_length = node.get_meta_attr(FIELD_ATTR_MAX_LENGTH)
+        if parsed[1] is not None and isinstance(max_length, int) and max_length > parsed[1]:
+            errors.append(
+                MetaError(
+                    f"field.string '{node.name}' declares @{FIELD_ATTR_MAX_LENGTH}: {max_length} over "
+                    f"'@{FIELD_ATTR_DB_COLUMN_TYPE}: {value}', which holds {parsed[1]}; a value the field "
+                    f"accepts would not fit the column.",
+                    ErrorCode.ERR_BAD_ATTR_VALUE,
+                    envelope=node.source,
+                )
+            )
 
-        # Rule 2: legal (subtype × value) pairing.
-        required_subtype = _DB_COLUMN_TYPE_REQUIRED_SUBTYPE[value]
+        # Rule 2: legal (subtype × value) pairing — every value is field.string's.
+        required_subtype = FIELD_SUBTYPE_STRING
         if node.sub_type != required_subtype:
             # Derive the allowed-pairings list from the map so it stays the single
             # source of truth for pairing legality.

@@ -340,6 +340,14 @@ for _def in core_provider._defs:  # noqa: SLF001 (provider build-time enrichment
                 required=False,
             )
         )
+        # rc.21 part B: @union / @unionAll (U15), @grain / @grainOrdinal (U14). Registered so a
+        # strict load accepts them; the shape rules run in TypeScript and C# (see CHANGELOG).
+        _def.attrs.extend([
+            AttrSchema(name="union", value_type=ATTR_SUBTYPE_STRING, required=False, is_array=True),
+            AttrSchema(name="unionAll", value_type="boolean", required=False),
+            AttrSchema(name="grain", value_type=ATTR_SUBTYPE_STRING, required=False),
+            AttrSchema(name="grainOrdinal", value_type=ATTR_SUBTYPE_STRING, required=False),
+        ])
         break
 
 # FR-044 — object.report: declared dimensions x measures of ONE entity (@from),
@@ -1050,6 +1058,22 @@ core_provider.add(
             AttrSchema(name=ORIGIN_ATTR_VIA, value_type=ATTR_SUBTYPE_STRING, required=False),
             AttrSchema(name=ORIGIN_ATTR_ORDER_BY, value_type=ATTR_SUBTYPE_STRING, required=True, is_array=True),
             AttrSchema(name=ORIGIN_ATTR_FILTER, value_type=ATTR_SUBTYPE_FILTER, required=False),
+        ],
+        child_rules=[ChildRule(TYPE_ATTR, "*")],
+    )
+)
+
+# origin.function (rc.21 part B, U10) — a call of a database function the project owns:
+# @function required, @schema and @args optional. Registered so a strict load accepts it.
+core_provider.add(
+    TypeDefinition(
+        type=TYPE_ORIGIN,
+        sub_type="function",
+        factory=MetaOrigin,
+        attrs=[
+            AttrSchema(name="function", value_type=ATTR_SUBTYPE_STRING, required=True),
+            AttrSchema(name="schema", value_type=ATTR_SUBTYPE_STRING, required=False),
+            AttrSchema(name="args", value_type=ATTR_SUBTYPE_STRING, required=False, is_array=True),
         ],
         child_rules=[ChildRule(TYPE_ATTR, "*")],
     )

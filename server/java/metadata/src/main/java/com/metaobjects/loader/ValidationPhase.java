@@ -1243,24 +1243,35 @@ public final class ValidationPhase {
         String value = node.getMetaAttr(CoreDBMetaDataProvider.DB_COLUMN_TYPE, false)
                            .getValueAsString();
 
-        // Rule 1: recognized value.
-        if (value == null || !CoreDBMetaDataProvider.VALID_DB_COLUMN_TYPES.contains(value)) {
+        // Rule 1: recognized value (rc.21: the text spellings, sized ones included).
+        int length = CoreDBMetaDataProvider.dbColumnTypeLength(value);
+        if (length < 0) {
             throw new MetaDataException(
                 ErrorMessageConstants.ERR_BAD_ATTR_VALUE
                     + ": field '" + node.getName()
                     + "' @" + CoreDBMetaDataProvider.DB_COLUMN_TYPE + " '" + value
                     + "' is not a valid value; allowed: "
-                    + CoreDBMetaDataProvider.VALID_DB_COLUMN_TYPES,
+                    + CoreDBMetaDataProvider.VALID_DB_COLUMN_TYPES + " and "
+                    + CoreDBMetaDataProvider.DB_COLUMN_TYPE_SIZED_SPELLINGS,
                 ErrorCode.ERR_BAD_ATTR_VALUE, node.getSource());
         }
+        // Rule 3 (rc.21): a sized spelling holds n characters; a longer @maxLength would let the
+        // app accept a value the column refuses. ADR-0039: resolving.
+        if (length > 0 && node.hasMetaAttr("maxLength")) {
+            Object max = node.getMetaAttr("maxLength").getValue();
+            if (max instanceof Number n && n.longValue() > length) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_BAD_ATTR_VALUE
+                        + ": field.string '" + node.getName() + "' declares @maxLength: " + n
+                        + " over '@" + CoreDBMetaDataProvider.DB_COLUMN_TYPE + ": " + value + "', which holds "
+                        + length + "; a value the field accepts would not fit the column.",
+                    ErrorCode.ERR_BAD_ATTR_VALUE, node.getSource());
+            }
+        }
 
-        // Rule 2: legal (subtype × value) pairing.
+        // Rule 2: legal (subtype × value) pairing — every value is field.string's.
         String subType = node.getSubType();
-        String requiredSubType = switch (value) {
-            case CoreDBMetaDataProvider.DB_COLUMN_TYPE_UUID,
-                 CoreDBMetaDataProvider.DB_COLUMN_TYPE_JSONB -> StringField.SUBTYPE_STRING;
-            default -> null; // unreachable — Rule 1 already rejected unknown values
-        };
+        String requiredSubType = StringField.SUBTYPE_STRING;
         if (requiredSubType != null && !requiredSubType.equals(subType)) {
             throw new MetaDataException(
                 ErrorMessageConstants.ERR_BAD_ATTR_VALUE

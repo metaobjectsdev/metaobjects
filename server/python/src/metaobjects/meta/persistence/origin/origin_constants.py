@@ -15,13 +15,19 @@ ORIGIN_SUBTYPE_AGGREGATE = "aggregate"
 # @via, projecting @of.
 ORIGIN_SUBTYPE_COMPUTED = "computed"
 ORIGIN_SUBTYPE_FIRST = "first"
+# rc.21 part B (U10): a value computed by a database function the project owns.
+ORIGIN_SUBTYPE_FUNCTION = "function"
 ORIGIN_SUBTYPES = (
     SUBTYPE_BASE,
     ORIGIN_SUBTYPE_PASSTHROUGH,
     ORIGIN_SUBTYPE_AGGREGATE,
     ORIGIN_SUBTYPE_COMPUTED,
     ORIGIN_SUBTYPE_FIRST,
+    ORIGIN_SUBTYPE_FUNCTION,
 )
+ORIGIN_ATTR_FUNCTION = "function"
+ORIGIN_ATTR_SCHEMA = "schema"
+ORIGIN_ATTR_ARGS = "args"
 
 # #210 — the ASSEMBLY origins: they derive a value by rolling up, computing, or
 # collecting from a backing store, which is what an object.projection is for.
@@ -33,6 +39,7 @@ ASSEMBLY_ORIGIN_SUBTYPES = (
     ORIGIN_SUBTYPE_AGGREGATE,
     ORIGIN_SUBTYPE_COMPUTED,
     ORIGIN_SUBTYPE_FIRST,
+    ORIGIN_SUBTYPE_FUNCTION,
 )
 
 # passthrough attrs

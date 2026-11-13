@@ -30,6 +30,11 @@ OBJECT_ATTR_DB_SET_NAME = "dbSetName"
 # the SAME attr subtype as origin.aggregate's @filter) that lowers to an outer
 # SQL WHERE. Mirrors TS object-constants.ts OBJECT_PROJECTION_ATTR_FILTER.
 OBJECT_PROJECTION_ATTR_FILTER = "filter"
+# rc.21 part B: a projection UNIONed with others (U15), one with a row per array element (U14).
+OBJECT_PROJECTION_ATTR_UNION = "union"
+OBJECT_PROJECTION_ATTR_UNION_ALL = "unionAll"
+OBJECT_PROJECTION_ATTR_GRAIN = "grain"
+OBJECT_PROJECTION_ATTR_GRAIN_ORDINAL = "grainOrdinal"
 
 # ---------------------------------------------------------------------------
 # FR-044 — object.report attrs. Mirrors TS object-constants.ts.

@@ -54,10 +54,39 @@ DB_COLUMN_TYPE_JSONB = "jsonb"
 
 # The closed set of legal @dbColumnType values. ADR-0036 Wave 2 retires
 # timestamp_with_tz — the legal set is now just { uuid, jsonb }, both on field.string.
+# rc.21 part B (U2): the text spellings, all on field.string; the sized ones are parsed.
+DB_COLUMN_TYPE_TEXT = "text"
+DB_COLUMN_TYPE_VARCHAR = "varchar"
+DB_COLUMN_TYPE_CHARACTER_VARYING = "character varying"
 VALID_DB_COLUMN_TYPES = (
     DB_COLUMN_TYPE_UUID,
     DB_COLUMN_TYPE_JSONB,
+    DB_COLUMN_TYPE_TEXT,
+    DB_COLUMN_TYPE_VARCHAR,
+    DB_COLUMN_TYPE_CHARACTER_VARYING,
 )
+DB_COLUMN_TYPE_SIZED_SPELLINGS = ("varchar(n)", "character varying(n)", "character(n)")
+
+import re as _re
+
+_SIZED_DB_COLUMN_TYPE = _re.compile(r"^(varchar|character varying|character)\(([1-9][0-9]{0,8})\)$")
+
+
+def parse_db_column_type(value: str) -> tuple[str, int | None] | None:
+    """rc.21 part B (U2): parse a @dbColumnType value to (kind, length), or None when it is
+    not legal. Postgres's own spellings, matched exactly, as every port parses them."""
+    if value == DB_COLUMN_TYPE_UUID:
+        return ("uuid", None)
+    if value == DB_COLUMN_TYPE_JSONB:
+        return ("jsonb", None)
+    if value == DB_COLUMN_TYPE_TEXT:
+        return ("text", None)
+    if value in (DB_COLUMN_TYPE_VARCHAR, DB_COLUMN_TYPE_CHARACTER_VARYING):
+        return ("varchar", None)
+    m = _SIZED_DB_COLUMN_TYPE.match(value)
+    if m is None:
+        return None
+    return ("char" if m.group(1) == "character" else "varchar", int(m.group(2)))
 
 # ---------------------------------------------------------------------------
 # DB-domain physical attrs on identity subtypes (RDB index / FK-constraint
