@@ -59,6 +59,31 @@ describe("G13 — a projection extending a projection", () => {
     expect(buildProjectionViews(root, { dialect: "postgres" }).map((v) => v.name).sort()).toEqual(["v_da_plans", "v_plan_extract"]);
   });
 
+  // rc.21 (U5): an extender that declares nothing but its own source still gets its view —
+  // `viewIsDerived` read the extender's own children, found no anchor and no origin, and dropped
+  // the projection silently.
+  test("an extender declaring only its own source gets the inherited view", async () => {
+    const bare = { "object.projection": { name: "PlanCopy", extends: "PlanExtract", children: [
+      { "source.rdb": { "@kind": "view", "@table": "v_plan_copy" } },
+    ] } };
+    const { root, errors } = await load([base(true), bare]);
+    expect(errors).toEqual([]);
+    const views = buildProjectionViews(root, { dialect: "postgres" });
+    expect(views.map((v) => v.name)).toEqual(["v_plan_copy"]);
+    expect(views[0]!.sql).toMatch(/p\.id AS plan_id,\s+p\.name AS label,\s+COUNT\(DISTINCT w\.id\) AS week_count/);
+  });
+
+  // rc.21 (U5 audit): an `@sql` extender's dependencies are the anchors it inherits.
+  test("an @sql extender depends on the base's anchor table", async () => {
+    const sqlCopy = { "object.projection": { name: "PlanSql", extends: "PlanExtract", children: [
+      { "source.rdb": { "@kind": "view", "@table": "v_plan_sql", "@sql": "SELECT id AS plan_id FROM plans" } },
+    ] } };
+    const { root, errors } = await load([base(true), sqlCopy]);
+    expect(errors).toEqual([]);
+    const view = buildProjectionViews(root, { dialect: "postgres" }).find((v) => v.name === "v_plan_sql");
+    expect(view?.dependsOn).toEqual(["plans"]);
+  });
+
   test("an extender without its own source is refused, never emitted under the base's name", async () => {
     const { errors } = await load([base(false), extender(false)]);
     expect(errors.map((e) => String(e.message)).join("\n")).toMatch(/DataAggregationPlans' inherits a source/);

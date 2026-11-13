@@ -557,6 +557,14 @@ vocabulary; upgrade every port together.
 
 ### Fixed
 
+- **Fix, TypeScript: a projection extender that declares only its own source gets its view
+  (rc.21).** `meta migrate` decided whether a projection's view is derived from the projection's
+  OWN children, so a projection that extends another projection and adds nothing but its own
+  `source.rdb` (`@kind: view`) had no anchor or origin of its own and was dropped from the
+  expected schema with no error. It now reads the effective children, as the view builder already
+  does (G13). The same audit fixed an `@sql` extender's dependencies: they now include the anchor
+  tables it inherits, so a column change on its base table drops and recreates it.
+
 - **Fix, TypeScript and C#: a TPH subtype's columns get their CHECKs (rc.21).** `meta migrate`,
   `meta verify --db` and the C# EF context built the CHECKs of a discriminator base's table from
   the base's own fields only, so an enum or validator on a column a concrete subtype (or an
