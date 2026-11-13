@@ -70,6 +70,12 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   `scripts/check-peer-ranges.ts` now fails a publishable package that requires `@biomejs/biome`
   through `dependencies` or a non-optional peer.
 
+### Deprecated
+
+- **C#: `ValueObjectNames.Names(root)`.** A value object is never renamed, so it now returns the
+  identity map (resolution key to PascalCase name) and is `[Obsolete]` for one release, matching
+  the TypeScript and Python shims. Use `ValueObjectNames.TypeName(obj, root)`.
+
 ### Fixed
 
 - **A projection view keeps the columns a reverse `@via` hop feeds.** An origin `@via` that walks

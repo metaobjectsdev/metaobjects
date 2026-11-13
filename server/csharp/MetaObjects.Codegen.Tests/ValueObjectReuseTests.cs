@@ -84,6 +84,18 @@ public sealed class ValueObjectReuseTests
     }
 
     [Fact]
+#pragma warning disable CS0618
+    public void The_obsolete_name_map_is_the_identity_map_of_value_objects()
+    {
+        var root = Load(Alpha, Beta);
+        var names = ValueObjectNames.Names(root);
+
+        Assert.Equal("Note", names["acme::alpha::Note"]);
+        Assert.Equal("Note", names["acme::beta::Note"]);
+    }
+#pragma warning restore CS0618
+
+    [Fact]
     public void A_unique_short_name_stays_bare()
     {
         var root = Load(Alpha);

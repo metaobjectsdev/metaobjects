@@ -35,6 +35,16 @@ public static class ValueObjectNames
     /// </summary>
     public static string TypeName(MetaData obj, MetaData root) => CSharpNaming.Pascal(obj.Name);
 
+    /// <summary>
+    /// The value-object name map: <c>ResolutionKey()</c> → emitted C# name. A value object is never
+    /// renamed, so this is the identity map (resolution key → PascalCase name).
+    /// </summary>
+    [Obsolete("A value object is never renamed; use TypeName(obj, root). Removed after one release.")]
+    public static IReadOnlyDictionary<string, string> Names(MetaData root) =>
+        root.Children()
+            .Where(IsValueShape)
+            .ToDictionary(o => o.ResolutionKey(), o => CSharpNaming.Pascal(o.Name), StringComparer.Ordinal);
+
     /// <summary>The namespace <paramref name="obj"/>'s type is emitted into (package binding).</summary>
     public static string Namespace(MetaData obj, GenConfig config) =>
         PackageBindingResolver.Resolve(
