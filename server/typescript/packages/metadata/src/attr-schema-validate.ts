@@ -58,13 +58,16 @@ import {
   FIELD_ATTR_INT_VALUE_MAP,
   FIELD_ATTR_STRING_VALUE_MAP,
   ENUM_MEMBER_PATTERN,
+  FIELD_ATTR_MAX_LENGTH,
+  FIELD_SUBTYPE_STRING,
 } from "./core/field/field-constants.js";
 import { isSharedEnumDeclaration } from "./core/field/shared-enum.js";
 import {
   FIELD_ATTR_DB_COLUMN_TYPE,
   DB_COLUMN_TYPE_VALUES,
-  DB_COLUMN_TYPE_LEGAL_SUBTYPES,
-  type DbColumnTypeValue,
+  DB_COLUMN_TYPE_SIZED_SPELLINGS,
+  dbColumnTypeLegalSubtypes,
+  parseDbColumnType,
 } from "./persistence/db/db-constants.js";
 
 export interface AttrSchemaValidationResult {
@@ -561,21 +564,33 @@ function validateNode(
     // one was pairing-checked on its declaring node; own-attrs-only policy).
     const ownValue = node.ownAttrs().get(FIELD_ATTR_DB_COLUMN_TYPE);
     if (typeof ownValue === "string") {
-      const legalSubtypes = (DB_COLUMN_TYPE_VALUES as readonly string[]).includes(ownValue)
-        ? DB_COLUMN_TYPE_LEGAL_SUBTYPES[ownValue as DbColumnTypeValue]
-        : undefined;
+      const legalSubtypes = dbColumnTypeLegalSubtypes(ownValue);
       if (legalSubtypes === undefined || !legalSubtypes.includes(node.subType)) {
         errors.push(
           new ParseError(
             `${nodeLabel(node)} attribute '@${FIELD_ATTR_DB_COLUMN_TYPE}' value ` +
               `'${ownValue}' is not legal on field.${node.subType}. ` +
               `Legal @${FIELD_ATTR_DB_COLUMN_TYPE} pairings: ` +
-              `${DB_COLUMN_TYPE_VALUES.map(
-                (v) => `${v} (field.${DB_COLUMN_TYPE_LEGAL_SUBTYPES[v].join("/field.")})`,
+              `${[...DB_COLUMN_TYPE_VALUES, ...DB_COLUMN_TYPE_SIZED_SPELLINGS].map(
+                (v) => `${v} (field.${FIELD_SUBTYPE_STRING})`,
               ).join(", ")}.`,
             { code: "ERR_BAD_ATTR_VALUE", source: node.source },
           ),
         );
+      } else {
+        // rc.21 part B (U2): a sized spelling holds n characters, so a longer @maxLength would let
+        // the app accept a value the column refuses. ADR-0039: resolving — @maxLength may be inherited.
+        const parsed = parseDbColumnType(ownValue);
+        const max = node.attr(FIELD_ATTR_MAX_LENGTH);
+        if (parsed !== undefined && "length" in parsed && parsed.length !== undefined && typeof max === "number" && max > parsed.length) {
+          errors.push(
+            new ParseError(
+              `${nodeLabel(node)} declares @${FIELD_ATTR_MAX_LENGTH}: ${max} over '@${FIELD_ATTR_DB_COLUMN_TYPE}: ${ownValue}', ` +
+                `which holds ${parsed.length}; a value the field accepts would not fit the column.`,
+              { code: "ERR_BAD_ATTR_VALUE", source: node.source },
+            ),
+          );
+        }
       }
     }
   }

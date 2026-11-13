@@ -6,7 +6,10 @@
  * Per spec §5.2.
  */
 export type SqlType =
-  | { kind: "text"; maxLength?: number }
+  // rc.21 part B (U2): `variant` is the @dbColumnType spelling — "varchar" an unbounded
+  // `character varying` (Postgres treats it as text; the diff does not tell them apart), "char" a
+  // fixed-length `character(n)` (blank-padded, a different type).
+  | { kind: "text"; maxLength?: number; variant?: "varchar" | "char" }
   | { kind: "integer"; bits: 32 | 64 }
   | { kind: "real" }        // DOUBLE PRECISION (float8) — field.double
   | { kind: "real4" }       // REAL (float4, single precision) — field.float
@@ -29,7 +32,10 @@ export type SqlType =
  */
 export function describeSqlType(t: SqlType): string {
   switch (t.kind) {
-    case "text": return t.maxLength === undefined ? "text" : `text(${t.maxLength})`;
+    case "text":
+      if (t.variant === "char") return `character(${t.maxLength ?? 1})`;
+      if (t.variant === "varchar" && t.maxLength === undefined) return "varchar";
+      return t.maxLength === undefined ? "text" : `text(${t.maxLength})`;
     case "integer": return t.bits === 64 ? "bigint" : "integer";
     case "numeric":
       return t.precision === undefined ? "numeric"
@@ -44,8 +50,12 @@ export function describeSqlType(t: SqlType): string {
 export function sqlTypeEquals(a: SqlType, b: SqlType): boolean {
   if (a.kind !== b.kind) return false;
   switch (a.kind) {
-    case "text":
-      return a.maxLength === (b as Extract<SqlType, { kind: "text" }>).maxLength;
+    case "text": {
+      // An unbounded varchar and text are one type to Postgres (and to SQLite), so they compare
+      // equal; a fixed-length character(n) is a different one.
+      const bt = b as Extract<SqlType, { kind: "text" }>;
+      return a.maxLength === bt.maxLength && (a.variant === "char") === (bt.variant === "char");
+    }
     case "integer":
       return a.bits === (b as Extract<SqlType, { kind: "integer" }>).bits;
     case "numeric": {
@@ -85,6 +95,8 @@ export function isWidening(from: SqlType, to: SqlType): boolean {
   switch (from.kind) {
     case "text": {
       const t = to as Extract<SqlType, { kind: "text" }>;
+      // To or from a blank-padded character(n) is never a plain widening.
+      if ((from.variant === "char") !== (t.variant === "char")) return false;
       // unbounded → bounded: lossy
       if (from.maxLength === undefined) return false;
       // bounded → unbounded: widening

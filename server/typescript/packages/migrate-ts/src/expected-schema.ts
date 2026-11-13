@@ -63,6 +63,7 @@ import {
   FIELD_ATTR_DB_COLUMN_TYPE,
   DB_COLUMN_TYPE_UUID,
   DB_COLUMN_TYPE_JSONB,
+  parseDbColumnType,
   FIELD_ATTR_LOCAL_TIME,
   FIELD_ATTR_LENIENT,
   STORAGE_FLATTENED,
@@ -1790,6 +1791,11 @@ function subtypeToSqlType(field: MetaData): SqlType {
       case DB_COLUMN_TYPE_UUID:  return { kind: "uuid" };
       case DB_COLUMN_TYPE_JSONB: return { kind: "json" };
     }
+    // rc.21 part B (U2): the text spellings. A sized one is the declared length.
+    const parsed = parseDbColumnType(dbColumnType);
+    if (parsed?.kind === "text") return { kind: "text" };
+    if (parsed?.kind === "varchar") return parsed.length !== undefined ? { kind: "text", maxLength: parsed.length } : { kind: "text", variant: "varchar" };
+    if (parsed?.kind === "char") return { kind: "text", maxLength: parsed.length, variant: "char" };
   }
 
   // Native array columns are DERIVED from `isArray` (dbColumnType slim-and-derive

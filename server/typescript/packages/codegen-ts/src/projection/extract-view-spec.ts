@@ -28,6 +28,19 @@ import {
   ORIGIN_FIRST_ATTR_OF,
   ORIGIN_FIRST_ATTR_VIA,
   ORIGIN_FIRST_ATTR_FILTER,
+  ORIGIN_SUBTYPE_FUNCTION,
+  ORIGIN_FUNCTION_ATTR_FUNCTION,
+  ORIGIN_FUNCTION_ATTR_SCHEMA,
+  ORIGIN_FUNCTION_ATTR_ARGS,
+  OBJECT_PROJECTION_ATTR_UNION,
+  OBJECT_PROJECTION_ATTR_UNION_ALL,
+  OBJECT_PROJECTION_ATTR_GRAIN,
+  OBJECT_PROJECTION_ATTR_GRAIN_ORDINAL,
+  EXPR_CAST,
+  EXPR_CAST_AS,
+  EXPR_CAST_DB_COLUMN_TYPE,
+  EXPR_FUNCTIONS,
+  parseDbColumnType,
   AGG_ANY,
   AGG_ALL,
   AGG_COLLECT,
@@ -95,7 +108,7 @@ import type { RelativeNow } from "./report-spec.js";
 import type { ReportTemporal } from "./time-sql.js";
 import type {
   JoinNode, JoinTree, SelectColumn, SelectSpec, ViewSpec, ViewFilterClause,
-  ViewExprNode, ViewExprLiteral, ViewOrderKey, FirstInnerJoin, TphScope, FirstColumn, ColRef,
+  ViewExprNode, ViewExprLiteral, ViewOrderKey, FirstInnerJoin, TphScope, FirstColumn, ColRef, CastTarget,
 } from "./view-spec.js";
 
 /** Compose keys in the attr.filter shape. */
@@ -214,6 +227,15 @@ function resolveAggregateFilter(
 export interface OuterRow {
   readonly entity: MetaObject;
   readonly alias: string;
+  /** rc.21 part B (U4): the to-one paths from the outer row the view joined, by dotted key. */
+  readonly paths?: ReadonlyMap<string, PathRef>;
+}
+
+/** rc.21 part B (U3, U4): a to-one path from the base the view joined (not output): its end's alias and field. */
+export interface PathRef {
+  readonly alias: string;
+  readonly field: MetaField;
+  readonly entity: MetaObject;
 }
 
 /** A `{ field: "<name>" }` operand (correlated-filter), not a relative date. */
@@ -252,6 +274,17 @@ function lowerFilterValue(
   }
   if (isFieldOperand(raw)) {
     const name = raw[FILTER_OPERAND_FIELD];
+    if (name.includes(".")) {
+      // rc.21 part B (U4): a path operand reads the joined row at its end.
+      const path = outer?.paths?.get(name);
+      if (path === undefined) {
+        throw new Error(`${where}: "${key}" compares with the path "${name}", which the outer row did not join (a path operand is legal only on a projection's own origins).`);
+      }
+      if (path.field.isDerived()) {
+        throw new Error(`${where}: "${key}" compares with the path "${name}", a derived field; a path operand reads a stored column.`);
+      }
+      return { kind: "colRef", ref: `${path.alias}.${sourceColumnNameFor(path.field, ctx)}` } satisfies ColRef;
+    }
     const other = outer?.entity.fields().find((f) => f.name === name);
     if (outer === undefined || other === undefined) {
       throw new Error(`${where}: "${key}" compares with base-row field "${name}", which the base row does not have.`);
@@ -934,11 +967,24 @@ function resolveExprNode(
       ...(otherwise !== undefined ? { else: otherwise } : {}),
     };
   }
+  if (EXPR_CAST in raw) {
+    // rc.21 part B (U12): a cast to a field subtype's column type, optionally a text spelling.
+    const arg = sub(raw[EXPR_CAST]);
+    const as = raw[EXPR_CAST_AS];
+    if (arg === undefined || typeof as !== "string") return undefined;
+    const spelling = typeof raw[EXPR_CAST_DB_COLUMN_TYPE] === "string" ? parseDbColumnType(raw[EXPR_CAST_DB_COLUMN_TYPE] as string) : undefined;
+    const to: CastTarget = spelling !== undefined && spelling.kind !== "uuid" && spelling.kind !== "jsonb"
+      ? { subType: as, spelling: { kind: spelling.kind, ...("length" in spelling && spelling.length !== undefined ? { length: spelling.length } : {}) } }
+      : { subType: as };
+    return { kind: "cast", arg, to };
+  }
   if ("fn" in raw) {
-    if (raw.fn !== EXPR_FN_COALESCE || !Array.isArray(raw.args)) return undefined;
+    if (typeof raw.fn !== "string" || !Object.prototype.hasOwnProperty.call(EXPR_FUNCTIONS, raw.fn) || !Array.isArray(raw.args)) return undefined;
     const args = raw.args.map((a) => sub(a));
     if (args.some((a) => a === undefined)) return undefined;
-    return { kind: "coalesce", args: args as ViewExprNode[] };
+    if (raw.fn === EXPR_FN_COALESCE) return { kind: "coalesce", args: args as ViewExprNode[] };
+    // rc.21 part B (U11, U13): the rest of the closed function set.
+    return { kind: "fn", name: raw.fn, args: args as ViewExprNode[] };
   }
   if ("op" in raw && typeof raw.op === "string") {
     const op = raw.op;
@@ -977,6 +1023,77 @@ interface ResolvedRef {
 /** The relative-date kind of a temporal field; an instant for anything else. */
 function temporalOfField(f: MetaField): ReportTemporal {
   return f.subType === FIELD_SUBTYPE_DATE || f.subType === FIELD_SUBTYPE_TIMESTAMP ? temporalOf(f) : "instant";
+}
+
+/** rc.21 part B (U10): an origin.function's call, each argument resolved by `arg` (undefined if one does not). */
+function functionCall(origin: MetaData, arg: (name: string) => ViewExprNode | undefined): ViewExprNode | undefined {
+  // ADR-0039: own — origin.* never inherits (ADR-0029).
+  const name = origin.ownAttr(ORIGIN_FUNCTION_ATTR_FUNCTION);
+  const schema = origin.ownAttr(ORIGIN_FUNCTION_ATTR_SCHEMA);
+  const raw = origin.ownAttr(ORIGIN_FUNCTION_ATTR_ARGS);
+  if (typeof name !== "string") return undefined;
+  const names = raw === undefined ? [] : Array.isArray(raw) ? raw : [raw];
+  const args = names.map((n) => (typeof n === "string" ? arg(n) : undefined));
+  if (args.some((a) => a === undefined)) return undefined;
+  return { kind: "call", name, ...(typeof schema === "string" ? { schema } : {}), args: args as ViewExprNode[] };
+}
+
+/** rc.21 part B (U14): the value object a `@grain` projection's rows are elements of, if it has one. */
+function grainValueObject(projection: MetaObject, base: MetaObject): MetaObject | undefined {
+  if (projection === base) return undefined;
+  const grain = projection.attr(OBJECT_PROJECTION_ATTR_GRAIN);
+  if (typeof grain !== "string") return undefined;
+  const field = base.fields().find((f) => f.name === grain);
+  const vo = field === undefined ? undefined : refTarget(field, FIELD_ATTR_OBJECT_REF);
+  return vo !== undefined && isMetaObject(vo) ? vo : undefined;
+}
+
+/** Every `{ field }` name an expression tree reads, through every node kind. */
+function exprFieldNames(node: unknown, out: string[] = []): string[] {
+  if (!isPlainObject(node)) return out;
+  if (typeof node.field === "string") out.push(node.field);
+  for (const key of ["left", "right", "arg", EXPR_CAST, EXPR_CASE_OPERAND, EXPR_CASE_ELSE]) exprFieldNames(node[key], out);
+  if (Array.isArray(node.args)) for (const a of node.args) exprFieldNames(a, out);
+  if (Array.isArray(node[EXPR_CASE])) {
+    for (const arm of node[EXPR_CASE] as unknown[]) {
+      if (isPlainObject(arm)) { exprFieldNames(arm[EXPR_CASE_WHEN], out); exprFieldNames(arm[EXPR_CASE_THEN], out); }
+    }
+  }
+  return out;
+}
+
+/** Every `{ field: "<name>" }` operand of a filter, through and/or. */
+function filterOperandNames(filter: unknown, out: string[] = []): string[] {
+  if (!isPlainObject(filter)) return out;
+  for (const [key, val] of Object.entries(filter)) {
+    if (key === FILTER_AND || key === FILTER_OR) {
+      if (Array.isArray(val)) for (const sub of val) filterOperandNames(sub, out);
+      continue;
+    }
+    if (!isPlainObject(val)) continue;
+    for (const operand of Object.values(val)) if (isFieldOperand(operand)) out.push(operand[FILTER_OPERAND_FIELD]);
+  }
+  return out;
+}
+
+/**
+ * rc.21 part B (U3, U4): the dotted names a projection's own origins read that are not its fields —
+ * an origin.computed expression's path refs, and an origin.first / origin.aggregate @filter's path
+ * operands. Each is a to-one path from the base the view joins without outputting it.
+ */
+function originPathKeys(projection: MetaObject): string[] {
+  const keys: string[] = [];
+  // G13: effective fields; ADR-0039: own — origin.* never inherits (ADR-0029).
+  for (const f of projection.fields()) {
+    for (const origin of f.ownChildren()) {
+      if (origin.type !== TYPE_ORIGIN) continue;
+      if (origin.subType === ORIGIN_SUBTYPE_COMPUTED) keys.push(...exprFieldNames(origin.ownAttr(ORIGIN_COMPUTED_ATTR_EXPR)));
+      if (origin.subType === ORIGIN_SUBTYPE_FIRST || origin.subType === ORIGIN_SUBTYPE_AGGREGATE) {
+        keys.push(...filterOperandNames(origin.ownAttr(ORIGIN_FIRST_ATTR_FILTER)));
+      }
+    }
+  }
+  return keys.filter((k) => k.includes("."));
 }
 
 export function shortAliasFor(entityName: string, used: Set<string>): string {
@@ -1323,8 +1440,14 @@ function buildSelectSpec(
   root: MetaRoot,
   ctx: ExtractContext,
   usedAliases: Set<string>,
+  /** rc.21 part B (U3, U4): the joined to-one paths an expression or an operand reads. */
+  pathRefs: ReadonlyMap<string, PathRef> = new Map(),
 ): SelectSpec {
   const columns: SelectColumn[] = [];
+  const outerRow: OuterRow = { entity: base, alias: joinTree.baseAlias, paths: pathRefs };
+  // rc.21 part B (U14): a @grain view's rows are the elements of the base's array field.
+  const grainVo = grainValueObject(projection, base);
+  const grainOrdinal = grainVo === undefined ? undefined : projection.attr(OBJECT_PROJECTION_ATTR_GRAIN_ORDINAL);
   // Referrer package for resolving bare @from/@of/@via entity refs (FQN refs ignore it).
   const projPkg = packageOf(projection);
 
@@ -1353,6 +1476,11 @@ function buildSelectSpec(
     const origin = field.ownChildren().find((c) => c.type === TYPE_ORIGIN);
     const dbCol = sourceColumnNameFor(field, ctx);
 
+    if (!origin && grainVo !== undefined && field.name === grainOrdinal) {
+      // rc.21 part B (U14): the element's 1-based position.
+      columns.push({ kind: "element", fieldName: field.name, dbColAlias: dbCol, castTo: fieldSqlType(field) });
+      continue;
+    }
     if (!origin) {
       // rc.19 entity-derived: a field bound to a DERIVED base field has no base column; its
       // derivation is inlined on the base row.
@@ -1385,6 +1513,11 @@ function buildSelectSpec(
       const fieldName = from.slice(dotIdx + 1);
       const targetEntity = resolveEntityRef(root, from.slice(0, dotIdx), projPkg);
       if (!targetEntity) continue;
+      if (grainVo !== undefined && targetEntity === grainVo) {
+        // rc.21 part B (U14): a member of the array element, cast to the field's column type.
+        columns.push({ kind: "element", fieldName: field.name, dbColAlias: dbCol, member: fieldName, castTo: fieldSqlType(field) });
+        continue;
+      }
       const passthroughVia = origin.ownAttr(ORIGIN_PASSTHROUGH_ATTR_VIA) as string | undefined;
       const sourceAlias = originSourceAlias(joinTree, passthroughVia, targetEntity.resolutionKey(), root, projPkg, ctx);
       if (sourceAlias === undefined) continue;
@@ -1430,7 +1563,7 @@ function buildSelectSpec(
         if (sourceAlias === undefined) continue;
         const joinedPk = primaryKeyColumn(relatedEntity, ctx);
         if (joinedPk === undefined) continue;
-        const pred = originScope(origin, filterAttr, relatedEntity, sourceAlias, ctx, { entity: base, alias: joinTree.baseAlias });
+        const pred = originScope(origin, filterAttr, relatedEntity, sourceAlias, ctx, outerRow);
         if (pred === undefined) continue; // loader requires @filter on any/all
         columns.push({
           kind: "predicateAgg",
@@ -1529,7 +1662,7 @@ function buildSelectSpec(
       if (SCALAR_AGG_FUNCTIONS.has(agg)) {
         // Optional scoping filter — resolved against the aggregated entity (the @of
         // entity, reached at `sourceAlias`), e.g. max(version) over only active rows.
-        const filter = originScope(origin, filterAttr, targetEntity, sourceAlias, ctx, { entity: base, alias: joinTree.baseAlias });
+        const filter = originScope(origin, filterAttr, targetEntity, sourceAlias, ctx, outerRow);
         columns.push({
           kind: "aggregate",
           fieldName: field.name,
@@ -1550,8 +1683,13 @@ function buildSelectSpec(
     } else if (origin.subType === ORIGIN_SUBTYPE_FIRST) {
       // #195 correlated latest-row — argmax-then-project. Resolves to a correlated
       // subquery (NOT a join). ADR-0039: own — origin.* never inherits (ADR-0029).
-      const first = buildFirstColumn(field, origin, base, joinTree.baseAlias, root, projPkg, usedAliases, ctx);
+      const first = buildFirstColumn(field, origin, base, joinTree.baseAlias, root, projPkg, usedAliases, ctx, pathRefs);
       if (first !== undefined) columns.push(first);
+    } else if (origin.subType === ORIGIN_SUBTYPE_FUNCTION) {
+      // rc.21 part B (U10): a call of a database function; its arguments may name other
+      // projection fields, so it resolves with the computed columns, in this column's place.
+      pendingComputed.set(field.name, { index: columns.length, origin, field });
+      columns.push({ kind: "computed", fieldName: field.name, dbColAlias: dbCol, expr: { kind: "lit", value: null } });
     }
   }
 
@@ -1569,6 +1707,14 @@ function buildSelectSpec(
     resolving.add(name);
     const lookup = (ref: string): ResolvedRef | undefined => {
       if (ref === name) return undefined; // its own name is the base field's
+      // rc.21 part B (U3): a path of to-one hops from the base, joined but not output.
+      const path = ref.includes(".") && !fieldByName.has(ref) ? pathRefs.get(ref) : undefined;
+      if (path !== undefined) {
+        const expr: ViewExprNode = path.field.isDerived()
+          ? inlineEntityDerived(path.field, path.entity, path.alias, root, usedAliases, ctx, `Projection ${projection.name}: "${name}" path "${ref}"`)
+          : { kind: "col", ref: `${path.alias}.${sourceColumnNameFor(path.field, ctx)}` };
+        return { expr, field: path.field };
+      }
       const f = fieldByName.get(ref);
       const c = byName.get(ref);
       if (f === undefined || c === undefined) return undefined;
@@ -1579,9 +1725,13 @@ function buildSelectSpec(
       if (c.kind === "passthrough") return { expr: { kind: "col", ref: `${c.sourceAlias}.${c.sourceColumn}` }, field: f };
       if (c.kind === "computed") return { expr: c.expr, field: f };
       if (c.kind === "first") return { expr: { kind: "first", column: c }, field: f };
-      throw new Error(`Projection ${projection.name}: origin.computed "${name}" refers to "${ref}", an aggregate; a computed value cannot read one.`);
+      // rc.21 part B (U13): a scalar aggregate (or any/all) is read on the grouped row.
+      if (c.kind === "aggregate" || c.kind === "predicateAgg") return { expr: { kind: "agg", column: c }, field: f };
+      throw new Error(`Projection ${projection.name}: origin.computed "${name}" refers to "${ref}", a collect; a computed value cannot read an array.`);
     };
-    const expr = resolveExprNode(pending.origin.ownAttr(ORIGIN_COMPUTED_ATTR_EXPR), base, joinTree.baseAlias, ctx, lookup);
+    const expr = pending.origin.subType === ORIGIN_SUBTYPE_FUNCTION
+      ? functionCall(pending.origin, (arg) => resolveExprNode({ field: arg }, base, joinTree.baseAlias, ctx, lookup))
+      : resolveExprNode(pending.origin.ownAttr(ORIGIN_COMPUTED_ATTR_EXPR), base, joinTree.baseAlias, ctx, lookup);
     resolving.delete(name);
     pendingComputed.delete(name);
     if (expr === undefined) return undefined;
@@ -1612,6 +1762,7 @@ function buildFirstColumn(
   projPkg: string,
   usedAliases: Set<string>,
   ctx: ExtractContext,
+  paths?: ReadonlyMap<string, PathRef>,
 ): FirstColumn | undefined {
   const dbCol = sourceColumnNameFor(field, ctx);
   const of_ = origin.ownAttr(ORIGIN_FIRST_ATTR_OF) as string | undefined;
@@ -1641,7 +1792,7 @@ function buildFirstColumn(
   // keeps the direct correlation below, so its SQL is unchanged.
   const firstVia = origin.ownAttr(ORIGIN_FIRST_ATTR_VIA);
   if (typeof firstVia === "string" && firstVia.split(".").length > 2) {
-    return firstAlongPath(field.name, dbCol, firstVia, ofField, childEntity, origin, root, projPkg, usedAliases, ctx, { entity: base, alias: baseAlias }) as FirstColumn;
+    return firstAlongPath(field.name, dbCol, firstVia, ofField, childEntity, origin, root, projPkg, usedAliases, ctx, { entity: base, alias: baseAlias, ...(paths !== undefined ? { paths } : {}) }) as FirstColumn;
   }
   const refs = findReferencesBetween(base, childEntity);
   // findReferencesBetween walks BOTH directions ([base,child] then [child,base]),
@@ -1684,7 +1835,7 @@ function buildFirstColumn(
   const filterAttr = origin.ownAttr(ORIGIN_FIRST_ATTR_FILTER);
   const childScope = tphScopeOf(childEntity, ctx);
   const filter = andClauses(
-    originScope(origin, filterAttr, childEntity, childAlias, ctx, { entity: base, alias: baseAlias }),
+    originScope(origin, filterAttr, childEntity, childAlias, ctx, { entity: base, alias: baseAlias, ...(paths !== undefined ? { paths } : {}) }),
     childScope !== undefined ? tphScopeClause(childScope, childAlias) : undefined,
   );
   return {
@@ -1837,10 +1988,14 @@ export function inlineEntityDerived(
   } else if (origin?.subType === ORIGIN_SUBTYPE_FIRST) {
     const first = buildFirstColumn(field, origin, entity, alias, root, packageOf(entity), usedAliases, ctx);
     if (first !== undefined) return { kind: "first", column: { ...first, outerAlias: alias } };
+  } else if (origin?.subType === ORIGIN_SUBTYPE_FUNCTION) {
+    // rc.21 part B (U10): the call, its arguments read on the reached row.
+    const call = functionCall(origin, (arg) => resolveExprNode({ field: arg }, entity, alias, ctx));
+    if (call !== undefined) return call;
   }
   throw new Error(
     `${where}: "${entity.name}.${field.name}" is derived by ${origin === undefined ? "nothing" : `origin.${origin.subType}`}, ` +
-      `which a view cannot inline where it reaches the entity; only origin.computed and origin.first can be.`,
+      `which a view cannot inline where it reaches the entity; only origin.computed, origin.first and origin.function can be.`,
   );
 }
 
@@ -1864,7 +2019,7 @@ function countManyBranches(joinTree: JoinTree): number {
   return joinTree.joins.filter(hasMany).length;
 }
 
-function buildGroupBy(spec: SelectSpec): string[] {
+function buildGroupBy(spec: SelectSpec, baseAlias: string): string[] {
   // predicateAgg (bool_or/bool_and), collectAgg (array_agg) and collectObjectAgg
   // (jsonb_agg) are real aggregates and force GROUP BY too; computed/first are
   // scalar-per-row and never grouped.
@@ -1873,9 +2028,54 @@ function buildGroupBy(spec: SelectSpec): string[] {
       || c.kind === "collectAgg" || c.kind === "collectObjectAgg",
   );
   if (!hasAgg) return [];
-  return spec.columns
+  const keys = spec.columns
     .filter((c) => c.kind === "passthrough")
     .map((c) => `${c.sourceAlias}.${c.sourceColumn}`);
+  // rc.21 part B (U3, U13): every column a non-aggregate expression reads must be grouped, or
+  // depend on a grouped key. The base row's do (its primary key is grouped); a JOINED row's need
+  // not, now that an expression may read a joined column the view does not output (a path) or sit
+  // over an aggregate. So each joined column a computed expression or an origin.first's correlation
+  // reads outside an aggregate is grouped too, once. A base-only expression is unchanged.
+  const add = (ref: string): void => {
+    if (!ref.startsWith(`${baseAlias}.`) && !keys.includes(ref)) keys.push(ref);
+  };
+  const firstRefs = (f: FirstColumn): void => {
+    const outer = f.outerAlias ?? baseAlias;
+    add(`${outer}.${f.referenceHolder === "source" ? f.fkColumn : f.pkColumn}`);
+    for (const v of filterColRefs(f.filter)) add(v);
+  };
+  const walk = (e: ViewExprNode): void => {
+    if (e.kind === "col") add(e.ref);
+    else if (e.kind === "first") firstRefs(e.column);
+    else if (e.kind !== "agg") exprChildren(e).forEach(walk);
+  };
+  for (const c of spec.columns) {
+    if (c.kind === "computed") walk(c.expr);
+    else if (c.kind === "first") firstRefs(c);
+  }
+  return keys;
+}
+
+/** The outer-row columns (correlated operands) a filter compares with. */
+function filterColRefs(f: ViewFilterClause | undefined, out: string[] = []): string[] {
+  if (f === undefined) return out;
+  if (f.kind === "and" || f.kind === "or") for (const c of f.clauses) filterColRefs(c, out);
+  else if (f.kind === "cmp" && isPlainObject(f.value) && (f.value as { kind?: unknown }).kind === "colRef") {
+    out.push((f.value as unknown as ColRef).ref);
+  }
+  return out;
+}
+
+/** A resolved expression node's sub-expressions. */
+function exprChildren(e: ViewExprNode): ViewExprNode[] {
+  switch (e.kind) {
+    case "cmp": return [e.left, e.right];
+    case "nullTest": case "not": return [e.arg];
+    case "logic": case "coalesce": case "fn": case "call": return [...e.args];
+    case "cast": return [e.arg];
+    case "case": return [...(e.operand !== undefined ? [e.operand] : []), ...e.whens.flatMap((w) => [w.when, w.then]), ...(e.else !== undefined ? [e.else] : [])];
+    default: return [];
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1896,6 +2096,8 @@ export function extractViewSpec(
   projection: MetaObject,
   root: MetaRoot,
   ctx: ExtractContext,
+  /** rc.21 part B (U15): `member` — a union member's body, which needs no view of its own. */
+  options: { readonly member?: boolean } = {},
 ): ViewSpec {
   // #213 — a write-through entity (FR-024 §7) IS its own base: stored fields SELECT
   // from the base alias (o.*), derived (origin.*) fields from the joins. A plain
@@ -1915,14 +2117,29 @@ export function extractViewSpec(
     const path = resolveFilterPath(base, key);
     if (path !== undefined && typeof path !== "string") filterPaths.set(key, path);
   }
-  const filterJoinPaths = [...filterPaths.values()]
+  // rc.21 part B (U3, U4): an expression's path refs and an origin filter's path operands join too.
+  const refPaths = new Map<string, FilterPath>();
+  if (!writeThrough) {
+    for (const key of originPathKeys(projection)) {
+      if (ownFieldNames.has(key) || refPaths.has(key)) continue;
+      const path = resolveFilterPath(base, key);
+      if (path !== undefined && typeof path !== "string") refPaths.set(key, path);
+    }
+  }
+  const filterJoinPaths = [...filterPaths.values(), ...refPaths.values()]
     .map((p) => walkViaPath(`${base.resolutionKey()}.${p.hops.join(".")}`, root, packageOf(projection), ctx))
     .filter((p) => p.length > 0);
   const joinTree = buildJoinTree(projection, base, root, usedAliases, baseAlias, ctx, filterJoinPaths);
-  const selectSpec = buildSelectSpec(projection, base, joinTree, root, ctx, usedAliases);
-  const groupBy = buildGroupBy(selectSpec);
+  const pathRefs = new Map<string, PathRef>();
+  for (const [key, path] of refPaths) {
+    const alias = aliasForHops(joinTree, path.hops);
+    if (alias === undefined) throw new Error(`Projection ${projection.name}: the path "${key}" did not join.`);
+    pathRefs.set(key, { alias, field: path.field as MetaField, entity: path.entity });
+  }
+  const selectSpec = buildSelectSpec(projection, base, joinTree, root, ctx, usedAliases, pathRefs);
+  const groupBy = buildGroupBy(selectSpec, joinTree.baseAlias);
 
-  const view = viewName(projection, ctx);
+  const view = options.member === true ? projection.name : viewName(projection, ctx);
   warnOnJoinInflation(projection, view, joinTree, selectSpec);
 
   // #207 — a projection's OWN row-scope @filter lowers to the view's outer WHERE.
@@ -1971,12 +2188,34 @@ export function extractViewSpec(
   const baseScope = writeThrough ? undefined : tphScopeOf(base, ctx);
   if (baseScope !== undefined) where = andClauses(where, tphScopeClause(baseScope, joinTree.baseAlias));
 
+  // rc.21 part B (U14): one row per element of the base's jsonb array field.
+  const grainName = writeThrough ? undefined : projection.attr(OBJECT_PROJECTION_ATTR_GRAIN);
+  const grainField = typeof grainName === "string" ? base.fields().find((f) => f.name === grainName) : undefined;
+  if (typeof grainName === "string" && grainField === undefined) {
+    throw new Error(`Projection ${projection.name}: @grain "${grainName}" is not a field of "${base.name}".`);
+  }
+  // rc.21 part B (U15): the member bodies, each its own SELECT. ADR-0039: own — a union is ITS view.
+  const unionNames = writeThrough || options.member === true ? undefined : projection.ownAttr(OBJECT_PROJECTION_ATTR_UNION);
+  const members = unionNames === undefined ? [] : (Array.isArray(unionNames) ? unionNames : [unionNames]).map((name) => {
+    const member = resolveEntityRef(root, String(name), packageOf(projection));
+    if (member === undefined) throw new Error(`Projection ${projection.name}: @union member "${String(name)}" does not resolve.`);
+    const spec = extractViewSpec(member, root, ctx, { member: true });
+    const mine = selectSpec.columns.map((c) => c.dbColAlias).join(", ");
+    const theirs = spec.selectSpec.columns.map((c) => c.dbColAlias).join(", ");
+    if (mine !== theirs) {
+      throw new Error(`Projection ${projection.name}: @union member "${member.name}" has columns (${theirs}), not (${mine}).`);
+    }
+    return spec;
+  });
+
   return {
     viewName: view,
     joinTree,
     selectSpec,
     groupBy,
     ...(where !== undefined ? { where } : {}),
+    ...(grainField !== undefined ? { grain: { column: sourceColumnNameFor(grainField, ctx), alias: "mo_el" } } : {}),
+    ...(members.length > 0 ? { union: { all: projection.ownAttr(OBJECT_PROJECTION_ATTR_UNION_ALL) === true, members } } : {}),
   };
 }
 

@@ -56,6 +56,11 @@ export const OBJECT_ATTR_DB_SET_NAME = "dbSetName";
  *  but resolves against the projection's OWN declared fields rather than one
  *  aggregated entity. An aggregate-derived field is not addressable (fail-closed). */
 export const OBJECT_PROJECTION_ATTR_FILTER = "filter";
+// rc.21 part B: a projection UNIONed with others (U15), and one with a row per array element (U14).
+export const OBJECT_PROJECTION_ATTR_UNION = "union";
+export const OBJECT_PROJECTION_ATTR_UNION_ALL = "unionAll";
+export const OBJECT_PROJECTION_ATTR_GRAIN = "grain";
+export const OBJECT_PROJECTION_ATTR_GRAIN_ORDINAL = "grainOrdinal";
 
 // ---------------------------------------------------------------------------
 // FR-044 — object.report attrs

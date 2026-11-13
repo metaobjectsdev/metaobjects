@@ -124,7 +124,13 @@ export function pgTypeToSqlType(
     return { kind: "text", maxLength: parseInt(varcharMatch[1] ?? "0", 10) };
   }
   if (dt === "character varying" || dt === "varchar") {
-    return maxLength != null ? { kind: "text", maxLength } : { kind: "text" };
+    return maxLength != null ? { kind: "text", maxLength } : { kind: "text", variant: "varchar" };
+  }
+  // rc.21 part B (U2): the fixed-length character(n) (information_schema "character", udt bpchar).
+  const charMatch = /^(?:character|char|bpchar)\((\d+)\)$/.exec(dt);
+  if (charMatch) return { kind: "text", maxLength: parseInt(charMatch[1] ?? "1", 10), variant: "char" };
+  if (dt === "character" || dt === "char" || dt === "bpchar") {
+    return { kind: "text", maxLength: maxLength ?? 1, variant: "char" };
   }
   if (dt === "text") {
     return { kind: "text" };

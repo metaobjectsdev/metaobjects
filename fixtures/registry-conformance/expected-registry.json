@@ -32,7 +32,7 @@
     {
       "type": "attr",
       "subType": "expression",
-      "description": "A structured expression tree (closed node grammar: field/value refs, comparisons sharing the filter op vocabulary, isNull/isNotNull, and/or/not, coalesce, case, now). Backs origin.computed; a filter object embeds canonically. A { field } ref names one of the projection's own fields (a passthrough, joined or not, an origin.first or another origin.computed — never an aggregate, never itself), else a field of the base entity (rc.19 computed-over-joined). { case: [ { when, then }, ... ], else? } is a searched CASE (each when boolean); with operand: <expr> it is a simple CASE (each when a value compared with operand by equality); every then/else shares one type. { now: \"<ISO-8601 duration>\", startOf? } is the current instant shifted by the duration (rc.19 now), its kind (date, local or instant timestamp) taken from the field it is compared with. Arithmetic is #159.",
+      "description": "A structured expression tree (closed node grammar: field/value refs, comparisons sharing the filter op vocabulary, isNull/isNotNull, and/or/not, coalesce, case, now). Backs origin.computed; a filter object embeds canonically. A { field } ref names one of the projection's own fields (a passthrough, joined or not, an origin.first or another origin.computed — never an aggregate, never itself), else a field of the base entity (rc.19 computed-over-joined). { case: [ { when, then }, ... ], else? } is a searched CASE (each when boolean); with operand: <expr> it is a simple CASE (each when a value compared with operand by equality); every then/else shares one type. { now: \"<ISO-8601 duration>\", startOf? } is the current instant shifted by the duration (rc.19 now), its kind (date, local or instant timestamp) taken from the field it is compared with. rc.21: a { field } ref may also name a scalar origin.aggregate of the projection (read on the grouped row; such a value is not filterable) or, on a projection, a PATH of to-one hops from the base and a field of the entity reached ('patientId.currentMailingAddressId'), joined but not output. { fn } takes a closed, typed set: coalesce, greatest, least, nullif (arguments of one type), lower, upper, btrim (string[, chars]), splitPart (string, delimiter, int), concat (scalars; NULL reads as empty), concatWs (separator, scalars), substring (string, start[, length]), replace (string, from, to), left and right (string, int), length (string to int). { cast: <expr>, as: <field subtype>, dbColumnType? } converts to string, int, long, double, float, decimal, boolean, date, timestamp or uuid, optionally with a text @dbColumnType spelling for a string; an enum casts to an integer only when stored as one (@intValueMap). A cross-field validator's @condition (a CHECK) takes only fields, literals, comparisons, null tests, and/or/not and coalesce. Arithmetic is #159.",
       "attrs": [],
       "children": []
     },
@@ -163,11 +163,7 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
-          "allowedValues": [
-            "uuid",
-            "jsonb"
-          ],
-          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values, all on field.string: uuid (a native Postgres uuid column over a string-typed field), jsonb (a genuinely-open JSON column), and the text spellings text, varchar / character varying (unbounded), varchar(n) / character varying(n) and character(n) (rc.21: Postgres's own names, lowercase; a @maxLength over n is refused). The view cast and the column use the spelling; meta migrate treats an unbounded varchar and text as one type. The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
         },
         {
           "name": "default",
@@ -305,11 +301,7 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
-          "allowedValues": [
-            "uuid",
-            "jsonb"
-          ],
-          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values, all on field.string: uuid (a native Postgres uuid column over a string-typed field), jsonb (a genuinely-open JSON column), and the text spellings text, varchar / character varying (unbounded), varchar(n) / character varying(n) and character(n) (rc.21: Postgres's own names, lowercase; a @maxLength over n is refused). The view cast and the column use the spelling; meta migrate treats an unbounded varchar and text as one type. The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
         },
         {
           "name": "default",
@@ -455,11 +447,7 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
-          "allowedValues": [
-            "uuid",
-            "jsonb"
-          ],
-          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values, all on field.string: uuid (a native Postgres uuid column over a string-typed field), jsonb (a genuinely-open JSON column), and the text spellings text, varchar / character varying (unbounded), varchar(n) / character varying(n) and character(n) (rc.21: Postgres's own names, lowercase; a @maxLength over n is refused). The view cast and the column use the spelling; meta migrate treats an unbounded varchar and text as one type. The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
         },
         {
           "name": "default",
@@ -608,11 +596,7 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
-          "allowedValues": [
-            "uuid",
-            "jsonb"
-          ],
-          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values, all on field.string: uuid (a native Postgres uuid column over a string-typed field), jsonb (a genuinely-open JSON column), and the text spellings text, varchar / character varying (unbounded), varchar(n) / character varying(n) and character(n) (rc.21: Postgres's own names, lowercase; a @maxLength over n is refused). The view cast and the column use the spelling; meta migrate treats an unbounded varchar and text as one type. The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
         },
         {
           "name": "default",
@@ -751,11 +735,7 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
-          "allowedValues": [
-            "uuid",
-            "jsonb"
-          ],
-          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values, all on field.string: uuid (a native Postgres uuid column over a string-typed field), jsonb (a genuinely-open JSON column), and the text spellings text, varchar / character varying (unbounded), varchar(n) / character varying(n) and character(n) (rc.21: Postgres's own names, lowercase; a @maxLength over n is refused). The view cast and the column use the spelling; meta migrate treats an unbounded varchar and text as one type. The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
         },
         {
           "name": "default",
@@ -907,11 +887,7 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
-          "allowedValues": [
-            "uuid",
-            "jsonb"
-          ],
-          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values, all on field.string: uuid (a native Postgres uuid column over a string-typed field), jsonb (a genuinely-open JSON column), and the text spellings text, varchar / character varying (unbounded), varchar(n) / character varying(n) and character(n) (rc.21: Postgres's own names, lowercase; a @maxLength over n is refused). The view cast and the column use the spelling; meta migrate treats an unbounded varchar and text as one type. The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
         },
         {
           "name": "default",
@@ -1049,11 +1025,7 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
-          "allowedValues": [
-            "uuid",
-            "jsonb"
-          ],
-          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values, all on field.string: uuid (a native Postgres uuid column over a string-typed field), jsonb (a genuinely-open JSON column), and the text spellings text, varchar / character varying (unbounded), varchar(n) / character varying(n) and character(n) (rc.21: Postgres's own names, lowercase; a @maxLength over n is refused). The view cast and the column use the spelling; meta migrate treats an unbounded varchar and text as one type. The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
         },
         {
           "name": "default",
@@ -1213,11 +1185,7 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
-          "allowedValues": [
-            "uuid",
-            "jsonb"
-          ],
-          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values, all on field.string: uuid (a native Postgres uuid column over a string-typed field), jsonb (a genuinely-open JSON column), and the text spellings text, varchar / character varying (unbounded), varchar(n) / character varying(n) and character(n) (rc.21: Postgres's own names, lowercase; a @maxLength over n is refused). The view cast and the column use the spelling; meta migrate treats an unbounded varchar and text as one type. The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
         },
         {
           "name": "default",
@@ -1415,11 +1383,7 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
-          "allowedValues": [
-            "uuid",
-            "jsonb"
-          ],
-          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values, all on field.string: uuid (a native Postgres uuid column over a string-typed field), jsonb (a genuinely-open JSON column), and the text spellings text, varchar / character varying (unbounded), varchar(n) / character varying(n) and character(n) (rc.21: Postgres's own names, lowercase; a @maxLength over n is refused). The view cast and the column use the spelling; meta migrate treats an unbounded varchar and text as one type. The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
         },
         {
           "name": "default",
@@ -1557,11 +1521,7 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
-          "allowedValues": [
-            "uuid",
-            "jsonb"
-          ],
-          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values, all on field.string: uuid (a native Postgres uuid column over a string-typed field), jsonb (a genuinely-open JSON column), and the text spellings text, varchar / character varying (unbounded), varchar(n) / character varying(n) and character(n) (rc.21: Postgres's own names, lowercase; a @maxLength over n is refused). The view cast and the column use the spelling; meta migrate treats an unbounded varchar and text as one type. The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
         },
         {
           "name": "default",
@@ -1706,11 +1666,7 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
-          "allowedValues": [
-            "uuid",
-            "jsonb"
-          ],
-          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values, all on field.string: uuid (a native Postgres uuid column over a string-typed field), jsonb (a genuinely-open JSON column), and the text spellings text, varchar / character varying (unbounded), varchar(n) / character varying(n) and character(n) (rc.21: Postgres's own names, lowercase; a @maxLength over n is refused). The view cast and the column use the spelling; meta migrate treats an unbounded varchar and text as one type. The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
         },
         {
           "name": "default",
@@ -1848,11 +1804,7 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
-          "allowedValues": [
-            "uuid",
-            "jsonb"
-          ],
-          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values, all on field.string: uuid (a native Postgres uuid column over a string-typed field), jsonb (a genuinely-open JSON column), and the text spellings text, varchar / character varying (unbounded), varchar(n) / character varying(n) and character(n) (rc.21: Postgres's own names, lowercase; a @maxLength over n is refused). The view cast and the column use the spelling; meta migrate treats an unbounded varchar and text as one type. The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
         },
         {
           "name": "default",
@@ -1991,11 +1943,7 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
-          "allowedValues": [
-            "uuid",
-            "jsonb"
-          ],
-          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values, all on field.string: uuid (a native Postgres uuid column over a string-typed field), jsonb (a genuinely-open JSON column), and the text spellings text, varchar / character varying (unbounded), varchar(n) / character varying(n) and character(n) (rc.21: Postgres's own names, lowercase; a @maxLength over n is refused). The view cast and the column use the spelling; meta migrate treats an unbounded varchar and text as one type. The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
         },
         {
           "name": "default",
@@ -2148,11 +2096,7 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
-          "allowedValues": [
-            "uuid",
-            "jsonb"
-          ],
-          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values, all on field.string: uuid (a native Postgres uuid column over a string-typed field), jsonb (a genuinely-open JSON column), and the text spellings text, varchar / character varying (unbounded), varchar(n) / character varying(n) and character(n) (rc.21: Postgres's own names, lowercase; a @maxLength over n is refused). The view cast and the column use the spelling; meta migrate treats an unbounded varchar and text as one type. The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
         },
         {
           "name": "default",
@@ -2316,11 +2260,7 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
-          "allowedValues": [
-            "uuid",
-            "jsonb"
-          ],
-          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values, all on field.string: uuid (a native Postgres uuid column over a string-typed field), jsonb (a genuinely-open JSON column), and the text spellings text, varchar / character varying (unbounded), varchar(n) / character varying(n) and character(n) (rc.21: Postgres's own names, lowercase; a @maxLength over n is refused). The view cast and the column use the spelling; meta migrate treats an unbounded varchar and text as one type. The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
         },
         {
           "name": "default",
@@ -2486,11 +2426,7 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
-          "allowedValues": [
-            "uuid",
-            "jsonb"
-          ],
-          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values, all on field.string: uuid (a native Postgres uuid column over a string-typed field), jsonb (a genuinely-open JSON column), and the text spellings text, varchar / character varying (unbounded), varchar(n) / character varying(n) and character(n) (rc.21: Postgres's own names, lowercase; a @maxLength over n is refused). The view cast and the column use the spelling; meta migrate treats an unbounded varchar and text as one type. The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
         },
         {
           "name": "default",
@@ -2639,11 +2575,7 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
-          "allowedValues": [
-            "uuid",
-            "jsonb"
-          ],
-          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values, all on field.string: uuid (a native Postgres uuid column over a string-typed field), jsonb (a genuinely-open JSON column), and the text spellings text, varchar / character varying (unbounded), varchar(n) / character varying(n) and character(n) (rc.21: Postgres's own names, lowercase; a @maxLength over n is refused). The view cast and the column use the spelling; meta migrate treats an unbounded varchar and text as one type. The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
         },
         {
           "name": "default",
@@ -2788,11 +2720,7 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
-          "allowedValues": [
-            "uuid",
-            "jsonb"
-          ],
-          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values, all on field.string: uuid (a native Postgres uuid column over a string-typed field), jsonb (a genuinely-open JSON column), and the text spellings text, varchar / character varying (unbounded), varchar(n) / character varying(n) and character(n) (rc.21: Postgres's own names, lowercase; a @maxLength over n is refused). The view cast and the column use the spelling; meta migrate treats an unbounded varchar and text as one type. The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
         },
         {
           "name": "default",
@@ -2937,11 +2865,7 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
-          "allowedValues": [
-            "uuid",
-            "jsonb"
-          ],
-          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values are uuid | jsonb, both on field.string (uuid = native Postgres uuid column over a string-typed field; jsonb = genuinely-open JSON column). The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
+          "description": "Physical DB column-type override (ADR-0013 escape hatch). Legal values, all on field.string: uuid (a native Postgres uuid column over a string-typed field), jsonb (a genuinely-open JSON column), and the text spellings text, varchar / character varying (unbounded), varchar(n) / character varying(n) and character(n) (rc.21: Postgres's own names, lowercase; a @maxLength over n is refused). The view cast and the column use the spelling; meta migrate treats an unbounded varchar and text as one type. The logical field type and its native binding are unchanged. Native SQL arrays (uuid[]/text[]) are NOT declared here — they are derived from a field subtype + isArray (ADR-0036 Wave 1). The retired timestamp_with_tz value is gone — timezone-awareness lives in field.timestamp (instant by default) + @localTime (the naive opt-out), per ADR-0036 Wave 2."
         },
         {
           "name": "default",
@@ -3691,6 +3615,20 @@
           "description": "Optional row-scope predicate (a portable attr.filter object: eq/ne/gt/gte/lt/lte/like/in/isNull with and/or, desugared to { field: { op: value } } at parse time) selecting which rows the view returns — lowered to an outer SQL WHERE. A key names one of the projection's own fields, else a field of its base entity the view need not output, else a PATH of to-one hops (identity.reference or @cardinality one relationship names) from the base then a field of the entity reached ('caseId.patientId.hasActiveHipaaConsent'), joined but not output. A reached entity field may itself be derived (entity-derived: an origin.computed or origin.first declared on the entity, inlined where the filter reaches it). An aggregate-derived field is not addressable (fail-closed); a to-many hop is refused. A value may be a relative date ({ now: \"<ISO-8601 duration>\", startOf? }) on a date or timestamp field (rc.19)."
         },
         {
+          "name": "grain",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "rc.21: the view has one row per element of this base-entity field, a field.object array stored as jsonb; a base row with no element has no row. A field whose origin.passthrough @from names the field's @objectRef value object (Address.city) reads that member of the element; the base's own fields read the parent row as usual. An origin.aggregate is refused on such a projection."
+        },
+        {
+          "name": "grainOrdinal",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "rc.21: with @grain, the name of a field.int or field.long of this projection (with no origin) that holds the element's 1-based position in the array."
+        },
+        {
           "name": "object",
           "valueType": "string",
           "isArray": false,
@@ -3710,6 +3648,20 @@
             "kotlin"
           ],
           "description": "JVM-only (ADR-0005): the fully-qualified name of an ObjectAdapter that takes over value access for this object's instances. Every port loads and type-checks it; only Java and Kotlin act on it."
+        },
+        {
+          "name": "union",
+          "valueType": "string",
+          "isArray": true,
+          "required": false,
+          "description": "rc.21: the view is this projection's rows UNIONed with each named projection's rows. Each named projection has the same effective fields as this one, in order: names, subtypes, array-ness and physical column names (ERR_BAD_ATTR_VALUE otherwise); its own @filter, joins and base apply to its rows. Usually this projection extends one branch and names the others. A named projection may be abstract and sourceless."
+        },
+        {
+          "name": "unionAll",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "rc.21: with @union, keep duplicate rows (UNION ALL). Absent or false: duplicates are removed (UNION), SQL's own default."
         }
       ],
       "children": [
@@ -4119,6 +4071,36 @@
           "isArray": false,
           "required": false,
           "description": "Dotted relationship path from the base entity to the related rows (e.g. 'Parent.childAs'). May be omitted only when exactly one single-hop relationship leads from the base entity to the @of entity (FR-024, ADR-0029)."
+        }
+      ],
+      "children": []
+    },
+    {
+      "type": "origin",
+      "subType": "function",
+      "description": "A value computed by a database function the project owns (rc.21): @function names it, @schema its schema (absent: public), and @args the fields passed to it, in order. On an entity an argument is one of its fields; on a projection, one of its own fields (not an aggregate) or a field of its base entity. Each argument is typed by its field and the result by the carrying field's subtype, so the call is checked, never free SQL. MetaObjects never creates the function: it is owned SQL, created before the view. Declared on an entity, it is entity-derived: a projection reaching the entity reads it like any derived field. Postgres only; the SQLite view emitter refuses it.",
+      "whenToUse": "A view column is the result of a function the database already holds (a PL/pgSQL state machine, a legacy computation) and cannot be expressed in @expr. Declare the call instead of hand-writing the view's @sql.",
+      "attrs": [
+        {
+          "name": "args",
+          "valueType": "string",
+          "isArray": true,
+          "required": false,
+          "description": "The fields passed to the function, in parameter order: field names of the host entity, or (on a projection) of the projection or its base entity. Each must be a scalar field. Absent or empty: a function of no arguments."
+        },
+        {
+          "name": "function",
+          "valueType": "string",
+          "isArray": false,
+          "required": true,
+          "description": "The function's name as the database names it: a plain identifier ([A-Za-z_][A-Za-z0-9_]*), quoted when it is not lowercase."
+        },
+        {
+          "name": "schema",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The schema the function lives in, a plain identifier. Absent: public."
         }
       ],
       "children": []

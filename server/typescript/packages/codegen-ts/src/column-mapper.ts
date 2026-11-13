@@ -38,6 +38,7 @@ import {
   FIELD_ATTR_DB_COLUMN_TYPE,
   DB_COLUMN_TYPE_UUID,
   DB_COLUMN_TYPE_JSONB,
+  parseDbColumnType,
   FIELD_ATTR_LOCAL_TIME,
   FIELD_ATTR_LENIENT,
   TYPE_ORIGIN,
@@ -368,9 +369,13 @@ function pgColumnTypeOverride(
       return { fnName: "uuid" };
     case DB_COLUMN_TYPE_JSONB:
       return { fnName: "jsonb" };
-    default:
-      return undefined;
   }
+  // rc.21 part B (U2): the text spellings, as `meta migrate` creates them.
+  const parsed = parseDbColumnType(dbColumnType);
+  if (parsed?.kind === "text") return { fnName: "text" };
+  if (parsed?.kind === "varchar") return parsed.length !== undefined ? { fnName: "varchar", fnOptions: { length: parsed.length } } : { fnName: "varchar" };
+  if (parsed?.kind === "char") return { fnName: "char", fnOptions: { length: parsed.length } };
+  return undefined;
 }
 
 /** Resolve max length from validator.length child or @maxLength attr.

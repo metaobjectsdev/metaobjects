@@ -547,7 +547,10 @@ export function sqliteType(t: SqlType, identity: ColumnDescriptor["identity"]): 
   if (identity === "increment") return "INTEGER";
   if (identity === "uuid")      return "TEXT";
   switch (t.kind) {
-    case "text":      return t.maxLength !== undefined ? `VARCHAR(${t.maxLength})` : "TEXT";
+    case "text":
+      if (t.variant === "char") return `CHARACTER(${t.maxLength ?? 1})`;
+      if (t.maxLength !== undefined) return `VARCHAR(${t.maxLength})`;
+      return t.variant === "varchar" ? "VARCHAR" : "TEXT";
     // Use INTEGER for 64-bit and INT for 32-bit — SQLite preserves the declared type
     // in pragma_table_info, enabling round-trip fidelity (see introspect/sqlite.ts).
     case "integer":   return t.bits === 64 ? "INTEGER" : "INT";

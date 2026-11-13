@@ -27,6 +27,8 @@ export const ORIGIN_SUBTYPE_AGGREGATE   = "aggregate";
 // by @orderBy along @via, projecting @of (argmax-then-project).
 export const ORIGIN_SUBTYPE_COMPUTED    = "computed";
 export const ORIGIN_SUBTYPE_FIRST       = "first";
+// rc.21 part B (U10): a value computed by a database function the project owns.
+export const ORIGIN_SUBTYPE_FUNCTION    = "function";
 
 export const ORIGIN_SUBTYPES = [
   SUBTYPE_BASE,
@@ -34,6 +36,7 @@ export const ORIGIN_SUBTYPES = [
   ORIGIN_SUBTYPE_AGGREGATE,
   ORIGIN_SUBTYPE_COMPUTED,
   ORIGIN_SUBTYPE_FIRST,
+  ORIGIN_SUBTYPE_FUNCTION,
 ] as const;
 export type OriginSubType = (typeof ORIGIN_SUBTYPES)[number];
 
@@ -46,6 +49,7 @@ export const ASSEMBLY_ORIGIN_SUBTYPES = [
   ORIGIN_SUBTYPE_AGGREGATE,
   ORIGIN_SUBTYPE_COMPUTED,
   ORIGIN_SUBTYPE_FIRST,
+  ORIGIN_SUBTYPE_FUNCTION,
 ] as const;
 
 // passthrough attrs
@@ -80,6 +84,13 @@ export const ORIGIN_COMPUTED_ATTR_EXPR = "expr";
 export const ORIGIN_FIRST_ATTR_OF     = "of";
 export const ORIGIN_FIRST_ATTR_VIA    = "via";
 export const ORIGIN_FIRST_ATTR_FILTER = "filter";
+
+// rc.21 part B (U10) origin.function attrs: the function's name, its schema, and its arguments.
+export const ORIGIN_FUNCTION_ATTR_FUNCTION = "function";
+export const ORIGIN_FUNCTION_ATTR_SCHEMA   = "schema";
+export const ORIGIN_FUNCTION_ATTR_ARGS     = "args";
+/** A plain SQL identifier: what @function and @schema may hold (never free SQL). */
+export const ORIGIN_FUNCTION_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 // aggregate function vocabulary.
 //

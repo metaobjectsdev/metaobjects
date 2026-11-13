@@ -201,6 +201,39 @@ export const OBJECT_DEFINITION: ProviderDefinition = {
         {
           "type": "attr",
           "subType": "string",
+          "name": "union",
+          "isArray": true,
+          "min": 0,
+          "max": 1,
+          "description": "rc.21: the view is this projection's rows UNIONed with each named projection's rows. Each named projection has the same effective fields as this one, in order: names, subtypes, array-ness and physical column names (ERR_BAD_ATTR_VALUE otherwise); its own @filter, joins and base apply to its rows. Usually this projection extends one branch and names the others. A named projection may be abstract and sourceless."
+        },
+        {
+          "type": "attr",
+          "subType": "boolean",
+          "name": "unionAll",
+          "min": 0,
+          "max": 1,
+          "description": "rc.21: with @union, keep duplicate rows (UNION ALL). Absent or false: duplicates are removed (UNION), SQL's own default."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "grain",
+          "min": 0,
+          "max": 1,
+          "description": "rc.21: the view has one row per element of this base-entity field, a field.object array stored as jsonb; a base row with no element has no row. A field whose origin.passthrough @from names the field's @objectRef value object (Address.city) reads that member of the element; the base's own fields read the parent row as usual. An origin.aggregate is refused on such a projection."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "grainOrdinal",
+          "min": 0,
+          "max": 1,
+          "description": "rc.21: with @grain, the name of a field.int or field.long of this projection (with no origin) that holds the element's 1-based position in the array."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
           "name": "collectionName",
           "min": 0,
           "max": 1,

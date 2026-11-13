@@ -58,28 +58,75 @@ export const DB_COLUMN_TYPE_JSONB = "jsonb";
  */
 export const FIELD_ATTR_LOCAL_TIME = "localTime";
 
+/** rc.21 part B (U2): the text column spellings `@dbColumnType` takes on a field.string. */
+export const DB_COLUMN_TYPE_TEXT = "text";
+export const DB_COLUMN_TYPE_VARCHAR = "varchar";
+export const DB_COLUMN_TYPE_CHARACTER_VARYING = "character varying";
+
 /**
- * The closed set of legal `@dbColumnType` values (raw-dialect passthrough deferred).
+ * The closed set of legal bare `@dbColumnType` values (raw-dialect passthrough deferred).
  * dbColumnType slim-and-derive (ADR-0036 Wave 1, decision 4): the native-array
  * overrides `uuid_array`/`text_array` are fully removed — native `uuid[]`/`text[]`
  * are DERIVED from a field subtype + `isArray`, never declared via an escape hatch.
  * Wave 2 (decision 1) retires `timestamp_with_tz` entirely — tz-awareness moves to
- * `field.timestamp` (instant by default) + `@localTime` (the naive opt-out). The
- * legal set is now just `{ uuid, jsonb }`, both on field.string.
+ * `field.timestamp` (instant by default) + `@localTime` (the naive opt-out).
+ * rc.21 part B (U2) adds the text spellings: `text`, an unbounded `varchar` / `character
+ * varying`, and the sized `varchar(n)`, `character varying(n)` and `character(n)`
+ * ({@link parseDbColumnType}), all on field.string.
  */
 export const DB_COLUMN_TYPE_VALUES = [
   DB_COLUMN_TYPE_UUID,
   DB_COLUMN_TYPE_JSONB,
+  DB_COLUMN_TYPE_TEXT,
+  DB_COLUMN_TYPE_VARCHAR,
+  DB_COLUMN_TYPE_CHARACTER_VARYING,
 ] as const;
 export type DbColumnTypeValue = (typeof DB_COLUMN_TYPE_VALUES)[number];
+
+/** The sized spellings, as written in a message: `n` is a positive integer. */
+export const DB_COLUMN_TYPE_SIZED_SPELLINGS = ["varchar(n)", "character varying(n)", "character(n)"] as const;
 
 /**
  * Legal `@dbColumnType` value → the field subtypes it may be applied to (ADR-0013,
  * R6 Plan 2b). Any other (subtype × value) pairing — or an unrecognized value — is
  * an ERR_BAD_ATTR_VALUE. Keyed by value; the value-set is enforced by membership in
- * this map. Subtype names are the bare FIELD_SUBTYPE_* constants (string).
+ * this map. Subtype names are the bare FIELD_SUBTYPE_* constants (string). The sized
+ * spellings are field.string's too.
  */
 export const DB_COLUMN_TYPE_LEGAL_SUBTYPES: Readonly<Record<DbColumnTypeValue, readonly string[]>> = {
   [DB_COLUMN_TYPE_UUID]: [FIELD_SUBTYPE_STRING],
   [DB_COLUMN_TYPE_JSONB]: [FIELD_SUBTYPE_STRING],
+  [DB_COLUMN_TYPE_TEXT]: [FIELD_SUBTYPE_STRING],
+  [DB_COLUMN_TYPE_VARCHAR]: [FIELD_SUBTYPE_STRING],
+  [DB_COLUMN_TYPE_CHARACTER_VARYING]: [FIELD_SUBTYPE_STRING],
 } as const;
+
+/** A parsed `@dbColumnType`: what the column is, and its declared length for a sized spelling. */
+export type ParsedDbColumnType =
+  | { readonly kind: "uuid" }
+  | { readonly kind: "jsonb" }
+  | { readonly kind: "text" }
+  | { readonly kind: "varchar"; readonly length?: number }
+  | { readonly kind: "char"; readonly length: number };
+
+/**
+ * rc.21 part B (U2): parse a `@dbColumnType` value, or undefined for one that is not legal. The
+ * spellings are Postgres's own, matched exactly (lowercase, one space): `varchar` and `character
+ * varying` are the one unbounded varying type, `varchar(n)` and `character varying(n)` the sized
+ * one, `character(n)` the fixed-length one. Every port parses them alike.
+ */
+export function parseDbColumnType(value: string): ParsedDbColumnType | undefined {
+  if (value === DB_COLUMN_TYPE_UUID) return { kind: "uuid" };
+  if (value === DB_COLUMN_TYPE_JSONB) return { kind: "jsonb" };
+  if (value === DB_COLUMN_TYPE_TEXT) return { kind: "text" };
+  if (value === DB_COLUMN_TYPE_VARCHAR || value === DB_COLUMN_TYPE_CHARACTER_VARYING) return { kind: "varchar" };
+  const sized = /^(varchar|character varying|character)\(([1-9][0-9]{0,8})\)$/.exec(value);
+  if (sized === null) return undefined;
+  const length = Number(sized[2]);
+  return sized[1] === "character" ? { kind: "char", length } : { kind: "varchar", length };
+}
+
+/** The field subtypes a `@dbColumnType` value is legal on, or undefined for a value that is not legal. */
+export function dbColumnTypeLegalSubtypes(value: string): readonly string[] | undefined {
+  return parseDbColumnType(value) === undefined ? undefined : [FIELD_SUBTYPE_STRING];
+}

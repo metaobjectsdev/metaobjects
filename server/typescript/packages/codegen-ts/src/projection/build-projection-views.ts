@@ -463,7 +463,12 @@ function collectDependsOn(
       case "first": first(e.column); return;
       case "cmp": expr(e.left); expr(e.right); return;
       case "nullTest": case "not": expr(e.arg); return;
-      case "logic": case "coalesce": e.args.forEach(expr); return;
+      case "logic": case "coalesce": case "fn": case "call": e.args.forEach(expr); return;
+      case "cast": expr(e.arg); return;
+      case "agg":
+        if (e.column.kind === "aggregate" && e.column.filter !== undefined) clause(e.column.filter);
+        if (e.column.kind === "predicateAgg") clause(e.column.pred);
+        return;
       case "case":
         if (e.operand !== undefined) expr(e.operand);
         for (const w of e.whens) { expr(w.when); expr(w.then); }
@@ -483,5 +488,10 @@ function collectDependsOn(
     else if (c.kind === "predicateAgg") clause(c.pred);
   }
   if (spec.where !== undefined) clause(spec.where);
+  // rc.21 part B (U15): a union reads every member's tables too.
+  for (const m of spec.union?.members ?? []) {
+    const t = joinTables[m.joinTree.baseEntity];
+    for (const mt of collectDependsOn(m, t ?? baseTableName, joinTables)) tables.add(mt);
+  }
   return [...tables];
 }

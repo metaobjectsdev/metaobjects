@@ -585,7 +585,10 @@ function identityOptions(c: Pick<ColumnDescriptor, "sequence">): string {
 
 export function pgType(t: SqlType): string {
   switch (t.kind) {
-    case "text":      return t.maxLength !== undefined ? `VARCHAR(${t.maxLength})` : "TEXT";
+    case "text":
+      if (t.variant === "char") return `CHARACTER(${t.maxLength ?? 1})`;
+      if (t.maxLength !== undefined) return `VARCHAR(${t.maxLength})`;
+      return t.variant === "varchar" ? "VARCHAR" : "TEXT";
     case "integer":   return t.bits === 64 ? "BIGINT" : "INTEGER";
     case "real":      return "DOUBLE PRECISION";
     case "real4":     return "REAL";

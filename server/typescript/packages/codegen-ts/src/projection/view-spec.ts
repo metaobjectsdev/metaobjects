@@ -91,7 +91,25 @@ export type ViewExprNode =
       readonly operand?: ViewExprNode;
       readonly whens: readonly { readonly when: ViewExprNode; readonly then: ViewExprNode }[];
       readonly else?: ViewExprNode;
-    };
+    }
+  // rc.21 part B (U11, U13): one of the closed function set beside coalesce (lower, upper, btrim,
+  // splitPart, concat, concatWs, substring, replace, left, right, length, nullif, greatest, least).
+  | { readonly kind: "fn"; readonly name: string; readonly args: readonly ViewExprNode[] }
+  // rc.21 part B (U12): a cast to a field subtype's column type (`spelling`: a text @dbColumnType).
+  | { readonly kind: "cast"; readonly arg: ViewExprNode; readonly to: CastTarget }
+  // rc.21 part B (U13): a scalar origin.aggregate of the projection, read on the grouped row.
+  | { readonly kind: "agg"; readonly column: AggregateColumn }
+  // rc.21 part B (U10): a call of a database function the project owns (origin.function).
+  | { readonly kind: "call"; readonly schema?: string; readonly name: string; readonly args: readonly ViewExprNode[] };
+
+/** A cast's target: a field subtype, and (for a string) a text @dbColumnType spelling. */
+export interface CastTarget {
+  readonly subType: string;
+  readonly spelling?: { readonly kind: "text" | "varchar" | "char"; readonly length?: number };
+}
+
+/** An aggregate column a computed expression may read (U13): a scalar reduce or an any/all. */
+export type AggregateColumn = Extract<SelectColumn, { kind: "aggregate" | "predicateAgg" }>;
 
 /** rc.19 correlated-filter: a filter operand that is a column of the base row (`alias.column`). */
 export interface ColRef {
@@ -107,6 +125,7 @@ export interface ViewOrderKey {
 
 /** One column of the SELECT list. */
 export type SelectColumn =
+  | GrainColumn
   | {
       readonly kind: "passthrough";
       readonly fieldName: string;        // projection field name
@@ -219,6 +238,19 @@ export type SelectColumn =
       readonly outerAlias?: string;
     };
 
+/**
+ * rc.21 part B (U14): a member of the array element a `@grain` projection's row is, read from the
+ * element (`->>` on Postgres, `json_extract` on SQLite) and cast to the member's column type; or,
+ * with `member` undefined, the element's 1-based position (`@grainOrdinal`).
+ */
+export interface GrainColumn {
+  readonly kind: "element";
+  readonly fieldName: string;
+  readonly dbColAlias: string;
+  readonly member?: string;
+  readonly castTo: SqlType;
+}
+
 /** An `origin.first` column. */
 export type FirstColumn = Extract<SelectColumn, { kind: "first" }>;
 
@@ -250,4 +282,15 @@ export interface ViewSpec {
    * `@filter`, which scopes the rows a single aggregate spans. Undefined = no filter.
    */
   readonly where?: ViewFilterClause;
+  /**
+   * rc.21 part B (U14): one row per element of the base row's jsonb array column `column`
+   * (`CROSS JOIN LATERAL jsonb_array_elements(...) WITH ORDINALITY` / `json_each`), its element
+   * and position under `alias`. A row with no element is not returned.
+   */
+  readonly grain?: { readonly column: string; readonly alias: string };
+  /**
+   * rc.21 part B (U15): the bodies UNIONed after this one, each the same shape; `all` keeps
+   * duplicate rows (UNION ALL), else they are removed (UNION).
+   */
+  readonly union?: { readonly all: boolean; readonly members: readonly ViewSpec[] };
 }
