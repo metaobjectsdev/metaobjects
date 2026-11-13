@@ -51,7 +51,7 @@ public class NamesGeneratorTests
     private static MetaRoot Load(string model)
     {
         var r = new MetaDataLoader().Load([new InMemoryStringSource(model, id: "gen.json")]);
-        Assert.Empty(r.Errors);
+        Assert.Empty(r.Errors.Select(e => $"{e.Code}: {e.Message}"));
         return r.Root;
     }
 
@@ -125,6 +125,36 @@ public class NamesGeneratorTests
         // collision that makes the pair non-optional.
         Assert.Contains("public const string CreatedAtField = \"createdAt\";", src);
         Assert.Contains("public const string CreatedAtColumn = \"created_at\";", src);
+    }
+
+    // rc.21 (U7): a derived field of a table-backed entity has no column, so the artifact names no
+    // column for it (no `…Field`/`…Column` pair, no ColumnsByField entry). A projection's derived
+    // field IS a column of its view and keeps its pair.
+    [Fact]
+    public void A_derived_field_of_a_table_entity_has_no_column_constant()
+    {
+        const string model = """
+        { "metadata.root": { "package": "acme", "children": [
+          { "object.entity": { "name": "Account", "children": [
+            { "source.rdb": { "@table": "accounts" } },
+            { "field.long": { "name": "id" } },
+            { "field.int": { "name": "score" } },
+            { "field.boolean": { "name": "isHigh", "children": [ { "origin.computed": { "@expr": {
+                "op": "gte", "left": { "field": "score" }, "right": { "value": 4 } } } } ] } },
+            { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
+          { "object.projection": { "name": "AccountView", "@filter": { "isHigh": true }, "children": [
+            { "source.rdb": { "@kind": "view", "@view": "v_accounts" } },
+            { "field.long": { "name": "id", "extends": "Account.id" } },
+            { "field.int": { "name": "doubled", "children": [ { "origin.computed": { "@expr": {
+                "fn": "coalesce", "args": [ { "field": "score" }, { "value": 0 } ] } } } ] } },
+            { "identity.primary": { "name": "id", "extends": "Account.id" } } ] } } ] } }
+        """;
+        var files = new NamesGenerator().Generate(Ctx(Load(model))).ToList();
+        var account = files.Single(f => f.Path.EndsWith("AccountNames.g.cs", StringComparison.Ordinal)).Content;
+        Assert.Contains("public const string ScoreColumn = \"score\";", account);
+        Assert.DoesNotContain("IsHigh", account);
+        var view = files.Single(f => f.Path.EndsWith("AccountViewNames.g.cs", StringComparison.Ordinal)).Content;
+        Assert.Contains("public const string DoubledColumn = \"doubled\";", view);
     }
 
     [Fact]

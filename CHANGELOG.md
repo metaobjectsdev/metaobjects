@@ -557,6 +557,15 @@ vocabulary; upgrade every port together.
 
 ### Fixed
 
+- **Fix, TypeScript and C#: `<Entity>Names` has no entry for a derived field with no column
+  (rc.21, U7).** A derived (`origin.*`) field of an entity read from its table is no column of
+  that table (a projection that reaches it lowers it inline), yet the names artifact emitted a
+  `…Field`/`…Column` pair (C#) or a `fields.<name>.column` (TypeScript) for it, and a
+  `ColumnsByField` entry, all naming a column that does not exist. It now emits no entry for such
+  a field, so code reading one fails to compile instead of querying a missing column. A
+  projection's derived field is a column of its view, and a write-through entity's is a column of
+  its read view: both keep their entry. Java and Kotlin are unchanged (no entity-derived fields).
+
 - **Fix, TypeScript and C#: a `@via` hop under a guessed name lists the reverse hops (rc.21, U9).**
   The first hop from a projection's base entity already walks an `identity.reference` backwards
   (`Case.caseHistory` for `CaseHistory.caseId`), named by the holder's collection name, first

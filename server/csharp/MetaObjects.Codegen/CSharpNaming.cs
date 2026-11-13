@@ -562,13 +562,16 @@ public static class CSharpNaming
         if (source is null) return null;
 
         var fields = new Dictionary<string, FieldNames>(StringComparer.Ordinal);
+        // rc.21 (U7): a derived field of an object read from its table has no column, so it has
+        // no names entry — no `…Column` constant naming a column that does not exist.
+        var noColumn = source.IsWritable() && !obj.IsWriteThrough();
         // ADR-0039: Fields() is the RESOLVING accessor — an inherited @column must
         // resolve here, or the constant disagrees with the column EF actually binds.
-        foreach (var f in obj.Fields())
+        foreach (var f in obj.Fields().Where(f => !(noColumn && f.IsDerived())))
             fields[f.Name] = FieldNamesOf(f, strategy);
         // ADR-0039's sanctioned own-accessor use: what this artifact DECLARES.
         var ownFields = new Dictionary<string, FieldNames>(StringComparer.Ordinal);
-        foreach (var f in obj.OwnFields())
+        foreach (var f in obj.OwnFields().Where(f => !(noColumn && f.IsDerived())))
             ownFields[f.Name] = FieldNamesOf(f, strategy);
 
         var superObj = NamesArtifactSuperOf(obj);
@@ -768,10 +771,11 @@ public static class CSharpNaming
     {
         strategy ??= ColumnNamingStrategy.SnakeCase;
         if (!DeclaresNamesContent(obj)) return null;
-        var own = obj.OwnFields();
+        // rc.21 (U7): an abstract ENTITY's derived field is no column of the tables extending it.
+        var own = obj.OwnFields().Where(f => !(obj.IsEntity() && f.IsDerived())).ToList();
 
         var fields = new Dictionary<string, FieldNames>(StringComparer.Ordinal);
-        foreach (var f in obj.Fields())
+        foreach (var f in obj.Fields().Where(f => !(obj.IsEntity() && f.IsDerived())))
             fields[f.Name] = FieldNamesOf(f, strategy);
         var ownFields = new Dictionary<string, FieldNames>(StringComparer.Ordinal);
         foreach (var f in own)
