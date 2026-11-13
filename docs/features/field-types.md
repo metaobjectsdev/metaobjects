@@ -247,6 +247,26 @@ Two rules follow from int-backing being a **persistence-layer codec**:
   to the database: an unmapped symbol binds unchanged, so the column type and its `CHECK`
   reject it.
 
+**A stored spelling per member (rc.21):** `@stringValueMap` gives each member of a
+string-stored enum the string its column holds, when the database's spelling is not the
+member symbol — a legacy column holding `pending`, or `Key_File_Path`:
+
+```json
+{ "field.enum": { "name": "status", "@values": ["Pending", "Delivered"],
+    "@stringValueMap": { "Pending": "pending", "Delivered": "delivered" } } }
+```
+
+The generated enum type and the wire keep the members (`Pending`); the column, its `CHECK`,
+its length (`@maxLength` must fit the longest stored string), a `@default` and a `@condition`
+or `@equals` literal hold the stored strings. It is the string twin of `@intValueMap`, with its
+rules: keys must match `@values` exactly, values are unique non-empty strings, and a shared
+enum declares it on the shared declaration. It is refused beside `@intValueMap` and on an array
+enum (`ERR_BAD_ATTR_VALUE`). A stored string that maps to no member throws on read, as an
+unmapped integer does. Where each port maps it: the C# EF converter and `CHECK`; `meta migrate`,
+the Drizzle column codec, the runtime ObjectManager and the view, report and Cube lowerings
+(TypeScript); the OMDB codec (Java); the Exposed `customEnumeration` (Kotlin); the generated
+Spring enum's `dbValue()` (for a hand-written repository); the Python ObjectManager.
+
 ### Sharing one enum — abstract `field.enum` + `extends`
 
 Reuse a constraint set across entities by declaring one **abstract** `field.enum`

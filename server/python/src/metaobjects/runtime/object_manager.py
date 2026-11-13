@@ -1221,6 +1221,11 @@ def _coerce_write_value(field: MetaField, value: Any) -> Any:
             if _field_is_array(field) and isinstance(value, list):
                 return [_encode_enum_member(int_map, v) for v in value]
             return _encode_enum_member(int_map, value)
+        # rc.21: a @stringValueMap enum stores the member's string (scalar only; the
+        # loader refuses it on an array). An unmapped member passes through, as above.
+        stored_map = _string_value_map(field)
+        if stored_map is not None and isinstance(value, str):
+            return stored_map.get(value, value)
 
     # Everything else (string / int / long / double / float / boolean / enum)
     # is already the native type pg8000 binds directly.
@@ -1325,6 +1330,13 @@ def _int_value_map(field: MetaField) -> dict[Any, Any] | None:
     return m if isinstance(m, dict) else None
 
 
+def _string_value_map(field: MetaField) -> dict[str, str] | None:
+    """rc.21 — the declared ``@stringValueMap`` (member → stored string), or ``None``.
+    ADR-0039 resolving, as :func:`_int_value_map`."""
+    m = field.get_meta_attr(fc.FIELD_ATTR_STRING_VALUE_MAP)
+    return m if isinstance(m, dict) else None
+
+
 def _decode_read_value(field: MetaField, value: Any) -> Any:
     """Decode a stored value back to its authoring form on read.
 
@@ -1370,6 +1382,18 @@ def _decode_read_value(field: MetaField, value: Any) -> Any:
         return value
     int_map = _int_value_map(field)
     if int_map is None:
+        stored_map = _string_value_map(field)
+        if stored_map is not None and isinstance(value, str):
+            # rc.21: the stored string back to its member; an unmapped one RAISES, as an
+            # unmapped int does.
+            for member, stored in stored_map.items():
+                if stored == value:
+                    return member
+            raise ValueError(
+                f"field.enum '{field.name}' read stored value {value!r} with no member in "
+                f"@{fc.FIELD_ATTR_STRING_VALUE_MAP} (declared: {stored_map}) — the database holds "
+                f"a value the model does not describe."
+            )
         return value
     if isinstance(value, list):
         # isArray=true (``integer[]``): decode element-wise; a null element stays null.

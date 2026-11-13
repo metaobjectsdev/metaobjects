@@ -29,6 +29,7 @@ from ..meta.core.field.field_constants import (
     FIELD_ATTR_COERCE_DEFAULT,
     FIELD_ATTR_DEFAULT,
     FIELD_ATTR_INT_VALUE_MAP,
+    FIELD_ATTR_STRING_VALUE_MAP,
     FIELD_ATTR_MAX_LENGTH,
     FIELD_ATTR_OBJECT_REF,
     FIELD_ATTR_REQUIRED,
@@ -652,6 +653,7 @@ def _validate_enum_values(
         # continue` gate below so a concrete field.enum that inherits @values via
         # `extends` but declares its own @intValueMap is still validated.
         _validate_enum_int_value_map(node, errors)
+        _validate_enum_string_value_map(node, errors)
 
         # ADR-0039 sanctioned own: validates the AUTHORED @values membership on THIS
         # node (mirrors the TS attr-schema-validate `node.ownAttrs()`); an inherited
@@ -799,6 +801,56 @@ def _validate_enum_int_value_map(node: MetaData, errors: list[MetaError]) -> Non
             )
         else:
             seen_values[value] = member
+
+
+def _validate_enum_string_value_map(node: MetaData, errors: list[MetaError]) -> None:
+    """rc.21 — ``@stringValueMap`` content rules: the string twin of
+    :func:`_validate_enum_int_value_map`, with its policies (own-only; a shared enum's
+    backing owned by the shared declaration). Keys must exactly match the EFFECTIVE
+    ``@values``; values are unique non-empty strings. Refused beside ``@intValueMap`` and
+    on an array enum (ERR_BAD_ATTR_VALUE). Mirrors TS ``attr-schema-validate`` Check 5c.
+    """
+    # ADR-0039 sanctioned own: validates the map DECLARED on this node.
+    raw = node.attr(FIELD_ATTR_STRING_VALUE_MAP)
+    if raw is None:
+        return
+    label = _node_label(node)
+    prefix = f"{label} attribute '@{FIELD_ATTR_STRING_VALUE_MAP}'"
+
+    def bad(message: str, code: ErrorCode = ErrorCode.ERR_BAD_ATTR_VALUE) -> None:
+        errors.append(MetaError(f"{prefix} {message}", code, envelope=node.source))
+
+    if node.super_data is not None and is_shared_enum_declaration(node.super_data):
+        bad("is declared on a field extending a shared abstract enum — a shared enum's stored "
+            "strings are owned by the shared declaration; move it onto the shared declaration.",
+            ErrorCode.ERR_ENUM_EXTENDS_VALUES_CONFLICT)
+        return
+    if node.attrs().get(FIELD_ATTR_INT_VALUE_MAP) is not None:
+        bad(f"is refused beside '@{FIELD_ATTR_INT_VALUE_MAP}': an @intValueMap enum is stored as integers, not strings. Keep one.")
+        return
+    if node.resolved_is_array():
+        bad(f"is refused on an array enum: its column holds the members as text[] elements, which no port maps through @{FIELD_ATTR_STRING_VALUE_MAP}.")
+        return
+    if not isinstance(raw, dict):
+        bad("must be an object of { member: storedString }.")
+        return
+    effective_values = _effective_enum_values(node)
+    member_set = set(effective_values)
+    missing = [m for m in effective_values if m not in raw]
+    extra = [k for k in raw if k not in member_set]
+    if missing or extra:
+        parts = ([f"missing: {', '.join(missing)}"] if missing else []) + ([f"unknown: {', '.join(extra)}"] if extra else [])
+        bad(f"keys must exactly match '@{FIELD_ATTR_VALUES}' members ({'; '.join(parts)}).")
+    seen: dict[str, str] = {}
+    for member, value in raw.items():
+        if not isinstance(value, str) or value == "":
+            bad(f"member {member!r} must map to a non-empty string.")
+            continue
+        owner = seen.get(value)
+        if owner is not None:
+            bad(f"members {owner!r} and {member!r} share the stored string {value!r}; every member must have a unique one.")
+        else:
+            seen[value] = member
 
 
 def _effective_enum_values(node: MetaData) -> list[str]:

@@ -823,6 +823,7 @@ public final class ValidationPhase {
         // owned by this node is validated here against the node's EFFECTIVE @values
         // (own or inherited via extends), mirroring the TS/C# port structure exactly.
         validateEnumIntValueMap(node);
+        validateEnumStringValueMap(node);
 
         // --- Own @values content check ---
         if (node.hasMetaAttr(EnumField.ATTR_VALUES, false)) {
@@ -969,6 +970,72 @@ public final class ValidationPhase {
                         + "' members '" + owner + "' and '" + entry.getKey()
                         + "' share the same value " + value + "; every member must have a unique int.",
                     ErrorCode.ERR_BAD_ATTR_VALUE, node.getSource());
+            }
+        }
+    }
+
+    /**
+     * rc.21 — {@code @stringValueMap} content rules: the string twin of
+     * {@link #validateEnumIntValueMap}, with its policies (own-only; a shared enum's backing owned by
+     * the shared declaration). Keys must exactly match the effective {@code @values}; values are
+     * unique non-empty strings. Refused beside {@code @intValueMap} and on an array enum. Mirrors
+     * TypeScript {@code attr-schema-validate} Check 5c.
+     */
+    private static void validateEnumStringValueMap(MetaData node) {
+        if (!node.hasMetaAttr(EnumField.ATTR_STRING_VALUE_MAP, false)) {
+            return;
+        }
+        String prefix = ": field.enum '" + node.getName() + "' attribute '@" + EnumField.ATTR_STRING_VALUE_MAP + "' ";
+        MetaData sharedSuper = sharedEnumSuper(node);
+        if (sharedSuper != null) {
+            throw new MetaDataException(ErrorMessageConstants.ERR_ENUM_EXTENDS_VALUES_CONFLICT + prefix
+                + "is declared on a field extending shared abstract enum '" + sharedSuper.getName()
+                + "' - a shared enum's stored strings are owned by the shared declaration; move it onto '"
+                + sharedSuper.getName() + "' to inherit it.",
+                ErrorCode.ERR_ENUM_EXTENDS_VALUES_CONFLICT, node.getSource());
+        }
+        if (node.hasMetaAttr(EnumField.ATTR_INT_VALUE_MAP)) {
+            throw new MetaDataException(ErrorMessageConstants.ERR_BAD_ATTR_VALUE + prefix
+                + "is refused beside '@" + EnumField.ATTR_INT_VALUE_MAP
+                + "': an @intValueMap enum is stored as integers, not strings. Keep one.",
+                ErrorCode.ERR_BAD_ATTR_VALUE, node.getSource());
+        }
+        if (node instanceof MetaField<?> field && field.isArrayType()) {
+            throw new MetaDataException(ErrorMessageConstants.ERR_BAD_ATTR_VALUE + prefix
+                + "is refused on an array enum: its column holds the members as text[] elements, which no port maps through @"
+                + EnumField.ATTR_STRING_VALUE_MAP + ".",
+                ErrorCode.ERR_BAD_ATTR_VALUE, node.getSource());
+        }
+        Object raw = node.getMetaAttr(EnumField.ATTR_STRING_VALUE_MAP, false).getValue();
+        if (!(raw instanceof Map<?, ?> map)) {
+            throw new MetaDataException(ErrorMessageConstants.ERR_BAD_ATTR_VALUE + prefix
+                + "must be an object of { member: storedString }.", ErrorCode.ERR_BAD_ATTR_VALUE, node.getSource());
+        }
+        List<String> effective = effectiveEnumValues(node);
+        Set<String> memberSet = new HashSet<>(effective);
+        Set<String> keySet = new HashSet<>();
+        for (Object k : map.keySet()) keySet.add(String.valueOf(k));
+        List<String> missing = effective.stream().filter(m -> !keySet.contains(m)).toList();
+        List<String> extra = keySet.stream().filter(k -> !memberSet.contains(k)).sorted().toList();
+        if (!missing.isEmpty() || !extra.isEmpty()) {
+            throw new MetaDataException(ErrorMessageConstants.ERR_BAD_ATTR_VALUE + prefix
+                + "keys must exactly match '@" + EnumField.ATTR_VALUES + "' members"
+                + (missing.isEmpty() ? "" : " (missing: " + String.join(", ", missing) + ")")
+                + (extra.isEmpty() ? "" : " (unknown: " + String.join(", ", extra) + ")") + ".",
+                ErrorCode.ERR_BAD_ATTR_VALUE, node.getSource());
+        }
+        Map<String, String> seen = new HashMap<>();
+        for (String member : effective) {
+            Object value = map.get(member);
+            if (!(value instanceof String stored) || stored.isEmpty()) {
+                throw new MetaDataException(ErrorMessageConstants.ERR_BAD_ATTR_VALUE + prefix
+                    + "member '" + member + "' must map to a non-empty string.", ErrorCode.ERR_BAD_ATTR_VALUE, node.getSource());
+            }
+            String owner = seen.putIfAbsent(stored, member);
+            if (owner != null) {
+                throw new MetaDataException(ErrorMessageConstants.ERR_BAD_ATTR_VALUE + prefix
+                    + "members '" + owner + "' and '" + member + "' share the stored string '" + stored
+                    + "'; every member must have a unique one.", ErrorCode.ERR_BAD_ATTR_VALUE, node.getSource());
             }
         }
     }

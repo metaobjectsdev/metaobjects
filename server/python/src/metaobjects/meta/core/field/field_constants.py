@@ -189,3 +189,7 @@ ENUM_MEMBER_PATTERN = r"^[A-Za-z_][A-Za-z0-9_]*$"
 # @values; values must be unique integers. The generated native type and wire
 # format are unchanged in every language. Mirrors TS FIELD_ATTR_INT_VALUE_MAP.
 FIELD_ATTR_INT_VALUE_MAP = "intValueMap"
+# rc.21 — per-member stored strings ({member: str}) of a string-stored enum; the string twin of
+# @intValueMap. Keys must match @values; values unique non-empty strings; refused with @intValueMap
+# and on an array enum.
+FIELD_ATTR_STRING_VALUE_MAP = "stringValueMap"

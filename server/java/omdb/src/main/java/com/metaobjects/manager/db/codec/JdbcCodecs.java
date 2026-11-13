@@ -441,8 +441,25 @@ public final class JdbcCodecs {
         @Override public void readInto(Object o, MetaField f, ResultSet rs, int j) throws SQLException {
             Map<String, Integer> intMap = intValueMap(f);
             if (intMap == null) {
-                f.setString(o, rs.getString(j));
-                return;
+                String raw = rs.getString(j);
+                Map<String, String> storedMap = stringValueMap(f);
+                if (storedMap == null || raw == null) {
+                    f.setString(o, raw);
+                    return;
+                }
+                // rc.21: a @stringValueMap enum holds the member's stored string; the caller gets
+                // the member. An unmapped stored string throws, as an unmapped int does.
+                for (Map.Entry<String, String> e : storedMap.entrySet()) {
+                    if (raw.equals(e.getValue())) {
+                        f.setString(o, e.getKey());
+                        return;
+                    }
+                }
+                throw new SQLException(
+                    "field.enum '" + f.getName() + "' read stored value '" + raw
+                        + "' with no member in @" + EnumField.ATTR_STRING_VALUE_MAP
+                        + " (declared: " + storedMap + ") — the database holds a value the model "
+                        + "does not describe.");
             }
             refuseArray(f);
             int stored = rs.getInt(j);
@@ -472,8 +489,15 @@ public final class JdbcCodecs {
         @Override public void write(PreparedStatement s, MetaField f, int j, Object v) throws SQLException {
             Map<String, Integer> intMap = intValueMap(f);
             if (intMap == null) {
-                if (v == null) s.setNull(j, Types.VARCHAR);
-                else s.setString(j, v.toString());
+                if (v == null) {
+                    s.setNull(j, Types.VARCHAR);
+                    return;
+                }
+                // rc.21: a @stringValueMap enum binds the member's stored string; an unmapped
+                // member is bound unchanged, so the column's CHECK rejects it.
+                Map<String, String> storedMap = stringValueMap(f);
+                String member = v.toString();
+                s.setString(j, storedMap == null ? member : storedMap.getOrDefault(member, member));
                 return;
             }
             refuseArray(f);
@@ -499,6 +523,19 @@ public final class JdbcCodecs {
                 "field.enum '" + f.getName() + "' is an int-backed array (@" + EnumField.ATTR_INT_VALUE_MAP
                     + " with isArray) — OMDB persists no enum array, so it refuses rather than store "
                     + "the member symbols or read a member nobody stored.");
+        }
+
+        /** rc.21 — the declared member→stored-string map ({@code @stringValueMap}, resolving), or null. */
+        private static Map<String, String> stringValueMap(MetaField f) {
+            if (!f.hasMetaAttr(EnumField.ATTR_STRING_VALUE_MAP)) return null;
+            Object raw = f.getMetaAttr(EnumField.ATTR_STRING_VALUE_MAP).getValue();
+            if (!(raw instanceof Map)) return null;
+            Map<String, String> out = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> e : ((Map<?, ?>) raw).entrySet()) {
+                if (e.getKey() == null || !(e.getValue() instanceof String)) continue;
+                out.put(String.valueOf(e.getKey()), (String) e.getValue());
+            }
+            return out.isEmpty() ? null : out;
         }
 
         /** The declared symbol→int map, or null when the enum is string-backed. */

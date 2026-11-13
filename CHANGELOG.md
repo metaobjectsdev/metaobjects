@@ -11,7 +11,7 @@ here.**
 ## [Unreleased]
 
 **`metamodelVersion` moves to `1.3`.** This release adds vocabulary (`field.duration`,
-`@constraintName`, `@dbCheck`, `@condition`, `atLeastOne @max`, `@sequenceStart`, `@sequenceName`,
+`@constraintName`, `@dbCheck`, `@stringValueMap`, `@condition`, `atLeastOne @max`, `@sequenceStart`, `@sequenceName`,
 `@flattenedColumnPrefix`, the `pascal` column rule, and `@dbSetName`, a C#-only attr) and nothing
 that loaded before stops loading. The registry gains two fields on a type or attr entry, carried
 into the registry manifest: `implementedIn` (kind 1: cross-port vocabulary only the named ports
@@ -22,6 +22,26 @@ the kind-1 rows that used to be carved out. A port that reports `1.2` does not k
 vocabulary; upgrade every port together.
 
 ### Added
+
+- **`@stringValueMap`: a field.enum member's stored string (rc.21).** A string-stored enum may
+  declare the string each member is stored as, `{ member: string }`, for a legacy column whose
+  spelling differs from the member symbols (`pending`, `Key_File_Path`). The generated native
+  type and the wire keep the members; the column, its CHECK, its length, a `@default` and a
+  `@condition` or `@equals` literal hold the stored strings. It is the string twin of
+  `@intValueMap` (attr subtype `properties`): keys must match `@values` exactly, values are
+  unique non-empty strings, a shared enum declares it on the shared declaration
+  (`ERR_ENUM_EXTENDS_VALUES_CONFLICT`), and it is refused beside `@intValueMap` and on an array
+  enum (`ERR_BAD_ATTR_VALUE`; no port maps a text[] element through it). Every port registers
+  and validates it. It is honoured by the C# EF converter (a per-member chain ending in a
+  throwing helper, as the int-backed pair) and CHECK; by `meta migrate`, `meta verify --db`, the
+  Drizzle column (a member/stored-string codec), the TypeScript runtime ObjectManager (write,
+  read, filter) and the view, report and Cube lowerings; by the Java OMDB codec; by the Kotlin
+  Exposed table (a VARCHAR `customEnumeration`); by the generated Spring enum (`dbValue()` /
+  `fromDbValue(String)`, for a hand-written repository); and by the Python ObjectManager. A
+  stored string that maps to no member throws on read in every port. `metamodelVersion` stays
+  `1.3`: the addition lands in the same unreleased minor. Fixtures
+  `fixtures/conformance/enum-string-value-map` and four `error-enum-stringvaluemap-*`; the shared
+  CHECK corpus gains `input/meta.stored.json`.
 
 - **`@dbCheck: false`: a validator or enum with no database CHECK (rc.20).** A CHECK-generating
   validator (`numeric`, `length`, `regex`, `comparison`, `requiredWhen`, `presentIff`,

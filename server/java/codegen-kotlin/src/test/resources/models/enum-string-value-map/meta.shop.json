@@ -1,0 +1,24 @@
+{
+  "metadata.root": {
+    "package": "acme::shop",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Upload",
+          "children": [
+            { "source.rdb": { "name": "src", "@table": "uploads", "@kind": "table" } },
+            { "field.long": { "name": "id" } },
+            {
+              "field.enum": {
+                "name": "status",
+                "@values": ["Pending", "Delivered"],
+                "@stringValueMap": { "Pending": "pending", "Delivered": "delivered" }
+              }
+            },
+            { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } }
+          ]
+        }
+      }
+    ]
+  }
+}

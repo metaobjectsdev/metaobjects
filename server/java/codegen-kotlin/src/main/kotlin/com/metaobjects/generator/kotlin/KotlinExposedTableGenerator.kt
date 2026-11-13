@@ -2645,7 +2645,18 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             ?: error("enumTypeName returned null for EnumField '${field.name}' on ${entity.name}")
         val simple = enumCn.simpleName
         val intMap = readIntValueMap(field)
-            ?: return "enumerationByName($colExpr, ${KotlinTypeMapper.enumVarcharLength(field)}, $simple::class)"
+        if (intMap == null) {
+            // rc.21: a @stringValueMap enum holds each member's stored string — a VARCHAR
+            // customEnumeration with the member <-> stored-string mapping inlined, as below.
+            val stored = readStringValueMap(field)
+                ?: return "enumerationByName($colExpr, ${KotlinTypeMapper.enumVarcharLength(field)}, $simple::class)"
+            val fromDb = stored.entries.joinToString("; ") { (sym, s) -> "${kotlinString(s)} -> $simple.$sym" }
+            val toDb = stored.entries.joinToString("; ") { (sym, s) -> "$simple.$sym -> ${kotlinString(s)}" }
+            return "customEnumeration($colExpr, \"VARCHAR(${KotlinTypeMapper.enumVarcharLength(field)})\", " +
+                "{ v -> when (v as String) { $fromDb; " +
+                "else -> error(\"unmapped stored value \$v for $simple\") } }, " +
+                "{ e -> when (e) { $toDb } })"
+        }
 
         // `; ` separates the branches: this is a one-line `when`, and space-separated
         // branches do not parse (`Foo.DRAFT 5 -> ...`).
@@ -2659,6 +2670,22 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             "{ v -> when ((v as Number).toInt()) { $fromDb; " +
             "else -> error(\"unmapped stored value \$v for $simple\") } }, " +
             "{ e -> when (e) { $toDb } })"
+    }
+
+    /** rc.21 — the declared member→stored-string map (`@stringValueMap`, resolving), or null. */
+    private fun readStringValueMap(field: EnumField): Map<String, String>? {
+        if (!field.hasMetaAttr(EnumField.ATTR_STRING_VALUE_MAP)) return null
+        val raw = runCatching { field.getMetaAttr(EnumField.ATTR_STRING_VALUE_MAP).value }.getOrNull()
+        val m = (raw as? Map<*, *>) ?: return null
+        // In @values order, so the emitted `when` is deterministic (a Properties map is unordered).
+        val out = LinkedHashMap<String, String>()
+        val members = (runCatching { field.getMetaAttr(EnumField.ATTR_VALUES).value }.getOrNull() as? List<*>)
+            ?.map { it.toString() } ?: emptyList()
+        for (member in members) {
+            val s = m[member] as? String ?: continue
+            out[member] = s
+        }
+        return out.ifEmpty { null }
     }
 
     /** The declared symbol→int map (`@intValueMap`), or null when the enum is string-backed. */

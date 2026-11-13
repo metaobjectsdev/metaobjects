@@ -10,6 +10,7 @@ from .meta.core.attr.attr_constants import (
     ATTR_SUBTYPE_FILTER,
     ATTR_SUBTYPE_INT,
     ATTR_SUBTYPE_INT_MAP,
+    ATTR_SUBTYPE_PROPERTIES,
     ATTR_SUBTYPE_STRING,
     ATTR_SUBTYPES,
 )
@@ -21,6 +22,7 @@ from .meta.core.field.field_constants import (
     FIELD_ATTR_CURRENCY,
     FIELD_ATTR_DEFAULT,
     FIELD_ATTR_INT_VALUE_MAP,
+    FIELD_ATTR_STRING_VALUE_MAP,
     FIELD_ATTR_PROVIDED,
     FIELD_ATTR_MAX_LENGTH,
     FIELD_ATTR_OBJECT_REF,
@@ -654,6 +656,15 @@ core_provider.add(
             AttrSchema(
                 name=FIELD_ATTR_INT_VALUE_MAP,
                 value_type=ATTR_SUBTYPE_INT_MAP,
+                required=False,
+            ),
+            # rc.21 — @stringValueMap: optional per-member stored strings ({member: str}) of a
+            # string-stored enum (the string twin of @intValueMap). Content rules in
+            # _validate_enum_values (Rule 5). Python persists no string enum through it yet:
+            # the ObjectManager refuses an entity carrying one (see object_manager.py).
+            AttrSchema(
+                name=FIELD_ATTR_STRING_VALUE_MAP,
+                value_type=ATTR_SUBTYPE_PROPERTIES,
                 required=False,
             ),
             # FR-033 — the field.enum tolerant-extract overlays (@enumAlias / @enumDoc /
