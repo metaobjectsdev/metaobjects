@@ -156,4 +156,20 @@ describe("identity.primary sequence on a real Postgres (env-gated)", () => {
       }
     });
   });
+
+  test("adding the identity to a populated column starts past the highest id", async () => {
+    await withDatabase(async (url, client) => {
+      await client.query(`CREATE TABLE "Ticket" ("Id" integer PRIMARY KEY, "Label" text)`);
+      await client.query(`INSERT INTO "Ticket" ("Id", "Label") SELECT g, 'old' FROM generate_series(1, 5000) g`);
+      const root = project({ "@sequenceStart": 100 });
+      try {
+        const applied = await captured(["migrate", "--cwd", root, "--db", url, "--from-db", "--slug", "seq-new", "--apply"]);
+        expect(applied.exit).toBe(0);
+        const { rows } = await client.query(`INSERT INTO "Ticket" ("Label") VALUES ('next') RETURNING "Id"`);
+        expect(Number(rows[0].Id)).toBe(5001);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+  });
 });
