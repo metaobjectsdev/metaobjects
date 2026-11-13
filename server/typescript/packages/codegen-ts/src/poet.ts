@@ -156,7 +156,7 @@ function deepGenerate(object: unknown): string {
     } else if (current === null) {
       result += "null";
     } else if (current !== undefined) {
-      result += isPlainObject(current) ? JSON.stringify(current) : String(current);
+      result += isPlainObject(current) ? JSON.stringify(current) : (current as { toString(): string }).toString();
     } else {
       result += "undefined";
     }
@@ -597,8 +597,11 @@ function dprint(): Formatter {
 }
 
 function maybePretty(input: string): string {
+  // Loading the formatter stays outside the try: a missing or broken @dprint/typescript must
+  // fail loudly (as dprint-node's import-time load did), not silently emit unformatted code.
+  const fmt = dprint();
   try {
-    return dprint().formatText({ filePath: "file.ts", fileText: input.trim() });
+    return fmt.formatText({ filePath: "file.ts", fileText: input.trim() });
   } catch {
     return input; // assume it's invalid syntax and ignore
   }

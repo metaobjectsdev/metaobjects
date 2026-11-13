@@ -77,8 +77,10 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   ts-poet's configuration, so generated code is byte-identical: every codegen golden and
   conformance fixture is unchanged. `codegen-ts-react`, `codegen-ts-tanstack` and
   `codegen-ts-angular` drop their `ts-poet` dependency and import the printer from
-  `@metaobjectsdev/codegen-ts/engine`, which an ejected template also uses; a bare `ts-poet`
-  import in an older owned generator is still pointed at that entry by `meta gen`. A fresh npm
+  `@metaobjectsdev/codegen-ts/engine`, which an ejected template also uses. A bare `ts-poet`
+  import in an older owned generator is still pointed at that entry by `meta gen`, which
+  carries `code`, `imp`, `joinCode`, `Import` and the `Code` type; ts-poet's `saveFiles`,
+  `conditionalOutput` and its `toString` import options are not carried over. A fresh npm
   install of the CLI drops from 151 MB (134,525,165 bytes) to 133 MB (115,177,311 bytes) of
   `node_modules`. `scripts/check-peer-ranges.ts` now also fails a publishable package that
   requires `dprint-node`, `ts-poet` or any `@types/*` package through `dependencies` or a
@@ -88,7 +90,8 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   unchanged here. This also repairs the standalone binary (`bun run build:binary`): `--compile`
   cannot embed dprint-node's native `.node` file, so a binary built from 1.2.0 crashed with
   `Cannot find module './dprint-node.linux-x64-gnu.node'` on every command that loads the
-  codegen engine, `meta migrate` and `meta verify --db` included.
+  codegen engine, `meta migrate` and `meta verify --db` included. Those schema commands, the
+  binary's documented scope, now run; `meta gen` is still not supported inside the binary.
 
 ### Deprecated
 

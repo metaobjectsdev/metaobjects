@@ -64,6 +64,14 @@ const CLI_PKG_PATHS: Record<string, { dist: string; src: string }> = {
     dist: "node_modules/@metaobjectsdev/migrate-ts/dist/index.js",
     src: "node_modules/@metaobjectsdev/migrate-ts/src/index.ts",
   },
+  // Listed, not derived: the engine must resolve to the same build (dist vs src) as the root
+  // above, because both reach the vendored printer (src/poet.ts) and `Code` is recognised by
+  // `instanceof`. The derived-subpath path would follow Bun's "bun" condition to src/ while
+  // the root prefers dist/, splitting the class in two.
+  [CODEGEN_TS_ENGINE]: {
+    dist: "node_modules/@metaobjectsdev/codegen-ts/dist/engine.js",
+    src: "node_modules/@metaobjectsdev/codegen-ts/src/engine.ts",
+  },
   "@metaobjectsdev/codegen-ts/generators": {
     dist: "node_modules/@metaobjectsdev/codegen-ts/dist/generators/index.js",
     src: "node_modules/@metaobjectsdev/codegen-ts/src/generators/index.ts",
@@ -452,7 +460,7 @@ export async function loadMetaobjectsConfig(projectRoot: string): Promise<Metaob
   // exports it from its engine entry, so the alias points there. Newly scaffolded templates
   // import the combinators from @metaobjectsdev/codegen-ts directly; this alias repairs
   // EXISTING scaffolds without re-scaffolding. Gated by test/gen-split-tree-single-import.test.ts.
-  // It takes the engine's own alias, derived just above, so both name one physical module.
+  // It takes the engine's own alias (CLI_PKG_PATHS), so both name one physical module.
   const engineResolved = aliasMap[CODEGEN_TS_ENGINE];
   if (engineResolved !== undefined) aliasMap[TS_POET_PKG] = engineResolved;
 
