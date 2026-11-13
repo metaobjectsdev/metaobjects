@@ -119,6 +119,9 @@ object ApiContractAssertions {
                 if (actualField != wantField)
                     throw AssertionError("$scenarioName / ${request.id}: expected field=\"$wantField\", got: $body")
             }
+            (want["issues"] as? List<*>)?.let { wantIssues ->
+                assertIssues(scenarioName, request.id, body, wantIssues)
+            }
             return
         }
         (want["length"] as? Number)?.toInt()?.let { wantLen ->
@@ -248,5 +251,27 @@ object ApiContractAssertions {
         is Map<*, *> -> body.isEmpty()
         is List<*> -> body.isEmpty()
         else -> false
+    }
+
+    /**
+     * The validation envelope lists its issues: `issues` is an array, every issue carries a string
+     * `code`, an array `path` and a string `message`, and each expected `{ path, code }` is among them.
+     */
+    private fun assertIssues(scenarioName: String, requestId: String, body: Any?, expected: List<*>) {
+        val actual = (body as? Map<*, *>)?.get("issues") as? List<*>
+            ?: throw AssertionError("$scenarioName / $requestId: expected an issues array, got: $body")
+        for (issue in actual) {
+            val im = issue as? Map<*, *>
+            if (im == null || im["code"] !is String || im["path"] !is List<*> || im["message"] !is String)
+                throw AssertionError("$scenarioName / $requestId: an issue lacks code, path or message: $issue")
+        }
+        for (want in expected) {
+            val w = want as Map<*, *>
+            val found = actual.any { issue ->
+                val im = issue as Map<*, *>
+                im["code"] == w["code"] && im["path"].toString() == w["path"].toString()
+            }
+            if (!found) throw AssertionError("$scenarioName / $requestId: expected an issue $want, got: $actual")
+        }
     }
 }

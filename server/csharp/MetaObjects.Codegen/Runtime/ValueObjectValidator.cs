@@ -35,10 +35,20 @@ public static class ValueObjectValidator
     /// is non-recursive). Returns true when the whole graph is valid; a null / empty
     /// graph is vacuously valid (a required-null column is enforced by the caller, not here).
     /// </summary>
-    public static bool Validate(object? value)
+    public static bool Validate(object? value) => Collect(value, new ValidationIssues(), null);
+
+    /// <summary>
+    /// Like <see cref="Validate"/>, but records each violation in <paramref name="issues"/> at its wire path
+    /// (<paramref name="path"/> first, then each nested member, array index or map key). Returns true when the
+    /// whole graph is valid.
+    /// </summary>
+    public static bool Collect(object? value, ValidationIssues issues, System.Text.Json.JsonSerializerOptions? options, params object[] path)
     {
         var voAssembly = ValueObjectAssembly(value);
-        return voAssembly is null || ValidateGraph(value, voAssembly);
+        if (voAssembly is null) return true;
+        var before = issues.Count;
+        CollectGraph(value, voAssembly, issues, options, path);
+        return issues.Count == before;
     }
 
     // The assembly the value objects in this graph live in — used to scope recursion to
@@ -70,41 +80,39 @@ public static class ValueObjectValidator
         }
     }
 
-    private static bool ValidateGraph(object? value, Assembly voAssembly)
+    private static void CollectGraph(object? value, Assembly voAssembly, ValidationIssues issues, System.Text.Json.JsonSerializerOptions? options, object[] path)
     {
-        if (value is null || value is string) return true;
+        if (value is null || value is string) return;
         // #362 — must precede the IEnumerable arm (every IDictionary is one). Without it a
         // Dictionary<string, VO> validated its KeyValuePair structs, which carry no
         // DataAnnotations and live in CoreLib, so every value passed unchecked. This arm also
         // covers a map nested INSIDE a value object, reached by the property walk below.
         if (value is IDictionary dict)
         {
-            foreach (var v in dict.Values)
-                if (!ValidateGraph(v, voAssembly)) return false;
-            return true;
+            foreach (DictionaryEntry entry in dict)
+                CollectGraph(entry.Value, voAssembly, issues, options, [.. path, entry.Key?.ToString() ?? ""]);
+            return;
         }
         if (value is IEnumerable seq)
         {
+            var index = 0;
             foreach (var item in seq)
-                if (!ValidateGraph(item, voAssembly)) return false;
-            return true;
+                CollectGraph(item, voAssembly, issues, options, [.. path, index++]);
+            return;
         }
         var type = value.GetType();
         // Only validate + recurse into value-object instances (declared in the generated
         // assembly). A framework/primitive member is covered by its owner's attributes;
         // skipping it also prevents recursing (and cycling) through a framework graph.
-        if (type.Assembly != voAssembly) return true;
+        if (type.Assembly != voAssembly) return;
 
-        var results = new List<ValidationResult>();
-        if (!Validator.TryValidateObject(value, new ValidationContext(value), results, validateAllProperties: true))
-            return false;
+        issues.ValidateObject(value, options, path);
 
         // Non-recursive TryValidateObject — descend into nested-VO members explicitly.
         foreach (var prop in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
         {
             if (prop.GetIndexParameters().Length != 0 || !prop.CanRead) continue;
-            if (!ValidateGraph(prop.GetValue(value), voAssembly)) return false;
+            CollectGraph(prop.GetValue(value), voAssembly, issues, options, [.. path, ValidationIssues.WireName(prop, options)]);
         }
-        return true;
     }
 }

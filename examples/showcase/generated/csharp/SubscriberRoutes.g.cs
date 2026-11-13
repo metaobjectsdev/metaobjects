@@ -87,25 +87,24 @@ public static class SubscriberRoutes
                 .Value.SerializerOptions;
             System.Text.Json.JsonDocument __body;
             try { __body = await System.Text.Json.JsonDocument.ParseAsync(http.Request.Body); }
-            catch (System.Text.Json.JsonException) { return Results.BadRequest(new { error = "validation" }); }
+            catch (System.Text.Json.JsonException) { return ValidationIssues.Unreadable(); }
             using var __bodyScope = __body;
             if (__body.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object)
-                return Results.BadRequest(new { error = "validation" });
+                return ValidationIssues.Unreadable();
+            var __issues = new ValidationIssues();
             var __present = new System.Collections.Generic.HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
             foreach (var __p in __body.RootElement.EnumerateObject())
                 if (__p.Value.ValueKind != System.Text.Json.JsonValueKind.Null) __present.Add(__p.Name);
             foreach (var __req in new[] { "email", "status" })
-                if (!__present.Contains(__req)) return Results.BadRequest(new { error = "validation" });
-            Subscriber? input;
+                if (!__present.Contains(__req)) __issues.AddRequired(__req);
+            Subscriber? input = null;
             try { input = System.Text.Json.JsonSerializer.Deserialize<Subscriber>(__body.RootElement.GetRawText(), jsonOpts); }
-            catch (System.Text.Json.JsonException) { return Results.BadRequest(new { error = "validation" }); }
-            if (input is null) return Results.BadRequest(new { error = "validation" });
+            catch (System.Exception __e) { __issues.AddReadFailure(__e, typeof(Subscriber)); }
+            if (input is null) return __issues.Any ? __issues.ToResult() : ValidationIssues.Unreadable();
             // Server-owned: a generated key, the TPH discriminator and M:N navigations are not settable by the client; the value is ignored.
             input.Id = default!;
-            var __vr = new System.Collections.Generic.List<System.ComponentModel.DataAnnotations.ValidationResult>();
-            if (!System.ComponentModel.DataAnnotations.Validator.TryValidateObject(
-                    input, new System.ComponentModel.DataAnnotations.ValidationContext(input), __vr, true))
-                return Results.BadRequest(new { error = "validation" });
+            __issues.ValidateObject(input, jsonOpts);
+            if (__issues.Any) return __issues.ToResult();
             input.CreatedAt = System.DateTimeOffset.UtcNow;
             db.Subscribers.Add(input);
             try { await db.SaveChangesAsync(); }
@@ -126,8 +125,9 @@ public static class SubscriberRoutes
             if (existing is null) return Results.NotFound(new { error = "not_found" });
             System.Text.Json.JsonDocument body;
             try { body = await System.Text.Json.JsonDocument.ParseAsync(http.Request.Body); }
-            catch (System.Text.Json.JsonException) { return Results.BadRequest(new { error = "validation" }); }
+            catch (System.Text.Json.JsonException) { return ValidationIssues.Unreadable(); }
             using var bodyScope = body;
+            if (body.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object) return ValidationIssues.Unreadable();
             // Deserialize each value with the app's CONFIGURED JSON options, not defaults —
             // a field.timestamp binds to DateTimeOffset via a custom converter registered on
             // ConfigureHttpJsonOptions, and default options cannot read the wire format, throwing 500.
@@ -135,32 +135,34 @@ public static class SubscriberRoutes
                 http.RequestServices.GetService(typeof(Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>))!)
                 .Value.SerializerOptions;
             var entry = db.Entry(existing);
+            var __issues = new ValidationIssues();
             foreach (var prop in body.RootElement.EnumerateObject())
             {
                 var target = entry.Metadata.FindProperty(prop.Name)
                     ?? entry.Metadata.GetProperties().FirstOrDefault(p => string.Equals(p.Name, prop.Name, System.StringComparison.OrdinalIgnoreCase));
                 if (target is null) continue;
+                var __wire = ValidationIssues.WireName(existing.GetType(), target.Name, jsonOpts);
                 if (target.IsPrimaryKey()) continue;                        // PK is route-authoritative
                 if (string.Equals(target.Name, "CreatedAt", System.StringComparison.Ordinal)) continue; // @autoSet: server-owned
                 if (prop.Value.ValueKind == System.Text.Json.JsonValueKind.Null)
                 {
                     // FR-035 PATCH-2: explicit null clears a nullable column; on a
                     // NOT-NULL (@required) column it is a 400 (matching the cross-port contract).
-                    if (!target.IsNullable) return Results.BadRequest(new { error = "validation" });
+                    if (!target.IsNullable) { __issues.AddRequired(__wire); continue; }
                     entry.CurrentValues[target] = null;
                     continue;
                 }
                 var clr = System.Nullable.GetUnderlyingType(target.ClrType) ?? target.ClrType;
-                var __val = System.Text.Json.JsonSerializer.Deserialize(prop.Value.GetRawText(), clr, jsonOpts);
+                object? __val;
+                try { __val = System.Text.Json.JsonSerializer.Deserialize(prop.Value.GetRawText(), clr, jsonOpts); }
+                catch (System.Exception __e) { __issues.AddReadFailure(__e, clr, __wire); continue; }
                 // FR-036 A2 — validate the PRESENT, non-null value with the same per-field
                 // DataAnnotations as create. This validates ONLY the present value (never the
                 // whole row) so an ABSENT @required field is untouched, not a 400.
-                var __pr = new System.Collections.Generic.List<System.ComponentModel.DataAnnotations.ValidationResult>();
-                if (!System.ComponentModel.DataAnnotations.Validator.TryValidateProperty(__val,
-                        new System.ComponentModel.DataAnnotations.ValidationContext(existing) { MemberName = target.Name }, __pr))
-                    return Results.BadRequest(new { error = "validation" });
+                if (!__issues.ValidateProperty(existing, target.Name, __val, jsonOpts)) continue;
                 entry.CurrentValues[target] = __val;
             }
+            if (__issues.Any) return __issues.ToResult();
             try { await db.SaveChangesAsync(); }
             catch (System.Exception __saveError)
             {

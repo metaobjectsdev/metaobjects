@@ -320,7 +320,7 @@ public class SpringControllerGeneratorTest extends SharedRegistryTestBase {
 
         // The create handler must FILTER violations, not simply reject any.
         assertTrue("create must ignore violations on server-owned components; saw:\n" + src,
-            src.contains(".anyMatch(v -> !SERVER_OWNED_ON_CREATE.contains(v.getPropertyPath().toString()))"));
+            src.contains(".addViolationsExcept(validator.validate(dto), SERVER_OWNED_ON_CREATE)"));
         assertFalse("create must no longer reject on ANY violation; saw:\n" + src,
             src.contains("if (!validator.validate(dto).isEmpty())"));
 

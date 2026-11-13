@@ -184,11 +184,16 @@ class AuthorApiServer(private val pg: PostgresContainer) : AutoCloseable {
     private fun createAuthor(exchange: HttpExchange) {
         @Suppress("UNCHECKED_CAST")
         val body = readJsonBody(exchange) as? Map<String, Any?>
-            ?: return sendJson(exchange, 400, mapOf("error" to "validation"))
+            ?: return sendJson(exchange, 400, validationBody(listOf(issue("invalid_type", "request body must be a JSON object"))))
         // FR-036: enforce @maxLength (name 100 / bio 1000) at the wire boundary — a too-long
         // present value is a 400 {error:"validation"} BEFORE the insert (mirrors the generated
         // controller's validator.validate on POST).
-        if (violatesMaxLength(body)) return sendJson(exchange, 400, mapOf("error" to "validation"))
+        // A @required field (name, createdAt) missing or null is an invalid_type issue; every issue is listed.
+        val createIssues = lengthIssues(body)
+        for (f in listOf("name", "createdAt")) {
+            if (body[f] == null) createIssues.add(issue("invalid_type", "required", f))
+        }
+        if (createIssues.isNotEmpty()) return sendJson(exchange, 400, validationBody(createIssues))
         // #203/ADR-0045: @autoSet columns are server-owned — stamp BOTH onCreate + onUpdate from ONE
         // now() (a fresh row's autoUpdatedAt == autoCreatedAt exactly) and IGNORE any caller value.
         val now = Instant.now()
@@ -214,16 +219,17 @@ class AuthorApiServer(private val pg: PostgresContainer) : AutoCloseable {
             ?: return sendJson(exchange, 400, mapOf("error" to "invalid_id"))
         @Suppress("UNCHECKED_CAST")
         val body = readJsonBody(exchange) as? Map<String, Any?>
-            ?: return sendJson(exchange, 400, mapOf("error" to "validation"))
+            ?: return sendJson(exchange, 400, validationBody(listOf(issue("invalid_type", "request body must be a JSON object"))))
         // FR-035 PATCH-2: an explicit null on a @required field (name / createdAt, per
         // meta.json) is a 400 — a present null on the nullable bio clears it, and an
         // omitted required field is untouched (never a 400).
+        val patchIssues = lengthIssues(body)
         for (f in listOf("name", "createdAt")) {
-            if (body.containsKey(f) && body[f] == null) return sendJson(exchange, 400, mapOf("error" to "validation"))
+            if (body.containsKey(f) && body[f] == null) patchIssues.add(issue("invalid_type", "cannot be null", f))
         }
         // FR-036: validate PRESENT, non-null values against @maxLength (same rule as create) — a
         // too-long present value is a 400 BEFORE the write, leaving the stored row untouched.
-        if (violatesMaxLength(body)) return sendJson(exchange, 400, mapOf("error" to "validation"))
+        if (patchIssues.isNotEmpty()) return sendJson(exchange, 400, validationBody(patchIssues))
         val updated = transaction(db) {
             AuthorTable.update({ AuthorTable.id eq id }) {
                 (body["name"] as? String)?.let { v -> it[name] = v }
@@ -271,11 +277,19 @@ class AuthorApiServer(private val pg: PostgresContainer) : AutoCloseable {
      * Only present, non-null strings are checked — absent fields and nulls are handled by the
      * per-verb guards. Mirrors the generated controller's field constraints over HTTP.
      */
-    private fun violatesMaxLength(body: Map<String, Any?>): Boolean {
-        (body["name"] as? String)?.let { if (it.length > 100) return true }
-        (body["bio"] as? String)?.let { if (it.length > 1000) return true }
-        return false
+    private fun lengthIssues(body: Map<String, Any?>): MutableList<Map<String, Any>> {
+        val out = ArrayList<Map<String, Any>>()
+        (body["name"] as? String)?.let { if (it.length > 100) out.add(issue("too_big", "too long", "name")) }
+        (body["bio"] as? String)?.let { if (it.length > 1000) out.add(issue("too_big", "too long", "bio")) }
+        return out
     }
+
+    /** One validation issue: `{code, path, message}`; `path` is the field, empty when none is given. */
+    private fun issue(code: String, message: String, vararg path: String): Map<String, Any> =
+        linkedMapOf("code" to code, "path" to path.toList(), "message" to message)
+
+    private fun validationBody(issues: List<Map<String, Any>>): Map<String, Any> =
+        linkedMapOf("error" to "validation", "issues" to issues)
 
     private fun rowToMap(row: ResultRow): Map<String, Any?> {
         val ts = row[AuthorTable.createdAt]

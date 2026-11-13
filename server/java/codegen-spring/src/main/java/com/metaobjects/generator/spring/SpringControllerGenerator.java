@@ -262,6 +262,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("import ").append(runtimePackage).append(".ConstraintErrors;\n");
         src.append("import ").append(runtimePackage).append(".PatchValidationException;\n");
         src.append("import ").append(runtimePackage).append(".UnreadableBody;\n");
+        src.append("import ").append(runtimePackage).append(".ValidationIssues;\n");
         // The escape the PATCH loop applies to each assigned key before naming a Bean
         // Validation property — see RecordComponentNames for why it is needed at run time.
         src.append("import ").append(runtimePackage).append(".RecordComponentNames;\n");
@@ -377,15 +378,15 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         // it is what cascades @Valid into nested value objects. The violations are FILTERED,
         // and only by TOP-LEVEL property name — a nested path like "labels[0].code" can never
         // match, so cascaded constraints still reject.
+        // Every violation is listed (never just the first): the issues are collected, then answered once.
         if (serverOwnedOnCreate(entity).isEmpty()) {
-            // Byte-identical to the pre-fix handler for an entity with no server-owned column,
-            // so this change moves only the output it has to.
-            src.append("        if (!validator.validate(dto).isEmpty()) {\n");
+            src.append("        ValidationIssues __issues = new ValidationIssues().addViolations(validator.validate(dto));\n");
         } else {
-            src.append("        if (validator.validate(dto).stream()\n");
-            src.append("                .anyMatch(v -> !SERVER_OWNED_ON_CREATE.contains(v.getPropertyPath().toString()))) {\n");
+            src.append("        ValidationIssues __issues = new ValidationIssues()\n");
+            src.append("                .addViolationsExcept(validator.validate(dto), SERVER_OWNED_ON_CREATE);\n");
         }
-        src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", \"validation\"));\n");
+        src.append("        if (!__issues.isEmpty()) {\n");
+        src.append("            return ResponseEntity.badRequest().body(__issues.body());\n");
         src.append("        }\n");
         // Issue #203: honor @autoSet — stamp EVERY onCreate AND onUpdate column with now() before
         // persisting (the caller's value is ignored; a fresh row's updated_at equals its created_at).
@@ -415,28 +416,14 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("    @RequestMapping(value = \"/{id}\", method = { RequestMethod.PATCH, RequestMethod.PUT })\n");
         src.append("    public ResponseEntity<?> update(@PathVariable ").append(pkType)
            .append(" id, @RequestBody JsonNode body) {\n");
-        src.append("        ").append(patchName).append(" patch;\n");
-        src.append("        try {\n");
-        src.append("            patch = ").append(patchName).append(".fromJson(body, objectMapper);\n");
-        src.append("        } catch (PatchValidationException e) {\n");
-        src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", \"validation\"));\n");
-        src.append("        }\n");
-        // FR-036: validate each PRESENT patch value against the DTO's field constraints (per-field,
-        // NOT a whole-bean validate — that would fire @NotNull on ABSENT fields). jakarta
-        // validateValue skips null for @Size/@Pattern and non-required fields carry no @NotNull, so
-        // a present-null-clears on a nullable field composes cleanly.
-        src.append("        for (Map.Entry<String, Object> __e : patch.assignedValues().entrySet()) {\n");
-        src.append("            if (!validator.validateValue(").append(dtoName)
-           .append(".class, RecordComponentNames.escape(__e.getKey()), __e.getValue()).isEmpty()) {\n");
-        src.append("                return ResponseEntity.badRequest().body(Map.of(\"error\", \"validation\"));\n");
-        src.append("            }\n");
-        src.append("        }\n");
+        appendPatchBinding(src, patchName, dtoName);
         // Program D (spec section 0): validateValue does NOT cascade @Valid into a nested value
         // object's own constraints, so validate each PRESENT VO element EXPLICITLY. The property's
         // OWN constraints (@NotNull on a @required column, present-null tristate) are already
         // covered above / in <Entity>Patch.fromJson; this closes the nested-constraint gap (e.g. a
         // Marker.label over @maxLength, or null on a @required nested member) with a 400.
         appendValueObjectValidation(src, entity);
+        appendPatchVerdict(src);
         // Issue #203: honor @autoSet onUpdate — bump every onUpdate column to now() on EVERY partial
         // update (the model value is ignored; the server owns the timestamp), injected AFTER the
         // caller's present values are validated and BEFORE delegating so a PATCH that omits the
@@ -502,26 +489,58 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
     }
 
     /**
-     * Program D — append per-value-object nested-validation guards into the vanilla PATCH handler,
-     * one per {@code field.object @storage:jsonb} column (spec section 0). A present single VO
-     * value is validated whole; a present array is validated element-by-element. Skips null
-     * (present-null clears / is caught upstream) so the tristate composes. Emits nothing for an
-     * entity with no value-object columns, keeping non-VO controllers byte-identical.
+     * The head of a PATCH handler: bind the body to the presence-tracked patch and validate each
+     * PRESENT value against the DTO's field constraints, collecting EVERY issue into
+     * {@code __issues} (a bind failure lists all its problems, and the values that did bind are
+     * still validated). Per-field and NOT a whole-bean validate, which would fire {@code @NotNull}
+     * on ABSENT fields; {@code validateValue} skips null for {@code @Size}/{@code @Pattern} and a
+     * non-required field carries no {@code @NotNull}, so a present-null-clears composes cleanly.
+     * Leaves {@code __assigned} (the bound values) and {@code __patch} (null after a bind failure)
+     * for {@link #appendPatchVerdict}.
+     */
+    private static void appendPatchBinding(StringBuilder src, String patchName, String dtoName) {
+        src.append("        ValidationIssues __issues = new ValidationIssues();\n");
+        src.append("        ").append(patchName).append(" __patch = null;\n");
+        src.append("        Map<String, Object> __assigned;\n");
+        src.append("        try {\n");
+        src.append("            __patch = ").append(patchName).append(".fromJson(body, objectMapper);\n");
+        src.append("            __assigned = __patch.assignedValues();\n");
+        src.append("        } catch (PatchValidationException e) {\n");
+        src.append("            __issues.addPatchFailure(e);\n");
+        src.append("            __assigned = e.assignedValues();\n");
+        src.append("        }\n");
+        src.append("        for (Map.Entry<String, Object> __e : __assigned.entrySet()) {\n");
+        src.append("            __issues.addAt(validator.validateValue(").append(dtoName)
+           .append(".class, RecordComponentNames.escape(__e.getKey()), __e.getValue()), __e.getKey());\n");
+        src.append("        }\n");
+    }
+
+    /** The end of the PATCH validation: answer every collected issue at once, else expose {@code patch}. */
+    private static void appendPatchVerdict(StringBuilder src) {
+        src.append("        if (!__issues.isEmpty()) {\n");
+        src.append("            return ResponseEntity.badRequest().body(__issues.body());\n");
+        src.append("        }\n");
+        src.append("        final var patch = __patch;\n");
+    }
+
+    /**
+     * Program D — append per-value-object nested-validation guards into a PATCH handler, one per
+     * {@code field.object @storage:jsonb} column (spec section 0), reading the BOUND values from
+     * {@code __assigned}. A present single VO value is validated whole; a present array is validated
+     * element-by-element. Skips null (present-null clears / is caught upstream) so the tristate
+     * composes. Every violation is collected into {@code __issues}, its path the field's wire name
+     * then the element index or key then the member. Emits nothing for an entity with no
+     * value-object columns, keeping non-VO controllers byte-identical.
      */
     private static void appendValueObjectValidation(StringBuilder src, MetaObject entity) {
         for (ObjectField vf : SpringGeneratorSupport.valueObjectJsonbFields(entity)) {
-            String name = vf.getName();
-            // has<Cap>() needs no escape — capitalisation already clears the collision — but
-            // the value accessor does.
-            String accessor = SpringNaming.recordComponentName(name);
-            String cap = SpringNaming.capitalize(name);
+            String name = SpringGeneratorSupport.escapeJavaString(vf.getName());
             if (vf.isArrayType()) {
-                appendElementValidationLoop(src, accessor, cap, "patch." + accessor + "()");
+                appendAssignedElementLoop(src, name);
             } else {
-                src.append("        if (patch.has").append(cap).append("() && patch.")
-                   .append(accessor).append("() != null && !validator.validate(patch.")
-                   .append(accessor).append("()).isEmpty()) {\n");
-                src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", \"validation\"));\n");
+                src.append("        if (__assigned.get(\"").append(name).append("\") != null) {\n");
+                src.append("            __issues.addViolations(validator.validate(__assigned.get(\"").append(name)
+                   .append("\")), \"").append(name).append("\");\n");
                 src.append("        }\n");
             }
         }
@@ -530,58 +549,54 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         // with validateValue, which does NOT cascade — so without this the two write paths
         // disagree for maps where they agree for field.object, and a PATCH could write a
         // nested value object POST rejects. The map's VALUES are the beans (keys are strings).
+        appendValueObjectMapValidation(src, entity);
+    }
+
+    /** The map-of-value-object part of {@link #appendValueObjectValidation}, for a TPH subtype's PATCH. */
+    private static void appendValueObjectMapValidation(StringBuilder src, MetaObject entity) {
         for (MetaField vf : SpringGeneratorSupport.valueObjectMapFields(entity)) {
-            String name = vf.getName();
-            String accessor = SpringNaming.recordComponentName(name);
-            appendElementValidationLoop(
-                src, accessor, SpringNaming.capitalize(name), "patch." + accessor + "().values()");
+            appendAssignedMapLoop(src, SpringGeneratorSupport.escapeJavaString(vf.getName()));
         }
     }
 
-    /**
-     * Emit the present-and-non-null guard plus an element-wise {@code validator.validate} loop
-     * over {@code iterableExpr}. Shared by the array-of-value-object branch and the
-     * map-of-value-object branch: they differ ONLY in the iterable expression, and writing the
-     * body twice meant the 400 envelope existed in three places, so adding an error code (as
-     * other ports have) would have missed one.
-     *
-     * @param accessor the field's Java accessor name — ALREADY escaped via
-     *     {@link SpringNaming#recordComponentName}. Each caller escapes once and derives both
-     *     this and {@code iterableExpr} from that one local, so the two cannot disagree; the
-     *     escape is not repeated here because {@code iterableExpr} is the caller's to build.
-     * @param cap the DECLARED name capitalised, for {@code has<Cap>()} — never escaped,
-     *     because capitalisation already clears the collision with {@code Object}'s methods.
-     */
-    private static void appendElementValidationLoop(
-            StringBuilder src, String accessor, String cap, String iterableExpr) {
-        src.append("        if (patch.has").append(cap).append("() && patch.")
-           .append(accessor).append("() != null) {\n");
-        src.append("            for (var __el : ").append(iterableExpr).append(") {\n");
-        src.append("                if (__el != null && !validator.validate(__el).isEmpty()) {\n");
-        src.append("                    return ResponseEntity.badRequest().body(Map.of(\"error\", \"validation\"));\n");
-        src.append("                }\n");
+    /** The element-wise validation of a present array-of-value-object {@code __assigned} entry. */
+    private static void appendAssignedElementLoop(StringBuilder src, String name) {
+        src.append("        if (__assigned.get(\"").append(name).append("\") instanceof java.util.Collection<?> __c) {\n");
+        src.append("            int __i = 0;\n");
+        src.append("            for (Object __el : __c) {\n");
+        src.append("                if (__el != null) __issues.addViolations(validator.validate(__el), \"")
+           .append(name).append("\", __i);\n");
+        src.append("                __i++;\n");
+        src.append("            }\n");
+        src.append("        }\n");
+    }
+
+    /** The value-wise validation of a present map-of-value-object {@code __assigned} entry. */
+    private static void appendAssignedMapLoop(StringBuilder src, String name) {
+        src.append("        if (__assigned.get(\"").append(name).append("\") instanceof Map<?, ?> __m) {\n");
+        src.append("            for (Map.Entry<?, ?> __en : __m.entrySet()) {\n");
+        src.append("                if (__en.getValue() != null) __issues.addViolations(validator.validate(__en.getValue()), \"")
+           .append(name).append("\", String.valueOf(__en.getKey()));\n");
         src.append("            }\n");
         src.append("        }\n");
     }
 
     /**
-     * The same element-wise {@code validator.validate} loop as
-     * {@link #appendElementValidationLoop}, minus the presence guard — for a body bound as the
-     * union {@code <Base>Dto}, whose accessors are plain (no {@code hasX()} tristate). Used by
-     * the TPH per-subtype CREATE path, where absent and null are already indistinguishable on
-     * the bound DTO, so a null check is the whole guard.
+     * The map-of-value-object validation for a body bound as the union {@code <Base>Dto}, whose
+     * accessors are plain (no {@code hasX()} tristate). Used by the TPH per-subtype CREATE path,
+     * where absent and null are already indistinguishable on the bound DTO, so a null check is
+     * the whole guard.
      *
      * <p>#362: without this the TPH create validated a {@code field.map @objectRef} with
      * {@code validateValue}, which applies the property's own constraints and does NOT cascade
      * {@code @Valid} into the map's values — so a posted
      * {@code {"labels": {"k": {...invalid...}}}} was accepted and written.
      */
-    private static void appendMapValueValidationLoop(StringBuilder src, String accessorExpr) {
+    private static void appendMapValueValidationLoop(StringBuilder src, String accessorExpr, String wireName) {
         src.append("        if (").append(accessorExpr).append(" != null) {\n");
-        src.append("            for (var __el : ").append(accessorExpr).append(".values()) {\n");
-        src.append("                if (__el != null && !validator.validate(__el).isEmpty()) {\n");
-        src.append("                    return ResponseEntity.badRequest().body(Map.of(\"error\", \"validation\"));\n");
-        src.append("                }\n");
+        src.append("            for (var __en : ").append(accessorExpr).append(".entrySet()) {\n");
+        src.append("                if (__en.getValue() != null) __issues.addViolations(validator.validate(__en.getValue()), \"")
+           .append(SpringGeneratorSupport.escapeJavaString(wireName)).append("\", String.valueOf(__en.getKey()));\n");
         src.append("            }\n");
         src.append("        }\n");
     }
@@ -1150,6 +1165,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("import ").append(runtimePackage).append(".ConstraintErrors;\n");
         src.append("import ").append(runtimePackage).append(".PatchValidationException;\n");
         src.append("import ").append(runtimePackage).append(".UnreadableBody;\n");
+        src.append("import ").append(runtimePackage).append(".ValidationIssues;\n");
         // The escape the PATCH loop applies to each assigned key before naming a Bean
         // Validation property — see RecordComponentNames for why it is needed at run time.
         src.append("import ").append(runtimePackage).append(".RecordComponentNames;\n");
@@ -1368,19 +1384,19 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
                 src.append("    public ResponseEntity<?> create").append(suffix).append("(@RequestBody JsonNode body) {\n");
                 appendFillDefaults(src, dtoName, subDefaultPuts);
             }
+            src.append("        ValidationIssues __issues = new ValidationIssues();\n");
             for (MetaField vf : createValidated) {
                 // Both the property STRING and the accessor take the escaped component name:
                 // Bean Validation resolves a record's property by its COMPONENT, and
                 // `dto.notify()` would bind to Object.notify().
                 String vc = SpringNaming.recordComponentName(vf.getName());
-                src.append("        if (!validator.validateValue(").append(subDto).append(".class, \"")
-                   .append(vc).append("\", dto.").append(vc).append("()).isEmpty()) {\n");
-                src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", \"validation\"));\n");
-                src.append("        }\n");
+                src.append("        __issues.addAt(validator.validateValue(").append(subDto).append(".class, \"")
+                   .append(vc).append("\", dto.").append(vc).append("()), \"")
+                   .append(SpringGeneratorSupport.escapeJavaString(vf.getName())).append("\");\n");
             }
             for (Map.Entry<MetaValidator, String> rule : crossFieldRules) {
                 src.append("        if (!(").append(rule.getValue()).append(")) {\n");
-                src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", \"validation\"));\n");
+                src.append("            __issues.add(ValidationIssues.CUSTOM, java.util.List.of(), \"a cross-field rule failed\");\n");
                 src.append("        }\n");
             }
             // #362: validateValue above checks each property against the subtype DTO's own
@@ -1391,8 +1407,11 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             // path's equivalent, so the two write surfaces agree.
             for (MetaField vf : SpringGeneratorSupport.valueObjectMapFields(st.entity())) {
                 appendMapValueValidationLoop(
-                    src, "dto." + SpringNaming.recordComponentName(vf.getName()) + "()");
+                    src, "dto." + SpringNaming.recordComponentName(vf.getName()) + "()", vf.getName());
             }
+            src.append("        if (!__issues.isEmpty()) {\n");
+            src.append("            return ResponseEntity.badRequest().body(__issues.body());\n");
+            src.append("        }\n");
             // ADR-0045 (#203/#229): honor @autoSet on the TPH per-subtype create — stamp EVERY
             // onCreate AND onUpdate column with now() before persisting (the caller's value is
             // ignored), mirroring the vanilla create handler's createArg above. The stamp helper
@@ -1435,28 +1454,9 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
                .append("/{id}\", method = { RequestMethod.PATCH, RequestMethod.PUT })\n");
             src.append("    public ResponseEntity<?> update").append(suffix)
                .append("(@PathVariable ").append(pkType).append(" id, @RequestBody JsonNode body) {\n");
-            src.append("        ").append(subPatch).append(" patch;\n");
-            src.append("        try {\n");
-            src.append("            patch = ").append(subPatch).append(".fromJson(body, objectMapper);\n");
-            src.append("        } catch (PatchValidationException e) {\n");
-            src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", \"validation\"));\n");
-            src.append("        }\n");
-            src.append("        for (Map.Entry<String, Object> __e : patch.assignedValues().entrySet()) {\n");
-            src.append("            if (!validator.validateValue(").append(subDto)
-               .append(".class, RecordComponentNames.escape(__e.getKey()), __e.getValue()).isEmpty()) {\n");
-            src.append("                return ResponseEntity.badRequest().body(Map.of(\"error\", \"validation\"));\n");
-            src.append("            }\n");
-            src.append("        }\n");
-            // #362: as on the create path above, validateValue does not cascade into a nested
-            // bean, so a PRESENT field.map @objectRef had its values written unvalidated. The
-            // <Sub>Patch carries the hasX()/x() tristate, so this is the same loop the vanilla
-            // PATCH runs — skipping absent keys, and skipping an explicit null (which clears).
-            for (MetaField vf : SpringGeneratorSupport.valueObjectMapFields(st.entity())) {
-                String mvc = SpringNaming.recordComponentName(vf.getName());
-                appendElementValidationLoop(
-                    src, mvc, SpringNaming.capitalize(vf.getName()),
-                    "patch." + mvc + "().values()");
-            }
+            appendPatchBinding(src, subPatch, subDto);
+            appendValueObjectMapValidation(src, st.entity());
+            appendPatchVerdict(src);
             // ADR-0045 (#203/#229): bump every onUpdate @autoSet column on the per-subtype PATCH,
             // mirroring the vanilla update handler above — injected after present-value
             // validation, before delegating, so the timestamp bumps even when the caller omits
@@ -1741,7 +1741,8 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
      *  {@code dto}. */
     private static void appendFillDefaults(StringBuilder src, String dtoName, List<String> puts) {
         src.append("        if (!(body instanceof com.fasterxml.jackson.databind.node.ObjectNode given)) {\n");
-        src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", \"validation\"));\n");
+        src.append("            return ResponseEntity.badRequest().body(new ValidationIssues()\n");
+        src.append("                    .add(ValidationIssues.INVALID_TYPE, java.util.List.of(), \"request body must be a JSON object\").body());\n");
         src.append("        }\n");
         src.append("        com.fasterxml.jackson.databind.node.ObjectNode filled = given.deepCopy();\n");
         for (String put : puts) src.append("        ").append(put).append("\n");

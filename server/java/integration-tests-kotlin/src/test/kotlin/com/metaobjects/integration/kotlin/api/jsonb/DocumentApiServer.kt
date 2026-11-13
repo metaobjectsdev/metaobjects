@@ -122,6 +122,12 @@ class DocumentApiServer(private val pg: PostgresContainer) : AutoCloseable {
         }
     }
 
+    /** The validation answer: one generic issue (path empty), as this reference server does not itemise per field. */
+    private fun invalidBody(): Map<String, Any> = linkedMapOf(
+        "error" to "validation",
+        "issues" to listOf(linkedMapOf("code" to "invalid_type", "path" to emptyList<Any>(), "message" to "invalid request body")),
+    )
+
     private fun getDocument(exchange: HttpExchange, idStr: String) {
         val id = idStr.toLongOrNull()
             ?: return sendJson(exchange, 400, mapOf("error" to "invalid_id"))
@@ -135,18 +141,18 @@ class DocumentApiServer(private val pg: PostgresContainer) : AutoCloseable {
     private fun createDocument(exchange: HttpExchange) {
         @Suppress("UNCHECKED_CAST")
         val body = readJsonBody(exchange) as? Map<String, Any?>
-            ?: return sendJson(exchange, 400, mapOf("error" to "validation"))
+            ?: return sendJson(exchange, 400, invalidBody())
         // primaryMarker is @required: absent / null / not-a-valid-Marker → 400.
         val primary = body["primaryMarker"]
-        if (primary == null || !isValidMarker(primary)) return sendJson(exchange, 400, mapOf("error" to "validation"))
+        if (primary == null || !isValidMarker(primary)) return sendJson(exchange, 400, invalidBody())
         // optional single VO: a present, non-null value must be a valid Marker.
         val optional = body["optionalMarker"]
-        if (optional != null && !isValidMarker(optional)) return sendJson(exchange, 400, mapOf("error" to "validation"))
+        if (optional != null && !isValidMarker(optional)) return sendJson(exchange, 400, invalidBody())
         // markers array-of-VO: a present, non-null value must be a list of valid Markers.
         val markersVal = body["markers"]
         if (markersVal != null && !(markersVal is List<*> && markersVal.all { isValidMarker(it) }))
-            return sendJson(exchange, 400, mapOf("error" to "validation"))
-        val canon = canonicalizeMeasures(body) ?: return sendJson(exchange, 400, mapOf("error" to "validation"))
+            return sendJson(exchange, 400, invalidBody())
+        val canon = canonicalizeMeasures(body) ?: return sendJson(exchange, 400, invalidBody())
         val newId = transaction(db) {
             DocumentTable.insert {
                 it[title] = body["title"] as String
@@ -178,28 +184,28 @@ class DocumentApiServer(private val pg: PostgresContainer) : AutoCloseable {
             ?: return sendJson(exchange, 400, mapOf("error" to "invalid_id"))
         @Suppress("UNCHECKED_CAST")
         val body = readJsonBody(exchange) as? Map<String, Any?>
-            ?: return sendJson(exchange, 400, mapOf("error" to "validation"))
+            ?: return sendJson(exchange, 400, invalidBody())
         // title is @required: an explicit null clears nothing — it is a 400.
         if (body.containsKey("title") && body["title"] == null)
-            return sendJson(exchange, 400, mapOf("error" to "validation"))
+            return sendJson(exchange, 400, invalidBody())
         // primaryMarker @required: present-null → 400; a present value must be a valid Marker.
         if (body.containsKey("primaryMarker")) {
             val v = body["primaryMarker"]
-            if (v == null || !isValidMarker(v)) return sendJson(exchange, 400, mapOf("error" to "validation"))
+            if (v == null || !isValidMarker(v)) return sendJson(exchange, 400, invalidBody())
         }
         // optionalMarker nullable single VO: present-null clears; a present value must be valid.
         if (body.containsKey("optionalMarker")) {
             val v = body["optionalMarker"]
-            if (v != null && !isValidMarker(v)) return sendJson(exchange, 400, mapOf("error" to "validation"))
+            if (v != null && !isValidMarker(v)) return sendJson(exchange, 400, invalidBody())
         }
         // markers nullable array-of-VO: present-null clears; present-[] empties; each present element valid.
         if (body.containsKey("markers")) {
             val v = body["markers"]
             if (v != null && !(v is List<*> && v.all { isValidMarker(it) }))
-                return sendJson(exchange, 400, mapOf("error" to "validation"))
+                return sendJson(exchange, 400, invalidBody())
         }
         // Apply only the present keys (absent = untouched). Guard the empty-SET case (Exposed throws).
-        val canon = canonicalizeMeasures(body) ?: return sendJson(exchange, 400, mapOf("error" to "validation"))
+        val canon = canonicalizeMeasures(body) ?: return sendJson(exchange, 400, invalidBody())
         val settableKeys = listOf("title", "payload", "primaryMarker", "optionalMarker", "markers", "measure", "measures", "telemetry", "tiers", "pricing")
         if (settableKeys.any { body.containsKey(it) }) {
             transaction(db) {

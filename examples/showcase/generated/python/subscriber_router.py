@@ -21,6 +21,11 @@ from fastapi import APIRouter, Depends, Query, Request, status
 from fastapi.responses import JSONResponse, Response
 from metaobjects.codegen.runtime.constraint_errors import (
     classify_constraint_error,
+    pydantic_issues,
+    required_null_issues,
+    unreadable_body_issues,
+    validation_envelope,
+    value_error_issues,
 )
 from metaobjects.codegen.runtime.decimal_wire import (
     WireOutput,
@@ -209,19 +214,25 @@ def create_subscriber(
     if (
         dto is None
     ):  # the body was not a JSON object: the cross-port 400, not FastAPI's 422
-        return JSONResponse(status_code=400, content={"error": "validation"})
+        return JSONResponse(
+            status_code=400, content=validation_envelope(unreadable_body_issues())
+        )
     try:
         dto = coerce_decimal_fields(
             dto, _DECIMAL_FIELDS, _DECIMAL_LIMITS, _NESTED_DECIMALS
         )
-    except ValueError:
-        return JSONResponse(status_code=400, content={"error": "validation"})
+    except ValueError as _exc:
+        return JSONResponse(
+            status_code=400, content=validation_envelope(value_error_issues(_exc))
+        )
     # FR-036: run the generated field constraints (length / pattern /
     # numeric bounds) before persisting; a violation is the cross-port 400.
     try:
         _valid = SubscriberCreate(**dto)
-    except ValidationError:
-        return JSONResponse(status_code=400, content={"error": "validation"})
+    except ValidationError as _exc:
+        return JSONResponse(
+            status_code=400, content=validation_envelope(pydantic_issues(_exc.errors()))
+        )
     # SECURITY (1.2.1): only what the input model validated reaches the repository. A key
     # it does not declare (an undeclared name, a server-generated id, a readOnly or derived
     # field, a frozen one on update) is dropped silently, never 400'd.
@@ -248,25 +259,29 @@ def update_subscriber(
     if (
         dto is None
     ):  # the body was not a JSON object: the cross-port 400, not FastAPI's 422
-        return JSONResponse(status_code=400, content={"error": "validation"})
+        return JSONResponse(
+            status_code=400, content=validation_envelope(unreadable_body_issues())
+        )
     try:
         dto = coerce_decimal_fields(
             dto, _DECIMAL_FIELDS, _DECIMAL_LIMITS, _NESTED_DECIMALS
         )
-    except ValueError:
-        return JSONResponse(status_code=400, content={"error": "validation"})
-    # FR-035 PATCH-2: an explicit null on a @required field is a 400 —
-    # a present null on a NON-required field falls through and clears it,
-    # and an OMITTED required field is untouched (never a 400).
-    for _k in _REQUIRED_FIELDS:
-        if _k in dto and dto[_k] is None:
-            return JSONResponse(status_code=400, content={"error": "validation"})
+    except ValueError as _exc:
+        return JSONResponse(
+            status_code=400, content=validation_envelope(value_error_issues(_exc))
+        )
+    # FR-035 PATCH-2: an explicit null on a @required field is a 400 — a present
+    # null on a NON-required field falls through and clears it, and an OMITTED
+    # required field is untouched (never a 400).
     # FR-036: validate PRESENT, non-null values with the create rules (the
     # all-optional patch model never fires required-checks on ABSENT fields).
+    _issues = required_null_issues(dto, _REQUIRED_FIELDS)
     try:
         _valid = SubscriberPatch(**dto)
-    except ValidationError:
-        return JSONResponse(status_code=400, content={"error": "validation"})
+    except ValidationError as _exc:
+        _issues += pydantic_issues(_exc.errors())
+    if _issues:
+        return JSONResponse(status_code=400, content=validation_envelope(_issues))
     # SECURITY (1.2.1): only what the input model validated reaches the repository. A key
     # it does not declare (an undeclared name, a server-generated id, a readOnly or derived
     # field, a frozen one on update) is dropped silently, never 400'd.

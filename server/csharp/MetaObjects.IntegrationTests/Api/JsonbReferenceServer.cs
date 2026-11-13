@@ -133,12 +133,12 @@ internal sealed class JsonbReferenceServer : IAsyncDisposable
 
         // Required keys: title + primaryMarker present + non-null (mirrors the generated
         // create handler's @required-key presence check).
-        if (!PresentNonNull(body, "title")) { await BadValidation(ctx); return; }
-        if (!PresentNonNull(body, "primaryMarker") || !ValidMarker(body["primaryMarker"])) { await BadValidation(ctx); return; }
+        if (!PresentNonNull(body, "title")) { await BadValidation(ctx, "title"); return; }
+        if (!PresentNonNull(body, "primaryMarker") || !ValidMarker(body["primaryMarker"])) { await BadValidation(ctx, "primaryMarker"); return; }
         // Optional VO columns: when present + non-null, validate nested constraints.
-        if (PresentNonNull(body, "optionalMarker") && !ValidMarker(body["optionalMarker"])) { await BadValidation(ctx); return; }
-        if (PresentNonNull(body, "markers") && !ValidMarkerArray(body["markers"])) { await BadValidation(ctx); return; }
-        if (!CanonicalizeMeasures(body)) { await BadValidation(ctx); return; }
+        if (PresentNonNull(body, "optionalMarker") && !ValidMarker(body["optionalMarker"])) { await BadValidation(ctx, "optionalMarker"); return; }
+        if (PresentNonNull(body, "markers") && !ValidMarkerArray(body["markers"])) { await BadValidation(ctx, "markers"); return; }
+        if (!CanonicalizeMeasures(body)) { await BadValidation(ctx, "measures"); return; }
 
         long newId;
         await using var c = new NpgsqlConnection(_pg.ConnectionString);
@@ -175,14 +175,14 @@ internal sealed class JsonbReferenceServer : IAsyncDisposable
         //   primaryMarker (required)  — present-null → 400; present value must be a valid VO.
         //   optionalMarker (nullable) — present-null clears; present value must be a valid VO.
         //   markers (nullable array)  — present-null clears; present [] persists; present value valid.
-        if (body.ContainsKey("title") && !PresentNonNull(body, "title")) { await BadValidation(ctx); return; }
+        if (body.ContainsKey("title") && !PresentNonNull(body, "title")) { await BadValidation(ctx, "title"); return; }
         if (body.ContainsKey("primaryMarker"))
         {
-            if (!PresentNonNull(body, "primaryMarker") || !ValidMarker(body["primaryMarker"])) { await BadValidation(ctx); return; }
+            if (!PresentNonNull(body, "primaryMarker") || !ValidMarker(body["primaryMarker"])) { await BadValidation(ctx, "primaryMarker"); return; }
         }
-        if (PresentNonNull(body, "optionalMarker") && !ValidMarker(body["optionalMarker"])) { await BadValidation(ctx); return; }
-        if (PresentNonNull(body, "markers") && !ValidMarkerArray(body["markers"])) { await BadValidation(ctx); return; }
-        if (!CanonicalizeMeasures(body)) { await BadValidation(ctx); return; }
+        if (PresentNonNull(body, "optionalMarker") && !ValidMarker(body["optionalMarker"])) { await BadValidation(ctx, "optionalMarker"); return; }
+        if (PresentNonNull(body, "markers") && !ValidMarkerArray(body["markers"])) { await BadValidation(ctx, "markers"); return; }
+        if (!CanonicalizeMeasures(body)) { await BadValidation(ctx, "measures"); return; }
 
         await using var c = new NpgsqlConnection(_pg.ConnectionString);
         await c.OpenAsync();
@@ -350,8 +350,11 @@ internal sealed class JsonbReferenceServer : IAsyncDisposable
         body.TryGetPropertyValue(key, out var node) && node is not null
         && node.GetValueKind() != JsonValueKind.Null;
 
-    private Task BadValidation(HttpContext ctx) =>
-        SendJsonAsync(ctx, 400, new Dictionary<string, object?> { ["error"] = "validation" });
+    // Lists the offending field (its wire name) as the one issue; an unreadable body has an empty path.
+    private Task BadValidation(HttpContext ctx, string? field = null) =>
+        SendJsonAsync(ctx, 400, field is null
+            ? ReferenceValidation.Unreadable()
+            : ReferenceValidation.Envelope([ReferenceValidation.Issue("invalid_type", field, field + " is invalid")]));
 
     // ----- data / helpers -----
 

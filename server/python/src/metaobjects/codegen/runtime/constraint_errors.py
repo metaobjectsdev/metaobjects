@@ -40,7 +40,15 @@ from __future__ import annotations
 
 from typing import Any, NamedTuple
 
-__all__ = ["ConstraintFailure", "classify_constraint_error"]
+__all__ = [
+    "ConstraintFailure",
+    "classify_constraint_error",
+    "pydantic_issues",
+    "required_null_issues",
+    "unreadable_body_issues",
+    "value_error_issues",
+    "validation_envelope",
+]
 
 #: Constraint kinds worth telling a client apart, in the cross-port snake_case spelling.
 _FOREIGN_KEY = "foreign_key"
@@ -149,3 +157,115 @@ def classify_constraint_error(exc: BaseException | None) -> ConstraintFailure | 
     # request itself got wrong. Both are client errors — neither is a 500.
     status = 409 if kind in (_FOREIGN_KEY, _UNIQUE) else 400
     return ConstraintFailure(status=status, constraint=kind)
+
+
+# ---------------------------------------------------------------------------
+# The validation envelope: ``400 {"error": "validation", "issues": [...]}``
+# ---------------------------------------------------------------------------
+#
+# Every generated write route answers a body that fails validation with EVERY issue listed,
+# in the shape the TypeScript routes use: each issue is ``{"code", "path", "message"}`` where
+# ``code`` is one of Zod's names (``invalid_type``, ``too_small``, ``too_big``,
+# ``invalid_format``, ``invalid_value``, ``not_multiple_of``, ``unrecognized_keys``,
+# ``invalid_union``, ``custom``), ``path`` is the field's WIRE name (the alias) plus any
+# nested member names, and ``message`` is this port's own wording.
+
+#: Pydantic error ``type`` -> Zod issue code, for the types that are not decided by a rule below.
+_PYDANTIC_CODES: dict[str, str] = {
+    "missing": "invalid_type",
+    "string_too_long": "too_big",
+    "too_long": "too_big",
+    "less_than": "too_big",
+    "less_than_equal": "too_big",
+    "decimal_max_digits": "too_big",
+    "decimal_max_places": "too_big",
+    "decimal_whole_digits": "too_big",
+    "int_parsing_size": "too_big",
+    "url_too_long": "too_big",
+    "string_too_short": "too_small",
+    "too_short": "too_small",
+    "greater_than": "too_small",
+    "greater_than_equal": "too_small",
+    "string_pattern_mismatch": "invalid_format",
+    "enum": "invalid_value",
+    "literal_error": "invalid_value",
+    "multiple_of": "not_multiple_of",
+    "extra_forbidden": "unrecognized_keys",
+    "union_tag_invalid": "invalid_union",
+    "union_tag_not_found": "invalid_union",
+}
+
+#: A ``*_parsing`` / ``*_from_*`` type whose text is not in the target's FORMAT (a malformed
+#: date, uuid, URL...) is ``invalid_format``; every other ``*_parsing`` (``int_parsing``,
+#: ``float_parsing``, ``bool_parsing``, ``decimal_parsing``) is a wrong value TYPE.
+_FORMAT_PARSING_PREFIXES: tuple[str, ...] = (
+    "date", "datetime", "time", "timedelta", "uuid", "url", "ip", "email",
+)
+
+
+def _issue_code(error_type: str) -> str:
+    code = _PYDANTIC_CODES.get(error_type)
+    if code is not None:
+        return code
+    if error_type.endswith("_type") or error_type in ("int_from_float", "is_instance_of"):
+        return "invalid_type"
+    if error_type.endswith("_parsing"):
+        prefix = error_type[: -len("_parsing")]
+        return "invalid_format" if prefix in _FORMAT_PARSING_PREFIXES else "invalid_type"
+    if error_type.startswith(("date_from_datetime", "datetime_from_date", "time_delta")):
+        return "invalid_format"
+    return "custom"
+
+
+def pydantic_issues(errors: list[Any]) -> list[dict[str, Any]]:
+    """The envelope's issues for Pydantic's ``ValidationError.errors()`` -- every one, in order.
+
+    ``path`` is Pydantic's ``loc``: the field's alias (the wire name) and, for a nested value
+    object, its members after it; ``code`` follows the table above."""
+    return [
+        {
+            "code": _issue_code(str(e.get("type", ""))),
+            "path": [p if isinstance(p, (int, str)) else str(p) for p in e.get("loc", ())],
+            "message": str(e.get("msg", "invalid value")),
+        }
+        for e in errors
+    ]
+
+
+def required_null_issues(dto: dict[str, Any], required: Any) -> list[dict[str, Any]]:
+    """An issue per ``@required`` field *dto* sets to an explicit ``null`` (FR-035 PATCH-2),
+    in the order of *required* sorted by name."""
+    return [
+        {"code": "invalid_type", "path": [k], "message": "expected a value, received null"}
+        for k in sorted(required)
+        if k in dto and dto[k] is None
+    ]
+
+
+def unreadable_body_issues() -> list[dict[str, Any]]:
+    """The single issue for a body that is not a JSON object (``path`` is ``[]``: the body as
+    a whole)."""
+    return [{"code": "invalid_type", "path": [], "message": "expected a JSON object body"}]
+
+
+def value_error_issues(exc: ValueError) -> list[dict[str, Any]]:
+    """The issues of a decimal-coercion ``ValueError``. The decimal helper raises one carrying
+    an ``issues`` list (a wrong type or an out-of-range value, with its wire path); any other
+    ``ValueError`` is one ``custom`` issue at the body as a whole."""
+    issues = getattr(exc, "issues", None)
+    if isinstance(issues, list) and issues:
+        return issues
+    return [{"code": "custom", "path": [], "message": str(exc)}]
+
+
+def validation_envelope(issues: list[dict[str, Any]]) -> dict[str, Any]:
+    """``{"error": "validation", "issues": [...]}`` -- the issues de-duplicated on
+    ``(path, code)``, so a rule reported twice (a required null the model also rejects) lists once."""
+    seen: set[tuple[str, str]] = set()
+    unique: list[dict[str, Any]] = []
+    for issue in issues:
+        key = (repr(issue["path"]), issue["code"])
+        if key not in seen:
+            seen.add(key)
+            unique.append(issue)
+    return {"error": "validation", "issues": unique}

@@ -190,11 +190,13 @@ def _scalar_fields(entity: MetaObject) -> list[MetaField]:
 #: detour) before validation; a malformed one is the cross-port 400.
 _DECIMAL_COERCE: list[str] = [
     "    if dto is None:  # the body was not a JSON object: the cross-port 400, not FastAPI's 422",
-    '        return JSONResponse(status_code=400, content={"error": "validation"})',
+    "        return JSONResponse(",
+    "            status_code=400, content=validation_envelope(unreadable_body_issues())",
+    "        )",
     "    try:",
     "        dto = coerce_decimal_fields(dto, _DECIMAL_FIELDS, _DECIMAL_LIMITS, _NESTED_DECIMALS)",
-    "    except ValueError:",
-    '        return JSONResponse(status_code=400, content={"error": "validation"})',
+    "    except ValueError as _exc:",
+    "        return JSONResponse(status_code=400, content=validation_envelope(value_error_issues(_exc)))",
 ]
 
 #: The request-body dependency of every write route: the body is read with
@@ -539,15 +541,34 @@ _VALIDATED_INPUT_LINES: list[str] = [
 ]
 
 
-def _validated_input_lines(model: str, *comment: str) -> list[str]:
+def _validated_input_lines(model: str, *comment: str, patch: bool = False) -> list[str]:
     """Validate ``dto`` against the input *model*, then rebind it to what the model validated
-    (see :data:`_VALIDATED_INPUT_LINES`): the repository never sees any other key."""
+    (see :data:`_VALIDATED_INPUT_LINES`): the repository never sees any other key.
+
+    A body that fails answers ``400`` listing EVERY issue. On a *patch* the explicit nulls on
+    ``@required`` fields (FR-035 PATCH-2) are issues too, listed beside the model's."""
+    if patch:
+        check = [
+            "    _issues = required_null_issues(dto, _REQUIRED_FIELDS)",
+            "    try:",
+            f"        _valid = {model}(**dto)",
+            "    except ValidationError as _exc:",
+            "        _issues += pydantic_issues(_exc.errors())",
+            "    if _issues:",
+            "        return JSONResponse(status_code=400, content=validation_envelope(_issues))",
+        ]
+    else:
+        check = [
+            "    try:",
+            f"        _valid = {model}(**dto)",
+            "    except ValidationError as _exc:",
+            "        return JSONResponse(",
+            "            status_code=400, content=validation_envelope(pydantic_issues(_exc.errors()))",
+            "        )",
+        ]
     return [
         *(f"    # {line}" for line in comment),
-        "    try:",
-        f"        _valid = {model}(**dto)",
-        "    except ValidationError:",
-        '        return JSONResponse(status_code=400, content={"error": "validation"})',
+        *check,
         "    # SECURITY (1.2.1): only what the input model validated reaches the repository. A key",
         "    # it does not declare (an undeclared name, a server-generated id, a readOnly or derived",
         "    # field, a frozen one on update) is dropped silently, never 400'd.",
@@ -1201,16 +1222,14 @@ class RouterGenerator:
                 ") -> Any:",
                 *_DECIMAL_COERCE,
                 *denied_strip,
-                "    # FR-035 PATCH-2: an explicit null on a @required field is a 400 —",
-                "    # a present null on a NON-required field falls through and clears it,",
-                "    # and an OMITTED required field is untouched (never a 400).",
-                "    for _k in _REQUIRED_FIELDS:",
-                "        if _k in dto and dto[_k] is None:",
-                '            return JSONResponse(status_code=400, content={"error": "validation"})',
                 *_validated_input_lines(
                     patch_model,
+                    "FR-035 PATCH-2: an explicit null on a @required field is a 400 — a present",
+                    "null on a NON-required field falls through and clears it, and an OMITTED",
+                    "required field is untouched (never a 400).",
                     "FR-036: validate PRESENT, non-null values with the create rules (the",
                     "all-optional patch model never fires required-checks on ABSENT fields).",
+                    patch=True,
                 ),
                 # #203/ADR-0045: bump onUpdate @autoSet columns (server-owned) on EVERY patch,
                 # above the repo seam — a server-inserted present key (compatible with the PATCH
@@ -1517,6 +1536,11 @@ class RouterGenerator:
         parts.append("")
         parts.append(f"from {_runtime_module('constraint_errors')} import (")
         parts.append("    classify_constraint_error,")
+        parts.append("    pydantic_issues,")
+        parts.append("    required_null_issues,")
+        parts.append("    unreadable_body_issues,")
+        parts.append("    validation_envelope,")
+        parts.append("    value_error_issues,")
         parts.append(")")
         parts.append(f"from {_runtime_module('decimal_wire')} import (")
         parts.append("    coerce_decimal_fields,")
@@ -1678,12 +1702,11 @@ class RouterGenerator:
             parts.append(") -> Any:")
             parts.extend(_DECIMAL_COERCE)
             parts.extend(denied_strip_tph)
-            parts.append("    # FR-035 PATCH-2: an explicit null on a @required field is a 400.")
-            parts.append("    for _k in _REQUIRED_FIELDS:")
-            parts.append("        if _k in dto and dto[_k] is None:")
-            parts.append('            return JSONResponse(status_code=400, content={"error": "validation"})')
             parts.extend(_validated_input_lines(
-                f"{sub}Patch", "FR-036: validate PRESENT, non-null values with the subtype's create rules."
+                f"{sub}Patch",
+                "FR-035 PATCH-2: an explicit null on a @required field is a 400.",
+                "FR-036: validate PRESENT, non-null values with the subtype's create rules.",
+                patch=True,
             ))
             # #203/ADR-0045: pop the write-once onCreate column(s), bump onUpdate — ABOVE
             # the repo seam (empty for a non-@autoSet hierarchy — byte-identical output).
@@ -1913,6 +1936,11 @@ class RouterGenerator:
         parts.append("")
         parts.append(f"from {_runtime_module('constraint_errors')} import (")
         parts.append("    classify_constraint_error,")
+        parts.append("    pydantic_issues,")
+        parts.append("    required_null_issues,")
+        parts.append("    unreadable_body_issues,")
+        parts.append("    validation_envelope,")
+        parts.append("    value_error_issues,")
         parts.append(")")
         parts.append(f"from {_runtime_module('decimal_wire')} import (")
         parts.append("    coerce_decimal_fields,")

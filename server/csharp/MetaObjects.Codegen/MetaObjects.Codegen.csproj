@@ -86,6 +86,7 @@
     <EmbeddedResource Include="Runtime/EfCoreFilterDispatch.cs" />
     <EmbeddedResource Include="Runtime/ValueObjectValidator.cs" />
     <EmbeddedResource Include="Runtime/ConstraintErrors.cs" />
+    <EmbeddedResource Include="Runtime/ValidationIssues.cs" />
     <EmbeddedResource Include="Runtime/Iso8601TimestampConverter.cs" />
     <EmbeddedResource Include="Runtime/DecimalWire.cs" />
     <EmbeddedResource Include="Runtime/DurationWire.cs" />

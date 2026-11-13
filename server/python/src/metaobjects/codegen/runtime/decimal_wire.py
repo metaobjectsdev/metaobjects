@@ -52,13 +52,13 @@ def format_decimal(value: Decimal) -> str:
         return "0"
     normalized = _normalize(value)
     if abs(normalized.adjusted()) > MAX_DIGITS:
-        raise ValueError("decimal out of range")
+        raise _RangeError("decimal out of range")
     return format(normalized, "f")
 
 
 def _checked(value: Decimal) -> Decimal:
     if abs(value.adjusted()) > MAX_DIGITS and value != 0:
-        raise ValueError("decimal out of range")
+        raise _RangeError("decimal out of range")
     return value
 
 
@@ -131,10 +131,30 @@ def check_decimal_range(value: Decimal, precision: int, scale: int) -> None:
     if not isinstance(exponent, int):
         raise ValueError("not a finite number")
     if -exponent > scale:
-        raise ValueError(f"more than {scale} fraction digit(s)")
+        raise _RangeError(f"more than {scale} fraction digit(s)")
     integer_digits = max(d.adjusted() + 1, 0) if d != 0 else 0
     if integer_digits > precision - scale:
-        raise ValueError(f"more than {precision - scale} integer digit(s)")
+        raise _RangeError(f"more than {precision - scale} integer digit(s)")
+
+
+class DecimalIssue(ValueError):
+    """A request-body decimal that cannot be accepted. ``issues`` is the validation envelope's
+    list for it (one issue: ``code``, wire ``path``, ``message``), so a route lists it beside
+    every other issue; ``str()`` keeps the ``name: reason`` text."""
+
+    def __init__(self, path: list[str | int], code: str, reason: str) -> None:
+        super().__init__(f"{'.'.join(str(p) for p in path)}: {reason}")
+        self.issues: list[dict[str, Any]] = [{"code": code, "path": path, "message": reason}]
+
+
+def _decimal_issue(path: list[str | int], exc: ValueError) -> DecimalIssue:
+    """*exc* (a ``parse_decimal`` or range ``ValueError``) as an issue at *path*: a range
+    refusal is ``too_big``, anything unparseable is ``invalid_type``."""
+    return DecimalIssue(path, "too_big" if isinstance(exc, _RangeError) else "invalid_type", str(exc))
+
+
+class _RangeError(ValueError):
+    """The value parsed but cannot be held by the column (W3)."""
 
 
 def coerce_decimal_fields(
@@ -156,7 +176,7 @@ def coerce_decimal_fields(
         if k in decimal_fields:
             out[k] = v
         elif k in nested:
-            out[k] = _nested(v, nested[k], k)
+            out[k] = _nested(v, nested[k], [k])
         else:
             out[k] = _floats(v)
     for name in decimal_fields:
@@ -170,24 +190,24 @@ def coerce_decimal_fields(
                     else _coerce_decimal(value, limit)
                 )
             except ValueError as exc:
-                raise ValueError(f"{name}: {exc}") from None
+                raise _decimal_issue([name], exc) from None
     return out
 
 
-def _nested(value: Any, spec: dict[str, Any], path: str) -> Any:
+def _nested(value: Any, spec: dict[str, Any], path: list[str | int]) -> Any:
     """A jsonb value-object field (*value* a dict, or a list of them) under the top-level
     decimal rule: each declared decimal inside is parsed under W2, held to its range under W3
     (*spec*: ``{"d": {name: (precision, scale) | None}, "o": {name: spec}}``, or ``{"m": spec}`` for a
     ``field.map`` of value objects, applied to each value) and stored as its
-    canonical string; every other number is a float. Raises ``ValueError`` naming the path."""
+    canonical string; every other number is a float. Raises ``DecimalIssue`` naming the path."""
     if isinstance(value, list):
-        return [_nested(v, spec, path) for v in value]
+        return [_nested(v, spec, [*path, i]) for i, v in enumerate(value)]
     if not isinstance(value, dict):
         return _floats(value)
     if "m" in spec:
         # a field.map of value objects: the spec applies to EACH value; keys are arbitrary
         # text and never matched against member names.
-        return {k: _nested(v, spec["m"], f"{path}.{k}") for k, v in value.items()}
+        return {k: _nested(v, spec["m"], [*path, k]) for k, v in value.items()}
     out: dict[str, Any] = {}
     for k, v in value.items():
         if k in spec["d"] and v is not None:
@@ -195,9 +215,9 @@ def _nested(value: Any, spec: dict[str, Any], path: str) -> Any:
             try:
                 out[k] = [None if e is None else _canonical(e, limit) for e in v] if isinstance(v, list) else _canonical(v, limit)
             except ValueError as exc:
-                raise ValueError(f"{path}.{k}: {exc}") from None
+                raise _decimal_issue([*path, k], exc) from None
         elif k in spec["o"]:
-            out[k] = _nested(v, spec["o"][k], f"{path}.{k}")
+            out[k] = _nested(v, spec["o"][k], [*path, k])
         else:
             out[k] = _floats(v)
     return out

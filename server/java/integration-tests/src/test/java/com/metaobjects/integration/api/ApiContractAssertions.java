@@ -127,6 +127,9 @@ final class ApiContractAssertions {
                     throw new AssertionError(scenarioName + " / " + request.id()
                         + ": expected field=\"" + wantField + "\", got: " + body);
             }
+            if (want.get("issues") instanceof List<?> wantIssues) {
+                assertIssues(scenarioName, request.id(), body, wantIssues);
+            }
             return;
         }
         Object lenObj = want.get("length");
@@ -268,5 +271,35 @@ final class ApiContractAssertions {
         if (body instanceof Map<?, ?> m) return m.isEmpty();
         if (body instanceof List<?> l) return l.isEmpty();
         return false;
+    }
+    /**
+     * The validation envelope lists its issues: {@code issues} is an array, every issue carries a
+     * string {@code code}, an array {@code path} and a string {@code message}, and each expected
+     * {@code {path, code}} is among them.
+     */
+    private static void assertIssues(String scenarioName, String requestId, Object body, List<?> expected) {
+        Object issues = body instanceof Map<?, ?> bm ? bm.get("issues") : null;
+        if (!(issues instanceof List<?> actual))
+            throw new AssertionError(scenarioName + " / " + requestId + ": expected an issues array, got: " + body);
+        for (Object issue : actual) {
+            if (!(issue instanceof Map<?, ?> im) || !(im.get("code") instanceof String)
+                    || !(im.get("path") instanceof List<?>) || !(im.get("message") instanceof String))
+                throw new AssertionError(scenarioName + " / " + requestId
+                    + ": an issue lacks code, path or message: " + issue);
+        }
+        for (Object want : expected) {
+            Map<?, ?> w = (Map<?, ?>) want;
+            boolean found = false;
+            for (Object issue : actual) {
+                Map<?, ?> im = (Map<?, ?>) issue;
+                if (w.get("code").equals(im.get("code")) && String.valueOf(w.get("path")).equals(String.valueOf(im.get("path")))) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found)
+                throw new AssertionError(scenarioName + " / " + requestId + ": expected an issue " + want
+                    + ", got: " + actual);
+        }
     }
 }

@@ -376,6 +376,8 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
            .append(" fromJson(JsonNode body, ObjectMapper mapper) {\n");
         src.append("        if (!body.isObject()) throw new PatchValidationException(\"(request body)\");\n");
         src.append("        Map<String, Object> assigned = new LinkedHashMap<>();\n");
+        // Every field is bound even after one fails, so the one exception below lists them all.
+        src.append("        java.util.List<PatchValidationException.Problem> problems = PatchValidationException.newProblems();\n");
         boolean usesDecimalPatch = false;
         boolean usesDecimalListPatch = false;
         boolean usesDurationPatch = false;
@@ -390,18 +392,18 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
                 // ADR-0019 Amendment 1 (W2): a decimal binds through the strict rule, not the
                 // mapper's coercion: "" or "NaN" is a 400, a number is read exactly.
                 int[] bound = SpringGeneratorSupport.declaredDecimalBound(field);
-                src.append("        bindDecimal(body, assigned, \"").append(name).append("\", ")
+                src.append("        PatchValidationException.collect(problems, () -> bindDecimal(body, assigned, \"").append(name).append("\", ")
                    .append(required).append(", ").append(bound == null ? 0 : bound[0])
-                   .append(", ").append(bound == null ? 0 : bound[1]).append(");\n");
+                   .append(", ").append(bound == null ? 0 : bound[1]).append("));\n");
                 usesDecimalPatch = true;
                 continue;
             }
             if ("java.util.List<java.math.BigDecimal>".equals(type)) {
                 // The same strict rule per element of a decimal array.
                 int[] bound = SpringGeneratorSupport.declaredDecimalBound(field);
-                src.append("        bindDecimalList(body, assigned, \"").append(name).append("\", ")
+                src.append("        PatchValidationException.collect(problems, () -> bindDecimalList(body, assigned, \"").append(name).append("\", ")
                    .append(required).append(", ").append(bound == null ? 0 : bound[0])
-                   .append(", ").append(bound == null ? 0 : bound[1]).append(");\n");
+                   .append(", ").append(bound == null ? 0 : bound[1]).append("));\n");
                 usesDecimalPatch = true;
                 usesDecimalListPatch = true;
                 continue;
@@ -411,15 +413,16 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
                 // wire.durations: iso. field.duration binds through the strict accepted-form rule, not the mapper's
                 // Duration.parse (which takes fractional hours, lowercase and numbers of seconds).
                 boolean list = !"java.time.Duration".equals(type);
-                src.append("        bindDuration").append(list ? "List" : "").append("(body, assigned, \"")
-                   .append(name).append("\", ").append(required).append(");\n");
+                src.append("        PatchValidationException.collect(problems, () -> bindDuration").append(list ? "List" : "").append("(body, assigned, \"")
+                   .append(name).append("\", ").append(required).append("));\n");
                 if (list) usesDurationListPatch = true; else usesDurationPatch = true;
                 continue;
             }
-            src.append("        bind(body, mapper, assigned, \"").append(name)
+            src.append("        PatchValidationException.collect(problems, () -> bind(body, mapper, assigned, \"").append(name)
                .append("\", new TypeReference<").append(type).append(">() {}, ")
-               .append(required).append(");\n");
+               .append(required).append("));\n");
         }
+        src.append("        if (!problems.isEmpty()) throw new PatchValidationException(problems, assigned);\n");
         src.append("        return new ").append(patchName).append("(assigned);\n");
         src.append("    }\n\n");
 
@@ -436,7 +439,7 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         src.append("        try {\n");
         src.append("            assigned.put(field, mapper.treeToValue(node, type));\n");
         src.append("        } catch (JsonProcessingException e) {\n");
-        src.append("            throw new PatchValidationException(field);\n");
+        src.append("            throw new PatchValidationException(field, e);\n");
         src.append("        }\n");
         src.append("    }\n");
         if (usesDecimalPatch) {
@@ -459,7 +462,7 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
             src.append("            assigned.put(field, precision == 0 ? CanonicalDecimalDeserializer.fromNode(node)\n");
             src.append("                : CanonicalDecimalDeserializer.fromNode(node, precision, scale));\n");
             src.append("        } catch (IllegalArgumentException e) {\n");
-            src.append("            throw new PatchValidationException(field);\n");
+            src.append("            throw new PatchValidationException(field, e);\n");
             src.append("        }\n");
             src.append("    }\n");
             if (usesDecimalListPatch) {
@@ -480,7 +483,7 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
                 src.append("                items.add(precision == 0 ? CanonicalDecimalDeserializer.fromNode(item)\n");
                 src.append("                    : CanonicalDecimalDeserializer.fromNode(item, precision, scale));\n");
                 src.append("            } catch (IllegalArgumentException e) {\n");
-                src.append("                throw new PatchValidationException(field);\n");
+                src.append("                throw new PatchValidationException(field, e);\n");
                 src.append("            }\n");
                 src.append("        }\n");
                 src.append("        assigned.put(field, items);\n");
@@ -505,7 +508,7 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
             src.append("        try {\n");
             src.append("            assigned.put(field, CanonicalDurationDeserializer.fromNode(node));\n");
             src.append("        } catch (IllegalArgumentException e) {\n");
-            src.append("            throw new PatchValidationException(field);\n");
+            src.append("            throw new PatchValidationException(field, e);\n");
             src.append("        }\n");
             src.append("    }\n");
         }
@@ -526,7 +529,7 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
             src.append("            try {\n");
             src.append("                items.add(CanonicalDurationDeserializer.fromNode(item));\n");
             src.append("            } catch (IllegalArgumentException e) {\n");
-            src.append("                throw new PatchValidationException(field);\n");
+            src.append("                throw new PatchValidationException(field, e);\n");
             src.append("            }\n");
             src.append("        }\n");
             src.append("        assigned.put(field, items);\n");

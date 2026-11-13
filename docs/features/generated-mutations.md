@@ -41,7 +41,7 @@ but the semantics are one contract — call them **PATCH-1..7** (FR-035):
   simply omits every non-settable field, and Zod drops unknown keys — so
   `safeParse` succeeds and the key never reaches the `SET`. The TPH discriminator
   is additionally deleted by hand after parse, the same convention. A malformed
-  *value* on a settable key is still `400 {"error":"validation"}`. A key the entity
+  *value* on a settable key is still `400 {"error":"validation", "issues": [...]}`. A key the entity
   does not declare at all is dropped the same way. The Python routes hand the
   repository only the keys their input model validated.
   This matters for `writeOnce` specifically: the generated edit form submits EVERY

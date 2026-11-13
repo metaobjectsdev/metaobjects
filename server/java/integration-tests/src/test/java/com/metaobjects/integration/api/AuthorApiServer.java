@@ -441,14 +441,20 @@ final class AuthorApiServer implements AutoCloseable {
     private void createAuthor(HttpExchange exchange) throws IOException, SQLException {
         Object parsed = readJsonBody(exchange);
         if (!(parsed instanceof Map<?, ?>)) {
-            sendJson(exchange, 400, Map.of("error", "validation"));
+            sendJson(exchange, 400, validationBody(List.of(issue("invalid_type", "request body must be a JSON object"))));
             return;
         }
         Map<String, Object> body = (Map<String, Object>) parsed;
         // FR-036 wire-tier constraint enforcement: reject an over-length name/bio with the
         // cross-port {"error":"validation"} envelope BEFORE persisting (mirrors the generated
         // controller's @Size(max=…) rules).
-        if (violatesLength(body)) { sendJson(exchange, 400, Map.of("error", "validation")); return; }
+        // A @required field (name, createdAt) that is missing or null is an invalid_type issue, and every
+        // issue is listed, not just the first.
+        List<Map<String, Object>> createIssues = lengthIssues(body);
+        for (String reqField : List.of("name", "createdAt")) {
+            if (body.get(reqField) == null) createIssues.add(issue("invalid_type", "required", reqField));
+        }
+        if (!createIssues.isEmpty()) { sendJson(exchange, 400, validationBody(createIssues)); return; }
         // Issue #203 / ADR-0045: honor @autoSet on create — stamp BOTH the onCreate and onUpdate
         // columns from ONE now() (the caller's values are ignored; a fresh row's autoUpdatedAt
         // equals its autoCreatedAt).
@@ -486,22 +492,25 @@ final class AuthorApiServer implements AutoCloseable {
         Long id = parseLongOrNull(idStr);
         if (id == null) { sendJson(exchange, 400, Map.of("error", "invalid_id")); return; }
         Object parsed = readJsonBody(exchange);
-        if (!(parsed instanceof Map<?, ?>)) { sendJson(exchange, 400, Map.of("error", "validation")); return; }
+        if (!(parsed instanceof Map<?, ?>)) {
+            sendJson(exchange, 400, validationBody(List.of(issue("invalid_type", "request body must be a JSON object"))));
+            return;
+        }
         Map<String, Object> body = (Map<String, Object>) parsed;
 
         // FR-035 PATCH-2: an explicit null on a @required field (name / createdAt, per
         // meta.json) is a 400 — a present null on the nullable bio clears it, and an
         // omitted required field is untouched (never a 400).
+        List<Map<String, Object>> patchIssues = lengthIssues(body);
         for (String reqField : List.of("name", "createdAt")) {
             if (body.containsKey(reqField) && body.get(reqField) == null) {
-                sendJson(exchange, 400, Map.of("error", "validation"));
-                return;
+                patchIssues.add(issue("invalid_type", "cannot be null", reqField));
             }
         }
-
         // FR-036 wire-tier constraint enforcement: a PRESENT, non-null over-length name/bio is a
-        // 400 (matches the generated controller's per-present-value PATCH validation).
-        if (violatesLength(body)) { sendJson(exchange, 400, Map.of("error", "validation")); return; }
+        // 400 (matches the generated controller's per-present-value PATCH validation). Every issue
+        // is listed in the envelope.
+        if (!patchIssues.isEmpty()) { sendJson(exchange, 400, validationBody(patchIssues)); return; }
 
         // Dynamic SET clause — only update fields present in the body.
         List<String> setClauses = new ArrayList<>();
@@ -562,10 +571,27 @@ final class AuthorApiServer implements AutoCloseable {
      * field is already rejected upstream. Returns {@code true} when a bound is exceeded so
      * the caller emits the {@code {"error":"validation"}} envelope.
      */
-    private static boolean violatesLength(Map<String, Object> body) {
-        if (body.get("name") instanceof String n && n.length() > 100) return true;
-        if (body.get("bio") instanceof String b && b.length() > 1000) return true;
-        return false;
+    private static List<Map<String, Object>> lengthIssues(Map<String, Object> body) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        if (body.get("name") instanceof String n && n.length() > 100) out.add(issue("too_big", "too long", "name"));
+        if (body.get("bio") instanceof String b && b.length() > 1000) out.add(issue("too_big", "too long", "bio"));
+        return out;
+    }
+
+    /** One validation issue: {@code {code, path, message}}; {@code path} is the field, empty when none is given. */
+    private static Map<String, Object> issue(String code, String message, String... path) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("code", code);
+        out.put("path", List.of(path));
+        out.put("message", message);
+        return out;
+    }
+
+    private static Map<String, Object> validationBody(List<Map<String, Object>> issues) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("error", "validation");
+        out.put("issues", issues);
+        return out;
     }
 
     private void deleteAuthor(HttpExchange exchange, String idStr) throws IOException, SQLException {

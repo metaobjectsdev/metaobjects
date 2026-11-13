@@ -116,7 +116,8 @@ The generated `PATCH`/`PUT` handler binds a raw `JsonNode` and builds an
 top of it:** the handler injects a `jakarta.validation.Validator` and runs
 `validateValue(<Entity>Dto.class, field, value)` on each PRESENT value (per-field,
 never the whole bean — so an absent `@required` field is not a false 400) →
-HTTP 400 `{"error":"validation"}`. This holds on both the vanilla and (FR-036
+HTTP 400 `{"error":"validation", "issues": [...]}`, every violation listed through the
+`ValidationIssues` runtime helper (since 1.3.0). This holds on both the vanilla and (FR-036
 Program B) the TPH per-subtype update paths. (The prior note here — and the claim
 that "TS/Python DO validate on PATCH" — was wrong: before FR-036 only TS's vanilla
 path validated present values; the TPH path validated on no port. All ports now do.)

@@ -274,7 +274,7 @@ public final class GeneratorRegistry {
      *  {@code REGISTRY}: static initializers run in order. */
     private static final List<String> ROUTES_RUNTIME = List.of(
             "CanonicalDecimal", "CanonicalDuration", "ConstraintErrors", "FilterParseResult", "FilterParser", "FilterPredicate",
-            "PatchValidationException", "RecordComponentNames", "ReportExport", "UnreadableBody");
+            "PatchValidationException", "RecordComponentNames", "ReportExport", "UnreadableBody", "ValidationIssues");
 
     /** The writer a generated type's package and class name are read from, and its base. */
     private static final List<String> OBJECT_NAMING = List.of(

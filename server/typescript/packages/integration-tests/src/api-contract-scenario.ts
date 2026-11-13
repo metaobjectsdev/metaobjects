@@ -43,6 +43,10 @@ export interface ExpectBody {
   total?: number;
   error?: string;
   field?: string;
+  /** Validation issues that must each be present in the error envelope's `issues` array, matched
+   *  on `path` and `code` (an issue's `message` is the port's own wording). Checked inside the
+   *  `error` branch, like `field`. */
+  issues?: Array<{ path: Array<string | number>; code: string }>;
   empty?: boolean;
   /** The exact response text (UTF-8), for a CSV export. */
   text?: string;
@@ -255,6 +259,7 @@ export function assertResponse(
       if (f !== want.field)
         throw new Error(`${scenarioName} / ${request.id}: expected field="${want.field}", got: ${stringify(body)}`);
     }
+    if (want.issues !== undefined) assertIssues(scenarioName, request.id, body, want.issues);
     return;
   }
   if (want.length !== undefined) {
@@ -336,4 +341,35 @@ function stringify(v: unknown): string {
     }
     return val;
   });
+}
+
+/**
+ * The validation envelope lists its issues: `issues` is an array, every issue carries a string
+ * `code`, an array `path` and a string `message`, and each expected `{ path, code }` is among them.
+ */
+function assertIssues(
+  scenarioName: string,
+  requestId: string,
+  body: unknown,
+  expected: Array<{ path: Array<string | number>; code: string }>,
+): void {
+  const issues = (body as { issues?: unknown }).issues;
+  if (!Array.isArray(issues))
+    throw new Error(`${scenarioName} / ${requestId}: expected an issues array, got: ${stringify(body)}`);
+  for (const issue of issues) {
+    const i = issue as { code?: unknown; path?: unknown; message?: unknown };
+    if (typeof i.code !== "string" || !Array.isArray(i.path) || typeof i.message !== "string")
+      throw new Error(`${scenarioName} / ${requestId}: an issue lacks code, path or message: ${stringify(issue)}`);
+  }
+  for (const want of expected) {
+    const found = issues.some(
+      (issue) =>
+        (issue as { code: string }).code === want.code &&
+        stringify((issue as { path: unknown[] }).path) === stringify(want.path),
+    );
+    if (!found)
+      throw new Error(
+        `${scenarioName} / ${requestId}: expected an issue ${stringify(want)}, got: ${stringify(issues)}`,
+      );
+  }
 }

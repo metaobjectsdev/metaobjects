@@ -428,7 +428,7 @@ public class RoutesGenerator : PerEntityGenerator
             // body carries the derived (view-computed) fields (read-your-writes).
             AppendCreateHandler(sb, "/" + route, cls, dbSet, requiredKeys,
                 CreatedResult("prefix + \"/" + route + "\"", "input", credentials), voFields, mapVoFields, autoSetFields,
-                writeThrough ? (readDbSet, pkProp!, route) : null, parseBody: HasDecimalField(entity) || HasIsoDurationField(entity, ctx.Root),
+                writeThrough ? (readDbSet, pkProp!, route) : null,
                 deniedFields.Select(f => CSharpNaming.Pascal(f.Name)).ToList(), credentials,
                 ServerOwnedCreateResets(entity, ctx.Root, _ => { }));
 
@@ -455,8 +455,9 @@ public class RoutesGenerator : PerEntityGenerator
             sb.AppendLine("            if (existing is null) return Results.NotFound(new { error = \"not_found\" });");
             sb.AppendLine("            System.Text.Json.JsonDocument body;");
             sb.AppendLine("            try { body = await System.Text.Json.JsonDocument.ParseAsync(http.Request.Body); }");
-            sb.AppendLine("            catch (System.Text.Json.JsonException) { return Results.BadRequest(new { error = \"validation\" }); }");
+            sb.AppendLine("            catch (System.Text.Json.JsonException) { return ValidationIssues.Unreadable(); }");
             sb.AppendLine("            using var bodyScope = body;");
+            sb.AppendLine("            if (body.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object) return ValidationIssues.Unreadable();");
             sb.AppendLine("            // Deserialize each value with the app's CONFIGURED JSON options, not defaults —");
             sb.AppendLine("            // a field.timestamp binds to DateTimeOffset via a custom converter registered on");
             sb.AppendLine("            // ConfigureHttpJsonOptions, and default options cannot read the wire format, throwing 500.");
@@ -998,59 +999,47 @@ public class RoutesGenerator : PerEntityGenerator
         IReadOnlyList<MapVoField> mapVoFields,
         IReadOnlyList<AutoSetField> autoSetFields,
         (string ReadDbSet, string PkProp, string Route)? reRead = null,
-        bool parseBody = false,
         IReadOnlyList<string>? deniedNavs = null,
         IReadOnlyList<string>? credentials = null,
         IReadOnlyList<string>? serverOwned = null)
     {
-        // A decimal field can refuse its value while the body is bound (out of declared range, not a
-        // number). The framework's own binding answers that with a bare 400 and no body, so an entity
-        // carrying one parses the body itself and returns the cross-port {error:"validation"} envelope.
-        if (requiredKeys.Count == 0 && !parseBody)
-        {
-            sb.AppendLine($"        app.MapPost(prefix + \"{mapPath}\", async ({cls} input, AppDbContext db) =>");
-            sb.AppendLine("        {");
-            AppendCreateServerOwned(sb, serverOwned);
-            AppendCreateIgnoreDenied(sb, deniedNavs);
-            AppendCreateValidation(sb);
-            AppendCreateVoValidation(sb, voFields, mapVoFields);
-            AppendCreateAutoSet(sb, autoSetFields);
-            AppendCreatePersist(sb, dbSet, createdExpr, reRead, credentials ?? []);
-            sb.AppendLine("        });");
-            return;
-        }
-
+        // The body is always read here, not model-bound: the framework answers a body it cannot bind with a
+        // bare 400 and no body, while every validation failure must list its issues (the cross-port
+        // {error:"validation", issues:[...]} envelope), so the handler reads the body itself and collects them.
         sb.AppendLine($"        app.MapPost(prefix + \"{mapPath}\", async (HttpContext http, AppDbContext db) =>");
         sb.AppendLine("        {");
         AppendJsonOptsLocal(sb);
         sb.AppendLine("            System.Text.Json.JsonDocument __body;");
         sb.AppendLine("            try { __body = await System.Text.Json.JsonDocument.ParseAsync(http.Request.Body); }");
-        sb.AppendLine("            catch (System.Text.Json.JsonException) { return Results.BadRequest(new { error = \"validation\" }); }");
+        sb.AppendLine("            catch (System.Text.Json.JsonException) { return ValidationIssues.Unreadable(); }");
         sb.AppendLine("            using var __bodyScope = __body;");
         sb.AppendLine("            if (__body.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object)");
-        sb.AppendLine("                return Results.BadRequest(new { error = \"validation\" });");
+        sb.AppendLine("                return ValidationIssues.Unreadable();");
+        sb.AppendLine("            var __issues = new ValidationIssues();");
         // FR-036 #4 — @required-key presence: an omitted key OR an explicit null on a @required
         // field → 400, matching the JVM/Python "missing @required → 400" contract. Case-insensitive
         // so a camelCase wire key ("createdAt") matches its PascalCase property ("CreatedAt").
-        sb.AppendLine("            var __present = new System.Collections.Generic.HashSet<string>(System.StringComparer.OrdinalIgnoreCase);");
-        sb.AppendLine("            foreach (var __p in __body.RootElement.EnumerateObject())");
-        sb.AppendLine("                if (__p.Value.ValueKind != System.Text.Json.JsonValueKind.Null) __present.Add(__p.Name);");
-        sb.Append(requiredKeys.Count == 0 ? "            foreach (var __req in new string[] { " : "            foreach (var __req in new[] { ");
-        sb.Append(string.Join(", ", requiredKeys.Select(k => "\"" + k + "\"")));
-        sb.AppendLine(" })");
-        sb.AppendLine("                if (!__present.Contains(__req)) return Results.BadRequest(new { error = \"validation\" });");
-        // A malformed body (e.g. a JSON array for a single-VO / scalar for an object column)
-        // throws JsonException — return the cross-port 400 {error:"validation"} rather than an
-        // unhandled 500 (matches the no-required-keys path's automatic model-binding 400, and
-        // every other port). Program D — the VO columns make wrong-shaped bodies reachable.
-        sb.AppendLine($"            {cls}? input;");
+        if (requiredKeys.Count > 0)
+        {
+            sb.AppendLine("            var __present = new System.Collections.Generic.HashSet<string>(System.StringComparer.OrdinalIgnoreCase);");
+            sb.AppendLine("            foreach (var __p in __body.RootElement.EnumerateObject())");
+            sb.AppendLine("                if (__p.Value.ValueKind != System.Text.Json.JsonValueKind.Null) __present.Add(__p.Name);");
+            sb.Append("            foreach (var __req in new[] { ");
+            sb.Append(string.Join(", ", requiredKeys.Select(k => "\"" + k + "\"")));
+            sb.AppendLine(" })");
+            sb.AppendLine("                if (!__present.Contains(__req)) __issues.AddRequired(__req);");
+        }
+        // A value that cannot be read (a wrong-shaped VO, a decimal out of range, a malformed date) throws
+        // JsonException: it is listed at its path, and the body cannot be checked further.
+        sb.AppendLine($"            {cls}? input = null;");
         sb.AppendLine("            try { input = System.Text.Json.JsonSerializer.Deserialize<" + cls + ">(__body.RootElement.GetRawText(), jsonOpts); }");
-        sb.AppendLine("            catch (System.Text.Json.JsonException) { return Results.BadRequest(new { error = \"validation\" }); }");
-        sb.AppendLine("            if (input is null) return Results.BadRequest(new { error = \"validation\" });");
+        sb.AppendLine("            catch (System.Exception __e) { __issues.AddReadFailure(__e, typeof(" + cls + ")); }");
+        sb.AppendLine("            if (input is null) return __issues.Any ? __issues.ToResult() : ValidationIssues.Unreadable();");
         AppendCreateServerOwned(sb, serverOwned);
         AppendCreateIgnoreDenied(sb, deniedNavs);
         AppendCreateValidation(sb);
         AppendCreateVoValidation(sb, voFields, mapVoFields);
+        sb.AppendLine("            if (__issues.Any) return __issues.ToResult();");
         AppendCreateAutoSet(sb, autoSetFields);
         AppendCreatePersist(sb, dbSet, createdExpr, reRead, credentials ?? []);
         sb.AppendLine("        });");
@@ -1213,14 +1202,14 @@ public class RoutesGenerator : PerEntityGenerator
     {
         foreach (var vf in voFields)
             sb.AppendLine(
-                $"            if (!ValueObjectValidator.Validate(input.{vf.Nav})) return Results.BadRequest(new {{ error = \"validation\" }});");
+                $"            ValueObjectValidator.Collect(input.{vf.Nav}, __issues, jsonOpts, \"{vf.WireName}\");");
         // #362 — a field.map @objectRef's values are value objects and get the same graph
         // validation. ValueObjectValidator unwraps an IDictionary to its Values; before that
         // arm existed a Dictionary hit the IEnumerable arm, yielded KeyValuePair structs, and
         // validated vacuously — so this line and that arm are one fix, not two.
         foreach (var mf in mapVoFields)
             sb.AppendLine(
-                $"            if (!ValueObjectValidator.Validate(input.{mf.Nav})) return Results.BadRequest(new {{ error = \"validation\" }});");
+                $"            ValueObjectValidator.Collect(input.{mf.Nav}, __issues, jsonOpts, \"{mf.WireName}\");");
     }
 
     // The configured System.Text.Json options local (`jsonOpts`) — the app's
@@ -1279,10 +1268,7 @@ public class RoutesGenerator : PerEntityGenerator
     // DataAnnotations on its own). Assumes the bound local `input` is in scope.
     private static void AppendCreateValidation(StringBuilder sb)
     {
-        sb.AppendLine("            var __vr = new System.Collections.Generic.List<System.ComponentModel.DataAnnotations.ValidationResult>();");
-        sb.AppendLine("            if (!System.ComponentModel.DataAnnotations.Validator.TryValidateObject(");
-        sb.AppendLine("                    input, new System.ComponentModel.DataAnnotations.ValidationContext(input), __vr, true))");
-        sb.AppendLine("                return Results.BadRequest(new { error = \"validation\" });");
+        sb.AppendLine("            __issues.ValidateObject(input, jsonOpts);");
     }
 
     // FR-035 PATCH-2 — the shared present-key merge loop for the generated update
@@ -1306,6 +1292,8 @@ public class RoutesGenerator : PerEntityGenerator
             if (voFields[i].IsArray && !voFields[i].Required)
                 sb.AppendLine($"            var __clearVo{i} = false;");
 
+        // Every violation is collected (never the first alone) and answered together after the loop.
+        sb.AppendLine("            var __issues = new ValidationIssues();");
         sb.AppendLine("            foreach (var prop in body.RootElement.EnumerateObject())");
         sb.AppendLine("            {");
         // #484 — @formExclude / credential keys are IGNORED (never a 400), ahead of every arm below
@@ -1327,7 +1315,10 @@ public class RoutesGenerator : PerEntityGenerator
             sb.AppendLine("                    if (prop.Value.ValueKind == System.Text.Json.JsonValueKind.Null)");
             sb.AppendLine("                    {");
             if (vf.Required)
-                sb.AppendLine("                        return Results.BadRequest(new { error = \"validation\" }); // @required VO column: present-null is a 400");
+            {
+                sb.AppendLine($"                        __issues.AddRequired(\"{vf.WireName}\"); // @required VO column: present-null is a 400");
+                sb.AppendLine("                        continue;");
+            }
             else
             {
                 sb.AppendLine($"                        existing.{vf.Nav} = null;");
@@ -1341,8 +1332,8 @@ public class RoutesGenerator : PerEntityGenerator
             // unhandled 500 (matches every other port + this port's own reference lane).
             sb.AppendLine($"                    {vf.DeserType} {v};");
             sb.AppendLine($"                    try {{ {v} = System.Text.Json.JsonSerializer.Deserialize<{vf.DeserType}>(prop.Value.GetRawText(), jsonOpts); }}");
-            sb.AppendLine("                    catch (System.Text.Json.JsonException) { return Results.BadRequest(new { error = \"validation\" }); }");
-            sb.AppendLine($"                    if (!ValueObjectValidator.Validate({v})) return Results.BadRequest(new {{ error = \"validation\" }});");
+            sb.AppendLine($"                    catch (System.Text.Json.JsonException __e) {{ __issues.AddJson(__e, null, \"{vf.WireName}\"); continue; }}");
+            sb.AppendLine($"                    if (!ValueObjectValidator.Collect({v}, __issues, jsonOpts, \"{vf.WireName}\")) continue;");
             sb.AppendLine($"                    existing.{vf.Nav} = {v}{(vf.Required ? "!" : "")};");
             sb.AppendLine("                    continue;");
             sb.AppendLine("                }");
@@ -1362,8 +1353,8 @@ public class RoutesGenerator : PerEntityGenerator
             sb.AppendLine($"                    {{ existing.{mf.Nav} = null; continue; }}");
             sb.AppendLine($"                    {mf.DeserType}? {mv};");
             sb.AppendLine($"                    try {{ {mv} = System.Text.Json.JsonSerializer.Deserialize<{mf.DeserType}>(prop.Value.GetRawText(), jsonOpts); }}");
-            sb.AppendLine("                    catch (System.Text.Json.JsonException) { return Results.BadRequest(new { error = \"validation\" }); }");
-            sb.AppendLine($"                    if (!ValueObjectValidator.Validate({mv})) return Results.BadRequest(new {{ error = \"validation\" }});");
+            sb.AppendLine($"                    catch (System.Text.Json.JsonException __e) {{ __issues.AddJson(__e, null, \"{mf.WireName}\"); continue; }}");
+            sb.AppendLine($"                    if (!ValueObjectValidator.Collect({mv}, __issues, jsonOpts, \"{mf.WireName}\")) continue;");
             sb.AppendLine($"                    existing.{mf.Nav} = {mv};");
             sb.AppendLine("                    continue;");
             sb.AppendLine("                }");
@@ -1371,6 +1362,7 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("                var target = entry.Metadata.FindProperty(prop.Name)");
         sb.AppendLine("                    ?? entry.Metadata.GetProperties().FirstOrDefault(p => string.Equals(p.Name, prop.Name, System.StringComparison.OrdinalIgnoreCase));");
         sb.AppendLine("                if (target is null) continue;");
+        sb.AppendLine("                var __wire = ValidationIssues.WireName(existing.GetType(), target.Name, jsonOpts);");
         sb.AppendLine("                if (target.IsPrimaryKey()) continue;                        // PK is route-authoritative");
         if (discProp is not null)
         {
@@ -1391,7 +1383,7 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("                {");
         sb.AppendLine("                    // FR-035 PATCH-2: explicit null clears a nullable column; on a");
         sb.AppendLine("                    // NOT-NULL (@required) column it is a 400 (matching the cross-port contract).");
-        sb.AppendLine("                    if (!target.IsNullable) return Results.BadRequest(new { error = \"validation\" });");
+        sb.AppendLine("                    if (!target.IsNullable) { __issues.AddRequired(__wire); continue; }");
         sb.AppendLine("                    entry.CurrentValues[target] = null;");
         sb.AppendLine("                    continue;");
         sb.AppendLine("                }");
@@ -1409,15 +1401,22 @@ public class RoutesGenerator : PerEntityGenerator
             {
                 sb.AppendLine("                if (clr == typeof(decimal))");
                 sb.AppendLine("                {");
-                sb.AppendLine("                    if (!DecimalWire.TryParseElement(prop.Value, out var __dec) || !DecimalWire.FitsDeclared(existing.GetType(), target.Name, __dec)) return Results.BadRequest(new { error = \"validation\" });");
+                sb.AppendLine("                    if (!DecimalWire.TryParseElement(prop.Value, out var __dec)) { __issues.Add(\"invalid_type\", __wire + \" is not a decimal\", __wire); continue; }");
+                sb.AppendLine("                    if (!DecimalWire.FitsDeclared(existing.GetType(), target.Name, __dec)) { __issues.Add(\"too_big\", __wire + \" exceeds its declared precision and scale\", __wire); continue; }");
                 sb.AppendLine("                    __val = __dec;");
                 sb.AppendLine("                }");
                 sb.AppendLine("                else if (clr == typeof(System.Collections.Generic.IList<decimal>))");
                 sb.AppendLine("                {");
-                sb.AppendLine("                    if (prop.Value.ValueKind != System.Text.Json.JsonValueKind.Array) return Results.BadRequest(new { error = \"validation\" });");
+                sb.AppendLine("                    if (prop.Value.ValueKind != System.Text.Json.JsonValueKind.Array) { __issues.Add(\"invalid_type\", __wire + \" is not an array\", __wire); continue; }");
                 sb.AppendLine("                    var __decs = new System.Collections.Generic.List<decimal>();");
+                sb.AppendLine("                    var __decBad = false;");
                 sb.AppendLine("                    foreach (var __el in prop.Value.EnumerateArray())");
-                sb.AppendLine("                        if (DecimalWire.TryParseElement(__el, out var __d1) && DecimalWire.FitsDeclared(existing.GetType(), target.Name, __d1)) __decs.Add(__d1); else return Results.BadRequest(new { error = \"validation\" });");
+                sb.AppendLine("                    {");
+                sb.AppendLine("                        if (!DecimalWire.TryParseElement(__el, out var __d1)) { __issues.Add(\"invalid_type\", __wire + \" holds a value that is not a decimal\", __wire, __decs.Count); __decBad = true; break; }");
+                sb.AppendLine("                        if (!DecimalWire.FitsDeclared(existing.GetType(), target.Name, __d1)) { __issues.Add(\"too_big\", __wire + \" holds a value over its declared precision and scale\", __wire, __decs.Count); __decBad = true; break; }");
+                sb.AppendLine("                        __decs.Add(__d1);");
+                sb.AppendLine("                    }");
+                sb.AppendLine("                    if (__decBad) continue;");
                 sb.AppendLine("                    __val = __decs;");
                 sb.AppendLine("                }");
                 arm = "else if";
@@ -1430,32 +1429,42 @@ public class RoutesGenerator : PerEntityGenerator
             {
                 sb.AppendLine($"                {arm} (clr == typeof(System.TimeSpan))");
                 sb.AppendLine("                {");
-                sb.AppendLine("                    if (!DurationWire.TryParseElement(prop.Value, out var __dur)) return Results.BadRequest(new { error = \"validation\" });");
+                sb.AppendLine("                    if (!DurationWire.TryParseElement(prop.Value, out var __dur)) { __issues.Add(\"invalid_type\", __wire + \" is not an ISO-8601 duration\", __wire); continue; }");
                 sb.AppendLine("                    __val = __dur;");
                 sb.AppendLine("                }");
                 sb.AppendLine("                else if (clr == typeof(System.Collections.Generic.IList<System.TimeSpan>))");
                 sb.AppendLine("                {");
-                sb.AppendLine("                    if (prop.Value.ValueKind != System.Text.Json.JsonValueKind.Array) return Results.BadRequest(new { error = \"validation\" });");
+                sb.AppendLine("                    if (prop.Value.ValueKind != System.Text.Json.JsonValueKind.Array) { __issues.Add(\"invalid_type\", __wire + \" is not an array\", __wire); continue; }");
                 sb.AppendLine("                    var __durs = new System.Collections.Generic.List<System.TimeSpan>();");
+                sb.AppendLine("                    var __durBad = false;");
                 sb.AppendLine("                    foreach (var __el in prop.Value.EnumerateArray())");
-                sb.AppendLine("                        if (DurationWire.TryParseElement(__el, out var __u1)) __durs.Add(__u1); else return Results.BadRequest(new { error = \"validation\" });");
+                sb.AppendLine("                    {");
+                sb.AppendLine("                        if (!DurationWire.TryParseElement(__el, out var __u1)) { __issues.Add(\"invalid_type\", __wire + \" holds a value that is not an ISO-8601 duration\", __wire, __durs.Count); __durBad = true; break; }");
+                sb.AppendLine("                        __durs.Add(__u1);");
+                sb.AppendLine("                    }");
+                sb.AppendLine("                    if (__durBad) continue;");
                 sb.AppendLine("                    __val = __durs;");
                 sb.AppendLine("                }");
             }
             sb.AppendLine("                else");
-            sb.AppendLine("                    __val = System.Text.Json.JsonSerializer.Deserialize(prop.Value.GetRawText(), clr, jsonOpts);");
+            sb.AppendLine("                {");
+            sb.AppendLine("                    try { __val = System.Text.Json.JsonSerializer.Deserialize(prop.Value.GetRawText(), clr, jsonOpts); }");
+            sb.AppendLine("                    catch (System.Exception __e) { __issues.AddReadFailure(__e, clr, __wire); continue; }");
+            sb.AppendLine("                }");
         }
         else
-            sb.AppendLine("                var __val = System.Text.Json.JsonSerializer.Deserialize(prop.Value.GetRawText(), clr, jsonOpts);");
+        {
+            sb.AppendLine("                object? __val;");
+            sb.AppendLine("                try { __val = System.Text.Json.JsonSerializer.Deserialize(prop.Value.GetRawText(), clr, jsonOpts); }");
+            sb.AppendLine("                catch (System.Exception __e) { __issues.AddReadFailure(__e, clr, __wire); continue; }");
+        }
         sb.AppendLine("                // FR-036 A2 — validate the PRESENT, non-null value with the same per-field");
         sb.AppendLine("                // DataAnnotations as create. This validates ONLY the present value (never the");
         sb.AppendLine("                // whole row) so an ABSENT @required field is untouched, not a 400.");
-        sb.AppendLine("                var __pr = new System.Collections.Generic.List<System.ComponentModel.DataAnnotations.ValidationResult>();");
-        sb.AppendLine("                if (!System.ComponentModel.DataAnnotations.Validator.TryValidateProperty(__val,");
-        sb.AppendLine("                        new System.ComponentModel.DataAnnotations.ValidationContext(existing) { MemberName = target.Name }, __pr))");
-        sb.AppendLine("                    return Results.BadRequest(new { error = \"validation\" });");
+        sb.AppendLine("                if (!__issues.ValidateProperty(existing, target.Name, __val, jsonOpts)) continue;");
         sb.AppendLine("                entry.CurrentValues[target] = __val;");
         sb.AppendLine("            }");
+        sb.AppendLine("            if (__issues.Any) return __issues.ToResult();");
     }
 
     // Emit the per-subtype CRUD route set under /<base>/<segment>. Scoped to the subtype
@@ -1535,7 +1544,6 @@ public class RoutesGenerator : PerEntityGenerator
         // VO columns on a TPH subtype are out of scope (Program D §6) — no typed arms.
         AppendCreateHandler(sb, "/" + subRoute, subCls, dbSet, requiredKeys,
             CreatedResult("prefix + \"/" + subRoute + "/\" + input." + pkProp, "input", credentials), [], mapVoFields, autoSetFields,
-            parseBody: HasDecimalField(st.Entity) || HasIsoDurationField(st.Entity, root),
             deniedNavs: deniedFields.Select(f => CSharpNaming.Pascal(f.Name)).ToList(), credentials: credentials,
             serverOwned: ServerOwnedCreateResets(st.Entity, root, _ => { }, discProp, hierarchy[0]));
 
@@ -1548,7 +1556,9 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("            if (existing is null) return Results.NotFound(new { error = \"not_found\" });");
         sb.AppendLine("            System.Text.Json.JsonDocument body;");
         sb.AppendLine("            try { body = await System.Text.Json.JsonDocument.ParseAsync(http.Request.Body); }");
-        sb.AppendLine("            catch (System.Text.Json.JsonException) { return Results.BadRequest(new { error = \"validation\" }); }");
+        sb.AppendLine("            catch (System.Text.Json.JsonException) { return ValidationIssues.Unreadable(); }");
+        sb.AppendLine("            using var bodyScope = body;");
+        sb.AppendLine("            if (body.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object) return ValidationIssues.Unreadable();");
         sb.AppendLine("            // Configured JSON options (not defaults) so a custom converter — e.g. the");
         sb.AppendLine("            // field.timestamp DateTimeOffset converter — is honored; defaults throw 500 on it.");
         sb.AppendLine("            var jsonOpts = ((Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>)");

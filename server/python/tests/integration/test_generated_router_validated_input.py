@@ -36,6 +36,19 @@ from metaobjects.codegen.runner import run_gen
 
 from .generated_tph_app import build_generated_tph_app
 
+
+def _is_validation(body: object) -> bool:
+    """The 400 envelope: ``{"error": "validation", "issues": [{code, path, message}, ...]}``."""
+    if not isinstance(body, dict) or body.get("error") != "validation":
+        return False
+    issues = body.get("issues")
+    return (
+        isinstance(issues, list)
+        and bool(issues)
+        and all(isinstance(i, dict) and {"code", "path", "message"} <= i.keys() for i in issues)
+    )
+
+
 _META = {
     "metadata.root": {
         "package": "acme::secfix",
@@ -161,7 +174,7 @@ def test_a_malformed_value_on_a_settable_field_is_still_a_400(member) -> None:
     client, repo, base = member
     resp = client.post(base, json={"name": "x" * 81, "isAdmin": True})
     assert resp.status_code == 400, resp.text
-    assert resp.json() == {"error": "validation"}
+    assert _is_validation(resp.json())
     assert repo.writes == []
 
 

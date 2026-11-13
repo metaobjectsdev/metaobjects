@@ -346,8 +346,8 @@ public class EjectRuntimeRoundTripTest {
 
         Path owned = projectDir.resolve("src/main/java/com/acme/runtime/PatchValidationException.java");
         String src = Files.readString(owned, StandardCharsets.UTF_8);
-        String edited = src.replace("super(\"field '\" + field + \"' cannot be null\");",
-                "super(\"OWNED EDIT: \" + field + \" is required\");");
+        String edited = src.replace("super(\"patch body is not valid: \"",
+                "super(\"OWNED EDIT: \"");
         assertFalse("the reference constructor changed shape; update this test's edit", edited.equals(src));
         Files.writeString(owned, edited, StandardCharsets.UTF_8);
 
@@ -367,7 +367,7 @@ public class EjectRuntimeRoundTripTest {
             } catch (InvocationTargetException ex) {
                 Throwable cause = ex.getCause();
                 assertEquals("com.acme.runtime.PatchValidationException", cause.getClass().getName());
-                assertEquals("OWNED EDIT: title is required", cause.getMessage());
+                assertEquals("OWNED EDIT: 1 problem(s)", cause.getMessage());
             }
         }
     }
@@ -446,7 +446,9 @@ public class EjectRuntimeRoundTripTest {
      */
     private static String jacksonOnly() {
         return Stream.of(System.getProperty("java.class.path").split(File.pathSeparator))
-                .filter(e -> e.replace('\\', '/').contains("/com/fasterxml/jackson/"))
+                .filter(e -> e.replace('\\', '/').contains("/com/fasterxml/jackson/")
+                        // the validation envelope reads Bean Validation violations, as every generated controller does
+                        || e.replace('\\', '/').contains("/jakarta/validation/"))
                 .collect(Collectors.joining(File.pathSeparator));
     }
 

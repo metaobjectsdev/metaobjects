@@ -135,6 +135,9 @@ private val CROSS_FIELD_EMIT: List<String> = listOf(KotlinCrossFieldRules::class
 /** The duration wire file `entity`, `routes` and `exposed-table` each write beside their own output. */
 private val DURATION_WIRE_EMIT: List<String> = listOf(KotlinDurationWireEmitter::class.java.name)
 
+/** The validation envelope file `routes` writes beside its controllers. */
+private val VALIDATION_ISSUES_EMIT: List<String> = listOf(KotlinValidationIssuesEmitter::class.java.name)
+
 /** The rest of `api-docs`: the page IR (one file, `KotlinApiModel.kt`, which also holds the unit, symbol, field
  *  and kind types), the builder that fills it, the renderer and the page paths. */
 private val API_DOCS_EMIT: List<String> = listOf(
@@ -174,7 +177,7 @@ val GENERATOR_REGISTRY: Map<String, GeneratorInfo> = linkedMapOf(
         layer = GeneratorLayer.API,
         factory = ::KotlinSpringControllerGenerator,
         ejectResourcePath = ejectPath("KotlinSpringControllerGenerator"),
-        ejectWith = DECIMAL_WIRE_EMIT + CROSS_FIELD_EMIT + DURATION_WIRE_EMIT,
+        ejectWith = DECIMAL_WIRE_EMIT + CROSS_FIELD_EMIT + DURATION_WIRE_EMIT + VALIDATION_ISSUES_EMIT,
         requires = listOf("entity", "exposed-table", "filter-allowlist", "relations"),
     ),
     "repository" to GeneratorInfo(

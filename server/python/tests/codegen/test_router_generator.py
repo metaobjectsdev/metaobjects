@@ -509,6 +509,21 @@ def test_every_write_verb_maps_constraint_violations() -> None:
     assert "        return JSONResponse(status_code=failure.status, content=failure.body())" in out
 
 
+def test_every_validation_failure_lists_its_issues() -> None:
+    """Every ``400`` the write routes answer is the issues envelope, never a bare
+    ``{"error": "validation"}``; PATCH lists the @required nulls beside the model's issues."""
+    out = _require(_author())
+
+    assert '{"error": "validation"}' not in out
+    # create, update, the unreadable body (create + update) and the decimal coercion (create + update)
+    assert out.count("validation_envelope(unreadable_body_issues())") == 2
+    assert out.count("validation_envelope(value_error_issues(_exc))") == 2
+    assert out.count("validation_envelope(pydantic_issues(_exc.errors()))") == 1  # create
+    assert "    _issues = required_null_issues(dto, _REQUIRED_FIELDS)" in out  # update
+    assert "        _issues += pydantic_issues(_exc.errors())" in out
+    assert "validation_envelope(_issues)" in out
+
+
 def test_generated_router_is_valid_python() -> None:
     """The emitted try/except must not leave a dangling block.
 

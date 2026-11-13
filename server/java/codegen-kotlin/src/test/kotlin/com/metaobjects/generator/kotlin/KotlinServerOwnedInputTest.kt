@@ -59,11 +59,33 @@ class KotlinServerOwnedInputTest {
         try {
             val controller = Files.readString(out.resolve("acme/own/DocController.kt"))
             val create = controller.substringAfter("fun create(").substringBefore("fun update(")
-            assertTrue("it[title] = dto.title" in create, create)
-            assertFalse("it[role]" in create, create)
-            assertFalse("it[id] = dto.id" in create, create)
+            assertTrue("it[DocTable.title] = dto.title" in create, create)
+            assertFalse("it[DocTable.role]" in create, create)
+            assertFalse("it[DocTable.id] = dto.id" in create, create)
             val entity = Files.readString(out.resolve("acme/own/Doc.kt"))
             assertTrue("@JsonIgnoreProperties(ignoreUnknown = true)" in entity, entity)
+        } finally {
+            out.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `create lists every absent required value, not only the first the bind meets`() {
+        val json = plain.replace(
+            "{ \"field.string\": { \"name\": \"title\", \"@maxLength\": 100 } },",
+            "{ \"field.string\": { \"name\": \"title\", \"@required\": true, \"@maxLength\": 100 } }," +
+                " { \"field.string\": { \"name\": \"subtitle\", \"@required\": true, \"@maxLength\": 100 } }," +
+                " { \"field.string\": { \"name\": \"kind\", \"@required\": true, \"@default\": \"x\", \"@maxLength\": 10 } },",
+        )
+        val out = gen("owned-required", json)
+        try {
+            val controller = Files.readString(out.resolve("acme/own/DocController.kt"))
+            val create = controller.substringAfter("fun create(").substringBefore("fun update(")
+            for (f in listOf("title", "subtitle")) {
+                assertTrue("if (!body.has(\"$f\") || body.get(\"$f\").isNull) issues.add(\"invalid_type\", listOf(\"$f\")" in create, create)
+            }
+            // A required value with a default binds without being sent, so it is never reported missing.
+            assertFalse("if (!body.has(\"kind\")" in create, create)
         } finally {
             out.toFile().deleteRecursively()
         }

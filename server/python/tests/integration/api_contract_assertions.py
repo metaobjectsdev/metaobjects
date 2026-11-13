@@ -93,6 +93,9 @@ def assert_response(
                 raise AssertionError(
                     f"{scenario_name} / {request_id}: expected field=\"{want_field}\", got: {body!r}"
                 )
+        # `issues` rides INSIDE this branch too, for the same reason as `field`.
+        if "issues" in expect_body:
+            _assert_issues(scenario_name, request_id, body, expect_body["issues"])
         return
 
     if "length" in expect_body:
@@ -268,3 +271,29 @@ def _is_empty(body: Any) -> bool:
     if isinstance(body, (str, list, dict)):
         return len(body) == 0
     return False
+
+
+def _assert_issues(scenario_name: str, request_id: str, body: Any, expected: list[dict[str, Any]]) -> None:
+    """The validation envelope lists its issues: ``issues`` is a list, every issue carries a
+    string ``code``, a list ``path`` and a string ``message``, and each expected
+    ``{path, code}`` is among them (``path`` deep-equal, ``code`` equal)."""
+    issues = body.get("issues") if isinstance(body, dict) else None
+    if not isinstance(issues, list):
+        raise AssertionError(
+            f"{scenario_name} / {request_id}: expected an issues array, got: {body!r}"
+        )
+    for issue in issues:
+        if not (
+            isinstance(issue, dict)
+            and isinstance(issue.get("code"), str)
+            and isinstance(issue.get("path"), list)
+            and isinstance(issue.get("message"), str)
+        ):
+            raise AssertionError(
+                f"{scenario_name} / {request_id}: an issue lacks code, path or message: {issue!r}"
+            )
+    for want in expected:
+        if not any(i["code"] == want["code"] and i["path"] == want["path"] for i in issues):
+            raise AssertionError(
+                f"{scenario_name} / {request_id}: expected an issue {want!r}, got: {issues!r}"
+            )

@@ -148,7 +148,7 @@ final class JsonbReferenceServer implements AutoCloseable {
             Map<String, Object> body = readBody(exchange);
             // Program D: nested value-object validation on CREATE (required primaryMarker present +
             // valid; a present optional/array VO valid) → 400 before persisting.
-            if (!voValidForCreate(body) || !canonicalizeMeasures(body)) { sendJson(exchange, 400, Map.of("error", "validation")); return; }
+            if (!voValidForCreate(body) || !canonicalizeMeasures(body)) { sendJson(exchange, 400, invalidBody()); return; }
             sendJson(exchange, 201, create(body));
             return;
         }
@@ -157,7 +157,7 @@ final class JsonbReferenceServer implements AutoCloseable {
             Map<String, Object> body = readBody(exchange);
             // FR-035 tristate + Program D nested VO validation: present-null on the @required
             // primaryMarker → 400; a present value must be a valid Marker (single or array) → 400.
-            if (!voValidForPatch(body) || !canonicalizeMeasures(body)) { sendJson(exchange, 400, Map.of("error", "validation")); return; }
+            if (!voValidForPatch(body) || !canonicalizeMeasures(body)) { sendJson(exchange, 400, invalidBody()); return; }
             Map<String, Object> row = patch(id, body);
             if (row == null) { sendJson(exchange, 404, Map.of("error", "not_found")); return; }
             sendJson(exchange, 200, row);
@@ -260,6 +260,18 @@ final class JsonbReferenceServer implements AutoCloseable {
         row.put("tiers", parseJson(rs.getString("tiers")));
         row.put("pricing", parseJson(rs.getString("pricing")));
         return row;
+    }
+
+    /** The validation envelope: this reference server checks the whole body and lists it as one issue (never asserted per field). */
+    private static Map<String, Object> invalidBody() {
+        Map<String, Object> issue = new LinkedHashMap<>();
+        issue.put("code", "invalid_type");
+        issue.put("path", List.of());
+        issue.put("message", "the body is not valid");
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("error", "validation");
+        out.put("issues", List.of(issue));
+        return out;
     }
 
     // --- nested value-object validation (Program D — mirrors the cross-port contract) --------

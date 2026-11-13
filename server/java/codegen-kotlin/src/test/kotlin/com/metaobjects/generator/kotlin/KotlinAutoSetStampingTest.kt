@@ -93,7 +93,7 @@ class KotlinAutoSetStampingTest {
         // owned by the stamping helper. Only the regular column (name) is a caller-value write.
         assertTrue("it[EventTable.name] = dto.name" in src,
             "insert should still write the regular caller-supplied column; saw:\n$src")
-        assertTrue("it[EventTable.createdAt]" !in src,
+        assertTrue("it[EventTable.createdAt]" !in src.substringAfter("fun update("),
             "@autoSet createdAt must NEVER be a caller-value (it[...]) write; saw:\n$src")
         assertTrue("it[EventTable.updatedAt]" !in src,
             "@autoSet updatedAt must NEVER be a caller-value (it[...]) write; saw:\n$src")
@@ -193,7 +193,7 @@ class KotlinAutoSetStampingTest {
         // ONE captured now() val, assigned to BOTH columns → a fresh row's createdAt == updatedAt exactly.
         assertTrue("val autoSetNow0 = java.time.Instant.now()" in src,
             "insert must capture one now() val per temporal type; saw:\n$src")
-        assertTrue("it[createdAt] = autoSetNow0" in src && "it[updatedAt] = autoSetNow0" in src,
+        assertTrue("it[EventTable.createdAt] = autoSetNow0" in src && "it[EventTable.updatedAt] = autoSetNow0" in src,
             "insert must stamp BOTH @autoSet columns from the captured val; saw:\n$src")
         assertTrue("dto.createdAt" !in src && "dto.updatedAt" !in src,
             "an @autoSet column must never be bound from the caller dto; saw:\n$src")
@@ -203,7 +203,7 @@ class KotlinAutoSetStampingTest {
         val src = generateController("autoset-event-ctl2", autoSetFixture, "acme/events/EventController.kt")
         assertTrue("it[EventTable.updatedAt] = java.time.Instant.now()" in src,
             "patch must bump the onUpdate column; saw:\n$src")
-        assertTrue("it[EventTable.createdAt]" !in src,
+        assertTrue("it[EventTable.createdAt]" !in src.substringAfter("fun update("),
             "patch/update must never touch the onCreate column createdAt; saw:\n$src")
         // onUpdate present ⇒ the update runs on EVERY patch (no "any present" guard).
         assertTrue(".any { body.has(it) }" !in src,

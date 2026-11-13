@@ -22,7 +22,7 @@
 
 import Fastify, { type FastifyInstance, type RouteHandlerMethod } from "fastify";
 import { type MetaRoot } from "@metaobjectsdev/metadata";
-import { ObjectManager, ValidationError, type Filter } from "@metaobjectsdev/runtime-ts";
+import { ObjectManager, ValidationError, type Filter, type ValidationFailure } from "@metaobjectsdev/runtime-ts";
 import { kyselyDriver } from "@metaobjectsdev/runtime-ts/drivers";
 import { Kysely, PostgresDialect } from "kysely";
 import { Pool } from "pg";
@@ -133,7 +133,7 @@ export async function startServer(connectionUri: string, root: MetaRoot): Promis
   // 500 handling.
   fastify.setErrorHandler((err, _req, reply) => {
     if (err instanceof ValidationError) {
-      reply.code(400).send({ error: "validation" });
+      reply.code(400).send({ error: "validation", issues: err.errors.map(toIssue) });
       return;
     }
     throw err;
@@ -405,4 +405,33 @@ function parseSort(
   const dir = (dirRaw ?? SORT_DEFAULT_ORDER[field] ?? "asc").toLowerCase();
   if (dir !== "asc" && dir !== "desc") return { invalid: true, field };
   return [field, dir];
+}
+
+/**
+ * One ObjectManager validation failure as a contract issue: `{ code, path, message }`, with the
+ * code taken from Zod's names (the generated routes' vocabulary) so every lane answers alike.
+ */
+function toIssue(f: ValidationFailure): { code: string; path: string[]; message: string } {
+  const expected = (f.expected ?? {}) as { min?: unknown; max?: unknown };
+  let code: string;
+  switch (f.rule) {
+    case "required":
+    case "type":
+    case "array":
+      code = "invalid_type";
+      break;
+    case "length":
+    case "range":
+      // A floor names `min` alone; a ceiling, or a decimal that overflows its precision, is too big.
+      code = expected.min !== undefined && expected.max === undefined ? "too_small" : "too_big";
+      break;
+    case "regex":
+    case "format":
+    case "numeric":
+      code = "invalid_format";
+      break;
+    default:
+      code = "custom";
+  }
+  return { code, path: f.field.split("."), message: f.message };
 }

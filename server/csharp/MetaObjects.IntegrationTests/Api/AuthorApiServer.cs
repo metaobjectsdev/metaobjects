@@ -508,24 +508,31 @@ internal sealed class AuthorApiServer : IAsyncDisposable
     // FR-036 — the corpus Author model's @maxLength bounds (name 100, bio 1000). Only a
     // PRESENT, non-null string is measured; an absent field is ignored (untouched on PATCH;
     // required-presence is enforced separately).
-    private static bool ExceedsAuthorMaxLength(Dictionary<string, object?> body) =>
-        (body.GetValueOrDefault("name") is string n && n.Length > 100)
-        || (body.GetValueOrDefault("bio") is string b && b.Length > 1000);
+    private static void AddAuthorMaxLengthIssues(Dictionary<string, object?> body, List<Dictionary<string, object?>> issues)
+    {
+        if (body.GetValueOrDefault("name") is string n && n.Length > 100) issues.Add(ReferenceValidation.TooLong("name", 100));
+        if (body.GetValueOrDefault("bio") is string b && b.Length > 1000) issues.Add(ReferenceValidation.TooLong("bio", 1000));
+    }
 
     private async Task CreateAuthorAsync(HttpContext ctx)
     {
         var parsed = await ReadJsonBodyAsync(ctx);
         if (parsed is not Dictionary<string, object?> body)
         {
-            await SendJsonAsync(ctx, 400, new Dictionary<string, object?> { ["error"] = "validation" });
+            await SendJsonAsync(ctx, 400, ReferenceValidation.Unreadable());
             return;
         }
         // FR-036 — mirror the corpus Author @maxLength bounds so this lane rejects an
         // over-length string with the same {error:"validation"} envelope the generated
         // lane's [MaxLength] produces (otherwise a too-long name would 500 on the PG write).
-        if (ExceedsAuthorMaxLength(body))
+        // Every issue is listed, not just the first: a missing @required key, then each over-length string.
+        var createIssues = new List<Dictionary<string, object?>>();
+        foreach (var reqField in new[] { "name", "createdAt" })
+            if (body.GetValueOrDefault(reqField) is null) createIssues.Add(ReferenceValidation.Required(reqField));
+        AddAuthorMaxLengthIssues(body, createIssues);
+        if (createIssues.Count > 0)
         {
-            await SendJsonAsync(ctx, 400, new Dictionary<string, object?> { ["error"] = "validation" });
+            await SendJsonAsync(ctx, 400, ReferenceValidation.Envelope(createIssues));
             return;
         }
         long newId;
@@ -569,25 +576,21 @@ internal sealed class AuthorApiServer : IAsyncDisposable
         var parsed = await ReadJsonBodyAsync(ctx);
         if (parsed is not Dictionary<string, object?> body)
         {
-            await SendJsonAsync(ctx, 400, new Dictionary<string, object?> { ["error"] = "validation" });
+            await SendJsonAsync(ctx, 400, ReferenceValidation.Unreadable());
             return;
         }
         // FR-035 PATCH-2: an explicit null on a @required field (name / createdAt, per
         // meta.json) is a 400 — a present null on the nullable bio clears it, and an
         // omitted required field is untouched (never a 400).
+        var patchIssues = new List<Dictionary<string, object?>>();
         foreach (var reqField in new[] { "name", "createdAt" })
-        {
-            if (body.TryGetValue(reqField, out var rv) && rv is null)
-            {
-                await SendJsonAsync(ctx, 400, new Dictionary<string, object?> { ["error"] = "validation" });
-                return;
-            }
-        }
+            if (body.TryGetValue(reqField, out var rv) && rv is null) patchIssues.Add(ReferenceValidation.Required(reqField));
         // FR-036 — a PRESENT, non-null value that exceeds @maxLength is a 400 (same envelope);
         // an absent field is untouched (never checked). Mirrors the generated-lane [MaxLength].
-        if (ExceedsAuthorMaxLength(body))
+        AddAuthorMaxLengthIssues(body, patchIssues);
+        if (patchIssues.Count > 0)
         {
-            await SendJsonAsync(ctx, 400, new Dictionary<string, object?> { ["error"] = "validation" });
+            await SendJsonAsync(ctx, 400, ReferenceValidation.Envelope(patchIssues));
             return;
         }
         var sets = new List<string>();

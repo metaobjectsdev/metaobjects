@@ -326,10 +326,24 @@ class AuthorController(private val objectMapper: ObjectMapper, private val valid
     }
 
     @PostMapping
-    fun create(@RequestBody dto: Author): ResponseEntity<Any> = transaction {
-        if (validator.validate(dto).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
+    fun create(@RequestBody body: JsonNode): ResponseEntity<Any> = transaction {
+        val issues = MetaValidationIssues.Collector()
+        if (!body.isObject) return@transaction ResponseEntity.badRequest().body(issues.add("invalid_type", emptyList(), "request body must be a JSON object").body() as Any)
+        val dto: Author = try {
+            objectMapper.treeToValue(body, Author::class.java)
+        } catch (e: Exception) {
+            if (!body.has("name") || body.get("name").isNull) issues.add("invalid_type", listOf("name"), "field 'name' is required")
+            if (body.has("name") && !body.get("name").isNull) {
+                val vName: kotlin.String? = issues.bind<kotlin.String>("name") { objectMapper.treeToValue(body.get("name"), object : TypeReference<kotlin.String>() {}) }
+                if (vName != null) issues.addAt(validator.validateValue(Author::class.java, "name", vName), "name")
+            }
+            issues.addFailure(e)
+            return@transaction ResponseEntity.badRequest().body(issues.body() as Any)
+        }
+        issues.addViolations(validator.validate(dto))
+        if (!issues.isEmpty()) return@transaction ResponseEntity.badRequest().body(issues.body() as Any)
         val newId = AuthorTable.insert {
-            it[name] = dto.name
+            it[AuthorTable.name] = dto.name
         }[AuthorTable.id]
         val saved = AuthorTable.selectAll().where { AuthorTable.id eq newId }.single()
         ResponseEntity.status(HttpStatus.CREATED).body(rowToAuthor(saved) as Any)
@@ -337,18 +351,19 @@ class AuthorController(private val objectMapper: ObjectMapper, private val valid
 
     @RequestMapping(value = ["/{id}"], method = [RequestMethod.PATCH, RequestMethod.PUT])
     fun update(@PathVariable id: Long, @RequestBody body: JsonNode): ResponseEntity<Any> = transaction {
-        if (!body.isObject) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
-        if (body.has("name") && body.get("name").isNull) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
+        val issues = MetaValidationIssues.Collector()
+        if (!body.isObject) return@transaction ResponseEntity.badRequest().body(issues.add("invalid_type", emptyList(), "request body must be a JSON object").body() as Any)
+        if (body.has("name") && body.get("name").isNull) issues.add("invalid_type", listOf("name"), "field 'name' cannot be null")
         if (listOf("name").any { body.has(it) }) {
-            try {
+            run {
                 val hasName = body.has("name")
-                val vName: kotlin.String? = if (hasName) objectMapper.treeToValue(body.get("name"), object : TypeReference<kotlin.String>() {}) else null
-                if (hasName && validator.validateValue(Author::class.java, "name", vName).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
+                val nullName = hasName && body.get("name").isNull
+                val vName: kotlin.String? = if (hasName && !nullName) issues.bind<kotlin.String>("name") { objectMapper.treeToValue(body.get("name"), object : TypeReference<kotlin.String>() {}) } else null
+                if (vName != null) issues.addAt(validator.validateValue(Author::class.java, "name", vName), "name")
+                if (!issues.isEmpty()) return@transaction ResponseEntity.badRequest().body(issues.body() as Any)
                 AuthorTable.update({ AuthorTable.id eq id }) {
                     if (hasName) it[AuthorTable.name] = vName!!
                 }
-            } catch (e: com.fasterxml.jackson.databind.JsonMappingException) {
-                return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
             }
         }
         val row = AuthorTable.selectAll().where { AuthorTable.id eq id }.singleOrNull()

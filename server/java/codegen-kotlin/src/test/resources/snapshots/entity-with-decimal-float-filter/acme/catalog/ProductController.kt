@@ -376,13 +376,36 @@ class ProductController(private val objectMapper: ObjectMapper, private val vali
     }
 
     @PostMapping
-    fun create(@RequestBody dto: Product): ResponseEntity<Any> = transaction {
-        if (validator.validate(dto).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
-        if (!MetaDecimalWire.fits(dto.price, 10, 2)) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation", "field" to "price") as Any)
+    fun create(@RequestBody body: JsonNode): ResponseEntity<Any> = transaction {
+        val issues = MetaValidationIssues.Collector()
+        if (!body.isObject) return@transaction ResponseEntity.badRequest().body(issues.add("invalid_type", emptyList(), "request body must be a JSON object").body() as Any)
+        val dto: Product = try {
+            objectMapper.treeToValue(body, Product::class.java)
+        } catch (e: Exception) {
+            if (!body.has("name") || body.get("name").isNull) issues.add("invalid_type", listOf("name"), "field 'name' is required")
+            if (body.has("name") && !body.get("name").isNull) {
+                val vName: kotlin.String? = issues.bind<kotlin.String>("name") { objectMapper.treeToValue(body.get("name"), object : TypeReference<kotlin.String>() {}) }
+                if (vName != null) issues.addAt(validator.validateValue(Product::class.java, "name", vName), "name")
+            }
+            if (body.has("price") && !body.get("price").isNull) {
+                val vPrice: java.math.BigDecimal? = issues.bind<java.math.BigDecimal>("price") { MetaDecimalWire.fromNode(body.get("price")) }
+                if (vPrice != null) issues.addAt(validator.validateValue(Product::class.java, "price", vPrice), "price")
+                if (!MetaDecimalWire.fits(vPrice, 10, 2)) issues.add("too_big", listOf("price"), "decimal does not fit the declared precision and scale")
+            }
+            if (body.has("rating") && !body.get("rating").isNull) {
+                val vRating: kotlin.Float? = issues.bind<kotlin.Float>("rating") { objectMapper.treeToValue(body.get("rating"), object : TypeReference<kotlin.Float>() {}) }
+                if (vRating != null) issues.addAt(validator.validateValue(Product::class.java, "rating", vRating), "rating")
+            }
+            issues.addFailure(e)
+            return@transaction ResponseEntity.badRequest().body(issues.body() as Any)
+        }
+        issues.addViolations(validator.validate(dto))
+        if (!MetaDecimalWire.fits(dto.price, 10, 2)) issues.add("too_big", listOf("price"), "decimal does not fit the declared precision and scale")
+        if (!issues.isEmpty()) return@transaction ResponseEntity.badRequest().body(issues.body() as Any)
         val newId = ProductTable.insert {
-            it[name] = dto.name
-            it[price] = dto.price
-            it[rating] = dto.rating
+            it[ProductTable.name] = dto.name
+            it[ProductTable.price] = dto.price
+            it[ProductTable.rating] = dto.rating
         }[ProductTable.id]
         val saved = ProductTable.selectAll().where { ProductTable.id eq newId }.single()
         ResponseEntity.status(HttpStatus.CREATED).body(rowToProduct(saved) as Any)
@@ -390,29 +413,30 @@ class ProductController(private val objectMapper: ObjectMapper, private val vali
 
     @RequestMapping(value = ["/{id}"], method = [RequestMethod.PATCH, RequestMethod.PUT])
     fun update(@PathVariable id: Long, @RequestBody body: JsonNode): ResponseEntity<Any> = transaction {
-        if (!body.isObject) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
-        if (body.has("name") && body.get("name").isNull) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
+        val issues = MetaValidationIssues.Collector()
+        if (!body.isObject) return@transaction ResponseEntity.badRequest().body(issues.add("invalid_type", emptyList(), "request body must be a JSON object").body() as Any)
+        if (body.has("name") && body.get("name").isNull) issues.add("invalid_type", listOf("name"), "field 'name' cannot be null")
         if (listOf("name", "price", "rating").any { body.has(it) }) {
-            try {
+            run {
                 val hasName = body.has("name")
-                val vName: kotlin.String? = if (hasName) objectMapper.treeToValue(body.get("name"), object : TypeReference<kotlin.String>() {}) else null
-                if (hasName && validator.validateValue(Product::class.java, "name", vName).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
+                val nullName = hasName && body.get("name").isNull
+                val vName: kotlin.String? = if (hasName && !nullName) issues.bind<kotlin.String>("name") { objectMapper.treeToValue(body.get("name"), object : TypeReference<kotlin.String>() {}) } else null
+                if (vName != null) issues.addAt(validator.validateValue(Product::class.java, "name", vName), "name")
                 val hasPrice = body.has("price")
                 val nullPrice = hasPrice && body.get("price").isNull
-                val vPrice: java.math.BigDecimal? = if (hasPrice && !nullPrice) runCatching { MetaDecimalWire.fromNode(body.get("price")) }.getOrElse { return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation", "field" to "price") as Any) } else null
-                if (hasPrice && !nullPrice && validator.validateValue(Product::class.java, "price", vPrice).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
-                if (!MetaDecimalWire.fits(vPrice, 10, 2)) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation", "field" to "price") as Any)
+                val vPrice: java.math.BigDecimal? = if (hasPrice && !nullPrice) issues.bind<java.math.BigDecimal>("price") { MetaDecimalWire.fromNode(body.get("price")) } else null
+                if (vPrice != null) issues.addAt(validator.validateValue(Product::class.java, "price", vPrice), "price")
+                if (!MetaDecimalWire.fits(vPrice, 10, 2)) issues.add("too_big", listOf("price"), "decimal does not fit the declared precision and scale")
                 val hasRating = body.has("rating")
                 val nullRating = hasRating && body.get("rating").isNull
-                val vRating: kotlin.Float? = if (hasRating && !nullRating) objectMapper.treeToValue(body.get("rating"), object : TypeReference<kotlin.Float>() {}) else null
-                if (hasRating && !nullRating && validator.validateValue(Product::class.java, "rating", vRating).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
+                val vRating: kotlin.Float? = if (hasRating && !nullRating) issues.bind<kotlin.Float>("rating") { objectMapper.treeToValue(body.get("rating"), object : TypeReference<kotlin.Float>() {}) } else null
+                if (vRating != null) issues.addAt(validator.validateValue(Product::class.java, "rating", vRating), "rating")
+                if (!issues.isEmpty()) return@transaction ResponseEntity.badRequest().body(issues.body() as Any)
                 ProductTable.update({ ProductTable.id eq id }) {
                     if (hasName) it[ProductTable.name] = vName!!
                     if (hasPrice) { if (nullPrice) it[ProductTable.price] = null else it[ProductTable.price] = vPrice }
                     if (hasRating) { if (nullRating) it[ProductTable.rating] = null else it[ProductTable.rating] = vRating }
                 }
-            } catch (e: com.fasterxml.jackson.databind.JsonMappingException) {
-                return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
             }
         }
         val row = ProductTable.selectAll().where { ProductTable.id eq id }.singleOrNull()

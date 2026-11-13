@@ -194,10 +194,10 @@ public class SpringMapFieldCodegenTest extends SharedRegistryTestBase {
         // __el, not a map-specific name: the array-of-VO and map-of-VO branches share one
         // emitter, which is what keeps the 400 envelope in a single place.
         assertTrue("expected PATCH to iterate the map's VALUES; saw:\n" + controller,
-                controller.contains("for (var __el : patch.addresses().values())"));
+                controller.contains("__assigned.get(\"addresses\") instanceof Map<?, ?> __m"));
         // A scalar-valued map has no nested bean, so it must NOT get a validation loop.
         assertFalse("a scalar-valued map needs no nested validation; saw:\n" + controller,
-                controller.contains("patch.labels().values()"));
+                controller.contains("__assigned.get(\"labels\")"));
     }
 
     @Test
@@ -422,16 +422,16 @@ public class SpringMapFieldCodegenTest extends SharedRegistryTestBase {
 
         // CREATE binds the union <Base>Dto — plain accessors, so the guard is a null check.
         assertTrue("expected the TPH create to iterate the map's VALUES; saw:\n" + controller,
-                controller.contains("for (var __el : dto.addresses().values())"));
+                controller.contains("for (var __en : dto.addresses().entrySet())"));
         // PATCH binds the <Sub>Patch tristate, so it reuses the shared presence-guarded loop.
         assertTrue("expected the TPH PATCH to iterate the map's VALUES; saw:\n" + controller,
-                controller.contains("for (var __el : patch.addresses().values())"));
+                controller.contains("__assigned.get(\"addresses\") instanceof Map<?, ?> __m"));
 
         // The control: a scalar-valued map has no nested bean and must get NO loop on either
         // path. Without this, a change that emitted a loop for every map would pass above.
         assertFalse("a scalar-valued map needs no nested validation on create; saw:\n" + controller,
-                controller.contains("dto.labels().values()"));
+                controller.contains("dto.labels().entrySet()"));
         assertFalse("a scalar-valued map needs no nested validation on patch; saw:\n" + controller,
-                controller.contains("patch.labels().values()"));
+                controller.contains("__assigned.get(\"labels\")"));
     }
 }

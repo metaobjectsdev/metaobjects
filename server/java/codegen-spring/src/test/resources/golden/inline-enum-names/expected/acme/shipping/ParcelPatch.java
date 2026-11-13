@@ -34,7 +34,9 @@ public final class ParcelPatch {
     public static ParcelPatch fromJson(JsonNode body, ObjectMapper mapper) {
         if (!body.isObject()) throw new PatchValidationException("(request body)");
         Map<String, Object> assigned = new LinkedHashMap<>();
-        bind(body, mapper, assigned, "phase", new TypeReference<ParcelDto.Status>() {}, true);
+        java.util.List<PatchValidationException.Problem> problems = PatchValidationException.newProblems();
+        PatchValidationException.collect(problems, () -> bind(body, mapper, assigned, "phase", new TypeReference<ParcelDto.Status>() {}, true));
+        if (!problems.isEmpty()) throw new PatchValidationException(problems, assigned);
         return new ParcelPatch(assigned);
     }
 
@@ -50,7 +52,7 @@ public final class ParcelPatch {
         try {
             assigned.put(field, mapper.treeToValue(node, type));
         } catch (JsonProcessingException e) {
-            throw new PatchValidationException(field);
+            throw new PatchValidationException(field, e);
         }
     }
 }

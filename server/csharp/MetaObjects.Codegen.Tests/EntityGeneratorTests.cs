@@ -125,10 +125,10 @@ public class EntityGeneratorTests
         // not an unhandled 500) + DataAnnotations-validates.
         Assert.Contains("app.MapPost(prefix + \"/subscribers\", async (HttpContext http, AppDbContext db) =>", src);
         Assert.Contains("foreach (var __req in new[] { \"email\" })", src);
-        Assert.Contains("if (!__present.Contains(__req)) return Results.BadRequest(new { error = \"validation\" });", src);
-        Assert.Contains("Subscriber? input;", src);
+        Assert.Contains("if (!__present.Contains(__req)) __issues.AddRequired(__req);", src);
+        Assert.Contains("Subscriber? input = null;", src);
         Assert.Contains("try { input = System.Text.Json.JsonSerializer.Deserialize<Subscriber>(__body.RootElement.GetRawText(), jsonOpts); }", src);
-        Assert.Contains("catch (System.Text.Json.JsonException) { return Results.BadRequest(new { error = \"validation\" }); }", src);
+        Assert.Contains("catch (System.Exception __e) { __issues.AddReadFailure(__e, typeof(Subscriber)); }", src);
         // PATCH + PUT share the same update handler (matches TS reference). It takes the raw
         // HttpContext (not a bound DTO) and PARTIAL-merges only the properties present in the
         // JSON body — a bound DTO would fill omitted fields with CLR defaults and clobber them.
