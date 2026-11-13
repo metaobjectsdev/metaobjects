@@ -1,0 +1,498 @@
+{
+  "metadata.root": {
+    "package": "acme::views",
+    "children": [
+      {
+        "object.value": {
+          "name": "Contact",
+          "children": [
+            {
+              "field.string": {
+                "name": "kind"
+              }
+            },
+            {
+              "field.int": {
+                "name": "rank"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Customer",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "customers"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "zip",
+                "@dbColumnType": "varchar(10)"
+              }
+            },
+            {
+              "field.string": {
+                "name": "code",
+                "@dbColumnType": "character(3)"
+              }
+            },
+            {
+              "field.string": {
+                "name": "note",
+                "@dbColumnType": "varchar"
+              }
+            },
+            {
+              "field.object": {
+                "name": "contacts",
+                "isArray": true,
+                "@objectRef": "acme::views::Contact",
+                "@storage": "jsonb"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "field.string": {
+                "name": "tier",
+                "children": [
+                  {
+                    "origin.function": {
+                      "@args": [
+                        "id",
+                        "zip"
+                      ],
+                      "@function": "tier_of",
+                      "@schema": "app"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Order",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "orders"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "customerId"
+              }
+            },
+            {
+              "field.enum": {
+                "name": "status",
+                "@intValueMap": {
+                  "Open": 0,
+                  "Shipped": 1
+                },
+                "@values": [
+                  "Open",
+                  "Shipped"
+                ]
+              }
+            },
+            {
+              "field.int": {
+                "name": "cumulativeStatus"
+              }
+            },
+            {
+              "field.timestamp": {
+                "name": "updatedAt"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "customerId",
+                "@fields": [
+                  "customerId"
+                ],
+                "@references": "acme::views::Customer"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "OrderEvent",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "order_events"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "orderId"
+              }
+            },
+            {
+              "field.long": {
+                "name": "customerId"
+              }
+            },
+            {
+              "field.timestamp": {
+                "name": "createdAt"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "orderId",
+                "@fields": [
+                  "orderId"
+                ],
+                "@references": "acme::views::Order"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "OrderRow",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_order_row"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id",
+                "extends": "acme::views::Order.id"
+              }
+            },
+            {
+              "field.int": {
+                "name": "outcome",
+                "children": [
+                  {
+                    "origin.computed": {
+                      "@expr": {
+                        "case": [
+                          {
+                            "when": {
+                              "op": "eq",
+                              "left": {
+                                "field": "cumulativeStatus"
+                              },
+                              "right": {
+                                "value": 0
+                              }
+                            },
+                            "then": {
+                              "cast": {
+                                "field": "status"
+                              },
+                              "as": "int"
+                            }
+                          }
+                        ],
+                        "else": {
+                          "field": "cumulativeStatus"
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.string": {
+                "name": "zip5",
+                "children": [
+                  {
+                    "origin.computed": {
+                      "@expr": {
+                        "fn": "splitPart",
+                        "args": [
+                          {
+                            "field": "customerId.zip"
+                          },
+                          {
+                            "value": "-"
+                          },
+                          {
+                            "value": 1
+                          }
+                        ]
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.string": {
+                "name": "nothing",
+                "children": [
+                  {
+                    "origin.computed": {
+                      "@expr": {
+                        "cast": {
+                          "value": null
+                        },
+                        "as": "string",
+                        "dbColumnType": "varchar"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.string": {
+                "name": "tier",
+                "children": [
+                  {
+                    "origin.passthrough": {
+                      "@from": "acme::views::Customer.tier",
+                      "@via": "acme::views::Order.customerId"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.timestamp": {
+                "name": "lastEvent",
+                "children": [
+                  {
+                    "origin.aggregate": {
+                      "@agg": "max",
+                      "@of": "acme::views::OrderEvent.createdAt",
+                      "@via": "acme::views::Order.orderEvents"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.timestamp": {
+                "name": "touched",
+                "children": [
+                  {
+                    "origin.computed": {
+                      "@expr": {
+                        "fn": "greatest",
+                        "args": [
+                          {
+                            "field": "updatedAt"
+                          },
+                          {
+                            "field": "lastEvent"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.long": {
+                "name": "eventOfCustomer",
+                "children": [
+                  {
+                    "origin.first": {
+                      "@filter": {
+                        "customerId": {
+                          "eq": {
+                            "field": "customerId.id"
+                          }
+                        }
+                      },
+                      "@of": "acme::views::OrderEvent.id",
+                      "@orderBy": [
+                        "createdAt"
+                      ],
+                      "@via": "acme::views::Order.orderEvents"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "extends": "acme::views::Order.id"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "CustomerContact",
+          "@grain": "contacts",
+          "@grainOrdinal": "position",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_customer_contact"
+              }
+            },
+            {
+              "field.long": {
+                "name": "customerId",
+                "extends": "acme::views::Customer.id"
+              }
+            },
+            {
+              "field.int": {
+                "name": "position"
+              }
+            },
+            {
+              "field.string": {
+                "name": "kind",
+                "children": [
+                  {
+                    "origin.passthrough": {
+                      "@from": "acme::views::Contact.kind"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "CustomerBranch",
+          "abstract": true,
+          "children": [
+            {
+              "field.long": {
+                "name": "personId",
+                "extends": "acme::views::Customer.id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "label",
+                "children": [
+                  {
+                    "origin.computed": {
+                      "@expr": {
+                        "fn": "lower",
+                        "args": [
+                          {
+                            "field": "zip"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "OrderBranch",
+          "abstract": true,
+          "children": [
+            {
+              "field.long": {
+                "name": "personId",
+                "extends": "acme::views::Order.customerId"
+              }
+            },
+            {
+              "field.string": {
+                "name": "label",
+                "children": [
+                  {
+                    "origin.computed": {
+                      "@expr": {
+                        "cast": {
+                          "field": "id"
+                        },
+                        "as": "string"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "People",
+          "extends": "acme::views::CustomerBranch",
+          "@union": [
+            "OrderBranch"
+          ],
+          "@unionAll": true,
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_people"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

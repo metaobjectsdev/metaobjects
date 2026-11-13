@@ -1,0 +1,203 @@
+// rc.21 part B — the view vocabulary at load: each construct is accepted where it means
+// something and refused, with its code, where it does not.
+
+import { describe, expect, test } from "bun:test";
+import { MetaDataLoader, InMemoryStringSource } from "../src/index.js";
+
+const ENTITIES = [
+  { "object.value": { name: "Contact", children: [
+    { "field.string": { name: "kind" } }, { "field.int": { name: "rank" } },
+    { "field.object": { name: "nested", "@objectRef": "Note" } } ] } },
+  { "object.value": { name: "Note", children: [ { "field.string": { name: "text" } } ] } },
+  { "object.entity": { name: "Customer", children: [
+    { "source.rdb": { "@table": "customers" } },
+    { "field.long": { name: "id" } },
+    { "field.string": { name: "zip" } },
+    { "field.string": { name: "tags", isArray: true } },
+    { "field.object": { name: "contacts", "@objectRef": "Contact", isArray: true, "@storage": "jsonb" } },
+    { "field.object": { name: "primary", "@objectRef": "Contact" } },
+    { "identity.primary": { name: "id", "@fields": "id" } } ] } },
+  { "object.entity": { name: "Order", children: [
+    { "source.rdb": { "@table": "orders" } },
+    { "field.long": { name: "id" } },
+    { "field.long": { name: "customerId" } },
+    { "field.enum": { name: "status", "@values": ["Open", "Shipped"], "@intValueMap": { Open: 0, Shipped: 1 } } },
+    { "field.enum": { name: "kind", "@values": ["A", "B"] } },
+    { "field.int": { name: "n" } },
+    { "field.string": { name: "ref" } },
+    { "field.timestamp": { name: "at" } },
+    { "identity.primary": { name: "id", "@fields": "id" } },
+    { "identity.reference": { name: "customerId", "@fields": "customerId", "@references": "Customer" } } ] } },
+  { "object.entity": { name: "OrderEvent", children: [
+    { "source.rdb": { "@table": "order_events" } },
+    { "field.long": { name: "id" } },
+    { "field.long": { name: "orderId" } },
+    { "field.long": { name: "customerId" } },
+    { "field.timestamp": { name: "createdAt" } },
+    { "identity.primary": { name: "id", "@fields": "id" } },
+    { "identity.reference": { name: "orderId", "@fields": "orderId", "@references": "Order" } } ] } },
+];
+
+const orderView = (fields: unknown[], extra: Record<string, unknown> = {}) => ({ "object.projection": { name: "V", ...extra, children: [
+  { "source.rdb": { "@kind": "view", "@table": "v" } },
+  { "field.long": { name: "id", extends: "Order.id" } },
+  ...fields,
+  { "identity.primary": { name: "id", extends: "Order.id" } } ] } });
+const computed = (name: string, subType: string, expr: unknown) =>
+  ({ [`field.${subType}`]: { name, children: [ { "origin.computed": { "@expr": expr } } ] } });
+
+async function load(...extra: unknown[]): Promise<{ code: string; message: string }[]> {
+  const doc = { "metadata.root": { package: "acme", children: [...ENTITIES, ...extra] } };
+  const { errors } = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify(doc))]);
+  return errors.map((e) => ({ code: String((e as { code?: string }).code), message: e.message }));
+}
+const ok = async (...extra: unknown[]) => expect(await load(...extra)).toEqual([]);
+const refused = async (code: string, pattern: RegExp, ...extra: unknown[]) => {
+  const errors = await load(...extra);
+  expect(errors.some((e) => e.code === code && pattern.test(e.message))).toBe(true);
+};
+
+describe("U2 — @dbColumnType text spellings", () => {
+  const entity = (attr: Record<string, unknown>) => ({ "object.entity": { name: "R", children: [
+    { "source.rdb": { "@table": "r" } }, { "field.long": { name: "id" } },
+    { "field.string": { name: "c", ...attr } }, { "identity.primary": { name: "id", "@fields": "id" } } ] } });
+  test("text, varchar, character varying and the sized spellings load on a field.string", async () => {
+    for (const t of ["text", "varchar", "character varying", "varchar(12)", "character varying(12)", "character(3)"]) {
+      await ok(entity({ "@dbColumnType": t }));
+    }
+  });
+  test("a misspelling, a zero length, another subtype and a @maxLength over n are refused", async () => {
+    await refused("ERR_BAD_ATTR_VALUE", /'VARCHAR' is not legal/, entity({ "@dbColumnType": "VARCHAR" }));
+    await refused("ERR_BAD_ATTR_VALUE", /'character\(0\)' is not legal/, entity({ "@dbColumnType": "character(0)" }));
+    await refused("ERR_BAD_ATTR_VALUE", /@maxLength: 10 over '@dbColumnType: character\(3\)'/, entity({ "@dbColumnType": "character(3)", "@maxLength": 10 }));
+    await refused("ERR_BAD_ATTR_VALUE", /'varchar' is not legal on field.int/, { "object.entity": { name: "R", children: [
+      { "source.rdb": { "@table": "r" } }, { "field.long": { name: "id" } },
+      { "field.int": { name: "c", "@dbColumnType": "varchar" } }, { "identity.primary": { name: "id", "@fields": "id" } } ] } });
+  });
+});
+
+describe("U11, U12, U13 — the function set and the cast", () => {
+  test("typed functions and casts load", async () => {
+    await ok(orderView([
+      computed("a", "string", { fn: "splitPart", args: [{ field: "ref" }, { value: "-" }, { value: 1 }] }),
+      computed("b", "string", { fn: "concatWs", args: [{ value: " " }, { field: "ref" }, { field: "n" }] }),
+      computed("c", "int", { fn: "length", args: [{ fn: "btrim", args: [{ field: "ref" }] }] }),
+      computed("d", "string", { cast: { field: "id" }, as: "string" }),
+      computed("e", "int", { cast: { field: "status" }, as: "int" }),
+      computed("f", "string", { cast: { value: null }, as: "string", dbColumnType: "varchar(4)" }),
+      computed("g", "timestamp", { fn: "greatest", args: [{ field: "at" }, { value: null }] }),
+      computed("h", "string", { fn: "nullif", args: [{ field: "ref" }, { value: "" }] }),
+    ]));
+  });
+  test("an unknown function, a bad arity and a wrong argument type are refused", async () => {
+    await refused("ERR_UNKNOWN_EXPR_NODE", /unknown expression fn 'initcap'/, orderView([computed("a", "string", { fn: "initcap", args: [{ field: "ref" }] })]));
+    await refused("ERR_UNKNOWN_EXPR_NODE", /'splitPart' requires at least 3 args/, orderView([computed("a", "string", { fn: "splitPart", args: [{ field: "ref" }] })]));
+    await refused("ERR_INVALID_ORIGIN", /'lower' argument 1 must be a string, got int/, orderView([computed("a", "string", { fn: "lower", args: [{ field: "n" }] })]));
+    await refused("ERR_INVALID_ORIGIN", /'greatest' arguments have differing types/, orderView([computed("a", "int", { fn: "greatest", args: [{ field: "n" }, { field: "id" }] })]));
+    await refused("ERR_INVALID_ORIGIN", /'greatest' needs ordered arguments/, orderView([computed("a", "boolean", { fn: "greatest", args: [{ value: true }, { value: false }] })]));
+  });
+  test("a cast the source cannot hold is refused (U8: an enum casts to int only when int-stored)", async () => {
+    await refused("ERR_INVALID_ORIGIN", /only an enum stored as an integer/, orderView([computed("a", "int", { cast: { field: "kind" }, as: "int" })]));
+    await refused("ERR_INVALID_ORIGIN", /cast it to int/, orderView([computed("a", "string", { cast: { field: "status" }, as: "string" })]));
+    await refused("ERR_UNKNOWN_EXPR_NODE", /requires 'as': one of/, orderView([computed("a", "string", { cast: { field: "id" }, as: "enum" })]));
+    await refused("ERR_UNKNOWN_EXPR_NODE", /'dbColumnType' is a text spelling/, orderView([computed("a", "string", { cast: { field: "id" }, as: "string", dbColumnType: "uuid" })]));
+    await refused("ERR_INVALID_ORIGIN", /a timestamp cannot be cast to int/, orderView([computed("a", "int", { cast: { field: "at" }, as: "int" })]));
+  });
+  test("an int-stored enum and an int still differ in a case without the cast", async () => {
+    await refused("ERR_INVALID_ORIGIN", /'case' results have differing types/, orderView([computed("a", "int", {
+      case: [{ when: { op: "eq", left: { field: "n" }, right: { value: 0 } }, then: { field: "status" } }], else: { field: "n" } })]));
+    await ok(orderView([computed("a", "int", {
+      case: [{ when: { op: "eq", left: { field: "n" }, right: { value: 0 } }, then: { cast: { field: "status" }, as: "int" } }], else: { field: "n" } })]));
+  });
+  test("an expression over an aggregate loads, and is not filterable", async () => {
+    const last = { "field.timestamp": { name: "last", children: [ { "origin.aggregate": { "@agg": "max", "@of": "OrderEvent.createdAt", "@via": "Order.orderEvents" } } ] } };
+    await ok(orderView([last, computed("touched", "timestamp", { fn: "greatest", args: [{ field: "at" }, { field: "last" }] })]));
+    await refused("ERR_BAD_ATTR_FILTER", /touched/, orderView([last, computed("touched", "timestamp", { fn: "greatest", args: [{ field: "at" }, { field: "last" }] })],
+      { "@filter": { touched: { isNull: false } } }));
+  });
+  test("a CHECK @condition refuses the view-only nodes", async () => {
+    await refused("ERR_BAD_ATTR_VALUE", /uses lower, which a CHECK condition cannot hold/, { "object.entity": { name: "W", children: [
+      { "source.rdb": { "@table": "w" } }, { "field.long": { name: "id" } }, { "field.string": { name: "a" } }, { "field.string": { name: "b" } },
+      { "identity.primary": { name: "id", "@fields": "id" } },
+      { "validator.requiredWhen": { name: "r", "@field": "b", "@condition": { op: "eq", left: { fn: "lower", args: [{ field: "a" }] }, right: { value: "x" } } } } ] } });
+  });
+});
+
+describe("U3, U4 — paths in an expression and in a correlated operand", () => {
+  test("a path ref and a path operand load on a projection", async () => {
+    await ok(orderView([
+      computed("zip5", "string", { fn: "left", args: [{ field: "customerId.zip" }, { value: 5 }] }),
+      { "field.long": { name: "ev", children: [ { "origin.first": { "@of": "OrderEvent.id", "@via": "Order.orderEvents", "@orderBy": ["createdAt"],
+        "@filter": { customerId: { eq: { field: "customerId.id" } } } } } ] } },
+    ]));
+  });
+  test("a path that does not resolve is refused", async () => {
+    await refused("ERR_INVALID_ORIGIN", /does not resolve/, orderView([computed("z", "string", { field: "customerId.nope" })]));
+    await refused("ERR_BAD_ATTR_FILTER", /base-row path "customerId.nope"/, orderView([
+      { "field.long": { name: "ev", children: [ { "origin.first": { "@of": "OrderEvent.id", "@via": "Order.orderEvents", "@orderBy": ["createdAt"],
+        "@filter": { customerId: { eq: { field: "customerId.nope" } } } } } ] } }]));
+  });
+});
+
+describe("U10 — origin.function", () => {
+  const withFn = (fn: Record<string, unknown>) => ({ "object.entity": { name: "Customer2", children: [
+    { "source.rdb": { "@table": "customers2" } }, { "field.long": { name: "id" } }, { "field.string": { name: "zip" } },
+    { "field.object": { name: "contacts", "@objectRef": "Contact", isArray: true } },
+    { "identity.primary": { name: "id", "@fields": "id" } },
+    { "field.string": { name: "tier", children: [ { "origin.function": fn } ] } } ] } });
+  const reach = { "object.projection": { name: "P2", children: [
+    { "source.rdb": { "@kind": "view", "@table": "p2" } },
+    { "field.long": { name: "id", extends: "Customer2.id" } },
+    { "field.string": { name: "tier", children: [ { "origin.passthrough": { "@from": "Customer2.tier" } } ] } },
+    { "identity.primary": { name: "id", extends: "Customer2.id" } } ] } };
+  test("a declared call on an entity, reached by a projection, loads", async () => {
+    await ok(withFn({ "@function": "tier_of", "@schema": "app", "@args": ["id", "zip"] }), reach);
+  });
+  test("free SQL, an unknown argument and a non-scalar argument are refused", async () => {
+    await refused("ERR_INVALID_ORIGIN", /is not a plain identifier/, withFn({ "@function": "tier_of(1); drop table x", "@args": [] }), reach);
+    await refused("ERR_INVALID_ORIGIN", /@args names "nope"/, withFn({ "@function": "tier_of", "@args": ["nope"] }), reach);
+    await refused("ERR_INVALID_ORIGIN", /a field.object array; a function argument is a scalar/, withFn({ "@function": "tier_of", "@args": ["contacts"] }), reach);
+  });
+  test("an unreached function field on an entity with no read source is refused", async () => {
+    await refused("ERR_DERIVED_FIELD_NO_READ_SOURCE", /tier/, withFn({ "@function": "tier_of", "@args": ["id"] }));
+  });
+});
+
+describe("U14 — @grain", () => {
+  const grain = (extra: Record<string, unknown>, fields: unknown[]) => ({ "object.projection": { name: "G", ...extra, children: [
+    { "source.rdb": { "@kind": "view", "@table": "g" } },
+    { "field.long": { name: "customerId", extends: "Customer.id" } },
+    ...fields ] } });
+  const kind = { "field.string": { name: "kind", children: [ { "origin.passthrough": { "@from": "Contact.kind" } } ] } };
+  test("one row per element loads, with a position", async () => {
+    await ok(grain({ "@grain": "contacts", "@grainOrdinal": "pos" }, [{ "field.int": { name: "pos" } }, kind]));
+  });
+  test("a scalar array, a single object, a nested member, an aggregate and a bad ordinal are refused", async () => {
+    await refused("ERR_BAD_ATTR_VALUE", /@grain "tags" must name a field.object array/, grain({ "@grain": "tags" }, [kind]));
+    await refused("ERR_BAD_ATTR_VALUE", /@grain "primary" must name a field.object array/, grain({ "@grain": "primary" }, [kind]));
+    await refused("ERR_INVALID_ORIGIN", /is not a scalar member of the @grain element/, grain({ "@grain": "contacts" },
+      [{ "field.object": { name: "nested", "@objectRef": "Note", children: [ { "origin.passthrough": { "@from": "Contact.nested" } } ] } }]));
+    await refused("ERR_BAD_ATTR_VALUE", /a @grain view has one row per element/, grain({ "@grain": "contacts" }, [kind,
+      { "field.long": { name: "n", children: [ { "origin.aggregate": { "@agg": "count", "@of": "Order.id", "@via": "Customer.orders" } } ] } }]));
+    await refused("ERR_BAD_ATTR_VALUE", /@grainOrdinal "pos" must name a field.int or field.long/, grain({ "@grain": "contacts", "@grainOrdinal": "pos" },
+      [{ "field.string": { name: "pos" } }, kind]));
+  });
+});
+
+describe("U15 — @union", () => {
+  const branch = (name: string, entity: string, idField: string, label: Record<string, unknown>) => ({ "object.projection": { name, abstract: true, children: [
+    { "field.long": { name: "personId", extends: `${entity}.${idField}` } }, label ] } });
+  const label = (from: string) => ({ "field.string": { name: "label", children: [ { "origin.computed": { "@expr": { fn: "lower", args: [{ field: from }] } } } ] } });
+  const union = (extra: Record<string, unknown>) => ({ "object.projection": { name: "U", extends: "A", ...extra, children: [
+    { "source.rdb": { "@kind": "view", "@table": "u" } } ] } });
+  test("projections of one shape union", async () => {
+    await ok(branch("A", "Customer", "id", label("zip")), branch("B", "Order", "customerId", label("ref")), union({ "@union": ["B"], "@unionAll": true }));
+  });
+  test("a different shape, a non-projection, itself and @unionAll alone are refused", async () => {
+    await refused("ERR_BAD_ATTR_VALUE", /member "B" has a different shape/, branch("A", "Customer", "id", label("zip")),
+      branch("B", "Order", "customerId", { "field.int": { name: "label", children: [ { "origin.computed": { "@expr": { field: "n" } } } ] } }), union({ "@union": ["B"] }));
+    await refused("ERR_BAD_ATTR_VALUE", /names "Order", which is not an object.projection/, branch("A", "Customer", "id", label("zip")), union({ "@union": ["Order"] }));
+    await refused("ERR_BAD_ATTR_VALUE", /names the projection itself/, branch("A", "Customer", "id", label("zip")), union({ "@union": ["U"] }));
+    await refused("ERR_BAD_ATTR_VALUE", /@unionAll needs @union/, branch("A", "Customer", "id", label("zip")), union({ "@unionAll": true }));
+  });
+});

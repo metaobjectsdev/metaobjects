@@ -24,8 +24,8 @@ describe("pgTypeToSqlType", () => {
     expect(pgTypeToSqlType("varchar(64)")).toEqual({ kind: "text", maxLength: 64 });
     // bare varchar + separate maxLength column
     expect(pgTypeToSqlType("character varying", 100)).toEqual({ kind: "text", maxLength: 100 });
-    // bare varchar with no length info → plain text
-    expect(pgTypeToSqlType("character varying")).toEqual({ kind: "text" });
+    // bare varchar with no length info → text, spelled varchar (rc.21 U2; it equals text in the diff)
+    expect(pgTypeToSqlType("character varying")).toEqual({ kind: "text", variant: "varchar" });
     expect(pgTypeToSqlType("text")).toEqual({ kind: "text" });
   });
 

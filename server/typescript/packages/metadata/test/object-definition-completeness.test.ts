@@ -73,6 +73,11 @@ const NORMALIZE: Record<string, ExpectedAttr> = {
 // to a view-level WHERE); mirrors origin.aggregate's filter-attr placement.
 const PROJECTION_FILTER: Record<string, ExpectedAttr> = {
   filter: { valueType: "filter", required: false },
+  // rc.21 part B: @union / @unionAll (U15), @grain / @grainOrdinal (U14).
+  union: { valueType: "string", required: false },
+  unionAll: { valueType: "boolean", required: false },
+  grain: { valueType: "string", required: false },
+  grainOrdinal: { valueType: "string", required: false },
 };
 
 // FR-044 — object.report carries its six declaration attrs (five, plus the optional @spine). The array-valued ones

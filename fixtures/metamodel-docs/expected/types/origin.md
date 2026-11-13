@@ -92,6 +92,26 @@ The single related row selected by @orderBy along @via, projecting its @of colum
 
 _No structural children._
 
+### origin.function
+
+A value computed by a database function the project owns (rc.21): @function names it, @schema its schema (absent: public), and @args the fields passed to it, in order. On an entity an argument is one of its fields; on a projection, one of its own fields (not an aggregate) or a field of its base entity. Each argument is typed by its field and the result by the carrying field's subtype, so the call is checked, never free SQL. MetaObjects never creates the function: it is owned SQL, created before the view. Declared on an entity, it is entity-derived: a projection reaching the entity reads it like any derived field. Postgres only; the SQLite view emitter refuses it.
+
+**Owning provider:** metaobjects-core-types
+
+**When to use:** A view column is the result of a function the database already holds (a PL/pgSQL state machine, a legacy computation) and cannot be expressed in @expr. Declare the call instead of hand-writing the view's @sql.
+
+**Attributes**
+
+| Attribute | Type | Required | Default | Allowed values | Provider | Description |
+| --- | --- | --- | --- | --- | --- | --- |
+| `@args` | string[] | no |  |  | metaobjects-core-types | The fields passed to the function, in parameter order: field names of the host entity, or (on a projection) of the projection or its base entity. Each must be a scalar field. Absent or empty: a function of no arguments. |
+| `@function` | string | yes |  |  | metaobjects-core-types | The function's name as the database names it: a plain identifier ([A-Za-z_][A-Za-z0-9_]*), quoted when it is not lowercase. |
+| `@schema` | string | no |  |  | metaobjects-core-types | The schema the function lives in, a plain identifier. Absent: public. |
+
+**Allowed children**
+
+_No structural children._
+
 ### origin.passthrough
 
 A cross-entity field reference: this projection field passes a source entity's value straight through (@from), optionally reached via a relationship path (@via).

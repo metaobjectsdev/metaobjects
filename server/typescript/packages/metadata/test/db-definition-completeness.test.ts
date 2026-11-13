@@ -78,9 +78,10 @@ describe("db provider (data-driven) — attr placement", () => {
     }
   });
 
-  test("@dbColumnType description renders the legal-value list (uuid | jsonb — timestamp_with_tz retired)", () => {
+  test("@dbColumnType description renders the legal-value list (uuid, jsonb and the rc.21 text spellings — timestamp_with_tz retired)", () => {
     const attr = registry.find(TYPE_FIELD, "string")!.attributes.find((a) => a.name === "dbColumnType")!;
-    expect(attr.description).toContain("uuid | jsonb");
+    expect(attr.description).toContain("uuid (a native Postgres uuid column");
+    expect(attr.description).toContain("character(n)");
   });
 
   test("@localTime is on field.timestamp ONLY (ADR-0036 Wave 2)", () => {
