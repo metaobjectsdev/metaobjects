@@ -28,7 +28,7 @@ bun run build:binary        # → dist/meta (compiled for the build host's OS/ar
 ./dist/meta --help
 ```
 
-The build externalizes two optional Biome WASM backends (`@biomejs/wasm-bundler`, `@biomejs/wasm-web`) that the CLI never loads — only the native Biome backend is used.
+The build externalizes two optional Biome WASM backends (`@biomejs/wasm-bundler`, `@biomejs/wasm-web`) that the CLI never loads — codegen formats through the Node WebAssembly backend (`@biomejs/wasm-nodejs`), and the native Biome binary is not installed with the CLI.
 
 ### Cross-compiling for other platforms
 
