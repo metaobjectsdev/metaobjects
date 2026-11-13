@@ -373,6 +373,10 @@ describe("meta verify --codegen — hand edits are visible", () => {
       expect(report).toContain("--forbid-hand-edits");
       expect(report).toMatch(/\s generated\/User\.ts$/m);
       expect(report).toContain("git diff -R -- <file>");
+      // The no-key notice names the config key that makes it a failure, and both remedies.
+      expect(report).toContain('"verify": { "handEdits": "fail" }');
+      expect(report).toContain("To drop an edit:");
+      expect(report).toContain("To keep an edit on purpose:");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -450,6 +454,106 @@ describe("meta verify --codegen — hand edits are visible", () => {
       out = []; err = [];
       expect(await run(["verify", "--cwd", root, "--forbid-hand-edits"])).toBe(2);
       expect(all()).toContain("--codegen");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  /** A project's own `verify.handEdits`, written into its .metaobjects/config.json. */
+  function setHandEdits(root: string, handEdits: string): void {
+    mkdirSync(join(root, ".metaobjects"), { recursive: true });
+    const path = join(root, ".metaobjects", "config.json");
+    const prior = existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown> : { schema_version: 1 };
+    writeFileSync(path, JSON.stringify({ ...prior, verify: { handEdits } }, null, 2));
+  }
+
+  test('verify.handEdits: "fail" fails the run, naming the file and both remedies', async () => {
+    const root = setupRepo();
+    try {
+      expect(await run(["gen", "--cwd", root])).toBe(0);
+      setHandEdits(root, "fail");
+      weakenValidator(root);
+
+      out = []; err = [];
+      expect(await run(["verify", "--cwd", root, "--codegen"])).toBe(1);
+      const report = all();
+      expect(report).toContain('verify.handEdits is "fail"');
+      expect(report).toMatch(/\s generated\/User\.ts$/m);
+      expect(report).toContain("To drop an edit: delete the file, run 'meta gen'");
+      expect(report).toContain("make that change in the metadata instead");
+      expect(report).toContain("pass --allow-hand-edits for one run");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("--allow-hand-edits relaxes verify.handEdits: \"fail\" for one run", async () => {
+    const root = setupRepo();
+    try {
+      expect(await run(["gen", "--cwd", root])).toBe(0);
+      setHandEdits(root, "fail");
+      weakenValidator(root);
+
+      out = []; err = [];
+      expect(await run(["verify", "--cwd", root, "--codegen", "--allow-hand-edits"])).toBe(0);
+      expect(all()).toContain("--allow-hand-edits is set");
+      expect(all()).toContain("1 generated file(s) carry hand edits");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('verify.handEdits: "fail" passes a project with no hand edits', async () => {
+    const root = setupRepo();
+    try {
+      expect(await run(["gen", "--cwd", root])).toBe(0);
+      setHandEdits(root, "fail");
+      out = []; err = [];
+      expect(await run(["verify", "--cwd", root, "--codegen"])).toBe(0);
+      expect(all()).not.toContain("carry hand edits");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('verify.handEdits: "notice" keeps the notice, and --forbid-hand-edits still tightens it', async () => {
+    const root = setupRepo();
+    try {
+      expect(await run(["gen", "--cwd", root])).toBe(0);
+      setHandEdits(root, "notice");
+      weakenValidator(root);
+
+      out = []; err = [];
+      expect(await run(["verify", "--cwd", root, "--codegen"])).toBe(0);
+      expect(all()).toContain('verify.handEdits is "notice"');
+      out = []; err = [];
+      expect(await run(["verify", "--cwd", root, "--codegen", "--forbid-hand-edits"])).toBe(1);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a verify.handEdits value this version does not know is refused", async () => {
+    const root = setupRepo();
+    try {
+      setHandEdits(root, "warn");
+      out = []; err = [];
+      expect(await run(["verify", "--cwd", root, "--codegen"])).toBe(2);
+      expect(all()).toContain('"verify.handEdits" must be one of "fail", "notice"');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("--allow-hand-edits needs --codegen, and is refused beside --forbid-hand-edits", async () => {
+    const root = setupRepo();
+    try {
+      out = []; err = [];
+      expect(await run(["verify", "--cwd", root, "--allow-hand-edits"])).toBe(2);
+      expect(all()).toContain("--codegen");
+      out = []; err = [];
+      expect(await run(["verify", "--cwd", root, "--codegen", "--allow-hand-edits", "--forbid-hand-edits"])).toBe(2);
+      expect(all()).toContain("opposite");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

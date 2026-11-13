@@ -25,6 +25,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.assertThrows;
 
 /**
@@ -51,6 +54,25 @@ public class NeutralConfigTest {
         // by design.
         Path dir = writeConfig("{ \"schema_version\": 1, \"sources\": [ { \"path\": \"   \" } ] }");
         assertThrows(MetaDataException.class, () -> NeutralConfig.read(dir));
+    }
+
+    @Test
+    public void migrateSchemaSettingsAreReadLeniently() throws IOException {
+        // migrate.foreignKeyIndexes / conventions / dialect: the settings a table generator
+        // must agree with `meta migrate` on. TS-owned and validated there, so a wrong type
+        // reads as absent rather than failing this port's load.
+        Path dir = writeConfig("{ \"schema_version\": 1, \"migrate\": { \"foreignKeyIndexes\": true, "
+            + "\"conventions\": \"efcore\", \"dialect\": \"postgres\" } }");
+        MigrateSettings m = NeutralConfig.read(dir).orElseThrow().getMigrateSettings();
+        assertTrue(m.isForeignKeyIndexes());
+        assertEquals("efcore", m.getConventions());
+        assertEquals("postgres", m.getDialect());
+        assertFalse("the efcore conventions already index every foreign key", m.indexesForeignKeys());
+
+        Path loose = writeConfig("{ \"schema_version\": 1, \"migrate\": { \"foreignKeyIndexes\": \"yes\" } }");
+        assertFalse(NeutralConfig.read(loose).orElseThrow().getMigrateSettings().isForeignKeyIndexes());
+        Path none = writeConfig("{ \"schema_version\": 1 }");
+        assertSame(MigrateSettings.DEFAULT, NeutralConfig.read(none).orElseThrow().getMigrateSettings());
     }
 
     @Test

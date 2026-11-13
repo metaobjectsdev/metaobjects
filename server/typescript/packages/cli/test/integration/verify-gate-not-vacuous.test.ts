@@ -24,7 +24,7 @@ afterAll(() => {
 });
 
 describe("meta verify is not a vacuous gate", () => {
-  test("clean tree exits 0; metadata drift, a forbidden hand edit and a deleted file each exit 1", async () => {
+  test("clean tree exits 0; metadata drift, a hand edit and a deleted file each exit 1", async () => {
     root = await newShopProject("verify-gate-");
     const configPath = join(root, "metaobjects.config.ts");
     writeFileSync(
@@ -61,15 +61,17 @@ describe("meta verify is not a vacuous gate", () => {
     writeModel(root, SHOP_MODEL);
     expect((await meta(root, "verify")).exit).toBe(0);
 
-    // 4. A hand edit inside a generated file is NOT drift by default: `meta gen` three-way-merges
-    //    it, so plain `verify` stays green. A team that wants generated code untouchable opts in
-    //    with --forbid-hand-edits; that is the gate to assert if that is your policy.
+    // 4. Break B: a hand edit inside a generated file. `meta init` writes
+    //    `"verify": { "handEdits": "fail" }`, so plain `verify` fails on it; --allow-hand-edits
+    //    relaxes that for one run (and still names the file).
     const edit = pristine.replace(/email: (\w+)\("email"\)/, 'emailAddress: $1("email")');
     expect(edit).not.toBe(pristine);
     writeFileSync(customer, edit);
-    expect((await meta(root, "verify")).exit).toBe(0);
-    const edited = await meta(root, "verify", "--codegen", "--forbid-hand-edits");
+    const edited = await meta(root, "verify");
     expect({ step: "edited generated part", exit: edited.exit }).toEqual({ step: "edited generated part", exit: 1 });
+    expect(edited.output).toContain("Customer.ts");
+    const allowed = await meta(root, "verify", "--codegen", "--allow-hand-edits");
+    expect({ step: "edit allowed for one run", exit: allowed.exit }).toEqual({ step: "edit allowed for one run", exit: 0 });
     writeFileSync(customer, pristine);
 
     // 5. Break C: a generated file removed.

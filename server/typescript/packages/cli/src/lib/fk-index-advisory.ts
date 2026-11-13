@@ -1,11 +1,13 @@
 // Foreign keys with no index covering their columns — an advisory authoring lint.
 //
 // `meta migrate` emits a FOREIGN KEY constraint for every enforced `identity.reference`
-// and no index on its columns: neither Postgres nor SQLite indexes the referencing side
-// of a foreign key. Every join from the parent, and every ON DELETE cascade / set-null /
-// restrict check from it, then scans the child table. Generating the index automatically
-// would propose a migration to every existing adopter the release it shipped, so this is
-// advice, never a gate: it names each such key and says how to declare the index.
+// and, unless the project sets `migrate.foreignKeyIndexes`, no index on its columns:
+// neither Postgres nor SQLite indexes the referencing side of a foreign key. Every join
+// from the parent, and every ON DELETE cascade / set-null / restrict check from it, then
+// scans the child table. The option is opt-in (`meta init` writes it for a new project),
+// because turning it on proposes a migration to an existing one, so this stays advice,
+// never a gate: it names each such key and says how to index it. With the option on, the
+// expected schema already carries the index and there is nothing to name.
 //
 // Coverage is read off the EXPECTED SCHEMA migrate itself builds (primary key, every
 // `identity.secondary`, every `index.lookup`, every `@unique` field), not re-derived from
@@ -141,8 +143,9 @@ export function summarizeUnindexedFks(
     construct: findings.map((f) => f.construct).join(", "),
     message:
       `${findings.length} foreign key(s) have no index covering their columns, so joins from the ` +
-      `referenced table and its ON DELETE checks scan the referencing one. To index them, declare ` +
-      `an ${INDEX_LOOKUP} on each: ` +
+      `referenced table and its ON DELETE checks scan the referencing one. To index every one, set ` +
+      `"migrate": { "foreignKeyIndexes": true } in .metaobjects/config.json and run 'meta migrate'; ` +
+      `to index them one at a time, declare an ${INDEX_LOOKUP} on each: ` +
       findings.map((f) => `${f.label} ${f.declaration}`).join("; "),
   };
 }

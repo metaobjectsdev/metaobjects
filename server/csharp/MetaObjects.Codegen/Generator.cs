@@ -233,6 +233,22 @@ public sealed record GenConfig
     private readonly string? _contextAssemblyName;
 
     /// <summary>
+    /// <c>migrate.foreignKeyIndexes</c> in <c>.metaobjects/config.json</c>: the model declares the
+    /// index <c>meta migrate</c> gives each foreign key nothing else indexes
+    /// (<c>&lt;table&gt;_&lt;column&gt;[_&lt;column&gt;…]_idx</c>). False, the default, leaves the
+    /// model as it was.
+    /// </summary>
+    public bool ForeignKeyIndexes { get; init; }
+
+    /// <summary>
+    /// <c>migrate.conventions</c>: the schema-conventions preset <c>meta migrate</c> builds with, or
+    /// <c>null</c> for its default. Under <c>efcore</c> migrate already indexes every foreign key
+    /// with EF Core's own names, which EF's convention reproduces, so <see cref="ForeignKeyIndexes"/>
+    /// adds nothing.
+    /// </summary>
+    public string? SchemaConventions { get; init; }
+
+    /// <summary>
     /// The C# property name of a field, for every generator that names one: the entity and
     /// value-object classes, the composite <c>[PrimaryKey]</c>, the DbContext's model
     /// configuration, the reverse finders and the routes. <c>null</c>, the default, is the

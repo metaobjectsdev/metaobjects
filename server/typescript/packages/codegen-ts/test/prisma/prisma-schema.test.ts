@@ -172,6 +172,14 @@ describe("prisma-schema — what the schema says", () => {
       .toStartWith('@relation("FK_employees_employees_manager_id", ');
   });
 
+  test("migrate.foreignKeyIndexes declares the index meta migrate gives each foreign key", async () => {
+    const root = await loadShop();
+    const blockOf = (spec: ReturnType<typeof buildPrismaSchema>) => spec.models.find((m) => m.name === "Employee")!.blockAttributes;
+    expect(blockOf(buildPrismaSchema(root, { provider: "postgresql" })).join("\n")).not.toContain("employees_manager_id_idx");
+    expect(blockOf(buildPrismaSchema(root, { provider: "postgresql", schemaSettings: { foreignKeyIndexes: true } })))
+      .toContain('@@index([managerId], map: "employees_manager_id_idx")');
+  });
+
   test("the generator reads the settings from the run (GenContext.schemaSettings)", async () => {
     await runGen({
       config: defineConfig({ outDir: tmp, dialect: "postgres", generators: [prismaSchemaFile({ provider: "postgresql" })] }),
