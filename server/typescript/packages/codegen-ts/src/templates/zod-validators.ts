@@ -393,6 +393,7 @@ export function insertSchemaFields(obj: MetaObject): SchemaFieldShape[] {
  */
 export function updateSchemaFields(obj: MetaObject): SchemaFieldShape[] {
   const autoGenPkFields = autoGenPkFieldNames(obj);
+  const pkFields = primaryKeyFieldNames(obj);
   const tphPin = tphDiscriminatorPin(obj);
   const out: SchemaFieldShape[] = [];
   for (const child of obj.fields()) {
@@ -408,6 +409,10 @@ export function updateSchemaFields(obj: MetaObject): SchemaFieldShape[] {
     // edit form for an entity carrying one. Clearing counts as a write, so the
     // FR-035 present-null arm never reaches it either.
     if (isWriteOnceMutability(child)) continue;
+    // SECURITY (1.2.x): a primary-key field is the row's identity, which the URL names. An
+    // ASSIGNED key leaves the update shape exactly like a generated one, so a client-sent
+    // key is stripped and can never re-key the row.
+    if (pkFields.has(child.name)) continue;
     // TPH subtype discriminator: omitted from the update schema entirely.
     if (tphPin !== undefined && child.name === tphPin.fieldName) continue;
     const autoSet = child.attr(FIELD_ATTR_AUTO_SET);
@@ -491,6 +496,10 @@ export function renderZodValidators(obj: MetaObject, ctx?: RenderContext): Code 
     // below; a value presented on PATCH is stripped, not 400'd (see
     // updateSchemaFields for the grounding).
     if (isWriteOnceMutability(child)) continue;
+    // SECURITY (1.2.x): the row's identity is the URL's. An ASSIGNED primary key leaves the
+    // update shape too (a generated one never entered it), so a client-sent key is stripped
+    // on PUT/PATCH and can never re-key the row. Mirrors updateSchemaFields.
+    if (pkFields.has(child.name)) continue;
 
     // Update schema: @autoSet onCreate → omit entirely; onUpdate → transform
     if (autoSet === AUTO_SET_ON_CREATE) {

@@ -418,7 +418,8 @@ public class RoutesGenerator : PerEntityGenerator
             AppendCreateHandler(sb, "/" + route, cls, dbSet, requiredKeys,
                 CreatedResult("prefix + \"/" + route + "\"", "input", credentials), voFields, mapVoFields, autoSetFields,
                 writeThrough ? (readDbSet, pkProp!, route) : null, parseBody: HasDecimalField(entity),
-                deniedFields.Select(f => CSharpNaming.Pascal(f.Name)).ToList(), credentials);
+                deniedFields.Select(f => CSharpNaming.Pascal(f.Name)).ToList(), credentials,
+                ServerOwnedCreateResets(entity, ctx.Root));
 
             // PATCH + PUT share the same handler — TS reference exposes both verbs, and both
             // return the updated row (HTTP 200), matching the cross-port api-contract.
@@ -988,7 +989,8 @@ public class RoutesGenerator : PerEntityGenerator
         (string ReadDbSet, string PkProp, string Route)? reRead = null,
         bool parseBody = false,
         IReadOnlyList<string>? deniedNavs = null,
-        IReadOnlyList<string>? credentials = null)
+        IReadOnlyList<string>? credentials = null,
+        IReadOnlyList<string>? serverOwned = null)
     {
         // A decimal field can refuse its value while the body is bound (out of declared range, not a
         // number). The framework's own binding answers that with a bare 400 and no body, so an entity
@@ -997,6 +999,7 @@ public class RoutesGenerator : PerEntityGenerator
         {
             sb.AppendLine($"        app.MapPost(prefix + \"{mapPath}\", async ({cls} input, AppDbContext db) =>");
             sb.AppendLine("        {");
+            AppendCreateServerOwned(sb, serverOwned);
             AppendCreateIgnoreDenied(sb, deniedNavs);
             AppendCreateValidation(sb);
             AppendCreateVoValidation(sb, voFields, mapVoFields);
@@ -1033,6 +1036,7 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("            try { input = System.Text.Json.JsonSerializer.Deserialize<" + cls + ">(__body.RootElement.GetRawText(), jsonOpts); }");
         sb.AppendLine("            catch (System.Text.Json.JsonException) { return Results.BadRequest(new { error = \"validation\" }); }");
         sb.AppendLine("            if (input is null) return Results.BadRequest(new { error = \"validation\" });");
+        AppendCreateServerOwned(sb, serverOwned);
         AppendCreateIgnoreDenied(sb, deniedNavs);
         AppendCreateValidation(sb);
         AppendCreateVoValidation(sb, voFields, mapVoFields);
@@ -1065,6 +1069,44 @@ public class RoutesGenerator : PerEntityGenerator
         {
             sb.AppendLine($"            return {createdExpr};");
         }
+    }
+
+    // SECURITY (1.2.x) — a generated create hands storage ONLY what the client may set. The body is
+    // bound straight onto the EF entity, so every member the server owns is reset before validation
+    // and `Add`, and the request answers as if the key were absent (never a 400):
+    //   - a server-generated primary key (@generation increment|uuid): default, so EF generates it;
+    //   - the TPH discriminator on a per-subtype route: default, so EF's discriminator value
+    //     generator stamps the route subtype's own @discriminatorValue (the route is its only source);
+    //   - M:N navigation collections: emptied, else `Add` would insert a client-sent related graph.
+    // A readOnly field needs no line here: the entity declares it with a private setter, which
+    // System.Text.Json never binds (EntityGenerator.SetterFor).
+    private static void AppendCreateServerOwned(StringBuilder sb, IReadOnlyList<string>? statements)
+    {
+        if (statements is null || statements.Count == 0) return;
+        sb.AppendLine("            // Server-owned: a generated key, the TPH discriminator and M:N navigations are not settable by the client; the value is ignored.");
+        foreach (var st in statements) sb.AppendLine("            " + st);
+    }
+
+    // The reset statements AppendCreateServerOwned emits for one entity (empty when it has none, so an
+    // entity with an assigned key, no navigation and no discriminator keeps its output byte-identical).
+    // A TPH subtype class declares no M:N property of its own — the navigations it carries are its
+    // discriminator base class's — so a subtype route passes that base as navOwner.
+    private static List<string> ServerOwnedCreateResets(MetaObject entity, MetaRoot root, string? discProp = null, MetaObject? navOwner = null)
+    {
+        var list = new List<string>();
+        if (entity.PrimaryIdentity() is MetaPrimaryIdentity pk
+            && pk.Generation is MetaObjects.Core.Identity.IdentityConstants.GENERATION_INCREMENT
+                or MetaObjects.Core.Identity.IdentityConstants.GENERATION_UUID
+            && pk.Fields is [var keyName]
+            && entity.Fields().FirstOrDefault(f => f.Name == keyName) is { } keyField)
+            list.Add($"input.{CSharpNaming.Pascal(keyField.Name)} = default!;");
+        if (discProp is not null) list.Add($"input.{discProp} = default!;");
+        foreach (var nav in M2MNavigationBuilder.For(navOwner ?? entity, root, _ => { }))
+        {
+            var target = CSharpNaming.Pascal(nav.Target.Name);
+            list.Add($"input.{CSharpNaming.Pascal(nav.Name)} = new System.Collections.Generic.List<{target}>();");
+        }
+        return list;
     }
 
     // #484 — a write-denied key (@formExclude or credential) on a create body is IGNORED, never
@@ -1448,7 +1490,8 @@ public class RoutesGenerator : PerEntityGenerator
         AppendCreateHandler(sb, "/" + subRoute, subCls, dbSet, requiredKeys,
             CreatedResult("prefix + \"/" + subRoute + "/\" + input." + pkProp, "input", credentials), [], mapVoFields, autoSetFields,
             parseBody: HasDecimalField(st.Entity),
-            deniedNavs: deniedFields.Select(f => CSharpNaming.Pascal(f.Name)).ToList(), credentials: credentials);
+            deniedNavs: deniedFields.Select(f => CSharpNaming.Pascal(f.Name)).ToList(), credentials: credentials,
+            serverOwned: ServerOwnedCreateResets(st.Entity, root, discProp, hierarchy[0]));
 
         // Per-subtype update (PATCH + PUT): partial merge of the JSON body onto the scoped
         // entity, NEVER touching the PK or the discriminator. Cross-subtype id → 404.

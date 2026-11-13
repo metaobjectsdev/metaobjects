@@ -100,7 +100,11 @@ final class InMemoryAuthorRepositorySource {
                 // Issue #203 / ADR-0045: the generated controller already stamped @autoSet via
                 // AuthorDto.stampForInsert(dto) before calling create — the repo just persists
                 // the incoming (already-stamped) values verbatim.
-                AuthorDto saved = new AuthorDto(nextId.getAndIncrement(), dto.name(), dto.bio(),
+                // A naive adopter repository: it trusts the id it is handed and mints one only when
+                // absent, so a client id the controller forwarded would be stored (and the shared
+                // input-server-owned-dropped scenario would see it).
+                Long id = dto.id() != null ? dto.id() : Long.valueOf(nextId.getAndIncrement());
+                AuthorDto saved = new AuthorDto(id, dto.name(), dto.bio(),
                     dto.createdAt(), dto.issuedCurrency(), dto.autoCreatedAt(), dto.autoUpdatedAt());
                 rows.add(saved);
                 return saved;

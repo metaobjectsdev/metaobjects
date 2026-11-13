@@ -49,7 +49,9 @@ tph/
     ├── tph-writeonce-patch-stripped.yaml      # FR-037: inherited @mutability "writeOnce" stripped on the per-subtype PATCH
     ├── tph-update-explicit-null-clears.yaml   # FR-035 tristate: present null clears; omitted @required untouched; null on @required → 400
     ├── tph-create-constraint-violation.yaml   # FR-036: per-subtype CREATE validates against the annotated <Sub>Dto
-    └── tph-update-constraint-violation.yaml   # FR-036: per-subtype PATCH validates each PRESENT value
+    ├── tph-update-constraint-violation.yaml   # FR-036: per-subtype PATCH validates each PRESENT value
+    ├── tph-input-server-owned-dropped.yaml    # 1.2.x security: client id, sibling column, undeclared key never stored
+    └── tph-input-foreign-discriminator-dropped.yaml # 1.2.x security: the subtype comes from the URL, never the body
 ```
 
 `meta.json` declares the `acme::auth` package:

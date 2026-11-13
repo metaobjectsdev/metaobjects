@@ -10,6 +10,50 @@ here.**
 
 ## [Unreleased]
 
+_Proposed as npm `1.2.2` (all 14 `@metaobjectsdev/*` packages), NuGet `1.2.2` and Maven Central
+`8.2.2`; `1.2.1` was spent by the Python-only release. PyPI stays at `1.2.1`: no Python product
+file changes. No vocabulary or `metamodelVersion` change._
+
+### Security
+
+- **Generated create routes in Java, Kotlin and C#, and TypeScript updates, let a client write
+  fields it must never set.** The same class of hole the Python 1.2.1 patch closed, found by an
+  audit of the other four ports after it. Every adopter serving these generated routes should
+  upgrade and regenerate; an ejected (owned) generator needs the same change made by hand.
+
+  - **Java (`codegen-spring`).** The create route passed the bound DTO to the repository as
+    sent, so a client `id` on a generated key and a `@mutability: readOnly` or derived field
+    reached it. On a TPH per-subtype route the body's discriminator and a sibling subtype's
+    columns did too. The route now rebuilds the DTO with each of those components set to null
+    before the repository call; the route's subtype still comes from the URL.
+  - **Kotlin (`codegen-kotlin`).** The create route wrote `readOnly` and derived columns from the
+    body, and a TPH per-subtype route wrote a sibling subtype's columns. It now writes only the
+    route subtype's own settable columns.
+  - **C# (`MetaObjects.Codegen`).** The create route bound the EF Core entity from the body, so a
+    client `id` on a generated key was inserted, a TPH create stored the body's discriminator (a
+    POST to the Bridge route could create a Copay row), and a TPH subtype's `readOnly` field and
+    an M:N navigation graph were written. The route now resets the generated key and the
+    discriminator to their defaults and empties the M:N navigations before `Add`, and a
+    `readOnly` property of every shape, a TPH subtype's included, has a private setter, which
+    System.Text.Json does not bind.
+  - **TypeScript (`codegen-ts`).** The `<Entity>UpdateSchema` kept an assigned (non-generated)
+    primary key, so a PUT or PATCH could re-key the row. The update schema now leaves out every
+    primary-key field; the insert schema still takes an assigned key, which is the caller's on
+    create.
+
+  Each of these values is dropped silently, never answered with a 400. A key the model does not
+  declare is dropped silently in TypeScript, C# and Python. In Java and Kotlin the answer to an
+  undeclared key is the host's Jackson `ObjectMapper`'s: Spring Boot's default ignores it, and a
+  plain `ObjectMapper` (`FAIL_ON_UNKNOWN_PROPERTIES` on) answers 400. This patch leaves that as
+  it was.
+
+  Gated by the shared api-contract scenarios `input-server-owned-dropped`,
+  `tph-input-server-owned-dropped` and `tph-input-foreign-discriminator-dropped`, and a `readOnly`
+  `role` on the `secret-fields` corpus, in every port's generated lane and in the reference lanes.
+  Python's generated TPH routes answer a foreign body discriminator with a 400 rather than
+  dropping it (nothing is stored); its runner skips that one scenario, recorded in the Python
+  codegen `KNOWN_GAPS.md`.
+
 ## [1.2.1] — Python only
 
 _PyPI `1.2.1` only. npm, NuGet and Maven Central stay at `1.2.0` (`8.2.0`): none of them has a

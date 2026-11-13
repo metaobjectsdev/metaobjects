@@ -425,8 +425,6 @@ class AuthController(private val objectMapper: ObjectMapper, private val validat
             it[type] = AuthType.Bridge
             it[reference] = dto.reference!!
             it[quantity] = dto.quantity
-            it[copayAmount] = dto.copayAmount
-            it[priorAuthNumber] = dto.priorAuthNumber
         }[AuthTable.id]
         val saved = AuthTable.selectAll().where { AuthTable.id eq newId }.single()
         ResponseEntity.status(HttpStatus.CREATED).body(rowToAuth(saved) as Any)
@@ -510,9 +508,7 @@ class AuthController(private val objectMapper: ObjectMapper, private val validat
         val newId = AuthTable.insert {
             it[type] = AuthType.Copay
             it[reference] = dto.reference!!
-            it[quantity] = dto.quantity
             it[copayAmount] = dto.copayAmount
-            it[priorAuthNumber] = dto.priorAuthNumber
         }[AuthTable.id]
         val saved = AuthTable.selectAll().where { AuthTable.id eq newId }.single()
         ResponseEntity.status(HttpStatus.CREATED).body(rowToAuth(saved) as Any)
@@ -596,8 +592,6 @@ class AuthController(private val objectMapper: ObjectMapper, private val validat
         val newId = AuthTable.insert {
             it[type] = AuthType.PriorAuth
             it[reference] = dto.reference!!
-            it[quantity] = dto.quantity
-            it[copayAmount] = dto.copayAmount
             it[priorAuthNumber] = dto.priorAuthNumber
         }[AuthTable.id]
         val saved = AuthTable.selectAll().where { AuthTable.id eq newId }.single()
