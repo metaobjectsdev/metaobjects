@@ -379,11 +379,11 @@ The corpus also covers the 9 cross-port filter operators (`eq`, `ne`, `gt`,
 `gte`, `lt`, `lte`, `in`, `like`, `isNull`) plus the implicit-AND combinator
 and 2 error shapes (`invalid_filter_field` / `invalid_filter_op`) under the
 URL grammar `?filter[<field>][<op>]=<value>` (FR-009). On top of the 32 core
-scenarios the corpus carries eight sub-corpora — `tph/` (10, single-table
+scenarios the corpus carries eight sub-corpora — `tph/` (12, single-table
 inheritance; a subtype decimal filters and refuses extra digits), `m2m/` (9 — 3 plain, 5 gating TPH x M:N together, the combination
 each corpus alone could not reach, and 1 pinning the collection-URL spelling),
 `jsonb/` (5, typed value-object columns; numbers inside them: a double stays a JSON number, a decimal is the canonical string),
-`write-through/` (2, table-write + view-read entities), `secret-fields/` (2, #484: a `@formExclude` or credential `view.password` field is ignored on create, PATCH and PUT, and a credential is never returned), `projection/` (12, a
+`write-through/` (2, table-write + view-read entities), `secret-fields/` (2, #484 + the 1.2.x input gate: a `@formExclude` or credential `view.password` field is ignored on create, PATCH and PUT, a credential is never returned, and a `@mutability: readOnly` field is ignored on write too), `projection/` (12, a
 read-only view answers reads and refuses writes with 405; a projection with no declared
 identity has no item route; a projection keyed on a field not named `id` is addressed by
 it, whether its identity names `@fields` or derives them; decimal and float fields filter), `decimal/` (11, ADR-0019 Amendment 1: a decimal, array element and undeclared-precision column included, is one
