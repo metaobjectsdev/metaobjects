@@ -56,6 +56,7 @@ import {
   FIELD_ATTR_COERCE_DEFAULT,
   FIELD_ATTR_DEFAULT,
   FIELD_ATTR_INT_VALUE_MAP,
+  FIELD_ATTR_STRING_VALUE_MAP,
   ENUM_MEMBER_PATTERN,
 } from "./core/field/field-constants.js";
 import { isSharedEnumDeclaration } from "./core/field/shared-enum.js";
@@ -495,6 +496,52 @@ function validateNode(
           );
         } else {
           seenValues.set(value, member);
+        }
+      }
+    }
+    // --- Check 5c (rc.21): field.enum @stringValueMap content rules ---
+    //
+    // The string twin of Check 5b, with its policies: own-only (an inherited map is validated
+    // on its declaring node), a shared enum's backing owned by the shared declaration. Keys must
+    // exactly match @values; values are unique non-empty strings. An enum that is not
+    // string-stored refuses it: an @intValueMap enum stores integers, and an array enum stores
+    // its members as text[] elements, which no port maps through it.
+    const rawStringValueMap = node.ownAttrs().get(FIELD_ATTR_STRING_VALUE_MAP);
+    if (rawStringValueMap !== undefined) {
+      const bad = (message: string, code: "ERR_BAD_ATTR_VALUE" | "ERR_ENUM_EXTENDS_VALUES_CONFLICT" = "ERR_BAD_ATTR_VALUE") =>
+        errors.push(new ParseError(`${nodeLabel(node)} attribute '@${FIELD_ATTR_STRING_VALUE_MAP}' ${message}`, { code, source: node.source }));
+      if (sharedSuper !== undefined) {
+        bad(`is declared on a field extending shared abstract enum '${nodeLabel(sharedSuper)}' — a shared enum's ` +
+          `stored strings are owned by the shared declaration; move it onto '${nodeLabel(sharedSuper)}' to inherit it.`,
+          "ERR_ENUM_EXTENDS_VALUES_CONFLICT");
+      } else if (node.attr(FIELD_ATTR_INT_VALUE_MAP) !== undefined) {
+        bad(`is refused beside '@${FIELD_ATTR_INT_VALUE_MAP}': an @intValueMap enum is stored as integers, not strings. Keep one.`);
+      } else if ((node as { resolvedIsArray?: () => boolean }).resolvedIsArray?.() === true) {
+        bad(`is refused on an array enum: its column holds the members as text[] elements, which no port maps through @${FIELD_ATTR_STRING_VALUE_MAP}.`);
+      } else if (typeof rawStringValueMap !== "object" || rawStringValueMap === null || Array.isArray(rawStringValueMap)) {
+        bad(`must be an object of { member: storedString }.`);
+      } else {
+        const map = rawStringValueMap as Record<string, unknown>;
+        const effectiveValues = node.attrs().get(FIELD_ATTR_VALUES);
+        const declaredMembers: string[] = Array.isArray(effectiveValues) ? effectiveValues : [];
+        const memberSet = new Set(declaredMembers);
+        const keySet = new Set(Object.keys(map));
+        const missing = declaredMembers.filter((m) => !keySet.has(m));
+        const extra = Object.keys(map).filter((k) => !memberSet.has(k));
+        if (missing.length > 0 || extra.length > 0) {
+          bad(`keys must exactly match '@${FIELD_ATTR_VALUES}' members` +
+            (missing.length > 0 ? ` (missing: ${missing.join(", ")})` : "") +
+            (extra.length > 0 ? ` (unknown: ${extra.join(", ")})` : "") + ".");
+        }
+        const seen = new Map<string, string>();
+        for (const [member, value] of Object.entries(map)) {
+          if (typeof value !== "string" || value.length === 0) {
+            bad(`member '${member}' must map to a non-empty string.`);
+            continue;
+          }
+          const owner = seen.get(value);
+          if (owner !== undefined) bad(`members '${owner}' and '${member}' share the stored string '${value}'; every member must have a unique one.`);
+          else seen.set(value, member);
         }
       }
     }

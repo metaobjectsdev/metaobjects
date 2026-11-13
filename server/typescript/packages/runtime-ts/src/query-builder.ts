@@ -5,7 +5,8 @@ import {
   IDENTITY_ATTR_FIELDS,
   OBJECT_SUBTYPE_REPORT,
   DEFAULT_COLUMN_NAMING_STRATEGY,
-  FIELD_SUBTYPE_DURATION,
+  FIELD_SUBTYPE_DURATION, FIELD_SUBTYPE_ENUM,
+  storedEnumValue, stringValueMapOf,
   resolveTableName, resolveColumnName,
   durationToStoredMicros, formatDuration, formatPostgresInterval, parseDurationLiteral,
 } from "@metaobjectsdev/metadata";
@@ -183,6 +184,10 @@ function encodeFilterValue<T>(field: MetaData, value: T, dialect?: Dialect): T {
     if (dialect === "sqlite" || dialect === "mysql") return durationToStoredMicros(micros) as T;
     if (dialect === "memory") return micros as T;
     return formatDuration(micros) as T;
+  }
+  // rc.21: a @stringValueMap enum is compared as the member's stored string.
+  if (field.subType === FIELD_SUBTYPE_ENUM && typeof value === "string" && stringValueMapOf(field) !== undefined) {
+    return storedEnumValue(field, value) as T;
   }
   const intMap = intValueMapOf(field);
   if (intMap === undefined || typeof value !== "string") return value;

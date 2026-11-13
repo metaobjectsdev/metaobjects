@@ -1,0 +1,24 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Upload",
+          "children": [
+            { "field.long": { "name": "id" } },
+            {
+              "field.enum": {
+                "name": "status",
+                "@values": ["Pending", "Delivered"],
+                "@intValueMap": { "Pending": 0, "Delivered": 1 },
+                "@stringValueMap": { "Pending": "pending", "Delivered": "delivered" }
+              }
+            },
+            { "identity.primary": { "name": "id", "@fields": "id" } }
+          ]
+        }
+      }
+    ]
+  }
+}

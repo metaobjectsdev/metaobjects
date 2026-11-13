@@ -1,0 +1,32 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Upload",
+          "children": [
+            { "field.long": { "name": "id" } },
+            {
+              "field.enum": {
+                "name": "status",
+                "@values": ["Pending", "Delivered", "Failed"],
+                "@stringValueMap": { "Pending": "pending", "Delivered": "delivered", "Failed": "failed" },
+                "@default": "Pending"
+              }
+            },
+            {
+              "field.enum": {
+                "name": "authType",
+                "@values": ["None", "KeyFilePath", "KeyFileContent"],
+                "@stringValueMap": { "None": "None", "KeyFilePath": "Key_File_Path", "KeyFileContent": "Key_File_Content" },
+                "@maxLength": 16
+              }
+            },
+            { "identity.primary": { "name": "id", "@fields": "id" } }
+          ]
+        }
+      }
+    ]
+  }
+}

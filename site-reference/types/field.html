@@ -1138,9 +1138,9 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <li><code>view.*</code> — 0..*</li>
 </ul>
 <h3>field.enum</h3>
-<p>String-backed enumeration constrained to a closed set of member symbols (@values). Each member is its own stored string with no name/value divergence.</p>
+<p>String-backed enumeration constrained to a closed set of member symbols (@values). Each member is its own stored string, unless @stringValueMap gives it another (or @intValueMap an integer).</p>
 <p><strong>Owning provider:</strong> metaobjects-core-types</p>
-<p><strong>Rules:</strong> Required @values is a non-empty, duplicate-free set; each member must match ^[A-Za-z_][A-Za-z0-9_]*$ so symbol == stored string in every target language. Optional FR-010/FR-011 overlays add tolerant-extract aliasing (@enumAlias), per-member docs (@enumDoc), an uncoercible-value fallback (@coerceDefault, must be one of @values), and ASCII normalization mode (@normalize).</p>
+<p><strong>Rules:</strong> Required @values is a non-empty, duplicate-free set; each member must match ^[A-Za-z_][A-Za-z0-9_]*$ so it is a legal identifier in every target language, and is its own stored string unless @stringValueMap (string) or @intValueMap (integer) maps it. Optional FR-010/FR-011 overlays add tolerant-extract aliasing (@enumAlias), per-member docs (@enumDoc), an uncoercible-value fallback (@coerceDefault, must be one of @values), and ASCII normalization mode (@normalize).</p>
 <p><strong>When to use:</strong> A field is a fixed, closed set of string values. Set @values so the union type, DB CHECK, and validation are generated — don&#39;t hand-roll constants + checks.</p>
 <p><strong>Attributes</strong></p>
 <table>
@@ -1345,6 +1345,15 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>Direction a sort takes when it names this field but omits the order: a ?sort=<field> with no :order, and a layout.dataGrid whose @defaultSortField names it with no @defaultSortOrder. Defaults to &#39;asc&#39;.</td>
 </tr>
 <tr>
+<td><code>@stringValueMap</code></td>
+<td>properties</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>metaobjects-core-types</td>
+<td>Optional per-member stored strings ({member: string}) for a string-stored enum whose database spelling differs from its member symbols (a legacy column holding &#39;pending&#39; or &#39;Key_File_Path&#39;). The column, its CHECK, its length, a @default and a @condition literal hold the stored strings; the generated native type and wire format keep the members. Keys must exactly match @values; values must be unique non-empty strings. The string twin of @intValueMap, refused with it and on an array enum (ERR_BAD_ATTR_VALUE).</td>
+</tr>
+<tr>
 <td><code>@unique</code></td>
 <td>boolean</td>
 <td>no</td>
@@ -1360,7 +1369,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td></td>
 <td></td>
 <td>metaobjects-core-types</td>
-<td>Member symbols of an enum-subtype field. Declaration order is significant; each is a legal identifier and its own stored string.</td>
+<td>Member symbols of an enum-subtype field. Declaration order is significant; each is a legal identifier and its own stored string unless @stringValueMap or @intValueMap maps it.</td>
 </tr>
 <tr>
 <td><code>@xmlText</code></td>

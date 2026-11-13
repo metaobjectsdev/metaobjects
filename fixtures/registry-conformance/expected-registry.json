@@ -1169,8 +1169,8 @@
     {
       "type": "field",
       "subType": "enum",
-      "description": "String-backed enumeration constrained to a closed set of member symbols (@values). Each member is its own stored string with no name/value divergence.",
-      "rules": "Required @values is a non-empty, duplicate-free set; each member must match ^[A-Za-z_][A-Za-z0-9_]*$ so symbol == stored string in every target language. Optional FR-010/FR-011 overlays add tolerant-extract aliasing (@enumAlias), per-member docs (@enumDoc), an uncoercible-value fallback (@coerceDefault, must be one of @values), and ASCII normalization mode (@normalize).",
+      "description": "String-backed enumeration constrained to a closed set of member symbols (@values). Each member is its own stored string, unless @stringValueMap gives it another (or @intValueMap an integer).",
+      "rules": "Required @values is a non-empty, duplicate-free set; each member must match ^[A-Za-z_][A-Za-z0-9_]*$ so it is a legal identifier in every target language, and is its own stored string unless @stringValueMap (string) or @intValueMap (integer) maps it. Optional FR-010/FR-011 overlays add tolerant-extract aliasing (@enumAlias), per-member docs (@enumDoc), an uncoercible-value fallback (@coerceDefault, must be one of @values), and ASCII normalization mode (@normalize).",
       "whenToUse": "A field is a fixed, closed set of string values. Set @values so the union type, DB CHECK, and validation are generated — don't hand-roll constants + checks.",
       "attrs": [
         {
@@ -1339,6 +1339,13 @@
           "description": "Direction a sort takes when it names this field but omits the order: a ?sort=<field> with no :order, and a layout.dataGrid whose @defaultSortField names it with no @defaultSortOrder. Defaults to 'asc'."
         },
         {
+          "name": "stringValueMap",
+          "valueType": "properties",
+          "isArray": false,
+          "required": false,
+          "description": "Optional per-member stored strings ({member: string}) for a string-stored enum whose database spelling differs from its member symbols (a legacy column holding 'pending' or 'Key_File_Path'). The column, its CHECK, its length, a @default and a @condition literal hold the stored strings; the generated native type and wire format keep the members. Keys must exactly match @values; values must be unique non-empty strings. The string twin of @intValueMap, refused with it and on an array enum (ERR_BAD_ATTR_VALUE)."
+        },
+        {
           "name": "unique",
           "valueType": "boolean",
           "isArray": false,
@@ -1350,7 +1357,7 @@
           "valueType": "string",
           "isArray": true,
           "required": true,
-          "description": "Member symbols of an enum-subtype field. Declaration order is significant; each is a legal identifier and its own stored string."
+          "description": "Member symbols of an enum-subtype field. Declaration order is significant; each is a legal identifier and its own stored string unless @stringValueMap or @intValueMap maps it."
         },
         {
           "name": "xmlText",

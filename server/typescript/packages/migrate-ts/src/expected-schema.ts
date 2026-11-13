@@ -2,6 +2,7 @@ import {
   DuplicateSqlNameError, FkTargetNotUniqueError, InvalidCheckNameError, type CheckNameProblem, type FkTargetViolation,
 } from "./errors.js";
 import { negateExpression, renderExpressionSql } from "./check-expression.js";
+import { storedEnumValue, stringValueMapOf } from "@metaobjectsdev/metadata";
 import { canBeUniqueConstraint, resolveSchemaConventions, type SchemaConventions } from "./schema-conventions.js";
 import type {
   ColumnNamingStrategy, MetaData, MetaField, MetaObject, MetaReferenceIdentity, MetaRoot, MetaValidator,
@@ -954,7 +955,8 @@ function buildChecks(
           });
           expression = `${qcol} IN (${ints.join(", ")})`;
         } else {
-          expression = `${qcol} IN (${values.map((v) => `'${v.replace(/'/g, "''")}'`).join(", ")})`;
+          // rc.21: a member is stored as its @stringValueMap string, else as itself.
+          expression = `${qcol} IN (${values.map((v) => `'${storedEnumValue(field, v).replace(/'/g, "''")}'`).join(", ")})`;
         }
         const enumCheck = { name: `${tableName}_${col}_chk`, expression };
         checks.push(withDeclaredName(enumCheck, field));
@@ -1085,7 +1087,9 @@ function renderEquals(
     || whenField.subType === FIELD_SUBTYPE_DOUBLE || whenField.subType === FIELD_SUBTYPE_FLOAT
     || whenField.subType === FIELD_SUBTYPE_DECIMAL || whenField.subType === FIELD_SUBTYPE_CURRENCY;
   if (numeric && /^-?\d+(\.\d+)?$/.test(s)) return s;
-  return `'${s.replace(/'/g, "''")}'`;
+  // rc.21: a member of a @stringValueMap enum is compared as its stored string.
+  const stored = whenField.subType === FIELD_SUBTYPE_ENUM ? storedEnumValue(whenField, s) : s;
+  return `'${stored.replace(/'/g, "''")}'`;
 }
 
 /** Whether a validator or field.enum opts out of its CHECK (`@dbCheck: false`; ADR-0039 resolving).
@@ -1177,7 +1181,12 @@ function withCondition(
     if (field?.subType === FIELD_SUBTYPE_DURATION) return durationLiteralSql(field, value, dialect, "@condition");
     const intMap = field === undefined ? undefined : intValueMapOf(field);
     const n = intMap === undefined || typeof value !== "string" ? undefined : intMap[value];
-    return typeof n === "number" ? String(n) : undefined;
+    if (typeof n === "number") return String(n);
+    // rc.21: a member compared with a @stringValueMap enum is its stored string.
+    if (field !== undefined && typeof value === "string" && stringValueMapOf(field) !== undefined) {
+      return `'${storedEnumValue(field, value).replace(/'/g, "''")}'`;
+    }
+    return undefined;
   };
   const unless = renderExpressionSql(negateExpression(condition), column, dialect, stored);
   return { ...check, expression: `(${unless}) OR (${check.expression})` };
@@ -1560,6 +1569,9 @@ function buildColumn(
         );
       }
       col.default = { kind: "literal", value: String(mapped) };
+    } else if (field.subType === FIELD_SUBTYPE_ENUM && stringValueMapOf(field) !== undefined) {
+      // rc.21: a string-stored enum's @default names a member; the column holds its stored string.
+      col.default = { kind: "literal", value: storedEnumValue(field, defaultRaw) };
     } else {
       // #235: an EMPTY-string default (`@default: ""`) is a real literal default —
       // codegen emits `.default("")` and the DB gets `DEFAULT ''`, so dropping it here

@@ -77,7 +77,7 @@ import {
   type ReferenceLookup,
 } from "@metaobjectsdev/metadata";
 import { type MetaData, type MetaField, type MetaReferenceIdentity, type MetaRoot, type MetaSource, MetaObject } from "@metaobjectsdev/metadata";
-import { intValueMapOf } from "../enum-meta.js";
+import { enumStorageMapOf, type EnumStorageMap } from "../enum-meta.js";
 import {
   columnNameFromField,
   viewNameFromProjection,
@@ -259,7 +259,7 @@ function lowerFilterValue(
     return { kind: "colRef", ref: `${outer.alias}.${sourceColumnNameFor(other, ctx)}` } satisfies ColRef;
   }
   return encodeIntEnumFilterValue(
-    raw, op, field.subType === FIELD_SUBTYPE_ENUM ? intValueMapOf(field as MetaField) : undefined, key, where,
+    raw, op, field.subType === FIELD_SUBTYPE_ENUM ? enumStorageMapOf(field as MetaField) : undefined, key, where,
   );
 }
 
@@ -284,11 +284,12 @@ function originScope(
  * Own-only at either hop would silently emit the member symbol into an integer column
  * (ADR-0039).
  */
-function intEnumMapsOf(projection: MetaObject): ReadonlyMap<string, Record<string, number>> {
-  const out = new Map<string, Record<string, number>>();
+function intEnumMapsOf(projection: MetaObject): ReadonlyMap<string, EnumStorageMap> {
+  // rc.21: a @stringValueMap enum's stored strings take the same lowering.
+  const out = new Map<string, EnumStorageMap>();
   for (const f of projection.fields()) {
     if (f.subType !== FIELD_SUBTYPE_ENUM) continue;
-    const map = intValueMapOf(f);
+    const map = enumStorageMapOf(f);
     if (map !== undefined) out.set(f.name, map);
   }
   return out;
@@ -309,7 +310,7 @@ function intEnumMapsOf(projection: MetaObject): ReadonlyMap<string, Record<strin
 export function encodeIntEnumFilterValue(
   value: unknown,
   op: string,
-  intMap: Record<string, number> | undefined,
+  intMap: EnumStorageMap | undefined,
   fieldName: string,
   /** Names the filter being lowered, for the error text: the row-scope view @filter
    *  (`Projection P: view @filter`) or an aggregate's scoping filter
@@ -323,7 +324,7 @@ export function encodeIntEnumFilterValue(
   assertNoRelativeDate(value, `${host} on "${fieldName}"`);
   if (intMap === undefined) return value;
   if (op === FILTER_OP_IS_NULL) return value;
-  if (op === FILTER_OP_LIKE) {
+  if (op === FILTER_OP_LIKE && Object.values(intMap).some((n) => typeof n === "number")) {
     throw new Error(
       `${host} uses "like" on "${fieldName}", an ` +
         `int-backed field.enum (@intValueMap) — it stores as an integer column, so a ` +
@@ -333,10 +334,10 @@ export function encodeIntEnumFilterValue(
   const encode = (v: unknown): unknown => {
     if (typeof v !== "string") return v;
     const n = intMap[v];
-    if (typeof n !== "number") {
+    if (typeof n !== "number" && typeof n !== "string") {
       throw new Error(
         `${host} value "${v}" for "${fieldName}" has no ` +
-          `entry in @intValueMap.`,
+          `entry in @intValueMap / @stringValueMap.`,
       );
     }
     return n;
@@ -363,7 +364,7 @@ function resolveViewFilter(
   filter: unknown,
   columnsByField: ReadonlyMap<string, SelectColumn>,
   projectionName: string,
-  intMapsByField: ReadonlyMap<string, Record<string, number>>,
+  intMapsByField: ReadonlyMap<string, EnumStorageMap>,
   /** The field each key names (rc.19 `now` reads its type to lower a relative date). */
   fieldsByKey: ReadonlyMap<string, MetaData> = new Map(),
 ): ViewFilterClause | undefined {
@@ -1041,7 +1042,7 @@ export function tphScopeOf(entity: MetaObject, ctx: ExtractContext): TphScope | 
     if (pin === undefined) continue;
     const field = level.fields().find((f) => f.name === pin.fieldName);
     if (field === undefined) continue;
-    const map = field.subType === FIELD_SUBTYPE_ENUM ? intValueMapOf(field) : undefined;
+    const map = field.subType === FIELD_SUBTYPE_ENUM ? enumStorageMapOf(field) : undefined;
     column = sourceColumnNameFor(field, ctx);
     values.push(map?.[pin.value] ?? pin.value);
   }
@@ -1943,7 +1944,7 @@ export function extractViewSpec(
       const reached = (key: string, f: MetaField, entity: MetaObject, alias: string): void => {
         columnsByField.set(key, filterColumnFor(key, f, entity, alias, root, usedAliases, ctx, projection.name));
         fieldsByKey.set(key, f);
-        const map = f.subType === FIELD_SUBTYPE_ENUM ? intValueMapOf(f) : undefined;
+        const map = f.subType === FIELD_SUBTYPE_ENUM ? enumStorageMapOf(f) : undefined;
         if (map !== undefined) intMaps.set(key, map);
       };
       // I1: lazily — only the keys the filter names. Reaching every base field would inline (and

@@ -26,6 +26,7 @@ import {
 import type { MetaData } from "../shared/meta-data.js";
 import type { MetaObject } from "../core/object/meta-object.js";
 import { findReverseReferenceHops, reverseHopHint } from "../core/relationship/find-reference.js";
+import { storedEnumValues } from "../core/field/enum-storage.js";
 import { resolveFlattenedMember } from "../core/field/flattened-member.js";
 import { resolveFilterPath } from "../core/relationship/filter-path.js";
 import { effectiveProjectionFilter } from "../core/object/effective-projection-filter.js";
@@ -94,6 +95,7 @@ import {
   FIELD_SUBTYPE_BOOLEAN,
   FIELD_SUBTYPE_ENUM,
   FIELD_ATTR_INT_VALUE_MAP,
+  FIELD_ATTR_STRING_VALUE_MAP,
   FIELD_ATTR_MAX_LENGTH,
   FIELD_ATTR_VALUES,
   FIELD_SUBTYPE_OBJECT,
@@ -2125,7 +2127,7 @@ export function validateEnumMaxLength(root: MetaData): ParseError[] {
     }
   };
   const checkEnum = (field: MetaData): void => {
-    const declares = [FIELD_ATTR_MAX_LENGTH, FIELD_ATTR_VALUES, FIELD_ATTR_INT_VALUE_MAP]
+    const declares = [FIELD_ATTR_MAX_LENGTH, FIELD_ATTR_VALUES, FIELD_ATTR_INT_VALUE_MAP, FIELD_ATTR_STRING_VALUE_MAP]
       .some((a) => field.ownAttr(a) !== undefined);
     const maxLength = field.attr(FIELD_ATTR_MAX_LENGTH);
     if (!declares || typeof maxLength !== "number") return;
@@ -2138,13 +2140,13 @@ export function validateEnumMaxLength(root: MetaData): ParseError[] {
       ));
       return;
     }
-    const values = field.attr(FIELD_ATTR_VALUES);
-    const tooLong = (Array.isArray(values) ? values : [])
-      .filter((v): v is string => typeof v === "string" && v.length > maxLength)
+    // rc.21: the column holds each member's STORED string (@stringValueMap), so that is what must fit.
+    const tooLong = storedEnumValues(field)
+      .filter((v) => v.length > maxLength)
       .sort((a, b) => b.length - a.length);
     if (tooLong.length > 0) {
       errors.push(new ParseError(
-        `field.enum "${label}" @maxLength ${maxLength} is shorter than its member "${tooLong[0]}" (${tooLong[0]!.length} characters). Raise @maxLength to at least ${tooLong[0]!.length}, or shorten the member.`,
+        `field.enum "${label}" @maxLength ${maxLength} is shorter than its stored value "${tooLong[0]}" (${tooLong[0]!.length} characters). Raise @maxLength to at least ${tooLong[0]!.length}, or shorten the member.`,
         { code: "ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH", source: field.source },
       ));
     }

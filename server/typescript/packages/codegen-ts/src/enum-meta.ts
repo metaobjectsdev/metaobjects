@@ -3,7 +3,7 @@
 // extraction and the z.enum([...]) expression are derived in exactly one place.
 
 import type { MetaField } from "@metaobjectsdev/metadata";
-import { FIELD_ATTR_VALUES, FIELD_ATTR_INT_VALUE_MAP } from "@metaobjectsdev/metadata";
+import { FIELD_ATTR_VALUES, FIELD_ATTR_INT_VALUE_MAP, stringValueMapOf } from "@metaobjectsdev/metadata";
 
 /**
  * Effective enum member values (`@values`) for a field, as strings.
@@ -54,4 +54,15 @@ export function intValueForMember(
     throw new Error(`@intValueMap has no integer for member '${member}' (${context}).`);
   }
   return n;
+}
+
+/**
+ * rc.21 — member symbol → what the column stores, for an enum whose storage differs from its
+ * members: the `@intValueMap` integer, or the `@stringValueMap` string. Undefined when every member
+ * is its own stored string. For the lowerings (a view or report `@filter`, a TPH pin, a Cube
+ * dimension) that write a member into SQL.
+ */
+export type EnumStorageMap = Readonly<Record<string, number | string>>;
+export function enumStorageMapOf(field: MetaField): EnumStorageMap | undefined {
+  return intValueMapOf(field) ?? stringValueMapOf(field);
 }

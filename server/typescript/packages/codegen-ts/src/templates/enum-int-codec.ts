@@ -43,6 +43,7 @@ import type { EnumIntCustomType } from "../column-mapper.js";
 export function renderEnumIntCustomType(t: EnumIntCustomType, importModule: string): Code {
   const customTypeSym = imp(`customType@${importModule}`);
   const union = t.members.map((m) => JSON.stringify(m)).join(" | ");
+  if (t.storedByMember !== undefined) return renderStoredStringCodec(t, t.storedByMember, customTypeSym, union);
   const toEntries = t.members
     .map((m) => `${JSON.stringify(m)}: ${t.intByMember[m]}`)
     .join(", ");
@@ -137,6 +138,33 @@ const ${t.fnConstName} = ${customTypeSym}<{ data: (${union})[]; driverData: stri
       }
       return member;
     });
+  },
+});
+`;
+}
+
+/**
+ * rc.21 — the codec of a string-stored enum with `@stringValueMap`: the column (text, or the
+ * varchar(n) `meta migrate` creates) holds each member's stored string, the TS side the member.
+ * Encoded on bind and decoded on read at the column, exactly as the int-backed codec, so a filter
+ * comparison binds the stored string too. An unmapped stored string throws on read, for the reason
+ * the int codec's does.
+ */
+function renderStoredStringCodec(t: EnumIntCustomType, stored: Record<string, string>, customTypeSym: unknown, union: string): Code {
+  const toEntries = t.members.map((m) => `${JSON.stringify(m)}: ${JSON.stringify(stored[m])}`).join(", ");
+  const fromEntries = t.members.map((m) => `${JSON.stringify(stored[m])}: ${JSON.stringify(m)}`).join(", ");
+  return code`
+const ${t.toIntConstName} = { ${toEntries} } as const satisfies Record<${union}, string>;
+const ${t.fromIntConstName}: Record<string, ${union}> = { ${fromEntries} };
+const ${t.fnConstName} = ${customTypeSym}<{ data: ${union}; driverData: string }>({
+  dataType: () => ${JSON.stringify(t.dataType)},
+  toDriver: (value) => ${t.toIntConstName}[value],
+  fromDriver: (value) => {
+    const member = ${t.fromIntConstName}[value];
+    if (member === undefined) {
+      throw new Error(\`unmapped ${t.fnConstName} value: \${value}\`);
+    }
+    return member;
   },
 });
 `;

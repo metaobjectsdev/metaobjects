@@ -69,6 +69,20 @@
       "expression": "(\"level\" <> 2) OR (\"phone\" IS NOT NULL OR \"fax\" IS NOT NULL)"
     }
   ],
+  "feeds": [
+    {
+      "name": "feeds_status_chk",
+      "expression": "\"status\" IN ('pending', 'done', 'failed')"
+    },
+    {
+      "name": "feeds_error_reqwhen_chk",
+      "expression": "(\"status\" IS NOT 'failed') OR (\"error\" IS NOT NULL)"
+    },
+    {
+      "name": "feeds_done_at_cmp_chk",
+      "expression": "(\"status\" <> 'done') OR (\"done_at\" >= \"started_at\")"
+    }
+  ],
   "devices": [
     {
       "name": "devices_kind_chk",

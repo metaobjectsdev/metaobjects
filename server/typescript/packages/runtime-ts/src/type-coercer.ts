@@ -38,6 +38,8 @@ import {
   STORAGE_JSONB,
   STORAGE_FLATTENED,
   DB_COLUMN_TYPE_JSONB,
+  storedEnumValue,
+  stringValueMapOf,
 } from "@metaobjectsdev/metadata";
 import type { Dialect, Row } from "./persistence-driver.js";
 import { decimalFits, decimalToWire, parseDecimalInput } from "./decimal-wire.js";
@@ -47,7 +49,7 @@ import {
 
 export function coerceRowOnRead(entity: MetaData, row: Row, dialect: Dialect): Row {
   const hydrated = parseJsonTextArrays(entity, deserializeJsonbObjectFields(entity, row));
-  const decoded = canonicalizeDurations(entity, canonicalizeDecimals(entity, decodeIntBackedEnums(entity, hydrated)));
+  const decoded = canonicalizeDurations(entity, canonicalizeDecimals(entity, decodeStoredStringEnums(entity, decodeIntBackedEnums(entity, hydrated))));
   if (dialect !== "sqlite" && dialect !== "mysql") return decoded;
   return mapBooleansFromInt(entity, decoded);
 }
@@ -100,6 +102,48 @@ function encodeIntBackedEnum(intMap: Record<string, number>, value: unknown): un
  * null would hide the corruption behind a nullable column. Every port throws
  * here — the generated Drizzle `customType`'s `fromDriver` included.
  */
+/**
+ * rc.21 — a string-stored enum with `@stringValueMap` holds each member's stored string; the row
+ * read back carries the MEMBER. A stored string with no member throws, for the reason an unmapped
+ * integer does (the database holds a value the model does not describe). Scalar only: the loader
+ * refuses the attribute on an array enum.
+ */
+function decodeStoredStringEnums(entity: MetaData, row: Row): Row {
+  let out: Row | null = null;
+  // ADR-0039: resolving — the enum may be inherited from a base via extends.
+  for (const child of entity.children()) {
+    if (child.type !== TYPE_FIELD || child.subType !== FIELD_SUBTYPE_ENUM) continue;
+    const map = stringValueMapOf(child);
+    if (map === undefined || !(child.name in row)) continue;
+    const raw = row[child.name];
+    if (typeof raw !== "string") continue;
+    const member = Object.keys(map).find((k) => map[k] === raw);
+    if (member === undefined) {
+      throw new Error(
+        `field.enum '${child.name}' read stored value '${raw}' with no member in ` +
+          `@stringValueMap (declared: ${JSON.stringify(map)}) — the database holds a value the model does not describe.`,
+      );
+    }
+    out ??= { ...row };
+    out[child.name] = member;
+  }
+  return out ?? row;
+}
+
+/** rc.21 — the write side of {@link decodeStoredStringEnums}: member → stored string. */
+function encodeStoredStringEnums(entity: MetaData, row: Row): Row {
+  let out: Row | null = null;
+  for (const child of entity.children()) {
+    if (child.type !== TYPE_FIELD || child.subType !== FIELD_SUBTYPE_ENUM) continue;
+    if (stringValueMapOf(child) === undefined || !(child.name in row)) continue;
+    const raw = row[child.name];
+    if (typeof raw !== "string") continue;
+    out ??= { ...row };
+    out[child.name] = storedEnumValue(child, raw);
+  }
+  return out ?? row;
+}
+
 function decodeIntBackedEnums(entity: MetaData, row: Row): Row {
   let out: Row | null = null;
   // ADR-0039: resolving — an int-backed enum may be inherited from a base via extends.
@@ -204,7 +248,7 @@ export function coerceRowOnWrite(entity: MetaData, row: Row, dialect: Dialect): 
   // Dialect-independent: an int-backed enum's column is INTEGER on every dialect
   // (SQLite has one integer storage class), so the symbol→int encode is not gated
   // on the dialect the way the boolean mapping below is.
-  const encoded = encodeIntBackedEnums(entity, jsonbColumned);
+  const encoded = encodeStoredStringEnums(entity, encodeIntBackedEnums(entity, jsonbColumned));
   if (dialect === "mysql") return mapBooleansToInt(entity, isoTimestampsToDates(entity, encoded));
   if (dialect !== "sqlite") return encoded;
   return mapBooleansToInt(entity, encoded);
