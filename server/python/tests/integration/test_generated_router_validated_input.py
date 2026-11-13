@@ -4,9 +4,11 @@ The 1.2.0 router validated the request body against ``<Entity>Create`` / ``<Enti
 then passed the RAW body to the repository. Pydantic ignores a key a model does not declare, and
 the input models leave out the server-owned fields, so a client-sent ``id``, a ``readOnly`` field
 and a made-up ``isAdmin`` all reached the write. Now the repository receives only what the input
-model validated, at every depth, as with the TypeScript routes: a name the entity does not
-declare, a server-generated id, a ``readOnly`` field and the id on update are all dropped
-silently. None of them is a 400: a client that sends an extra harmless field keeps working.
+model validated, at every depth, as with the TypeScript routes: a server-generated id, a
+``readOnly`` field and the id on update are all dropped silently, never a 400. A top-level name
+the entity does not declare is the project's ``api.unknownFields`` setting: under ``drop`` it is
+dropped the same way, and under ``reject`` (the default) the route answers
+``400 {"error": "unknown_fields"}`` and hands the repository nothing.
 
 The model is generated with the real Python codegen (``run_gen``: entity + filter-allowlist +
 routes), the emitted package is imported unmodified, and the only hand-written piece is a
@@ -28,6 +30,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from metaobjects import MetaDataLoader
+from metaobjects.api_settings import UNKNOWN_FIELDS_DROP, UNKNOWN_FIELDS_REJECT, ApiSettings
 from metaobjects.codegen.config import GenConfig
 from metaobjects.codegen.generators.entity_model import entity_model
 from metaobjects.codegen.generators.filter_allowlist_generator import filter_allowlist_generator
@@ -102,12 +105,16 @@ class _RecordingRepo:
         return {self.pk: id, **dto}
 
 
-def _generate_package() -> str:
-    """Run the real Python codegen for ``_META`` into a temp package; return its name."""
+def _generate_package(unknown_fields: str) -> str:
+    """Run the real Python codegen for ``_META`` into a temp package; return its name.
+
+    *unknown_fields* is the project's ``api.unknownFields``, set on the loaded root the way
+    ``.metaobjects/config.json`` sets it."""
     meta_dir = Path(tempfile.mkdtemp(prefix="secfix-meta-"))
     (meta_dir / "meta.json").write_text(json.dumps(_META))
     loaded = MetaDataLoader.from_directory(str(meta_dir))
     assert not loaded.errors, "; ".join(f"{e.code}: {e.message}" for e in loaded.errors)
+    loaded.root.api = ApiSettings(unknown_fields=unknown_fields)
     pkg = f"secfix_{uuid.uuid4().hex[:8]}"
     root = Path(tempfile.mkdtemp(prefix="secfix-gen-"))
     run_gen(
@@ -119,11 +126,14 @@ def _generate_package() -> str:
     return pkg
 
 
-_PKG = _generate_package()
+_PKG = _generate_package(UNKNOWN_FIELDS_DROP)
+_REJECT_PKG = _generate_package(UNKNOWN_FIELDS_REJECT)
 
 
-def _client(router_module: str, pk: str) -> tuple[TestClient, _RecordingRepo, str]:
-    mod = importlib.import_module(f"{_PKG}.{router_module}")
+def _client(
+    router_module: str, pk: str, pkg: str = _PKG
+) -> tuple[TestClient, _RecordingRepo, str]:
+    mod = importlib.import_module(f"{pkg}.{router_module}")
     repo = _RecordingRepo(pk)
     app = FastAPI()
     app.include_router(mod.router)
@@ -134,6 +144,11 @@ def _client(router_module: str, pk: str) -> tuple[TestClient, _RecordingRepo, st
 @pytest.fixture()
 def member() -> tuple[TestClient, _RecordingRepo, str]:
     return _client("member_router", "id")
+
+
+@pytest.fixture()
+def member_reject() -> tuple[TestClient, _RecordingRepo, str]:
+    return _client("member_router", "id", _REJECT_PKG)
 
 
 @pytest.fixture()
@@ -176,6 +191,27 @@ def test_a_malformed_value_on_a_settable_field_is_still_a_400(member) -> None:
     assert resp.status_code == 400, resp.text
     assert _is_validation(resp.json())
     assert repo.writes == []
+
+
+# --- api.unknownFields: reject (the default) refuses an undeclared key and writes nothing ---
+
+
+@pytest.mark.parametrize("method", ["POST", "PATCH", "PUT"])
+def test_reject_refuses_an_undeclared_key_and_writes_nothing(member_reject, method: str) -> None:
+    client, repo, base = member_reject
+    url = base if method == "POST" else f"{base}/1"
+    resp = client.request(method, url, json={"name": "M", "isAdmin": True, "zeta": "x"})
+    assert resp.status_code == 400, resp.text
+    assert resp.json() == {"error": "unknown_fields", "fields": ["isAdmin", "zeta"]}
+    assert repo.writes == []
+
+
+def test_reject_still_drops_a_declared_server_owned_key(member_reject) -> None:
+    client, repo, base = member_reject
+    resp = client.post(base, json={"id": 999, "name": "Mallory"})
+    assert resp.status_code == 201, resp.text
+    [(_op, written)] = repo.writes
+    assert "id" not in written
 
 
 # --- declared but not settable: dropped, never 400'd, and never handed to the repository ----
@@ -261,25 +297,22 @@ def tph() -> tuple[TestClient, list[tuple[str, str, dict[str, Any]]]]:
     return TestClient(app), writes
 
 
-def test_tph_subtype_create_drops_the_client_id_and_an_undeclared_field(tph) -> None:
+def test_tph_subtype_create_drops_the_client_id(tph) -> None:
+    # An undeclared key under the default `reject` is pinned by tph-unknown-fields-rejected.
     client, writes = tph
-    resp = client.post(
-        "/api/auths/bridge", json={"id": 999, "reference": "R-1", "quantity": 2, "isAdmin": True}
-    )
+    resp = client.post("/api/auths/bridge", json={"id": 999, "reference": "R-1", "quantity": 2})
     assert resp.status_code == 201, resp.text
     [(op, subtype, written)] = writes
     assert (op, subtype) == ("create", "Bridge")
     assert "id" not in written
-    assert "isAdmin" not in written
     assert {"reference", "quantity"} <= set(written)
 
 
-def test_tph_subtype_update_drops_the_id_and_an_undeclared_field(tph) -> None:
+def test_tph_subtype_update_drops_the_id(tph) -> None:
     client, writes = tph
     # The store is unseeded, so the answer is a 404; what matters is what the write was handed.
-    client.patch("/api/auths/bridge/1", json={"id": 999, "quantity": 3, "isAdmin": True})
+    client.patch("/api/auths/bridge/1", json={"id": 999, "quantity": 3})
     [(op, subtype, written)] = writes
     assert (op, subtype) == ("update", "Bridge")
     assert "id" not in written
-    assert "isAdmin" not in written
     assert written["quantity"] == 3

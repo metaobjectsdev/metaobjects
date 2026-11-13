@@ -25,6 +25,9 @@ scenarios can tell the default page from the whole table and the cap from the ta
 - **Over the cap is refused, not clamped.** `?limit=5` answers
   `400 {"error": "limit_too_large", "maxLimit": 4}`, so a client that asked for more than the
   server serves is told so instead of receiving a short page it cannot tell from the end.
+- **A negative limit is refused.** `?limit=-1` answers `400 {"error": "pagination.invalid_value",
+  "param": "limit", "value": "-1", "expected": "a non-negative integer (0 or more)"}` rather than
+  reaching the store, where SQLite reads `LIMIT -1` as no limit at all.
 - **Paging past the default works.** `?offset=4` returns the one remaining row, and
   `?withCount=1` answers 2 rows with `total: 5`.
 
@@ -55,6 +58,7 @@ api-settings/
 └── scenarios/
     ├── default-page-size.yaml
     ├── limit-at-max.yaml
+    ├── limit-negative.yaml
     ├── limit-over-max.yaml
     ├── offset-pages-past-default.yaml
     ├── unknown-fields-dropped.yaml

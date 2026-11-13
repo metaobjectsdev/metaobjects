@@ -40,6 +40,10 @@ describe("unknownBodyKeys", () => {
   test("keys outside the known list, sorted", () => {
     expect(unknownBodyKeys({ title: "x", zeta: 1, isAdmin: true }, KNOWN)).toEqual(["isAdmin", "zeta"]);
   });
+  test("sorted by code point, not UTF-16 code unit", () => {
+    // U+FF5E < U+1F600 by code point; by UTF-16 unit the emoji's surrogate (D83D) sorts first.
+    expect(unknownBodyKeys({ "\u{1F600}": 1, "\uFF5E": 2, a: 3 }, KNOWN)).toEqual(["a", "\uFF5E", "\u{1F600}"]);
+  });
   test("a body that is not an object is left to validation", () => {
     expect(unknownBodyKeys([1, 2], KNOWN)).toEqual([]);
     expect(unknownBodyKeys("text", KNOWN)).toEqual([]);

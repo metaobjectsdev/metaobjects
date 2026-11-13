@@ -70,12 +70,22 @@ public class ValidationIssuesTests
     public void A_valid_object_records_nothing() => Assert.Empty(Run(new Doc { Name = "ok", Rank = 5 }));
 
     [Fact]
-    public void The_same_code_at_the_same_path_is_recorded_once()
+    public void A_type_error_at_one_path_is_recorded_once()
     {
         var issues = new ValidationIssues();
         issues.AddRequired("name");
-        issues.AddRequired("name");
+        issues.Add("invalid_type", "expected a string", "name");
         Assert.Equal(1, issues.Count);
+    }
+
+    [Fact]
+    public void Two_distinct_failures_of_one_rule_kind_on_one_field_are_both_recorded()
+    {
+        var issues = new ValidationIssues();
+        issues.Add("custom", "must start with a letter", "code");
+        issues.Add("custom", "must not contain spaces", "code");
+        issues.Add("custom", "must start with a letter", "code");
+        Assert.Equal(2, issues.Count);
     }
 
     private static (string Code, string Path) Json(string body)

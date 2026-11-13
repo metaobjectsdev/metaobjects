@@ -8,10 +8,16 @@
 //
 // Cross-port API contract conformed by the generated handlers
 // (see docs/features/api-contract.md):
-//   - GET list honours ?limit=N&offset=N pagination.
+//   - GET list honours ?limit=N&offset=N pagination. With `api.pagination` set, no limit
+//     takes `defaultLimit` and a limit above `maxLimit` is 400 { "error": "limit_too_large",
+//     "maxLimit": N }; without it, no limit returns every row.
 //   - GET list honours ?sort=<field>:asc|desc against a static SortAllowlist
 //     derived from the entity's scalar fields (case-insensitive lookup).
-//     Unknown field → 400 { "error": "validation", "message": ... }.
+//     Unknown field → 400 { "error": "invalid_sort", "field": ... }.
+//   - Create, PATCH and PUT: under `api.unknownFields: reject` (the default) a body key no
+//     field declares is 400 { "error": "unknown_fields", "fields": [...] } (UnknownFieldCheck);
+//     under `drop` it is ignored. A failed validation is 400 { "error": "validation",
+//     "issues": [{ code, path, message }, ...] } listing every issue (ValidationIssues).
 //   - GET list honours ?withCount=1 → switches the envelope from a bare row
 //     array to { rows, total }. The grid hook always sends withCount=1.
 //   - Update accepts BOTH PATCH and PUT (TS reference exposes both; we match).
@@ -1053,6 +1059,9 @@ public class RoutesGenerator : PerEntityGenerator
             return;
         }
         sb.AppendLine($"{indent}// api.pagination: no limit takes defaultLimit; a limit above maxLimit is refused.");
+        // A negative limit is refused with the malformed-bound envelope, as the TypeScript routes answer.
+        sb.AppendLine($"{indent}if (qs.TryGetValue(\"limit\", out var {limRaw}Neg) && long.TryParse({limRaw}Neg, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var {lim}Neg) && {lim}Neg < 0)");
+        sb.AppendLine($"{indent}    return Results.BadRequest(new {{ error = \"pagination.invalid_value\", param = \"limit\", value = {lim}Neg.ToString(System.Globalization.CultureInfo.InvariantCulture), expected = \"a non-negative integer (0 or more)\" }});");
         sb.AppendLine($"{indent}var __take = {page.DefaultLimit};");
         sb.AppendLine($"{indent}if (qs.TryGetValue(\"limit\", out var {limRaw}) && long.TryParse({limRaw}, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var {lim}) && {lim} > 0)");
         sb.AppendLine($"{indent}{{");

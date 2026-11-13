@@ -269,12 +269,17 @@ def value_error_issues(exc: ValueError) -> list[dict[str, Any]]:
 
 
 def validation_envelope(issues: list[dict[str, Any]]) -> dict[str, Any]:
-    """``{"error": "validation", "issues": [...]}`` -- the issues de-duplicated on
-    ``(path, code)``, so a rule reported twice (a required null the model also rejects) lists once."""
-    seen: set[tuple[str, str]] = set()
+    """``{"error": "validation", "issues": [...]}`` -- every issue, with repeats removed.
+
+    A value has one type, so ``invalid_type`` is listed once per path: that is how a required null
+    the model also rejects lists once. Any other code keeps each distinct message, so two
+    validators failing on one field are both listed."""
+    seen: set[tuple[str, str, str]] = set()
     unique: list[dict[str, Any]] = []
     for issue in issues:
-        key = (repr(issue["path"]), issue["code"])
+        code = issue["code"]
+        message = "" if code == "invalid_type" else str(issue.get("message", ""))
+        key = (repr(issue["path"]), code, message)
         if key not in seen:
             seen.add(key)
             unique.append(issue)

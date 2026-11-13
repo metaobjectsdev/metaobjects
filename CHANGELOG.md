@@ -59,7 +59,9 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   `"api": { "pagination": { "defaultLimit": 50, "maxLimit": 1000 } }` in
   `.metaobjects/config.json` and a generated entity or projection list with no `limit` answers
   the first `defaultLimit` rows, while an explicit `limit` above `maxLimit` answers
-  `400 {"error": "limit_too_large", "maxLimit": N}` (refused, not clamped). `meta init` writes
+  `400 {"error": "limit_too_large", "maxLimit": N}` (refused, not clamped); a negative `limit`
+  answers `400 pagination.invalid_value` in every port rather than reaching a store that reads
+  `LIMIT -1` as no limit. `meta init` writes
   that block for a new project. **A project without the setting behaves exactly as before**,
   because a cap added on upgrade would silently truncate a client that reads a whole list;
   each port's verify advises (rule `unbounded-list-pages`, never a failure) when a routes

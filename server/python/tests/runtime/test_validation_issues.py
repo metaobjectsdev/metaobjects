@@ -105,11 +105,20 @@ def test_unreadable_body_has_an_empty_path() -> None:
     assert issue["path"] == [] and issue["code"] == "invalid_type"
 
 
-def test_envelope_dedupes_on_path_and_code() -> None:
+def test_envelope_lists_one_type_error_per_path() -> None:
+    # A required null the model also rejects: one value, one type error.
     a = {"code": "invalid_type", "path": ["x"], "message": "one"}
     b = {"code": "invalid_type", "path": ["x"], "message": "two"}
     c = {"code": "too_big", "path": ["x"], "message": "three"}
     assert validation_envelope([a, b, c]) == {"error": "validation", "issues": [a, c]}
+
+
+def test_envelope_keeps_distinct_failures_of_one_rule_kind_on_one_field() -> None:
+    # Two validators on one field, both `custom`: the client must see both to fix both.
+    a = {"code": "custom", "path": ["x"], "message": "must start with a letter"}
+    b = {"code": "custom", "path": ["x"], "message": "must not contain spaces"}
+    repeat = dict(a)
+    assert validation_envelope([a, b, repeat]) == {"error": "validation", "issues": [a, b]}
 
 
 def test_decimal_failures_carry_a_wire_path_and_code() -> None:

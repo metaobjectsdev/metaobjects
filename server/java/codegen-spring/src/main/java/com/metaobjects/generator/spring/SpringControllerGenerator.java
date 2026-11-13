@@ -1811,12 +1811,19 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
      * The {@code actualLimit} line of a list handler: no {@code limit} reads the page default
      * (50 unless the project sets {@code api.pagination}), and a {@code limit} above
      * {@code api.pagination.maxLimit} is {@code 400 {"error": "limit_too_large", "maxLimit": N}}.
+     * Under {@code api.pagination} a negative {@code limit} is refused with the malformed-bound
+     * envelope, as the TypeScript routes refuse it, so it never reaches a store that reads
+     * {@code LIMIT -1} as no limit (SQLite) and steps around the cap.
      */
     private static void appendLimit(StringBuilder src, ApiSettings.Pagination page) {
         if (page == null) {
             src.append("        int actualLimit = limit != null ? limit : 50;\n");
             return;
         }
+        src.append("        if (limit != null && limit < 0) {\n");
+        src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", \"pagination.invalid_value\", \"param\", \"limit\", ")
+           .append("\"value\", String.valueOf(limit), \"expected\", \"a non-negative integer (0 or more)\"));\n");
+        src.append("        }\n");
         src.append("        if (limit != null && limit > ").append(page.maxLimit()).append(") {\n");
         src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", \"limit_too_large\", \"maxLimit\", ")
            .append(page.maxLimit()).append("));\n");

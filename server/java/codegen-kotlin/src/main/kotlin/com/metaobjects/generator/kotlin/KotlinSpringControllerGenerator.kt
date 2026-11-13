@@ -144,9 +144,14 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         append("        if (unknownKeys != null) return@transaction ResponseEntity.badRequest().body(unknownKeys as Any)\n")
     }
 
-    /** The refusal of a `limit` above `api.pagination.maxLimit`, at the head of a list handler. */
+    /**
+     * The refusal of a `limit` above `api.pagination.maxLimit`, at the head of a list handler, and
+     * of a negative one (the malformed-bound envelope, as the TypeScript routes answer), so a
+     * `LIMIT -1` never reaches a store that reads it as no limit (SQLite) and steps around the cap.
+     */
     private fun StringBuilder.appendLimitGuard() {
         val page = apiSettings.pagination() ?: return
+        append("        if (limit != null && limit < 0) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"pagination.invalid_value\", \"param\" to \"limit\", \"value\" to limit.toString(), \"expected\" to \"a non-negative integer (0 or more)\") as Any)\n")
         append("        if (limit != null && limit > ${page.maxLimit()}L) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"limit_too_large\", \"maxLimit\" to ${page.maxLimit()}L) as Any)\n")
     }
 

@@ -51,10 +51,12 @@ public sealed class ValidationIssues
         return issues.ToResult();
     }
 
-    /// <summary>Record an issue; the same code at the same path is recorded once.</summary>
+    /// <summary>Record an issue. A value has one type, so <c>invalid_type</c> is recorded once per path;
+    /// any other code is recorded once per distinct message, so two rules failing on one field both list.</summary>
     public void Add(string code, string message, params object[] path)
     {
-        if (!_seen.Add(code + "|" + JsonSerializer.Serialize(path))) return;
+        var key = code + "|" + JsonSerializer.Serialize(path) + (code == "invalid_type" ? "" : "|" + message);
+        if (!_seen.Add(key)) return;
         _issues.Add(new Dictionary<string, object?> { ["code"] = code, ["path"] = path.ToList(), ["message"] = message });
     }
 

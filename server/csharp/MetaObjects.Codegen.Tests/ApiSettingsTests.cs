@@ -4,6 +4,9 @@
 
 using MetaObjects.Codegen;
 using MetaObjects.Codegen.Generators;
+using MetaObjects.Codegen.Runtime;
+using Microsoft.AspNetCore.Http;
+using System.Text.Json;
 using MetaObjects.Config;
 using MetaObjects.Loader;
 using MetaObjects.Meta;
@@ -94,5 +97,30 @@ public class ApiSettingsTests
         Assert.DoesNotContain("KnownFields", src);
         Assert.Contains("limit_too_large", src);
         Assert.Contains("var __take = 2;", src);
+    }
+
+    [Fact]
+    public void Unknown_keys_are_listed_once_each_in_code_point_order()
+    {
+        // U+FF5E < U+1F600 by code point; StringComparer.Ordinal (UTF-16 units) puts the emoji first.
+        using var doc = JsonDocument.Parse("{\"\\ud83d\\ude00\": 1, \"\\uff5e\": 2, \"a\": 3, \"title\": 4}");
+        var result = UnknownFieldCheck.Reject(doc.RootElement, new HashSet<string> { "title" });
+        var value = Assert.IsAssignableFrom<IValueHttpResult>(result).Value;
+        var body = JsonSerializer.SerializeToElement(value);
+        Assert.Equal("unknown_fields", body.GetProperty("error").GetString());
+        Assert.Equal(
+            new[] { "a", "\uff5e", "\ud83d\ude00" },
+            body.GetProperty("fields").EnumerateArray().Select(e => e.GetString()).ToArray());
+        Assert.Equal(400, Assert.IsAssignableFrom<IStatusCodeHttpResult>(result).StatusCode);
+    }
+
+    [Fact]
+    public void A_body_that_is_not_an_object_or_has_only_declared_keys_is_not_refused()
+    {
+        var known = new HashSet<string> { "id", "title" };
+        using var array = JsonDocument.Parse("[1, 2]");
+        using var declared = JsonDocument.Parse("{\"id\": 9, \"title\": \"x\"}");
+        Assert.Null(UnknownFieldCheck.Reject(array.RootElement, known));
+        Assert.Null(UnknownFieldCheck.Reject(declared.RootElement, known));
     }
 }

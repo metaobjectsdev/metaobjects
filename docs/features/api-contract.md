@@ -284,7 +284,9 @@ each handler they register instead; an `HTTPException` is rethrown to your
   `defaultLimit` rows, and an explicit `limit` above `maxLimit` answers
   `400 { "error": "limit_too_large", "maxLimit": N }`. The request is refused, not clamped:
   a client that asked for more than the server serves is told so rather than handed a short page
-  it cannot tell from the end of the list. `offset` and `withCount=1` page past the default as
+  it cannot tell from the end of the list. A negative `limit` answers the malformed-bound
+  envelope above (`pagination.invalid_value`) in every port, so it never reaches a store that
+  reads `LIMIT -1` as no limit (SQLite). `offset` and `withCount=1` page past the default as
   usual, with `total` counting every row. `meta init` writes the block above for a new project;
   both sizes must be positive integers and `defaultLimit` may not exceed `maxLimit`. A report
   keeps its own row cap (above) and an opaque view its 1000, whatever the setting says.

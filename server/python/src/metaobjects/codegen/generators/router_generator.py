@@ -235,10 +235,23 @@ def _known_fields_lines(entities: list[MetaObject]) -> list[str]:
 def _list_limit_lines(page: ApiPagination | None) -> list[str]:
     """The limit handling at the top of a list handler body. With no ``api.pagination`` it is the
     historic default of 50 and no cap; with one, the project's default page and a refusal above
-    the cap (not a clamp: the client is told it asked for more than the server serves)."""
+    the cap (not a clamp: the client is told it asked for more than the server serves). A
+    negative limit is refused too, as the TypeScript routes refuse it, so it never reaches a
+    store that reads ``LIMIT -1`` as "no limit" (SQLite)."""
     if page is None:
         return ["    actual_limit = limit if limit is not None else 50"]
+    expected = "a non-negative integer (0 or more)"
     return [
+        "    if limit is not None and limit < 0:",
+        "        return JSONResponse(",
+        "            status_code=400,",
+        "            content={",
+        '                "error": "pagination.invalid_value",',
+        '                "param": "limit",',
+        '                "value": str(limit),',
+        f'                "expected": "{expected}",',
+        "            },",
+        "        )",
         f"    if limit is not None and limit > {page.max_limit}:",
         f'        return JSONResponse(status_code=400, content={{"error": "limit_too_large", "maxLimit": {page.max_limit}}})',
         f"    actual_limit = limit if limit is not None else {page.default_limit}",
