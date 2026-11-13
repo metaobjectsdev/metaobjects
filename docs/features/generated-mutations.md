@@ -43,8 +43,7 @@ but the semantics are one contract — call them **PATCH-1..7** (FR-035):
   is additionally deleted by hand after parse, the same convention. A malformed
   *value* on a settable key is still `400 {"error":"validation"}`. A key the entity
   does not declare at all is dropped the same way. The Python routes hand the
-  repository only the keys their input model validated; before 1.2.1 they handed it
-  the raw body.
+  repository only the keys their input model validated.
   This matters for `writeOnce` specifically: the generated edit form submits EVERY
   registered field (`handleSubmit` passes all values, and 0.19.2 switched the
   resolver to `UpdateSchema` on edit rather than diff-and-omit), so rejecting a
@@ -112,10 +111,10 @@ repo.patch(id) { it[Authors.bio] = "…" }     // touches only what you set
 the controller binds the partial JSON body via `<Entity>Patch.fromJson` (presence-tracked)
 and delegates to `repository.patch`, so an omitted key is never written.
 
-**Python** — the generated FastAPI route binds the raw JSON body (the set of
-*present* keys — the tristate signal) and validates the present values against the
-generated `<Entity>Patch` model before delegating to the runtime `update`, which
-`SET`s only those keys.
+**Python** — the generated FastAPI route binds the JSON body (the set of
+*present* keys — the tristate signal), validates the present values against the
+generated `<Entity>Patch` model, and hands the repository only the keys that model
+validated. The runtime `update` then `SET`s only those keys.
 
 **C#** — the generated route runs a per-field merge loop over the present JSON keys
 (the app's configured `JsonSerializerOptions`), writing only the columns the body
