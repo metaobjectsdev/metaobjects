@@ -47,6 +47,7 @@ export async function subscriberRoutes(fastify: FastifyInstance) {
         filterAllowlist: SubscriberFilterAllowlist,
         sortAllowlist: SubscriberSortAllowlist,
         dialect: "sqlite",
+        knownFields: ["id", "email", "name", "status", "createdAt"],
       });
     },
     { prefix: "/api" },

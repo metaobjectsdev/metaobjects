@@ -23,6 +23,7 @@ from metaobjects.codegen.runtime.constraint_errors import (
     classify_constraint_error,
     pydantic_issues,
     required_null_issues,
+    unknown_body_keys,
     unreadable_body_issues,
     validation_envelope,
     value_error_issues,
@@ -118,6 +119,17 @@ def _validated_value(valid: Any, raw: Any) -> Any:
 
 
 _FROZEN_FIELDS: frozenset[str] = frozenset()
+
+
+_KNOWN_FIELDS: frozenset[str] = frozenset(
+    {
+        "id",
+        "email",
+        "name",
+        "status",
+        "createdAt",
+    }
+)
 
 
 def _parse_sort(raw: str) -> _SortClause | None:
@@ -217,6 +229,11 @@ def create_subscriber(
         return JSONResponse(
             status_code=400, content=validation_envelope(unreadable_body_issues())
         )
+    _unknown = unknown_body_keys(dto, _KNOWN_FIELDS)
+    if _unknown:
+        return JSONResponse(
+            status_code=400, content={"error": "unknown_fields", "fields": _unknown}
+        )
     try:
         dto = coerce_decimal_fields(
             dto, _DECIMAL_FIELDS, _DECIMAL_LIMITS, _NESTED_DECIMALS
@@ -261,6 +278,11 @@ def update_subscriber(
     ):  # the body was not a JSON object: the cross-port 400, not FastAPI's 422
         return JSONResponse(
             status_code=400, content=validation_envelope(unreadable_body_issues())
+        )
+    _unknown = unknown_body_keys(dto, _KNOWN_FIELDS)
+    if _unknown:
+        return JSONResponse(
+            status_code=400, content={"error": "unknown_fields", "fields": _unknown}
         )
     try:
         dto = coerce_decimal_fields(

@@ -24,6 +24,16 @@ public static class SubscriberRoutes
     {
     };
 
+    // api.unknownFields: reject — the declared field names (wire spelling); any other body key is a 400.
+    private static readonly System.Collections.Generic.HashSet<string> KnownFields = new(System.StringComparer.Ordinal)
+    {
+        "createdAt",
+        "email",
+        "id",
+        "name",
+        "status",
+    };
+
     /// <summary>Maps <c>Subscriber</c> REST routes. Unauthenticated — see remarks.</summary>
     /// <remarks>
     /// These endpoints are unauthenticated. Guard them by mapping on a group that requires
@@ -91,6 +101,7 @@ public static class SubscriberRoutes
             using var __bodyScope = __body;
             if (__body.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object)
                 return ValidationIssues.Unreadable();
+            if (UnknownFieldCheck.Reject(__body.RootElement, KnownFields) is { } __unknown) return __unknown;
             var __issues = new ValidationIssues();
             var __present = new System.Collections.Generic.HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
             foreach (var __p in __body.RootElement.EnumerateObject())
@@ -128,6 +139,7 @@ public static class SubscriberRoutes
             catch (System.Text.Json.JsonException) { return ValidationIssues.Unreadable(); }
             using var bodyScope = body;
             if (body.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object) return ValidationIssues.Unreadable();
+            if (UnknownFieldCheck.Reject(body.RootElement, KnownFields) is { } __unknown) return __unknown;
             // Deserialize each value with the app's CONFIGURED JSON options, not defaults —
             // a field.timestamp binds to DateTimeOffset via a custom converter registered on
             // ConfigureHttpJsonOptions, and default options cannot read the wire format, throwing 500.
