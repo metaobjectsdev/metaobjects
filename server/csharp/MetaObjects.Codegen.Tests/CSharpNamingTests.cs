@@ -428,17 +428,48 @@ public class CSharpNamingTests
         Assert.Contains($"\"{bad}\"", ex.Message);
     }
 
-    // Two objects that map to one table are EF's to refuse (at model build), not the generator's:
-    // the generator claims only what it emits, a DbSet property per name.
+    // One context, one relation per (schema, name). Two objects that map to one table would
+    // silently share it; the DbSet rule no longer catches them once @collectionName splits the
+    // property names.
     [Theory]
     [InlineData("billing")]
     [InlineData(null)]
-    public void Two_objects_mapping_one_relation_in_one_context_are_left_to_the_model_build(string? schema)
+    public void Two_objects_mapping_one_relation_in_one_context_are_refused_naming_both(string? schema)
     {
         var root = PackagedObjects(
             new("enterprise", "Payer", false, true, schema, DbSetName: "EnterprisePayers"),
             new("core", "Payer", false, true, schema));
-        Assert.Single(Run(new DbContextGenerator(), root));
+        var ex = Assert.Throws<InvalidOperationException>(() => Run(new DbContextGenerator(), root));
+        Assert.Contains("ERR_DUPLICATE_SQL_NAME", ex.Message);
+        Assert.Contains("\"enterprise::Payer\"", ex.Message);
+        Assert.Contains("\"core::Payer\"", ex.Message);
+        Assert.Contains(schema is null ? "\"payers\"" : "\"billing.payers\"", ex.Message);
+    }
+
+    [Fact]
+    public void Two_objects_mapping_one_routine_in_one_context_are_refused_naming_both()
+    {
+        const string json = """
+            { "metadata.root": { "package": "acme", "children": [
+              { "object.entity": { "name": "Alpha", "children": [
+                { "source.rdb": { "@role": "primary", "@kind": "table", "@table": "alphas" } },
+                { "source.rdb": { "@role": "replica", "@kind": "storedProc", "@proc": "refresh_totals" } },
+                { "field.long": { "name": "id" } },
+                { "identity.primary": { "@fields": "id" } } ] } },
+              { "object.entity": { "name": "Beta", "children": [
+                { "source.rdb": { "@role": "primary", "@kind": "table", "@table": "betas" } },
+                { "source.rdb": { "@role": "replica", "@kind": "storedProc", "@proc": "refresh_totals" } },
+                { "field.long": { "name": "id" } },
+                { "identity.primary": { "@fields": "id" } } ] } }
+            ] } }
+            """;
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(json, id: "routine.json")]);
+        Assert.Empty(r.Errors);
+        var ex = Assert.Throws<InvalidOperationException>(() => Run(new DbContextGenerator(), r.Root));
+        Assert.Contains("ERR_DUPLICATE_SQL_NAME", ex.Message);
+        Assert.Contains("acme::Alpha", ex.Message);
+        Assert.Contains("acme::Beta", ex.Message);
+        Assert.Contains("refresh_totals", ex.Message);
     }
 
     [Fact]

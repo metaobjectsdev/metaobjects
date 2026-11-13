@@ -98,8 +98,7 @@ public class DbContextGenerator : IGenerator
             .ToList();
         if (objects.Count == 0) return [];
         // One context, one property per name (CS0102 otherwise), claimed as emitted: an object
-        // that gets no DbSet here never takes part. Two objects on one table are EF's to refuse
-        // (it does, at model build), not this generator's.
+        // that gets no DbSet here never takes part.
         var dbSets = $"the DbSet properties of the context of {Name} entry {ctx.EntryLabel(this)}";
         foreach (var o in objects)
         {
@@ -107,6 +106,7 @@ public class DbContextGenerator : IGenerator
             if (o.IsWriteThrough())
                 ctx.Claim(dbSets, CSharpNaming.ViewDbSetName(o), o.ResolutionKey(), "rename one, or set @collectionName on one of them", NameClaims.ERR_COLLECTION_NAME_COLLISION);
         }
+        ClaimPhysicalAddresses(objects, ctx);
 
         // OnModelCreating body lines (8-space indented), in a stable order.
         var modelLines = new List<string>();
@@ -866,6 +866,48 @@ public class DbContextGenerator : IGenerator
             return [];
         }
         return [$"{lhs}.HasDefaultValueSql(\"{CSharpNaming.CSharpStringLiteral(sql)}\");"];
+    }
+
+    /// <summary>
+    /// Refuse two objects of one context that resolve to one physical address: the same name
+    /// in the same <c>@schema</c> (no schema is the dialect's default, one address too). Tables,
+    /// views and materialized views share one namespace, as PostgreSQL's relations do; stored
+    /// procedures and table functions share another. The same name in two schemas is two
+    /// addresses. Claimed for every source the object maps (a write-through's table and view),
+    /// resolved through the names artifact's own resolution, so a default table name counts.
+    /// An object that extends another and inherits its source is one EF hierarchy over that
+    /// table, not a second claim on it.
+    /// </summary>
+    private void ClaimPhysicalAddresses(IReadOnlyList<MetaObject> objects, GenContext ctx)
+    {
+        static bool Extends(MetaObject sub, MetaObject super)
+        {
+            for (var s = sub.SuperData; s is not null; s = s.SuperData)
+                if (ReferenceEquals(s, super)) return true;
+            return false;
+        }
+        var entry = ctx.EntryLabel(this);
+        var addresses = new List<(MetaObject Owner, string Scope, string Address)>();
+        foreach (var o in objects)
+        {
+            if (CSharpNaming.ResolveObjectNames(o, ctx.Config.ColumnNamingStrategy) is not { } names) continue;
+            foreach (var src in names.Sources.Values)
+            {
+                if (src.PhysicalName is not { Length: > 0 } physical) continue;
+                var routine = src.Kind is MetaObjects.Persistence.Source.SourceConstants.SOURCE_KIND_STORED_PROC
+                    or MetaObjects.Persistence.Source.SourceConstants.SOURCE_KIND_TABLE_FUNCTION;
+                var scope = $"the {(routine ? "routines" : "relations")} of the context of {Name} entry {entry}";
+                var address = (src.Schema is { Length: > 0 } schema ? schema + "." : "") + physical;
+                addresses.Add((o, scope, address));
+            }
+        }
+        foreach (var (owner, scope, address) in addresses)
+        {
+            if (addresses.Any(a => a.Scope == scope && a.Address == address && Extends(owner, a.Owner))) continue;
+            ctx.Claim(scope, address, owner.ResolutionKey(),
+                "rename one (its source @table / @view / physical name), or give one its own @schema",
+                "ERR_DUPLICATE_SQL_NAME");
+        }
     }
 
     /// <summary>

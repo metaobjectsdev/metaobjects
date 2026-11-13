@@ -39,7 +39,7 @@ class GenConfig:
     # "flat" (the default: every generated module in the out dir) or "package" (a per-object
     # module lands in a subpackage directory keyed by its METADATA package, ``acme::alpha`` ->
     # ``acme/alpha/``). Anything else is REFUSED in __post_init__. The CLI fills it from the
-    # ``output_layout`` key of the ``python`` block in ``.metaobjects/config.json``; every
+    # top-level ``outputLayout`` key of ``metaobjects.config.yaml``; every
     # path and every relative import goes through ``codegen/import_path.py``.
     output_layout: str = "flat"
     # Python ALWAYS emits the abstract base model — concretes subclass it. Suppression

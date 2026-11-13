@@ -768,8 +768,7 @@ Each item below is described in full under Added, Changed or Fixed; this list is
   names it emits (a type per namespace, a file per output path, a DbSet per context, a route segment
   per routes entry, a finder per class); a second claimant is refused with `ERR_NAME_COLLISION`,
   naming both and the remedy. The package-qualified value-object rename and its
-  `ERR_PAYLOAD_NAME_COLLISION` are gone. The check that refused two objects mapping one table in
-  one context is removed: EF's own model build reports it, naming both entity types.
+  `ERR_PAYLOAD_NAME_COLLISION` are gone.
 - **TypeScript and Python: two shared enums with one name are `ERR_NAME_COLLISION`.** Every shared
   enum is generated into one module under its own name, so a second `Tier` from another package
   was dropped and its fields typed with the first one's members. The pair is now refused, naming

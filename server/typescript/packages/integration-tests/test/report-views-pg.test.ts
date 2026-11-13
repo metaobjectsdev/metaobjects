@@ -204,7 +204,8 @@ describe("report views — canonical model on real Postgres", () => {
   }, 60_000);
 
   // -------------------------------------------------------------------------
-  // Join type: the existing #209 rule, unchanged.
+  // Join type: every view join is LEFT OUTER now (a base row is never dropped, #209's
+  // INNER-for-required-FK rule superseded), so a dangling parent cannot silently vanish a row.
   // -------------------------------------------------------------------------
 
   test("JOIN TYPE: Week.fkProgram is a required belongs-to, and v_program_minutes still joins programs LEFT OUTER", () => {

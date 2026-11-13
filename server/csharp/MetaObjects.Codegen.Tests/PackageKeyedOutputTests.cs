@@ -18,7 +18,7 @@ public sealed class PackageKeyedOutputTests
       { "field.enum": { "name": "Tier", "abstract": true, "@values": ["GOLD", "SILVER"], "@intValueMap": { "GOLD": 1, "SILVER": 2 }, "@description": "A service tier." } },
       { "object.value": { "name": "Contact", "children": [ { "field.string": { "name": "email" } } ] } },
       { "object.entity": { "name": "Account", {{{(collection.Length > 0 ? $"\"@collectionName\": \"{collection}Accounts\", " : "")}}} "children": [
-        { "source.rdb": { "@table": "accounts" } },
+        { "source.rdb": { "@table": "accounts", "@schema": "{{{pkg.Split("::")[^1]}}}" } },
         { "field.long": { "name": "id" } },
         { "field.string": { "name": "name" } },
         { "field.enum": { "name": "tier", "extends": "{{{pkg}}}::Tier" } },
@@ -26,7 +26,7 @@ public sealed class PackageKeyedOutputTests
         { "identity.primary": { "@fields": "id" } }
       ]}},
       { "object.entity": { "name": "Invoice", {{{(collection.Length > 0 ? $"\"@collectionName\": \"{collection}Invoices\", " : "")}}} "children": [
-        { "source.rdb": { "@table": "invoices" } },
+        { "source.rdb": { "@table": "invoices", "@schema": "{{{pkg.Split("::")[^1]}}}" } },
         { "field.long": { "name": "id" } },
         { "field.long": { "name": "accountId" } },
         { "identity.primary": { "@fields": "id" } },
