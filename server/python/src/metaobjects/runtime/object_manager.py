@@ -1222,17 +1222,18 @@ def _coerce_write_value(field: MetaField, value: Any, *, for_filter: bool = Fals
                 return [_encode_enum_member(int_map, v) for v in value]
             return _encode_enum_member(int_map, value)
         # rc.21: a @stringValueMap enum stores the member's string (scalar only; the
-        # loader refuses it on an array). An unmapped member passes through, as above.
+        # loader refuses it on an array).
         stored_map = _string_value_map(field)
         if stored_map is not None and isinstance(value, str):
-            if value in stored_map or for_filter:
-                # A filter on a member that does not exist matches nothing, honestly.
-                return stored_map.get(value, value)
-            # Written, an unmapped member raises (rc.21 ruling, every port): no CHECK need hold
-            # behind it (@dbCheck: false), and storing the symbol would write a spelling the
-            # column does not hold.
+            if value in stored_map:
+                return stored_map[value]
+            # An unmapped member raises, written or filtered (rc.21 rulings, every port). Written:
+            # no CHECK need hold behind it (@dbCheck: false), and storing the symbol would write a
+            # spelling the column does not hold. Filtered: passed through, the symbol could equal
+            # ANOTHER member's stored string and match that member's rows.
+            verb = "filter on" if for_filter else "write"
             raise ValueError(
-                f"field.enum '{field.name}' cannot write {value!r}: it has no stored string in "
+                f"field.enum '{field.name}' cannot {verb} {value!r}: it has no stored string in "
                 f"@{fc.FIELD_ATTR_STRING_VALUE_MAP} — the value is not one of the members the model declares."
             )
 

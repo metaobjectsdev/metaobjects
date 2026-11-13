@@ -40,8 +40,12 @@ vocabulary; upgrade every port together.
   `fromDbValue(String)`, for a hand-written repository, a shared declaration included); and by the
   Python ObjectManager. A view-backed report's row carries it from its type source, in every
   port. A stored string that maps to no member throws on read, and a member with no stored string
-  throws on write, in every port (the map is total, so only a value outside `@values` can reach
-  that). `metamodelVersion` stays
+  throws on write and in a runtime filter, in every port (the map is total, so only a value outside
+  `@values` can reach that). Ruling (rc.21 part B, N4): a filter does not pass such a member
+  through to match nothing, as an `@intValueMap` symbol does, because a passed-through symbol can
+  equal another member's stored string and match that member's rows; the TypeScript runtime and
+  Python now refuse it, as the Java OMDB bind and the Drizzle codec already did (C# and Kotlin
+  have no value outside the enum). `metamodelVersion` stays
   `1.3`: the addition lands in the same unreleased minor. Fixtures
   `fixtures/conformance/enum-string-value-map` and four `error-enum-stringvaluemap-*`; the shared
   CHECK corpus gains `input/meta.stored.json`.
@@ -591,7 +595,10 @@ vocabulary; upgrade every port together.
   b.HasOne<Country>(<that navigation's name, or null>)…)`): its only navigation to the target,
   whatever its name (`HomeCountry` over `CountryId` too); with several, the one whose foreign key
   is these properties, and with none of those the model build throws, naming the owner; with none,
-  navigation-less. One foreign key, no shadow column, and `@onDelete` / `@constraintName` land on it.
+  navigation-less. When the entity declares a second reference from the same owned member to the
+  same target, codegen emits only the foreign-key match: a sole navigation may be the other
+  reference's, so this one takes the navigation over its own properties or none (rc.21 part B,
+  N3). One foreign key, no shadow column, and `@onDelete` / `@constraintName` land on it.
   Generated output changes for every reference over a flattened member.
 
 - **Breaking, TypeScript and C#: `<Entity>Names` has no entry for a derived field with no column
@@ -651,10 +658,17 @@ vocabulary; upgrade every port together.
   pattern) each get their own, guarded by their discriminator values and named
   `<table>_<declarer>_<col>_…`; identical ones share one. A subtype's cross-field validator is
   guarded by the discriminator, as an `@condition` ANDed with its own, listing every concrete
-  subtype it reaches, and its default name carries its declarer. Two different CHECKs under one
-  name on a table (a pre-existing hazard too: two comparisons with one left field) are now refused
-  when the schema is built, naming both, instead of a CREATE TABLE the database refuses. The Drizzle schema already declared the
-  subtype enum CHECKs, so the two now agree. Pinned by `input/meta.tph.json` in the shared CHECK
+  subtype it reaches, and its default name carries its declarer. On Postgres a declarer-qualified
+  default name longer than 63 bytes keeps its first 54 bytes plus `_` and 8 hex digits of its
+  SHA-256 (the same spelling in `meta migrate`, Drizzle and C#), so Postgres never truncates it.
+  Two different CHECKs under one name on a table (a pre-existing hazard too: two comparisons with
+  one left field) are refused where the database requires unique names: on Postgres, by `meta
+  migrate`, `meta verify --db`, Drizzle and C#, naming both, instead of a CREATE TABLE the database
+  refuses. SQLite and D1 accept and enforce both (probed on SQLite 3.51 and Miniflare's D1), so
+  `meta migrate` and Drizzle keep both there, a declared `@constraintName` included, and the
+  SQLite CHECK diff now matches a name to a list so it converges. C# refuses the pair on every
+  dialect: EF Core keys a check constraint by name and would keep only the last (verified on EF
+  Core 8.0.18). The Drizzle schema already declared the subtype enum CHECKs, so the two now agree. Pinned by `input/meta.tph.json` in the shared CHECK
   corpus. **Upgrade note:** the next `meta migrate` (or EF migration) adds these CHECKs to an
   existing TPH table; a legacy row outside a rule needs `@dbCheck: false` on that node first.
 

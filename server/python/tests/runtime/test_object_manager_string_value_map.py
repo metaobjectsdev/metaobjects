@@ -39,9 +39,13 @@ def test_an_unmapped_stored_string_raises() -> None:
         _decode_read_value(_status(), "lost")
 
 
-def test_writing_an_unmapped_member_raises_but_a_filter_passes_it_through() -> None:
+def test_an_unmapped_member_raises_written_or_filtered() -> None:
+    # rc.21 part B (N4): a filter on an unmapped member raises, as a write does, in every port —
+    # passed through, the symbol could equal another member's stored string.
     from metaobjects.runtime.object_manager import _coerce_filter_value
     field = _status()
-    with pytest.raises(ValueError, match="no stored string in @stringValueMap"):
+    with pytest.raises(ValueError, match="cannot write 'Archived': it has no stored string in @stringValueMap"):
         _coerce_write_value(field, "Archived")
-    assert _coerce_filter_value(field, "Archived") == "Archived"
+    with pytest.raises(ValueError, match="cannot filter on 'Archived': it has no stored string in @stringValueMap"):
+        _coerce_filter_value(field, "Archived")
+    assert _coerce_filter_value(field, "Draft") == "draft"

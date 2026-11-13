@@ -185,9 +185,19 @@ function encodeFilterValue<T>(field: MetaData, value: T, dialect?: Dialect): T {
     if (dialect === "memory") return micros as T;
     return formatDuration(micros) as T;
   }
-  // rc.21: a @stringValueMap enum is compared as the member's stored string.
-  if (field.subType === FIELD_SUBTYPE_ENUM && typeof value === "string" && stringValueMapOf(field) !== undefined) {
-    return storedEnumValue(field, value) as T;
+  // rc.21: a @stringValueMap enum is compared as the member's stored string. Unlike an
+  // @intValueMap symbol (which cannot equal an integer), an unmapped member passed through could
+  // equal ANOTHER member's stored string and match its rows, so it is refused, as a write is
+  // (rc.21 part B ruling N4, every port).
+  const storedMap = field.subType === FIELD_SUBTYPE_ENUM && typeof value === "string" ? stringValueMapOf(field) : undefined;
+  if (storedMap !== undefined) {
+    if (typeof storedMap[value as string] !== "string") {
+      throw new MetadataError(
+        `filter on field.enum '${field.name}': ${JSON.stringify(value)} has no stored string in @stringValueMap ` +
+          `(declared: ${JSON.stringify(storedMap)}) — the value is not one of the members the model declares.`,
+      );
+    }
+    return storedEnumValue(field, value as string) as T;
   }
   const intMap = intValueMapOf(field);
   if (intMap === undefined || typeof value !== "string") return value;

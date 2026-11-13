@@ -40,4 +40,12 @@ describe("@stringValueMap — an unmapped member", () => {
     const entity = await upload();
     expect(() => coerceRowOnWrite(entity, { id: 1, status: "Archived" }, "postgres")).toThrow(/cannot write 'Archived'/);
   });
+
+  // rc.21 part B (N4): a filter refuses it too, in every port. Passed through, a symbol can equal
+  // another member's stored string ({ A: "B", B: "C" } filtering "B" would match member A's rows).
+  test("is refused in a filter, naming the field", async () => {
+    const entity = await upload();
+    expect(() => compileFilter(entity, { status: "Archived" })).toThrow(/filter on field.enum 'status': "Archived" has no stored string/);
+    expect(() => compileFilter(entity, { status: { $in: ["Draft", "Archived"] } })).toThrow(/"Archived" has no stored string/);
+  });
 });
