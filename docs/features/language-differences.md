@@ -45,7 +45,7 @@ project.
 | **Field names in code** | The model's names (`createdAt`) | PascalCase properties (`CreatedAt`) | The model's names | The model's names | The model's names, not snake_case (`createdAt`) |
 | **Field names on the wire** | The model's names, in every port | | | | |
 | **Decimals and null members on the wire** | Each port writes its serializer's default; a `wire` setting makes them identical. The per-port table is under [The wire setting](api-contract.md#the-wire-setting) | | | | |
-| **Hand edits to a generated file** | Merged (three-way) on the machine that generated it; refused by name elsewhere | Refused by name | Refused by name, or overwritten with `<handEdits>overwrite</handEdits>` | Same as Java | Refused by name |
+| **Hand edits to a generated file** | Merged (three-way) on the machine that generated it; refused by name elsewhere | Refused by name, or overwritten with `WithHandEdits(HandEdits.Overwrite)` | Refused by name, or overwritten with `<handEdits>overwrite</handEdits>` | Same as Java | Refused by name, or overwritten with `handEdits: overwrite` |
 | **Own a generator** | `npx meta eject` | `dotnet meta eject` | `mvn metaobjects:eject` | `mvn metaobjects:eject` | `metaobjects eject` |
 | **Requirement authoring lint** | Yes (advisory) | No | No | No | No |
 
