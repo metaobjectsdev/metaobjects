@@ -1713,6 +1713,22 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
             }
             continue;
           }
+          // A literal compared with a field must be able to equal it: of its kind, and for an enum
+          // one of its @values (the same rule a validator's @condition follows). Resolved as the
+          // inference resolved the ref: a projection field first, else a base field.
+          const literalProblem = literalComparisonProblem(expr, (name) => {
+            if (obj !== base && name !== field.name) {
+              const own = obj.children().find((f) => f.type === TYPE_FIELD && f.name === name);
+              if (own !== undefined) return ownOriginOf(name)?.subType === ORIGIN_SUBTYPE_AGGREGATE ? undefined : own;
+            }
+            return base.children().find((f) => f.type === TYPE_FIELD && f.name === name);
+          });
+          if (literalProblem !== undefined) {
+            errors.push(new ParseError(
+              `origin.computed on ${obj.name}.${field.name}: @expr ${literalProblem}`,
+              { code: "ERR_INVALID_ORIGIN", source: src }));
+            continue;
+          }
           if (inferred.type !== undefined && inferred.type !== field.subType) {
             errors.push(new ParseError(
               `origin.computed on ${obj.name}.${field.name}: @expr infers field.${inferred.type} but the field is declared field.${field.subType} — a computed column's type is derived from its expression and must match (no @convert escape).`,
@@ -1996,6 +2012,10 @@ function expressionNodes(node: unknown, out: Record<string, unknown>[] = []): Re
   return out;
 }
 
+function isObj(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
 /** The field names an attr.expression tree references. */
 function expressionFieldRefs(node: unknown): string[] {
   return expressionNodes(node).flatMap((n) => (typeof n["field"] === "string" ? [n["field"]] : []));
@@ -2031,44 +2051,59 @@ function conditionProblem(condition: unknown, obj: MetaObject): string | undefin
   if (inferred.type !== FIELD_SUBTYPE_BOOLEAN) {
     return `must be a boolean expression (a comparison, a null test, or and / or / not of them), not a field.${String(inferred.type)}.`;
   }
-  let problem: string | undefined;
-  const visit = (node: unknown): void => {
-    if (problem !== undefined || typeof node !== "object" || node === null) return;
-    const n = node as Record<string, unknown>;
+  const hasNull = expressionNodes(condition).some((n) =>
+    n["left"] !== undefined && n["right"] !== undefined &&
+    [n["left"], n["right"]].some((side) => isObj(side) && "value" in side && side["value"] === null));
+  if (hasNull) return `compares with null, which is never true: use isNull or isNotNull.`;
+  return literalComparisonProblem(condition, (name) => fields.get(name));
+}
+
+/**
+ * The first literal in `expr` that cannot equal the field it is compared with, or undefined. A
+ * literal is compared with a field by a comparison (`{op, left, right}`, either side) or as a
+ * simple case's `when` against a `{field}` operand. The rule, the same in every port and shared by
+ * a validator's @condition and an origin.computed @expr: the literal is of the field's kind (a
+ * boolean for field.boolean, a number for a numeric field, a string otherwise), one of its @values
+ * for field.enum, and an ISO-8601 duration for field.duration. A null literal, and a literal
+ * facing anything but a field ref, are not checked here.
+ */
+export function literalComparisonProblem(
+  expr: unknown,
+  fieldOf: (name: string) => MetaData | undefined,
+): string | undefined {
+  const check = (lit: unknown, ref: unknown): string | undefined => {
+    if (!isObj(lit) || !("value" in lit) || lit["value"] === null) return undefined;
+    if (!isObj(ref) || typeof ref["field"] !== "string") return undefined;
+    const field = fieldOf(ref["field"]);
+    if (field === undefined) return undefined;
+    const value = lit["value"];
+    const kind = field.subType === FIELD_SUBTYPE_BOOLEAN ? "boolean"
+      : _CONDITION_NUMBER_SUBTYPES.has(field.subType) ? "number" : "string";
+    if (typeof value !== kind) {
+      return `compares "${field.name}" (field.${field.subType}) with ${JSON.stringify(value)}; it needs a ${kind}.`;
+    }
+    const members = field.subType === FIELD_SUBTYPE_ENUM ? field.attr(FIELD_ATTR_VALUES) : undefined;
+    if (Array.isArray(members) && !members.map(String).includes(String(value))) {
+      return `compares "${field.name}" with ${JSON.stringify(value)}, which is not one of its @values (${members.join(", ")}).`;
+    }
+    if (field.subType === FIELD_SUBTYPE_DURATION && parseDurationLiteral(value as string) === undefined) {
+      return `compares "${field.name}" with ${JSON.stringify(value)}, which is not ${DURATION_LITERAL_FORM}.`;
+    }
+    return undefined;
+  };
+  for (const n of expressionNodes(expr)) {
     if (n["left"] !== undefined && n["right"] !== undefined) {
-      for (const [a, b] of [[n["left"], n["right"]], [n["right"], n["left"]]] as const) {
-        const lit = a as Record<string, unknown>;
-        const ref = b as Record<string, unknown>;
-        if (!("value" in lit)) continue;
-        if (lit["value"] === null) {
-          problem = `compares with null, which is never true: use isNull or isNotNull.`;
-          return;
-        }
-        const field = typeof ref["field"] === "string" ? fields.get(ref["field"]) : undefined;
-        if (field === undefined) continue;
-        const value = lit["value"];
-        const kind = field.subType === FIELD_SUBTYPE_BOOLEAN ? "boolean"
-          : _CONDITION_NUMBER_SUBTYPES.has(field.subType) ? "number" : "string";
-        if (typeof value !== kind) {
-          problem = `compares "${field.name}" (field.${field.subType}) with ${JSON.stringify(value)}; it needs a ${kind}.`;
-          return;
-        }
-        const members = field.subType === FIELD_SUBTYPE_ENUM ? field.attr(FIELD_ATTR_VALUES) : undefined;
-        if (Array.isArray(members) && !members.map(String).includes(String(value))) {
-          problem = `compares "${field.name}" with ${JSON.stringify(value)}, which is not one of its @values (${members.join(", ")}).`;
-          return;
-        }
-        if (field.subType === FIELD_SUBTYPE_DURATION && parseDurationLiteral(value as string) === undefined) {
-          problem = `compares "${field.name}" with ${JSON.stringify(value)}, which is not ${DURATION_LITERAL_FORM}.`;
-          return;
-        }
+      const problem = check(n["left"], n["right"]) ?? check(n["right"], n["left"]);
+      if (problem !== undefined) return problem;
+    }
+    if (EXPR_CASE_OPERAND in n && Array.isArray(n[EXPR_CASE])) {
+      for (const arm of n[EXPR_CASE] as unknown[]) {
+        const problem = isObj(arm) ? check(arm[EXPR_CASE_WHEN], n[EXPR_CASE_OPERAND]) : undefined;
+        if (problem !== undefined) return problem;
       }
     }
-    for (const key of ["left", "right", "arg"]) visit(n[key]);
-    if (Array.isArray(n["args"])) for (const a of n["args"]) visit(a);
-  };
-  visit(condition);
-  return problem;
+  }
+  return undefined;
 }
 
 export function validateCrossFieldValidators(root: MetaData, strict = false): ParseError[] {

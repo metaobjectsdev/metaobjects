@@ -2496,60 +2496,79 @@ public final class ValidationPhase {
             return "must be a boolean expression (a comparison, a null test, or and / or / not of them), not a field."
                 + inferred.type + ".";
         }
-        return conditionLiteralProblem(condition, fields);
-    }
-
-    /** The first comparison in {@code node} whose literal side cannot be compared with its
-     *  other side, as conditionProblem's message tail, or {@code null}. */
-    private static String conditionLiteralProblem(Object node, java.util.Map<String, MetaField<?>> fields) {
-        if (!(node instanceof java.util.Map<?, ?> n)) return null;
-        if (n.get("left") != null && n.get("right") != null) {
-            Object[][] sides = { { n.get("left"), n.get("right") }, { n.get("right"), n.get("left") } };
-            for (Object[] side : sides) {
-                if (!(side[0] instanceof java.util.Map<?, ?> lit) || !lit.containsKey("value")) continue;
-                Object value = lit.get("value");
-                if (value == null) {
+        for (java.util.Map<?, ?> n : exprNodes(condition, new ArrayList<>())) {
+            if (n.get("left") == null || n.get("right") == null) continue;
+            for (Object side : List.of(n.get("left"), n.get("right"))) {
+                if (side instanceof java.util.Map<?, ?> lit && lit.containsKey("value") && lit.get("value") == null) {
                     return "compares with null, which is never true: use isNull or isNotNull.";
                 }
-                MetaField<?> field = side[1] instanceof java.util.Map<?, ?> ref && ref.get("field") instanceof String f
-                    ? fields.get(f) : null;
-                if (field == null) continue;
-                String subType = field.getSubType();
-                String kind = BooleanField.SUBTYPE_BOOLEAN.equals(subType) ? "boolean"
-                    : CONDITION_NUMBER_SUBTYPES.contains(subType) ? "number" : "string";
-                boolean matches = switch (kind) {
-                    case "boolean" -> value instanceof Boolean;
-                    case "number" -> value instanceof Number;
-                    default -> value instanceof String;
-                };
-                if (!matches) {
-                    return "compares \"" + field.getShortName() + "\" (field." + subType + ") with "
-                        + conditionJsonLiteral(value) + "; it needs a " + kind + ".";
-                }
-                if (EnumField.SUBTYPE_ENUM.equals(subType) && field.hasMetaAttr(EnumField.ATTR_VALUES)
-                        && field.getMetaAttr(EnumField.ATTR_VALUES).getValue() instanceof java.util.Collection<?> members) {
-                    List<String> names = new java.util.ArrayList<>();
-                    for (Object m : members) names.add(String.valueOf(m));
-                    if (!names.contains(String.valueOf(value))) {
-                        return "compares \"" + field.getShortName() + "\" with " + conditionJsonLiteral(value)
-                            + ", which is not one of its @values (" + String.join(", ", names) + ").";
-                    }
-                }
-                if (DurationField.SUBTYPE_DURATION.equals(subType) && !DurationWire.ACCEPTED.matcher((String) value).matches()) {
-                    return "compares \"" + field.getShortName() + "\" with " + conditionJsonLiteral(value)
-                        + ", which is not " + DURATION_LITERAL_FORM + ".";
-                }
             }
         }
-        for (String k : List.of("left", "right", "arg")) {
-            String p = conditionLiteralProblem(n.get(k), fields);
-            if (p != null) return p;
-        }
-        if (n.get("args") instanceof java.util.Collection<?> args) {
-            for (Object a : args) {
-                String p = conditionLiteralProblem(a, fields);
+        return literalComparisonProblem(condition, fields::get);
+    }
+
+    /**
+     * The first literal in {@code expr} that cannot equal the field it is compared with, or
+     * {@code null}. A literal is compared with a field by a comparison (either side) or as a simple
+     * case's {@code when} against a {@code {field}} operand. The rule, the same in every port and
+     * shared by a validator's @condition and an origin.computed @expr: the literal is of the
+     * field's kind (a boolean for field.boolean, a number for a numeric field, a string otherwise),
+     * one of its @values for field.enum, and an ISO-8601 duration for field.duration. A null
+     * literal, and a literal facing anything but a field ref, are not checked here. Mirrors TS
+     * literalComparisonProblem.
+     */
+    static String literalComparisonProblem(Object expr, java.util.function.Function<String, MetaField<?>> fieldOf) {
+        for (java.util.Map<?, ?> n : exprNodes(expr, new ArrayList<>())) {
+            if (n.get("left") != null && n.get("right") != null) {
+                String p = literalProblem(n.get("left"), n.get("right"), fieldOf);
+                if (p == null) p = literalProblem(n.get("right"), n.get("left"), fieldOf);
                 if (p != null) return p;
             }
+            if (n.get(ExpressionAttribute.EXPR_CASE_OPERAND) != null
+                    && n.get(ExpressionAttribute.EXPR_CASE) instanceof java.util.Collection<?> arms) {
+                for (Object arm : arms) {
+                    if (!(arm instanceof java.util.Map<?, ?> am)) continue;
+                    String p = literalProblem(am.get(ExpressionAttribute.EXPR_CASE_WHEN),
+                        n.get(ExpressionAttribute.EXPR_CASE_OPERAND), fieldOf);
+                    if (p != null) return p;
+                }
+            }
+        }
+        return null;
+    }
+
+    /** Why literal {@code a} cannot equal field ref {@code b}, or {@code null}. */
+    private static String literalProblem(Object a, Object b, java.util.function.Function<String, MetaField<?>> fieldOf) {
+        if (!(a instanceof java.util.Map<?, ?> lit) || !lit.containsKey("value")) return null;
+        Object value = lit.get("value");
+        if (value == null) return null;
+        MetaField<?> field = b instanceof java.util.Map<?, ?> ref && ref.get("field") instanceof String f
+            ? fieldOf.apply(f) : null;
+        if (field == null) return null;
+        String subType = field.getSubType();
+        String kind = BooleanField.SUBTYPE_BOOLEAN.equals(subType) ? "boolean"
+            : CONDITION_NUMBER_SUBTYPES.contains(subType) ? "number" : "string";
+        boolean matches = switch (kind) {
+            case "boolean" -> value instanceof Boolean;
+            case "number" -> value instanceof Number;
+            default -> value instanceof String;
+        };
+        if (!matches) {
+            return "compares \"" + field.getShortName() + "\" (field." + subType + ") with "
+                + conditionJsonLiteral(value) + "; it needs a " + kind + ".";
+        }
+        if (EnumField.SUBTYPE_ENUM.equals(subType) && field.hasMetaAttr(EnumField.ATTR_VALUES)
+                && field.getMetaAttr(EnumField.ATTR_VALUES).getValue() instanceof java.util.Collection<?> members) {
+            List<String> names = new java.util.ArrayList<>();
+            for (Object m : members) names.add(String.valueOf(m));
+            if (!names.contains(String.valueOf(value))) {
+                return "compares \"" + field.getShortName() + "\" with " + conditionJsonLiteral(value)
+                    + ", which is not one of its @values (" + String.join(", ", names) + ").";
+            }
+        }
+        if (DurationField.SUBTYPE_DURATION.equals(subType) && !DurationWire.ACCEPTED.matcher((String) value).matches()) {
+            return "compares \"" + field.getShortName() + "\" with " + conditionJsonLiteral(value)
+                + ", which is not " + DURATION_LITERAL_FORM + ".";
         }
         return null;
     }
@@ -3327,6 +3346,31 @@ public final class ValidationPhase {
                     ErrorMessageConstants.ERR_INVALID_ORIGIN
                         + ": origin.computed on " + obj.getName() + "." + field.getName()
                         + ": " + inferred.errors.get(0),
+                    ErrorCode.ERR_INVALID_ORIGIN, src);
+            }
+            // A literal compared with a field must be able to equal it: of its kind, and for an
+            // enum one of its @values (the rule a validator's @condition follows). Resolved as the
+            // inference resolved the ref: a projection field first, else a base field.
+            String literalProblem = literalComparisonProblem(expr, name -> {
+                if (obj != baseEntity && !name.equals(selfName)) {
+                    for (MetaField<?> own : obj.getChildren(MetaField.class, true)) {
+                        if (!name.equals(own.getShortName())) continue;
+                        MetaOrigin ownOrigin = ownOriginOf(own);
+                        if (ownOrigin != null
+                                && AggregateOrigin.SUBTYPE_AGGREGATE.equals(ownOrigin.getSubType())) return null;
+                        return own;
+                    }
+                }
+                for (MetaData c : baseEntity.getChildren(MetaData.class, true)) {
+                    if (c instanceof MetaField<?> f && nameMatches(c, name)) return f;
+                }
+                return null;
+            });
+            if (literalProblem != null) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_INVALID_ORIGIN
+                        + ": origin.computed on " + obj.getName() + "." + field.getName()
+                        + ": @expr " + literalProblem,
                     ErrorCode.ERR_INVALID_ORIGIN, src);
             }
             if (inferred.type != null && !inferred.type.equals(field.getSubType())) {

@@ -835,6 +835,25 @@ public static partial class ValidationPasses
                                     ErrorCode.ERR_INVALID_ORIGIN, Envelope: src));
                             continue;
                         }
+                        // A literal compared with a field must be able to equal it: of its kind, and for
+                        // an enum one of its @values (the rule a validator's @condition follows).
+                        // Resolved as the inference resolved the ref: a projection field first, else a base field.
+                        var literalProblem = LiteralComparisonProblem(expr, name =>
+                        {
+                            if (!ReferenceEquals(obj, computedBase) && name != field.Name
+                                && obj.Children().FirstOrDefault(f => f.Type == TYPE_FIELD && f.Name == name) is MetaField own)
+                            {
+                                return ownOriginOf(name)?.SubType == ORIGIN_SUBTYPE_AGGREGATE ? null : own;
+                            }
+                            return computedBase!.Children().FirstOrDefault(f => f.Type == TYPE_FIELD && f.Name == name) as MetaField;
+                        });
+                        if (literalProblem is not null)
+                        {
+                            errors.Add(new MetaError(
+                                $"origin.computed on {obj.Name}.{field.Name}: @expr {literalProblem}",
+                                ErrorCode.ERR_INVALID_ORIGIN, Envelope: src));
+                            continue;
+                        }
                         if (inferred.Type is not null && inferred.Type != field.SubType)
                             errors.Add(new MetaError(
                                 $"origin.computed on {obj.Name}.{field.Name}: @expr infers field.{inferred.Type} but the field is declared field.{field.SubType} — a computed column's type is derived from its expression and must match (no @convert escape).",
@@ -2536,66 +2555,77 @@ public static partial class ValidationPasses
         {
             return $"must be a boolean expression (a comparison, a null test, or and / or / not of them), not a field.{inferred.Type ?? "undefined"}.";
         }
-        string? problem = null;
-        void Visit(object? node)
+        foreach (var n in ExpressionGrammar.Nodes(condition))
         {
-            if (problem is not null || node is not IReadOnlyDictionary<string, object?> n) return;
-            if (n.TryGetValue("left", out var left) && left is not null && n.TryGetValue("right", out var right) && right is not null)
+            if (n.TryGetValue("left", out var left) && left is not null && n.TryGetValue("right", out var right) && right is not null
+                && new[] { left, right }.Any(side => side is IReadOnlyDictionary<string, object?> lit && lit.TryGetValue("value", out var v) && v is null))
             {
-                foreach (var (a, b) in new[] { (left, right), (right, left) })
+                return "compares with null, which is never true: use isNull or isNotNull.";
+            }
+        }
+        return LiteralComparisonProblem(condition, name => fields.TryGetValue(name, out var f) ? f : null);
+    }
+
+    /// <summary>
+    /// The first literal in <paramref name="expr"/> that cannot equal the field it is compared
+    /// with, or null. A literal is compared with a field by a comparison (either side) or as a
+    /// simple case's <c>when</c> against a <c>{field}</c> operand. The rule, the same in every port
+    /// and shared by a validator's @condition and an origin.computed @expr: the literal is of the
+    /// field's kind (a boolean for field.boolean, a number for a numeric field, a string otherwise),
+    /// one of its @values for field.enum, and an ISO-8601 duration for field.duration. A null
+    /// literal, and a literal facing anything but a field ref, are not checked here. Mirrors TS
+    /// literalComparisonProblem.
+    /// </summary>
+    internal static string? LiteralComparisonProblem(object? expr, Func<string, MetaField?> fieldOf)
+    {
+        string? Check(object? a, object? b)
+        {
+            if (a is not IReadOnlyDictionary<string, object?> lit || !lit.TryGetValue("value", out var value) || value is null) return null;
+            if (b is not IReadOnlyDictionary<string, object?> refNode
+                || !refNode.TryGetValue("field", out var refName) || refName is not string name
+                || fieldOf(name) is not { } field)
+            {
+                return null;
+            }
+            var kind = field.SubType == FIELD_SUBTYPE_BOOLEAN ? "boolean"
+                : ConditionNumberSubtypes.Contains(field.SubType) ? "number" : "string";
+            var actual = value switch
+            {
+                bool => "boolean",
+                long or int or double or decimal => "number",
+                string => "string",
+                _ => null,
+            };
+            if (actual != kind)
+                return $"compares \"{field.Name}\" (field.{field.SubType}) with {JsonStringify(value)}; it needs a {kind}.";
+            var members = field.SubType == FIELD_SUBTYPE_ENUM ? field.EffectiveEnumValues : null;
+            if (members is not null && !members.Contains(Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture), StringComparer.Ordinal))
+                return $"compares \"{field.Name}\" with {JsonStringify(value)}, which is not one of its @values ({string.Join(", ", members)}).";
+            if (field.SubType == FIELD_SUBTYPE_DURATION && !DurationLiteral.IsMatch((string)value))
+                return $"compares \"{field.Name}\" with {JsonStringify(value)}, which is not {DurationLiteralForm}.";
+            return null;
+        }
+        foreach (var n in ExpressionGrammar.Nodes(expr))
+        {
+            if (n.TryGetValue("left", out var left) && left is not null && n.TryGetValue("right", out var right) && right is not null
+                && (Check(left, right) ?? Check(right, left)) is { } problem)
+            {
+                return problem;
+            }
+            if (n.TryGetValue(ExpressionGrammar.EXPR_CASE_OPERAND, out var operand) && operand is not null
+                && n.TryGetValue(ExpressionGrammar.EXPR_CASE, out var arms) && arms is IEnumerable<object?> armList)
+            {
+                foreach (var arm in armList)
                 {
-                    if (a is not IReadOnlyDictionary<string, object?> lit || !lit.TryGetValue("value", out var value)) continue;
-                    if (value is null)
+                    if (arm is IReadOnlyDictionary<string, object?> a && a.TryGetValue(ExpressionGrammar.EXPR_CASE_WHEN, out var when)
+                        && Check(when, operand) is { } armProblem)
                     {
-                        problem = "compares with null, which is never true: use isNull or isNotNull.";
-                        return;
-                    }
-                    if (b is not IReadOnlyDictionary<string, object?> refNode
-                        || !refNode.TryGetValue("field", out var refName) || refName is not string name
-                        || !fields.TryGetValue(name, out var field))
-                    {
-                        continue;
-                    }
-                    var kind = field.SubType == FIELD_SUBTYPE_BOOLEAN ? "boolean"
-                        : ConditionNumberSubtypes.Contains(field.SubType) ? "number" : "string";
-                    var actual = value switch
-                    {
-                        bool => "boolean",
-                        long or int or double => "number",
-                        string => "string",
-                        _ => null,
-                    };
-                    if (actual != kind)
-                    {
-                        problem = $"compares \"{field.Name}\" (field.{field.SubType}) with {JsonStringify(value)}; it needs a {kind}.";
-                        return;
-                    }
-                    var members = field.SubType == FIELD_SUBTYPE_ENUM ? field.EffectiveEnumValues : null;
-                    if (members is not null && !members.Contains(Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture), StringComparer.Ordinal))
-                    {
-                        problem = $"compares \"{field.Name}\" with {JsonStringify(value)}, which is not one of its @values ({string.Join(", ", members)}).";
-                        return;
-                    }
-                    if (field.SubType == FIELD_SUBTYPE_DURATION && !DurationLiteral.IsMatch((string)value))
-                    {
-                        problem = $"compares \"{field.Name}\" with {JsonStringify(value)}, which is not {DurationLiteralForm}.";
-                        return;
+                        return armProblem;
                     }
                 }
             }
-            n.TryGetValue("left", out var l);
-            Visit(l);
-            n.TryGetValue("right", out var r);
-            Visit(r);
-            n.TryGetValue("arg", out var g);
-            Visit(g);
-            if (n.TryGetValue("args", out var args) && args is IEnumerable<object?> list)
-            {
-                foreach (var x in list) Visit(x);
-            }
         }
-        Visit(condition);
-        return problem;
+        return null;
     }
 
     // ---------------------------------------------------------------------------

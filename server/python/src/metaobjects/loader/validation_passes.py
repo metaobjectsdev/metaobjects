@@ -149,7 +149,6 @@ from ..meta.core.identity.identity_constants import (
 )
 from ..shared.separators import PACKAGE_SEP
 from ..meta.core.object.object_constants import (
-    OBJECT_PROJECTION_ATTR_FILTER,
     OBJECT_SUBTYPE_ENTITY,
     OBJECT_SUBTYPE_PROJECTION,
     OBJECT_SUBTYPE_VALUE,
@@ -165,7 +164,6 @@ from ..meta.persistence.db.db_constants import (
 from ..source import resolved_source
 from ..naming_refs import did_you_mean_hint, resolve_object_ref, referrer_package_of
 from ..naming_refs import ref_target as bound_ref_target
-from ..meta.core.object.collection_names import collection_name_of
 from ..meta.core.field.flattened_member import resolve_flattened_member
 from ..meta.core.object.effective_projection_filter import effective_projection_filter
 from ..meta.core.relationship.filter_path import resolve_filter_path
@@ -2937,6 +2935,31 @@ def _validate_origin_paths(
                             f"origin.computed on {obj.name}.{node.name}: {m}",
                             ErrorCode.ERR_INVALID_ORIGIN, envelope=src))
                     continue
+                # A literal compared with a field must be able to equal it: of its kind, and for
+                # an enum one of its @values (the rule a validator's @condition follows). Resolved
+                # as the inference resolved the ref: a projection field first, else a base field.
+                def _field_of(
+                    name: str, _base: MetaData = base, _obj: MetaData = obj, _self: str = node.name
+                ) -> MetaData | None:
+                    if _obj is not _base and name != _self:
+                        for own in _obj.children():
+                            if own.type != TYPE_FIELD or own.name != name:
+                                continue
+                            own_origin = _own_origin_of(own)
+                            if own_origin is not None and own_origin.sub_type == ORIGIN_SUBTYPE_AGGREGATE:
+                                return None
+                            return own
+                    for f in _base.children():
+                        if f.type == TYPE_FIELD and f.name == name:
+                            return f
+                    return None
+
+                literal_problem = literal_comparison_problem(expr, _field_of)
+                if literal_problem is not None:
+                    errors.append(MetaError(
+                        f"origin.computed on {obj.name}.{node.name}: @expr {literal_problem}",
+                        ErrorCode.ERR_INVALID_ORIGIN, envelope=src))
+                    continue
                 if inferred.type is not None and inferred.type != node.sub_type:
                     errors.append(MetaError(
                         f"origin.computed on {obj.name}.{node.name}: @expr infers "
@@ -4354,55 +4377,69 @@ def _condition_problem(condition: object, obj: MetaData) -> str | None:
             f"them), not a field.{inferred.type}."
         )
 
-    def visit(node: object) -> str | None:
-        if not isinstance(node, dict):
+    for n in _expr_nodes(condition):
+        if n.get("left") is None or n.get("right") is None:
+            continue
+        for side in (n["left"], n["right"]):
+            if isinstance(side, dict) and "value" in side and side["value"] is None:
+                return "compares with null, which is never true: use isNull or isNotNull."
+    return literal_comparison_problem(condition, fields.get)
+
+
+def literal_comparison_problem(expr: object, field_of: Any) -> str | None:
+    """The first literal in *expr* that cannot equal the field it is compared with, or None. A
+    literal is compared with a field by a comparison (either side) or as a simple case's ``when``
+    against a ``{field}`` operand. The rule, the same in every port and shared by a validator's
+    @condition and an origin.computed @expr: the literal is of the field's kind (a boolean for
+    field.boolean, a number for a numeric field, a string otherwise), one of its @values for
+    field.enum, and an ISO-8601 duration for field.duration. A null literal, and a literal facing
+    anything but a field ref, are not checked here. *field_of* maps a name to its field, or None.
+    Mirrors TS literalComparisonProblem."""
+
+    def check(lit: object, ref: object) -> str | None:
+        if not isinstance(lit, dict) or "value" not in lit or lit["value"] is None:
             return None
-        if node.get("left") is not None and node.get("right") is not None:
-            for lit, ref in ((node["left"], node["right"]), (node["right"], node["left"])):
-                if not isinstance(lit, dict) or "value" not in lit:
-                    continue
-                value = lit["value"]
-                if value is None:
-                    return "compares with null, which is never true: use isNull or isNotNull."
-                name = ref.get("field") if isinstance(ref, dict) else None
-                field = fields.get(name) if isinstance(name, str) else None
-                if field is None:
-                    continue
-                sub = field.sub_type
-                kind = (
-                    "boolean" if sub == FIELD_SUBTYPE_BOOLEAN
-                    else "number" if sub in _CONDITION_NUMBER_SUBTYPES
-                    else "string"
-                )
-                if not _literal_is_kind(value, kind):
-                    return (
-                        f'compares "{field.name}" (field.{sub}) with {_json_literal(value)}; '
-                        f"it needs a {kind}."
-                    )
-                members = field.get_meta_attr(FIELD_ATTR_VALUES) if sub == FIELD_SUBTYPE_ENUM else None
-                if isinstance(members, list) and str(value) not in [str(m) for m in members]:
-                    return (
-                        f'compares "{field.name}" with {_json_literal(value)}, which is not one '
-                        f"of its @values ({', '.join(str(m) for m in members)})."
-                    )
-                if sub == FIELD_SUBTYPE_DURATION and DURATION_RE.fullmatch(value) is None:
-                    return (
-                        f'compares "{field.name}" with {_json_literal(value)}, which is not '
-                        f"{_DURATION_LITERAL_FORM}."
-                    )
-        for key in ("left", "right", "arg"):
-            found = visit(node.get(key))
-            if found is not None:
-                return found
-        args = node.get("args")
-        if isinstance(args, list):
-            for a in args:
-                found = visit(a)
-                if found is not None:
-                    return found
+        name = ref.get("field") if isinstance(ref, dict) else None
+        field = field_of(name) if isinstance(name, str) else None
+        if field is None:
+            return None
+        value = lit["value"]
+        sub = field.sub_type
+        kind = (
+            "boolean" if sub == FIELD_SUBTYPE_BOOLEAN
+            else "number" if sub in _CONDITION_NUMBER_SUBTYPES
+            else "string"
+        )
+        if not _literal_is_kind(value, kind):
+            return (
+                f'compares "{field.name}" (field.{sub}) with {_json_literal(value)}; '
+                f"it needs a {kind}."
+            )
+        members = field.get_meta_attr(FIELD_ATTR_VALUES) if sub == FIELD_SUBTYPE_ENUM else None
+        if isinstance(members, list) and str(value) not in [str(m) for m in members]:
+            return (
+                f'compares "{field.name}" with {_json_literal(value)}, which is not one '
+                f"of its @values ({', '.join(str(m) for m in members)})."
+            )
+        if sub == FIELD_SUBTYPE_DURATION and DURATION_RE.fullmatch(value) is None:
+            return (
+                f'compares "{field.name}" with {_json_literal(value)}, which is not '
+                f"{_DURATION_LITERAL_FORM}."
+            )
         return None
 
-    return visit(condition)
+    for n in _expr_nodes(expr):
+        if n.get("left") is not None and n.get("right") is not None:
+            found = check(n["left"], n["right"]) or check(n["right"], n["left"])
+            if found is not None:
+                return found
+        arms = n.get(EXPR_CASE)
+        if n.get(EXPR_CASE_OPERAND) is not None and isinstance(arms, list):
+            for arm in arms:
+                found = check(arm.get(EXPR_CASE_WHEN), n[EXPR_CASE_OPERAND]) if isinstance(arm, dict) else None
+                if found is not None:
+                    return found
+    return None
 
 
 def _validate_cross_field_validators(root: MetaData, errors: list[MetaError], strict: bool = False) -> None:
