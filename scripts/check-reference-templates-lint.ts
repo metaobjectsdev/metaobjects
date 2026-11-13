@@ -76,8 +76,9 @@ export async function discoverTemplates(repo: string = REPO): Promise<string[]> 
   return found.sort();
 }
 
-/** biome is a dependency of the codegen packages (it runs the `formatTs` pass), so a
- *  binary is present after `bun install`. Any of them is the same pinned version. */
+/** biome is a devDependency of the codegen packages (shipped code formats through the
+ *  WASM build instead), so a binary is present after `bun install`. Any of them is the
+ *  same pinned version. */
 export function resolveBiomeBin(repo: string = REPO): string | undefined {
   for (const root of PACKAGE_ROOTS) {
     const rootDir = join(repo, root);

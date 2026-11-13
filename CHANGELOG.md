@@ -41,6 +41,14 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   and the `metaobjects-authoring` skill now send grouped totals, dashboard numbers and read-only
   report views to `object.report` (`references/declaring-reports.md`) before the `@sql` escape,
   which they describe as the last resort for bodies the vocabulary cannot express.
+- **`@metaobjectsdev/cli` no longer installs the native Biome binary.** `codegen-ts-react`,
+  `codegen-ts-tanstack` and the source-only `codegen-ts-angular` declared `@biomejs/biome` as a
+  peer dependency, which npm installs automatically, so every CLI install carried the ~94 MB
+  `@biomejs/cli-<platform>` binary that nothing runs: codegen formats through the WebAssembly
+  build (`@biomejs/wasm-nodejs`). The peer is gone (it stays a devDependency for this repo's own
+  lint gate), and a fresh npm install of the CLI drops from 245 MB to 151 MB of `node_modules`.
+  `scripts/check-peer-ranges.ts` now fails a publishable package that requires `@biomejs/biome`
+  through `dependencies` or a non-optional peer.
 
 ### Fixed
 
