@@ -81,7 +81,7 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   import in an older owned generator is still pointed at that entry by `meta gen`, which
   carries `code`, `imp`, `joinCode`, `Import` and the `Code` type; ts-poet's `saveFiles`,
   `conditionalOutput` and its `toString` import options are not carried over. A fresh npm
-  install of the CLI drops from 151 MB (134,525,165 bytes) to 133 MB (115,177,311 bytes) of
+  install of the CLI drops from 151 MB (134,641,989 bytes) to 133 MB (115,302,944 bytes) of
   `node_modules`. `scripts/check-peer-ranges.ts` now also fails a publishable package that
   requires `dprint-node`, `ts-poet` or any `@types/*` package through `dependencies` or a
   non-optional peer; a type package a published `.d.ts` imports goes in its `ALLOWED_TYPES_DEPS`
