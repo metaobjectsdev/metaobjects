@@ -39,8 +39,10 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
 
 - **Breaking, TypeScript: a value object is never renamed; one claim registry refuses real
   collisions** (amending ADR-0044 and ADR-0056). `acme::alpha::Note` is declared as `Note` in its
-  own module; the `AcmeAlphaNote` derived name, `assignEmittedNames` and the run-wide
-  `ERR_COLLECTION_NAME_COLLISION` pre-pass (`naming/collection-name-collision.ts`) are removed,
+  own module; the `AcmeAlphaNote` derived name, `assignEmittedNames` and its
+  `ERR_PAYLOAD_NAME_COLLISION` backstop (`naming/collision-names.ts`) are removed — the
+  entity-tier `ERR_COLLECTION_NAME_COLLISION` pre-pass (`naming/collection-name-collision.ts`)
+  stays, refusing two objects that claim one collection name —
   and `RenderContext.valueObjectNames` and `RenderContext.packageOf` are `@deprecated` identity
   shims for one release. Each generator claims what it emits through
   `ctx.claim(scope, name, claimant, remedy)`: `entityFile()` and `queriesFile()` a module's type
