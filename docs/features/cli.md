@@ -846,8 +846,9 @@ meta migrate --db "$DB_URL" --dialect postgres \
 
 ## Agent-context scaffold is Node-only — by design
 
-The `.metaobjects/AGENTS.md`/`CLAUDE.md` always-on files and the
-`.claude/skills/metaobjects-*/` reference tree are assembled by **one** tool: the
+The always-on `.metaobjects/AGENTS.md` and the `metaobjects-*` skills (under
+`.claude/skills/` by default, or wherever `--skills-dir` puts them, such as `.agents/skills/`
+for assistants that read that) are assembled by **one** tool: the
 Node `meta agent-docs` command. Per [ADR-0033](../../spec/decisions/ADR-0033-single-agent-context-assembler.md)
 the per-port native assemblers (Python/Java/C#) and their byte-identity conformance
 gates were removed — that content is effectively one static artifact, and every port

@@ -17,6 +17,8 @@ export interface InitFlags {
   servers: string[];
   clients: string[];
   noSkills: boolean;
+  /** `--skills-dir`; validated by `init()`, not here, so every door refuses the same values. */
+  skillsDir: string | undefined;
   wireRoot: boolean;
   docsOnly: boolean;
   configOnly: boolean;
@@ -34,6 +36,7 @@ export const INIT_OPTIONS = {
   server: { type: "string", multiple: true },
   client: { type: "string", multiple: true },
   "no-skills": { type: "boolean", default: false },
+  "skills-dir": { type: "string" },
   "no-wire-root": { type: "boolean", default: false },
   "docs-only": { type: "boolean", default: false },
   "config-only": { type: "boolean", default: false },
@@ -57,6 +60,7 @@ export function parseInitArgs(argv: string[]): InitFlags {
     servers: (values.server as string[] | undefined) ?? [],
     clients: (values.client as string[] | undefined) ?? [],
     noSkills: !!values["no-skills"],
+    skillsDir: values["skills-dir"] as string | undefined,
     wireRoot: !values["no-wire-root"],
     docsOnly: !!values["docs-only"],
     configOnly: !!values["config-only"],
@@ -73,6 +77,7 @@ export interface AgentDocsFlags {
   clients: string[];
   out: string | undefined;
   noSkills: boolean;
+  skillsDir: string | undefined;
   wireRoot: boolean;
 }
 
@@ -82,6 +87,7 @@ export const AGENT_DOCS_OPTIONS = {
   client: { type: "string", multiple: true },
   out: { type: "string" },
   "no-skills": { type: "boolean", default: false },
+  "skills-dir": { type: "string" },
   "no-wire-root": { type: "boolean", default: false },
 } as const;
 
@@ -97,6 +103,7 @@ export function parseAgentDocsArgs(argv: string[]): AgentDocsFlags {
     clients: (values.client as string[] | undefined) ?? [],
     out: values.out as string | undefined,
     noSkills: !!values["no-skills"],
+    skillsDir: values["skills-dir"] as string | undefined,
     wireRoot: !values["no-wire-root"],
   };
 }

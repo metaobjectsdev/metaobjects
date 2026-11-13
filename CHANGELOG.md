@@ -56,8 +56,41 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   converged no-op). Java's config reader now carries the `migrate` block's
   `foreignKeyIndexes`, `conventions` and `dialect` on the loaded root (`MigrateSettings`).
 
+- **`meta init --skills-dir <dir>` and `meta agent-docs --skills-dir <dir>`: install the skills
+  for any coding assistant.** The `metaobjects-*` skills went only to `.claude/skills/`, which
+  Claude Code reads. `--skills-dir .agents/skills` (or any project-relative directory) puts them
+  where another assistant looks; the choice is recorded in `.metaobjects/.agent-context.json`,
+  so a later `--refresh-docs` keeps it, and moving the directory prunes the untouched copies at
+  the old one. The always-on file names the directory, so an assistant that does not load
+  skills opens `<dir>/<skill>/SKILL.md` by path. A directory outside the project is refused.
+- **[What differs by language](docs/features/language-differences.md).** One page lists what
+  the same model does differently per port: that schema migrations and database checks need
+  the Node `meta` tool in every language, the list default and cap, the validation error body,
+  filter extras, field names in code, generated data access and hand-edit handling. Every port
+  page now says up front that migrations and `verify --db` run in Node, and the README's
+  getting-started path says it for Java, Kotlin, C# and Python teams.
+
 ### Changed
 
+- **The always-on agent file works with any coding assistant, carries the REST conventions,
+  and is written once.** `.metaobjects/CLAUDE.md`, an identical copy of `.metaobjects/AGENTS.md`
+  that nothing imported, is no longer written; a refresh removes an untouched one and names a
+  hand-edited one. The text no longer tells the reader to use a root `CLAUDE.md` only, and
+  `--wire-root` on a project with neither root file now creates `AGENTS.md` as well as
+  `CLAUDE.md`, each with a plain pointer line beside the `@` import. A first init on a project
+  that has only a root `CLAUDE.md` creates `AGENTS.md` too (assistants other than Claude Code
+  read no `@` import out of `CLAUDE.md`); a refresh creates no root file and instead prints one
+  advisory line naming the missing `AGENTS.md`. A new "Calling the
+  generated REST API" block gives the filter form (`?filter[status][eq]=active`, never
+  `?status=active`) with its nine operators, sorting and paging (including each port's default
+  when `limit` is omitted), and the error bodies. To offset it, the Java and Kotlin generator
+  class lists, the TypeScript catalog pipeline and the prompt and report rules moved behind the
+  skills they already pointed to. Measured on the agent-context conformance stacks (C#,
+  Java + React, Java + Kotlin + React + TanStack, Python, TypeScript + React + TanStack), the
+  file an assistant loads each session is 5,580 / 6,045 / 6,705 / 5,585 / 6,572 bytes, from
+  4,978 / 5,767 / 6,731 / 4,983 / 6,207: the REST block adds more than the moved detail takes
+  out. The always-on bytes written to disk fall by 44 to 50% because the copy is gone. The C#,
+  Java and Python staleness notices no longer name `.claude/skills`.
 - **Breaking, TypeScript: a value object is never renamed; one claim registry refuses real
   collisions** (amending ADR-0044 and ADR-0056). `acme::alpha::Note` is declared as `Note` in its
   own module; the `AcmeAlphaNote` derived name, `assignEmittedNames` and its
