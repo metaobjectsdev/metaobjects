@@ -279,8 +279,9 @@ each handler they register instead; an `HTTPException` is rethrown to your
   explicit `limit` on an entity — `limit=100000` is honoured as asked — except
   the TS opaque-view route, which refuses a `limit` above 1000 (see "TS-only
   error responses"). A list over a large table should therefore always send a
-  `limit`. A default page size is deliberately not introduced in a patch release:
-  it would silently truncate the lists of every existing client that relies on
+  `limit`. A default page size is deliberately not introduced on the mounts that
+  return every row — and no port's default changes in a patch release: either
+  would silently truncate the lists of every existing client that relies on
   the unpaged answer. Every per-port difference of this kind is collected in
   [What differs by language](language-differences.md).
 - `withCount=1` — opt-in flag that switches the list response from
