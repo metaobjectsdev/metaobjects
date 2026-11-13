@@ -1,6 +1,5 @@
-import { mkdir, writeFile, readFile, readdir, stat, rm } from "node:fs/promises";
-import { join } from "node:path";
-import { dirname } from "node:path";
+import { mkdir, writeFile, readFile, readdir, stat, rm, rmdir } from "node:fs/promises";
+import { join, dirname, posix } from "node:path";
 import { existsSync as existsSyncWrap, readFileSync as readFileSyncWrap } from "node:fs";
 import { INIT_DEFAULT_LIMIT, INIT_MAX_LIMIT, UNKNOWN_FIELDS_REJECT } from "@metaobjectsdev/metadata";
 import { DEFAULT_CONFIG, ConfigSchema, saveConfig, PACKAGE_MANIFEST_FILE, DEFAULT_METADATA_DIR, DEFAULT_METAOBJECTS_DIR, DEPS_DIR, LOCK_FILE } from "@metaobjectsdev/sdk";
@@ -349,6 +348,22 @@ async function removeUnlessDryRun(cwd: string, dryRun: boolean, path: string): P
   await rm(join(cwd, path), { force: true });
 }
 
+/** Remove the directories above a pruned file `rel` (repo-relative, posix) that are now empty,
+ *  walking up to, and never including, the skills directory that holds it. A file outside every
+ *  skills directory is left alone, and the walk stops at the first directory with anything in it. */
+async function removeEmptySkillDirs(cwd: string, rel: string, skillRoots: readonly string[]): Promise<void> {
+  const root = skillRoots.find((r) => rel.startsWith(`${r}/`));
+  if (root === undefined) return;
+  for (let dir = posix.dirname(rel); dir !== root && dir.startsWith(`${root}/`); dir = posix.dirname(dir)) {
+    try {
+      if ((await readdir(join(cwd, dir))).length > 0) return;
+      await rmdir(join(cwd, dir)); // removes only an empty directory, never anything in one
+    } catch {
+      return; // already gone, unreadable, or filled meanwhile: nothing more to tidy
+    }
+  }
+}
+
 /** "would be VERBED" during a dry run, plain VERBED otherwise — the one tense
  *  marker every reported write shares, so each call site states only its own
  *  past participle instead of writing out both tenses of the whole sentence. */
@@ -437,6 +452,14 @@ async function writeAgentContext(opts: InitOptions, result: InitResult): Promise
   for (const orphan of decision.prunes) {
     await removeUnlessDryRun(opts.cwd, dryRun, orphan);
     result.removed.push(orphan);
+  }
+  // A skill directory whose every file was just pruned (the skills moved with --skills-dir, or
+  // the stack dropped a skill) would otherwise stay behind as an empty husk that reads as "the
+  // old copy is still there". Remove the ones left empty, never the skills directory itself:
+  // it may hold the user's own skills.
+  if (!dryRun) {
+    const skillRoots = [skillsDir, normalizeSkillsDir(prior?.skillsDir ?? DEFAULT_SKILLS_DIR)];
+    for (const orphan of decision.prunes) await removeEmptySkillDirs(opts.cwd, orphan, skillRoots);
   }
   // Hand-edited ones are never deleted — losing an adopter's writing is worse than leaving
   // a stale file behind — so they are named, with the reason and the remedy.

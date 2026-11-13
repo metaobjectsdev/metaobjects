@@ -98,7 +98,8 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   Claude Code reads. `--skills-dir .agents/skills` (or any project-relative directory) puts them
   where another assistant looks; the choice is recorded in `.metaobjects/.agent-context.json`,
   so a later `--refresh-docs` keeps it, and moving the directory prunes the untouched copies at
-  the old one. The always-on file names the directory, so an assistant that does not load
+  the old one along with the skill directories that leaves empty (the old skills directory
+  itself stays, and so does any skill directory still holding a file of yours). The always-on file names the directory, so an assistant that does not load
   skills opens `<dir>/<skill>/SKILL.md` by path. A directory outside the project is refused.
 - **[What differs by language](docs/features/language-differences.md).** One page lists what
   the same model does differently per port: that schema migrations and database checks need
