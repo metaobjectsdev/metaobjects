@@ -531,6 +531,9 @@ public class MetaDataLoader
             // segments, reports, relative-date filter values).
             errors.AddRange(ValidationPasses.ValidateReporting(root, _registry));
 
+            // Pass 7d (ADR-0063): business rules — operations (slice A) and lifecycles (slice B).
+            errors.AddRange(ValidationPasses.ValidateRules(root));
+
             // Pass 8: @storage cross-attribute validation on field.object
             errors.AddRange(ValidationPasses.ValidateFieldObjectStorage(root));
 

@@ -18,6 +18,7 @@ using System.Globalization;
 using System.Text.Json;
 using MetaObjects.Codegen;
 using MetaObjects.Core.Requirement;
+using MetaObjects.Core.Transition;
 using MetaObjects.Loader;
 using MetaObjects.Render;
 using static MetaObjects.Core.Requirement.RequirementConstants;
@@ -121,6 +122,8 @@ public static class VerifyCommand
         /// <see cref="Naming"/> and set on the loaded root beside it. Defaults to native.
         /// </summary>
         public MetaObjects.Meta.WireFormat Wire { get; init; } = MetaObjects.Meta.WireFormat.Default;
+        /// <summary>ADR-0063 — the business-rules settings, from the same file; defaults when none is read.</summary>
+        public MetaObjects.Config.RulesSettings Rules { get; init; } = MetaObjects.Config.RulesSettings.Default;
         /// <summary>Templates root for the <c>--templates</c> gate (<c>--templates &lt;root&gt;</c>).</summary>
         public string? TemplatesRoot { get; init; }
         /// <summary>The committed output dir for the <c>--codegen</c> gate (<c>--out &lt;dir&gt;</c>).</summary>
@@ -340,6 +343,43 @@ public static class VerifyCommand
         output.WriteLine(RequirementPrefix + string.Create(CultureInfo.InvariantCulture, $"{errors.Count} error(s)."));
         return 1;
     }
+
+    // ------------------------------------------------------------------------
+    // The business-rules gate (ADR-0063) — runs on EVERY verify, with no subverb.
+    // ------------------------------------------------------------------------
+
+    /// <summary>The command prefix the rules gate's summary and error-count lines carry.</summary>
+    private const string RulesPrefix = "dotnet meta verify — rules: ";
+
+    /// <summary>
+    /// The business-rules gate: reads the declared operations and lifecycles of the loaded model and
+    /// reports what loads clean but is almost certainly not what the author meant. A model declaring no
+    /// operation and no transition is silent: no line is printed and the exit code is unchanged.
+    /// Returns 1 when any finding is an error, or when the metadata does not load (that failure is
+    /// reported by the requirement gate, which loads first, so it is not printed twice).
+    /// </summary>
+    public static int RunRulesGate(Options opts, TextWriter output)
+    {
+        var load = LoadMetadata(opts);
+        if (load.Errors.Count > 0) return 0; // reported once, by the requirement gate (which returns 1)
+        var result = RulesCheck.Check(load.Root, opts.Rules);
+        if (result.Summary is not { } summary) return 0;
+
+        output.WriteLine(RulesPrefix + string.Create(CultureInfo.InvariantCulture,
+            $"{summary.Operations} operation(s), {summary.Lifecycles} lifecycle(s) with {summary.Transitions} transition(s)."));
+        var errors = result.Diagnostics.Where(d => d.Severity == RulesCheck.SeverityError).ToList();
+        var warns = result.Diagnostics.Where(d => d.Severity != RulesCheck.SeverityError).ToList();
+        foreach (var d in errors) output.WriteLine(FormatRulesDiagnostic(d));
+        foreach (var d in warns) output.WriteLine(FormatRulesDiagnostic(d));
+        if (errors.Count == 0) return 0;
+
+        output.WriteLine(RulesPrefix + string.Create(CultureInfo.InvariantCulture, $"{errors.Count} error(s)."));
+        return 1;
+    }
+
+    /// <summary>A diagnostic line, with no command prefix: <c>  &lt;code&gt; [&lt;path&gt;]: &lt;message&gt;</c>.</summary>
+    private static string FormatRulesDiagnostic(RequirementDiagnostic d) =>
+        $"  {d.Code}{(d.Path is null ? "" : $" [{d.Path}]")}: {d.Message}";
 
     /// <summary>The summary line, minus its command prefix. Statuses in the closed enum's order, zero counts omitted.</summary>
     private static string SummaryText(RequirementSummary summary, int files)

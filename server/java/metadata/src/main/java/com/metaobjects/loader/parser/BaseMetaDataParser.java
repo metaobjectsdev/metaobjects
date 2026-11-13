@@ -285,7 +285,7 @@ public abstract class BaseMetaDataParser {
             }
 
             // Auto-naming only allowed for the types in isAutoNamingType (validator, view,
-            // source, identity) and not abstract at root.
+            // source, identity, origin, binding) and not abstract at root.
             if (isAutoNamingType(typeName) &&
                 !(isRoot && Boolean.TRUE.equals(isAbstract))) {
                 // Generate sequential name based on subtype if available, otherwise use type
@@ -929,7 +929,9 @@ public abstract class BaseMetaDataParser {
             || MetaView.TYPE_VIEW.equals(typeName)
             || MetaSource.TYPE_SOURCE.equals(typeName)
             || MetaIdentity.TYPE_IDENTITY.equals(typeName)
-            || MetaOrigin.TYPE_ORIGIN.equals(typeName);
+            || MetaOrigin.TYPE_ORIGIN.equals(typeName)
+            // ADR-0030: a binding names no one; it is addressed through its operation.
+            || com.metaobjects.api.ApiConstants.TYPE_BINDING.equals(typeName);
     }
 
 

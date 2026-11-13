@@ -1,0 +1,186 @@
+{
+  "metadata.root": {
+    "package": "acme::purchasing",
+    "children": [
+      {
+        "object.entity": {
+          "name": "PurchaseRequest",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "purchase_requests"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "field.string": {
+                "name": "title"
+              }
+            },
+            {
+              "field.long": {
+                "name": "amountCents"
+              }
+            },
+            {
+              "field.enum": {
+                "name": "status",
+                "@values": [
+                  "draft",
+                  "submitted",
+                  "approved",
+                  "rejected"
+                ],
+                "@default": "draft",
+                "children": [
+                  {
+                    "transition.action": {
+                      "name": "submit",
+                      "@from": [
+                        "draft"
+                      ],
+                      "@to": "submitted"
+                    }
+                  },
+                  {
+                    "transition.action": {
+                      "name": "approve",
+                      "@from": [
+                        "submitted"
+                      ],
+                      "@to": "approved",
+                      "@condition": {
+                        "op": "gt",
+                        "left": {
+                          "field": "amountCents"
+                        },
+                        "right": {
+                          "value": 0
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "transition.action": {
+                      "name": "reject",
+                      "@from": [
+                        "submitted"
+                      ],
+                      "@to": "rejected",
+                      "@permission": "purchasing.review"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "DecisionInput",
+          "children": [
+            {
+              "field.long": {
+                "name": "requestId",
+                "extends": "PurchaseRequest.id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "comment"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "RequestSummary",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_request_summary"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id",
+                "extends": "PurchaseRequest.id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "title",
+                "extends": "PurchaseRequest.title"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "extends": "PurchaseRequest.pk"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "api.operational": {
+          "name": "Purchasing",
+          "children": [
+            {
+              "operation.command": {
+                "name": "decide",
+                "@inputRef": "DecisionInput",
+                "@transitions": [
+                  "approve",
+                  "reject"
+                ],
+                "@permission": "purchasing.decide",
+                "@errors": [
+                  "over_budget",
+                  "already_decided"
+                ],
+                "children": [
+                  {
+                    "binding.rest": {
+                      "@method": "PUT",
+                      "@path": "/purchase-requests/{id}/decision"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "operation.query": {
+                "name": "openRequests",
+                "@outputRef": "RequestSummary",
+                "@many": true,
+                "@public": true
+              }
+            },
+            {
+              "operation.query": {
+                "name": "requestSummary",
+                "@outputRef": "RequestSummary"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

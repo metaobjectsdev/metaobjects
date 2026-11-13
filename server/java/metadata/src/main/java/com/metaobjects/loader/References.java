@@ -37,7 +37,16 @@ public final class References {
     /** ADR-0059 R4 — the inline attribute names whose value is an object reference. */
     public static final Set<String> REF_BEARING_ATTR_NAMES = Set.of(
         "objectRef", "through", "references", "from", "via", "of",
-        "parameterRef", "payloadRef", "responseRef", "spine");
+        "parameterRef", "payloadRef", "responseRef", "spine", "inputRef", "outputRef");
+
+    /**
+     * True when {@code attrName} on {@code node} holds an object reference: in
+     * {@link #REF_BEARING_ATTR_NAMES}, and not on a {@code transition.*}, whose {@code @from}
+     * lists members of its enum (ADR-0063).
+     */
+    public static boolean isRefBearingAttr(MetaData node, String attrName) {
+        return REF_BEARING_ATTR_NAMES.contains(attrName) && !"transition".equals(node.getType());
+    }
 
     /** A parent-relative reference with more {@code ..::} than its referrer's package has segments. */
     public static final class OverDropException extends RuntimeException {
@@ -246,7 +255,7 @@ public final class References {
             // ADR-0039: own — this pass rewrites the declared-here layer; an inherited attribute
             // is resolved once, on the node that declares it.
             for (MetaAttribute<?> attr : new ArrayList<>(node.getMetaAttrs(false))) {
-                if (REF_BEARING_ATTR_NAMES.contains(attr.getName())) resolveAttr(root, node, attr, declPkg);
+                if (isRefBearingAttr(node, attr.getName())) resolveAttr(root, node, attr, declPkg);
             }
         }
         // ADR-0039: own — structural walk over the physical declaration tree.

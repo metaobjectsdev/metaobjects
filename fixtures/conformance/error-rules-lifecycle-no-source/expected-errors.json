@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_TRANSITION_NOT_ON_ENTITY",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.purchasing.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[0]['object.entity']"
+      }
+    }
+  ],
+  "warnings": []
+}

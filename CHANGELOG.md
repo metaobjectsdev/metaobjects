@@ -10,11 +10,41 @@ here.**
 
 ## [Unreleased]
 
-**New metamodel vocabulary: `measure.derived` and its `@expr`.** It is additive: nothing that
-loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersion` 1.3 if it merges before the 1.3.0 publish; if it lands after, the next release moves `metamodelVersion`.
+**New metamodel vocabulary: `measure.derived` and its `@expr`; `api.*`, `operation.*`,
+`binding.*` and `transition.*` (ADR-0063).** It is additive: nothing that loaded before stops
+loading. This vocabulary ships in 1.3.0 with `metamodelVersion` 1.3 if it merges before the 1.3.0 publish; if it lands after, the next release moves `metamodelVersion`.
 
 ### Added
 
+- **Business rules: operations, permission names and lifecycles (ADR-0063).** The names ADR-0030
+  reserved are registered, with a lifecycle vocabulary, in all five ports:
+  - `api.operational` holds `operation.command` and `operation.query`, with `@inputRef`,
+    `@outputRef`, `@many` (query), `@objectRef`, `@transitions` and `@errors` (command),
+    `@permission` and `@public`. An optional `binding.rest` (`@method`, `@path`) overrides the
+    derived HTTP binding.
+  - `transition.action` is a child of a `field.enum` on an entity, with `@from`, `@to`,
+    `@condition` (the validators' grammar), `@permission` and `@public`. An enum with a
+    transition is a lifecycle: its states, initial state (`@default`), terminal states and each
+    unclaimed transition's command are derived. `transition.timed` is reserved.
+  - The loader refuses a malformed operation or lifecycle with ten new codes, each pinned by a
+    `fixtures/conformance/error-rules-*` case: `ERR_TRANSITION_UNKNOWN_STATE`,
+    `ERR_TRANSITION_NOT_ON_ENTITY`, `ERR_LIFECYCLE_NO_INITIAL`, `ERR_TRANSITION_NAME_COLLISION`,
+    `ERR_OPERATION_SHAPE`, `ERR_OPERATION_TARGET_UNRESOLVED`, `ERR_OPERATION_TARGET_MISMATCH`,
+    `ERR_OPERATION_UNKNOWN_TRANSITION`, `ERR_PERMISSION_PUBLIC_CONFLICT` and
+    `ERR_BINDING_PATH_MISMATCH`.
+  - `verify` in every port gains a rules gate: unreachable states, an initial state that is
+    terminal, transitions that can never be made, and permission names the model derived. It is
+    pinned by the new `fixtures/rules-check-conformance/` corpus.
+  - New settings in `.metaobjects/config.json`: `rules.permissions.names`,
+    `rules.lifecycle.commands`, `rules.lifecycle.create` and `verify.lifecycle.unreachable`.
+    Absent, each behaves as before.
+  - A requirement's `@implementedBy` may name an operation (`Purchasing.decide`) or a
+    transition (`PurchaseRequest.status.submit`).
+
+  Nothing is generated from the vocabulary yet: the enforcing service shells are later work
+  (ADR-0064), and `fixtures/codegen-noop/rules/` holds every generator to byte-identical output.
+  A model that declares none of it sees no change. See `docs/features/business-rules.md`.
+  ADR-0064 records the layering and service-seam design, and amends ADR-0045.
 - **Report measures over Money and other value-object members (FR-044 R12).** A dimension's or
   measure's `@of` may name `Entity.field.member`, a member of a value object stored with
   `@storage: flattened` (`Payment.amount.amount`, `Payment.amount.currency`); the report reads

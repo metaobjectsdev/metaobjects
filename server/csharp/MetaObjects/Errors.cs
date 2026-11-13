@@ -270,6 +270,30 @@ public enum ErrorCode
     // An object.report lists a measure that belongs to an entity other than @from;
     // v1 refuses multi-fact reports (R3).
     ERR_REPORT_FOREIGN_MEASURE,
+    // ADR-0063 — business rules (ValidationPasses.ValidateRules). A transition.action
+    // @from/@to value that is not a member of its enum (L4).
+    ERR_TRANSITION_UNKNOWN_STATE,
+    // A transition.action on a field of anything but an object.entity, or a concrete
+    // entity with a lifecycle and no writable source (L1, L2).
+    ERR_TRANSITION_NOT_ON_ENTITY,
+    // An enum field with transitions and no @default, its initial state (L3).
+    ERR_LIFECYCLE_NO_INITIAL,
+    // Two transitions of one entity share a name, or a transition or operation is named
+    // create / get / list / update / delete (L5, L6, O0).
+    ERR_TRANSITION_NAME_COLLISION,
+    // An operation's @objectRef is not an entity, or a command lists @transitions with no
+    // target (O2).
+    ERR_OPERATION_TARGET_UNRESOLVED,
+    // A declared @objectRef disagrees with the derived target (O3).
+    ERR_OPERATION_TARGET_MISMATCH,
+    // A @transitions name that is not a transition of the operation's target (O4).
+    ERR_OPERATION_UNKNOWN_TRANSITION,
+    // @inputRef is not an object.value, or @outputRef is not an entity, projection or value (O1).
+    ERR_OPERATION_SHAPE,
+    // @public: true together with @permission (P1).
+    ERR_PERMISSION_PUBLIC_CONFLICT,
+    // A binding.rest @path whose placeholders are not the target's key fields (B1).
+    ERR_BINDING_PATH_MISMATCH,
     // FR-039 — @status: retired declares @implementedBy. Refused rather than exempted:
     // a retired capability has no implementation BY DEFINITION, so forbidding the
     // attribute makes the dangling-reference class unreachable instead of tolerated.

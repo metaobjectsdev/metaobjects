@@ -2105,6 +2105,23 @@ export function literalComparisonProblem(
   return undefined;
 }
 
+/**
+ * Why a `@condition` (the attr.expression grammar) over `obj`'s own fields is refused, or
+ * undefined when it is legal. `label` opens the message. One rule for a cross-field
+ * validator's condition and a transition's guard (ADR-0063): every named field is a field of
+ * `obj`, and the expression passes `conditionProblem`.
+ */
+export function conditionMessage(condition: unknown, obj: MetaObject, label: string): string | undefined {
+  const fieldNames = new Set(obj.fields().map((f) => f.name));
+  const unknown = [...new Set(expressionFieldRefs(condition))].filter((f) => !fieldNames.has(f)).sort();
+  if (unknown.length > 0) {
+    return `${label} names ${unknown.map((f) => `"${f}"`).join(", ")}, ` +
+      `which ${unknown.length === 1 ? "is not a field" : "are not fields"} of "${obj.name}".`;
+  }
+  const problem = conditionProblem(condition, obj);
+  return problem === undefined ? undefined : `${label} ${problem}`;
+}
+
 export function validateCrossFieldValidators(root: MetaData, strict = false): ParseError[] {
   const errors: ParseError[] = [];
   for (const obj of root.children().filter((c) => c.type === TYPE_OBJECT)) {

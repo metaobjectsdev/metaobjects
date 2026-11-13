@@ -1,0 +1,39 @@
+{
+  "diagnostics": [
+    {
+      "severity": "warn",
+      "code": "WARN_PERMISSION_DERIVED_NAME",
+      "path": "acme::purchasing::PurchaseRequest.status.submit",
+      "message": "the command derived from transition \"submit\" of \"PurchaseRequest\" has no @permission, so it asks the policy about the derived name \"acme::purchasing.submit\", which changes if the transition is renamed. Declare @permission, or @public: true."
+    },
+    {
+      "severity": "warn",
+      "code": "WARN_PERMISSION_DERIVED_NAME",
+      "path": "acme::purchasing::PurchaseRequest.status.approve",
+      "message": "the command derived from transition \"approve\" of \"PurchaseRequest\" has no @permission, so it asks the policy about the derived name \"acme::purchasing.approve\", which changes if the transition is renamed. Declare @permission, or @public: true."
+    },
+    {
+      "severity": "warn",
+      "code": "WARN_PERMISSION_DERIVED_NAME",
+      "path": "acme::purchasing::PurchaseRequest.status.approveFirst",
+      "message": "the command derived from transition \"approveFirst\" of \"PurchaseRequest\" has no @permission, so it asks the policy about the derived name \"acme::purchasing.approveFirst\", which changes if the transition is renamed. Declare @permission, or @public: true."
+    },
+    {
+      "severity": "warn",
+      "code": "WARN_PERMISSION_DERIVED_NAME",
+      "path": "acme::purchasing::Purchasing.decide",
+      "message": "operation.command \"decide\" has no @permission, so it asks the policy about the derived name \"acme::purchasing.decide\", which changes if the operation is renamed. Declare @permission, or @public: true."
+    },
+    {
+      "severity": "warn",
+      "code": "WARN_PERMISSION_DERIVED_NAME",
+      "path": "acme::purchasing::Purchasing.requestSummary",
+      "message": "operation.query \"requestSummary\" has no @permission, so it asks the policy about the derived name \"acme::purchasing.requestSummary\", which changes if the operation is renamed. Declare @permission, or @public: true."
+    }
+  ],
+  "summary": {
+    "operations": 4,
+    "lifecycles": 1,
+    "transitions": 5
+  }
+}

@@ -2,7 +2,7 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ConfigSchema, DEFAULT_CONFIG, loadConfig, saveConfig, setConfigWarningSink, type Config } from "../src/config.js";
+import { ConfigSchema, DEFAULT_CONFIG, loadConfig, rulesSettingsFromConfig, saveConfig, setConfigWarningSink, type Config } from "../src/config.js";
 
 let metaRoot: string;
 beforeEach(() => {
@@ -298,5 +298,36 @@ describe("csharp.providers (read by the C# port only)", () => {
     expect(bad([{ assembly: "", type: "A.B" }])).toBe(false);
     expect(bad([{ assembly: "a.dll" }])).toBe(false);
     expect(bad([{ assembly: "a.dll", type: "A.B", extra: 1 }])).toBe(false);
+  });
+});
+
+describe("ConfigSchema — rules and verify blocks (ADR-0063)", () => {
+  test("absent keys take the defaults, which behave as before the blocks existed", () => {
+    expect(rulesSettingsFromConfig(ConfigSchema.parse({ schema_version: 1 }))).toEqual({
+      permissionNames: "derive", lifecycleCreate: "initial", lifecycleCommands: "unclaimed", lifecycleUnreachable: "warn",
+    });
+  });
+
+  test("every key is read", () => {
+    const cfg = ConfigSchema.parse({
+      schema_version: 1,
+      rules: { permissions: { names: "require" }, lifecycle: { create: "any", commands: "none" } },
+      verify: { lifecycle: { unreachable: "error" } },
+    });
+    expect(rulesSettingsFromConfig(cfg)).toEqual({
+      permissionNames: "require", lifecycleCreate: "any", lifecycleCommands: "none", lifecycleUnreachable: "error",
+    });
+  });
+
+  test.each([
+    [{ rules: { permission: { names: "advise" } } }],
+    [{ rules: { lifecycle: { initial: "any" } } }],
+    [{ rules: { permissions: { names: "strict" } } }],
+    [{ rules: { lifecycle: { commands: true } } }],
+    [{ rules: "advise" }],
+    [{ verify: { lifecycle: { unreachable: "fail" } } }],
+    [{ verify: { lifecycles: {} } }],
+  ])("a mistake is refused, not defaulted: %j", (extra) => {
+    expect(ConfigSchema.safeParse({ schema_version: 1, ...extra }).success).toBe(false);
   });
 });

@@ -1,0 +1,35 @@
+{
+  "tests": [
+    {
+      "id": "acme::purchasing::Approval [object.entity]",
+      "package": "acme::purchasing",
+      "path": "Approval",
+      "unit": "object.entity",
+      "witnessKey": "req_acme_purchasing_Approval__object_entity",
+      "status": "live",
+      "skip": null,
+      "digest": "6fcb27ec98c08c12c7ab5c2368ca3ea27ebf2205b51c4196059227f947cae85e"
+    },
+    {
+      "id": "acme::purchasing::Approval [operation.command]",
+      "package": "acme::purchasing",
+      "path": "Approval",
+      "unit": "operation.command",
+      "witnessKey": "req_acme_purchasing_Approval__operation_command",
+      "status": "live",
+      "skip": null,
+      "digest": "6fcb27ec98c08c12c7ab5c2368ca3ea27ebf2205b51c4196059227f947cae85e"
+    },
+    {
+      "id": "acme::purchasing::Approval [transition.action]",
+      "package": "acme::purchasing",
+      "path": "Approval",
+      "unit": "transition.action",
+      "witnessKey": "req_acme_purchasing_Approval__transition_action",
+      "status": "live",
+      "skip": null,
+      "digest": "6fcb27ec98c08c12c7ab5c2368ca3ea27ebf2205b51c4196059227f947cae85e"
+    }
+  ],
+  "collisions": []
+}

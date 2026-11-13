@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Metamodel — `transition` types | MetaObjects</title>
+  <meta name="description" content="The MetaObjects metamodel reference — every type, subtype and attribute the loader accepts, generated from the strict registry.">
+  <link rel="icon" href="/images/mo-logo-only.png" type="image/png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+  <style>
+    /* Page-scoped — do not touch the shared landing styles. */
+    .reference { max-width: 68rem; margin: 0 auto; padding: 3rem 1.5rem 4rem; }
+    .reference h1 { font-size: 2.2rem; line-height: 1.15; color: var(--primary-blue); margin: 0 0 1rem; }
+    .reference h2 { font-size: 1.4rem; margin: 2.5rem 0 0.75rem; color: var(--primary-blue); }
+    .reference h3 { font-size: 1.1rem; margin: 2rem 0 0.5rem; font-family: var(--font-mono); }
+    .reference table { width: 100%; border-collapse: collapse; margin: 1rem 0 2rem; font-size: 0.9rem; display: block; overflow-x: auto; }
+    .reference th, .reference td { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--light-gray, #e5e7eb); vertical-align: top; }
+    .reference th { font-weight: 600; white-space: nowrap; }
+    .reference code { font-family: var(--font-mono); font-size: 0.875em; }
+    .reference a { color: var(--royal-blue); }
+    .reference-breadcrumb { font-family: var(--font-mono); font-size: 0.8rem; letter-spacing: 0.04em;
+      text-transform: uppercase; color: var(--medium-gray); margin: 0 0 0.75rem; }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <a href="/" class="brand">
+      <img src="/images/mo-logo-only.png" alt="" class="brand-mark">
+      <span class="brand-name">MetaObjects</span>
+    </a>
+    <nav>
+      <a href="/getting-started.html" class="nav-link">Get started</a>
+      <a href="/story.html" class="nav-link">Story</a>
+      <a href="/videos.html" class="nav-link">Videos</a>
+      <a href="/reference/" class="nav-link">Reference</a>
+      <a href="https://github.com/metaobjectsdev/metaobjects" class="nav-link">GitHub</a>
+      <a href="https://github.com/metaobjectsdev/metaobjects/tree/main/spec" class="nav-link nav-cta">Spec</a>
+    </nav>
+  </header>
+  <main class="reference">
+    <p class="reference-breadcrumb"><a href="/reference/">Metamodel reference</a></p>
+<!-- @generated — DO NOT EDIT.
+     Metamodel reference for the `transition` type family — each subtype's composed attributes, allowed children, and cardinality.
+     Regenerate with: meta gen (the metamodel-docs generator, metamodelDocsFile()) --><h1>Metamodel — <code>transition</code> types</h1>
+<p>Each section below is one <code>transition.&lt;subType&gt;</code>. The <strong>Attributes</strong> table lists
+the subtype&#39;s own + concern-contributed attributes (provider-tagged); universal
+documentation attributes are omitted here (see <a href="../providers.html">providers.md</a>).
+<strong>Allowed children</strong> lists the structural child rules with their cardinality
+(<code>min..max</code>, <code>*</code> = unbounded).</p>
+<h3>transition.action</h3>
+<p>An allowed move between two values of a <code>field.enum</code>, made by an operation (ADR-0063). A <code>field.enum</code> with at least one is a lifecycle, named after the field. Its states are the enum&#39;s @values, its initial state the enum&#39;s @default, its terminal states the members no transition leaves; none of them has vocabulary of its own. Each transition becomes a guarded update (<code>... WHERE id = ? AND &lt;field&gt; IN (@from) [AND @condition]</code>), its own command when no declared operation claims it, its own permission point and its own wire error.</p>
+<p><strong>Rules:</strong> Legal only under a <code>field.enum</code> of an <code>object.entity</code> that has a writable source, or of an abstract entity whose concrete inheritors have one (ERR_TRANSITION_NOT_ON_ENTITY). The field must declare @default (ERR_LIFECYCLE_NO_INITIAL). Names are unique across every lifecycle of the entity and may not be create, get, list, update or delete (ERR_TRANSITION_NAME_COLLISION).</p>
+<p><strong>When to use:</strong> A status field whose values may only change in certain ways: a request is submitted from draft, approved or rejected from submitted. Declare each allowed move here, and the generic update path can no longer write the field. A move that leaves the state where it was (from submitted to submitted) records an action that changes nothing but still happened, such as a first approval of two.</p>
+<p><strong>Attributes</strong></p>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Allowed values</th>
+<th>Provider</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>@condition</code></td>
+<td>expression</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>—</td>
+<td>A guard over the entity&#39;s own fields, in the attr.expression grammar: the same name, grammar and meaning as on the cross-field validators. Evaluated against the loaded row and also put into the guarded update&#39;s WHERE. It cannot read the actor; that is the policy&#39;s job. A field the entity does not have, or an expression that is not boolean, is ERR_BAD_ATTR_VALUE.</td>
+</tr>
+<tr>
+<td><code>@from</code></td>
+<td>string[]</td>
+<td>yes</td>
+<td></td>
+<td></td>
+<td>—</td>
+<td>The states this move may start from: members of the parent enum&#39;s @values (ERR_TRANSITION_UNKNOWN_STATE otherwise). The allowed moves are the business rule itself, so they cannot be computed.</td>
+</tr>
+<tr>
+<td><code>@permission</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>—</td>
+<td>As on an operation: the permission name the derived command for this transition asks the policy about. Absent and not @public: the derived name <code>&lt;package&gt;.&lt;transition&gt;</code>. Read only when the transition derives its own command; a declared operation that claims it uses its own.</td>
+</tr>
+<tr>
+<td><code>@public</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>—</td>
+<td>As on an operation: the derived command calls no permission check. Declaring it with @permission is ERR_PERMISSION_PUBLIC_CONFLICT.</td>
+</tr>
+<tr>
+<td><code>@to</code></td>
+<td>string</td>
+<td>yes</td>
+<td></td>
+<td></td>
+<td>—</td>
+<td>The state this move ends in: one member of the parent enum&#39;s @values (ERR_TRANSITION_UNKNOWN_STATE otherwise). May equal a member of @from, which records an action that leaves the state where it was.</td>
+</tr>
+</tbody></table>
+<p><strong>Allowed children</strong></p>
+<p><em>No structural children.</em></p>
+<h3>transition.base</h3>
+<p>Registry anchor for the attributes every lifecycle move shares (ADR-0054): not authorable.</p>
+<p><strong>Attributes</strong></p>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Allowed values</th>
+<th>Provider</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>@permission</code></td>
+<td>string</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>—</td>
+<td>As on an operation: the permission name the derived command for this transition asks the policy about. Absent and not @public: the derived name <code>&lt;package&gt;.&lt;transition&gt;</code>. Read only when the transition derives its own command; a declared operation that claims it uses its own.</td>
+</tr>
+<tr>
+<td><code>@public</code></td>
+<td>boolean</td>
+<td>no</td>
+<td></td>
+<td></td>
+<td>—</td>
+<td>As on an operation: the derived command calls no permission check. Declaring it with @permission is ERR_PERMISSION_PUBLIC_CONFLICT.</td>
+</tr>
+</tbody></table>
+<p><strong>Allowed children</strong></p>
+<p><em>No structural children.</em></p>
+
+  </main>
+  <footer class="site-footer">
+    <div class="site-footer-inner">
+      <p>
+        <strong>MetaObjects</strong> · <a href="https://github.com/metaobjectsdev/metaobjects">GitHub</a> · <a href="https://github.com/metaobjectsdev/metaobjects/blob/main/LICENSE">Apache 2.0</a> · <a href="https://github.com/metaobjectsdev/metaobjects/blob/main/spec/roadmap.md">Roadmap</a> · <a href="/llms.txt">llms.txt</a>
+      </p>
+      <p class="site-footer-meta">
+        Generated from the strict registry by <code>meta gen</code> (<code>metamodelDocsFile()</code>). Do not edit by hand.
+      </p>
+    </div>
+  </footer>
+</body>
+</html>

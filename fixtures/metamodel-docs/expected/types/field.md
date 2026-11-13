@@ -288,6 +288,7 @@ String-backed enumeration constrained to a closed set of member symbols (@values
 **Allowed children**
 
 - `origin.*` — 0..*
+- `transition.*` — 0..*
 - `validator.*` — 0..*
 - `view.*` — 0..*
 

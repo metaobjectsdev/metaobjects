@@ -71,6 +71,7 @@ public final class NeutralConfig {
     private final WireFormat wireFormat;
     private EnumDefaults enumDefaults = EnumDefaults.DEFAULT;
     private List<String> requirementsInherit = List.of();
+    private RulesSettings rulesSettings = RulesSettings.DEFAULT;
 
     private NeutralConfig(List<Map<String, String>> sources, List<Map<String, String>> dependencies,
                           List<String> scopeInclude, List<String> migrateScope,
@@ -144,6 +145,14 @@ public final class NeutralConfig {
      */
     public WireFormat getWireFormat() {
         return wireFormat;
+    }
+
+    /**
+     * ADR-0063 — the business-rules settings ({@code rules} and {@code verify.lifecycle} in this
+     * file), each absent key at its default.
+     */
+    public RulesSettings getRulesSettings() {
+        return rulesSettings;
     }
 
     /** The project's enum storage defaults ({@code enums} in this file). Never {@code null}. */
@@ -361,6 +370,7 @@ public final class NeutralConfig {
                 wireFormat);
         cfg.enumDefaults = parseEnums(root.get("enums"), origin);
         cfg.requirementsInherit = parseRequirementsInherit(root.get("requirements"), origin);
+        cfg.rulesSettings = parseRulesSettings(root.get("rules"), root.get("verify"), origin);
         return cfg;
     }
 
@@ -488,6 +498,72 @@ public final class NeutralConfig {
         JsonElement include = scope.getAsJsonObject().get("include");
         if (include == null || include.isJsonNull()) return List.of();
         return stringArray(include, "scope.include", origin);
+    }
+
+    /** ADR-0063 — one nested settings object, or {@code null} when absent; refused unless an object with only {@code allowed} keys. */
+    private static JsonObject settingsBlock(JsonObject parent, String key, String path, java.util.List<String> allowed,
+                                            String origin) {
+        JsonElement el = parent.get(key);
+        if (el == null) return null;
+        if (!el.isJsonObject()) throw bad(origin + ": \"" + path + "\" must be an object");
+        for (String k : el.getAsJsonObject().keySet()) {
+            if (!allowed.contains(k)) {
+                throw bad(origin + ": \"" + path + "\" has unknown key \"" + k + "\"; expected "
+                        + String.join(", ", allowed.stream().map(a -> "\"" + a + "\"").toList()));
+            }
+        }
+        return el.getAsJsonObject();
+    }
+
+    /** One closed-set string setting at {@code path}, or {@code null} when absent; a wrong value is refused. */
+    private static <E> E settingValue(JsonObject block, String key, String path, java.util.function.Function<String, E> of,
+                                      String expected, String origin) {
+        if (block == null) return null;
+        JsonElement el = block.get(key);
+        if (el == null) return null;
+        E value = el.isJsonPrimitive() && el.getAsJsonPrimitive().isString() ? of.apply(el.getAsString()) : null;
+        if (value == null) throw bad(origin + ": \"" + path + "\" must be one of " + expected);
+        return value;
+    }
+
+    /** ADR-0063 — the {@code rules} and {@code verify} blocks; see {@link #getRulesSettings()}. */
+    private static RulesSettings parseRulesSettings(JsonElement rules, JsonElement verify, String origin) {
+        RulesSettings d = RulesSettings.DEFAULT;
+        RulesSettings.PermissionNames names = null;
+        RulesSettings.LifecycleCreate create = null;
+        RulesSettings.LifecycleCommands commands = null;
+        RulesSettings.LifecycleUnreachable unreachable = null;
+        if (rules != null && !rules.isJsonNull()) {
+            if (!rules.isJsonObject()) throw bad(origin + ": \"rules\" must be an object");
+            JsonObject rulesObj = rules.getAsJsonObject();
+            for (String k : rulesObj.keySet()) {
+                if (!k.equals("permissions") && !k.equals("lifecycle")) {
+                    throw bad(origin + ": \"rules\" has unknown key \"" + k + "\"; expected \"permissions\" and/or \"lifecycle\"");
+                }
+            }
+            JsonObject perms = settingsBlock(rulesObj, "permissions", "rules.permissions", List.of("names"), origin);
+            names = settingValue(perms, "names", "rules.permissions.names", RulesSettings.PermissionNames::of,
+                    "\"derive\", \"advise\", \"require\"", origin);
+            JsonObject life = settingsBlock(rulesObj, "lifecycle", "rules.lifecycle", List.of("create", "commands"), origin);
+            create = settingValue(life, "create", "rules.lifecycle.create", RulesSettings.LifecycleCreate::of,
+                    "\"initial\", \"any\"", origin);
+            commands = settingValue(life, "commands", "rules.lifecycle.commands", RulesSettings.LifecycleCommands::of,
+                    "\"unclaimed\", \"all\", \"none\"", origin);
+        }
+        if (verify != null && !verify.isJsonNull()) {
+            if (!verify.isJsonObject()) throw bad(origin + ": \"verify\" must be an object");
+            JsonObject verifyObj = verify.getAsJsonObject();
+            for (String k : verifyObj.keySet()) {
+                if (!k.equals("lifecycle")) {
+                    throw bad(origin + ": \"verify\" has unknown key \"" + k + "\"; expected \"lifecycle\"");
+                }
+            }
+            JsonObject life = settingsBlock(verifyObj, "lifecycle", "verify.lifecycle", List.of("unreachable"), origin);
+            unreachable = settingValue(life, "unreachable", "verify.lifecycle.unreachable",
+                    RulesSettings.LifecycleUnreachable::of, "\"warn\", \"error\", \"off\"", origin);
+        }
+        return new RulesSettings(names != null ? names : d.permissionNames(), create != null ? create : d.lifecycleCreate(),
+                commands != null ? commands : d.lifecycleCommands(), unreachable != null ? unreachable : d.lifecycleUnreachable());
     }
 
     /**

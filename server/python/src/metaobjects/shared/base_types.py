@@ -20,6 +20,12 @@ TYPE_REQUIREMENT = "requirement"
 TYPE_DIMENSION = "dimension"
 TYPE_MEASURE = "measure"
 TYPE_SEGMENT = "segment"
+# ADR-0030 / ADR-0063 — the declared API surface (api > operation > binding) and the
+# lifecycle moves of a field.enum (transition). Mirrors TS shared/base-types.ts.
+TYPE_API = "api"
+TYPE_OPERATION = "operation"
+TYPE_BINDING = "binding"
+TYPE_TRANSITION = "transition"
 
 SUBTYPE_BASE = "base"
 SUBTYPE_ROOT = "root"

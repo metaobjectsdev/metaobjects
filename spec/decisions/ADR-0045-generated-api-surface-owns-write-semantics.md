@@ -2,7 +2,7 @@
 
 ## Status
 
-**Accepted** (2026-07-23). Fixes the Kotlin + Python legs of `field.timestamp @autoSet` (issue #203 follow-up, #229): the shipped Kotlin generated Spring controller and Python generated FastAPI router did not stamp `@autoSet` timestamps, so an adopter deploying those artifacts silently lost a semantic the changelog says shipped in all five ports. Generalizes the FR-036 decision ("constraint validation must be enforced at the wire tier, not left decorative") from validation to *all* metamodel-guaranteed write semantics.
+**Accepted** (2026-07-23). Fixes the Kotlin + Python legs of `field.timestamp @autoSet` (issue #203 follow-up, #229): the shipped Kotlin generated Spring controller and Python generated FastAPI router did not stamp `@autoSet` timestamps, so an adopter deploying those artifacts silently lost a semantic the changelog says shipped in all five ports. Generalizes the FR-036 decision ("constraint validation must be enforced at the wire tier, not left decorative") from validation to *all* metamodel-guaranteed write semantics. **Amended 2026-11-13 by ADR-0064** (Amendment 1 below): the guarantee may live in a generated service shell that the outermost artifact calls.
 
 ## Context
 
@@ -40,3 +40,27 @@ The gap survived because **no `@autoSet` scenario existed in `api-contract-confo
 - **FR-036** (constraint validation must be enforced at the wire tier across all ports) is the same call for the sibling write semantic; `@autoSet` and constraint-validation even interlock (every port's insert schema already makes an `@autoSet @required` field optional-on-POST *because* the server fills it).
 - **ADR-0023** (strict provenance) is unaffected: no new vocabulary, purely where a generator enforces an existing attr.
 - Ships as a coordinated bug-fix change (Kotlin controller + Python router/model + the api-contract `@autoSet` gate), landed together so no lane reds — per the repo's "never commit a scenario ports can't pass" rule.
+
+## Amendment 1 (2026-11-13): a generated service shell may hold the guarantee
+
+ADR-0064 adds a `layered` generator set whose service layer enforces declared business rules
+(ADR-0063). The transport of that set calls the service and holds no rules, so the decision
+sentence above no longer describes it. It is replaced with:
+
+**The outermost generated write-path artifact an adopter deploys must guarantee every
+metamodel-declared write semantic, either itself or by calling a generated service shell that
+does. No consumer-supplied seam may sit between the guarantee and the wire. A hand-written
+operation body is called by the shell, inside the guarantee, and is not such a seam.**
+
+The rest of the decision stands:
+
+- The API surface stamps (item 1) in every set that has no service layer, which is the
+  `classic` set.
+- Persistence-layer stamping stays (item 2).
+- Conformance gates the wire tier (item 3).
+
+The first rejected alternative ("rewire the Kotlin controller to delegate to the generated
+repository") was rejected because routing every controller through a lower layer "would churn
+all generated output". The `layered` set does not do that. It is opt-in per package, and a
+project that does not choose it keeps today's output byte for byte. So the objection does not
+apply to it. It still applies to rewiring the `classic` set, which this amendment does not do.

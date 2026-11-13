@@ -10,6 +10,8 @@ import com.metaobjects.generator.util.HashManifest;
 import com.metaobjects.generator.util.OrphanSweep;
 import com.metaobjects.generator.verify.TemplateVerify;
 import com.metaobjects.loader.MetaDataLoader;
+import com.metaobjects.api.RulesCheck;
+import com.metaobjects.config.RulesSettings;
 import com.metaobjects.requirement.RequirementCheck;
 import org.apache.maven.model.Plugin;
 import org.apache.maven.model.PluginExecution;
@@ -349,6 +351,44 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
         // A default-set run reaches here once per gate; the ledger is one report, not two.
         if (advisoriesDone) return 0;
         advisoriesDone = true;
+        return runRequirementLedger(loader) + runRulesGate(loader);
+    }
+
+    /**
+     * The business-rules gate (ADR-0063), beside the requirement gate. A model that declares no
+     * operation and no transition sees no change at all: nothing is logged.
+     *
+     * @return the number of error-severity diagnostics
+     */
+    private int runRulesGate(MetaDataLoader loader) {
+        RulesSettings settings = RulesSettings.DEFAULT;
+        try {
+            settings = resolveProjectConfig(getSourceDir()).map(NeutralConfig::getRulesSettings)
+                    .orElse(RulesSettings.DEFAULT);
+        } catch (MetaDataException e) {
+            getLog().error(PREFIX + "rules: " + e.getMessage());
+            return 1;
+        }
+        RulesCheck.Result result = RulesCheck.check(loader.getRoot(), settings);
+        if (result.summary() == null) return 0;
+        RulesCheck.Summary sm = result.summary();
+        getLog().info(PREFIX + "rules: " + sm.operations() + " operation(s), " + sm.lifecycles()
+                + " lifecycle(s) with " + sm.transitions() + " transition(s).");
+        int errors = 0;
+        for (RequirementCheck.Diagnostic d : result.diagnostics()) {
+            if (d.severity() != RequirementCheck.Severity.ERROR) continue;
+            errors++;
+            getLog().error(RequirementCheck.formatDiagnostic(d));
+        }
+        for (RequirementCheck.Diagnostic d : result.diagnostics()) {
+            if (d.severity() == RequirementCheck.Severity.ERROR) continue;
+            getLog().warn(RequirementCheck.formatDiagnostic(d));
+        }
+        if (errors > 0) getLog().error(PREFIX + "rules: " + errors + " error(s).");
+        return errors;
+    }
+
+    private int runRequirementLedger(MetaDataLoader loader) {
         RequirementCheck.Scan scan = RequirementCheck.scan(loader.getRoot(),
                 new RequirementCheck.Options(null,
                         requireImplementers || "1".equals(getEnv(ENV_REQUIRE_IMPLEMENTERS))));
@@ -380,7 +420,7 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
 
     private static void failOnRequirementErrors(int errors) throws MojoFailureException {
         if (errors > 0) {
-            throw new MojoFailureException("metaobjects:verify \u2014 requirements: " + errors
+            throw new MojoFailureException("metaobjects:verify \u2014 requirements/rules: " + errors
                     + " error(s); see the lines above.");
         }
     }

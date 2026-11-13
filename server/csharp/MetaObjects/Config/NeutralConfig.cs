@@ -109,6 +109,10 @@ public sealed class NeutralConfig
     /// absent key at its native default. Never null.
     public WireFormat Wire { get; }
 
+    /// ADR-0063 — the business-rules settings (`rules` and `verify` in config.json), each absent key at
+    /// its default. Never null.
+    public RulesSettings Rules { get; private init; } = RulesSettings.Default;
+
     /// The project's enum storage defaults (`enums` in config.json). Never null: an absent
     /// block is no default, same as an empty `enums: {}`.
     public EnumDefaults Enums { get; private init; } = EnumDefaults.Default;
@@ -365,6 +369,7 @@ public sealed class NeutralConfig
                 Path.GetFullPath(configDir))
             {
                 Enums = ReadEnums(root, path),
+                Rules = ReadRules(root, path),
                 RequirementsInherit = ReadRequirementsInherit(root, path),
                 OutputLayout = ReadOutputLayout(root, path),
                 PackageNamespaces = ReadPackageNamespaces(root, path),
@@ -557,6 +562,85 @@ public sealed class NeutralConfig
             }
         }
         return maxLength is null ? EnumDefaults.Default : new EnumDefaults(maxLength);
+    }
+
+    /// The `rules` and `verify` blocks (ADR-0063): an unknown key, an unknown value or a non-object block is
+    /// refused, the same rule as `naming`.
+    private static RulesSettings ReadRules(JsonElement root, string path)
+    {
+        string permissionNames = RulesSettings.Default.PermissionNames;
+        string create = RulesSettings.Default.LifecycleCreate;
+        string commands = RulesSettings.Default.LifecycleCommands;
+        string unreachable = RulesSettings.Default.LifecycleUnreachable;
+
+        static JsonElement.ObjectEnumerator Block(JsonElement owner, string name, string path)
+        {
+            if (owner.ValueKind != JsonValueKind.Object)
+                throw new MetaModelException($"{path}: \"{name}\" must be an object", ErrorCode.ERR_BAD_ATTR_VALUE);
+            return owner.EnumerateObject();
+        }
+
+        static string Choice(JsonElement value, string name, string[] allowed, string path)
+        {
+            var raw = value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+            if (raw is null || !allowed.Contains(raw))
+                throw new MetaModelException(
+                    $"{path}: \"{name}\" must be one of {string.Join(", ", allowed.Select(a => $"\"{a}\""))}",
+                    ErrorCode.ERR_BAD_ATTR_VALUE);
+            return raw;
+        }
+
+        static MetaModelException Unknown(string path, string block, string key, string expected) =>
+            new($"{path}: \"{block}\" has an unknown key \"{key}\" (expected {expected})", ErrorCode.ERR_BAD_ATTR_VALUE);
+
+        if (root.TryGetProperty("rules", out var rules))
+        {
+            foreach (var p in Block(rules, "rules", path))
+            {
+                switch (p.Name)
+                {
+                    case "permissions":
+                        foreach (var q in Block(p.Value, "rules.permissions", path))
+                        {
+                            if (q.Name != "names") throw Unknown(path, "rules.permissions", q.Name, "\"names\"");
+                            permissionNames = Choice(q.Value, "rules.permissions.names", RulesSettings.PermissionNameValues, path);
+                        }
+                        break;
+                    case "lifecycle":
+                        foreach (var q in Block(p.Value, "rules.lifecycle", path))
+                        {
+                            switch (q.Name)
+                            {
+                                case "create":
+                                    create = Choice(q.Value, "rules.lifecycle.create", RulesSettings.LifecycleCreateValues, path);
+                                    break;
+                                case "commands":
+                                    commands = Choice(q.Value, "rules.lifecycle.commands", RulesSettings.LifecycleCommandsValues, path);
+                                    break;
+                                default:
+                                    throw Unknown(path, "rules.lifecycle", q.Name, "\"create\" and/or \"commands\"");
+                            }
+                        }
+                        break;
+                    default:
+                        throw Unknown(path, "rules", p.Name, "\"permissions\" and/or \"lifecycle\"");
+                }
+            }
+        }
+
+        if (root.TryGetProperty("verify", out var verify))
+        {
+            foreach (var p in Block(verify, "verify", path))
+            {
+                if (p.Name != "lifecycle") throw Unknown(path, "verify", p.Name, "\"lifecycle\"");
+                foreach (var q in Block(p.Value, "verify.lifecycle", path))
+                {
+                    if (q.Name != "unreachable") throw Unknown(path, "verify.lifecycle", q.Name, "\"unreachable\"");
+                    unreachable = Choice(q.Value, "verify.lifecycle.unreachable", RulesSettings.LifecycleUnreachableValues, path);
+                }
+            }
+        }
+        return new RulesSettings(permissionNames, create, commands, unreachable);
     }
 
     /// The `wire` block (ADR-0019 Amendment 2): an unknown key, an unknown value, or a

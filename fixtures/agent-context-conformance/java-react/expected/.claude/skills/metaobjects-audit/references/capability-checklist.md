@@ -362,10 +362,12 @@ to nothing, and does not check that each claimed node complies).
   `naming` block of `.metaobjects/config.json` (column and table rules, read by every port)
   and per-target output dirs: hunt these values hard-coded in multiple places instead of
   resolved from config.
-- **CALIBRATION — planned, not yet shipped:** the declared-API surface (`api.base`,
-  `api.operational`, `operation.query`, `operation.command`, `binding.rest`) and MCP exposure
-  of declared prompts/tools are **not yet in the registry** — their absence is not an adopter
-  defect; do NOT audit for them.
+- **CALIBRATION — registered, nothing generated yet:** the declared-API surface
+  (`api.operational`, `operation.query`, `operation.command`, `binding.rest`) and lifecycles
+  (`transition.action` under a `field.enum`) are registered since 1.3.0 (ADR-0063), checked at
+  load and by `verify`, but no generator emits from them yet. Their absence is not an adopter
+  defect; do NOT audit for them. MCP exposure of declared prompts/tools is planned and not in
+  the registry.
 - **CALIBRATION — cross-port version skew is by design:** TS/C#/Python on the `0.x` line vs
   Java/Kotlin on the `7.x` Maven line is correct — **never flag it.** Flag only *intra-port*
   version drift (mixed package versions within one port, or a runtime package in

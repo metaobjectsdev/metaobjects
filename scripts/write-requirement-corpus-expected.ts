@@ -5,6 +5,7 @@
  *
  *   bun scripts/write-requirement-corpus-expected.ts check
  *   bun scripts/write-requirement-corpus-expected.ts identity
+ *   bun scripts/write-requirement-corpus-expected.ts rules
  *
  * ── What this is, and what it is not ───────────────────────────────────────────
  *
@@ -47,6 +48,9 @@ import {
   type Diagnostic,
   type RequirementSummary,
 } from "../server/typescript/packages/cli/src/lib/requirement-check.js";
+import { checkRules, type RulesSummary } from "../server/typescript/packages/cli/src/lib/rules-check.js";
+import { ConfigSchema } from "../server/typescript/packages/sdk/src/config.js";
+import { rulesSettingsOf } from "../server/typescript/packages/metadata/src/rules-settings.js";
 import {
   requirementTestIdentities,
   witnessKeyCollisions,
@@ -190,6 +194,26 @@ function identityExpected(root: MetaData, options: Readonly<Record<string, unkno
   };
 }
 
+// ---------------------------------------------------------------------------
+// rules — fixtures/rules-check-conformance (ADR-0063)
+// ---------------------------------------------------------------------------
+
+/** A case's `options.json` holds the `rules` and `verify` config blocks as a project writes
+ *  them, validated by the real config schema so a misspelt key is refused, not ignored. */
+function rulesExpected(root: MetaData, options: Readonly<Record<string, unknown>>): unknown {
+  const blocks = ConfigSchema.pick({ rules: true, verify: true }).parse(options);
+  const { diagnostics, summary } = checkRules(root, rulesSettingsOf(blocks));
+  const summaryRecord = (s: RulesSummary): Record<string, number> => ({
+    operations: s.operations,
+    lifecycles: s.lifecycles,
+    transitions: s.transitions,
+  });
+  return {
+    diagnostics: diagnostics.map(diagnosticRecord),
+    summary: summary === undefined ? null : summaryRecord(summary),
+  };
+}
+
 const CORPORA: Readonly<Record<string, Corpus>> = {
   check: {
     dir: "fixtures/requirement-check-conformance",
@@ -200,6 +224,11 @@ const CORPORA: Readonly<Record<string, Corpus>> = {
     dir: "fixtures/requirement-test-identity-conformance",
     optionKeys: ["grain", "filter"],
     expected: identityExpected,
+  },
+  rules: {
+    dir: "fixtures/rules-check-conformance",
+    optionKeys: ["rules", "verify"],
+    expected: rulesExpected,
   },
 };
 

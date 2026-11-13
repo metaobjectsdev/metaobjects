@@ -48,6 +48,12 @@ public enum ErrorCode {
      */
     ERR_CHILD_NOT_OBJECT,
 
+    /**
+     * A structural child is placed under a parent whose registered child rules do not admit it
+     * (the structural analogue of {@code ERR_UNKNOWN_ATTR}). Reported on the PARENT.
+     */
+    ERR_CHILD_NOT_ALLOWED,
+
     /** A node uses a type not registered in the registry. */
     ERR_UNKNOWN_TYPE,
 
@@ -610,6 +616,36 @@ public enum ErrorCode {
      * {@code @from}; combining two fact tables is a second report.
      */
     ERR_REPORT_FOREIGN_MEASURE,
+
+    /** ADR-0063: a transition.action @from or @to names a value that is not a member of its enum (L4). */
+    ERR_TRANSITION_UNKNOWN_STATE,
+
+    /** ADR-0063: a transition.action on a field of anything but an object.entity, or a concrete entity with a lifecycle and no writable source (L1, L2). */
+    ERR_TRANSITION_NOT_ON_ENTITY,
+
+    /** ADR-0063: a field.enum declares transitions but no @default, its initial state (L3). */
+    ERR_LIFECYCLE_NO_INITIAL,
+
+    /** ADR-0063: a transition or operation is named create, get, list, update or delete, or two transitions of one entity share a name (L5, L6, O0). */
+    ERR_TRANSITION_NAME_COLLISION,
+
+    /** ADR-0063: an operation @objectRef is not an object.entity, or a command lists @transitions with no target (O2). */
+    ERR_OPERATION_TARGET_UNRESOLVED,
+
+    /** ADR-0063: a declared @objectRef disagrees with the derived target (O3). */
+    ERR_OPERATION_TARGET_MISMATCH,
+
+    /** ADR-0063: a @transitions name is not a transition of the operation's target (O4). */
+    ERR_OPERATION_UNKNOWN_TRANSITION,
+
+    /** ADR-0063: @inputRef is not an object.value, or @outputRef is not an entity, projection or value (O1). */
+    ERR_OPERATION_SHAPE,
+
+    /** ADR-0063: @public: true together with @permission (P1). */
+    ERR_PERMISSION_PUBLIC_CONFLICT,
+
+    /** ADR-0063: a binding.rest @path whose placeholders are not the target's key fields (B1). */
+    ERR_BINDING_PATH_MISMATCH,
 
     /** An internal loader error with no stable error code. */
     ERR_UNKNOWN,

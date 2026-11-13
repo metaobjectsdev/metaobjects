@@ -72,8 +72,10 @@ work*. A release can move one without the other, and most releases move neither.
   [own-your-codegen](features/own-your-codegen.md).
 - **Runtime-library helper internals.** Idiomatic per port; best-effort, not promised.
 - **Anything explicitly marked experimental or reserved** and not yet in the registry
-  (e.g. the reserved-but-unregistered declared-API vocabulary `api.*`/`operation.*`/
-  `binding.*`, and reserved index subtypes `index.fulltext`/`vector`/`spatial`).
+  (e.g. the reserved lifecycle subtype `transition.timed`, the reserved event and streaming
+  sibling of `api.operational`, and reserved index subtypes `index.fulltext`/`vector`/`spatial`).
+  The declared-API vocabulary `api.*`/`operation.*`/`binding.*` is registered since 1.3.0
+  (ADR-0063) and is covered like the rest of the metamodel.
 
 ## Shipped libraries (`libraries: [...]`)
 

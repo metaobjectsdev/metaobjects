@@ -35,7 +35,7 @@ public static class NamingRefs
 
     /// <summary>
     /// The inline attribute names whose VALUE is a metadata object reference (ADR-0059 R4).
-    /// The structural <c>extends</c> key is handled separately. <c>@sourceRefField</c> (a FK
+    /// The structural <c>extends</c> key is handled separately. An operation's <c>@inputRef</c>/<c>@outputRef</c>/<c>@objectRef</c> are in it (ADR-0063). <c>@sourceRefField</c> (a FK
     /// field name) and <c>@implementedBy</c> (which may name a member) are NOT in the set.
     /// </summary>
     public static readonly IReadOnlySet<string> RefBearingAttrNames = new HashSet<string>(StringComparer.Ordinal)
@@ -46,7 +46,17 @@ public static class NamingRefs
         ORIGIN_AGGREGATE_ATTR_OF, ORIGIN_AGGREGATE_ATTR_VIA,
         SOURCE_ATTR_PARAMETER_REF, TEMPLATE_ATTR_PAYLOAD_REF, TEMPLATE_ATTR_RESPONSE_REF,
         OBJECT_REPORT_ATTR_FROM, OBJECT_REPORT_ATTR_SPINE,
+        OPERATION_ATTR_INPUT_REF, OPERATION_ATTR_OUTPUT_REF,
     };
+
+    /// <summary>
+    /// True when <paramref name="attrName"/> on <paramref name="node"/> holds an object reference: in
+    /// <see cref="RefBearingAttrNames"/>, and not on a <c>transition.*</c>, whose <c>@from</c> names
+    /// members of its enum (ADR-0063). The set is keyed by NAME, so a node type that reuses one of
+    /// these names for something else is excluded here.
+    /// </summary>
+    public static bool IsRefBearingAttr(MetaData node, string attrName) =>
+        RefBearingAttrNames.Contains(attrName) && node.Type != TYPE_TRANSITION;
 
     /// <summary>
     /// Split a ref into its owner part and any FR-024 dotted child tail. The <c>.</c> that marks

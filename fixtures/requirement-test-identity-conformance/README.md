@@ -205,6 +205,7 @@ function in each port: the address `acme::shop::Café.Réglé` with unit `*` giv
 | `filter-by-package` | `filter: package-acme-shop` over two files: a root requirement and a nested one take their file's package; one requirement in each file declares the other file's package, and its child, which declares none, takes that package too. The kept set follows the effective package, not the file, and a kept requirement's bare reference binds in its effective package. Pins `package`. |
 | `filter-by-path` | `filter: path-under-Shop`: `Shop` and both its descendants are kept. `Shopfront` and its child are not. Pins `path` as the whole dotted chain, without the package. |
 | `filter-by-claimed-concern` | `filter: claims-entity`: requirements claiming an entity are kept, a flat policy among them. One claiming only a template and one naming only a node that does not exist are dropped. Pins `implementedByTypes` as the concerns that resolved. |
+| `claims-operation-and-transition` | One requirement claiming an entity, an operation of a declared API and two transitions of one lifecycle yields three tests: `object.entity`, `operation.command` and `transition.action`. An operation is addressed `<Api>.<operation>` and a transition `<Entity>.<field>.<transition>`. |
 
 ## Who asserts it
 

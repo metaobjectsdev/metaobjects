@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_PERMISSION_PUBLIC_CONFLICT",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.purchasing.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[0]['object.entity'].children[5]['field.enum'].children[0]['transition.action']"
+      }
+    }
+  ],
+  "warnings": []
+}

@@ -15,7 +15,9 @@ using MetaObjects.Core.Validator;
 using MetaObjects.Core.Identity;
 using MetaObjects.Core.Index;
 using MetaObjects.Core.Relationship;
+using MetaObjects.Core.Api;
 using MetaObjects.Core.Reporting;
+using MetaObjects.Core.Transition;
 using MetaObjects.Core.Requirement;
 using MetaObjects.Persistence.Origin;
 using MetaObjects.Persistence.Source;
@@ -270,6 +272,8 @@ public static class CoreTypes
                     Wildcard(TYPE_TEMPLATE),
                     // Capability requirements are declared beside the entities they describe.
                     Wildcard(TYPE_REQUIREMENT),
+                    // ADR-0030 / ADR-0063 — a declared API surface is a top-level, packaged node.
+                    Wildcard(TYPE_API),
                 ],
                 (tid, n) => new MetaRoot(tid, n),
                 []));
@@ -683,6 +687,23 @@ public static class CoreTypes
                     (tid, n) => new MetaSegment(tid, n),
                     ReportingSchema.SegmentAttrsMap[subType].ToList()));
         }
+
+        // ADR-0030 / ADR-0063 — the declared API surface (api / operation / binding) and
+        // lifecycle moves (transition, a child of field.enum). One class per type; the
+        // subtype carries no behaviour of its own. Descriptions, the structural child graph
+        // and cardinalities come from the embedded api.json / transition.json via
+        // ApplySpecDescriptions; the cross-node rules live in Loader/ValidationPasses.Rules.cs.
+        void RegisterRulesType(string type, string subType, List<AttrSchema> attrs, Func<TypeId, string, MetaData> factory) =>
+            registry.Register(Def(type, subType, $"{type} ({subType})", [Wildcard(TYPE_ATTR)], factory, attrs));
+        RegisterRulesType(TYPE_API, SUBTYPE_BASE, [], (tid, n) => new MetaApi(tid, n));
+        RegisterRulesType(TYPE_API, API_SUBTYPE_OPERATIONAL, [], (tid, n) => new MetaApi(tid, n));
+        RegisterRulesType(TYPE_OPERATION, SUBTYPE_BASE, [.. ApiSchema.OperationBaseAttrs], (tid, n) => new MetaOperation(tid, n));
+        RegisterRulesType(TYPE_OPERATION, OPERATION_SUBTYPE_COMMAND, [.. ApiSchema.CommandAttrs], (tid, n) => new MetaOperation(tid, n));
+        RegisterRulesType(TYPE_OPERATION, OPERATION_SUBTYPE_QUERY, [.. ApiSchema.QueryAttrs], (tid, n) => new MetaOperation(tid, n));
+        RegisterRulesType(TYPE_BINDING, SUBTYPE_BASE, [], (tid, n) => new MetaBinding(tid, n));
+        RegisterRulesType(TYPE_BINDING, BINDING_SUBTYPE_REST, [.. ApiSchema.RestBindingAttrs], (tid, n) => new MetaBinding(tid, n));
+        RegisterRulesType(TYPE_TRANSITION, SUBTYPE_BASE, [.. TransitionSchema.TransitionBaseAttrs], (tid, n) => new MetaTransition(tid, n));
+        RegisterRulesType(TYPE_TRANSITION, TRANSITION_SUBTYPE_ACTION, [.. TransitionSchema.ActionAttrs], (tid, n) => new MetaTransition(tid, n));
 
         // template — fourth-pillar metatype (FR-004). prompt + output + toolcall;
         // attr-only children. A single MetaTemplate class backs every subtype (mirrors

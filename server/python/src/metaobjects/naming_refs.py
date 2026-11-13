@@ -44,7 +44,8 @@ from .meta.template.template_constants import (
     TEMPLATE_ATTR_PAYLOAD_REF,
     TEMPLATE_ATTR_RESPONSE_REF,
 )
-from .shared.base_types import TYPE_OBJECT
+from .meta.core.api.api_constants import OPERATION_ATTR_INPUT_REF, OPERATION_ATTR_OUTPUT_REF
+from .shared.base_types import TYPE_OBJECT, TYPE_TRANSITION
 from .shared.separators import PACKAGE_SEP
 
 if TYPE_CHECKING:
@@ -65,7 +66,10 @@ PARENT_PREFIX = PACKAGE_PARENT + PACKAGE_SEP  # "..::"
 #: relationship/field tail; ``@parameterRef``/``@payloadRef``/``@responseRef`` name
 #: value-objects. The same set is used in every port. ``@sourceRefField`` (a FK FIELD
 #: name) and ``@implementedBy`` (which may name a template as well as an object) are
-#: NOT in the set. Mirrors TS REF_BEARING_ATTR_NAMES.
+#: NOT in the set. An operation's ``@inputRef``/``@outputRef``/``@objectRef`` are (ADR-0063).
+#: The set is keyed by NAME, so a node type that reuses one of these names for something
+#: else is excluded by :func:`is_ref_bearing_attr`: a ``transition.action @from`` lists enum
+#: members. Mirrors TS REF_BEARING_ATTR_NAMES.
 REF_BEARING_ATTR_NAMES: frozenset[str] = frozenset({
     RELATIONSHIP_ATTR_OBJECT_REF,  # == FIELD_ATTR_OBJECT_REF ("objectRef")
     FIELD_ATTR_OBJECT_REF,
@@ -78,7 +82,16 @@ REF_BEARING_ATTR_NAMES: frozenset[str] = frozenset({
     TEMPLATE_ATTR_PAYLOAD_REF,
     TEMPLATE_ATTR_RESPONSE_REF,
     OBJECT_REPORT_ATTR_SPINE,
+    OPERATION_ATTR_INPUT_REF,
+    OPERATION_ATTR_OUTPUT_REF,
 })
+
+
+def is_ref_bearing_attr(node: "MetaData", attr_name: str) -> bool:
+    """True when *attr_name* on *node* holds an object reference: in
+    REF_BEARING_ATTR_NAMES, and not on a transition.*, whose @from names
+    members of its enum (ADR-0063)."""
+    return attr_name in REF_BEARING_ATTR_NAMES and node.type != TYPE_TRANSITION
 
 
 def split_child_tail(raw: str) -> tuple[str, str]:

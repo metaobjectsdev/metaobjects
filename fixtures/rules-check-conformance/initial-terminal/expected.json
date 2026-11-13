@@ -1,0 +1,15 @@
+{
+  "diagnostics": [
+    {
+      "severity": "warn",
+      "code": "WARN_LIFECYCLE_INITIAL_TERMINAL",
+      "path": "acme::purchasing::Ticket.status",
+      "message": "the initial state \"closed\" of \"status\" is terminal: no transition leaves it, so no row of this lifecycle can ever move."
+    }
+  ],
+  "summary": {
+    "operations": 0,
+    "lifecycles": 1,
+    "transitions": 1
+  }
+}

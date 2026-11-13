@@ -244,6 +244,7 @@ public static class SharedModel
                 // node's own layer and is checked when the base itself is walked.
                 foreach (var name in refBearingNames)
                 {
+                    if (!NamingRefs.IsRefBearingAttr(node, name)) continue;
                     if (node.OwnAttr(name) is string s) candidates.Add(s);
                 }
                 var targets = new List<MetaData>();

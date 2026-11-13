@@ -293,6 +293,8 @@ public final class ValidationPhase {
             reportingFindings.addAll(reporting);
             collected.addAll(reporting);
         });
+        // ADR-0063 — business rules: operations and lifecycles (L1-L7, P1, O0-O5, B1).
+        pass(collected, () -> collected.addAll(RulesValidation.validate(root)));
         pass(collected, () -> validateTemplates(root));
         pass(collected, () -> validateEntityHasPrimaryIdentity(root, loader));
         pass(collected, () -> validateFilterableHasSupportedOps(root));
@@ -2435,27 +2437,38 @@ public final class ValidationPhase {
                 }
                 if (!v.hasMetaAttr(com.metaobjects.validator.MetaValidator.ATTR_CONDITION)) continue;
                 Object condition = v.getMetaAttr(com.metaobjects.validator.MetaValidator.ATTR_CONDITION).getValue();
-                java.util.TreeSet<String> unknown = new java.util.TreeSet<>();
-                collectExprFieldRefs(condition, unknown);
-                unknown.removeAll(fields.keySet());
-                if (!unknown.isEmpty()) {
-                    StringBuilder names = new StringBuilder();
-                    for (String u : unknown) names.append(names.length() == 0 ? "" : ", ").append('"').append(u).append('"');
+                String conditionError = conditionMessage(condition, obj,
+                    "validator." + label + " @condition");
+                if (conditionError != null) {
                     out.add(new MetaDataException(
-                        ErrorMessageConstants.ERR_BAD_ATTR_VALUE + ": validator." + label + " @condition names " + names
-                            + ", which " + (unknown.size() == 1 ? "is not a field" : "are not fields")
-                            + " of \"" + obj.getShortName() + "\".",
-                        ErrorCode.ERR_BAD_ATTR_VALUE, v.getSource()));
-                    continue;
-                }
-                String problem = conditionProblem(condition, fields);
-                if (problem != null) {
-                    out.add(new MetaDataException(
-                        ErrorMessageConstants.ERR_BAD_ATTR_VALUE + ": validator." + label + " @condition " + problem,
+                        ErrorMessageConstants.ERR_BAD_ATTR_VALUE + ": " + conditionError,
                         ErrorCode.ERR_BAD_ATTR_VALUE, v.getSource()));
                 }
             }
         }
+    }
+
+    /**
+     * Why a {@code @condition} (the attr.expression grammar) over {@code obj}'s own fields is
+     * refused, or {@code null} when it is legal. {@code label} opens the message. One rule for a
+     * cross-field validator's condition and a transition's guard (ADR-0063): every named field
+     * is a field of {@code obj}, and the expression passes {@link #conditionProblem}. Mirrors TS
+     * {@code conditionMessage}.
+     */
+    static String conditionMessage(Object condition, MetaObject obj, String label) {
+        java.util.Map<String, MetaField<?>> fields = new java.util.LinkedHashMap<>();
+        for (MetaField<?> f : obj.getMetaFields()) fields.put(f.getShortName(), f);
+        java.util.TreeSet<String> unknown = new java.util.TreeSet<>();
+        collectExprFieldRefs(condition, unknown);
+        unknown.removeAll(fields.keySet());
+        if (!unknown.isEmpty()) {
+            StringBuilder names = new StringBuilder();
+            for (String u : unknown) names.append(names.length() == 0 ? "" : ", ").append('"').append(u).append('"');
+            return label + " names " + names + ", which " + (unknown.size() == 1 ? "is not a field" : "are not fields")
+                + " of \"" + obj.getShortName() + "\".";
+        }
+        String problem = conditionProblem(condition, fields);
+        return problem == null ? null : label + " " + problem;
     }
 
     /** What a literal compared with a field.duration must be. */

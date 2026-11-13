@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_BAD_ATTR_VALUE",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.purchasing.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[3]['api.operational'].children[0]['operation.command'].children[0]['binding.rest']"
+      }
+    }
+  ],
+  "warnings": []
+}

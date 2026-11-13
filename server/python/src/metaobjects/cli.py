@@ -162,6 +162,8 @@ from metaobjects.render.verify import (
     verify as render_verify,
 )
 from metaobjects.shared.base_types import TYPE_OBJECT, TYPE_TEMPLATE
+from metaobjects.rules_check import check_rules
+from metaobjects.rules_settings import RulesSettings, rules_settings_of
 from metaobjects.wire import WireFormat, wire_block, wire_candidates
 
 
@@ -521,6 +523,7 @@ def _load_root(
     # invocation) read the same values `gen`/`verify --codegen` would.
     result.root.naming = neutral.naming if neutral is not None else NamingRules()
     result.root.wire = neutral.wire if neutral is not None else WireFormat()
+    result.root.rules_settings = neutral.rules if neutral is not None else RulesSettings()
     return result.root, []
 
 
@@ -584,6 +587,7 @@ def _load_collection_result(
         # it to the loaded root so codegen, the runtime and `verify` agree.
         result.root.naming = collection.naming
         result.root.wire = collection.wire
+        result.root.rules_settings = collection.rules
     return result
 
 
@@ -2810,6 +2814,38 @@ def _verify_requirements(args: argparse.Namespace, model: "_VerifyModel | None")
     return 0
 
 
+def _verify_rules(args: argparse.Namespace, model: "_VerifyModel | None") -> int:
+    """The business-rules gate (ADR-0063, see :mod:`metaobjects.rules_check`) — runs on EVERY
+    ``verify``, with no subverb to select it: operations and lifecycles are metadata, so a
+    model declaring none is silent, not in drift (no line, no finding, exit unchanged).
+
+    Otherwise prints the summary line, then every finding (uncapped), and returns 1 when any
+    finding is an error. Returns 0 and prints nothing when the metadata did not load
+    (``model`` is ``None``): that is reported, and fails the command, in :func:`_cmd_verify`.
+    """
+    if model is None:
+        return 0
+    result = check_rules(model.root, rules_settings_of(model.root))
+    if result.summary is None:
+        return 0
+    s = result.summary
+    print(
+        f"metaobjects verify — rules: {s.operations} operation(s), {s.lifecycles} lifecycle(s) "
+        f"with {s.transitions} transition(s).",
+        file=sys.stderr,
+    )
+    errors = [d for d in result.diagnostics if d.severity == SEVERITY_ERROR]
+    warnings = [d for d in result.diagnostics if d.severity != SEVERITY_ERROR]
+    for d in errors:
+        print(_format_requirement_diagnostic(d), file=sys.stderr)
+    for d in warnings:
+        print(_format_requirement_diagnostic(d), file=sys.stderr)
+    if errors:
+        print(f"metaobjects verify — rules: {len(errors)} error(s).", file=sys.stderr)
+        return 1
+    return 0
+
+
 def _deps_project_root(args: argparse.Namespace) -> Path:
     """The project whose ``.metaobjects/config.json`` declares the dependencies: the one holding
     the metadata the run names (``<metadata_dir>``, else the config's ``metadata``), else the
@@ -2926,6 +2962,8 @@ def _cmd_verify(args: argparse.Namespace) -> int:
     if model is None:
         exit_code = max(exit_code, _report_unloaded_model(load_failure, gates_stderr.lines()))
     exit_code = max(exit_code, _verify_requirements(args, model))
+    # ADR-0063: the business-rules gate, also on every verify and also opt-in by declaration.
+    exit_code = max(exit_code, _verify_rules(args, model))
     _run_field_lint_advisory(args, model)
     return exit_code
 

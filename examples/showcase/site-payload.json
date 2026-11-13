@@ -7,9 +7,9 @@
     "metamodel": "1.3"
   },
   "counts": {
-    "fixtures": 510,
-    "corpora": 39,
-    "baseTypes": 17
+    "fixtures": 542,
+    "corpora": 40,
+    "baseTypes": 21
   },
   "snippets": {
     "showcase-model": {

@@ -218,3 +218,42 @@ def test_a_malformed_enums_block_is_refused(tmp_path: Path, enums: object) -> No
     with pytest.raises(ParseError) as e:
         read_neutral_config(tmp_path)
     assert e.value.code == ErrorCode.ERR_BAD_ATTR_VALUE
+
+
+# ADR-0063 — the `rules` and `verify` blocks. Absent keys take their defaults; a mistake is refused.
+
+
+def test_rules_settings_absent_are_defaults(tmp_path: Path) -> None:
+    _write_config(tmp_path, {"schema_version": 1})
+    cfg = read_neutral_config(tmp_path)
+    assert cfg is not None
+    assert (cfg.rules.permission_names, cfg.rules.lifecycle_create, cfg.rules.lifecycle_commands,
+            cfg.rules.lifecycle_unreachable) == ("derive", "initial", "unclaimed", "warn")
+
+
+def test_rules_settings_are_read(tmp_path: Path) -> None:
+    _write_config(tmp_path, {
+        "schema_version": 1,
+        "rules": {"permissions": {"names": "require"}, "lifecycle": {"create": "any", "commands": "none"}},
+        "verify": {"lifecycle": {"unreachable": "error"}},
+    })
+    cfg = read_neutral_config(tmp_path)
+    assert cfg is not None
+    assert (cfg.rules.permission_names, cfg.rules.lifecycle_create, cfg.rules.lifecycle_commands,
+            cfg.rules.lifecycle_unreachable) == ("require", "any", "none", "error")
+
+
+@pytest.mark.parametrize("extra", [
+    {"rules": {"permission": {"names": "advise"}}},
+    {"rules": {"lifecycle": {"initial": "any"}}},
+    {"rules": {"permissions": {"names": "strict"}}},
+    {"rules": {"lifecycle": {"commands": True}}},
+    {"rules": "advise"},
+    {"verify": {"lifecycle": {"unreachable": "fail"}}},
+    {"verify": {"lifecycles": {}}},
+])
+def test_rules_settings_mistakes_are_refused(tmp_path: Path, extra: dict) -> None:
+    _write_config(tmp_path, {"schema_version": 1, **extra})
+    with pytest.raises(ParseError) as exc:
+        read_neutral_config(tmp_path)
+    assert exc.value.code == ErrorCode.ERR_BAD_ATTR_VALUE

@@ -13,6 +13,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from metaobjects.rules_settings import RulesSettings
+
 if TYPE_CHECKING:
     from metaobjects.meta.meta_data import MetaData
 
@@ -71,4 +73,6 @@ def attach_wire(root: "MetaData", project_dir: Path) -> "MetaData":
 
     cfg = read_neutral_config(project_dir)
     root.wire = cfg.wire if cfg is not None else WireFormat()  # type: ignore[attr-defined]
+    # ADR-0063 — the business-rules settings travel with the wire setting: same file, same load sites.
+    root.rules_settings = cfg.rules if cfg is not None else RulesSettings()  # type: ignore[attr-defined]
     return root

@@ -1256,6 +1256,88 @@ metadata.root:
                             definition changes.
 
                 - requirement.functional:
+                    name: businessRules
+                    title: Business rules
+                    level: 3
+                    status: live
+                    statement: >-
+                      What an application does to its entities is declared beside
+                      them: named commands and queries, the permission each one asks
+                      about, and the moves a status field allows, so each can be
+                      checked instead of living only in hand-written code.
+                    counterexample: >-
+                      An approval rule that exists only inside one endpoint, so a
+                      background job that writes the same row skips it.
+                    description: >-
+                      Covers the operation and lifecycle vocabulary and the checks the
+                      loader and verify run on it (ADR-0063). The generated service
+                      shells that enforce these rules at run time are later work
+                      (ADR-0064); until they land the vocabulary generates nothing.
+                    children:
+                      - requirement.functional:
+                          name: apiOperational
+                          title: Operational API
+                          level: 4
+                          status: live
+                          statement: >-
+                            An operational API is a named surface at the top of a
+                            document whose children are the package's declared
+                            operations.
+                          counterexample: >-
+                            A command declared inside an entity, where a versioned
+                            second surface has nowhere to put it.
+                      - requirement.functional:
+                          name: operationCommand
+                          title: Command
+                          level: 4
+                          status: live
+                          statement: >-
+                            A command takes a declared value as input, names the
+                            transitions of its target it may make and the business
+                            errors it may return, and its target entity is derived
+                            from its input or output whenever it can be.
+                          counterexample: >-
+                            A command whose declared target disagrees with the key
+                            its input carries, so the permission check guards one
+                            entity and the write touches another.
+                      - requirement.functional:
+                          name: operationQuery
+                          title: Query
+                          level: 4
+                          status: live
+                          statement: >-
+                            A query declares what it returns, an entity, a projection
+                            or a value, and whether it returns a list.
+                          counterexample: >-
+                            A query that returns a list on one port and a single row
+                            on another because nothing said which.
+                      - requirement.functional:
+                          name: bindingRest
+                          title: REST binding
+                          level: 4
+                          status: live
+                          statement: >-
+                            A REST binding overrides an operation's derived method or
+                            path, and a path addressing one row names exactly its
+                            target's key fields.
+                          counterexample: >-
+                            A path whose placeholder names a field the target does not
+                            key on, so the route resolves the wrong row.
+                      - requirement.functional:
+                          name: transitionAction
+                          title: Transition
+                          level: 4
+                          status: live
+                          statement: >-
+                            A transition names the states it leaves and the state it
+                            reaches, all members of its enum, on a field of an entity
+                            with a writable source; the field's default is the initial
+                            state, and verify reports a state nothing reaches.
+                          counterexample: >-
+                            A status value that a typo in a transition made
+                            unreachable, found only when a row needs it.
+
+                - requirement.functional:
                     name: constraints
                     title: Constraints
                     level: 3

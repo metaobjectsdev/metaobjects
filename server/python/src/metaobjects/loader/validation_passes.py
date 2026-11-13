@@ -25,6 +25,7 @@ from .validate_discriminator import validate_discriminator
 from .validate_source_parameter_ref import validate_source_parameter_ref
 from .validate_source_escapes import validate_source_escapes
 from .validate_reporting import validate_reporting
+from .validate_rules import validate_rules
 from ..codegen.runtime.duration_wire import DURATION_RE
 from ..meta.core.reporting.reporting_constants import (
     FILTER_RELATIVE_NOW,
@@ -233,6 +234,8 @@ def run_validations(
     # FR-044 — the reporting vocabulary (dimension / measure / segment /
     # object.report) and relative-date filter values (rules D1-F2).
     validate_reporting(root, errors)
+    # ADR-0063 — business rules: operations and lifecycles.
+    validate_rules(root, errors)
     _validate_origin_paths(root, errors)
     # FR-024 B6 — an entity's origin-bearing field needs a read-capable source.
     _validate_derived_field_providability(root, errors)
@@ -4442,6 +4445,23 @@ def literal_comparison_problem(expr: object, field_of: Any) -> str | None:
     return None
 
 
+def condition_message(condition: object, obj: MetaData, label: str) -> str | None:
+    """Why a ``@condition`` (the attr.expression grammar) over *obj*'s own fields is refused, or
+    None when it is legal. *label* opens the message. One rule for a cross-field validator's
+    condition and a transition's guard (ADR-0063): every named field is a field of *obj*, and the
+    expression passes :func:`_condition_problem`. Mirrors TS ``conditionMessage``."""
+    field_names = {f.name for f in obj.fields()}
+    refs: set[str] = set()
+    _expr_field_refs(condition, refs)
+    unknown = sorted(refs - field_names)
+    if unknown:
+        names = ", ".join(f'"{u}"' for u in unknown)
+        verb = "is not a field" if len(unknown) == 1 else "are not fields"
+        return f'{label} names {names}, which {verb} of "{obj.name}".'
+    problem = _condition_problem(condition, obj)
+    return None if problem is None else f"{label} {problem}"
+
+
 def _validate_cross_field_validators(root: MetaData, errors: list[MetaError], strict: bool = False) -> None:
     """Cross-field validator rules. *strict*: a strict load already refuses an atLeastOne ``@max``
     as an unregistered attr, so that check runs only on the default load (one error per node)."""
@@ -4450,7 +4470,6 @@ def _validate_cross_field_validators(root: MetaData, errors: list[MetaError], st
     for obj in root.children():
         if obj.type != TYPE_OBJECT:
             continue
-        field_names = {f.name for f in obj.fields()}
         for v in obj.own_children():
             if v.type != TYPE_VALIDATOR or v.sub_type not in vc.CROSS_FIELD_VALIDATOR_SUBTYPES:
                 continue
@@ -4506,26 +4525,11 @@ def _validate_cross_field_validators(root: MetaData, errors: list[MetaError], st
             condition = v.get_meta_attr(vc.VALIDATOR_ATTR_CONDITION)
             if condition is None:
                 continue
-            label = f'validator.{v.sub_type} "{obj.name}.{v.name}" @condition'
-            refs: set[str] = set()
-            _expr_field_refs(condition, refs)
-            unknown = sorted(refs - field_names)
-            if unknown:
-                names = ", ".join(f'"{u}"' for u in unknown)
-                verb = "is not a field" if len(unknown) == 1 else "are not fields"
-                errors.append(MetaError(
-                    code=ErrorCode.ERR_BAD_ATTR_VALUE,
-                    message=f'{label} names {names}, which {verb} of "{obj.name}".',
-                    envelope=v.source,
-                ))
-                continue
-            problem = _condition_problem(condition, obj)
-            if problem is not None:
-                errors.append(MetaError(
-                    code=ErrorCode.ERR_BAD_ATTR_VALUE,
-                    message=f"{label} {problem}",
-                    envelope=v.source,
-                ))
+            message = condition_message(
+                condition, obj, f'validator.{v.sub_type} "{obj.name}.{v.name}" @condition'
+            )
+            if message is not None:
+                errors.append(MetaError(code=ErrorCode.ERR_BAD_ATTR_VALUE, message=message, envelope=v.source))
 
 
 # field.enum @maxLength — the column length of a string-stored enum:

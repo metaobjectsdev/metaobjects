@@ -33,6 +33,11 @@ public class InvalidMetaDataException extends MetaDataException {
         super(prefix(md)+msg, cause);
     }
 
+    /** A placement-style failure that carries its structured code and the node it is reported on. */
+    public InvalidMetaDataException( MetaData md, String msg, ErrorCode code, com.metaobjects.source.ErrorSource envelope) {
+        super(prefix(md)+msg, code, envelope);
+    }
+
     protected static String prefix( MetaData md ) {
         if ( md == null ) return "[null] ";
         String pkg = md.getPackage();
