@@ -2607,7 +2607,7 @@ public static partial class ValidationPasses
         }
         void CheckEnum(MetaField field)
         {
-            var declares = new[] { FIELD_ATTR_MAX_LENGTH, FIELD_ATTR_VALUES, FIELD_ATTR_INT_VALUE_MAP }
+            var declares = new[] { FIELD_ATTR_MAX_LENGTH, FIELD_ATTR_VALUES, FIELD_ATTR_INT_VALUE_MAP, FIELD_ATTR_STRING_VALUE_MAP }
                 .Any(a => field.OwnAttr(a) is not null);
             if (!declares || field.MaxLength is not { } maxLength) return;
             var owner = field.Parent;
@@ -2620,14 +2620,15 @@ public static partial class ValidationPasses
                     Envelope: field.Source));
                 return;
             }
-            var tooLong = (field.EffectiveEnumValues ?? [])
+            // rc.21: the column holds each member's STORED string (@stringValueMap), so that is what must fit.
+            var tooLong = EnumStorage.StoredValues(field)
                 .Where(v => v.Length > maxLength)
                 .OrderByDescending(v => v.Length)
                 .FirstOrDefault();
             if (tooLong is not null)
             {
                 errors.Add(new MetaError(
-                    $"field.enum \"{label}\" @maxLength {maxLength} is shorter than its member \"{tooLong}\" ({tooLong.Length} characters). Raise @maxLength to at least {tooLong.Length}, or shorten the member.",
+                    $"field.enum \"{label}\" @maxLength {maxLength} is shorter than its {(EnumStorage.StringValueMapOf(field) is null ? "member" : "stored value")} \"{tooLong}\" ({tooLong.Length} characters). Raise @maxLength to at least {tooLong.Length}, or shorten the member.",
                     ErrorCode.ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH,
                     Envelope: field.Source));
             }
@@ -3261,6 +3262,60 @@ public static partial class ValidationPasses
                     else
                     {
                         seenValues[value] = key;
+                    }
+                }
+            }
+
+            // Rule 6 (rc.21): @stringValueMap content rules — the string twin of Rule 5, with its
+            // policies (own-only; a shared enum's backing owned by the shared declaration). Keys must
+            // exactly match @values; values are unique non-empty strings. An enum that is not
+            // string-stored refuses it: an @intValueMap enum stores integers, and an array enum
+            // stores its members as text[] elements, which no port maps through it.
+            if (field.OwnAttr(FIELD_ATTR_STRING_VALUE_MAP) is { } rawStringMap)
+            {
+                void Bad(string message, ErrorCode code = ErrorCode.ERR_BAD_ATTR_VALUE) => errors.Add(new MetaError(
+                    $"field.enum '{field.Name}' attribute '@{FIELD_ATTR_STRING_VALUE_MAP}' {message}", code, Envelope: field.Source));
+                if (SharedEnumSuper(field) is { } sharedStringSuper)
+                {
+                    Bad($"is declared on a field extending shared abstract enum '{sharedStringSuper.Name}' — a shared enum's " +
+                        $"stored strings are owned by the shared declaration; move it onto '{sharedStringSuper.Name}' to inherit it.",
+                        ErrorCode.ERR_ENUM_EXTENDS_VALUES_CONFLICT);
+                }
+                else if (field.Attr(FIELD_ATTR_INT_VALUE_MAP) is not null)
+                {
+                    Bad($"is refused beside '@{FIELD_ATTR_INT_VALUE_MAP}': an @intValueMap enum is stored as integers, not strings. Keep one.");
+                }
+                else if (field.ResolvedIsArray())
+                {
+                    Bad($"is refused on an array enum: its column holds the members as text[] elements, which no port maps through @{FIELD_ATTR_STRING_VALUE_MAP}.");
+                }
+                else if (rawStringMap is not IReadOnlyDictionary<string, object?> stringMap)
+                {
+                    Bad("must be an object of { member: storedString }.");
+                }
+                else
+                {
+                    var effective = field.EffectiveEnumValues ?? new List<string>();
+                    var memberSet = new HashSet<string>(effective, StringComparer.Ordinal);
+                    var keySet = new HashSet<string>(stringMap.Keys, StringComparer.Ordinal);
+                    var missing = effective.Where(m => !keySet.Contains(m)).ToList();
+                    var extra = stringMap.Keys.Where(k => !memberSet.Contains(k)).ToList();
+                    if (missing.Count > 0 || extra.Count > 0)
+                        Bad($"keys must exactly match '@{FIELD_ATTR_VALUES}' members" +
+                            (missing.Count > 0 ? $" (missing: {string.Join(", ", missing)})" : "") +
+                            (extra.Count > 0 ? $" (unknown: {string.Join(", ", extra)})" : "") + ".");
+                    var seen = new Dictionary<string, string>(StringComparer.Ordinal);
+                    foreach (var (member, value) in stringMap)
+                    {
+                        if (value is not string { Length: > 0 } stored)
+                        {
+                            Bad($"member '{member}' must map to a non-empty string.");
+                            continue;
+                        }
+                        if (seen.TryGetValue(stored, out var owner))
+                            Bad($"members '{owner}' and '{member}' share the stored string '{stored}'; every member must have a unique one.");
+                        else
+                            seen[stored] = member;
                     }
                 }
             }

@@ -359,6 +359,8 @@ public class DbContextGenerator : IGenerator
         if (NeedsUnmappedEnumHelper(objects, ctx.Root)
             || modelLines.Any(l => l.Contains(UnmappedEnumMemberHelperName + "(", StringComparison.Ordinal)))
             EmitUnmappedEnumHelper(sb);
+        if (modelLines.Any(l => l.Contains(UnmappedEnumStoredMemberHelperName + "(", StringComparison.Ordinal)))
+            EmitUnmappedStoredEnumHelper(sb);
         // Gated on the EMITTED text, not on a second derivation of it. Every site that uses the
         // helper appends to modelLines (entity, read-only projection, and the flattened-VO member
         // block, which lands here as one OwnedTypeConfig string), and modelLines is complete by
@@ -1788,6 +1790,36 @@ public class DbContextGenerator : IGenerator
     /// <summary>Name of the generated fail-fast helper the write converters end in.</summary>
     private const string UnmappedEnumMemberHelperName = "UnmappedEnumMember";
 
+    /// <summary>rc.21 — the read/write helpers a <c>@stringValueMap</c> enum's converters end in.</summary>
+    private const string UnmappedEnumStoredValueHelperName = "UnmappedEnumStoredValue";
+    private const string UnmappedEnumStoredMemberHelperName = "UnmappedEnumStoredMember";
+
+    /// <summary>
+    /// rc.21 — the fail-fast helpers a <c>@stringValueMap</c> enum's converters end in, emitted only
+    /// when a converter references them (so a model with none is byte-identical).
+    /// </summary>
+    private static void EmitUnmappedStoredEnumHelper(StringBuilder sb)
+    {
+        sb.AppendLine();
+        sb.AppendLine("    /// <summary>");
+        sb.AppendLine("    /// A field.enum column with @stringValueMap held a string that maps to no member: the");
+        sb.AppendLine("    /// database holds data the model says is impossible.");
+        sb.AppendLine("    /// </summary>");
+        sb.AppendLine($"    private static T {UnmappedEnumStoredValueHelperName}<T>(string stored, string field) =>");
+        sb.AppendLine("        throw new global::System.InvalidOperationException(");
+        sb.AppendLine("            $\"field.enum '{field}' read stored value '{stored}' with no member in \" +");
+        sb.AppendLine("            \"@stringValueMap — the database holds a value the model does not describe.\");");
+        sb.AppendLine();
+        sb.AppendLine("    /// <summary>");
+        sb.AppendLine("    /// A field.enum property with @stringValueMap held a value outside @values: it has no");
+        sb.AppendLine("    /// declared stored string, and writing another member's would corrupt the row silently.");
+        sb.AppendLine("    /// </summary>");
+        sb.AppendLine($"    private static string {UnmappedEnumStoredMemberHelperName}(object? value, string field) =>");
+        sb.AppendLine("        throw new global::System.InvalidOperationException(");
+        sb.AppendLine("            $\"field.enum '{field}' cannot write {value}: it has no stored string in \" +");
+        sb.AppendLine("            \"@stringValueMap — the value is not one of the members the model declares.\");");
+    }
+
     /// <summary>
     /// Emits the fail-fast helper every int-backed enum's provider→model converter ends
     /// in. Emitted only when at least one such converter was generated, so a model with
@@ -2054,16 +2086,18 @@ public class DbContextGenerator : IGenerator
     {
         var config = ctx.Config;
         var intMap = IntValueMapOf(f);
+        var stringMap = f.ResolvedIsArray() ? null : EnumStorage.StringValueMapOf(f);
         // A string-backed enum's column length (EnumLength.ResolveMaxLength: its @maxLength, else
         // the project's enums.maxLength) is the VARCHAR(n) `meta migrate` creates. An array enum
         // is a text[] column, whose elements carry no length.
-        if (intMap is null)
-            return !f.ResolvedIsArray() && EnumLength.ResolveMaxLength(f) is { } length
-                ? $"HasConversion<string>().HasMaxLength({length})"
-                : "HasConversion<string>()";
+        var maxLength = !f.ResolvedIsArray() && intMap is null && EnumLength.ResolveMaxLength(f) is { } length
+            ? $".HasMaxLength({length})"
+            : "";
+        if (intMap is null && stringMap is null)
+            return $"HasConversion<string>(){maxLength}";
 
         var members = f.EffectiveEnumValues ?? new List<string>();
-        if (members.Count == 0) return "HasConversion<string>()";
+        if (members.Count == 0) return $"HasConversion<string>(){maxLength}";
 
         // FR-019: a SHARED (root-level abstract) or @provided enum is NOT nested inside the
         // entity class — EntityGenerator references it instead (see its EnumPropertyTypeName)
@@ -2081,12 +2115,27 @@ public class DbContextGenerator : IGenerator
         var type = Fr019SharedEnum.SharedEnumForField(f) is { } shared
             ? Fr019SharedEnum.SharedEnumTypeReference(shared, config)
             : $"{CSharpNaming.QualifiedOwnerTypeRef(owner, entity, config)}.{CSharpNaming.EnumTypeName(entity, f)}";
+        // rc.21: a @stringValueMap enum stores each member's string. The same per-member chains as
+        // the int-backed pair below, over string literals, each ending in its throwing helper.
+        if (stringMap is not null)
+        {
+            var toStored = new System.Text.StringBuilder("v => ");
+            var fromStored = new System.Text.StringBuilder("v => ");
+            foreach (var m in members)
+                toStored.Append($"v == {type}.{m} ? \"{CSharpNaming.CSharpStringLiteral(EnumStorage.StoredValue(f, m))}\" : ");
+            toStored.Append($"{UnmappedEnumStoredMemberHelperName}(v, \"{f.Name}\")");
+            foreach (var m in members)
+                fromStored.Append($"v == \"{CSharpNaming.CSharpStringLiteral(EnumStorage.StoredValue(f, m))}\" ? {type}.{m} : ");
+            fromStored.Append($"{UnmappedEnumStoredValueHelperName}<{type}>(v, \"{f.Name}\")");
+            return $"HasConversion({toStored}, {fromStored}){maxLength}";
+        }
+
         // Read the ints THROUGH the map, keyed by member, so @values stays the SSOT and a
         // member with no mapping cannot silently vanish from the conversion.
         var ints = new List<string>(members.Count);
         foreach (var m in members)
         {
-            if (!intMap.TryGetValue(m, out var raw) || raw is null)
+            if (!intMap!.TryGetValue(m, out var raw) || raw is null)
                 throw new InvalidOperationException(
                     $"field.enum '{f.Name}' @{FIELD_ATTR_INT_VALUE_MAP} has no integer for member '{m}' — " +
                     "cannot build the EF value conversion.");

@@ -66,8 +66,9 @@ public static class CheckConstraints
             if (field.SubType == FIELD_SUBTYPE_ENUM && !OptedOut(field) && field.EffectiveEnumValues is { Count: > 0 } values)
             {
                 var ints = field.Attr(FIELD_ATTR_INT_VALUE_MAP) as IReadOnlyDictionary<string, object?>;
+                // rc.21: a string member is stored as its @stringValueMap string, else as itself.
                 var members = ints is null
-                    ? values.Select(Literal)
+                    ? values.Select(v => Literal(EnumStorage.StoredValue(field, v)))
                     : values.Select(v => ints.TryGetValue(v, out var n) && n is not null
                         ? Number(n)
                         : throw new InvalidOperationException(
@@ -278,9 +279,12 @@ public static class CheckConstraints
         {
             var field = entity.Fields().FirstOrDefault(f => f.Name == name);
             if (field?.SubType == FIELD_SUBTYPE_DURATION) return DurationLiteral(field, value, dialect, "@condition");
-            return field?.Attr(FIELD_ATTR_INT_VALUE_MAP) is IReadOnlyDictionary<string, object?> ints
-                   && value is string s && ints.TryGetValue(s, out var n) && n is not null && IsNumber(n)
-                ? Number(n)
+            if (field?.Attr(FIELD_ATTR_INT_VALUE_MAP) is IReadOnlyDictionary<string, object?> ints
+                && value is string s && ints.TryGetValue(s, out var n) && n is not null && IsNumber(n))
+                return Number(n);
+            // rc.21: a member compared with a @stringValueMap enum is its stored string.
+            return field is not null && value is string member && EnumStorage.StringValueMapOf(field) is not null
+                ? Literal(EnumStorage.StoredValue(field, member))
                 : null;
         }
         var unless = Render(Negate(condition), Column, dialect, Stored);
@@ -315,7 +319,8 @@ public static class CheckConstraints
         var numeric = when.SubType is FIELD_SUBTYPE_INT or FIELD_SUBTYPE_LONG or FIELD_SUBTYPE_DOUBLE
             or FIELD_SUBTYPE_FLOAT or FIELD_SUBTYPE_DECIMAL or FIELD_SUBTYPE_CURRENCY;
         if (numeric && Regex.IsMatch(s, @"^-?\d+(\.\d+)?$")) return s;
-        return Literal(s);
+        // rc.21: a member of a @stringValueMap enum is compared as its stored string.
+        return Literal(when.SubType == FIELD_SUBTYPE_ENUM ? EnumStorage.StoredValue(when, s) : s);
     }
 
     // ---- field.duration literals (typescript metadata duration-wire.ts) ----

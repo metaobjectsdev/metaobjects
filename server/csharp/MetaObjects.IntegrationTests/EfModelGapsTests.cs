@@ -169,6 +169,37 @@ public sealed class EfModelGapsTests
         Assert.Null(patient.ClrType.GetProperty("HasConsent"));
     }
 
+    // ── rc.21: @stringValueMap — a member's stored string ────────────────────────────────────
+
+    private const string StoredStringModel = """
+    { "metadata.root": { "package": "acme", "children": [
+      { "object.entity": { "name": "Upload", "children": [
+        { "source.rdb": { "@table": "uploads" } },
+        { "field.long": { "name": "id" } },
+        { "field.enum": { "name": "status", "@values": ["Pending", "Delivered"], "@default": "Pending", "@maxLength": 12,
+            "@stringValueMap": { "Pending": "pending", "Delivered": "delivered" } } },
+        { "identity.primary": { "@fields": "id" } }
+      ]}}
+    ]}}
+    """;
+
+    [Fact]
+    public void A_string_value_map_enum_converts_member_and_stored_string_both_ways()
+    {
+        var gen = GeneratedEfModel.Compile(StoredStringModel, "Acme.Stored");
+        using var db = gen.ModelOnlyContext();
+        var status = EntityType(db, "Upload").FindProperty("Status")!;
+        var converter = status.GetValueConverter()!;
+        var enumType = Nullable.GetUnderlyingType(status.ClrType) ?? status.ClrType;
+        var delivered = Enum.Parse(enumType, "Delivered");
+        Assert.Equal("delivered", converter.ConvertToProvider(delivered));
+        Assert.Equal(delivered, converter.ConvertFromProvider("delivered"));
+        Assert.Throws<InvalidOperationException>(() => converter.ConvertFromProvider("lost"));
+        Assert.Equal(12, status.GetMaxLength());
+        // The column default is the member; EF writes it through the converter, as 'pending'.
+        Assert.Equal("pending", converter.ConvertToProvider(status.GetDefaultValue()));
+    }
+
     // ── G6 (reference half): an identity.reference over a flattened value-object member ──────
 
     private const string FlattenedReferenceModel = """

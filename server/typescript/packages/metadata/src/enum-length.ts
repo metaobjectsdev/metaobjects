@@ -11,7 +11,7 @@ import {
   FIELD_SUBTYPE_ENUM,
 } from "./core/field/field-constants.js";
 import { TYPE_OBJECT } from "./shared/base-types.js";
-import { storedEnumValues } from "./core/field/enum-storage.js";
+import { storedEnumValues, stringValueMapOf } from "./core/field/enum-storage.js";
 
 /** The `enums` block in `.metaobjects/config.json`. */
 export const ENUMS_KEY_MAX_LENGTH = "maxLength";
@@ -56,7 +56,7 @@ export function resolveEnumMaxLength(field: MetaData): number | undefined {
     const owner = field.parent;
     const label = owner !== undefined && owner.type === TYPE_OBJECT ? `${owner.name}.${field.name}` : field.name;
     throw new MetaModelError(
-      `field.enum "${label}" has the stored value "${longest}" (${longest.length} characters), longer than ` +
+      `field.enum "${label}" has the ${stringValueMapOf(field) === undefined ? "member" : "stored value"} "${longest}" (${longest.length} characters), longer than ` +
       `the project's enums.maxLength ${fallback}. Give the field its own @maxLength of at least ` +
       `${longest.length}, raise enums.maxLength, or shorten the member.`,
       { code: "ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH" },

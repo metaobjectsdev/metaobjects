@@ -26,7 +26,7 @@ import {
 import type { MetaData } from "../shared/meta-data.js";
 import type { MetaObject } from "../core/object/meta-object.js";
 import { findReverseReferenceHops, reverseHopHint } from "../core/relationship/find-reference.js";
-import { storedEnumValues } from "../core/field/enum-storage.js";
+import { storedEnumValues, stringValueMapOf } from "../core/field/enum-storage.js";
 import { resolveFlattenedMember } from "../core/field/flattened-member.js";
 import { resolveFilterPath } from "../core/relationship/filter-path.js";
 import { effectiveProjectionFilter } from "../core/object/effective-projection-filter.js";
@@ -2146,7 +2146,7 @@ export function validateEnumMaxLength(root: MetaData): ParseError[] {
       .sort((a, b) => b.length - a.length);
     if (tooLong.length > 0) {
       errors.push(new ParseError(
-        `field.enum "${label}" @maxLength ${maxLength} is shorter than its stored value "${tooLong[0]}" (${tooLong[0]!.length} characters). Raise @maxLength to at least ${tooLong[0]!.length}, or shorten the member.`,
+        `field.enum "${label}" @maxLength ${maxLength} is shorter than its ${stringValueMapOf(field) === undefined ? "member" : "stored value"} "${tooLong[0]}" (${tooLong[0]!.length} characters). Raise @maxLength to at least ${tooLong[0]!.length}, or shorten the member.`,
         { code: "ERR_ENUM_VALUE_EXCEEDS_MAX_LENGTH", source: field.source },
       ));
     }

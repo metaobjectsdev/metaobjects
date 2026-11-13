@@ -368,7 +368,7 @@ public static class CoreTypes
                 // tolerant-extract overlays (@enumAlias / @enumDoc / @coerceDefault /
                 // @normalize) are re-homed to the metaobjects-prompt concern provider
                 // (reads prompt.json's field.enum extends).
-                FIELD_SUBTYPE_ENUM     => [.. FieldSchema.CommonFieldAttrs, FieldSchema.EnumValuesAttr, FieldSchema.ProvidedAttr, FieldSchema.IntValueMapAttr],
+                FIELD_SUBTYPE_ENUM     => [.. FieldSchema.CommonFieldAttrs, FieldSchema.EnumValuesAttr, FieldSchema.ProvidedAttr, FieldSchema.IntValueMapAttr, FieldSchema.StringValueMapAttr],
                 _                      => FieldSchema.CommonFieldAttrs.ToList(),
             };
 

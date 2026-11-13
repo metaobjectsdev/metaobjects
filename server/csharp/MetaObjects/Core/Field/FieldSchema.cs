@@ -214,6 +214,13 @@ public static class FieldSchema
         Required: false,
         Description: "Optional per-member int values ({member: int}) switching this enum field's DB persistence from string+CHECK to integer+CHECK. Keys must exactly match @values; values must be unique integers.");
 
+    /// <summary>rc.21 — the @stringValueMap attr — only on field.enum. Optional object of strings.</summary>
+    public static readonly AttrSchema StringValueMapAttr = new AttrSchema(
+        Name: FieldConstants.FIELD_ATTR_STRING_VALUE_MAP,
+        ValueType: AttrConstants.ATTR_SUBTYPE_PROPERTIES,
+        Required: false,
+        Description: "Optional per-member stored strings ({member: string}) for a string-stored enum whose database spelling differs from its member symbols. Keys must exactly match @values; values must be unique non-empty strings.");
+
     // FR-033 — the field.enum tolerant-extract overlays (@enumAlias / @enumDoc /
     // @coerceDefault / @normalize) and object.value's @normalize default are NO LONGER
     // declared here. They are re-homed to the metaobjects-prompt concern provider
