@@ -29,7 +29,7 @@ import {
 import { resolveObjectNames, type FieldNames } from "../src/names.js";
 import { renderNamesDecl } from "../src/templates/names-decl.js";
 import { renderProjectionDecl } from "../src/templates/projection-decl.js";
-import { code } from "ts-poet";
+import { code } from "../src/poet.js";
 
 const CORPUS = resolve(import.meta.dir, "../../../../../fixtures/naming-conformance/physical-names");
 

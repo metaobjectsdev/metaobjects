@@ -193,9 +193,9 @@ export { renderSharedEnumsFile, SHARED_ENUMS_BASENAME } from "./templates/enums-
 export { resolveReferenceRoot, readReferenceTemplate, REFERENCE_GENERATOR_NAMES, makeReferenceReader } from "./reference-templates.js";
 export type { ReferenceGeneratorName } from "./reference-templates.js";
 
-// ts-poet composition primitives, re-exported from THIS package's own ts-poet
-// instance. The ADR-0034 owned/scaffolded generators MUST import these from here
-// rather than from a bare "ts-poet": ts-poet recognizes nested Code/Import
+// Code-printing primitives (src/poet.ts, vendored from ts-poet), re-exported from THIS
+// package's one copy. The ADR-0034 owned/scaffolded generators MUST import these from here
+// rather than from a bare "ts-poet": the printer recognizes nested Code/Import
 // placeholders by `instanceof`, so a Code built by this package's render*
 // primitives is only recognized by a `code`/`joinCode` from the SAME physical
 // ts-poet copy. With a globally-installed or linked CLI, the project tree and the
@@ -204,8 +204,8 @@ export type { ReferenceGeneratorName } from "./reference-templates.js";
 // with its own import header (duplicate `import { eq } from "drizzle-orm"`,
 // TS2300 on the adopter's first tsc). Gated by
 // cli/test/gen-split-tree-single-import.test.ts.
-export { code, imp, joinCode } from "ts-poet";
-export type { Code } from "ts-poet";
+export { code, imp, joinCode } from "./poet.js";
+export type { Code } from "./poet.js";
 
 export {
   renderFindByIdFn,

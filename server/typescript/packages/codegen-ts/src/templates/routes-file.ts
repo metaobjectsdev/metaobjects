@@ -16,7 +16,7 @@
 // the existing queries-file template). The entity's Drizzle table const is
 // imported alongside the Zod schemas + constants from the sibling Entity.ts.
 
-import { code, imp, joinCode, type Code } from "ts-poet";
+import { code, imp, joinCode, type Code } from "../poet.js";
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import {
   TYPE_FIELD,

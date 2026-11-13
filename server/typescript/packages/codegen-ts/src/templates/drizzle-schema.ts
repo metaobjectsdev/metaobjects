@@ -2,7 +2,7 @@
 // with FK .references() on FK columns derived from relationship children,
 // plus the relations() block auto-emitted at the end.
 
-import { code, imp, joinCode, type Code } from "ts-poet";
+import { code, imp, joinCode, type Code } from "../poet.js";
 import { MetaObject, MetaField, MetaIndex, isMetaObject } from "@metaobjectsdev/metadata";
 import {
   IDENTITY_ATTR_FIELDS, IDENTITY_ATTR_GENERATION, IDENTITY_ATTR_SEQUENCE_START, IDENTITY_ATTR_SEQUENCE_NAME,

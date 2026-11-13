@@ -4,8 +4,8 @@
 // `meta eject` copies a reference generator and the template modules it calls into the
 // project, and points every import of an engine module here. This entry is that surface and
 // nothing else: one `export *` per module in `ENGINE_MODULES` (engine-surface.ts), which a
-// test holds to that list, plus the ts-poet a copied template module must build its `Code`
-// with (the 0.21.6 split-tree defect: `Code` is recognised by `instanceof`).
+// test holds to that list. One of them is `poet.ts`, the code printer a copied template module
+// must build its `Code` with (the 0.21.6 split-tree defect: `Code` is recognised by `instanceof`).
 //
 // It is a subpath and not the package root on purpose. These are the generator base, the
 // model walks and the naming and type-mapping tables, several with short generic names
@@ -35,6 +35,7 @@ export * from "./naming.js";
 export * from "./naming/name-claims.js";
 export * from "./owned-runtime.js";
 export * from "./pk-resolver.js";
+export * from "./poet.js";
 export * from "./projection/build-projection-views.js";
 export * from "./projection/extract-view-spec.js";
 export * from "./projection/projection-detector.js";
@@ -55,5 +56,3 @@ export * from "./templates/find-templates.js";
 export * from "./tph.js";
 export * from "./view-context.js";
 export { ENGINE_MODULES } from "./engine-surface.js";
-export { code, imp, joinCode, Import } from "ts-poet";
-export type { Code } from "ts-poet";

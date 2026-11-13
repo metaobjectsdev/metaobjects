@@ -11,7 +11,7 @@
 //   update(id, patch)     → PATCH /api/<entity>/:id
 //   delete(id)            → DELETE /api/<entity>/:id
 
-import { code, imp } from "ts-poet";
+import { code, imp } from "@metaobjectsdev/codegen-ts";
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import {
   type RenderContext,

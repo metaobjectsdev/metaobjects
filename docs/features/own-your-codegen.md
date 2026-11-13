@@ -108,7 +108,8 @@ holds), the naming tables and the type-mapping tables (`names.ts`, `naming.ts`,
 `column-mapper.ts`), the primary-key and TPH walks (`pk-resolver.ts`, `tph.ts`), and the
 projection and report lowering that `meta migrate` and `meta verify` run. An owned file
 imports the engine from the package's engine entry, `@metaobjectsdev/codegen-ts/engine`,
-which also re-exports `ts-poet`'s `code`, `imp` and `joinCode`. The list is
+which also exports the code printer's `code`, `imp` and `joinCode` (`poet.ts`, the package's
+vendored copy of `ts-poet`). The list is
 `ENGINE_MODULES`, exported from that entry; a module
 that is not on it and that a generator reaches is copied. An owned generator therefore
 imports no packaged module that returns emitted text, and a test ejects each generator alone
@@ -117,8 +118,8 @@ writes what the packaged generator writes, byte for byte.
 
 A copy differs from the packaged module in its **import lines only**. A relative import of
 an engine module becomes an import of `@metaobjectsdev/codegen-ts/engine`, a relative import of
-another template module becomes the path to your copy of it, and `ts-poet` becomes the
-engine's own (a copy must build `Code` with the same `ts-poet` the engine uses). Nothing else
+another template module becomes the path to your copy of it, and the printer stays the
+engine's (a copy must build `Code` with the same printer the engine uses). Nothing else
 is touched, so "what did upstream change?" is a diff of two files whose body is the same.
 
 - **Two generators that call one module share one copy.** `entity` and `queries` both call

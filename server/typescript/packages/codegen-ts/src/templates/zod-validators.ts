@@ -11,7 +11,7 @@
 
 import { flatSurfaceFields } from "../flattened.js";
 import { entityTypeNames } from "../entity-type-names.js";
-import { code, joinCode, imp, type Code } from "ts-poet";
+import { code, joinCode, imp, type Code } from "../poet.js";
 import { MetaObject, MetaField, type MetaRoot, stripPackage } from "@metaobjectsdev/metadata";
 import {
   FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_CURRENCY,

@@ -14,7 +14,7 @@
 // (ERR_UNKNOWN_ATTR); the line here used to claim it turned generation ON,
 // while the factory beside it read it as an opt-OUT. Neither is true now.
 
-import { code, imp } from "ts-poet";
+import { code, imp } from "@metaobjectsdev/codegen-ts";
 import { MetaField, MetaObject } from "@metaobjectsdev/metadata";
 import {
   IDENTITY_SUBTYPE_PRIMARY,

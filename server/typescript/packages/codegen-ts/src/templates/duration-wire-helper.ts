@@ -15,7 +15,7 @@
 // interval has its own range, which Postgres enforces. The emitted code calls `BigInt(...)` and
 // writes no bigint literal, so it needs the ES2020 `BigInt` global and nothing newer.
 
-import { code, imp, type Code } from "ts-poet";
+import { code, imp, type Code } from "../poet.js";
 import { DURATION_PATTERN } from "@metaobjectsdev/metadata";
 import type { Dialect } from "../metaobjects-config.js";
 import { DURATION_COLUMN_FN } from "../column-mapper.js";

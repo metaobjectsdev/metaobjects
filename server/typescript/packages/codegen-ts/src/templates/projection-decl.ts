@@ -10,7 +10,7 @@
 //   - Zod Insert/Update schemas
 //   - Insert/Update types
 
-import { code, imp, joinCode, type Code, type Import } from "ts-poet";
+import { code, imp, joinCode, type Code, type Import } from "../poet.js";
 import {
   MetaField, MetaObject, type MetaRoot, isMetaObject,
   FIELD_ATTR_OBJECT_REF, stripPackage, resolveColumnName, resolveTableSchema,

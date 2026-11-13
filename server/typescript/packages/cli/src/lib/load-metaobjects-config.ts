@@ -44,6 +44,7 @@ const _require = createRequire(import.meta.url);
 // self-referential symlink).
 const CODEGEN_TS_PKG = "@metaobjectsdev/codegen-ts";
 const TS_POET_PKG = "ts-poet";
+const CODEGEN_TS_ENGINE = `${CODEGEN_TS_PKG}/engine`;
 const CLI_PKG_PATHS: Record<string, { dist: string; src: string }> = {
   [CODEGEN_TS_PKG]: {
     dist: "node_modules/@metaobjectsdev/codegen-ts/dist/index.js",
@@ -384,26 +385,6 @@ export async function loadMetaobjectsConfig(projectRoot: string): Promise<Metaob
     aliasMap[specifier] = resolveCliPkg(specifier);
   }
 
-  // ts-poet must resolve to the SAME physical copy @metaobjectsdev/codegen-ts uses.
-  // The scaffolded (ADR-0034 owned) generators compose ts-poet Code objects with the
-  // engine's render* primitives, and ts-poet recognizes nested Code/Import
-  // placeholders by `instanceof` — when the CLI tree and the project tree hold two
-  // physical ts-poet copies (globally-installed or linked CLI + the project-local
-  // devDependency `meta init` adds), a bare project-side `import ... from "ts-poet"`
-  // splits the class identity and every cross-boundary section renders standalone
-  // with its own import header (duplicate `import { eq } from "drizzle-orm"` —
-  // TS2300 on the adopter's first tsc). Newly scaffolded templates import the
-  // combinators from @metaobjectsdev/codegen-ts directly; this alias repairs
-  // EXISTING scaffolds that still import bare "ts-poet". In a flat single-tree
-  // install the alias resolves to the copy the project would load anyway (no-op).
-  // Gated by test/gen-split-tree-single-import.test.ts.
-  const codegenTsResolved = aliasMap[CODEGEN_TS_PKG];
-  if (codegenTsResolved !== undefined) {
-    try {
-      aliasMap[TS_POET_PKG] = createRequire(codegenTsResolved).resolve(TS_POET_PKG);
-    } catch { /* no ts-poet adjacent to codegen-ts — leave project resolution in place */ }
-  }
-
   // EVERY DECLARED SUBPATH EXPORT NEEDS ITS OWN ENTRY, because jiti's `alias` matches by
   // PREFIX and then concatenates the remainder onto the mapped value. The mapped value is
   // a FILE, so `@metaobjectsdev/codegen-ts/templates/inferred-types` became
@@ -460,6 +441,20 @@ export async function loadMetaobjectsConfig(projectRoot: string): Promise<Metaob
       } catch { /* not resolvable under these conditions — skip rather than invent a path */ }
     }
   }
+
+  // A bare "ts-poet" import must resolve to the printer @metaobjectsdev/codegen-ts builds its
+  // Code with. Scaffolds from before 0.21.6 import `code`/`joinCode` from bare "ts-poet" and
+  // compose them with the engine's render* primitives, which recognise nested Code/Import
+  // placeholders by `instanceof`; a second physical copy (the project's own ts-poet
+  // devDependency) splits the class identity and every cross-boundary section renders
+  // standalone with its own import header (duplicate `import { eq } from "drizzle-orm"` —
+  // TS2300 on the adopter's first tsc). codegen-ts now vendors that printer (src/poet.ts) and
+  // exports it from its engine entry, so the alias points there. Newly scaffolded templates
+  // import the combinators from @metaobjectsdev/codegen-ts directly; this alias repairs
+  // EXISTING scaffolds without re-scaffolding. Gated by test/gen-split-tree-single-import.test.ts.
+  // It takes the engine's own alias, derived just above, so both name one physical module.
+  const engineResolved = aliasMap[CODEGEN_TS_ENGINE];
+  if (engineResolved !== undefined) aliasMap[TS_POET_PKG] = engineResolved;
 
   // Pre-process the config file content to rewrite @metaobjectsdev/* import
   // specifiers to resolved absolute paths. This is the primary mechanism that

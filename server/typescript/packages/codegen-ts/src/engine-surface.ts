@@ -48,6 +48,7 @@ export const ENGINE_MODULES: readonly string[] = [
   "codegen-ts/src/naming/name-claims.ts",
   "codegen-ts/src/owned-runtime.ts",
   "codegen-ts/src/pk-resolver.ts",
+  "codegen-ts/src/poet.ts",
   "codegen-ts/src/projection/build-projection-views.ts",
   "codegen-ts/src/projection/extract-view-spec.ts",
   "codegen-ts/src/projection/projection-detector.ts",
