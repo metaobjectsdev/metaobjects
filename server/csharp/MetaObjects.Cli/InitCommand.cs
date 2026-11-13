@@ -9,6 +9,7 @@
 // with the generators it ejected already in the list.
 
 using MetaObjects.Codegen;
+using MetaObjects.Meta;
 
 namespace MetaObjects.Cli;
 
@@ -121,12 +122,17 @@ public static class InitCommand
             ? n.Replace("\\", "").Replace("\"", "") : "project") + "\" }";
 
     /// <summary>The project config a new project starts with: files written under their metadata
-    /// package, and each packaged type in its package's namespace. An existing config is the
-    /// project's and is never edited.</summary>
+    /// package, each packaged type in its package's namespace, and the <c>api</c> block TypeScript
+    /// <c>meta init</c> writes: a page size on every generated list route, and <c>unknownFields</c>
+    /// written out at its default so the choice is visible. An existing config is the project's and is
+    /// never edited, so an upgraded project gains no page size.</summary>
     public const string ConfigRel = ".metaobjects/config.json";
 
-    public const string ConfigJson =
-        "{\n  \"schema_version\": 1,\n  \"csharp\": {\n    \"outputLayout\": \"package\",\n    \"packageNamespaces\": true\n  }\n}\n";
+    public static readonly string ConfigJson =
+        "{\n  \"schema_version\": 1,\n  \"csharp\": {\n    \"outputLayout\": \"package\",\n    \"packageNamespaces\": true\n  },\n" +
+        "  \"api\": {\n    \"pagination\": {\n" +
+        $"      \"defaultLimit\": {ApiSettings.InitDefaultLimit},\n      \"maxLimit\": {ApiSettings.InitMaxLimit}\n" +
+        "    },\n    \"unknownFields\": \"reject\"\n  }\n}\n";
 
     public static IReadOnlyList<string> Run(string root, bool withDocs = false)
     {
@@ -148,7 +154,9 @@ public static class InitCommand
         {
             Directory.CreateDirectory(Path.GetDirectoryName(configPath)!);
             File.WriteAllText(configPath, ConfigJson);
-            lines.Add($"  wrote {ConfigRel} (outputLayout \"package\", packageNamespaces true)");
+            lines.Add(
+                $"  wrote {ConfigRel} (outputLayout \"package\", packageNamespaces true, api.pagination " +
+                $"{ApiSettings.InitDefaultLimit}/{ApiSettings.InitMaxLimit}, api.unknownFields \"reject\")");
         }
         lines.Add("");
         lines.Add(

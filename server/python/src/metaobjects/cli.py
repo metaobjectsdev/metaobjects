@@ -83,6 +83,16 @@ from metaobjects.config.dependency_check import (
     summary_line,
 )
 from metaobjects.config.neutral_config import find_project_dir, read_neutral_config
+from metaobjects.api_settings import (
+    API_KEY_PAGINATION,
+    API_KEY_UNKNOWN_FIELDS,
+    INIT_DEFAULT_LIMIT,
+    INIT_MAX_LIMIT,
+    PAGINATION_KEY_DEFAULT_LIMIT,
+    PAGINATION_KEY_MAX_LIMIT,
+    UNKNOWN_FIELDS_REJECT,
+    ApiSettings,
+)
 from metaobjects.field_lint import lint_duplicate_fields, lint_reference_fields
 from metaobjects.loader.meta_data_loader import LoadResult
 from metaobjects.loader.sources import FileSource
@@ -162,7 +172,6 @@ from metaobjects.render.verify import (
     verify as render_verify,
 )
 from metaobjects.shared.base_types import TYPE_OBJECT, TYPE_TEMPLATE
-from metaobjects.api_settings import ApiSettings
 from metaobjects.wire import WireFormat, wire_block, wire_candidates
 
 
@@ -1351,8 +1360,27 @@ _INIT_DOCS_CONFIG = """\
 """
 
 
+def _init_neutral_config() -> str:
+    """The port-neutral ``.metaobjects/config.json`` a new project starts with: the same ``api``
+    block TypeScript ``meta init`` writes, a page size on every generated list route and
+    ``unknownFields`` spelled out at its default so the choice is visible. Never written over an
+    existing file, so an upgraded project gains no page size."""
+    body = {
+        "schema_version": 1,
+        "api": {
+            API_KEY_PAGINATION: {
+                PAGINATION_KEY_DEFAULT_LIMIT: INIT_DEFAULT_LIMIT,
+                PAGINATION_KEY_MAX_LIMIT: INIT_MAX_LIMIT,
+            },
+            API_KEY_UNKNOWN_FIELDS: UNKNOWN_FIELDS_REJECT,
+        },
+    }
+    return json.dumps(body, indent=2) + "\n"
+
+
 def _cmd_init(args: argparse.Namespace) -> int:
-    """Scaffold ``metaobjects.config.yaml`` and the ``metaobjects/`` metadata directory.
+    """Scaffold ``metaobjects.config.yaml``, the port-neutral ``.metaobjects/config.json`` and the
+    ``metaobjects/`` metadata directory.
 
     Never overwrites: a file that exists is reported and left alone. ``--with-docs`` adds a
     ``docs`` target running ``api-docs``; without it no documentation generator is wired.
@@ -1363,6 +1391,7 @@ def _cmd_init(args: argparse.Namespace) -> int:
     kept: list[str] = []
     for rel, text in (
         (_CONFIG_NAME, config),
+        (".metaobjects/config.json", _init_neutral_config()),
         ("metaobjects/meta.app.yaml", _INIT_METADATA),
     ):
         path = root / rel
