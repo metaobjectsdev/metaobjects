@@ -23,6 +23,7 @@ import {
   unindexedFkRows,
   warnAdvisory,
   referentialActionConflictRows,
+  unboundedListRows,
   advisoryHelpLines,
 } from "../lib/advisory.js";
 import { scanForUnprovenancedLibraryPrefix } from "../lib/library-prefix-advisory.js";
@@ -32,6 +33,7 @@ import { warnIfAgentContextMissesRequirements, warnIfAgentContextStale } from ".
 import { warnIfManifestIgnored } from "../lib/manifest-ignored-check.js";
 import { scanSourceForAntiPatterns } from "../lib/anti-patterns.js";
 import { scanForMissingBaseUrl, type BaseUrlFinding } from "../lib/base-url-advisory.js";
+import { scanForUnsetPagination, type PaginationFinding } from "../lib/pagination-advisory.js";
 import { scanForRemovedProps, type RemovedPropFinding } from "../lib/removed-prop-advisory.js";
 import { replayRemedy } from "../lib/replay-remedy.js";
 import { FileProvider, templateReferenceLine } from "../lib/file-provider.js";
@@ -1119,6 +1121,18 @@ export async function verifyCommand(
       // advisory only — a model the schema builder refuses is migrate's to report.
     }
 
+    // Generated list routes with no page size: a route generator is wired and the project
+    // sets no `api.pagination`. Same discipline as its siblings.
+    let unboundedLists: PaginationFinding[] = [];
+    try {
+      unboundedLists = scanForUnsetPagination(
+        (forgeConfig?.generators ?? []).map((g) => (typeof g === "string" ? g : g.name)),
+        collection.apiPagination,
+      );
+    } catch {
+      // advisory only.
+    }
+
     const unindexedFkSummary = summarizeUnindexedFks(unindexedFks);
     antiPatternSection = ranSection([
       ...antiPatternRows(findings),
@@ -1127,6 +1141,7 @@ export async function verifyCommand(
       ...libraryPrefixRows(libraryPrefix),
       ...unindexedFkRows(unindexedFkSummary === undefined ? [] : [unindexedFkSummary]),
       ...referentialActionConflictRows(actionConflicts),
+      ...unboundedListRows(unboundedLists),
     ]);
     if (findings.length > 0) {
       log.warn(
@@ -1148,6 +1163,13 @@ export async function verifyCommand(
           `renamed away (advisory — does not fail the build, but the runtime will):`,
       );
       warnAdvisory(removedProps.map((f) => `  ${f.message}`), flags.limit, { structured });
+    }
+    if (unboundedLists.length > 0) {
+      log.warn(
+        `meta verify — generated list routes have no page size ` +
+          `(advisory — does not fail the build):`,
+      );
+      warnAdvisory(unboundedLists.map((f) => `  ${f.message}`), flags.limit, { structured });
     }
     if (unindexedFkSummary !== undefined) {
       log.warn(

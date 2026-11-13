@@ -182,6 +182,12 @@ describe("init() — happy path", () => {
     expect(config.pending_in_git).toBe(true);
   });
 
+  test("a new project starts with a page size on every generated list route", async () => {
+    await init({ cwd });
+    const config = JSON.parse(readFileSync(join(cwd, ".metaobjects", "config.json"), "utf8"));
+    expect(config.api).toEqual({ pagination: { defaultLimit: 50, maxLimit: 1000 } });
+  });
+
   test("writes a .gitignore under .metaobjects/ that includes .gen-state", async () => {
     await init({ cwd });
     const ignore = readFileSync(join(cwd, ".metaobjects", ".gitignore"), "utf8");
@@ -409,6 +415,8 @@ describe("init() --force config preservation", () => {
     expect(reloaded.pending_in_git).toBe(false);
     expect(reloaded.confidence_thresholds.pending_promote).toBe(0.95);
     expect(reloaded.sources).toEqual([{ package: "@acme/entities" }]);
+    // An existing project keeps its unbounded lists: --force must not add a page size.
+    expect(reloaded.api).toBeUndefined();
   });
 
   test("writes fresh defaults when existing config is invalid (and warns)", async () => {

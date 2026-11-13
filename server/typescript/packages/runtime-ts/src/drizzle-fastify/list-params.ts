@@ -51,6 +51,35 @@ export function parsePageBound(
   return n;
 }
 
+/** The page size of a list route (`api.pagination` in `.metaobjects/config.json`). */
+export interface PageSize {
+  /** The rows a list with no `limit` returns. */
+  readonly defaultLimit: number;
+  /** The largest `limit` a list accepts; a larger one is refused, never lowered. */
+  readonly maxLimit: number;
+}
+
+/** The error code of a `limit` above the page-size maximum. */
+export const ERROR_CODE_LIMIT_TOO_LARGE = "limit_too_large";
+
+/**
+ * The `limit` a list route applies: the caller's, else the default page size, and a caller's
+ * above the maximum is refused with `400 { "error": "limit_too_large", "maxLimit": N }`. Without
+ * a page size the caller's `limit` (or none) passes through unchanged, as before.
+ */
+export function pageLimit(limit: number | undefined, pageSize: PageSize | undefined): number | undefined {
+  if (pageSize === undefined) return limit;
+  if (limit === undefined) return pageSize.defaultLimit;
+  if (limit > pageSize.maxLimit) {
+    throw new FilterParseError(
+      ERROR_CODE_LIMIT_TOO_LARGE,
+      `?limit= must be at most ${pageSize.maxLimit}, got ${limit}.`,
+      { maxLimit: pageSize.maxLimit },
+    );
+  }
+  return limit;
+}
+
 /** The `expected` member of an `invalid_sort` answer — the one spelling `?sort` takes. */
 export const SORT_EXPECTED = "sort=<field>:asc|desc";
 

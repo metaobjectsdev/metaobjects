@@ -31,7 +31,9 @@ import { contractErrorCode } from "../drizzle-fastify/util.js";
 import {
   parseFilterParams,
   parsePageBound,
+  pageLimit,
   FilterParseError,
+  type PageSize,
   type ParseFilterResult,
 } from "../drizzle-fastify/filter-parser.js";
 import type {
@@ -53,6 +55,7 @@ import { guardRoute, readJsonBody } from "./route-guard.js";
 // Back-compat re-export — the unsafe local copy was consolidated onto the one
 // shared (deprecated) helper so the three adapters can't silently diverge.
 export { parseId } from "../drizzle-fastify/util.js";
+export { pageLimit, ERROR_CODE_LIMIT_TOO_LARGE, type PageSize } from "../drizzle-fastify/list-params.js";
 export { timestampWire, canonicalTimestamp } from "../timestamp-wire.js";
 export { decimalWire, withDecimals, decimalToNative, canonicalDecimal, parseDecimalInput, parseDecimalOperand } from "../decimal-wire.js";
 export { withWire, nullMembersWire } from "../wire-format.js";
@@ -117,6 +120,12 @@ export interface CrudRoutesOptions extends WireOptions {
   sortAllowlist?:   SortAllowlist;
   /** Dialect — required if filterAllowlist or sortAllowlist is set (for dialect-specific `like` lowering: SQLite lowers to GLOB to stay case-sensitive; ADR-0049). */
   dialect?: SqlDialect;
+  /**
+   * The list page size (`api.pagination` in `.metaobjects/config.json`): a list with no `limit`
+   * returns `defaultLimit` rows, and a `limit` above `maxLimit` answers
+   * `400 { "error": "limit_too_large", "maxLimit": N }`. Absent → no default and no ceiling.
+   */
+  pagination?: PageSize;
 }
 
 const ALL_VERBS: readonly CrudVerb[] = ["list", "get", "create", "update", "delete"];
@@ -214,11 +223,12 @@ export function mountListRoute(opts: VerbOptions): void {
           : (parsed.where ?? parsed.searchWhere);
         if (combinedWhere) { q = q.where(combinedWhere); where = combinedWhere; }
         if (parsed.orderBy) q = q.orderBy(...parsed.orderBy);
-        if (parsed.limit  !== undefined) q = q.limit(parsed.limit);
+        const limit = pageLimit(parsed.limit, opts.pagination);
+        if (limit !== undefined) q = q.limit(limit);
         if (parsed.offset !== undefined) q = q.offset(parsed.offset);
       } else {
         // No allowlists configured. Only limit/offset.
-        const limit = parsePageBound(qsParsed, "limit");
+        const limit = pageLimit(parsePageBound(qsParsed, "limit"), opts.pagination);
         const offset = parsePageBound(qsParsed, "offset");
         if (limit  !== undefined) q = q.limit(limit);
         if (offset !== undefined) q = q.offset(offset);

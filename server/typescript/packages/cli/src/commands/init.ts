@@ -2,6 +2,7 @@ import { mkdir, writeFile, readFile, readdir, stat, rm } from "node:fs/promises"
 import { join } from "node:path";
 import { dirname } from "node:path";
 import { existsSync as existsSyncWrap, readFileSync as readFileSyncWrap } from "node:fs";
+import { INIT_DEFAULT_LIMIT, INIT_MAX_LIMIT } from "@metaobjectsdev/metadata";
 import { DEFAULT_CONFIG, ConfigSchema, saveConfig, PACKAGE_MANIFEST_FILE, DEFAULT_METADATA_DIR, DEFAULT_METAOBJECTS_DIR, DEPS_DIR, LOCK_FILE } from "@metaobjectsdev/sdk";
 import {
   assemble, resolveAgentContextRoot, planScaffold,
@@ -535,11 +536,18 @@ async function writeConfigFile(opts: InitOptions, result: InitResult, agentDir: 
   // An explicit sqlite/postgres dialect is written so `meta migrate` needs no --dialect; an
   // unflagged init keeps the defaults it always wrote. MySQL schema is not migrate's.
   const dialect = resolveInitDialect(opts);
+  // A new project starts with a page size on every generated list route. It is written here
+  // and not into DEFAULT_CONFIG: the merge below must not add a cap to an existing project
+  // on `--force`, where it would truncate a client that reads a whole list.
+  const scaffold = {
+    ...DEFAULT_CONFIG,
+    api: { pagination: { defaultLimit: INIT_DEFAULT_LIMIT, maxLimit: INIT_MAX_LIMIT } },
+  };
   const freshConfig = dialect === "d1"
-    ? ConfigSchema.parse({ ...DEFAULT_CONFIG, migrate: buildD1MigrateBlock(opts.cwd) })
+    ? ConfigSchema.parse({ ...scaffold, migrate: buildD1MigrateBlock(opts.cwd) })
     : opts.dialect !== undefined && dialect !== "mysql"
-      ? ConfigSchema.parse({ ...DEFAULT_CONFIG, migrate: { dialect } })
-      : DEFAULT_CONFIG;
+      ? ConfigSchema.parse({ ...scaffold, migrate: { dialect } })
+      : ConfigSchema.parse(scaffold);
   const writeFresh = (): Promise<void> =>
     writeFile(join(agentDir, "config.json"), JSON.stringify(freshConfig, null, 2) + "\n", "utf8");
 

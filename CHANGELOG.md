@@ -52,6 +52,23 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
 
 ### Added
 
+- **A page size for generated list routes: `api.pagination` (TypeScript).** An external review
+  of 1.2.0 found that list endpoints had no hard cap: the TypeScript and C# routes returned the
+  whole table when `limit` was omitted, and `?limit=100000` was accepted in every port. Set
+  `"api": { "pagination": { "defaultLimit": 50, "maxLimit": 1000 } }` in
+  `.metaobjects/config.json` and a generated entity or projection list with no `limit` answers
+  the first `defaultLimit` rows, while an explicit `limit` above `maxLimit` answers
+  `400 {"error": "limit_too_large", "maxLimit": N}` (refused, not clamped). `meta init` writes
+  that block for a new project. **A project without the setting behaves exactly as before**,
+  because a cap added on upgrade would silently truncate a client that reads a whole list;
+  `meta verify` advises (rule `unbounded-list-pages`) when a routes generator is wired and no
+  page size is set. Reports keep their own row cap and opaque views their 1000. The TypeScript
+  Fastify and Hono routes read it (packaged and ejected: re-eject `routes` or re-sync an owned
+  copy to pick it up), through a new `pagination` option on the runtime mounts. It is gated by
+  the new `fixtures/api-contract-conformance/pagination/` sub-corpus. The C#, Java, Kotlin and
+  Python routes do not read it yet; carrying it there waits on the ruling on the freeze of the
+  non-TypeScript REST generators. A config key, not vocabulary: `metamodelVersion` does not move.
+
 - **Report measures over Money and other value-object members (FR-044 R12).** A dimension's or
   measure's `@of` may name `Entity.field.member`, a member of a value object stored with
   `@storage: flattened` (`Payment.amount.amount`, `Payment.amount.currency`); the report reads
@@ -73,6 +90,22 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   report rule R13 and a conformance fixture per refusal, in every loader port.
 
 ### Changed
+
+- **A validation 400 lists every issue in every port.** The same model answered a failed create or
+  update differently by language: TypeScript listed each problem, while C#, Java, Kotlin and Python
+  returned a bare `{"error": "validation"}` (found by an external review of 1.2.0). Every port now
+  answers `400 {"error": "validation", "issues": [{"code", "path", "message"}]}` with every failure,
+  not the first. `path` is an array of wire names (value-object members, array indexes and map keys
+  as further elements), `code` uses Zod's names (`invalid_type`, `too_small`, `too_big`,
+  `invalid_format`, `invalid_value`, `custom`), and `message` is each port's own wording. C# ships a
+  new `ValidationIssues` runtime file (also copied by `dotnet meta eject routes`), and its create
+  route now reads the body itself so an unbindable body lists its issue rather than answering an
+  empty 400. Java ships `ValidationIssues` beside `PatchValidationException`, and a patch binds every
+  field before it throws. Kotlin emits `MetaValidationIssues.kt` with the controllers. Python maps
+  every Pydantic error in `constraint_errors`. The hand-rolled reference servers list issues too,
+  and two shared scenarios pin the list in both lanes (`validation-lists-issues`,
+  `tph/tph-validation-lists-issues`, with a new `issues` corpus assertion). A client that read only
+  `error` is unaffected. An owned (ejected) routes copy keeps the bare answer until it is re-ejected.
 
 - **Agent context routes report work to the reporting vocabulary.** The `meta init` agent guide
   and the `metaobjects-authoring` skill now send grouped totals, dashboard numbers and read-only

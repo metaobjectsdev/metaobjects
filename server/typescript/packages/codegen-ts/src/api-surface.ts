@@ -37,6 +37,7 @@ import {
   WIRE_NULL_MEMBERS_NATIVE,
   refTarget,
   wireFormatOf,
+  apiPaginationOf,
   type MetaData,
   type MetaField,
   type MetaObject,
@@ -250,6 +251,18 @@ export function valueObjectShapes(entity: MetaObject): Record<string, ValueObjec
     if (vo !== undefined) out[f.name] = shapeOf(f, vo, [vo]);
   }
   return out;
+}
+
+/**
+ * The `pagination` option of a list mount: the project's page size (`api.pagination` in
+ * `.metaobjects/config.json`), or nothing when the project declares none, which keeps the output
+ * byte-identical and the route unbounded, as before. `root` is the loaded root the setting is
+ * read from (`ctx.loadedRoot`); without one the object's own root answers.
+ */
+export function paginationLine(entity: MetaObject, indent: string, root?: MetaData): string {
+  const page = apiPaginationOf(root ?? entity);
+  if (page === undefined) return "";
+  return `\n${indent}pagination: { defaultLimit: ${page.defaultLimit}, maxLimit: ${page.maxLimit} },`;
 }
 
 /**

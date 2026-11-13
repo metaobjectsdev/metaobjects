@@ -216,7 +216,7 @@ or Hono `onError` the adopter installed, answer exactly as they did before.
 |---|---|
 | malformed JSON body | a `POST`/`PATCH`/`PUT` body that does not parse as JSON (an empty body sent as `application/json` included) → HTTP 400 `{ "error": "invalid_json" }`. An EMPTY body on a method that takes none (`GET`, `DELETE`, `HEAD`) is accepted even when the request declares `content-type: application/json`, as many clients do on every request; a non-empty `DELETE` body is still parsed. Before, Fastify answered its own `{ "statusCode": 400, "code": "FST_ERR_CTP_INVALID_JSON_BODY", … }` and Hono a Zod `validation` error about a missing object |
 | malformed id | a `:id` the key column cannot hold (a malformed uuid on a Postgres uuid key, a non-numeric id on an integer key) → HTTP 400 `{ "error": "invalid_id" }` on GET, PATCH and DELETE. A malformed uuid in a POST or PATCH body's foreign key → HTTP 400 `{ "error": "validation" }`, from the insert/update schema's `8-4-4-4-12` hex check. Postgres used to answer 500 for both. The check is TS-only |
-| malformed page bound | a `?limit=` or `?offset=` that is not a non-negative integer (`abc`, `-5`, `1.5`, an empty value) → HTTP 400 `{ "error": "pagination.invalid_value", "param": "limit", "value": "abc", "expected": "a non-negative integer (0 or more)" }`. Before, a non-numeric bound was dropped (every row came back) and a negative or fractional one reached SQL. There is no page-size maximum on an entity or a projection with declared columns; an opaque view (no declared columns, served by raw SQL) pages to at most 1000 rows, so there a `limit` above 1000 is refused too, with `"expected": "an integer from 0 to 1000"` (it used to be clamped silently). The same answer comes from the Drizzle mounts and the ObjectManager Fastify mount. The corpus sends a malformed bound only to a report (`report/bad-page-bound`), where every port answers this same envelope and also refuses `limit=0`; on an entity or a projection the other ports answer it as their framework does |
+| malformed page bound | a `?limit=` or `?offset=` that is not a non-negative integer (`abc`, `-5`, `1.5`, an empty value) → HTTP 400 `{ "error": "pagination.invalid_value", "param": "limit", "value": "abc", "expected": "a non-negative integer (0 or more)" }`. Before, a non-numeric bound was dropped (every row came back) and a negative or fractional one reached SQL. An entity or a projection with declared columns has no page-size maximum unless the project sets `api.pagination` (see "A page size is a project setting" below, which answers `limit_too_large`); an opaque view (no declared columns, served by raw SQL) pages to at most 1000 rows, so there a `limit` above 1000 is refused too, with `"expected": "an integer from 0 to 1000"` (it used to be clamped silently). The same answer comes from the Drizzle mounts and the ObjectManager Fastify mount. The corpus sends a malformed bound only to a report (`report/bad-page-bound`), where every port answers this same envelope and also refuses `limit=0`; on an entity or a projection the other ports answer it as their framework does |
 | database constraint violation | a write the database itself rejects → `{ "error": "constraint_violation", "constraint": "<kind>" }`, HTTP **409** for `unique` and `foreign_key` (a conflict with another row) and HTTP **400** for `check` and `not_null` (the request's own value), per the status rule under "Error response". The body names the constraint KIND only — never the SQL, the table or the bound values. A `CHECK` the model derives (an enum, a `validator.numeric`/`length`/`regex` range) is normally refused earlier by the route's own validation, as the corpus's `{ "error": "validation" }` 400; this row is the database's backstop |
 | schema validation failure | a body that fails the insert/update schema → HTTP 400 `{ "error": "validation", "issues": [...] }`, each issue as Zod reports it **minus `pattern`**: Zod 4 attaches a failed `.regex()` check's source there, which for a generated `field.date` / `field.time` / `field.timestamp` check is a ~300-character calendar regex (and an authored `validator.regex` pattern is the server's to keep). The generated temporal checks carry a short `message` naming the expected format instead (`"must be an ISO date (YYYY-MM-DD)"`) |
 | unexpected server error | anything that is not a filter, validation, not-found or constraint answer — a query against a column the database no longer has, a driver failure → HTTP 500 `{ "error": "internal" }`, the code the cross-port reference servers already use. The body names no SQL, table, column or bound parameter; the full error goes to the server log (`console.error`). Before, Fastify's default handler echoed the driver message, which for Drizzle is the query text and its parameter values |
@@ -271,17 +271,34 @@ each handler they register instead; an `HTTPException` is rethrown to your
 - **A report list can be exported: `?format=csv|json|xml`.** See
   [Report export](#report-export) below. Without `format` the response is byte-identical to the list
   route described here.
-- **No page-size maximum on an entity, and the default is per port.** The contract pins what
-  an explicit `limit`/`offset` returns (`list-with-pagination`); it does not pin a
-  default or a ceiling, and the ports differ. With `limit` **omitted**, the
-  TypeScript mounts and the C# routes return **every** matching row, while the
-  Java, Kotlin and Python controllers return the first **50**. No port caps an
-  explicit `limit` on an entity — `limit=100000` is honoured as asked — except
-  the TS opaque-view route, which refuses a `limit` above 1000 (see "TS-only
-  error responses"). A list over a large table should therefore always send a
-  `limit`. A default page size is deliberately not introduced in a patch release:
-  it would silently truncate the lists of every existing client that relies on
-  the unpaged answer.
+- **A page size is a project setting: `api.pagination`.** In `.metaobjects/config.json`:
+
+  ```json
+  { "api": { "pagination": { "defaultLimit": 50, "maxLimit": 1000 } } }
+  ```
+
+  With it set, a generated entity or projection list with `limit` **omitted** answers the first
+  `defaultLimit` rows, and an explicit `limit` above `maxLimit` answers
+  `400 { "error": "limit_too_large", "maxLimit": N }`. The request is refused, not clamped:
+  a client that asked for more than the server serves is told so rather than handed a short page
+  it cannot tell from the end of the list. `offset` and `withCount=1` page past the default as
+  usual, with `total` counting every row. `meta init` writes the block above for a new project;
+  both sizes must be positive integers and `defaultLimit` may not exceed `maxLimit`. A report
+  keeps its own row cap (above) and an opaque view its 1000, whatever the setting says.
+
+  **Without the setting nothing changes, and the default is per port.** With `limit` omitted,
+  the TypeScript mounts and the C# routes return **every** matching row, while the Java, Kotlin
+  and Python controllers return the first **50**, and no port caps an explicit `limit` on an
+  entity (`limit=100000` is honoured as asked). That is the behaviour every existing project
+  has, so the setting is opt-in: adding a cap on upgrade would silently truncate a client that
+  reads a whole list. `meta verify` advises (rule `unbounded-list-pages`) when a routes
+  generator is wired and the project sets no page size.
+
+  **Ports: TypeScript reads `api.pagination` today** (the Fastify and Hono routes, packaged and
+  ejected, gated by `fixtures/api-contract-conformance/pagination/` in the generated lane).
+  The C#, Java, Kotlin and Python routes do not read it yet: their REST generators are under
+  the 2026-09-22 freeze, and carrying the setting there waits on that ruling. Until then a list
+  over a large table in those ports should always send a `limit`.
 - `withCount=1` — opt-in flag that switches the list response from
   `[<row>...]` to `{ rows: [<row>...], total: <N> }` (needed for grid
   pagination). The grid hook always sends `withCount=1`.
@@ -504,6 +521,40 @@ Non-2xx responses MUST return:
 - HTTP 409 — a declared constraint conflicting with existing state (a uniqueness or referential violation); a constraint rejecting the request's own value — a `CHECK` or `NOT NULL` violation — stays a 400, because resending the same body can never succeed while a 409 can clear once the other row changes (the TS body is under "TS-only error responses").
 - HTTP 5xx — implementation-defined (the TS mount helpers answer
   `{ "error": "internal" }` and nothing more — see "TS-only error responses").
+
+#### A validation error lists every issue
+
+A body that fails the create or update rules answers HTTP 400 with every problem, not the first
+one, in one shape in every port:
+
+```json
+{
+  "error": "validation",
+  "issues": [
+    { "code": "too_big", "path": ["name"], "message": "..." },
+    { "code": "invalid_type", "path": ["createdAt"], "message": "..." }
+  ]
+}
+```
+
+- `path` is the field's location as an array of keys (a value-object member is
+  `["address", "city"]`).
+- `code` uses Zod's names, the vocabulary TypeScript already reported: `invalid_type` (a missing
+  required field, an explicit `null` on one, or a value of the wrong type), `too_small` /
+  `too_big` (a length, size or numeric range), `invalid_format` (a pattern, an email, a date
+  shape), `invalid_value` (a value outside an enum), and `custom` for anything else (a
+  class-level rule, for instance). A port whose validator reports a finer failure may use another
+  Zod name for it (`not_multiple_of`, `unrecognized_keys`, `invalid_union`); a client that does not
+  know a code should treat it as `custom`.
+- `message` is the port's own wording and is not part of the contract.
+- A port may add keys to an issue (TypeScript keeps Zod's `minimum`, `maximum`, `origin` and so
+  on, minus `pattern`; see "TS-only error responses"), and a client must ignore keys it does not
+  know.
+
+Before 1.3.0 only TypeScript listed issues; the C#, Java, Kotlin and Python routes answered a
+bare `{ "error": "validation" }`. The corpus pins the list in `validation-lists-issues` and
+`tph/tph-validation-lists-issues` (two failing fields on a create, and on a PATCH an explicit
+null on a required field beside an over-long value), in both lanes.
 
 #### Filter and sort errors name the field
 

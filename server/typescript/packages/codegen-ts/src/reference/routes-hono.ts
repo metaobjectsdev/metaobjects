@@ -59,6 +59,7 @@ import {
   isReport,
   itemRouteField,
   decimalColumnsLine,
+  paginationLine,
   writeDeniedColumnsLine,
   servesReadApi,
   formatTs,
@@ -148,7 +149,8 @@ function renderRoutesHono(
       (report ? `\n${indent}resource: "report",` : "") +
       (report && reportMaxRows !== undefined ? `\n${indent}reportMaxRows: ${reportMaxRows},` : "") +
       (report && ctx.includeReportExport ? `\n${indent}export: ${entityName}Export,` : "") +
-      decimalColumnsLine(entity, indent, ctx.loadedRoot);
+      decimalColumnsLine(entity, indent, ctx.loadedRoot) +
+      (report ? "" : paginationLine(entity, indent, ctx.loadedRoot));
     const HonoSym = imp("t:Hono@hono");
     const mountReadOnlyCrudRoutesSym = imp(`mountReadOnlyCrudRoutes@${runtimeSpec}`);
 
@@ -244,7 +246,7 @@ export function ${handlerName}(app: ${HonoSym}<any, any, any>, deps: { db: unkno
     updateSchema: ${entityName}UpdateSchema,
     filterAllowlist: ${entityName}FilterAllowlist,
     sortAllowlist: ${entityName}SortAllowlist,
-    dialect: ${JSON.stringify(ctx.dialect)},${decimalColumnsLine(entity, "    ", ctx.loadedRoot)}${writeDeniedColumnsLine(entity, "    ")}${exposeLineHono}
+    dialect: ${JSON.stringify(ctx.dialect)},${decimalColumnsLine(entity, "    ", ctx.loadedRoot)}${writeDeniedColumnsLine(entity, "    ")}${paginationLine(entity, "    ", ctx.loadedRoot)}${exposeLineHono}
   });
 }
 `;

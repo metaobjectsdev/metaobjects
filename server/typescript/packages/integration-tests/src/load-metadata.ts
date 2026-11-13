@@ -6,7 +6,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { DEFAULT_WIRE_FORMAT, loadDirectory, loadString, loadUris, type MetaRoot, type WireFormat } from "@metaobjectsdev/metadata";
-import { ConfigSchema, enumDefaultsFromConfig, physicalNamingFromConfig, wireFormatFromConfig, type Config } from "@metaobjectsdev/sdk";
+import { ConfigSchema, apiPaginationFromConfig, enumDefaultsFromConfig, physicalNamingFromConfig, wireFormatFromConfig, type Config } from "@metaobjectsdev/sdk";
 
 /**
  * ADR-0058 — set `root`'s physical naming, wire format and enum defaults from the nearest `.metaobjects/config.json` at or
@@ -23,6 +23,10 @@ export function applyNearestNaming(root: MetaRoot, startDir: string): MetaRoot {
   root.wireFormat = wireFormatFromConfig(config);
   // `enums.maxLength` sizes an enum column, so a corpus that sets it gets the schema it pins.
   root.enumDefaults = enumDefaultsFromConfig(config);
+  // `api.pagination` gives generated list routes a page size; a corpus without it keeps the
+  // unbounded lists every other corpus is written against.
+  const page = apiPaginationFromConfig(config);
+  if (page !== undefined) root.apiPagination = page;
   return root;
 }
 

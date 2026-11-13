@@ -404,6 +404,11 @@ export type {
 } from "./naming.js";
 export { resolveEnumMaxLength, enumDefaultsOf, DEFAULT_ENUM_DEFAULTS, ENUMS_KEY_MAX_LENGTH } from "./enum-length.js";
 export type { EnumDefaults } from "./enum-length.js";
+export {
+  apiPaginationOf, API_KEY_PAGINATION, PAGINATION_KEY_DEFAULT_LIMIT, PAGINATION_KEY_MAX_LIMIT,
+  INIT_DEFAULT_LIMIT, INIT_MAX_LIMIT,
+} from "./api-pagination.js";
+export type { ApiPagination } from "./api-pagination.js";
 
 // Wire format (ADR-0019 Amendment 2): the `wire` block of .metaobjects/config.json.
 export {

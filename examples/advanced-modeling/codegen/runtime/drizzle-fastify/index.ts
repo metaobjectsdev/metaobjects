@@ -26,7 +26,7 @@ import { eq, count, and, asc } from "drizzle-orm";
 import qs from "qs";
 import type { FilterAllowlist, SortAllowlist } from "./filter-allowlist.js";
 export type { FilterAllowlist, SortAllowlist } from "./filter-allowlist.js";
-import { parseFilterParams, parsePageBound, FilterParseError } from "./filter-parser.js";
+import { parseFilterParams, parsePageBound, pageLimit, FilterParseError, type PageSize } from "./filter-parser.js";
 import { isTruthyFlag, contractErrorCode, coerceIdForColumn, firstRow, extractRowCount } from "./util.js";
 import { timestampWire } from "../timestamp-wire.js";
 import { stripDeniedColumns, withWire, type WireOptions } from "../wire-format.js";
@@ -34,6 +34,7 @@ import { supportsReturning, type SqlDialect } from "../sql-dialect.js";
 import { withContractErrorHandler } from "./route-error-handler.js";
 import { validationErrorBody } from "../route-errors.js";
 export { isTruthyFlag, contractErrorCode, parseId, coerceIdForColumn } from "./util.js";
+export { pageLimit, ERROR_CODE_LIMIT_TOO_LARGE, type PageSize } from "./list-params.js";
 export { timestampWire, canonicalTimestamp } from "../timestamp-wire.js";
 export { decimalWire, withDecimals, decimalToNative, canonicalDecimal, parseDecimalInput, parseDecimalOperand } from "../decimal-wire.js";
 export { withWire, nullMembersWire } from "../wire-format.js";
@@ -108,6 +109,12 @@ export interface CrudRoutesOptions extends WireOptions {
    * Absent → ordinary single-table CRUD, behaviour unchanged.
    */
   discriminator?: { column: string; value: string };
+  /**
+   * The list page size (`api.pagination` in `.metaobjects/config.json`): a list with no `limit`
+   * returns `defaultLimit` rows, and a `limit` above `maxLimit` answers
+   * `400 { "error": "limit_too_large", "maxLimit": N }`. Absent → no default and no ceiling.
+   */
+  pagination?: PageSize;
 }
 
 const ALL_VERBS: readonly CrudVerb[] = ["list", "get", "create", "update", "delete"];
@@ -223,12 +230,13 @@ export function mountListRoute(opts: VerbOptions): void {
         // unspecified order).
         if (parsed.orderBy) q = q.orderBy(...parsed.orderBy);
         else if (src.id !== undefined) q = q.orderBy(asc(src.id));
-        if (parsed.limit  !== undefined) q = q.limit(parsed.limit);
+        const limit = pageLimit(parsed.limit, opts.pagination);
+        if (limit !== undefined) q = q.limit(limit);
         if (parsed.offset !== undefined) q = q.offset(parsed.offset);
       } else {
         // Legacy path — no allowlists configured. Only limit/offset (+ the TPH
         // discriminator predicate when subtype-scoped).
-        const limit = parsePageBound(qsParsed, "limit");
+        const limit = pageLimit(parsePageBound(qsParsed, "limit"), opts.pagination);
         const offset = parsePageBound(qsParsed, "offset");
         if (discCond) { q = q.where(discCond); where = discCond; }
         if (src.id !== undefined) q = q.orderBy(asc(src.id));

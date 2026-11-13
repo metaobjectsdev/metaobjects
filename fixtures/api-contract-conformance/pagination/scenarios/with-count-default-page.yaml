@@ -1,0 +1,14 @@
+name: with-count-default-page
+description: >
+  `?withCount=1` with no `?limit=` answers the default page in `rows` and the full row count in
+  `total`, so a client can page the rest.
+requests:
+  - id: r1
+    method: GET
+    path: /api/items?withCount=1
+    expect:
+      status: 200
+      body:
+        envelope: true
+        rowsLength: 2
+        total: 5

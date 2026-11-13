@@ -23,9 +23,10 @@ import {
   type WireFormat,
   DEFAULT_WIRE_FORMAT,
   type EnumDefaults,
+  type ApiPagination,
   DEFAULT_ENUM_DEFAULTS,
 } from "@metaobjectsdev/metadata";
-import { CONFIG_FILE, enumDefaultsFromConfig, loadConfig, physicalNamingFromConfig, wireFormatFromConfig, type Config } from "./config.js";
+import { apiPaginationFromConfig, CONFIG_FILE, enumDefaultsFromConfig, loadConfig, physicalNamingFromConfig, wireFormatFromConfig, type Config } from "./config.js";
 import { discoverCollectionRoot, exists, isDir } from "./discovery.js";
 import { compileScope, matchesScope, type Scope } from "./scope.js";
 import { DEFAULT_METADATA_DIR, DEFAULT_METAOBJECTS_DIR, isMetadataFile } from "./metadata-files.js";
@@ -90,6 +91,9 @@ export interface Collection {
   /** The `enums` block of the project config (string-stored enum defaults), none when absent.
    *  Optional so a hand-built Collection from before the block existed still type-checks. */
   readonly enumDefaults?: EnumDefaults | undefined;
+  /** The `api.pagination` block of the project config; undefined when the project declares none.
+   *  Optional so a hand-built Collection from before the block existed still type-checks. */
+  readonly apiPagination?: ApiPagination | undefined;
   /** `migrate.conventions` of the project config — a schema-conventions preset name — when set. */
   readonly schemaConventions: string | undefined;
   /** `migrate.checks.skipRedundant` of the project config: leave out the validator CHECKs a
@@ -291,6 +295,7 @@ export async function resolveCollection(
   let physicalNaming: PhysicalNaming = DEFAULT_PHYSICAL_NAMING;
   let wireFormat: WireFormat = DEFAULT_WIRE_FORMAT;
   let enumDefaults: EnumDefaults = DEFAULT_ENUM_DEFAULTS;
+  let apiPagination: ApiPagination | undefined;
   let schemaConventions: string | undefined;
   let skipRedundantChecks = false;
 
@@ -311,6 +316,7 @@ export async function resolveCollection(
     physicalNaming = physicalNamingFromConfig(cfg);
     wireFormat = wireFormatFromConfig(cfg);
     enumDefaults = enumDefaultsFromConfig(cfg);
+    apiPagination = apiPaginationFromConfig(cfg);
     schemaConventions = cfg.migrate?.conventions;
     skipRedundantChecks = cfg.migrate?.checks?.skipRedundant === true;
     // An unknown token is a hard config error naming the valid ones, while
@@ -428,6 +434,7 @@ export async function resolveCollection(
     physicalNaming,
     wireFormat,
     enumDefaults,
+    apiPagination,
     schemaConventions,
     skipRedundantChecks,
     fileIds: new Map(dependencies.map((d) => [d.artifactPath, d.sourceId])),
