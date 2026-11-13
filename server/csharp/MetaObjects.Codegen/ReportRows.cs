@@ -62,6 +62,8 @@ public static class ReportRows
         FIELD_ATTR_CURRENCY,
         FIELD_ATTR_VALUES,
         FIELD_ATTR_INT_VALUE_MAP,
+        // rc.21: a @stringValueMap enum is read through its stored strings, here as everywhere.
+        FIELD_ATTR_STRING_VALUE_MAP,
         FIELD_ATTR_MAX_LENGTH,
         FIELD_ATTR_PRECISION,
         FIELD_ATTR_SCALE,

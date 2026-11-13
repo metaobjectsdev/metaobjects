@@ -82,6 +82,7 @@ public final class ReportReadModel extends ReportMetaObject
             CurrencyField.ATTR_CURRENCY,
             EnumField.ATTR_VALUES,
             EnumField.ATTR_INT_VALUE_MAP,
+            EnumField.ATTR_STRING_VALUE_MAP,
             MetaField.ATTR_MAX_LENGTH,
             MetaField.ATTR_PRECISION,
             MetaField.ATTR_SCALE,
