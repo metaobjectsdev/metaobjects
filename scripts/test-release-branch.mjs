@@ -42,6 +42,12 @@ check(latestRegressionRefusal("1.2.4", "v1.3.0") !== null,
   "a version older than the newest release is refused");
 check(latestRegressionRefusal("1.2.4-rc.1", "v1.3.0") !== null,
   "an RC on a line a newer release passed is refused too");
+check(latestRegressionRefusal("1.2.4-rc.1", "v1.2.4") !== null,
+  "an RC of the version that already shipped is refused");
+check(latestRegressionRefusal("1.2.4", "v1.2.4") === null,
+  "the released version itself is not a regression");
+check(latestRegressionRefusal("1.3.0-rc.1", "v1.2.4") === null,
+  "an RC of a NEWER triple passes");
 check(latestRegressionRefusal("1.3.1", "v1.3.0") === null,
   "a version newer than the newest release passes");
 check(latestRegressionRefusal("1.2.4", "v1.2.3") === null,

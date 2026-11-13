@@ -59,7 +59,9 @@ export function newestNpmReleaseTag(out) {
 /**
  * Why `version` may not be released while `newestTag` is the newest release tag, or `null`
  * when it may. `bun publish` tags `latest`, so a version older than the newest release
- * would move `latest` backwards — including an `-rc` cut on a line a newer release passed.
+ * would move `latest` backwards — including an `-rc` cut on a line a newer release passed,
+ * and an `-rc` of the very version that already shipped (npm sorts `1.2.4-rc.1` below
+ * `1.2.4`).
  *
  * @param {string} version the version being cut (`1.2.4`, or `1.2.4-rc.1`)
  * @param {string} newestTag the newest npm-line release tag (`v1.3.0`), or `""` if none
@@ -77,5 +79,9 @@ export function latestRegressionRefusal(version, newestTag) {
       `\`latest\`, so this would move \`latest\` backwards. A patch on a line a newer release ` +
       `has passed needs a non-\`latest\` dist-tag path this script does not yet offer.`;
   }
-  return null;
+  return /-rc\.\d+$/.test(version)
+    ? `${version} is a release candidate for ${newestTag.slice(1)}, which has already shipped — ` +
+      `npm sorts it below the full release, so publishing to \`latest\` would move \`latest\` ` +
+      `backwards.`
+    : null;
 }

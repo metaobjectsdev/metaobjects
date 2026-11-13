@@ -643,8 +643,9 @@ that already exists (`v1.2.3` once `v1.3.0` exists), because the deploy would ne
 So a maintenance patch is for a line that is still the newest release. The same holds on npm:
 `release.mjs` publishes to `latest`, and a patch cut after a newer minor shipped would move
 `latest` backwards — so `release.mjs` refuses, in its preflight and before anything is
-published, any version older than the newest release tag (resolved the same way the site
-deploy resolves its tag). It offers no non-`latest` dist-tag path.
+published, any version older than the newest release tag, and any release candidate of a
+version that has already shipped (npm sorts it below the full release; resolved the same
+way the site deploy resolves its tag). It offers no non-`latest` dist-tag path.
 
 **Then bring the fix to `main`.** A maintenance branch is never merged back wholesale (its
 version bumps and CHANGELOG would collide with `main`'s). Cherry-pick or re-land each fix on
