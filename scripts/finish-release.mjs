@@ -37,7 +37,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { mavenVersion } from "./maven-coordinate.mjs";
 import { ejectReleaseRefusalAt } from "./eject-release-gate.mjs";
-import { releaseBranchRefusal } from "./lib/release-branch.mjs";
+import { releaseBranchRefusal, newestNpmReleaseTag } from "./lib/release-branch.mjs";
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const CHECK_ONLY = process.argv.includes("--check");
@@ -386,13 +386,9 @@ ok("the llms mirrors state this release");
 // newest tag of a frozen line and passes green forever. After the 1.0 cut it would have
 // resolved v0.25.0 at every future release, so the check could never fire again — the same
 // defect that kept the live site on 0.25.0 with every deploy step green. Nothing here needs
-// maintaining at the next major.
-const resolved = out(`git tag -l 'v*' | grep -E '^v[0-9]+\\.[0-9]+\\.[0-9]+$' | sort -rV || true`)
-  .split("\n").map((t) => t.trim()).filter(Boolean)
-  .find((t) => {
-    const pkg = out(`git show ${t}:server/typescript/packages/cli/package.json 2>/dev/null || true`);
-    try { return JSON.parse(pkg).version === t.slice(1); } catch { return false; }
-  }) ?? "";
+// maintaining at the next major. The selector itself is shared with `release.mjs`
+// (scripts/lib/release-branch.mjs), so the two cannot disagree about the npm line.
+const resolved = newestNpmReleaseTag(out);
 const wouldResolve = [resolved, tag].filter(Boolean).sort((a, b) =>
   a.localeCompare(b, undefined, { numeric: true })).at(-1);
 if (wouldResolve !== tag) {

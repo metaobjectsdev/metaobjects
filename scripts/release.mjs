@@ -33,7 +33,7 @@ import { createInterface } from "node:readline/promises";
 import { publishSet } from "./publish-set.mjs";
 import { mavenVersion } from "./maven-coordinate.mjs";
 import { ejectReleaseRefusalAt } from "./eject-release-gate.mjs";
-import { releaseBranchRefusal } from "./lib/release-branch.mjs";
+import { releaseBranchRefusal, newestNpmReleaseTag, latestRegressionRefusal } from "./lib/release-branch.mjs";
 
 const VERSION = process.argv[2];
 const DRY = process.argv.includes("--dry-run");
@@ -78,6 +78,9 @@ const branch = out("git rev-parse --abbrev-ref HEAD");
 const branchRefusal = releaseBranchRefusal(branch, VERSION);
 if (branchRefusal !== null) die(branchRefusal);
 sh("git fetch origin", { quiet: true });
+if (out(`git rev-parse --verify --quiet origin/${branch} || true`) === "") {
+  die(`${branch} has no origin/${branch} — push the branch first`);
+}
 if (out(`git rev-list --count HEAD..origin/${branch}`) !== "0") die(`${branch} is behind origin/${branch} — pull first`);
 
 // Clean tree, except the CHANGELOG (we promote its [Unreleased] section) and untracked noise.
@@ -86,6 +89,13 @@ const dirty = out("git status --porcelain").split("\n")
 if (dirty.length) die(`uncommitted changes:\n${dirty.join("\n")}\n(commit or stash first; CHANGELOG is allowed)`);
 
 if (out(`git tag -l v${VERSION}`)) die(`tag v${VERSION} already exists`);
+
+// `bun publish` tags `latest`, so a version older than the newest release would move
+// `latest` backwards — finish-release gate 6 catches that only after the publish; this
+// refuses it before anything irreversible. Same npm-line tag resolution the site deploy
+// uses (scripts/lib/release-branch.mjs).
+const latestRefusal = latestRegressionRefusal(VERSION, newestNpmReleaseTag(out));
+if (latestRefusal !== null) die(latestRefusal);
 
 // Can we publish AT ALL? Checked here, before the version bump, because the bump is
 // committed and pushed long before the first `bun publish` — so discovering a dead
