@@ -22,6 +22,8 @@ the Java diff-and-converge migration engine and its `meta:migrate` / live-DB-dri
 path was also removed — OMDB is pure data-access (CRUD/query/codec/transactions).
 Prompt / template drift is still checked via the `metaobjects-render` `Verify` API.
 
+> **Schema migrations and database checks run in the Node `meta` tool.** the Maven plugin generates and verifies code, but writing and applying migrations (`npx meta migrate`, `npx meta migrate apply-pending`) and checking a live database against the model (`npx meta verify --db`) need Node: `npm i -D @metaobjectsdev/cli`, then `npx meta init --config-only` to point it at your metadata. Node is needed where migrations are written or applied, not in your running service. What else behaves differently in this port is listed in [What differs by language](../features/language-differences.md).
+
 ## Regeneration and hand edits
 
 There is no three-way merge on the JVM (that is TypeScript-only). `mvn metaobjects:generate`

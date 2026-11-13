@@ -300,7 +300,7 @@ export async function verifyCommand(
   // project.
   const genConfigDir = resolveGenConfigDir(cwd, collection.configDir);
 
-  // Advisory: nudge to refresh the .claude/skills docs if they predate this CLI.
+  // Advisory: nudge to refresh the agent context and skills if they predate this CLI.
   warnIfAgentContextStale(projectRoot);
   // Advisory: the committed hash manifest is what makes hand-edit detection work on a
   // machine that did not generate the output. Silent unless it is ignored. Keyed on

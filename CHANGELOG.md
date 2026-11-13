@@ -35,8 +35,38 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   one over measures as a `number` member (one reading a dimension is refused). Loader rule M11,
   report rule R13 and a conformance fixture per refusal, in every loader port.
 
+- **`meta init --skills-dir <dir>` and `meta agent-docs --skills-dir <dir>`: install the skills
+  for any coding assistant.** The `metaobjects-*` skills went only to `.claude/skills/`, which
+  Claude Code reads. `--skills-dir .agents/skills` (or any project-relative directory) puts them
+  where another assistant looks; the choice is recorded in `.metaobjects/.agent-context.json`,
+  so a later `--refresh-docs` keeps it, and moving the directory prunes the untouched copies at
+  the old one. The always-on file names the directory, so an assistant that does not load
+  skills opens `<dir>/<skill>/SKILL.md` by path. A directory outside the project is refused.
+- **[What differs by language](docs/features/language-differences.md).** One page lists what
+  the same model does differently per port: that schema migrations and database checks need
+  the Node `meta` tool in every language, the list default and cap, the validation error body,
+  filter extras, field names in code, generated data access and hand-edit handling. Every port
+  page now says up front that migrations and `verify --db` run in Node, and the README's
+  getting-started path says it for Java, Kotlin, C# and Python teams.
+
 ### Changed
 
+- **The always-on agent file works with any coding assistant, carries the REST conventions,
+  and is written once.** `.metaobjects/CLAUDE.md`, an identical copy of `.metaobjects/AGENTS.md`
+  that nothing imported, is no longer written; a refresh removes an untouched one and names a
+  hand-edited one. The text no longer tells the reader to use a root `CLAUDE.md` only, and
+  `--wire-root` on a project with neither root file now creates `AGENTS.md` as well as
+  `CLAUDE.md`, each with a plain pointer line beside the `@` import. A new "Calling the
+  generated REST API" block gives the filter form (`?filter[status][eq]=active`, never
+  `?status=active`) with its nine operators, sorting and paging (including each port's default
+  when `limit` is omitted), and the error bodies. To offset it, the Java and Kotlin generator
+  class lists, the TypeScript catalog pipeline and the prompt and report rules moved behind the
+  skills they already pointed to. Measured on the agent-context conformance stacks (C#,
+  Java + React, Java + Kotlin + React + TanStack, Python, TypeScript + React + TanStack), the
+  file an assistant loads each session is 5,595 / 6,060 / 6,720 / 5,600 / 6,587 bytes, from
+  4,978 / 5,767 / 6,731 / 4,983 / 6,207: the REST block adds more than the moved detail takes
+  out. The always-on bytes written to disk fall by 44 to 50% because the copy is gone. The C#,
+  Java and Python staleness notices no longer name `.claude/skills`.
 - **Agent context routes report work to the reporting vocabulary.** The `meta init` agent guide
   and the `metaobjects-authoring` skill now send grouped totals, dashboard numbers and read-only
   report views to `object.report` (`references/declaring-reports.md`) before the `@sql` escape,

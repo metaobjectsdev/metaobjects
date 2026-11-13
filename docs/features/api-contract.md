@@ -281,7 +281,8 @@ each handler they register instead; an `HTTPException` is rethrown to your
   error responses"). A list over a large table should therefore always send a
   `limit`. A default page size is deliberately not introduced in a patch release:
   it would silently truncate the lists of every existing client that relies on
-  the unpaged answer.
+  the unpaged answer. Every per-port difference of this kind is collected in
+  [What differs by language](language-differences.md).
 - `withCount=1` — opt-in flag that switches the list response from
   `[<row>...]` to `{ rows: [<row>...], total: <N> }` (needed for grid
   pagination). The grid hook always sends `withCount=1`.
@@ -841,6 +842,8 @@ api-contract-conformance suite today (see
 
 ## See also
 
+- [`docs/features/language-differences.md`](language-differences.md) — what this
+  contract leaves open, port by port (list defaults, error bodies, filter extensions)
 - [`docs/features/metadata-api.md`](metadata-api.md) — the `GET /_meta`
   model-shape contract this page's row-data contract complements
 - [`docs/features/loaders.md`](loaders.md) — how metadata maps to the

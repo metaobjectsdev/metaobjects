@@ -5,7 +5,7 @@ import { existsSync as existsSyncWrap, readFileSync as readFileSyncWrap } from "
 import { DEFAULT_CONFIG, ConfigSchema, saveConfig, PACKAGE_MANIFEST_FILE, DEFAULT_METADATA_DIR, DEFAULT_METAOBJECTS_DIR, DEPS_DIR, LOCK_FILE } from "@metaobjectsdev/sdk";
 import {
   assemble, resolveAgentContextRoot, planScaffold,
-  AGENT_CONTEXT_MANIFEST_PATH, type Manifest, type Stack,
+  AGENT_CONTEXT_MANIFEST_PATH, DEFAULT_SKILLS_DIR, normalizeSkillsDir, type Manifest, type Stack,
 } from "@metaobjectsdev/sdk/agent-context";
 import { assertKnownStackValues, resolveStack } from "../lib/detect-stack.js";
 import { reportIgnoredScaffold } from "../lib/ignored-scaffold-check.js";
@@ -207,6 +207,13 @@ export interface InitOptions {
   servers?: string[];
   clients?: string[];
   noSkills?: boolean;
+  /**
+   * `--skills-dir`: where the skills install, relative to the project root. Unset reuses what
+   * the prior manifest recorded, then {@link DEFAULT_SKILLS_DIR}. Claude Code reads
+   * `.claude/skills`; other assistants read their own directory (`.agents/skills` is shared
+   * by several), and the always-on text names the choice either way.
+   */
+  skillsDir?: string;
   wireRoot?: boolean;
   /** Scaffold ONLY the agent-context (always-on + skills + root wiring), skipping the metaobjects/ project scaffold — for dropping context into an existing/polyglot repo. */
   docsOnly?: boolean;
@@ -279,9 +286,9 @@ function findGitRoot(start: string): string | undefined {
 
 /**
  * Issue #77 — Claude Code discovers `.claude/skills/` only from cwd + ANCESTOR
- * dirs + the user level; it never walks DOWN into subdirs. So scaffolding the
- * agent-context into a monorepo subdir means a root-launched session won't load
- * the skills (the common case). When the init dir is inside a git repo whose
+ * dirs + the user level, and the assistants that read `.agents/skills/` search the
+ * same way; none walks DOWN into subdirs. So scaffolding the agent-context into a
+ * monorepo subdir means a root-launched session won't load the skills (the common case). When the init dir is inside a git repo whose
  * root is an ANCESTOR (i.e. a subdir init), warn and point the user at the repo
  * root. The metadata/config/migrations correctly stay in the subdir regardless.
  */
@@ -292,7 +299,8 @@ function warnIfMonorepoSubdir(opts: InitOptions, result: InitResult): void {
   const lang = opts.servers && opts.servers.length > 0 ? opts.servers[0]! : "<lang>";
   result.warnings.push(
     "agent-context skills scaffolded into a monorepo subdir won't be discovered from a " +
-    "root-launched session (Claude Code only walks cwd + ancestors). Scaffold the context " +
+    "root-launched session (assistants search the working directory and its ancestors, not " +
+    "subdirectories). Scaffold the context " +
     `at the repo root instead: cd <repo-root> && meta init --docs-only --server ${lang}`,
   );
 }
@@ -347,8 +355,11 @@ async function writeAgentContext(opts: InitOptions, result: InitResult): Promise
   warnIfMonorepoSubdir(opts, result);
   const prior = await readManifest(opts.cwd);
   const stack = await stackForAgentContext(opts, prior);
-  let assembled = assemble({ contentRoot: resolveAgentContextRoot(), stack, docsRef: docsRefForVersion(cliVersion()) });
-  if (opts.noSkills) assembled = assembled.filter((f) => !f.path.startsWith(".claude/skills/"));
+  // An explicit --skills-dir wins; otherwise the directory this project chose last time, so a
+  // refresh never quietly moves the skills back to the default.
+  const skillsDir = normalizeSkillsDir(opts.skillsDir ?? prior?.skillsDir ?? DEFAULT_SKILLS_DIR);
+  let assembled = assemble({ contentRoot: resolveAgentContextRoot(), stack, docsRef: docsRefForVersion(cliVersion()), skillsDir });
+  if (opts.noSkills) assembled = assembled.filter((f) => !f.path.startsWith(`${skillsDir}/`));
 
   const generatedBy = cliVersion();
   const contentHash = currentContentHash().currentContentHash;
@@ -360,6 +371,7 @@ async function writeAgentContext(opts: InitOptions, result: InitResult): Promise
     },
     generatedBy,
     ...(contentHash !== undefined && { contentHash }),
+    skillsDir,
   });
   // A pre-release CLI stamps its own pre-release version into the committed
   // .metaobjects/.agent-context.json ("generatedBy") and the skills/docs it scaffolds may
@@ -434,16 +446,26 @@ async function writeAgentContext(opts: InitOptions, result: InitResult): Promise
 }
 
 const ROOT_IMPORT_LINE = "@.metaobjects/AGENTS.md";
+/**
+ * What the root file gains. The `@` line is Claude Code's import; the sentence before it is
+ * what any other assistant acts on, since only Claude Code expands an `@` path.
+ */
+const ROOT_IMPORT_BLOCK =
+  "Read `.metaobjects/AGENTS.md` before changing this project's metadata, generated code or schema.\n" +
+  `${ROOT_IMPORT_LINE}\n`;
 async function wireRootMemory(cwd: string, result: InitResult, dryRun = false): Promise<void> {
   const claudePath = join(cwd, "CLAUDE.md");
   const agentsPath = join(cwd, "AGENTS.md");
   const claudeExists = await fileExists(claudePath);
   const agentsExists = await fileExists(agentsPath);
 
-  // If neither root memory file exists, create CLAUDE.md (Claude Code's canonical) with the import.
+  // If neither root memory file exists, create both: AGENTS.md for the assistants that read it,
+  // CLAUDE.md for Claude Code.
   if (!claudeExists && !agentsExists) {
-    await writeUnlessDryRun(cwd, dryRun, "CLAUDE.md", `# Project memory\n\n${ROOT_IMPORT_LINE}\n`);
-    result.created.push(`CLAUDE.md (${verbed(dryRun, "created")} with MetaObjects @import)`);
+    for (const target of ["AGENTS.md", "CLAUDE.md"]) {
+      await writeUnlessDryRun(cwd, dryRun, target, `# Project memory\n\n${ROOT_IMPORT_BLOCK}`);
+      result.created.push(`${target} (${verbed(dryRun, "created")} with MetaObjects @import)`);
+    }
     return;
   }
   // Otherwise append the import to whichever exist (idempotent — never double-add).
@@ -452,7 +474,7 @@ async function wireRootMemory(cwd: string, result: InitResult, dryRun = false): 
     const body = await readFile(path, "utf8");
     if (body.includes(ROOT_IMPORT_LINE)) continue;
     const target = path.endsWith("AGENTS.md") ? "AGENTS.md" : "CLAUDE.md";
-    await writeUnlessDryRun(cwd, dryRun, target, `${body.replace(/\n*$/, "\n")}\n${ROOT_IMPORT_LINE}\n`);
+    await writeUnlessDryRun(cwd, dryRun, target, `${body.replace(/\n*$/, "\n")}\n${ROOT_IMPORT_BLOCK}`);
     // Past tense only when it actually happened — this one mutates a file the user
     // owns, so a dry run reporting it as done is the most misleading of the three.
     result.warnings.push(`${verbed(dryRun, "wired")} ${ROOT_IMPORT_LINE} into ${target} so the MetaObjects context loads`);
@@ -609,6 +631,7 @@ export async function init(opts: InitOptions): Promise<InitResult> {
   // generated context.
   assertKnownStackValues({ servers: opts.servers ?? [], clients: opts.clients ?? [] });
   resolveInitDialect(opts);
+  if (opts.skillsDir !== undefined) normalizeSkillsDir(opts.skillsDir);
   const result: InitResult = { created: [], preserved: [], removed: [], warnings: [] };
   const agentDir = join(opts.cwd, DEFAULT_METAOBJECTS_DIR);
   const metaobjectsDir = join(opts.cwd, DEFAULT_METADATA_DIR);
@@ -941,6 +964,7 @@ export async function initCommand(args: string[], cwd: string): Promise<number> 
     // init failure gets. `init()` refuses it too, which is what covers every other door.
     assertKnownStackValues({ servers: flags.servers ?? [], clients: flags.clients ?? [] });
     resolveInitDialect(flags);
+    if (flags.skillsDir !== undefined) normalizeSkillsDir(flags.skillsDir);
   } catch (err) {
     log.error(describeError(err));
     return 2;
@@ -958,6 +982,7 @@ export async function initCommand(args: string[], cwd: string): Promise<number> 
       servers: flags.servers,
       clients: flags.clients,
       noSkills: flags.noSkills,
+      ...(flags.skillsDir !== undefined && { skillsDir: flags.skillsDir }),
       wireRoot: flags.wireRoot,
       docsOnly: flags.docsOnly,
       configOnly: flags.configOnly,
@@ -990,14 +1015,14 @@ export async function initCommand(args: string[], cwd: string): Promise<number> 
       // was available from the outputs this command had just written.
       reportIgnoredScaffold(cwd, result.created);
       if (flags.docsOnly) {
-        log.info(`Scaffolded the MetaObjects agent context (${result.created.length} files): .metaobjects/AGENTS.md + .claude/skills/metaobjects-*.`);
+        log.info(`Scaffolded the MetaObjects agent context (${result.created.length} files): .metaobjects/AGENTS.md + the metaobjects-* skills.`);
         for (const w of result.warnings) log.info(`  ${w}`);
-        log.info("Re-run --docs-only --refresh-docs to update; --no-wire-root to skip the root CLAUDE.md @import.");
+        log.info("Re-run --docs-only --refresh-docs to update; --no-wire-root to skip the root AGENTS.md/CLAUDE.md @import.");
       } else if (result.refreshedDocsOnly) {
         // Report the refresh, not a scaffold. `result.refreshedDocsOnly` (not `flags.refreshDocs`)
         // because --refresh-docs on an uninitialized repo falls through to a full init, which
         // genuinely DID scaffold and must still say so.
-        log.info(`Refreshed the MetaObjects agent context in place (${result.created.length} files): .metaobjects/AGENTS.md + .metaobjects/CLAUDE.md + .claude/skills/metaobjects-*.`);
+        log.info(`Refreshed the MetaObjects agent context in place (${result.created.length} files): .metaobjects/AGENTS.md + the metaobjects-* skills.`);
         log.info("Your metadata, .metaobjects/config.json, codegen/generators/ and metaobjects.config.ts were left untouched.");
         for (const w of result.warnings) log.warn(w);
       } else if (flags.configOnly) {
