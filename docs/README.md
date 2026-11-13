@@ -36,6 +36,7 @@ docs/
 │   ├── extending-with-providers.md  # custom metamodel subtypes/attrs via MetaDataTypeProvider
 │   ├── yaml-authoring.md
 │   ├── cli.md                       # CLI command matrix across all five ports
+│   ├── language-differences.md      # what differs by language: Node for the schema, list defaults, error bodies, names, data access
 │   ├── codegen-concepts.md          # declarative template-codegen scopes (perEntity/perPackage/perModel)
 │   ├── codegen-data-shapes.md       # the neutral template data dict shared cross-port
 │   ├── downstream-metadata-decisions.md # guidance for adopters extending the metamodel
@@ -67,6 +68,7 @@ this tree is documentation, not the source of truth.
 | You want to … | Read |
 |---|---|
 | Pick a language and ship a small CRUD app | [`ports/<lang>.md`](ports/) |
+| Know what behaves differently per language (Node for migrations, list defaults, validation errors, field names, data access) | [`features/language-differences.md`](features/language-differences.md) |
 | Understand what `object.entity`, `source.rdb`, `template.prompt` mean | [`features/`](features/) |
 | Compare what TS vs Java vs Kotlin vs C# vs Python emit for the same metadata | any [`features/*.md`](features/) — every feature shows all five ports side-by-side |
 | Author metadata in YAML instead of JSON | [`features/yaml-authoring.md`](features/yaml-authoring.md) |

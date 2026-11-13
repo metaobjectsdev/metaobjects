@@ -30,10 +30,10 @@ USAGE:
 
 COMMANDS:
   init                  Scaffold a MetaObjects project in the current repo
-  init --refresh-docs   Refresh .metaobjects/AGENTS.md + CLAUDE.md after CLI upgrades
+  init --refresh-docs   Refresh .metaobjects/AGENTS.md and the skills after CLI upgrades
   init --with-docs      Scaffold with documentation wired (docsFile(), apiDocsFile()) so the first \`meta gen\` writes it
   init --config-only    Write only .metaobjects/config.json — for a Maven- or pip-rooted project
-  agent-docs            Scaffold only the agent-context (.metaobjects/ + .claude/skills/) — canonical redirect target for all language ports
+  agent-docs            Scaffold only the agent-context (.metaobjects/AGENTS.md + skills) — canonical redirect target for all language ports
   gen [<entity>...]     Codegen TS targets from your declared metadata
   generator new <name>  Write a generator of your own into codegen/generators/ and wire it — the
                         way to get any output MetaObjects does not ship (Zod, a client, …)
@@ -505,7 +505,7 @@ USAGE:
   meta init [flags]
 
 FLAGS:
-  --refresh-docs        Refresh .metaobjects/AGENTS.md + CLAUDE.md after CLI upgrades
+  --refresh-docs        Refresh .metaobjects/AGENTS.md and the skills after CLI upgrades
   --docs-only           Write only the agent-context files — no metadata sources, no
                         codegen scaffold, no config. Pair with --refresh-docs to update
                         an existing project after upgrading.
@@ -515,7 +515,10 @@ FLAGS:
                         value is refused, never dropped)
   --client <fw>         Declare a client framework for the agent context (repeatable):
                         react | tanstack | angular
-  --no-skills           Skip the .claude/skills/ scaffold
+  --no-skills           Skip the skills scaffold
+  --skills-dir <dir>    Where the skills install (default .claude/skills, which Claude Code
+                        reads; .agents/skills for assistants that read that). Remembered
+                        for later refreshes
   --force               Overwrite existing files
   --quiet               Suppress output
   --print-only          Print what would be written, don't write
@@ -524,14 +527,15 @@ FLAGS:
                         in .metaobjects/config.json, so neither is edited by hand. d1 is
                         --d1; mysql is codegen only (meta migrate does not own MySQL schema)
   --d1                  Include D1 (Cloudflare) migration config (same as --dialect d1)
-  --no-wire-root        Skip wiring root metaobjects.config.ts
+  --no-wire-root        Skip wiring the .metaobjects/AGENTS.md import into the root
+                        AGENTS.md / CLAUDE.md
   --config-only         Write only .metaobjects/config.json (no TS scaffold) — declares
                         metadata sources for the Node CLI from a Maven- or pip-rooted project
   --with-docs           Wire docsFile() and apiDocsFile() and a docs target in the scaffolded
                         config, so the first \`meta gen\` writes documentation
   --help, -h            Print this help
 `,
-  "agent-docs": `meta agent-docs — scaffold the agent-context (.metaobjects/ always-on files + .claude/skills/)
+  "agent-docs": `meta agent-docs — scaffold the agent-context (.metaobjects/AGENTS.md + the metaobjects-* skills)
 
 USAGE:
   meta agent-docs [--server <lang>]... [--client <fw>]... [--out <dir>] [flags]
@@ -540,8 +544,10 @@ FLAGS:
   --server <lang>       Server language (repeatable): typescript|java|kotlin|csharp|python
   --client <fw>         Client framework (repeatable): react|tanstack|angular
   --out <dir>           Output directory (default: current directory)
-  --no-skills           Skip .claude/skills/ scaffold
-  --no-wire-root        Skip wiring root CLAUDE.md @import
+  --no-skills           Skip the skills scaffold
+  --skills-dir <dir>    Where the skills install (default .claude/skills; .agents/skills for
+                        assistants that read that). Remembered for later refreshes
+  --no-wire-root        Skip wiring the import into the root AGENTS.md / CLAUDE.md
   --help, -h            Print this help
 
 NOTE: This is the canonical scaffolder for all language ports. Non-Node CLIs redirect here.
@@ -723,12 +729,13 @@ export async function run(argv: string[]): Promise<number> {
           servers: flags.servers,
           clients: flags.clients,
           noSkills: flags.noSkills,
+          ...(flags.skillsDir !== undefined && { skillsDir: flags.skillsDir }),
           wireRoot: flags.wireRoot,
           docsOnly: true,
         });
-        log.info(`Scaffolded the MetaObjects agent context (${result.created.length} files): .metaobjects/AGENTS.md + .claude/skills/metaobjects-*.`);
+        log.info(`Scaffolded the MetaObjects agent context (${result.created.length} files): .metaobjects/AGENTS.md + the metaobjects-* skills.`);
         for (const w of result.warnings) log.info(`  ${w}`);
-        log.info("Re-run agent-docs to update; --no-wire-root to skip the root CLAUDE.md @import.");
+        log.info("Re-run agent-docs to update; --no-wire-root to skip the root AGENTS.md/CLAUDE.md @import.");
         return 0;
       } catch (err) {
         log.error(describeError(err));

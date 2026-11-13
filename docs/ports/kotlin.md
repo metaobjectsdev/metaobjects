@@ -20,6 +20,8 @@ Two modules:
 - **`metaobjects-metadata-ktx`** — thin Kotlin facade over the Java loader + render
   engine for idiomatic Kotlin runtime use.
 
+> **Schema migrations and database checks run in the Node `meta` tool.** The Maven plugin generates and verifies code, but writing and applying migrations (`npx meta migrate`, `npx meta migrate apply-pending`) and checking a live database against the model (`npx meta verify --db`) need Node: `npm i -D @metaobjectsdev/cli`, then `npx meta init --config-only` to point it at your metadata. Node is needed where migrations are written or applied, not in your running service. What else behaves differently in this port is listed in [What differs by language](../features/language-differences.md).
+
 ## Regeneration and hand edits
 
 There is no three-way merge on the JVM (that is TypeScript-only). Kotlin runs through the same

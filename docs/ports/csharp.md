@@ -5,6 +5,8 @@ A first-class full-stack target on .NET 8. Loader + conformance + EF Core codege
 Postgres + Npgsql. The baseline is **.NET 8** (`net8.0`); the tool and the packages are not
 built for earlier runtimes.
 
+> **Schema migrations and database checks run in the Node `meta` tool.** `dotnet meta` generates and verifies code, but writing and applying migrations (`npx meta migrate`, `npx meta migrate apply-pending`) and checking a live database against the model (`npx meta verify --db`) need Node: `npm i -D @metaobjectsdev/cli`, then `npx meta init --config-only` to point it at your metadata. Node is needed where migrations are written or applied, not in your running service. What else behaves differently in this port is listed in [What differs by language](../features/language-differences.md).
+
 ## Regeneration and hand edits
 
 `dotnet meta gen` has no three-way merge (that is TypeScript-only). It decides per file from a

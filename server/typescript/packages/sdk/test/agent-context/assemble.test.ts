@@ -27,13 +27,13 @@ describe("assemble pins guide links", () => {
 });
 
 describe("assemble", () => {
-  test("emits AGENTS.md + CLAUDE.md with the stack line + codegen command substituted", () => {
+  test("emits one AGENTS.md (no duplicate CLAUDE.md) with the stack line + codegen command substituted", () => {
     const stack = makeStack(["typescript"], ["react"]);
     const files = assemble({ contentRoot: CONTENT_ROOT, stack });
     const agents = files.find((f) => f.path === ".metaobjects/AGENTS.md")!;
-    const claude = files.find((f) => f.path === ".metaobjects/CLAUDE.md")!;
     expect(agents).toBeDefined();
-    expect(claude.contents).toBe(agents.contents);
+    // The root AGENTS.md / CLAUDE.md import this one file; a second identical copy was noise.
+    expect(files.find((f) => f.path === ".metaobjects/CLAUDE.md")).toBeUndefined();
     expect(agents.contents).not.toContain("{{stackLine}}");
     expect(agents.contents).not.toContain("{{codegenCommand}}");
     expect(agents.contents).toContain("npx meta gen");
@@ -65,7 +65,8 @@ describe("assemble", () => {
 
     const java = onAgents(["java"], []);
     expect(java).toContain("`mvn metaobjects:generate`");
-    expect(java).toContain("JavaApiDocsGenerator");
+    // The generator class list lives in the codegen skill; the loop points at it.
+    expect(java).toContain("`metaobjects-codegen` skill's `references/java.md`");
     expect(java).not.toContain("### Kotlin");
 
     // A polyglot stack gets each declared port, in SERVER_LANGS order, and the client step.
@@ -89,14 +90,42 @@ describe("assemble", () => {
     expect(onAgents([], [])).toContain("meta init --docs-only --refresh-docs --server");
   });
 
-  test("the always-on never tells an agent to cat or read a skill file", () => {
-    // Skills are loaded by name. Reading SKILL.md by path bypasses that, costs the whole file,
-    // and teaches the agent that the loop needs a skill when it does not.
+  test("the always-on loads skills by name, and offers a path only to assistants that cannot", () => {
+    // Skills are loaded by name; reading SKILL.md by path bypasses that and costs the whole
+    // file. The one path the text gives is the fallback for an assistant with no skill
+    // loading, which would otherwise have no way in.
     const c = assemble({ contentRoot: CONTENT_ROOT, stack: makeStack(["typescript"], ["react"]) })
       .find((f) => f.path === ".metaobjects/AGENTS.md")!.contents;
-    expect(c).not.toContain("SKILL.md");
+    expect(c.match(/SKILL\.md/g)?.length).toBe(1);
+    expect(c).toContain("load a `metaobjects-*` skill by name, or open\n`.claude/skills/<skill>/SKILL.md` if your assistant does not load skills");
     expect(c).not.toMatch(/\bcat\b/);
     expect(c).toContain("The loop above needs no skill.");
+  });
+
+  test("--skills-dir moves every skill file and the always-on names the chosen directory", () => {
+    const files = assemble({ contentRoot: CONTENT_ROOT, stack: makeStack(["python"], []), skillsDir: "./.agents/skills/" });
+    const skillPaths = files.map((f) => f.path).filter((p) => p.endsWith(".md") && !p.startsWith(".metaobjects/"));
+    expect(skillPaths.length).toBeGreaterThan(0);
+    for (const p of skillPaths) expect(p.startsWith(".agents/skills/metaobjects-")).toBe(true);
+    const c = files.find((f) => f.path === ".metaobjects/AGENTS.md")!.contents;
+    expect(c).toContain("`.agents/skills/<skill>/SKILL.md`");
+    expect(c).not.toContain(".claude/skills");
+  });
+
+  test("a skills directory outside the project is refused", () => {
+    for (const bad of ["/abs/skills", "../skills", "a/../../b", "", "C:/skills"]) {
+      expect(() => assemble({ contentRoot: CONTENT_ROOT, stack: makeStack([], []), skillsDir: bad })).toThrow(/--skills-dir/);
+    }
+  });
+
+  test("the always-on states the REST conventions agents trip on", () => {
+    const c = assemble({ contentRoot: CONTENT_ROOT, stack: makeStack(["java"], []) })
+      .find((f) => f.path === ".metaobjects/AGENTS.md")!.contents;
+    expect(c).toContain("`?filter[status][eq]=active`, never\n  `?status=active`");
+    for (const op of ["`eq`", "`ne`", "`isNull`", "`in`", "`like`", "`gt`", "`gte`", "`lt`", "`lte`"]) expect(c).toContain(op);
+    expect(c).toContain("`?limit=N&offset=N`");
+    expect(c).toContain("`invalid_sort`");
+    expect(c).toContain("so Java, Kotlin, C# and Python projects need Node too");
   });
 
   test("a malformed section tag THROWS rather than shipping into a file an agent reads", () => {

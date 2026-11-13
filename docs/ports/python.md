@@ -9,6 +9,8 @@ with no ORM of any kind, so your SQLAlchemy or Django models stay hand-written b
 Python port has no `migrate` command by design; it consumes the canonical
 `schema.postgres.sql` artifact verbatim.
 
+> **Schema migrations and database checks run in the Node `meta` tool.** `metaobjects` generates and verifies code, but writing and applying migrations (`npx meta migrate`, `npx meta migrate apply-pending`) and checking a live database against the model (`npx meta verify --db`) need Node: `npm i -D @metaobjectsdev/cli`, then `npx meta init --config-only` to point it at your metadata. Node is needed where migrations are written or applied, not in your running service. What else behaves differently in this port is listed in [What differs by language](../features/language-differences.md).
+
 ## Regeneration and hand edits
 
 `metaobjects gen` has no three-way merge (that is TypeScript-only). It decides per file from a
@@ -407,6 +409,25 @@ reverse finders: `@collectionName: CaseHistory` on an object turns
 `find_<plural>_by_<fk>` into `find_case_history_by_<fk>` (and `..._in`). A project that sets
 neither keeps every route and finder name it has today. The shared cases are in
 `fixtures/naming-conformance/collection-segments.json`.
+
+### Page size and undeclared body keys: the `api` block
+
+The routers read the `api` block of `.metaobjects/config.json` from the loaded root:
+
+```json
+{ "api": { "pagination": { "defaultLimit": 50, "maxLimit": 1000 }, "unknownFields": "reject" } }
+```
+
+With `api.pagination`, an entity, projection or single-table list router answers `defaultLimit`
+rows when `limit` is omitted, `400 {"error": "limit_too_large", "maxLimit": N}` above the cap and
+`400 pagination.invalid_value` for a negative `limit`; a served report keeps its own ceiling.
+Without it the routers keep their default of 50 and no cap, and `metaobjects verify` prints an
+`unbounded-list-pages` advisory that never changes the exit code. With `api.unknownFields:
+reject` (the default) a create, PUT or PATCH body carrying a key no field declares answers
+`400 {"error": "unknown_fields", "fields": [...]}` (`unknown_body_keys` in
+`metaobjects.codegen.runtime.constraint_errors`) before validation; `drop` ignores it. A declared
+key the client may not set is dropped under either value. The contract is in
+[api-contract](../features/api-contract.md#unknown-request-fields-apiunknownfields).
 
 ### Decimals and null members on the wire
 
