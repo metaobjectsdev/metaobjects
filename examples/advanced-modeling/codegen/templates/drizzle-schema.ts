@@ -26,12 +26,13 @@ import { dialectModule } from "@metaobjectsdev/codegen-ts/engine";
 import {
   namesRef, physicalNameExpr, sourceSchemaExpr, indexNameExpr, columnExpr,
 } from "@metaobjectsdev/codegen-ts/engine";
-import { resolveTableSchema, VALIDATOR_ATTR_CONSTRAINT_NAME } from "@metaobjectsdev/metadata";
+import { resolveTableSchema, storedEnumValue, VALIDATOR_ATTR_CONSTRAINT_NAME } from "@metaobjectsdev/metadata";
+import { intValueMapOf } from "@metaobjectsdev/codegen-ts/engine";
 import { renderEnumIntCustomType } from "./enum-int-codec.js";
 import { renderDurationCustomType } from "./duration-wire-helper.js";
 import { renderRelationsBlock } from "./relations-block.js";
 import { renderDocsFor } from "./jsdoc.js";
-import { collectTphSubtypeFields, tphConcreteSubtypes } from "./tph-discriminator.js";
+import { collectTphSubtypeFields, tphConcreteSubtypes, tphPlan } from "./tph-discriminator.js";
 import { tphStorageObject } from "@metaobjectsdev/codegen-ts/engine";
 import { effectivePackage } from "@metaobjectsdev/codegen-ts/engine";
 
@@ -267,8 +268,12 @@ export function renderDrizzleSchema(
     );
     columnLines.push(fieldDocs ? code`  ${fieldDocs}\n${columnLine}` : columnLine);
     // Enum CHECK constraints stay valid under TPH: `NULL IN (...)` is NULL
-    // (not false), so other-subtype rows with NULL pass the check.
-    if (spec.checkConstraint !== undefined) checkConstraints.push(checkEntry(child, spec));
+    // (not false), so other-subtype rows with NULL pass the check. Sibling subtypes that
+    // declare this column with DIFFERENT checks (rc.21 fix round, I1) each get their own,
+    // guarded by their discriminator values — exactly as `meta migrate` derives them.
+    const guarded = guardedSiblingEnumChecks(obj, child.name, tableName, ctx);
+    if (guarded !== undefined) checkConstraints.push(...guarded);
+    else if (spec.checkConstraint !== undefined) checkConstraints.push(checkEntry(child, spec));
   }
 
   // Build all table callback entries
@@ -749,4 +754,56 @@ function renderColumn(
   return spec.leadingComment !== undefined
     ? code`  // ${spec.leadingComment}\n${columnLine}`
     : columnLine;
+}
+
+/**
+ * rc.21 fix round (I1) — the enum CHECKs of a TPH column several sibling subtypes declare with
+ * different checks (each owner a distinct field node), one per owner, guarded by the discriminator
+ * values of the subtypes carrying that node and named `<table>_<declarer>_<col>_chk` (a declared
+ * `@constraintName` kept): the text `meta migrate` derives (expected-schema.ts buildChecks), up to
+ * the quoting its comparator ignores. Undefined when one node owns the column, or every owner's
+ * CHECK is the same: the caller emits the plain one.
+ */
+function guardedSiblingEnumChecks(
+  obj: MetaObject, fieldName: string, tableName: string, ctx: RenderContext,
+): Array<{ name: Code; expr: Code }> | undefined {
+  const plan = tphPlan(obj, ctx.loadedRoot);
+  if (plan === null) return undefined;
+  const subs = [...plan.subtypes].sort((a, b) => (a.entity.name < b.entity.name ? -1 : a.entity.name > b.entity.name ? 1 : 0));
+  const owners: { node: MetaField; values: string[] }[] = [];
+  for (const st of subs) {
+    // ADR-0039: resolving — a field on an abstract level or a parent subtype is a column too.
+    const node = st.entity.fields().find((f) => f.name === fieldName);
+    if (node === undefined) continue;
+    const owner = owners.find((o) => o.node === node);
+    if (owner === undefined) owners.push({ node, values: [st.value] });
+    else owner.values.push(st.value);
+  }
+  if (owners.length < 2) return undefined;
+  const specs = owners.map((o) => mapColumnType(o.node, ctx.dialect, ctx.columnNamingStrategy, ctx.timestampMode));
+  if (specs.every((sp) => sp.checkConstraint === specs[0]!.checkConstraint)) return undefined;
+  const disc = obj.fields().find((f) => f.name === plan.discriminatorField);
+  const discCol = disc === undefined ? plan.discriminatorField
+    : mapColumnType(disc, ctx.dialect, ctx.columnNamingStrategy, ctx.timestampMode).dbName;
+  const literal = (value: string): string => {
+    const ints = disc === undefined ? undefined : intValueMapOf(disc);
+    const n = ints?.[value];
+    if (typeof n === "number") return String(n);
+    const stored = disc === undefined ? value : storedEnumValue(disc, value);
+    return `'${stored.replace(/'/g, "''")}'`;
+  };
+  const out: Array<{ name: Code; expr: Code }> = [];
+  owners.forEach((o, i) => {
+    const check = specs[i]!.checkConstraint;
+    if (check === undefined) return;
+    const unless = o.values.length === 1
+      ? `"${discCol}" <> ${literal(o.values[0]!)}`
+      : o.values.map((v) => `("${discCol}" <> ${literal(v)})`).join(" AND ");
+    const declared = o.node.attr(VALIDATOR_ATTR_CONSTRAINT_NAME);
+    const name = typeof declared === "string" && declared.length > 0
+      ? declared
+      : `${tableName}_${(o.node.parent?.name ?? "subtype").toLowerCase()}_${specs[i]!.dbName}_chk`;
+    out.push({ name: code`${JSON.stringify(name)}`, expr: code`(${unless}) OR (${check})` });
+  });
+  return out;
 }

@@ -148,7 +148,8 @@ const ${t.fnConstName} = ${customTypeSym}<{ data: (${union})[]; driverData: stri
  * varchar(n) `meta migrate` creates) holds each member's stored string, the TS side the member.
  * Encoded on bind and decoded on read at the column, exactly as the int-backed codec, so a filter
  * comparison binds the stored string too. An unmapped stored string throws on read, for the reason
- * the int codec's does.
+ * the int codec's does, and an unmapped member throws on write (rc.21 ruling: no CHECK need stand
+ * behind it under @dbCheck: false).
  */
 function renderStoredStringCodec(t: EnumIntCustomType, stored: Record<string, string>, customTypeSym: unknown, union: string): Code {
   const toEntries = t.members.map((m) => `${JSON.stringify(m)}: ${JSON.stringify(stored[m])}`).join(", ");
@@ -158,7 +159,13 @@ const ${t.toIntConstName} = { ${toEntries} } as const satisfies Record<${union},
 const ${t.fromIntConstName}: Record<string, ${union}> = { ${fromEntries} };
 const ${t.fnConstName} = ${customTypeSym}<{ data: ${union}; driverData: string }>({
   dataType: () => ${JSON.stringify(t.dataType)},
-  toDriver: (value) => ${t.toIntConstName}[value],
+  toDriver: (value) => {
+    const stored = ${t.toIntConstName}[value];
+    if (stored === undefined) {
+      throw new Error(\`unmapped ${t.fnConstName} member: \${String(value)}\`);
+    }
+    return stored;
+  },
   fromDriver: (value) => {
     const member = ${t.fromIntConstName}[value];
     if (member === undefined) {

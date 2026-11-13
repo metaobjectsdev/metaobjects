@@ -383,6 +383,14 @@ export function resolveObjectNames(
   }
 
   const superObj = namesArtifactSuperOf(obj);
+  // rc.21 fix round (M8): an abstract-entity fragment leaves its derived fields out (no column of
+  // the tables extending it), so an object whose derived fields ARE columns (a write-through
+  // entity's read view) declares the ones it inherits itself.
+  if (superObj !== undefined && superObj.subType === OBJECT_SUBTYPE_ENTITY && superObj.isAbstract) {
+    for (const f of obj.fields()) {
+      if (f.isDerived() && !columnless(f) && ownFields[f.name] === undefined) ownFields[f.name] = fieldNamesOf(f, strategy);
+    }
+  }
   const superNames: SuperNames | undefined = superObj === undefined
     ? undefined
     : { name: superObj.name, package: effectivePackage(superObj) };

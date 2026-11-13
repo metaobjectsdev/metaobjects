@@ -493,11 +493,22 @@ public final class JdbcCodecs {
                     s.setNull(j, Types.VARCHAR);
                     return;
                 }
-                // rc.21: a @stringValueMap enum binds the member's stored string; an unmapped
-                // member is bound unchanged, so the column's CHECK rejects it.
+                // rc.21: a @stringValueMap enum binds the member's stored string. An unmapped
+                // member throws (every port): no CHECK need stand behind it (@dbCheck: false),
+                // and binding the symbol would store a spelling the column does not hold.
                 Map<String, String> storedMap = stringValueMap(f);
                 String member = v.toString();
-                s.setString(j, storedMap == null ? member : storedMap.getOrDefault(member, member));
+                if (storedMap == null) {
+                    s.setString(j, member);
+                    return;
+                }
+                String stored = storedMap.get(member);
+                if (stored == null) {
+                    throw new SQLException("field.enum '" + f.getName() + "' cannot write " + member
+                        + ": it has no stored string in @" + EnumField.ATTR_STRING_VALUE_MAP
+                        + " — the value is not one of the members the model declares.");
+                }
+                s.setString(j, stored);
                 return;
             }
             refuseArray(f);

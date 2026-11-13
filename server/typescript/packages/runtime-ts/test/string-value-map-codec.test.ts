@@ -8,20 +8,20 @@ import { compileFilter } from "../src/query-builder.js";
 
 async function upload(): Promise<MetaData> {
   const { root, errors } = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify({ "metadata.root": { package: "acme", children: [
-    { "object.entity": { name: "Upload", children: [
-      { "source.rdb": { "@table": "uploads" } },
+    { "object.entity": { name: "Article", children: [
+      { "source.rdb": { "@table": "articles" } },
       { "field.long": { name: "id" } },
-      { "field.enum": { name: "status", "@values": ["Pending", "Delivered"], "@stringValueMap": { Pending: "pending", Delivered: "delivered" } } },
+      { "field.enum": { name: "status", "@values": ["Draft", "Published"], "@stringValueMap": { Draft: "draft", Published: "published" } } },
       { "identity.primary": { name: "id", "@fields": "id" } } ] } } ] } }))]);
   expect(errors).toEqual([]);
-  return root.findObject("Upload")!;
+  return root.findObject("Article")!;
 }
 
 describe("@stringValueMap — ObjectManager codec", () => {
   test("writes the stored string and reads the member", async () => {
     const entity = await upload();
-    expect(coerceRowOnWrite(entity, { id: 1, status: "Delivered" }, "postgres")["status"]).toBe("delivered");
-    expect(coerceRowOnRead(entity, { id: 1, status: "delivered" }, "postgres")["status"]).toBe("Delivered");
+    expect(coerceRowOnWrite(entity, { id: 1, status: "Published" }, "postgres")["status"]).toBe("published");
+    expect(coerceRowOnRead(entity, { id: 1, status: "published" }, "postgres")["status"]).toBe("Published");
   });
 
   test("an unmapped stored string read back throws", async () => {
@@ -31,6 +31,13 @@ describe("@stringValueMap — ObjectManager codec", () => {
 
   test("a filter binds the stored string", async () => {
     const entity = await upload();
-    expect(JSON.stringify(compileFilter(entity, { status: "Pending" }))).toContain('"pending"');
+    expect(JSON.stringify(compileFilter(entity, { status: "Draft" }))).toContain('"draft"');
+  });
+});
+
+describe("@stringValueMap — an unmapped member", () => {
+  test("is refused on write, naming the field", async () => {
+    const entity = await upload();
+    expect(() => coerceRowOnWrite(entity, { id: 1, status: "Archived" }, "postgres")).toThrow(/cannot write 'Archived'/);
   });
 });

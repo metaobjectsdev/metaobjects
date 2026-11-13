@@ -157,6 +157,34 @@ public class NamesGeneratorTests
         Assert.Contains("public const string DoubledColumn = \"doubled\";", view);
     }
 
+    // rc.21 fix round (M8): an abstract-entity fragment drops its derived field, so a write-through
+    // extender (whose read view HAS that column) declares the constant itself.
+    [Fact]
+    public void A_write_through_extender_declares_the_derived_column_its_fragment_drops()
+    {
+        const string model = """
+        { "metadata.root": { "package": "acme", "children": [
+          { "object.entity": { "name": "Tracked", "abstract": true, "children": [
+            { "field.int": { "name": "score" } },
+            { "field.boolean": { "name": "isHigh", "children": [ { "origin.computed": { "@expr": {
+                "op": "gte", "left": { "field": "score" }, "right": { "value": 4 } } } } ] } } ] } },
+          { "object.entity": { "name": "Account", "extends": "Tracked", "children": [
+            { "source.rdb": { "@table": "accounts" } },
+            { "source.rdb": { "name": "read", "@kind": "view", "@view": "v_accounts", "@role": "replica" } },
+            { "field.long": { "name": "id" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } } ] } },
+          { "object.projection": { "name": "HighAccounts", "@filter": { "isHigh": true }, "children": [
+            { "source.rdb": { "@kind": "view", "@view": "v_high_accounts" } },
+            { "field.long": { "name": "id", "extends": "Account.id" } },
+            { "identity.primary": { "name": "id", "extends": "Account.id" } } ] } } ] } }
+        """;
+        var files = new NamesGenerator().Generate(Ctx(Load(model))).ToList();
+        var tracked = files.Single(f => f.Path.EndsWith("TrackedNames.g.cs", StringComparison.Ordinal)).Content;
+        Assert.DoesNotContain("IsHigh", tracked);
+        var account = files.Single(f => f.Path.EndsWith("AccountNames.g.cs", StringComparison.Ordinal)).Content;
+        Assert.Contains("public const string IsHighColumn = \"is_high\";", account);
+    }
+
     [Fact]
     public void An_explicit_column_wins_over_the_naming_strategy()
     {

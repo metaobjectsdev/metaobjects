@@ -33,3 +33,25 @@ describe("names of a derived field", () => {
     expect(resolveObjectNames(obj("AccountView"))!.fields["doubled"]?.column).toBe("doubled");
   });
 });
+
+// rc.21 fix round (M8): a write-through extender declares the derived column its fragment drops.
+test("a write-through extender of an abstract entity keeps its inherited derived column", async () => {
+  const model = { "metadata.root": { package: "acme", children: [
+    { "object.entity": { name: "Tracked", abstract: true, children: [
+      { "field.int": { name: "score" } },
+      { "field.boolean": { name: "isHigh", children: [ { "origin.computed": { "@expr": {
+        op: "gte", left: { field: "score" }, right: { value: 4 } } } } ] } } ] } },
+    { "object.entity": { name: "Account", extends: "Tracked", children: [
+      { "source.rdb": { "@table": "accounts" } },
+      { "source.rdb": { name: "read", "@kind": "view", "@view": "v_accounts", "@role": "replica" } },
+      { "field.long": { name: "id" } },
+      { "identity.primary": { name: "id", "@fields": "id" } } ] } },
+    { "object.projection": { name: "HighAccounts", "@filter": { isHigh: true }, children: [
+      { "source.rdb": { "@kind": "view", "@view": "v_high_accounts" } },
+      { "field.long": { name: "id", extends: "Account.id" } },
+      { "identity.primary": { name: "id", extends: "Account.id" } } ] } } ] } };
+  const { root, errors } = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify(model))]);
+  expect(errors).toEqual([]);
+  const account = root.objects().find((o) => o.name === "Account" && isMetaObject(o)) as MetaObject;
+  expect(resolveObjectNames(account)!.ownFields["isHigh"]?.column).toBe("is_high");
+});

@@ -1125,13 +1125,13 @@ def _coerce_filter_value(field: MetaField, value: Any) -> Any:
                 value = True
             elif lowered in ("false", "0"):
                 value = False
-    return _coerce_write_value(field, value)
+    return _coerce_write_value(field, value, for_filter=True)
 
 
 _INT_TEXT = _re.compile(r"^\s*-?\d+\s*$")
 
 
-def _coerce_write_value(field: MetaField, value: Any) -> Any:
+def _coerce_write_value(field: MetaField, value: Any, *, for_filter: bool = False) -> Any:
     if value is None:
         return None
     sub = field.sub_type
@@ -1225,7 +1225,16 @@ def _coerce_write_value(field: MetaField, value: Any) -> Any:
         # loader refuses it on an array). An unmapped member passes through, as above.
         stored_map = _string_value_map(field)
         if stored_map is not None and isinstance(value, str):
-            return stored_map.get(value, value)
+            if value in stored_map or for_filter:
+                # A filter on a member that does not exist matches nothing, honestly.
+                return stored_map.get(value, value)
+            # Written, an unmapped member raises (rc.21 ruling, every port): no CHECK need hold
+            # behind it (@dbCheck: false), and storing the symbol would write a spelling the
+            # column does not hold.
+            raise ValueError(
+                f"field.enum '{field.name}' cannot write {value!r}: it has no stored string in "
+                f"@{fc.FIELD_ATTR_STRING_VALUE_MAP} — the value is not one of the members the model declares."
+            )
 
     # Everything else (string / int / long / double / float / boolean / enum)
     # is already the native type pg8000 binds directly.

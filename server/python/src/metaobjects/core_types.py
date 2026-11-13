@@ -660,8 +660,8 @@ core_provider.add(
             ),
             # rc.21 — @stringValueMap: optional per-member stored strings ({member: str}) of a
             # string-stored enum (the string twin of @intValueMap). Content rules in
-            # _validate_enum_values (Rule 5). Python persists no string enum through it yet:
-            # the ObjectManager refuses an entity carrying one (see object_manager.py).
+            # _validate_enum_values (Rule 5). The ObjectManager writes and reads through it
+            # (see object_manager.py: _coerce_write_value, _decode_read_value).
             AttrSchema(
                 name=FIELD_ATTR_STRING_VALUE_MAP,
                 value_type=ATTR_SUBTYPE_PROPERTIES,

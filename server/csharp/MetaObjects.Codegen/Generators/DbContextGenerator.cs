@@ -1593,10 +1593,16 @@ public class DbContextGenerator : IGenerator
         // columns would then be a second relationship, with a shadow FK beside it (`<Owner>_<Fk>1`).
         // So the relationship is configured THROUGH the navigation EF found over these FK properties,
         // when there is one, and navigation-less otherwise. Read from the model, not reflected.
+        // Which navigation: none to the target, none; exactly one, that one (whatever its name, so
+        // `HomeCountry` over `CountryId` matches too); several, the one whose convention FK is these
+        // properties — and with no such one the model build THROWS, naming the owner, rather than
+        // configure a second relationship beside them (rc.21 fix round, M6).
         var linq = "global::System.Linq.Enumerable";
         var fkNames = string.Join(", ", props.Select(p => $"\"{p}\""));
-        var navigation = $"{linq}.FirstOrDefault(b.OwnedEntityType.GetNavigations(), n => n.TargetEntityType.ClrType == typeof({targetRef}) "
-            + $"&& {linq}.SequenceEqual({linq}.Select(n.ForeignKey.Properties, p => p.Name), new[] {{ {fkNames} }}))?.Name";
+        var toTarget = $"{linq}.Where(b.OwnedEntityType.GetNavigations(), n => n.TargetEntityType.ClrType == typeof({targetRef}))";
+        var byFk = $"{linq}.FirstOrDefault({toTarget}, n => {linq}.SequenceEqual({linq}.Select(n.ForeignKey.Properties, p => p.Name), new[] {{ {fkNames} }}))";
+        var ambiguous = $"new global::System.InvalidOperationException(\"{CSharpNaming.CSharpStringLiteral($"{entity.Name}.{nav} has several navigations to {target.Name} and none over {string.Join(", ", props)}: name the one this reference uses with that foreign key, or remove the others.")}\")";
+        var navigation = $"({linq}.Count({toTarget}) == 0 ? null : {linq}.Count({toTarget}) == 1 ? {linq}.First({toTarget}) : ({byFk} ?? throw {ambiguous}))?.Name";
         return [$"        modelBuilder.Entity<{owner}>().OwnsOne(x => x.{nav}, b => b.HasOne<{targetRef}>({navigation})"
              + $".WithMany().HasForeignKey({ForeignKeyExpression("e", props)})"
              + PrincipalKeyCall(reference, target)

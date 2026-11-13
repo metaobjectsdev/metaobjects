@@ -135,9 +135,18 @@ function encodeStoredStringEnums(entity: MetaData, row: Row): Row {
   let out: Row | null = null;
   for (const child of entity.children()) {
     if (child.type !== TYPE_FIELD || child.subType !== FIELD_SUBTYPE_ENUM) continue;
-    if (stringValueMapOf(child) === undefined || !(child.name in row)) continue;
+    const map = stringValueMapOf(child);
+    if (map === undefined || !(child.name in row)) continue;
     const raw = row[child.name];
     if (typeof raw !== "string") continue;
+    // An unmapped member THROWS (rc.21 ruling, every port): no CHECK need stand behind it
+    // (@dbCheck: false), and writing the symbol would store a spelling the column does not hold.
+    if (typeof map[raw] !== "string") {
+      throw new Error(
+        `field.enum '${child.name}' cannot write '${raw}': it has no stored string in ` +
+          `@stringValueMap (declared: ${JSON.stringify(map)}) — the value is not one of the members the model declares.`,
+      );
+    }
     out ??= { ...row };
     out[child.name] = storedEnumValue(child, raw);
   }

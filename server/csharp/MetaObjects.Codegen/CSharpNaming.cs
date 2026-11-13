@@ -575,6 +575,12 @@ public static class CSharpNaming
             ownFields[f.Name] = FieldNamesOf(f, strategy);
 
         var superObj = NamesArtifactSuperOf(obj);
+        // rc.21 fix round (M8): an abstract-entity fragment leaves its derived fields out (they are
+        // no column of the tables extending it), so an object whose derived fields ARE columns (a
+        // write-through entity's read view) declares the ones it inherits itself, or it would lose them.
+        if (!noColumn && superObj is not null && superObj.IsEntity() && superObj.IsAbstract)
+            foreach (var f in obj.Fields().Where(f => f.IsDerived() && !ownFields.ContainsKey(f.Name)))
+                ownFields[f.Name] = FieldNamesOf(f, strategy);
         // Identity of the resolved source NODE, not equality of the resolved strings: a
         // divergence guard is exactly what this codebase forbids here, and the question
         // being asked is structural — did this object declare a source, or is it using its
