@@ -96,7 +96,10 @@ emitter, two hosts.
 
 A derived field must be **providable** — a read-capable source must be able to carry it. A
 derived field on a table-only entity (no read source) is a load error
-(`ERR_DERIVED_FIELD_NO_READ_SOURCE`).
+(`ERR_DERIVED_FIELD_NO_READ_SOURCE`), with one exception: an `origin.first` or `origin.computed`
+that a projection reaches through its `@filter` or a passthrough `@from` is inlined there, so it
+needs no read source. The entity's table then gets no column for it: generated entity, DbContext,
+Kotlin, Python `ObjectManager` and Java OMDB mappings leave such a field out of table reads and writes.
 
 ### Entity read-view vs projection — which to reach for
 
