@@ -1602,7 +1602,20 @@ public class DbContextGenerator : IGenerator
         var toTarget = $"{linq}.Where(b.OwnedEntityType.GetNavigations(), n => n.TargetEntityType.ClrType == typeof({targetRef}))";
         var byFk = $"{linq}.FirstOrDefault({toTarget}, n => {linq}.SequenceEqual({linq}.Select(n.ForeignKey.Properties, p => p.Name), new[] {{ {fkNames} }}))";
         var ambiguous = $"new global::System.InvalidOperationException(\"{CSharpNaming.CSharpStringLiteral($"{entity.Name}.{nav} has several navigations to {target.Name} and none over {string.Join(", ", props)}: name the one this reference uses with that foreign key, or remove the others.")}\")";
-        var navigation = $"({linq}.Count({toTarget}) == 0 ? null : {linq}.Count({toTarget}) == 1 ? {linq}.First({toTarget}) : ({byFk} ?? throw {ambiguous}))?.Name";
+        // rc.21 part B (N3): what codegen can know, it decides here. When this entity declares
+        // another reference from the same owned member to the same target, a sole navigation may be
+        // THAT reference's, so only the navigation over these exact properties is this one's; with
+        // none, the relationship is navigation-less (the other reference keeps its navigation). With
+        // one reference, a sole navigation can only be this one's, and only "several, none over
+        // these properties" is left to the model build (the owned CLR type is invisible to codegen).
+        var siblings = entity.ReferenceIdentities().Count(r =>
+            !ReferenceEquals(r, reference)
+            && ReferenceEquals(NamingRefs.RefTarget(r, IDENTITY_REFERENCE_ATTR_REFERENCES), target)
+            && ReferentialActions.ReadIdentityFields(r) is { Count: > 0 } other
+            && other.All(f => FlattenedMembers.Resolve(entity, f) is { } m && ReferenceEquals(m.Embedding, members[0]!.Embedding)));
+        var navigation = siblings > 0
+            ? $"{byFk}?.Name"
+            : $"({linq}.Count({toTarget}) == 0 ? null : {linq}.Count({toTarget}) == 1 ? {linq}.First({toTarget}) : ({byFk} ?? throw {ambiguous}))?.Name";
         return [$"        modelBuilder.Entity<{owner}>().OwnsOne(x => x.{nav}, b => b.HasOne<{targetRef}>({navigation})"
              + $".WithMany().HasForeignKey({ForeignKeyExpression("e", props)})"
              + PrincipalKeyCall(reference, target)

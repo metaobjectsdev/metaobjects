@@ -285,6 +285,54 @@ public sealed class EfModelGapsTests
         Assert.DoesNotContain(address.GetProperties(), p => p.Name is "HomeCountryId" or "CountryId1");
     }
 
+    // rc.21 part B (N3): two references from one owned member to one target. The owned type has a
+    // navigation for one of them only; the other must not take it as "the sole navigation".
+    private const string TwoFlattenedReferencesModel = """
+    { "metadata.root": { "package": "acme", "children": [
+      { "object.entity": { "name": "Country", "children": [
+        { "source.rdb": { "@table": "countries" } },
+        { "field.long":   { "name": "id" } },
+        { "identity.primary": { "@fields": "id" } }
+      ]}},
+      { "object.value": { "name": "Address", "children": [
+        { "field.long":   { "name": "homeCountryId" } },
+        { "field.long":   { "name": "billingCountryId" } }
+      ]}},
+      { "object.entity": { "name": "Plan", "children": [
+        { "source.rdb": { "@table": "plans" } },
+        { "field.long":   { "name": "id" } },
+        { "field.object": { "name": "address", "@objectRef": "Address", "@storage": "flattened" } },
+        { "identity.primary": { "@fields": "id" } },
+        { "identity.reference": { "name": "homeCountryId", "@fields": "address.homeCountryId", "@references": "Country" } },
+        { "identity.reference": { "name": "billingCountryId", "@fields": "address.billingCountryId", "@references": "Country" } }
+      ]}}
+    ]}}
+    """;
+
+    private sealed class AddressWithBillingCountry : MetaObjects.Codegen.Generators.EntityGenerator
+    {
+        protected override void EmitClassBodyTrailer(System.Text.StringBuilder sb, MetaObjects.Meta.MetaObject entity, MetaObjects.Codegen.GenContext ctx)
+        {
+            if (entity.Name == "Address")
+                sb.AppendLine($"    public {MetaObjects.Codegen.ValueObjectNames.GlobalRef(ctx.Root.FindObject("Country")!, ctx.Config)}? BillingCountry {{ get; set; }}");
+        }
+    }
+
+    [Fact]
+    public void A_sole_navigation_of_another_reference_is_not_taken()
+    {
+        var gen = GeneratedEfModel.Compile(TwoFlattenedReferencesModel, "Acme.FlatTwo", entities: new AddressWithBillingCountry());
+        using var db = gen.ModelOnlyContext();
+        var address = EntityType(db, "Plan").FindNavigation("Address")!.TargetEntityType;
+        var fks = address.GetForeignKeys().Where(f => f.PrincipalEntityType.ClrType.Name == "Country").ToList();
+        Assert.Equal(2, fks.Count);
+        var billing = Assert.Single(fks, f => f.Properties.Select(p => p.Name).SequenceEqual(new[] { "BillingCountryId" }));
+        Assert.Equal("BillingCountry", billing.DependentToPrincipal?.Name);
+        var home = Assert.Single(fks, f => f.Properties.Select(p => p.Name).SequenceEqual(new[] { "HomeCountryId" }));
+        Assert.Null(home.DependentToPrincipal);
+        Assert.DoesNotContain(address.GetProperties(), p => p.IsShadowProperty() && !p.IsPrimaryKey());
+    }
+
     [Fact]
     public void A_reference_carries_its_constraint_name_and_its_principal_key_into_the_model()
     {
