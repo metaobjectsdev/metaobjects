@@ -327,6 +327,7 @@ somewhere to go: an `identity.reference` onto an entity that is not a cube makes
 | `measure.ratio` | `type: number`. Postgres: `CAST({num} AS NUMERIC) / NULLIF({den}, 0)`. MySQL: `{num} / NULLIF({den}, 0)`. |
 | a `measure.aggregate` with `@default: n` | two members. `<m>Raw` is the aggregate as the rows above write it (its `type`, `sql` and `filters`), with `public: false`. `<m>` is `type: number` (`type: boolean` for an `any` or `all`, where `n` is written `TRUE` / `FALSE` on Postgres and `1` / `0` on MySQL), `sql: 'COALESCE({<m>Raw}, n)'`, and carries the measure's `title` and `description`. |
 | a `measure.ratio` with `@default: n` | `type: number`, the quotient above inside `COALESCE(…, n)` |
+| `measure.derived` | `type: number`, `sql` the `@expr` over the operand measures' members (each operand is its full Cube expression, as in a ratio). `divide` is `CAST(x AS NUMERIC) / NULLIF(y, 0)` on Postgres and `x / NULLIF(y, 0)` on MySQL. A `@expr` that reads a dimension (not a measure) is `ERR_CUBE_DERIVED_DIMENSION`. |
 
 In a ratio, `{num}` and `{den}` are references to the two operand measures, so each operand is
 its full Cube expression, condition included, and an operand need not be listed in any report.
@@ -491,6 +492,8 @@ are printed in its messages and are not loader codes.
 | `ERR_CUBE_NAME_COLLISION` | two cubes, or a cube and a view, would have one name |
 | `ERR_CUBE_UNESCAPABLE_LITERAL` | a literal, an identifier or free text that is raw-wrapped (it holds a Jinja opener) holds `endraw` |
 | `ERR_CUBE_UNSUPPORTED_DIALECT` | the dialect is neither `postgres` nor `mysql` and the run would write a cube |
+| `ERR_CUBE_VALUE_OBJECT_MEMBER` | an `@of` names a value-object member (`Entity.field.member`); the exporter does not map it |
+| `ERR_CUBE_DERIVED_DIMENSION` | a `measure.derived` `@expr` reads a dimension rather than a measure |
 
 ## Which files a run writes
 
@@ -676,7 +679,8 @@ jobs API) before a query can use them.
 - **No `sqlite` or `d1`.** See [Dialects](#wiring-it).
 - **No `extends`, no `refresh_key`, no partitions, no `format`.** The exporter writes cubes, and
   a Cube view only for a served `@spine` report.
-- **No derived measure.** `measure.derived` is not registered, so there is nothing to map.
+- **No member of a value object.** An `@of` naming `Entity.field.member` is `ERR_CUBE_VALUE_OBJECT_MEMBER`
+  (see [What the exporter refuses](#what-the-exporter-refuses)). Read it through a report view instead.
 
 ## Compatibility
 
