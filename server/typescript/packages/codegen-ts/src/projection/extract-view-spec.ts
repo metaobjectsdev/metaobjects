@@ -383,8 +383,11 @@ function resolveViewFilter(
       // path, but view DDL is emitted as literal SQL text and never touches Drizzle.
       const where = `Projection ${projectionName}: view @filter`;
       const keyField = fieldsByKey.get(key);
-      const value = isRelativeOperand(rawValue) && keyField !== undefined
-        ? relativeNowOf(rawValue, keyField, key, where)
+      const value = keyField !== undefined && (isRelativeOperand(rawValue)
+        || (Array.isArray(rawValue) && rawValue.some(isRelativeOperand)))
+        ? Array.isArray(rawValue)
+          ? rawValue.map((v) => (isRelativeOperand(v) ? relativeNowOf(v, keyField, key, where) : v))
+          : relativeNowOf(rawValue, keyField, key, where)
         : encodeIntEnumFilterValue(rawValue, op, intMapsByField.get(key), key, where);
       if (col.kind === "passthrough") {
         clauses.push({ kind: "cmp", ref: `${col.sourceAlias}.${col.sourceColumn}`, op, value });

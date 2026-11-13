@@ -154,6 +154,23 @@ def test_flat_output_is_unchanged_for_a_model_without_a_clash(tmp_path: Path) ->
     assert "from .Note import Note" in (out / "Digest.py").read_text()
 
 
+def test_a_derived_alias_landing_on_another_objects_name_is_refused(tmp_path: Path) -> None:
+    """`AcmeAlphaNote` derived for ``acme::alpha::Note`` must not be a real object's name: a
+    file that references both would bind one name twice (with ``from __future__ import
+    annotations`` Pydantic resolves the field against the second binding, silently)."""
+    root = _load(
+        ("acme::alpha", [_value("Note")]),
+        ("acme::beta", [_value("Note")]),
+        ("acme", [_value("AcmeAlphaNote")]),
+    )
+    with pytest.raises(ValueError) as exc:
+        _gen(root, tmp_path / "gen", "package")
+    msg = str(exc.value)
+    assert ERR_NAME_COLLISION in msg
+    assert "acme::alpha::Note" in msg and "acme::AcmeAlphaNote" in msg
+    assert "AcmeAlphaNote" in msg
+
+
 # -- a tree Python cannot import is refused ------------------------------------------------
 
 

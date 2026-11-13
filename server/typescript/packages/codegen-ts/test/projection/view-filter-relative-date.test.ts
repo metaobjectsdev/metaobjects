@@ -71,6 +71,18 @@ describe("view lowering renders a relative-date filter value", () => {
     expect(sql).toContain("WHERE o.placed_at = (now() - INTERVAL 'P7D')");
   });
 
+  test("a { now } operand inside an `in` array lowers element by element", async () => {
+    const result = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify(MODEL))]);
+    expect(result.errors).toEqual([]);
+    const proj = result.root.findObject("OrderView")!;
+    // own, sanctioned (ADR-0039): test-only mutation of this node's stored attr value.
+    const filter = proj.ownAttr("filter") as Record<string, Record<string, unknown>>;
+    filter.placedAt = { in: [{ now: "-P7D" }, "2026-01-01T00:00:00Z"] };
+
+    const sql = sqlOf(extractViewSpec(proj, result.root, { columnNamingStrategy: "snake_case" }), "orders");
+    expect(sql).toContain("WHERE o.placed_at IN ((now() - INTERVAL 'P7D'), '2026-01-01T00:00:00Z')");
+  });
+
   test("the unmutated projection still extracts", async () => {
     const result = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify(MODEL))]);
     const proj = result.root.findObject("OrderView")!;

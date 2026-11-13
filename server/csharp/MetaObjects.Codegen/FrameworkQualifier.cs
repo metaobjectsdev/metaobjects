@@ -106,7 +106,10 @@ public static class FrameworkQualifier
 
     private static bool Starts(string s, int i, string t) => string.CompareOrdinal(s, i, t, 0, t.Length) == 0;
 
-    // True when a `using` at i is a directive; `using var x = ..` and `using (..)` are statements.
+    // True when a `using` at i is a directive; `using var x = ..`, `using (..)` and the
+    // explicit-type `using System.IO.StringReader r = ..` are statements. A directive
+    // (`using Foo;`, `using Foo = ..`, `using static ..`) carries at most one token between
+    // `using` and its terminator (`=` or `;`), a statement's declaration two or more.
     private static bool UsingDirective(string s, int i)
     {
         if (!Starts(s, i, "using ")) return false;
@@ -114,7 +117,16 @@ public static class FrameworkQualifier
         while (j < s.Length && (s[j] == ' ' || s[j] == '\t')) j++;
         if (j >= s.Length) return true;
         if (s[j] == '(') return false;
-        return !(Starts(s, j, "var") && (j + 3 >= s.Length || !Word(s[j + 3])));
+        if (Starts(s, j, "static") && (j + 6 >= s.Length || !Word(s[j + 6]))) return true;
+        var tokens = 0;
+        while (j < s.Length && s[j] != '=' && s[j] != ';' && s[j] != '\n')
+        {
+            if (s[j] == ' ' || s[j] == '\t') { j++; continue; }
+            tokens++;
+            while (j < s.Length && s[j] != ' ' && s[j] != '\t' && s[j] != '=' && s[j] != ';' && s[j] != '\n') j++;
+        }
+        if (j >= s.Length || s[j] == '\n') return true;
+        return tokens <= 1;
     }
 
     // A string literal opens here: a run of $ and @ then quotes, or a bare quote.

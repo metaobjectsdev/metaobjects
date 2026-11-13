@@ -20,6 +20,7 @@ import { emitsInstanceArtifacts } from "../instance-artifacts.js";
 import { isTphSubtype } from "../tph.js";
 import { packageToPath } from "../import-path.js";
 import { effectivePackage } from "../docs-paths.js";
+import { localTypeName } from "../render-context.js";
 
 /** The error code a refused claim carries. Codegen-time and port-local (Java declares it on
  *  `OutputPackageCollisions`, Python on `name_claims`); not in the loader's shared error-code
@@ -53,6 +54,12 @@ const PACKAGE_MODULE_REMEDY = "rename one";
 const BARREL_REMEDY = "rename one, or drop the barrel and import each module by its path";
 const COLLECTION_REMEDY_NOTE = "give one a distinct @collectionName";
 const ROUTE_REMEDY = "rename one, give one a distinct @collectionName, or generate them with two routes entries mounted under different prefixes";
+
+/** A referencing file binds an object's local name (its own, or its package-qualified alias
+ *  when another object shares the short name) beside every other object's local name, so the
+ *  binding is claimed in the one scope the whole model shares. */
+const LOCAL_TYPE_SCOPE = "the local type bindings of the model";
+const LOCAL_TYPE_REMEDY = "rename one, or rename the metadata package whose segments derive the alias";
 
 function layoutOf(ctx: GenContext): string {
   return ctx.config.outputLayout ?? "flat";
@@ -88,6 +95,7 @@ export function claimModuleNames(ctx: GenContext, obj: MetaObject): void {
   if (hasCollection(obj)) {
     ctx.claim(`the collection names of ${scope}`, collectionPascal(obj), obj.resolutionKey(), `${remedy}, or ${COLLECTION_REMEDY_NOTE}`);
   }
+  ctx.claim(LOCAL_TYPE_SCOPE, localTypeName(obj, ctx.loadedRoot), obj.resolutionKey(), LOCAL_TYPE_REMEDY);
 }
 
 /** Claim, for the barrel at the target root, the name it re-exports from `obj`'s module. */

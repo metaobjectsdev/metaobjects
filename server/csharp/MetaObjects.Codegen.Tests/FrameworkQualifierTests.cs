@@ -45,6 +45,15 @@ public sealed class FrameworkQualifierTests
             Q("using var r = new System.IO.StringReader(s); System.X.Y();"));
 
     [Fact]
+    public void A_using_static_directive_is_left_alone()
+        => Assert.Equal("using static System.Math;", Q("using static System.Math;"));
+
+    [Fact]
+    public void An_explicit_type_using_declaration_is_a_statement_not_a_directive()
+        => Assert.Equal("using global::System.IO.StringReader r = new global::System.IO.StringReader(s);",
+            Q("using System.IO.StringReader r = new System.IO.StringReader(s);"));
+
+    [Fact]
     public void A_using_statement_with_parentheses_has_its_framework_references_qualified()
         => Assert.Equal("using (global::System.IO.Stream s = global::System.IO.File.OpenRead(p)) { }",
             Q("using (System.IO.Stream s = System.IO.File.OpenRead(p)) { }"));

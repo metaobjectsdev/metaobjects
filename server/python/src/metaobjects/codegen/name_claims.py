@@ -20,8 +20,16 @@ import keyword
 
 from metaobjects.codegen.config import GenConfig
 from metaobjects.codegen.import_path import OUTPUT_LAYOUT_PACKAGE, output_path, package_to_path
+from metaobjects.codegen.value_objects import local_name
+from metaobjects.meta.meta_data import MetaData
 
 ERR_NAME_COLLISION = "ERR_NAME_COLLISION"
+
+#: A referencing file binds an object's local name (its own, or its package-qualified alias when
+#: another object shares the short name) beside every other object's local name, so the binding
+#: is claimed in the one scope the whole model shares.
+LOCAL_TYPE_SCOPE = "the local type bindings of the model"
+LOCAL_TYPE_REMEDY = "rename one, or rename the metadata package whose segments derive the alias"
 
 #: What the author can do about a clash in the flat layout, where every module shares one directory.
 FLAT_REMEDY = (
@@ -62,6 +70,14 @@ def claim_module(claims: NameClaims, config: GenConfig, pkg: str, module: str, c
     """Claim *module* (a generated module's stem) in the directory *pkg* maps to."""
     remedy = PACKAGE_REMEDY if config.output_layout == OUTPUT_LAYOUT_PACKAGE else FLAT_REMEDY
     claims.claim(module_scope_label(config, pkg), module, claimant, remedy)
+
+
+def claim_local_name(claims: NameClaims, obj: MetaData) -> None:
+    """Claim the local binding a generated file binds *obj*'s model under: its own name, or
+    its package-qualified alias when another object shares the short name. Any file can hold
+    that alias beside another object's own name (one would silently shadow the other), so a
+    derived alias that lands on a real object's name is refused naming both."""
+    claims.claim(LOCAL_TYPE_SCOPE, local_name(obj), obj.resolution_key(), LOCAL_TYPE_REMEDY)
 
 
 def claimed_module_path(

@@ -172,4 +172,21 @@ describe("identity.primary sequence on a real Postgres (env-gated)", () => {
       }
     });
   });
+
+  test("adding the identity with no declared start to a populated column starts past the highest id", async () => {
+    await withDatabase(async (url, client) => {
+      await client.query(`CREATE TABLE "Ticket" ("Id" integer PRIMARY KEY, "Label" text)`);
+      await client.query(`INSERT INTO "Ticket" ("Id", "Label") SELECT g, 'old' FROM generate_series(1, 500) g`);
+      const root = project({});
+      try {
+        const applied = await captured(["migrate", "--cwd", root, "--db", url, "--from-db", "--slug", "seq-nostart", "--apply"]);
+        expect(applied.exit).toBe(0);
+        expect(applied.out).not.toContain("RESTART");
+        const { rows } = await client.query(`INSERT INTO "Ticket" ("Label") VALUES ('next') RETURNING "Id"`);
+        expect(Number(rows[0].Id)).toBe(501);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+  });
 });

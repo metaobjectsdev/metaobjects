@@ -56,7 +56,7 @@ from metaobjects.codegen.import_path import (
     import_line,
     output_path,
 )
-from metaobjects.codegen.name_claims import claim_module
+from metaobjects.codegen.name_claims import claim_local_name, claim_module
 from metaobjects.codegen.value_objects import (
     object_ref_class_name,
     local_name,
@@ -1369,6 +1369,7 @@ class EntityModelGenerator:
 
         def emit(e: MetaObject, c: GenContext) -> EmittedFile:
             claim_module(c.claims, c.config, pkg_of(e), e.name, e.resolution_key())
+            claim_local_name(c.claims, e)
             return EmittedFile(
                 path=output_path(c.config.output_layout, pkg_of(e), f"{e.name}.py"),
                 content=ruff_format(self.render_entity_model(e, index, c.config)),

@@ -119,10 +119,11 @@ describe("the claims follow the wired generators", () => {
     );
   });
 
-  test("the flat layout names both remedies; the package layout, a rename", () => {
+  test("the flat layout names both remedies; the package layout, a rename", async () => {
+    const root = await twoPackages(entity("Payer"), entity("Payer"));
     const claim = (outputLayout: "flat" | "package") => {
       const claims = new NameClaims();
-      const ctx = { config: { outputLayout }, claim: (...a: Parameters<NameClaims["claim"]>) => claims.claim(...a) } as unknown as GenContext;
+      const ctx = { config: { outputLayout }, loadedRoot: root, claim: (...a: Parameters<NameClaims["claim"]>) => claims.claim(...a) } as unknown as GenContext;
       return (key: string) => claimModuleNames(ctx, { name: "Payer", resolutionKey: () => key, subType: "value", type: "object" } as unknown as MetaObject);
     };
     const flat = claim("flat");
@@ -267,6 +268,17 @@ describe("a value object is never renamed", () => {
   test("a barrel re-exports every module in one namespace, so it refuses them under the package layout too", async () => {
     await expect(run(await twoNotes(), [entityFile(), barrel()], "package")).rejects.toThrow(
       /both generate "Note" in the barrel \(index\.ts\) of target "default" — rename one, or drop the barrel/,
+    );
+  });
+
+  test("a derived local alias that lands on another object's name is refused, naming both", async () => {
+    const root = await load(
+      { pkg: "acme::alpha", children: [value("Note", "alphaText")] },
+      { pkg: "acme::beta", children: [value("Note", "betaText")] },
+      { pkg: "acme", children: [value("AcmeAlphaNote", "clash")] },
+    );
+    await expect(run(root, [entityFile()], "package")).rejects.toThrow(
+      `${ERR_NAME_COLLISION}: "acme::alpha::Note" and "acme::AcmeAlphaNote" both generate "AcmeAlphaNote" in the local type bindings of the model`,
     );
   });
 
