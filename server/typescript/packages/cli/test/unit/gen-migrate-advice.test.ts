@@ -49,7 +49,7 @@ function input(over: Partial<GenMigrateAdviceInput> & Pick<GenMigrateAdviceInput
     migrateOutDir: OUT_DIR,
     migrateFormat: "default",
     changedFiles: ["src/generated/Pet.ts"],
-    schema: { conventions: defaultConventions, skipRedundantChecks: false },
+    schema: { conventions: defaultConventions, skipRedundantChecks: false, foreignKeyIndexes: false },
     ...over,
   };
 }

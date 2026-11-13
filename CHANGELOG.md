@@ -35,6 +35,27 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   one over measures as a `number` member (one reading a dimension is refused). Loader rule M11,
   report rule R13 and a conformance fixture per refusal, in every loader port.
 
+- **`verify.handEdits`: a hand-edited generated file can fail `meta verify`.** `meta verify
+  --codegen` already listed each generated file carrying a hand edit, but always exited 0, so a
+  rule changed by hand in generated code (a `max(32)` made `max(64)`) passed the gate. Set
+  `"verify": { "handEdits": "fail" }` in `.metaobjects/config.json` and it exits 1; `"notice"`
+  keeps the report and exit 0. `--allow-hand-edits` relaxes `fail` for one run, and the existing
+  `--forbid-hand-edits` still forces a failure for one run (passing both is refused). The report
+  names each file, how to see the edit, how to drop it (or move a changed rule into the
+  metadata), and how to keep it. A project without the key behaves exactly as before. The C#,
+  Java, Kotlin and Python gates compare generated files byte for byte and already fail on any
+  edit; the docs now say so.
+- **`migrate.foreignKeyIndexes`: an index on every foreign key, without the `efcore` renames.**
+  With it on, `meta migrate` gives each enforced foreign key that the primary key, a unique key or
+  an index does not already lead with a `<table>_<columns>_idx` index. The Drizzle and Prisma
+  generators, the C# `AppDbContext` and the Kotlin Exposed tables declare the same indexes under
+  the same names; Java and Python map no indexes. It adds nothing under the `efcore` conventions
+  (which already index every foreign key) or on MySQL. A project without the key is unchanged and
+  keeps the unindexed-foreign-key advisory, which now names the option. Gated by two new
+  persistence-corpus migration scenarios (adding the indexes to an existing schema, and the
+  converged no-op). Java's config reader now carries the `migrate` block's
+  `foreignKeyIndexes`, `conventions` and `dialect` on the loaded root (`MigrateSettings`).
+
 ### Changed
 
 - **Breaking, TypeScript: a value object is never renamed; one claim registry refuses real
@@ -56,6 +77,10 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   a barrel) now fail with the collision error; set `outputLayout: "package"` (and drop the barrel,
   or rename one), and update imports of the old `AcmeAlphaNote` names. An owned generator copy is
   refreshed with `meta eject --list`.
+- **`meta init` writes stricter defaults for a new project.** The scaffolded
+  `.metaobjects/config.json` now carries `"verify": { "handEdits": "fail" }` and (except on
+  MySQL) `"migrate": { "foreignKeyIndexes": true }`, each as its own visible setting. An existing
+  config is left as it is.
 - **Agent context routes report work to the reporting vocabulary.** The `meta init` agent guide
   and the `metaobjects-authoring` skill now send grouped totals, dashboard numbers and read-only
   report views to `object.report` (`references/declaring-reports.md`) before the `@sql` escape,

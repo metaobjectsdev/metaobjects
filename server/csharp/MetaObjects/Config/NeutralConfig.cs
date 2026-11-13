@@ -88,6 +88,14 @@ public sealed class NeutralConfig
     /// <summary><c>migrate.checks.skipRedundant</c>: leave out the CHECKs a column's own type already enforces.</summary>
     public bool MigrateSkipRedundantChecks { get; private init; }
 
+    /// <summary>`migrate.foreignKeyIndexes`: index every foreign key the schema conventions leave
+    /// without one, as `meta migrate` does. False when absent or not a boolean.</summary>
+    public bool MigrateForeignKeyIndexes { get; private init; }
+
+    /// <summary>`migrate.conventions`: the schema-conventions preset `meta migrate` builds with
+    /// (`default`, `efcore`), or null when absent.</summary>
+    public string? MigrateConventions { get; private init; }
+
     /// <summary>
     /// FR-023 — <c>requirements.inherit</c>: the dependencies whose requirements this project takes on
     /// as its own ledger (<see cref="ImportScope.InLedger"/>). Empty when absent.
@@ -164,11 +172,20 @@ public sealed class NeutralConfig
         && checks.TryGetProperty("skipRedundant", out var skip) && skip.ValueKind == JsonValueKind.True;
 
     /// `migrate.dialect`, as the TypeScript `meta migrate` reads it; null when absent or not a string.
-    private static string? ReadMigrateDialect(JsonElement root) =>
+    private static string? ReadMigrateDialect(JsonElement root) => ReadMigrateString(root, "dialect");
+
+    /// One string in the TypeScript-owned `migrate` block; null when absent or not a string.
+    private static string? ReadMigrateString(JsonElement root, string key) =>
         root.TryGetProperty("migrate", out var migrate) && migrate.ValueKind == JsonValueKind.Object
-        && migrate.TryGetProperty("dialect", out var d) && d.ValueKind == JsonValueKind.String
+        && migrate.TryGetProperty(key, out var d) && d.ValueKind == JsonValueKind.String
             ? d.GetString()
             : null;
+
+    /// `migrate.foreignKeyIndexes`; false when absent or not a boolean (the TypeScript reader
+    /// refuses a non-boolean, and `meta migrate` is where the file is validated).
+    private static bool ReadMigrateForeignKeyIndexes(JsonElement root) =>
+        root.TryGetProperty("migrate", out var migrate) && migrate.ValueKind == JsonValueKind.Object
+        && migrate.TryGetProperty("foreignKeyIndexes", out var v) && v.ValueKind == JsonValueKind.True;
 
     /// <summary>
     /// As <see cref="Read(string)"/>; with <paramref name="validateNaming"/> false a
@@ -370,6 +387,8 @@ public sealed class NeutralConfig
                 PackageNamespaces = ReadPackageNamespaces(root, path),
                 MigrateDialect = ReadMigrateDialect(root),
                 MigrateSkipRedundantChecks = ReadMigrateSkipRedundant(root),
+                MigrateForeignKeyIndexes = ReadMigrateForeignKeyIndexes(root),
+                MigrateConventions = ReadMigrateString(root, "conventions"),
             };
         }
     }

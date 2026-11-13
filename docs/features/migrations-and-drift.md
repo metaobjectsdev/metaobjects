@@ -15,7 +15,7 @@ There are **7 drift sources**, and the toolchain has a guard for each.
 | **Code-vs-API-doc** | Cross-port codegen from the same metadata. | Build time |
 | **DB-vs-metadata** | `meta verify --db` (TS CLI) — introspects the live DB and fails if it has drifted from metadata. Includes modeled projection **view bodies** (a changed `CREATE VIEW` is drift, reported with what differs: the first differing excerpt of the text on SQLite/D1, the deparsed body on Postgres's scratch-database path, a fingerprint mismatch otherwise). A view `meta migrate` drops and recreates only because the migration alters a table it reads, with its definition unchanged, is not drift and is not reported; a hand-authored *unmodeled* view is unmanaged and never flagged. A schema concern owned by the Node toolchain regardless of server language; on the JVM ports the runtime auto-create/validator path was removed (ADR-0015) and the `metaobjects:verify` Maven goal is not available. Cloudflare D1 has no client wire protocol, so it can't go through `--db`'s Kysely-driver introspection — use `meta verify --dialect d1 [--d1 <binding>] [--remote]` instead (the same wrangler-shelled-out path `meta migrate --dialect d1` uses); `--remote` is required to check the *deployed* database, not the local `wrangler dev` shadow copy. Pointing `--db file:` at wrangler's local D1 state directory (`.wrangler/state/**/d1/**`) still runs, but only verifies that local copy — `verify` warns when it detects this. | CI on every PR |
 | **Migration-vs-metadata** | The Node `meta migrate` emits migrations FROM metadata diffs — they cannot drift from metadata by construction. Schema migrations for **every** port are owned by this Node toolchain (`@metaobjectsdev/cli migrate`, ADR-0015); the C# and Python migrate surfaces were removed. | Build time |
-| **Generated-edited** | `@generated` headers in emitted code + a committed hash manifest that refuses an edited file by name; in TypeScript only, a three-way merge also preserves hand-edits on the machine that generated the file. | Code review |
+| **Generated-edited** | `@generated` headers in emitted code + a committed hash manifest that refuses an edited file by name; in TypeScript only, a three-way merge also preserves hand-edits on the machine that generated the file. `verify --codegen` names each edited file in every port. In TypeScript it fails on one when `.metaobjects/config.json` sets `"verify": { "handEdits": "fail" }` (what `meta init` writes) and reports it as a notice otherwise; the C#, Java, Kotlin and Python gates compare bytes, so an edit always fails there ([cli.md](cli.md)). | Build time (CI) |
 | **Prompt-vs-payload** | FR-004 `Renderer.verify` parses `{{...}}` references in templates and checks each one exists on the payload VO. | Build time + runtime |
 | **Generated-vs-runtime** | Kotlin / Java `MetadataStartupValidator` (from Spring `ApplicationReadyEvent`) re-loads metadata at startup and asserts the generated table objects match. | App startup |
 
@@ -546,6 +546,49 @@ onto that key is dropped first and added back after, so the plan is gated behind
 drop-index` and `--allow drop-fk`. `meta verify --db` reports each of these as drift. SQLite
 cannot rename a constraint and rebuilds the table instead.
 
+## Foreign-key indexes: `migrate.foreignKeyIndexes`
+
+Postgres and SQLite index the referenced side of a foreign key and not the referencing side, so
+without an index every join from the parent, and every `ON DELETE` check it runs, scans the child
+table. `migrate.foreignKeyIndexes` asks `meta migrate` to index each foreign key, with no other
+change to the schema's names:
+
+```json
+{ "schema_version": 1, "migrate": { "foreignKeyIndexes": true } }
+```
+
+With it on, each enforced foreign key that nothing already leads with gets a plain index named
+`<table>_<column>[_<column>…]_idx`. The primary key, a `@unique` field, an `identity.secondary`
+and an `index.lookup` without `@expr` (a partial one included) cover a foreign key whose columns
+they start with, in any order; a junction's first foreign key is usually covered by its composite
+primary key. Two foreign keys over the same columns get one index, and a foreign key that leads a
+longer one shares the longer one's index. A name that collides with another index is refused with
+`ERR_DUPLICATE_SQL_NAME`.
+
+It is separate from the `efcore` conventions, which index every foreign key too but also rename
+the primary-key and foreign-key constraints: a team can have the indexes without the renames.
+Under `efcore` the option adds nothing, since the preset's `IX_` indexes already cover every
+foreign key. On MySQL it adds nothing either: MetaObjects emits no DDL there, and InnoDB indexes
+each foreign key itself.
+
+`meta init` writes it on for a new project. A project without the key is unchanged: migrate adds
+no foreign-key index, and `meta verify` keeps its advisory naming each unindexed foreign key
+(which now also names the option). Turning it on for an existing database is an additive
+migration (`CREATE INDEX` per key), with nothing blocked.
+
+The generators that map indexes declare the same indexes under the same names, from the same
+setting, so the mapping and the database agree:
+
+| Generator | With the option on |
+|---|---|
+| Drizzle (`entityFile()`, TypeScript) | `index("<name>").on(table.<column>)` in the table's index callback |
+| Prisma (`prismaSchemaFile()`, TypeScript) | `@@index([...], map: "<name>")`, read from the same expected schema |
+| EF Core `AppDbContext` (C#) | `HasIndex(x => x.<Property>, "<name>").HasDatabaseName("<name>")` |
+| Exposed table (Kotlin) | `index("<name>", false, <column>)` in the table's `init {}` |
+
+Java (OMDB is data access only and maps no indexes) and Python (Pydantic models and routes, no
+ORM mapping) generate nothing that declares an index, so the option changes no output there.
+
 ## How CHECK constraints and expression indexes are compared
 
 Postgres rewrites an expression before it stores it (`"k" IN ('x')` becomes `k = 'x'::text`,
@@ -845,6 +888,8 @@ The following conformance fixtures gate this feature's behavior across ports:
 - [`bootstrap-canonical-from-empty.yaml`](../../fixtures/persistence-conformance/migrations/bootstrap-canonical-from-empty.yaml) — full-CREATE bootstrap from an empty database
 - [`add-nullable-column.yaml`](../../fixtures/persistence-conformance/migrations/add-nullable-column.yaml) — incremental `ALTER TABLE … ADD COLUMN` for a new nullable field
 - [`drop-table-blocked-without-allow.yaml`](../../fixtures/persistence-conformance/migrations/drop-table-blocked-without-allow.yaml) — destructive operations require an explicit allow-flag
+- [`foreign-key-indexes-added.yaml`](../../fixtures/persistence-conformance/migrations/foreign-key-indexes-added.yaml) — `migrate.foreignKeyIndexes` turned on for an existing schema adds one `<table>_<columns>_idx` per uncovered foreign key and nothing else
+- [`noop-converged-foreign-key-indexes.yaml`](../../fixtures/persistence-conformance/migrations/noop-converged-foreign-key-indexes.yaml) — with the option on, a converged schema emits zero SQL (the indexes introspect back exactly as emitted)
 - [`noop-converged-canonical.yaml`](../../fixtures/persistence-conformance/migrations/noop-converged-canonical.yaml) — **the idempotence gate**: apply the whole canonical schema, then diff the same metadata against the database it just produced. A converged schema must emit **zero** SQL. This is what catches any asymmetry between what `emit` writes, what `introspect` reads back, and what the expected schema models — the class of bug that makes `meta migrate` re-propose (and on SQLite, destructively rebuild) unchanged tables forever.
 
 **Template drift (`fixtures/verify-conformance/`)** — the `Renderer.verify` engine

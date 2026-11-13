@@ -14,7 +14,16 @@ export interface MigrationScenario {
   readonly seedData: string | null;
   readonly targetMetadataDir: string | null;
   readonly targetMetadataInline: string | null;
+  /** `seed-schema-settings`: the project schema settings the seed schema is built with. */
+  readonly seedSchemaSettings: MigrationSchemaSettings;
+  /** `schema-settings`: the project schema settings the target is built with (`migrate.*`). */
+  readonly schemaSettings: MigrationSchemaSettings;
   readonly expect: MigrationExpect;
+}
+
+/** The `migrate` settings in `.metaobjects/config.json` a scenario can set, by their config names. */
+export interface MigrationSchemaSettings {
+  readonly foreignKeyIndexes?: boolean;
 }
 
 export interface MigrationExpect {
@@ -128,6 +137,8 @@ export function loadMigration(yamlPath: string): MigrationScenario {
     seedData: raw["seed-data"] ?? null,
     targetMetadataDir: resolveRel(base, raw["target-metadata"]),
     targetMetadataInline: raw["target-metadata-inline"] ?? null,
+    seedSchemaSettings: schemaSettings(raw["seed-schema-settings"], yamlPath, "seed-schema-settings"),
+    schemaSettings: schemaSettings(raw["schema-settings"], yamlPath, "schema-settings"),
     expect: {
       blocked: (raw.expect?.blocked ?? []).map((b) => ({
         kind: b.kind ?? "",
@@ -193,6 +204,17 @@ function resolveRel(base: string, rel: string | undefined | null): string | null
   return rel ? resolve(base, rel) : null;
 }
 
+// A key this runner does not know is refused, so a typo cannot silently run the default.
+function schemaSettings(raw: Record<string, unknown> | undefined, path: string, key: string): MigrationSchemaSettings {
+  if (raw === undefined || raw === null) return {};
+  const out: { foreignKeyIndexes?: boolean } = {};
+  for (const [k, v] of Object.entries(raw)) {
+    if (k === "foreignKeyIndexes" && typeof v === "boolean") out.foreignKeyIndexes = v;
+    else throw new Error(`${path}: ${key}.${k} is not a schema setting this runner applies (known: foreignKeyIndexes, a boolean)`);
+  }
+  return out;
+}
+
 // ---------- YAML wire shapes (hyphenated keys per the fixture format) ----------
 
 interface MigrationYaml {
@@ -202,6 +224,8 @@ interface MigrationYaml {
   "seed-data"?: string;
   "target-metadata"?: string;
   "target-metadata-inline"?: string;
+  "seed-schema-settings"?: Record<string, unknown>;
+  "schema-settings"?: Record<string, unknown>;
   expect?: {
     blocked?: { kind?: string; "reason-contains"?: string }[];
     "up-contains"?: string[];

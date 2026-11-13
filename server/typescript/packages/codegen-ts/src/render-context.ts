@@ -3,6 +3,7 @@
 import type { MetaRoot, MetaData } from "@metaobjectsdev/metadata";
 import { FIELD_ATTR_OBJECT_REF, PACKAGE_SEPARATOR, TYPE_OBJECT, collectionNameOf, declaredCollectionName, physicalNamingOf, refTarget, stripPackage } from "@metaobjectsdev/metadata";
 import type { Dialect } from "./column-mapper.js";
+import type { SchemaBuildSettings } from "@metaobjectsdev/migrate-ts";
 import { normalizeTimestampMode } from "./dialect-module.js";
 import type { PkInfo } from "./pk-resolver.js";
 import type { RelationMap } from "./relation-resolver.js";
@@ -99,6 +100,11 @@ export interface RenderContext {
    * at the `makeRenderContext` / `normalizeConfig` choke points; see the fuller
    * doc comment on `MetaobjectsGenConfig.timestampMode` in metaobjects-config.ts.
    */
+  /**
+   * The project's schema settings (`migrate.conventions` / `checks` / `foreignKeyIndexes`), for
+   * a template that maps the schema `meta migrate` builds. Absent in a bare-context render.
+   */
+  schemaSettings?: SchemaBuildSettings;
   timestampMode: "date" | "string";
   /**
    * Prepend `"use client";` to generated CLIENT artifacts (forms, hooks, grid
@@ -180,6 +186,7 @@ export type RenderContextInput = Omit<RenderContext, "extStyle" | "omImport" | "
   extStyle?: ExtStyle;
   omImport?: string;
   columnNamingStrategy?: ColumnNamingStrategy;
+  schemaSettings?: SchemaBuildSettings;
   timestampMode?: "date" | "string";
   clientDirective?: boolean;
   apiPrefix?: string;
