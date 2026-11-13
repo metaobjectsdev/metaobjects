@@ -25,7 +25,7 @@ vocabulary; upgrade every port together.
 
 - **`@stringValueMap`: a field.enum member's stored string (rc.21).** A string-stored enum may
   declare the string each member is stored as, `{ member: string }`, for a legacy column whose
-  spelling differs from the member symbols (`pending`, `Key_File_Path`). The generated native
+  spelling differs from the member symbols (lowercase `draft`, `LEGACY_A`). The generated native
   type and the wire keep the members; the column, its CHECK, its length, a `@default` and a
   `@condition` or `@equals` literal hold the stored strings. It is the string twin of
   `@intValueMap` (attr subtype `properties`): keys must match `@values` exactly, values are
@@ -37,8 +37,11 @@ vocabulary; upgrade every port together.
   Drizzle column (a member/stored-string codec), the TypeScript runtime ObjectManager (write,
   read, filter) and the view, report and Cube lowerings; by the Java OMDB codec; by the Kotlin
   Exposed table (a VARCHAR `customEnumeration`); by the generated Spring enum (`dbValue()` /
-  `fromDbValue(String)`, for a hand-written repository); and by the Python ObjectManager. A
-  stored string that maps to no member throws on read in every port. `metamodelVersion` stays
+  `fromDbValue(String)`, for a hand-written repository, a shared declaration included); and by the
+  Python ObjectManager. A view-backed report's row carries it from its type source, in every
+  port. A stored string that maps to no member throws on read, and a member with no stored string
+  throws on write, in every port (the map is total, so only a value outside `@values` can reach
+  that). `metamodelVersion` stays
   `1.3`: the addition lands in the same unreleased minor. Fixtures
   `fixtures/conformance/enum-string-value-map` and four `error-enum-stringvaluemap-*`; the shared
   CHECK corpus gains `input/meta.stored.json`.
@@ -583,37 +586,48 @@ vocabulary; upgrade every port together.
   owned type also carries a `Country` navigation (an adopter's partial class, say), EF's
   convention builds a relationship from it as the owned type joins the model, so the
   navigation-less call made a second one, with a shadow FK property (`CountryId1`) and a second
-  foreign key. The relationship is now configured through the navigation EF found on the owned
-  type over the same FK properties, read from the model at build time (`OwnsOne(x => x.Address,
-  b => b.HasOne<Country>(<that navigation's name, or null>)…)`), and navigation-less when there is
-  none. One foreign key, no shadow column, and `@onDelete` / `@constraintName` land on it.
+  foreign key. The relationship is now configured through the owned type's navigation to the
+  target, read from the model at build time (`OwnsOne(x => x.Address, b =>
+  b.HasOne<Country>(<that navigation's name, or null>)…)`): its only navigation to the target,
+  whatever its name (`HomeCountry` over `CountryId` too); with several, the one whose foreign key
+  is these properties, and with none of those the model build throws, naming the owner; with none,
+  navigation-less. One foreign key, no shadow column, and `@onDelete` / `@constraintName` land on it.
   Generated output changes for every reference over a flattened member.
 
-- **Fix, TypeScript and C#: `<Entity>Names` has no entry for a derived field with no column
+- **Breaking, TypeScript and C#: `<Entity>Names` has no entry for a derived field with no column
   (rc.21, U7).** A derived (`origin.*`) field of an entity read from its table is no column of
   that table (a projection that reaches it lowers it inline), yet the names artifact emitted a
   `…Field`/`…Column` pair (C#) or a `fields.<name>.column` (TypeScript) for it, and a
   `ColumnsByField` entry, all naming a column that does not exist. It now emits no entry for such
   a field, so code reading one fails to compile instead of querying a missing column. A
   projection's derived field is a column of its view, and a write-through entity's is a column of
-  its read view: both keep their entry. Java and Kotlin are unchanged (no entity-derived fields).
+  its read view: both keep their entry; a write-through entity extending an abstract entity
+  declares the derived columns it inherits itself, since the abstract fragment drops them. Java
+  and Kotlin are unchanged (no entity-derived fields). **Upgrade note:** code that reads
+  `<Entity>Names.<Derived>Field` / `<Derived>Column` (C#), `fields.<derived>` (TypeScript) or a
+  `ColumnsByField` entry for such a field no longer compiles; use `nameof(...)` or the metamodel
+  name as a literal instead, since there is no column to name.
 
 - **Fix, TypeScript and C#: a `@via` hop under a guessed name lists the reverse hops (rc.21, U9).**
   The first hop from a projection's base entity already walks an `identity.reference` backwards
-  (`Case.caseHistory` for `CaseHistory.caseId`), named by the holder's collection name, first
-  letter lowercased. A holder whose `@collectionName` is singular (`CaseHistory`) makes that name
-  hard to guess, and the refusal (`no such relationship or reference "histories" on Case`) did not
-  say what it was. It now ends `The reverse hops from Case are: "caseHistory" (walks
-  CaseHistory.caseId backwards) — …`. No hop name changes: an `@inverseName` spelling is not
-  accepted, because no registered vocabulary declares one.
+  (`Order.orderEvent` for `OrderEvent.orderId`), named by the holder's collection name, first
+  letter lowercased. A holder whose `@collectionName` is singular (`OrderEvent`) makes that name
+  hard to guess, and the refusal (`no such relationship or reference "events" on Order`) did not
+  say what it was. It now ends `The reverse hops from Order are: "orderEvent" (walks
+  OrderEvent.orderId backwards) — …`. No hop name changes: an `@inverseName` spelling is not
+  accepted, because no registered vocabulary declares one. Java and Python keep their message.
+  **Naming note (this entry and U1's):** neither was a resolution bug. A dotted `extends` names an
+  identity by its name (an unnamed `identity.primary` is `primary`), and a reverse hop by the
+  holder's collection name; both already resolved under those names, and the errors now say what
+  the names are.
 
 - **Fix, TypeScript and C#: a dotted `extends` whose member is missing names the owner's members
-  (rc.21, U1).** `extends: "Authorization.id"` on an `identity.primary`, where `Authorization`
+  (rc.21, U1).** `extends: "Shipment.id"` on an `identity.primary`, where `Shipment`
   inherits its identity from an abstract base, failed with `ERR_UNRESOLVED_SUPER` and the advice to
-  qualify `Authorization` with its package, although `Authorization` had resolved. The member was
+  qualify `Shipment` with its package, although `Shipment` had resolved. The member was
   the problem: an identity declared without a name is named after its subtype (`primary`), and the
-  inherited one resolves as `Authorization.primary`, which already worked. The error now says
-  so: `'acme::auth::Authorization' has no identity named "id"; its identity children are:
+  inherited one resolves as `Shipment.primary`, which already worked. The error now says
+  so: `'acme::shipping::Shipment' has no identity named "id"; its identity children are:
   "primary" (identity.primary). An identity.primary declared without a name is named "primary".`
   The package advice is given only when the owner itself did not resolve. Java and Python keep
   their message.

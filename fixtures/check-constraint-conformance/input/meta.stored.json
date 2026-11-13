@@ -4,12 +4,12 @@
     "children": [
       {
         "object.entity": {
-          "name": "Feed",
+          "name": "Job",
           "children": [
-            { "source.rdb": { "@table": "feeds" } },
+            { "source.rdb": { "@table": "jobs" } },
             { "field.long": { "name": "id" } },
-            { "field.enum": { "name": "status", "@required": true, "@values": ["Pending", "Done", "Failed"],
-                "@stringValueMap": { "Pending": "pending", "Done": "done", "Failed": "failed" } } },
+            { "field.enum": { "name": "status", "@required": true, "@values": ["Queued", "Done", "Failed"],
+                "@stringValueMap": { "Queued": "q_queued", "Done": "q_done", "Failed": "q_failed" } } },
             { "field.string": { "name": "error" } },
             { "field.timestamp": { "name": "startedAt" } },
             { "field.timestamp": { "name": "doneAt" } },

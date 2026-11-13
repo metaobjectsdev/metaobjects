@@ -13,37 +13,37 @@ public class ReverseHopHintTests
 {
     private static LoadResult Load(string via, string? collectionName = null) =>
         new MetaDataLoader(FullCoreRegistry.Compose(), strict: true).Load([new InMemoryStringSource($$"""
-        { "metadata.root": { "package": "acme::cases", "children": [
-          { "object.entity": { "name": "Case", "children": [
-            { "source.rdb": { "@table": "cases" } },
+        { "metadata.root": { "package": "acme::orders", "children": [
+          { "object.entity": { "name": "Order", "children": [
+            { "source.rdb": { "@table": "orders" } },
             { "field.int": { "name": "id" } }, { "field.int": { "name": "statusId" } },
             { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } } ] } },
-          { "object.entity": { "name": "CaseHistory", {{(collectionName is null ? "" : $"\"@collectionName\": \"{collectionName}\",")}} "children": [
-            { "source.rdb": { "@table": "case_history" } },
-            { "field.int": { "name": "id" } }, { "field.int": { "name": "caseId" } }, { "field.int": { "name": "statusId" } },
+          { "object.entity": { "name": "OrderEvent", {{(collectionName is null ? "" : $"\"@collectionName\": \"{collectionName}\",")}} "children": [
+            { "source.rdb": { "@table": "order_events" } },
+            { "field.int": { "name": "id" } }, { "field.int": { "name": "orderId" } }, { "field.int": { "name": "statusId" } },
             { "field.timestamp": { "name": "createdDate" } },
             { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
-            { "identity.reference": { "name": "caseId", "@fields": "caseId", "@references": "Case" } } ] } },
-          { "object.projection": { "name": "CaseView", "children": [
+            { "identity.reference": { "name": "orderId", "@fields": "orderId", "@references": "Order" } } ] } },
+          { "object.projection": { "name": "OrderView", "children": [
             { "source.rdb": { "@kind": "view", "@view": "v_case" } },
-            { "field.int": { "name": "id", "extends": "Case.id" } },
-            { "field.int": { "name": "statusId", "extends": "Case.statusId" } },
-            { "field.timestamp": { "name": "statusDate", "children": [ { "origin.aggregate": { "@via": "{{via}}", "@of": "CaseHistory.createdDate",
+            { "field.int": { "name": "id", "extends": "Order.id" } },
+            { "field.int": { "name": "statusId", "extends": "Order.statusId" } },
+            { "field.timestamp": { "name": "statusDate", "children": [ { "origin.aggregate": { "@via": "{{via}}", "@of": "OrderEvent.createdDate",
                 "@agg": "min", "@filter": { "statusId": { "eq": { "field": "statusId" } } } } } ] } },
-            { "identity.primary": { "name": "id", "extends": "Case.id" } } ] } } ] } }
+            { "identity.primary": { "name": "id", "extends": "Order.id" } } ] } } ] } }
         """, id: "cases.json")]);
 
     [Fact]
     public void The_first_hop_walks_the_reference_backwards_under_the_collection_name()
     {
-        Assert.Empty(Load("Case.caseHistory", collectionName: "CaseHistory").Errors);
+        Assert.Empty(Load("Order.orderEvent", collectionName: "OrderEvent").Errors);
     }
 
     [Fact]
     public void A_guessed_hop_name_is_refused_naming_the_reverse_hops()
     {
-        var error = Assert.Single(Load("Case.histories", collectionName: "CaseHistory").Errors);
+        var error = Assert.Single(Load("Order.histories", collectionName: "OrderEvent").Errors);
         Assert.Equal(ErrorCode.ERR_INVALID_ORIGIN, error.Code);
-        Assert.Contains("The reverse hops from Case are: \"caseHistory\" (walks CaseHistory.caseId backwards)", error.Message);
+        Assert.Contains("The reverse hops from Order are: \"orderEvent\" (walks OrderEvent.orderId backwards)", error.Message);
     }
 }

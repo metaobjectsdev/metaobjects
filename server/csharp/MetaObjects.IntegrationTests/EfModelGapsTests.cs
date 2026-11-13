@@ -173,11 +173,11 @@ public sealed class EfModelGapsTests
 
     private const string StoredStringModel = """
     { "metadata.root": { "package": "acme", "children": [
-      { "object.entity": { "name": "Upload", "children": [
-        { "source.rdb": { "@table": "uploads" } },
+      { "object.entity": { "name": "Article", "children": [
+        { "source.rdb": { "@table": "articles" } },
         { "field.long": { "name": "id" } },
-        { "field.enum": { "name": "status", "@values": ["Pending", "Delivered"], "@default": "Pending", "@maxLength": 12,
-            "@stringValueMap": { "Pending": "pending", "Delivered": "delivered" } } },
+        { "field.enum": { "name": "status", "@values": ["Draft", "Published"], "@default": "Draft", "@maxLength": 12,
+            "@stringValueMap": { "Draft": "draft", "Published": "published" } } },
         { "identity.primary": { "@fields": "id" } }
       ]}}
     ]}}
@@ -188,16 +188,16 @@ public sealed class EfModelGapsTests
     {
         var gen = GeneratedEfModel.Compile(StoredStringModel, "Acme.Stored");
         using var db = gen.ModelOnlyContext();
-        var status = EntityType(db, "Upload").FindProperty("Status")!;
+        var status = EntityType(db, "Article").FindProperty("Status")!;
         var converter = status.GetValueConverter()!;
         var enumType = Nullable.GetUnderlyingType(status.ClrType) ?? status.ClrType;
-        var delivered = Enum.Parse(enumType, "Delivered");
-        Assert.Equal("delivered", converter.ConvertToProvider(delivered));
-        Assert.Equal(delivered, converter.ConvertFromProvider("delivered"));
+        var delivered = Enum.Parse(enumType, "Published");
+        Assert.Equal("published", converter.ConvertToProvider(delivered));
+        Assert.Equal(delivered, converter.ConvertFromProvider("published"));
         Assert.Throws<InvalidOperationException>(() => converter.ConvertFromProvider("lost"));
         Assert.Equal(12, status.GetMaxLength());
-        // The column default is the member; EF writes it through the converter, as 'pending'.
-        Assert.Equal("pending", converter.ConvertToProvider(status.GetDefaultValue()));
+        // The column default is the member; EF writes it through the converter, as 'draft'.
+        Assert.Equal("draft", converter.ConvertToProvider(status.GetDefaultValue()));
     }
 
     // ── G6 (reference half): an identity.reference over a flattened value-object member ──────
@@ -261,6 +261,28 @@ public sealed class EfModelGapsTests
         Assert.Equal("Country", fk.DependentToPrincipal?.Name);
         Assert.Equal(DeleteBehavior.Restrict, fk.DeleteBehavior);
         Assert.DoesNotContain(address.GetProperties(), p => p.Name.StartsWith("CountryId", StringComparison.Ordinal) && p.Name != "CountryId");
+    }
+
+    // rc.21 fix round (M6): the owned type's only navigation to the target is used whatever its name.
+    private sealed class AddressWithHomeCountry : MetaObjects.Codegen.Generators.EntityGenerator
+    {
+        protected override void EmitClassBodyTrailer(System.Text.StringBuilder sb, MetaObjects.Meta.MetaObject entity, MetaObjects.Codegen.GenContext ctx)
+        {
+            if (entity.Name == "Address")
+                sb.AppendLine($"    public {MetaObjects.Codegen.ValueObjectNames.GlobalRef(ctx.Root.FindObject("Country")!, ctx.Config)}? HomeCountry {{ get; set; }}");
+        }
+    }
+
+    [Fact]
+    public void A_reference_over_a_flattened_member_uses_the_owned_types_only_navigation_whatever_its_name()
+    {
+        var gen = GeneratedEfModel.Compile(FlattenedReferenceModel, "Acme.FlatHome", entities: new AddressWithHomeCountry());
+        using var db = gen.ModelOnlyContext();
+        var address = EntityType(db, "Plan").FindNavigation("Address")!.TargetEntityType;
+        var fk = Assert.Single(address.GetForeignKeys(), f => f.PrincipalEntityType.ClrType.Name == "Country");
+        Assert.Equal(new[] { "CountryId" }, fk.Properties.Select(p => p.Name));
+        Assert.Equal("HomeCountry", fk.DependentToPrincipal?.Name);
+        Assert.DoesNotContain(address.GetProperties(), p => p.Name is "HomeCountryId" or "CountryId1");
     }
 
     [Fact]

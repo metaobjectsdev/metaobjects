@@ -12,11 +12,11 @@ from metaobjects import load_string
 from metaobjects.runtime.object_manager import _coerce_write_value, _decode_read_value
 
 _META = {"metadata.root": {"package": "acme", "children": [
-    {"object.entity": {"name": "Upload", "children": [
-        {"source.rdb": {"@table": "uploads"}},
+    {"object.entity": {"name": "Article", "children": [
+        {"source.rdb": {"@table": "articles"}},
         {"field.long": {"name": "id"}},
-        {"field.enum": {"name": "status", "@values": ["Pending", "Delivered"],
-                        "@stringValueMap": {"Pending": "pending", "Delivered": "delivered"}}},
+        {"field.enum": {"name": "status", "@values": ["Draft", "Published"],
+                        "@stringValueMap": {"Draft": "draft", "Published": "published"}}},
         {"identity.primary": {"name": "id", "@fields": "id"}},
     ]}},
 ]}}
@@ -30,10 +30,18 @@ def _status() -> Any:
 
 def test_writes_the_stored_string_and_reads_the_member() -> None:
     field = _status()
-    assert _coerce_write_value(field, "Delivered") == "delivered"
-    assert _decode_read_value(field, "delivered") == "Delivered"
+    assert _coerce_write_value(field, "Published") == "published"
+    assert _decode_read_value(field, "published") == "Published"
 
 
 def test_an_unmapped_stored_string_raises() -> None:
     with pytest.raises(ValueError, match="no member in @stringValueMap"):
         _decode_read_value(_status(), "lost")
+
+
+def test_writing_an_unmapped_member_raises_but_a_filter_passes_it_through() -> None:
+    from metaobjects.runtime.object_manager import _coerce_filter_value
+    field = _status()
+    with pytest.raises(ValueError, match="no stored string in @stringValueMap"):
+        _coerce_write_value(field, "Archived")
+    assert _coerce_filter_value(field, "Archived") == "Archived"

@@ -1351,7 +1351,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td></td>
 <td></td>
 <td>metaobjects-core-types</td>
-<td>Optional per-member stored strings ({member: string}) for a string-stored enum whose database spelling differs from its member symbols (a legacy column holding &#39;pending&#39; or &#39;Key_File_Path&#39;). The column, its CHECK, its length, a @default and a @condition literal hold the stored strings; the generated native type and wire format keep the members. Keys must exactly match @values; values must be unique non-empty strings. The string twin of @intValueMap, refused with it and on an array enum (ERR_BAD_ATTR_VALUE).</td>
+<td>Optional per-member stored strings ({member: string}) for a string-stored enum whose database spelling differs from its member symbols (a legacy column holding lowercase &#39;draft&#39;, or &#39;LEGACY_A&#39;). The column, its CHECK, its length, a @default and a @condition literal hold the stored strings; the generated native type and wire format keep the members. Keys must exactly match @values; values must be unique non-empty strings. The string twin of @intValueMap, refused with it and on an array enum (ERR_BAD_ATTR_VALUE).</td>
 </tr>
 <tr>
 <td><code>@unique</code></td>

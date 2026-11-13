@@ -27,24 +27,24 @@ public class SuperResolveTests
 
     // rc.21 (U1): a projection over a TPH root anchors its identity on the root's identity, which the
     // root inherits from an abstract base in another package. The identity is unnamed, so it is
-    // named "primary": `Authorization.primary` resolves through the inherited member, and
-    // `Authorization.id` (the identity spelled by its field) names the members it could have meant.
+    // named "primary": `Shipment.primary` resolves through the inherited member, and
+    // `Shipment.id` (the identity spelled by its field) names the members it could have meant.
     private static string U1Model(string target) => """
         { "metadata.root": { "package": "acme::common", "children": [
           { "object.entity": { "name": "BaseEntity", "abstract": true, "children": [
             { "field.int": { "name": "id" } },
             { "identity.primary": { "@fields": "id", "@generation": "increment" } } ] } } ] } }
         """ + "\u0000" + """
-        { "metadata.root": { "package": "acme::auth", "children": [
-          { "object.entity": { "name": "Authorization", "extends": "acme::common::BaseEntity", "@discriminator": "kind", "children": [
-            { "source.rdb": { "@table": "authorizations" } },
+        { "metadata.root": { "package": "acme::shipping", "children": [
+          { "object.entity": { "name": "Shipment", "extends": "acme::common::BaseEntity", "@discriminator": "kind", "children": [
+            { "source.rdb": { "@table": "shipments" } },
             { "field.string": { "name": "kind" } } ] } },
-          { "object.entity": { "name": "PriorAuth", "extends": "Authorization", "@discriminatorValue": "Prior", "children": [
+          { "object.entity": { "name": "AirShipment", "extends": "Shipment", "@discriminatorValue": "Air", "children": [
             { "field.string": { "name": "key" } } ] } },
-          { "object.projection": { "name": "AuthView", "children": [
-            { "source.rdb": { "@kind": "view", "@view": "v_auth" } },
-            { "field.int": { "name": "id", "extends": "Authorization.id" } },
-            { "field.string": { "name": "key", "extends": "PriorAuth.key" } },
+          { "object.projection": { "name": "ShipmentView", "children": [
+            { "source.rdb": { "@kind": "view", "@view": "v_shipments" } },
+            { "field.int": { "name": "id", "extends": "Shipment.id" } },
+            { "field.string": { "name": "key", "extends": "AirShipment.key" } },
             { "identity.primary": { "extends": "TARGET" } } ] } } ] } }
         """.Replace("TARGET", target);
 
@@ -57,15 +57,15 @@ public class SuperResolveTests
     [Fact]
     public void A_dotted_extends_resolves_an_identity_the_owner_inherits()
     {
-        var result = LoadU1("Authorization.primary");
+        var result = LoadU1("Shipment.primary");
         Assert.Empty(result.Errors);
     }
 
     [Fact]
     public void A_dotted_extends_naming_a_missing_member_lists_the_owners_members()
     {
-        var error = Assert.Single(LoadU1("Authorization.id").Errors, e => e.Code == ErrorCode.ERR_UNRESOLVED_SUPER);
-        Assert.Contains("'acme::auth::Authorization' has no identity named \"id\"; its identity children are: \"primary\" (identity.primary).", error.Message);
+        var error = Assert.Single(LoadU1("Shipment.id").Errors, e => e.Code == ErrorCode.ERR_UNRESOLVED_SUPER);
+        Assert.Contains("'acme::shipping::Shipment' has no identity named \"id\"; its identity children are: \"primary\" (identity.primary).", error.Message);
         Assert.Contains("An identity.primary declared without a name is named \"primary\".", error.Message);
         // The owner was found, so the same-named-object FQN advice would be wrong.
         Assert.DoesNotContain("Qualify it with its package", error.Message);

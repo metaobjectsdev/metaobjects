@@ -4,7 +4,7 @@
     "children": [
       {
         "object.entity": {
-          "name": "Upload",
+          "name": "Article",
           "children": [
             {
               "field.long": {
@@ -14,32 +14,32 @@
             {
               "field.enum": {
                 "name": "status",
-                "@default": "Pending",
+                "@default": "Draft",
                 "@stringValueMap": {
-                  "Delivered": "delivered",
-                  "Failed": "failed",
-                  "Pending": "pending"
+                  "Draft": "draft",
+                  "Published": "published",
+                  "Retracted": "retracted"
                 },
                 "@values": [
-                  "Pending",
-                  "Delivered",
-                  "Failed"
+                  "Draft",
+                  "Published",
+                  "Retracted"
                 ]
               }
             },
             {
               "field.enum": {
-                "name": "authType",
+                "name": "channel",
                 "@maxLength": 16,
                 "@stringValueMap": {
-                  "KeyFileContent": "Key_File_Content",
-                  "KeyFilePath": "Key_File_Path",
-                  "None": "None"
+                  "Email": "EMAIL_V1",
+                  "None": "None",
+                  "TextMessage": "SMS_LEGACY"
                 },
                 "@values": [
                   "None",
-                  "KeyFilePath",
-                  "KeyFileContent"
+                  "Email",
+                  "TextMessage"
                 ]
               }
             },

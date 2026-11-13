@@ -4,7 +4,7 @@
     "children": [
       {
         "object.entity": {
-          "name": "Upload",
+          "name": "Article",
           "children": [
             { "field.long": { "name": "id" } },
             {

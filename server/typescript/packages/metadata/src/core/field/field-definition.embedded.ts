@@ -307,7 +307,7 @@ export const FIELD_DEFINITION: ProviderDefinition = {
           "name": "stringValueMap",
           "min": 0,
           "max": 1,
-          "description": "Optional per-member stored strings ({member: string}) for a string-stored enum whose database spelling differs from its member symbols (a legacy column holding 'pending' or 'Key_File_Path'). The column, its CHECK, its length, a @default and a @condition literal hold the stored strings; the generated native type and wire format keep the members. Keys must exactly match @values; values must be unique non-empty strings. The string twin of @intValueMap, refused with it and on an array enum (ERR_BAD_ATTR_VALUE)."
+          "description": "Optional per-member stored strings ({member: string}) for a string-stored enum whose database spelling differs from its member symbols (a legacy column holding lowercase 'draft', or 'LEGACY_A'). The column, its CHECK, its length, a @default and a @condition literal hold the stored strings; the generated native type and wire format keep the members. Keys must exactly match @values; values must be unique non-empty strings. The string twin of @intValueMap, refused with it and on an array enum (ERR_BAD_ATTR_VALUE)."
         }
       ]
     },

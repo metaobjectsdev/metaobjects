@@ -249,14 +249,14 @@ Two rules follow from int-backing being a **persistence-layer codec**:
 
 **A stored spelling per member (rc.21):** `@stringValueMap` gives each member of a
 string-stored enum the string its column holds, when the database's spelling is not the
-member symbol — a legacy column holding `pending`, or `Key_File_Path`:
+member symbol — a legacy column holding lowercase `draft`, or `LEGACY_A`:
 
 ```json
-{ "field.enum": { "name": "status", "@values": ["Pending", "Delivered"],
-    "@stringValueMap": { "Pending": "pending", "Delivered": "delivered" } } }
+{ "field.enum": { "name": "status", "@values": ["Draft", "Published"],
+    "@stringValueMap": { "Draft": "draft", "Published": "published" } } }
 ```
 
-The generated enum type and the wire keep the members (`Pending`); the column, its `CHECK`,
+The generated enum type and the wire keep the members (`Draft`); the column, its `CHECK`,
 its length (`@maxLength` must fit the longest stored string), a `@default` and a `@condition`
 or `@equals` literal hold the stored strings. It is the string twin of `@intValueMap`, with its
 rules: keys must match `@values` exactly, values are unique non-empty strings, and a shared

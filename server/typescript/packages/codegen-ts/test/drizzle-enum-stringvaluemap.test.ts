@@ -21,8 +21,8 @@ import { buildPkMap } from "../src/pk-resolver.js";
 import { buildRelationMap } from "../src/relation-resolver.js";
 import type { Dialect } from "../src/metaobjects-config.js";
 
-const VALUES = ["Pending", "Delivered"];
-const STORED = { Pending: "pending", Delivered: "delivered" };
+const VALUES = ["Draft", "Published"];
+const STORED = { Draft: "draft", Published: "published" };
 
 async function emit(statusDecl: Record<string, unknown>, extraRoots: unknown[] = [], dialect: Dialect = "postgres") {
   const json = JSON.stringify({
@@ -56,11 +56,11 @@ describe("Drizzle codegen — @stringValueMap field.enum customType", () => {
   for (const dialect of ["postgres", "sqlite"] as const) {
     test(`maps member <-> stored string at the column, and the CHECK lists the stored strings (${dialect})`, async () => {
       const out = await emit({ name: "status", "@values": VALUES, "@stringValueMap": STORED }, [], dialect);
-      expect(out).toContain('const STATUS_TO_STORED = { "Pending": "pending", "Delivered": "delivered" }');
-      expect(out).toContain('const STATUS_FROM_STORED: Record<string, "Pending" | "Delivered"> = { "pending": "Pending", "delivered": "Delivered" }');
+      expect(out).toContain('const STATUS_TO_STORED = { "Draft": "draft", "Published": "published" }');
+      expect(out).toContain('const STATUS_FROM_STORED: Record<string, "Draft" | "Published"> = { "draft": "Draft", "published": "Published" }');
       expect(out).toContain('dataType: () => "text"');
       expect(out).toContain('statusStoredEnum("status")');
-      expect(out).toContain("IN ('pending', 'delivered')");
+      expect(out).toContain("IN ('draft', 'published')");
     });
   }
 

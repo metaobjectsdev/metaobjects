@@ -4,15 +4,15 @@
     "children": [
       {
         "object.entity": {
-          "name": "Upload",
+          "name": "Article",
           "children": [
-            { "source.rdb": { "name": "src", "@table": "uploads", "@kind": "table" } },
+            { "source.rdb": { "name": "src", "@table": "articles", "@kind": "table" } },
             { "field.long": { "name": "id" } },
             {
               "field.enum": {
                 "name": "status",
-                "@values": ["Pending", "Delivered"],
-                "@stringValueMap": { "Pending": "pending", "Delivered": "delivered" }
+                "@values": ["Draft", "Published"],
+                "@stringValueMap": { "Draft": "draft", "Published": "published" }
               }
             },
             { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } }

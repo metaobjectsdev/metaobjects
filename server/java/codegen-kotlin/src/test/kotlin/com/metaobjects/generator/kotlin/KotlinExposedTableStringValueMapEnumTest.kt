@@ -46,10 +46,10 @@ class KotlinExposedTableStringValueMapEnumTest {
                 gen.setArgs(mapOf("outputDir" to outDir.toString()))
                 gen.execute(loader)
             }
-            val src = outDir.resolve("acme/shop/UploadTable.kt").readText()
+            val src = outDir.resolve("acme/shop/ArticleTable.kt").readText()
             assertTrue("customEnumeration(\"status\", \"VARCHAR(${KotlinTypeMapper.ENUM_VARCHAR_LEN})\"" in src,
                 "status must use customEnumeration over VARCHAR; saw:\n$src")
-            assertTrue("\"pending\" -> UploadStatus.Pending" in src && "UploadStatus.Delivered -> \"delivered\"" in src,
+            assertTrue("\"draft\" -> ArticleStatus.Draft" in src && "ArticleStatus.Published -> \"published\"" in src,
                 "both lambdas must carry the stored strings; saw:\n$src")
             val result = compile(outDir)
             assertEquals(KotlinCompilation.ExitCode.OK, result.exitCode, result.messages)

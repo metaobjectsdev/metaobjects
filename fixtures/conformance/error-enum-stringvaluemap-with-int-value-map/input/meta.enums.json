@@ -4,15 +4,15 @@
     "children": [
       {
         "object.entity": {
-          "name": "Upload",
+          "name": "Article",
           "children": [
             { "field.long": { "name": "id" } },
             {
               "field.enum": {
                 "name": "status",
-                "@values": ["Pending", "Delivered"],
-                "@intValueMap": { "Pending": 0, "Delivered": 1 },
-                "@stringValueMap": { "Pending": "pending", "Delivered": "delivered" }
+                "@values": ["Draft", "Published"],
+                "@intValueMap": { "Draft": 0, "Published": 1 },
+                "@stringValueMap": { "Draft": "draft", "Published": "published" }
               }
             },
             { "identity.primary": { "name": "id", "@fields": "id" } }
