@@ -50,7 +50,10 @@ tph/
     ├── tph-update-explicit-null-clears.yaml   # FR-035 tristate: present null clears; omitted @required untouched; null on @required → 400
     ├── tph-create-constraint-violation.yaml   # FR-036: per-subtype CREATE validates against the annotated <Sub>Dto
     ├── tph-update-constraint-violation.yaml   # FR-036: per-subtype PATCH validates each PRESENT value
-    └── tph-input-server-owned-dropped.yaml    # a client id, a foreign `type`, a writeOnce change and a made-up key are dropped, never 400
+    ├── tph-validation-lists-issues.yaml       # every failing field of a per-subtype write is listed in `issues`
+    ├── tph-input-server-owned-dropped.yaml    # a client id, a foreign `type`, a sibling's column and a writeOnce change are dropped, never 400
+    ├── tph-input-foreign-discriminator-dropped.yaml # the subtype comes from the URL, never the body (create and update)
+    └── tph-unknown-fields-rejected.yaml       # a key no subtype declares is a 400 `unknown_fields` (api.unknownFields: reject)
 ```
 
 `meta.json` declares the `acme::auth` package:

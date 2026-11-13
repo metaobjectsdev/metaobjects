@@ -642,9 +642,10 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 }
                 // #484: a @formExclude / credential column is never bound from the request body.
                 if (KotlinGenUtil.isApiWriteDenied(field)) continue
-                // A readOnly column is server-owned: a client value is DROPPED, the column keeps
-                // its default (the same rule as the PATCH settable set).
-                if (KotlinGenUtil.isReadOnlyMutability(field)) continue
+                // A readOnly or derived column is server-owned (the 1.2.x security fix). A client value
+                // is DROPPED (never 400'd) and the column keeps its default, the same rule as the
+                // PATCH settable set.
+                if (KotlinGenUtil.isReadOnlyMutability(field) || KotlinGenUtil.isDerivedField(field)) continue
                 // NOTE: a `field.string @dbColumnType=jsonb` open bag IS written here (create
                 // binds it from the @Valid DTO's kotlinx JsonElement property, gated by the
                 // jsonb-open-bag-roundtrip corpus). PATCH cannot (the raw-JsonNode path can't bind

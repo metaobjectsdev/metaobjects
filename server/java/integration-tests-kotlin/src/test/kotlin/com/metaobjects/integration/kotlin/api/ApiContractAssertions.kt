@@ -4,7 +4,7 @@ import com.metaobjects.integration.kotlin.api.ApiContractScenarios.ApiRequest
 
 /**
  * Assertion engine for api-contract-conformance scenarios. The vocabulary
- * (`equals` / `length` / `ids` / `names` / `row` / `hasId` / `envelope` /
+ * (`equals` / `length` / `ids` / `names` / `row` / `unset` / `hasId` / `envelope` /
  * `error` / `empty` / `fieldsEqual` / `fieldsNotEqual`) is the cross-port
  * contract — every per-port runner must implement these keys identically.
  * See `fixtures/api-contract-conformance/README.md`.
@@ -163,6 +163,15 @@ object ApiContractAssertions {
             val present = keys.filter { row.containsKey(it) }
             if (present.isNotEmpty())
                 throw AssertionError("$scenarioName / ${request.id}: expected no $present in body, got: $body")
+        }
+        // Each listed key is missing or null: a value the client may not set never reached storage.
+        // (Missing-or-null, not strictly missing: ports differ on echoing an unset column as null.)
+        (want["unset"] as? List<*>)?.let { keys ->
+            val row = body as? Map<*, *>
+                ?: throw AssertionError("$scenarioName / ${request.id}: expected object for unset, got: $body")
+            val stored = keys.filter { row[it] != null }
+            if (stored.isNotEmpty())
+                throw AssertionError("$scenarioName / ${request.id}: expected $stored unset, got: $body")
         }
         if (want["hasId"] == true) {
             val row = body as? Map<*, *>

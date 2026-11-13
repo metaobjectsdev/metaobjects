@@ -78,6 +78,33 @@ public class ValidationIssuesTests
         Assert.Equal(1, issues.Count);
     }
 
+    // The shape a generated entity gives a @required readOnly field: [Required] and a PRIVATE setter, so
+    // a create body can never bind it and it is null on every create.
+    public sealed class Member
+    {
+        [Required, MaxLength(10)] public string? Title { get; set; }
+        [Required, MaxLength(20)] public string? Role { get; private set; }
+    }
+
+    [Fact]
+    public void A_create_body_is_not_held_to_a_required_rule_on_a_member_it_cannot_set()
+    {
+        // Oracle: the client cannot set Role, so its [Required] cannot be what makes a create a 400
+        // (else the entity could never be created); every other member is still validated.
+        var issues = new ValidationIssues();
+        Assert.True(issues.ValidateObjectExcept(new Member { Title = "ok" }, Web, ["Role"]));
+        Assert.Equal(0, issues.Count);
+
+        var missingTitle = new ValidationIssues();
+        Assert.False(missingTitle.ValidateObjectExcept(new Member(), Web, ["Role"]));
+        Assert.Equal(1, missingTitle.Count);
+
+        // Without the exception the same object fails on Role: the plain path is unchanged.
+        var plain = new ValidationIssues();
+        Assert.False(plain.ValidateObject(new Member { Title = "ok" }, Web));
+        Assert.Equal(1, plain.Count);
+    }
+
     [Fact]
     public void Two_distinct_failures_of_one_rule_kind_on_one_field_are_both_recorded()
     {

@@ -1,7 +1,7 @@
 """Assertion engine for api-contract-conformance scenarios.
 
 The vocabulary (``equals`` / ``length`` / ``ids`` / ``names`` / ``row`` /
-``hasId`` / ``envelope`` / ``error`` / ``field`` / ``empty``) is the cross-port contract —
+``unset`` / ``hasId`` / ``envelope`` / ``error`` / ``field`` / ``empty``) is the cross-port contract —
 every per-port runner must implement these keys identically. See
 ``fixtures/api-contract-conformance/README.md``.
 
@@ -216,6 +216,19 @@ def assert_response(
         if present:
             raise AssertionError(
                 f"{scenario_name} / {request_id}: expected no {present!r} in body, got: {body!r}"
+            )
+
+    if "unset" in expect_body:
+        # Each listed key is missing or null: a value the client may not set never reached
+        # storage. (Missing-or-null: ports differ on echoing an unset column as null.)
+        if not isinstance(body, dict):
+            raise AssertionError(
+                f"{scenario_name} / {request_id}: expected object for unset, got: {body!r}"
+            )
+        stored = [k for k in expect_body["unset"] if body.get(k) is not None]
+        if stored:
+            raise AssertionError(
+                f"{scenario_name} / {request_id}: expected {stored!r} unset, got: {body!r}"
             )
 
     if expect_body.get("hasId") is True:

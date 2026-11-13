@@ -451,7 +451,7 @@ public class RoutesGenerator : PerEntityGenerator
                 CreatedResult("prefix + \"/" + route + "\"", "input", credentials), voFields, mapVoFields, autoSetFields,
                 writeThrough ? (readDbSet, pkProp!, route) : null,
                 deniedFields.Select(f => CSharpNaming.Pascal(f.Name)).ToList(), credentials,
-                ServerOwnedCreateResets(entity, ctx.Root, _ => { }), ctx.Root);
+                ServerOwnedCreateResets(entity, ctx.Root, _ => { }), ctx.Root, RequiredReadOnlyProps(entity));
 
             // PATCH + PUT share the same handler — TS reference exposes both verbs, and both
             // return the updated row (HTTP 200), matching the cross-port api-contract.
@@ -630,6 +630,7 @@ public class RoutesGenerator : PerEntityGenerator
         bool hasItem = pkType is not null;
 
         var discProp = CSharpNaming.Pascal(tph.DiscriminatorField);
+        var discField = baseEntity.FindField(tph.DiscriminatorField);
         // #484 — the polymorphic base rows carry every subtype's columns, so a credential declared
         // on the base OR on any subtype is omitted from them.
         var baseCredentials = CredentialNames(baseEntity)
@@ -743,7 +744,7 @@ public class RoutesGenerator : PerEntityGenerator
             // --- Per-subtype CRUD sets ---
             var hierarchy = tph.Subtypes.Select(s => s.Entity).Prepend(baseEntity).ToList();
             foreach (var st in tph.Subtypes)
-                AppendTphSubtypeRoutes(sb, st, hierarchy, ctx.Root, baseRoute, baseCls, dbSet, pkType!, pkProp!, discProp, ctx.Warn, ctx.Config);
+                AppendTphSubtypeRoutes(sb, st, hierarchy, ctx.Root, baseRoute, baseCls, dbSet, pkType!, pkProp!, discProp, discField, ctx.Warn, ctx.Config);
         }
 
         sb.AppendLine();
@@ -793,8 +794,21 @@ public class RoutesGenerator : PerEntityGenerator
             // entity, so it is never on the create body: exclude it from the required-key set
             // (else an omitted derived @required field would wrongly 400). Vanilla entities have
             // no derived fields → byte-identical.
-            .Where(f => f.IsRequired && f.AutoSet is null && !f.IsDerived() && !isPkOrDisc(f))
+            // 1.2.x security — a readOnly field is never bound from the body (private setter),
+            // so demanding its key would make a @required readOnly entity uncreatable.
+            .Where(f => f.IsRequired && f.AutoSet is null && !f.IsDerived() && !f.IsReadOnlyMutability
+                        && !isPkOrDisc(f))
             .Select(f => f.Name)
+            .ToList();
+
+    // 1.2.x security — the CLR properties of the @required readOnly fields. The client cannot
+    // set them (private setter), so their [Required] describes the stored row, not the create
+    // body: the create validation ignores a violation that names only these members, as Java's
+    // SERVER_OWNED_ON_CREATE filter does. Empty for nearly every model → byte-identical output.
+    private static List<string> RequiredReadOnlyProps(MetaObject obj) =>
+        obj.Fields()
+            .Where(f => f.IsRequired && f.IsReadOnlyMutability && !f.IsDerived())
+            .Select(f => CSharpNaming.Pascal(f.Name))
             .ToList();
 
     // Issue #203 — one @autoSet timestamp column the generated CRUD stamps with now().
@@ -1080,7 +1094,8 @@ public class RoutesGenerator : PerEntityGenerator
         IReadOnlyList<string>? deniedNavs = null,
         IReadOnlyList<string>? credentials = null,
         IReadOnlyList<string>? serverOwned = null,
-        MetaRoot? root = null)
+        MetaRoot? root = null,
+        IReadOnlyList<string>? readOnlyRequired = null)
     {
         // The body is always read here, not model-bound: the framework answers a body it cannot bind with a
         // bare 400 and no body, while every validation failure must list its issues (the cross-port
@@ -1117,7 +1132,7 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("            if (input is null) return __issues.Any ? __issues.ToResult() : ValidationIssues.Unreadable();");
         AppendCreateServerOwned(sb, serverOwned);
         AppendCreateIgnoreDenied(sb, deniedNavs);
-        AppendCreateValidation(sb);
+        AppendCreateValidation(sb, readOnlyRequired);
         AppendCreateVoValidation(sb, voFields, mapVoFields);
         sb.AppendLine("            if (__issues.Any) return __issues.ToResult();");
         AppendCreateAutoSet(sb, autoSetFields);
@@ -1169,7 +1184,10 @@ public class RoutesGenerator : PerEntityGenerator
 
     // The reset statements AppendCreateServerOwned emits for one entity (empty when it has none, which
     // keeps the output byte-identical for an entity without a generated key, navigation or discriminator).
-    private static List<string> ServerOwnedCreateResets(MetaObject entity, MetaRoot root, Action<string> onWarn, string? discProp = null, MetaObject? navOwner = null)
+    // The key and discriminator resets are SKIPPED when that field is itself @mutability: readOnly: the
+    // entity declares it with a private setter (EntityGenerator.SetterFor), so the assignment would be
+    // CS0122, and it is redundant, because System.Text.Json never binds a private setter.
+    private static List<string> ServerOwnedCreateResets(MetaObject entity, MetaRoot root, Action<string> onWarn, MetaField? discField = null, MetaObject? navOwner = null)
     {
         var list = new List<string>();
         if (entity.PrimaryIdentity() is MetaPrimaryIdentity
@@ -1177,9 +1195,10 @@ public class RoutesGenerator : PerEntityGenerator
                 Generation: MetaObjects.Core.Identity.IdentityConstants.GENERATION_INCREMENT
                     or MetaObjects.Core.Identity.IdentityConstants.GENERATION_UUID,
                 Fields: [var keyName],
-            } && entity.Fields().FirstOrDefault(f => f.Name == keyName) is { } keyField)
+            } && entity.Fields().FirstOrDefault(f => f.Name == keyName) is { IsReadOnlyMutability: false } keyField)
             list.Add($"input.{CSharpNaming.Pascal(keyField.Name)} = default!;");
-        if (discProp is not null) list.Add($"input.{discProp} = default!;");
+        if (discField is { IsReadOnlyMutability: false })
+            list.Add($"input.{CSharpNaming.Pascal(discField.Name)} = default!;");
         // A TPH subtype class declares no M:N property of its own: the navigations that exist are those of the
         // discriminator base class (navOwner), so a subtype route resets exactly those.
         foreach (var nav in M2MNavigationBuilder.For(navOwner ?? entity, root, onWarn))
@@ -1346,9 +1365,17 @@ public class RoutesGenerator : PerEntityGenerator
     // bound `input` and rejects a violating body with the cross-port {error:"validation"}
     // envelope BEFORE the row is persisted (ASP.NET minimal-API model binding never runs
     // DataAnnotations on its own). Assumes the bound local `input` is in scope.
-    private static void AppendCreateValidation(StringBuilder sb)
+    // A violation naming only a @required readOnly member (<paramref name="readOnlyRequired"/>)
+    // is ignored: the client cannot set that member, so it cannot satisfy the rule.
+    private static void AppendCreateValidation(StringBuilder sb, IReadOnlyList<string>? readOnlyRequired = null)
     {
-        sb.AppendLine("            __issues.ValidateObject(input, jsonOpts);");
+        if (readOnlyRequired is null || readOnlyRequired.Count == 0)
+        {
+            sb.AppendLine("            __issues.ValidateObject(input, jsonOpts);");
+            return;
+        }
+        var names = string.Join(", ", readOnlyRequired.Select(n => "\"" + n + "\""));
+        sb.AppendLine($"            __issues.ValidateObjectExcept(input, jsonOpts, new[] {{ {names} }});");
     }
 
     // FR-035 PATCH-2 — the shared present-key merge loop for the generated update
@@ -1553,7 +1580,7 @@ public class RoutesGenerator : PerEntityGenerator
     // that never touches the PK or the discriminator.
     private static void AppendTphSubtypeRoutes(
         StringBuilder sb, TphSubtypePlan st, IReadOnlyList<MetaObject> hierarchy, MetaRoot root, string baseRoute, string baseCls, string dbSet,
-        string pkType, string pkProp, string discProp, Action<string> onWarn, GenConfig config)
+        string pkType, string pkProp, string discProp, MetaField? discField, Action<string> onWarn, GenConfig config)
     {
         // #362 — field.object columns on a TPH subtype stay out of scope (Program D §6), but a
         // field.map @objectRef is NOT: it reaches the settable set, so its value objects reach
@@ -1626,7 +1653,8 @@ public class RoutesGenerator : PerEntityGenerator
         AppendCreateHandler(sb, "/" + subRoute, subType, dbSet, requiredKeys,
             CreatedResult("prefix + \"/" + subRoute + "/\" + input." + pkProp, "input", credentials), [], mapVoFields, autoSetFields,
             deniedNavs: deniedFields.Select(f => CSharpNaming.Pascal(f.Name)).ToList(), credentials: credentials,
-            serverOwned: ServerOwnedCreateResets(st.Entity, root, _ => { }, discProp, hierarchy[0]), root: root);
+            serverOwned: ServerOwnedCreateResets(st.Entity, root, _ => { }, discField, hierarchy[0]), root: root,
+            readOnlyRequired: RequiredReadOnlyProps(st.Entity));
 
         // Per-subtype update (PATCH + PUT): partial merge of the JSON body onto the scoped
         // entity, NEVER touching the PK or the discriminator. Cross-subtype id → 404.

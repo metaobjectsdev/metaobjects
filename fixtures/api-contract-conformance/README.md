@@ -38,6 +38,7 @@ fixtures/api-contract-conformance/
     ├── patch-empty-noop.yaml       # FR-037 PATCH-5 a patch stripping to zero assignments is a no-op read-back
     ├── writeonce-patch-stripped.yaml # FR-037 R1 @mutability:"writeOnce" — stripped on PATCH, never rejected
     ├── autoset-patch.yaml          # #203 @autoSet — PATCH bumps onUpdate, leaves onCreate alone
+    ├── input-server-owned-dropped.yaml # 1.2.x security: a client id / undeclared key never reaches storage
     ├── delete-204-and-404.yaml
     ├── invalid-sort-400.yaml
     ├── filter-eq.yaml             # FR-009 filter operators
@@ -56,12 +57,12 @@ fixtures/api-contract-conformance/
 ```
 
 Beside the 34 core scenarios above sit eleven **sub-corpora**, each a directory with its
-own `meta.json`, `seed.json`, `scenarios/` and `README.md` (102 scenarios in all, 136 with the
+own `meta.json`, `seed.json`, `scenarios/` and `README.md` (103 scenarios in all, 137 with the
 core):
 
 | Directory | Scenarios | Gates | Lanes |
 |---|---|---|---|
-| `tph/` | 13 | single-table inheritance | both |
+| `tph/` | 14 | single-table inheritance | both |
 | `m2m/` | 9 | M:N traversal, and TPH x M:N together | both |
 | `jsonb/` | 5 | typed value-object columns, and the numbers inside them (a double stays a JSON number; a decimal is a canonical string, option A of the 1.1.0 review) | both |
 | `write-through/` | 2 | an entity that writes a table and reads a view | generated only |
@@ -129,6 +130,7 @@ requests:
 | `absent`     | the response body is an object; none of the listed keys is present (not even as `null`). Pins that a key a client sent but may not set never comes back. |
 | `fieldsEqual`| the response body is an object; assert the listed field names are all equal to **each other** (raw, field-vs-field — no literal, so timestamp non-determinism is a non-issue). Used by the `@autoSet` gate (#203/ADR-0045). |
 | `fieldsNotEqual`| the response body is an object; assert the two listed fields **differ** from each other. Used by the `@autoSet` gate (e.g. after a PATCH, `autoCreatedAt` (onCreate, preserved) != `autoUpdatedAt` (onUpdate, bumped)). |
+| `unset`      | the response body is an object; each listed key is **missing or `null`** on it. Used by the input scenarios (`input-server-owned-dropped`, `tph-input-server-owned-dropped`): a value the client was not allowed to set never reached storage, so it never comes back in the echo. Missing and `null` are both accepted because a port's row shape decides whether an unset column is present as `null`. |
 
 Runners are responsible for normalizing `createdAt` (and any other
 non-deterministic fields) before comparison. The keys listed above are

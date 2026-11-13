@@ -174,20 +174,35 @@ public sealed class ValidationIssues
     /// issue per failing attribute at <c>prefix + wireName</c>. Class-level attributes and IValidatableObject
     /// are honoured as a fallback when no property failed. Returns true when nothing failed.
     /// </summary>
-    public bool ValidateObject(object instance, JsonSerializerOptions? options, params object[] prefix)
+    public bool ValidateObject(object instance, JsonSerializerOptions? options, params object[] prefix) =>
+        Validate(instance, options, [], prefix);
+
+    /// <summary>
+    /// <see cref="ValidateObject"/> for a create body, skipping the CLR properties named in
+    /// <paramref name="serverOwned"/>: the @required readOnly members, which the client cannot set (they
+    /// have a private setter, so the body never binds them) and so cannot satisfy their own rule. A
+    /// class-level result is skipped only when every member it names is one of them.
+    /// </summary>
+    public bool ValidateObjectExcept(object instance, JsonSerializerOptions? options, IReadOnlyCollection<string> serverOwned) =>
+        Validate(instance, options, serverOwned, []);
+
+    private bool Validate(object instance, JsonSerializerOptions? options, IReadOnlyCollection<string> skip, object[] prefix)
     {
         var before = Count;
         foreach (var property in instance.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance))
         {
-            if (property.GetIndexParameters().Length != 0 || !property.CanRead) continue;
+            if (property.GetIndexParameters().Length != 0 || !property.CanRead || skip.Contains(property.Name)) continue;
             ValidateProperty(instance, property, property.GetValue(instance), WireName(property, options), prefix);
         }
         if (Count != before) return false;
         var results = new List<ValidationResult>();
         if (Validator.TryValidateObject(instance, new ValidationContext(instance), results, validateAllProperties: true)) return true;
-        foreach (var result in results)
+        var counted = results
+            .Where(r => skip.Count == 0 || !r.MemberNames.Any() || r.MemberNames.Any(m => !skip.Contains(m)))
+            .ToList();
+        foreach (var result in counted)
             Add("custom", result.ErrorMessage ?? "invalid", [.. prefix, .. ResultPath(instance, result, options)]);
-        return false;
+        return counted.Count == 0;
     }
 
     private static IEnumerable<object> ResultPath(object instance, ValidationResult result, JsonSerializerOptions? options)

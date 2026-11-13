@@ -68,6 +68,22 @@ but the semantics are one contract — call them **PATCH-1..7** (FR-035):
 - **PATCH-7 (verbs).** At the HTTP tier both `PATCH` and `PUT` route to the update
   handler with partial-merge semantics. True PUT-as-full-replace is out of scope.
 
+**Create stores only what a client may set, in every port.** A generated create route
+never writes a client-sent value for a server-generated primary key (`@generation`
+`increment` or `uuid`), a `@mutability: "readOnly"` or `origin.*`-derived field, the TPH
+discriminator (a per-subtype route takes the subtype from the URL), a column only a
+sibling subtype declares, or (C#) an M:N navigation graph. Each is dropped silently, not
+answered with a 400. An assigned key (no `@generation`) is the caller's on create in
+TypeScript, C#, Java and Python, and on update it is the primary key like any other, so it
+is left out of the TypeScript `<Entity>UpdateSchema` too. (Kotlin's generated create is the
+exception: it never binds a declared key, assigned or not — `increment` is left to the
+column and a `uuid` key is minted app-side.) A key the entity does not declare at all is
+a separate case: `api.unknownFields` decides it in every port, `400 unknown_fields` under
+`reject` (the default) and dropped under `drop`
+([api-contract.md](api-contract.md#unknown-request-fields-apiunknownfields)).
+Gated cross-port by `fixtures/api-contract-conformance/scenarios/input-server-owned-dropped.yaml`
+and the `tph/` and `secret-fields/` input scenarios.
+
 The generated update does **not** guard against a concurrent write: two callers
 patching the same row both succeed, and the last one wins. Adding that guard is
 adopter-owned — see [Optimistic concurrency](#optimistic-concurrency-adopter-owned).
