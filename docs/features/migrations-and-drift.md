@@ -535,6 +535,11 @@ export default defineConfig({
 });
 ```
 
+Such an object reaches only the TypeScript toolchain: `meta migrate`, `meta verify --db`, and
+the TypeScript generators resolve it. The C# and Kotlin generators read only the
+`migrate.conventions` preset name from `.metaobjects/config.json` and apply the default rule for
+every derived name, foreign-key indexes included.
+
 **Changing the conventions of an existing database.** On Postgres, a primary key, FK, CHECK or
 index whose definition is unchanged and whose name differs is renamed in place (`RENAME
 CONSTRAINT` / `ALTER INDEX … RENAME`), never dropped and re-created; new FK indexes are created.
@@ -588,6 +593,12 @@ setting, so the mapping and the database agree:
 
 Java (OMDB is data access only and maps no indexes) and Python (Pydantic models and routes, no
 ORM mapping) generate nothing that declares an index, so the option changes no output there.
+
+A project that pairs its own conventions object with `migrate.foreignKeyIndexes` and a C# or
+Kotlin mapping should make the object's `foreignKeyIndexes` match the default rule (index each
+foreign key nothing leads with, named `<table>_<columns>_idx`) or leave the option off;
+otherwise the C# DbContext or Kotlin Exposed tables may declare an index `meta migrate` did not
+create.
 
 ## How CHECK constraints and expression indexes are compared
 
