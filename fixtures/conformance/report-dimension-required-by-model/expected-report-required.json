@@ -1,0 +1,20 @@
+{
+  "_comment": "The required of each SnapRealms field, derived from the model, never from the join type the view lowering picks. A joined dimension is required only when its @of field is required and every hop is a belongs-to reference over a required, enforced foreign key onto a target that hides no rows (not a TPH subtype). Read by TypeScript (metadata/test/report-required-conformance.test.ts) C# (ReportShapeTests), Java (ReportShapeTest) and Python (test_report_shape.py).",
+  "report": "acme::reports::SnapRealms",
+  "required": {
+    "sessionKey": true,
+    "sessionRealmId": true,
+    "realmName": true,
+    "looseRealmName": false,
+    "maybeRealmName": false,
+    "optionalFirstRealmName": false,
+    "realmMotto": false,
+    "orgName": false,
+    "relSessionRealmId": true,
+    "relRealmName": true,
+    "mixedRealmName": true,
+    "relMaybeRealmName": false,
+    "stampLabel": false,
+    "snaps": true
+  }
+}

@@ -16,7 +16,8 @@
 // WHOLE set, with a message naming both entities and the colliding name.
 
 import { type ErrorCode, OBJECT_SUBTYPE_VALUE, type MetaObject } from "@metaobjectsdev/metadata";
-import { pluralize, toSnakeCase } from "@metaobjectsdev/metadata";
+import { collectionSegment } from "@metaobjectsdev/metadata";
+import { collectionPascal } from "../naming.js";
 import { emitsInstanceArtifacts } from "../instance-artifacts.js";
 import { isTphSubtype } from "../tph.js";
 import { effectivePackage } from "../docs-paths.js";
@@ -69,7 +70,7 @@ function assertNoModuleNameCollisions(entities: readonly MetaObject[], layout: O
   const ownerOfPlural = new Map<string, MetaObject>();
   for (const obj of entities) {
     if (obj.subType === OBJECT_SUBTYPE_VALUE || !emitsInstanceArtifacts(obj)) continue;
-    const plural = pluralize(obj.name);
+    const plural = collectionPascal(obj);
     const scope = layout === "package" ? (effectivePackage(obj) ?? "") : "";
     const key = `${scope}\u0000${plural}`;
     const existing = ownerOfPlural.get(key);
@@ -77,7 +78,8 @@ function assertNoModuleNameCollisions(entities: readonly MetaObject[], layout: O
       throw new Error(
         `${ERR_COLLECTION_NAME_COLLISION}: "${existing.resolutionKey()}" and "${obj.resolutionKey()}" both pluralize ` +
         `to the collection name "${plural}" in one module scope (${scope === "" ? "the entity modules' directory" : `package ${scope}`}; ` +
-        `generated hook/query/finder/list names, the collection variable) — rename one entity, or ` +
+        `generated hook/query/finder/list names, the collection variable) — rename one entity, give one ` +
+        `a distinct @collectionName, or ` +
         `place the modules by package (outputLayout: "package"). Default PHYSICAL table names are ` +
         `unaffected by this rule.`,
       );
@@ -87,8 +89,9 @@ function assertNoModuleNameCollisions(entities: readonly MetaObject[], layout: O
 }
 
 /**
- * The route half. The REST collection segment is the entity NAME snake_cased and then
- * pluralized (`entity-ui-descriptor.ts`), so `ApiKey` and `APIKey` both serve `/api_keys`
+ * The route half. The REST collection segment is the declared `@collectionName` or the
+ * configured pluralizer's output, snake_cased, else the entity NAME snake_cased and then
+ * pluralized (`collectionSegment`), so `ApiKey` and `APIKey` both serve `/api_keys`
  * while their pluralized PascalCase names differ and pass the check above. Counts only
  * objects that actually get a route: not a value object, not abstract, not sourceless,
  * not a TPH subtype (folded into its base's table and served under the base's route).
@@ -98,13 +101,13 @@ function assertNoRouteSegmentCollisions(entities: readonly MetaObject[]): void {
   for (const obj of entities) {
     if (obj.subType === OBJECT_SUBTYPE_VALUE) continue;
     if (!emitsInstanceArtifacts(obj) || isTphSubtype(obj)) continue;
-    const segment = pluralize(toSnakeCase(obj.name));
+    const segment = collectionSegment(obj);
     const existing = ownerOfSegment.get(segment);
     if (existing !== undefined && existing.resolutionKey() !== obj.resolutionKey()) {
       throw new Error(
         `${ERR_COLLECTION_NAME_COLLISION}: "${existing.resolutionKey()}" and "${obj.resolutionKey()}" both resolve ` +
-        `to the REST collection segment "${segment}" — rename one entity so its snake_cased, ` +
-        `pluralized route segment is distinct.`,
+        `to the REST collection segment "${segment}" — rename one entity, or give one a distinct ` +
+        `@collectionName, so its route segment is distinct.`,
       );
     }
     if (existing === undefined) ownerOfSegment.set(segment, obj);

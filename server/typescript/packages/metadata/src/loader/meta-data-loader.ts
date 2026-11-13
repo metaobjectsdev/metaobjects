@@ -26,7 +26,7 @@ import type { LoaderWarning } from "../source.js";
 import { codeSource, resolvedSource } from "../source.js";
 import { parseJson } from "../parser-json.js";
 import { validateDataGridSortFields, validateFilterableHasIndex, validateFilterableHasSupportedOps, validateSortableHasSupportedSubtype, validateOriginPaths, validateDerivedFieldProvidability, validateDataGridFilterValues, validateFieldObjectStorage, validateFieldMap,
-  validateEnumMaxLength, validateIdentitySequence, validateCrossFieldValidators, validateTemplatePayloadRefs, validateFieldDefaults, validateRelationships, validateOneSideReferenceResolution, validateM2MJunctionPairing, validateIndexLookupFields, validateProjectionFilter, validateRetiredRequirementLinks, validateColumnNameCollisions } from "./validation-passes.js";
+  validateEnumMaxLength, validateIdentitySequence, validateCrossFieldValidators, validateTemplatePayloadRefs, validateFieldDefaults, validateRelationships, validateOneSideReferenceResolution, validateM2MJunctionPairing, validateIndexLookupFields, validateProjectionFilter, validateOriginSegmentsAndCorrelation, validateRetiredRequirementLinks, validateColumnNameCollisions } from "./validation-passes.js";
 import { validateReporting } from "./reporting-validation.js";
 import { runRegisteredValidation } from "./validation-registry.js";
 import { validateSourceRoles } from "../persistence/source/validate-source-roles.js";
@@ -662,6 +662,7 @@ export class MetaDataLoader {
       // projection's own declared, WHERE-addressable fields (passthrough/computed/plain);
       // an aggregate-derived or dangling ref is fail-closed (ERR_BAD_ATTR_FILTER).
       errors.push(...validateProjectionFilter(root));
+      errors.push(...validateOriginSegmentsAndCorrelation(root));
 
       // FR-044 — reporting vocabulary cross-node rules (dimensions, measures,
       // segments, reports, relative-date filter values).
@@ -732,7 +733,7 @@ export class MetaDataLoader {
       errors.push(...validateIdentitySequence(root));
 
       // Cross-field validators: exactlyOne names two or more fields; @condition names real fields.
-      errors.push(...validateCrossFieldValidators(root));
+      errors.push(...validateCrossFieldValidators(root, this._strict));
 
       // Tenth pass: one-primary multi-source rule — if an object has ≥1 source,
       // exactly one must carry role "primary" (ERR_SOURCE_NO_PRIMARY /

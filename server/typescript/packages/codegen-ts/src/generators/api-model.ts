@@ -548,7 +548,7 @@ function dataAccessSymbols(
   const mod = entityModulePath(layout, obj, `${name}.queries`);
 
   const find = findByIdFnName(name);
-  const list = listFnName(name);
+  const list = listFnName(obj);
   const create = createFnName(name);
   const update = updateFnName(name);
   const del = deleteByIdFnName(name);

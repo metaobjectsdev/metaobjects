@@ -1,5 +1,5 @@
-"""``@collectionName`` is shared vocabulary marked ``implementedIn: ["csharp"]`` (the
-DbSet property it names is generated there). Python registers and type-checks it,
+"""``@collectionName`` is shared vocabulary marked ``implementedIn: ["csharp", "typescript"]``
+(the DbSet property, REST segment and generated names it sets are generated there). Python registers and type-checks it,
 so a model that carries it loads strictly here, and Python does nothing with it yet. The
 never-released ``@dbSetName`` it replaced is not vocabulary; an attribute the registry does not
 carry still fails, and a wrong value type fails.

@@ -11,6 +11,7 @@ import {
   isMetaObject,
   refTarget,
   resolveFlattenedColumnName,
+  resolveFlattenedMember,
   physicalNamingOf,
   FIELD_SUBTYPE_OBJECT,
   FIELD_ATTR_OBJECT_REF,
@@ -61,6 +62,17 @@ export function flattenedMembersOf(field: MetaField, strategy: ColumnNamingStrat
     const key = field.name + upperFirst(member.name);
     return { member, flat: asFlatKey(member, key, field), key, column: resolveFlattenedColumnName(field, member, strategy) };
   });
+}
+
+/**
+ * The key a field PATH names on the flat surface: a plain field name as is, a member of a
+ * flattened value object (`address.countryId`, as an identity.reference @fields entry may name
+ * it) as its flat key (`addressCountryId`), the Drizzle table property its column is under.
+ */
+export function flatKeyOfPath(entity: MetaObject, path: string): string {
+  if (!path.includes(".")) return path;
+  const flattened = resolveFlattenedMember(entity, path);
+  return flattened === undefined ? path : flattened.embedding.name + upperFirst(flattened.member.name);
 }
 
 const MUTABILITY_TIGHTNESS = [MUTABILITY_READ_ONLY, MUTABILITY_WRITE_ONCE] as const;

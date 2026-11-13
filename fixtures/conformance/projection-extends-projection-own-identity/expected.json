@@ -1,0 +1,123 @@
+{
+  "metadata.root": {
+    "package": "acme::plans",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Plan",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "plans"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "name"
+              }
+            },
+            {
+              "field.string": {
+                "name": "code"
+              }
+            },
+            {
+              "field.boolean": {
+                "name": "consented"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "GatedPlans",
+          "abstract": true,
+          "@filter": {
+            "consented": {
+              "eq": true
+            }
+          },
+          "children": [
+            {
+              "field.long": {
+                "name": "planId",
+                "extends": "acme::plans::Plan.id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "label",
+                "children": [
+                  {
+                    "origin.passthrough": {
+                      "@from": "acme::plans::Plan.name"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "extends": "acme::plans::Plan.id"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "ExportPlans",
+          "extends": "acme::plans::GatedPlans",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_export_plans"
+              }
+            },
+            {
+              "field.long": {
+                "name": "exportId",
+                "extends": "acme::plans::Plan.id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "code",
+                "children": [
+                  {
+                    "origin.passthrough": {
+                      "@from": "acme::plans::Plan.code"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "extends": "acme::plans::Plan.id"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
+

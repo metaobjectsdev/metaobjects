@@ -134,6 +134,7 @@ from .meta.persistence.origin.origin_constants import (
     ORIGIN_ATTR_DISTINCT,
     ORIGIN_ATTR_EXPR,
     ORIGIN_ATTR_FILTER,
+    ORIGIN_ATTR_SEGMENT,
     ORIGIN_ATTR_FROM,
     ORIGIN_ATTR_OF,
     ORIGIN_ATTR_ORDER_BY,
@@ -1028,6 +1029,7 @@ core_provider.add(
             AttrSchema(name=ORIGIN_ATTR_FILTER, value_type=ATTR_SUBTYPE_FILTER, required=False),
             AttrSchema(name=ORIGIN_ATTR_DISTINCT, value_type=ATTR_SUBTYPE_BOOLEAN, required=False),
             AttrSchema(name=ORIGIN_ATTR_ORDER_BY, value_type=ATTR_SUBTYPE_STRING, required=False, is_array=True),
+            AttrSchema(name=ORIGIN_ATTR_SEGMENT, value_type=ATTR_SUBTYPE_STRING, required=False),
         ],
         child_rules=[ChildRule(TYPE_ATTR, "*")],
     )
@@ -1059,6 +1061,7 @@ core_provider.add(
             AttrSchema(name=ORIGIN_ATTR_VIA, value_type=ATTR_SUBTYPE_STRING, required=False),
             AttrSchema(name=ORIGIN_ATTR_ORDER_BY, value_type=ATTR_SUBTYPE_STRING, required=True, is_array=True),
             AttrSchema(name=ORIGIN_ATTR_FILTER, value_type=ATTR_SUBTYPE_FILTER, required=False),
+            AttrSchema(name=ORIGIN_ATTR_SEGMENT, value_type=ATTR_SUBTYPE_STRING, required=False),
         ],
         child_rules=[ChildRule(TYPE_ATTR, "*")],
     )

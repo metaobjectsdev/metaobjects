@@ -836,7 +836,7 @@ public class ReportShapeTest extends SharedRegistryTestBase {
         ReportShape plain = ReportShape.of(object(root, "Plain"), root);
         assertTrue("two required hops over a required field", field(plain, "realmName").required());
         assertTrue("one required hop", field(plain, "sessionRealmId").required());
-        assertTrue("@enforce: false does not change the join type", field(plain, "looseRealmName").required());
+        assertFalse("an @enforce: false hop can name a missing row", field(plain, "looseRealmName").required());
         assertFalse("the target field is optional", field(plain, "realmMotto").required());
         assertFalse("a hop over a nullable foreign key is a LEFT join", field(plain, "maybeRealmName").required());
 
@@ -916,5 +916,29 @@ public class ReportShapeTest extends SharedRegistryTestBase {
                 realmName.required());
         assertSame("ofEntity resolves in the terminal's package too",
                 object(root, "Realm"), shape.ofEntity(realmName));
+    }
+    // A joined dimension's required comes from the model, never from the join type the view
+    // lowering picks: a required, enforced belongs-to path onto a target that hides no rows. The shared
+    // table is the fixture's expected-report-required.json, which every port reads.
+    @Test
+    public void aDimensionsRequiredIsTheSharedTables() throws IOException {
+        Path fixture = corpusDir().getParent().resolve("conformance/report-dimension-required-by-model");
+        com.google.gson.JsonObject doc = com.google.gson.JsonParser.parseString(
+                Files.readString(fixture.resolve("expected-report-required.json"), StandardCharsets.UTF_8))
+            .getAsJsonObject();
+        String reportKey = doc.get("report").getAsString();
+        java.util.Map<String, Boolean> expected = new java.util.LinkedHashMap<>();
+        for (java.util.Map.Entry<String, com.google.gson.JsonElement> e : doc.getAsJsonObject("required").entrySet()) {
+            expected.put(e.getKey(), e.getValue().getAsBoolean());
+        }
+        MetaRoot root = MetaDataLoader.fromDirectory("report-required", fixture.resolve("input")).getRoot();
+        MetaObject report = null;
+        for (MetaObject o : root.getChildren(MetaObject.class, false)) {
+            if (reportKey.equals(o.getName())) report = o;
+        }
+        assertNotNull(reportKey, report);
+        java.util.Map<String, Boolean> actual = new java.util.LinkedHashMap<>();
+        for (ReportShape.Field f : ReportShape.of(report, root).fields()) actual.put(f.name(), f.required());
+        assertEquals(expected, actual);
     }
 }

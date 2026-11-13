@@ -96,7 +96,10 @@ emitter, two hosts.
 
 A derived field must be **providable** — a read-capable source must be able to carry it. A
 derived field on a table-only entity (no read source) is a load error
-(`ERR_DERIVED_FIELD_NO_READ_SOURCE`).
+(`ERR_DERIVED_FIELD_NO_READ_SOURCE`), with one exception: an `origin.first` or `origin.computed`
+that a projection reaches through its `@filter` or a passthrough `@from` is inlined there, so it
+needs no read source. The entity's table then gets no column for it: generated entity, DbContext,
+Kotlin, Python `ObjectManager` and Java OMDB mappings leave such a field out of table reads and writes.
 
 ### Entity read-view vs projection — which to reach for
 
@@ -203,6 +206,14 @@ projection's own fields first (a passthrough, an `origin.first` or another `orig
 never itself or an aggregate), else a base field. An `origin.first` or `origin.aggregate`
 `@filter`, like a projection's, may hold a relative date (`{ "now": "-P7D" }`, see
 [reporting.md](reporting.md#relative-dates-in-filters)). Every port's loader validates these.
+
+**Segments and correlated filters.** An `origin.first` or `origin.aggregate` may scope its
+related rows by a `@segment` declared on that entity (ANDed with its `@filter`), and its
+`@filter` may compare a related column with a base-row field
+(`{ "statusId": { "eq": { "field": "statusId" } } }`); the null-safe `isDistinctFrom` /
+`isNotDistinctFrom` take only such an operand. Every port's loader validates them
+(`ERR_INVALID_ORIGIN` for a `@segment` the entity does not declare, `ERR_BAD_ATTR_FILTER` for
+an unknown base field or another op).
 
 **Projection row-scope `@filter` (#207).** Distinct from the *per-aggregate* `@filter` above,
 an **object-level `@filter` on an `object.projection`** scopes the whole view's rows — it

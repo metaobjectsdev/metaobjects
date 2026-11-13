@@ -1,0 +1,135 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "User",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "users"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "name",
+                "@required": true
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Account",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "accounts"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "ownerId",
+                "@required": true
+              }
+            },
+            {
+              "field.long": {
+                "name": "approverId"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "owner",
+                "@fields": "ownerId",
+                "@references": "User"
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "approver",
+                "@fields": "approverId",
+                "@references": "User"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "AccountView",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_accounts"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id",
+                "extends": "Account.id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "ownerName",
+                "children": [
+                  {
+                    "origin.passthrough": {
+                      "@from": "User.name",
+                      "@via": "Account.owner"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.string": {
+                "name": "approverName",
+                "children": [
+                  {
+                    "origin.passthrough": {
+                      "@from": "User.name",
+                      "@via": "Account.approver"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "extends": "Account.id"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

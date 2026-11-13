@@ -1,0 +1,89 @@
+{
+  "metadata.root": {
+    "package": "acme::views",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Case",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "cases"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.enum": {
+                "name": "status",
+                "@values": [
+                  "PAID",
+                  "REFUNDED"
+                ]
+              }
+            },
+            {
+              "field.int": {
+                "name": "priority"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "CaseLabels",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_case_labels"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id",
+                "extends": "acme::views::Case.id"
+              }
+            },
+            {
+              "field.boolean": {
+                "name": "urgent",
+                "children": [
+                  {
+                    "origin.computed": {
+                      "@expr": {
+                        "op": "eq",
+                        "left": {
+                          "field": "priority"
+                        },
+                        "right": {
+                          "value": "high"
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "extends": "acme::views::Case.id"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

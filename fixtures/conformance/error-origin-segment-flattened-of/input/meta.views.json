@@ -1,0 +1,141 @@
+{
+  "metadata.root": {
+    "package": "acme::views",
+    "children": [
+      {
+        "object.value": {
+          "name": "Closure",
+          "children": [
+            {
+              "field.string": {
+                "name": "reason"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Case",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "cases"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "CaseHistory",
+          "@collectionName": "CaseHistory",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "case_history"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "caseId",
+                "@required": true
+              }
+            },
+            {
+              "field.object": {
+                "name": "closure",
+                "@objectRef": "acme::views::Closure",
+                "@storage": "flattened"
+              }
+            },
+            {
+              "field.boolean": {
+                "name": "active"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "caseId",
+                "@fields": "caseId",
+                "@references": "acme::views::Case"
+              }
+            },
+            {
+              "segment.filter": {
+                "name": "live",
+                "@filter": {
+                  "active": true
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "LastClosure",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_last_closure"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id",
+                "extends": "acme::views::Case.id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "reason",
+                "children": [
+                  {
+                    "origin.first": {
+                      "@of": "acme::views::CaseHistory.closure.reason",
+                      "@via": "acme::views::Case.caseHistory",
+                      "@orderBy": [
+                        "id"
+                      ],
+                      "@segment": "dead"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "extends": "acme::views::Case.id"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

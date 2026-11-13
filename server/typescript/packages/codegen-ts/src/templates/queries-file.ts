@@ -22,7 +22,7 @@ import {
   schemaInputType,
 } from "./queries.js";
 import { getPkInfo, getPkFields } from "../pk-resolver.js";
-import { pluralize, findByIdFnName, listFnName, createFnName, insertPreservingFnName, updateFnName, singleRowVarName } from "../naming.js";
+import { findByIdFnName, listFnName, createFnName, insertPreservingFnName, updateFnName, singleRowVarName } from "../naming.js";
 import { GENERATED_HEADER, GENERATED_EDIT_NOTE, sidecarLine } from "../constants.js";
 import { isTphDiscriminatorBase, tphConcreteSubtypes } from "./tph-discriminator.js";
 import { isProjection, isWriteThrough } from "../projection/projection-detector.js";
@@ -186,7 +186,7 @@ import { ${viewVar}, type ${entityName} } from ${JSON.stringify(entityFileName)}
   }
 
   const reads = code`
-${findById}export async function ${listFnName(entityName)}(db: Db, opts?: { limit?: number; offset?: number }): Promise<${entityName}[]> {
+${findById}export async function ${listFnName(obj)}(db: Db, opts?: { limit?: number; offset?: number }): Promise<${entityName}[]> {
   let q = db.select().from(${viewVar}).$dynamic();
   if (opts?.limit !== undefined) q = q.limit(opts.limit);
   if (opts?.offset !== undefined) q = q.offset(opts.offset);
@@ -346,7 +346,7 @@ export async function find${baseName}ById(db: Db, ${pkField}: ${pkType}): Promis
   return row ? ${parseSym}(row) : null;
 }
 
-export async function list${pluralize(baseName)}(db: Db, opts?: { limit?: number; offset?: number }): Promise<${baseTypeSym}[]> {
+export async function ${listFnName(base)}(db: Db, opts?: { limit?: number; offset?: number }): Promise<${baseTypeSym}[]> {
   let q = db.select().from(${tableSym}).$dynamic();
   if (opts?.limit !== undefined) q = q.limit(opts.limit);
   if (opts?.offset !== undefined) q = q.offset(opts.offset);
@@ -377,7 +377,7 @@ export async function list${pluralize(baseName)}(db: Db, opts?: { limit?: number
     const subPartialSym = hasInsertRefinements(sub) ? imp(`${sub.name}InsertBaseSchema@${subFileSpec}`) : subInsertSym;
 
     subtypeSections.push(code`
-export async function list${pluralize(sub.name)}(db: Db, opts?: { limit?: number; offset?: number }): Promise<${subTypeSym}[]> {
+export async function ${listFnName(sub)}(db: Db, opts?: { limit?: number; offset?: number }): Promise<${subTypeSym}[]> {
   let q = db.select().from(${tableSym}).where(${eqSym}(${tableSym}.${discField}, ${valueLit})).$dynamic();
   if (opts?.limit !== undefined) q = q.limit(opts.limit);
   if (opts?.offset !== undefined) q = q.offset(opts.offset);

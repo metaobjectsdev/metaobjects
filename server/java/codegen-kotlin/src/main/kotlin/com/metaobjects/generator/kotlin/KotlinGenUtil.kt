@@ -601,6 +601,17 @@ public object KotlinGenUtil {
     fun isDerivedField(field: MetaField<*>): Boolean = field.isDerived
 
     /**
+     * The fields [obj] reads from its own relation. A derived field on an entity that has no
+     * read view (not [MetaObject.isWriteThrough]) has no column anywhere: its table never stores
+     * it, so it is left out of every column read and write. An entity's primary source is always
+     * writable (the loader refuses a read-only primary), so an entity that is not write-through
+     * reads a table.
+     */
+    fun columnFields(obj: MetaObject): List<MetaField<*>> = obj.metaFields.filterNot {
+        isDerivedField(it) && obj.subType == MetaObject.SUBTYPE_ENTITY && !obj.isWriteThrough
+    }
+
+    /**
      * FR-037 R1 — a field's EFFECTIVE `@mutability` mode: who may write it, and when.
      * Absent => `readWrite`. THE accessor every Kotlin consumer should use, so the
      * default lives in exactly one place. Delegates to the JVM loader's resolving

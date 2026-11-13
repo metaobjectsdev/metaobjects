@@ -10,6 +10,7 @@ import { isMetaObject } from "../../shared/node-guards.js";
 import { refTarget, resolveObjectRef } from "../../naming-refs.js";
 import { CHILD_REF_SEPARATOR, PACKAGE_SEPARATOR } from "../../shared/structural.js";
 import type { MetaObject } from "../object/meta-object.js";
+import { OBJECT_ATTR_DISCRIMINATOR } from "../object/object-constants.js";
 import type { MetaField } from "../field/meta-field.js";
 import {
   FIELD_ATTR_OBJECT_REF,
@@ -353,14 +354,16 @@ function isTimeGrain(grain: string | undefined): grain is TimeGrain {
 }
 
 /**
- * True when every hop of `hops`, walked from `from`, is a belongs-to hop over a required
- * foreign key: the hops the view joins INNER, so every row of the report has a match. This
- * is the join-type rule of the view lowering (codegen-ts `walkViaPath`, #209): the reference
- * is held by the entity the hop leaves, its first FK field is required, and every earlier hop
- * is INNER too. `@enforce: false` does not change it. A hop that does not resolve, an
- * ambiguous reference or a has-many hop is not INNER.
+ * True when every hop of `hops`, walked from `from`, is certain to match: a
+ * belongs-to hop (the reference is held by the entity the hop leaves) whose first FK field is
+ * required, whose reference is enforced (not `@enforce: false`, which can name a row that does
+ * not exist), onto a target that hides no rows (not a TPH subtype, whose join carries the
+ * discriminator). That is exactly when a LEFT OUTER join returns what INNER would, so the column
+ * is never null-extended, whichever join type the view lowering picks; this is read from the
+ * model, never from the join type. A hop that does not resolve, an ambiguous reference or a
+ * has-many hop is not certain.
  */
-function viaJoinsInner(hops: readonly string[], from: MetaObject, root: MetaRoot): boolean {
+function viaAlwaysMatches(hops: readonly string[], from: MetaObject, root: MetaRoot): boolean {
   let current = from;
   for (const hopName of hops) {
     const resolved = resolveViaHop(current, hopName);
@@ -378,19 +381,37 @@ function viaJoinsInner(hops: readonly string[], from: MetaObject, root: MetaRoot
         current, hopName, target, typeof sourceRefField === "string" ? sourceRefField : undefined,
       );
     }
-    if (reference === undefined) return false;
+    if (reference === undefined || !reference.enforce) return false;
     const fkName = reference.fields[0];
     const fk = fkName === undefined ? undefined : current.findField(fkName);
     if (fk === undefined || !fk.isRequired) return false;
+    if (hidesRows(target)) return false;
     current = target;
   }
   return true;
 }
 
 /**
+ * True when a join onto `obj` carries a row scope of its own: a TPH subtype, or an abstract level
+ * beneath a TPH base (both scoped by the discriminator), whose FK may name a sibling's row. The
+ * model has no soft-delete or query-filter vocabulary, so this is the only row-hiding scope.
+ */
+function hidesRows(obj: MetaObject): boolean {
+  // ADR-0039: own — the discriminator is declared on the level that owns it.
+  if (obj.ownAttr(OBJECT_ATTR_DISCRIMINATOR) !== undefined) return false;
+  const seen = new Set<MetaData>([obj]);
+  for (let s = obj.superData; s !== undefined && !seen.has(s); s = s.superData) {
+    seen.add(s);
+    // ADR-0039: own — the TPH base is the ancestor that declares @discriminator.
+    if (s.ownAttr(OBJECT_ATTR_DISCRIMINATOR) !== undefined) return true;
+  }
+  return false;
+}
+
+/**
  * Table C (`required` of a dimension). Without `@spine`: only a dimension over an `@of` field
  * that is effectively required (`@required`, or a `validator.required` child), and, when it has a `@via`, only when every hop is a
- * required belongs-to reference, the hops the view joins INNER ({@link viaJoinsInner}). With `@spine`: only a dimension
+ * required, enforced belongs-to reference onto a target that hides no rows ({@link viaAlwaysMatches}). With `@spine`: only a dimension
  * whose `@via` hops equal the spine's (a column of the spine entity itself, whose rows are
  * the report's rows) over an `@of` field that is `@required` or a primary-key column of the
  * entity `@of` names. A dimension beyond the spine is reached by a LEFT OUTER join.
@@ -410,7 +431,7 @@ function dimensionRequired(
     if (!of.isRequired) return false;
     const hops = reportingViaHops(via, reportingMemberOwner(dim, from), from, root);
     if (hops === undefined) throw unresolved(reportName, `dimension '${dim.name}' @via '${via}'`);
-    return viaJoinsInner(hops, from, root);
+    return viaAlwaysMatches(hops, from, root);
   }
   if (via === undefined) return false; // a column of @from: null in a spine row with no facts
   const hops = reportingViaHops(via, reportingMemberOwner(dim, from), from, root);

@@ -1,0 +1,121 @@
+{
+  "metadata.root": {
+    "package": "acme::plans",
+    "children": [
+      {
+        "object.value": {
+          "name": "Address",
+          "children": [
+            {
+              "field.string": {
+                "name": "city"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "ReferenceIds",
+          "children": [
+            {
+              "field.string": {
+                "name": "externalReferenceId"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Plan",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "plans"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.object": {
+                "name": "address",
+                "@objectRef": "acme::plans::Address",
+                "@storage": "flattened"
+              }
+            },
+            {
+              "field.object": {
+                "name": "referenceIds",
+                "@flattenedColumnPrefix": "",
+                "@objectRef": "acme::plans::ReferenceIds",
+                "@storage": "flattened"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "PlanExtract",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_plan_extract"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id",
+                "extends": "acme::plans::Plan.id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "city",
+                "children": [
+                  {
+                    "origin.passthrough": {
+                      "@from": "acme::plans::Plan.address.city"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.string": {
+                "name": "externalReferenceId",
+                "children": [
+                  {
+                    "origin.passthrough": {
+                      "@from": "acme::plans::Plan.referenceIds.externalReferenceId"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "extends": "acme::plans::Plan.id"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
+

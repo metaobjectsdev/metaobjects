@@ -386,9 +386,9 @@ public final class ReportShape {
      * True when every hop of {@code hops}, walked from {@code from}, is a belongs-to hop over a
      * required foreign key: the hops the view joins INNER, so every row of the report has a
      * match. This is the join-type rule of the view lowering (TypeScript {@code walkViaPath},
-     * #209): the reference is held by the entity the hop leaves, its first FK field is required,
-     * and every earlier hop is INNER too. {@code @enforce: false} does not change it. A hop that
-     * does not resolve, an ambiguous reference or a has-many hop is not INNER.
+     * #209): the reference is held by the entity the hop leaves, is enforced, its first FK field
+     * is required, its target hides no rows ({@link #hidesRows}), and every earlier hop matches
+     * too. A hop that does not resolve, an ambiguous reference or a has-many hop does not.
      */
     private static boolean viaJoinsInner(List<String> hops, MetaObject from, MetaRoot root) {
         MetaObject current = from;
@@ -418,12 +418,31 @@ public final class ReportShape {
                     ? refNode
                     : RelationshipReferences.resolveRelationshipReference(
                             current, rel.getShortName(), target, rel.getSourceRefField());
-            if (reference == null || reference.getFields().isEmpty()) return false;
+            if (reference == null || !reference.isEnforced() || reference.getFields().isEmpty()) return false;
             MetaField<?> fk = current.findMetaField(reference.getFields().get(0)).orElse(null);
             if (fk == null || !isRequiredField(fk)) return false;
+            if (hidesRows(target)) return false;
             current = target;
         }
         return true;
+    }
+
+    /**
+     * True when a join onto {@code obj} carries a row scope of its own: a TPH subtype, or an
+     * abstract level beneath a TPH base (both scoped by the discriminator), whose FK may name a
+     * sibling's row. The model has no soft-delete or query-filter vocabulary, so this is the only
+     * row-hiding scope.
+     */
+    private static boolean hidesRows(MetaObject obj) {
+        // ADR-0039: own — the discriminator is declared on the level that owns it.
+        if (obj.hasMetaAttr(MetaObject.ATTR_DISCRIMINATOR, false)) return false;
+        java.util.Set<MetaData> seen = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+        seen.add(obj);
+        for (MetaData s = obj.getSuperData(); s != null && seen.add(s); s = s.getSuperData()) {
+            // ADR-0039: own — the TPH base is the ancestor that declares @discriminator.
+            if (s.hasMetaAttr(MetaObject.ATTR_DISCRIMINATOR, false)) return true;
+        }
+        return false;
     }
 
     /** Effective required-ness, resolving (ADR-0039): the {@code @required} attr OR a validator.required child. */
@@ -436,7 +455,7 @@ public final class ReportShape {
      * Table C ({@code required} of a dimension). Without {@code @spine}: only a dimension over an
      * {@code @of} field whose effective {@code @required} is true and, when it has a {@code @via},
      * only when every hop is a required belongs-to reference, the hops the view joins INNER
-     * ({@link #viaJoinsInner}). With
+     * onto targets that hide no rows ({@link #viaJoinsInner}). With
      * {@code @spine}: only a dimension whose {@code @via} hops equal the spine's (a column of
      * the spine entity itself, whose rows are the report's rows) over an {@code @of} field that
      * is {@code @required} or a primary-key column of the entity {@code @of} names. A dimension

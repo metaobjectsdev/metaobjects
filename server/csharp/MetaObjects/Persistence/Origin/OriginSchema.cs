@@ -74,6 +74,13 @@ public static class OriginSchema
             Required: false,
             IsArray: true,
             Description: "Ordering keys as 'field[:asc|desc]' over the related entity's fields; nulls sort last. On @agg:collect sets element order (non-distinct only)."),
+
+        // Origin @segment.
+        new AttrSchema(
+            Name: OriginConstants.ORIGIN_ATTR_SEGMENT,
+            ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
+            Required: false,
+            Description: "Optional name of a segment.filter declared on the related entity; its predicate scopes the related rows, ANDed with @filter."),
     ];
 
     // #195 — computed: a row-level value via a structured @expr tree (attr.expression).
@@ -113,6 +120,13 @@ public static class OriginSchema
             ValueType: AttrConstants.ATTR_SUBTYPE_FILTER,
             Required: false,
             Description: "Optional structured predicate scoping which related rows are eligible for selection."),
+
+        // Origin @segment.
+        new AttrSchema(
+            Name: OriginConstants.ORIGIN_ATTR_SEGMENT,
+            ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
+            Required: false,
+            Description: "Optional name of a segment.filter declared on the related entity; its predicate scopes the related rows, ANDed with @filter."),
     ];
 
     /// <summary>

@@ -791,7 +791,7 @@ def test_a_via_dimension_is_required_when_every_hop_is_a_required_belongs_to() -
     req = _via_required_of(root, "Plain")
     assert req["realmName"] is True  # two required hops over a required field
     assert req["sessionRealmId"] is True  # one required hop
-    assert req["looseRealmName"] is True  # @enforce: false does not change the join type
+    assert req["looseRealmName"] is False  # an @enforce: false hop can name a missing row
     assert req["realmMotto"] is False  # the target field is optional
     assert req["maybeRealmName"] is False  # a hop over a nullable foreign key is a LEFT join
 
@@ -932,3 +932,18 @@ def test_a_derived_measure_is_a_nullable_decimal() -> None:
         "cost decimal False -",
         "budgetBurn decimal False -",
     ]
+
+
+# A joined dimension's required comes from the model, never from the join type the view lowering
+# picks: a required, enforced belongs-to path onto a target that hides no rows. The shared table is the
+# fixture's expected-report-required.json, which every port reads.
+def test_a_dimensions_required_is_the_shared_tables() -> None:
+    fixture = CORPUS.parent / "conformance" / "report-dimension-required-by-model"
+    doc = json.loads((fixture / "expected-report-required.json").read_text())
+    result = load_directory(fixture / "input")
+    assert not result.errors, "\n".join(e.message for e in result.errors)
+    report = next(
+        c for c in result.root.children() if c.type == TYPE_OBJECT and c.resolution_key() == doc["report"]
+    )
+    shape = report_shape(cast(MetaObject, report), result.root)
+    assert {f.name: f.required for f in shape.fields} == doc["required"]

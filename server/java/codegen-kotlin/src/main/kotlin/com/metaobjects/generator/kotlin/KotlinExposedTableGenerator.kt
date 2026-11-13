@@ -252,7 +252,12 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             val fkColumns = if (isViewKind(sourceRdb)) emptyList() else fkMap[entity.name].orEmpty()
             val refDecorations =
                 if (isViewKind(sourceRdb)) emptyMap() else refDecorationMap[entity.name].orEmpty()
-            val usedInstantTzHelper = emit(entity, sourceRdb, outRoot, loader, fkColumns, refDecorations)
+            // An entity's primary source is always writable (the loader refuses a read-only
+            // primary), so an entity reaching here emits a table, which stores no derived field.
+            val usedInstantTzHelper = emit(
+                entity, sourceRdb, outRoot, loader, fkColumns, refDecorations,
+                excludeDerivedFields = entity.subType == MetaObject.SUBTYPE_ENTITY,
+            )
             if (usedInstantTzHelper) {
                 packagesNeedingInstantTzHelper += PackageMapping.splitFqn(entity.name).first
             }
@@ -774,9 +779,8 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         // write `<Short>Table` and the read `<Short>View` — so the caller passes an explicit
         // object name (default: `tableObjectName(shortName)`, byte-identical for a vanilla entity).
         objectNameOverride: String? = null,
-        // #214: on the write table, DERIVED fields (`origin.*` children) are excluded — they are
-        // not stored on the writable table, only computed by the read view. Vanilla entities carry
-        // no derived fields, so the default `false` keeps their output byte-identical.
+        // #214: on an entity's table, DERIVED fields (`origin.*` children) are excluded — they are
+        // not stored on the writable table, only computed by a read view (when there is one).
         excludeDerivedFields: Boolean = false,
     ): Boolean {
         val (pkg, shortName) = PackageMapping.splitFqn(entity.name)
@@ -1085,7 +1089,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 if (field is ObjectField || field is MapField) continue
                 // #214: on the WRITE table of a write-through entity, a DERIVED (origin.*) field
                 // has no physical column — it is computed by the read view — so it is excluded.
-                // No-op for a vanilla entity or the read view (excludeDerivedFields = false).
+                // No-op for a projection or the read view (excludeDerivedFields = false).
                 if (excludeDerivedFields && KotlinGenUtil.isDerivedField(field)) continue
                 val isPk = field.name in primaryFieldSet
                 // #195: an origin.aggregate @agg:any|all|collect view column is COALESCE-guaranteed

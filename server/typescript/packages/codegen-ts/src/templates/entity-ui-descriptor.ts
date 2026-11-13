@@ -50,8 +50,7 @@ import {
   VALIDATOR_ATTR_PATTERN,
   FIELD_ATTR_MAX_LENGTH,
   FIELD_ATTR_REQUIRED,
-  pluralize,
-  toSnakeCase,
+  collectionSegment,
 } from "@metaobjectsdev/metadata";
 import { inferViewKind, currencyMetaFor, labelFor, humanize, valueObjectFor, numericInputControl } from "./field-meta.js";
 import { flatSurfaceFields } from "../flattened.js";
@@ -123,7 +122,9 @@ export interface EntityUiDescriptor {
  * An object's OWN pluralized resource path — the one derivation of that spelling, and the
  * input {@link restPath} composes an address from. It is NOT `$path` on its own.
  *
- * ONE rule for entities and projections alike: snake_case the name, then pluralize.
+ * ONE rule for entities and projections alike ({@link collectionSegment}): the declared
+ * `@collectionName` or the configured `naming.collections` pluralizer, snake_cased; with neither,
+ * snake_case the name, then pluralize.
  * A projection used to be KEBAB-cased here while an entity was SNAKE-cased, composed in
  * the opposite ORDER, and that split was grandfathered rather than designed — the only
  * reason recorded for it was that the projection const had always emitted it. It is
@@ -139,8 +140,9 @@ export interface EntityUiDescriptor {
  * when you specifically want an object's own pluralized name, never to build an address.
  */
 export function resourcePath(entity: MetaData): string {
-  // One rule, every object kind and every port: snake_case, then pluralize.
-  return `/${pluralize(toSnakeCase(entity.name))}`;
+  // One rule, every object kind: its declared @collectionName or the configured pluralizer's
+  // output, snake_cased; with neither, snake_case then pluralize, as every port serves it.
+  return `/${collectionSegment(entity)}`;
 }
 
 /**

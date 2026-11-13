@@ -281,7 +281,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         // create-only column, see KNOWN_GAPS).
         // When this is EMPTY (a PK + only map/open-bag columns) the controller emits no ObjectMapper
         // ctor param / TypeReference import (they'd be unused → allWarningsAsErrors).
-        val patchSettableFields = entity.metaFields.filter {
+        val patchSettableFields = KotlinGenUtil.columnFields(entity).filter {
             // A dict-of-VO map (field.map @objectRef) IS settable, like a jsonb value-object column;
             // a scalar-valued map stays out (unchanged).
             (it !is MapField || isVoMapColumn(it)) && it.name != pkFieldName &&
@@ -318,7 +318,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         // onUpdate on EVERY write (even an empty body) and never rewrites onCreate. An @autoSet
         // field is a real write-table column (never derived), so only the PK / write-through-derived
         // guards apply.
-        val insertAutoSetFields = entity.metaFields.filter {
+        val insertAutoSetFields = KotlinGenUtil.columnFields(entity).filter {
             KotlinGenUtil.isAutoSetField(it) && it.name != pkFieldName &&
                 !(writeThrough && KotlinGenUtil.isDerivedField(it))
         }
@@ -336,7 +336,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         // surface on the Exposed Table; @storage controls a separate column shape) and the
         // `field.string @dbColumnType=jsonb` open bag — a JSONB value is not a scalar sort
         // target (its in-process type is a kotlinx JsonElement, not a comparable scalar).
-        val sortFields = entity.metaFields
+        val sortFields = KotlinGenUtil.columnFields(entity)
             .filterNot { isNonScalarSurface(it) }
             .map { it.name }
 
@@ -349,7 +349,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         // (so the FilterAllowlist omits it) AND its column element type is a kotlinx
         // JsonElement — emitting a filter-dispatch arm (`p.value as JsonElement`) would
         // reference an un-imported type and produce a controller that does not compile.
-        val scalarFields: List<ScalarFieldSpec> = entity.metaFields
+        val scalarFields: List<ScalarFieldSpec> = KotlinGenUtil.columnFields(entity)
             .filterNot { isNonScalarSurface(it) }
             .map { ScalarFieldSpec(it.name, it.subType, columnElementType(it), intBackedEnumType(it, entity)) }
 
@@ -520,7 +520,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             // column, so a DB-defaulted uuid key read back as "id is not in record set" on every
             // driver that will not return it. Minting app-side is what the TS runtime does too.
             if (uuidGeneratedPk(entity, pkFieldName)) append("            it[${pkFieldName}] = java.util.UUID.randomUUID()\n")
-            for (field in entity.metaFields) {
+            for (field in KotlinGenUtil.columnFields(entity)) {
                 // Program D: a field.object value-object jsonb column IS written on create — the
                 // DTO property is the typed VO (record / List<VO>) and the Exposed Column<VO> codec
                 // encodes it to jsonb. A dict-of-VO MapField is written the same way (Map<String, VO>); a
@@ -765,9 +765,9 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         }
 
         // Union scalar fields (base own + subtype-only), in the data class / table order.
-        val scalarFields = (base.metaFields.filterNot { it is ObjectField || it is MapField } +
+        val scalarFields = (KotlinGenUtil.columnFields(base).filterNot { it is ObjectField || it is MapField } +
             KotlinTphPlan.collectSubtypeFields(base, plan).filterNot { it is ObjectField || it is MapField })
-        val sortFields = base.metaFields
+        val sortFields = KotlinGenUtil.columnFields(base)
             .filterNot { isNonScalarSurface(it) }
             .map { it.name }
         val baseFieldNames = base.metaFields.map { it.name }.toSet()
@@ -786,7 +786,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         // from the per-subtype create body. Same computation as the vanilla emit() (lines ~195-207); the
         // columns live on the BASE (shared by every subtype row in the single table) — a TPH subtype
         // never declares its own @autoSet column.
-        val insertAutoSetFields = base.metaFields.filter {
+        val insertAutoSetFields = KotlinGenUtil.columnFields(base).filter {
             KotlinGenUtil.isAutoSetField(it) && it.name != pkFieldName
         }
         val onUpdateAutoSetFields = insertAutoSetFields.filter {
@@ -2336,7 +2336,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         // DERIVED columns — so a derived scalar field (a StringField / etc.) maps here too.
         append("/** GENERATED — map an Exposed ResultRow to the ${shortName} data class. */\n")
         append("private fun rowTo${shortName}(row: ResultRow): ${shortName} = ${shortName}(\n")
-        for (field in entity.metaFields) {
+        for (field in KotlinGenUtil.columnFields(entity)) {
             // A scalar-valued MapField (staged out) and a flattened object field (materialised as
             // per-subfield columns, no single `Table.<field>`) are skipped — the data class defaults them.
             if ((field is MapField && !isVoMapColumn(field)) || (field is ObjectField && !isJsonbObjectColumn(field))) continue

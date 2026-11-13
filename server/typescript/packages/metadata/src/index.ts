@@ -166,11 +166,14 @@ export type { IdentityPassthroughResolution } from "./core/identity/validate-ide
 // Relationship
 export { MetaRelationship } from "./core/relationship/meta-relationship.js";
 // Cross-entity reference lookup
+export { resolveFlattenedMember, resolveFieldPathColumn, type FlattenedMember } from "./core/field/flattened-member.js";
 export {
   findReferenceBetween, findReferencesBetween, findReverseReferenceHops, reverseHopName,
   type ReverseReferenceHop,
 } from "./core/relationship/find-reference.js";
 export type { ReferenceLookup } from "./core/relationship/find-reference.js";
+export { resolveFilterPath, type FilterPath } from "./core/relationship/filter-path.js";
+export { effectiveProjectionFilter } from "./core/object/effective-projection-filter.js";
 export {
   referenceCandidatesFor,
   referencePairingKeys,
@@ -386,6 +389,7 @@ export {
   resetNamingStrategiesForTesting,
   registerPluralizer, registeredPluralizers, isRegisteredPluralizer, pluralizer,
   BUILTIN_PLURALIZER_NAMES, DEFAULT_PLURALIZER, collectionNameOf, declaredCollectionName,
+  collectionSegment, collectionSegmentOf, snakeCollectionName,
   TABLE_NAMING_RULES, DEFAULT_PHYSICAL_NAMING, physicalNamingOf, applyTableNamingRule,
   PHYSICAL_NAMING_MIGRATION_GUIDE, PHYSICAL_NAMING_MIGRATION_GUIDE_PATH, physicalNamingRemovedMessage,
   resolveTableName, resolveColumnName, resolveFlattenedColumnPrefix, resolveFlattenedColumnName,

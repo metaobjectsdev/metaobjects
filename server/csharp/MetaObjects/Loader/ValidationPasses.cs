@@ -835,6 +835,25 @@ public static partial class ValidationPasses
                                     ErrorCode.ERR_INVALID_ORIGIN, Envelope: src));
                             continue;
                         }
+                        // A literal compared with a field must be able to equal it: of its kind, and for
+                        // an enum one of its @values (the rule a validator's @condition follows).
+                        // Resolved as the inference resolved the ref: a projection field first, else a base field.
+                        var literalProblem = LiteralComparisonProblem(expr, name =>
+                        {
+                            if (!ReferenceEquals(obj, computedBase) && name != field.Name
+                                && obj.Children().FirstOrDefault(f => f.Type == TYPE_FIELD && f.Name == name) is MetaField own)
+                            {
+                                return ownOriginOf(name)?.SubType == ORIGIN_SUBTYPE_AGGREGATE ? null : own;
+                            }
+                            return computedBase!.Children().FirstOrDefault(f => f.Type == TYPE_FIELD && f.Name == name) as MetaField;
+                        });
+                        if (literalProblem is not null)
+                        {
+                            errors.Add(new MetaError(
+                                $"origin.computed on {obj.Name}.{field.Name}: @expr {literalProblem}",
+                                ErrorCode.ERR_INVALID_ORIGIN, Envelope: src));
+                            continue;
+                        }
                         if (inferred.Type is not null && inferred.Type != field.SubType)
                             errors.Add(new MetaError(
                                 $"origin.computed on {obj.Name}.{field.Name}: @expr infers field.{inferred.Type} but the field is declared field.{field.SubType} — a computed column's type is derived from its expression and must match (no @convert escape).",
@@ -1121,7 +1140,8 @@ public static partial class ValidationPasses
             return null;
         }
 
-        var sourceField = FindField(sourceObj, targetFieldName);
+        // A member of a flattened value object (`Plan.address.city`) is a column of the owning table.
+        var sourceField = FindField(sourceObj, targetFieldName) ?? FlattenedMembers.Resolve(sourceObj, targetFieldName)?.Member;
         if (sourceField is null)
         {
             // FR5d — entity resolved, field on it did not. target = full ref.
@@ -1162,7 +1182,7 @@ public static partial class ValidationPasses
     /// entity they terminate at. Returned as a pair (rather than re-walking for the terminal)
     /// because a second walk means a second copy of the ADR-0042 package-resolution rule —
     /// mirrors the TS <c>WalkedViaPath</c>.
-    private readonly record struct WalkedViaPath(List<MetaData> Hops, MetaData Terminal, IReadOnlySet<MetaData> Reverse);
+    private readonly record struct WalkedViaPath(List<MetaData> Hops, MetaData Terminal, IReadOnlyDictionary<MetaData, string> Reverse);
 
     private static WalkedViaPath? ValidateViaPath(
         string viaAttr,
@@ -1209,7 +1229,7 @@ public static partial class ValidationPasses
         // entity name; each successful relationship hop appends a segment.
         var validSegments = new List<string> { entityName };
         var hops = new List<MetaData>();
-        var reverse = new HashSet<MetaData>(ReferenceEqualityComparer.Instance);
+        var reverse = new Dictionary<MetaData, string>(ReferenceEqualityComparer.Instance);
 
         foreach (var relName in relSegments)
         {
@@ -1228,7 +1248,7 @@ public static partial class ValidationPasses
                 {
                     validSegments.Add(relName);
                     hops.Add(reversed[0].Reference);
-                    reverse.Add(reversed[0].Reference);
+                    reverse[reversed[0].Reference] = relName;
                     currentObj = reversed[0].Holder;
                     continue;
                 }
@@ -1299,8 +1319,8 @@ public static partial class ValidationPasses
 
     /// A hop's effective @cardinality, or null when not declared. A reference hop
     /// (a forward FK) is inherently to-one — a child names the parent it points at.
-    private static string? HopCardinality(MetaData rel, IReadOnlySet<MetaData>? reverse = null)
-        => reverse is not null && reverse.Contains(rel)
+    private static string? HopCardinality(MetaData rel, IReadOnlyDictionary<MetaData, string>? reverse = null)
+        => reverse is not null && reverse.ContainsKey(rel)
             ? CARDINALITY_MANY // A reference walked backwards reaches every row that references the walked-from one
             : IsReferenceHop(rel)
                 ? CARDINALITY_ONE
@@ -1363,6 +1383,10 @@ public static partial class ValidationPasses
             }
         }
         if (targets.Count == 1) return targets.First();
+        // A projection that extends another projection, and anchors nothing of its own, has
+        // the base entity its super has.
+        if (targets.Count == 0 && obj.SuperData is { Type: TYPE_OBJECT, SubType: OBJECT_SUBTYPE_PROJECTION } superProjection)
+            return DeriveBaseEntity(superProjection, root, fieldName, originSource, errors);
         if (targets.Count > 1)
         {
             string names = string.Join(", ", targets.Select(t => $"\"{t.Name}\""));
@@ -1431,15 +1455,15 @@ public static partial class ValidationPasses
     /// EVERY hop. A hop is to-many only when it DECLARES @cardinality "many".
     private static void CheckPassthroughCardinality(
         IReadOnlyList<MetaData> hops, MetaData obj, string fieldName, ErrorSource originSource, List<MetaError> errors,
-        IReadOnlySet<MetaData>? reverse = null)
+        IReadOnlyDictionary<MetaData, string>? reverse = null)
     {
         foreach (var rel in hops)
         {
             if (HopCardinality(rel, reverse) == CARDINALITY_MANY)
             {
                 errors.Add(new MetaError(
-                    $"origin.passthrough on {obj.Name}.{fieldName}: @via hop \"{rel.Name}\" is to-many " +
-                    (reverse?.Contains(rel) == true
+                    $"origin.passthrough on {obj.Name}.{fieldName}: @via hop \"{(reverse is not null && reverse.TryGetValue(rel, out var hop) ? hop : rel.Name)}\" is to-many " +
+                    (reverse?.ContainsKey(rel) == true
                         ? $"(reverse hop over identity.reference \"{rel.Name}\")"
                         : $"(@cardinality \"{CARDINALITY_MANY}\")") +
                     " — a row-multiplying passthrough — you meant aggregate (ADR-0029).",
@@ -1455,7 +1479,7 @@ public static partial class ValidationPasses
     /// (every hop declares @cardinality "one").
     private static void CheckAggregateCardinality(
         IReadOnlyList<MetaData> hops, MetaData obj, string fieldName, ErrorSource originSource, List<MetaError> errors,
-        IReadOnlySet<MetaData>? reverse = null)
+        IReadOnlyDictionary<MetaData, string>? reverse = null)
     {
         if (hops.Count == 0) return;
         bool provablyToOne = hops.All(rel => HopCardinality(rel, reverse) == CARDINALITY_ONE);
@@ -1637,6 +1661,141 @@ public static partial class ValidationPasses
         return false;
     }
 
+
+    // =========================================================================
+    // The entity fields projections REACH without outputting them (a
+    // @filter key naming a base field or a to-one path, a passthrough @from). Ported from
+    // validation-passes.ts projectionReachedEntityFields.
+    // =========================================================================
+
+    private static HashSet<MetaData> ProjectionReachedEntityFields(MetaData root)
+    {
+        var reached = new HashSet<MetaData>(ReferenceEqualityComparer.Instance);
+        foreach (var obj in root.OwnChildren().Where(c => c.Type == TYPE_OBJECT && c.SubType == OBJECT_SUBTYPE_PROJECTION))
+        {
+            var silent = new List<MetaError>();
+            var baseEntity = DeriveBaseEntity(obj, root, "@filter", obj.Source, silent);
+            if (baseEntity is MetaObject baseObject && !ReferenceEquals(baseEntity, obj)
+                // The effective filter — an extender reaches what its supers' filters name.
+                && ProjectionFilters.Effective(obj) is IReadOnlyDictionary<string, object?> filter)
+            {
+                foreach (var key in FilterKeys(filter))
+                {
+                    var path = FilterPaths.Resolve(baseObject, key, out var why);
+                    if (path is not null) reached.Add(path.Field);
+                    else if (why is null && baseObject.Children().FirstOrDefault(c => c.Type == TYPE_FIELD && c.Name == key) is { } f)
+                        reached.Add(f);
+                }
+            }
+            foreach (var field in obj.Children().Where(c => c.Type == TYPE_FIELD))
+                foreach (var origin in field.OwnChildren().Where(c => c.Type == TYPE_ORIGIN && c.SubType == ORIGIN_SUBTYPE_PASSTHROUGH))
+                    if (origin.OwnAttr(ORIGIN_PASSTHROUGH_ATTR_FROM) is string from
+                        && ValidateFromPath(from, root, obj, field.Name, silent, "origin.passthrough.@from", origin.Source) is { } target)
+                        reached.Add(target.Field);
+        }
+        return reached;
+    }
+
+    // =========================================================================
+    // Origin segments and correlated filters, on every origin.first / origin.aggregate:
+    // @segment names a segment of the related entity (ERR_INVALID_ORIGIN); an @filter operand
+    // { field: "<name>" } names a base-row field with a column-comparing op, and the null-safe
+    // ops take only such an operand (ERR_BAD_ATTR_FILTER). Ported from validation-passes.ts
+    // validateOriginSegmentsAndCorrelation.
+    // =========================================================================
+
+    private static readonly string[] CorrelatedFilterOps =
+        ["eq", "ne", "gt", "gte", "lt", "lte", FILTER_OP_IS_DISTINCT_FROM, FILTER_OP_IS_NOT_DISTINCT_FROM];
+
+    public static IReadOnlyList<MetaError> ValidateOriginSegmentsAndCorrelation(MetaData root)
+    {
+        var errors = new List<MetaError>();
+        foreach (var obj in root.OwnChildren().Where(c => c.Type == TYPE_OBJECT
+                     && (c.SubType == OBJECT_SUBTYPE_PROJECTION || c.SubType == OBJECT_SUBTYPE_ENTITY)))
+        {
+            foreach (var field in obj.OwnChildren().Where(c => c.Type == TYPE_FIELD))
+            {
+                foreach (var origin in field.OwnChildren().Where(c => c.Type == TYPE_ORIGIN
+                             && (c.SubType == ORIGIN_SUBTYPE_FIRST || c.SubType == ORIGIN_SUBTYPE_AGGREGATE)))
+                {
+                    var where = $"origin.{origin.SubType} on {obj.Name}.{field.Name}";
+                    if (origin.OwnAttr(ORIGIN_ATTR_SEGMENT) is string segment
+                        && OriginRelatedEntity(origin, obj, root) is { } related
+                        && !related.Children().Any(c => c.Type == TYPE_SEGMENT && c.Name == segment))
+                    {
+                        errors.Add(new MetaError(
+                            $"{where}: @segment \"{segment}\" is not a segment declared on \"{related.Name}\", the entity whose rows it scopes.",
+                            ErrorCode.ERR_INVALID_ORIGIN, Envelope: origin.Source));
+                    }
+                    if (origin.OwnAttr(ORIGIN_FIRST_ATTR_FILTER) is not IReadOnlyDictionary<string, object?> filter) continue;
+                    var silent = new List<MetaError>();
+                    if (DeriveBaseEntity(obj, root, field.Name, origin.Source, silent) is not { } baseEntity) continue;
+                    CheckCorrelatedOperands(filter, baseEntity, where, origin.Source, errors);
+                }
+            }
+        }
+        return errors.AsReadOnly();
+    }
+
+    private static MetaData? OriginRelatedEntity(MetaData origin, MetaData obj, MetaData root)
+    {
+        if (origin.OwnAttr(ORIGIN_FIRST_ATTR_OF) is string of && of.Length > 0)
+            return ValidateFromPath(of, root, obj, origin.Parent?.Name ?? "", [], "", origin.Source)?.Entity;
+        if (origin.OwnAttr(ORIGIN_AGGREGATE_ATTR_VIA) is not string via) return null;
+        var pkg = NamingRefs.EffectivePackage(obj);
+        var segments = via.Split('.');
+        var current = NamingRefs.ResolveObjectRef(root, segments[0], pkg);
+        foreach (var hop in segments.Skip(1))
+        {
+            if (current is null) return null;
+            var rel = current.Children().FirstOrDefault(c => (c.Type == TYPE_RELATIONSHIP || c.Type == TYPE_IDENTITY) && c.Name == hop);
+            current = rel is not null
+                ? NamingRefs.RefTarget(rel, rel.Type == TYPE_RELATIONSHIP ? RELATIONSHIP_ATTR_OBJECT_REF : IDENTITY_REFERENCE_ATTR_REFERENCES)
+                : current is MetaObject target && root is MetaRoot r
+                    ? ReverseReferenceHops.Find(target, hop, r.Objects()).FirstOrDefault()?.Holder
+                    : null;
+        }
+        return current;
+    }
+
+    private static void CheckCorrelatedOperands(
+        IReadOnlyDictionary<string, object?> filter, MetaData baseEntity, string where, ErrorSource source, List<MetaError> errors)
+    {
+        foreach (var (key, clause) in filter)
+        {
+            if (key == FILTER_COMPOSE_AND || key == FILTER_COMPOSE_OR)
+            {
+                if (clause is IReadOnlyList<object?> subs)
+                    foreach (var sub in subs)
+                        if (sub is IReadOnlyDictionary<string, object?> subFilter)
+                            CheckCorrelatedOperands(subFilter, baseEntity, where, source, errors);
+                continue;
+            }
+            if (clause is not IReadOnlyDictionary<string, object?> ops) continue;
+            foreach (var (op, value) in ops)
+            {
+                var nullSafe = op == FILTER_OP_IS_DISTINCT_FROM || op == FILTER_OP_IS_NOT_DISTINCT_FROM;
+                if (value is not IReadOnlyDictionary<string, object?> operand || !operand.ContainsKey(FILTER_OPERAND_FIELD))
+                {
+                    if (nullSafe)
+                        errors.Add(new MetaError(
+                            $"{where}: @filter on \"{key}\" uses \"{op}\", which compares with a base-row field: write {{ {op}: {{ {FILTER_OPERAND_FIELD}: \"<base field>\" }} }}.",
+                            ErrorCode.ERR_BAD_ATTR_FILTER, Envelope: source));
+                    continue;
+                }
+                var name = operand[FILTER_OPERAND_FIELD] as string;
+                if (!CorrelatedFilterOps.Contains(op))
+                    errors.Add(new MetaError(
+                        $"{where}: @filter on \"{key}\" compares with a base-row field using \"{op}\"; a correlated operand takes {string.Join(", ", CorrelatedFilterOps)}.",
+                        ErrorCode.ERR_BAD_ATTR_FILTER, Envelope: source));
+                else if (name is null || !baseEntity.Children().Any(c => c.Type == TYPE_FIELD && c.Name == name))
+                    errors.Add(new MetaError(
+                        $"{where}: @filter on \"{key}\" names base-row field \"{name}\", which \"{baseEntity.Name}\" does not declare.",
+                        ErrorCode.ERR_BAD_ATTR_FILTER, Envelope: source));
+            }
+        }
+    }
+
     // =========================================================================
     // FR-024 B6 — derived-field providability (spec §7 population doctrine).
     //   An object.entity field carrying any origin.* is derived (read-only): it
@@ -1648,6 +1807,7 @@ public static partial class ValidationPasses
     public static IReadOnlyList<MetaError> ValidateDerivedFieldProvidability(MetaData root)
     {
         var errors = new List<MetaError>();
+        var reached = ProjectionReachedEntityFields(root);
         foreach (var obj in root.OwnChildren()
                      .Where(c => c.Type == TYPE_OBJECT && c.SubType == OBJECT_SUBTYPE_ENTITY))
         {
@@ -1658,11 +1818,17 @@ public static partial class ValidationPasses
             if (hasReadCapableSource) continue;
             foreach (var field in obj.OwnChildren().Where(c => c.Type == TYPE_FIELD))
             {
-                if (!field.OwnChildren().Any(c => c.Type == TYPE_ORIGIN)) continue;
+                var origin = field.OwnChildren().FirstOrDefault(c => c.Type == TYPE_ORIGIN);
+                if (origin is null) continue;
+                // A derived field a projection reaches (its @filter or a passthrough
+                // @from) is lowered inline there, so it needs no read source. Only the inlinable origins.
+                if ((origin.SubType == ORIGIN_SUBTYPE_FIRST || origin.SubType == ORIGIN_SUBTYPE_COMPUTED) && reached.Contains(field))
+                    continue;
                 errors.Add(new MetaError(
                     $"derived field \"{obj.Name}.{field.Name}\" carries an origin.* but entity \"{obj.Name}\" declares no " +
                     "read-capable source — derived fields do not exist on the writable table. Declare a read-only source " +
-                    "(e.g. source.rdb @kind \"view\" @role \"replica\") to provide it, or move the field to an object.projection (FR-024 §7).",
+                    "(e.g. source.rdb @kind \"view\" @role \"replica\") to provide it, move the field to an object.projection (FR-024 §7), " +
+                    "or reach it from a projection's @filter or @from (an origin.first or origin.computed is then inlined there).",
                     ErrorCode.ERR_DERIVED_FIELD_NO_READ_SOURCE,
                     Envelope: field.Source));
             }
@@ -1860,8 +2026,9 @@ public static partial class ValidationPasses
     // hardening, NOT gated cross-port — intentionally omitted here (the
     // compose recursion skips non-array/non-object shapes silently).
     //
-    // Own-attrs / own-children only: the @filter is declared locally on the
-    // projection, and origin.* never inherits (ADR-0029 / ADR-0039).
+    // Effective, not own: the @filter is every level of the extends chain
+    // ANDed (ProjectionFilters.Effective), and the fields are the projection's resolved
+    // ones; each field's origin.* is read own (it never inherits, ADR-0029 / ADR-0039).
     //
     // Ported from typescript/packages/metadata/src/loader/validation-passes.ts
     // validateProjectionFilter + checkProjectionFilterRefs.
@@ -1874,21 +2041,23 @@ public static partial class ValidationPasses
         foreach (var obj in root.OwnChildren()
                      .Where(c => c.Type == TYPE_OBJECT && c.SubType == OBJECT_SUBTYPE_PROJECTION))
         {
-            // ADR-0039: own — the @filter is declared locally on this projection.
+            // The EFFECTIVE @filter — every level of an extends chain, supers first, ANDed —
+            // is what the view applies, so it is what is checked.
             // Non-object shapes are rejected by the attr-schema check (FilterAttr).
-            if (obj.OwnAttr(OBJECT_PROJECTION_ATTR_FILTER)
+            if (ProjectionFilters.Effective(obj)
                 is not IReadOnlyDictionary<string, object?> filter)
             {
                 continue;
             }
 
-            // Classify the projection's OWN fields (the declared set IS the exposure —
+            // Classify the projection's EFFECTIVE fields (the declared set IS the exposure —
             // FR-024 / ADR-0028): a field is aggregate-derived when it carries an OWN
-            // origin child whose subType is OTHER than passthrough/computed. origin.*
-            // never inherits (ADR-0029), so the origin read is own.
+            // origin child whose subType is OTHER than passthrough/computed. ADR-0039:
+            // resolving — a field inherited from a super projection is a column of this view
+            // and carries its own origin child, read own below.
             var declared = new HashSet<string>(StringComparer.Ordinal);
             var aggregateDerived = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var f in obj.OwnChildren().Where(c => c.Type == TYPE_FIELD))
+            foreach (var f in obj.Children().Where(c => c.Type == TYPE_FIELD))
             {
                 declared.Add(f.Name);
                 var origin = f.OwnChildren().FirstOrDefault(c => c.Type == TYPE_ORIGIN);
@@ -1900,10 +2069,66 @@ public static partial class ValidationPasses
                 }
             }
 
+            // A field of the BASE entity the view does not output is filterable too (a WHERE
+            // reads the base row); a projection field of the same name wins.
+            if (DeriveBaseEntity(obj, root, "@filter", obj.Source, []) is { } baseEntity && !ReferenceEquals(baseEntity, obj))
+            {
+                foreach (var f in baseEntity.Children().Where(c => c.Type == TYPE_FIELD))
+                {
+                    if (!declared.Add(f.Name)) continue;
+                    if (EntityFieldAggregates(f)) aggregateDerived.Add(f.Name);
+                }
+                // A key that is a PATH of to-one hops from the base,
+                // then a field of the entity reached (`caseId.status`). Not output; the view joins it.
+                if (baseEntity is MetaObject baseObject)
+                {
+                    foreach (var key in FilterKeys(filter))
+                    {
+                        if (declared.Contains(key)) continue;
+                        var path = FilterPaths.Resolve(baseObject, key, out var why);
+                        if (path is null && why is null) continue;
+                        declared.Add(key);
+                        if (path is null)
+                        {
+                            errors.Add(new MetaError(
+                                $"projection \"{obj.Name}\" @filter path \"{key}\" does not resolve: {why}.",
+                                ErrorCode.ERR_BAD_ATTR_FILTER, Envelope: obj.Source));
+                            continue;
+                        }
+                        if (EntityFieldAggregates(path.Field)) aggregateDerived.Add(key);
+                    }
+                }
+            }
+
             CheckProjectionFilterRefs(filter, declared, aggregateDerived, obj.Name, obj.Source, errors);
         }
 
         return errors.AsReadOnly();
+    }
+
+    /// <summary>
+    /// An entity field a projection @filter reaches (on the base, or through a path) cannot be filtered
+    /// when it is an aggregate (a WHERE runs before grouping); its column, an origin.computed or an
+    /// origin.first (a correlated scalar subquery) can (entity-derived). origin.* never inherits.
+    /// </summary>
+    private static bool EntityFieldAggregates(MetaData f) =>
+        f.OwnChildren().FirstOrDefault(c => c.Type == TYPE_ORIGIN) is { SubType: ORIGIN_SUBTYPE_AGGREGATE };
+
+    /// <summary>Every field key of a filter, through and/or.</summary>
+    private static IEnumerable<string> FilterKeys(IReadOnlyDictionary<string, object?> filter)
+    {
+        foreach (var (key, clause) in filter)
+        {
+            if (key == FILTER_COMPOSE_OR || key == FILTER_COMPOSE_AND)
+            {
+                if (clause is IReadOnlyList<object?> subs)
+                    foreach (var sub in subs)
+                        if (sub is IReadOnlyDictionary<string, object?> subFilter)
+                            foreach (var k in FilterKeys(subFilter)) yield return k;
+                continue;
+            }
+            yield return key;
+        }
     }
 
     private static void CheckProjectionFilterRefs(
@@ -1938,8 +2163,7 @@ public static partial class ValidationPasses
             {
                 errors.Add(new MetaError(
                     $"projection \"{projectionName}\" @filter references \"{key}\", which is not a declared " +
-                    "field of the projection. A view-level @filter may only reference the projection's own " +
-                    "declared fields.",
+                    "field of the projection or of its base entity. A view-level @filter may only reference those fields.",
                     ErrorCode.ERR_BAD_ATTR_FILTER,
                     Envelope: source));
                 continue;
@@ -2208,7 +2432,9 @@ public static partial class ValidationPasses
         VALIDATOR_SUBTYPE_PRESENT_IFF, VALIDATOR_SUBTYPE_AT_LEAST_ONE, VALIDATOR_SUBTYPE_EXACTLY_ONE,
     };
 
-    public static IReadOnlyList<MetaError> ValidateCrossFieldValidators(MetaData root)
+    /// <param name="strict">A strict load already refuses an atLeastOne @max as an unregistered attr
+    /// while parsing, so the check here runs only on the default load, keeping one error per node.</param>
+    public static IReadOnlyList<MetaError> ValidateCrossFieldValidators(MetaData root, bool strict = false)
     {
         var errors = new List<MetaError>();
         foreach (var obj in root.Children().OfType<MetaObject>())
@@ -2216,6 +2442,20 @@ public static partial class ValidationPasses
             var fieldNames = obj.Fields().Select(f => f.Name).ToHashSet(StringComparer.Ordinal);
             foreach (var v in obj.OwnChildren().Where(c => c.Type == TYPE_VALIDATOR && CrossFieldValidatorSubtypes.Contains(c.SubType)))
             {
+                // validator.atLeastOne takes no @max: "exactly one of these fields" is
+                // validator.exactlyOne. A strict load already refuses the unregistered attr; this
+                // refuses it under the default load too, where it would be kept and ignored.
+                // (A strict load has already reported it while parsing.)
+                // ADR-0039: own — checked on the validator that declares it.
+                if (!strict && v.SubType == VALIDATOR_SUBTYPE_AT_LEAST_ONE && v.OwnAttr(VALIDATOR_ATTR_MAX) is not null)
+                {
+                    errors.Add(new MetaError(
+                        $"validator.atLeastOne \"{obj.Name}.{v.Name}\" carries @max, which atLeastOne does not take. " +
+                        "For \"exactly one of these fields\", declare validator.exactlyOne instead; for \"at least one\", remove @max.",
+                        ErrorCode.ERR_UNKNOWN_ATTR,
+                        Envelope: v.Source));
+                    continue;
+                }
                 if (v.SubType == VALIDATOR_SUBTYPE_EXACTLY_ONE)
                 {
                     var fields = v.Attr(VALIDATOR_ATTR_FIELDS) switch
@@ -2315,66 +2555,77 @@ public static partial class ValidationPasses
         {
             return $"must be a boolean expression (a comparison, a null test, or and / or / not of them), not a field.{inferred.Type ?? "undefined"}.";
         }
-        string? problem = null;
-        void Visit(object? node)
+        foreach (var n in ExpressionGrammar.Nodes(condition))
         {
-            if (problem is not null || node is not IReadOnlyDictionary<string, object?> n) return;
-            if (n.TryGetValue("left", out var left) && left is not null && n.TryGetValue("right", out var right) && right is not null)
+            if (n.TryGetValue("left", out var left) && left is not null && n.TryGetValue("right", out var right) && right is not null
+                && new[] { left, right }.Any(side => side is IReadOnlyDictionary<string, object?> lit && lit.TryGetValue("value", out var v) && v is null))
             {
-                foreach (var (a, b) in new[] { (left, right), (right, left) })
+                return "compares with null, which is never true: use isNull or isNotNull.";
+            }
+        }
+        return LiteralComparisonProblem(condition, name => fields.TryGetValue(name, out var f) ? f : null);
+    }
+
+    /// <summary>
+    /// The first literal in <paramref name="expr"/> that cannot equal the field it is compared
+    /// with, or null. A literal is compared with a field by a comparison (either side) or as a
+    /// simple case's <c>when</c> against a <c>{field}</c> operand. The rule, the same in every port
+    /// and shared by a validator's @condition and an origin.computed @expr: the literal is of the
+    /// field's kind (a boolean for field.boolean, a number for a numeric field, a string otherwise),
+    /// one of its @values for field.enum, and an ISO-8601 duration for field.duration. A null
+    /// literal, and a literal facing anything but a field ref, are not checked here. Mirrors TS
+    /// literalComparisonProblem.
+    /// </summary>
+    internal static string? LiteralComparisonProblem(object? expr, Func<string, MetaField?> fieldOf)
+    {
+        string? Check(object? a, object? b)
+        {
+            if (a is not IReadOnlyDictionary<string, object?> lit || !lit.TryGetValue("value", out var value) || value is null) return null;
+            if (b is not IReadOnlyDictionary<string, object?> refNode
+                || !refNode.TryGetValue("field", out var refName) || refName is not string name
+                || fieldOf(name) is not { } field)
+            {
+                return null;
+            }
+            var kind = field.SubType == FIELD_SUBTYPE_BOOLEAN ? "boolean"
+                : ConditionNumberSubtypes.Contains(field.SubType) ? "number" : "string";
+            var actual = value switch
+            {
+                bool => "boolean",
+                long or int or double or decimal => "number",
+                string => "string",
+                _ => null,
+            };
+            if (actual != kind)
+                return $"compares \"{field.Name}\" (field.{field.SubType}) with {JsonStringify(value)}; it needs a {kind}.";
+            var members = field.SubType == FIELD_SUBTYPE_ENUM ? field.EffectiveEnumValues : null;
+            if (members is not null && !members.Contains(Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture), StringComparer.Ordinal))
+                return $"compares \"{field.Name}\" with {JsonStringify(value)}, which is not one of its @values ({string.Join(", ", members)}).";
+            if (field.SubType == FIELD_SUBTYPE_DURATION && !DurationLiteral.IsMatch((string)value))
+                return $"compares \"{field.Name}\" with {JsonStringify(value)}, which is not {DurationLiteralForm}.";
+            return null;
+        }
+        foreach (var n in ExpressionGrammar.Nodes(expr))
+        {
+            if (n.TryGetValue("left", out var left) && left is not null && n.TryGetValue("right", out var right) && right is not null
+                && (Check(left, right) ?? Check(right, left)) is { } problem)
+            {
+                return problem;
+            }
+            if (n.TryGetValue(ExpressionGrammar.EXPR_CASE_OPERAND, out var operand) && operand is not null
+                && n.TryGetValue(ExpressionGrammar.EXPR_CASE, out var arms) && arms is IEnumerable<object?> armList)
+            {
+                foreach (var arm in armList)
                 {
-                    if (a is not IReadOnlyDictionary<string, object?> lit || !lit.TryGetValue("value", out var value)) continue;
-                    if (value is null)
+                    if (arm is IReadOnlyDictionary<string, object?> a && a.TryGetValue(ExpressionGrammar.EXPR_CASE_WHEN, out var when)
+                        && Check(when, operand) is { } armProblem)
                     {
-                        problem = "compares with null, which is never true: use isNull or isNotNull.";
-                        return;
-                    }
-                    if (b is not IReadOnlyDictionary<string, object?> refNode
-                        || !refNode.TryGetValue("field", out var refName) || refName is not string name
-                        || !fields.TryGetValue(name, out var field))
-                    {
-                        continue;
-                    }
-                    var kind = field.SubType == FIELD_SUBTYPE_BOOLEAN ? "boolean"
-                        : ConditionNumberSubtypes.Contains(field.SubType) ? "number" : "string";
-                    var actual = value switch
-                    {
-                        bool => "boolean",
-                        long or int or double => "number",
-                        string => "string",
-                        _ => null,
-                    };
-                    if (actual != kind)
-                    {
-                        problem = $"compares \"{field.Name}\" (field.{field.SubType}) with {JsonStringify(value)}; it needs a {kind}.";
-                        return;
-                    }
-                    var members = field.SubType == FIELD_SUBTYPE_ENUM ? field.EffectiveEnumValues : null;
-                    if (members is not null && !members.Contains(Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture), StringComparer.Ordinal))
-                    {
-                        problem = $"compares \"{field.Name}\" with {JsonStringify(value)}, which is not one of its @values ({string.Join(", ", members)}).";
-                        return;
-                    }
-                    if (field.SubType == FIELD_SUBTYPE_DURATION && !DurationLiteral.IsMatch((string)value))
-                    {
-                        problem = $"compares \"{field.Name}\" with {JsonStringify(value)}, which is not {DurationLiteralForm}.";
-                        return;
+                        return armProblem;
                     }
                 }
             }
-            n.TryGetValue("left", out var l);
-            Visit(l);
-            n.TryGetValue("right", out var r);
-            Visit(r);
-            n.TryGetValue("arg", out var g);
-            Visit(g);
-            if (n.TryGetValue("args", out var args) && args is IEnumerable<object?> list)
-            {
-                foreach (var x in list) Visit(x);
-            }
         }
-        Visit(condition);
-        return problem;
+        return null;
     }
 
     // ---------------------------------------------------------------------------
@@ -2895,9 +3146,9 @@ public static partial class ValidationPasses
             // WHERE), so wrapping it is deferred cleverness (design doc D5) — reject.
             if (hasSqlHost && obj.SubType == OBJECT_SUBTYPE_PROJECTION)
             {
-                // ADR-0039: own — the @filter is declared locally on this projection
-                // (mirrors ValidateProjectionFilter).
-                var filter = obj.OwnAttr(OBJECT_PROJECTION_ATTR_FILTER);
+                // The effective @filter (mirrors ValidateProjectionFilter) — an inherited row
+                // scope cannot be applied to an author-owned body either, so it is refused.
+                var filter = ProjectionFilters.Effective(obj);
                 if (filter is not null)
                 {
                     errors.Add(new MetaError(

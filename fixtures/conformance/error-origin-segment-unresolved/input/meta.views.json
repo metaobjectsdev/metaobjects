@@ -1,0 +1,190 @@
+{
+  "metadata.root": {
+    "package": "acme::views",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Status",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "statuses"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "name"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Case",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "cases"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "statusId"
+              }
+            },
+            {
+              "field.int": {
+                "name": "priorType"
+              }
+            },
+            {
+              "field.int": {
+                "name": "cumulativeStatus"
+              }
+            },
+            {
+              "field.int": {
+                "name": "status"
+              }
+            },
+            {
+              "field.date": {
+                "name": "effectiveFrom"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "statusId",
+                "@fields": "statusId",
+                "@references": "acme::views::Status"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "CaseHistory",
+          "@collectionName": "CaseHistory",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "case_history"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "caseId",
+                "@required": true
+              }
+            },
+            {
+              "field.long": {
+                "name": "statusId"
+              }
+            },
+            {
+              "field.timestamp": {
+                "name": "createdDate"
+              }
+            },
+            {
+              "field.boolean": {
+                "name": "active"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "caseId",
+                "@fields": "caseId",
+                "@references": "acme::views::Case"
+              }
+            },
+            {
+              "segment.filter": {
+                "name": "live",
+                "@filter": {
+                  "active": true
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "NoSegment",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_nosegment"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id",
+                "extends": "acme::views::Case.id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "live",
+                "children": [
+                  {
+                    "origin.aggregate": {
+                      "@agg": "count",
+                      "@of": "acme::views::CaseHistory.id",
+                      "@via": "acme::views::Case.caseHistory",
+                      "@segment": "dead"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "extends": "acme::views::Case.id"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

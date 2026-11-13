@@ -50,6 +50,22 @@ public class ReportShapeTests
         return result.Root;
     }
 
+    // A joined dimension's required comes from the model, never from the join type the view
+    // lowering picks — a required, enforced belongs-to path onto a target that hides no rows. The shared
+    // table is the fixture's expected-report-required.json, which TypeScript reads too.
+    [Fact]
+    public void A_dimensions_required_is_the_shared_tables()
+    {
+        const string name = "report-dimension-required-by-model";
+        var root = LoadFixture(name);
+        using var doc = System.Text.Json.JsonDocument.Parse(
+            File.ReadAllText(Path.Combine(CorpusRoot.Path, name, "expected-report-required.json")));
+        var reportKey = doc.RootElement.GetProperty("report").GetString()!;
+        var expected = doc.RootElement.GetProperty("required").EnumerateObject().ToDictionary(p => p.Name, p => p.Value.GetBoolean());
+        var shape = ReportShapes.Of(root.Objects().Single(o => o.ResolutionKey() == reportKey), root);
+        Assert.Equal(expected, shape.Fields.ToDictionary(f => f.Name, f => f.Required));
+    }
+
     [Fact]
     public void Derived_shapes_byte_match_the_committed_artifact()
     {
@@ -649,9 +665,9 @@ public class ReportShapeTests
         var plain = RequiredOf(root, "Plain");
         Assert.True(plain["realmName"]);        // two required hops over a required field
         Assert.True(plain["sessionRealmId"]);   // one required hop
-        Assert.True(plain["looseRealmName"]);   // @enforce: false does not change the join type
+        Assert.False(plain["looseRealmName"]);  // an @enforce: false hop can name a missing row
         Assert.False(plain["realmMotto"]);      // the target field is optional
-        Assert.False(plain["maybeRealmName"]);  // a hop over a nullable foreign key is a LEFT join
+        Assert.False(plain["maybeRealmName"]);  // a hop over a nullable foreign key can have no match
 
         var spined = RequiredOf(root, "Spined");
         Assert.False(spined["realmName"]);      // under @spine every join beyond the spine is LEFT

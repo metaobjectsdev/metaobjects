@@ -263,13 +263,15 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         // view-computed value fails jackson-module-kotlin deserialization → HTTP 400). Its validation
         // annotations are suppressed too (no @field:NotNull to reject the omitted value). Mirrors the
         // Java port dropping @NotNull for derived-on-write-through. A projection is read-only
-        // (isWriteThrough=false), so its derived fields keep their origin-aware non-null read type.
-        val writeThrough = obj.isWriteThrough
+        // (not an entity), so its derived fields keep their origin-aware non-null read type. An
+        // entity with no read view never reads a derived field back at all, so it defaults too:
+        // its primary source is always writable (the loader refuses a read-only primary).
+        val entityHost = obj.subType == MetaObject.SUBTYPE_ENTITY
 
         val ctorBuilder = FunSpec.constructorBuilder()
         for (field in obj.metaFields) {
             val baseType = resolvePropertyType(field, obj, loader)
-            val derivedReadOnly = writeThrough && KotlinGenUtil.isDerivedField(field)
+            val derivedReadOnly = entityHost && KotlinGenUtil.isDerivedField(field)
             // #195: a field derived by origin.aggregate @agg:any|all|collect is COALESCE-guaranteed
             // non-null in the synthesized read-model view (any→false, all→true, collect→[]), so its
             // read type is non-null even when the field is NOT @required — matching the Exposed view

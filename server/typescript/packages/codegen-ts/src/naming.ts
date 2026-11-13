@@ -7,11 +7,13 @@
 import {
   applyColumnNamingStrategy,
   DEFAULT_COLUMN_NAMING_STRATEGY,
+  collectionNameOf,
   pluralize,
   pluralizeTableNameLegacy,
   toKebabCase,
   toSnakeCase,
   type ColumnNamingStrategy,
+  type MetaData,
 } from "@metaobjectsdev/metadata";
 
 export { pluralize, toSnakeCase } from "@metaobjectsdev/metadata";
@@ -125,9 +127,20 @@ export function findByIdFnName(entityName: string): string {
   return `find${entityName}ById`;
 }
 
-/** Generated list helper name: `list<Plural>` (PascalCase plural). */
-export function listFnName(entityName: string): string {
-  return `list${pluralize(entityName)}`;
+/** Generated list helper name: `list<Plural>` (PascalCase plural, {@link collectionPascal}). */
+export function listFnName(entity: string | MetaData): string {
+  return `list${collectionPascal(entity)}`;
+}
+
+/**
+ * The `<Plural>` of a generated symbol: an object's collection name (its own `@collectionName`,
+ * else the project's `naming.collections` pluralizer over its name), first letter upper-cased.
+ * Given only a bare name, with no model at hand, the standard pluralization of it. For an
+ * object that declares neither, the two agree.
+ */
+export function collectionPascal(entity: string | MetaData): string {
+  const plural = typeof entity === "string" ? pluralize(entity) : collectionNameOf(entity);
+  return plural.charAt(0).toUpperCase() + plural.slice(1);
 }
 
 /**
@@ -143,8 +156,9 @@ export function listFnName(entityName: string): string {
  * in exactly that case, never otherwise: `Post` → `Posts` (unaffected), `Stats` →
  * `StatsList`.
  */
-export function hookListNameSegment(entityName: string): string {
-  const plural = pluralize(entityName);
+export function hookListNameSegment(entity: string | MetaData): string {
+  const entityName = typeof entity === "string" ? entity : entity.name;
+  const plural = collectionPascal(entity);
   return plural === entityName ? `${entityName}List` : plural;
 }
 
@@ -212,13 +226,13 @@ export function reverseFinderFkSegment(fkFieldName: string): string {
 }
 
 /** Generated reverse single-value finder name: `find<EPlural>By<FkField>`. */
-export function reverseFinderFnName(sourceEntityName: string, fkFieldName: string): string {
-  return `find${pluralize(sourceEntityName)}By${reverseFinderFkSegment(fkFieldName)}`;
+export function reverseFinderFnName(sourceEntity: string | MetaData, fkFieldName: string): string {
+  return `find${collectionPascal(sourceEntity)}By${reverseFinderFkSegment(fkFieldName)}`;
 }
 
 /** Generated reverse batched finder name: `find<EPlural>By<FkField>In`. */
-export function reverseFinderInFnName(sourceEntityName: string, fkFieldName: string): string {
-  return `${reverseFinderFnName(sourceEntityName, fkFieldName)}In`;
+export function reverseFinderInFnName(sourceEntity: string | MetaData, fkFieldName: string): string {
+  return `${reverseFinderFnName(sourceEntity, fkFieldName)}In`;
 }
 
 /**

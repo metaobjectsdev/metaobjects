@@ -1,5 +1,5 @@
-// @collectionName is shared vocabulary: an object's collection name (the EF Core DbSet property).
-// It is in the shared registry marked implementedIn ["csharp"], so every port loads and
+// @collectionName is shared vocabulary: an object's collection name (the EF Core DbSet property, the REST segment).
+// It is in the shared registry marked implementedIn ["csharp", "typescript"], so every port loads and
 // type-checks it. It loads under the strict
 // loader on object.entity / projection / report.
 
@@ -46,7 +46,7 @@ public sealed class CollectionNameVocabularyTests
         Assert.Equal(RegistryManifest.ExclusionReason.Included, RegistryManifest.ClassifyPerTypeAttr("collectionName"));
         var registry = Provider.ComposeRegistry(CoreTypes.LibraryProviders);
         var attr = registry.Find("object", "entity")!.Attributes.Single(a => a.Name == "collectionName");
-        Assert.Equal(new[] { "csharp" }, attr.ImplementedIn);
+        Assert.Equal(new[] { "csharp", "typescript" }, attr.ImplementedIn);
     }
     [Fact]
     public void The_standard_pluralizer_matches_the_shared_naming_conformance_corpus()

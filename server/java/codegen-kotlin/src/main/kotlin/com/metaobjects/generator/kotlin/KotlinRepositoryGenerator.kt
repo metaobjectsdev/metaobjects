@@ -148,8 +148,8 @@ open class KotlinRepositoryGenerator : MultiFileDirectGeneratorBase<MetaObject>(
         // incl. derived; the WRITE set (insert / update / patch / @autoSet) EXCLUDES derived
         // fields — they have no column on the write table (computed by the view). Vanilla entity =
         // no derived fields, so the two sets are equal → byte-identical output.
-        val readScalarFields = entity.metaFields.filter { it !is ObjectField && it !is MapField }
-        val scalarFields = readScalarFields.filterNot { writeThrough && KotlinGenUtil.isDerivedField(it) }
+        val readScalarFields = KotlinGenUtil.columnFields(entity).filter { it !is ObjectField && it !is MapField }
+        val scalarFields = readScalarFields.filterNot { KotlinGenUtil.isDerivedField(it) }
         val hasUuidColumn = readScalarFields.any { columnElementType(it) == "UUID" }
         val uuidPk = primary?.isUuid == true
         val incrementPk = primary?.isIncrement == true

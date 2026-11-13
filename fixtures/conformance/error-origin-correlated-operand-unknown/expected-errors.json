@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_BAD_ATTR_FILTER",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.views.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[3]['object.projection'].children[2]['field.timestamp'].children[0]['origin.aggregate']"
+      }
+    }
+  ],
+  "warnings": []
+}

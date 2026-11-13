@@ -1,0 +1,328 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Member",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "members"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.boolean": {
+                "name": "hasActiveAgreement",
+                "children": [
+                  {
+                    "origin.first": {
+                      "@of": "acme::Agreement.agreementIsOnFile",
+                      "@orderBy": [
+                        "id:desc"
+                      ],
+                      "@segment": "agreementDecisive",
+                      "@via": "acme::Member.agreements"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Agreement",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "agreements"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "memberId",
+                "@required": true
+              }
+            },
+            {
+              "field.int": {
+                "name": "agreementTypeId"
+              }
+            },
+            {
+              "field.boolean": {
+                "name": "agreementIsOnFile"
+              }
+            },
+            {
+              "field.boolean": {
+                "name": "memberAgreement"
+              }
+            },
+            {
+              "field.date": {
+                "name": "dateReceived"
+              }
+            },
+            {
+              "field.date": {
+                "name": "effectiveEndDate"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "memberId",
+                "@fields": [
+                  "memberId"
+                ],
+                "@references": "acme::Member"
+              }
+            },
+            {
+              "segment.filter": {
+                "name": "agreementDecisive",
+                "@filter": {
+                  "agreementTypeId": {
+                    "eq": 1
+                  },
+                  "or": [
+                    {
+                      "agreementIsOnFile": {
+                        "eq": false
+                      }
+                    },
+                    {
+                      "and": [
+                        {
+                          "agreementIsOnFile": {
+                            "eq": true
+                          }
+                        },
+                        {
+                          "or": [
+                            {
+                              "memberAgreement": {
+                                "isNull": true
+                              }
+                            },
+                            {
+                              "memberAgreement": {
+                                "eq": true
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "dateReceived": {
+                            "lte": {
+                              "now": "P0D"
+                            }
+                          }
+                        },
+                        {
+                          "or": [
+                            {
+                              "effectiveEndDate": {
+                                "isNull": true
+                              }
+                            },
+                            {
+                              "effectiveEndDate": {
+                                "gte": {
+                                  "now": "P0D"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Case",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "cases"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "memberId",
+                "@required": true
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "memberId",
+                "@fields": [
+                  "memberId"
+                ],
+                "@references": "acme::Member"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Authorization",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "authorizations"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "caseId",
+                "@required": true
+              }
+            },
+            {
+              "field.string": {
+                "name": "code"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "caseId",
+                "@fields": [
+                  "caseId"
+                ],
+                "@references": "acme::Case"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "AuthorizationExtract",
+          "@filter": {
+            "caseId.memberId.hasActiveAgreement": {
+              "eq": true
+            }
+          },
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_authorization_extract"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id",
+                "extends": "acme::Authorization.id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "code",
+                "extends": "acme::Authorization.code"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "extends": "acme::Authorization.id"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "MemberExtract",
+          "@filter": {
+            "hasActiveAgreement": {
+              "eq": true
+            }
+          },
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_member_extract"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id",
+                "extends": "acme::Member.id"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "extends": "acme::Member.id"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

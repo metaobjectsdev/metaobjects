@@ -147,9 +147,10 @@ export const OBJECT_DEFINITION: ProviderDefinition = {
           "min": 0,
           "max": 1,
           "implementedIn": [
-            "csharp"
+            "csharp",
+            "typescript"
           ],
-          "description": "The name of this object's collection, in the object's own casing (e.g. 'CaseHistory', 'Queues'): the C# DbSet property the generated context gives it. It need not be a grammatical plural. Absent, the project's pluralizer derives it from the object's name (naming.collections in .metaobjects/config.json; built in: standard, none; an application may register its own)."
+          "description": "The name of this object's collection, in the object's own casing (e.g. 'CaseHistory', 'Queues'): the REST collection segment (snake_cased) and the reverse-finder names in C# and TypeScript, the C# DbSet property, and the TypeScript list function, list hook and Drizzle table variable. It need not be a grammatical plural. Absent, the project's pluralizer derives it from the object's name (naming.collections in .metaobjects/config.json; built in: standard, none; an application may register its own)."
         }
       ]
     },
@@ -184,7 +185,7 @@ export const OBJECT_DEFINITION: ProviderDefinition = {
           "name": "filter",
           "min": 0,
           "max": 1,
-          "description": "Optional row-scope predicate (a portable attr.filter object: eq/ne/gt/gte/lt/lte/like/in/isNull with and/or, desugared to { field: { op: value } } at parse time) selecting which rows the view returns — lowered to an outer SQL WHERE. Resolves against the projection's own declared fields; an aggregate-derived field is not addressable (fail-closed)."
+          "description": "Optional row-scope predicate (a portable attr.filter object: eq/ne/gt/gte/lt/lte/like/in/isNull with and/or, desugared to { field: { op: value } } at parse time) selecting which rows the view returns — lowered to an outer SQL WHERE. A key names one of the projection's own fields, else a field of its base entity the view need not output, else a PATH of to-one hops (identity.reference or @cardinality one relationship names) from the base then a field of the entity reached ('orderId.customerId.isActive'), joined but not output. A reached entity field may itself be derived (entity-derived: an origin.computed or origin.first declared on the entity, inlined where the filter reaches it). An aggregate-derived field is not addressable (fail-closed); a to-many hop is refused. A value may be a relative date ({ now: \"<ISO-8601 duration>\", startOf? }) on a date or timestamp field."
         },
         {
           "type": "attr",
@@ -193,9 +194,10 @@ export const OBJECT_DEFINITION: ProviderDefinition = {
           "min": 0,
           "max": 1,
           "implementedIn": [
-            "csharp"
+            "csharp",
+            "typescript"
           ],
-          "description": "The name of this object's collection, in the object's own casing (e.g. 'CaseHistory', 'Queues'): the C# DbSet property the generated context gives it. It need not be a grammatical plural. Absent, the project's pluralizer derives it from the object's name (naming.collections in .metaobjects/config.json; built in: standard, none; an application may register its own)."
+          "description": "The name of this object's collection, in the object's own casing (e.g. 'CaseHistory', 'Queues'): the REST collection segment (snake_cased) and the reverse-finder names in C# and TypeScript, the C# DbSet property, and the TypeScript list function, list hook and Drizzle table variable. It need not be a grammatical plural. Absent, the project's pluralizer derives it from the object's name (naming.collections in .metaobjects/config.json; built in: standard, none; an application may register its own)."
         }
       ]
     },
@@ -263,9 +265,10 @@ export const OBJECT_DEFINITION: ProviderDefinition = {
           "min": 0,
           "max": 1,
           "implementedIn": [
-            "csharp"
+            "csharp",
+            "typescript"
           ],
-          "description": "The name of this object's collection, in the object's own casing (e.g. 'CaseHistory', 'Queues'): the C# DbSet property the generated context gives it. It need not be a grammatical plural. Absent, the project's pluralizer derives it from the object's name (naming.collections in .metaobjects/config.json; built in: standard, none; an application may register its own)."
+          "description": "The name of this object's collection, in the object's own casing (e.g. 'CaseHistory', 'Queues'): the REST collection segment (snake_cased) and the reverse-finder names in C# and TypeScript, the C# DbSet property, and the TypeScript list function, list hook and Drizzle table variable. It need not be a grammatical plural. Absent, the project's pluralizer derives it from the object's name (naming.collections in .metaobjects/config.json; built in: standard, none; an application may register its own)."
         }
       ]
     }

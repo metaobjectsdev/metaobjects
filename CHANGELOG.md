@@ -71,8 +71,9 @@ _npm `1.3.0` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates
 **`metamodelVersion` moves to `1.3`.** This release adds vocabulary (`field.duration`,
 `validator.exactlyOne`, `@constraintName`, `@condition`, `@maxLength` on `field.enum`,
 `@sequenceStart`, `@sequenceName`, `@flattenedColumnPrefix`, the `pascal` column rule,
-`@collectionName`, and the `case` and `now` expression nodes) and nothing that loaded before
-stops loading. The registry gains two
+`@collectionName`, the `case` and `now` expression nodes, `@segment` on `origin.first` /
+`origin.aggregate`, and the `isDistinctFrom` / `isNotDistinctFrom` filter ops) and nothing that
+loaded before stops loading. The registry gains two
 fields on a type or attr entry, carried into the registry manifest: `implementedIn` (cross-port
 vocabulary only the named ports implement so far, e.g. the `view.*` controls, `["typescript"]`) and
 `ports` (vocabulary only the named ports ever act on, e.g. `@objectAdapter`, `["java", "kotlin"]`:
@@ -155,9 +156,13 @@ Each item below is described in full under Added, Changed or Fixed; this list is
   `[csharp-only]`) and its JSON carries `ports`. `@objectAdapter` is the one there is.
 - **`@collectionName`, and the `naming.collections` pluralizer.** An `object.entity`,
   `object.projection` or `object.report` may name its collection in its own casing
-  (`"@collectionName": "CaseHistory"`); it need not be a grammatical plural. The generated C#
-  context uses it as the DbSet property name in place of the derived plural, and the routes, the
-  reverse finders and the api reference read the property through it. Absent, the project's
+  (`"@collectionName": "CaseHistory"`); it need not be a grammatical plural. In C# and TypeScript it
+  names the REST collection segment, snake_cased with an acronym-aware split (`FAQs` serves
+  `/faqs`, shared by `fixtures/naming-conformance/collection-segments.json`), and the reverse
+  finders; in C# also the DbSet property (in place of the derived plural, which the api reference
+  reads through it), and in TypeScript the list function, the list hook and the Drizzle table
+  variable. Two objects whose collection names meet are refused by name. A project that declares
+  neither the attr nor `naming.collections` keeps every generated name and URL. Absent, the project's
   pluralizer derives the name: `"naming": { "collections": "standard" }` (the default) or `"none"`
   in `.metaobjects/config.json`, or one the application registers (`registerPluralizer` in
   TypeScript, `NamingStrategies.RegisterPluralizer` in C#, `NamingStrategies.registerPluralizer` in
@@ -181,9 +186,16 @@ Each item below is described in full under Added, Changed or Fixed; this list is
     `operand`), and a ref in it may name another of the projection's own fields (a passthrough,
     an `origin.first` or another `origin.computed`, never itself or an aggregate) before a base
     field (`origin-computed-case-over-joined`, `error-origin-computed-case-mixed-types`). A
-    simple `case` compares a literal `when` with any `operand`, so an enum or long operand maps
-    its codes to labels. A `case`'s results and a `coalesce`'s arguments unify a numeric literal
-    with any numeric field and a `now` with a date or timestamp (`origin-computed-literal-unifies`);
+    simple `case` compares a literal `when` with its `operand`, so an enum or long operand maps
+    its codes to labels. A literal compared with a field, as a `when` against a field operand or
+    on either side of a comparison, must be of that field's kind and, for a `field.enum`, one of
+    its `@values`, the rule a validator `@condition` already follows (`ERR_INVALID_ORIGIN`,
+    `error-origin-computed-literal-not-enum-member`, `error-origin-computed-literal-wrong-kind`).
+    A `case`'s results and a `coalesce`'s arguments unify a whole-number
+    literal with any numeric field, a fractional literal only with a `field.double`, `field.float`
+    or `field.decimal` (refused beside a long, int or currency field,
+    `error-origin-computed-literal-fractional`), and a `now` with a date or timestamp
+    (`origin-computed-literal-unifies`);
   - the loaders refuse what a view cannot lower: a `now` whose value is not an ISO-8601 duration
     or whose `startOf` is not day, week or month (`error-origin-computed-now-bad-duration`); a
     searched `case` whose `when` is not boolean (`error-origin-computed-case-non-boolean-when`);
@@ -197,6 +209,40 @@ Each item below is described in full under Added, Changed or Fixed; this list is
     `error-origin-computed-node-mixed-keys`);
   - a validator `@condition` still refuses `case` and `now` (`ERR_BAD_ATTR_VALUE`,
     `error-validator-condition-now`): it becomes a database CHECK, which can hold neither.
+- **Segments and correlated filters on origins.** An `origin.first` / `origin.aggregate` may scope
+  its related rows by a `@segment` declared on that entity (`ERR_INVALID_ORIGIN` otherwise), and
+  its `@filter` may compare a related column with a base-row field (`{ "eq": { "field":
+  "statusId" } }`, or the null-safe `isDistinctFrom` / `isNotDistinctFrom`, which take only such an
+  operand; `ERR_BAD_ATTR_FILTER` for an unknown base field or another op). Every port's loader
+  validates them (`origin-segment-scoped`, `origin-correlated-filter-and-segment`,
+  `error-origin-segment-unresolved`, `error-origin-correlated-operand-unknown`).
+- **Filter paths, flattened members and inherited filters in projections.** A projection's
+  `@filter` key may name a field of its base entity the view does not output, or a path of to-one
+  hops from the base. A projection that extends another is checked against the effective (ANDed)
+  filter of its chain. An origin's `@from` / `@of` may name a member of a flattened value object.
+  Every port's loader validates them, gated by eleven new shared fixtures. A report dimension's
+  required flag now treats an unenforced reference, or a hop onto a TPH subtype, as possibly
+  missing.
+- **A view the lowering cannot express is refused, not shortened.** The TypeScript view extractor
+  skipped any origin it could not lower, so a projection loaded clean and `meta migrate` created a
+  view missing a column its generated type declares. Each such shape now fails, naming the
+  projection and the field: an origin `@segment`, a base-row operand in an origin `@filter`, a
+  computed node the lowering does not support, and an unknown origin or aggregate. A projection
+  that extends another projection now fails too, naming the projection: the lowering reads only
+  the fields and `@filter` declared on the projection itself, so the view it created dropped the
+  inherited columns and the inherited row gate.
+- **A reference over a flattened member reads the member's column.** A reference whose `@fields`
+  names a member of a flattened value object (`"address.countryId"`) now resolves to that member's
+  real column in the foreign key `meta migrate` emits, a view's join, a passthrough `@from` onto
+  the member, and the Drizzle key the reverse finder and `relations()` block read. Two references
+  onto one target now each read the join their own `@via` walked, rather than the first join to
+  that entity.
+- **One wording for a to-many passthrough, in every port.** The refusal of a passthrough across a
+  reverse `@via` hop names the hop as the path wrote it and the reference it walks
+  (`@via hop "consents" is to-many (reverse hop over identity.reference "patient")`), and Java's and
+  Python's wording of the refusal now matches the other ports'. The fixtures
+  `error-origin-passthrough-reverse-hop` (new) and `error-origin-passthrough-to-many` pin the
+  message.
 
 - **An int-backed enum can be an array.** `@intValueMap` together with `isArray: true` (the
   map on the field, or inherited from a shared enum) now loads in every port instead of

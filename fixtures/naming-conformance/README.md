@@ -114,6 +114,17 @@ pair is REFUSED when the port puts both in one scope, naming the colliding name.
 Physical names are not this corpus's concern: `(schema, name)` uniqueness belongs to
 the schema layer (`meta migrate`'s `ERR_DUPLICATE_SQL_NAME`).
 
+## Collection segments
+
+[`collection-segments.json`](./collection-segments.json) is the REST collection segment an
+object is served under, given its name, the `@collectionName` it declares and the project's
+`naming.collections` pluralizer. With neither, the segment is the rule above (snake_case, then
+the API pluralizer), unchanged. A declared name, or a configured pluralizer's output, is
+snake_cased with an acronym-aware split (`FAQs` -> `faqs`). TypeScript
+(`metadata/test/naming.test.ts`) and C# (`MetaObjects.Codegen.Tests/CollectionSegmentTests.cs`)
+run it: they are the two ports whose generators read `@collectionName` and `naming.collections`
+(the other ports are tracked in #549).
+
 ## Per-port runner
 
 Each port's existing naming unit-test file reads this JSON and asserts both

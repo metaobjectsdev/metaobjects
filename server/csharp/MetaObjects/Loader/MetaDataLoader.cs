@@ -525,6 +525,7 @@ public class MetaDataLoader
             // Pass 7b (#207): projection view-level @filter — a dangling or
             // aggregate-derived field-ref fails closed with ERR_BAD_ATTR_FILTER.
             errors.AddRange(ValidationPasses.ValidateProjectionFilter(root));
+            errors.AddRange(ValidationPasses.ValidateOriginSegmentsAndCorrelation(root));
 
             // Pass 7c (FR-044): reporting vocabulary cross-node rules (dimensions, measures,
             // segments, reports, relative-date filter values).
@@ -538,7 +539,7 @@ public class MetaDataLoader
             errors.AddRange(ValidationPasses.ValidateFieldMap(root));
             errors.AddRange(ValidationPasses.ValidateEnumMaxLength(root));
             errors.AddRange(ValidationPasses.ValidateIdentitySequence(root));
-            errors.AddRange(ValidationPasses.ValidateCrossFieldValidators(root));
+            errors.AddRange(ValidationPasses.ValidateCrossFieldValidators(root, _strict));
 
             // Pass 9: template @payloadRef / @requiredSlots resolution
             errors.AddRange(ValidationPasses.ValidateTemplatePayloadRefs(root));

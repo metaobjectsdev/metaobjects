@@ -1,14 +1,14 @@
 // RenderContext — cross-cutting state passed to every template.
 
 import type { MetaRoot, MetaData } from "@metaobjectsdev/metadata";
-import { FIELD_ATTR_OBJECT_REF, physicalNamingOf, refTarget, stripPackage } from "@metaobjectsdev/metadata";
+import { FIELD_ATTR_OBJECT_REF, collectionNameOf, declaredCollectionName, physicalNamingOf, refTarget, stripPackage } from "@metaobjectsdev/metadata";
 import type { Dialect } from "./column-mapper.js";
 import { normalizeTimestampMode } from "./dialect-module.js";
 import type { PkInfo } from "./pk-resolver.js";
 import type { RelationMap } from "./relation-resolver.js";
 import type { ColumnNamingStrategy } from "./metaobjects-config.js";
 import type { OutputLayout, ResolvedTarget } from "./import-path.js";
-import { variableNameFromEntity } from "./naming.js";
+import { toCamelCase, variableNameFromEntity } from "./naming.js";
 
 /**
  * How to format relative import specifiers in generated files.
@@ -188,9 +188,23 @@ export function makeRenderContext(opts: RenderContextInput): RenderContext {
     dbImport: opts.dbImport,
     runtime: true,
   };
+  // An object's collection name (its @collectionName, or the configured naming.collections
+  // pluralizer) names its Drizzle collection variable too, first letter lowered. Only where one
+  // of the two is declared, so a project with neither keeps its variables byte for byte; the
+  // TS config's own collectionNameOverrides still win, and pluralizeCollections: false still
+  // turns pluralizing off.
+  const modelCollections: Record<string, string> = {};
+  if (opts.pluralizeCollections !== false) {
+    const configured = physicalNamingOf(opts.loadedRoot).collections;
+    for (const obj of opts.loadedRoot.objects()) {
+      if (configured === undefined && declaredCollectionName(obj) === undefined) continue;
+      const name = collectionNameOf(obj);
+      modelCollections[obj.name] = toCamelCase(name.charAt(0).toLowerCase() + name.slice(1));
+    }
+  }
   const collectionNameOpts = {
     pluralize: opts.pluralizeCollections ?? true,
-    overrides: opts.collectionNameOverrides ?? {},
+    overrides: { ...modelCollections, ...(opts.collectionNameOverrides ?? {}) },
   };
   // ADR-0044/#228 — the value-object emitted-name map + its two accessors. When
   // absent (bare template unit-tests), the map is empty, so both accessors return
