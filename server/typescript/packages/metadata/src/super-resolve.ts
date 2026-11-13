@@ -15,8 +15,8 @@
 import type { MetaData } from "./shared/meta-data.js";
 import { PACKAGE_SEPARATOR, CHILD_REF_SEPARATOR } from "./shared/structural.js";
 import { ownerCandidateKeys, RefOverDropError } from "./naming-refs.js";
-import { TYPE_IDENTITY } from "./shared/base-types.js";
-import { IDENTITY_UNIQUE_KEY_SUBTYPES } from "./core/identity/identity-constants.js";
+import { TYPE_IDENTITY, TYPE_OBJECT } from "./shared/base-types.js";
+import { IDENTITY_SUBTYPE_PRIMARY, IDENTITY_UNIQUE_KEY_SUBTYPES } from "./core/identity/identity-constants.js";
 
 // ---------------------------------------------------------------------------
 // Tree search helper
@@ -223,6 +223,11 @@ export interface DeferredSuperFailure {
   target?: { type: string; subType: string };
   /** target-mismatch only: the extending node's type/subtype, for the message. */
   referrer?: { type: string; subType: string };
+  /**
+   * unresolved dotted ref only (rc.21, U1): when the OWNER resolves but the member does not, a
+   * message suffix naming the owner's members of the referrer's type, inherited ones included.
+   */
+  memberHint?: string;
 }
 
 /**
@@ -344,13 +349,47 @@ export function resolveDeferredSupers(root: MetaData): DeferredSuperFailure[] {
       // set (e.g. Base extends AbstractRoot). Memoized — no re-work.
       resolveNode(target);
     } else {
+      const memberHint = dottedMemberHint(node, effectivePkg);
       failures.push({
         nodeFqn: node.fqn(),
         ref: node.superRef,
         source: node.source,
         kind: "unresolved",
+        ...(memberHint !== undefined ? { memberHint } : {}),
       });
     }
+  };
+
+  // rc.21 (U1): a dotted ref whose OWNER resolves but whose member does not names the owner's
+  // members of the referrer's type, inherited ones included — the usual cause is an identity
+  // spelled by its field (`Owner.id`) where the identity is named otherwise (an unnamed
+  // identity.primary is "primary"). Without it the only hint was the same-named object's FQN,
+  // which is wrong advice when the owner was found.
+  const dottedMemberHint = (node: MetaData, pkg: string): string | undefined => {
+    const ref = node.superRef;
+    if (ref === undefined || !isChildTargetingRef(ref)) return undefined;
+    const parsed = parseChildTargetingRef(ref);
+    if (parsed === undefined) return undefined;
+    const owner = tryResolve(parsed.ownerRef, pkg);
+    if (owner === undefined || owner === "over-drop") return undefined;
+    let current: MetaData = owner;
+    for (const seg of parsed.path.slice(0, -1)) {
+      const matches = current.children().filter((c) => c.name === seg);
+      if (matches.length !== 1) return undefined;
+      current = matches[0]!;
+    }
+    const last = parsed.path[parsed.path.length - 1]!;
+    // ADR-0039: resolving — an inherited member is a legal target.
+    const candidates = current.children().filter((c) => c.type === node.type);
+    const ownerName = current.type === TYPE_OBJECT ? current.resolutionKey() : current.fqn();
+    const listed = candidates.length === 0
+      ? `it has no ${node.type} children`
+      : `its ${node.type} children are: ${candidates.map((c) => `"${c.name}" (${c.type}.${c.subType})`).join(", ")}`;
+    // The default name of an unnamed identity.primary is its subtype (the registry's defaultName).
+    const unnamed = node.type === TYPE_IDENTITY && candidates.some((c) => c.name === IDENTITY_SUBTYPE_PRIMARY)
+      ? ` An ${TYPE_IDENTITY}.${IDENTITY_SUBTYPE_PRIMARY} declared without a name is named "${IDENTITY_SUBTYPE_PRIMARY}".`
+      : "";
+    return ` '${ownerName}' has no ${node.type} named "${last}"; ${listed}.${unnamed}`;
   };
 
   for (const node of pending) resolveNode(node);

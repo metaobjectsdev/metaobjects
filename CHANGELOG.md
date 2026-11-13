@@ -557,6 +557,17 @@ vocabulary; upgrade every port together.
 
 ### Fixed
 
+- **Fix, TypeScript and C#: a dotted `extends` whose member is missing names the owner's members
+  (rc.21, U1).** `extends: "Authorization.id"` on an `identity.primary`, where `Authorization`
+  inherits its identity from an abstract base, failed with `ERR_UNRESOLVED_SUPER` and the advice to
+  qualify `Authorization` with its package, although `Authorization` had resolved. The member was
+  the problem: an identity declared without a name is named after its subtype (`primary`), and the
+  inherited one resolves as `Authorization.primary`, which already worked. The error now says
+  so: `'acme::auth::Authorization' has no identity named "id"; its identity children are:
+  "primary" (identity.primary). An identity.primary declared without a name is named "primary".`
+  The package advice is given only when the owner itself did not resolve. Java and Python keep
+  their message.
+
 - **Fix, TypeScript: a projection extender that declares only its own source gets its view
   (rc.21).** `meta migrate` decided whether a projection's view is derived from the projection's
   OWN children, so a projection that extends another projection and adds nothing but its own

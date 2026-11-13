@@ -608,7 +608,7 @@ export class MetaDataLoader {
         }
         errors.push(
           new ParseError(
-            `the SuperClass '${failure.ref}' does not exist (referenced by ${failure.nodeFqn})${didYouMeanSuperHint(root, failure.ref)}`,
+            `the SuperClass '${failure.ref}' does not exist (referenced by ${failure.nodeFqn})${failure.memberHint ?? didYouMeanSuperHint(root, failure.ref)}`,
             {
               code: "ERR_UNRESOLVED_SUPER",
               source: resolvedSource(failure.source, failure.nodeFqn, failure.ref),
