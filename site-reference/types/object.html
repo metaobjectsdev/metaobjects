@@ -119,7 +119,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td></td>
 <td></td>
 <td>metaobjects-core-types</td>
-<td>The name of this object&#39;s collection, in the object&#39;s own casing (e.g. &#39;CaseHistory&#39;, &#39;Queues&#39;): the C# DbSet property the generated context gives it. It need not be a grammatical plural. Absent, the project&#39;s pluralizer derives it from the object&#39;s name (naming.collections in .metaobjects/config.json; built in: standard, none; an application may register its own).</td>
+<td>The name of this object&#39;s collection, in the object&#39;s own casing (e.g. &#39;CaseHistory&#39;, &#39;Queues&#39;): the REST collection segment (snake_cased) and the reverse-finder names in C# and TypeScript, the C# DbSet property, and the TypeScript list function, list hook and Drizzle table variable. It need not be a grammatical plural. Absent, the project&#39;s pluralizer derives it from the object&#39;s name (naming.collections in .metaobjects/config.json; built in: standard, none; an application may register its own).</td>
 </tr>
 <tr>
 <td><code>@discriminator</code></td>
@@ -197,7 +197,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td></td>
 <td></td>
 <td>metaobjects-core-types</td>
-<td>The name of this object&#39;s collection, in the object&#39;s own casing (e.g. &#39;CaseHistory&#39;, &#39;Queues&#39;): the C# DbSet property the generated context gives it. It need not be a grammatical plural. Absent, the project&#39;s pluralizer derives it from the object&#39;s name (naming.collections in .metaobjects/config.json; built in: standard, none; an application may register its own).</td>
+<td>The name of this object&#39;s collection, in the object&#39;s own casing (e.g. &#39;CaseHistory&#39;, &#39;Queues&#39;): the REST collection segment (snake_cased) and the reverse-finder names in C# and TypeScript, the C# DbSet property, and the TypeScript list function, list hook and Drizzle table variable. It need not be a grammatical plural. Absent, the project&#39;s pluralizer derives it from the object&#39;s name (naming.collections in .metaobjects/config.json; built in: standard, none; an application may register its own).</td>
 </tr>
 <tr>
 <td><code>@filter</code></td>
@@ -206,7 +206,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td></td>
 <td></td>
 <td>metaobjects-core-types</td>
-<td>Optional row-scope predicate (a portable attr.filter object: eq/ne/gt/gte/lt/lte/like/in/isNull with and/or, desugared to { field: { op: value } } at parse time) selecting which rows the view returns — lowered to an outer SQL WHERE. Resolves against the projection&#39;s own declared fields; an aggregate-derived field is not addressable (fail-closed).</td>
+<td>Optional row-scope predicate (a portable attr.filter object: eq/ne/gt/gte/lt/lte/like/in/isNull with and/or, desugared to { field: { op: value } } at parse time) selecting which rows the view returns — lowered to an outer SQL WHERE. A key names one of the projection&#39;s own fields, else a field of its base entity the view need not output, else a PATH of to-one hops (identity.reference or @cardinality one relationship names) from the base then a field of the entity reached (&#39;orderId.customerId.isActive&#39;), joined but not output. A reached entity field may itself be derived (entity-derived: an origin.computed or origin.first declared on the entity, inlined where the filter reaches it). An aggregate-derived field is not addressable (fail-closed); a to-many hop is refused. A value may be a relative date ({ now: &quot;<ISO-8601 duration>&quot;, startOf? }) on a date or timestamp field.</td>
 </tr>
 <tr>
 <td><code>@object</code></td>
@@ -260,7 +260,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td></td>
 <td></td>
 <td>metaobjects-core-types</td>
-<td>The name of this object&#39;s collection, in the object&#39;s own casing (e.g. &#39;CaseHistory&#39;, &#39;Queues&#39;): the C# DbSet property the generated context gives it. It need not be a grammatical plural. Absent, the project&#39;s pluralizer derives it from the object&#39;s name (naming.collections in .metaobjects/config.json; built in: standard, none; an application may register its own).</td>
+<td>The name of this object&#39;s collection, in the object&#39;s own casing (e.g. &#39;CaseHistory&#39;, &#39;Queues&#39;): the REST collection segment (snake_cased) and the reverse-finder names in C# and TypeScript, the C# DbSet property, and the TypeScript list function, list hook and Drizzle table variable. It need not be a grammatical plural. Absent, the project&#39;s pluralizer derives it from the object&#39;s name (naming.collections in .metaobjects/config.json; built in: standard, none; an application may register its own).</td>
 </tr>
 <tr>
 <td><code>@dimensions</code></td>
