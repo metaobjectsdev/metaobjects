@@ -12,9 +12,8 @@ The MetaObjects CLI — scaffolds `metaobjects/` + `.metaobjects/`, runs codegen
 bun add -D @metaobjectsdev/cli
 ```
 
-Database drivers are optional peers, so an install carries only the one your dialect needs:
+The SQLite/Turso driver (`@libsql/kysely-libsql`) ships as a direct dependency — `meta migrate` against a `sqlite`/`libsql` URL works out of the box. Postgres remains an optional peer (install only if you target Postgres):
 - Postgres: `bun add -D pg`
-- SQLite/Turso on Node (`meta migrate`, `meta verify --db`/`--replay` against a `file:`/`libsql:` URL): `bun add -D @libsql/kysely-libsql`. Under Bun the CLI uses the built-in `bun:sqlite` instead and needs no driver for `migrate` or `verify --db`.
 
 If a required driver is ever missing, the CLI prints an install command matching your project's package manager (npm / pnpm / yarn / bun, detected from the lockfile).
 
@@ -45,7 +44,7 @@ bun build ./bin/meta.ts --compile --target=bun-windows-x64 --outfile dist/meta-w
 
 ### SQLite driver inside the binary
 
-The standalone binary uses Bun's built-in **`bun:sqlite`** for the `sqlite` dialect (it ships inside the embedded Bun runtime). The npm/Node distribution uses the optional `@libsql/kysely-libsql` peer, which you install when you target SQLite. This is automatic — the same `--db file:./app.db --dialect sqlite` flags work in both. (Postgres in the standalone binary still requires the `pg` peer to be resolvable, because `pg` is a native module that `--compile` cannot embed; sqlite is the fully self-contained path.)
+The standalone binary uses Bun's built-in **`bun:sqlite`** for the `sqlite` dialect (it ships inside the embedded Bun runtime). The npm/Node distribution uses the bundled `@libsql/kysely-libsql` dependency. This is automatic — the same `--db file:./app.db --dialect sqlite` flags work in both. (Postgres in the standalone binary still requires the `pg` peer to be resolvable, because `pg` is a native module that `--compile` cannot embed; sqlite is the fully self-contained path.)
 
 Run schema ops from the compiled binary:
 

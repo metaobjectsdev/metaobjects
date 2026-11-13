@@ -46,16 +46,9 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   peer dependency, which npm installs automatically, so every CLI install carried the ~94 MB
   `@biomejs/cli-<platform>` binary that nothing runs: codegen formats through the WebAssembly
   build (`@biomejs/wasm-nodejs`). The peer is gone (it stays a devDependency for this repo's own
-  lint gate). `scripts/check-peer-ranges.ts` now fails a publishable package that requires
-  `@biomejs/biome` through `dependencies` or a non-optional peer.
-- **The libSQL driver is an optional peer of `@metaobjectsdev/cli`, like `pg`.**
-  `@libsql/kysely-libsql` was a direct dependency, so a Postgres-only install carried it and
-  its native addon. The CLI already loads it lazily and only for a `sqlite` URL on Node, and a
-  missing driver prints the install command for your package manager. **Upgrading:** a
-  project that runs `meta migrate`, `meta verify --db` or `meta verify --replay` against
-  SQLite on Node installs it (`npm install -D @libsql/kysely-libsql`); under Bun, `migrate`
-  and `verify --db` use `bun:sqlite` and need nothing. Together with the Biome change, a fresh
-  npm install of the CLI drops from 245 MB to 101 MB of `node_modules`.
+  lint gate), and a fresh npm install of the CLI drops from 245 MB to 151 MB of `node_modules`.
+  `scripts/check-peer-ranges.ts` now fails a publishable package that requires `@biomejs/biome`
+  through `dependencies` or a non-optional peer.
 
 ### Fixed
 
