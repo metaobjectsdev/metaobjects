@@ -10,6 +10,34 @@ here.**
 
 ## [Unreleased]
 
+## [1.2.1] — Python only
+
+_PyPI `1.2.1` only. npm, NuGet and Maven Central stay at `1.2.0` (`8.2.0`): none of them has a
+product change. No vocabulary or `metamodelVersion` change._
+
+### Security
+
+- **The generated Python routes passed raw request input to the repository.** The FastAPI
+  create, PATCH and PUT handlers validated the body against `<Entity>Create` / `<Entity>Patch`
+  and then handed the repository the raw body, not what was validated. Pydantic ignores a key a
+  model does not declare, so a client could write fields it must never touch: a client-sent `id`
+  on create (or on update, changing the row's identity), a `@mutability: readOnly` field, and any
+  made-up field such as `isAdmin` all reached the repository. Found by an external review of
+  1.2.0. Every Python adopter serving the generated routes should upgrade and regenerate; an
+  ejected (owned) router needs the same change made by hand.
+
+  The repository now receives only the validated input, as the TypeScript routes already do.
+  Each handler validates the body, then keeps only the keys the input model validated, at every
+  depth (a nested value object included), before any repository call, in the plain and the TPH
+  per-subtype handlers. A field the entity does not declare, a server-generated id, a `readOnly`
+  or derived field on create, and the id, `readOnly` and `writeOnce` fields on update are all
+  dropped silently. None of them is answered with a 400, so a client that sends an extra harmless
+  field keeps working; a malformed value on a field the client may set is still
+  `400 {"error": "validation"}`. An assigned key is still the caller's on create. Values are the
+  body's own, so a repository receives the same value types as in 1.2.0.
+
+  Gated by `server/python/tests/integration/test_generated_router_validated_input.py`.
+
 ## [1.2.0] — 2026-10-30
 
 _npm `1.2.0` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._

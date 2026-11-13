@@ -36,9 +36,9 @@ The generated router takes `dto: dict[str, Any]` for `POST` / `PATCH` /
 (`from .<Entity> import <Entity>, <Entity>Patch`) and constructs them to enforce
 field constraints over HTTP — POST validates `<Entity>(**dto)`, PATCH validates
 the all-optional `<Entity>Patch(**dto)` (present values only) → `400 {"error":"validation"}`.
-The repository seam still receives the original `dict` (preserving the FR-035
-present-key tristate + wire values), so the strong-typing simplification below
-remains for the repo/response types; only the validation import was added.
+The repository seam receives only the keys the input model validated, as a `dict`
+(the FR-035 present-key tristate + wire values are kept), so the strong-typing
+simplification below remains for the repo/response types.
 
 This keeps the router module decoupled from sibling generated files
 (the entity-model generator emits one `@dataclass`/Pydantic model per
