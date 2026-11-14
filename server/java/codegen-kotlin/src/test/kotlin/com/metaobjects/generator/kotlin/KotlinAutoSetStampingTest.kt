@@ -309,11 +309,11 @@ class KotlinAutoSetStampingTest {
         val src = generateTphControllerSource(tphAutoSetFixture, "Auth")
         val createBody = methodBody(src, "fun createBridge")
         assertTrue("val autoSetNow0 =" in createBody, "create captures a now()-val; saw:\n$createBody")
-        assertTrue("it[autoCreatedAt] = autoSetNow0" in createBody,
+        assertTrue("it[AuthTable.autoCreatedAt] = autoSetNow0" in createBody,
             "onCreate stamped from the captured now(); saw:\n$createBody")
-        assertTrue("it[autoUpdatedAt] = autoSetNow0" in createBody,
+        assertTrue("it[AuthTable.autoUpdatedAt] = autoSetNow0" in createBody,
             "onUpdate stamped from the same now() (created==updated); saw:\n$createBody")
-        assertFalse("it[autoCreatedAt] = dto." in createBody,
+        assertFalse("it[AuthTable.autoCreatedAt] = dto." in createBody,
             "autoSet is never bound from the caller DTO; saw:\n$createBody")
     }
 
@@ -340,8 +340,8 @@ class KotlinAutoSetStampingTest {
         val createBody = methodBody(src, "fun createSpook")
         // create still stamps both columns from one captured now(), even with an empty writableFields.
         assertTrue("val autoSetNow0 =" in createBody, "create captures a now()-val; saw:\n$createBody")
-        assertTrue("it[autoCreatedAt] = autoSetNow0" in createBody &&
-            "it[autoUpdatedAt] = autoSetNow0" in createBody,
+        assertTrue("it[GhostTable.autoCreatedAt] = autoSetNow0" in createBody &&
+            "it[GhostTable.autoUpdatedAt] = autoSetNow0" in createBody,
             "create must stamp both @autoSet columns; saw:\n$createBody")
         val updateBody = methodBody(src, "fun updateSpook")
         // no per-subtype settable columns ⇒ no "try"/JsonMappingException scaffolding at all — a bare
