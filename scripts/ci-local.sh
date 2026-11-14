@@ -774,7 +774,7 @@ gate_conf_rust() {
   ( cd server/rust \
       && cargo fmt --all --check \
       && cargo clippy --locked --all-targets -q -- -D warnings \
-      && cargo test --locked -q )
+      && cargo test --locked -q -- --nocapture )
 }
 gate_conf_kotlin() {
   ( cd server/java \
