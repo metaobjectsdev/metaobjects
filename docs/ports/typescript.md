@@ -481,15 +481,12 @@ mounts (`mountCrudRoutes` in `@metaobjectsdev/runtime-ts/drizzle-fastify` and `/
 { "api": { "pagination": { "defaultLimit": 50, "maxLimit": 1000 }, "unknownFields": "reject" } }
 ```
 
-`api.pagination` becomes the mount's `pagination` option: no `limit` answers `defaultLimit` rows
-and a `limit` above `maxLimit` is `400 {"error": "limit_too_large", "maxLimit": N}`. Without it a
-list returns every row, and `meta verify` advises (`unbounded-list-pages`). Under
-`api.unknownFields: reject` (the default) the generated mount passes the entity's declared field
-names as `knownFields`, and a create, PUT or PATCH body with any other key answers
-`400 {"error": "unknown_fields", "fields": [...]}` before Zod runs; under `drop`, or on a
-hand-written mount given no `knownFields`, the key is ignored. `meta init` writes both settings
-for a new project. The contract is in
-[api-contract](../features/api-contract.md#unknown-request-fields-apiunknownfields).
+`api.pagination` becomes the mount's `pagination` option, and under `api.unknownFields: reject` the
+generated mount passes the entity's declared field names as `knownFields`, checked before Zod runs; a
+hand-written mount given no `knownFields` ignores an undeclared key. What each setting answers, and
+the default with no block, are in [api-contract](../features/api-contract.md) ([page size](../features/api-contract.md#sort--pagination),
+[unknown fields](../features/api-contract.md#unknown-request-fields-apiunknownfields)); the per-port defaults are in
+[What differs by language](../features/language-differences.md).
 
 ### Decimals and null members on the wire
 

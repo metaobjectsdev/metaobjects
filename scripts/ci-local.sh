@@ -450,7 +450,11 @@ gate_no_api_prefix() { bun scripts/check-no-api-prefix.ts; }
 # documented pre-PR command. The other four ports are checked by `gate_showcase_all_ports`
 # in the heavy tier of the flagless run, and again by the release preflight
 # (`--check --all-ports`); both refuse to leave a port out.
-gate_site_payload() { bun_install && bun test scripts/site && bun scripts/build-site-payload.ts --check; }
+#
+# `--timeout 60000`: several of these tests (registries, llms, reference) build real
+# output and fit bun's default 5 s per test on an idle machine but not under heavy load,
+# where a release gate read red with nothing wrong. A minute per test still fails a hang.
+gate_site_payload() { bun_install && bun test --timeout 60000 scripts/site && bun scripts/build-site-payload.ts --check; }
 
 # ── the showcase is current in EVERY port, not just ts+sql ────────────────────
 # `gate_site_payload` can only afford `--bun-only`, so a change to the python, csharp,

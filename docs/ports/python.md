@@ -420,16 +420,11 @@ The routers read the `api` block of `.metaobjects/config.json` from the loaded r
 { "api": { "pagination": { "defaultLimit": 50, "maxLimit": 1000 }, "unknownFields": "reject" } }
 ```
 
-With `api.pagination`, an entity, projection or single-table list router answers `defaultLimit`
-rows when `limit` is omitted, `400 {"error": "limit_too_large", "maxLimit": N}` above the cap and
-`400 pagination.invalid_value` for a negative `limit`; a served report keeps its own ceiling.
-Without it the routers keep their default of 50 and no cap, and `metaobjects verify` prints an
-`unbounded-list-pages` advisory that never changes the exit code. With `api.unknownFields:
-reject` (the default) a create, PUT or PATCH body carrying a key no field declares answers
-`400 {"error": "unknown_fields", "fields": [...]}` (`unknown_body_keys` in
-`metaobjects.codegen.runtime.constraint_errors`) before validation; `drop` ignores it. A declared
-key the client may not set is dropped under either value. The contract is in
-[api-contract](../features/api-contract.md#unknown-request-fields-apiunknownfields).
+What each setting answers, and the default with no block, are in
+[api-contract](../features/api-contract.md) ([page size](../features/api-contract.md#sort--pagination), [unknown fields](../features/api-contract.md#unknown-request-fields-apiunknownfields)).
+Python-specific: with no `api.pagination`, `metaobjects verify` prints an `unbounded-list-pages`
+advisory that never changes the exit code, and the unknown-key check is `unknown_body_keys` in
+`metaobjects.codegen.runtime.constraint_errors`, run before validation.
 
 ### Decimals and null members on the wire
 

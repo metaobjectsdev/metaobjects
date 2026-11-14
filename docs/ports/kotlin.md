@@ -653,18 +653,13 @@ controllers are byte-identical to today and `?format=` is ignored like any unkno
 
 `KotlinSpringControllerGenerator` reads the project's `api` block from the loaded root
 (`loader.root.apiSettings`, the same `.metaobjects/config.json` reader as `naming` and `wire`).
-With `api.pagination` every generated list route (entity, TPH base and per-subtype, projection;
-not a served report or an M:N traversal) uses `defaultLimit` when `limit` is omitted and answers a
-`limit` above `maxLimit` with `400 {"error": "limit_too_large", "maxLimit": N}`. Without it the
-routes keep their historic default of 50 and no cap. With `api.unknownFields` `reject` (the
-default) create, PUT and PATCH read the raw `JsonNode` body, list any top-level key the entity does
-not declare (for a TPH base the union of the base's and every subtype's fields) as
-`400 {"error": "unknown_fields", "fields": [...]}` in code-point order, and write nothing; this
-happens before binding, so the answer is the same whatever the host `ObjectMapper` does with
-unknown properties. The check is generated into a per-package `MetaUnknownBodyKeys.kt` (no
+What each setting answers, and the default with no block, are in
+[api-contract](../features/api-contract.md) ([page size](../features/api-contract.md#sort--pagination), [unknown fields](../features/api-contract.md#unknown-request-fields-apiunknownfields)).
+Kotlin-specific: under `reject` (the default) create, PUT and PATCH read the raw `JsonNode` body
+and check its keys before binding (for a TPH base, against the union of the base's and every
+subtype's fields). The check is generated into a per-package `MetaUnknownBodyKeys.kt` (no
 MetaObjects import; it ships with the `routes` eject). Because the create handler binds the raw
-body, the controller now always takes the `ObjectMapper`. `drop` keeps today's behaviour and emits
-no helper.
+body, the controller now always takes the `ObjectMapper`. `drop` emits no helper.
 
 The Kotlin controllers import nothing from MetaObjects, so the request side (format parsing, the three
 400 envelopes, the `Content-Disposition` and `Content-Type` values) is generated into the shared

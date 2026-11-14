@@ -1082,14 +1082,10 @@ directly into the generated list handler. A read-only projection
 on their list route, against an allowlist of their own fields.
 
 The `api` block of `.metaobjects/config.json` reaches the generated routes through the loaded root
-(`MetaRoot.Api`). `api.pagination` (`defaultLimit`, `maxLimit`) gives every entity, TPH and projection
-list route a default page and answers a larger `?limit=` with `400 { "error": "limit_too_large",
-"maxLimit": N }`; a served report keeps its own row ceiling, and with no block the routes are unchanged.
-`api.unknownFields` (`reject`, the default, or `drop`) makes a create, PUT or PATCH answer
-`400 { "error": "unknown_fields", "fields": [...] }` for a body key no field of the entity (for a TPH
-hierarchy, of the base or any subtype) declares; the check is `UnknownFieldCheck` in the helper runtime.
-It matches a key the way the route binds the body, with the app's System.Text.Json options: under the
-ASP.NET web default, which ignores case, `Title` is the declared `title`. `limit=0` is a page of zero rows.
+(`MetaRoot.Api`): `api.pagination` pages every entity, TPH and projection list route, and
+`api.unknownFields` is checked by `UnknownFieldCheck` in the helper runtime, matching a key the way
+the route binds the body (the app's System.Text.Json options). What each setting answers is in
+[api-contract](../features/api-contract.md) ([page size](../features/api-contract.md#sort--pagination), [unknown fields](../features/api-contract.md#unknown-request-fields-apiunknownfields)).
 `dotnet meta init` writes `.metaobjects/config.json` with the same new-project settings as `meta init`:
 `api.pagination` 50/1000, `api.unknownFields: reject`, `verify.handEdits: fail` and
 `migrate.foreignKeyIndexes: true`; an existing config is left alone. `dotnet meta verify --codegen` prints a

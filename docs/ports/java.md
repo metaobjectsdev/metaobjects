@@ -599,20 +599,12 @@ carries `naming` and `wire` (`NeutralConfig.getApiSettings()`, carried on the lo
 { "api": { "pagination": { "defaultLimit": 50, "maxLimit": 1000 }, "unknownFields": "reject" } }
 ```
 
-- `api.pagination`: a list route (entity, TPH base and per-subtype, projection) with no `limit`
-  returns `defaultLimit` rows, and a `limit` above `maxLimit` answers
-  `400 {"error": "limit_too_large", "maxLimit": N}`. Absent, a list route returns 50 rows when
-  `limit` is omitted and takes any `limit`, as before; `mvn metaobjects:verify` then warns
-  (`unbounded-list-pages`, advisory, never fails the build). A served report keeps its own row
-  ceiling, and an M:N traversal is not paged.
-- `api.unknownFields` (`reject`, the default, or `drop`): a create, PUT or PATCH body key the
-  entity does not declare answers `400 {"error": "unknown_fields", "fields": [...]}` (keys in code
-  point order) and writes nothing. Declared keys the client may not set (the generated key,
-  `readOnly`, derived, `@autoSet`, `writeOnce` on update, the discriminator, a sibling
-  subtype's column) are not unknown: they are dropped as before. The keys are read off the raw
-  `JsonNode` (`UnknownBodyKeys`, shipped with the generated runtime) before the body is bound, so
-  the answer does not depend on the host `ObjectMapper`'s `FAIL_ON_UNKNOWN_PROPERTIES`. Under
-  `reject` the generated create handler takes `@RequestBody JsonNode body` rather than the DTO.
+What each setting answers, and the default with no block, are in
+[api-contract](../features/api-contract.md) ([page size](../features/api-contract.md#sort--pagination), [unknown fields](../features/api-contract.md#unknown-request-fields-apiunknownfields)).
+Java-specific: with no `api.pagination`, `mvn metaobjects:verify` warns (`unbounded-list-pages`,
+advisory, never fails the build). The body keys are read off the raw `JsonNode`
+(`UnknownBodyKeys`, shipped with the generated runtime) before the body is bound, so under
+`reject` the generated create handler takes `@RequestBody JsonNode body` rather than the DTO.
 
 ### Decimals and null members on the wire
 
