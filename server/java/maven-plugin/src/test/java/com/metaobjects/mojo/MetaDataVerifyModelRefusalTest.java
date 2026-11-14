@@ -22,7 +22,7 @@ public class MetaDataVerifyModelRefusalTest {
         mojo.setLoader(LoaderParam.builder("layout-collision")
                 .withClassname("com.metaobjects.loader.MetaDataLoader")
                 .withSourceDir("./src/test/resources")
-                .withSources(List.of("mojo/layout-collision/meta.Sales.json", "mojo/layout-collision/meta.sales.json"))
+                .withSources(List.of("mojo/layout-collision/meta.sales-upper.json", "mojo/layout-collision/meta.sales-lower.json"))
                 .build());
         mojo.setGenerators(List.of(GeneratorParam.builder(KotlinEntityGenerator.class.getName())
                 .withArg("outputDir", outputDir.toString())
