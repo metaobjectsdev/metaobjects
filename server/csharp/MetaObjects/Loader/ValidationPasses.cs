@@ -1791,6 +1791,10 @@ public static partial class ValidationPasses
             {
                 var origin = OriginOf(f);
                 var names = new List<string>();
+                // A function naming itself in @args is refused by ValidateFunctionOrigin already. On an
+                // entity, a computed expression reading its own name reads itself: a one-node cycle,
+                // reported here (M3). On a projection that name is the base entity's field: no cycle.
+                var selfAllowed = origin?.SubType == ORIGIN_SUBTYPE_COMPUTED && obj.SubType != OBJECT_SUBTYPE_PROJECTION;
                 if (origin?.SubType == ORIGIN_SUBTYPE_FUNCTION)
                 {
                     var raw = origin.OwnAttr(ORIGIN_FUNCTION_ATTR_ARGS);
@@ -1802,7 +1806,7 @@ public static partial class ValidationPasses
                     names.AddRange(ExpressionGrammar.FieldRefs(origin.OwnAttr(ORIGIN_COMPUTED_ATTR_EXPR)).Select(n => n.Split('.')[0]));
                 }
                 return names.Select(n => byName.TryGetValue(n, out var d) ? d : null)
-                    .Where(d => d is not null && !ReferenceEquals(d, f) && OriginOf(d) is not null).Select(d => d!).ToList();
+                    .Where(d => d is not null && (selfAllowed || !ReferenceEquals(d, f)) && OriginOf(d) is not null).Select(d => d!).ToList();
             }
             var done = new HashSet<MetaData>(ReferenceEqualityComparer.Instance);
             var reported = new HashSet<string>();

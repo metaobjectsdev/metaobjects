@@ -287,4 +287,15 @@ public class ViewVocabularyRc21LoaderTests
             """{ "field.long": { "name": "c", "children": [ { "origin.computed": { "@expr": { "fn": "coalesce", "args": [ { "field": "a" }, { "field": "id" } ] } } } ] } }"""));
         Assert.Empty(Load(Meter(FnField("a", "b"), FnField("b", "id"))));
     }
+
+    // Fix round 3 (M3): on an entity, a computed field that reads its own name reads itself; on a
+    // projection that name is the base entity's field, so it is no cycle.
+    [Fact]
+    public void An_entity_computed_field_that_reads_itself_is_a_one_node_cycle()
+    {
+        Refused("ERR_INVALID_ORIGIN", "Meter.a: a derived field depends on itself through a → a",
+            Meter("""{ "field.long": { "name": "a", "children": [ { "origin.computed": { "@expr": { "fn": "coalesce", "args": [ { "field": "a" }, { "field": "id" } ] } } } ] } }"""));
+        Assert.DoesNotContain(Load(View(Computed("customerId", "long", Fn("coalesce", F("customerId"), F("id"))))),
+            e => e.Message.Contains("depends on itself", StringComparison.Ordinal));
+    }
 }

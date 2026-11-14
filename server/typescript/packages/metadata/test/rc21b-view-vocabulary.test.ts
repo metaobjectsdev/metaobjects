@@ -192,6 +192,19 @@ describe("U10 — origin.function", () => {
     // A chain without a cycle loads.
     await ok(meter(fnField("a", "b"), fnField("b", "id")), meterRow);
   });
+  // Fix round 3 (M3): on an entity, a computed field that reads its own name reads itself.
+  test("an entity's computed field that reads itself is a one-node cycle; on a projection the name is the base field", async () => {
+    const selfRef = { "field.long": { name: "a", children: [ { "origin.computed": { "@expr": { fn: "coalesce", args: [ { field: "a" }, { field: "id" } ] } } } ] } };
+    await refused("ERR_INVALID_ORIGIN", /Meter\.a: a derived field depends on itself through a → a/,
+      { "object.entity": { name: "Meter", children: [ { "source.rdb": { "@table": "meters" } }, { "field.long": { name: "id" } },
+        { "identity.primary": { name: "id", "@fields": "id" } }, selfRef ] } },
+      { "object.projection": { name: "MeterRow", children: [ { "source.rdb": { "@kind": "view", "@table": "v_meter" } },
+        { "field.long": { name: "id", extends: "Meter.id" } },
+        { "field.long": { name: "a", children: [ { "origin.passthrough": { "@from": "Meter.a" } } ] } },
+        { "identity.primary": { name: "id", extends: "Meter.id" } } ] } });
+    // A projection field over the base field of the same name is no cycle.
+    await ok(orderView([computed("customerId", "long", { fn: "coalesce", args: [ { field: "customerId" }, { field: "id" } ] })]));
+  });
   test("an unreached function field on an entity with no read source is refused", async () => {
     await refused("ERR_DERIVED_FIELD_NO_READ_SOURCE", /tier/, withFn({ "@function": "tier_of", "@args": ["id"], "@params": ["long"], "@returns": "string" }));
   });

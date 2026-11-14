@@ -2080,13 +2080,19 @@ export function validateDerivedCycles(root: MetaData): ParseError[] {
     const deps = (f: MetaData): MetaData[] => {
       const origin = originOf(f);
       const names: string[] = [];
+      // A function naming itself in @args is refused by _validateFunctionOrigin already. On an entity,
+      // a computed expression reading its own name reads itself: a one-node cycle, reported here (fix
+      // round 3, M3). On a projection that name is the base entity's field, so it is no cycle.
+      let selfAllowed = false;
       if (origin?.subType === ORIGIN_SUBTYPE_FUNCTION) {
         const raw = origin.ownAttr(ORIGIN_FUNCTION_ATTR_ARGS);
         for (const n of raw === undefined ? [] : Array.isArray(raw) ? raw : [raw]) if (typeof n === "string") names.push(n);
       } else if (origin?.subType === ORIGIN_SUBTYPE_COMPUTED) {
+        selfAllowed = obj.subType !== OBJECT_SUBTYPE_PROJECTION;
         for (const n of expressionFieldRefs(origin.ownAttr(ORIGIN_COMPUTED_ATTR_EXPR))) names.push(n.split(".")[0]!);
       }
-      return names.map((n) => byName.get(n)).filter((d): d is MetaData => d !== undefined && d !== f && originOf(d) !== undefined);
+      return names.map((n) => byName.get(n))
+        .filter((d): d is MetaData => d !== undefined && (selfAllowed || d !== f) && originOf(d) !== undefined);
     };
     const done = new Set<MetaData>();
     const reported = new Set<string>();
