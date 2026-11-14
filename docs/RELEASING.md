@@ -186,7 +186,9 @@ Publish in tier order so a dependent never lands before its dependency. **`forge
    released. `v0.24.5` carries exactly that, and nothing caught it because no page
    displayed a coordinate yet.
 
-   So `release.mjs` pushes `main` and **stops**. After the ports are bumped, committed,
+   So `release.mjs` pushes the branch it runs on (`main`, or a `release/<major>.<minor>`
+   maintenance branch — see the maintenance-branch section below) and **stops**. After the
+   ports are bumped, committed,
    pushed and tagged (`python-v*`, `csharp-v*`, `java-v<npm major + 7>.*` — `java-v8.*` at the
    1.0 cut, NOT `java-v7.*`), run:
 
@@ -614,6 +616,43 @@ default, so a dispatch meant to report cannot write.
 Then verify: `npm dist-tag ls @metaobjectsdev/<pkg>` — authoritative, where `npm view` is
 CDN-cached and lags right after publish.
 
+## Patch from a maintenance branch (`release/<major>.<minor>`)
+
+**When.** `main` already holds work for the next minor (or major) that must not ship yet, and a
+fix has to go out on the line already released. Cut the patch from a maintenance branch named
+exactly `release/<major>.<minor>` (for example `release/1.2`), branched from that line's last
+release commit, with the fix merged into it by PR. If `main` has nothing unreleased beyond the
+patch, cut from `main` as usual instead.
+
+**What the scripts do differently.** `scripts/release.mjs` and `scripts/finish-release.mjs`
+accept `release/<major>.<minor>` as well as `main` (the rule is
+[`scripts/lib/release-branch.mjs`](../scripts/lib/release-branch.mjs), shared by both):
+
+- The version must be on the branch's own line: `release/1.2` cuts `1.2.x` (and `1.2.x-rc.N`)
+  and refuses anything else, such as `1.3.0`.
+- Every push goes to that branch (`git push origin release/1.2`), never `main`.
+- `finish-release`'s sync check compares HEAD with `origin/release/1.2`, not `origin/main`.
+
+Every other gate is unchanged. Bump the PyPI/NuGet/Maven manifests, run `bun run site:payload`,
+commit and push on the maintenance branch, and push the `python-v*` / `csharp-v*` / `java-v*`
+tags from it, exactly as on `main`.
+
+**The site follows the newest tag.** The website deploys from the newest `vN.N.N` release tag
+(rule 7), wherever it was cut. A patch tag on a maintenance branch therefore becomes what
+metaobjects.dev shows, including its payload and coordinates, until the next release is tagged.
+The converse is enforced: `finish-release` refuses to tag a patch on a line older than a tag
+that already exists (`v1.2.3` once `v1.3.0` exists), because the deploy would never resolve it.
+So a maintenance patch is for a line that is still the newest release. The same holds on npm:
+`release.mjs` publishes to `latest`, and a patch cut after a newer minor shipped would move
+`latest` backwards — so `release.mjs` refuses, in its preflight and before anything is
+published, any version older than the newest release tag, and any release candidate of a
+version that has already shipped (npm sorts it below the full release; resolved the same
+way the site deploy resolves its tag). It offers no non-`latest` dist-tag path.
+
+**Then bring the fix to `main`.** A maintenance branch is never merged back wholesale (its
+version bumps and CHANGELOG would collide with `main`'s). Cherry-pick or re-land each fix on
+`main` by PR.
+
 ## Isolated patch (one package)
 
 If only one package changed (e.g. a `cli` bugfix), bump just that package, `rm bun.lock && bun
@@ -696,7 +735,9 @@ lock the repo/owner IDs against resurrection attacks.)
 
 ## Procedure
 
-1. **Pick the publish commit on `main`** (a stable, merged tip — not a mid-refactor branch). Ensure
+1. **Pick the publish commit on the branch the release is cut from** (`main`, or the
+   `release/<major>.<minor>` maintenance branch for a patch — the workflow publishes the
+   COMMITTED `<Version>`, so the tag must name that branch's tree). Ensure
    the packaging config + `publish-csharp.yml` are on it. Set `<Version>` in `Directory.Build.props`.
 2. **Validate locally** (catches immutable-version mistakes before they're permanent):
    ```bash

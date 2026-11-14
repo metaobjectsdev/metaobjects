@@ -150,7 +150,9 @@ public abstract class MetaData
     private ErrorSource _source = CodeSource.Default;
 
     /// <summary>Per-instance read cache: only populated once the node is frozen.</summary>
-    private readonly Dictionary<string, object?> _cache = new();
+    // Concurrent: a frozen tree is shared across threads (loaded once, read by every request
+    // or test), and a plain Dictionary corrupts on two concurrent first writes.
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, object?> _cache = new();
 
     // ---------------------------------------------------------------------------
     // Constructor
@@ -179,8 +181,9 @@ public abstract class MetaData
             return (T)cached!;
         }
         T value = compute();
-        if (_frozen) _cache[key] = value;
-        return value;
+        // A racing first read computes the same value from the same immutable tree; keep the
+        // first one stored so every caller gets one instance.
+        return _frozen ? (T)_cache.GetOrAdd(key, value)! : value;
     }
 
     // ---------------------------------------------------------------------------

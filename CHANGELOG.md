@@ -56,6 +56,16 @@ file changes. No vocabulary or `metamodelVersion` change._
   dropping it (nothing is stored); its runner skips that one scenario, recorded in the Python
   codegen `KNOWN_GAPS.md`.
 
+### Fixed
+
+- **C#: concurrent reads of a loaded model no longer corrupt its cache.** `MetaData.Cached`
+  memoized derived reads (`Validators()`, `ResolvedIsArray()`, `OwnAttrs()`, …) in a plain
+  `Dictionary`, so two threads touching a frozen node for the first time could corrupt it, and
+  every later read in the process then failed with "Operations that change non-concurrent
+  collections must have exclusive access". A host that loads metadata once and serves requests
+  from it in parallel, or a parallel test run, hit this. The cache is now a
+  `ConcurrentDictionary`.
+
 ## [1.2.1] — Python only
 
 _PyPI `1.2.1` only. npm, NuGet and Maven Central stay at `1.2.0` (`8.2.0`): none of them has a
