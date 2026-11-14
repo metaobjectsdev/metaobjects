@@ -35,7 +35,7 @@ vocabulary; upgrade every port together.
   `lower`, `upper`, `btrim`, `splitPart`, `concat`, `concatWs`, `substring`, `replace`, `left`,
   `right` and `length` beside `coalesce`, each argument typed; a `{ field }` ref to a scalar
   `origin.aggregate` (read on the grouped row, not filterable); and, on a projection, a path of
-  to-one hops (`"patientId.currentMailingAddressId"`) in an expression or as a correlated
+  to-one hops (`"customerId.regionId"`) in an expression or as a correlated
   `@filter` operand, joined but not output. `origin.function` (`@function`, `@schema`, `@args`)
   is a value computed by a database function the project owns, typed by its argument fields and
   its carrying field; declared on an entity it is entity-derived (Postgres only). On

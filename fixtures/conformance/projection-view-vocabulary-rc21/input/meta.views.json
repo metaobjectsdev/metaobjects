@@ -23,7 +23,7 @@
         { "field.long": { "name": "id" } },
         { "field.long": { "name": "customerId" } },
         { "field.enum": { "name": "status", "@values": ["Open", "Shipped"], "@intValueMap": { "Open": 0, "Shipped": 1 } } },
-        { "field.int": { "name": "cumulativeStatus" } },
+        { "field.int": { "name": "stage" } },
         { "field.timestamp": { "name": "updatedAt" } },
         { "identity.primary": { "name": "id", "@fields": "id" } },
         { "identity.reference": { "name": "customerId", "@fields": "customerId", "@references": "Customer" } }
@@ -41,9 +41,9 @@
         { "source.rdb": { "@kind": "view", "@view": "v_order_row" } },
         { "field.long": { "name": "id", "extends": "Order.id" } },
         { "field.int": { "name": "outcome", "children": [ { "origin.computed": { "@expr": {
-          "case": [ { "when": { "op": "eq", "left": { "field": "cumulativeStatus" }, "right": { "value": 0 } },
+          "case": [ { "when": { "op": "eq", "left": { "field": "stage" }, "right": { "value": 0 } },
                       "then": { "cast": { "field": "status" }, "as": "int" } } ],
-          "else": { "field": "cumulativeStatus" } } } } ] } },
+          "else": { "field": "stage" } } } } ] } },
         { "field.string": { "name": "zip5", "children": [ { "origin.computed": { "@expr": {
           "fn": "splitPart", "args": [ { "field": "customerId.zip" }, { "value": "-" }, { "value": 1 } ] } } } ] } },
         { "field.string": { "name": "nothing", "children": [ { "origin.computed": { "@expr": {

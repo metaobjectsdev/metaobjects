@@ -2032,7 +2032,7 @@ function checkCorrelatedOperands(
         ));
       } else if (typeof name !== "string" || !base.children().some((c) => c.type === TYPE_FIELD && c.name === name)) {
         // rc.21 part B (U4): on a projection, the operand may be a PATH of to-one hops from the base
-        // row and a field of the entity reached ("taskId.caseId"), joined on the outer row.
+        // row and a field of the entity reached ("orderId.customerId"), joined on the outer row.
         const path = typeof name === "string" && name.includes(".") && onProjection
           ? resolveFilterPath(base as MetaObject, name) : undefined;
         if (path !== undefined && typeof path !== "string") continue;

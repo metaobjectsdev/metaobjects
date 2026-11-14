@@ -47,7 +47,7 @@ const MODEL = { "metadata.root": { package: "acme", children: [
     { "field.long": { name: "id" } },
     { "field.long": { name: "customerId" } },
     { "field.enum": { name: "status", "@values": ["Open", "Shipped"], "@intValueMap": { Open: 0, Shipped: 1 } } },
-    { "field.int": { name: "cumulativeStatus" } },
+    { "field.int": { name: "stage" } },
     { "field.string": { name: "externalRef" } },
     { "field.timestamp": { name: "updatedAt" } },
     { "identity.primary": { name: "id", "@fields": "id" } },
@@ -57,7 +57,7 @@ const MODEL = { "metadata.root": { package: "acme", children: [
     { "field.long": { name: "id" } },
     { "field.long": { name: "orderId", "@required": true } },
     { "field.long": { name: "customerId" } },
-    { "field.int": { name: "cumulativeStatus" } },
+    { "field.int": { name: "stage" } },
     { "field.timestamp": { name: "createdAt" } },
     { "identity.primary": { name: "id", "@fields": "id" } },
     { "identity.reference": { name: "orderId", "@fields": "orderId", "@references": "Order" } } ] } },
@@ -66,7 +66,7 @@ const MODEL = { "metadata.root": { package: "acme", children: [
     { "field.long": { name: "id", extends: "Order.id" } },
     { "field.string": { name: "ref", children: [ { "origin.computed": { "@expr": { fn: "coalesce", args: [ { field: "externalRef" }, { cast: { field: "id" }, as: "string" } ] } } } ] } },
     { "field.string": { name: "nothing", children: [ { "origin.computed": { "@expr": { cast: { value: null }, as: "string", dbColumnType: "varchar" } } } ] } },
-    { "field.int": { name: "outcome", children: [ { "origin.computed": { "@expr": { case: [ { when: { op: "eq", left: { field: "cumulativeStatus" }, right: { value: 0 } }, then: { cast: { field: "status" }, as: "int" } } ], else: { field: "cumulativeStatus" } } } } ] } },
+    { "field.int": { name: "outcome", children: [ { "origin.computed": { "@expr": { case: [ { when: { op: "eq", left: { field: "stage" }, right: { value: 0 } }, then: { cast: { field: "status" }, as: "int" } } ], else: { field: "stage" } } } } ] } },
     { "field.string": { name: "zip5", children: [ { "origin.computed": { "@expr": { fn: "splitPart", args: [ { field: "customerId.zip" }, { value: "-" }, { value: 1 } ] } } } ] } },
     { "field.string": { name: "fullName", children: [ { "origin.computed": { "@expr": { fn: "btrim", args: [ { fn: "concatWs", args: [ { value: " " }, { field: "customerId.firstName" }, { field: "customerId.lastName" } ] } ] } } } ] } },
     { "field.string": { name: "initials", children: [ { "origin.computed": { "@expr": { fn: "upper", args: [ { fn: "concat", args: [ { fn: "left", args: [ { field: "customerId.firstName" }, { value: 1 } ] }, { fn: "right", args: [ { fn: "lower", args: [ { field: "customerId.lastName" } ] }, { value: 1 } ] } ] } ] } } } ] } },
@@ -74,7 +74,7 @@ const MODEL = { "metadata.root": { package: "acme", children: [
     { "field.string": { name: "noRef", children: [ { "origin.computed": { "@expr": { fn: "nullif", args: [ { field: "externalRef" }, { value: "NONE" } ] } } } ] } },
     { "field.string": { name: "tier", children: [ { "origin.passthrough": { "@from": "Customer.loyaltyTier", "@via": "Order.customerId" } } ] } },
     { "field.timestamp": { name: "lastEvent", children: [ { "origin.aggregate": { "@agg": "max", "@of": "OrderEvent.createdAt", "@via": "Order.orderEvents" } } ] } },
-    { "field.timestamp": { name: "firstAtStatus", children: [ { "origin.aggregate": { "@agg": "min", "@of": "OrderEvent.createdAt", "@via": "Order.orderEvents", "@filter": { cumulativeStatus: { eq: { field: "cumulativeStatus" } } } } } ] } },
+    { "field.timestamp": { name: "firstAtStatus", children: [ { "origin.aggregate": { "@agg": "min", "@of": "OrderEvent.createdAt", "@via": "Order.orderEvents", "@filter": { stage: { eq: { field: "stage" } } } } } ] } },
     { "field.timestamp": { name: "touched", children: [ { "origin.computed": { "@expr": { fn: "greatest", args: [ { field: "updatedAt" }, { field: "lastEvent" } ] } } } ] } },
     { "field.timestamp": { name: "earliest", children: [ { "origin.computed": { "@expr": { fn: "least", args: [ { field: "updatedAt" }, { field: "lastEvent" } ] } } } ] } },
     { "field.long": { name: "eventByCustomer", children: [ { "origin.first": { "@of": "OrderEvent.id", "@via": "Order.orderEvents", "@orderBy": ["createdAt"], "@filter": { customerId: { eq: { field: "customerId.id" } } } } } ] } },
@@ -152,11 +152,11 @@ describe("rc.21 part B view vocabulary — live Postgres", () => {
         (11, '  Alan', 'Turing  ', '12345', 1, '[]'),
         (12, NULL, 'Hopper', NULL, NULL, NULL);
       INSERT INTO addresses (id, customer_id, street) VALUES (100, 10, 'Lovelace'), (101, 11, 'Main St');
-      INSERT INTO orders (id, customer_id, status, cumulative_status, external_ref, updated_at) VALUES
+      INSERT INTO orders (id, customer_id, status, stage, external_ref, updated_at) VALUES
         (1, 10, 1, 0, NULL, '2026-01-05T00:00:00Z'),
         (2, 11, 0, 7, 'AXXBCD', '2026-03-01T00:00:00Z'),
         (3, 12, 0, 0, 'NONE', NULL);
-      INSERT INTO order_events (id, order_id, customer_id, cumulative_status, created_at) VALUES
+      INSERT INTO order_events (id, order_id, customer_id, stage, created_at) VALUES
         (1000, 1, 10, 0, '2026-01-01T00:00:00Z'),
         (1001, 1, 10, 0, '2026-02-01T00:00:00Z'),
         (1002, 1, 99, 3, '2026-01-02T00:00:00Z'),

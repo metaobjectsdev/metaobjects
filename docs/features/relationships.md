@@ -267,8 +267,8 @@ NULL literal fits any. On SQLite each is spelled with SQLite's own functions whe
 is the same (`greatest` keeps Postgres's NULL-skipping), and refused where it is not:
 `splitPart` beyond the first part.
 
-**A path in an expression or an operand.** On a projection, `{ field: "patientId.currentMailingAddressId" }`
-in an `origin.computed` expression, or `{ field: "taskId.caseId" }` as a correlated operand in an
+**A path in an expression or an operand.** On a projection, `{ field: "customerId.regionId" }`
+in an `origin.computed` expression, or `{ field: "orderId.customerId" }` as a correlated operand in an
 origin's `@filter`, is a path of to-one hops from the base and a field of the entity reached:
 the view joins it without outputting it.
 
@@ -286,8 +286,8 @@ never creates the function (it is owned SQL, created before the view). Postgres 
 
 ```yaml
 - field.int:
-    name: consentState
-    children: [ { origin.function: { "@function": compute_consent_state, "@schema": app, "@args": [id] } } ]
+    name: riskScore
+    children: [ { origin.function: { "@function": compute_risk_score, "@schema": app, "@args": [id] } } ]
 ```
 
 **One row per array element** (`@grain`, `@grainOrdinal`). A projection whose `@grain` names a

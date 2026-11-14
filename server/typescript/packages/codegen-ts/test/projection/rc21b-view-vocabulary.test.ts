@@ -50,9 +50,9 @@ describe("U12 cast and U2 a typed NULL of an unbounded varchar", () => {
 describe("U8 an int-stored enum and an int in one case, through the cast", () => {
   test("postgres", async () => {
     const sql = await one("postgres", orderRow([computed("outcome", "int", {
-      case: [{ when: { op: "eq", left: { field: "cumulativeStatus" }, right: { value: 0 } }, then: { cast: { field: "status" }, as: "int" } }],
-      else: { field: "cumulativeStatus" } })]));
-    expect(sql).toContain("(CASE WHEN o.cumulative_status = 0 THEN CAST(o.status AS INTEGER) ELSE o.cumulative_status END) AS outcome");
+      case: [{ when: { op: "eq", left: { field: "stage" }, right: { value: 0 } }, then: { cast: { field: "status" }, as: "int" } }],
+      else: { field: "stage" } })]));
+    expect(sql).toContain("(CASE WHEN o.stage = 0 THEN CAST(o.status AS INTEGER) ELSE o.stage END) AS outcome");
   });
 });
 
@@ -81,8 +81,8 @@ describe("U11 string functions, and U3 a path the view does not output", () => {
   test("sqlite: the same values from SQLite's own functions", async () => {
     const sql = await one("sqlite", p);
     const db = new Database(":memory:");
-    db.run("CREATE TABLE customers (id INTEGER PRIMARY KEY, first_name TEXT, last_name TEXT, zip TEXT, region_id INTEGER, mailing_address_id INTEGER, contacts TEXT)");
-    db.run("CREATE TABLE orders (id INTEGER PRIMARY KEY, customer_id INTEGER, status INTEGER, cumulative_status INTEGER, external_ref TEXT, updated_at TEXT)");
+    db.run("CREATE TABLE customers (id INTEGER PRIMARY KEY, first_name TEXT, last_name TEXT, zip TEXT, region_id INTEGER, default_warehouse_id INTEGER, contacts TEXT)");
+    db.run("CREATE TABLE orders (id INTEGER PRIMARY KEY, customer_id INTEGER, status INTEGER, stage INTEGER, external_ref TEXT, updated_at TEXT)");
     db.run("INSERT INTO customers (id, first_name, last_name, zip) VALUES (10, 'Ada', 'Lovelace', '02139-4307'), (11, NULL, 'Hopper', '12345')");
     db.run("INSERT INTO orders (id, customer_id, external_ref) VALUES (1, 10, 'AXXBCD'), (2, 11, 'NONE'), (3, NULL, NULL)");
     db.run(`CREATE VIEW v AS ${sql}`);
@@ -117,9 +117,9 @@ describe("U13 greatest / least over an aggregate, and U4 a correlated path opera
     const sql = await one("sqlite", p);
     expect(sql).toContain("MAX(COALESCE(o.updated_at, MAX(o0.created_at)), COALESCE(MAX(o0.created_at), o.updated_at)) AS touched");
     const db = new Database(":memory:");
-    db.run("CREATE TABLE customers (id INTEGER PRIMARY KEY, first_name TEXT, last_name TEXT, zip TEXT, region_id INTEGER, mailing_address_id INTEGER, contacts TEXT)");
-    db.run("CREATE TABLE orders (id INTEGER PRIMARY KEY, customer_id INTEGER, status INTEGER, cumulative_status INTEGER, external_ref TEXT, updated_at TEXT)");
-    db.run("CREATE TABLE order_events (id INTEGER PRIMARY KEY, order_id INTEGER, customer_id INTEGER, cumulative_status INTEGER, created_at TEXT)");
+    db.run("CREATE TABLE customers (id INTEGER PRIMARY KEY, first_name TEXT, last_name TEXT, zip TEXT, region_id INTEGER, default_warehouse_id INTEGER, contacts TEXT)");
+    db.run("CREATE TABLE orders (id INTEGER PRIMARY KEY, customer_id INTEGER, status INTEGER, stage INTEGER, external_ref TEXT, updated_at TEXT)");
+    db.run("CREATE TABLE order_events (id INTEGER PRIMARY KEY, order_id INTEGER, customer_id INTEGER, stage INTEGER, created_at TEXT)");
     db.run("INSERT INTO customers (id) VALUES (10)");
     db.run("INSERT INTO orders (id, customer_id, updated_at) VALUES (1, 10, '2026-01-05'), (2, 10, NULL), (3, 10, '2026-01-01')");
     db.run("INSERT INTO order_events (id, order_id, customer_id, created_at) VALUES (100, 1, 10, '2026-02-01'), (101, 2, 9, '2026-03-01'), (102, 2, 10, '2026-03-02')");
@@ -163,7 +163,7 @@ describe("U14 @grain — one row per array element", () => {
   test("sqlite", async () => {
     const sql = await one("sqlite", p);
     const db = new Database(":memory:");
-    db.run("CREATE TABLE customers (id INTEGER PRIMARY KEY, first_name TEXT, last_name TEXT, zip TEXT, region_id INTEGER, mailing_address_id INTEGER, contacts TEXT)");
+    db.run("CREATE TABLE customers (id INTEGER PRIMARY KEY, first_name TEXT, last_name TEXT, zip TEXT, region_id INTEGER, default_warehouse_id INTEGER, contacts TEXT)");
     db.run(`INSERT INTO customers (id, contacts) VALUES (1, '[{"kind":"email","rank":1},{"kind":"phone","rank":2}]'), (2, '[]'), (3, NULL)`);
     db.run(`CREATE VIEW v AS ${sql}`);
     expect(db.query("SELECT customer_id, position, kind, rank FROM v ORDER BY customer_id, position").all()).toEqual([
@@ -197,7 +197,7 @@ describe("U15 @union", () => {
     for (const all of [false, true]) {
       const sql = (await views("sqlite", ...branches, union(all))).get("v_people")!;
       const db = new Database(":memory:");
-      db.run("CREATE TABLE customers (id INTEGER PRIMARY KEY, first_name TEXT, last_name TEXT, zip TEXT, region_id INTEGER, mailing_address_id INTEGER, contacts TEXT)");
+      db.run("CREATE TABLE customers (id INTEGER PRIMARY KEY, first_name TEXT, last_name TEXT, zip TEXT, region_id INTEGER, default_warehouse_id INTEGER, contacts TEXT)");
       db.run("CREATE TABLE addresses (id INTEGER PRIMARY KEY, customer_id INTEGER, street TEXT)");
       db.run("INSERT INTO customers (id, last_name) VALUES (1, 'Main')");
       db.run("INSERT INTO addresses (id, customer_id, street) VALUES (9, 1, 'main'), (10, 2, 'Elm')");
@@ -210,26 +210,26 @@ describe("U15 @union", () => {
 // rc.21 part B: two fixes the vocabulary needed to build its motivating views.
 describe("a projection over a TPH root reads its subtypes' columns; a unique reverse hop is to-one", () => {
   const tph = [
-    { "object.entity": { name: "Grant", "@discriminator": "kind", children: [
-      { "source.rdb": { "@table": "grants" } },
+    { "object.entity": { name: "Vehicle", "@discriminator": "kind", children: [
+      { "source.rdb": { "@table": "vehicles" } },
       { "field.long": { name: "id" } },
       { "field.string": { name: "kind", "@maxLength": 10 } },
-      { "field.long": { name: "cardId" } },
+      { "field.long": { name: "lockerId" } },
       { "identity.primary": { "@fields": "id" } } ] } },
-    { "object.entity": { name: "PriorGrant", extends: "Grant", "@discriminatorValue": "PRIOR", children: [
-      { "field.string": { name: "integrationKey" } } ] } },
-    { "object.entity": { name: "Card", children: [
-      { "source.rdb": { "@table": "cards" } },
+    { "object.entity": { name: "Truck", extends: "Vehicle", "@discriminatorValue": "TRUCK", children: [
+      { "field.string": { name: "payloadClass" } } ] } },
+    { "object.entity": { name: "Locker", children: [
+      { "source.rdb": { "@table": "lockers" } },
       { "field.long": { name: "id" } },
       { "field.string": { name: "number" } },
       { "identity.primary": { "@fields": "id" } } ] } },
-    { "object.entity": { name: "CardGrant", children: [
-      { "source.rdb": { "@table": "card_grants" } },
+    { "object.entity": { name: "LockerKey", children: [
+      { "source.rdb": { "@table": "locker_keys" } },
       { "field.long": { name: "id" } },
-      { "field.long": { name: "cardId" } },
+      { "field.long": { name: "lockerId" } },
       { "field.string": { name: "note" } },
       { "identity.primary": { "@fields": "id" } },
-      { "identity.reference": { name: "cardId", "@fields": "cardId", "@references": "Card" } } ] } },
+      { "identity.reference": { name: "lockerId", "@fields": "lockerId", "@references": "Locker" } } ] } },
   ];
   async function load(extra: unknown[]) {
     const { root, errors } = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify({ "metadata.root": { package: "acme", children: [...tph, ...extra] } }))]);
@@ -237,36 +237,36 @@ describe("a projection over a TPH root reads its subtypes' columns; a unique rev
   }
   test("an extender with no identity keeps the super's anchor, and a subtype column reads the shared table", async () => {
     const { root, errors } = await load([
-      { "object.projection": { name: "GrantBase", abstract: true, children: [
-        { "field.long": { name: "grantId", extends: "Grant.id" } },
-        { "identity.primary": { name: "id", extends: "Grant.primary" } } ] } },
-      { "object.projection": { name: "GrantRow", extends: "GrantBase", children: [
-        { "source.rdb": { "@kind": "view", "@view": "v_grants" } },
-        { "field.string": { name: "externalKey", extends: "PriorGrant.integrationKey" } } ] } },
+      { "object.projection": { name: "VehicleBase", abstract: true, children: [
+        { "field.long": { name: "vehicleId", extends: "Vehicle.id" } },
+        { "identity.primary": { name: "id", extends: "Vehicle.primary" } } ] } },
+      { "object.projection": { name: "VehicleRow", extends: "VehicleBase", children: [
+        { "source.rdb": { "@kind": "view", "@view": "v_vehicles" } },
+        { "field.string": { name: "externalKey", extends: "Truck.payloadClass" } } ] } },
     ]);
     expect(errors).toEqual([]);
     const sql = buildProjectionViews(root, { dialect: "postgres" })[0]!.sql;
-    expect(sql).toContain("g.id AS grant_id");
-    expect(sql).toContain("g.integration_key AS external_key");
-    expect(sql).toContain("FROM public.grants g");
-    expect(sql).not.toContain("'PRIOR'");
+    expect(sql).toContain("v.id AS vehicle_id");
+    expect(sql).toContain("v.payload_class AS external_key");
+    expect(sql).toContain("FROM public.vehicles v");
+    expect(sql).not.toContain("'TRUCK'");
   });
   const viaCard = (unique: boolean) => [
-    { "object.entity": { name: "CardGrant", children: [
-      { "source.rdb": { "@table": "card_grants" } },
+    { "object.entity": { name: "LockerKey", children: [
+      { "source.rdb": { "@table": "locker_keys" } },
       { "field.long": { name: "id" } },
-      { "field.long": { name: "cardId" } },
+      { "field.long": { name: "lockerId" } },
       { "field.string": { name: "note" } },
       { "identity.primary": { "@fields": "id" } },
-      ...(unique ? [{ "identity.secondary": { name: "card_grants_card_uq", "@fields": "cardId" } }] : []),
-      { "identity.reference": { name: "cardId", "@fields": "cardId", "@references": "Card" } } ] } },
+      ...(unique ? [{ "identity.secondary": { name: "locker_keys_locker_uq", "@fields": "lockerId" } }] : []),
+      { "identity.reference": { name: "lockerId", "@fields": "lockerId", "@references": "Locker" } } ] } },
   ];
   test("a passthrough over a reverse hop loads when the holder's reference fields are a unique identity, and only then", async () => {
-    const projection = { "object.projection": { name: "CardRow", children: [
-      { "source.rdb": { "@kind": "view", "@view": "v_cards" } },
-      { "field.long": { name: "id", extends: "Card.id" } },
-      { "field.string": { name: "note", children: [ { "origin.passthrough": { "@from": "CardGrant.note", "@via": "Card.cardGrants" } } ] } },
-      { "identity.primary": { name: "id", extends: "Card.primary" } } ] } };
+    const projection = { "object.projection": { name: "LockerRow", children: [
+      { "source.rdb": { "@kind": "view", "@view": "v_lockers" } },
+      { "field.long": { name: "id", extends: "Locker.id" } },
+      { "field.string": { name: "note", children: [ { "origin.passthrough": { "@from": "LockerKey.note", "@via": "Locker.lockerKeys" } } ] } },
+      { "identity.primary": { name: "id", extends: "Locker.primary" } } ] } };
     const withUnique = async (unique: boolean) => {
       const doc = { "metadata.root": { package: "acme", children: [...tph.slice(0, 3), ...viaCard(unique), projection] } };
       const { root, errors } = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify(doc))]);
@@ -274,7 +274,7 @@ describe("a projection over a TPH root reads its subtypes' columns; a unique rev
     };
     const ok = await withUnique(true);
     expect(ok.errors).toEqual([]);
-    expect(buildProjectionViews(ok.root, { dialect: "postgres" })[0]!.sql).toContain("LEFT OUTER JOIN public.card_grants c0 ON c0.card_id = c.id");
+    expect(buildProjectionViews(ok.root, { dialect: "postgres" })[0]!.sql).toContain("LEFT OUTER JOIN public.locker_keys l0 ON l0.locker_id = l.id");
     expect((await withUnique(false)).errors.some((m) => /is to-many/.test(m))).toBe(true);
   });
 });

@@ -121,7 +121,7 @@
             },
             {
               "field.int": {
-                "name": "cumulativeStatus"
+                "name": "stage"
               }
             },
             {
@@ -226,7 +226,7 @@
                             "when": {
                               "op": "eq",
                               "left": {
-                                "field": "cumulativeStatus"
+                                "field": "stage"
                               },
                               "right": {
                                 "value": 0
@@ -241,7 +241,7 @@
                           }
                         ],
                         "else": {
-                          "field": "cumulativeStatus"
+                          "field": "stage"
                         }
                       }
                     }
