@@ -27,10 +27,7 @@ import {
   namesRef, physicalNameExpr, sourceSchemaExpr, indexNameExpr, columnExpr,
 } from "../names.js";
 import { resolveTableSchema, storedEnumValue, VALIDATOR_ATTR_CONSTRAINT_NAME } from "@metaobjectsdev/metadata";
-import { fitPgIdentifier } from "@metaobjectsdev/migrate-ts/expected";
-
-/** One table-level CHECK: its name and expression as emitted, and their plain text (rc.21, N1). */
-interface CheckEntry { name: Code; expr: Code; key: string; text: string }
+import { fitPgIdentifier } from "../pg-identifier.js";
 import { intValueMapOf } from "../enum-meta.js";
 import { renderEnumIntCustomType } from "./enum-int-codec.js";
 import { renderDurationCustomType } from "./duration-wire-helper.js";
@@ -39,6 +36,9 @@ import { renderDocsFor } from "./jsdoc.js";
 import { collectTphSubtypeFields, tphConcreteSubtypes, tphPlan } from "./tph-discriminator.js";
 import { tphStorageObject } from "../tph.js";
 import { effectivePackage } from "../docs-paths.js";
+
+/** One table-level CHECK: its name and expression as emitted, and their plain text (rc.21, N1). */
+interface CheckEntry { name: Code; expr: Code; key: string; text: string }
 
 /**
  * Render the Drizzle table definition for one entity, including:

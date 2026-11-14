@@ -52,6 +52,7 @@ export * from "./templates/entity-ui-descriptor.js";
 export * from "./templates/find-inbound.js";
 export * from "./templates/find-templates.js";
 export * from "./tph.js";
+export * from "./pg-identifier.js";
 export * from "./view-context.js";
 export { ENGINE_MODULES } from "./engine-surface.js";
 export { code, imp, joinCode, Import } from "ts-poet";

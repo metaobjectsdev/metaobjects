@@ -27,6 +27,7 @@ import {
   namesRef, physicalNameExpr, sourceSchemaExpr, indexNameExpr, columnExpr,
 } from "@metaobjectsdev/codegen-ts/engine";
 import { resolveTableSchema, storedEnumValue, VALIDATOR_ATTR_CONSTRAINT_NAME } from "@metaobjectsdev/metadata";
+import { fitPgIdentifier } from "@metaobjectsdev/codegen-ts/engine";
 import { intValueMapOf } from "@metaobjectsdev/codegen-ts/engine";
 import { renderEnumIntCustomType } from "./enum-int-codec.js";
 import { renderDurationCustomType } from "./duration-wire-helper.js";
@@ -35,6 +36,9 @@ import { renderDocsFor } from "./jsdoc.js";
 import { collectTphSubtypeFields, tphConcreteSubtypes, tphPlan } from "./tph-discriminator.js";
 import { tphStorageObject } from "@metaobjectsdev/codegen-ts/engine";
 import { effectivePackage } from "@metaobjectsdev/codegen-ts/engine";
+
+/** One table-level CHECK: its name and expression as emitted, and their plain text (rc.21, N1). */
+interface CheckEntry { name: Code; expr: Code; key: string; text: string }
 
 /**
  * Render the Drizzle table definition for one entity, including:
@@ -177,7 +181,7 @@ export function renderDrizzleSchema(
 
   const columnLines: Code[] = [];
   // Collect CHECK constraints for enum columns; emitted as table-level check() callbacks.
-  const checkConstraints: Array<{ name: Code; expr: Code }> = [];
+  const checkConstraints: CheckEntry[] = [];
   /**
    * One CHECK entry, composed against `<Entity>Names` when the artifact is in the run.
    *
@@ -191,7 +195,7 @@ export function renderDrizzleSchema(
    * The expression's column goes through `sql.raw`, not `sql.identifier`: the latter QUOTES
    * the name, which changes the constraint text migrate compares against.
    */
-  const checkEntry = (field: MetaField, spec: ColumnSpec): { name: Code; expr: Code } => {
+  const checkEntry = (field: MetaField, spec: ColumnSpec): CheckEntry => {
     const colExpr = columnNameExpr(field, spec.dbName);
     const values = spec.checkConstraintValues;
     const sqlSym = imp("sql@drizzle-orm");
@@ -204,6 +208,8 @@ export function renderDrizzleSchema(
         expr: names === undefined || values === undefined
           ? code`${spec.checkConstraint ?? ""}`
           : code`\${${sqlSym}.raw(${colExpr})} IN (${values})`,
+        key: declared,
+        text: spec.checkConstraint ?? "",
       };
     }
     // No artifact in this run (the documented ADR-0034 opt-out) — spell both halves, which
@@ -212,6 +218,8 @@ export function renderDrizzleSchema(
       return {
         name: code`${JSON.stringify(`${tableName}_${spec.dbName}_chk`)}`,
         expr: code`${spec.checkConstraint ?? ""}`,
+        key: `${tableName}_${spec.dbName}_chk`,
+        text: spec.checkConstraint ?? "",
       };
     }
     // `\${` emits a literal `${` into the generated source: the name becomes a template
@@ -220,6 +228,8 @@ export function renderDrizzleSchema(
     return {
       name: code`\`\${${tableNameExpr}}_\${${colExpr}}_chk\``,
       expr: code`\${${sqlSym}.raw(${colExpr})} IN (${values})`,
+      key: `${tableName}_${spec.dbName}_chk`,
+      text: spec.checkConstraint ?? "",
     };
   };
   // Int-backed field.enum customType helpers, emitted ahead of the table. Keyed by
@@ -392,6 +402,22 @@ export function renderDrizzleSchema(
 
   // Emit table-level CHECK constraints for enum fields. Both halves are composed by
   // `checkEntry` above, which owns the constant-vs-literal decision for the pair.
+  // rc.21 (N1): Postgres requires each constraint on a table to have its own name, so two
+  // different CHECKs under one name are refused there, as `meta migrate` refuses them. SQLite
+  // and D1 accept and enforce both, so both are kept there.
+  if (dialect === "postgres") {
+    const byName = new Map<string, string>();
+    for (const c of checkConstraints) {
+      const seen = byName.get(c.key);
+      if (seen !== undefined && seen !== c.text) {
+        throw new Error(
+          `object.entity '${obj.name}': two CHECK constraints are both named '${c.key}' (${seen} | ${c.text}); ` +
+            "Postgres requires each constraint on a table to have its own name. Give one a @constraintName.",
+        );
+      }
+      byName.set(c.key, c.text);
+    }
+  }
   for (const { name, expr } of checkConstraints) {
     const checkSym = imp(`check@${importModule}`);
     const sqlSym = imp("sql@drizzle-orm");
@@ -766,7 +792,7 @@ function renderColumn(
  */
 function guardedSiblingEnumChecks(
   obj: MetaObject, fieldName: string, tableName: string, ctx: RenderContext,
-): Array<{ name: Code; expr: Code }> | undefined {
+): CheckEntry[] | undefined {
   const plan = tphPlan(obj, ctx.loadedRoot);
   if (plan === null) return undefined;
   const subs = [...plan.subtypes].sort((a, b) => (a.entity.name < b.entity.name ? -1 : a.entity.name > b.entity.name ? 1 : 0));
@@ -792,7 +818,7 @@ function guardedSiblingEnumChecks(
     const stored = disc === undefined ? value : storedEnumValue(disc, value);
     return `'${stored.replace(/'/g, "''")}'`;
   };
-  const out: Array<{ name: Code; expr: Code }> = [];
+  const out: CheckEntry[] = [];
   owners.forEach((o, i) => {
     const check = specs[i]!.checkConstraint;
     if (check === undefined) return;
@@ -800,10 +826,12 @@ function guardedSiblingEnumChecks(
       ? `"${discCol}" <> ${literal(o.values[0]!)}`
       : o.values.map((v) => `("${discCol}" <> ${literal(v)})`).join(" AND ");
     const declared = o.node.attr(VALIDATOR_ATTR_CONSTRAINT_NAME);
+    // rc.21 (N2): a qualified default name is fitted to Postgres's 63-byte limit, as migrate fits it.
+    const qualified = `${tableName}_${(o.node.parent?.name ?? "subtype").toLowerCase()}_${specs[i]!.dbName}_chk`;
     const name = typeof declared === "string" && declared.length > 0
       ? declared
-      : `${tableName}_${(o.node.parent?.name ?? "subtype").toLowerCase()}_${specs[i]!.dbName}_chk`;
-    out.push({ name: code`${JSON.stringify(name)}`, expr: code`(${unless}) OR (${check})` });
+      : ctx.dialect === "postgres" ? fitPgIdentifier(qualified) : qualified;
+    out.push({ name: code`${JSON.stringify(name)}`, expr: code`(${unless}) OR (${check})`, key: name, text: `(${unless}) OR (${check})` });
   });
   return out;
 }

@@ -65,5 +65,6 @@ export const ENGINE_MODULES: readonly string[] = [
   "codegen-ts/src/templates/find-inbound.ts",
   "codegen-ts/src/templates/find-templates.ts",
   "codegen-ts/src/tph.ts",
+  "codegen-ts/src/pg-identifier.ts",
   "codegen-ts/src/view-context.ts",
 ];
