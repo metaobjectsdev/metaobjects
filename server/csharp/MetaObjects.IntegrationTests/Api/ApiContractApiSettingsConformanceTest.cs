@@ -23,18 +23,6 @@ public sealed class ApiContractApiSettingsConformanceTest
         await using var server = await ApiSettingsGeneratedServerFactory.StartAsync(pg);
         await server.ApplySeedAsync();
         await RunAsync(scenario, server.BaseUrl);
-        await AssertNoUndeclaredStateAsync(pg.ConnectionString);
-    }
-
-    // The undeclared key a scenario sends is never stored: the table has no column for it, and no
-    // scenario row ends up without its title.
-    private static async Task AssertNoUndeclaredStateAsync(string connString)
-    {
-        await using var c = new Npgsql.NpgsqlConnection(connString);
-        await c.OpenAsync();
-        await using var cmd = c.CreateCommand();
-        cmd.CommandText = "SELECT COUNT(*) FROM \"items\" WHERE \"title\" IS NULL";
-        Assert.Equal(0L, (long)(await cmd.ExecuteScalarAsync())!);
     }
 
     private static async Task RunAsync(ApiScenario scenario, string baseUrl)

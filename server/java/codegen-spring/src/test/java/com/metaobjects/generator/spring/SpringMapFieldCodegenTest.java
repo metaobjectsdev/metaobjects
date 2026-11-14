@@ -193,7 +193,7 @@ public class SpringMapFieldCodegenTest extends SharedRegistryTestBase {
 
         // __el, not a map-specific name: the array-of-VO and map-of-VO branches share one
         // emitter, which is what keeps the 400 envelope in a single place.
-        assertTrue("expected PATCH to iterate the map's VALUES; saw:\n" + controller,
+        assertTrue("expected PATCH to validate the map's values from the presence-guarded __assigned entry; saw:\n" + controller,
                 controller.contains("__assigned.get(\"addresses\") instanceof Map<?, ?> __m"));
         // A scalar-valued map has no nested bean, so it must NOT get a validation loop.
         assertFalse("a scalar-valued map needs no nested validation; saw:\n" + controller,
@@ -421,10 +421,10 @@ public class SpringMapFieldCodegenTest extends SharedRegistryTestBase {
         String controller = Files.readString(gen.resolve("acme/auth/AuthController.java"));
 
         // CREATE binds the union <Base>Dto — plain accessors, so the guard is a null check.
-        assertTrue("expected the TPH create to iterate the map's VALUES; saw:\n" + controller,
+        assertTrue("expected the TPH create to iterate the map's entrySet; saw:\n" + controller,
                 controller.contains("for (var __en : dto.addresses().entrySet())"));
         // PATCH binds the <Sub>Patch tristate, so it reuses the shared presence-guarded loop.
-        assertTrue("expected the TPH PATCH to iterate the map's VALUES; saw:\n" + controller,
+        assertTrue("expected the TPH PATCH to validate the map's values from the presence-guarded __assigned entry; saw:\n" + controller,
                 controller.contains("__assigned.get(\"addresses\") instanceof Map<?, ?> __m"));
 
         // The control: a scalar-valued map has no nested bean and must get NO loop on either
