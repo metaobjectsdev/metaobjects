@@ -149,6 +149,7 @@
     "scripts/maven-coordinate.mjs",
     "scripts/eject-release-gate.mjs",
     "scripts/lib/changelog-promote.mjs",
+    "scripts/lib/release-branch.mjs",
     "scripts/check-release-tag.mjs"
   ]
 }

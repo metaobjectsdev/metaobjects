@@ -10,6 +10,7 @@ export { buildExpectedSchema, buildExpectedSchemaWithProvenance, fieldSqlType, f
 export { pgType } from "./emit/postgres.js";
 export type { BuildExpectedSchemaOptions, SchemaBuildSettings, ExpectedSchemaWithProvenance, SchemaProvenance } from "./expected-schema.js";
 export { qualifiedDbName } from "./qualified-name.js";
+export { storedIdentifier } from "./types.js";
 export type { SqlType } from "./sql-type.js";
 export type {
   CheckDescriptor,

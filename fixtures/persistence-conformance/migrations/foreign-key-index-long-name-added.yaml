@@ -1,0 +1,23 @@
+name: foreign-key-index-long-name-added
+description: |
+  `migrate.foreignKeyIndexes` on a foreign key whose `<table>_<columns>_idx` name is over
+  Postgres's 63-byte identifier limit. The name is cut to the first 63 bytes, which is the name
+  Postgres stores, so the index the up migration creates reads back under the name migrate
+  expects (noop-converged-long-foreign-key-index-name proves the next run proposes nothing).
+
+seed-metadata: ./states/long-fk-index-names/
+target-metadata: ./states/long-fk-index-names/
+schema-settings:
+  foreignKeyIndexes: true
+
+expect:
+  blocked: []
+  up-contains:
+    - 'CREATE INDEX "customer_order_line_item_allocations_by_region_fulfilment_wareh" ON "customer_order_line_item_allocations_by_region" ("fulfilment_warehouse_reference_id");'
+  apply-up-then-query:
+    sql: |
+      SELECT indexname FROM pg_indexes
+       WHERE schemaname = 'public' AND tablename = 'customer_order_line_item_allocations_by_region'
+         AND indexname <> 'customer_order_line_item_allocations_by_region_pkey'
+    rows:
+      - { indexname: "customer_order_line_item_allocations_by_region_fulfilment_wareh" }

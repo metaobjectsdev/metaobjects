@@ -9,6 +9,7 @@
 import type { MetaObject, MetaRoot } from "@metaobjectsdev/metadata";
 import {
   buildExpectedSchemaWithProvenance,
+  storedIdentifier,
   type SchemaBuildSettings,
 } from "@metaobjectsdev/migrate-ts/expected";
 import type { Dialect } from "./column-mapper.js";
@@ -58,4 +59,14 @@ export function foreignKeyIndexesOf(
   let byFqn = byDialect.get(dialect);
   if (byFqn === undefined) byDialect.set(dialect, (byFqn = build(root, settings, dialect)));
   return byFqn.get(obj.resolutionKey()) ?? [];
+}
+
+/**
+ * The name the database stores for a declared index name, which is the name `meta migrate`
+ * creates and compares (`storedIdentifier`): on Postgres a name over 63 bytes is cut to its first
+ * 63 bytes on a character boundary; SQLite keeps the whole name. MySQL keeps it too: migrate writes
+ * no DDL there, and MySQL refuses an over-long name rather than cutting it.
+ */
+export function storedIndexName(name: string, dialect: Dialect): string {
+  return dialect === "mysql" ? name : storedIdentifier(name, dialect);
 }

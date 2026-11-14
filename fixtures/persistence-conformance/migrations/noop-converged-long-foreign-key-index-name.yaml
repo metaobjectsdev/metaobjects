@@ -1,0 +1,17 @@
+name: noop-converged-long-foreign-key-index-name
+description: |
+  IDEMPOTENCE GATE for a `migrate.foreignKeyIndexes` name over Postgres's 63-byte limit: the
+  schema built WITH the option, then diffed against the same metadata with the option still on,
+  must produce zero SQL. Postgres stores a longer name cut to 63 bytes and the diff compares
+  names exactly, so an uncut name would be proposed again on every migrate.
+
+seed-metadata: ./states/long-fk-index-names/
+seed-schema-settings:
+  foreignKeyIndexes: true
+target-metadata: ./states/long-fk-index-names/
+schema-settings:
+  foreignKeyIndexes: true
+
+expect:
+  blocked: []
+  up-empty: true

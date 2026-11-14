@@ -6,7 +6,7 @@ import type {
   CheckDescriptor, ColumnDefault, NameChange, DeclaredRename, ExprCanonPath,
   SchemaAdvisory,
 } from "../types.js";
-import { PG_IDENTIFIER_MAX_BYTES } from "../types.js";
+import { PG_IDENTIFIER_MAX_BYTES, pgStoredIdentifier } from "../types.js";
 import type { SqlType } from "../sql-type.js";
 import { sqlTypeEquals } from "../sql-type.js";
 import { applyStatus } from "./status.js";
@@ -767,16 +767,6 @@ async function carryThroughColumnRenames(
   }
 }
 
-/** Postgres keeps the first 63 bytes of an identifier, so a longer name is compared as it is stored. */
-function pgStoredName(name: string): string {
-  if (Buffer.byteLength(name, "utf8") <= PG_IDENTIFIER_MAX_BYTES) return name;
-  let out = "";
-  for (const ch of name) {
-    if (Buffer.byteLength(out + ch, "utf8") > PG_IDENTIFIER_MAX_BYTES) break;
-    out += ch;
-  }
-  return out;
-}
 
 /**
  * The rename a live primary key needs to carry the name the schema conventions give it, or
@@ -785,8 +775,8 @@ function pgStoredName(name: string): string {
  */
 function primaryKeyRename(expected: TableDescriptor, actual: TableDescriptor, liveTable: string): NameChange | undefined {
   if (expected.primaryKey.length === 0 || actual.primaryKey.length === 0) return undefined;
-  const from = pgStoredName(actual.primaryKeyName ?? `${liveTable}_pkey`);
-  const to = pgStoredName(expected.primaryKeyName ?? `${expected.name}_pkey`);
+  const from = pgStoredIdentifier(actual.primaryKeyName ?? `${liveTable}_pkey`);
+  const to = pgStoredIdentifier(expected.primaryKeyName ?? `${expected.name}_pkey`);
   return from === to ? undefined : { from, to };
 }
 
@@ -1182,11 +1172,18 @@ function fkKeyingIsStructural(
   return distinct(expected) && distinct(actual);
 }
 
+/**
+ * Keyed by column set when `structural`, else by name. On Postgres the name is the one Postgres
+ * stores (its first 63 bytes), so a derived name over the limit matches its live, cut form
+ * instead of being proposed as a rename on every run.
+ */
 function fkMapFor(
   fks: readonly FkDescriptor[],
   structural: boolean,
+  dialect: Dialect | undefined,
 ): Map<string, FkDescriptor> {
-  return new Map(fks.map((f) => [structural ? fkColsKey(f) : f.name, f] as const));
+  const nameKey = (name: string): string => (dialect === "sqlite" || dialect === "d1" ? name : pgStoredIdentifier(name));
+  return new Map(fks.map((f) => [structural ? fkColsKey(f) : nameKey(f.name), f] as const));
 }
 
 function diffTableForeignKeys(
@@ -1198,8 +1195,8 @@ function diffTableForeignKeys(
   const table = expected.name;
   const sx = schemaSpread(expected.schema);
   const structuralFk = fkKeyingIsStructural(expected.foreignKeys, actual.foreignKeys, dialect);
-  const expectedFk = fkMapFor(expected.foreignKeys, structuralFk);
-  const actualFk = fkMapFor(actual.foreignKeys, structuralFk);
+  const expectedFk = fkMapFor(expected.foreignKeys, structuralFk, dialect);
+  const actualFk = fkMapFor(actual.foreignKeys, structuralFk, dialect);
   // NOTE: the map key is the FK's identity (name on postgres; column set on
   // sqlite/d1 — see fkMapFor). Change records always carry the DESCRIPTOR's
   // constraint name, never the key.

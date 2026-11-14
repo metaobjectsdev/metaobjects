@@ -1,10 +1,14 @@
 package com.metaobjects.generator.kotlin
 
 import com.metaobjects.database.PhysicalNaming
+import com.metaobjects.generator.GeneratorException
+import com.metaobjects.generator.util.GeneratorUtil
+import com.metaobjects.generator.util.RouteNaming
 import com.metaobjects.metadata.ktx.loadString
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 /**
@@ -76,5 +80,43 @@ class KotlinRouteNamingTest {
         assertEquals("/api/people", routeFor(declared, null))
         assertEquals("/api/author", routeFor("", "none"))
         assertEquals("/api/people", routeFor(declared, "none"))
+    }
+
+    private fun twoEntities(a: String, aExtra: String, b: String, bExtra: String) = """{
+      "metadata.root": { "package": "acme::shop", "children": [
+        { "object.entity": { "name": "$a", $aExtra "children": [
+            { "field.long": { "name": "id" } },
+            { "source.rdb": { "@table": "t_${a.lowercase()}" } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+        ] } },
+        { "object.entity": { "name": "$b", $bExtra "children": [
+            { "field.long": { "name": "id" } },
+            { "source.rdb": { "@table": "t_${b.lowercase()}" } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+        ] } }
+      ] }
+    }""".trimIndent()
+
+    /**
+     * The collection-name clash, on a model the Kotlin facade loads: two entities whose
+     * controllers would mount one REST collection are refused (ERR_COLLECTION_NAME_COLLISION),
+     * whether the plurals coincide or a declared `@collectionName` repeats another's segment.
+     * The refusal is the shared JVM one the Maven goal runs before the Kotlin generators.
+     */
+    @Test
+    fun `two entities claiming one collection are refused`() {
+        for ((label, json) in listOf(
+            "plurals coincide" to twoEntities("Address", "", "Addresses", ""),
+            "declared name repeats a segment" to twoEntities("Person", "", "Member", "\"@collectionName\": \"Persons\","),
+        )) {
+            val loader = loadString("clash", json)
+            val own = GeneratorUtil.ownMetaObjects(loader)
+            val e = assertFailsWith<GeneratorException>(label) { RouteNaming.assertNoCollectionNameCollisions(own) }
+            assertTrue("ERR_COLLECTION_NAME_COLLISION" in e.message!!, "$label: ${e.message}")
+            val segments = own.map { KotlinNaming.controllerPath(it) }.toSet()
+            assertEquals(1, segments.size, "$label: the Kotlin controllers would share one path, saw $segments")
+        }
+        // Distinct segments load and pass.
+        RouteNaming.assertNoCollectionNameCollisions(GeneratorUtil.ownMetaObjects(loadString("ok", twoEntities("Person", "", "Member", ""))))
     }
 }
