@@ -22,7 +22,12 @@ work: read a loaded model, report diagnostics.
 | `WARN_LIFECYCLE_UNREACHABLE_STATE` | `verify.lifecycle.unreachable` (default `warn`; `off` skips it) | A member of a lifecycle's enum that no chain of transitions reaches from the initial state (`@default`). One diagnostic per lifecycle, listing the states in `@values` order. |
 | `WARN_LIFECYCLE_INITIAL_TERMINAL` | `warn` | The initial state is terminal: no transition lists it in `@from` (a self-transition counts as leaving). |
 | `WARN_TRANSITION_UNREACHABLE` | `verify.lifecycle.unreachable` | A transition whose every `@from` state is unreachable, so it can never be made. |
-| `WARN_PERMISSION_DERIVED_NAME` | `rules.permissions.names`: `derive` (default) skips it, `advise` warns, `require` errors | An operation, or a transition that derives a command of its own, with no `@permission` and not `@public: true`. Which transitions derive a command is `rules.lifecycle.commands`: `unclaimed` (default) means those no declared command lists in `@transitions` for that target entity, `all` means every transition, `none` means none. |
+| `WARN_TRANSITION_PERMISSION_SHADOWED` | `warn` | A transition that declares `@permission` or `@public: true` but derives no command of its own for any concrete entity that carries it, so nothing reads the attribute: every carrier's transition is claimed by a declared command (`rules.lifecycle.commands: unclaimed`), or `rules.lifecycle.commands` is `none`. Never reported under `all`. One diagnostic per transition node, at its declaring address, naming the claiming commands as `<Api>.<operation>`. |
+| `WARN_PERMISSION_DERIVED_NAME` | `rules.permissions.names`: `derive` (default) skips it, `advise` warns, `require` errors | An operation, or a transition that derives a command of its own, with no `@permission` and not `@public: true`. Which transitions derive a command is `rules.lifecycle.commands`: `unclaimed` (default) means those no declared command claims for that entity, `all` means every transition, `none` means none. |
+
+A command claims a transition NODE, for its target entity and every entity that extends the
+target: a command whose target is an abstract base claims the inherited transition of each
+concrete child, and one whose target is a child claims it for that child only.
 
 The code keeps its `WARN_` prefix at every severity, as `WARN_REQUIREMENT_NOTHING_IMPLEMENTS`
 does under `--require-implementers`.
@@ -30,7 +35,7 @@ does under `--require-implementers`.
 Order of evaluation, which is the order the reference reports in (not part of the contract):
 each lifecycle once per DECLARING field, walking the root's entities in load order (abstract
 included) — unreachable states, then initial-terminal, then each unreachable transition; then
-the derived-command permission check per CONCRETE entity, over its effective transitions in
+each shadowed transition permission, per transition node; then the derived-command permission check per CONCRETE entity, over its effective transitions in
 field order; then each operation of each `api.operational` in load order.
 
 A lifecycle declared on an abstract base is checked once, at its declaring field. A derived
@@ -76,10 +81,12 @@ edited to make a port pass.
 | `permission-names-advise` | `rules.permissions.names: advise`: warns on the unclaimed `submit` transition and on the two operations without `@permission`; not on a claimed transition, one with `@permission`, or anything `@public`. |
 | `permission-names-require` | The same findings as errors under `require`. |
 | `permission-names-commands-all` | `rules.lifecycle.commands: all`: the claimed transitions derive commands too, so they are reported as well. |
-| `permission-names-commands-none` | `rules.lifecycle.commands: none`: no transition derives a command, so only operations are reported. |
+| `permission-names-commands-none` | `rules.lifecycle.commands: none`: no transition derives a command, so only operations are reported for permission names, and each transition declaring `@permission` or `@public: true` is reported as shadowed. |
 | `unreachable-state` | Two unreachable states reported in one diagnostic, and the transition that starts only from them; a transition with one reachable `@from` state is not reported. |
 | `unreachable-state-error` | The same findings as errors under `verify.lifecycle.unreachable: error`. |
 | `unreachable-state-off` | Nothing under `verify.lifecycle.unreachable: off`. |
 | `initial-terminal` | An initial state no transition leaves (with the unreachable checks off, to isolate it). |
 | `inherited-lifecycle` | A lifecycle on an abstract base: its unreachable state is reported once at the base's field, and the derived-command permission check names each concrete entity. |
+| `permission-shadowed-claimed` | `WARN_TRANSITION_PERMISSION_SHADOWED` at the default settings: a claimed transition with `@public: true` and one with `@permission` claimed by two commands (both named) are reported; an unclaimed transition with `@permission` is not. |
+| `claimed-abstract-target` | Under `require`, a command whose target is an abstract base (its input borrows the base's key) claims the inherited transition of each concrete child, so neither child is reported. |
 | `operations-only` | A model with operations and no lifecycle, under `require`: an operation without `@permission` is an error, and one with it is clean. |

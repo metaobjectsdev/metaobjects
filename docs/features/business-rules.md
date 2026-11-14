@@ -15,6 +15,11 @@ yet: the service shells that enforce these rules at run time are later work (ADR
 they land, a model with this vocabulary generates byte-identical code to the same model
 without it. The design is [ADR-0063](../../spec/decisions/ADR-0063-business-rules-operations-and-lifecycles.md).
 
+**Experimental.** This vocabulary, its loader rules, its `verify` checks and its settings may
+change in a MINOR, including removals and renames, until generated services run on it in an
+adopter estate ([compatibility policy](../compatibility-policy.md)). A model that declares none
+of it is unaffected.
+
 ## An example
 
 ```yaml
@@ -39,7 +44,7 @@ metadata:
                     from: [submitted]
                     to: approved
                     condition: { op: lte, left: { field: total }, right: { value: 50000 } }
-                - transition.action: { name: reject, from: [submitted], to: rejected, permission: purchasing.decide }
+                - transition.action: { name: reject, from: [submitted], to: rejected }
 
     - object.value:
         name: DecisionInput
@@ -52,8 +57,8 @@ metadata:
           - operation.command:
               name: decide
               inputRef: DecisionInput
-              transitions: [approve, reject]
-              permission: purchasing.decide
+              transitions: [approve, reject]       # claims both: they derive no command of their own
+              permission: purchasing.decide        # so this is the permission that guards them
               errors: [limit_exceeded]
           - operation.query:
               name: openRequests
@@ -83,8 +88,10 @@ operations:
 
 **The target entity is derived** when it can be:
 
-1. from the one entity whose primary key a field of the input extends (`requestId extends
-   PurchaseRequest.id` above);
+1. from the one entity whose whole primary key the input borrows, each key field extended by
+   exactly one field of the input (`requestId extends PurchaseRequest.id` above). An input that
+   borrows part of a composite key, one key field twice (`fromId` and `toId`), or the keys of
+   two entities derives nothing from the input;
 2. else from the output: an entity is its own target, and a projection's target is its base
    entity.
 
@@ -97,7 +104,8 @@ binding:
 - `method` is one of `GET`, `POST`, `PUT`, `PATCH`, `DELETE`. When absent, a query is `GET` and
   a command is `POST`.
 - `path` is a path template. Its `{placeholders}` must be the target's key fields when the
-  operation addresses one row by key, and must be empty when it does not.
+  operation addresses one row by key, and must be empty when it does not. Two declared bindings
+  of one API may not have the same method and path.
 
 Most models never write a binding.
 
@@ -119,10 +127,13 @@ derived:
 | `from` | The states the move starts from: members of the enum. |
 | `to` | The state it ends in. It may be one of `from`, which records an action that changes nothing. |
 | `condition` | A guard over the entity's own fields, in the same grammar as a cross-field validator's `condition`. |
-| `permission`, `public` | As on operations. They apply to the transition's derived command. |
+| `permission`, `public` | As on operations. They apply to the transition's derived command only: when a declared command claims the transition, the command's own `permission` guards it, and `verify` warns that the transition's is never read. |
 
 A transition declared on an abstract base entity's field belongs to every entity that extends
-it. `transition.timed`, a move made by time rather than by a command, is reserved and not yet
+it. It does not belong to an entity whose field merely `extends` the lifecycle field: a status
+history table that borrows the enum's values has no lifecycle. An entity that extends the base
+and redeclares the field must extend the base's field too, or the loader refuses it
+(`ERR_LIFECYCLE_REDECLARED`). `transition.timed`, a move made by time rather than by a command, is reserved and not yet
 registered.
 
 **Permission names.** Every operation and every derived command asks the project's policy
@@ -139,16 +150,24 @@ about derived names, or fail on them.
 | L2 | `ERR_TRANSITION_NOT_ON_ENTITY` | A concrete entity has a lifecycle and no writable source. |
 | L3 | `ERR_LIFECYCLE_NO_INITIAL` | An enum field with transitions has no `default`. |
 | L4 | `ERR_TRANSITION_UNKNOWN_STATE` | A `from` or `to` value is not one of the enum's `values`. |
-| L5, O0 | `ERR_TRANSITION_NAME_COLLISION` | A transition or an operation is named `create`, `get`, `list`, `update` or `delete`. |
-| L6 | `ERR_TRANSITION_NAME_COLLISION` | Two transitions of one entity share a name, across all its lifecycles. |
+| L5, O0 | `ERR_TRANSITION_NAME_COLLISION` | A transition or an operation is named `create`, `get`, `list`, `update` or `delete`, in any case. |
+| L6 | `ERR_TRANSITION_NAME_COLLISION` | Two transitions of one entity share a name, across all its lifecycles, compared without case. |
 | L7 | `ERR_BAD_ATTR_VALUE` | A `condition` names a field the entity does not have, or is not boolean. |
+| L8 | `ERR_BAD_ATTR_VALUE` | A transition's `from` is empty. |
+| L9 | `ERR_BAD_ATTR_VALUE` | The lifecycle field is an array (`isArray: true`). |
+| L10 | `ERR_LIFECYCLE_REDECLARED` | An entity redeclares an inherited lifecycle field without extending it, dropping the base's transitions. |
 | P1 | `ERR_PERMISSION_PUBLIC_CONFLICT` | `public: true` together with `permission`. |
 | O1 | `ERR_OPERATION_SHAPE` | `inputRef` is not an `object.value`, or `outputRef` is not an entity, projection or value. |
 | O2 | `ERR_OPERATION_TARGET_UNRESOLVED` | `objectRef` is not an `object.entity`, or a command lists `transitions` and has no target. |
 | O3 | `ERR_OPERATION_TARGET_MISMATCH` | A declared `objectRef` disagrees with the derived target. |
 | O4 | `ERR_OPERATION_UNKNOWN_TRANSITION` | A `transitions` name is not a transition of the target. |
-| O5 | `ERR_BAD_ATTR_VALUE` | An `errors` code is not lower snake case, or is listed twice. |
+| O5 | `ERR_BAD_ATTR_VALUE` | An `errors` code is not lower snake case, is listed twice, or is one the route answers itself: `not_found`, `forbidden`, `invalid_transition`, `transition_condition_failed`, `state_managed`, `validation`, `invalid_json`, `invalid_id`, `method_not_allowed`, `constraint_violation`, `internal`. |
+| O6 | `ERR_TRANSITION_NAME_COLLISION` | Two operations of one API have names that differ only in case. |
 | B1 | `ERR_BINDING_PATH_MISMATCH` | A `binding.rest` `path` has the wrong placeholders. |
+| B2 | `ERR_BINDING_PATH_MISMATCH` | Two declared bindings of one API have the same method (declared or derived) and the same path, ignoring placeholder names. |
+
+Names are compared without case because each one becomes a command, a permission constant and a
+file, and those collide on a case-folding target.
 
 Some refusals come from the registry:
 
@@ -175,6 +194,7 @@ and reports:
 | `WARN_LIFECYCLE_UNREACHABLE_STATE` | `verify.lifecycle.unreachable` | A state no chain of transitions reaches from the initial state. |
 | `WARN_LIFECYCLE_INITIAL_TERMINAL` | warn | The initial state is terminal, so no row can ever move. |
 | `WARN_TRANSITION_UNREACHABLE` | `verify.lifecycle.unreachable` | A transition whose every `from` state is unreachable. |
+| `WARN_TRANSITION_PERMISSION_SHADOWED` | warn | A transition declares `permission` or `public: true` but derives no command of its own (every carrier's transition is claimed by a declared command, or `rules.lifecycle.commands` is `none`), so nothing reads it. |
 | `WARN_PERMISSION_DERIVED_NAME` | `rules.permissions.names` | An operation, or a transition that derives a command, relies on a derived permission name. |
 
 An error-severity finding fails the run. A model with no operation and no transition sees no
@@ -188,8 +208,8 @@ setting behaves as it does today.
 | Setting | Values | When absent | Effect |
 |---|---|---|---|
 | `rules.permissions.names` | `derive`, `advise`, `require` | `derive` | `derive` accepts derived permission names. `advise` warns about each one. `require` fails `verify` on each one. |
-| `rules.lifecycle.commands` | `unclaimed`, `all`, `none` | `unclaimed` | Which transitions derive a command of their own, and so are permission points: those no declared command claims, every one, or none. |
-| `rules.lifecycle.create` | `initial`, `any` | `initial` | Whether a create may start a row in a state other than the initial one. It is read and validated now; the service shells will act on it. |
+| `rules.lifecycle.commands` | `unclaimed`, `all`, `none` | `unclaimed` | Which transitions derive a command of their own, and so are permission points: those no declared command claims, every one, or none. A command claims a transition for its target entity and every entity extending it. |
+| `rules.lifecycle.create` | `initial`, `any` | `initial` | **No effect yet.** Whether a create may start a row in a state other than the initial one. It is read and validated, and nothing acts on it until the service shells land. |
 | `verify.lifecycle.unreachable` | `warn`, `error`, `off` | `warn` | The severity of the two reachability checks. `off` skips them. |
 
 ```json

@@ -48,5 +48,13 @@ public static partial class ApiConstants
 
     /// <summary>A declared business error code: lower snake case.</summary>
     public static readonly Regex BUSINESS_ERROR_CODE_PATTERN =
-        new("^[a-z][a-z0-9]*(_[a-z0-9]+)*$", RegexOptions.CultureInvariant);
+        new(@"^[a-z][a-z0-9]*(_[a-z0-9]+)*\z", RegexOptions.CultureInvariant);
+
+    /// <summary>Wire error codes an operation's route answers on its own, so a body may not declare them
+    /// in @errors (O5): the enforcing shell's codes (ADR-0063) and the API contract's generic ones.</summary>
+    public static readonly string[] RESERVED_ERROR_CODES =
+    [
+        "not_found", "forbidden", "invalid_transition", "transition_condition_failed", "state_managed",
+        "validation", "invalid_json", "invalid_id", "method_not_allowed", "constraint_violation", "internal",
+    ];
 }

@@ -17,6 +17,8 @@ Checks, in the order they are reported:
 * ``WARN_LIFECYCLE_INITIAL_TERMINAL``: the initial state is one no transition leaves
 * ``WARN_TRANSITION_UNREACHABLE``: a transition whose every @from state is unreachable
   (severity: ``verify.lifecycle.unreachable``)
+* ``WARN_TRANSITION_PERMISSION_SHADOWED``: a transition declaring @permission or @public: true
+  that derives no command of its own, so the attribute is never read (always a warning)
 * ``WARN_PERMISSION_DERIVED_NAME``: a transition that derives its own command, or an
   operation, with no @permission and not @public (severity: ``rules.permissions.names``)
 
@@ -40,6 +42,7 @@ from metaobjects.meta.core.api.api_constants import (
 from metaobjects.meta.core.object.object_constants import OBJECT_SUBTYPE_ENTITY
 from metaobjects.meta.core.transition.lifecycle import (
     Lifecycle,
+    entity_lineage,
     entity_transitions,
     lifecycles_of,
     operation_target,
@@ -58,6 +61,7 @@ WARN_LIFECYCLE_UNREACHABLE_STATE = "WARN_LIFECYCLE_UNREACHABLE_STATE"
 WARN_LIFECYCLE_INITIAL_TERMINAL = "WARN_LIFECYCLE_INITIAL_TERMINAL"
 WARN_TRANSITION_UNREACHABLE = "WARN_TRANSITION_UNREACHABLE"
 WARN_PERMISSION_DERIVED_NAME = "WARN_PERMISSION_DERIVED_NAME"
+WARN_TRANSITION_PERMISSION_SHADOWED = "WARN_TRANSITION_PERMISSION_SHADOWED"
 
 
 @dataclass(frozen=True)
@@ -186,9 +190,17 @@ def _check_lifecycle(l: Lifecycle, settings: RulesSettings, out: list[Diagnostic
             ))
 
 
-def _claimed_transitions(root: MetaData) -> dict[MetaData, set[str]]:
-    """The transition names each declared command claims, per target entity."""
-    claimed: dict[MetaData, set[str]] = {}
+@dataclass(frozen=True)
+class _Claim:
+    """One command's claim on a transition node, made for its target entity."""
+
+    target: MetaData
+    op: MetaData
+
+
+def _claimed_transitions(root: MetaData) -> dict[MetaData, list[_Claim]]:
+    """Each transition node the declared commands claim, with the claims on it in model order."""
+    claimed: dict[MetaData, list[_Claim]] = {}
     for op in _operations(root):
         if op.sub_type != OPERATION_SUBTYPE_COMMAND:
             continue
@@ -196,11 +208,74 @@ def _claimed_transitions(root: MetaData) -> dict[MetaData, set[str]]:
         if target is None:
             continue
         raw = op.get_meta_attr(OPERATION_ATTR_TRANSITIONS)  # ADR-0039: resolving
-        names = [x for x in raw if isinstance(x, str)] if isinstance(raw, list) else []
-        if not names:
-            continue
-        claimed.setdefault(target, set()).update(names)
+        names = {x for x in raw if isinstance(x, str)} if isinstance(raw, list) else set()
+        for t in entity_transitions(target):
+            if t.name in names:
+                claimed.setdefault(t, []).append(_Claim(target, op))
     return claimed
+
+
+def _claims_on(claimed: dict[MetaData, list[_Claim]], entity: MetaData, t: MetaData) -> list[_Claim]:
+    """The claims that cover transition ``t`` on ``entity``: those made for the entity or an entity it extends."""
+    lineage = entity_lineage(entity)
+    return [c for c in claimed.get(t, []) if c.target in lineage]
+
+
+def _derives_command(
+    claimed: dict[MetaData, list[_Claim]], settings: RulesSettings, entity: MetaData, t: MetaData
+) -> bool:
+    """Whether ``t``, carried by ``entity``, derives a command of its own under the setting."""
+    if settings.lifecycle_commands == "none":
+        return False
+    if settings.lifecycle_commands == "all":
+        return True
+    return not _claims_on(claimed, entity, t)
+
+
+def _concrete_entities(root: MetaData) -> list[MetaData]:
+    return [e for e in _entities(root) if not e.is_abstract]
+
+
+def _check_shadowed_permissions(root: MetaData, settings: RulesSettings, out: list[Diagnostic]) -> None:
+    """A transition's @permission or @public is read only by the command derived from it. One that
+    derives no command for any concrete entity carrying it declares an attribute nothing reads."""
+    if settings.lifecycle_commands == "all":
+        return
+    claimed = _claimed_transitions(root)
+    carriers: dict[MetaData, list[MetaData]] = {}
+    for entity in _concrete_entities(root):
+        for t in entity_transitions(entity):
+            carriers.setdefault(t, []).append(entity)
+    for t, entities_with_t in carriers.items():
+        permission = t.get_meta_attr(OPERATION_ATTR_PERMISSION)
+        is_public = t.get_meta_attr(OPERATION_ATTR_PUBLIC) is True
+        if permission is None and not is_public:
+            continue
+        if any(_derives_command(claimed, settings, e, t) for e in entities_with_t):
+            continue
+        declared = f'@permission "{permission}"' if permission is not None else "@public: true"
+        claimers = list(dict.fromkeys(
+            f"{c.op.parent.name if c.op.parent is not None else ''}.{c.op.name}"
+            for e in entities_with_t
+            for c in _claims_on(claimed, e, t)
+        ))
+        if settings.lifecycle_commands == "none":
+            why = 'rules.lifecycle.commands is "none": no command is derived from it'
+        else:
+            one = len(claimers) == 1
+            why = (
+                f"it derives no command of its own: it is made only by {_quote_list(claimers)}, which "
+                f'{"asks" if one else "ask"} the policy about {"its" if one else "their"} own permission'
+            )
+        out.append(Diagnostic(
+            severity=SEVERITY_WARN,
+            code=WARN_TRANSITION_PERMISSION_SHADOWED,
+            path=rules_address(t),
+            message=(
+                f'transition "{t.name}" declares {declared}, but {why}, so the attribute is never read. '
+                "Remove it from the transition, or declare it on the command that makes the transition."
+            ),
+        ))
 
 
 def _check_permission_names(root: MetaData, settings: RulesSettings, out: list[Diagnostic]) -> None:
@@ -213,11 +288,9 @@ def _check_permission_names(root: MetaData, settings: RulesSettings, out: list[D
 
     if settings.lifecycle_commands != "none":
         claimed = _claimed_transitions(root)
-        for entity in _entities(root):
-            if entity.is_abstract:
-                continue
+        for entity in _concrete_entities(root):
             for t in entity_transitions(entity):
-                if settings.lifecycle_commands == "unclaimed" and t.name in claimed.get(entity, set()):
+                if not _derives_command(claimed, settings, entity, t):
                     continue
                 if not _needs_permission_name(t):
                     continue
@@ -257,6 +330,7 @@ def check_rules(root: MetaData, settings: RulesSettings) -> RulesCheckResult:
     diagnostics: list[Diagnostic] = []
     for l in lifecycles:
         _check_lifecycle(l, settings, diagnostics)
+    _check_shadowed_permissions(root, settings, diagnostics)
     _check_permission_names(root, settings, diagnostics)
     return RulesCheckResult(
         diagnostics=diagnostics,

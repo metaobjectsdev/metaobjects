@@ -37,3 +37,19 @@ RESERVED_OPERATION_NAMES = ("create", "get", "list", "update", "delete")
 
 # A declared business error code: lower snake case.
 BUSINESS_ERROR_CODE_PATTERN = re.compile(r"^[a-z][a-z0-9]*(_[a-z0-9]+)*$")
+
+# Wire error codes an operation's route answers on its own, so a body may not declare them in
+# @errors (O5). Order matters: it appears in a message.
+RESERVED_ERROR_CODES = (
+    "not_found",
+    "forbidden",
+    "invalid_transition",
+    "transition_condition_failed",
+    "state_managed",
+    "validation",
+    "invalid_json",
+    "invalid_id",
+    "method_not_allowed",
+    "constraint_violation",
+    "internal",
+)

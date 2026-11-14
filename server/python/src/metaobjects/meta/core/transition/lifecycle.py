@@ -59,6 +59,29 @@ def transitions_of(field: MetaData) -> list[MetaData]:
     ]
 
 
+def entity_lineage(entity: MetaData) -> list[MetaData]:
+    """An entity and every entity it extends, nearest first."""
+    out: list[MetaData] = []
+    e: Optional[MetaData] = entity
+    while e is not None and e not in out:
+        out.append(e)
+        e = e.super_data
+    return out
+
+
+def lifecycle_transitions_of(entity: MetaData, field: MetaData) -> list[MetaData]:
+    """The transitions a field gives an entity: those declared on a field of the entity itself
+    or of an entity it extends. A transition reached only through the field's own ``extends``
+    of another entity's field is not one (ADR-0063 section 2)."""
+    lineage = entity_lineage(entity)
+    out: list[MetaData] = []
+    for t in transitions_of(field):
+        owner = t.parent.parent if t.parent is not None else None
+        if owner is not None and owner in lineage:
+            out.append(t)
+    return out
+
+
 @dataclass(frozen=True)
 class Lifecycle:
     """One lifecycle of an entity: an enum field with at least one transition."""
@@ -79,7 +102,7 @@ def lifecycles_of(obj: MetaData) -> list[Lifecycle]:
     for field in obj.children():
         if field.type != TYPE_FIELD or field.sub_type != FIELD_SUBTYPE_ENUM:
             continue
-        transitions = transitions_of(field)
+        transitions = lifecycle_transitions_of(obj, field)
         if not transitions:
             continue
         initial = field.get_meta_attr(FIELD_ATTR_DEFAULT)  # ADR-0039: resolving
@@ -179,9 +202,10 @@ def _extended_member(f: MetaData) -> Optional[tuple[MetaData, str]]:
 
 
 def _borrowed_key_entities(value: MetaData) -> list[MetaData]:
-    """The entities whose primary key a value object borrows: a field of the value that
-    ``extends`` a primary key field of an ``object.entity``."""
-    out: list[MetaData] = []
+    """The entities whose whole primary key a value object borrows, once: every primary key
+    field of the ``object.entity`` is extended by exactly one field of the value. Part of a
+    composite key, or one key field borrowed twice, names no single row, so borrows nothing."""
+    counts: dict[MetaData, dict[str, int]] = {}
     for f in value.children():
         if f.type != TYPE_FIELD:
             continue
@@ -189,9 +213,14 @@ def _borrowed_key_entities(value: MetaData) -> list[MetaData]:
         if ext is None or ext[0].sub_type != OBJECT_SUBTYPE_ENTITY:
             continue
         owner, member = ext
-        if member in primary_key_fields(owner) and owner not in out:
-            out.append(owner)
-    return out
+        if member not in primary_key_fields(owner):
+            continue
+        members = counts.setdefault(owner, {})
+        members[member] = members.get(member, 0) + 1
+    return [
+        owner for owner, members in counts.items()
+        if all(members.get(k) == 1 for k in primary_key_fields(owner))
+    ]
 
 
 def projection_base_entity(projection: MetaData) -> Optional[MetaData]:
@@ -225,10 +254,12 @@ class DerivedTarget:
 def derive_operation_target(op: MetaData) -> Optional[DerivedTarget]:
     """The target entity derived from an operation's shapes, or None:
 
-    1. the one entity whose primary key a field of the ``@inputRef`` value borrows (by ``extends``);
+    1. the one entity whose whole primary key the ``@inputRef`` value borrows (by ``extends``),
+       each key field once;
     2. else the ``@outputRef``: an entity is its own target, a projection its base entity.
 
-    Two borrowed keys of different entities derive nothing from the input.
+    Whole keys of two entities, part of a key, or one key field borrowed twice derive nothing
+    from the input.
     """
     input_ref = _string_value(op, OPERATION_ATTR_INPUT_REF)
     if input_ref is not None:

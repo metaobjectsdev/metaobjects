@@ -17,19 +17,28 @@
 //   L2 ERR_TRANSITION_NOT_ON_ENTITY   a concrete entity with a lifecycle and no writable source (on the entity)
 //   L3 ERR_LIFECYCLE_NO_INITIAL       an enum field declaring transitions has no @default
 //   L4 ERR_TRANSITION_UNKNOWN_STATE   a @from or @to value is not one of the enum's @values
-//   L5 ERR_TRANSITION_NAME_COLLISION  a transition named create/get/list/update/delete
-//   L6 ERR_TRANSITION_NAME_COLLISION  two transitions of one entity (across its lifecycles) share a name
+//   L5 ERR_TRANSITION_NAME_COLLISION  a transition named create/get/list/update/delete, in any case
+//   L6 ERR_TRANSITION_NAME_COLLISION  two transitions of one entity (across its lifecycles) share a
+//                                      name, compared without case
 //   L7 ERR_BAD_ATTR_VALUE             @condition names a field the entity does not have, or is not boolean
+//   L8 ERR_BAD_ATTR_VALUE             @from is empty
+//   L9 ERR_BAD_ATTR_VALUE             a lifecycle field is an array (@isArray: true)
+//   L10 ERR_LIFECYCLE_REDECLARED      an entity redeclares an inherited lifecycle field without
+//                                      extending it, so the base's transitions would be lost
 //   P1 ERR_PERMISSION_PUBLIC_CONFLICT @public: true with @permission (operation or transition)
-//   O0 ERR_TRANSITION_NAME_COLLISION  an operation named create/get/list/update/delete
+//   O0 ERR_TRANSITION_NAME_COLLISION  an operation named create/get/list/update/delete, in any case
+//   O6 ERR_TRANSITION_NAME_COLLISION  two operations of one API whose names differ only in case
 //   O1 ERR_OPERATION_SHAPE            @inputRef is not an object.value; @outputRef is not an entity, projection or value
 //   O2 ERR_OPERATION_TARGET_UNRESOLVED @objectRef is not an object.entity, or a command lists
 //                                      @transitions and no target is declared or derivable
 //   O3 ERR_OPERATION_TARGET_MISMATCH  a declared @objectRef disagrees with the derived target
 //   O4 ERR_OPERATION_UNKNOWN_TRANSITION a @transitions name is not a transition of the target
-//   O5 ERR_BAD_ATTR_VALUE             an @errors code is not lower snake case, or is listed twice
+//   O5 ERR_BAD_ATTR_VALUE             an @errors code is not lower snake case, is listed twice, or is
+//                                      one the route answers itself (RESERVED_ERROR_CODES)
 //   B1 ERR_BINDING_PATH_MISMATCH      a binding.rest @path's placeholders are not the target's key fields
 //                                      (a keyed operation) or are not empty (an unkeyed one)
+//   B2 ERR_BINDING_PATH_MISMATCH      two binding.rest of one API declaring a @path have the same
+//                                      effective method and the same path once placeholder names are ignored
 
 using System.Text.RegularExpressions;
 using MetaObjects.Core.Transition;
@@ -54,6 +63,13 @@ public static partial class ValidationPasses
         }
         return string.Join(".", parts);
     }
+
+    private static readonly HashSet<string> ReservedErrorCodes = new(RESERVED_ERROR_CODES, StringComparer.Ordinal);
+
+    /// <summary>A derived name is compared without case: a command, a permission constant or a file named
+    /// from it collides with another that differs only in case on a case-folding target.</summary>
+    private static bool IsReservedName(string name) =>
+        RESERVED_OPERATION_NAMES.Contains(name.ToLowerInvariant());
 
     private static string RulesQuoteList(IEnumerable<string> xs) => string.Join(", ", xs.Select(x => $"\"{x}\""));
 
@@ -101,11 +117,21 @@ public static partial class ValidationPasses
             sink.Add(field, ErrorCode.ERR_LIFECYCLE_NO_INITIAL,
                 $"field.enum \"{RulesLabel(field)}\" declares transitions but no @default; its @default is the lifecycle's initial state.");
         }
+        if (field.ResolvedIsArray())
+        {
+            sink.Add(field, ErrorCode.ERR_BAD_ATTR_VALUE,
+                $"field.{field.SubType} \"{RulesLabel(field)}\" declares transitions but is an array (@isArray: true); a lifecycle's state is one value.");
+        }
         var stateList = Lifecycles.StringList(field, FIELD_ATTR_VALUES).Distinct(StringComparer.Ordinal).ToList();
         var states = stateList.ToHashSet(StringComparer.Ordinal);
         foreach (var t in declared)
         {
             CheckPermissionPublic(t, sink);
+            if (Lifecycles.TransitionFrom(t).Count == 0)
+            {
+                sink.Add(t, ErrorCode.ERR_BAD_ATTR_VALUE,
+                    $"transition.action \"{RulesLabel(t)}\" @from is empty; name at least one state the transition leaves.");
+            }
             var to = Lifecycles.TransitionTo(t);
             var unknown = Lifecycles.TransitionFrom(t).Concat(to is null ? [] : [to])
                 .Distinct(StringComparer.Ordinal).Where(s => !states.Contains(s)).ToList();
@@ -114,7 +140,7 @@ public static partial class ValidationPasses
                 sink.Add(t, ErrorCode.ERR_TRANSITION_UNKNOWN_STATE,
                     $"transition.action \"{RulesLabel(t)}\" names {RulesQuoteList(unknown)}, which {(unknown.Count == 1 ? "is not a member" : "are not members")} of \"{field.Name}\" @values ({RulesQuoteList(stateList)}).");
             }
-            if (RESERVED_OPERATION_NAMES.Contains(t.Name))
+            if (IsReservedName(t.Name))
             {
                 sink.Add(t, ErrorCode.ERR_TRANSITION_NAME_COLLISION,
                     $"transition.action \"{RulesLabel(t)}\" is named \"{t.Name}\", which is a derived CRUD verb ({ReservedOperationNameList}); rename it.");
@@ -141,22 +167,47 @@ public static partial class ValidationPasses
         return output;
     }
 
-    /// <summary>L2 and L6 for one entity, over its effective (inherited) lifecycles.</summary>
+    /// <summary>L10: an entity's field named like an ancestor's lifecycle field that does not carry that
+    /// lifecycle's transitions. Redeclaring the field replaces it, so the base's state machine would
+    /// silently stop applying to this entity.</summary>
+    private static void CheckRedeclaredLifecycles(MetaData entity, RulesErrorSink sink)
+    {
+        foreach (var ancestor in Lifecycles.EntityLineage(entity).Skip(1))
+        {
+            // ADR-0039: own — the lifecycle fields the ancestor itself declares.
+            foreach (var baseField in ancestor.OwnChildren())
+            {
+                if (baseField.Type != TYPE_FIELD) continue;
+                var baseTransitions = Lifecycles.LifecycleTransitionsOf(ancestor, baseField);
+                if (baseTransitions.Count == 0) continue;
+                var field = entity.Children().FirstOrDefault(c => c.Type == TYPE_FIELD && c.Name == baseField.Name);
+                if (field is null || ReferenceEquals(field, baseField)) continue;
+                var kept = Lifecycles.LifecycleTransitionsOf(entity, field).ToHashSet(ReferenceEqualityComparer.Instance);
+                if (baseTransitions.All(kept.Contains)) continue;
+                sink.Add(field, ErrorCode.ERR_LIFECYCLE_REDECLARED,
+                    $"field.{field.SubType} \"{RulesLabel(field)}\" redeclares \"{RulesLabel(baseField)}\", which has a lifecycle, and drops its transitions; extend it (\"extends\": \"{ancestor.Name}.{baseField.Name}\") or give the field another name.");
+            }
+        }
+    }
+
+    /// <summary>L2, L6 and L10 for one entity, over its effective (inherited) lifecycles.</summary>
     private static void CheckEntityLifecycles(MetaData entity, RulesErrorSink sink)
     {
+        CheckRedeclaredLifecycles(entity, sink);
         var transitions = Lifecycles.EntityTransitions(entity);
         if (transitions.Count == 0) return;
         var byName = new Dictionary<string, MetaData>(StringComparer.Ordinal);
         foreach (var t in transitions)
         {
-            if (!byName.TryGetValue(t.Name, out var first))
+            var key = t.Name.ToLowerInvariant();
+            if (!byName.TryGetValue(key, out var first))
             {
-                byName[t.Name] = t;
+                byName[key] = t;
             }
             else if (!ReferenceEquals(first, t))
             {
                 sink.Add(t, ErrorCode.ERR_TRANSITION_NAME_COLLISION,
-                    $"transition.action \"{RulesLabel(t)}\" has the same name as \"{RulesLabel(first)}\"; the transitions of \"{entity.Name}\" share one namespace (each may derive a command), so rename one.");
+                    $"transition.action \"{RulesLabel(t)}\" has the same name as \"{RulesLabel(first)}\" (names are compared without case); the transitions of \"{entity.Name}\" share one namespace (each may derive a command), so rename one.");
             }
         }
         if (!entity.IsAbstract && !entity.Children().Any(c => c is MetaSource ms && ms.IsWritable()))
@@ -169,7 +220,7 @@ public static partial class ValidationPasses
     /// <summary>O0-O5, P1 and B1 for one operation.</summary>
     private static void CheckOperation(MetaData op, RulesErrorSink sink)
     {
-        if (RESERVED_OPERATION_NAMES.Contains(op.Name))
+        if (IsReservedName(op.Name))
         {
             sink.Add(op, ErrorCode.ERR_TRANSITION_NAME_COLLISION,
                 $"operation.{op.SubType} \"{RulesLabel(op)}\" is named \"{op.Name}\", which is a derived CRUD verb ({ReservedOperationNameList}); rename it.");
@@ -179,12 +230,15 @@ public static partial class ValidationPasses
         var errorCodes = Lifecycles.StringList(op, OPERATION_ATTR_ERRORS);
         var bad = errorCodes.Where(c => !BUSINESS_ERROR_CODE_PATTERN.IsMatch(c)).ToList();
         var dup = errorCodes.Where((c, i) => errorCodes.ToList().IndexOf(c) != i).ToList();
-        if (bad.Count > 0 || dup.Count > 0)
+        var reserved = errorCodes.Where(ReservedErrorCodes.Contains).Distinct(StringComparer.Ordinal).ToList();
+        if (bad.Count > 0 || dup.Count > 0 || reserved.Count > 0)
         {
             var dupSet = dup.Distinct(StringComparer.Ordinal).ToList();
             var why = bad.Count > 0
                 ? $"{RulesQuoteList(bad)} {(bad.Count == 1 ? "is not a" : "are not")} lower snake case code{(bad.Count == 1 ? "" : "s")}"
-                : $"{RulesQuoteList(dupSet)} {(dupSet.Count == 1 ? "is" : "are")} listed twice";
+                : dup.Count > 0
+                    ? $"{RulesQuoteList(dupSet)} {(dupSet.Count == 1 ? "is" : "are")} listed twice"
+                    : $"{RulesQuoteList(reserved)} {(reserved.Count == 1 ? "is a code" : "are codes")} the route answers itself ({string.Join(", ", RESERVED_ERROR_CODES)})";
             sink.Add(op, ErrorCode.ERR_BAD_ATTR_VALUE, $"operation.{op.SubType} \"{RulesLabel(op)}\" @errors: {why}.");
         }
 
@@ -236,7 +290,7 @@ public static partial class ValidationPasses
         if (transitions.Count > 0 && target is null)
         {
             sink.Add(op, ErrorCode.ERR_OPERATION_TARGET_UNRESOLVED,
-                $"operation.command \"{RulesLabel(op)}\" lists @transitions but has no target entity: no @inputRef field extends an entity's primary key, no @outputRef has a base entity, and there is no @objectRef.");
+                $"operation.command \"{RulesLabel(op)}\" lists @transitions but has no target entity: the @inputRef does not borrow one entity's whole primary key (each key field extended exactly once), no @outputRef has a base entity, and there is no @objectRef.");
             return;
         }
 
@@ -286,11 +340,44 @@ public static partial class ValidationPasses
         foreach (var api in root.Children())
         {
             if (api.Type != TYPE_API) continue;
-            foreach (var op in api.Children())
-            {
-                if (op.Type == TYPE_OPERATION) CheckOperation(op, sink);
-            }
+            var ops = api.Children().Where(c => c.Type == TYPE_OPERATION).ToList();
+            foreach (var op in ops) CheckOperation(op, sink);
+            CheckApiNamespace(ops, sink);
         }
         return sink.Errors;
+    }
+
+    /// <summary>O6 and B2 across the operations of one API.</summary>
+    private static void CheckApiNamespace(IReadOnlyList<MetaData> ops, RulesErrorSink sink)
+    {
+        var byName = new Dictionary<string, MetaData>(StringComparer.Ordinal);
+        var byRoute = new Dictionary<string, MetaData>(StringComparer.Ordinal);
+        foreach (var op in ops)
+        {
+            var key = op.Name.ToLowerInvariant();
+            if (!byName.TryGetValue(key, out var first)) byName[key] = op;
+            else if (!ReferenceEquals(first, op))
+            {
+                sink.Add(op, ErrorCode.ERR_TRANSITION_NAME_COLLISION,
+                    $"operation.{op.SubType} \"{RulesLabel(op)}\" differs only in case from \"{RulesLabel(first)}\"; the operations of one API share one namespace (each derives a route and a permission), so rename one.");
+            }
+            // ADR-0039: own — a binding is checked on the operation that declares it.
+            foreach (var b in op.OwnChildren())
+            {
+                if (b.Type != TYPE_BINDING || b.SubType != BINDING_SUBTYPE_REST) continue;
+                if (b.Attr(BINDING_ATTR_PATH) is not string path) continue;
+                // The effective method: the declared one, else the derived (ADR-0063 section 1).
+                var method = b.Attr(BINDING_ATTR_METHOD) is string declaredMethod
+                    ? declaredMethod
+                    : op.SubType == OPERATION_SUBTYPE_COMMAND ? "POST" : "GET";
+                var route = $"{method} {BindingPlaceholder.Replace(path, "{}")}";
+                if (!byRoute.TryGetValue(route, out var other)) byRoute[route] = b;
+                else
+                {
+                    sink.Add(b, ErrorCode.ERR_BINDING_PATH_MISMATCH,
+                        $"binding.rest on \"{RulesLabel(b)}\" declares {method} \"{path}\", the same route as the binding on \"{RulesLabel(other)}\"; two operations cannot share a method and path.");
+                }
+            }
+        }
     }
 }

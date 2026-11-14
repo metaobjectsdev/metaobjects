@@ -10,7 +10,8 @@ export const RULES_PERMISSION_NAMES = ["derive", "advise", "require"] as const;
 export type RulesPermissionNames = (typeof RULES_PERMISSION_NAMES)[number];
 
 /** `rules.lifecycle.create`: whether a create may start a row in any state (`any`) or only
- *  in the initial one (`initial`, default). Read by the enforcing shells. */
+ *  in the initial one (`initial`, default). No effect yet: validated and stored, and read by
+ *  nothing until the enforcing shells land. */
 export const RULES_LIFECYCLE_CREATE = ["initial", "any"] as const;
 export type RulesLifecycleCreate = (typeof RULES_LIFECYCLE_CREATE)[number];
 

@@ -4,7 +4,9 @@
 // own. Mirrors server/typescript/packages/metadata/src/core/transition/lifecycle.ts.
 //
 // Reads are RESOLVING (ADR-0039): a transition declared on a base entity's field is a
-// transition of every entity that extends it.
+// transition of every entity that extends it. It is NOT a transition of an entity whose field
+// merely `extends` that field: a field extends another to share its values, and a history
+// table of an order's status is not an order (LifecycleTransitionsOf).
 
 using MetaObjects.Meta;
 
@@ -42,6 +44,23 @@ public static class Lifecycles
     public static IReadOnlyList<MetaData> TransitionsOf(MetaData field) =>
         field.Children().Where(c => c.Type == TYPE_TRANSITION && c.SubType == TRANSITION_SUBTYPE_ACTION).ToList();
 
+    /// <summary>An entity and every entity it extends, nearest first.</summary>
+    public static IReadOnlyList<MetaData> EntityLineage(MetaData entity)
+    {
+        var output = new List<MetaData>();
+        for (MetaData? e = entity; e is not null && !output.Contains(e); e = e.SuperData) output.Add(e);
+        return output;
+    }
+
+    /// <summary>The transitions a field gives an entity: those declared on a field of the entity itself or
+    /// of an entity it extends. A transition reached only through the field's own <c>extends</c> of
+    /// another entity's field is not one (ADR-0063 section 2).</summary>
+    public static IReadOnlyList<MetaData> LifecycleTransitionsOf(MetaData entity, MetaData field)
+    {
+        var lineage = EntityLineage(entity);
+        return TransitionsOf(field).Where(t => t.Parent?.Parent is { } owner && lineage.Contains(owner)).ToList();
+    }
+
     /// <summary>The lifecycles of an object, in effective field order. Only an <c>object.entity</c> has any.</summary>
     public static IReadOnlyList<Lifecycle> LifecyclesOf(MetaData obj)
     {
@@ -50,7 +69,7 @@ public static class Lifecycles
         foreach (var field in obj.Children())
         {
             if (field.Type != TYPE_FIELD || field.SubType != FIELD_SUBTYPE_ENUM) continue;
-            var transitions = TransitionsOf(field);
+            var transitions = LifecycleTransitionsOf(obj, field);
             if (transitions.Count == 0) continue;
             output.Add(new Lifecycle(
                 field,
@@ -133,18 +152,26 @@ public static class Lifecycles
         return parent is not null && parent.Type == TYPE_OBJECT ? (parent, sup.Name) : null;
     }
 
-    /// <summary>The entities whose primary key a value object borrows: a field of the value that
-    /// <c>extends</c> a primary key field of an <c>object.entity</c>.</summary>
+    /// <summary>The entities whose whole primary key a value object borrows, once: every primary key field
+    /// of the <c>object.entity</c> is extended by exactly one field of the value. A value that borrows part
+    /// of a composite key, or one key field twice, names no single row of that entity, so it borrows
+    /// nothing from it.</summary>
     private static List<MetaData> BorrowedKeyEntities(MetaData value)
     {
-        var output = new List<MetaData>();
+        var counts = new List<(MetaData Owner, Dictionary<string, int> Members)>();
         foreach (var f in value.Children())
         {
             if (f.Type != TYPE_FIELD) continue;
             if (ExtendedMember(f) is not { } ext || ext.Owner.SubType != OBJECT_SUBTYPE_ENTITY) continue;
-            if (PrimaryKeyFields(ext.Owner).Contains(ext.Member) && !output.Contains(ext.Owner)) output.Add(ext.Owner);
+            if (!PrimaryKeyFields(ext.Owner).Contains(ext.Member)) continue;
+            var idx = counts.FindIndex(c => ReferenceEquals(c.Owner, ext.Owner));
+            if (idx < 0) { counts.Add((ext.Owner, new Dictionary<string, int>(StringComparer.Ordinal))); idx = counts.Count - 1; }
+            var members = counts[idx].Members;
+            members[ext.Member] = members.GetValueOrDefault(ext.Member) + 1;
         }
-        return output;
+        return counts
+            .Where(c => PrimaryKeyFields(c.Owner).All(k => c.Members.GetValueOrDefault(k) == 1))
+            .Select(c => c.Owner).ToList();
     }
 
     /// <summary>The base entity of a projection: the entity its extended identity names, else the one
@@ -168,9 +195,11 @@ public static class Lifecycles
 
     /// <summary>
     /// The target entity derived from an operation's shapes, or null:
-    /// 1. the one entity whose primary key a field of the <c>@inputRef</c> value borrows (by <c>extends</c>);
+    /// 1. the one entity whose whole primary key the <c>@inputRef</c> value borrows (by <c>extends</c>),
+    ///    each key field once;
     /// 2. else the <c>@outputRef</c>: an entity is its own target, a projection its base entity.
-    /// Two borrowed keys of different entities derive nothing from the input.
+    /// Whole keys of two entities, part of a key, or one key field borrowed twice derive nothing
+    /// from the input.
     /// </summary>
     public static DerivedTarget? DeriveOperationTarget(MetaData op)
     {

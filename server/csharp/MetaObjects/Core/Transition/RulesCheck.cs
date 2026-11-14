@@ -16,6 +16,9 @@
 //   WARN_LIFECYCLE_INITIAL_TERMINAL    the initial state is one no transition leaves
 //   WARN_TRANSITION_UNREACHABLE        a transition whose every @from state is unreachable
 //                                      (severity: `verify.lifecycle.unreachable`)
+//   WARN_TRANSITION_PERMISSION_SHADOWED a transition declaring @permission or @public: true that
+//                                      derives no command of its own, so the attribute is never
+//                                      read (always a warning)
 //   WARN_PERMISSION_DERIVED_NAME       a transition that derives its own command, or an
 //                                      operation, with no @permission and not @public
 //                                      (severity: `rules.permissions.names`)
@@ -23,6 +26,9 @@
 // Lifecycles are checked once per declaring field, so a lifecycle on an abstract base is
 // reported once, not once per inheritor. A derived command exists per concrete entity, so
 // the permission check runs per concrete entity and names it.
+//
+// A command claims a transition NODE for its target entity and every entity that extends the
+// target: a command acting on an abstract base claims the inherited transition of each child.
 
 using System.Globalization;
 using MetaObjects.Config;
@@ -49,6 +55,7 @@ public static class RulesCheck
     public const string WARN_LIFECYCLE_UNREACHABLE_STATE = "WARN_LIFECYCLE_UNREACHABLE_STATE";
     public const string WARN_LIFECYCLE_INITIAL_TERMINAL = "WARN_LIFECYCLE_INITIAL_TERMINAL";
     public const string WARN_TRANSITION_UNREACHABLE = "WARN_TRANSITION_UNREACHABLE";
+    public const string WARN_TRANSITION_PERMISSION_SHADOWED = "WARN_TRANSITION_PERMISSION_SHADOWED";
     public const string WARN_PERMISSION_DERIVED_NAME = "WARN_PERMISSION_DERIVED_NAME";
 
     private static string QuoteList(IEnumerable<string> xs) => string.Join(", ", xs.Select(x => $"\"{x}\""));
@@ -140,21 +147,79 @@ public static class RulesCheck
         }
     }
 
-    /// <summary>The transition names each declared command claims, per target entity.</summary>
-    private static Dictionary<MetaData, HashSet<string>> ClaimedTransitions(MetaData root)
+    /// <summary>One command's claim on a transition node, made for its target entity.</summary>
+    private sealed record Claim(MetaData Target, MetaData Op);
+
+    /// <summary>Each transition node the declared commands claim, with the claims on it in model order.</summary>
+    private static Dictionary<MetaData, List<Claim>> ClaimedTransitions(MetaData root)
     {
-        var claimed = new Dictionary<MetaData, HashSet<string>>(ReferenceEqualityComparer.Instance);
+        var claimed = new Dictionary<MetaData, List<Claim>>(ReferenceEqualityComparer.Instance);
         foreach (var op in Operations(root))
         {
             if (op.SubType != OPERATION_SUBTYPE_COMMAND) continue;
             var target = Lifecycles.OperationTarget(op);
             if (target is null) continue;
-            var names = Lifecycles.StringList(op, OPERATION_ATTR_TRANSITIONS);
-            if (names.Count == 0) continue;
-            if (!claimed.TryGetValue(target, out var set)) claimed[target] = set = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var n in names) set.Add(n);
+            var names = Lifecycles.StringList(op, OPERATION_ATTR_TRANSITIONS).ToHashSet(StringComparer.Ordinal);
+            foreach (var t in Lifecycles.EntityTransitions(target))
+            {
+                if (!names.Contains(t.Name)) continue;
+                if (!claimed.TryGetValue(t, out var claims)) claimed[t] = claims = [];
+                claims.Add(new Claim(target, op));
+            }
         }
         return claimed;
+    }
+
+    /// <summary>The claims that cover transition <paramref name="t"/> on <paramref name="entity"/>: those made for the entity or an entity it extends.</summary>
+    private static List<Claim> ClaimsOn(Dictionary<MetaData, List<Claim>> claimed, MetaData entity, MetaData t)
+    {
+        var lineage = Lifecycles.EntityLineage(entity);
+        return claimed.TryGetValue(t, out var claims) ? claims.Where(c => lineage.Contains(c.Target)).ToList() : [];
+    }
+
+    /// <summary>Whether <paramref name="t"/>, carried by <paramref name="entity"/>, derives a command of its own under the setting.</summary>
+    private static bool DerivesCommand(Dictionary<MetaData, List<Claim>> claimed, RulesSettings settings, MetaData entity, MetaData t) =>
+        settings.LifecycleCommands switch
+        {
+            "none" => false,
+            "all" => true,
+            _ => ClaimsOn(claimed, entity, t).Count == 0,
+        };
+
+    private static List<MetaData> ConcreteEntities(MetaData root) => Entities(root).Where(e => !e.IsAbstract).ToList();
+
+    /// <summary>A transition's @permission or @public is read only by the command derived from it. One that
+    /// derives no command for any concrete entity carrying it declares an attribute nothing reads.</summary>
+    private static void CheckShadowedPermissions(MetaData root, RulesSettings settings, List<RequirementDiagnostic> output)
+    {
+        if (settings.LifecycleCommands == "all") return;
+        var claimed = ClaimedTransitions(root);
+        var carriers = new List<(MetaData T, List<MetaData> Entities)>();
+        foreach (var entity in ConcreteEntities(root))
+        {
+            foreach (var t in Lifecycles.EntityTransitions(entity))
+            {
+                var idx = carriers.FindIndex(c => ReferenceEquals(c.T, t));
+                if (idx < 0) carriers.Add((t, [entity])); else carriers[idx].Entities.Add(entity);
+            }
+        }
+        foreach (var (t, entitiesWithT) in carriers)
+        {
+            var permission = t.Attr(OPERATION_ATTR_PERMISSION);
+            var isPublic = t.Attr(OPERATION_ATTR_PUBLIC) is true;
+            if (permission is null && !isPublic) continue;
+            if (entitiesWithT.Any(e => DerivesCommand(claimed, settings, e, t))) continue;
+            var declared = permission is not null ? $"@permission \"{permission}\"" : "@public: true";
+            var claimers = entitiesWithT.SelectMany(e => ClaimsOn(claimed, e, t))
+                .Select(c => $"{c.Op.Parent?.Name ?? ""}.{c.Op.Name}").Distinct(StringComparer.Ordinal).ToList();
+            var why = settings.LifecycleCommands == "none"
+                ? "rules.lifecycle.commands is \"none\": no command is derived from it"
+                : $"it derives no command of its own: it is made only by {QuoteList(claimers)}, which " +
+                  $"{(claimers.Count == 1 ? "asks" : "ask")} the policy about {(claimers.Count == 1 ? "its" : "their")} own permission";
+            output.Add(new RequirementDiagnostic(SeverityWarn, WARN_TRANSITION_PERMISSION_SHADOWED, Address(t),
+                $"transition \"{t.Name}\" declares {declared}, but {why}, so the attribute is never read. " +
+                "Remove it from the transition, or declare it on the command that makes the transition."));
+        }
     }
 
     private static void CheckPermissionNames(MetaData root, RulesSettings settings, List<RequirementDiagnostic> output)
@@ -166,13 +231,11 @@ public static class RulesCheck
         if (settings.LifecycleCommands != "none")
         {
             var claimed = ClaimedTransitions(root);
-            foreach (var entity in Entities(root))
+            foreach (var entity in ConcreteEntities(root))
             {
-                if (entity.IsAbstract) continue;
                 foreach (var t in Lifecycles.EntityTransitions(entity))
                 {
-                    if (settings.LifecycleCommands == "unclaimed"
-                        && claimed.TryGetValue(entity, out var names) && names.Contains(t.Name)) continue;
+                    if (!DerivesCommand(claimed, settings, entity, t)) continue;
                     if (!NeedsPermissionName(t)) continue;
                     output.Add(new RequirementDiagnostic(severity, WARN_PERMISSION_DERIVED_NAME,
                         $"{Address(entity)}.{t.Parent?.Name ?? ""}.{t.Name}",
@@ -200,6 +263,7 @@ public static class RulesCheck
 
         var diagnostics = new List<RequirementDiagnostic>();
         foreach (var l in lifecycles) CheckLifecycle(l, settings, diagnostics);
+        CheckShadowedPermissions(root, settings, diagnostics);
         CheckPermissionNames(root, settings, diagnostics);
         return new RulesCheckResult(
             diagnostics,

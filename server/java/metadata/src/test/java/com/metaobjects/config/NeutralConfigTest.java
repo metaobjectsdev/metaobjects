@@ -206,6 +206,8 @@ public class NeutralConfigTest {
             "\"rules\": { \"permissions\": { \"names\": \"strict\" } }",
             "\"rules\": { \"lifecycle\": { \"commands\": true } }",
             "\"rules\": \"advise\"",
+            "\"rules\": null",
+            "\"verify\": null",
             "\"verify\": { \"lifecycle\": { \"unreachable\": \"fail\" } }",
             "\"verify\": { \"lifecycles\": {} }",
         };

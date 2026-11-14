@@ -26,6 +26,7 @@ import com.metaobjects.transition.TransitionConstants;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -92,13 +93,41 @@ public final class Lifecycles {
         return out;
     }
 
+    /** An entity and every entity it extends, nearest first. */
+    public static List<MetaData> entityLineage(MetaData entity) {
+        List<MetaData> out = new ArrayList<>();
+        for (MetaData e = entity; e != null && !containsIdentity(out, e); e = e.hasSuperData() ? e.getSuperData() : null) out.add(e);
+        return out;
+    }
+
+    /** Identity membership: nodes are compared by reference, never by equals. */
+    public static boolean containsIdentity(List<MetaData> list, MetaData node) {
+        for (MetaData x : list) if (x == node) return true;
+        return false;
+    }
+
+    /**
+     * The transitions a field gives an entity: those declared on a field of the entity itself or of
+     * an entity it extends. A transition reached only through the field's own {@code extends} of
+     * another entity's field is not one (ADR-0063 section 2).
+     */
+    public static List<MetaData> lifecycleTransitionsOf(MetaData entity, MetaData field) {
+        List<MetaData> lineage = entityLineage(entity);
+        List<MetaData> out = new ArrayList<>();
+        for (MetaData t : transitionsOf(field)) {
+            MetaData owner = t.getParent() == null ? null : t.getParent().getParent();
+            if (owner != null && containsIdentity(lineage, owner)) out.add(t);
+        }
+        return out;
+    }
+
     /** The lifecycles of an object, in effective field order. Only an {@code object.entity} has any. */
     public static List<Lifecycle> lifecyclesOf(MetaData obj) {
         List<Lifecycle> out = new ArrayList<>();
         if (!isEntity(obj)) return out;
         for (MetaData field : obj.getChildren(MetaData.class, true)) {
             if (!MetaField.TYPE_FIELD.equals(field.getType()) || !EnumField.SUBTYPE_ENUM.equals(field.getSubType())) continue;
-            List<MetaData> transitions = transitionsOf(field);
+            List<MetaData> transitions = lifecycleTransitionsOf(obj, field);
             if (transitions.isEmpty()) continue;
             out.add(new Lifecycle(field, stringList(field, EnumField.ATTR_VALUES),
                 stringValue(field, MetaField.ATTR_DEFAULT), transitions));
@@ -198,14 +227,33 @@ public final class Lifecycles {
             ? new Extended(parent, sup.getShortName()) : null;
     }
 
-    /** The entities whose primary key a value object borrows: a field of the value that {@code extends} a primary key field. */
+    /**
+     * The entities whose whole primary key a value object borrows, once: every primary key field of
+     * the entity is extended by exactly one field of the value. Part of a composite key, or one key
+     * field borrowed twice, borrows nothing from it.
+     */
     private static List<MetaData> borrowedKeyEntities(MetaData value) {
-        List<MetaData> out = new ArrayList<>();
+        List<MetaData> owners = new ArrayList<>();
+        List<Map<String, Integer>> counts = new ArrayList<>();
         for (MetaData f : value.getChildren(MetaData.class, true)) {
             if (!MetaField.TYPE_FIELD.equals(f.getType())) continue;
             Extended ext = extendedMember(f);
             if (ext == null || !isEntity(ext.owner())) continue;
-            if (primaryKeyFields(ext.owner()).contains(ext.member()) && !out.contains(ext.owner())) out.add(ext.owner());
+            if (!primaryKeyFields(ext.owner()).contains(ext.member())) continue;
+            int i = -1;
+            for (int k = 0; k < owners.size(); k++) if (owners.get(k) == ext.owner()) i = k;
+            if (i < 0) {
+                owners.add(ext.owner());
+                counts.add(new java.util.HashMap<>());
+                i = owners.size() - 1;
+            }
+            counts.get(i).merge(ext.member(), 1, Integer::sum);
+        }
+        List<MetaData> out = new ArrayList<>();
+        for (int i = 0; i < owners.size(); i++) {
+            boolean whole = true;
+            for (String k : primaryKeyFields(owners.get(i))) if (!Integer.valueOf(1).equals(counts.get(i).get(k))) whole = false;
+            if (whole) out.add(owners.get(i));
         }
         return out;
     }
@@ -231,7 +279,7 @@ public final class Lifecycles {
 
     /**
      * The target entity derived from an operation's shapes, or {@code null}: the one entity whose
-     * primary key a field of the {@code @inputRef} value borrows; else the {@code @outputRef}
+     * whole primary key the {@code @inputRef} value borrows (each key field once); else the {@code @outputRef}
      * (an entity is its own target, a projection its base entity).
      */
     public static DerivedTarget deriveOperationTarget(MetaData op) {

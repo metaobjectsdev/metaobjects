@@ -4,7 +4,9 @@
 // vocabulary of their own. Every port implements these rules the same way.
 //
 // Reads are RESOLVING (ADR-0039): a transition declared on a base entity's field is a
-// transition of every entity that extends it.
+// transition of every entity that extends it. It is NOT a transition of an entity whose field
+// merely `extends` that field: a field extends another to share its values, and a history
+// table of an order's status is not an order (lifecycleTransitionsOf).
 
 import type { MetaData } from "../../shared/meta-data.js";
 import { TYPE_FIELD, TYPE_IDENTITY, TYPE_OBJECT, TYPE_TRANSITION } from "../../shared/base-types.js";
@@ -37,6 +39,26 @@ export function transitionsOf(field: MetaData): MetaData[] {
   return field.children().filter((c) => c.type === TYPE_TRANSITION && c.subType === TRANSITION_SUBTYPE_ACTION);
 }
 
+/** An entity and every entity it extends, nearest first. */
+export function entityLineage(entity: MetaData): MetaData[] {
+  const out: MetaData[] = [];
+  for (let e: MetaData | undefined = entity; e !== undefined && !out.includes(e); e = e.superResolved) out.push(e);
+  return out;
+}
+
+/**
+ * The transitions a field gives an entity: those declared on a field of the entity itself or of
+ * an entity it extends. A transition reached only through the field's own `extends` of another
+ * entity's field is not one (ADR-0063 §2).
+ */
+export function lifecycleTransitionsOf(entity: MetaData, field: MetaData): MetaData[] {
+  const lineage = entityLineage(entity);
+  return transitionsOf(field).filter((t) => {
+    const owner = t.parent?.parent;
+    return owner !== undefined && lineage.includes(owner);
+  });
+}
+
 /** One lifecycle of an entity: an enum field with at least one transition. */
 export interface Lifecycle {
   readonly field: MetaData;
@@ -53,7 +75,7 @@ export function lifecyclesOf(obj: MetaData): Lifecycle[] {
   const out: Lifecycle[] = [];
   for (const field of obj.children()) {
     if (field.type !== TYPE_FIELD || field.subType !== FIELD_SUBTYPE_ENUM) continue;
-    const transitions = transitionsOf(field);
+    const transitions = lifecycleTransitionsOf(obj, field);
     if (transitions.length === 0) continue;
     const initial = field.attr(FIELD_ATTR_DEFAULT);
     out.push({
@@ -150,17 +172,24 @@ function extendedMember(f: MetaData): { owner: MetaData; member: string } | unde
   return parent !== undefined && parent.type === TYPE_OBJECT ? { owner: parent, member: sup.name } : undefined;
 }
 
-/** The entities whose primary key a value object borrows: a field of the value that
- *  `extends` a primary key field of an `object.entity`. */
+/** The entities whose whole primary key a value object borrows, once: every primary key field
+ *  of the `object.entity` is extended by exactly one field of the value. A value that borrows
+ *  part of a composite key, or one key field twice (`fromId` and `toId`), names no single row of
+ *  that entity, so it borrows nothing from it. */
 function borrowedKeyEntities(value: MetaData): MetaData[] {
-  const out: MetaData[] = [];
+  const counts = new Map<MetaData, Map<string, number>>();
   for (const f of value.children()) {
     if (f.type !== TYPE_FIELD) continue;
     const ext = extendedMember(f);
     if (ext === undefined || ext.owner.subType !== OBJECT_SUBTYPE_ENTITY) continue;
-    if (primaryKeyFields(ext.owner).includes(ext.member) && !out.includes(ext.owner)) out.push(ext.owner);
+    if (!primaryKeyFields(ext.owner).includes(ext.member)) continue;
+    const members = counts.get(ext.owner) ?? new Map<string, number>();
+    members.set(ext.member, (members.get(ext.member) ?? 0) + 1);
+    counts.set(ext.owner, members);
   }
-  return out;
+  return [...counts]
+    .filter(([owner, members]) => primaryKeyFields(owner).every((k) => members.get(k) === 1))
+    .map(([owner]) => owner);
 }
 
 /** The base entity of a projection: the entity its extended identity names, else the one
@@ -188,9 +217,11 @@ export interface DerivedTarget {
 
 /**
  * The target entity derived from an operation's shapes, or undefined:
- *  1. the one entity whose primary key a field of the `@inputRef` value borrows (by `extends`);
+ *  1. the one entity whose whole primary key the `@inputRef` value borrows (by `extends`),
+ *     each key field once;
  *  2. else the `@outputRef`: an entity is its own target, a projection its base entity.
- * Two borrowed keys of different entities derive nothing from the input.
+ * Whole keys of two entities, part of a key, or one key field borrowed twice derive nothing
+ * from the input.
  */
 export function deriveOperationTarget(op: MetaData): DerivedTarget | undefined {
   const inputRef = stringValue(op, OPERATION_ATTR_INPUT_REF);

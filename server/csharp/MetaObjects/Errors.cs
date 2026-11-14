@@ -278,6 +278,9 @@ public enum ErrorCode
     ERR_TRANSITION_NOT_ON_ENTITY,
     // An enum field with transitions and no @default, its initial state (L3).
     ERR_LIFECYCLE_NO_INITIAL,
+    // An entity redeclares an inherited lifecycle field without extending it, so the base's
+    // transitions would be lost (L10).
+    ERR_LIFECYCLE_REDECLARED,
     // Two transitions of one entity share a name, or a transition or operation is named
     // create / get / list / update / delete (L5, L6, O0).
     ERR_TRANSITION_NAME_COLLISION,

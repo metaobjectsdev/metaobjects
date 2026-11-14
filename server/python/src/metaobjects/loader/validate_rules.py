@@ -19,9 +19,14 @@ Rules:
   L2 ERR_TRANSITION_NOT_ON_ENTITY    a concrete entity with a lifecycle and no writable source (on the entity)
   L3 ERR_LIFECYCLE_NO_INITIAL        an enum field declaring transitions has no @default
   L4 ERR_TRANSITION_UNKNOWN_STATE    a @from or @to value is not one of the enum's @values
-  L5 ERR_TRANSITION_NAME_COLLISION   a transition named create/get/list/update/delete
-  L6 ERR_TRANSITION_NAME_COLLISION   two transitions of one entity (across its lifecycles) share a name
+  L5 ERR_TRANSITION_NAME_COLLISION   a transition named create/get/list/update/delete, in any case
+  L6 ERR_TRANSITION_NAME_COLLISION   two transitions of one entity share a name, compared without case
   L7 ERR_BAD_ATTR_VALUE              @condition names a field the entity does not have, or is not boolean
+  L8 ERR_BAD_ATTR_VALUE              @from is empty
+  L9 ERR_BAD_ATTR_VALUE              a lifecycle field is an array
+  L10 ERR_LIFECYCLE_REDECLARED       an entity redeclares an inherited lifecycle field without extending it
+  O6 ERR_TRANSITION_NAME_COLLISION   two operations of one API whose names differ only in case
+  B2 ERR_BINDING_PATH_MISMATCH       two bindings of one API share an effective method and path
   P1 ERR_PERMISSION_PUBLIC_CONFLICT  @public: true with @permission (operation or transition)
   O0 ERR_TRANSITION_NAME_COLLISION   an operation named create/get/list/update/delete
   O1 ERR_OPERATION_SHAPE             @inputRef is not an object.value; @outputRef is not an entity, projection or value
@@ -43,6 +48,7 @@ import re
 
 from ..errors import ErrorCode, MetaError
 from ..meta.core.api.api_constants import (
+    BINDING_ATTR_METHOD,
     BINDING_ATTR_PATH,
     BINDING_SUBTYPE_REST,
     BUSINESS_ERROR_CODE_PATTERN,
@@ -54,6 +60,7 @@ from ..meta.core.api.api_constants import (
     OPERATION_ATTR_PUBLIC,
     OPERATION_ATTR_TRANSITIONS,
     OPERATION_SUBTYPE_COMMAND,
+    RESERVED_ERROR_CODES,
     RESERVED_OPERATION_NAMES,
 )
 from ..meta.core.field.field_constants import (
@@ -68,7 +75,9 @@ from ..meta.core.object.object_constants import (
 )
 from ..meta.core.transition.lifecycle import (
     derive_operation_target,
+    entity_lineage,
     entity_transitions,
+    lifecycle_transitions_of,
     operation_is_keyed,
     primary_key_fields,
     resolve_object_on,
@@ -94,6 +103,13 @@ from ..shared.base_types import (
 
 _RESERVED = frozenset(RESERVED_OPERATION_NAMES)
 _RESERVED_LIST = ", ".join(RESERVED_OPERATION_NAMES)
+_RESERVED_CODES = frozenset(RESERVED_ERROR_CODES)
+
+
+def _is_reserved_name(name: str) -> bool:
+    """A derived name is compared without case: a command, a permission constant or a file named
+    from it collides with another that differs only in case on a case-folding target."""
+    return name.lower() in _RESERVED
 _PLACEHOLDER_RE = re.compile(r"\{([^}]*)\}")
 
 
@@ -176,9 +192,22 @@ def _check_declared_transitions(field: MetaData, sink: _Sink) -> None:
             f'field.enum "{_label(field)}" declares transitions but no @default; '
             "its @default is the lifecycle's initial state.",
         )
+    if field.resolved_is_array():
+        sink.add(
+            field,
+            ErrorCode.ERR_BAD_ATTR_VALUE,
+            f'field.{field.sub_type} "{_label(field)}" declares transitions but is an array '
+            "(@isArray: true); a lifecycle's state is one value.",
+        )
     states = _unique(string_list(field, FIELD_ATTR_VALUES))
     for t in declared:
         _check_permission_public(t, sink)
+        if not transition_from(t):
+            sink.add(
+                t,
+                ErrorCode.ERR_BAD_ATTR_VALUE,
+                f'transition.action "{_label(t)}" @from is empty; name at least one state the transition leaves.',
+            )
         to = transition_to(t)
         unknown = [s for s in _unique([*transition_from(t), *([] if to is None else [to])]) if s not in states]
         if unknown:
@@ -189,7 +218,7 @@ def _check_declared_transitions(field: MetaData, sink: _Sink) -> None:
                 f'{"is not a member" if len(unknown) == 1 else "are not members"} of "{field.name}" '
                 f"@values ({_quote_list(states)}).",
             )
-        if t.name in _RESERVED:
+        if _is_reserved_name(t.name):
             sink.add(
                 t,
                 ErrorCode.ERR_TRANSITION_NAME_COLLISION,
@@ -215,21 +244,53 @@ def _declared_fields(root: MetaData) -> list[MetaData]:
     return out
 
 
+def _check_redeclared_lifecycles(entity: MetaData, sink: _Sink) -> None:
+    """L10: an entity's field named like an ancestor's lifecycle field that does not carry that
+    lifecycle's transitions. Redeclaring the field replaces it, so the base's state machine would
+    silently stop applying to this entity."""
+    for ancestor in entity_lineage(entity)[1:]:
+        # ADR-0039 sanctioned own: the lifecycle fields the ancestor itself declares.
+        for base_field in ancestor.own_children():
+            if base_field.type != TYPE_FIELD:
+                continue
+            base_transitions = lifecycle_transitions_of(ancestor, base_field)
+            if not base_transitions:
+                continue
+            field = next(
+                (c for c in entity.children() if c.type == TYPE_FIELD and c.name == base_field.name), None
+            )
+            if field is None or field is base_field:
+                continue
+            kept = lifecycle_transitions_of(entity, field)
+            if all(t in kept for t in base_transitions):
+                continue
+            sink.add(
+                field,
+                ErrorCode.ERR_LIFECYCLE_REDECLARED,
+                f'field.{field.sub_type} "{_label(field)}" redeclares "{_label(base_field)}", which has a '
+                f'lifecycle, and drops its transitions; extend it ("extends": "{ancestor.name}.{base_field.name}") '
+                "or give the field another name.",
+            )
+
+
 def _check_entity_lifecycles(entity: MetaData, sink: _Sink) -> None:
-    """L2 and L6 for one entity, over its effective (inherited) lifecycles."""
+    """L2, L6 and L10 for one entity, over its effective (inherited) lifecycles."""
+    _check_redeclared_lifecycles(entity, sink)
     transitions = entity_transitions(entity)
     if not transitions:
         return
     by_name: dict[str, MetaData] = {}
     for t in transitions:
-        first = by_name.get(t.name)
+        key = t.name.lower()
+        first = by_name.get(key)
         if first is None:
-            by_name[t.name] = t
+            by_name[key] = t
         elif first is not t:
             sink.add(
                 t,
                 ErrorCode.ERR_TRANSITION_NAME_COLLISION,
-                f'transition.action "{_label(t)}" has the same name as "{_label(first)}"; the transitions of '
+                f'transition.action "{_label(t)}" has the same name as "{_label(first)}" '
+                f'(names are compared without case); the transitions of '
                 f'"{entity.name}" share one namespace (each may derive a command), so rename one.',
             )
     if not entity.is_abstract and not any(
@@ -246,7 +307,7 @@ def _check_entity_lifecycles(entity: MetaData, sink: _Sink) -> None:
 
 def _check_operation(op: MetaData, sink: _Sink) -> None:
     """O0-O5, P1 and B1 for one operation."""
-    if op.name in _RESERVED:
+    if _is_reserved_name(op.name):
         sink.add(
             op,
             ErrorCode.ERR_TRANSITION_NAME_COLLISION,
@@ -258,15 +319,21 @@ def _check_operation(op: MetaData, sink: _Sink) -> None:
     error_codes = string_list(op, OPERATION_ATTR_ERRORS)
     bad = [c for c in error_codes if not BUSINESS_ERROR_CODE_PATTERN.fullmatch(c)]
     dup = [c for i, c in enumerate(error_codes) if error_codes.index(c) != i]
-    if bad or dup:
+    reserved = _unique([c for c in error_codes if c in _RESERVED_CODES])
+    if bad or dup or reserved:
         if bad:
             why = (
                 f'{_quote_list(bad)} {"is not a" if len(bad) == 1 else "are not"} lower snake case '
                 f'code{"" if len(bad) == 1 else "s"}'
             )
-        else:
+        elif dup:
             uniq = _unique(dup)
             why = f'{_quote_list(uniq)} {"is" if len(uniq) == 1 else "are"} listed twice'
+        else:
+            why = (
+                f'{_quote_list(reserved)} {"is a code" if len(reserved) == 1 else "are codes"} '
+                f'the route answers itself ({", ".join(RESERVED_ERROR_CODES)})'
+            )
         sink.add(op, ErrorCode.ERR_BAD_ATTR_VALUE, f'operation.{op.sub_type} "{_label(op)}" @errors: {why}.')
 
     # O1 — shapes.
@@ -328,8 +395,9 @@ def _check_operation(op: MetaData, sink: _Sink) -> None:
         sink.add(
             op,
             ErrorCode.ERR_OPERATION_TARGET_UNRESOLVED,
-            f'operation.command "{_label(op)}" lists @transitions but has no target entity: no @inputRef field '
-            "extends an entity's primary key, no @outputRef has a base entity, and there is no @objectRef.",
+            f'operation.command "{_label(op)}" lists @transitions but has no target entity: the @inputRef does not '
+            "borrow one entity's whole primary key (each key field extended exactly once), no @outputRef has a "
+            "base entity, and there is no @objectRef.",
         )
         return
 
@@ -382,6 +450,49 @@ def validate_rules(root: MetaData, errors: list[MetaError]) -> None:
     for api in root.children():
         if api.type != TYPE_API:
             continue
-        for op in api.children():
-            if op.type == TYPE_OPERATION:
-                _check_operation(op, sink)
+        ops = [c for c in api.children() if c.type == TYPE_OPERATION]
+        for op in ops:
+            _check_operation(op, sink)
+        _check_api_namespace(ops, sink)
+
+
+def _check_api_namespace(ops: list[MetaData], sink: _Sink) -> None:
+    """O6 and B2 across the operations of one API."""
+    by_name: dict[str, MetaData] = {}
+    by_route: dict[str, MetaData] = {}
+    for op in ops:
+        key = op.name.lower()
+        first = by_name.get(key)
+        if first is None:
+            by_name[key] = op
+        elif first is not op:
+            sink.add(
+                op,
+                ErrorCode.ERR_TRANSITION_NAME_COLLISION,
+                f'operation.{op.sub_type} "{_label(op)}" differs only in case from "{_label(first)}"; the '
+                "operations of one API share one namespace (each derives a route and a permission), so rename one.",
+            )
+        # ADR-0039 sanctioned own: a binding is checked on the operation that declares it.
+        for b in op.own_children():
+            if b.type != TYPE_BINDING or b.sub_type != BINDING_SUBTYPE_REST:
+                continue
+            path = b.get_meta_attr(BINDING_ATTR_PATH)
+            if not isinstance(path, str):
+                continue
+            # The effective method: the declared one, else the derived (ADR-0063 section 1).
+            declared_method = b.get_meta_attr(BINDING_ATTR_METHOD)
+            if isinstance(declared_method, str):
+                method = declared_method
+            else:
+                method = "POST" if op.sub_type == OPERATION_SUBTYPE_COMMAND else "GET"
+            route = f"{method} {_PLACEHOLDER_RE.sub('{}', path)}"
+            other = by_route.get(route)
+            if other is None:
+                by_route[route] = b
+            else:
+                sink.add(
+                    b,
+                    ErrorCode.ERR_BINDING_PATH_MISMATCH,
+                    f'binding.rest on "{_label(b)}" declares {method} "{path}", the same route as the binding '
+                    f'on "{_label(other)}"; two operations cannot share a method and path.',
+                )

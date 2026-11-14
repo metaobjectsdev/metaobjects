@@ -533,7 +533,7 @@ public final class NeutralConfig {
         RulesSettings.LifecycleCreate create = null;
         RulesSettings.LifecycleCommands commands = null;
         RulesSettings.LifecycleUnreachable unreachable = null;
-        if (rules != null && !rules.isJsonNull()) {
+        if (rules != null) {
             if (!rules.isJsonObject()) throw bad(origin + ": \"rules\" must be an object");
             JsonObject rulesObj = rules.getAsJsonObject();
             for (String k : rulesObj.keySet()) {
@@ -550,7 +550,7 @@ public final class NeutralConfig {
             commands = settingValue(life, "commands", "rules.lifecycle.commands", RulesSettings.LifecycleCommands::of,
                     "\"unclaimed\", \"all\", \"none\"", origin);
         }
-        if (verify != null && !verify.isJsonNull()) {
+        if (verify != null) {
             if (!verify.isJsonObject()) throw bad(origin + ": \"verify\" must be an object");
             JsonObject verifyObj = verify.getAsJsonObject();
             for (String k : verifyObj.keySet()) {

@@ -18,6 +18,11 @@ and every set below is a helper.
 Nothing in this ADR is generated yet. The layered set, its service shells and the per-package
 set selection are later work. ADR-0063's vocabulary is inert until they land.
 
+**Experimental.** The vocabulary this design generates from is experimental (ADR-0063 Status,
+`docs/compatibility-policy.md`): it may change in a MINOR, including removals and renames, until
+generated services run on it in an adopter estate. The layers, the seam and the shells below are
+designed against it and change with it.
+
 ## Context
 
 Today's generators emit a flat shape: entity and model types, then routes or controllers that

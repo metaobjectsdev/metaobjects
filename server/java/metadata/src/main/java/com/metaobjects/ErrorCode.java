@@ -626,6 +626,9 @@ public enum ErrorCode {
     /** ADR-0063: a field.enum declares transitions but no @default, its initial state (L3). */
     ERR_LIFECYCLE_NO_INITIAL,
 
+    /** ADR-0063: an entity redeclares an inherited lifecycle field without extending it, dropping the base's transitions (L10). */
+    ERR_LIFECYCLE_REDECLARED,
+
     /** ADR-0063: a transition or operation is named create, get, list, update or delete, or two transitions of one entity share a name (L5, L6, O0). */
     ERR_TRANSITION_NAME_COLLISION,
 

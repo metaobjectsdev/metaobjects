@@ -24,7 +24,7 @@ _No structural children._
 
 ### binding.rest
 
-The HTTP method and path of an operation, declared only to override the derived ones. A query is `GET`, a command `POST`; the path is `/<collection>/{id}/<operation-kebab>` for an operation with a target key and `/<collection>/<operation-kebab>` without one (setting `api.operationPaths` chooses the `:verb` style). Most models never write it.
+The HTTP method and path of an operation, declared only to override the derived ones. A query is `GET`, a command `POST`; the path is `/<collection>/{id}/<operation-kebab>` for an operation with a target key and `/<collection>/<operation-kebab>` without one (setting `api.operationPaths` chooses the `:verb` style). Most models never write it. Experimental since 1.3.0: the shape may change in a MINOR, including removals and renames (docs/compatibility-policy.md).
 
 **When to use:** An operation must keep a method or path the derived one would not give it, such as an existing public URL.
 
@@ -33,7 +33,7 @@ The HTTP method and path of an operation, declared only to override the derived 
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
 | --- | --- | --- | --- | --- | --- | --- |
 | `@method` | string | no |  | `GET`, `POST`, `PUT`, `PATCH`, `DELETE` | — | The HTTP method. Absent: GET for a query, POST for a command. |
-| `@path` | string | no |  |  | — | A path template. Its `{name}` placeholders must be exactly the target's primary key fields when the operation is keyed, and there must be none when it is not (ERR_BINDING_PATH_MISMATCH). |
+| `@path` | string | no |  |  | — | A path template. Its `{name}` placeholders must be exactly the target's primary key fields when the operation is keyed, and there must be none when it is not; two declared bindings of one API may not share the method and path (ERR_BINDING_PATH_MISMATCH). |
 
 **Allowed children**
 

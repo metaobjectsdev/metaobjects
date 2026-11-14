@@ -50,6 +50,11 @@ public final class ApiConstants {
     /** The derived CRUD verbs a transition or operation may not be named. */
     public static final List<String> RESERVED_OPERATION_NAMES = List.of("create", "get", "list", "update", "delete");
 
+    /** Wire error codes the route answers itself, so an operation's {@code @errors} may not declare them (O5); the order appears in a message. */
+    public static final List<String> RESERVED_ERROR_CODES = List.of(
+        "not_found", "forbidden", "invalid_transition", "transition_condition_failed", "state_managed",
+        "validation", "invalid_json", "invalid_id", "method_not_allowed", "constraint_violation", "internal");
+
     /** A business error code: lower snake case. */
     public static final Pattern BUSINESS_ERROR_CODE_PATTERN = Pattern.compile("^[a-z][a-z0-9]*(_[a-z0-9]+)*$");
 }

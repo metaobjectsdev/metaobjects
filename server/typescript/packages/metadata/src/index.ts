@@ -55,7 +55,9 @@ export { MetaTransition } from "./core/transition/meta-transition.js";
 // (later) the generators, so no consumer re-derives them.
 export {
   lifecyclesOf,
+  entityLineage,
   entityTransitions,
+  lifecycleTransitionsOf,
   transitionsOf,
   transitionFrom,
   transitionTo,

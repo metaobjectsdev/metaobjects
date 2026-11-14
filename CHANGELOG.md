@@ -16,7 +16,9 @@ loading. This vocabulary ships in 1.3.0 with `metamodelVersion` 1.3 if it merges
 
 ### Added
 
-- **Business rules: operations, permission names and lifecycles (ADR-0063).** The names ADR-0030
+- **Business rules: operations, permission names and lifecycles (ADR-0063). Experimental:** the
+  shape may change in a MINOR, including removals and renames, until generated services run on
+  it in an adopter estate (`docs/compatibility-policy.md`). The names ADR-0030
   reserved are registered, with a lifecycle vocabulary, in all five ports:
   - `api.operational` holds `operation.command` and `operation.query`, with `@inputRef`,
     `@outputRef`, `@many` (query), `@objectRef`, `@transitions` and `@errors` (command),
@@ -25,19 +27,25 @@ loading. This vocabulary ships in 1.3.0 with `metamodelVersion` 1.3 if it merges
   - `transition.action` is a child of a `field.enum` on an entity, with `@from`, `@to`,
     `@condition` (the validators' grammar), `@permission` and `@public`. An enum with a
     transition is a lifecycle: its states, initial state (`@default`), terminal states and each
-    unclaimed transition's command are derived. `transition.timed` is reserved.
-  - The loader refuses a malformed operation or lifecycle with ten new codes, each pinned by a
+    unclaimed transition's command are derived. `transition.timed` is reserved. A lifecycle
+    belongs to the entity that declares the field and to the entities that extend it, never to
+    one whose field merely `extends` that field.
+  - The loader refuses a malformed operation or lifecycle with eleven new codes, each pinned by a
     `fixtures/conformance/error-rules-*` case: `ERR_TRANSITION_UNKNOWN_STATE`,
-    `ERR_TRANSITION_NOT_ON_ENTITY`, `ERR_LIFECYCLE_NO_INITIAL`, `ERR_TRANSITION_NAME_COLLISION`,
-    `ERR_OPERATION_SHAPE`, `ERR_OPERATION_TARGET_UNRESOLVED`, `ERR_OPERATION_TARGET_MISMATCH`,
-    `ERR_OPERATION_UNKNOWN_TRANSITION`, `ERR_PERMISSION_PUBLIC_CONFLICT` and
-    `ERR_BINDING_PATH_MISMATCH`.
+    `ERR_TRANSITION_NOT_ON_ENTITY`, `ERR_LIFECYCLE_NO_INITIAL`, `ERR_LIFECYCLE_REDECLARED`,
+    `ERR_TRANSITION_NAME_COLLISION`, `ERR_OPERATION_SHAPE`, `ERR_OPERATION_TARGET_UNRESOLVED`,
+    `ERR_OPERATION_TARGET_MISMATCH`, `ERR_OPERATION_UNKNOWN_TRANSITION`,
+    `ERR_PERMISSION_PUBLIC_CONFLICT` and `ERR_BINDING_PATH_MISMATCH`. Names are compared without
+    case, an `@errors` code may not be one the route answers itself, and two declared bindings
+    may not share a method and path.
   - `verify` in every port gains a rules gate: unreachable states, an initial state that is
-    terminal, transitions that can never be made, and permission names the model derived. It is
-    pinned by the new `fixtures/rules-check-conformance/` corpus.
+    terminal, transitions that can never be made, a transition `@permission` no command reads,
+    and permission names the model derived. It is pinned by the new
+    `fixtures/rules-check-conformance/` corpus.
   - New settings in `.metaobjects/config.json`: `rules.permissions.names`,
     `rules.lifecycle.commands`, `rules.lifecycle.create` and `verify.lifecycle.unreachable`.
-    Absent, each behaves as before.
+    Absent, each behaves as before. `rules.lifecycle.create` is read and validated and has no
+    effect yet: the service shells that act on it are later work.
   - A requirement's `@implementedBy` may name an operation (`Purchasing.decide`) or a
     transition (`PurchaseRequest.status.submit`).
 

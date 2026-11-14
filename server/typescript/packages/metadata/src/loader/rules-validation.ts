@@ -17,19 +17,28 @@
 //   L2 ERR_TRANSITION_NOT_ON_ENTITY   a concrete entity with a lifecycle and no writable source (on the entity)
 //   L3 ERR_LIFECYCLE_NO_INITIAL       an enum field declaring transitions has no @default
 //   L4 ERR_TRANSITION_UNKNOWN_STATE   a @from or @to value is not one of the enum's @values
-//   L5 ERR_TRANSITION_NAME_COLLISION  a transition named create/get/list/update/delete
-//   L6 ERR_TRANSITION_NAME_COLLISION  two transitions of one entity (across its lifecycles) share a name
+//   L5 ERR_TRANSITION_NAME_COLLISION  a transition named create/get/list/update/delete, in any case
+//   L6 ERR_TRANSITION_NAME_COLLISION  two transitions of one entity (across its lifecycles) share a
+//                                      name, compared without case
 //   L7 ERR_BAD_ATTR_VALUE             @condition names a field the entity does not have, or is not boolean
+//   L8 ERR_BAD_ATTR_VALUE             @from is empty
+//   L9 ERR_BAD_ATTR_VALUE             a lifecycle field is an array (@isArray: true)
+//   L10 ERR_LIFECYCLE_REDECLARED      an entity redeclares an inherited lifecycle field without
+//                                      extending it, so the base's transitions would be lost
 //   P1 ERR_PERMISSION_PUBLIC_CONFLICT @public: true with @permission (operation or transition)
-//   O0 ERR_TRANSITION_NAME_COLLISION  an operation named create/get/list/update/delete
+//   O0 ERR_TRANSITION_NAME_COLLISION  an operation named create/get/list/update/delete, in any case
+//   O6 ERR_TRANSITION_NAME_COLLISION  two operations of one API whose names differ only in case
 //   O1 ERR_OPERATION_SHAPE            @inputRef is not an object.value; @outputRef is not an entity, projection or value
 //   O2 ERR_OPERATION_TARGET_UNRESOLVED @objectRef is not an object.entity, or a command lists
 //                                      @transitions and no target is declared or derivable
 //   O3 ERR_OPERATION_TARGET_MISMATCH  a declared @objectRef disagrees with the derived target
 //   O4 ERR_OPERATION_UNKNOWN_TRANSITION a @transitions name is not a transition of the target
-//   O5 ERR_BAD_ATTR_VALUE             an @errors code is not lower snake case, or is listed twice
+//   O5 ERR_BAD_ATTR_VALUE             an @errors code is not lower snake case, is listed twice, or is
+//                                      one the route answers itself (RESERVED_ERROR_CODES)
 //   B1 ERR_BINDING_PATH_MISMATCH      a binding.rest @path's placeholders are not the target's key fields
 //                                      (a keyed operation) or are not empty (an unkeyed one)
+//   B2 ERR_BINDING_PATH_MISMATCH      two binding.rest of one API declaring a @path have the same
+//                                      effective method and the same path once placeholder names are ignored
 
 import type { MetaData } from "../shared/meta-data.js";
 import type { MetaObject } from "../core/object/meta-object.js";
@@ -46,6 +55,7 @@ import {
 import { FIELD_ATTR_DEFAULT, FIELD_ATTR_VALUES, FIELD_SUBTYPE_ENUM } from "../core/field/field-constants.js";
 import { OBJECT_SUBTYPE_ENTITY, OBJECT_SUBTYPE_PROJECTION, OBJECT_SUBTYPE_VALUE } from "../core/object/object-constants.js";
 import {
+  BINDING_ATTR_METHOD,
   BINDING_ATTR_PATH,
   BINDING_SUBTYPE_REST,
   BUSINESS_ERROR_CODE_PATTERN,
@@ -57,12 +67,15 @@ import {
   OPERATION_ATTR_PUBLIC,
   OPERATION_ATTR_TRANSITIONS,
   OPERATION_SUBTYPE_COMMAND,
+  RESERVED_ERROR_CODES,
   RESERVED_OPERATION_NAMES,
 } from "../core/api/api-constants.js";
 import { TRANSITION_ATTR_CONDITION, TRANSITION_SUBTYPE_ACTION } from "../core/transition/transition-constants.js";
 import {
   deriveOperationTarget,
+  entityLineage,
   entityTransitions,
+  lifecycleTransitionsOf,
   operationIsKeyed,
   primaryKeyFields,
   resolveObjectOn,
@@ -75,6 +88,13 @@ import { conditionMessage } from "./validation-passes.js";
 
 const RESERVED = new Set<string>(RESERVED_OPERATION_NAMES);
 const RESERVED_LIST = RESERVED_OPERATION_NAMES.join(", ");
+const RESERVED_CODES = new Set<string>(RESERVED_ERROR_CODES);
+
+/** A derived name is compared without case: a command, a permission constant or a file named
+ *  from it collides with another that differs only in case on a case-folding target. */
+function isReservedName(name: string): boolean {
+  return RESERVED.has(name.toLowerCase());
+}
 
 /** `"Entity.field.transition"` for a transition, `"Api.operation"` for an operation. */
 function label(node: MetaData): string {
@@ -132,16 +152,24 @@ function checkDeclaredTransitions(field: MetaData, sink: Sink): void {
     sink.add(field, "ERR_LIFECYCLE_NO_INITIAL",
       `field.enum "${label(field)}" declares transitions but no @default; its @default is the lifecycle's initial state.`);
   }
+  if (field.resolvedIsArray()) {
+    sink.add(field, "ERR_BAD_ATTR_VALUE",
+      `field.${field.subType} "${label(field)}" declares transitions but is an array (@isArray: true); a lifecycle's state is one value.`);
+  }
   const states = new Set(stringList(field, FIELD_ATTR_VALUES));
   for (const t of declared) {
     checkPermissionPublic(t, sink);
+    if (transitionFrom(t).length === 0) {
+      sink.add(t, "ERR_BAD_ATTR_VALUE",
+        `transition.action "${label(t)}" @from is empty; name at least one state the transition leaves.`);
+    }
     const to = transitionTo(t);
     const unknown = [...new Set([...transitionFrom(t), ...(to === undefined ? [] : [to])])].filter((s) => !states.has(s));
     if (unknown.length > 0) {
       sink.add(t, "ERR_TRANSITION_UNKNOWN_STATE",
         `transition.action "${label(t)}" names ${quoteList(unknown)}, which ${unknown.length === 1 ? "is not a member" : "are not members"} of "${field.name}" @values (${quoteList([...states])}).`);
     }
-    if (RESERVED.has(t.name)) {
+    if (isReservedName(t.name)) {
       sink.add(t, "ERR_TRANSITION_NAME_COLLISION",
         `transition.action "${label(t)}" is named "${t.name}", which is a derived CRUD verb (${RESERVED_LIST}); rename it.`);
     }
@@ -164,18 +192,40 @@ function declaredFields(root: MetaData): MetaData[] {
   return out;
 }
 
-/** L2 and L6 for one entity, over its effective (inherited) lifecycles. */
+/** L10: an entity's field named like an ancestor's lifecycle field that does not carry that
+ *  lifecycle's transitions. Redeclaring the field replaces it, so the base's state machine would
+ *  silently stop applying to this entity. */
+function checkRedeclaredLifecycles(entity: MetaData, sink: Sink): void {
+  for (const ancestor of entityLineage(entity).slice(1)) {
+    // ADR-0039: own — the lifecycle fields the ancestor itself declares.
+    for (const baseField of ancestor.ownChildren()) {
+      if (baseField.type !== TYPE_FIELD) continue;
+      const baseTransitions = lifecycleTransitionsOf(ancestor, baseField);
+      if (baseTransitions.length === 0) continue;
+      const field = entity.children().find((c) => c.type === TYPE_FIELD && c.name === baseField.name);
+      if (field === undefined || field === baseField) continue;
+      const kept = new Set(lifecycleTransitionsOf(entity, field));
+      if (baseTransitions.every((t) => kept.has(t))) continue;
+      sink.add(field, "ERR_LIFECYCLE_REDECLARED",
+        `field.${field.subType} "${label(field)}" redeclares "${label(baseField)}", which has a lifecycle, and drops its transitions; extend it ("extends": "${ancestor.name}.${baseField.name}") or give the field another name.`);
+    }
+  }
+}
+
+/** L2, L6 and L10 for one entity, over its effective (inherited) lifecycles. */
 function checkEntityLifecycles(entity: MetaData, sink: Sink): void {
+  checkRedeclaredLifecycles(entity, sink);
   const transitions = entityTransitions(entity);
   if (transitions.length === 0) return;
   const byName = new Map<string, MetaData>();
   for (const t of transitions) {
-    const first = byName.get(t.name);
+    const key = t.name.toLowerCase();
+    const first = byName.get(key);
     if (first === undefined) {
-      byName.set(t.name, t);
+      byName.set(key, t);
     } else if (first !== t) {
       sink.add(t, "ERR_TRANSITION_NAME_COLLISION",
-        `transition.action "${label(t)}" has the same name as "${label(first)}"; the transitions of "${entity.name}" share one namespace (each may derive a command), so rename one.`);
+        `transition.action "${label(t)}" has the same name as "${label(first)}" (names are compared without case); the transitions of "${entity.name}" share one namespace (each may derive a command), so rename one.`);
     }
   }
   if (!entity.isAbstract && !entity.children().some((c) => c.type === TYPE_SOURCE && isWritableSource(c))) {
@@ -186,7 +236,7 @@ function checkEntityLifecycles(entity: MetaData, sink: Sink): void {
 
 /** O0-O5, P1 and B1 for one operation. */
 function checkOperation(op: MetaData, sink: Sink): void {
-  if (RESERVED.has(op.name)) {
+  if (isReservedName(op.name)) {
     sink.add(op, "ERR_TRANSITION_NAME_COLLISION",
       `operation.${op.subType} "${label(op)}" is named "${op.name}", which is a derived CRUD verb (${RESERVED_LIST}); rename it.`);
   }
@@ -195,10 +245,13 @@ function checkOperation(op: MetaData, sink: Sink): void {
   const errorCodes = stringList(op, OPERATION_ATTR_ERRORS);
   const bad = errorCodes.filter((c) => !BUSINESS_ERROR_CODE_PATTERN.test(c));
   const dup = errorCodes.filter((c, i) => errorCodes.indexOf(c) !== i);
-  if (bad.length > 0 || dup.length > 0) {
+  const reserved = [...new Set(errorCodes.filter((c) => RESERVED_CODES.has(c)))];
+  if (bad.length > 0 || dup.length > 0 || reserved.length > 0) {
     const why = bad.length > 0
       ? `${quoteList(bad)} ${bad.length === 1 ? "is not a" : "are not"} lower snake case code${bad.length === 1 ? "" : "s"}`
-      : `${quoteList([...new Set(dup)])} ${new Set(dup).size === 1 ? "is" : "are"} listed twice`;
+      : dup.length > 0
+        ? `${quoteList([...new Set(dup)])} ${new Set(dup).size === 1 ? "is" : "are"} listed twice`
+        : `${quoteList(reserved)} ${reserved.length === 1 ? "is a code" : "are codes"} the route answers itself (${RESERVED_ERROR_CODES.join(", ")})`;
     sink.add(op, "ERR_BAD_ATTR_VALUE", `operation.${op.subType} "${label(op)}" @errors: ${why}.`);
   }
 
@@ -245,7 +298,7 @@ function checkOperation(op: MetaData, sink: Sink): void {
   const transitions = op.subType === OPERATION_SUBTYPE_COMMAND ? stringList(op, OPERATION_ATTR_TRANSITIONS) : [];
   if (transitions.length > 0 && target === undefined) {
     sink.add(op, "ERR_OPERATION_TARGET_UNRESOLVED",
-      `operation.command "${label(op)}" lists @transitions but has no target entity: no @inputRef field extends an entity's primary key, no @outputRef has a base entity, and there is no @objectRef.`);
+      `operation.command "${label(op)}" lists @transitions but has no target entity: the @inputRef does not borrow one entity's whole primary key (each key field extended exactly once), no @outputRef has a base entity, and there is no @objectRef.`);
     return;
   }
 
@@ -288,9 +341,42 @@ export function validateRules(root: MetaData): ParseError[] {
   }
   for (const api of root.children()) {
     if (api.type !== TYPE_API) continue;
-    for (const op of api.children()) {
-      if (op.type === TYPE_OPERATION) checkOperation(op, sink);
-    }
+    const ops = api.children().filter((c) => c.type === TYPE_OPERATION);
+    for (const op of ops) checkOperation(op, sink);
+    checkApiNamespace(ops, sink);
   }
   return sink.errors;
+}
+
+/** O6 and B2 across the operations of one API. */
+function checkApiNamespace(ops: readonly MetaData[], sink: Sink): void {
+  const byName = new Map<string, MetaData>();
+  const byRoute = new Map<string, MetaData>();
+  for (const op of ops) {
+    const key = op.name.toLowerCase();
+    const first = byName.get(key);
+    if (first === undefined) byName.set(key, op);
+    else if (first !== op) {
+      sink.add(op, "ERR_TRANSITION_NAME_COLLISION",
+        `operation.${op.subType} "${label(op)}" differs only in case from "${label(first)}"; the operations of one API share one namespace (each derives a route and a permission), so rename one.`);
+    }
+    // ADR-0039: own — a binding is checked on the operation that declares it.
+    for (const b of op.ownChildren()) {
+      if (b.type !== TYPE_BINDING || b.subType !== BINDING_SUBTYPE_REST) continue;
+      const path = b.attr(BINDING_ATTR_PATH);
+      if (typeof path !== "string") continue;
+      // The effective method: the declared one, else the derived (ADR-0063 §1).
+      const declaredMethod = b.attr(BINDING_ATTR_METHOD);
+      const method = typeof declaredMethod === "string"
+        ? declaredMethod
+        : op.subType === OPERATION_SUBTYPE_COMMAND ? "POST" : "GET";
+      const route = `${method} ${path.replace(/\{[^}]*\}/g, "{}")}`;
+      const other = byRoute.get(route);
+      if (other === undefined) byRoute.set(route, b);
+      else {
+        sink.add(b, "ERR_BINDING_PATH_MISMATCH",
+          `binding.rest on "${label(b)}" declares ${method} "${path}", the same route as the binding on "${label(other)}"; two operations cannot share a method and path.`);
+      }
+    }
+  }
 }

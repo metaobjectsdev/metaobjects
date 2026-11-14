@@ -307,7 +307,8 @@ export const ConfigSchema = z.object({
    * `permissions.names`: `derive` (default; verify says nothing), `advise` (verify warns on an
    * operation or derived transition command with no explicit `@permission`) or `require` (it
    * fails). `lifecycle.create`: `initial` (default; a create starts a row in the lifecycle's
-   * initial state) or `any`. `lifecycle.commands`: which transitions derive a command of their
+   * initial state) or `any`; it is validated and has no effect yet, since no service shell reads
+   * it. `lifecycle.commands`: which transitions derive a command of their
    * own, `unclaimed` (default; those no command lists in `@transitions`), `all` or `none`.
    * Read by every port's config reader.
    */

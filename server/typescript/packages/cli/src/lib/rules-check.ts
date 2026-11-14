@@ -16,6 +16,9 @@
 //   WARN_LIFECYCLE_INITIAL_TERMINAL    the initial state is one no transition leaves
 //   WARN_TRANSITION_UNREACHABLE        a transition whose every @from state is unreachable
 //                                      (severity: `verify.lifecycle.unreachable`)
+//   WARN_TRANSITION_PERMISSION_SHADOWED a transition declaring @permission or @public: true that
+//                                      derives no command of its own, so the attribute is never
+//                                      read (always a warning)
 //   WARN_PERMISSION_DERIVED_NAME       a transition that derives its own command, or an
 //                                      operation, with no @permission and not @public
 //                                      (severity: `rules.permissions.names`)
@@ -23,6 +26,9 @@
 // Lifecycles are checked once per declaring field, so a lifecycle on an abstract base is
 // reported once, not once per inheritor. A derived command exists per concrete entity, so
 // the permission check runs per concrete entity and names it.
+//
+// A command claims a transition NODE for its target entity and every entity that extends the
+// target: a command acting on an abstract base claims the inherited transition of each child.
 
 import {
   TYPE_API,
@@ -35,6 +41,7 @@ import {
   OPERATION_SUBTYPE_COMMAND,
   PACKAGE_SEPARATOR,
   effectivePackageOf,
+  entityLineage,
   entityTransitions,
   lifecyclesOf,
   operationTarget,
@@ -52,6 +59,7 @@ export const WARN_LIFECYCLE_UNREACHABLE_STATE = "WARN_LIFECYCLE_UNREACHABLE_STAT
 export const WARN_LIFECYCLE_INITIAL_TERMINAL = "WARN_LIFECYCLE_INITIAL_TERMINAL";
 export const WARN_TRANSITION_UNREACHABLE = "WARN_TRANSITION_UNREACHABLE";
 export const WARN_PERMISSION_DERIVED_NAME = "WARN_PERMISSION_DERIVED_NAME";
+export const WARN_TRANSITION_PERMISSION_SHADOWED = "WARN_TRANSITION_PERMISSION_SHADOWED";
 
 /** What the model declares, for the line `meta verify` prints on every run. */
 export interface RulesSummary {
@@ -168,21 +176,78 @@ function checkLifecycle(l: Lifecycle, settings: RulesSettings, out: Diagnostic[]
   }
 }
 
-/** The transition names each declared command claims, per target entity. */
-function claimedTransitions(root: MetaData): Map<MetaData, Set<string>> {
-  const claimed = new Map<MetaData, Set<string>>();
+/** One command's claim on a transition node, made for its target entity. */
+interface Claim {
+  readonly target: MetaData;
+  readonly op: MetaData;
+}
+
+/** Each transition node the declared commands claim, with the claims on it in model order. */
+function claimedTransitions(root: MetaData): Map<MetaData, Claim[]> {
+  const claimed = new Map<MetaData, Claim[]>();
   for (const op of operations(root)) {
     if (op.subType !== OPERATION_SUBTYPE_COMMAND) continue;
     const target = operationTarget(op);
     if (target === undefined) continue;
     const raw = op.attr(OPERATION_ATTR_TRANSITIONS);
-    const names = Array.isArray(raw) ? raw.filter((x): x is string => typeof x === "string") : [];
-    if (names.length === 0) continue;
-    const set = claimed.get(target) ?? new Set<string>();
-    for (const n of names) set.add(n);
-    claimed.set(target, set);
+    const names = new Set(Array.isArray(raw) ? raw.filter((x): x is string => typeof x === "string") : []);
+    for (const t of entityTransitions(target)) {
+      if (!names.has(t.name)) continue;
+      const claims = claimed.get(t) ?? [];
+      claims.push({ target, op });
+      claimed.set(t, claims);
+    }
   }
   return claimed;
+}
+
+/** The claims that cover transition `t` on `entity`: those made for the entity or an entity it extends. */
+function claimsOn(claimed: Map<MetaData, Claim[]>, entity: MetaData, t: MetaData): Claim[] {
+  const lineage = entityLineage(entity);
+  return (claimed.get(t) ?? []).filter((c) => lineage.includes(c.target));
+}
+
+/** Whether `t`, carried by `entity`, derives a command of its own under the setting. */
+function derivesCommand(claimed: Map<MetaData, Claim[]>, settings: RulesSettings, entity: MetaData, t: MetaData): boolean {
+  if (settings.lifecycleCommands === "none") return false;
+  if (settings.lifecycleCommands === "all") return true;
+  return claimsOn(claimed, entity, t).length === 0;
+}
+
+function concreteEntities(root: MetaData): MetaData[] {
+  return entities(root).filter((e) => !e.isAbstract);
+}
+
+/** A transition's @permission or @public is read only by the command derived from it. One that
+ *  derives no command for any concrete entity carrying it declares an attribute nothing reads. */
+function checkShadowedPermissions(root: MetaData, settings: RulesSettings, out: Diagnostic[]): void {
+  if (settings.lifecycleCommands === "all") return;
+  const claimed = claimedTransitions(root);
+  const carriers = new Map<MetaData, MetaData[]>();
+  for (const entity of concreteEntities(root)) {
+    for (const t of entityTransitions(entity)) carriers.set(t, [...(carriers.get(t) ?? []), entity]);
+  }
+  for (const [t, entitiesWithT] of carriers) {
+    const permission = t.attr(OPERATION_ATTR_PERMISSION);
+    const isPublic = t.attr(OPERATION_ATTR_PUBLIC) === true;
+    if (permission === undefined && !isPublic) continue;
+    if (entitiesWithT.some((e) => derivesCommand(claimed, settings, e, t))) continue;
+    const declared = permission !== undefined ? `@permission "${String(permission)}"` : "@public: true";
+    const claimers = [...new Set(entitiesWithT.flatMap((e) => claimsOn(claimed, e, t))
+      .map((c) => `${c.op.parent?.name ?? ""}.${c.op.name}`))];
+    const why = settings.lifecycleCommands === "none"
+      ? `rules.lifecycle.commands is "none": no command is derived from it`
+      : `it derives no command of its own: it is made only by ${quoteList(claimers)}, which ` +
+        `${claimers.length === 1 ? "asks" : "ask"} the policy about ${claimers.length === 1 ? "its" : "their"} own permission`;
+    out.push({
+      severity: "warn",
+      code: WARN_TRANSITION_PERMISSION_SHADOWED,
+      path: rulesAddress(t),
+      message:
+        `transition "${t.name}" declares ${declared}, but ${why}, so the attribute is never read. ` +
+        `Remove it from the transition, or declare it on the command that makes the transition.`,
+    });
+  }
 }
 
 function checkPermissionNames(root: MetaData, settings: RulesSettings, out: Diagnostic[]): void {
@@ -193,10 +258,9 @@ function checkPermissionNames(root: MetaData, settings: RulesSettings, out: Diag
 
   if (settings.lifecycleCommands !== "none") {
     const claimed = claimedTransitions(root);
-    for (const entity of entities(root)) {
-      if (entity.isAbstract) continue;
+    for (const entity of concreteEntities(root)) {
       for (const t of entityTransitions(entity)) {
-        if (settings.lifecycleCommands === "unclaimed" && claimed.get(entity)?.has(t.name) === true) continue;
+        if (!derivesCommand(claimed, settings, entity, t)) continue;
         if (!needsPermissionName(t)) continue;
         out.push({
           severity,
@@ -231,6 +295,7 @@ export function checkRules(root: MetaData, settings: RulesSettings): RulesCheckR
 
   const diagnostics: Diagnostic[] = [];
   for (const l of lifecycles) checkLifecycle(l, settings, diagnostics);
+  checkShadowedPermissions(root, settings, diagnostics);
   checkPermissionNames(root, settings, diagnostics);
   return {
     diagnostics,

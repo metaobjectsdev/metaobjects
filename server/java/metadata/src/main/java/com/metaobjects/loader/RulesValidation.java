@@ -66,7 +66,13 @@ final class RulesValidation {
 
     private static final Set<String> RESERVED = new LinkedHashSet<>(ApiConstants.RESERVED_OPERATION_NAMES);
     private static final String RESERVED_LIST = String.join(", ", ApiConstants.RESERVED_OPERATION_NAMES);
+    private static final Set<String> RESERVED_CODES = new LinkedHashSet<>(ApiConstants.RESERVED_ERROR_CODES);
     private static final Pattern PLACEHOLDER = Pattern.compile("\\{([^}]*)\\}");
+
+    /** A derived name is compared without case: a command, a permission constant or a file named from it collides on a case-folding target. */
+    private static boolean isReservedName(String name) {
+        return RESERVED.contains(name.toLowerCase(java.util.Locale.ROOT));
+    }
 
     /** {@code "Entity.field.transition"} for a transition, {@code "Api.operation"} for an operation. */
     private static String label(MetaData node) {
@@ -132,9 +138,19 @@ final class RulesValidation {
             sink.add(field, ErrorCode.ERR_LIFECYCLE_NO_INITIAL,
                 "field.enum \"" + label(field) + "\" declares transitions but no @default; its @default is the lifecycle's initial state.");
         }
+        // ADR-0039: RESOLVING array-ness (isArrayType), never the own-only native flag.
+        if (field instanceof MetaField mf && mf.isArrayType()) {
+            sink.add(field, ErrorCode.ERR_BAD_ATTR_VALUE,
+                "field." + field.getSubType() + " \"" + label(field)
+                    + "\" declares transitions but is an array (@isArray: true); a lifecycle's state is one value.");
+        }
         Set<String> states = new LinkedHashSet<>(Lifecycles.stringList(field, EnumField.ATTR_VALUES));
         for (MetaData t : declared) {
             checkPermissionPublic(t, sink);
+            if (Lifecycles.transitionFrom(t).isEmpty()) {
+                sink.add(t, ErrorCode.ERR_BAD_ATTR_VALUE,
+                    "transition.action \"" + label(t) + "\" @from is empty; name at least one state the transition leaves.");
+            }
             String to = Lifecycles.transitionTo(t);
             Set<String> mentioned = new LinkedHashSet<>(Lifecycles.transitionFrom(t));
             if (to != null) mentioned.add(to);
@@ -146,7 +162,7 @@ final class RulesValidation {
                         + (unknown.size() == 1 ? "is not a member" : "are not members") + " of \"" + field.getShortName()
                         + "\" @values (" + quoteList(states) + ").");
             }
-            if (RESERVED.contains(t.getShortName())) {
+            if (isReservedName(t.getShortName())) {
                 sink.add(t, ErrorCode.ERR_TRANSITION_NAME_COLLISION,
                     "transition.action \"" + label(t) + "\" is named \"" + t.getShortName()
                         + "\", which is a derived CRUD verb (" + RESERVED_LIST + "); rename it.");
@@ -177,17 +193,48 @@ final class RulesValidation {
         return out;
     }
 
-    /** L2 and L6 for one entity, over its effective (inherited) lifecycles. */
+    /**
+     * L10: an entity's field named like an ancestor's lifecycle field that does not carry that
+     * lifecycle's transitions. Redeclaring the field replaces it, so the base's state machine
+     * would silently stop applying to this entity.
+     */
+    private static void checkRedeclaredLifecycles(MetaData entity, Sink sink) {
+        List<MetaData> lineage = Lifecycles.entityLineage(entity);
+        for (MetaData ancestor : lineage.subList(1, lineage.size())) {
+            // ADR-0039: own — the lifecycle fields the ancestor itself declares.
+            for (MetaData baseField : ancestor.getChildren(MetaData.class, false)) {
+                if (!MetaField.TYPE_FIELD.equals(baseField.getType())) continue;
+                List<MetaData> baseTransitions = Lifecycles.lifecycleTransitionsOf(ancestor, baseField);
+                if (baseTransitions.isEmpty()) continue;
+                MetaData field = null;
+                for (MetaData c : entity.getChildren(MetaData.class, true)) {
+                    if (MetaField.TYPE_FIELD.equals(c.getType()) && c.getShortName().equals(baseField.getShortName())) { field = c; break; }
+                }
+                if (field == null || field == baseField) continue;
+                List<MetaData> kept = Lifecycles.lifecycleTransitionsOf(entity, field);
+                boolean all = true;
+                for (MetaData t : baseTransitions) if (!Lifecycles.containsIdentity(kept, t)) all = false;
+                if (all) continue;
+                sink.add(field, ErrorCode.ERR_LIFECYCLE_REDECLARED,
+                    "field." + field.getSubType() + " \"" + label(field) + "\" redeclares \"" + label(baseField)
+                        + "\", which has a lifecycle, and drops its transitions; extend it (\"extends\": \""
+                        + ancestor.getShortName() + "." + baseField.getShortName() + "\") or give the field another name.");
+            }
+        }
+    }
+
+    /** L2, L6 and L10 for one entity, over its effective (inherited) lifecycles. */
     private static void checkEntityLifecycles(MetaData entity, Sink sink) {
+        checkRedeclaredLifecycles(entity, sink);
         List<MetaData> transitions = Lifecycles.entityTransitions(entity);
         if (transitions.isEmpty()) return;
         Map<String, MetaData> byName = new java.util.LinkedHashMap<>();
         for (MetaData t : transitions) {
-            MetaData first = byName.putIfAbsent(t.getShortName(), t);
+            MetaData first = byName.putIfAbsent(t.getShortName().toLowerCase(java.util.Locale.ROOT), t);
             if (first != null && first != t) {
                 sink.add(t, ErrorCode.ERR_TRANSITION_NAME_COLLISION,
                     "transition.action \"" + label(t) + "\" has the same name as \"" + label(first)
-                        + "\"; the transitions of \"" + entity.getShortName()
+                        + "\" (names are compared without case); the transitions of \"" + entity.getShortName()
                         + "\" share one namespace (each may derive a command), so rename one.");
             }
         }
@@ -211,7 +258,7 @@ final class RulesValidation {
     /** O0-O5, P1 and B1 for one operation. */
     private static void checkOperation(MetaData op, Sink sink) {
         String head = "operation." + op.getSubType() + " \"" + label(op) + "\"";
-        if (RESERVED.contains(op.getShortName())) {
+        if (isReservedName(op.getShortName())) {
             sink.add(op, ErrorCode.ERR_TRANSITION_NAME_COLLISION,
                 head + " is named \"" + op.getShortName() + "\", which is a derived CRUD verb (" + RESERVED_LIST + "); rename it.");
         }
@@ -225,16 +272,34 @@ final class RulesValidation {
             if (!ApiConstants.BUSINESS_ERROR_CODE_PATTERN.matcher(c).matches()) bad.add(c);
             if (errorCodes.indexOf(c) != i) dup.add(c);
         }
-        if (!bad.isEmpty() || !dup.isEmpty()) {
+        Set<String> reserved = new LinkedHashSet<>();
+        for (String c : errorCodes) if (RESERVED_CODES.contains(c)) reserved.add(c);
+        if (!bad.isEmpty() || !dup.isEmpty() || !reserved.isEmpty()) {
             String why;
             if (!bad.isEmpty()) {
                 why = quoteList(bad) + " " + (bad.size() == 1 ? "is not a" : "are not") + " lower snake case code"
                     + (bad.size() == 1 ? "" : "s");
-            } else {
+            } else if (!dup.isEmpty()) {
                 Set<String> uniq = new LinkedHashSet<>(dup);
                 why = quoteList(uniq) + " " + (uniq.size() == 1 ? "is" : "are") + " listed twice";
+            } else {
+                why = quoteList(reserved) + " " + (reserved.size() == 1 ? "is a code" : "are codes")
+                    + " the route answers itself (" + String.join(", ", ApiConstants.RESERVED_ERROR_CODES) + ")";
             }
             sink.add(op, ErrorCode.ERR_BAD_ATTR_VALUE, head + " @errors: " + why + ".");
+        }
+
+        // Java addition: .withEnum is decorative on attr children in this port, so the closed
+        // @method set the TS registry enforces generically is checked here.
+        // ADR-0039: own — a binding is checked on the operation that declares it.
+        for (MetaData b : op.getChildren(MetaData.class, false)) {
+            if (!ApiConstants.TYPE_BINDING.equals(b.getType()) || !b.hasMetaAttr(ApiConstants.ATTR_METHOD, false)) continue;
+            String method = Lifecycles.stringValue(b, ApiConstants.ATTR_METHOD);
+            if (method != null && !ApiConstants.BINDING_METHODS.contains(method)) {
+                sink.add(b, ErrorCode.ERR_BAD_ATTR_VALUE,
+                    b.getType() + "." + b.getSubType() + " attribute '@" + ApiConstants.ATTR_METHOD + "' has value '" + method
+                        + "' which is not one of the allowed values: " + String.join(", ", ApiConstants.BINDING_METHODS));
+            }
         }
 
         // O1 — shapes.
@@ -284,7 +349,7 @@ final class RulesValidation {
             ? Lifecycles.stringList(op, ApiConstants.ATTR_TRANSITIONS) : Collections.emptyList();
         if (!transitions.isEmpty() && target == null) {
             sink.add(op, ErrorCode.ERR_OPERATION_TARGET_UNRESOLVED,
-                "operation.command \"" + label(op) + "\" lists @transitions but has no target entity: no @inputRef field extends an entity's primary key, no @outputRef has a base entity, and there is no @objectRef.");
+                "operation.command \"" + label(op) + "\" lists @transitions but has no target entity: the @inputRef does not borrow one entity's whole primary key (each key field extended exactly once), no @outputRef has a base entity, and there is no @objectRef.");
             return;
         }
 
@@ -298,19 +363,6 @@ final class RulesValidation {
                 sink.add(op, ErrorCode.ERR_OPERATION_UNKNOWN_TRANSITION,
                     "operation.command \"" + label(op) + "\" @transitions names " + quoteList(unknown) + ", which "
                         + (unknown.size() == 1 ? "is not a transition" : "are not transitions") + " of \"" + target.getShortName() + "\".");
-            }
-        }
-
-        // Java addition: .withEnum is decorative on attr children in this port, so the closed
-        // @method set the TS registry enforces generically is checked here.
-        // ADR-0039: own — a binding is checked on the operation that declares it.
-        for (MetaData b : op.getChildren(MetaData.class, false)) {
-            if (!ApiConstants.TYPE_BINDING.equals(b.getType()) || !b.hasMetaAttr(ApiConstants.ATTR_METHOD, false)) continue;
-            String method = Lifecycles.stringValue(b, ApiConstants.ATTR_METHOD);
-            if (method != null && !ApiConstants.BINDING_METHODS.contains(method)) {
-                sink.add(b, ErrorCode.ERR_BAD_ATTR_VALUE,
-                    b.getType() + "." + b.getSubType() + " attribute '@" + ApiConstants.ATTR_METHOD + "' has value '" + method
-                        + "' which is not one of the allowed values: " + String.join(", ", ApiConstants.BINDING_METHODS));
             }
         }
 
@@ -349,10 +401,46 @@ final class RulesValidation {
         }
         for (MetaData api : root.getChildren(MetaData.class, true)) {
             if (!ApiConstants.TYPE_API.equals(api.getType())) continue;
+            List<MetaData> ops = new ArrayList<>();
             for (MetaData op : api.getChildren(MetaData.class, true)) {
-                if (ApiConstants.TYPE_OPERATION.equals(op.getType())) checkOperation(op, sink);
+                if (ApiConstants.TYPE_OPERATION.equals(op.getType())) ops.add(op);
             }
+            for (MetaData op : ops) checkOperation(op, sink);
+            checkApiNamespace(ops, sink);
         }
         return sink.errors;
+    }
+
+    /** O6 and B2 across the operations of one API. */
+    private static void checkApiNamespace(List<MetaData> ops, Sink sink) {
+        Map<String, MetaData> byName = new java.util.HashMap<>();
+        Map<String, MetaData> byRoute = new java.util.HashMap<>();
+        for (MetaData op : ops) {
+            String key = op.getShortName().toLowerCase(java.util.Locale.ROOT);
+            MetaData first = byName.putIfAbsent(key, op);
+            if (first != null && first != op) {
+                sink.add(op, ErrorCode.ERR_TRANSITION_NAME_COLLISION,
+                    "operation." + op.getSubType() + " \"" + label(op) + "\" differs only in case from \"" + label(first)
+                        + "\"; the operations of one API share one namespace (each derives a route and a permission), so rename one.");
+            }
+            // ADR-0039: own — a binding is checked on the operation that declares it.
+            for (MetaData b : op.getChildren(MetaData.class, false)) {
+                if (!ApiConstants.TYPE_BINDING.equals(b.getType()) || !ApiConstants.BINDING_SUBTYPE_REST.equals(b.getSubType())) continue;
+                String path = Lifecycles.stringValue(b, ApiConstants.ATTR_PATH);
+                if (path == null) continue;
+                // The effective method: the declared one, else the derived (ADR-0063 section 1).
+                String declared = Lifecycles.stringValue(b, ApiConstants.ATTR_METHOD);
+                String method = declared != null ? declared
+                    : ApiConstants.OPERATION_SUBTYPE_COMMAND.equals(op.getSubType()) ? "POST" : "GET";
+                String route = method + " " + PLACEHOLDER.matcher(path).replaceAll("{}");
+                MetaData other = byRoute.putIfAbsent(route, b);
+                if (other != null) {
+                    sink.add(b, ErrorCode.ERR_BINDING_PATH_MISMATCH,
+                        "binding.rest on \"" + label(b) + "\" declares " + method + " \"" + path
+                            + "\", the same route as the binding on \"" + label(other)
+                            + "\"; two operations cannot share a method and path.");
+                }
+            }
+        }
     }
 }

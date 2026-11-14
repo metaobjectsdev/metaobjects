@@ -74,8 +74,14 @@ work*. A release can move one without the other, and most releases move neither.
 - **Anything explicitly marked experimental or reserved** and not yet in the registry
   (e.g. the reserved lifecycle subtype `transition.timed`, the reserved event and streaming
   sibling of `api.operational`, and reserved index subtypes `index.fulltext`/`vector`/`spatial`).
-  The declared-API vocabulary `api.*`/`operation.*`/`binding.*` is registered since 1.3.0
-  (ADR-0063) and is covered like the rest of the metamodel.
+- **The business-rules vocabulary, which is experimental.** `api.*`, `operation.*`,
+  `binding.*`, lifecycles (`transition.action` and what it derives) and the permission points
+  (`@permission`, `@public`) are registered since 1.3.0 (ADR-0063), together with their loader
+  rules, `verify` checks and `rules`/`verify.lifecycle` settings. The shape may change in a
+  MINOR, including removals and renames, as for a `preview` library below. It is promoted to
+  the promise above on evidence: generated services running on it in an adopter estate with the
+  drift gate enforced. Until then a model that declares none of it is unaffected by any change
+  to it.
 
 ## Shipped libraries (`libraries: [...]`)
 

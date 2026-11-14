@@ -66,3 +66,21 @@ export const RESERVED_OPERATION_NAMES = ["create", "get", "list", "update", "del
 
 /** A declared business error code: lower snake case. */
 export const BUSINESS_ERROR_CODE_PATTERN = /^[a-z][a-z0-9]*(_[a-z0-9]+)*$/;
+
+/** Wire error codes an operation's route answers on its own, so a body may not declare them
+ *  in @errors (O5): the enforcing shell's codes (ADR-0063 §6) and the API contract's generic
+ *  ones (docs/features/api-contract.md). A body returning one would be indistinguishable on the
+ *  wire from the shell or the transport answering. */
+export const RESERVED_ERROR_CODES = [
+  "not_found",
+  "forbidden",
+  "invalid_transition",
+  "transition_condition_failed",
+  "state_managed",
+  "validation",
+  "invalid_json",
+  "invalid_id",
+  "method_not_allowed",
+  "constraint_violation",
+  "internal",
+] as const;

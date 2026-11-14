@@ -51,6 +51,7 @@ public final class RulesCheck {
     public static final String WARN_LIFECYCLE_INITIAL_TERMINAL = "WARN_LIFECYCLE_INITIAL_TERMINAL";
     public static final String WARN_TRANSITION_UNREACHABLE = "WARN_TRANSITION_UNREACHABLE";
     public static final String WARN_PERMISSION_DERIVED_NAME = "WARN_PERMISSION_DERIVED_NAME";
+    public static final String WARN_TRANSITION_PERMISSION_SHADOWED = "WARN_TRANSITION_PERMISSION_SHADOWED";
 
     /** What the model declares, for the line {@code verify} prints. */
     public record Summary(int operations, int lifecycles, int transitions) {}
@@ -159,18 +160,90 @@ public final class RulesCheck {
         }
     }
 
-    /** The transition names each declared command claims, per target entity. */
-    private static Map<MetaData, Set<String>> claimedTransitions(MetaRoot root) {
-        Map<MetaData, Set<String>> claimed = new IdentityHashMap<>();
+    /** One command's claim on a transition node, made for its target entity. */
+    private record Claim(MetaData target, MetaData op) {}
+
+    /** Each transition node the declared commands claim, with the claims on it in model order. */
+    private static Map<MetaData, List<Claim>> claimedTransitions(MetaRoot root) {
+        Map<MetaData, List<Claim>> claimed = new IdentityHashMap<>();
         for (MetaData op : operations(root)) {
             if (!ApiConstants.OPERATION_SUBTYPE_COMMAND.equals(op.getSubType())) continue;
             MetaData target = Lifecycles.operationTarget(op);
             if (target == null) continue;
-            List<String> names = Lifecycles.stringList(op, ApiConstants.ATTR_TRANSITIONS);
-            if (names.isEmpty()) continue;
-            claimed.computeIfAbsent(target, k -> new HashSet<>()).addAll(names);
+            Set<String> names = new HashSet<>(Lifecycles.stringList(op, ApiConstants.ATTR_TRANSITIONS));
+            for (MetaData t : Lifecycles.entityTransitions(target)) {
+                if (!names.contains(t.getShortName())) continue;
+                claimed.computeIfAbsent(t, k -> new ArrayList<>()).add(new Claim(target, op));
+            }
         }
         return claimed;
+    }
+
+    /** The claims that cover transition {@code t} on {@code entity}: those made for the entity or an entity it extends. */
+    private static List<Claim> claimsOn(Map<MetaData, List<Claim>> claimed, MetaData entity, MetaData t) {
+        List<MetaData> lineage = Lifecycles.entityLineage(entity);
+        List<Claim> out = new ArrayList<>();
+        for (Claim c : claimed.getOrDefault(t, List.of())) {
+            if (Lifecycles.containsIdentity(lineage, c.target())) out.add(c);
+        }
+        return out;
+    }
+
+    /** Whether {@code t}, carried by {@code entity}, derives a command of its own under the setting. */
+    private static boolean derivesCommand(Map<MetaData, List<Claim>> claimed, RulesSettings settings, MetaData entity, MetaData t) {
+        if (settings.lifecycleCommands() == RulesSettings.LifecycleCommands.NONE) return false;
+        if (settings.lifecycleCommands() == RulesSettings.LifecycleCommands.ALL) return true;
+        return claimsOn(claimed, entity, t).isEmpty();
+    }
+
+    private static List<MetaData> concreteEntities(MetaRoot root) {
+        List<MetaData> out = new ArrayList<>();
+        for (MetaData e : entities(root)) if (!Lifecycles.isAbstract(e)) out.add(e);
+        return out;
+    }
+
+    /**
+     * A transition's @permission or @public is read only by the command derived from it. One that
+     * derives no command for any concrete entity carrying it declares an attribute nothing reads.
+     */
+    private static void checkShadowedPermissions(MetaRoot root, RulesSettings settings, List<Diagnostic> out) {
+        if (settings.lifecycleCommands() == RulesSettings.LifecycleCommands.ALL) return;
+        Map<MetaData, List<Claim>> claimed = claimedTransitions(root);
+        Map<MetaData, List<MetaData>> carriers = new IdentityHashMap<>();
+        List<MetaData> order = new ArrayList<>();
+        for (MetaData entity : concreteEntities(root)) {
+            for (MetaData t : Lifecycles.entityTransitions(entity)) {
+                List<MetaData> list = carriers.get(t);
+                if (list == null) { list = new ArrayList<>(); carriers.put(t, list); order.add(t); }
+                list.add(entity);
+            }
+        }
+        for (MetaData t : order) {
+            List<MetaData> withT = carriers.get(t);
+            boolean hasPermission = t.hasMetaAttr(ApiConstants.ATTR_PERMISSION);
+            boolean isPublic = t.hasMetaAttr(ApiConstants.ATTR_PUBLIC)
+                && Boolean.TRUE.equals(t.getMetaAttr(ApiConstants.ATTR_PUBLIC).getValue());
+            if (!hasPermission && !isPublic) continue;
+            boolean derives = false;
+            for (MetaData e : withT) if (derivesCommand(claimed, settings, e, t)) derives = true;
+            if (derives) continue;
+            String declared = hasPermission
+                ? "@permission \"" + t.getMetaAttr(ApiConstants.ATTR_PERMISSION).getValue() + "\"" : "@public: true";
+            Set<String> claimers = new java.util.LinkedHashSet<>();
+            for (MetaData e : withT) {
+                for (Claim c : claimsOn(claimed, e, t)) {
+                    claimers.add((c.op().getParent() == null ? "" : c.op().getParent().getShortName()) + "." + c.op().getShortName());
+                }
+            }
+            String why = settings.lifecycleCommands() == RulesSettings.LifecycleCommands.NONE
+                ? "rules.lifecycle.commands is \"none\": no command is derived from it"
+                : "it derives no command of its own: it is made only by " + quoteList(claimers) + ", which "
+                    + (claimers.size() == 1 ? "asks" : "ask") + " the policy about "
+                    + (claimers.size() == 1 ? "its" : "their") + " own permission";
+            out.add(new Diagnostic(Severity.WARN, WARN_TRANSITION_PERMISSION_SHADOWED, rulesAddress(t),
+                "transition \"" + t.getShortName() + "\" declares " + declared + ", but " + why
+                    + ", so the attribute is never read. Remove it from the transition, or declare it on the command that makes the transition."));
+        }
     }
 
     private static void checkPermissionNames(MetaRoot root, RulesSettings settings, List<Diagnostic> out) {
@@ -178,12 +251,10 @@ public final class RulesCheck {
         Severity severity = settings.permissionNames() == RulesSettings.PermissionNames.REQUIRE ? Severity.ERROR : Severity.WARN;
 
         if (settings.lifecycleCommands() != RulesSettings.LifecycleCommands.NONE) {
-            Map<MetaData, Set<String>> claimed = claimedTransitions(root);
-            for (MetaData entity : entities(root)) {
-                if (Lifecycles.isAbstract(entity)) continue;
+            Map<MetaData, List<Claim>> claimed = claimedTransitions(root);
+            for (MetaData entity : concreteEntities(root)) {
                 for (MetaData t : Lifecycles.entityTransitions(entity)) {
-                    if (settings.lifecycleCommands() == RulesSettings.LifecycleCommands.UNCLAIMED
-                            && claimed.getOrDefault(entity, Set.of()).contains(t.getShortName())) continue;
+                    if (!derivesCommand(claimed, settings, entity, t)) continue;
                     if (!needsPermissionName(t)) continue;
                     out.add(new Diagnostic(severity, WARN_PERMISSION_DERIVED_NAME,
                         rulesAddress(entity) + "." + (t.getParent() == null ? "" : t.getParent().getShortName()) + "." + t.getShortName(),
@@ -214,6 +285,7 @@ public final class RulesCheck {
 
         List<Diagnostic> diagnostics = new ArrayList<>();
         for (Lifecycle l : lifecycles) checkLifecycle(l, settings, diagnostics);
+        checkShadowedPermissions(root, settings, diagnostics);
         checkPermissionNames(root, settings, diagnostics);
         int transitions = 0;
         for (Lifecycle l : lifecycles) transitions += l.transitions().size();

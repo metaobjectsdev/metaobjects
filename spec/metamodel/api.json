@@ -11,9 +11,9 @@
       "type": "api",
       "subType": "operational",
       "extendsBase": true,
-      "description": "A named, packaged request/response surface whose children are operations (ADR-0030). It is a wire contract: two of them (`v1`, `v2`) may declare the same operation side by side. The code behind it is one service per metadata package, whose surface is the package's operations (ADR-0064).",
+      "description": "A named, packaged request/response surface whose children are operations (ADR-0030). It is a wire contract: two of them (`v1`, `v2`) may declare the same operation side by side. The code behind it is one service per metadata package, whose surface is the package's operations (ADR-0064). Experimental since 1.3.0: the shape may change in a MINOR, including removals and renames (docs/compatibility-policy.md).",
       "whenToUse": "The application does something beyond derived CRUD: a named command (approve, cancel, import) or a named query (my open requests). Declare it here so its input, output, permission and business errors are part of the model. A plain lifecycle needs no api.operational at all: each transition nobody claims derives its own command.",
-      "rules": "Children are `operation.command` and `operation.query`. Lives at the document root. Declares no fields, sources or identities: shapes are referenced, never defined, by the surface.",
+      "rules": "Children are `operation.command` and `operation.query`. Lives at the document root. Declares no fields, sources or identities: shapes are referenced, never defined, by the surface. Operation names are compared without case and may not be create, get, list, update or delete in any case (ERR_TRANSITION_NAME_COLLISION). Two declared bindings may not share a method and path (ERR_BINDING_PATH_MISMATCH).",
       "children": [
         { "type": "operation", "subType": "*", "name": "*", "min": 0, "max": null, "description": "The operations this surface exposes." }
       ]
@@ -26,7 +26,7 @@
         { "type": "binding", "subType": "*", "name": "*", "min": 0, "max": null, "description": "Optional protocol bindings. Only needed to override the derived method and path." },
         { "type": "attr", "subType": "string", "name": "inputRef", "min": 0, "max": 1, "description": "The `object.value` this operation takes as its input (ADR-0030). Absent on an operation whose only parameter is the target's borrowed key. Anything other than an `object.value` is ERR_OPERATION_SHAPE." },
         { "type": "attr", "subType": "string", "name": "outputRef", "min": 0, "max": 1, "description": "The object this operation returns: an `object.projection`, `object.entity` or `object.value`. Which projection a query returns is the author's choice among several over one entity, so it cannot be computed. Anything else is ERR_OPERATION_SHAPE." },
-        { "type": "attr", "subType": "string", "name": "objectRef", "min": 0, "max": 1, "description": "The entity this operation acts on, declared only when it cannot be derived. It is derived from the input value's field that `extends` the entity's primary key field, else from the output's base entity. Declared and derivable, the two must agree (ERR_OPERATION_TARGET_MISMATCH). It must name an `object.entity` (ERR_OPERATION_TARGET_UNRESOLVED)." },
+        { "type": "attr", "subType": "string", "name": "objectRef", "min": 0, "max": 1, "description": "The entity this operation acts on, declared only when it cannot be derived. It is derived from the input value when its fields `extend` every primary key field of exactly one entity, each once, else from the output's base entity; an input that borrows part of a key, one key field twice, or the keys of two entities derives nothing, so declare it. Declared and derivable, the two must agree (ERR_OPERATION_TARGET_MISMATCH). It must name an `object.entity` (ERR_OPERATION_TARGET_UNRESOLVED)." },
         { "type": "attr", "subType": "string", "name": "permission", "min": 0, "max": 1, "description": "The permission name the generated shell asks the project's policy about before anything is written. A key into grant data (who holds it is data, what the policy decides is code), so it is never derived from the operation's name: a rename would silently move access. Absent and not @public: the shell uses the derived name `<package>.<operation>`, and `verify` advises or requires an explicit one (setting `rules.permissions.names`). Several operations may share one." },
         { "type": "attr", "subType": "boolean", "name": "public", "min": 0, "max": 1, "description": "The shell calls no permission check. Authentication is the transport's job and is unaffected. Absent means checked. Declaring it with @permission is ERR_PERMISSION_PUBLIC_CONFLICT." }
       ]
@@ -35,18 +35,18 @@
       "type": "operation",
       "subType": "command",
       "extendsBase": true,
-      "description": "A named operation that changes state. Takes an `object.value` (ADR-0030). Its body is hand-written; the generated shell around it loads the row, checks the permission and the current state, runs the body, and makes the guarded update in one transaction (ADR-0063).",
+      "description": "A named operation that changes state. Takes an `object.value` (ADR-0030). Its body is hand-written; the generated shell around it loads the row, checks the permission and the current state, runs the body, and makes the guarded update in one transaction (ADR-0063). Experimental since 1.3.0: the shape may change in a MINOR, including removals and renames (docs/compatibility-policy.md).",
       "whenToUse": "A business action with its own name, input and rules: approve, cancel, transfer. A command that moves a lifecycle names the transitions it may make in @transitions; its body decides which one applies.",
       "children": [
         { "type": "attr", "subType": "string", "name": "transitions", "isArray": true, "min": 0, "max": 1, "description": "The lifecycle moves this command may make: names of `transition.action` nodes on its target entity (ERR_OPERATION_UNKNOWN_TRANSITION otherwise). A fact of the business the model cannot compute. A transition a command lists gets no derived command of its own. Listing any requires a target (ERR_OPERATION_TARGET_UNRESOLVED)." },
-        { "type": "attr", "subType": "string", "name": "errors", "isArray": true, "min": 0, "max": 1, "description": "The business failures the hand-written body may return, each a lower snake case code (`insufficient_funds`). They name the wire error, the OpenAPI document and the typed result; the shell refuses an undeclared one. A code that is not lower snake case, or appears twice, is ERR_BAD_ATTR_VALUE." }
+        { "type": "attr", "subType": "string", "name": "errors", "isArray": true, "min": 0, "max": 1, "description": "The business failures the hand-written body may return, each a lower snake case code (`insufficient_funds`). They name the wire error, the OpenAPI document and the typed result; the shell refuses an undeclared one. A code that is not lower snake case, appears twice, or is one the route answers itself (not_found, forbidden, invalid_transition, transition_condition_failed, state_managed, validation, invalid_json, invalid_id, method_not_allowed, constraint_violation, internal) is ERR_BAD_ATTR_VALUE." }
       ]
     },
     {
       "type": "operation",
       "subType": "query",
       "extendsBase": true,
-      "description": "A named operation that reads. Returns an `object.projection` (or an entity or value). It changes nothing.",
+      "description": "A named operation that reads. Returns an `object.projection` (or an entity or value). It changes nothing. Experimental since 1.3.0: the shape may change in a MINOR, including removals and renames (docs/compatibility-policy.md).",
       "whenToUse": "A read with its own name and shape beyond derived get and list: my open requests, the dashboard summary.",
       "children": [
         { "type": "attr", "subType": "boolean", "name": "many", "min": 0, "max": 1, "description": "The query returns a list and takes the filter, sort and paging contract. Not implied by the projection, so declared. Absent means one row. Legal on a query only." }
@@ -62,11 +62,11 @@
       "type": "binding",
       "subType": "rest",
       "extendsBase": true,
-      "description": "The HTTP method and path of an operation, declared only to override the derived ones. A query is `GET`, a command `POST`; the path is `/<collection>/{id}/<operation-kebab>` for an operation with a target key and `/<collection>/<operation-kebab>` without one (setting `api.operationPaths` chooses the `:verb` style). Most models never write it.",
+      "description": "The HTTP method and path of an operation, declared only to override the derived ones. A query is `GET`, a command `POST`; the path is `/<collection>/{id}/<operation-kebab>` for an operation with a target key and `/<collection>/<operation-kebab>` without one (setting `api.operationPaths` chooses the `:verb` style). Most models never write it. Experimental since 1.3.0: the shape may change in a MINOR, including removals and renames (docs/compatibility-policy.md).",
       "whenToUse": "An operation must keep a method or path the derived one would not give it, such as an existing public URL.",
       "children": [
         { "type": "attr", "subType": "string", "name": "method", "min": 0, "max": 1, "allowedValues": ["GET", "POST", "PUT", "PATCH", "DELETE"], "description": "The HTTP method. Absent: GET for a query, POST for a command." },
-        { "type": "attr", "subType": "string", "name": "path", "min": 0, "max": 1, "description": "A path template. Its `{name}` placeholders must be exactly the target's primary key fields when the operation is keyed, and there must be none when it is not (ERR_BINDING_PATH_MISMATCH)." }
+        { "type": "attr", "subType": "string", "name": "path", "min": 0, "max": 1, "description": "A path template. Its `{name}` placeholders must be exactly the target's primary key fields when the operation is keyed, and there must be none when it is not; two declared bindings of one API may not share the method and path (ERR_BINDING_PATH_MISMATCH)." }
       ]
     }
   ]

@@ -74,7 +74,6 @@
                       "@from": [
                         "submitted"
                       ],
-                      "@permission": "purchasing.review",
                       "@to": "rejected"
                     }
                   }

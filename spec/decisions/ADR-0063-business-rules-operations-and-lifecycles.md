@@ -4,7 +4,7 @@
 
 **Accepted** (2026-11-13). Both vocabulary slices are agreed under ADR-0023 §3: slice A
 (operations and permission points) and slice B (lifecycles). This ADR registers the names
-ADR-0030 reserved, adds `transition.*`, ten loader error codes and a `verify` gate, in all five
+ADR-0030 reserved, adds `transition.*`, eleven loader error codes and a `verify` gate, in all five
 ports in one change. `metamodelVersion` stays `1.3`, because this lands in the unpublished 1.3.0.
 It extends ADR-0030 and applies ADR-0037's procedure to each shape. Every rule reads through the
 resolving accessors (ADR-0039), so a transition declared on a base entity's field applies to
@@ -14,6 +14,13 @@ ADR-0045 to match.
 1.3.0 ships the vocabulary, the loader rules and the `verify` checks. The generated service
 shells that enforce the rules at run time (§6) are later work. Until they land, the vocabulary
 generates nothing. `fixtures/codegen-noop/rules/` holds every port to that.
+
+**Experimental.** Decision 2 of the 1.3.0 design pass gives new vocabulary an experimental label
+until it is proven in use. Everything this ADR registers — `api.*`, `operation.*`, `binding.*`,
+lifecycles and the permission points — with its loader rules, `verify` checks and settings, may
+change in a MINOR, including removals and renames, as a `preview` library may
+(`docs/compatibility-policy.md`). It is promoted on evidence: generated services running on it
+in an adopter estate with the drift gate enforced. The registry descriptions say so.
 
 ## Context
 
@@ -117,14 +124,27 @@ Attributes on `transition.action`:
 - **A transition's command.** Each transition that no declared `operation.command` lists in
   `@transitions` gets a derived command of the same name. It takes no input beyond the key and
   lives on the package's service (setting `rules.lifecycle.commands`). So a plain lifecycle
-  needs no `api.operational` at all.
+  needs no `api.operational` at all. A command claims a transition for its target entity and
+  every entity that extends the target, so a command acting on an abstract base claims the
+  inherited transition of each child.
+
+**Whose lifecycle it is.** A transition belongs to the entity that declares its field and to
+every entity that extends that entity. It does not belong to an entity whose field merely
+`extends` the lifecycle field: extending a field shares its values, and a status history table
+is not the thing whose status it records. An inheritor that redeclares the lifecycle field must
+extend the base's field, or the base's transitions would silently stop applying to it; the
+loader refuses that (L10).
 
 ### 3. The derived target of an operation
 
 An operation's target entity is the first of these that exists:
 
 1. The declared `@objectRef`.
-2. The one entity whose primary key field a field of the `@inputRef` value extends.
+2. The one entity whose whole primary key the `@inputRef` value borrows: each of its primary
+   key fields is extended by exactly one field of the value. An input that borrows part of a
+   composite key or one key field twice (`fromId`, `toId`) names no single row, so it borrows
+   nothing from that entity. An input that borrows the whole keys of two entities derives
+   nothing either, and the operation falls through to its output or declares `@objectRef`.
 3. The `@outputRef`, when it is an entity.
 4. The base entity of the `@outputRef`, when it is a projection: the entity its identity
    extends, else the one entity its fields extend.
@@ -162,16 +182,40 @@ case each (`error-rules-*`):
 | L2 | `ERR_TRANSITION_NOT_ON_ENTITY` | A concrete entity has a lifecycle and no writable source. Reported on the entity. |
 | L3 | `ERR_LIFECYCLE_NO_INITIAL` | An enum field with transitions has no `@default`. |
 | L4 | `ERR_TRANSITION_UNKNOWN_STATE` | A `@from` or `@to` value is not one of the enum's `@values`. |
-| L5, O0 | `ERR_TRANSITION_NAME_COLLISION` | A transition or an operation is named `create`, `get`, `list`, `update` or `delete`. |
-| L6 | `ERR_TRANSITION_NAME_COLLISION` | Two transitions of one entity share a name across its lifecycles. Each may derive a command, so they share one namespace. |
+| L5, O0 | `ERR_TRANSITION_NAME_COLLISION` | A transition or an operation is named `create`, `get`, `list`, `update` or `delete`, in any case. |
+| L6 | `ERR_TRANSITION_NAME_COLLISION` | Two transitions of one entity share a name across its lifecycles, compared without case. Each may derive a command, so they share one namespace. |
 | L7 | `ERR_BAD_ATTR_VALUE` | A `@condition` names a field the entity does not have, or is not boolean. Same check as the validators' `@condition`. |
+| L8 | `ERR_BAD_ATTR_VALUE` | A transition's `@from` is empty: it could never be made. |
+| L9 | `ERR_BAD_ATTR_VALUE` | The lifecycle field is an array (`isArray`, read through the resolving accessor). A guarded update compares one state. |
+| L10 | `ERR_LIFECYCLE_REDECLARED` | An entity declares a field with the name of an inherited lifecycle field and does not extend it, so the base's transitions would be lost. Reported on the field. |
 | P1 | `ERR_PERMISSION_PUBLIC_CONFLICT` | `@public: true` together with `@permission`, on an operation or a transition. |
 | O1 | `ERR_OPERATION_SHAPE` | `@inputRef` is not an `object.value`, or `@outputRef` is not an entity, projection or value. This includes a reference that does not resolve. |
 | O2 | `ERR_OPERATION_TARGET_UNRESOLVED` | `@objectRef` does not name an `object.entity`, or a command lists `@transitions` and has no target. |
 | O3 | `ERR_OPERATION_TARGET_MISMATCH` | A declared `@objectRef` disagrees with the derived target. |
 | O4 | `ERR_OPERATION_UNKNOWN_TRANSITION` | A `@transitions` name is not a transition of the target, declared or inherited. |
-| O5 | `ERR_BAD_ATTR_VALUE` | An `@errors` code is not lower snake case, or is listed twice. |
+| O5 | `ERR_BAD_ATTR_VALUE` | An `@errors` code is not lower snake case, is listed twice, or is a code the route answers itself: the shell's `not_found`, `forbidden`, `invalid_transition`, `transition_condition_failed` and `state_managed` (§6), and the API contract's `validation`, `invalid_json`, `invalid_id`, `method_not_allowed`, `constraint_violation` and `internal`. A body returning one would be indistinguishable on the wire from the shell. |
+| O6 | `ERR_TRANSITION_NAME_COLLISION` | Two operations of one API have names that differ only in case. |
 | B1 | `ERR_BINDING_PATH_MISMATCH` | A `binding.rest @path`'s placeholders are not exactly the target's key fields, for an operation that addresses one row by key, or are not empty, for one that does not. |
+| B2 | `ERR_BINDING_PATH_MISMATCH` | Two declared bindings of one API have the same effective method (declared, else derived) and the same `@path` once placeholder names are ignored. |
+
+Names are compared without case (L5, L6, O0, O6) because each becomes a command, a permission
+constant and a file, and those collide on a case-folding target.
+
+Some inputs load on purpose, and are refused elsewhere or are legal:
+
+- **A route collision that involves a derived path.** B2 compares declared bindings only. A
+  derived path, and the derived CRUD routes such as `PATCH /<collection>/{id}`, depend on the
+  collection path and the mount point, which are transport facts the loader does not have. The
+  transport generator that mounts the routes refuses a collision, including a binding declared
+  on the method and path of a derived CRUD route.
+- **One operation name declared twice in one API, or one API declared twice.** Same-named
+  siblings merge under the loader's general rule (`WARN_DUPLICATE_DECLARATION` when the
+  declarations are in different files), so there is one operation and one API, and an
+  `@implementedBy` claim on it resolves. `fixtures/requirement-check-conformance/claim-operation-api-in-two-files`
+  pins that.
+- **An input that borrows the keys of two entities.** It derives no target (§3); the operation
+  takes its target from the output or declares `@objectRef`, and O2 refuses a command with
+  `@transitions` that has neither.
 
 Two refusals use existing codes:
 
@@ -190,6 +234,7 @@ checked further. One that fails O2 or O3 is not checked for O4 or B1.
 | `WARN_LIFECYCLE_UNREACHABLE_STATE` | `verify.lifecycle.unreachable` (default `warn`) | A state that no chain of transitions reaches from the initial state. This is almost always a missing transition. Sometimes only seeded data uses the state, so it is not an error by default. |
 | `WARN_LIFECYCLE_INITIAL_TERMINAL` | `warn` | The initial state is terminal, so nothing can ever move. |
 | `WARN_TRANSITION_UNREACHABLE` | `verify.lifecycle.unreachable` | A transition whose every `@from` state is unreachable, so it can never be made. |
+| `WARN_TRANSITION_PERMISSION_SHADOWED` | `warn` | A transition declares `@permission` or `@public: true` but derives no command of its own for any concrete entity carrying it (claimed by a declared command, or `rules.lifecycle.commands: none`), so nothing reads the attribute. An author reading the model would believe it guards the move. |
 | `WARN_PERMISSION_DERIVED_NAME` | `rules.permissions.names`: `derive` (default) skips it, `advise` warns, `require` errors | An operation, or a transition that derives a command, has no `@permission` and is not `@public`. A rename would silently move access. |
 
 A requirement's `@implementedBy` may name an operation (`Purchasing.decide`) or a transition
@@ -202,8 +247,8 @@ A model that declares no operation and no transition gets no rules diagnostics, 
 line and no gate row. The settings `rules.permissions.names`, `rules.lifecycle.create`,
 `rules.lifecycle.commands` and `verify.lifecycle.unreachable` are read from
 `.metaobjects/config.json` by every port. When a key is absent, the setting takes today's
-behaviour. `rules.lifecycle.create` is read and validated now; the shells will be the first to
-act on it.
+behaviour. `rules.lifecycle.create` is read and validated and has **no effect yet**: the shells
+will be the first to act on it, and the documentation says so until they do.
 
 ### 6. What the enforcing shell will guarantee, for every transition
 
@@ -251,7 +296,7 @@ particular language and framework is a helper (ADR-0064).
 - A project that declares none of this sees no change: no diagnostics, no output, no gate row.
 - `docs/compatibility-policy.md` changes its lists:
   - `api.*`, `operation.*` and `binding.*` leave the reserved list, because they are now
-    registered;
+    registered, and join the business-rules vocabulary as experimental;
   - `transition.timed` and the `api` event sibling join it.
 - ADR-0030's open items are settled: the error codes are in §5, `@many` is the only list
   attribute, and paging follows the existing list contract.

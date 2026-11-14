@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_LIFECYCLE_REDECLARED",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.purchasing.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[1]['object.entity'].children[1]['field.enum']"
+      }
+    }
+  ],
+  "warnings": []
+}
