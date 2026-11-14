@@ -71,7 +71,9 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 today: `registry-conformance` (byte-identical manifest) and the metamodel corpus, 256
 of 510 green with the rest on `server/rust/metaobjects/tests/conformance-expected-failures.json`
 (validation passes, merge warnings and the `script.json` fixtures, none of them built
-yet). That ledger may only shrink. The column joins this table when the port leaves
+yet). That ledger may only shrink. While the port is in preview, a new fixture that fails
+in Rust and is not on the ledger prints a warning and does not fail the lane; it becomes a
+hard failure when the port leaves preview. The column joins this table when the port leaves
 preview.
 
 A ✓ means the port runs the corpus green; an explicit `n / m` is used where a port

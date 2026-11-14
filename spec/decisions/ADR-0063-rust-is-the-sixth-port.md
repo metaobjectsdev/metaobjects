@@ -44,6 +44,10 @@ five".
 5. **Conformance is the definition of done, and gaps are ledgered, not hidden.** The metamodel
    runner keeps an expected-failures ledger in the format the other ports use. A fixture on the
    ledger that starts passing fails the run until it is removed, so the ledger can only shrink.
+   While the port is in preview, a fixture that is not on the ledger and fails in Rust prints a
+   warning naming the fixture and the reason, and does not fail the run or the `rust` lane, so a
+   new conformance fixture in a 1.3.0 PR never turns the lane red for a port that has not built
+   that behavior yet. When the preview label comes off, an unlisted failure fails the lane.
 
 6. **Deliberate differences from the other five.**
    - **No `migrate`.** Schema migrations are TypeScript-owned (ADR-0015), as in Java, C# and

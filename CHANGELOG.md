@@ -83,7 +83,9 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   that reads packages, children, subtypes, attributes, `extends` and references, with the
   canonical serializer. It passes `registry-conformance` byte for byte and 256 of the 510
   metamodel fixtures; the other 254 are on a ledger that may only shrink (the validation passes,
-  merge warnings and `script.json` fixtures it does not run yet). Nothing is published and there
+  merge warnings and `script.json` fixtures it does not run yet). While the port is in preview, a
+  new fixture that fails in Rust and is not on the ledger prints a warning and does not fail the
+  lane. Nothing is published and there
   is no codegen or `cargo meta` command yet. A `rust` lane runs `cargo fmt --check`, clippy and
   the tests in `scripts/ci-local.sh --only rust`, `pr-ci` and `local-ci`, selected by changes
   under `server/rust/`.
