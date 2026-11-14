@@ -372,6 +372,10 @@ export type { Scope, CompiledScope } from "./scope.js";
 export { validateAttrSchema } from "./attr-schema-validate.js";
 export type { AttrSchemaValidationResult } from "./attr-schema-validate.js";
 
+// rc.21 part B (I2): the widened-extender warning, which `meta gen` prints (the load's own
+// warning channel is not printed by the CLI).
+export { validateExtenderSubtypeScope } from "./loader/validation-passes.js";
+
 // Guide URLs pinned to the running release's tag (prerelease → main).
 export {
   DOCS_REPO_URL, DOCS_DEFAULT_REF, docsRefForVersion, docsBlobUrl, pinDocsRefs,
