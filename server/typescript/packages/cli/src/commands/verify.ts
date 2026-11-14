@@ -10,7 +10,7 @@
 import { ENUM_LENGTH_HINT, isEnumLengthRefusal } from "../lib/enum-length-refusal.js";
 import { existsSync } from "node:fs";
 import { join, relative, resolve as resolvePath } from "node:path";
-import { parseVerifyArgs, type MigrateFlags } from "../lib/args.js";
+import { parseVerifyArgs, type MigrateFlags, type VerifyFlags } from "../lib/args.js";
 import { log } from "../lib/log.js";
 import { requirementLedgerRows, type RequirementLedgerRow } from "../lib/requirement-ledger.js";
 import { warnUnenforcedFkTargets } from "../lib/fk-target-warning.js";
@@ -23,6 +23,7 @@ import {
   unindexedFkRows,
   warnAdvisory,
   referentialActionConflictRows,
+  unboundedListRows,
   advisoryHelpLines,
 } from "../lib/advisory.js";
 import { scanForUnprovenancedLibraryPrefix } from "../lib/library-prefix-advisory.js";
@@ -32,6 +33,7 @@ import { warnIfAgentContextMissesRequirements, warnIfAgentContextStale } from ".
 import { warnIfManifestIgnored } from "../lib/manifest-ignored-check.js";
 import { scanSourceForAntiPatterns } from "../lib/anti-patterns.js";
 import { scanForMissingBaseUrl, type BaseUrlFinding } from "../lib/base-url-advisory.js";
+import { scanForUnsetPagination, type PaginationFinding } from "../lib/pagination-advisory.js";
 import { scanForRemovedProps, type RemovedPropFinding } from "../lib/removed-prop-advisory.js";
 import { replayRemedy } from "../lib/replay-remedy.js";
 import { FileProvider, templateReferenceLine } from "../lib/file-provider.js";
@@ -109,6 +111,7 @@ import {
   loadMemory,
   resolveCollection,
   type DependencySpec,
+  type HandEditsPolicy,
 } from "@metaobjectsdev/sdk";
 import { checkDependencies, ERR_DEPENDENCY_UPSTREAM_DRIFT, formatCheckLine, readLockOrThrow } from "../lib/dependency-sync.js";
 import { exclusionNotes, importedOption, migrateScopeMismatch } from "../lib/migrate-scope.js";
@@ -301,7 +304,7 @@ export async function verifyCommand(
   // project.
   const genConfigDir = resolveGenConfigDir(cwd, collection.configDir);
 
-  // Advisory: nudge to refresh the .claude/skills docs if they predate this CLI.
+  // Advisory: nudge to refresh the agent context and skills if they predate this CLI.
   warnIfAgentContextStale(projectRoot);
   // Advisory: the committed hash manifest is what makes hand-edit detection work on a
   // machine that did not generate the output. Silent unless it is ignored. Keyed on
@@ -1127,10 +1130,10 @@ export async function verifyCommand(
       // Same discipline as its siblings: an advisory scan never breaks verify.
     }
 
-    // Foreign keys migrate emits with no index on the referencing columns. Advisory: an
-    // automatic index would propose a migration to every existing adopter, so this names
-    // each one and says how to declare it (`index.lookup`) instead. Read off the SAME
-    // expected schema `meta migrate` builds, so "covered" means covered in its DDL.
+    // Foreign keys migrate emits with no index on the referencing columns. Advisory: the
+    // index is opt-in (`migrate.foreignKeyIndexes`), since turning it on proposes a migration
+    // to an existing project, so this names each one and says how to index it. Read off the
+    // SAME expected schema `meta migrate` builds, so with the option on there is none.
     let unindexedFks: UnindexedFkFinding[] = [];
     // Skipped on MySQL: MetaObjects emits no DDL there, and InnoDB indexes every foreign
     // key itself.
@@ -1158,6 +1161,18 @@ export async function verifyCommand(
       // advisory only — a model the schema builder refuses is migrate's to report.
     }
 
+    // Generated list routes with no page size: a route generator is wired and the project
+    // sets no `api.pagination`. Same discipline as its siblings.
+    let unboundedLists: PaginationFinding[] = [];
+    try {
+      unboundedLists = scanForUnsetPagination(
+        (forgeConfig?.generators ?? []).map((g) => (typeof g === "string" ? g : g.name)),
+        collection.apiPagination,
+      );
+    } catch {
+      // advisory only.
+    }
+
     const unindexedFkSummary = summarizeUnindexedFks(unindexedFks);
     antiPatternSection = ranSection([
       ...antiPatternRows(findings),
@@ -1166,6 +1181,7 @@ export async function verifyCommand(
       ...libraryPrefixRows(libraryPrefix),
       ...unindexedFkRows(unindexedFkSummary === undefined ? [] : [unindexedFkSummary]),
       ...referentialActionConflictRows(actionConflicts),
+      ...unboundedListRows(unboundedLists),
     ]);
     if (findings.length > 0) {
       log.warn(
@@ -1187,6 +1203,13 @@ export async function verifyCommand(
           `renamed away (advisory — does not fail the build, but the runtime will):`,
       );
       warnAdvisory(removedProps.map((f) => `  ${f.message}`), flags.limit, { structured });
+    }
+    if (unboundedLists.length > 0) {
+      log.warn(
+        `meta verify — generated list routes have no page size ` +
+          `(advisory — does not fail the build):`,
+      );
+      warnAdvisory(unboundedLists.map((f) => `  ${f.message}`), flags.limit, { structured });
     }
     if (unindexedFkSummary !== undefined) {
       log.warn(
@@ -1861,8 +1884,8 @@ export async function verifyCommand(
 
     // Hand edits are not drift, but they must never be INVISIBLE: a validator weakened
     // inside a generated file used to pass this gate with "every file's generated
-    // contribution is current" and nothing else. Reported on every run; fails the build
-    // only under --forbid-hand-edits.
+    // contribution is current" and nothing else. Reported on every run; fails the build when
+    // the run's policy is `fail` (verify.handEdits, or --forbid-hand-edits).
     const handEditExit = reportHandEdits(result.handEdited);
     // Say how much documentation was NOT checked, on the pass and the fail line alike, so a
     // gate that compared two pages of 589 cannot read as one that compared all of them.
@@ -1916,13 +1939,19 @@ export async function verifyCommand(
     return 1;
   }
 
-  /** Print the hand-edit notice (or failure, under --forbid-hand-edits); return its exit code. */
+  /**
+   * Print the hand-edit notice, or the failure when the run's policy is `fail`; return its exit
+   * code. The policy is the run's flag when one is passed, else `verify.handEdits` in
+   * `.metaobjects/config.json`, else `notice` (what a project that predates the key has always had).
+   */
   function reportHandEdits(handEdited: readonly string[]): number {
     if (handEdited.length === 0) return 0;
-    const [header, ...rest] = handEditNotice(handEdited, flags.forbidHandEdits);
+    const policy = handEditPolicy(flags, collection.handEdits);
+    const fail = policy.policy === "fail";
+    const [header, ...rest] = handEditNotice(handEdited, policy);
     const paths = rest.slice(0, handEdited.length);
     const footer = rest.slice(handEdited.length);
-    if (flags.forbidHandEdits) {
+    if (fail) {
       // A failure lists every path: truncating the list a build failed on hides the cause.
       for (const line of [header!, ...paths, ...footer]) log.error(line);
       return 1;
@@ -2109,18 +2138,60 @@ export function wireDiffersMessage(committed: WireFormat, used: WireFormat): str
   );
 }
 
-export function handEditNotice(paths: readonly string[], forbidden: boolean): string[] {
-  const header = forbidden
-    ? `meta verify — ${paths.length} generated file(s) carry hand edits, and --forbid-hand-edits is set:`
-    : `meta verify — ${paths.length} generated file(s) carry hand edits ` +
-      `(notice — 'meta gen' preserves them by design; does not fail the build — ` +
-      `pass --forbid-hand-edits to make it):`;
+/** Where a run's hand-edit policy came from: a flag on this run, the project's config, or neither. */
+export type HandEditPolicySource = "--forbid-hand-edits" | "--allow-hand-edits" | "config" | "default";
+
+/** The hand-edit policy one `meta verify --codegen` run applies, and what decided it. */
+export function handEditPolicy(
+  flags: Pick<VerifyFlags, "forbidHandEdits" | "allowHandEdits">,
+  configured: HandEditsPolicy | undefined,
+): { policy: HandEditsPolicy; source: HandEditPolicySource } {
+  if (flags.forbidHandEdits) return { policy: "fail", source: "--forbid-hand-edits" };
+  if (flags.allowHandEdits) return { policy: "notice", source: "--allow-hand-edits" };
+  if (configured !== undefined) return { policy: configured, source: "config" };
+  return { policy: "notice", source: "default" };
+}
+
+const HAND_EDITS_KEY = `"verify": { "handEdits": … } in .metaobjects/config.json`;
+
+/**
+ * The hand-edit report: a header, one line per file, then how to see an edit and the two ways
+ * forward — drop it (the change belongs in the metadata) or keep it on purpose.
+ */
+export function handEditNotice(
+  paths: readonly string[],
+  run: { policy: HandEditsPolicy; source: HandEditPolicySource },
+): string[] {
+  const n = `${paths.length} generated file(s) carry hand edits`;
+  let header: string;
+  switch (run.source) {
+    case "--forbid-hand-edits":
+      header = `meta verify — ${n}, and --forbid-hand-edits is set:`;
+      break;
+    case "--allow-hand-edits":
+      header = `meta verify — ${n} (notice — --allow-hand-edits is set, so this run does not fail on them):`;
+      break;
+    case "config":
+      header = run.policy === "fail"
+        ? `meta verify — ${n}, and verify.handEdits is "fail" in .metaobjects/config.json:`
+        : `meta verify — ${n} (notice — verify.handEdits is "notice" in .metaobjects/config.json, so this does not fail the build):`;
+      break;
+    default:
+      header = `meta verify — ${n} (notice — 'meta gen' preserves them by design; does not fail the build — ` +
+        `set "verify": { "handEdits": "fail" } in .metaobjects/config.json, or pass --forbid-hand-edits, to make it):`;
+  }
+  const keep = run.policy === "fail"
+    ? `To keep an edit on purpose: pass --allow-hand-edits for one run, or set "handEdits": "notice" (${HAND_EDITS_KEY}).`
+    : `To keep an edit on purpose: nothing to do while hand edits are a notice; a project that wants them to fail sets "handEdits": "fail" (${HAND_EDITS_KEY}).`;
   return [
     header,
     ...paths.map((p) => `  ${p}`),
     "To see an edit: delete the file and run 'meta gen' (it re-emits the pristine generation), " +
-      "then 'git diff -R -- <file>' shows the edit and 'git checkout -- <file>' restores it" +
-      (forbidden ? "; to drop the edit, commit the regenerated file instead." : "."),
+      "then 'git diff -R -- <file>' shows the edit and 'git checkout -- <file>' restores it.",
+    "To drop an edit: delete the file, run 'meta gen' and commit the regenerated file; if the edit " +
+      "changed a rule the model declares (a length, a range, a required field), make that change in " +
+      "the metadata instead, so the database and every port follow it.",
+    keep,
   ];
 }
 

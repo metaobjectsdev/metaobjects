@@ -30,3 +30,29 @@ export interface AssembledFile {
   path: string; // e.g. ".metaobjects/AGENTS.md", ".claude/skills/metaobjects-codegen/references/java.md"
   contents: string;
 }
+
+/**
+ * Where the skills install unless the project chose otherwise: the directory Claude Code reads.
+ * Any other assistant takes `--skills-dir` (`.agents/skills` is the shared location several
+ * read), and the always-on text names the chosen directory so an assistant that does not load
+ * skills can still open them by path.
+ */
+export const DEFAULT_SKILLS_DIR = ".claude/skills";
+
+/**
+ * A skills directory as a clean project-relative POSIX path, or a thrown error naming what is
+ * wrong. Refuses an absolute path and any `..` segment: the scaffolder writes and prunes files
+ * under it, so it must stay inside the project.
+ */
+export function normalizeSkillsDir(raw: string): string {
+  const posix = raw.trim().replace(/\\/g, "/");
+  if (posix.startsWith("/") || /^[A-Za-z]:\//.test(posix)) {
+    throw new Error(`--skills-dir must be relative to the project root, got '${raw}'`);
+  }
+  const segments = posix.split("/").filter((s) => s !== "" && s !== ".");
+  if (segments.length === 0) throw new Error("--skills-dir must name a directory inside the project");
+  if (segments.includes("..")) {
+    throw new Error(`--skills-dir must stay inside the project (no '..'), got '${raw}'`);
+  }
+  return segments.join("/");
+}

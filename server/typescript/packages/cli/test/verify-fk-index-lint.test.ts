@@ -51,11 +51,15 @@ const MODEL = JSON.stringify({
   },
 });
 
-async function project(): Promise<string> {
+async function project(migrate?: Record<string, unknown>): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "verify-fk-index-"));
   dirs.push(root);
   await mkdir(join(root, "metaobjects"), { recursive: true });
   await writeFile(join(root, "metaobjects", "meta.tracker.json"), MODEL, "utf8");
+  if (migrate !== undefined) {
+    await mkdir(join(root, ".metaobjects"), { recursive: true });
+    await writeFile(join(root, ".metaobjects", "config.json"), JSON.stringify({ schema_version: 1, migrate }), "utf8");
+  }
   return root;
 }
 
@@ -84,6 +88,20 @@ describe("meta verify — unindexed foreign keys (advisory)", () => {
     expect(out).toContain("projectId");
     expect(out).not.toContain("Issue.fkAssignee");
     expect(out).not.toContain("Issue.fkOwner");
+  });
+
+  test("names migrate.foreignKeyIndexes as the way to index every one", async () => {
+    const root = await project();
+    const { out } = await capture(() => verifyCommand([], root));
+    expect(out).toContain('"migrate": { "foreignKeyIndexes": true }');
+  });
+
+  test("with migrate.foreignKeyIndexes on, migrate indexes the key, so there is nothing to name", async () => {
+    const root = await project({ foreignKeyIndexes: true });
+    const { code, out } = await capture(() => verifyCommand([], root));
+    expect(code).toBe(0);
+    expect(out).not.toContain("Issue.fkProject");
+    expect(out).not.toMatch(/foreign key\(s\) with no index/);
   });
 
   test("--no-antipatterns suppresses it with the rest of the advisory tier", async () => {

@@ -30,7 +30,7 @@ import {
   type MetaObject,
   type MetaSource,
 } from "@metaobjectsdev/metadata";
-import { code, imp, type Code } from "ts-poet";
+import { code, imp, type Code } from "./poet.js";
 import { crossEntitySpecifier } from "./import-path.js";
 import type { RenderContext } from "./render-context.js";
 import { effectivePackage } from "./docs-paths.js";

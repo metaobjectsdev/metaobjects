@@ -45,5 +45,13 @@ export async function subscriberRoutes(fastify: FastifyInstance) {
     filterAllowlist: SubscriberFilterAllowlist,
     sortAllowlist: SubscriberSortAllowlist,
     dialect: "postgres",
+    knownFields: [
+      "id",
+      "email",
+      "firstName",
+      "lastName",
+      "subscribed",
+      "createdAt",
+    ],
   });
 }

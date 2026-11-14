@@ -315,15 +315,15 @@ public class MapFieldCodegenTests
             .Single(f => f.Path == "CustomerRoutes.g.cs").Content;
 
         // Create: the map column joins the field.object columns in the validation preamble.
-        Assert.Contains("ValueObjectValidator.Validate(input.Addresses)", routes);
+        Assert.Contains("ValueObjectValidator.Collect(input.Addresses, __issues, jsonOpts, \"addresses\")", routes);
         // PATCH: a typed arm ahead of the generic path, so a present key is validated
         // before assignment rather than after persistence (or never).
-        Assert.Contains("if (!ValueObjectValidator.Validate(__map0)) return Results.BadRequest", routes);
+        Assert.Contains("if (!ValueObjectValidator.Collect(__map0, __issues, jsonOpts, \"addresses\")) continue;", routes);
 
         // The control: a scalar-valued map has no nested bean and must reach NEITHER path.
         // Without this, an implementation that validated every map would pass the two
         // assertions above while doing something quite different.
-        Assert.DoesNotContain("ValueObjectValidator.Validate(input.Labels)", routes);
-        Assert.DoesNotContain("ValueObjectValidator.Validate(input.Channels)", routes);
+        Assert.DoesNotContain("ValueObjectValidator.Collect(input.Labels", routes);
+        Assert.DoesNotContain("ValueObjectValidator.Collect(input.Channels", routes);
     }
 }

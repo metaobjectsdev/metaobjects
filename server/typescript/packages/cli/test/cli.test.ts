@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 // wireRoot defaults TRUE (root-wiring is on by default so the scaffolded always-on actually loads; --no-wire-root opts out).
-const defaultInitFlags = { force: false, quiet: false, printOnly: false, refreshDocs: false, d1: false, dialect: undefined, servers: [], clients: [], noSkills: false, wireRoot: true, docsOnly: false, configOnly: false, withDocs: false };
+const defaultInitFlags = { force: false, quiet: false, printOnly: false, refreshDocs: false, d1: false, dialect: undefined, servers: [], clients: [], noSkills: false, wireRoot: true, docsOnly: false, configOnly: false, withDocs: false, skillsDir: undefined };
 
 describe("parseInitArgs", () => {
   test("default flags (wireRoot on by default, others off)", () => {

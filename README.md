@@ -55,7 +55,11 @@ gated by `meta verify --codegen`, which is what keeps output from drifting. See
 [write your own generator](docs/recipes/write-your-own-generator.md).
 
 Java, Kotlin, C# and Python start the same way from their own package: see
-[`docs/ports/`](docs/ports/).
+[`docs/ports/`](docs/ports/). **Their schema migrations and database checks still run in the
+Node `meta` tool** (`npx meta migrate`, `npx meta verify --db`), so those teams need Node where
+migrations are written or applied. Where the ports behave differently (list defaults, error
+bodies, field names, data access) is listed in
+[What differs by language](docs/features/language-differences.md).
 
 The metamodel is the **durable spine**; generated code is the **disposable
 artifact**. Substrate is local-first: typed metadata lives in your repo as YAML or
@@ -340,6 +344,11 @@ metaobjects/
 | Kotlin | Add `metaobjects-metadata-ktx` and the Maven plugin (it bundles the Kotlin generators) → [`docs/ports/kotlin.md`](docs/ports/kotlin.md) |
 | C# | `dotnet tool install --global MetaObjects.Cli` → [`docs/ports/csharp.md`](docs/ports/csharp.md) |
 | Python | `pip install metaobjects` → [`docs/ports/python.md`](docs/ports/python.md) |
+
+Every language also needs the Node `meta` CLI for the schema: `npm i -D @metaobjectsdev/cli`,
+then `npx meta init --config-only` in a Maven-, .NET- or pip-rooted project, and
+`npx meta migrate` / `npx meta verify --db` from there. The per-language differences are in
+[What differs by language](docs/features/language-differences.md).
 
 ## Cross-language conformance
 

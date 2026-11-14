@@ -136,13 +136,22 @@ export interface BuildExpectedSchemaOptions {
    * absent = false, every CHECK emitted.
    */
   skipRedundantChecks?: boolean | undefined;
+  /**
+   * Index every foreign key the conventions left without one: each enforced foreign key whose
+   * columns no primary key, index or earlier foreign-key index already leads with gets a plain
+   * index named `<table>_<column>[_<column>…]_idx`. `migrate.foreignKeyIndexes` in
+   * `.metaobjects/config.json`; absent = false, the schema migrate has always built. Separate
+   * from the conventions, so a project can have the indexes without renamed constraints; under
+   * the `efcore` preset every foreign key is already indexed and this adds nothing.
+   */
+  foreignKeyIndexes?: boolean | undefined;
 }
 
 /**
  * The project settings an expected-schema build takes, which every path that builds one
  * (migrate, drift, the offline plan, a baseline) passes through unchanged so they agree.
  */
-export type SchemaBuildSettings = Pick<BuildExpectedSchemaOptions, "conventions" | "skipRedundantChecks">;
+export type SchemaBuildSettings = Pick<BuildExpectedSchemaOptions, "conventions" | "skipRedundantChecks" | "foreignKeyIndexes">;
 
 /**
  * A view as the caller (codegen-ts `buildProjectionViews`) produces it — structurally
@@ -193,6 +202,12 @@ export interface ExpectedSchemaWithProvenance {
    * a write with enforcement on fails. The violations are then reported, never refused.
    */
   fkTargetsUnenforced?: true;
+  /**
+   * The indexes the schema carries because a table has foreign keys — added by the conventions
+   * (`efcore`) or by `foreignKeyIndexes` — keyed by the table's qualified name. A generator that
+   * maps the schema (Drizzle) declares these beside the indexes the model names. Absent when none.
+   */
+  foreignKeyIndexes?: ReadonlyMap<string, readonly IndexDescriptor[]>;
 }
 
 /**
@@ -329,7 +344,7 @@ export function buildExpectedSchemaWithProvenance(
   // Checked against the BUILT tables, before the conventions add FK indexes: a key the model
   // declares but never emits (on a TPH subtype) is no key a database can reference.
   const fkTargetViolations = collectFkTargetViolations(tables, fkCtx.origins, provenance);
-  applySchemaConventions(tables, conventions, dialect);
+  const foreignKeyIndexes = applySchemaConventions(tables, conventions, dialect, opts?.foreignKeyIndexes === true);
   checkDeclaredCheckNames(tables, dialect);
 
   // Pass 3: dialect-specific SqlType normalization.
@@ -491,6 +506,7 @@ export function buildExpectedSchemaWithProvenance(
   return {
     snapshot: { tables, views },
     provenance,
+    ...(foreignKeyIndexes.size > 0 ? { foreignKeyIndexes } : {}),
     ...(fkTargetViolations.length > 0 ? { fkTargetViolations } : {}),
     // D1 always enforces foreign keys; plain SQLite only with the pragma on.
     ...(fkTargetViolations.length > 0 && opts?.dialect === DIALECT_SQLITE ? { fkTargetsUnenforced: true as const } : {}),
@@ -1368,7 +1384,10 @@ function collectFkTargetViolations(
  * foreign key gets. FK names were decided while the FKs were built, where a declared
  * `@constraintName` is known. The default conventions change nothing here.
  */
-function applySchemaConventions(tables: TableDescriptor[], conventions: SchemaConventions, dialect: Dialect | undefined): void {
+function applySchemaConventions(
+  tables: TableDescriptor[], conventions: SchemaConventions, dialect: Dialect | undefined, indexForeignKeys: boolean,
+): Map<string, IndexDescriptor[]> {
+  const added = new Map<string, IndexDescriptor[]>();
   // An FK references a table in its own schema (the emitter's assumption), so the key is schema-qualified.
   const keyOf = (schema: string | undefined, table: string, columns: readonly string[]) =>
     `${schema ?? ""}.${table}|${[...columns].sort().join(",")}`;
@@ -1393,20 +1412,64 @@ function applySchemaConventions(tables: TableDescriptor[], conventions: SchemaCo
       indexes: t.indexes,
       foreignKeys: t.foreignKeys.map((fk) => ({ table: t.name, columns: fk.columns, refTable: fk.refTable, refColumns: fk.refColumns, dialect })),
     });
-    for (const index of fkIndexes) {
+    const owner = (index: { columns: readonly string[] }) =>
+      `the ${conventions.id} conventions' foreign-key index on [${index.columns.join(", ")}] of table "${t.name}"`;
+    const tableAdded: IndexDescriptor[] = [];
+    const push = (index: { name: string; columns: readonly string[] }, label: string) => {
       if (t.indexes.some((ix) => ix.name === index.name)) {
         throw new DuplicateSqlNameError([{
           name: index.name,
-          owners: [
-            `the ${conventions.id} conventions' foreign-key index on [${index.columns.join(", ")}] of table "${t.name}"`,
-            `an index already named "${index.name}" on table "${t.name}"`,
-          ],
+          owners: [label, `an index already named "${index.name}" on table "${t.name}"`],
           involvesIndex: true,
         }]);
       }
-      t.indexes.push({ name: index.name, columns: [...index.columns], unique: false });
+      const descriptor: IndexDescriptor = { name: index.name, columns: [...index.columns], unique: false };
+      t.indexes.push(descriptor);
+      tableAdded.push(descriptor);
+    };
+    for (const index of fkIndexes) push(index, owner(index));
+    // `foreignKeyIndexes`: after the conventions, so a preset that indexes foreign keys
+    // (efcore) leaves this nothing to add and its names stand.
+    if (indexForeignKeys) {
+      for (const columns of uncoveredForeignKeyColumns(t)) {
+        push(
+          { name: foreignKeyIndexName(t.name, columns), columns },
+          `the foreign-key index on [${columns.join(", ")}] of table "${t.name}" (migrate.foreignKeyIndexes)`,
+        );
+      }
     }
+    if (tableAdded.length > 0) added.set(qualifiedDbName(t), tableAdded);
   }
+  return added;
+}
+
+/** The name `foreignKeyIndexes` gives a foreign key's index: `<table>_<column>[_<column>…]_idx`. */
+export function foreignKeyIndexName(table: string, columns: readonly string[]): string {
+  return `${table}_${columns.join("_")}_idx`;
+}
+
+/** True when `prefix` leads with exactly `columns`, in any order (the advisory's rule, too). */
+function leadsWith(prefix: readonly string[], columns: readonly string[]): boolean {
+  if (columns.length === 0 || prefix.length < columns.length) return false;
+  const want = new Set(columns);
+  return prefix.slice(0, columns.length).every((c) => want.has(c));
+}
+
+/**
+ * The column lists `foreignKeyIndexes` indexes on one table, in foreign-key order: each foreign
+ * key whose columns the primary key or a column index (a partial one counts; an expression one
+ * does not) does not lead with, once per column set, and none that a longer one here leads with.
+ * Every port's mapping generator applies this same rule.
+ */
+export function uncoveredForeignKeyColumns(t: Pick<TableDescriptor, "primaryKey" | "indexes" | "foreignKeys">): string[][] {
+  const existing = [t.primaryKey, ...t.indexes.filter((ix) => ix.expr === undefined).map((ix) => ix.columns)];
+  const candidates: string[][] = [];
+  for (const fk of t.foreignKeys) {
+    if (existing.some((cols) => leadsWith(cols, fk.columns))) continue;
+    if (candidates.some((c) => leadsWith(c, fk.columns) && c.length === fk.columns.length)) continue;
+    candidates.push([...fk.columns]);
+  }
+  return candidates.filter((c) => !candidates.some((o) => o.length > c.length && leadsWith(o, c)));
 }
 
 

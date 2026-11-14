@@ -107,7 +107,8 @@
     "src",
     "templates",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "LICENSE.ts-poet"
   ],
   "scripts": {
     "build": "tsc -p .",
@@ -145,7 +146,8 @@
     "@biomejs/js-api": "^0.7.0",
     "@biomejs/wasm-nodejs": "^1.9.4",
     "@toon-format/toon": "^2.3.0",
-    "ts-poet": "^6.10.0"
+    "@dprint/formatter": "^0.6.0",
+    "@dprint/typescript": "0.87.1"
   },
   "peerDependencies": {
     "drizzle-orm": ">=0.38.0 <1.0.0",

@@ -311,5 +311,17 @@ describe("agentContextCoverage", () => {
   test("silent with no manifest, or one scaffolded with --no-skills", () => {
     expect(agentContextCoverage({ manifest: undefined, declaresRequirements: true })).toBeNull();
     expect(agentContextCoverage({ manifest: withFiles([".metaobjects/AGENTS.md"]), declaresRequirements: true })).toBeNull();
+  });  test("skills under a --skills-dir count as scaffolded skills", () => {
+    const w = agentContextCoverage({ manifest: withFiles([".agents/skills/metaobjects-authoring/SKILL.md"]), declaresRequirements: true });
+    expect(w).toContain("requirement.* nodes");
+  });
+});
+
+describe("planScaffold records the skills directory", () => {
+  test("a chosen directory is recorded so a refresh keeps it; the default is not", () => {
+    const chosen = planScaffold({ stack, assembled: files, prior: undefined, readCurrent: () => undefined, generatedBy: "1.3.0", skillsDir: ".agents/skills" });
+    expect(chosen.manifest.skillsDir).toBe(".agents/skills");
+    const dflt = planScaffold({ stack, assembled: files, prior: undefined, readCurrent: () => undefined, generatedBy: "1.3.0", skillsDir: ".claude/skills" });
+    expect(dflt.manifest.skillsDir).toBeUndefined();
   });
 });

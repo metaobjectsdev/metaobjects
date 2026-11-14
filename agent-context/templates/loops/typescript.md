@@ -12,15 +12,9 @@
    Per entity: `<Entity>.ts` (Drizzle table, row types, Zod schemas, enum types) and
    `<Entity>.names.ts` (physical names), plus an `index.ts` barrel. Install what they import:
    `npm i drizzle-orm zod` and your database driver. Every other generator (CRUD `queriesFile()`
-   / `routesFile()`, docs, `requirementTests()` for a test stub per requirement) is one line too:
-
-   ```
-   npx meta gen --list --probe 2>/dev/null | grep -E "^  - name|wouldEmit|      import:" | paste - - -
-   ```
-
-   `npx meta eject <name>` copies one into `codegen/generators/` to change it;
+   / `routesFile()`, docs, `requirementTests()`) is one line too; `npx meta gen --list` is the
+   catalog. `npx meta eject <name>` copies one into `codegen/generators/` to change it;
    `npx meta generator new <name>` writes a new one.
-2. **Generate.** `npx meta gen`. See a file's exports with `grep -n "^export" <file>`.
-3. **Reference pages.** `agentDocsFile()` and `apiDocsFile()` with `targets: { docs: { outDir:
-   "docs" } }` write `agent/schema.md`, `agent/ui.md`, `agent/requirements.md` and
-   `api/AGENT-API.md`. When they exist, read the one for the tier you touch.
+2. **Generate.** `npx meta gen`. See a file's exports with `grep -n "^export" <file>`. When
+   `agentDocsFile()` / `apiDocsFile()` are wired, read the `agent/*.md` or `api/AGENT-API.md`
+   page for the tier you touch.

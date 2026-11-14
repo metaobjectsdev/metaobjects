@@ -6,7 +6,7 @@ describe("parseVerifyArgs", () => {
   test("defaults: prompts/db/dialect undefined, allow empty, skipSchema false, no explicit subverb", () => {
     expect(parseVerifyArgs([])).toEqual({
       prompts: undefined, db: undefined, dialect: undefined, allow: [], skipSchema: false, migrationFormat: undefined,
-      templates: false, codegen: false, forbidHandEdits: false, docs: false, deps: false, anyExplicit: false, noAntipatterns: false, noRequirementLint: false, requireImplementers: false, noOverlayLint: false, noNameLint: false, noDeprecationLint: false, noFieldLint: false, lax: false,
+      templates: false, codegen: false, forbidHandEdits: false, allowHandEdits: false, docs: false, deps: false, anyExplicit: false, noAntipatterns: false, noRequirementLint: false, requireImplementers: false, noOverlayLint: false, noNameLint: false, noDeprecationLint: false, noFieldLint: false, lax: false,
       replay: false, replaySnapshot: false,
       d1: undefined, remote: false, limit: DEFAULT_ADVISORY_LIMIT,
     });
@@ -14,7 +14,7 @@ describe("parseVerifyArgs", () => {
   test("--prompts <dir> is captured", () => {
     expect(parseVerifyArgs(["--prompts", "templates"])).toEqual({
       prompts: "templates", db: undefined, dialect: undefined, allow: [], skipSchema: false, migrationFormat: undefined,
-      templates: false, codegen: false, forbidHandEdits: false, docs: false, deps: false, anyExplicit: false, noAntipatterns: false, noRequirementLint: false, requireImplementers: false, noOverlayLint: false, noNameLint: false, noDeprecationLint: false, noFieldLint: false, lax: false,
+      templates: false, codegen: false, forbidHandEdits: false, allowHandEdits: false, docs: false, deps: false, anyExplicit: false, noAntipatterns: false, noRequirementLint: false, requireImplementers: false, noOverlayLint: false, noNameLint: false, noDeprecationLint: false, noFieldLint: false, lax: false,
       replay: false, replaySnapshot: false,
       d1: undefined, remote: false, limit: DEFAULT_ADVISORY_LIMIT,
     });
@@ -22,7 +22,7 @@ describe("parseVerifyArgs", () => {
   test("--db / --dialect / --skip-schema are captured", () => {
     expect(parseVerifyArgs(["--db", "file:x.db", "--dialect", "sqlite", "--skip-schema"])).toEqual({
       prompts: undefined, db: "file:x.db", dialect: "sqlite", allow: [], skipSchema: true, migrationFormat: undefined,
-      templates: false, codegen: false, forbidHandEdits: false, docs: false, deps: false, anyExplicit: true, noAntipatterns: false, noRequirementLint: false, requireImplementers: false, noOverlayLint: false, noNameLint: false, noDeprecationLint: false, noFieldLint: false, lax: false,
+      templates: false, codegen: false, forbidHandEdits: false, allowHandEdits: false, docs: false, deps: false, anyExplicit: true, noAntipatterns: false, noRequirementLint: false, requireImplementers: false, noOverlayLint: false, noNameLint: false, noDeprecationLint: false, noFieldLint: false, lax: false,
       replay: false, replaySnapshot: false,
       d1: undefined, remote: false, limit: DEFAULT_ADVISORY_LIMIT,
     });
@@ -32,7 +32,7 @@ describe("parseVerifyArgs", () => {
   test("--dialect d1 --d1 <binding> --remote are captured; --dialect d1 alone is an explicit subverb", () => {
     expect(parseVerifyArgs(["--dialect", "d1", "--d1", "DB", "--remote"])).toEqual({
       prompts: undefined, db: undefined, dialect: "d1", allow: [], skipSchema: false, migrationFormat: undefined,
-      templates: false, codegen: false, forbidHandEdits: false, docs: false, deps: false, anyExplicit: true, noAntipatterns: false, noRequirementLint: false, requireImplementers: false, noOverlayLint: false, noNameLint: false, noDeprecationLint: false, noFieldLint: false, lax: false,
+      templates: false, codegen: false, forbidHandEdits: false, allowHandEdits: false, docs: false, deps: false, anyExplicit: true, noAntipatterns: false, noRequirementLint: false, requireImplementers: false, noOverlayLint: false, noNameLint: false, noDeprecationLint: false, noFieldLint: false, lax: false,
       replay: false, replaySnapshot: false,
       d1: "DB", remote: true, limit: DEFAULT_ADVISORY_LIMIT,
     });
@@ -77,7 +77,7 @@ describe("parseVerifyArgs", () => {
     expect(parseVerifyArgs(["--allow", "drop-column,drop-table"])).toEqual({
       prompts: undefined, db: undefined, dialect: undefined,
       allow: ["drop-column", "drop-table"], skipSchema: false, migrationFormat: undefined,
-      templates: false, codegen: false, forbidHandEdits: false, docs: false, deps: false, anyExplicit: false, noAntipatterns: false, noRequirementLint: false, requireImplementers: false, noOverlayLint: false, noNameLint: false, noDeprecationLint: false, noFieldLint: false, lax: false,
+      templates: false, codegen: false, forbidHandEdits: false, allowHandEdits: false, docs: false, deps: false, anyExplicit: false, noAntipatterns: false, noRequirementLint: false, requireImplementers: false, noOverlayLint: false, noNameLint: false, noDeprecationLint: false, noFieldLint: false, lax: false,
       replay: false, replaySnapshot: false,
       d1: undefined, remote: false, limit: DEFAULT_ADVISORY_LIMIT,
     });
@@ -157,6 +157,13 @@ describe("parseVerifyArgs", () => {
     // so it must not switch the bare-verify template default off.
     expect(parseVerifyArgs(["--require-implementers"]).anyExplicit).toBe(false);
   });
+  test("--allow-hand-edits rides on --codegen, and is refused without it or beside --forbid-hand-edits", () => {
+    expect(parseVerifyArgs(["--codegen"]).allowHandEdits).toBe(false);
+    expect(parseVerifyArgs(["--codegen", "--allow-hand-edits"]).allowHandEdits).toBe(true);
+    expect(() => parseVerifyArgs(["--allow-hand-edits"])).toThrow(/only applies to the codegen gate/);
+    expect(() => parseVerifyArgs(["--codegen", "--allow-hand-edits", "--forbid-hand-edits"])).toThrow(/opposite/);
+  });
+
   test("--forbid-hand-edits rides on --codegen, and is refused without it", () => {
     expect(parseVerifyArgs(["--codegen"]).forbidHandEdits).toBe(false);
     expect(parseVerifyArgs(["--codegen", "--forbid-hand-edits"]).forbidHandEdits).toBe(true);

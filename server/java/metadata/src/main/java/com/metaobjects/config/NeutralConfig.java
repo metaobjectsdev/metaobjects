@@ -70,6 +70,8 @@ public final class NeutralConfig {
     private final PhysicalNaming physicalNaming;
     private final WireFormat wireFormat;
     private EnumDefaults enumDefaults = EnumDefaults.DEFAULT;
+    private ApiSettings apiSettings = ApiSettings.DEFAULT;
+    private MigrateSettings migrateSettings = MigrateSettings.DEFAULT;
     private List<String> requirementsInherit = List.of();
     private RulesSettings rulesSettings = RulesSettings.DEFAULT;
 
@@ -155,9 +157,22 @@ public final class NeutralConfig {
         return rulesSettings;
     }
 
+    /**
+     * The project's {@code api} block ({@code api.pagination}, {@code api.unknownFields}), absent
+     * keys at their defaults (no page size, {@code reject}). Never {@code null}.
+     */
+    public ApiSettings getApiSettings() {
+        return apiSettings;
+    }
+
     /** The project's enum storage defaults ({@code enums} in this file). Never {@code null}. */
     public EnumDefaults getEnumDefaults() {
         return enumDefaults;
+    }
+
+    /** The schema settings a mapping generator agrees with ({@code migrate.foreignKeyIndexes} and friends). */
+    public MigrateSettings getMigrateSettings() {
+        return migrateSettings;
     }
 
     /**
@@ -369,9 +384,70 @@ public final class NeutralConfig {
         NeutralConfig cfg = new NeutralConfig(specs, dependencies, scopeInclude, migrateScope, physicalNaming,
                 wireFormat);
         cfg.enumDefaults = parseEnums(root.get("enums"), origin);
+        cfg.apiSettings = parseApi(root.get("api"), origin);
+        cfg.migrateSettings = parseMigrateSettings(root.get("migrate"));
         cfg.requirementsInherit = parseRequirementsInherit(root.get("requirements"), origin);
         cfg.rulesSettings = parseRulesSettings(root.get("rules"), root.get("verify"), origin);
         return cfg;
+    }
+
+    /**
+     * The {@code api} block: {@code pagination} ({@code defaultLimit} and {@code maxLimit}, both
+     * positive integers, {@code defaultLimit <= maxLimit}) and {@code unknownFields}
+     * ({@code "reject"} | {@code "drop"}). Refused like {@code naming}: an unknown key, a
+     * wrong-typed value or a non-object block. The messages match the TypeScript reader's.
+     */
+    private static ApiSettings parseApi(JsonElement api, String origin) {
+        if (api == null) return ApiSettings.DEFAULT;
+        if (!api.isJsonObject()) throw bad(origin + ": \"api\" must be an object");
+        ApiSettings.Pagination pagination = null;
+        ApiSettings.UnknownFields unknownFields = ApiSettings.UnknownFields.REJECT;
+        JsonObject obj = api.getAsJsonObject();
+        for (String key : obj.keySet()) {
+            JsonElement v = obj.get(key);
+            switch (key) {
+                case "pagination" -> pagination = parsePagination(v, origin);
+                case "unknownFields" -> {
+                    unknownFields = v.isJsonPrimitive() && v.getAsJsonPrimitive().isString()
+                            ? ApiSettings.unknownFieldsOf(v.getAsString()) : null;
+                    if (unknownFields == null) {
+                        throw bad(origin + ": \"api.unknownFields\" must be \"reject\" or \"drop\"");
+                    }
+                }
+                default -> throw bad(origin + ": \"api\" has an unknown key \"" + key
+                        + "\" (expected \"pagination\" or \"unknownFields\")");
+            }
+        }
+        return new ApiSettings(pagination, unknownFields);
+    }
+
+    private static ApiSettings.Pagination parsePagination(JsonElement el, String origin) {
+        if (!el.isJsonObject()) throw bad(origin + ": \"api.pagination\" must be an object");
+        JsonObject obj = el.getAsJsonObject();
+        for (String key : obj.keySet()) {
+            if (!"defaultLimit".equals(key) && !"maxLimit".equals(key)) {
+                throw bad(origin + ": \"api.pagination\" has an unknown key \"" + key
+                        + "\" (expected \"defaultLimit\" and \"maxLimit\")");
+            }
+        }
+        if (!obj.has("defaultLimit") || !obj.has("maxLimit")) {
+            throw bad(origin + ": \"api.pagination\" needs both \"defaultLimit\" and \"maxLimit\"");
+        }
+        long defaultLimit = pageSize(obj.get("defaultLimit"), "defaultLimit", origin);
+        long maxLimit = pageSize(obj.get("maxLimit"), "maxLimit", origin);
+        if (defaultLimit > maxLimit) {
+            throw bad(origin + ": \"api.pagination.defaultLimit\" must not exceed \"api.pagination.maxLimit\"");
+        }
+        return new ApiSettings.Pagination(defaultLimit, maxLimit);
+    }
+
+    private static long pageSize(JsonElement v, String key, String origin) {
+        java.math.BigDecimal n = v.isJsonPrimitive() && v.getAsJsonPrimitive().isNumber()
+                ? v.getAsBigDecimal() : null;
+        if (n == null || n.signum() <= 0 || n.stripTrailingZeros().scale() > 0 || n.compareTo(java.math.BigDecimal.valueOf(Integer.MAX_VALUE)) > 0) {
+            throw bad(origin + ": \"api.pagination." + key + "\" must be a positive integer");
+        }
+        return n.longValueExact();
     }
 
     /**
@@ -526,6 +602,10 @@ public final class NeutralConfig {
         return value;
     }
 
+    /** The {@code verify.handEdits} key and its values (read by the TypeScript {@code meta verify}). */
+    private static final String VERIFY_KEY_HAND_EDITS = "handEdits";
+    private static final List<String> HAND_EDITS_POLICIES = List.of("fail", "notice");
+
     /** ADR-0063 — the {@code rules} and {@code verify} blocks; see {@link #getRulesSettings()}. */
     private static RulesSettings parseRulesSettings(JsonElement rules, JsonElement verify, String origin) {
         RulesSettings d = RulesSettings.DEFAULT;
@@ -554,9 +634,16 @@ public final class NeutralConfig {
             if (!verify.isJsonObject()) throw bad(origin + ": \"verify\" must be an object");
             JsonObject verifyObj = verify.getAsJsonObject();
             for (String k : verifyObj.keySet()) {
-                if (!k.equals("lifecycle")) {
-                    throw bad(origin + ": \"verify\" has unknown key \"" + k + "\"; expected \"lifecycle\"");
+                if (!k.equals("lifecycle") && !k.equals(VERIFY_KEY_HAND_EDITS)) {
+                    throw bad(origin + ": \"verify\" has unknown key \"" + k + "\"; expected \"handEdits\" and/or \"lifecycle\"");
                 }
+            }
+            // `verify.handEdits` is read by the TypeScript `meta verify` only (this port's verify
+            // already fails on any hand edit); it is validated here so `meta init`'s file loads.
+            JsonElement handEdits = verifyObj.get(VERIFY_KEY_HAND_EDITS);
+            if (handEdits != null && !(handEdits.isJsonPrimitive() && handEdits.getAsJsonPrimitive().isString()
+                    && HAND_EDITS_POLICIES.contains(handEdits.getAsString()))) {
+                throw bad(origin + ": \"verify.handEdits\" must be one of \"fail\", \"notice\"");
             }
             JsonObject life = settingsBlock(verifyObj, "lifecycle", "verify.lifecycle", List.of("unreachable"), origin);
             unreachable = settingValue(life, "unreachable", "verify.lifecycle.unreachable",
@@ -583,6 +670,23 @@ public final class NeutralConfig {
         JsonElement inherit = obj.get("inherit");
         if (inherit == null || inherit.isJsonNull()) return List.of();
         return stringArray(inherit, "requirements.inherit", origin);
+    }
+
+    /**
+     * {@code migrate.foreignKeyIndexes}, {@code migrate.conventions} and {@code migrate.dialect},
+     * read leniently (a wrong type reads as absent): {@code meta migrate} owns and validates them.
+     */
+    private static MigrateSettings parseMigrateSettings(JsonElement migrate) {
+        if (migrate == null || !migrate.isJsonObject()) return MigrateSettings.DEFAULT;
+        JsonObject m = migrate.getAsJsonObject();
+        JsonElement fk = m.get("foreignKeyIndexes");
+        boolean foreignKeyIndexes = fk != null && fk.isJsonPrimitive() && fk.getAsJsonPrimitive().isBoolean()
+            && fk.getAsBoolean();
+        return new MigrateSettings(foreignKeyIndexes, stringOrNull(m.get("conventions")), stringOrNull(m.get("dialect")));
+    }
+
+    private static String stringOrNull(JsonElement e) {
+        return e != null && e.isJsonPrimitive() && e.getAsJsonPrimitive().isString() ? e.getAsString() : null;
     }
 
     /** {@code migrate.scope}, or {@code null} when absent; every other {@code migrate} key is ignored. */

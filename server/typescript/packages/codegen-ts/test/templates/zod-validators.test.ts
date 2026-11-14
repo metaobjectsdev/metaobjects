@@ -356,6 +356,22 @@ describe("renderZodValidators", () => {
     expect(update).toContain("name");
   });
 
+  test("an ASSIGNED primary key is in the Insert schema and OUT of the Update schema", () => {
+    // The URL names the row on PUT/PATCH. An assigned key (no @generation) is the caller's on
+    // create, but leaving it in the update shape let a client-sent `code` re-key the row.
+    const coupon = metaObject(OBJECT_SUBTYPE_ENTITY, "Coupon");
+    coupon.addChild(metaField(FIELD_SUBTYPE_STRING, "code"));
+    coupon.addChild(metaField(FIELD_SUBTYPE_STRING, "label"));
+    const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
+    primary.setAttr("fields", ["code"]);
+    coupon.addChild(primary);
+    const out = renderZodValidators(coupon).toString();
+    expect(schemaBody(out, "CouponInsertSchema")).toContain("code");
+    const update = schemaBody(out, "CouponUpdateSchema");
+    expect(update).not.toContain("code");
+    expect(update).toContain("label");
+  });
+
   test("FR-037 R1: no @mutability (⇒ readWrite) is in BOTH schemas — the no-churn default", () => {
     const out = customerWithMutability(undefined, "lifetimeValue");
     expect(schemaBody(out, "CustomerInsertSchema")).toContain("lifetimeValue");

@@ -118,6 +118,14 @@ seed-data: |
 # Target schema — what we want the DB to look like.
 target-metadata: ./states/program-v2/
 
+# Optional: the project schema settings (`migrate.*` in .metaobjects/config.json) the target,
+# and separately the seed, are built with. Only `foreignKeyIndexes` is applied; any other key
+# is refused, so a typo cannot silently run the default.
+# schema-settings:
+#   foreignKeyIndexes: true
+# seed-schema-settings:
+#   foreignKeyIndexes: true
+
 # Assertions on the generated up migration (any of these may be omitted).
 expect:
   blocked: []                                # no blocked changes

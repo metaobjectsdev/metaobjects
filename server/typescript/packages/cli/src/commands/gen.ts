@@ -129,7 +129,7 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
   // metadata from unrelated trees. Identical object when the two configs sit together.
   const genCollection = await resolveGenCollection(collection, projectRoot);
 
-  // Advisory: nudge to refresh the .claude/skills docs if they predate this CLI.
+  // Advisory: nudge to refresh the agent context and skills if they predate this CLI.
   // Rooted at `projectRoot`, not ambient cwd — the scaffolded agent context sits
   // with the project that declares the metadata, so a run from a subdirectory
   // would find no manifest there and silently skip the nudge. `meta verify` makes

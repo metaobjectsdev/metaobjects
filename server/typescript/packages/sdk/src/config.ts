@@ -29,6 +29,13 @@ import {
   VERIFY_LIFECYCLE_UNREACHABLE,
   rulesSettingsOf,
   type RulesSettings,
+  API_KEY_PAGINATION,
+  PAGINATION_KEY_DEFAULT_LIMIT,
+  PAGINATION_KEY_MAX_LIMIT,
+  API_KEY_UNKNOWN_FIELDS,
+  UNKNOWN_FIELDS_MODES,
+  type ApiPagination,
+  type UnknownFieldsMode,
 } from "@metaobjectsdev/metadata";
 
 const DialectEnum = z.enum(["sqlite", "postgres", "d1"]);
@@ -74,6 +81,10 @@ const D1Block = z.object({
   wranglerConfigPath: z.string(),
 }).partial().strict();
 
+/** `verify.handEdits`: what `meta verify --codegen` does with a hand-edited generated file. */
+export const HAND_EDITS_POLICIES = ["fail", "notice"] as const;
+export type HandEditsPolicy = (typeof HAND_EDITS_POLICIES)[number];
+
 /** #192 — migration output-format adapters; orthogonal to dialect. */
 const MigrateFormatEnum = z.enum(["default", "flyway"]);
 
@@ -100,6 +111,13 @@ const MigrateBlock = z.object({
    *  out a CHECK the column type already enforces, for a database whose CHECKs were written by
    *  hand only where the type does not; a CHECK with a declared `@constraintName` is kept. */
   checks: z.object({ skipRedundant: z.boolean() }).partial().strict(),
+  /** Index every foreign key the conventions leave without one, named
+   *  `<table>_<column>[_<column>…]_idx`. Separate from `conventions`, so a project can have the
+   *  indexes without the `efcore` preset's constraint names. Absent = false: the schema migrate
+   *  has always built, and `meta verify` names each unindexed foreign key instead. Read by
+   *  `meta migrate` and by every generator that maps indexes (Drizzle, Prisma, EF Core,
+   *  Exposed); `meta init` writes it on for a new project. */
+  foreignKeyIndexes: z.boolean(),
 // .strict() for the same reason as the top level and the source arms below, and
 // with sharper teeth here: `{ migrate: { scopee: [...], dialect: "postgres" } }`
 // used to parse to `{ dialect: "postgres" }`, so a typo'd `scope` key meant
@@ -169,6 +187,16 @@ const ScopeSchema = z
 // "scope") is silently stripped by zod and the collection resolves as
 // "everything in scope" — the exact silent fail-open .strict() on the
 // nested arms exists to prevent, one level up.
+/** One `api.pagination` size: a positive integer no larger than 2147483647 (so every port's
+ *  integer type holds it), every failure (missing, wrong type, a fraction, zero, too large) named
+ *  by its key rather than Zod's generic "expected number". The shared corpus
+ *  fixtures/api-contract-conformance/api-settings/config-blocks.json holds every port to it. */
+const PAGE_SIZE_MAX = 2147483647;
+function pageSizeNumber(key: string) {
+  const error = `"api.pagination.${key}" must be a positive integer`;
+  return z.number({ error }).int({ error }).positive({ error }).max(PAGE_SIZE_MAX, { error });
+}
+
 export const ConfigSchema = z.object({
   schema_version: z.literal(1),
   pending_in_git: z.boolean().default(true),
@@ -213,6 +241,30 @@ export const ConfigSchema = z.object({
     })
     .default({}),
   migrate: MigrateBlock.optional(),
+  /**
+   * `meta verify` settings. `handEdits`: `fail` makes `meta verify --codegen` exit 1 when a
+   * generated file carries a hand edit (`--allow-hand-edits` relaxes that for one run);
+   * `notice` lists the file and exits 0 (`--forbid-hand-edits` tightens that for one run).
+   * Absent means `notice`, what verify has always done; `meta init` writes `fail` for a new
+   * project. Only the TypeScript `meta verify` reads it: the other ports' verify already fails
+   * on any edit to a generated file. `lifecycle.unreachable`: the severity of a lifecycle state
+   * no transition reaches from the initial state, and of a transition that starts only from
+   * such states — `warn` (default), `error` or `off` (ADR-0063); read by every port's config reader.
+   */
+  verify: z
+    .strictObject({
+      handEdits: z.enum(HAND_EDITS_POLICIES, {
+        message: `"verify.handEdits" must be one of ${HAND_EDITS_POLICIES.map((v) => `"${v}"`).join(", ")}`,
+      }).optional(),
+      lifecycle: z.strictObject({
+        unreachable: z.enum(VERIFY_LIFECYCLE_UNREACHABLE).optional(),
+      }).optional(),
+    }, {
+      error: (iss) => iss.code === "unrecognized_keys"
+        ? `"verify" has an unknown key "${iss.keys[0]}" (expected "handEdits" or "lifecycle")`
+        : iss.code === "invalid_type" ? `"verify" must be an object` : undefined,
+    })
+    .optional(),
   /**
    * FR-023 — which dependencies' requirements this project takes on as its own ledger.
    * `inherit` lists scope patterns, and a pattern counts only when it NAMES a dependency's
@@ -291,6 +343,45 @@ export const ConfigSchema = z.object({
     })
     .optional(),
   /**
+   * The page size of the generated list routes. `pagination.defaultLimit` is how many rows a list
+   * with no `limit` returns; an explicit `limit` above `pagination.maxLimit` is refused with
+   * `400 { "error": "limit_too_large", "maxLimit": N }`. Absent means no default and no ceiling,
+   * as before. `meta init` writes 50 and 1000.
+   *
+   * `unknownFields` is what a generated create, PUT or PATCH route does with a body key the
+   * entity does not declare: `reject` (the default, also when absent) answers
+   * `400 { "error": "unknown_fields", "fields": [...] }`; `drop` ignores the key and writes the
+   * rest. A declared key the client may not set is dropped under either value.
+   */
+  api: z
+    .strictObject({
+      pagination: z
+        .strictObject({
+          defaultLimit: pageSizeNumber(PAGINATION_KEY_DEFAULT_LIMIT),
+          maxLimit: pageSizeNumber(PAGINATION_KEY_MAX_LIMIT),
+        }, {
+          error: (iss) => iss.code === "unrecognized_keys"
+            ? `"api.pagination" has an unknown key "${iss.keys[0]}" (expected "${PAGINATION_KEY_DEFAULT_LIMIT}" and "${PAGINATION_KEY_MAX_LIMIT}")`
+            : iss.code === "invalid_type" && iss.input === undefined
+              ? `"api.pagination" needs both "${PAGINATION_KEY_DEFAULT_LIMIT}" and "${PAGINATION_KEY_MAX_LIMIT}"`
+              : iss.code === "invalid_type" ? `"api.pagination" must be an object` : undefined,
+        })
+        .refine((p) => p.defaultLimit <= p.maxLimit, {
+          message: `"api.pagination.defaultLimit" must not exceed "api.pagination.maxLimit"`,
+        })
+        .optional(),
+      unknownFields: z
+        .enum(UNKNOWN_FIELDS_MODES, {
+          error: `"api.${API_KEY_UNKNOWN_FIELDS}" must be ${UNKNOWN_FIELDS_MODES.map((m) => `"${m}"`).join(" or ")}`,
+        })
+        .optional(),
+    }, {
+      error: (iss) => iss.code === "unrecognized_keys"
+        ? `"api" has an unknown key "${iss.keys[0]}" (expected "${API_KEY_PAGINATION}" or "${API_KEY_UNKNOWN_FIELDS}")`
+        : iss.code === "invalid_type" ? `"api" must be an object` : undefined,
+    })
+    .optional(),
+  /**
    * How a string-stored `field.enum` is stored. `maxLength` is the column length (VARCHAR(n))
    * of an enum that declares no `@maxLength` of its own; every member must fit. Absent means
    * no default: such an enum is an unbounded text column, as before. An `@intValueMap` enum is
@@ -325,19 +416,6 @@ export const ConfigSchema = z.object({
     })
     .optional(),
   /**
-   * Settings for `meta verify`'s own checks. `lifecycle.unreachable`: the severity of a
-   * lifecycle state no transition reaches from the initial state, and of a transition that
-   * starts only from such states — `warn` (default), `error` or `off` (ADR-0063). Read by
-   * every port's config reader.
-   */
-  verify: z
-    .strictObject({
-      lifecycle: z.strictObject({
-        unreachable: z.enum(VERIFY_LIFECYCLE_UNREACHABLE).optional(),
-      }).optional(),
-    })
-    .optional(),
-  /**
    * C#-scoped settings. `outDir` is where `dotnet meta gen` writes and a bare `dotnet meta
    * verify` diffs, relative to the directory holding `.metaobjects/`; `namespace` is the C#
    * namespace generated types that no package binding places land in. Only the C# port reads
@@ -368,6 +446,17 @@ export function physicalNamingFromConfig(cfg: Pick<Config, "naming">): PhysicalN
     tables: cfg.naming?.tables ?? DEFAULT_PHYSICAL_NAMING.tables,
     ...(cfg.naming?.collections !== undefined ? { collections: cfg.naming.collections } : {}),
   };
+}
+
+/** The list page size a config declares (`api.pagination`); undefined when absent. */
+export function apiPaginationFromConfig(cfg: Pick<Config, "api">): ApiPagination | undefined {
+  const p = cfg.api?.pagination;
+  return p === undefined ? undefined : { defaultLimit: p.defaultLimit, maxLimit: p.maxLimit };
+}
+
+/** The unknown-field rule a config declares (`api.unknownFields`); undefined when absent. */
+export function apiUnknownFieldsFromConfig(cfg: Pick<Config, "api">): UnknownFieldsMode | undefined {
+  return cfg.api?.unknownFields;
 }
 
 /** The enum storage defaults a config declares (`enums`); none when absent. */

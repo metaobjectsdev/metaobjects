@@ -8,7 +8,7 @@
 
 import { CodegenError } from "../errors.js";
 import { flattenedMembersOf } from "../flattened.js";
-import { code, imp, joinCode, type Code } from "ts-poet";
+import { code, imp, joinCode, type Code } from "../poet.js";
 import type { MetaObject, MetaField } from "@metaobjectsdev/metadata";
 import { SOURCE_ROLE_REPLICA } from "@metaobjectsdev/metadata";
 import type { RenderContext } from "../render-context.js";

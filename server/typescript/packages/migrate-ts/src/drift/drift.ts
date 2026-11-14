@@ -147,6 +147,7 @@ export async function computeDriftFromActual(
       ...(opts?.views !== undefined ? { views: opts.views } : {}),
       conventions: opts?.conventions,
       skipRedundantChecks: opts?.skipRedundantChecks,
+      foreignKeyIndexes: opts?.foreignKeyIndexes,
     }),
     opts?.inScope,
     opts?.imported !== undefined ? { imported: opts.imported } : undefined,

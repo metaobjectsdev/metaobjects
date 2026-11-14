@@ -1400,4 +1400,46 @@ public sealed class EfModelGapsTests
             "INSERT INTO gadgets (kind, tags, email, score) VALUES ('plain', '{}', 'a@b.c', 9)"));
         Assert.True(ex.ConstraintName == "gadgets_score_numeric_chk", ex.MessageText);
     }
+
+    // migrate.foreignKeyIndexes: the model declares the <table>_<columns>_idx index `meta migrate`
+    // gives each foreign key nothing leads with, on the base and on a TPH subtype's own reference,
+    // and EF's convention IX_ index on that key gives way to it.
+    private const string ForeignKeyIndexModel = """
+    { "metadata.root": { "package": "acme", "children": [
+      { "object.entity": { "name": "Owner", "children": [
+        { "source.rdb": { "@table": "owners" } },
+        { "field.long": { "name": "id" } },
+        { "identity.primary": { "@fields": "id", "@generation": "increment" } }
+      ]}},
+      { "object.entity": { "name": "Vehicle", "@discriminator": "kind", "children": [
+        { "source.rdb": { "@table": "vehicles" } },
+        { "field.long": { "name": "id" } },
+        { "field.string": { "name": "kind", "@maxLength": 10 } },
+        { "field.long": { "name": "ownerId" } },
+        { "field.long": { "name": "keeperId" } },
+        { "identity.primary": { "@fields": "id", "@generation": "increment" } },
+        { "identity.reference": { "name": "owner", "@fields": ["ownerId"], "@references": "Owner" } },
+        { "identity.reference": { "name": "keeper", "@fields": ["keeperId"], "@references": "Owner" } },
+        { "index.lookup": { "name": "ix_vehicles_keeper", "@fields": ["keeperId", "kind"] } }
+      ]}},
+      { "object.entity": { "name": "Car", "extends": "Vehicle", "@discriminatorValue": "Car", "children": [
+        { "field.long": { "name": "dealerId" } },
+        { "identity.reference": { "name": "dealer", "@fields": ["dealerId"], "@references": "Owner" } }
+      ]}}
+    ]}}
+    """;
+
+    [Fact]
+    public void Foreign_key_indexes_reach_the_model_under_migrates_names()
+    {
+        var gen = GeneratedEfModel.Compile(ForeignKeyIndexModel, "Acme.FkIndex", c => c with { ForeignKeyIndexes = true });
+        using var db = gen.NewContext(o => o.UseNpgsql("Host=unused"));
+        var vehicle = DesignEntityType(db, "Vehicle").GetDeclaredIndexes().Select(i => i.GetDatabaseName()).ToList();
+        var car = DesignEntityType(db, "Car").GetDeclaredIndexes().Select(i => i.GetDatabaseName()).ToList();
+        Assert.Contains("vehicles_ownerId_idx", vehicle);
+        Assert.Contains("vehicles_dealerId_idx", car);
+        // keeperId leads a declared lookup index, so it gets no second one.
+        Assert.DoesNotContain("vehicles_keeperId_idx", vehicle);
+        Assert.DoesNotContain(vehicle.Concat(car), n => n!.StartsWith("IX_", StringComparison.Ordinal));
+    }
 }

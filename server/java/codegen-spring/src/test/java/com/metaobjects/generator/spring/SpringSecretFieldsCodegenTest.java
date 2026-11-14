@@ -1,5 +1,6 @@
 package com.metaobjects.generator.spring;
 
+import java.util.regex.Pattern;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.registry.SharedRegistryTestBase;
 import org.junit.Rule;
@@ -63,7 +64,7 @@ public class SpringSecretFieldsCodegenTest extends SharedRegistryTestBase {
     public void createIgnoresBothDeniedFields_andPatchCarriesNeither() throws Exception {
         String controller = generate("marked", MARKED, "AccountController.java", true);
         assertTrue("create rebuilds the DTO without tokenHash and pinHash; saw:\n" + controller,
-            controller.contains("dto = new AccountDto(dto.id(), dto.name(), null, null);"));
+            controller.contains("dto = new AccountDto(null, dto.name(), null, null);"));
 
         Path gen = tmp.getRoot().toPath().resolve("gen-marked");
         String patch = Files.readString(gen.resolve("acme/secrets/AccountPatch.java"));
@@ -89,7 +90,8 @@ public class SpringSecretFieldsCodegenTest extends SharedRegistryTestBase {
     public void unmarkedModelEmitsNoRedactionAndNoStrip() throws Exception {
         String controller = generate("plain", PLAIN, "AccountController.java", false);
         assertFalse(controller.contains("redact"));
-        assertFalse(controller.contains("dto = new AccountDto("));
+        // only the generated key is dropped: nothing here is a credential or @formExclude
+        assertTrue(controller.contains("dto = new AccountDto(null, dto.name(), dto.tokenHash(), dto.pinHash());"));
     }
 
     /**
@@ -123,8 +125,9 @@ public class SpringSecretFieldsCodegenTest extends SharedRegistryTestBase {
         assertTrue("the union list hides the credential; saw:\n" + controller,
             controller.contains("redactAll(rows, \"token\")"));
         assertTrue("every subtype create ignores both marked columns; saw:\n" + controller,
-            controller.contains("dto = new ThingDto(dto.id(), dto.kind(), null, null);"));
-        assertFalse("memo (@formExclude only) is still returned", controller.contains("\"memo\")"));
+            controller.contains("dto = new ThingDto(null, null, null, null);"));
+        assertFalse("memo (@formExclude only) is still returned",
+            Pattern.compile("redact(All)?\\([^)]*\"memo\"").matcher(controller).find());
     }
 
     @Test

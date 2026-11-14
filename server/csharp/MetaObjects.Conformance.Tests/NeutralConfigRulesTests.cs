@@ -39,7 +39,7 @@ public sealed class NeutralConfigRulesTests
     {
         var settings = Read("""
             "rules": { "permissions": { "names": "require" }, "lifecycle": { "create": "any", "commands": "none" } },
-            "verify": { "lifecycle": { "unreachable": "error" } }
+            "verify": { "handEdits": "fail", "lifecycle": { "unreachable": "error" } }
             """);
         Assert.Equal(new RulesSettings("require", "any", "none", "error"), settings);
     }
@@ -65,6 +65,9 @@ public sealed class NeutralConfigRulesTests
         """)]
     [InlineData("""
         "verify": { "lifecycles": {} }
+        """)]
+    [InlineData("""
+        "verify": { "handEdits": "warn" }
         """)]
     public void AMistake_IsRefusedNotDefaulted(string extraJson)
     {

@@ -568,6 +568,7 @@ static int RunVerify(string[] rest)
         Wire = resolvedMeta.Wire ?? MetaObjects.Meta.WireFormat.Default,
         // ADR-0063 — the business-rules settings, for the rules gate.
         Rules = resolvedMeta.Rules ?? MetaObjects.Config.RulesSettings.Default,
+        Api = resolvedMeta.Api ?? MetaObjects.Meta.ApiSettings.Default,
         TemplatesRoot = templatesRoot,
         OutDir = outDir,
         Namespace = ns,
@@ -636,6 +637,8 @@ static int RunVerify(string[] rest)
             foreach (var line in MetaObjects.Codegen.CodegenDrift.Remedy(c)) Console.Error.WriteLine(line);
         }
     }
+
+    foreach (var advisory in result.Advisories) Console.Error.WriteLine(advisory);
 
     // -- db gate (rejected in C#) --
     if (result.DbRejectionMessage is not null)

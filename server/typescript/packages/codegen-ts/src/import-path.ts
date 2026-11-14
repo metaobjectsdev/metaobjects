@@ -5,7 +5,7 @@
 
 import { relative as posixRelative } from "node:path/posix";
 import { PACKAGE_SEPARATOR, type MetaData } from "@metaobjectsdev/metadata";
-import { imp, Import } from "ts-poet";
+import { imp, Import } from "./poet.js";
 import { withExt, withExtIfRelative, type ExtStyle, type RenderContext } from "./render-context.js";
 
 export type OutputLayout = "flat" | "package";
@@ -77,7 +77,7 @@ export function valueObjectModuleSpecifier(
 }
 
 /**
- * The ts-poet import of `<VO><suffix>` (the interface with `suffix` "", the Zod schema with
+ * The printer import of `<VO><suffix>` (the interface with `suffix` "", the Zod schema with
  * "InsertSchema") for the value object `field`'s `@objectRef` names, from a file in `fromPkg`.
  * Bound under the render context's local name: the value object's own name, or its
  * package-qualified alias when another object shares the short name

@@ -12,6 +12,7 @@ internal static class SecretFieldsFixture
           "name"      VARCHAR(100) NOT NULL,
           "tokenHash" VARCHAR(100) NULL,
           "pinHash"   VARCHAR(100) NULL,
+          "role"      VARCHAR(20) NULL,
           CONSTRAINT "accounts_pkey" PRIMARY KEY ("id")
         );
         """;
@@ -29,7 +30,7 @@ internal static class SecretFieldsFixture
     {
         var root = JsonNode.Parse(File.ReadAllText(seedPath)) as JsonObject
             ?? throw new InvalidOperationException($"{seedPath}: top-level must be an object");
-        var cols = new[] { "id", "name", "tokenHash", "pinHash" };
+        var cols = new[] { "id", "name", "tokenHash", "pinHash", "role" };
         await using var c = new NpgsqlConnection(connString);
         await c.OpenAsync();
         foreach (var rowNode in root["rows"]!.AsArray())

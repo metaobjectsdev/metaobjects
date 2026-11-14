@@ -44,6 +44,25 @@ describe("runtime drift — a variable not on the payload raises at render time"
     expect(() => mod.renderWelcomePage({ name: "Ada" }, drifted())).toThrow(/ERR_VAR_NOT_ON_PAYLOAD \(nmae\)/);
   });
 
+  test("render-helper email (template.output @kind email) — each part raises", async () => {
+    const root = await load();
+    const src = renderRenderHelper(root, "WelcomeEmail", clean());
+    const dir = mkdtempSync(join(import.meta.dir, "rd-email-"));
+    TEMP_DIRS.push(dir);
+    writeFileSync(join(dir, "payloads.ts"), PAYLOADS);
+    writeFileSync(join(dir, "WelcomeEmail.render.ts"), src);
+    const mod = await import(join(dir, "WelcomeEmail.render.ts"));
+    expect(mod.renderWelcomeEmail({ name: "Ada" }, clean())).toEqual({
+      subject: "Welcome Ada",
+      htmlBody: "<p>Hi Ada</p>",
+      textBody: "Hi Ada",
+    });
+    for (const part of ["subject", "html", "text"]) {
+      const provider = new FileSystemProvider(join(CORPUS, "runtime-drift", `email-${part}`));
+      expect(() => mod.renderWelcomeEmail({ name: "Ada" }, provider)).toThrow(/ERR_VAR_NOT_ON_PAYLOAD \(nmae\)/);
+    }
+  });
+
   test("promptRender() handle (template.prompt)", async () => {
     const root = await load();
     const gen = promptRender();

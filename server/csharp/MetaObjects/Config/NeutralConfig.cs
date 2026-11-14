@@ -88,6 +88,14 @@ public sealed class NeutralConfig
     /// <summary><c>migrate.checks.skipRedundant</c>: leave out the CHECKs a column's own type already enforces.</summary>
     public bool MigrateSkipRedundantChecks { get; private init; }
 
+    /// <summary>`migrate.foreignKeyIndexes`: index every foreign key the schema conventions leave
+    /// without one, as `meta migrate` does. False when absent or not a boolean.</summary>
+    public bool MigrateForeignKeyIndexes { get; private init; }
+
+    /// <summary>`migrate.conventions`: the schema-conventions preset `meta migrate` builds with
+    /// (`default`, `efcore`), or null when absent.</summary>
+    public string? MigrateConventions { get; private init; }
+
     /// <summary>
     /// FR-023 — <c>requirements.inherit</c>: the dependencies whose requirements this project takes on
     /// as its own ledger (<see cref="ImportScope.InLedger"/>). Empty when absent.
@@ -112,6 +120,9 @@ public sealed class NeutralConfig
     /// ADR-0063 — the business-rules settings (`rules` and `verify` in config.json), each absent key at
     /// its default. Never null.
     public RulesSettings Rules { get; private init; } = RulesSettings.Default;
+
+    /// The project's `api` block (`api.pagination`, `api.unknownFields`). Never null: absent is the default.
+    public ApiSettings Api { get; private init; } = ApiSettings.Default;
 
     /// The project's enum storage defaults (`enums` in config.json). Never null: an absent
     /// block is no default, same as an empty `enums: {}`.
@@ -168,11 +179,20 @@ public sealed class NeutralConfig
         && checks.TryGetProperty("skipRedundant", out var skip) && skip.ValueKind == JsonValueKind.True;
 
     /// `migrate.dialect`, as the TypeScript `meta migrate` reads it; null when absent or not a string.
-    private static string? ReadMigrateDialect(JsonElement root) =>
+    private static string? ReadMigrateDialect(JsonElement root) => ReadMigrateString(root, "dialect");
+
+    /// One string in the TypeScript-owned `migrate` block; null when absent or not a string.
+    private static string? ReadMigrateString(JsonElement root, string key) =>
         root.TryGetProperty("migrate", out var migrate) && migrate.ValueKind == JsonValueKind.Object
-        && migrate.TryGetProperty("dialect", out var d) && d.ValueKind == JsonValueKind.String
+        && migrate.TryGetProperty(key, out var d) && d.ValueKind == JsonValueKind.String
             ? d.GetString()
             : null;
+
+    /// `migrate.foreignKeyIndexes`; false when absent or not a boolean (the TypeScript reader
+    /// refuses a non-boolean, and `meta migrate` is where the file is validated).
+    private static bool ReadMigrateForeignKeyIndexes(JsonElement root) =>
+        root.TryGetProperty("migrate", out var migrate) && migrate.ValueKind == JsonValueKind.Object
+        && migrate.TryGetProperty("foreignKeyIndexes", out var v) && v.ValueKind == JsonValueKind.True;
 
     /// <summary>
     /// As <see cref="Read(string)"/>; with <paramref name="validateNaming"/> false a
@@ -370,11 +390,14 @@ public sealed class NeutralConfig
             {
                 Enums = ReadEnums(root, path),
                 Rules = ReadRules(root, path),
+                Api = ReadApi(root, path),
                 RequirementsInherit = ReadRequirementsInherit(root, path),
                 OutputLayout = ReadOutputLayout(root, path),
                 PackageNamespaces = ReadPackageNamespaces(root, path),
                 MigrateDialect = ReadMigrateDialect(root),
                 MigrateSkipRedundantChecks = ReadMigrateSkipRedundant(root),
+                MigrateForeignKeyIndexes = ReadMigrateForeignKeyIndexes(root),
+                MigrateConventions = ReadMigrateString(root, "conventions"),
             };
         }
     }
@@ -564,6 +587,10 @@ public sealed class NeutralConfig
         return maxLength is null ? EnumDefaults.Default : new EnumDefaults(maxLength);
     }
 
+    /// `verify.handEdits` and its values: read by the TypeScript `meta verify` only, validated by every port.
+    private const string VerifyKeyHandEdits = "handEdits";
+    private static readonly string[] HandEditsPolicies = ["fail", "notice"];
+
     /// The `rules` and `verify` blocks (ADR-0063): an unknown key, an unknown value or a non-object block is
     /// refused, the same rule as `naming`.
     private static RulesSettings ReadRules(JsonElement root, string path)
@@ -632,7 +659,14 @@ public sealed class NeutralConfig
         {
             foreach (var p in Block(verify, "verify", path))
             {
-                if (p.Name != "lifecycle") throw Unknown(path, "verify", p.Name, "\"lifecycle\"");
+                // `verify.handEdits` is read by the TypeScript `meta verify` only (this port's verify
+                // already fails on any hand edit); it is validated here so `dotnet meta init`'s file loads.
+                if (p.Name == VerifyKeyHandEdits)
+                {
+                    Choice(p.Value, "verify.handEdits", HandEditsPolicies, path);
+                    continue;
+                }
+                if (p.Name != "lifecycle") throw Unknown(path, "verify", p.Name, "\"handEdits\" and/or \"lifecycle\"");
                 foreach (var q in Block(p.Value, "verify.lifecycle", path))
                 {
                     if (q.Name != "unreachable") throw Unknown(path, "verify.lifecycle", q.Name, "\"unreachable\"");
@@ -698,6 +732,77 @@ public sealed class NeutralConfig
         }
         return new WireFormat(decimals, nullMembers, durations);
     }
+
+    /// The `api` block: `pagination` takes both `defaultLimit` and `maxLimit` as positive integers with
+    /// `defaultLimit <= maxLimit`; `unknownFields` is "reject" (the default) or "drop". Anything else is refused.
+    private static ApiSettings ReadApi(JsonElement root, string path)
+    {
+        if (!root.TryGetProperty("api", out var api)) return ApiSettings.Default;
+        if (api.ValueKind != JsonValueKind.Object)
+            throw new MetaModelException($"{path}: \"api\" must be an object", ErrorCode.ERR_BAD_ATTR_VALUE);
+
+        ApiPagination? pagination = null;
+        var unknown = UnknownFieldsMode.Reject;
+        foreach (var p in api.EnumerateObject())
+        {
+            switch (p.Name)
+            {
+                case "pagination":
+                    pagination = ReadPagination(p.Value, path);
+                    break;
+                case "unknownFields":
+                    unknown = (p.Value.ValueKind == JsonValueKind.String ? p.Value.GetString() : null) switch
+                    {
+                        "reject" => UnknownFieldsMode.Reject,
+                        "drop" => UnknownFieldsMode.Drop,
+                        _ => throw new MetaModelException(
+                            $"{path}: \"api.unknownFields\" must be \"reject\" or \"drop\"", ErrorCode.ERR_BAD_ATTR_VALUE),
+                    };
+                    break;
+                default:
+                    throw new MetaModelException(
+                        $"{path}: \"api\" has an unknown key \"{p.Name}\" (expected \"pagination\" and/or \"unknownFields\")",
+                        ErrorCode.ERR_BAD_ATTR_VALUE);
+            }
+        }
+        return new ApiSettings(pagination, unknown);
+    }
+
+    private static ApiPagination ReadPagination(JsonElement block, string path)
+    {
+        if (block.ValueKind != JsonValueKind.Object)
+            throw new MetaModelException($"{path}: \"api.pagination\" must be an object", ErrorCode.ERR_BAD_ATTR_VALUE);
+        int? defaultLimit = null, maxLimit = null;
+        foreach (var p in block.EnumerateObject())
+        {
+            switch (p.Name)
+            {
+                case "defaultLimit": defaultLimit = PageSizeNumber(p.Value, "defaultLimit", path); break;
+                case "maxLimit": maxLimit = PageSizeNumber(p.Value, "maxLimit", path); break;
+                default:
+                    throw new MetaModelException(
+                        $"{path}: \"api.pagination\" has an unknown key \"{p.Name}\" (expected \"defaultLimit\" and \"maxLimit\")",
+                        ErrorCode.ERR_BAD_ATTR_VALUE);
+            }
+        }
+        if (defaultLimit is null)
+            throw new MetaModelException($"{path}: \"api.pagination.defaultLimit\" must be a positive integer", ErrorCode.ERR_BAD_ATTR_VALUE);
+        if (maxLimit is null)
+            throw new MetaModelException($"{path}: \"api.pagination.maxLimit\" must be a positive integer", ErrorCode.ERR_BAD_ATTR_VALUE);
+        if (defaultLimit > maxLimit)
+            throw new MetaModelException(
+                $"{path}: \"api.pagination.defaultLimit\" must not exceed \"api.pagination.maxLimit\"", ErrorCode.ERR_BAD_ATTR_VALUE);
+        return new ApiPagination(defaultLimit.Value, maxLimit.Value);
+    }
+
+    // A positive whole number however JSON spells it (50 and 50.0 are one number, as every other
+    // port reads them), at most int.MaxValue. The shared corpus
+    // fixtures/api-contract-conformance/api-settings/config-blocks.json holds every port to it.
+    private static int PageSizeNumber(JsonElement v, string key, string path) =>
+        v.ValueKind == JsonValueKind.Number && v.TryGetDecimal(out var d)
+            && d == decimal.Truncate(d) && d >= 1 && d <= int.MaxValue
+            ? (int)d
+            : throw new MetaModelException($"{path}: \"api.pagination.{key}\" must be a positive integer", ErrorCode.ERR_BAD_ATTR_VALUE);
 }
 
 /// <summary>`csharp.packageNamespaces`: <see cref="FromMetadata"/> is the <c>true</c> form (each

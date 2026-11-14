@@ -10,7 +10,7 @@
     "sourceNode": "acme::learn::Author"
   },
   "src/generated/Author.routes.ts": {
-    "hash": "3b0412b4501d02ba8716dae634522202714d467c5f9d577d8ea583868b1187d5",
+    "hash": "38d9a39b2fc93dc63ba0bc11d91d151f2a24b0af808a10dfdddf61a2d58356de",
     "generatedBy": "routes-file",
     "sourceNode": "acme::learn::Author"
   },
@@ -35,7 +35,7 @@
     "sourceNode": "acme::learn::Lesson"
   },
   "src/generated/Lesson.routes.ts": {
-    "hash": "ab910b2a1cfe1d38a49ce5d54de149bdbdfcd5adb077363b913ce6bebd01de13",
+    "hash": "a706159a09e459f44f1dd0721cf26320862768a4305363d94cf66b5fb8b5ae2a",
     "generatedBy": "routes-file",
     "sourceNode": "acme::learn::Lesson"
   },
@@ -55,7 +55,7 @@
     "sourceNode": "acme::learn::Program"
   },
   "src/generated/Program.routes.ts": {
-    "hash": "ac43f1836303aa693e26f346398f47330d18ac4ce6a60e03394dc40dee398cc7",
+    "hash": "c0b0b5cf1761371480aa90d613c5170212b4b4ef63fd265f1362ff4051b50af9",
     "generatedBy": "routes-file",
     "sourceNode": "acme::learn::Program"
   },
@@ -96,7 +96,7 @@
     "sourceNode": "acme::learn::Purchase"
   },
   "src/generated/Purchase.routes.ts": {
-    "hash": "b1d1df2277754b63f137d5059603abc812a36795656099e7b9df4cf67928549c",
+    "hash": "7590c063acdabcd86eec67d3d8abc6390dde576aca733944dbb1edaf1dfde5bb",
     "generatedBy": "routes-file",
     "sourceNode": "acme::learn::Purchase"
   },

@@ -70,6 +70,7 @@ export async function planOffline(args: PlanOfflineArgs): Promise<PlanOfflineRes
       ...(args.views !== undefined ? { views: args.views } : {}),
       conventions: args.conventions,
       skipRedundantChecks: args.skipRedundantChecks,
+      foreignKeyIndexes: args.foreignKeyIndexes,
     }),
     args.inScope,
     args.imported !== undefined ? { imported: args.imported } : undefined,
@@ -119,5 +120,6 @@ export function baselineFromMetadata(
     ...(views !== undefined ? { views } : {}),
     conventions: settings?.conventions,
     skipRedundantChecks: settings?.skipRedundantChecks,
+    foreignKeyIndexes: settings?.foreignKeyIndexes,
   });
 }

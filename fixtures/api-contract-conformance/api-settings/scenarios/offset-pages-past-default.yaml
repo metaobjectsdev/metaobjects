@@ -1,0 +1,12 @@
+name: offset-pages-past-default
+description: >
+  `?offset=` with no `?limit=` pages through the table at the default page size: offset 4 of
+  five rows leaves one.
+requests:
+  - id: r1
+    method: GET
+    path: /api/items?offset=4&sort=id:asc
+    expect:
+      status: 200
+      body:
+        ids: [5]

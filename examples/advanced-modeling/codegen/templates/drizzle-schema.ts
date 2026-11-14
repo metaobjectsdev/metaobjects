@@ -35,6 +35,7 @@ import { collectTphSubtypeFields, tphConcreteSubtypes } from "./tph-discriminato
 import { tphStorageObject } from "@metaobjectsdev/codegen-ts/engine";
 import { flattenedMembersOf } from "@metaobjectsdev/codegen-ts/engine";
 import { effectivePackage } from "@metaobjectsdev/codegen-ts/engine";
+import { foreignKeyIndexesOf } from "@metaobjectsdev/codegen-ts/engine";
 
 /**
  * Render the Drizzle table definition for one entity, including:
@@ -228,6 +229,9 @@ export function renderDrizzleSchema(
   // core naming (`resolveFlattenedColumnName`), the name `meta migrate` creates; the
   // `<Entity>Names` constant when the artifact carries it. No CHECK constraint: migrate derives
   // CHECKs from the entity's own fields only.
+  // Database column → the Drizzle column key, for the foreign-key indexes below (they come off
+  // migrate's schema, in column terms).
+  const keyByColumn = new Map<string, string>();
   const pushFlattenedColumns = (
     owner: MetaField,
     members: NonNullable<ReturnType<typeof flattenedMembersOf>>,
@@ -235,6 +239,7 @@ export function renderDrizzleSchema(
     for (const m of members) {
       const base = mapColumnType(m.flat, ctx.dialect, ctx.columnNamingStrategy, ctx.timestampMode);
       const spec: ColumnSpec = { ...base, dbName: m.column };
+      keyByColumn.set(m.column, m.key);
       if (spec.enumIntCustomType !== undefined) {
         enumIntTypes.set(spec.enumIntCustomType.fnConstName, spec.enumIntCustomType);
       }
@@ -266,6 +271,7 @@ export function renderDrizzleSchema(
     // Compute the column spec once per field and reuse it for both the column
     // line and the CHECK collection.
     const spec = mapColumnType(child, ctx.dialect, ctx.columnNamingStrategy, ctx.timestampMode);
+    keyByColumn.set(spec.dbName, child.name);
     if (spec.enumIntCustomType !== undefined) {
       enumIntTypes.set(spec.enumIntCustomType.fnConstName, spec.enumIntCustomType);
     }
@@ -286,6 +292,7 @@ export function renderDrizzleSchema(
     // #213 — a TPH subtype's derived field is read-only too; never a table column.
     if (child.isDerived()) continue;
     const spec = mapColumnType(child, ctx.dialect, ctx.columnNamingStrategy, ctx.timestampMode);
+    keyByColumn.set(spec.dbName, child.name);
     if (spec.enumIntCustomType !== undefined) {
       enumIntTypes.set(spec.enumIntCustomType.fnConstName, spec.enumIntCustomType);
     }
@@ -412,6 +419,17 @@ export function renderDrizzleSchema(
   for (const lookup of obj.lookupIndexes()) {
     const entry = indexEntry(lookup, lookup.fields(), /* unique */ false);
     if (entry !== undefined) callbackEntries.push(entry);
+  }
+
+  // `migrate.foreignKeyIndexes`: the index migrate gives each foreign key nothing else indexes,
+  // under migrate's name, so the mapping declares the indexes the database has. Off (no entry)
+  // for a project without the setting.
+  for (const fkIndex of foreignKeyIndexesOf(obj, ctx.loadedRoot, ctx.schemaSettings, dialect)) {
+    const keys = fkIndex.columns.map((c) => keyByColumn.get(c));
+    if (keys.some((k) => k === undefined)) continue;
+    callbackEntries.push(
+      code`${imp(`index@${importModule}`)}(${JSON.stringify(fkIndex.name)}).on(${keys.map((k) => `table.${k}`).join(", ")})`,
+    );
   }
 
   // Emit table-level CHECK constraints for enum fields. Both halves are composed by

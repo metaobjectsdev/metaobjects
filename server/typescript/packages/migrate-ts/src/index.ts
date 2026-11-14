@@ -8,7 +8,7 @@
 // See docs/specs/2026-05-11-v0.2-sp4-migrate-ts-design.md.
 
 // Pipeline functions
-export { buildExpectedSchema, buildExpectedSchemaWithProvenance } from "./expected-schema.js";
+export { buildExpectedSchema, buildExpectedSchemaWithProvenance, foreignKeyIndexName, uncoveredForeignKeyColumns } from "./expected-schema.js";
 export {
   findReferentialActionConflict,
   describeReferentialActionConflict,

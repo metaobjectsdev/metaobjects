@@ -105,8 +105,9 @@ public class GeneratedTphCrossFieldCompileRunTest {
     }
 
     private static int post(Object controller, Class<?> dtoClass, String handler, String json) throws Exception {
-        Method m = controller.getClass().getMethod(handler, dtoClass);
-        ResponseEntity<?> resp = (ResponseEntity<?>) m.invoke(controller, MAPPER.readValue(json, dtoClass));
+        // The create handlers bind the raw body (api.unknownFields: reject reads its keys first).
+        Method m = controller.getClass().getMethod(handler, com.fasterxml.jackson.databind.JsonNode.class);
+        ResponseEntity<?> resp = (ResponseEntity<?>) m.invoke(controller, MAPPER.readTree(json));
         return resp.getStatusCode().value();
     }
 

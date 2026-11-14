@@ -915,6 +915,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
       selfTarget,
       entityModuleTarget,
       ...(config.providedEnumModule !== undefined && { providedEnumModule: config.providedEnumModule }),
+      ...(opts.schemaSettings !== undefined && { schemaSettings: opts.schemaSettings }),
     });
     const ctx: GenContext = {
       entities: safeEntities,

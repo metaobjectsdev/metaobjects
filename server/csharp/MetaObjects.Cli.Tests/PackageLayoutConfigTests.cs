@@ -65,6 +65,16 @@ public sealed class PackageLayoutConfigTests : IDisposable
         var cfg = NeutralConfig.Read(fresh, validateNaming: false)!;
         Assert.Equal("package", cfg.OutputLayout);
         Assert.True(cfg.PackageNamespaces.FromMetadata);
+        // The same new-project settings TypeScript `meta init` writes: FK indexes on, hand edits
+        // failing verify, a 50/1000 page size and unknownFields spelled out at "reject" (a default
+        // left implicit would hide the choice).
+        Assert.True(cfg.MigrateForeignKeyIndexes);
+        Assert.Equal(new ApiPagination(50, 1000), cfg.Api.Pagination);
+        using (var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(fresh, ".metaobjects", "config.json"))))
+        {
+            Assert.Equal("fail", doc.RootElement.GetProperty("verify").GetProperty("handEdits").GetString());
+            Assert.Equal("reject", doc.RootElement.GetProperty("api").GetProperty("unknownFields").GetString());
+        }
 
         File.WriteAllText(Path.Combine(fresh, ".metaobjects", "config.json"), "{ \"schema_version\": 1 }");
         InitCommand.Run(fresh);

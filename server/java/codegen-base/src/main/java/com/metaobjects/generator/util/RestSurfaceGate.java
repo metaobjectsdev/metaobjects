@@ -1,12 +1,20 @@
 package com.metaobjects.generator.util;
 
 import com.metaobjects.MetaData;
+import com.metaobjects.field.MetaField;
+import com.metaobjects.generator.ModelWalk;
+import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.identity.MetaIdentity;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.reporting.ReportReadModel;
 import com.metaobjects.reporting.ReportShape;
 import com.metaobjects.source.MetaSource;
 import com.metaobjects.source.RdbSource;
+
+import java.util.ArrayDeque;
+import java.util.Deque;
+import java.util.HashSet;
+import java.util.Set;
 
 /**
  * THE predicate deciding which objects get a generated REST surface, shared by every
@@ -207,5 +215,41 @@ public final class RestSurfaceGate {
             if (identity.isPrimary()) { identified = true; break; }
         }
         return identified && obj.getSources(true).isEmpty();
+    }
+
+    /**
+     * The names of the generated classes that are a create or update request body: every entity
+     * with a generated write route ({@link #isWritable}, or a TPH subtype folded into a writable
+     * base), and every value object reachable from one through its {@code @objectRef} members,
+     * transitively.
+     *
+     * <p>Only these classes are marked to DROP an undeclared key. A stored-proc argument class, a
+     * response parser's decode target, a prompt payload or a read-only projection is not a request
+     * body, so it keeps the host mapper's own strictness: a model reply carrying an extra key must
+     * still be refused where the host refuses it.</p>
+     */
+    public static Set<String> requestBodyShapes(MetaDataLoader loader) {
+        Set<String> names = new HashSet<>();
+        Deque<MetaObject> pending = new ArrayDeque<>();
+        for (MetaObject obj : GeneratorUtil.ownMetaObjects(loader)) {
+            if (isWritable(obj) || isFoldedIntoWritableBase(obj)) {
+                if (names.add(obj.getName())) pending.add(obj);
+            }
+        }
+        while (!pending.isEmpty()) {
+            for (MetaField field : pending.poll().getMetaFields()) {
+                MetaObject target = ModelWalk.objectRefTarget(field);
+                if (target != null && names.add(target.getName())) pending.add(target);
+            }
+        }
+        return names;
+    }
+
+    private static boolean isFoldedIntoWritableBase(MetaObject obj) {
+        if (!obj.hasMetaAttr(MetaObject.ATTR_DISCRIMINATOR_VALUE, false)) return false;
+        for (MetaObject cursor = obj.getSuperObject(); cursor != null; cursor = cursor.getSuperObject()) {
+            if (isWritable(cursor)) return true;
+        }
+        return false;
     }
 }

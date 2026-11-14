@@ -116,7 +116,7 @@ class KotlinSecretFieldsTest {
     fun `a model with neither mark generates the plain write and read paths`() {
         val (controller, entity) = controllerAndEntity(marked = false)
         for (f in listOf("tokenHash", "pinHash")) {
-            assertTrue("it[$f] = dto.$f" in controller, controller)
+            assertTrue("it[AccountTable.$f] = dto.$f" in controller, controller)
             assertTrue("$f = row[AccountTable.$f]," in controller, controller)
         }
         assertTrue("listOf(\"name\", \"tokenHash\", \"pinHash\").any { body.has(it) }" in controller, controller)

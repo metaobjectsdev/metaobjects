@@ -1,5 +1,6 @@
 package acme.auth
 
+import com.fasterxml.jackson.`annotation`.JsonIgnoreProperties
 import com.fasterxml.jackson.databind.`annotation`.JsonDeserialize
 import java.math.BigDecimal
 import kotlin.Int
@@ -10,6 +11,7 @@ import kotlin.jvm.JvmStatic
 /**
  * GENERATED — do not hand-edit. Regenerated from metadata.
  */
+@JsonIgnoreProperties(ignoreUnknown = true)
 public data class Auth(
   public val id: Long? = null,
   public val type: AuthType? = null,

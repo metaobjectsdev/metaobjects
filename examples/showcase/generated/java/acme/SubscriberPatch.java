@@ -38,9 +38,11 @@ public final class SubscriberPatch {
     public static SubscriberPatch fromJson(JsonNode body, ObjectMapper mapper) {
         if (!body.isObject()) throw new PatchValidationException("(request body)");
         Map<String, Object> assigned = new LinkedHashMap<>();
-        bind(body, mapper, assigned, "email", new TypeReference<String>() {}, true);
-        bind(body, mapper, assigned, "name", new TypeReference<String>() {}, false);
-        bind(body, mapper, assigned, "status", new TypeReference<SubscriberDto.SubscriberStatus>() {}, true);
+        java.util.List<PatchValidationException.Problem> problems = PatchValidationException.newProblems();
+        PatchValidationException.collect(problems, () -> bind(body, mapper, assigned, "email", new TypeReference<String>() {}, true));
+        PatchValidationException.collect(problems, () -> bind(body, mapper, assigned, "name", new TypeReference<String>() {}, false));
+        PatchValidationException.collect(problems, () -> bind(body, mapper, assigned, "status", new TypeReference<SubscriberDto.SubscriberStatus>() {}, true));
+        if (!problems.isEmpty()) throw new PatchValidationException(problems, assigned);
         return new SubscriberPatch(assigned);
     }
 
@@ -56,7 +58,7 @@ public final class SubscriberPatch {
         try {
             assigned.put(field, mapper.treeToValue(node, type));
         } catch (JsonProcessingException e) {
-            throw new PatchValidationException(field);
+            throw new PatchValidationException(field, e);
         }
     }
 }

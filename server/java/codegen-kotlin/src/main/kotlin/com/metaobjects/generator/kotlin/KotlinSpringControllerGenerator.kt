@@ -4,6 +4,7 @@ package com.metaobjects.generator.kotlin
 // com.metaobjects.generator.kotlin when this generator is copied out via
 // `mvn metaobjects:eject` and its own package is renamed — an explicit import, not
 // same-package bare-name resolution, is what keeps the ejected copy compiling.
+import com.metaobjects.config.ApiSettings
 import com.metaobjects.config.WireFormat
 import com.metaobjects.generator.kotlin.ExposedApi
 import com.metaobjects.generator.kotlin.ExposedImports
@@ -124,6 +125,40 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
 
     private var exportWired = false
 
+    /** The project's `api` block for the current run (set in [execute]). */
+    private var apiSettings: ApiSettings = ApiSettings.DEFAULT
+
+    private val rejectUnknown: Boolean get() = apiSettings.rejectsUnknownFields()
+
+    /** `private val <Short>KnownFields`: every declared field name, as named on the wire (only under `reject`). */
+    private fun StringBuilder.appendKnownFields(shortName: String, names: Collection<String>) {
+        if (!rejectUnknown) return
+        append("/** GENERATED — every field ${shortName} declares, as named on the wire: a body key outside it is refused. */\n")
+        append("private val ${shortName}KnownFields: Set<String> = setOf(${names.distinct().joinToString(", ") { "\"$it\"" }})\n\n")
+    }
+
+    /** The unknown-key check of a write handler (after the non-object-body answer), only under `reject`. */
+    private fun StringBuilder.appendUnknownGuard(shortName: String) {
+        if (!rejectUnknown) return
+        append("        val unknownKeys = MetaUnknownBodyKeys.refusal(body, ${shortName}KnownFields)\n")
+        append("        if (unknownKeys != null) return@transaction ResponseEntity.badRequest().body(unknownKeys as Any)\n")
+    }
+
+    /**
+     * The refusal of a `limit` above `api.pagination.maxLimit`, at the head of a list handler, and
+     * of a negative one (the malformed-bound envelope, as the TypeScript routes answer), so a
+     * `LIMIT -1` never reaches a store that reads it as no limit (SQLite) and steps around the cap.
+     */
+    private fun StringBuilder.appendLimitGuard() {
+        val page = apiSettings.pagination() ?: return
+        append("        if (limit != null && limit < 0) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"pagination.invalid_value\", \"param\" to \"limit\", \"value\" to limit.toString(), \"expected\" to \"a non-negative integer (0 or more)\") as Any)\n")
+        append("        if (limit != null && limit > ${page.maxLimit()}L) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"limit_too_large\", \"maxLimit\" to ${page.maxLimit()}L) as Any)\n")
+    }
+
+    /** The page size a list handler uses when `limit` is omitted. */
+    private fun defaultLimit(): String =
+        apiSettings.pagination()?.defaultLimit()?.coerceAtMost(Int.MAX_VALUE.toLong())?.toString() ?: "50"
+
     override fun setRun(run: Collection<Generator>) {
         exportWired = EmitsReportExport.includedIn(run)
     }
@@ -151,6 +186,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
 
     override fun execute(loader: MetaDataLoader) {
         parseArgs()
+        apiSettings = loader.root.apiSettings
         val outRoot = Paths.get(outDir.absolutePath)
         // ADR-0019 Amendment 1: every controller reads a decimal filter operand, a decimal PATCH value
         // and an unreadable body through its package's generated MetaDecimalWire (no MetaObjects import).
@@ -222,6 +258,9 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         }
         val wire = WireFormat.of(loader.root)
         for (pkg in decimalWirePackages) KotlinDecimalWireEmitter.write(pkg, outRoot, wire)
+        // The validation envelope every controller collects its issues into, beside MetaDecimalWire.
+        for (pkg in decimalWirePackages) KotlinValidationIssuesEmitter.write(pkg, outRoot)
+        if (rejectUnknown) for (pkg in decimalWirePackages) KotlinUnknownBodyKeysEmitter.write(pkg, outRoot)
         for (pkg in durationWirePackages) KotlinDurationWireEmitter.write(pkg, outRoot)
     }
 
@@ -310,7 +349,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         // #484: credential fields are removed from every response at the HTTP boundary.
         val creds = credentialNames(entity.metaFields)
         val m2mNavsForMapper = KotlinM2mSupport.resolve(entity, loader, providedEnums)
-        val needsMapper = hasPatchFields || creds.isNotEmpty() || m2mNavsForMapper.any { it.targetCredentialFields.isNotEmpty() }
+        val needsMapper = hasPatchFields || rejectUnknown || creds.isNotEmpty() || m2mNavsForMapper.any { it.targetCredentialFields.isNotEmpty() }
 
         // #203/ADR-0045: @autoSet columns are stamped by the generated controller, not bound from
         // the caller. insert stamps BOTH onCreate+onUpdate (a fresh row's updatedAt == createdAt —
@@ -458,6 +497,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             }
             append("\n")
             appendSortSurface(this, shortName, entity, sortFields)
+            appendKnownFields(shortName, entity.metaFields.map { it.name })
 
             // FR-009 filter pipeline. Three stages:
             //   1. data class ${shortName}FilterPredicate — parsed + validated one
@@ -509,9 +549,69 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             // default 400 body is NOT the cross-port {error:"validation"} shape and does not fire
             // under MockMvc standaloneSetup — so the check is explicit here.)
             append("    @PostMapping\n")
-            append("    fun create(@RequestBody dto: ${shortName}): ResponseEntity<Any> = transaction {\n")
-            append("        if (validator.validate(dto).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\") as Any)\n")
+            val patchKtType = { field: MetaField<*> ->
+                val elem: String = if (field is ObjectField) {
+                    voElementTypeFqn(field, loader)
+                } else if (field is MapField) {
+                    "kotlin.collections.Map<kotlin.String, ${voMapValueTypeFqn(field, loader)}>"
+                } else {
+                    (KotlinTypeMapper.enumTypeName(field, entity, providedEnums) ?: KotlinTypeMapper.kotlinTypeName(field)).toString()
+                }
+                if (field.isArrayType) "kotlin.collections.List<$elem>" else elem
+            }
+            if (hasPatchFields) {
+                // Bind the raw body so a body Jackson cannot bind as a whole (a required value missing) still
+                // gets EVERY issue listed: on a failed bind each present field is bound and validated on its own,
+                // and the failure itself is added at the field it names.
+                append("    fun create(@RequestBody body: JsonNode): ResponseEntity<Any> = transaction {\n")
+                append("        val issues = MetaValidationIssues.Collector()\n")
+                append("        if (!body.isObject) return@transaction ResponseEntity.badRequest().body(issues.add(\"invalid_type\", emptyList(), \"request body must be a JSON object\").body() as Any)\n")
+                appendUnknownGuard(shortName)
+                append("        val dto: ${shortName} = try {\n")
+                append("            objectMapper.treeToValue(body, ${shortName}::class.java)\n")
+                append("        } catch (e: Exception) {\n")
+                // A required value with no default that is absent or null cannot bind: list EACH one here, since
+                // Jackson names only the first it meets.
+                for (field in patchSettableFields) {
+                    if (KotlinGenUtil.isRequiredField(field) && !field.hasMetaAttr(MetaField.ATTR_DEFAULT) &&
+                        !KotlinGenUtil.isServerOwnedOnCreate(field, entity) && !KotlinGenUtil.isNullableShapeProperty(field) &&
+                        !KotlinGenUtil.isDerivedField(field)
+                    ) {
+                        append("            if (!body.has(\"${field.name}\") || body.get(\"${field.name}\").isNull) issues.add(\"invalid_type\", listOf(\"${field.name}\"), \"field '${field.name}' is required\")\n")
+                    }
+                }
+                for (field in patchSettableFields) {
+                    val fn = field.name
+                    val cap = capitalizeFirst(fn)
+                    val kt = patchKtType(field)
+                    append("            if (body.has(\"$fn\") && !body.get(\"$fn\").isNull) {\n")
+                    append("                val v$cap: $kt? = issues.bind<$kt>(\"$fn\") { ${patchBindExpr(field, fn, kt)} }\n")
+                    append("                if (v$cap != null) issues.addAt(validator.validateValue(${shortName}::class.java, \"$fn\", v$cap), \"$fn\")\n")
+                    appendDecimalRangeCheck("                ", field, "v$cap")
+                    append("            }\n")
+                }
+                append("            issues.addFailure(e)\n")
+                append("            return@transaction ResponseEntity.badRequest().body(issues.body() as Any)\n")
+                append("        }\n")
+                append("        issues.addViolations(validator.validate(dto))\n")
+            } else if (rejectUnknown) {
+                // The raw body is read first so an undeclared key is refused whatever the host's ObjectMapper does.
+                append("    fun create(@RequestBody body: JsonNode): ResponseEntity<Any> = transaction {\n")
+                append("        if (!body.isObject) return@transaction ResponseEntity.badRequest().body(MetaValidationIssues.Collector().add(\"invalid_type\", emptyList(), \"request body must be a JSON object\").body() as Any)\n")
+                appendUnknownGuard(shortName)
+                append("        val dto: ${shortName} = try {\n")
+                append("            objectMapper.treeToValue(body, ${shortName}::class.java)\n")
+                append("        } catch (e: Exception) {\n")
+                append("            return@transaction ResponseEntity.badRequest().body(MetaDecimalWire.unreadableBody(e) as Any)\n")
+                append("        }\n")
+                append("        val issues = MetaValidationIssues.Collector().addViolations(validator.validate(dto))\n")
+            } else {
+                append("    fun create(@RequestBody dto: ${shortName}): ResponseEntity<Any> = transaction {\n")
+                append("        val issues = MetaValidationIssues.Collector().addViolations(validator.validate(dto))\n")
+            }
             for (field in entity.metaFields) appendDecimalRangeCheck("        ", field, "dto.${field.name}")
+            // Every issue is listed (never just the first): collected above, answered once.
+            append("        if (!issues.isEmpty()) return@transaction ResponseEntity.badRequest().body(issues.body() as Any)\n")
             // #203/ADR-0045: capture one now() per temporal type so createdAt == updatedAt exactly.
             for ((expr, valName) in insertNowVal) append("        val $valName = $expr\n")
             append("        val newId = ${tableObjectName}.insert {\n")
@@ -519,7 +619,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             // Exposed hands back `[Table.id]` only for a value it inserted or an autoIncrement
             // column, so a DB-defaulted uuid key read back as "id is not in record set" on every
             // driver that will not return it. Minting app-side is what the TS runtime does too.
-            if (uuidGeneratedPk(entity, pkFieldName)) append("            it[${pkFieldName}] = java.util.UUID.randomUUID()\n")
+            if (uuidGeneratedPk(entity, pkFieldName)) append("            it[${tableObjectName}.${pkFieldName}] = java.util.UUID.randomUUID()\n")
             for (field in KotlinGenUtil.columnFields(entity)) {
                 // Program D: a field.object value-object jsonb column IS written on create — the
                 // DTO property is the typed VO (record / List<VO>) and the Exposed Column<VO> codec
@@ -537,17 +637,21 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 // #203/ADR-0045: insert stamps onCreate+onUpdate @autoSet columns from the captured
                 // now() (the caller's value is ignored — never bound from the dto).
                 if (KotlinGenUtil.isAutoSetField(field)) {
-                    append("            it[${field.name}] = ${insertNowVal[KotlinTypeMapper.nowExpr(field)]}\n")
+                    append("            it[${tableObjectName}.${field.name}] = ${insertNowVal[KotlinTypeMapper.nowExpr(field)]}\n")
                     continue
                 }
                 // #484: a @formExclude / credential column is never bound from the request body.
                 if (KotlinGenUtil.isApiWriteDenied(field)) continue
+                // A readOnly or derived column is server-owned (the 1.2.x security fix). A client value
+                // is DROPPED (never 400'd) and the column keeps its default, the same rule as the
+                // PATCH settable set.
+                if (KotlinGenUtil.isReadOnlyMutability(field) || KotlinGenUtil.isDerivedField(field)) continue
                 // NOTE: a `field.string @dbColumnType=jsonb` open bag IS written here (create
                 // binds it from the @Valid DTO's kotlinx JsonElement property, gated by the
                 // jsonb-open-bag-roundtrip corpus). PATCH cannot (the raw-JsonNode path can't bind
                 // a JsonElement without surfacing the un-imported type the #179 guard forbids), so
                 // an open bag is a create-only column on the generated CRUD — see KNOWN_GAPS.
-                append("            it[${field.name}] = dto.${field.name}\n")
+                append("            it[${tableObjectName}.${field.name}] = dto.${field.name}\n")
             }
             append("        }[${tableObjectName}.${pkFieldName}]\n")
             // #214: re-read the persisted row through the READ object (the view for a write-through
@@ -573,12 +677,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             // When empty, no update{} block is emitted (an empty Exposed SET throws) — a no-op read-back.
             append("    @RequestMapping(value = [\"/{id}\"], method = [RequestMethod.PATCH, RequestMethod.PUT])\n")
             append("    fun update(@PathVariable id: $pkParamType, @RequestBody body: JsonNode): ResponseEntity<Any> = transaction {\n")
-            append("        if (!body.isObject) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\") as Any)\n")
-            for (field in patchSettableFields) {
-                if (KotlinGenUtil.isRequiredField(field)) {
-                    append("        if (body.has(\"${field.name}\") && body.get(\"${field.name}\").isNull) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\") as Any)\n")
-                }
-            }
+            appendPatchHead(this, patchSettableFields, shortName)
             val mustStampOnUpdate = onUpdateAutoSetFields.isNotEmpty()
             if (hasPatchFields) {
                 val settableNamesList = patchSettableFields.joinToString(", ") { "\"${it.name}\"" }
@@ -589,7 +688,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 // A present value that cannot bind to its column's Kotlin type (e.g. a JSON object
                 // for a String column) throws from treeToValue — map that to 400, not a 500. Catch
                 // the specific Jackson JsonMappingException so no unrelated exception is swallowed.
-                append("            try {\n")
+                append("            run {\n")
                 // FR-036: bind each PRESENT value into a typed local, then validate present NON-NULL
                 // values against the entity's field constraints (validator.validateValue) — a bind
                 // failure OR a constraint violation → 400 BEFORE any write. Binding happens here (not
@@ -613,33 +712,25 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                     val ktType = if (field.isArrayType) "kotlin.collections.List<$elem>" else elem
                     val fn = field.name
                     val cap = capitalizeFirst(fn)
-                    append("                val has$cap = body.has(\"$fn\")\n")
-                    if (KotlinGenUtil.isRequiredField(field)) {
-                        // required: present ⇒ non-null (present-null was 400'd above).
-                        append("                val v$cap: $ktType? = if (has$cap) ${patchBindExpr(field, fn, ktType)} else null\n")
-                        append("                if (has$cap && validator.validateValue(${shortName}::class.java, \"$fn\", v$cap).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\") as Any)\n")
-                    } else {
-                        append("                val null$cap = has$cap && body.get(\"$fn\").isNull\n")
-                        append("                val v$cap: $ktType? = if (has$cap && !null$cap) ${patchBindExpr(field, fn, ktType)} else null\n")
-                        append("                if (has$cap && !null$cap && validator.validateValue(${shortName}::class.java, \"$fn\", v$cap).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\") as Any)\n")
-                    }
-                    appendDecimalRangeCheck("                ", field, "v$cap")
+                    appendPatchFieldBinding(this, field, ktType, patchBindExpr(field, fn, ktType), "${shortName}::class.java")
                     // Program D (spec §0): jakarta validateValue does NOT cascade @Valid into a nested
                     // value-object's constraints, so a present VO is validated EXPLICITLY —
                     // validator.validate(voElement) per element (single VO whole; array VO per element),
                     // 400 on any violation. (A present-null / cleared value is already handled above.)
                     if (field is MapField) {
                         // Each map VALUE is a value object validated on its own (the keys are arbitrary text).
-                        append("                if (v$cap != null && v$cap.values.any { validator.validate(it).isNotEmpty() }) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\") as Any)\n")
+                        append("                if (v$cap != null) for ((k, el) in v$cap) issues.addViolations(validator.validate(el), \"$fn\", k)\n")
                     }
                     if (field is ObjectField) {
                         if (field.isArrayType) {
-                            append("                if (v$cap != null && v$cap.any { validator.validate(it).isNotEmpty() }) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\") as Any)\n")
+                            append("                if (v$cap != null) v$cap.forEachIndexed { i, el -> issues.addViolations(validator.validate(el), \"$fn\", i) }\n")
                         } else {
-                            append("                if (v$cap != null && validator.validate(v$cap).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\") as Any)\n")
+                            append("                if (v$cap != null) issues.addViolations(validator.validate(v$cap), \"$fn\")\n")
                         }
                     }
                 }
+                // Every issue found above is answered at once, before anything is written.
+                append("                if (!issues.isEmpty()) return@transaction ResponseEntity.badRequest().body(issues.body() as Any)\n")
                 // Apply the already-bound + validated values. Columns are qualified (`Table.col`)
                 // so a field named like the `body`/`id` params can't shadow them.
                 append("                ${tableObjectName}.update({ ${tableObjectName}.${pkFieldName} eq id }) {\n")
@@ -659,8 +750,6 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                     }
                 }
                 append("                }\n")
-                append("            } catch (e: com.fasterxml.jackson.databind.JsonMappingException) {\n")
-                append("                return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\") as Any)\n")
                 append("            }\n")
                 // Close the "any present" guard only when it was opened (see mustStampOnUpdate above).
                 if (!mustStampOnUpdate) append("        }\n")
@@ -842,7 +931,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         // #484: credential columns (base or subtype-only) are removed from every response; the controller
         // then needs the ObjectMapper even when no subtype has a settable column.
         val creds = credentialNames(markFields)
-        val needsMapper = anyPatchFields || creds.isNotEmpty() ||
+        val needsMapper = anyPatchFields || rejectUnknown || creds.isNotEmpty() ||
             (listOf(baseM2mNavs) + plan.subtypes.map { subtypeM2mNavs(it) }).any { navs -> navs.any { it.targetCredentialFields.isNotEmpty() } }
 
         val src = buildString {
@@ -947,6 +1036,9 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             // The polymorphic sort surface is the BASE's own columns, so the declared
             // orders are read off the base too — same owner the allowlist came from.
             appendSortDefaultOrders(this, shortName, base, sortFields)
+            // A key declared by the base or by ANY subtype is known on every route: a sibling subtype's column is
+            // dropped on another subtype's route, never refused.
+            appendKnownFields(shortName, base.metaFields.map { it.name } + plan.subtypes.flatMap { st -> st.entity.metaFields.map { it.name } })
             append("private fun parse${shortName}Sort(raw: String): Pair<String, SortOrder>? {\n")
             append("    val parts = raw.split(\":\", limit = 2)\n")
             append("    val field = parts.getOrNull(0) ?: return null\n")
@@ -1002,6 +1094,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             append("        @RequestParam(required = false, name = \"withCount\") withCount: Int?,\n")
             append("        request: HttpServletRequest,\n")
             append("    ): ResponseEntity<Any> = transaction {\n")
+            appendLimitGuard()
             append("        val filterResult = parse${shortName}Filter(request.queryString)\n")
             append("        if (filterResult.error != null) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to filterResult.error, \"field\" to filterResult.field) as Any)\n")
             append("        val whereOp = ${shortName}WhereOp(filterResult.predicates)\n")
@@ -1016,9 +1109,9 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             // issue #390: Exposed 1.x's Query.limit(count) dropped the 0.x 2-arg
             // limit(count, offset) overload — offset is now its OWN chained call.
             if (api == ExposedApi.V1) {
-                append("        val rows = q.limit(limit ?: 50).offset((offset ?: 0).toLong()).map { ${wireRow(shortName, creds, "it")} }\n")
+                append("        val rows = q.limit(limit ?: ${defaultLimit()}).offset((offset ?: 0).toLong()).map { ${wireRow(shortName, creds, "it")} }\n")
             } else {
-                append("        val rows = q.limit(limit ?: 50, (offset ?: 0).toLong()).map { ${wireRow(shortName, creds, "it")} }\n")
+                append("        val rows = q.limit(limit ?: ${defaultLimit()}, (offset ?: 0).toLong()).map { ${wireRow(shortName, creds, "it")} }\n")
             }
             append("        if (withCount == 1) ResponseEntity.ok(mapOf(\"rows\" to rows, \"total\" to total) as Any)\n")
             append("        else ResponseEntity.ok(rows as Any)\n")
@@ -1064,6 +1157,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 append("        @RequestParam(required = false) sort: String?,\n")
                 append("        request: HttpServletRequest,\n")
                 append("    ): ResponseEntity<Any> = transaction {\n")
+                appendLimitGuard()
                 append("        val filterResult = parse${shortName}Filter(request.queryString)\n")
                 append("        if (filterResult.error != null) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to filterResult.error, \"field\" to filterResult.field) as Any)\n")
                 append("        val whereOp = ${shortName}WhereOp(filterResult.predicates)\n")
@@ -1080,9 +1174,9 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 // issue #390: Exposed 1.x's Query.limit(count) dropped the 0.x 2-arg
             // limit(count, offset) overload — offset is now its OWN chained call.
             if (api == ExposedApi.V1) {
-                append("        val rows = q.limit(limit ?: 50).offset((offset ?: 0).toLong()).map { ${wireRow(shortName, creds, "it")} }\n")
+                append("        val rows = q.limit(limit ?: ${defaultLimit()}).offset((offset ?: 0).toLong()).map { ${wireRow(shortName, creds, "it")} }\n")
             } else {
-                append("        val rows = q.limit(limit ?: 50, (offset ?: 0).toLong()).map { ${wireRow(shortName, creds, "it")} }\n")
+                append("        val rows = q.limit(limit ?: ${defaultLimit()}, (offset ?: 0).toLong()).map { ${wireRow(shortName, creds, "it")} }\n")
             }
                 append("        ResponseEntity.ok(rows as Any)\n")
                 append("    }\n\n")
@@ -1113,33 +1207,52 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 }
                 if (crossFieldRules.isNotEmpty()) append("    @Suppress(\"UNCHECKED_CAST\")\n")
                 append("    @PostMapping(\"/$seg\")\n")
-                append("    fun create$sfx(@RequestBody dto: $shortName): ResponseEntity<Any> = transaction {\n")
+                if (rejectUnknown) {
+                    // The raw body is read first so an undeclared key is refused whatever the host's ObjectMapper does.
+                    append("    fun create$sfx(@RequestBody body: JsonNode): ResponseEntity<Any> = transaction {\n")
+                    append("        if (!body.isObject) return@transaction ResponseEntity.badRequest().body(MetaValidationIssues.Collector().add(\"invalid_type\", emptyList(), \"request body must be a JSON object\").body() as Any)\n")
+                    appendUnknownGuard(shortName)
+                    append("        val dto: $shortName = try {\n")
+                    append("            objectMapper.treeToValue(body, ${shortName}::class.java)\n")
+                    append("        } catch (e: Exception) {\n")
+                    append("            return@transaction ResponseEntity.badRequest().body(MetaDecimalWire.unreadableBody(e) as Any)\n")
+                    append("        }\n")
+                } else {
+                    append("    fun create$sfx(@RequestBody dto: $shortName): ResponseEntity<Any> = transaction {\n")
+                }
+                append("        val issues = MetaValidationIssues.Collector()\n")
                 for (field in stPatch) {
-                    append("        if (validator.validateValue($validationRef::class.java, \"${field.name}\", dto.${field.name}).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\") as Any)\n")
+                    append("        issues.addAt(validator.validateValue($validationRef::class.java, \"${field.name}\", dto.${field.name}), \"${field.name}\")\n")
                     appendDecimalRangeCheck("        ", field, "dto.${field.name}")
                 }
                 for ((_, rule) in crossFieldRules) {
-                    append("        if (!($rule)) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\") as Any)\n")
+                    append("        if (!($rule)) issues.add(\"custom\", emptyList(), \"a cross-field rule failed\")\n")
                 }
+                append("        if (!issues.isEmpty()) return@transaction ResponseEntity.badRequest().body(issues.body() as Any)\n")
                 // #203/ADR-0045: capture one now() per temporal type so createdAt == updatedAt exactly.
                 for ((expr, valName) in insertNowVal) append("        val $valName = $expr\n")
                 append("        val newId = $table.insert {\n")
-                append("            it[${plan.discriminatorField}] = $disc\n")
+                append("            it[$table.${plan.discriminatorField}] = $disc\n")
                 // `@generation: uuid` key minted app-side — see the vanilla create.
-                if (uuidGeneratedPk(base, pkFieldName)) append("            it[$pkFieldName] = java.util.UUID.randomUUID()\n")
-                for (f in writableFields) {
+                if (uuidGeneratedPk(base, pkFieldName)) append("            it[$table.$pkFieldName] = java.util.UUID.randomUUID()\n")
+                // Only what THIS route's subtype may set on create: its effective (base + own)
+                // columns, never a readOnly or derived one and never a sibling subtype's column.
+                val createNames = st.entity.metaFields
+                    .filter { !KotlinGenUtil.isReadOnlyMutability(it) && !KotlinGenUtil.isDerivedField(it) }
+                    .map { it.name }.toSet()
+                for (f in writableFields.filter { it in createNames }) {
                     // A column is non-null in the union table iff it is a BASE @required field
                     // (subtype-only columns are folded NULLABLE). For a non-null column the union
                     // DTO field is still nullable, so force non-null on create (create bodies for
                     // that subtype always supply it); nullable columns bind the nullable value as-is.
                     val colNonNull = baseFieldNames.contains(f) && KotlinGenUtil.isRequiredField(scalarFields.first { it.name == f })
-                    if (colNonNull) append("            it[$f] = dto.$f!!\n")
-                    else append("            it[$f] = dto.$f\n")
+                    if (colNonNull) append("            it[$table.$f] = dto.$f!!\n")
+                    else append("            it[$table.$f] = dto.$f\n")
                 }
                 // #203/ADR-0045: insert stamps onCreate+onUpdate @autoSet columns from the captured
                 // now() (the caller's dto value is ignored — never bound).
                 for (f in insertAutoSetFields) {
-                    append("            it[${f.name}] = ${insertNowVal[KotlinTypeMapper.nowExpr(f)]}\n")
+                    append("            it[$table.${f.name}] = ${insertNowVal[KotlinTypeMapper.nowExpr(f)]}\n")
                 }
                 append("        }[$table.$pkFieldName]\n")
                 append("        val saved = $table.selectAll().where { $table.$pkFieldName eq newId }.single()\n")
@@ -1161,12 +1274,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 // no-op read-back.
                 append("    @RequestMapping(value = [\"/$seg/{id}\"], method = [RequestMethod.PATCH, RequestMethod.PUT])\n")
                 append("    fun update$sfx(@PathVariable id: $pkParamType, @RequestBody body: JsonNode): ResponseEntity<Any> = transaction {\n")
-                append("        if (!body.isObject) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\") as Any)\n")
-                for (field in stPatch) {
-                    if (KotlinGenUtil.isRequiredField(field)) {
-                        append("        if (body.has(\"${field.name}\") && body.get(\"${field.name}\").isNull) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\") as Any)\n")
-                    }
-                }
+                appendPatchHead(this, stPatch, shortName)
                 // #203/ADR-0045: mirrors the vanilla update handler's mustStampOnUpdate control flow —
                 // an onUpdate @autoSet column must bump on EVERY patch, so the "any present" guard is
                 // dropped when one exists (else the guard would keep a no-settable-field patch from
@@ -1175,7 +1283,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 if (stPatch.isNotEmpty()) {
                     val settableNamesList = stPatch.joinToString(", ") { "\"${it.name}\"" }
                     if (!mustStampOnUpdate) append("        if (listOf($settableNamesList).any { body.has(it) }) {\n")
-                    append("            try {\n")
+                    append("            run {\n")
                     for (field in stPatch) {
                         // The union column's element type — a field.enum's materialized enum class resolved
                         // with the BASE as owner (exactly as the union data class + table type the folded
@@ -1184,18 +1292,9 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                         val ktType = if (field.isArrayType) "kotlin.collections.List<$elem>" else "$elem"
                         val fn = field.name
                         val cap = capitalizeFirst(fn)
-                        append("                val has$cap = body.has(\"$fn\")\n")
-                        if (KotlinGenUtil.isRequiredField(field)) {
-                            // required: present ⇒ non-null (present-null was 400'd above).
-                            append("                val v$cap: $ktType? = if (has$cap) ${patchBindExpr(field, fn, ktType)} else null\n")
-                            append("                if (has$cap && validator.validateValue($validationRef::class.java, \"$fn\", v$cap).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\") as Any)\n")
-                        } else {
-                            append("                val null$cap = has$cap && body.get(\"$fn\").isNull\n")
-                            append("                val v$cap: $ktType? = if (has$cap && !null$cap) ${patchBindExpr(field, fn, ktType)} else null\n")
-                            append("                if (has$cap && !null$cap && validator.validateValue($validationRef::class.java, \"$fn\", v$cap).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\") as Any)\n")
-                        }
-                        appendDecimalRangeCheck("                ", field, "v$cap")
+                        appendPatchFieldBinding(this, field, ktType, patchBindExpr(field, fn, ktType), "$validationRef::class.java")
                     }
+                    append("                if (!issues.isEmpty()) return@transaction ResponseEntity.badRequest().body(issues.body() as Any)\n")
                     // Apply the already-bound + validated values, scoped to (pk eq id) and (disc eq value).
                     // Columns are qualified ($table.col) so a field named like the body/id params can't shadow.
                     append("                $table.update({ ($table.$pkFieldName eq id) and ($table.${plan.discriminatorField} eq $disc) }) {\n")
@@ -1215,8 +1314,6 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                         }
                     }
                     append("                }\n")
-                    append("            } catch (e: com.fasterxml.jackson.databind.JsonMappingException) {\n")
-                    append("                return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\") as Any)\n")
                     append("            }\n")
                     // Close the "any present" guard only when it was opened (see mustStampOnUpdate above).
                     if (!mustStampOnUpdate) append("        }\n")
@@ -1358,8 +1455,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             "!${decimalFitsExpr(field, value)}"
         }
         append(indent)
-        append("if ($outOfRange) return@transaction ")
-        append("ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\", \"field\" to \"${field.name}\") as Any)\n")
+        append("if ($outOfRange) issues.add(\"too_big\", listOf(\"${field.name}\"), \"decimal does not fit the declared precision and scale\")\n")
     }
 
     /**
@@ -1384,24 +1480,50 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
     private fun patchBindExpr(field: MetaField<*>, fn: String, ktType: String): String =
         if (field is DurationField && durationsIso) {
             // field.duration: the accepted ISO-8601 form only, never the ObjectMapper's Duration.parse.
-            val read = if (field.isArrayType) {
+            if (field.isArrayType) {
                 "body.get(\"$fn\").also { require(it.isArray) }.map { MetaDurationWire.fromNode(it) }"
             } else {
                 "MetaDurationWire.fromNode(body.get(\"$fn\"))"
             }
-            "runCatching { $read }" +
-                ".getOrElse { return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\", \"field\" to \"$fn\") as Any) }"
         } else if (field is DecimalField) {
-            val read = if (field.isArrayType) {
+            if (field.isArrayType) {
                 "body.get(\"$fn\").also { require(it.isArray) }.map { MetaDecimalWire.fromNode(it) }"
             } else {
                 "MetaDecimalWire.fromNode(body.get(\"$fn\"))"
             }
-            "runCatching { $read }" +
-                ".getOrElse { return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\", \"field\" to \"$fn\") as Any) }"
         } else {
             "objectMapper.treeToValue(body.get(\"$fn\"), object : TypeReference<$ktType>() {})"
         }
+
+    /**
+     * The head of a PATCH handler: the issue collector, a non-object body (an issue with an empty path), and an
+     * explicit null on a @required field (an issue at that field). Every issue is collected and answered together.
+     */
+    private fun appendPatchHead(out: StringBuilder, fields: List<MetaField<*>>, shortName: String) {
+        out.append("        val issues = MetaValidationIssues.Collector()\n")
+        out.append("        if (!body.isObject) return@transaction ResponseEntity.badRequest().body(issues.add(\"invalid_type\", emptyList(), \"request body must be a JSON object\").body() as Any)\n")
+        out.appendUnknownGuard(shortName)
+        for (field in fields) {
+            if (KotlinGenUtil.isRequiredField(field)) {
+                out.append("        if (body.has(\"${field.name}\") && body.get(\"${field.name}\").isNull) issues.add(\"invalid_type\", listOf(\"${field.name}\"), \"field '${field.name}' cannot be null\")\n")
+            }
+        }
+    }
+
+    /**
+     * Bind one PRESENT PATCH value into the typed local `v<Cap>` (a bind failure becomes an issue and leaves it null)
+     * and validate it against [validationClass] when non-null, then check a decimal against its declared range.
+     * `has<Cap>` and `null<Cap>` are the presence flags the update block reads.
+     */
+    private fun appendPatchFieldBinding(out: StringBuilder, field: MetaField<*>, ktType: String, bindExpr: String, validationClass: String) {
+        val fn = field.name
+        val cap = capitalizeFirst(fn)
+        out.append("                val has$cap = body.has(\"$fn\")\n")
+        out.append("                val null$cap = has$cap && body.get(\"$fn\").isNull\n")
+        out.append("                val v$cap: $ktType? = if (has$cap && !null$cap) issues.bind<$ktType>(\"$fn\") { $bindExpr } else null\n")
+        out.append("                if (v$cap != null) issues.addAt(validator.validateValue($validationClass, \"$fn\", v$cap), \"$fn\")\n")
+        out.appendDecimalRangeCheck("                ", field, "v$cap")
+    }
 
     /** Capitalize the first char (method-name suffix from a discriminator value). */
     private fun capitalizeFirst(s: String): String =
@@ -2366,6 +2488,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         append("        @RequestParam(required = false, name = \"withCount\") withCount: Int?,\n")
         append("        request: HttpServletRequest,\n")
         append("    ): ResponseEntity<Any> = transaction {\n")
+        appendLimitGuard()
         append("        // FR-009 filter operators — short-circuit 400 on invalid field/op/value.\n")
         append("        val filterResult = parse${shortName}Filter(request.queryString)\n")
         append("        if (filterResult.error != null) {\n")
@@ -2380,7 +2503,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         append("            q = q.orderBy(${sortColumnExpr(readObj, shortName, sortFields, exposedApi())} to dir)\n")
         append("        }\n")
         append("        val total: Long = if (withCount == 1) q.count() else -1L\n")
-        append("        val effectiveLimit = limit ?: 50\n")
+        append("        val effectiveLimit = limit ?: ${defaultLimit()}\n")
         append("        val effectiveOffset = (offset ?: 0).toLong()\n")
         // issue #390: see the vanilla/TPH controllers' identical comment above.
         if (api == ExposedApi.V1) {

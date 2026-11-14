@@ -171,6 +171,7 @@ public class MetaDataLoader
         {
             result.Root.PhysicalNaming = cfg.Naming;
             result.Root.WireFormat = cfg.Wire;
+            result.Root.Api = cfg.Api;
             result.Root.EnumDefaults = cfg.Enums;
         }
         return result;

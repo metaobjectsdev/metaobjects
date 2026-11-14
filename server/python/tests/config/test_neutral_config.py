@@ -235,7 +235,7 @@ def test_rules_settings_are_read(tmp_path: Path) -> None:
     _write_config(tmp_path, {
         "schema_version": 1,
         "rules": {"permissions": {"names": "require"}, "lifecycle": {"create": "any", "commands": "none"}},
-        "verify": {"lifecycle": {"unreachable": "error"}},
+        "verify": {"handEdits": "fail", "lifecycle": {"unreachable": "error"}},
     })
     cfg = read_neutral_config(tmp_path)
     assert cfg is not None
@@ -251,6 +251,7 @@ def test_rules_settings_are_read(tmp_path: Path) -> None:
     {"rules": "advise"},
     {"verify": {"lifecycle": {"unreachable": "fail"}}},
     {"verify": {"lifecycles": {}}},
+    {"verify": {"handEdits": "warn"}},
 ])
 def test_rules_settings_mistakes_are_refused(tmp_path: Path, extra: dict) -> None:
     _write_config(tmp_path, {"schema_version": 1, **extra})

@@ -8,10 +8,10 @@ USAGE:
 
 COMMANDS:
   init                  Scaffold a MetaObjects project in the current repo
-  init --refresh-docs   Refresh .metaobjects/AGENTS.md + CLAUDE.md after CLI upgrades
+  init --refresh-docs   Refresh .metaobjects/AGENTS.md and the skills after CLI upgrades
   init --with-docs      Scaffold with documentation wired (docsFile(), apiDocsFile()) so the first \`meta gen\` writes it
   init --config-only    Write only .metaobjects/config.json — for a Maven- or pip-rooted project
-  agent-docs            Scaffold only the agent-context (.metaobjects/ + .claude/skills/) — canonical redirect target for all language ports
+  agent-docs            Scaffold only the agent-context (.metaobjects/AGENTS.md + skills) — canonical redirect target for all language ports
   gen [<entity>...]     Codegen TS targets from your declared metadata
   generator new <name>  Write a generator of your own into codegen/generators/ and wire it — the
                         way to get any output MetaObjects does not ship (Zod, a client, …)

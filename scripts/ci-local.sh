@@ -369,7 +369,9 @@ gate_assess_prompt() { node scripts/build-assess-prompt.mjs --out /dev/null && n
 # no peer warning. A workspace CANNOT catch this: devDeps are pinned and bun.lock
 # freezes them, so every test runs against the version we chose, never the one an
 # adopter resolves. The check reads MANIFESTS, so it needs no network.
-gate_peer_ranges() { bun scripts/check-peer-ranges.ts; }
+# The same walk also refuses install-only deps (dprint-node, ts-poet, @types/*) in
+# dependencies, optionalDependencies or a required peer; see scripts/check-peer-ranges.ts.
+gate_peer_ranges() { bun scripts/check-peer-ranges.ts && bun test scripts/check-peer-ranges.test.ts; }
 
 # ── this repo's OWNED copies of the reference templates must BE the templates ──
 # owned-copies-current.test.ts already asserts byte-identity; this runs the same check

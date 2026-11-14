@@ -2,7 +2,8 @@ import { readFileSync, readdirSync, existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { pinDocsRefs } from "@metaobjectsdev/metadata";
 import {
-  SKILL_NAMES, SERVER_LANGS, CLIENT_FRAMEWORKS, type AssembledFile, type Stack,
+  SKILL_NAMES, SERVER_LANGS, CLIENT_FRAMEWORKS, DEFAULT_SKILLS_DIR, normalizeSkillsDir,
+  type AssembledFile, type Stack,
 } from "./types.js";
 
 // Language/framework reference fragments are stack-scoped, and so is a `<token>-<topic>.md`
@@ -134,27 +135,37 @@ function applyTemplate(
  * `main`, which is what the content tree is authored with). The scaffolder passes the tag
  * of the running release (`docsRefForVersion`), so the links an agent follows are the
  * guides of the version that wrote them and do not move after the cut.
+ *
+ * `skillsDir` is where the skills install (default {@link DEFAULT_SKILLS_DIR}); the always-on
+ * text names it, so an assistant that does not load skills can open them by path.
  */
-export function assemble(opts: { contentRoot: string; stack: Stack; docsRef?: string }): AssembledFile[] {
+export function assemble(opts: { contentRoot: string; stack: Stack; docsRef?: string; skillsDir?: string }): AssembledFile[] {
   const { contentRoot, stack } = opts;
   const docsRef = opts.docsRef ?? "main";
+  const skillsDir = normalizeSkillsDir(opts.skillsDir ?? DEFAULT_SKILLS_DIR);
   const out: AssembledFile[] = [];
 
-  // 1. Always-on (AGENTS.md + CLAUDE.md, identical contents).
+  // 1. Always-on: one file, `.metaobjects/AGENTS.md`. Every assistant reads it through the root
+  //    AGENTS.md or CLAUDE.md that `meta init` wires; a second identical `.metaobjects/CLAUDE.md`
+  //    used to be written beside it, which nothing imported.
   const tpl = readFileSync(join(contentRoot, "templates", "always-on.md.mustache"), "utf8");
   const alwaysOn = applyTemplate(
     tpl,
-    { stackLine: stackLine(stack), stackLoops: stackLoops(contentRoot, stack), verifySteps: verifySteps(contentRoot, stack) },
+    {
+      stackLine: stackLine(stack),
+      stackLoops: stackLoops(contentRoot, stack),
+      verifySteps: verifySteps(contentRoot, stack),
+      skillsDir,
+    },
     {},
   );
   out.push({ path: ".metaobjects/AGENTS.md", contents: alwaysOn });
-  out.push({ path: ".metaobjects/CLAUDE.md", contents: alwaysOn });
 
   // 2. Skills: body + only the references whose token is in the stack.
   for (const skill of SKILL_NAMES) {
     const skillDir = join(contentRoot, "skills", skill);
     const body = readFileSync(join(skillDir, "SKILL.md"), "utf8");
-    out.push({ path: `.claude/skills/${skill}/SKILL.md`, contents: body });
+    out.push({ path: `${skillsDir}/${skill}/SKILL.md`, contents: body });
 
     const refDir = join(skillDir, "references");
     if (existsSync(refDir) && statSync(refDir).isDirectory()) {
@@ -171,7 +182,7 @@ export function assemble(opts: { contentRoot: string; stack: Stack; docsRef?: st
         const scope = fragmentScope(token);
         if (scope !== undefined && !stack.tokens.has(scope)) continue;
         out.push({
-          path: `.claude/skills/${skill}/references/${token}.md`,
+          path: `${skillsDir}/${skill}/references/${token}.md`,
           contents: readFileSync(join(refDir, `${token}.md`), "utf8"),
         });
       }

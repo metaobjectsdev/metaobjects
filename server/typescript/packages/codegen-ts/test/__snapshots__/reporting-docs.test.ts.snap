@@ -205,36 +205,36 @@ Generated API reference for this project; call these exactly as written. Imports
 \`import { Program, ProgramInsertSchema, ProgramUpdateSchema } from "./Program"\`
 - \`interface Program { id: number; title?: string; createdAt?: string }\` — The typed shape of a Program row, generated from its metadata.
 - \`ProgramInsertSchema: ZodType<{ id: number; title?: string; createdAt?: string }>\` — Zod schema validating the body of a create<Program> / POST request (auto-generated PKs excluded).
-- \`ProgramUpdateSchema: ZodType<{ id?: number; title?: string; createdAt?: string }>\` — Zod schema validating the body of an update / PATCH request (all fields optional).
+- \`ProgramUpdateSchema: ZodType<{ title?: string; createdAt?: string }>\` — Zod schema validating the body of an update / PATCH request (all fields optional).
 
 \`import { findProgramById, listPrograms, createProgram, updateProgram, deleteProgramById } from "./Program.queries"\`
 - \`findProgramById(db: Db, id: number): Promise<Program | null>\` — Fetch a single Program by its primary key; null when not found.
 - \`listPrograms(db: Db, opts?: { limit?: number; offset?: number }): Promise<Program[]>\` — List Program rows with optional limit/offset paging.
 - \`createProgram(db: Db, data: { id: number; title?: string; createdAt?: string }): Promise<Program>\` — Validate (via ProgramInsertSchema) and insert a new Program. [throws: ZodError when data fails ProgramInsertSchema validation.]
-- \`updateProgram(db: Db, id: number, patch: { id?: number; title?: string; createdAt?: string }): Promise<Program | null>\` — Partially update a Program by primary key — writes only the assigned fields; null when not found. A renamed/dropped field is a compile error. [throws: ZodError when the patch fails ProgramUpdateSchema validation.]
+- \`updateProgram(db: Db, id: number, patch: { title?: string; createdAt?: string }): Promise<Program | null>\` — Partially update a Program by primary key — writes only the assigned fields; null when not found. A renamed/dropped field is a compile error. [throws: ZodError when the patch fails ProgramUpdateSchema validation.]
 - \`deleteProgramById(db: Db, id: number): Promise<boolean>\` — Delete a Program by primary key; true when a row was removed.
 
 \`import { programRoutes } from "./Program.routes"\`
 - \`GET /api/programs -> { id: number; title?: string; createdAt?: string }\` — List Program (supports filter/sort/paging query params).
 - \`GET /api/programs/:id -> { id: number; title?: string; createdAt?: string }\` — Fetch a single Program by id (404 when not found).
 - \`POST /api/programs body: { id: number; title?: string; createdAt?: string }\` — Create a Program (body validated by ProgramInsertSchema).
-- \`PATCH /api/programs/:id body: { id?: number; title?: string; createdAt?: string }\` — Partially update a Program by id (body validated by ProgramUpdateSchema).
-- \`PUT /api/programs/:id body: { id?: number; title?: string; createdAt?: string }\` — PUT alias of PATCH — the same handler and partial body (validated by ProgramUpdateSchema).
+- \`PATCH /api/programs/:id body: { title?: string; createdAt?: string }\` — Partially update a Program by id (body validated by ProgramUpdateSchema).
+- \`PUT /api/programs/:id body: { title?: string; createdAt?: string }\` — PUT alias of PATCH — the same handler and partial body (validated by ProgramUpdateSchema).
 - \`DELETE /api/programs/:id\` — Delete a Program by id.
 
 \`import { registerProgramRoutes } from "./Program.routes.hono"\`
 - \`GET /api/programs -> { id: number; title?: string; createdAt?: string }\` — [Hono] List Program (filter/sort/paging query params).
 - \`GET /api/programs/:id -> { id: number; title?: string; createdAt?: string }\` — [Hono] Fetch a single Program by id (404 when not found).
 - \`POST /api/programs body: { id: number; title?: string; createdAt?: string }\` — [Hono] Create a Program (body validated by ProgramInsertSchema).
-- \`PATCH /api/programs/:id body: { id?: number; title?: string; createdAt?: string }\` — [Hono] Partially update a Program by id (body validated by ProgramUpdateSchema).
-- \`PUT /api/programs/:id body: { id?: number; title?: string; createdAt?: string }\` — [Hono] PUT alias of PATCH — the same handler and partial body (validated by ProgramUpdateSchema).
+- \`PATCH /api/programs/:id body: { title?: string; createdAt?: string }\` — [Hono] Partially update a Program by id (body validated by ProgramUpdateSchema).
+- \`PUT /api/programs/:id body: { title?: string; createdAt?: string }\` — [Hono] PUT alias of PATCH — the same handler and partial body (validated by ProgramUpdateSchema).
 - \`DELETE /api/programs/:id\` — [Hono] Delete a Program by id.
 
 Example:
 \`\`\`ts
 const created = await createProgram(db, { id: 1 });
 const found = await findProgramById(db, created.id);
-const updated = await updateProgram(db, created.id, { id: 1 });
+const updated = await updateProgram(db, created.id, { title: "…" });
 const removed = await deleteProgramById(db, created.id);
 \`\`\`
 
@@ -243,37 +243,37 @@ const removed = await deleteProgramById(db, created.id);
 \`import { Purchase, PurchaseInsertSchema, PurchaseUpdateSchema, purchasesRelations } from "./Purchase"\`
 - \`interface Purchase { id: number; programId?: number; customerEmail?: string; amountCents?: number; status?: string; refunded?: boolean; purchasedAt?: string; purchasedOn?: string }\` — The typed shape of a Purchase row, generated from its metadata.
 - \`PurchaseInsertSchema: ZodType<{ id: number; programId?: number; customerEmail?: string; amountCents?: number; status?: string; refunded?: boolean; purchasedAt?: string; purchasedOn?: string }>\` — Zod schema validating the body of a create<Purchase> / POST request (auto-generated PKs excluded).
-- \`PurchaseUpdateSchema: ZodType<{ id?: number; programId?: number; customerEmail?: string; amountCents?: number; status?: string; refunded?: boolean; purchasedAt?: string; purchasedOn?: string }>\` — Zod schema validating the body of an update / PATCH request (all fields optional).
+- \`PurchaseUpdateSchema: ZodType<{ programId?: number; customerEmail?: string; amountCents?: number; status?: string; refunded?: boolean; purchasedAt?: string; purchasedOn?: string }>\` — Zod schema validating the body of an update / PATCH request (all fields optional).
 - \`const purchasesRelations { program?: Program (1:1 / N:1) }\` — Drizzle relations() for Purchase — register it with your schema, then traverse via the relational query API (db.query.purchases.findMany({ with: { … } })).
 
 \`import { findPurchaseById, listPurchases, createPurchase, updatePurchase, deletePurchaseById } from "./Purchase.queries"\`
 - \`findPurchaseById(db: Db, id: number): Promise<Purchase | null>\` — Fetch a single Purchase by its primary key; null when not found.
 - \`listPurchases(db: Db, opts?: { limit?: number; offset?: number }): Promise<Purchase[]>\` — List Purchase rows with optional limit/offset paging.
 - \`createPurchase(db: Db, data: { id: number; programId?: number; customerEmail?: string; amountCents?: number; status?: string; refunded?: boolean; purchasedAt?: string; purchasedOn?: string }): Promise<Purchase>\` — Validate (via PurchaseInsertSchema) and insert a new Purchase. [throws: ZodError when data fails PurchaseInsertSchema validation.]
-- \`updatePurchase(db: Db, id: number, patch: { id?: number; programId?: number; customerEmail?: string; amountCents?: number; status?: string; refunded?: boolean; purchasedAt?: string; purchasedOn?: string }): Promise<Purchase | null>\` — Partially update a Purchase by primary key — writes only the assigned fields; null when not found. A renamed/dropped field is a compile error. [throws: ZodError when the patch fails PurchaseUpdateSchema validation.]
+- \`updatePurchase(db: Db, id: number, patch: { programId?: number; customerEmail?: string; amountCents?: number; status?: string; refunded?: boolean; purchasedAt?: string; purchasedOn?: string }): Promise<Purchase | null>\` — Partially update a Purchase by primary key — writes only the assigned fields; null when not found. A renamed/dropped field is a compile error. [throws: ZodError when the patch fails PurchaseUpdateSchema validation.]
 - \`deletePurchaseById(db: Db, id: number): Promise<boolean>\` — Delete a Purchase by primary key; true when a row was removed.
 
 \`import { purchaseRoutes } from "./Purchase.routes"\`
 - \`GET /api/purchases -> { id: number; programId?: number; customerEmail?: string; amountCents?: number; status?: string; refunded?: boolean; purchasedAt?: string; purchasedOn?: string }\` — List Purchase (supports filter/sort/paging query params).
 - \`GET /api/purchases/:id -> { id: number; programId?: number; customerEmail?: string; amountCents?: number; status?: string; refunded?: boolean; purchasedAt?: string; purchasedOn?: string }\` — Fetch a single Purchase by id (404 when not found).
 - \`POST /api/purchases body: { id: number; programId?: number; customerEmail?: string; amountCents?: number; status?: string; refunded?: boolean; purchasedAt?: string; purchasedOn?: string }\` — Create a Purchase (body validated by PurchaseInsertSchema).
-- \`PATCH /api/purchases/:id body: { id?: number; programId?: number; customerEmail?: string; amountCents?: number; status?: string; refunded?: boolean; purchasedAt?: string; purchasedOn?: string }\` — Partially update a Purchase by id (body validated by PurchaseUpdateSchema).
-- \`PUT /api/purchases/:id body: { id?: number; programId?: number; customerEmail?: string; amountCents?: number; status?: string; refunded?: boolean; purchasedAt?: string; purchasedOn?: string }\` — PUT alias of PATCH — the same handler and partial body (validated by PurchaseUpdateSchema).
+- \`PATCH /api/purchases/:id body: { programId?: number; customerEmail?: string; amountCents?: number; status?: string; refunded?: boolean; purchasedAt?: string; purchasedOn?: string }\` — Partially update a Purchase by id (body validated by PurchaseUpdateSchema).
+- \`PUT /api/purchases/:id body: { programId?: number; customerEmail?: string; amountCents?: number; status?: string; refunded?: boolean; purchasedAt?: string; purchasedOn?: string }\` — PUT alias of PATCH — the same handler and partial body (validated by PurchaseUpdateSchema).
 - \`DELETE /api/purchases/:id\` — Delete a Purchase by id.
 
 \`import { registerPurchaseRoutes } from "./Purchase.routes.hono"\`
 - \`GET /api/purchases -> { id: number; programId?: number; customerEmail?: string; amountCents?: number; status?: string; refunded?: boolean; purchasedAt?: string; purchasedOn?: string }\` — [Hono] List Purchase (filter/sort/paging query params).
 - \`GET /api/purchases/:id -> { id: number; programId?: number; customerEmail?: string; amountCents?: number; status?: string; refunded?: boolean; purchasedAt?: string; purchasedOn?: string }\` — [Hono] Fetch a single Purchase by id (404 when not found).
 - \`POST /api/purchases body: { id: number; programId?: number; customerEmail?: string; amountCents?: number; status?: string; refunded?: boolean; purchasedAt?: string; purchasedOn?: string }\` — [Hono] Create a Purchase (body validated by PurchaseInsertSchema).
-- \`PATCH /api/purchases/:id body: { id?: number; programId?: number; customerEmail?: string; amountCents?: number; status?: string; refunded?: boolean; purchasedAt?: string; purchasedOn?: string }\` — [Hono] Partially update a Purchase by id (body validated by PurchaseUpdateSchema).
-- \`PUT /api/purchases/:id body: { id?: number; programId?: number; customerEmail?: string; amountCents?: number; status?: string; refunded?: boolean; purchasedAt?: string; purchasedOn?: string }\` — [Hono] PUT alias of PATCH — the same handler and partial body (validated by PurchaseUpdateSchema).
+- \`PATCH /api/purchases/:id body: { programId?: number; customerEmail?: string; amountCents?: number; status?: string; refunded?: boolean; purchasedAt?: string; purchasedOn?: string }\` — [Hono] Partially update a Purchase by id (body validated by PurchaseUpdateSchema).
+- \`PUT /api/purchases/:id body: { programId?: number; customerEmail?: string; amountCents?: number; status?: string; refunded?: boolean; purchasedAt?: string; purchasedOn?: string }\` — [Hono] PUT alias of PATCH — the same handler and partial body (validated by PurchaseUpdateSchema).
 - \`DELETE /api/purchases/:id\` — [Hono] Delete a Purchase by id.
 
 Example:
 \`\`\`ts
 const created = await createPurchase(db, { id: 1 });
 const found = await findPurchaseById(db, created.id);
-const updated = await updatePurchase(db, created.id, { id: 1 });
+const updated = await updatePurchase(db, created.id, { programId: 1 });
 const removed = await deletePurchaseById(db, created.id);
 \`\`\`
 
@@ -282,36 +282,36 @@ const removed = await deletePurchaseById(db, created.id);
 \`import { WorkoutEvent, WorkoutEventInsertSchema, WorkoutEventUpdateSchema } from "./WorkoutEvent"\`
 - \`interface WorkoutEvent { id: number; programId?: number; customerEmail?: string; weekNumber?: number; dayNumber?: number; eventType?: string; occurredAt?: string }\` — The typed shape of a WorkoutEvent row, generated from its metadata.
 - \`WorkoutEventInsertSchema: ZodType<{ id: number; programId?: number; customerEmail?: string; weekNumber?: number; dayNumber?: number; eventType?: string; occurredAt?: string }>\` — Zod schema validating the body of a create<WorkoutEvent> / POST request (auto-generated PKs excluded).
-- \`WorkoutEventUpdateSchema: ZodType<{ id?: number; programId?: number; customerEmail?: string; weekNumber?: number; dayNumber?: number; eventType?: string; occurredAt?: string }>\` — Zod schema validating the body of an update / PATCH request (all fields optional).
+- \`WorkoutEventUpdateSchema: ZodType<{ programId?: number; customerEmail?: string; weekNumber?: number; dayNumber?: number; eventType?: string; occurredAt?: string }>\` — Zod schema validating the body of an update / PATCH request (all fields optional).
 
 \`import { findWorkoutEventById, listWorkoutEvents, createWorkoutEvent, updateWorkoutEvent, deleteWorkoutEventById } from "./WorkoutEvent.queries"\`
 - \`findWorkoutEventById(db: Db, id: number): Promise<WorkoutEvent | null>\` — Fetch a single WorkoutEvent by its primary key; null when not found.
 - \`listWorkoutEvents(db: Db, opts?: { limit?: number; offset?: number }): Promise<WorkoutEvent[]>\` — List WorkoutEvent rows with optional limit/offset paging.
 - \`createWorkoutEvent(db: Db, data: { id: number; programId?: number; customerEmail?: string; weekNumber?: number; dayNumber?: number; eventType?: string; occurredAt?: string }): Promise<WorkoutEvent>\` — Validate (via WorkoutEventInsertSchema) and insert a new WorkoutEvent. [throws: ZodError when data fails WorkoutEventInsertSchema validation.]
-- \`updateWorkoutEvent(db: Db, id: number, patch: { id?: number; programId?: number; customerEmail?: string; weekNumber?: number; dayNumber?: number; eventType?: string; occurredAt?: string }): Promise<WorkoutEvent | null>\` — Partially update a WorkoutEvent by primary key — writes only the assigned fields; null when not found. A renamed/dropped field is a compile error. [throws: ZodError when the patch fails WorkoutEventUpdateSchema validation.]
+- \`updateWorkoutEvent(db: Db, id: number, patch: { programId?: number; customerEmail?: string; weekNumber?: number; dayNumber?: number; eventType?: string; occurredAt?: string }): Promise<WorkoutEvent | null>\` — Partially update a WorkoutEvent by primary key — writes only the assigned fields; null when not found. A renamed/dropped field is a compile error. [throws: ZodError when the patch fails WorkoutEventUpdateSchema validation.]
 - \`deleteWorkoutEventById(db: Db, id: number): Promise<boolean>\` — Delete a WorkoutEvent by primary key; true when a row was removed.
 
 \`import { workoutEventRoutes } from "./WorkoutEvent.routes"\`
 - \`GET /api/workout_events -> { id: number; programId?: number; customerEmail?: string; weekNumber?: number; dayNumber?: number; eventType?: string; occurredAt?: string }\` — List WorkoutEvent (supports filter/sort/paging query params).
 - \`GET /api/workout_events/:id -> { id: number; programId?: number; customerEmail?: string; weekNumber?: number; dayNumber?: number; eventType?: string; occurredAt?: string }\` — Fetch a single WorkoutEvent by id (404 when not found).
 - \`POST /api/workout_events body: { id: number; programId?: number; customerEmail?: string; weekNumber?: number; dayNumber?: number; eventType?: string; occurredAt?: string }\` — Create a WorkoutEvent (body validated by WorkoutEventInsertSchema).
-- \`PATCH /api/workout_events/:id body: { id?: number; programId?: number; customerEmail?: string; weekNumber?: number; dayNumber?: number; eventType?: string; occurredAt?: string }\` — Partially update a WorkoutEvent by id (body validated by WorkoutEventUpdateSchema).
-- \`PUT /api/workout_events/:id body: { id?: number; programId?: number; customerEmail?: string; weekNumber?: number; dayNumber?: number; eventType?: string; occurredAt?: string }\` — PUT alias of PATCH — the same handler and partial body (validated by WorkoutEventUpdateSchema).
+- \`PATCH /api/workout_events/:id body: { programId?: number; customerEmail?: string; weekNumber?: number; dayNumber?: number; eventType?: string; occurredAt?: string }\` — Partially update a WorkoutEvent by id (body validated by WorkoutEventUpdateSchema).
+- \`PUT /api/workout_events/:id body: { programId?: number; customerEmail?: string; weekNumber?: number; dayNumber?: number; eventType?: string; occurredAt?: string }\` — PUT alias of PATCH — the same handler and partial body (validated by WorkoutEventUpdateSchema).
 - \`DELETE /api/workout_events/:id\` — Delete a WorkoutEvent by id.
 
 \`import { registerWorkoutEventRoutes } from "./WorkoutEvent.routes.hono"\`
 - \`GET /api/workout_events -> { id: number; programId?: number; customerEmail?: string; weekNumber?: number; dayNumber?: number; eventType?: string; occurredAt?: string }\` — [Hono] List WorkoutEvent (filter/sort/paging query params).
 - \`GET /api/workout_events/:id -> { id: number; programId?: number; customerEmail?: string; weekNumber?: number; dayNumber?: number; eventType?: string; occurredAt?: string }\` — [Hono] Fetch a single WorkoutEvent by id (404 when not found).
 - \`POST /api/workout_events body: { id: number; programId?: number; customerEmail?: string; weekNumber?: number; dayNumber?: number; eventType?: string; occurredAt?: string }\` — [Hono] Create a WorkoutEvent (body validated by WorkoutEventInsertSchema).
-- \`PATCH /api/workout_events/:id body: { id?: number; programId?: number; customerEmail?: string; weekNumber?: number; dayNumber?: number; eventType?: string; occurredAt?: string }\` — [Hono] Partially update a WorkoutEvent by id (body validated by WorkoutEventUpdateSchema).
-- \`PUT /api/workout_events/:id body: { id?: number; programId?: number; customerEmail?: string; weekNumber?: number; dayNumber?: number; eventType?: string; occurredAt?: string }\` — [Hono] PUT alias of PATCH — the same handler and partial body (validated by WorkoutEventUpdateSchema).
+- \`PATCH /api/workout_events/:id body: { programId?: number; customerEmail?: string; weekNumber?: number; dayNumber?: number; eventType?: string; occurredAt?: string }\` — [Hono] Partially update a WorkoutEvent by id (body validated by WorkoutEventUpdateSchema).
+- \`PUT /api/workout_events/:id body: { programId?: number; customerEmail?: string; weekNumber?: number; dayNumber?: number; eventType?: string; occurredAt?: string }\` — [Hono] PUT alias of PATCH — the same handler and partial body (validated by WorkoutEventUpdateSchema).
 - \`DELETE /api/workout_events/:id\` — [Hono] Delete a WorkoutEvent by id.
 
 Example:
 \`\`\`ts
 const created = await createWorkoutEvent(db, { id: 1 });
 const found = await findWorkoutEventById(db, created.id);
-const updated = await updateWorkoutEvent(db, created.id, { id: 1 });
+const updated = await updateWorkoutEvent(db, created.id, { programId: 1 });
 const removed = await deleteWorkoutEventById(db, created.id);
 \`\`\`
 "
@@ -344,7 +344,7 @@ import { createProgram, findProgramById, updateProgram, deleteProgramById } from
 
 const created = await createProgram(db, { id: 1 });
 const found = await findProgramById(db, created.id);
-const updated = await updateProgram(db, created.id, { id: 1 });
+const updated = await updateProgram(db, created.id, { title: "…" });
 const removed = await deleteProgramById(db, created.id);
 \`\`\`
 
@@ -414,7 +414,6 @@ Request body (data):
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
-| \`id\` | \`number\` |  |  |
 | \`title\` | \`string\` |  |  |
 | \`createdAt\` | \`string\` |  |  |
 
@@ -496,7 +495,6 @@ Request body:
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
-| \`id\` | \`number\` |  |  |
 | \`title\` | \`string\` |  |  |
 | \`createdAt\` | \`string\` |  |  |
 
@@ -514,7 +512,6 @@ Request body:
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
-| \`id\` | \`number\` |  |  |
 | \`title\` | \`string\` |  |  |
 | \`createdAt\` | \`string\` |  |  |
 
@@ -598,7 +595,6 @@ Request body:
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
-| \`id\` | \`number\` |  |  |
 | \`title\` | \`string\` |  |  |
 | \`createdAt\` | \`string\` |  |  |
 
@@ -616,7 +612,6 @@ Request body:
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
-| \`id\` | \`number\` |  |  |
 | \`title\` | \`string\` |  |  |
 | \`createdAt\` | \`string\` |  |  |
 
@@ -662,7 +657,6 @@ Accepted fields:
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
-| \`id\` | \`number\` |  |  |
 | \`title\` | \`string\` |  |  |
 | \`createdAt\` | \`string\` |  |  |
 "
@@ -695,7 +689,7 @@ import { createPurchase, findPurchaseById, updatePurchase, deletePurchaseById } 
 
 const created = await createPurchase(db, { id: 1 });
 const found = await findPurchaseById(db, created.id);
-const updated = await updatePurchase(db, created.id, { id: 1 });
+const updated = await updatePurchase(db, created.id, { programId: 1 });
 const removed = await deletePurchaseById(db, created.id);
 \`\`\`
 
@@ -791,7 +785,6 @@ Request body (data):
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
-| \`id\` | \`number\` |  |  |
 | \`programId\` | \`number\` |  |  |
 | \`customerEmail\` | \`string\` |  |  |
 | \`amountCents\` | \`number\` |  |  |
@@ -893,7 +886,6 @@ Request body:
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
-| \`id\` | \`number\` |  |  |
 | \`programId\` | \`number\` |  |  |
 | \`customerEmail\` | \`string\` |  |  |
 | \`amountCents\` | \`number\` |  |  |
@@ -916,7 +908,6 @@ Request body:
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
-| \`id\` | \`number\` |  |  |
 | \`programId\` | \`number\` |  |  |
 | \`customerEmail\` | \`string\` |  |  |
 | \`amountCents\` | \`number\` |  |  |
@@ -1020,7 +1011,6 @@ Request body:
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
-| \`id\` | \`number\` |  |  |
 | \`programId\` | \`number\` |  |  |
 | \`customerEmail\` | \`string\` |  |  |
 | \`amountCents\` | \`number\` |  |  |
@@ -1043,7 +1033,6 @@ Request body:
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
-| \`id\` | \`number\` |  |  |
 | \`programId\` | \`number\` |  |  |
 | \`customerEmail\` | \`string\` |  |  |
 | \`amountCents\` | \`number\` |  |  |
@@ -1099,7 +1088,6 @@ Accepted fields:
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
-| \`id\` | \`number\` |  |  |
 | \`programId\` | \`number\` |  |  |
 | \`customerEmail\` | \`string\` |  |  |
 | \`amountCents\` | \`number\` |  |  |
@@ -1151,7 +1139,7 @@ import { createWorkoutEvent, findWorkoutEventById, updateWorkoutEvent, deleteWor
 
 const created = await createWorkoutEvent(db, { id: 1 });
 const found = await findWorkoutEventById(db, created.id);
-const updated = await updateWorkoutEvent(db, created.id, { id: 1 });
+const updated = await updateWorkoutEvent(db, created.id, { programId: 1 });
 const removed = await deleteWorkoutEventById(db, created.id);
 \`\`\`
 
@@ -1229,7 +1217,6 @@ Request body (data):
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
-| \`id\` | \`number\` |  |  |
 | \`programId\` | \`number\` |  |  |
 | \`customerEmail\` | \`string\` |  |  |
 | \`weekNumber\` | \`number\` |  |  |
@@ -1327,7 +1314,6 @@ Request body:
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
-| \`id\` | \`number\` |  |  |
 | \`programId\` | \`number\` |  |  |
 | \`customerEmail\` | \`string\` |  |  |
 | \`weekNumber\` | \`number\` |  |  |
@@ -1349,7 +1335,6 @@ Request body:
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
-| \`id\` | \`number\` |  |  |
 | \`programId\` | \`number\` |  |  |
 | \`customerEmail\` | \`string\` |  |  |
 | \`weekNumber\` | \`number\` |  |  |
@@ -1449,7 +1434,6 @@ Request body:
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
-| \`id\` | \`number\` |  |  |
 | \`programId\` | \`number\` |  |  |
 | \`customerEmail\` | \`string\` |  |  |
 | \`weekNumber\` | \`number\` |  |  |
@@ -1471,7 +1455,6 @@ Request body:
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
-| \`id\` | \`number\` |  |  |
 | \`programId\` | \`number\` |  |  |
 | \`customerEmail\` | \`string\` |  |  |
 | \`weekNumber\` | \`number\` |  |  |
@@ -1525,7 +1508,6 @@ Accepted fields:
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
-| \`id\` | \`number\` |  |  |
 | \`programId\` | \`number\` |  |  |
 | \`customerEmail\` | \`string\` |  |  |
 | \`weekNumber\` | \`number\` |  |  |

@@ -5,6 +5,7 @@ package com.metaobjects.generator.kotlin
 // `mvn metaobjects:eject` and its own package is renamed — an explicit import, not
 // same-package bare-name resolution, is what keeps the ejected copy compiling.
 import com.metaobjects.identity.PrimaryIdentity
+import com.metaobjects.config.MigrateSettings
 import com.metaobjects.config.WireFormat
 import com.metaobjects.generator.util.GeneratorUtil
 import com.metaobjects.generator.kotlin.ExposedApi
@@ -1207,7 +1208,8 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             val lookupIndexes = if (isView) emptyList()
                 else entity.getChildren(LookupIndex::class.java, true)
                     .filter { it.fields.isNotEmpty() }
-            if (emittableSecondaries.isNotEmpty() || lookupIndexes.isNotEmpty()) {
+            val foreignKeyIndexes = if (isView) emptyList() else foreignKeyIndexes(entity, loader, tableName)
+            if (emittableSecondaries.isNotEmpty() || lookupIndexes.isNotEmpty() || foreignKeyIndexes.isNotEmpty()) {
                 append("\n    init {\n")
                 for (sec in emittableSecondaries) {
                     val cols = sec.fields.joinToString(", ") { KotlinNaming.safeColumnProperty(it, exposedApi()) }
@@ -1218,6 +1220,10 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 for (idx in lookupIndexes) {
                     val cols = idx.fields.joinToString(", ") { KotlinNaming.safeColumnProperty(it, exposedApi()) }
                     append("        index(${indexNameExpr(idx, shortName)}, false, $cols${indexOptions(idx)})\n")
+                }
+                for ((name, fields) in foreignKeyIndexes) {
+                    val cols = fields.joinToString(", ") { KotlinNaming.safeColumnProperty(it, exposedApi()) }
+                    append("        index(\"${KotlinGenUtil.kotlinStringLiteral(name)}\", false, $cols)\n")
                 }
                 append("    }\n")
             }
@@ -1325,6 +1331,62 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 .append("queryBuilder.append(").append("\"").append(KotlinGenUtil.kotlinStringLiteral(it)).append("\"").append(") } } }")
         }
         return out.toString()
+    }
+
+    /**
+     * `migrate.foreignKeyIndexes` — the index `meta migrate` gives each enforced foreign key that
+     * nothing already leads with, as `(name, field names)` pairs, so the table declares the index
+     * the database has under migrate's name (`<table>_<column>[_<column>…]_idx`). The rule is
+     * migrate's own (`uncoveredForeignKeyColumns` in migrate-ts): the primary key, a field's
+     * `@unique`, an `identity.secondary` and an `index.lookup` without `@expr` cover a foreign
+     * key whose columns they lead with, in any order; two foreign keys over one column set get one
+     * index; and one that leads a longer one shares the longer one's index. Empty unless the
+     * project sets the option, and under the `efcore` conventions or on MySQL
+     * ([MigrateSettings.indexesForeignKeys]). A TPH table is read whole: base and subtypes.
+     */
+    protected fun foreignKeyIndexes(entity: MetaObject, loader: MetaDataLoader, tableName: String): List<Pair<String, List<String>>> {
+        if (!MigrateSettings.of(entity).indexesForeignKeys()) return emptyList()
+        val members = listOf(entity) + KotlinTphPlan.planFor(entity, loader)?.subtypes.orEmpty().map { it.entity }
+        // ADR-0039: resolving — fields, identities, index nodes and @unique may be inherited.
+        fun field(owner: MetaObject, name: String): MetaField<*>? = owner.metaFields.firstOrNull { it.name == name }
+        fun columns(owner: MetaObject, names: List<String>): List<String>? =
+            names.map { n -> field(owner, n)?.let { KotlinGenUtil.resolveColumnName(it) } ?: return null }
+        fun attr(node: MetaData, name: String): String? =
+            (if (node.hasMetaAttr(name)) node.getMetaAttr(name).value?.toString() else null)?.trim()?.takeIf { it.isNotEmpty() }
+        fun leadsWith(prefix: List<String>, cols: List<String>): Boolean =
+            cols.isNotEmpty() && prefix.size >= cols.size && prefix.take(cols.size).all { it in cols.toSet() }
+
+        val existing = mutableListOf<List<String>>()
+        entity.getIdentities(true).firstOrNull { it.isPrimary }
+            ?.let { pk -> columns(entity, KotlinGenUtil.keyFields(entity, pk)) }
+            ?.takeIf { it.isNotEmpty() }?.let(existing::add)
+        for (m in members) {
+            for (f in m.metaFields) {
+                if (attr(f, MetaField.ATTR_UNIQUE)?.toBoolean() == true) existing.add(listOf(KotlinGenUtil.resolveColumnName(f)))
+            }
+            val nodes: List<Pair<MetaData, List<String>>> =
+                m.getIdentities(true).filter { it.isSecondary }.map { it to it.fields } +
+                    m.getChildren(LookupIndex::class.java, true).map { it to it.fields }
+            for ((node, names) in nodes) {
+                if (attr(node, com.metaobjects.identity.SecondaryIdentity.ATTR_EXPR) != null || names.isEmpty()) continue
+                columns(m, names)?.let(existing::add)
+            }
+        }
+
+        val seen = hashSetOf<String>()
+        val candidates = mutableListOf<Pair<List<String>, List<String>>>() // (columns, field names)
+        for (m in members) {
+            for (ref in m.getIdentities(true).filterIsInstance<ReferenceIdentity>().filter { it.isEnforced }) {
+                if (!seen.add(ref.fields.joinToString(","))) continue
+                val cols = columns(m, ref.fields)?.takeIf { it.isNotEmpty() } ?: continue
+                if (existing.any { leadsWith(it, cols) }) continue
+                if (candidates.any { it.first.size == cols.size && leadsWith(it.first, cols) }) continue
+                candidates.add(cols to ref.fields)
+            }
+        }
+        return candidates
+            .filter { (cols, _) -> candidates.none { (o, _) -> o.size > cols.size && leadsWith(o, cols) } }
+            .map { (cols, fields) -> "${tableName}_${cols.joinToString("_")}_idx" to fields }
     }
 
     protected fun indexNameExpr(node: MetaData, shortName: String): String {

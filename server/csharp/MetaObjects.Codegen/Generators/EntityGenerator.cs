@@ -617,6 +617,16 @@ public class EntityGenerator : IGenerator
     private static string MappedBaseClause(MetaObject entity, GenContext ctx) =>
         DirectMappedParent(entity, ctx.Config) is { } parent ? $" : {ValueObjectNames.Ref(parent, ctx.Config)}" : "";
 
+    // FR-037 R1 / input hardening — the accessor pair of a mapped property. A `readOnly` field takes a
+    // PRIVATE setter on EVERY property shape (scalar, enum, array, value object, map; plain entity
+    // or TPH subtype): EF materializes it on read and application code cannot write it, so the
+    // generated create route's body binding (System.Text.Json skips a non-public setter) can never
+    // hand a client-supplied value to storage. Chosen over resetting the member in each route
+    // because it holds for every writer of the class, not just the routes, and needs no per-shape
+    // reset code. `writeOnce` keeps a PUBLIC setter on purpose (the caller supplies it on insert).
+    private static string SetterFor(MetaField field) =>
+        field.IsReadOnlyMutability ? "get; private set;" : "get; set;";
+
     // A M:N navigation collection property on the source entity. The collection is
     // the relationship name PascalCased; its element type is the target entity.
     //
@@ -763,7 +773,7 @@ public class EntityGenerator : IGenerator
             AppendDurationConverterAttribute(arr, field, _wire);
             // A NON-required decimal array is nullable (no initializer) so PATCH null / an omitted
             // POST value stays a NULL column instead of failing as a required collection.
-            arr.Append(PropertyDeclaration(entity, field, propName, "get; set;"));
+            arr.Append(PropertyDeclaration(entity, field, propName, SetterFor(field)));
             return arr.ToString();
         }
 
@@ -786,7 +796,7 @@ public class EntityGenerator : IGenerator
         // life at the CLR default (false/0/null) on `new Sub()` instead of the declared
         // @default value — every OTHER scalar-property path in this generator already
         // applies DefaultInitializer; this one was the one gap.
-        sb.Append(PropertyDeclaration(entity, field, propName, "get; set;"));
+        sb.Append(PropertyDeclaration(entity, field, propName, SetterFor(field)));
         return sb.ToString();
     }
 
@@ -797,7 +807,7 @@ public class EntityGenerator : IGenerator
         _site = new PropertySite(ValueObject: false, TphSubtype: true, null);
         var propName = PropertyName(field);
         var colAttr = ColumnAttributeLine(entity, field, strategy, config.IncludeNames) is { } column ? column + "\n" : "";
-        return colAttr + PropertyDeclaration(entity, field, propName, "get; set;");
+        return colAttr + PropertyDeclaration(entity, field, propName, SetterFor(field));
     }
 
     // An enum ARRAY property is IList<TEnum> with an empty-list initializer, except a
@@ -2739,7 +2749,7 @@ public static class DurationWire
         var colAttr = withAttributes && ColumnAttributeLine(entity, field, strategy, config.IncludeNames) is { } column
             ? column + "\n"
             : "";
-        return colAttr + PropertyDeclaration(entity, field, propName, "get; set;");
+        return colAttr + PropertyDeclaration(entity, field, propName, SetterFor(field));
     }
 
     // A scalar property. withAttributes adds the EF-mapping annotations ([Key] for a
@@ -2799,7 +2809,7 @@ public static class DurationWire
             // POST value stays a NULL column instead of failing as a required collection; a
             // NON-required value-object array is nullable so a null member is omitted on the wire.
             // (That rule is the default of the PropertyClrType / PropertyInitializer hooks.)
-            arr.Append(PropertyDeclaration(owner, field, propName, "get; set;"));
+            arr.Append(PropertyDeclaration(owner, field, propName, SetterFor(field)));
             return arr.ToString();
         }
 
@@ -2868,7 +2878,7 @@ public static class DurationWire
         // the column from UPDATE). `writeOnce` keeps a PUBLIC setter on purpose — the caller
         // must be able to supply it on insert; freezing it afterwards is the DbContext's
         // SetAfterSaveBehavior(Ignore), not the property's job.
-        var setter = field.IsReadOnlyMutability ? "get; private set;" : "get; set;";
+        var setter = SetterFor(field);
         sb.Append(PropertyDeclaration(owner, field, propName, setter));
         return sb.ToString();
     }
@@ -3137,7 +3147,7 @@ public static class DurationWire
         // single-VO nullability below. A non-null empty-list default would erase that
         // null-vs-empty distinction (EF re-serializes the empty list to `[]` on write).
         // (The type and initializer are the PropertyClrType / PropertyInitializer defaults.)
-        return PropertyDeclaration(owner, field, propName, "get; set;", ctx);
+        return PropertyDeclaration(owner, field, propName, SetterFor(field), ctx);
     }
 
     // A property for a field.map (an open-keyed map). Emits a single
@@ -3167,7 +3177,7 @@ public static class DurationWire
             && ColumnAttributeLine(owner, field, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames, ctx) is { } column
             ? column + "\n"
             : "";
-        return colAttr + PropertyDeclaration(owner, field, propName, "get; set;", ctx);
+        return colAttr + PropertyDeclaration(owner, field, propName, SetterFor(field), ctx);
     }
 
     // The CLR scalar type for a projection field whose value is a MIN/MAX aggregate:

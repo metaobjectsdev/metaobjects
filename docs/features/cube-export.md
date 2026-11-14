@@ -582,8 +582,9 @@ there.
 **`meta verify --codegen`** regenerates the configured output into a temporary directory and
 compares it with the committed files. The Cube project is a target, so its files are checked
 like any other generated output: a changed model that was not regenerated, a missing cube file
-and a stale one are drift. A hand edit to a generated file is not drift, but the gate lists it, and
-`meta verify --codegen --forbid-hand-edits` makes it fail.
+and a stale one are drift. A hand edit to a generated file is reported by path, and fails the gate
+when `.metaobjects/config.json` sets `"verify": { "handEdits": "fail" }` (what `meta init` writes)
+or the run passes `--forbid-hand-edits`.
 
 **The mapping corpus** is [`fixtures/cube-model/`](../../fixtures/cube-model/): 46 cases, each
 the smallest model for one rule, 36 with the exact tree the generator writes and 10 with the

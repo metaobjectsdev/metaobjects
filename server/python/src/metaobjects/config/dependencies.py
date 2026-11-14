@@ -17,6 +17,7 @@ from typing import Any, Callable, Sequence
 from metaobjects.errors import ErrorCode, ParseError
 from metaobjects.meta.meta_data import MetaData
 from metaobjects.naming import NamingRules, package_of_resolution_key
+from metaobjects.api_settings import ApiSettings
 from metaobjects.rules_settings import RulesSettings
 from metaobjects.wire import WireFormat
 from metaobjects.registry_manifest import METAMODEL_VERSION
@@ -681,6 +682,9 @@ class Collection:
     #: ADR-0063 — this project's `rules` / `verify` settings, read at the same rung;
     #: attached to the loaded root beside `wire`.
     rules: RulesSettings = RulesSettings()
+
+    #: This project's `api` setting (page size, unknown-field rule), attached beside `wire`.
+    api: ApiSettings = ApiSettings()
 
     #: FR-023 — the declared `requirements.inherit` patterns, for `in_ledger`.
     requirements_inherit: tuple[str, ...] = ()

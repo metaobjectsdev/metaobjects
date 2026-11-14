@@ -70,4 +70,16 @@ public final class RecordComponentNames {
     public static String escape(String fieldName) {
         return isReserved(fieldName) ? fieldName + "_" : fieldName;
     }
+
+    /**
+     * The declared field name for a record component {@code component}: undoes {@link #escape}.
+     * A name that merely ends in an underscore, with a non-reserved stem, is returned unchanged.
+     */
+    public static String unescape(String component) {
+        if (component.length() > 1 && component.endsWith("_")) {
+            String stem = component.substring(0, component.length() - 1);
+            if (isReserved(stem)) return stem;
+        }
+        return component;
+    }
 }

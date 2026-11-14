@@ -355,8 +355,9 @@ out-of-scope table that already exists would become a proposed `DROP TABLE`.
 ### `migrate.conventions` — names for objects no code addresses
 
 Beside `scope`, the `migrate` block takes `conventions`: the name of a schema-conventions preset
-that decides primary-key and foreign-key constraint names, whether a foreign key gets an index,
-and whether a unique key is an index or a constraint. `default` (absent) is what migrate has
+that decides primary-key and foreign-key constraint names, whether a foreign key gets an index
+(without a preset, [`migrate.foreignKeyIndexes`](migrations-and-drift.md#foreign-key-indexes-migrateforeignkeyindexes)
+indexes foreign keys), and whether a unique key is an index or a constraint. `default` (absent) is what migrate has
 always emitted; `efcore` is a reference preset that reproduces EF Core's naming. A project can
 supply its own conventions from `metaobjects.config.ts` instead. Table, view and column names are
 not conventions: they come from `naming`. See

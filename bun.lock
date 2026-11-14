@@ -166,6 +166,7 @@
         "pg": "^8.0.0",
         "pg-mem": "^3.0.4",
         "prisma": "7.10.1",
+        "ts-poet": "^6.10.0",
         "typescript": "^5.6.0",
         "zod": "^4.4.3",
       },
@@ -183,12 +184,13 @@
       "dependencies": {
         "@biomejs/js-api": "^0.7.0",
         "@biomejs/wasm-nodejs": "^1.9.4",
+        "@dprint/formatter": "^0.6.0",
+        "@dprint/typescript": "0.87.1",
         "@metaobjectsdev/docs-site": "workspace:*",
         "@metaobjectsdev/metadata": "workspace:*",
         "@metaobjectsdev/migrate-ts": "workspace:*",
         "@metaobjectsdev/render": "workspace:*",
         "@toon-format/toon": "^2.3.0",
-        "ts-poet": "^6.10.0",
       },
       "devDependencies": {
         "@biomejs/biome": "^1.9.0",
@@ -214,7 +216,6 @@
       "dependencies": {
         "@metaobjectsdev/codegen-ts": "workspace:*",
         "@metaobjectsdev/metadata": "workspace:*",
-        "ts-poet": "^6.10.0",
       },
       "devDependencies": {
         "@biomejs/biome": "^1.9.0",
@@ -228,7 +229,6 @@
       "dependencies": {
         "@metaobjectsdev/codegen-ts": "workspace:*",
         "@metaobjectsdev/metadata": "workspace:*",
-        "ts-poet": "^6.10.0",
       },
       "devDependencies": {
         "@biomejs/biome": "^1.9.0",
@@ -243,7 +243,6 @@
       "dependencies": {
         "@metaobjectsdev/codegen-ts": "workspace:*",
         "@metaobjectsdev/metadata": "workspace:*",
-        "ts-poet": "^6.10.0",
       },
       "devDependencies": {
         "@biomejs/biome": "^1.9.0",
@@ -571,6 +570,10 @@
     "@csstools/css-syntax-patches-for-csstree": ["@csstools/css-syntax-patches-for-csstree@1.1.16", "", { "peerDependencies": { "css-tree": "^3.2.1" }, "optionalPeers": ["css-tree"] }, "sha512-LsDbJPP/B8cPasUJyTA5S99F7C4G93ngW8hUluXz8CFeOaaRnBPtBiIlvgcPYU0HmHNz8CXg+1vwFrIB4F6Dgw=="],
 
     "@csstools/css-tokenizer": ["@csstools/css-tokenizer@4.0.2", "", {}, "sha512-OoKoR0f76dCY666JlcbhmVTs2drYj1GUXZTYTcbUgJjh9Nv41aFfZ21bPQTERm5+L5cBDo466NltB2lplS5GBw=="],
+
+    "@dprint/formatter": ["@dprint/formatter@0.6.0", "", {}, "sha512-otnYh2jmGWbekYkAd4xiF416lpdZwNCbhkDrLQcAanvvutp0PhTNSJrwJ4DKBEu6xtP36NUX70t9YQw3oC/ONg=="],
+
+    "@dprint/typescript": ["@dprint/typescript@0.87.1", "", {}, "sha512-XdbJCIbUdqijEgKOuFCSRwJAjHp5zUKZVzxrNn5xU9vn6Uy71JkvZT9Esw9hCEjno/vPmJ6IFhVGdoGlEzN2vQ=="],
 
     "@electric-sql/pglite": ["@electric-sql/pglite@0.5.16", "", {}, "sha512-Nj8KcIsJL748W408U2N8q4+9IlONdpRIU8MJypIAAINMJ5nqKyqpX7Mgg/5XKkXiAib3AoZGR6hnJFlrlLBrcg=="],
 

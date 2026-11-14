@@ -45,5 +45,6 @@ export async function customerRoutes(fastify: FastifyInstance) {
     filterAllowlist: CustomerFilterAllowlist,
     sortAllowlist: CustomerSortAllowlist,
     dialect: "sqlite",
+    knownFields: ["id", "email"],
   });
 }

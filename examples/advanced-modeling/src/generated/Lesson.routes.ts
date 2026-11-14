@@ -47,6 +47,7 @@ export async function lessonRoutes(fastify: FastifyInstance) {
         filterAllowlist: LessonFilterAllowlist,
         sortAllowlist: LessonSortAllowlist,
         dialect: "postgres",
+        knownFields: ["id", "programId", "title", "position"],
       });
     },
     { prefix: "/api" },

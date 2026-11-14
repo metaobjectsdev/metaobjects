@@ -45,5 +45,6 @@ export async function workoutRoutes(fastify: FastifyInstance) {
     filterAllowlist: WorkoutFilterAllowlist,
     sortAllowlist: WorkoutSortAllowlist,
     dialect: "postgres",
+    knownFields: ["id", "weekId", "title", "orderIndex", "durationMinutes"],
   });
 }

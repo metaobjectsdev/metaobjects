@@ -57,6 +57,14 @@ public static class VerifyCommand
     // ADR-0021 D2 — explicit verify subverbs (--templates / --codegen / --db).
     // ------------------------------------------------------------------------
 
+    /// <summary>The name the generated-routes generator reports (<c>RoutesGenerator.Name</c>).</summary>
+    private const string RoutesGeneratorName = "routes-generator";
+
+    /// <summary>Advisory rule <c>unbounded-list-pages</c>: routes are generated and no <c>api.pagination</c> is set.</summary>
+    public const string UNBOUNDED_LIST_PAGES_ADVISORY =
+        "dotnet meta verify --codegen: advisory unbounded-list-pages: list routes return every row when `limit` is omitted; " +
+        "set `api.pagination` in .metaobjects/config.json (for example { \"defaultLimit\": 50, \"maxLimit\": 1000 }).";
+
     /// <summary>The message printed when <c>--db</c> is requested in the C# port.</summary>
     public const string DB_NOT_SUPPORTED =
         "verify --db: schema drift is not supported in the C# port; schema verify is the " +
@@ -124,6 +132,8 @@ public static class VerifyCommand
         public MetaObjects.Meta.WireFormat Wire { get; init; } = MetaObjects.Meta.WireFormat.Default;
         /// <summary>ADR-0063 — the business-rules settings, from the same file; defaults when none is read.</summary>
         public MetaObjects.Config.RulesSettings Rules { get; init; } = MetaObjects.Config.RulesSettings.Default;
+        /// <summary>The project's <c>api</c> block, set on the loaded root beside <see cref="Wire"/>.</summary>
+        public MetaObjects.Meta.ApiSettings Api { get; init; } = MetaObjects.Meta.ApiSettings.Default;
         /// <summary>Templates root for the <c>--templates</c> gate (<c>--templates &lt;root&gt;</c>).</summary>
         public string? TemplatesRoot { get; init; }
         /// <summary>The committed output dir for the <c>--codegen</c> gate (<c>--out &lt;dir&gt;</c>).</summary>
@@ -197,6 +207,8 @@ public static class VerifyCommand
         /// this to report a failed load once, and never zero times.
         /// </summary>
         public bool LoadFailureReported { get; init; }
+        /// <summary>Non-failing advisories (never part of <see cref="ExitCode"/>); printed to stderr.</summary>
+        public IReadOnlyList<string> Advisories { get; init; } = [];
     }
 
     /// <summary>
@@ -227,10 +239,11 @@ public static class VerifyCommand
             if (templatesOutcome.LoadErrors.Count > 0) loadFailureReported = true;
         }
 
+        var advisories = new List<string>();
         Codegen.CodegenDrift.Result? codegenResult = null;
         if (runCodegen)
         {
-            codegenResult = RunCodegenDrift(opts, out var codegenLoadFailed);
+            codegenResult = RunCodegenDrift(opts, advisories, out var codegenLoadFailed);
             if (codegenLoadFailed) loadFailureReported = true;
             // usage error (nothing to diff against) → exit 2; metadata that does not load →
             // exit 1, the code every port's gen/verify/fmt uses for it; drift → 1; clean → 0.
@@ -257,6 +270,7 @@ public static class VerifyCommand
             Codegen = codegenResult,
             DbRejectionMessage = dbMsg,
             LoadFailureReported = loadFailureReported,
+            Advisories = advisories,
         };
     }
 
@@ -272,7 +286,7 @@ public static class VerifyCommand
         // The same load `gen` runs (ResolvedMetadata.Load): libraries, then the dependency snapshots, then the
         // project's own files; ADR-0058 naming and the wire format set on the root; the imports recorded on it.
         return new MetaObjects.Config.ResolvedMetadata(
-            opts.MetadataDir, opts.MetadataFiles, opts.Libraries, opts.Naming, opts.Wire, null, opts.Imports, null, opts.Providers)
+            opts.MetadataDir, opts.MetadataFiles, opts.Libraries, opts.Naming, opts.Wire, null, opts.Imports, null, opts.Providers) { Api = opts.Api }
             .Load(opts.Strict);
     }
 
@@ -409,7 +423,7 @@ public static class VerifyCommand
     /// <paramref name="loadFailed"/> says the metadata itself did not load (exit 1, not
     /// the usage exit 2 a missing <c>--out</c> or an unknown generator gets).
     /// </summary>
-    private static Codegen.CodegenDrift.Result RunCodegenDrift(Options opts, out bool loadFailed)
+    private static Codegen.CodegenDrift.Result RunCodegenDrift(Options opts, List<string> advisories, out bool loadFailed)
     {
         loadFailed = false;
         if (opts.OutDir is null)
@@ -476,6 +490,15 @@ public static class VerifyCommand
                 ],
             };
 
+        // unbounded-list-pages (advisory, never fails): the run generates list routes and the project sets no
+        // page size, so a list route returns every row when `limit` is omitted. The routes generator is matched by
+        // type or by its exact name (an owned copy keeps the name), never by a substring: a generator that merely
+        // has "routes" in its name writes no list route.
+        if (load.Root.Api.Pagination is null
+            && generators.Any(g => g is Codegen.Generators.RoutesGenerator || g.Name == RoutesGeneratorName)
+            && load.Root.Objects().Any(o => Codegen.Generators.RoutesGenerator.AppliesTo(o, load.Root)))
+            advisories.Add(UNBOUNDED_LIST_PAGES_ADVISORY);
+
         // C1 — same presence gate `gen` computes (GeneratorRegistry.IncludesNames over
         // the SAME resolved `names` list above), or a regen under a `--generators`
         // selection that excludes `names` would reference `<Entity>Names.*` while `gen`
@@ -497,6 +520,9 @@ public static class VerifyCommand
             // services read as drift.
             Dialect = neutralConfig?.MigrateDialect,
             SkipRedundantChecks = neutralConfig?.MigrateSkipRedundantChecks ?? false,
+            // The foreign-key indexes gen declared, so the regen indexes what gen indexed.
+            ForeignKeyIndexes = neutralConfig?.MigrateForeignKeyIndexes ?? false,
+            SchemaConventions = neutralConfig?.MigrateConventions,
         }.WithCSharpLayout(neutralConfig);
         return Codegen.CodegenDrift.Compute(config, load.Root, generators);
     }

@@ -1,0 +1,47 @@
+name: tph-validation-lists-issues
+description: >
+  The per-subtype routes list every validation issue, in the shape of the core
+  `validation-lists-issues` scenario: {"error": "validation", "issues": [{code, path, message}]}.
+  r1 sends a reference over its @maxLength and omits the BridgeAuth subtype's @required
+  quantity. r2 nulls the base's @required reference and sends a PriorAuth approver over its
+  @maxLength. r3 and r4 prove that nothing was written.
+requests:
+  - id: r1
+    method: POST
+    path: /api/auths/bridge
+    body:
+      reference: "RXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+    expect:
+      status: 400
+      body:
+        error: "validation"
+        issues:
+          - { path: [reference], code: too_big }
+          - { path: [quantity], code: invalid_type }
+  - id: r2
+    method: PATCH
+    path: /api/auths/priorauth/3
+    body:
+      reference: null
+      approver: "AXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+    expect:
+      status: 400
+      body:
+        error: "validation"
+        issues:
+          - { path: [reference], code: invalid_type }
+          - { path: [approver], code: too_big }
+  - id: r3
+    method: GET
+    path: /api/auths
+    expect:
+      status: 200
+      body:
+        length: 3
+  - id: r4
+    method: GET
+    path: /api/auths/3
+    expect:
+      status: 200
+      body:
+        row: { id: 3, reference: "REF-3", approver: "Dr. Smith" }

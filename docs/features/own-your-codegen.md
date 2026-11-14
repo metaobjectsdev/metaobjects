@@ -108,8 +108,8 @@ holds), the naming tables and the type-mapping tables (`names.ts`, `naming.ts`,
 `column-mapper.ts`), the primary-key and TPH walks (`pk-resolver.ts`, `tph.ts`), and the
 projection and report lowering that `meta migrate` and `meta verify` run. An owned file
 imports the engine from the package's engine entry, `@metaobjectsdev/codegen-ts/engine`,
-which also re-exports `ts-poet`'s `code`, `imp` and `joinCode`. The list is
-`ENGINE_MODULES`, exported from that entry; a module
+which also exports the code printer's `code`, `imp` and `joinCode` (`poet.ts`, the package's
+vendored copy of `ts-poet`). The list is `ENGINE_MODULES`, exported from that entry; a module
 that is not on it and that a generator reaches is copied. An owned generator therefore
 imports no packaged module that returns emitted text, and a test ejects each generator alone
 into an empty project to prove it: it compiles as your `tsconfig.codegen.json` checks it and
@@ -117,8 +117,8 @@ writes what the packaged generator writes, byte for byte.
 
 A copy differs from the packaged module in its **import lines only**. A relative import of
 an engine module becomes an import of `@metaobjectsdev/codegen-ts/engine`, a relative import of
-another template module becomes the path to your copy of it, and `ts-poet` becomes the
-engine's own (a copy must build `Code` with the same `ts-poet` the engine uses). Nothing else
+another template module becomes the path to your copy of it, and the printer stays the
+engine's (a copy must build `Code` with the same printer the engine uses). Nothing else
 is touched, so "what did upstream change?" is a diff of two files whose body is the same.
 
 - **Two generators that call one module share one copy.** `entity` and `queries` both call
@@ -1412,11 +1412,11 @@ on are yours too. Eject copies two kinds of source with a Java generator:
 
 | Ejecting | Shared emit rules, beside the generator | Helper runtime its output imports |
 |---|---|---|
-| `routes` | `SpringGeneratorSupport` | `CanonicalDecimal`, `ConstraintErrors`, `FilterParseResult`, `FilterParser`, `FilterPredicate`, `PatchValidationException`, `RecordComponentNames`, `UnreadableBody` |
-| `dto` | `SpringGeneratorSupport` | `CanonicalDecimal`, `CanonicalDecimalDeserializer`, `CanonicalDecimalSerializer`, `DeclaredDecimal`, `PatchValidationException` |
+| `routes` | `SpringGeneratorSupport` | `CanonicalDecimal`, `CanonicalDuration`, `ConstraintErrors`, `FilterParseResult`, `FilterParser`, `FilterPredicate`, `PatchValidationException`, `RecordComponentNames`, `ReportExport`, `UnknownBodyKeys`, `UnreadableBody`, `ValidationIssues` |
+| `dto` | `SpringGeneratorSupport` | `CanonicalDecimal`, `CanonicalDecimalDeserializer`, `CanonicalDecimalSerializer`, `CanonicalDuration`, `CanonicalDurationDeserializer`, `CanonicalDurationSerializer`, `DeclaredDecimal`, `PatchValidationException` |
 | `repository` | `SpringGeneratorSupport` | `FilterPredicate` |
-| `value-object` | `SpringGeneratorSupport` | `CanonicalDecimal`, `CanonicalDecimalDeserializer`, `CanonicalDecimalSerializer`, `DeclaredDecimal` |
-| any other Java generator, every Kotlin generator | nothing | nothing: its output imports only core (Kotlin writes its decimal wire into the output as `MetaDecimalWire.kt`) |
+| `value-object` | `SpringGeneratorSupport` | `CanonicalDecimal`, `CanonicalDecimalDeserializer`, `CanonicalDecimalSerializer`, `CanonicalDuration`, `CanonicalDurationDeserializer`, `CanonicalDurationSerializer`, `DeclaredDecimal` |
+| any other Java generator, every Kotlin generator | nothing | nothing: its output imports only core (Kotlin writes its decimal wire and its validation-issue list into the output, as `MetaDecimalWire.kt` and `MetaValidationIssues.kt`, and its unknown-body-key check as `MetaUnknownBodyKeys.kt`) |
 
 **The shared emit rules.** `SpringGeneratorSupport` holds the rules those four generators
 apply together: which fields a DTO and a patch carry, which of them are stamped for
@@ -1656,7 +1656,7 @@ Otherwise a bug in the filter parser would still mean waiting for a MetaObjects 
 
 `dotnet meta eject routes` therefore also writes their source to `codegen/runtime/`:
 `FilterParser.cs`, `FilterParseResult.cs`, `FilterPredicate.cs`,
-`EfCoreFilterDispatch.cs`, `ValueObjectValidator.cs`, `ConstraintErrors.cs` and
+`EfCoreFilterDispatch.cs`, `ValueObjectValidator.cs`, `ValidationIssues.cs`, `UnknownFieldCheck.cs`, `ConstraintErrors.cs` and
 `Iso8601TimestampConverter.cs`, the converter your host registers for the api contract's
 timestamp spelling. Each file is the packaged source with one change: its namespace becomes
 `Codegen.Runtime`, matching the folder the way `codegen/generators/` matches

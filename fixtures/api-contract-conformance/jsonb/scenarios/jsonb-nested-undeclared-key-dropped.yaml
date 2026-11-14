@@ -1,0 +1,64 @@
+name: jsonb-nested-undeclared-key-dropped
+description: >
+  `api.unknownFields` judges the TOP level of a write body only. A key the
+  entity does not declare at the top level is `400 unknown_fields` under
+  `reject` (the default; `input-unknown-fields-rejected`), but a key nested
+  inside a value object that the value object does not declare is NOT refused:
+  it is dropped silently, on create and on PATCH, and never stored. The
+  contrast is the open JSON bag (`payload`, `field.string @dbColumnType=jsonb`):
+  it declares no members, so every nested key in it is the client's data and is
+  kept. `row` compares each named column exactly, so a stored `extra` member
+  fails r1-r4. Seed rows are ids 1 and 2; the POST lands at id 3.
+requests:
+  # --- POST: an undeclared member inside a single VO and inside an array-of-VO element ---
+  - id: r1
+    method: POST
+    path: /api/documents
+    body:
+      title: "nested"
+      payload: { kept: true, extra: "mine" }
+      primaryMarker: { label: "owner-n", score: 7, extra: "dropped" }
+      markers: [ { label: "a", score: 1, extra: "dropped" } ]
+    expect:
+      status: 201
+      body:
+        hasId: true
+        row:
+          title: "nested"
+          payload: { kept: true, extra: "mine" }
+          primaryMarker: { label: "owner-n", score: 7 }
+          markers: [ { label: "a", score: 1 } ]
+  - id: r2
+    method: GET
+    path: /api/documents/3
+    expect:
+      status: 200
+      body:
+        row:
+          id: 3
+          payload: { kept: true, extra: "mine" }
+          primaryMarker: { label: "owner-n", score: 7 }
+          markers: [ { label: "a", score: 1 } ]
+
+  # --- PATCH: the same rule on update ---
+  - id: r3
+    method: PATCH
+    path: /api/documents/3
+    body:
+      optionalMarker: { label: "opt-n", score: 8, extra: "dropped" }
+    expect:
+      status: 200
+      body:
+        row:
+          id: 3
+          optionalMarker: { label: "opt-n", score: 8 }
+  - id: r4
+    method: GET
+    path: /api/documents/3
+    expect:
+      status: 200
+      body:
+        row:
+          id: 3
+          primaryMarker: { label: "owner-n", score: 7 }
+          optionalMarker: { label: "opt-n", score: 8 }

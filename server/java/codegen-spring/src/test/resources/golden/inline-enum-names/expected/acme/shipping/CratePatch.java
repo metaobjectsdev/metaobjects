@@ -34,7 +34,9 @@ public final class CratePatch {
     public static CratePatch fromJson(JsonNode body, ObjectMapper mapper) {
         if (!body.isObject()) throw new PatchValidationException("(request body)");
         Map<String, Object> assigned = new LinkedHashMap<>();
-        bind(body, mapper, assigned, "stage", new TypeReference<CrateDto.Status>() {}, true);
+        java.util.List<PatchValidationException.Problem> problems = PatchValidationException.newProblems();
+        PatchValidationException.collect(problems, () -> bind(body, mapper, assigned, "stage", new TypeReference<CrateDto.Status>() {}, true));
+        if (!problems.isEmpty()) throw new PatchValidationException(problems, assigned);
         return new CratePatch(assigned);
     }
 
@@ -50,7 +52,7 @@ public final class CratePatch {
         try {
             assigned.put(field, mapper.treeToValue(node, type));
         } catch (JsonProcessingException e) {
-            throw new PatchValidationException(field);
+            throw new PatchValidationException(field, e);
         }
     }
 }

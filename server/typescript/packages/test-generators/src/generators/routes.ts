@@ -69,7 +69,9 @@ import {
   isReport,
   itemRouteField,
   decimalColumnsLine,
+  paginationLine,
   writeDeniedColumnsLine,
+  knownFieldsLine,
   servesReadApi,
   formatTs,
   entityOutputPath,
@@ -168,7 +170,8 @@ function renderRoutes(
       (report ? `\n${indent}resource: "report",` : "") +
       (report && reportMaxRows !== undefined ? `\n${indent}reportMaxRows: ${reportMaxRows},` : "") +
       (report && ctx.includeReportExport ? `\n${indent}export: ${entityName}Export,` : "") +
-      decimalColumnsLine(entity, indent, ctx.loadedRoot);
+      decimalColumnsLine(entity, indent, ctx.loadedRoot) +
+      (report ? "" : paginationLine(entity, indent, ctx.loadedRoot));
     const FastifyInstanceSym = imp("t:FastifyInstance@fastify");
     const mountReadOnlyCrudRoutesSym = imp(`mountReadOnlyCrudRoutes@${runtimeSpec}`);
     // A projection mount is read-only by construction, so `expose` cannot narrow it —
@@ -311,7 +314,7 @@ export async function ${handlerName}(fastify: ${FastifyInstanceSym}) {
       updateSchema: ${entityName}UpdateSchema,
       filterAllowlist: ${entityName}FilterAllowlist,
       sortAllowlist: ${entityName}SortAllowlist,
-      dialect: ${JSON.stringify(ctx.dialect)},${decimalColumnsLine(entity, "      ", ctx.loadedRoot)}${writeDeniedColumnsLine(entity, "      ")}${exposeLinePrefixed}
+      dialect: ${JSON.stringify(ctx.dialect)},${decimalColumnsLine(entity, "      ", ctx.loadedRoot)}${writeDeniedColumnsLine(entity, "      ")}${knownFieldsLine(entity, "      ", ctx.loadedRoot)}${paginationLine(entity, "      ", ctx.loadedRoot)}${exposeLinePrefixed}
     });
 ${m2mMountsPrefixed}  }, { prefix: ${JSON.stringify(ctx.apiPrefix)} });
 }
@@ -336,7 +339,7 @@ export async function ${handlerName}(fastify: ${FastifyInstanceSym}) {
     updateSchema: ${entityName}UpdateSchema,
     filterAllowlist: ${entityName}FilterAllowlist,
     sortAllowlist: ${entityName}SortAllowlist,
-    dialect: ${JSON.stringify(ctx.dialect)},${decimalColumnsLine(entity, "    ", ctx.loadedRoot)}${writeDeniedColumnsLine(entity, "    ")}${exposeLineFlat}
+    dialect: ${JSON.stringify(ctx.dialect)},${decimalColumnsLine(entity, "    ", ctx.loadedRoot)}${writeDeniedColumnsLine(entity, "    ")}${knownFieldsLine(entity, "    ", ctx.loadedRoot)}${paginationLine(entity, "    ", ctx.loadedRoot)}${exposeLineFlat}
   });
 ${m2mMountsFlat}}
 `;
@@ -603,7 +606,7 @@ function renderTphRoutes(
       updateSchema: ${baseUpdateSym},
       filterAllowlist: ${baseFilterSym},
       sortAllowlist: ${baseSortSym},
-      dialect: ${dialectLit},${decimalColumnsLine(hierarchy, "      ", ctx.loadedRoot)}${polymorphicExposeLine}
+      dialect: ${dialectLit},${decimalColumnsLine(hierarchy, "      ", ctx.loadedRoot)}${paginationLine(base, "      ", ctx.loadedRoot)}${polymorphicExposeLine}
     });`;
 
   // FR-018 x FR-017 — M:N traversal inside a TPH hierarchy. This file never consulted
@@ -650,7 +653,7 @@ function renderTphRoutes(
       updateSchema: ${subUpdateSym},
       filterAllowlist: ${subFilterSym},
       sortAllowlist: ${subSortSym},
-      dialect: ${dialectLit},${decimalColumnsLine(sub, "      ", ctx.loadedRoot, hierarchy)}${writeDeniedColumnsLine(sub, "      ", hierarchy)}
+      dialect: ${dialectLit},${decimalColumnsLine(sub, "      ", ctx.loadedRoot, hierarchy)}${writeDeniedColumnsLine(sub, "      ", hierarchy)}${knownFieldsLine(sub, "      ", ctx.loadedRoot, hierarchy)}${paginationLine(sub, "      ", ctx.loadedRoot)}
       discriminator: { column: ${JSON.stringify(discField)}, value: ${JSON.stringify(value)} },${exposeLine(expose, "      ")}
     });`;
     // This subtype's own M:N navigations, mounted beneath its segment and gated on the

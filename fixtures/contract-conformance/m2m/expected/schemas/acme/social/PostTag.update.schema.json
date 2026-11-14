@@ -3,14 +3,5 @@
   "$id": "schemas/acme/social/PostTag.update.schema.json",
   "title": "PostTag.update",
   "type": "object",
-  "properties": {
-    "postId": {
-      "type": "integer",
-      "format": "int64"
-    },
-    "tagId": {
-      "type": "integer",
-      "format": "int64"
-    }
-  }
+  "properties": {}
 }

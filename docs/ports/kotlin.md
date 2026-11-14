@@ -20,6 +20,8 @@ Two modules:
 - **`metaobjects-metadata-ktx`** — thin Kotlin facade over the Java loader + render
   engine for idiomatic Kotlin runtime use.
 
+> **Schema migrations and database checks run in the Node `meta` tool.** The Maven plugin generates and verifies code, but writing and applying migrations (`npx meta migrate`, `npx meta migrate apply-pending`) and checking a live database against the model (`npx meta verify --db`) need Node: `npm i -D @metaobjectsdev/cli`, then `npx meta init --config-only` to point it at your metadata. Node is needed where migrations are written or applied, not in your running service. What else behaves differently in this port is listed in [What differs by language](../features/language-differences.md).
+
 ## Regeneration and hand edits
 
 There is no three-way merge on the JVM (that is TypeScript-only). Kotlin runs through the same
@@ -646,6 +648,23 @@ branch in each report `<Report>Controller` when that list holds a `report-export
 (`EmitsReportExport`, so an ejected copy counts too). The branch reads its cap from
 `<Report>Export.MAX_ROWS`, so the cap is set once, as `maxRows` on `report-export`. Without it the
 controllers are byte-identical to today and `?format=` is ignored like any unknown parameter.
+
+### `api.pagination` and `api.unknownFields`
+
+`KotlinSpringControllerGenerator` reads the project's `api` block from the loaded root
+(`loader.root.apiSettings`, the same `.metaobjects/config.json` reader as `naming` and `wire`).
+With `api.pagination` every generated list route (entity, TPH base and per-subtype, projection;
+not a served report or an M:N traversal) uses `defaultLimit` when `limit` is omitted and answers a
+`limit` above `maxLimit` with `400 {"error": "limit_too_large", "maxLimit": N}`. Without it the
+routes keep their historic default of 50 and no cap. With `api.unknownFields` `reject` (the
+default) create, PUT and PATCH read the raw `JsonNode` body, list any top-level key the entity does
+not declare (for a TPH base the union of the base's and every subtype's fields) as
+`400 {"error": "unknown_fields", "fields": [...]}` in code-point order, and write nothing; this
+happens before binding, so the answer is the same whatever the host `ObjectMapper` does with
+unknown properties. The check is generated into a per-package `MetaUnknownBodyKeys.kt` (no
+MetaObjects import; it ships with the `routes` eject). Because the create handler binds the raw
+body, the controller now always takes the `ObjectMapper`. `drop` keeps today's behaviour and emits
+no helper.
 
 The Kotlin controllers import nothing from MetaObjects, so the request side (format parsing, the three
 400 envelopes, the `Content-Disposition` and `Content-Type` values) is generated into the shared

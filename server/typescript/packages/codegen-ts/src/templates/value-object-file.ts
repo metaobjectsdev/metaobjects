@@ -13,7 +13,7 @@
 // false. The entity may still have read-only source.* children (those are
 // handled by the projection path before this one is reached).
 
-import { joinCode, type Code } from "ts-poet";
+import { joinCode, type Code } from "../poet.js";
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import { OBJECT_SUBTYPE_VALUE } from "@metaobjectsdev/metadata";
 import type { RenderContext } from "../render-context.js";

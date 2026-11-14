@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from ..naming import NamingRules
+from ..api_settings import ApiSettings
 from ..rules_settings import DEFAULT_RULES_SETTINGS, RulesSettings
 from ..wire import WireFormat
 from .meta_data import MetaData
@@ -25,3 +26,5 @@ class MetaRoot(MetaData):
         # ADR-0063 — the project `rules` / `verify` settings, attached by the same project-aware
         # loads as `wire`; read with `rules_settings_of()`. Defaults until a load attaches them.
         self.rules_settings: RulesSettings = DEFAULT_RULES_SETTINGS
+        # The project `api` setting (page size, unknown-field rule), attached the same way; read with `api_of()`.
+        self.api: ApiSettings = ApiSettings()

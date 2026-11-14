@@ -459,12 +459,20 @@
               "null"
             ],
             "maxLength": 100
+          },
+          "role": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 20
           }
         },
         "required": [
           "id",
           "name",
-          "tokenHash"
+          "tokenHash",
+          "role"
         ]
       },
       "AccountCreate": {

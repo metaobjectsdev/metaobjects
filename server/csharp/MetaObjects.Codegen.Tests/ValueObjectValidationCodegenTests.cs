@@ -80,8 +80,8 @@ public class ValueObjectValidationCodegenTests
         Assert.Contains("Deserialize<Marker>", routes);                  // single VO
         Assert.Contains("Deserialize<System.Collections.Generic.List<Marker>>", routes); // array VO
         // Recursive VO validation on BOTH PATCH and POST.
-        Assert.Contains("ValueObjectValidator.Validate", routes);
-        Assert.Contains("ValueObjectValidator.Validate(input.PrimaryMarker)", routes);
+        Assert.Contains("ValueObjectValidator.Collect", routes);
+        Assert.Contains("ValueObjectValidator.Collect(input.PrimaryMarker, __issues, jsonOpts, \"primaryMarker\")", routes);
     }
 
     [Fact]

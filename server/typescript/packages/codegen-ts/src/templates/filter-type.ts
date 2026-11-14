@@ -3,7 +3,7 @@
 // datetimes get eq/ne/gt/gte/lt/lte/in. An enum's operand type is its member union.
 
 import { flatSurfaceFields } from "../flattened.js";
-import { code, type Code } from "ts-poet";
+import { code, type Code } from "../poet.js";
 import { MetaField, MetaObject } from "@metaobjectsdev/metadata";
 import {
   FIELD_ATTR_FILTERABLE,

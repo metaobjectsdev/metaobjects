@@ -17,6 +17,8 @@ export interface InitFlags {
   servers: string[];
   clients: string[];
   noSkills: boolean;
+  /** `--skills-dir`; validated by `init()`, not here, so every door refuses the same values. */
+  skillsDir: string | undefined;
   wireRoot: boolean;
   docsOnly: boolean;
   configOnly: boolean;
@@ -34,6 +36,7 @@ export const INIT_OPTIONS = {
   server: { type: "string", multiple: true },
   client: { type: "string", multiple: true },
   "no-skills": { type: "boolean", default: false },
+  "skills-dir": { type: "string" },
   "no-wire-root": { type: "boolean", default: false },
   "docs-only": { type: "boolean", default: false },
   "config-only": { type: "boolean", default: false },
@@ -57,6 +60,7 @@ export function parseInitArgs(argv: string[]): InitFlags {
     servers: (values.server as string[] | undefined) ?? [],
     clients: (values.client as string[] | undefined) ?? [],
     noSkills: !!values["no-skills"],
+    skillsDir: values["skills-dir"] as string | undefined,
     wireRoot: !values["no-wire-root"],
     docsOnly: !!values["docs-only"],
     configOnly: !!values["config-only"],
@@ -73,6 +77,7 @@ export interface AgentDocsFlags {
   clients: string[];
   out: string | undefined;
   noSkills: boolean;
+  skillsDir: string | undefined;
   wireRoot: boolean;
 }
 
@@ -82,6 +87,7 @@ export const AGENT_DOCS_OPTIONS = {
   client: { type: "string", multiple: true },
   out: { type: "string" },
   "no-skills": { type: "boolean", default: false },
+  "skills-dir": { type: "string" },
   "no-wire-root": { type: "boolean", default: false },
 } as const;
 
@@ -97,6 +103,7 @@ export function parseAgentDocsArgs(argv: string[]): AgentDocsFlags {
     clients: (values.client as string[] | undefined) ?? [],
     out: values.out as string | undefined,
     noSkills: !!values["no-skills"],
+    skillsDir: values["skills-dir"] as string | undefined,
     wireRoot: !values["no-wire-root"],
   };
 }
@@ -391,13 +398,17 @@ export interface VerifyFlags {
   /** Run the codegen-drift gate: is the GENERATED contribution of each file current? */
   codegen: boolean;
   /**
-   * With `--codegen`: fail the build on any hand edit inside a generated file, for teams
-   * that want generated code untouchable. Off by default, because hand edits are the
-   * documented workflow (`meta gen` three-way-merges them) — without it they are
-   * reported as a notice and never change the exit code. Refused without `--codegen`:
-   * it modifies that gate and would otherwise parse cleanly and do nothing.
+   * With `--codegen`: fail the build on any hand edit inside a generated file for THIS run,
+   * whatever `verify.handEdits` in `.metaobjects/config.json` says. Refused without
+   * `--codegen`: it modifies that gate and would otherwise parse cleanly and do nothing.
    */
   forbidHandEdits: boolean;
+  /**
+   * With `--codegen`: list hand edits as a notice and exit 0 for THIS run, relaxing a
+   * project's `verify.handEdits: "fail"`. Refused without `--codegen`, and refused beside
+   * `--forbid-hand-edits`, which asks the opposite.
+   */
+  allowHandEdits: boolean;
   /**
    * `--docs`, removed in 1.1.0 (ADR-0034 Amendment 9): `--codegen` checks documentation with
    * everything else the generator list declares. Still parsed, so the command can say where
@@ -521,6 +532,7 @@ export const VERIFY_OPTIONS = {
   templates: { type: "boolean", default: false },
   codegen: { type: "boolean", default: false },
   "forbid-hand-edits": { type: "boolean", default: false },
+  "allow-hand-edits": { type: "boolean", default: false },
   // Removed in 1.1.0 (ADR-0034 Amendment 9). Still parsed, so `meta verify --docs` prints
   // where the check went instead of an unknown-flag error.
   docs: { type: "boolean", default: false },
@@ -588,6 +600,15 @@ export function parseVerifyArgs(argv: string[]): VerifyFlags {
       "--forbid-hand-edits only applies to the codegen gate. Run: meta verify --codegen --forbid-hand-edits",
     );
   }
+  const allowHandEdits = !!values["allow-hand-edits"];
+  if (allowHandEdits && !codegen) {
+    throw new Error(
+      "--allow-hand-edits only applies to the codegen gate. Run: meta verify --codegen --allow-hand-edits",
+    );
+  }
+  if (allowHandEdits && forbidHandEdits) {
+    throw new Error("--allow-hand-edits and --forbid-hand-edits ask for opposite things; pass one of them.");
+  }
   const docs = !!values.docs;
   const deps = !!values.deps;
   const replay = !!values.replay;
@@ -612,6 +633,7 @@ export function parseVerifyArgs(argv: string[]): VerifyFlags {
     templates,
     codegen,
     forbidHandEdits,
+    allowHandEdits,
     docs,
     deps,
     replay,

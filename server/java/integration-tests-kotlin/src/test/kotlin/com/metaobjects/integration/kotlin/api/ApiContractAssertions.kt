@@ -4,7 +4,7 @@ import com.metaobjects.integration.kotlin.api.ApiContractScenarios.ApiRequest
 
 /**
  * Assertion engine for api-contract-conformance scenarios. The vocabulary
- * (`equals` / `length` / `ids` / `names` / `row` / `hasId` / `envelope` /
+ * (`equals` / `length` / `ids` / `names` / `row` / `unset` / `hasId` / `envelope` /
  * `error` / `empty` / `fieldsEqual` / `fieldsNotEqual`) is the cross-port
  * contract — every per-port runner must implement these keys identically.
  * See `fixtures/api-contract-conformance/README.md`.
@@ -119,6 +119,9 @@ object ApiContractAssertions {
                 if (actualField != wantField)
                     throw AssertionError("$scenarioName / ${request.id}: expected field=\"$wantField\", got: $body")
             }
+            (want["issues"] as? List<*>)?.let { wantIssues ->
+                assertIssues(scenarioName, request.id, body, wantIssues)
+            }
             return
         }
         (want["length"] as? Number)?.toInt()?.let { wantLen ->
@@ -151,6 +154,24 @@ object ApiContractAssertions {
                 if (!structuralEquals(actual, v))
                     throw AssertionError("$scenarioName / ${request.id}: expected row.$k=$v, got $actual")
             }
+        }
+        // The listed keys must not be on the object at all (not even as null): a key the client
+        // may not set never reached storage and so never comes back in the echo.
+        (want["absent"] as? List<*>)?.let { keys ->
+            val row = body as? Map<*, *>
+                ?: throw AssertionError("$scenarioName / ${request.id}: expected object for absent, got: $body")
+            val present = keys.filter { row.containsKey(it) }
+            if (present.isNotEmpty())
+                throw AssertionError("$scenarioName / ${request.id}: expected no $present in body, got: $body")
+        }
+        // Each listed key is missing or null: a value the client may not set never reached storage.
+        // (Missing-or-null, not strictly missing: ports differ on echoing an unset column as null.)
+        (want["unset"] as? List<*>)?.let { keys ->
+            val row = body as? Map<*, *>
+                ?: throw AssertionError("$scenarioName / ${request.id}: expected object for unset, got: $body")
+            val stored = keys.filter { row[it] != null }
+            if (stored.isNotEmpty())
+                throw AssertionError("$scenarioName / ${request.id}: expected $stored unset, got: $body")
         }
         if (want["hasId"] == true) {
             val row = body as? Map<*, *>
@@ -239,5 +260,27 @@ object ApiContractAssertions {
         is Map<*, *> -> body.isEmpty()
         is List<*> -> body.isEmpty()
         else -> false
+    }
+
+    /**
+     * The validation envelope lists its issues: `issues` is an array, every issue carries a string
+     * `code`, an array `path` and a string `message`, and each expected `{ path, code }` is among them.
+     */
+    private fun assertIssues(scenarioName: String, requestId: String, body: Any?, expected: List<*>) {
+        val actual = (body as? Map<*, *>)?.get("issues") as? List<*>
+            ?: throw AssertionError("$scenarioName / $requestId: expected an issues array, got: $body")
+        for (issue in actual) {
+            val im = issue as? Map<*, *>
+            if (im == null || im["code"] !is String || im["path"] !is List<*> || im["message"] !is String)
+                throw AssertionError("$scenarioName / $requestId: an issue lacks code, path or message: $issue")
+        }
+        for (want in expected) {
+            val w = want as Map<*, *>
+            val found = actual.any { issue ->
+                val im = issue as Map<*, *>
+                im["code"] == w["code"] && im["path"].toString() == w["path"].toString()
+            }
+            if (!found) throw AssertionError("$scenarioName / $requestId: expected an issue $want, got: $actual")
+        }
     }
 }

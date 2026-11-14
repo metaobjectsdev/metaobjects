@@ -115,6 +115,7 @@ export const RULE_REMOVED_PROP_PREFIX = "removed-prop:";
 export const RULE_LIBRARY_PREFIX = "library-prefix-unprovenanced";
 export const RULE_UNINDEXED_FK = "unindexed-foreign-key";
 export const RULE_REFERENTIAL_ACTION_CONFLICT = "overridden-referential-action";
+export const RULE_UNBOUNDED_LIST = "unbounded-list-pages";
 
 /** The next-step line for `n` rows of one advisory kind, each naming what the rows are. */
 const ADVISORY_HELP: ReadonlyArray<{ matches: (rule: string) => boolean; line: (n: number) => string }> = [
@@ -127,6 +128,11 @@ const ADVISORY_HELP: ReadonlyArray<{ matches: (rule: string) => boolean; line: (
     matches: (r) => r === RULE_REFERENTIAL_ACTION_CONFLICT,
     line: (n) =>
       `${n} foreign key(s) whose two sides disagree on the referential action — see antiPatterns.rows[] (rule "${RULE_REFERENTIAL_ACTION_CONFLICT}")`,
+  },
+  {
+    matches: (r) => r === RULE_UNBOUNDED_LIST,
+    line: () =>
+      `generated list routes with no page size — see antiPatterns.rows[] (rule "${RULE_UNBOUNDED_LIST}"), which names the api.pagination block to add`,
   },
   {
     matches: (r) => r === RULE_MISSING_BASE_URL,
@@ -258,6 +264,22 @@ export function referentialActionConflictRows(
     line: 0,
     rule: RULE_REFERENTIAL_ACTION_CONFLICT,
     construct: f.construct,
+    message: f.message,
+  }));
+}
+
+/**
+ * Generated list routes with no page size, in the same row shape. `construct` is the wired
+ * route generator; the fix goes in the config file the row names.
+ */
+export function unboundedListRows(
+  findings: readonly { file: string; generator: string; message: string }[],
+): AdvisoryFindingRow[] {
+  return findings.map((f) => ({
+    file: f.file,
+    line: 0,
+    rule: RULE_UNBOUNDED_LIST,
+    construct: f.generator,
     message: f.message,
   }));
 }

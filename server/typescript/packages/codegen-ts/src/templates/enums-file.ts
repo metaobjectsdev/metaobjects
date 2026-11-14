@@ -10,7 +10,7 @@
 // @provided enums are NEVER materialized here (they live in hand-written code,
 // imported from the configured providedEnumModule).
 
-import { code, imp, joinCode, type Code } from "ts-poet";
+import { code, imp, joinCode, type Code } from "../poet.js";
 import type { MetaRoot } from "@metaobjectsdev/metadata";
 import { GENERATED_HEADER, GENERATED_EDIT_NOTE } from "../constants.js";
 import { materializedSharedEnums, type SharedEnum } from "../enum-shared.js";

@@ -19,10 +19,10 @@
 //
 // THE FIX (two halves, one lane each below):
 //   1. templates — the reference generators import `code`/`joinCode` from
-//      @metaobjectsdev/codegen-ts (re-exported from ITS ts-poet instance), so every
+//      @metaobjectsdev/codegen-ts (re-exported from ITS printer), so every
 //      cross-boundary Code shares one class identity by construction.
-//   2. loader — loadMetaobjectsConfig aliases bare "ts-poet" to the copy adjacent to
-//      the resolved @metaobjectsdev/codegen-ts (completing the existing alias map),
+//   2. loader — loadMetaobjectsConfig aliases bare "ts-poet" to the printer codegen-ts
+//      vendors (its `/engine` entry, completing the existing alias map),
 //      repairing EXISTING scaffolded projects — whose owned generators still say
 //      `from "ts-poet"` — without re-scaffolding.
 //
@@ -86,13 +86,12 @@ const CONFIG = [
   `});`,
 ].join("\n");
 
-/** The ts-poet copy that @metaobjectsdev/codegen-ts itself loads, plus its runtime
- *  dependency closure (dprint-node — required eagerly by ts-poet's Code.js — and
- *  dprint-node's detect-libc), so the planted copy is loadable in isolation. */
+/** A real ts-poet (this package's devDependency — codegen-ts vendors its printer and no
+ *  longer depends on it) plus its runtime dependency closure (dprint-node — required
+ *  eagerly by ts-poet's Code.js — and dprint-node's detect-libc), so the planted copy is
+ *  loadable in isolation, exactly as an adopter's own ts-poet devDependency is. */
 function tsPoetCopySources(): Array<{ pkg: string; dir: string }> {
-  const req = createRequire(import.meta.url);
-  const codegenTsPkg = req.resolve("@metaobjectsdev/codegen-ts/package.json");
-  const tsPoetPkg = createRequire(codegenTsPkg).resolve("ts-poet/package.json");
+  const tsPoetPkg = createRequire(import.meta.url).resolve("ts-poet/package.json");
   const dprintPkg = createRequire(tsPoetPkg).resolve("dprint-node/package.json");
   const detectLibcPkg = createRequire(dprintPkg).resolve("detect-libc/package.json");
   return [
