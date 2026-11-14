@@ -87,7 +87,7 @@ def test_init_writes_the_new_project_api_block_that_typescript_meta_init_writes(
     assert raw["api"]["unknownFields"] == "reject"
     assert raw["migrate"] == {"foreignKeyIndexes": True}
     assert raw["verify"] == {"handEdits": "fail"}
-    # The page size reaches a generated router.
+    # The scaffolded neutral config, with the page size set, generates a router without error.
     (tmp_path / "metaobjects" / "meta.app.yaml").write_text(
         "metadata:\n  package: app\n  children:\n"
         "    - object.entity:\n        name: Author\n        children:\n"
