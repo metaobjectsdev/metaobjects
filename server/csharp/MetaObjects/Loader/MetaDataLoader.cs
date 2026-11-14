@@ -491,6 +491,8 @@ public class MetaDataLoader
 
             // Pass 4: filterable-without-index drift warning
             warnings.AddRange(ValidationPasses.ValidateFilterableHasIndex(root));
+            // rc.21 part B (I2): an extender whose view widened with the identity-anchor rule.
+            warnings.AddRange(ValidationPasses.ValidateExtenderSubtypeScope(root));
 
             // Pass 4b: @filterable on a subtype with no operator band, or an array → error (SP-H Unit9 / #335)
             errors.AddRange(ValidationPasses.ValidateFilterableHasSupportedOps(root));

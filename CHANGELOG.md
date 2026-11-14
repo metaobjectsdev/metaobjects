@@ -362,6 +362,20 @@ vocabulary; upgrade every port together.
 
 ### Changed
 
+- **Behaviour change, TypeScript and C#: a projection that extends another keeps its super's
+  identity anchor (rc.21).** An extender that declared no identity of its own took its base from
+  its own fields' `extends`. So a projection over a TPH root that added a subtype's column moved
+  its base to that subtype, and its view returned only the subtype's rows. It now keeps the
+  identity its super anchors with: the base is the TPH base, and the view returns **every** row of
+  the shared table, the subtype column NULL on the others. A field bound to a TPH relative of the
+  base reads the shared table's column (it read a column named after the projection field). The
+  load now warns in exactly the case whose output widened: an extender with no identity of its
+  own, anchored by its super on a TPH base, that binds a field to a subtype-only column and has no
+  `@filter` on the discriminator. **Upgrade note:** to get the subtype-scoped view back, either add
+  `@filter: { <discriminator>: <value> }` to the extender, or anchor it on the subtype: declare
+  `identity.primary { name: id, extends: <Subtype>.primary }` with a field extending
+  `<Subtype>.id`.
+
 - **C#: the generated EF context declares the CHECKs `meta migrate` creates** (rc.19 item 13,
   ruling R55). Every validator that can carry one (`numeric`, `length`, `regex`, and the
   cross-field `comparison`, `requiredWhen`, `presentIff`, `atLeastOne`, with `@condition`) and
@@ -620,23 +634,21 @@ vocabulary; upgrade every port together.
 
 ### Fixed
 
-- **Fix, TypeScript and C#: a projection that extends another keeps its super's identity anchor
-  (rc.21).** An extender that declared no identity of its own took its base from its own fields'
-  `extends`, so a projection over a TPH root that added a subtype's column moved its base to the
-  subtype (and its view to that subtype's rows). It now keeps the identity its super anchors with.
-  And a field bound to a TPH relative of the base reads the shared table's column, where it read a
-  column named after the projection field.
-
 - **Fix, TypeScript and C#: a passthrough may walk a reference backwards when at most one row
   references it (rc.21).** A reverse hop was always to-many, so a passthrough over it was refused
   (`ERR_ORIGIN_CARDINALITY`). When the holder declares an `identity.primary` or
   `identity.secondary` over exactly the reference's fields, the hop is to-one for a passthrough;
-  an aggregate over it stays legal.
+  an aggregate over it stays legal. A partial (`@where`) or expression (`@expr`) unique index is
+  unique only over a subset or a value, so it never makes the hop to-one.
 
 - **Fix, TypeScript: a grouped view groups the joined columns its expressions read (rc.21).** A
-  computed column or an `origin.first` correlation that read a joined column outside an
-  aggregate was not in the GROUP BY; Postgres refused the view. The base row's columns stay out
-  (its primary key is grouped).
+  computed column or an `origin.first` correlation that read a joined column outside an aggregate
+  was not in the GROUP BY. Where the joined row's primary key was not grouped, Postgres refused
+  the view; it is valid now. The generated view text changes for every grouped view whose
+  expressions read a joined column, also where the view already worked (SQLite, or a Postgres
+  view the joined key's grouping made valid), so the next `meta migrate` replaces such a view
+  once. Every added column is on a to-one join, so the rows are the same. The base row's columns
+  stay out (its primary key is grouped).
 
 - **Fix, C#: a reference over a flattened member configures the owned type's own navigation
   (rc.21, U6).** `identity.reference { @fields: address.countryId, @references: Country }` emitted

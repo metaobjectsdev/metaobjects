@@ -1332,6 +1332,44 @@ public static partial class ValidationPasses
 
     /// Derive the BASE entity a no-`@via` origin path anchors at (spec §5).
     /// Returns null when no base is derivable (an error has been pushed).
+    /// <summary>
+    /// rc.21 part B (I2): warn when an extender's view WIDENED with the identity-anchor rule — no identity
+    /// of its own, a super anchored on a TPH base, a field bound to a column only a subtype carries, and no
+    /// discriminator filter. TS <c>validateExtenderSubtypeScope</c>, message for message.
+    /// </summary>
+    public static IReadOnlyList<string> ValidateExtenderSubtypeScope(MetaData root)
+    {
+        var warnings = new List<string>();
+        foreach (var obj in root.OwnChildren().Where(c => c.Type == TYPE_OBJECT && c.SubType == OBJECT_SUBTYPE_PROJECTION))
+        {
+            if (obj.OwnChildren().Any(c => c.Type == TYPE_IDENTITY)) continue;
+            if (obj.SuperData is not { Type: TYPE_OBJECT, SubType: OBJECT_SUBTYPE_PROJECTION } sup || !AnchorsByIdentity(sup)) continue;
+            if (DeriveBaseEntity(obj, root, "@extends", obj.Source, new List<MetaError>()) is not { } baseEntity) continue;
+            string? discriminator = null;
+            for (var cur = baseEntity; cur is { Type: TYPE_OBJECT }; cur = cur.SuperData)
+                if (cur.OwnAttr(OBJECT_ATTR_DISCRIMINATOR) is string d) { discriminator = d; break; }
+            if (discriminator is null) continue;
+            if (ProjectionFilters.Effective(obj) is IReadOnlyDictionary<string, object?> filter && FilterKeys(filter).Contains(discriminator)) continue;
+            var pkg = NamingRefs.EffectivePackage(obj);
+            foreach (var f in obj.Children().Where(c => c.Type == TYPE_FIELD))
+            {
+                var owner = RefNamedOwner(f, root, pkg);
+                if (owner is null || ReferenceEquals(owner, baseEntity)) continue;
+                var descends = false;
+                for (var cur = owner.SuperData; cur is not null; cur = cur.SuperData)
+                    if (ReferenceEquals(cur, baseEntity)) { descends = true; break; }
+                if (!descends) continue;
+                var col = f.SuperRef is { } r ? r.Split('.').Last() : f.Name;
+                warnings.Add(
+                    $"object.projection {obj.Name}: \"{f.Name}\" reads {owner.Name}.{col}, a column only the " +
+                    $"subtype {owner.Name} carries, over the TPH base {baseEntity.Name} with no @filter on its discriminator \"{discriminator}\", so the " +
+                    $"view returns every {baseEntity.Name} row (rc.21: an extender keeps its super's identity anchor; before, its base was {owner.Name}). " +
+                    $"To keep a subtype-scoped view, add @filter {{ {discriminator}: <value> }} or declare identity.primary {{ extends: {owner.Name}.primary }}.");
+            }
+        }
+        return warnings.AsReadOnly();
+    }
+
     /// <summary>rc.21 part B: whether a projection (or one it extends) anchors its base with an extended identity.</summary>
     private static bool AnchorsByIdentity(MetaData obj)
     {

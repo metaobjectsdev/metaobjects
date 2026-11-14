@@ -191,4 +191,34 @@ public class ViewVocabularyRc21LoaderTests
         if (unique) Assert.Empty(errors);
         else Assert.Contains(errors, e => e.Code.ToString() == "ERR_ORIGIN_CARDINALITY");
     }
+
+    // rc.21 part B fix round (I2): an extender whose view widened over a TPH base warns, unless scoped.
+    [Theory]
+    [InlineData("", true)]
+    [InlineData("\"@filter\": { \"kind\": \"TRUCK\" },", false)]
+    public void An_extender_whose_view_widened_over_a_tph_base_warns(string filter, bool warns)
+    {
+        var json = $$"""
+          { "metadata.root": { "package": "acme", "children": [
+            { "object.entity": { "name": "Vehicle", "@discriminator": "kind", "children": [
+              { "source.rdb": { "@table": "vehicles" } }, { "field.long": { "name": "id" } }, { "field.string": { "name": "kind", "@maxLength": 10 } },
+              { "identity.primary": { "@fields": "id" } } ] } },
+            { "object.entity": { "name": "Truck", "extends": "Vehicle", "@discriminatorValue": "TRUCK", "children": [ { "field.string": { "name": "payloadClass" } } ] } },
+            { "object.projection": { "name": "VehicleBase", "abstract": true, "children": [
+              { "field.long": { "name": "vehicleId", "extends": "Vehicle.id" } }, { "identity.primary": { "name": "id", "extends": "Vehicle.primary" } } ] } },
+            { "object.projection": { "name": "TruckRow", "extends": "VehicleBase", {{filter}} "children": [
+              { "source.rdb": { "@kind": "view", "@view": "v_trucks" } },
+              { "field.string": { "name": "payload", "extends": "Truck.payloadClass" } } ] } } ] } }
+        """;
+        var registry = Provider.ComposeRegistry(new[] { CoreTypes.CoreTypesProvider });
+        var result = new MetaDataLoader(registry).Load([new InMemoryStringSource(json, format: MetaDataFormat.Json, id: "t.json")]);
+        Assert.Empty(result.Errors);
+        var hit = result.Warnings.Where(w => w.Contains("TruckRow", StringComparison.Ordinal)).ToList();
+        if (warns)
+        {
+            var w = Assert.Single(hit);
+            Assert.Contains("only the subtype Truck carries, over the TPH base Vehicle with no @filter on its discriminator \"kind\"", w);
+        }
+        else Assert.Empty(hit);
+    }
 }

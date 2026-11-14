@@ -26,7 +26,7 @@ import type { LoaderWarning } from "../source.js";
 import { codeSource, resolvedSource } from "../source.js";
 import { parseJson } from "../parser-json.js";
 import { validateDataGridSortFields, validateFilterableHasIndex, validateFilterableHasSupportedOps, validateSortableHasSupportedSubtype, validateOriginPaths, validateDerivedFieldProvidability, validateDataGridFilterValues, validateFieldObjectStorage, validateFieldMap,
-  validateEnumMaxLength, validateIdentitySequence, validateCrossFieldValidators, validateDbCheck, validateTemplatePayloadRefs, validateFieldDefaults, validateRelationships, validateOneSideReferenceResolution, validateM2MJunctionPairing, validateIndexLookupFields, validateProjectionFilter, validateOriginSegmentsAndCorrelation, validateProjectionUnionAndGrain, validateRetiredRequirementLinks, validateColumnNameCollisions } from "./validation-passes.js";
+  validateEnumMaxLength, validateIdentitySequence, validateCrossFieldValidators, validateDbCheck, validateTemplatePayloadRefs, validateFieldDefaults, validateRelationships, validateOneSideReferenceResolution, validateM2MJunctionPairing, validateIndexLookupFields, validateProjectionFilter, validateOriginSegmentsAndCorrelation, validateProjectionUnionAndGrain, validateExtenderSubtypeScope, validateRetiredRequirementLinks, validateColumnNameCollisions } from "./validation-passes.js";
 import { validateReporting } from "./reporting-validation.js";
 import { runRegisteredValidation } from "./validation-registry.js";
 import { validateSourceRoles } from "../persistence/source/validate-source-roles.js";
@@ -636,6 +636,8 @@ export class MetaDataLoader {
 
       // Fifth pass: @filterable without index drift warning.
       warnings.push(...validateFilterableHasIndex(root));
+      // rc.21 part B (I2): an extender whose view widened with the identity-anchor rule.
+      warnings.push(...validateExtenderSubtypeScope(root));
 
       // SP-H Unit9 — @filterable on a subtype with no operator band → error
       // (would silently generate a filter that rejects every request).

@@ -74,6 +74,7 @@ import {
   OBJECT_PROJECTION_ATTR_UNION_ALL,
   OBJECT_PROJECTION_ATTR_GRAIN,
   OBJECT_PROJECTION_ATTR_GRAIN_ORDINAL,
+  OBJECT_ATTR_DISCRIMINATOR,
 } from "../core/object/object-constants.js";
 import { MetaSource } from "../persistence/source/meta-source.js";
 import { resolveColumnName } from "../naming.js";
@@ -1030,6 +1031,56 @@ function _deriveBaseEntity(
     );
   }
   return undefined;
+}
+
+/**
+ * rc.21 part B (I2): warn when an extender's view WIDENED with the identity-anchor rule — a projection
+ * with no identity of its own whose base its super anchors on a TPH base, that binds a field to a
+ * column only a subtype carries, and that scopes no row by the discriminator. Before rc.21 its base
+ * was that subtype and its view held only the subtype's rows; now it is the TPH base's, every row.
+ */
+export function validateExtenderSubtypeScope(root: MetaData): string[] {
+  const warnings: string[] = [];
+  for (const obj of root.children().filter((c) => c.type === TYPE_OBJECT && c.subType === OBJECT_SUBTYPE_PROJECTION)) {
+    // ADR-0039: own — the identity anchor rule applies to an extender that declares none of its own.
+    if (obj.ownChildren().some((c) => c.type === TYPE_IDENTITY)) continue;
+    const sup = obj.superResolved;
+    if (sup === undefined || sup.type !== TYPE_OBJECT || sup.subType !== OBJECT_SUBTYPE_PROJECTION || !_anchorsByIdentity(sup)) continue;
+    const base = _deriveBaseEntity(obj, root, "@extends", obj.source, []);
+    if (base === undefined) continue;
+    // ADR-0039: resolving — the discriminator may be declared on an ancestor of the base.
+    const discriminator = _tphDiscriminatorOf(base);
+    if (discriminator === undefined) continue;
+    if (filterKeys(effectiveProjectionFilter(obj)).includes(discriminator)) continue;
+    const referrerPkg = obj.package ?? obj.fileDefaultPackage ?? "";
+    for (const f of obj.children().filter((c) => c.type === TYPE_FIELD)) {
+      const owner = _refNamedOwner(f, root, referrerPkg);
+      if (owner === undefined || owner === base || !_isDescendantOf(owner, base)) continue;
+      warnings.push(
+        `object.projection ${obj.name}: "${f.name}" reads ${owner.name}.${f.superRef?.split(".").pop() ?? f.name}, a column only the ` +
+          `subtype ${owner.name} carries, over the TPH base ${base.name} with no @filter on its discriminator "${discriminator}", so the ` +
+          `view returns every ${base.name} row (rc.21: an extender keeps its super's identity anchor; before, its base was ${owner.name}). ` +
+          `To keep a subtype-scoped view, add @filter { ${discriminator}: <value> } or declare identity.primary { extends: ${owner.name}.primary }.`,
+      );
+    }
+  }
+  return warnings;
+}
+
+/** The discriminator field of the TPH level `obj` belongs to (its own, or an ancestor's), if any. */
+function _tphDiscriminatorOf(obj: MetaData): string | undefined {
+  for (let cur: MetaData | undefined = obj; cur !== undefined && cur.type === TYPE_OBJECT; cur = cur.superResolved) {
+    // ADR-0039: own — the level that declares the discriminator.
+    const d = cur.ownAttr(OBJECT_ATTR_DISCRIMINATOR);
+    if (typeof d === "string") return d;
+  }
+  return undefined;
+}
+
+/** Whether `obj` extends `ancestor`, directly or through levels. */
+function _isDescendantOf(obj: MetaData, ancestor: MetaData): boolean {
+  for (let cur = obj.superResolved; cur !== undefined; cur = cur.superResolved) if (cur === ancestor) return true;
+  return false;
 }
 
 /** rc.21 part B: whether a projection (or a projection it extends) anchors its base with an extended identity. */
