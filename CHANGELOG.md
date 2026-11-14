@@ -10,6 +10,10 @@ here.**
 
 ## [Unreleased]
 
+## [1.2.2] — 2026-11-13
+
+_npm `1.2.2` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._
+
 _Proposed as npm `1.2.2` (all 14 `@metaobjectsdev/*` packages), NuGet `1.2.2` and Maven Central
 `8.2.2`; `1.2.1` was spent by the Python-only release. PyPI stays at `1.2.1`: no Python product
 file changes. No vocabulary or `metamodelVersion` change._
