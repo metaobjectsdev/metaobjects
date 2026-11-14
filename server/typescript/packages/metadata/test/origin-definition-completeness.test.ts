@@ -74,6 +74,8 @@ const EXPECTED: Record<string, Record<string, ExpectedAttr>> = {
     function: { valueType: "string", required: true },
     schema: { valueType: "string", required: false },
     args: { valueType: "string", required: false },
+    params: { valueType: "string", required: false },
+    returns: { valueType: "string", required: true },
   },
 };
 
