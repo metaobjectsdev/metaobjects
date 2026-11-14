@@ -61,7 +61,10 @@ public final class GeneratedAccountControllerHarness implements AutoCloseable {
         ] } }
         """;
 
-    private final ObjectMapper mapper = new ObjectMapper();
+    // Spring Boot's default: an undeclared request key is ignored, not a 400. The generated controller
+    // leaves this to the host's mapper; the corpus pins the Boot behaviour.
+    private final ObjectMapper mapper = new ObjectMapper()
+        .disable(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
     private final URLClassLoader classLoader;
     private final Class<?> dtoClass;
     private final Constructor<?> controllerCtor;

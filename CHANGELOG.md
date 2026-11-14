@@ -10,6 +10,12 @@ here.**
 
 ## [Unreleased]
 
+## [1.2.3] — 2026-11-14
+
+_In preparation; cut as release candidates `1.2.3-rc.N` (npm and NuGet `1.2.3-rc.N`, Maven Central
+`8.2.3-rc.N`). It carries everything on the release line since 1.2.0 that 1.2.2 did not ship; 1.2.2's
+own changes are in its section below._
+
 **`metamodelVersion` moves to `1.3`.** This release adds vocabulary (`field.duration`,
 `@constraintName`, `@dbCheck`, `@stringValueMap`, the rc.21 view vocabulary (`origin.function`, `@union`,
 `@unionAll`, `@grain`, `@grainOrdinal`, the text `@dbColumnType` spellings, and the `cast` node and function
@@ -1077,15 +1083,6 @@ vocabulary; upgrade every port together.
   configuration is split into `ConfigureModelNN` methods called in order; a smaller model is emitted
   as before.
 
-- **C#: concurrent reads of a loaded model no longer corrupt its cache.** `MetaData.Cached`
-  memoized derived reads (`Validators()`, `ResolvedIsArray()`, `OwnAttrs()`, …) in a plain
-  `Dictionary`, so two threads touching a frozen node for the first time could corrupt it, and
-  every later read in the process then failed with "Operations that change non-concurrent
-  collections must have exclusive access". A host that loads metadata once and serves requests
-  from it in parallel, or a parallel test run, hit this. The cache is now a
-  `ConcurrentDictionary`.
-
-
 - **C#: a field's `@default` reaches the EF model.** The context configured no default at all,
   so a database EF creates (`EnsureCreated`, an EF migration) had none, and an insert that relied
   on one failed with a NOT NULL violation. A literal the property's CLR type holds (bool, string,
@@ -1186,6 +1183,94 @@ vocabulary; upgrade every port together.
   It now generates `tags: list[str] = []`, from the same four spellings TypeScript accepts, or
   from a native YAML list such as `default: [a, b]`. A default Python cannot spell as a list is
   left to the database.
+
+## [1.2.2] — 2026-11-13
+
+_npm `1.2.2` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._
+
+_Proposed as npm `1.2.2` (all 14 `@metaobjectsdev/*` packages), NuGet `1.2.2` and Maven Central
+`8.2.2`; `1.2.1` was spent by the Python-only release. PyPI stays at `1.2.1`: no Python product
+file changes. No vocabulary or `metamodelVersion` change._
+
+### Security
+
+- **Generated create routes in Java, Kotlin and C#, and TypeScript updates, let a client write
+  fields it must never set.** The same class of hole the Python 1.2.1 patch closed, found by an
+  audit of the other four ports after it. Every adopter serving these generated routes should
+  upgrade and regenerate; an ejected (owned) generator needs the same change made by hand.
+
+  - **Java (`codegen-spring`).** The create route passed the bound DTO to the repository as
+    sent, so a client `id` on a generated key and a `@mutability: readOnly` or derived field
+    reached it. On a TPH per-subtype route the body's discriminator and a sibling subtype's
+    columns did too. The route now rebuilds the DTO with each of those components set to null
+    before the repository call; the route's subtype still comes from the URL. A `@required`
+    `readOnly` or derived value-object column no longer fails create validation once nulled.
+  - **Kotlin (`codegen-kotlin`).** The create route wrote `readOnly` and derived columns from the
+    body, and a TPH per-subtype route wrote a sibling subtype's columns. It now writes only the
+    route subtype's own settable columns.
+  - **C# (`MetaObjects.Codegen`).** The create route bound the EF Core entity from the body, so a
+    client `id` on a generated key was inserted, a TPH create stored the body's discriminator (a
+    POST to the Bridge route could create a Copay row), and a TPH subtype's `readOnly` field and
+    an M:N navigation graph were written. The route now resets the generated key and the
+    discriminator to their defaults and empties the M:N navigations before `Add`, and a
+    `readOnly` property of every shape, a TPH subtype's included, has a private setter, which
+    System.Text.Json does not bind. A `@required` `readOnly` field is therefore neither demanded
+    of the create body nor held to its `[Required]` there, so such an entity stays creatable.
+  - **TypeScript (`codegen-ts`).** The `<Entity>UpdateSchema` kept an assigned (non-generated)
+    primary key, so a PUT or PATCH could re-key the row. The update schema now leaves out every
+    primary-key field; the insert schema still takes an assigned key, which is the caller's on
+    create.
+
+  Each of these values is dropped silently, never answered with a 400. A key the model does not
+  declare is dropped silently in TypeScript, C# and Python. In Java and Kotlin the answer to an
+  undeclared key is the host's Jackson `ObjectMapper`'s: Spring Boot's default ignores it, and a
+  plain `ObjectMapper` (`FAIL_ON_UNKNOWN_PROPERTIES` on) answers 400. This patch leaves that as
+  it was.
+
+  Gated by the shared api-contract scenarios `input-server-owned-dropped`,
+  `tph-input-server-owned-dropped` and `tph-input-foreign-discriminator-dropped`, and a `readOnly`
+  `role` on the `secret-fields` corpus, in every port's generated lane and in the reference lanes.
+  Python's generated TPH routes answer a foreign body discriminator with a 400 rather than
+  dropping it (nothing is stored); its runner skips that one scenario, recorded in the Python
+  codegen `KNOWN_GAPS.md`.
+
+### Fixed
+
+- **C#: concurrent reads of a loaded model no longer corrupt its cache.** `MetaData.Cached`
+  memoized derived reads (`Validators()`, `ResolvedIsArray()`, `OwnAttrs()`, …) in a plain
+  `Dictionary`, so two threads touching a frozen node for the first time could corrupt it, and
+  every later read in the process then failed with "Operations that change non-concurrent
+  collections must have exclusive access". A host that loads metadata once and serves requests
+  from it in parallel, or a parallel test run, hit this. The cache is now a
+  `ConcurrentDictionary`.
+
+## [1.2.1] — Python only
+
+_PyPI `1.2.1` only. npm, NuGet and Maven Central stay at `1.2.0` (`8.2.0`): none of them has a
+product change. No vocabulary or `metamodelVersion` change._
+
+### Security
+
+- **The generated Python routes passed raw request input to the repository.** The FastAPI
+  create, PATCH and PUT handlers validated the body against `<Entity>Create` / `<Entity>Patch`
+  and then handed the repository the raw body, not what was validated. Pydantic ignores a key a
+  model does not declare, so a client could write fields it must never touch: a client-sent `id`
+  on create (or on update, changing the row's identity), a `@mutability: readOnly` field, and any
+  made-up field such as `isAdmin` all reached the repository. Found by an external review of
+  1.2.0. Every Python adopter serving the generated routes should upgrade and regenerate; an
+  ejected (owned) router needs the same change made by hand.
+
+  The repository now receives only the validated input, as the TypeScript routes already do.
+  Each handler validates the body, then keeps only the keys the input model validated, at every
+  depth (a nested value object included), before any repository call, in the plain and the TPH
+  per-subtype handlers. A field the entity does not declare, a server-generated id, a `readOnly`
+  or derived field on create, and the id, `readOnly` and `writeOnce` fields on update are all
+  dropped silently. None of them is answered with a 400, so a client that sends an extra harmless
+  field keeps working; a malformed value on a field the client may set is still
+  `400 {"error": "validation"}`. An assigned key is still the caller's on create. Values are the
+  body's own, so a repository receives the same value types as in 1.2.0.
+
+  Gated by `server/python/tests/integration/test_generated_router_validated_input.py`.
 
 ## [1.2.0] — 2026-10-30
 

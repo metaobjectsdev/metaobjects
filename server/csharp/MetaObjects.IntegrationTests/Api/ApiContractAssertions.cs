@@ -151,6 +151,19 @@ internal static class ApiContractAssertions
                         $"{scenarioName} / {request.Id}: expected row.{kvp.Key}={Render(kvp.Value)}, got {Render(actual)}");
             }
         }
+        // Each listed key is missing or null: a value the client may not set never reached storage.
+        // (Missing-or-null, not strictly missing: ports differ on echoing an unset column as null.)
+        if (want.TryGetValue("unset", out var unsetObj) && unsetObj is List<object?> unsetKeys)
+        {
+            if (body is not Dictionary<string, object?> unsetRow)
+                throw new Xunit.Sdk.XunitException(
+                    $"{scenarioName} / {request.Id}: expected object for unset, got: {Render(body)}");
+            var stored = unsetKeys.Select(k => k?.ToString() ?? "")
+                .Where(k => unsetRow.TryGetValue(k, out var v) && v is not null).ToList();
+            if (stored.Count > 0)
+                throw new Xunit.Sdk.XunitException(
+                    $"{scenarioName} / {request.Id}: expected {string.Join(", ", stored)} unset, got: {Render(body)}");
+        }
         if (want.TryGetValue("hasId", out var hasIdObj) && hasIdObj is bool hi && hi)
         {
             if (body is not Dictionary<string, object?> row)

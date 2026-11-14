@@ -68,7 +68,10 @@ final class InMemoryAccountRepositorySource {
 
             @Override
             public AccountDto create(AccountDto dto) {
-                AccountDto saved = new AccountDto(nextId.getAndIncrement(), dto.name(), dto.tokenHash(), dto.pinHash());
+                // Naive adopter repository: trusts the id and every column it is handed, so a forwarded
+                // client id or readOnly `role` would be stored and visible to the scenarios.
+                Long id = dto.id() != null ? dto.id() : Long.valueOf(nextId.getAndIncrement());
+                AccountDto saved = new AccountDto(id, dto.name(), dto.tokenHash(), dto.pinHash(), dto.role());
                 rows.add(saved);
                 return saved;
             }
@@ -81,7 +84,8 @@ final class InMemoryAccountRepositorySource {
                         AccountDto merged = new AccountDto(id,
                             dto.name() != null ? dto.name() : cur.name(),
                             dto.tokenHash() != null ? dto.tokenHash() : cur.tokenHash(),
-                            dto.pinHash() != null ? dto.pinHash() : cur.pinHash());
+                            dto.pinHash() != null ? dto.pinHash() : cur.pinHash(),
+                            dto.role() != null ? dto.role() : cur.role());
                         rows.set(i, merged);
                         return Optional.of(merged);
                     }
@@ -98,7 +102,8 @@ final class InMemoryAccountRepositorySource {
                         AccountDto merged = new AccountDto(id,
                             assigned.containsKey("name") ? (String) assigned.get("name") : cur.name(),
                             assigned.containsKey("tokenHash") ? (String) assigned.get("tokenHash") : cur.tokenHash(),
-                            assigned.containsKey("pinHash") ? (String) assigned.get("pinHash") : cur.pinHash());
+                            assigned.containsKey("pinHash") ? (String) assigned.get("pinHash") : cur.pinHash(),
+                            assigned.containsKey("role") ? (String) assigned.get("role") : cur.role());
                         rows.set(i, merged);
                         return Optional.of(merged);
                     }

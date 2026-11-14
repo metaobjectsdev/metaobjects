@@ -100,6 +100,8 @@ public static class SubscriberRoutes
             try { input = System.Text.Json.JsonSerializer.Deserialize<Subscriber>(__body.RootElement.GetRawText(), jsonOpts); }
             catch (System.Text.Json.JsonException) { return Results.BadRequest(new { error = "validation" }); }
             if (input is null) return Results.BadRequest(new { error = "validation" });
+            // Server-owned: a generated key, the TPH discriminator and M:N navigations are not settable by the client; the value is ignored.
+            input.Id = default!;
             var __vr = new System.Collections.Generic.List<System.ComponentModel.DataAnnotations.ValidationResult>();
             if (!System.ComponentModel.DataAnnotations.Validator.TryValidateObject(
                     input, new System.ComponentModel.DataAnnotations.ValidationContext(input), __vr, true))

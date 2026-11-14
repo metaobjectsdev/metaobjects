@@ -28,7 +28,7 @@ from metaobjects.shared.base_types import TYPE_OBJECT
 from .corpus_config import attach_corpus_wire
 from .generated_router_app import InMemoryAuthorRepository
 
-COLUMNS = ("id", "name", "tokenHash", "pinHash")
+COLUMNS = ("id", "name", "tokenHash", "pinHash", "role")
 
 
 def load_account(meta_json: Path) -> MetaObject:

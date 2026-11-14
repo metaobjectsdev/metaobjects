@@ -15,8 +15,8 @@ package com.metaobjects.integration.api.tph.generated;
  *
  * <p>The base {@code AuthDto} is the UNION of all subtype columns (the TPH-base DTO shape), so a
  * single record type backs both polymorphic and per-subtype rows. Discriminator scoping is a plain
- * {@code type.equals(discriminator)} filter; a create injects the URL-supplied discriminator and
- * never reads {@code dto.type()}.</p>
+ * {@code type.equals(discriminator)} filter; a create stores whatever id/discriminator the DTO carries,
+ * falling back to the URL's discriminator.</p>
  */
 final class InMemoryAuthRepositorySource {
 
@@ -100,7 +100,9 @@ final class InMemoryAuthRepositorySource {
 
             @Override
             public AuthDto createWithType(String discriminator, AuthDto dto) {
-                // Discriminator injected from the URL — dto.type() is intentionally ignored.
+                // A naive adopter repository: it trusts what it is handed (the id and the DTO's own
+                // discriminator when present, falling back to the URL's), so a value the controller
+                // forwarded from the request body is stored and the shared scenarios can see it.
                 // `type` is a value-constrained enum (field.enum discriminator), so coerce the
                 // String URL discriminator into the generated AuthType (its members ARE the
                 // discriminator values).
@@ -109,7 +111,8 @@ final class InMemoryAuthRepositorySource {
                 // AuthDto.stampForInsert(dto) before calling createWithType — the repo just
                 // persists the incoming (already-stamped) autoCreatedAt/autoUpdatedAt verbatim.
                 AuthDto saved = new AuthDto(
-                    nextId.getAndIncrement(), AuthDto.AuthType.valueOf(discriminator), dto.reference(),
+                    dto.id() != null ? dto.id() : Long.valueOf(nextId.getAndIncrement()),
+                    dto.type() != null ? dto.type() : AuthDto.AuthType.valueOf(discriminator), dto.reference(),
                     // FR-037 R1: writeOnce IS bound on create — settable exactly once.
                     dto.issuedCurrency(),
                     dto.autoCreatedAt(), dto.autoUpdatedAt(),

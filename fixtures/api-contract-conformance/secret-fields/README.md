@@ -1,8 +1,8 @@
 # `api-contract-conformance/secret-fields/` — #484 credentials and excluded fields
 
 Cross-port REST contract for the fields a generated API must not expose or accept: a
-field excluded from forms (`@formExclude`) and a credential (a field that declares a
-`view.password`).
+field excluded from forms (`@formExclude`), a credential (a field that declares a
+`view.password`) and a server-owned `@mutability: readOnly` field.
 
 The model is one `Account`:
 
@@ -11,6 +11,7 @@ The model is one `Account`:
 | `name`      | (nothing)                   | accepted               | returned              |
 | `tokenHash` | `@formExclude: true`        | **ignored**            | returned              |
 | `pinHash`   | child `view.password`       | **ignored**            | **never returned**    |
+| `role`      | `@mutability: readOnly`     | **ignored**            | returned              |
 
 ## The contract
 

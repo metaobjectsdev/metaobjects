@@ -56,6 +56,9 @@ class GeneratedTphControllerHarness(
 
     private val mapper: ObjectMapper = ObjectMapper()
         .registerKotlinModule()
+        // Spring Boot's default: an undeclared request key is ignored, not a 400. The generated
+        // controller leaves this to the host's mapper; the corpus pins the Boot behaviour.
+        .disable(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
         .registerModule(JavaTimeModule())
         .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
 

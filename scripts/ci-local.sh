@@ -487,7 +487,7 @@ gate_site_reference() { bun_install && bun scripts/build-site-reference.ts --che
 # exercised) are the ones worth a test at all. See scripts/maven-coordinate.mjs.
 # And the publish workflows' tag check (scripts/check-release-tag.mjs), whose test also reads
 # each real manifest, so a layout change fails here rather than on a release tag.
-gate_release_tag() { bun test scripts/finish-release.test.ts scripts/eject-release-gate.test.ts && node scripts/test-maven-coordinate.mjs && node scripts/test-prerelease-version.mjs && node scripts/test-check-release-tag.mjs && node scripts/test-changelog-promote.mjs && bash tools/prerelease/test-prerelease-link.sh; }
+gate_release_tag() { bun test scripts/finish-release.test.ts scripts/eject-release-gate.test.ts && node scripts/test-maven-coordinate.mjs && node scripts/test-prerelease-version.mjs && node scripts/test-check-release-tag.mjs && node scripts/test-changelog-promote.mjs && node scripts/test-release-branch.mjs && bash tools/prerelease/test-prerelease-link.sh; }
 
 # ── repo-root scripts/ typechecks ─────────────────────────────────────────────
 # `bun test` transpiles per file and never typechecks, and `bun run --filter '*'
