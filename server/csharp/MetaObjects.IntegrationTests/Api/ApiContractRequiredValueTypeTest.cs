@@ -41,6 +41,7 @@ public sealed class ApiContractRequiredValueTypeTest
         var missingCreatedAt = await Post(client, new { name = "Ada Lovelace", bio = "Analytical Engine" });
         Assert.Equal(400, (int)missingCreatedAt.Status);
         Assert.Equal("validation", ErrorOf(missingCreatedAt.Body));
+        Assert.Contains("createdAt", IssuePaths(missingCreatedAt.Body));
 
         // (2) A valid, complete body still creates (201) — the presence check does not over-reject.
         var full = await Post(client, new
@@ -55,11 +56,13 @@ public sealed class ApiContractRequiredValueTypeTest
         var missingName = await Post(client, new { bio = "no name", createdAt = "2026-02-01T10:00:00" });
         Assert.Equal(400, (int)missingName.Status);
         Assert.Equal("validation", ErrorOf(missingName.Body));
+        Assert.Contains("name", IssuePaths(missingName.Body));
 
         // (4) An explicit null on a @required value-type field is also rejected (present-null → 400).
         var nullCreatedAt = await Post(client, new { name = "Grace Hopper", createdAt = (string?)null });
         Assert.Equal(400, (int)nullCreatedAt.Status);
         Assert.Equal("validation", ErrorOf(nullCreatedAt.Body));
+        Assert.Contains("createdAt", IssuePaths(nullCreatedAt.Body));
     }
 
     private static async Task<(System.Net.HttpStatusCode Status, string Body)> Post(HttpClient client, object body)
@@ -71,6 +74,15 @@ public sealed class ApiContractRequiredValueTypeTest
         };
         var resp = await client.SendAsync(req);
         return (resp.StatusCode, await resp.Content.ReadAsStringAsync());
+    }
+
+    // The first path element of each listed issue: the wire name of the field that failed.
+    private static List<string?> IssuePaths(string body)
+    {
+        using var doc = JsonDocument.Parse(body);
+        return doc.RootElement.GetProperty("issues").EnumerateArray()
+            .Select(i => i.GetProperty("path").EnumerateArray().FirstOrDefault().GetString())
+            .ToList();
     }
 
     private static string? ErrorOf(string body)

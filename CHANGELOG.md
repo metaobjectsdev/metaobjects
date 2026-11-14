@@ -13,7 +13,95 @@ here.**
 **New metamodel vocabulary: `measure.derived` and its `@expr`.** It is additive: nothing that
 loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersion` 1.3 if it merges before the 1.3.0 publish; if it lands after, the next release moves `metamodelVersion`.
 
+### Upgrading
+
+- **`api.unknownFields: reject` is the one deliberate default change.** A generated create, PUT
+  or PATCH route that dropped an undeclared top-level key now answers `400 unknown_fields`, in
+  existing projects too, once they regenerate (under "Changed" below). Set
+  `"api": { "unknownFields": "drop" }` to keep the old answer. Everything else new here is either
+  a fix to input no client should send or a setting a project has to turn on.
+- **C#: a `readOnly` property has a private setter.** Regenerating gives every `readOnly`
+  property a private setter, whatever its shape (under "Security" below), so hand code that
+  assigned one (`row.Role = ...`) no longer compiles. The value belongs to the server: set it
+  through a database default or EF Core (`db.Entry(row).Property(r => r.Role).CurrentValue`),
+  which writes private setters.
+
+### Security
+
+- **Generated create routes wrote fields a client must never set, in Java, Kotlin, C# and
+  Python; the TypeScript update shape let a client re-key a row.** An external review of 1.2.0
+  found that the Python routes passed raw request input to the repository (fixed for Python in
+  1.2.1). An audit of the other ports found the same class of hole on create, in the plain and
+  the TPH per-subtype handlers:
+  - **Java** (`codegen-spring`): create forwarded a client-sent generated `id`, `readOnly` and
+    derived fields to `repository.create`, and in TPH also the discriminator and a sibling
+    subtype's columns to `createWithType`.
+  - **Kotlin** (`codegen-kotlin`): create wrote `readOnly` columns, and TPH create wrote every
+    column of the union table, a sibling subtype's included.
+  - **C#** (`MetaObjects.Codegen`): create bound the request to the entity and added it as
+    sent, so a client-sent generated `id` was inserted, a POST to one subtype's route with
+    another subtype's `type` created a row of that other subtype, M:N navigation collections in
+    the body were inserted with the row, and a `readOnly` field other than a plain scalar (an
+    enum, array, value object or map, or any TPH subtype field) had a public setter. A `readOnly`
+    property now has a private setter on every shape, so System.Text.Json does not bind it, and
+    a `@required` `readOnly` field is neither demanded of the create body nor held to its
+    `[Required]` there, so such an entity stays creatable. A `readOnly` key or discriminator
+    gets no reset, because its private setter already keeps the body out.
+  - **Java and Kotlin**: a `@required` `readOnly` or derived column (a value object included)
+    is no longer demanded of the create body once the route drops it.
+  - **TypeScript** (`codegen-ts`): an ASSIGNED primary key stayed in `<Entity>UpdateSchema`, so
+    PATCH or PUT could change the row's key. A generated key was already refused.
+
+  Every port now drops these keys silently before the write, as the TypeScript create already
+  did: a server-generated key, a `readOnly` or derived field, and in TPH the discriminator (the
+  route's subtype is its only source) and every column the route's subtype does not declare. An
+  assigned key is still the caller's on create. No port answers them with a 400. A key the
+  entity does not declare is a separate case, now a project setting (`api.unknownFields`,
+  under "Changed" below). Java DTOs and Kotlin entity classes that are a
+  write route's request body (and the value objects nested in one) now carry
+  `@JsonIgnoreProperties(ignoreUnknown = true)`, so binding no longer depends on the host's
+  `ObjectMapper` (a plain one answered 400). The Python 1.2.1 fix is carried forward to this
+  line, and the Python TPH create and update now drop a body's discriminator instead of answering
+  400 for a foreign one.
+
+  Gated by three shared api-contract scenarios: `input-server-owned-dropped` (generated and
+  reference lanes in every port), and `tph/tph-input-server-owned-dropped` and
+  `tph/tph-input-foreign-discriminator-dropped`, which send a client `id`, a foreign
+  discriminator, a sibling subtype's column and a `writeOnce` change. The TPH scenarios run in
+  the generated and reference lanes in TypeScript and C#, and in the generated lane only in
+  Python, Java and Kotlin, which have no TPH reference server. A `readOnly` `role` column in the
+  `secret-fields` corpus covers the rest. Scenarios gain `absent: [keys]` (the key is missing)
+  and `unset: [keys]` (missing or null) assertions. These are the 1.2.2 fixes from the `1.2.x`
+  line, carried forward. Adopters with ejected (owned) generators need the same change made by
+  hand.
+
 ### Added
+
+- **A page size for generated list routes: `api.pagination`, in every port.** An external review
+  of 1.2.0 found that list endpoints had no hard cap: the TypeScript and C# routes returned the
+  whole table when `limit` was omitted, and `?limit=100000` was accepted in every port. Set
+  `"api": { "pagination": { "defaultLimit": 50, "maxLimit": 1000 } }` in
+  `.metaobjects/config.json` and a generated entity or projection list with no `limit` answers
+  the first `defaultLimit` rows, while an explicit `limit` above `maxLimit` answers
+  `400 {"error": "limit_too_large", "maxLimit": N}` (refused, not clamped); a negative `limit`
+  answers `400 pagination.invalid_value` in every port rather than reaching a store that reads
+  `LIMIT -1` as no limit, and the generated C# routes answer the same envelope for a `limit` or
+  `offset` that is not a whole number (`limit=abc`) rather than serving the default page. `meta init` writes
+  that block for a new project. **A project without the setting behaves exactly as before**,
+  because a cap added on upgrade would silently truncate a client that reads a whole list;
+  each port's verify advises (rule `unbounded-list-pages`, never a failure) when a routes
+  generator is wired and no page size is set (C# under `dotnet meta verify --codegen`). Reports keep their own row cap and opaque views their 1000. Every port's
+  generated list routes read it: the TypeScript Fastify and Hono routes (through a new
+  `pagination` option on the runtime mounts), the C# minimal-API routes, the Java and Kotlin
+  Spring controllers and the Python FastAPI routers. An owned (ejected) routes copy picks it up
+  when it is re-ejected. It is gated in the generated lane of every port by the new
+  `fixtures/api-contract-conformance/api-settings/` sub-corpus. Every port's config reader takes a
+  page size as a positive whole number however JSON spells it (`50.0` is `50`) and at most
+  2147483647, and refuses a malformed block when the config is read; the shared cases, valid and
+  refused, are `api-settings/config-blocks.json`, run by every port. `limit=0` is a page of zero
+  rows in every port (the C# route served the default page; `api-settings/limit-zero`). An M:N
+  traversal route takes no `limit` and is not paged by the setting. A config key, not vocabulary:
+  `metamodelVersion` does not move.
 
 - **Report measures over Money and other value-object members (FR-044 R12).** A dimension's or
   measure's `@of` may name `Entity.field.member`, a member of a value object stored with
@@ -61,7 +149,8 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   Claude Code reads. `--skills-dir .agents/skills` (or any project-relative directory) puts them
   where another assistant looks; the choice is recorded in `.metaobjects/.agent-context.json`,
   so a later `--refresh-docs` keeps it, and moving the directory prunes the untouched copies at
-  the old one. The always-on file names the directory, so an assistant that does not load
+  the old one along with the skill directories that leaves empty (the old skills directory
+  itself stays, and so does any skill directory still holding a file of yours). The always-on file names the directory, so an assistant that does not load
   skills opens `<dir>/<skill>/SKILL.md` by path. A directory outside the project is refused.
 - **[What differs by language](docs/features/language-differences.md).** One page lists what
   the same model does differently per port: that schema migrations and database checks need
@@ -69,8 +158,59 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   filter extras, field names in code, generated data access and hand-edit handling. Every port
   page now says up front that migrations and `verify --db` run in Node, and the README's
   getting-started path says it for Java, Kotlin, C# and Python teams.
+- **The shared render-drift case now holds the email helper too.** 1.3.0 made a template
+  variable that is not on the payload raise `ERR_VAR_NOT_ON_PAYLOAD` at render time, and
+  `fixtures/template-output-render-conformance/runtime-drift/` held it for the `@kind: document`
+  helper and the `template.prompt` helper (the TypeScript `promptRender()` handle and the Python
+  helper over a Mustache body among them). A re-audit of every generated render path in the five
+  ports found none that still renders an unknown variable as empty, but the `@kind: email`
+  helper was not in the case. It now is: `runtime-drift/email-subject/`, `email-html/` and
+  `email-text/` each drift one part of a `WelcomeEmail`, and every port's runner checks that
+  the subject, the html body and the text body each raise. No generated code changes.
 
 ### Changed
+
+- **A write with a key the entity does not declare is refused by default: `api.unknownFields`.
+  Existing projects get `reject` when they regenerate.** Until now every port dropped an
+  undeclared body key silently, so a client that misspelled a field (`emial`) got a 200 and lost
+  the value without a word. A generated create, PUT or PATCH route now answers
+  `400 {"error": "unknown_fields", "fields": ["emial"]}` (the undeclared top-level keys, sorted)
+  before validation, and writes nothing. To keep the old behaviour set
+  `"api": { "unknownFields": "drop" }` in `.metaobjects/config.json` and regenerate. A declared
+  key the client may not set (a generated `id`, a `readOnly` or derived field, an `@autoSet`
+  stamp, a `writeOnce` field on update, the TPH discriminator, a sibling subtype's column) is
+  still dropped, not refused, under either value, so a client that sends back a row it read keeps
+  working. `meta init` writes `"unknownFields": "reject"` for a new project. Every port checks the
+  raw body before binding it, so Java and Kotlin answer the same whatever the host's Jackson
+  `FAIL_ON_UNKNOWN_PROPERTIES` says. TypeScript passes the declared field list to the runtime
+  mounts as a new `knownFields` option; a mount given none keeps dropping. Pinned by
+  `input-unknown-fields-rejected` and `tph/tph-unknown-fields-rejected` (both lanes of every
+  port) and `api-settings/unknown-fields-dropped` (`drop`, generated lane). Upgrade notes:
+  [docs/features/migrations/unknown-fields-reject-by-default.md](docs/features/migrations/unknown-fields-reject-by-default.md).
+  Only the top level is judged: a member a value object does not declare is dropped, never
+  refused and never stored, on create and on PATCH, while the open JSON bag keeps every key
+  (`jsonb/jsonb-nested-undeclared-key-dropped`, both lanes of every port). The Java generated
+  value-object records nested in a write route's body now carry `@JsonIgnoreProperties(ignoreUnknown = true)` for this; they
+  answered `400 invalid_type` before. C# matches a key the way it binds the body, with the app's
+  JSON options: under the ASP.NET web default, which ignores case, `Title` is the declared
+  `title` and is not refused.
+  A config key, not vocabulary: `metamodelVersion` does not move.
+
+- **A validation 400 lists every issue in every port.** The same model answered a failed create or
+  update differently by language: TypeScript listed each problem, while C#, Java, Kotlin and Python
+  returned a bare `{"error": "validation"}` (found by an external review of 1.2.0). Every port now
+  answers `400 {"error": "validation", "issues": [{"code", "path", "message"}]}` with every failure,
+  not the first. `path` is an array of wire names (value-object members, array indexes and map keys
+  as further elements), `code` uses Zod's names (`invalid_type`, `too_small`, `too_big`,
+  `invalid_format`, `invalid_value`, `custom`), and `message` is each port's own wording. C# ships a
+  new `ValidationIssues` runtime file (also copied by `dotnet meta eject routes`), and its create
+  route now reads the body itself so an unbindable body lists its issue rather than answering an
+  empty 400. Java ships `ValidationIssues` beside `PatchValidationException`, and a patch binds every
+  field before it throws. Kotlin emits `MetaValidationIssues.kt` with the controllers. Python maps
+  every Pydantic error in `constraint_errors`. The hand-rolled reference servers list issues too,
+  and two shared scenarios pin the list in both lanes (`validation-lists-issues`,
+  `tph/tph-validation-lists-issues`, with a new `issues` corpus assertion). A client that read only
+  `error` is unaffected. An owned (ejected) routes copy keeps the bare answer until it is re-ejected.
 
 - **The always-on agent file works with any coding assistant, carries the REST conventions,
   and is written once.** `.metaobjects/CLAUDE.md`, an identical copy of `.metaobjects/AGENTS.md`
@@ -112,8 +252,10 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   refreshed with `meta eject --list`.
 - **`meta init` writes stricter defaults for a new project.** The scaffolded
   `.metaobjects/config.json` now carries `"verify": { "handEdits": "fail" }` and (except on
-  MySQL) `"migrate": { "foreignKeyIndexes": true }`, each as its own visible setting. An existing
-  config is left as it is.
+  MySQL) `"migrate": { "foreignKeyIndexes": true }`, each as its own visible setting, beside the
+  `api` block. `dotnet meta init` and `metaobjects init` now write the same `migrate`, `verify`
+  and `api` settings, so a new project starts the same in every port. An existing config is left
+  as it is.
 - **Agent context routes report work to the reporting vocabulary.** The `meta init` agent guide
   and the `metaobjects-authoring` skill now send grouped totals, dashboard numbers and read-only
   report views to `object.report` (`references/declaring-reports.md`) before the `@sql` escape,
@@ -134,6 +276,31 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   release and a release candidate of a version that already shipped, because either would move
   npm's `latest` backwards. A minor or major cut is now refused while the previous maintenance
   branch holds a commit that is not on `main`; `docs/RELEASING.md` Step 0 gains the same check.
+- **`@metaobjectsdev/cli` no longer installs `dprint-node`.** The TypeScript generators printed
+  code with `ts-poet`, which loads `dprint-node` on import, and dprint-node ships all seven of
+  its platform binaries in one package (24 MB, of which a machine runs one). `codegen-ts` now
+  vendors the part of ts-poet the generators use (`src/poet.ts`, Apache-2.0, licence in
+  `LICENSE.ts-poet`) and runs the same dprint TypeScript plugin as WebAssembly
+  (`@dprint/typescript`, pinned to 0.87.1, the version dprint-node 1.0.8 compiles in, 5 MB) with
+  ts-poet's configuration, so generated code is byte-identical: every codegen golden and
+  conformance fixture is unchanged. `codegen-ts-react`, `codegen-ts-tanstack` and
+  `codegen-ts-angular` drop their `ts-poet` dependency and import the printer from
+  `@metaobjectsdev/codegen-ts/engine`, which an ejected template also uses. A bare `ts-poet`
+  import in an older owned generator is still pointed at that entry by `meta gen`, which
+  carries `code`, `imp`, `joinCode`, `Import` and the `Code` type; ts-poet's `saveFiles`,
+  `conditionalOutput` and its `toString` import options are not carried over. A fresh npm
+  install of the CLI drops from 151 MB (134,641,989 bytes) to 133 MB (115,302,944 bytes) of
+  `node_modules`. `scripts/check-peer-ranges.ts` now also fails a publishable package that
+  requires `dprint-node`, `ts-poet` or any `@types/*` package through `dependencies`,
+  `optionalDependencies` or a non-optional peer; a type package a published `.d.ts` imports goes
+  in its `ALLOWED_TYPES_DEPS`
+  with the reason. No `@metaobjectsdev/*` package declares `@types/node`: the 3 MB copy in the
+  install comes through the libSQL driver (`@libsql/isomorphic-ws` → `@types/ws`), which is
+  unchanged here. This also repairs the standalone binary (`bun run build:binary`): `--compile`
+  cannot embed dprint-node's native `.node` file, so a binary built from 1.2.0 crashed with
+  `Cannot find module './dprint-node.linux-x64-gnu.node'` on every command that loads the
+  codegen engine, `meta migrate` and `meta verify --db` included. Those schema commands, the
+  binary's documented scope, now run; `meta gen` is still not supported inside the binary.
 
 ### Deprecated
 
@@ -1395,6 +1562,34 @@ Each item below is described in full under Added, Changed or Fixed; this list is
   The error no longer names the loader as the owner of a root-level node. Two new conformance
   fixtures (`root-level-field-object-bare-ref`, `error-root-level-field-objectref-unresolved`)
   hold every port to it; C#, Python and TypeScript already passed.
+
+## [1.2.1] — Python only
+
+_PyPI `1.2.1` only. npm, NuGet and Maven Central stay at `1.2.0` (`8.2.0`): none of them has a
+product change. No vocabulary or `metamodelVersion` change._
+
+### Security
+
+- **The generated Python routes passed raw request input to the repository.** The FastAPI
+  create, PATCH and PUT handlers validated the body against `<Entity>Create` / `<Entity>Patch`
+  and then handed the repository the raw body, not what was validated. Pydantic ignores a key a
+  model does not declare, so a client could write fields it must never touch: a client-sent `id`
+  on create (or on update, changing the row's identity), a `@mutability: readOnly` field, and any
+  made-up field such as `isAdmin` all reached the repository. Found by an external review of
+  1.2.0. Every Python adopter serving the generated routes should upgrade and regenerate; an
+  ejected (owned) router needs the same change made by hand.
+
+  The repository now receives only the validated input, as the TypeScript routes already do.
+  Each handler validates the body, then keeps only the keys the input model validated, at every
+  depth (a nested value object included), before any repository call, in the plain and the TPH
+  per-subtype handlers. A field the entity does not declare, a server-generated id, a `readOnly`
+  or derived field on create, and the id, `readOnly` and `writeOnce` fields on update are all
+  dropped silently. None of them is answered with a 400, so a client that sends an extra harmless
+  field keeps working; a malformed value on a field the client may set is still
+  `400 {"error": "validation"}`. An assigned key is still the caller's on create. Values are the
+  body's own, so a repository receives the same value types as in 1.2.0.
+
+  Gated by `server/python/tests/integration/test_generated_router_validated_input.py`.
 
 ## [1.2.0] — 2026-10-30
 

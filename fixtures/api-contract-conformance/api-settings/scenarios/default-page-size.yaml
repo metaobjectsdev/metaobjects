@@ -1,0 +1,13 @@
+name: default-page-size
+description: >
+  A list with no `?limit=` answers the project's default page size (`api.pagination.defaultLimit`,
+  2 in this corpus's config), not the whole table. The seed holds five rows, so a port that
+  ignores the setting returns five.
+requests:
+  - id: r1
+    method: GET
+    path: /api/items?sort=id:asc
+    expect:
+      status: 200
+      body:
+        ids: [1, 2]

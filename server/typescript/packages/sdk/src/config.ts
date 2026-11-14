@@ -23,6 +23,13 @@ import {
   type WireFormat,
   type WireNullMembers,
   type PhysicalNaming,
+  API_KEY_PAGINATION,
+  PAGINATION_KEY_DEFAULT_LIMIT,
+  PAGINATION_KEY_MAX_LIMIT,
+  API_KEY_UNKNOWN_FIELDS,
+  UNKNOWN_FIELDS_MODES,
+  type ApiPagination,
+  type UnknownFieldsMode,
 } from "@metaobjectsdev/metadata";
 
 const DialectEnum = z.enum(["sqlite", "postgres", "d1"]);
@@ -174,6 +181,16 @@ const ScopeSchema = z
 // "scope") is silently stripped by zod and the collection resolves as
 // "everything in scope" — the exact silent fail-open .strict() on the
 // nested arms exists to prevent, one level up.
+/** One `api.pagination` size: a positive integer no larger than 2147483647 (so every port's
+ *  integer type holds it), every failure (missing, wrong type, a fraction, zero, too large) named
+ *  by its key rather than Zod's generic "expected number". The shared corpus
+ *  fixtures/api-contract-conformance/api-settings/config-blocks.json holds every port to it. */
+const PAGE_SIZE_MAX = 2147483647;
+function pageSizeNumber(key: string) {
+  const error = `"api.pagination.${key}" must be a positive integer`;
+  return z.number({ error }).int({ error }).positive({ error }).max(PAGE_SIZE_MAX, { error });
+}
+
 export const ConfigSchema = z.object({
   schema_version: z.literal(1),
   pending_in_git: z.boolean().default(true),
@@ -315,6 +332,45 @@ export const ConfigSchema = z.object({
     })
     .optional(),
   /**
+   * The page size of the generated list routes. `pagination.defaultLimit` is how many rows a list
+   * with no `limit` returns; an explicit `limit` above `pagination.maxLimit` is refused with
+   * `400 { "error": "limit_too_large", "maxLimit": N }`. Absent means no default and no ceiling,
+   * as before. `meta init` writes 50 and 1000.
+   *
+   * `unknownFields` is what a generated create, PUT or PATCH route does with a body key the
+   * entity does not declare: `reject` (the default, also when absent) answers
+   * `400 { "error": "unknown_fields", "fields": [...] }`; `drop` ignores the key and writes the
+   * rest. A declared key the client may not set is dropped under either value.
+   */
+  api: z
+    .strictObject({
+      pagination: z
+        .strictObject({
+          defaultLimit: pageSizeNumber(PAGINATION_KEY_DEFAULT_LIMIT),
+          maxLimit: pageSizeNumber(PAGINATION_KEY_MAX_LIMIT),
+        }, {
+          error: (iss) => iss.code === "unrecognized_keys"
+            ? `"api.pagination" has an unknown key "${iss.keys[0]}" (expected "${PAGINATION_KEY_DEFAULT_LIMIT}" and "${PAGINATION_KEY_MAX_LIMIT}")`
+            : iss.code === "invalid_type" && iss.input === undefined
+              ? `"api.pagination" needs both "${PAGINATION_KEY_DEFAULT_LIMIT}" and "${PAGINATION_KEY_MAX_LIMIT}"`
+              : iss.code === "invalid_type" ? `"api.pagination" must be an object` : undefined,
+        })
+        .refine((p) => p.defaultLimit <= p.maxLimit, {
+          message: `"api.pagination.defaultLimit" must not exceed "api.pagination.maxLimit"`,
+        })
+        .optional(),
+      unknownFields: z
+        .enum(UNKNOWN_FIELDS_MODES, {
+          error: `"api.${API_KEY_UNKNOWN_FIELDS}" must be ${UNKNOWN_FIELDS_MODES.map((m) => `"${m}"`).join(" or ")}`,
+        })
+        .optional(),
+    }, {
+      error: (iss) => iss.code === "unrecognized_keys"
+        ? `"api" has an unknown key "${iss.keys[0]}" (expected "${API_KEY_PAGINATION}" or "${API_KEY_UNKNOWN_FIELDS}")`
+        : iss.code === "invalid_type" ? `"api" must be an object` : undefined,
+    })
+    .optional(),
+  /**
    * How a string-stored `field.enum` is stored. `maxLength` is the column length (VARCHAR(n))
    * of an enum that declares no `@maxLength` of its own; every member must fit. Absent means
    * no default: such an enum is an unbounded text column, as before. An `@intValueMap` enum is
@@ -356,6 +412,17 @@ export function physicalNamingFromConfig(cfg: Pick<Config, "naming">): PhysicalN
     tables: cfg.naming?.tables ?? DEFAULT_PHYSICAL_NAMING.tables,
     ...(cfg.naming?.collections !== undefined ? { collections: cfg.naming.collections } : {}),
   };
+}
+
+/** The list page size a config declares (`api.pagination`); undefined when absent. */
+export function apiPaginationFromConfig(cfg: Pick<Config, "api">): ApiPagination | undefined {
+  const p = cfg.api?.pagination;
+  return p === undefined ? undefined : { defaultLimit: p.defaultLimit, maxLimit: p.maxLimit };
+}
+
+/** The unknown-field rule a config declares (`api.unknownFields`); undefined when absent. */
+export function apiUnknownFieldsFromConfig(cfg: Pick<Config, "api">): UnknownFieldsMode | undefined {
+  return cfg.api?.unknownFields;
 }
 
 /** The enum storage defaults a config declares (`enums`); none when absent. */

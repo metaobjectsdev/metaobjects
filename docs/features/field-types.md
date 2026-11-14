@@ -84,7 +84,7 @@ Five rows need a footnote:
 
   **Nested map values are validated on every write path, on every port.** A posted map value
   that violates the referenced `object.value`'s own constraints is rejected with the cross-port
-  `{"error":"validation"}` envelope before the row is written. Scalar-valued maps
+  `{"error":"validation", "issues": [...]}` envelope before the row is written. Scalar-valued maps
   (`@valueType`) carry no nested bean, so nothing extra runs for them.
 
   > This was a real hole until 1.0.1, and it is worth knowing what it was, because the failure

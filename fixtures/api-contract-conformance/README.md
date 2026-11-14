@@ -27,7 +27,10 @@ fixtures/api-contract-conformance/
     ├── get-by-id.yaml
     ├── get-by-id-not-found.yaml
     ├── create-201.yaml
+    ├── input-server-owned-dropped.yaml # a client id and a writeOnce change are dropped, never 400
+    ├── input-unknown-fields-rejected.yaml # an undeclared key → 400 {error:"unknown_fields", fields}; an echoed read model is not refused
     ├── create-constraint-violation-400.yaml # FR-036 POST field-constraint → 400 {error:"validation"}
+    ├── validation-lists-issues.yaml # a 400 validation lists every issue: {error, issues:[{code, path, message}]}
     ├── update-patch-and-put.yaml
     ├── update-constraint-violation-400.yaml # FR-036 PATCH present-value constraint → 400
     ├── update-explicit-null-clears.yaml     # FR-035 tristate: explicit null clears; null on @required → 400
@@ -52,21 +55,22 @@ fixtures/api-contract-conformance/
     └── filter-invalid-value.yaml   # uncoercible value → 400; the fourth envelope, previously ungated
 ```
 
-Beside the 31 core scenarios above sit ten **sub-corpora**, each a directory with its
-own `meta.json`, `seed.json`, `scenarios/` and `README.md` (92 scenarios in all, 123 with the
+Beside the 34 core scenarios above sit eleven **sub-corpora**, each a directory with its
+own `meta.json`, `seed.json`, `scenarios/` and `README.md` (105 scenarios in all, 139 with the
 core):
 
 | Directory | Scenarios | Gates | Lanes |
 |---|---|---|---|
-| `tph/` | 10 | single-table inheritance | both |
+| `tph/` | 14 | single-table inheritance | both |
 | `m2m/` | 9 | M:N traversal, and TPH x M:N together | both |
-| `jsonb/` | 5 | typed value-object columns, and the numbers inside them (a double stays a JSON number; a decimal is a canonical string, option A of the 1.1.0 review) | both |
+| `jsonb/` | 6 | typed value-object columns, the numbers inside them, and an undeclared nested member dropped (a double stays a JSON number; a decimal is a canonical string, option A of the 1.1.0 review) | both |
 | `write-through/` | 2 | an entity that writes a table and reads a view | generated only |
-| `secret-fields/` | 2 | #484: a `@formExclude` or credential (`view.password`) field is ignored on create, PATCH and PUT, and a credential is never returned | generated only |
+| `secret-fields/` | 2 | #484: a `@formExclude` or credential (`view.password`) field is ignored on create, PATCH and PUT, and a credential is never returned; a `readOnly` field is ignored the same way and still returned | generated only |
 | `enum-default/` | 2 | a create that omits a `field.enum` carrying `@default` stores the default (echo and GET by id), and a supplied member is kept | generated only |
 | `projection/` | 12 | a read-only `object.projection`: reads served, every write `405`; no declared identity means no `/{id}` route; a key not named `id` addresses the row; decimal and float filters. Its `docs-routes.json` pins the routes each port documents | generated only |
 | `report/` | 37 | a view-backed `object.report` (FR-044): list, filter, sort and paging on derived fields, `POST` is `405`, no `/{id}` route; a `@spine` report keeps a row with no facts, and a measure with `@default` filters and sorts as its default; a dimension over an array or a map is neither filterable nor sortable. Also carries `schema.postgres.sql`, the TypeScript-produced table and views the C# lane executes | generated only |
 | `decimal/` | 11 | `field.decimal` is an exact canonical string on the wire (ADR-0019 Amendment 1): read, filter, sort, write and a report over decimals. A scenario's `engines:` key is exact; the `-15` twins run on SQLite and D1 as well. Also carries `schema.postgres.sql` / `schema.sqlite.sql` / `schema.mysql.sql` | generated only |
+| `api-settings/` | 8 | the `api` block in the sub-corpus's own `.metaobjects/config.json`: `api.pagination` (default 2, max 4) — a list with no `limit` answers the default page, `offset` and `withCount=1` page past it, `limit` at the cap is served, one above it is `400 {"error": "limit_too_large", "maxLimit": 4}` and a negative one is `400 pagination.invalid_value`, while `limit=0` is an empty page — and `api.unknownFields: drop`, under which an undeclared body key is ignored rather than refused | generated only |
 | `duration/` | 2 | `field.duration` is a canonical ISO-8601 span on the wire under `"wire": { "durations": "iso" }`: write, read, refuse, and filter and sort as a span on every engine. Also carries `schema.postgres.sql` / `schema.sqlite.sql` / `schema.mysql.sql` | generated only |
 
 `meta.json` declares a single canonical `Author` entity in the `acme::blog`
@@ -120,9 +124,12 @@ requests:
 | `envelope`   | the response body is `{ rows, total }` (set `rowsLength` + `total`)    |
 | `error`      | the response body has `error: "<value>"`                               |
 | `field`      | **only meaningful alongside `error`** — the envelope's `field` names the rejected filter/sort field. Declared as a sibling of `error` and checked inside that branch, because the `error` branch returns; a runner that checked it as an independent key would skip it whenever `error` matched first. |
+| `issues`     | **only meaningful alongside `error`**, checked inside that branch like `field` — the envelope carries an `issues` array whose every entry has `code`, `path` and `message`, and each listed `{path, code}` is among them. `code` is Zod's name for the failure (`invalid_type`, `too_small`, `too_big`, `invalid_format`, `invalid_value`, `custom`); `message` is the port's own wording and never asserted. |
 | `empty`      | the response body is empty / null (204 No Content)                     |
+| `absent`     | the response body is an object; none of the listed keys is present (not even as `null`). Pins that a key a client sent but may not set never comes back. |
 | `fieldsEqual`| the response body is an object; assert the listed field names are all equal to **each other** (raw, field-vs-field — no literal, so timestamp non-determinism is a non-issue). Used by the `@autoSet` gate (#203/ADR-0045). |
 | `fieldsNotEqual`| the response body is an object; assert the two listed fields **differ** from each other. Used by the `@autoSet` gate (e.g. after a PATCH, `autoCreatedAt` (onCreate, preserved) != `autoUpdatedAt` (onUpdate, bumped)). |
+| `unset`      | the response body is an object; each listed key is **missing or `null`** on it. Used by the input scenarios (`input-server-owned-dropped`, `tph-input-server-owned-dropped`): a value the client was not allowed to set never reached storage, so it never comes back in the echo. Missing and `null` are both accepted because a port's row shape decides whether an unset column is present as `null`. |
 
 Runners are responsible for normalizing `createdAt` (and any other
 non-deterministic fields) before comparison. The keys listed above are

@@ -114,6 +114,12 @@ internal static class ApiContractCorpusPaths
     public static readonly string SecretFieldsSeedFile = Path.Combine(SecretFieldsDir, "seed.json");
     public static readonly string SecretFieldsMetaJson = Path.Combine(SecretFieldsDir, "meta.json");
 
+    // api-settings subcorpus (api.pagination + api.unknownFields from its own config), generated lane only.
+    public static readonly string ApiSettingsDir = Path.Combine(Corpus, "api-settings");
+    public static readonly string ApiSettingsScenariosDir = Path.Combine(ApiSettingsDir, "scenarios");
+    public static readonly string ApiSettingsSeedFile = Path.Combine(ApiSettingsDir, "seed.json");
+    public static readonly string ApiSettingsMetaJson = Path.Combine(ApiSettingsDir, "meta.json");
+
     // enum-default subcorpus (a defaulted enum on create), generated lane only.
     public static readonly string EnumDefaultDir = Path.Combine(Corpus, "enum-default");
     public static readonly string EnumDefaultScenariosDir = Path.Combine(EnumDefaultDir, "scenarios");

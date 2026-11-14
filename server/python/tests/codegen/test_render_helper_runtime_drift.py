@@ -4,7 +4,8 @@ Shared corpus: ``fixtures/template-output-render-conformance/runtime-drift/``. T
 generated against the clean ``templates/``; ``runtime-drift/templates/`` holds the same ref
 with ``{{nmae}}`` for ``name``, standing in for text edited after codegen. The build-time gate
 cannot see that, so the helper itself must raise at render time (``ERR_VAR_NOT_ON_PAYLOAD``)
-instead of rendering ``Hello `` — for ``template.output`` and ``template.prompt``, Mustache.
+instead of rendering ``Hello `` — for ``template.output`` (document and email) and
+``template.prompt``, Mustache.
 """
 from __future__ import annotations
 
@@ -39,3 +40,19 @@ def test_helper_raises_on_variable_not_on_payload(tmp_path, module, fn) -> None:
     assert render({"name": "Ada"}, FilesystemProvider(CLEAN)) == "Hello Ada"
     with pytest.raises(RenderError, match=r"ERR_VAR_NOT_ON_PAYLOAD \(nmae\)"):
         render({"name": "Ada"}, FilesystemProvider(DRIFTED))
+
+
+@pytest.mark.parametrize("part", ["subject", "html", "text"])
+def test_email_helper_raises_on_variable_not_on_payload(tmp_path, part) -> None:
+    """Each part of a ``@kind: email`` helper (subject, html body, text body) raises."""
+    root = _load_root(CORPUS / "runtime-drift" / "meta.json")
+    module = "welcome_email_render_helper"
+    files = [f for f in RenderHelperGenerator(CLEAN).generate(_ctx(root)) if f.path == f"{module}.py"]
+    assert len(files) == 1
+    _materialize_and_import([*files, *_models(root)], tmp_path)
+    render = getattr(import_module(f"_rh_conf_pkg.{module}"), "render_welcome_email")
+
+    doc = render({"name": "Ada"}, FilesystemProvider(CLEAN))
+    assert (doc.subject, doc.html_body, doc.text_body) == ("Welcome Ada", "<p>Hi Ada</p>", "Hi Ada")
+    with pytest.raises(RenderError, match=r"ERR_VAR_NOT_ON_PAYLOAD \(nmae\)"):
+        render({"name": "Ada"}, FilesystemProvider(str(CORPUS / "runtime-drift" / f"email-{part}")))

@@ -59,6 +59,9 @@ private fun parseAuthLineSort(raw: String): Pair<String, SortOrder>? {
     return field to dir
 }
 
+/** GENERATED — every field AuthLine declares, as named on the wire: a body key outside it is refused. */
+private val AuthLineKnownFields: Set<String> = setOf("id", "label")
+
 /** GENERATED — cross-port cap on `in`-list size (matches TS DEFAULT_MAX_IN_LIST). */
 private const val MAX_IN_LIST = 100
 
@@ -325,10 +328,25 @@ class AuthLineController(private val objectMapper: ObjectMapper, private val val
     }
 
     @PostMapping
-    fun create(@RequestBody dto: AuthLine): ResponseEntity<Any> = transaction {
-        if (validator.validate(dto).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
+    fun create(@RequestBody body: JsonNode): ResponseEntity<Any> = transaction {
+        val issues = MetaValidationIssues.Collector()
+        if (!body.isObject) return@transaction ResponseEntity.badRequest().body(issues.add("invalid_type", emptyList(), "request body must be a JSON object").body() as Any)
+        val unknownKeys = MetaUnknownBodyKeys.refusal(body, AuthLineKnownFields)
+        if (unknownKeys != null) return@transaction ResponseEntity.badRequest().body(unknownKeys as Any)
+        val dto: AuthLine = try {
+            objectMapper.treeToValue(body, AuthLine::class.java)
+        } catch (e: Exception) {
+            if (body.has("label") && !body.get("label").isNull) {
+                val vLabel: kotlin.String? = issues.bind<kotlin.String>("label") { objectMapper.treeToValue(body.get("label"), object : TypeReference<kotlin.String>() {}) }
+                if (vLabel != null) issues.addAt(validator.validateValue(AuthLine::class.java, "label", vLabel), "label")
+            }
+            issues.addFailure(e)
+            return@transaction ResponseEntity.badRequest().body(issues.body() as Any)
+        }
+        issues.addViolations(validator.validate(dto))
+        if (!issues.isEmpty()) return@transaction ResponseEntity.badRequest().body(issues.body() as Any)
         val newId = AuthLineTable.insert {
-            it[label] = dto.label
+            it[AuthLineTable.label] = dto.label
         }[AuthLineTable.id]
         val saved = AuthLineTable.selectAll().where { AuthLineTable.id eq newId }.single()
         ResponseEntity.status(HttpStatus.CREATED).body(rowToAuthLine(saved) as Any)
@@ -336,18 +354,20 @@ class AuthLineController(private val objectMapper: ObjectMapper, private val val
 
     @RequestMapping(value = ["/{id}"], method = [RequestMethod.PATCH, RequestMethod.PUT])
     fun update(@PathVariable id: Long, @RequestBody body: JsonNode): ResponseEntity<Any> = transaction {
-        if (!body.isObject) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
+        val issues = MetaValidationIssues.Collector()
+        if (!body.isObject) return@transaction ResponseEntity.badRequest().body(issues.add("invalid_type", emptyList(), "request body must be a JSON object").body() as Any)
+        val unknownKeys = MetaUnknownBodyKeys.refusal(body, AuthLineKnownFields)
+        if (unknownKeys != null) return@transaction ResponseEntity.badRequest().body(unknownKeys as Any)
         if (listOf("label").any { body.has(it) }) {
-            try {
+            run {
                 val hasLabel = body.has("label")
                 val nullLabel = hasLabel && body.get("label").isNull
-                val vLabel: kotlin.String? = if (hasLabel && !nullLabel) objectMapper.treeToValue(body.get("label"), object : TypeReference<kotlin.String>() {}) else null
-                if (hasLabel && !nullLabel && validator.validateValue(AuthLine::class.java, "label", vLabel).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
+                val vLabel: kotlin.String? = if (hasLabel && !nullLabel) issues.bind<kotlin.String>("label") { objectMapper.treeToValue(body.get("label"), object : TypeReference<kotlin.String>() {}) } else null
+                if (vLabel != null) issues.addAt(validator.validateValue(AuthLine::class.java, "label", vLabel), "label")
+                if (!issues.isEmpty()) return@transaction ResponseEntity.badRequest().body(issues.body() as Any)
                 AuthLineTable.update({ AuthLineTable.id eq id }) {
                     if (hasLabel) { if (nullLabel) it[AuthLineTable.label] = null else it[AuthLineTable.label] = vLabel }
                 }
-            } catch (e: com.fasterxml.jackson.databind.JsonMappingException) {
-                return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
             }
         }
         val row = AuthLineTable.selectAll().where { AuthLineTable.id eq id }.singleOrNull()

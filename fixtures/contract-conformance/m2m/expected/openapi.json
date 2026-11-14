@@ -5030,16 +5030,7 @@
       "AccountTagUpdate": {
         "title": "AccountTagUpdate",
         "type": "object",
-        "properties": {
-          "accountId": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "tagId": {
-            "type": "integer",
-            "format": "int64"
-          }
-        }
+        "properties": {}
       },
       "ApiError": {
         "title": "ApiError",
@@ -5126,16 +5117,7 @@
       "FollowUpdate": {
         "title": "FollowUpdate",
         "type": "object",
-        "properties": {
-          "followerId": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "followeeId": {
-            "type": "integer",
-            "format": "int64"
-          }
-        }
+        "properties": {}
       },
       "Friendship": {
         "title": "Friendship",
@@ -5202,16 +5184,7 @@
       "FriendshipUpdate": {
         "title": "FriendshipUpdate",
         "type": "object",
-        "properties": {
-          "personAId": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "personBId": {
-            "type": "integer",
-            "format": "int64"
-          }
-        }
+        "properties": {}
       },
       "GuestAccount": {
         "title": "GuestAccount",
@@ -5444,16 +5417,7 @@
       "MemberAccountTagUpdate": {
         "title": "MemberAccountTagUpdate",
         "type": "object",
-        "properties": {
-          "accountId": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "tagId": {
-            "type": "integer",
-            "format": "int64"
-          }
-        }
+        "properties": {}
       },
       "MemberAccountUpdate": {
         "title": "MemberAccountUpdate",
@@ -5734,16 +5698,7 @@
       "PostReviewerUpdate": {
         "title": "PostReviewerUpdate",
         "type": "object",
-        "properties": {
-          "postId": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "accountId": {
-            "type": "integer",
-            "format": "int64"
-          }
-        }
+        "properties": {}
       },
       "PostTag": {
         "title": "PostTag",
@@ -5810,16 +5765,7 @@
       "PostTagUpdate": {
         "title": "PostTagUpdate",
         "type": "object",
-        "properties": {
-          "postId": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "tagId": {
-            "type": "integer",
-            "format": "int64"
-          }
-        }
+        "properties": {}
       },
       "PostUpdate": {
         "title": "PostUpdate",
@@ -5897,16 +5843,7 @@
       "ScopedAccountTagUpdate": {
         "title": "ScopedAccountTagUpdate",
         "type": "object",
-        "properties": {
-          "accountId": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "tagId": {
-            "type": "integer",
-            "format": "int64"
-          }
-        }
+        "properties": {}
       },
       "Tag": {
         "title": "Tag",

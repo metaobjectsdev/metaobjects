@@ -190,7 +190,9 @@ and the [config reference](../features/cli.md).
 with no generators) and an empty, loadable `metaobjects/meta.app.yaml`, and reports what it
 wrote. It never overwrites a file it finds; it says it kept it. `metaobjects init --with-docs`
 also adds a `docs` target running `api-docs`; without the flag no documentation generator is
-wired. Nothing writes docs until the config lists `api-docs`. The "Model / metadata" link on
+wired. Nothing writes docs until the config lists `api-docs`. It also writes `.metaobjects/config.json`
+with the `api` block (a page size and `api.unknownFields: reject`), `verify.handEdits: "fail"` and
+`migrate.foreignKeyIndexes: true`, unless that file exists ([the `api` block](#page-size-and-undeclared-body-keys-the-api-block)). The "Model / metadata" link on
 each api page is emitted only when `apiDocs.modelBaseUrl` is set (the Python port writes no
 model page, so a relative link would be dead).
 
@@ -409,6 +411,25 @@ reverse finders: `@collectionName: CaseHistory` on an object turns
 `find_<plural>_by_<fk>` into `find_case_history_by_<fk>` (and `..._in`). A project that sets
 neither keeps every route and finder name it has today. The shared cases are in
 `fixtures/naming-conformance/collection-segments.json`.
+
+### Page size and undeclared body keys: the `api` block
+
+The routers read the `api` block of `.metaobjects/config.json` from the loaded root:
+
+```json
+{ "api": { "pagination": { "defaultLimit": 50, "maxLimit": 1000 }, "unknownFields": "reject" } }
+```
+
+With `api.pagination`, an entity, projection or single-table list router answers `defaultLimit`
+rows when `limit` is omitted, `400 {"error": "limit_too_large", "maxLimit": N}` above the cap and
+`400 pagination.invalid_value` for a negative `limit`; a served report keeps its own ceiling.
+Without it the routers keep their default of 50 and no cap, and `metaobjects verify` prints an
+`unbounded-list-pages` advisory that never changes the exit code. With `api.unknownFields:
+reject` (the default) a create, PUT or PATCH body carrying a key no field declares answers
+`400 {"error": "unknown_fields", "fields": [...]}` (`unknown_body_keys` in
+`metaobjects.codegen.runtime.constraint_errors`) before validation; `drop` ignores it. A declared
+key the client may not set is dropped under either value. The contract is in
+[api-contract](../features/api-contract.md#unknown-request-fields-apiunknownfields).
 
 ### Decimals and null members on the wire
 

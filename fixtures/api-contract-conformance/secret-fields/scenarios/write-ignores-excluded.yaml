@@ -1,8 +1,8 @@
 name: write-ignores-excluded
 description: >
-  A field excluded from forms (`@formExclude`) or marked as a credential (`view.password`)
-  is not writable through the generated routes: create, PATCH and PUT all leave it as it
-  was. The value is IGNORED, never rejected (HTTP 200/201, not 400), the same rule as
+  A field excluded from forms (`@formExclude`), marked as a credential (`view.password`) or
+  declared `@mutability: readOnly` is not writable through the generated routes: create,
+  PATCH and PUT all leave it as it was. The value is IGNORED, never rejected (HTTP 200/201, not 400), the same rule as
   `@mutability: writeOnce` on PATCH (`writeonce-patch-stripped`), because a generated
   edit form submits every field it was given.
 
@@ -19,6 +19,7 @@ requests:
       name: "Ada L. (probe)"
       tokenHash: "forged"
       pinHash: "forged"
+      role: "admin"
     expect:
       status: 200
       body:
@@ -26,6 +27,7 @@ requests:
           id: 1
           name: "Ada L. (probe)"
           tokenHash: "token-hash-1"
+          role: "member"
   - id: r2
     method: PUT
     path: /api/accounts/2
@@ -33,6 +35,7 @@ requests:
       name: "Alan T. (probe)"
       tokenHash: "forged"
       pinHash: "forged"
+      role: "admin"
     expect:
       status: 200
       body:
@@ -40,6 +43,7 @@ requests:
           id: 2
           name: "Alan T. (probe)"
           tokenHash: "token-hash-2"
+          role: "owner"
   - id: r3
     method: POST
     path: /api/accounts
@@ -47,6 +51,7 @@ requests:
       name: "Grace Hopper"
       tokenHash: "forged"
       pinHash: "forged"
+      role: "admin"
     expect:
       status: 201
       body:
@@ -54,6 +59,8 @@ requests:
           name: "Grace Hopper"
           # Never written: the column stays null, and `forged` never landed.
           tokenHash: null
+          # readOnly is server-owned: a create cannot set it either.
+          role: null
         hasId: true
   - id: r4
     method: PATCH
@@ -63,6 +70,7 @@ requests:
       name: "Ada L. (probe 2)"
       tokenHash: null
       pinHash: null
+      role: null
     expect:
       status: 200
       body:
@@ -70,3 +78,4 @@ requests:
           id: 1
           name: "Ada L. (probe 2)"
           tokenHash: "token-hash-1"
+          role: "member"

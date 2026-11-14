@@ -3,14 +3,5 @@
   "$id": "schemas/acme/social/Friendship.update.schema.json",
   "title": "Friendship.update",
   "type": "object",
-  "properties": {
-    "personAId": {
-      "type": "integer",
-      "format": "int64"
-    },
-    "personBId": {
-      "type": "integer",
-      "format": "int64"
-    }
-  }
+  "properties": {}
 }

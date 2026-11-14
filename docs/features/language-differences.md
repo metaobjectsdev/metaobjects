@@ -34,10 +34,11 @@ project.
 | **Generated data access** | Drizzle tables and row types (`entityFile()`), CRUD queries (`queriesFile()`) | EF Core entities and `AppDbContext` | Spring DTOs and a repository interface | Exposed tables and a repository base | None: the generated router calls a repository `Protocol` you implement |
 | **Runtime metadata access** | `ObjectManager` on Kysely (`@metaobjectsdev/runtime-ts`) | None yet (roadmap) | OMDB (JDBC, Spring transactions) | Through Java's OMDB | `ObjectManager` on DB-API 2; not wired to the generated router |
 | **Generated REST routes** | Fastify (`routesFile()`; Hono and Drizzle mounts in `runtime-ts`) | ASP.NET minimal API | Spring `@RestController` | Spring `@RestController` | FastAPI `APIRouter` |
-| **List with no `limit`** | Every matching row | Every matching row | First 50 | First 50 | First 50 |
-| **Largest `limit` on an entity list** | No cap (an opaque raw-SQL view: 1,000) | No cap | No cap | No cap | No cap |
+| **List with no `limit`** | `api.pagination.defaultLimit` rows when the project sets it; otherwise every matching row | Same; otherwise every matching row | Same; otherwise the first 50 | Same; otherwise the first 50 | Same; otherwise the first 50 |
+| **Largest `limit` on an entity list** | `api.pagination.maxLimit`, then 400 `limit_too_large`, when the project sets it; otherwise no cap (an opaque raw-SQL view: 1,000) | Same; otherwise no cap | Same; otherwise no cap | Same; otherwise no cap | Same; otherwise no cap |
 | **Largest report page** | 10,000 rows, then 400 `report_too_large` | Same | Same | Same | Same |
-| **Validation error body** | 400 `{"error": "validation", "issues": [...]}` | 400 `{"error": "validation"}` | 400 `{"error": "validation"}` | 400 `{"error": "validation"}` | 400 `{"error": "validation"}` |
+| **Validation error body** | 400 `{"error": "validation", "issues": [...]}`, every issue | Same (`message` is each port's own wording) | Same | Same | Same |
+| **A write body key the entity does not declare** | 400 `{"error": "unknown_fields", "fields": [...]}` under `api.unknownFields: reject` (the default); ignored under `drop` | Same | Same | Same | Same |
 | **Filter and sort errors** | 400 with `field`, plus `op`, `expected` and the allowed fields | 400 with `field` | 400 with `field` | 400 with `field` | 400 with `field` |
 | **`?status=active` (a bare field, not `filter[status][eq]`)** | 400 `filter.bare_field`, naming the form that works | Ignored: every row comes back | Ignored | Ignored | Ignored |
 | **Filter extras beyond the nine operators** | `?search=`, `filter[or]` / `filter[and]`, leading-`%` refusal, filter-value format check | None | None | None | None |
@@ -54,8 +55,9 @@ project.
 The REST rows are the detail behind the [cross-port REST contract](api-contract.md): what that
 contract pins is identical in every port, and these rows are what it leaves open. When an
 agent or a client talks to a generated API, the safe subset is the one every port shares:
-`filter[<field>][<op>]=<value>` with the nine operators, an explicit `limit`, and a 400 that
-carries `error` (and `field` for a filter or sort error).
+`filter[<field>][<op>]=<value>` with the nine operators, an explicit `limit`, write bodies that
+carry only declared fields, and a 400 that carries `error` (and `field` for a filter or sort
+error).
 
 ## Why these differ
 
@@ -68,7 +70,7 @@ Second, **generated application code is a reference helper**, not a guarantee
 a repository or a DTO is a starting point you can eject and change, so a difference in what
 the reference writes is a difference you can remove in your own copy.
 
-The rest (the list default, the validation detail, Python's field names and data access) are
+The rest (the list default of a project without `api.pagination`, Python's field names and data access) are
 known gaps rather than design, and the roadmap closes several of them. When one closes, its row
 here changes in the same pull request.
 

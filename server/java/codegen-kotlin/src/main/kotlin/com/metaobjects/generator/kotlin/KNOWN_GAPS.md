@@ -56,7 +56,8 @@ value → set). Notes:
 
 - **Present-value constraint validation (RESOLVED by FR-036).** The handler now
   injects a `jakarta.validation.Validator` and runs `validateValue(<Entity>::class.java,
-  field, value)` on each present value → 400 `{"error":"validation"}`, on both the
+  field, value)` on each present value → 400 `{"error":"validation", "issues": [...]}` (every
+  violation listed through the generated `MetaValidationIssues`, since 1.3.0), on both the
   vanilla and (FR-036 Program B) the TPH per-subtype update paths. (The prior claim
   that "TS and Python DO validate present values on PATCH" was wrong — before FR-036
   only TS's vanilla path did.) One TPH caveat: the TPH union data class carries no

@@ -35,10 +35,12 @@ The generated router takes `dto: dict[str, Any]` for `POST` / `PATCH` /
 **FR-036 update:** the router now DOES import the generated Pydantic models
 (`from .<Entity> import <Entity>, <Entity>Patch`) and constructs them to enforce
 field constraints over HTTP — POST validates `<Entity>(**dto)`, PATCH validates
-the all-optional `<Entity>Patch(**dto)` (present values only) → `400 {"error":"validation"}`.
-The repository seam still receives the original `dict` (preserving the FR-035
-present-key tristate + wire values), so the strong-typing simplification below
-remains for the repo/response types; only the validation import was added.
+the all-optional `<Entity>Patch(**dto)` (present values only) → `400 {"error":"validation", "issues": [...]}`, every
+Pydantic error mapped to the cross-port `{code, path, message}` shape with Zod's code names
+(`constraint_errors.validation_envelope`; bare before 1.3.0).
+The repository seam receives only the keys the input model validated, as a `dict`
+(the FR-035 present-key tristate + wire values are kept), so the strong-typing
+simplification below remains for the repo/response types.
 
 This keeps the router module decoupled from sibling generated files
 (the entity-model generator emits one `@dataclass`/Pydantic model per

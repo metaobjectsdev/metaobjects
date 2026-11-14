@@ -45,5 +45,6 @@ export async function orderRoutes(fastify: FastifyInstance) {
     filterAllowlist: OrderFilterAllowlist,
     sortAllowlist: OrderSortAllowlist,
     dialect: "sqlite",
+    knownFields: ["id", "customerId", "productId", "quantity"],
   });
 }

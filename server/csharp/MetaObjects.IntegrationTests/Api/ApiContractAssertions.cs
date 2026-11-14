@@ -1,6 +1,6 @@
 // ApiContractAssertions — assertion vocabulary for api-contract-conformance.
 // The recognized keys (equals / length / ids / names / row / hasId / envelope /
-// error / empty / fieldsEqual / fieldsNotEqual) are the cross-port contract —
+// error / issues / empty / fieldsEqual / fieldsNotEqual) are the cross-port contract —
 // every per-port runner must implement them identically. See
 // fixtures/api-contract-conformance/README.md.
 //
@@ -84,6 +84,8 @@ internal static class ApiContractAssertions
                     throw new Xunit.Sdk.XunitException(
                         $"{scenarioName} / {request.Id}: expected field=\"{wantField}\", got: {Render(body)}");
             }
+            if (want.TryGetValue("issues", out var issuesObj) && issuesObj is List<object?> wantIssues)
+                AssertIssues(scenarioName, request.Id, body, wantIssues);
             return;
         }
         if (want.TryGetValue("length", out var lenObj) && lenObj is not null)
@@ -151,6 +153,31 @@ internal static class ApiContractAssertions
                         $"{scenarioName} / {request.Id}: expected row.{kvp.Key}={Render(kvp.Value)}, got {Render(actual)}");
             }
         }
+        // The listed keys must not be on the object at all (not even as null): a key the client
+        // may not set never reached storage and so never comes back in the echo.
+        if (want.TryGetValue("absent", out var absentObj) && absentObj is List<object?> absentKeys)
+        {
+            if (body is not Dictionary<string, object?> absentRow)
+                throw new Xunit.Sdk.XunitException(
+                    $"{scenarioName} / {request.Id}: expected object for absent, got: {Render(body)}");
+            var present = absentKeys.Select(k => k?.ToString() ?? "").Where(absentRow.ContainsKey).ToList();
+            if (present.Count > 0)
+                throw new Xunit.Sdk.XunitException(
+                    $"{scenarioName} / {request.Id}: expected no {string.Join(", ", present)} in body, got: {Render(body)}");
+        }
+        // Each listed key is missing or null: a value the client may not set never reached storage.
+        // (Missing-or-null, not strictly missing: ports differ on echoing an unset column as null.)
+        if (want.TryGetValue("unset", out var unsetObj) && unsetObj is List<object?> unsetKeys)
+        {
+            if (body is not Dictionary<string, object?> unsetRow)
+                throw new Xunit.Sdk.XunitException(
+                    $"{scenarioName} / {request.Id}: expected object for unset, got: {Render(body)}");
+            var stored = unsetKeys.Select(k => k?.ToString() ?? "")
+                .Where(k => unsetRow.TryGetValue(k, out var v) && v is not null).ToList();
+            if (stored.Count > 0)
+                throw new Xunit.Sdk.XunitException(
+                    $"{scenarioName} / {request.Id}: expected {string.Join(", ", stored)} unset, got: {Render(body)}");
+        }
         if (want.TryGetValue("hasId", out var hasIdObj) && hasIdObj is bool hi && hi)
         {
             if (body is not Dictionary<string, object?> row)
@@ -198,6 +225,39 @@ internal static class ApiContractAssertions
                 throw new Xunit.Sdk.XunitException(
                     $"{scenarioName} / {request.Id}: expected fields {names[0]} and {names[1]} to DIFFER, "
                     + $"but both = {Render(v0)}");
+        }
+    }
+
+    // The validation envelope lists its issues: `issues` is an array, every issue carries a string
+    // `code`, an array `path` and a string `message`, and each expected { path, code } is among them.
+    private static void AssertIssues(string scenarioName, string requestId, object? body, List<object?> expected)
+    {
+        if (body is not Dictionary<string, object?> bm || !bm.TryGetValue("issues", out var io) || io is not List<object?> issues)
+            throw new Xunit.Sdk.XunitException(
+                $"{scenarioName} / {requestId}: expected an issues array, got: {Render(body)}");
+        foreach (var issue in issues)
+        {
+            if (issue is not Dictionary<string, object?> im
+                || !im.TryGetValue("code", out var c) || c is not string
+                || !im.TryGetValue("path", out var p) || p is not List<object?>
+                || !im.TryGetValue("message", out var m) || m is not string)
+                throw new Xunit.Sdk.XunitException(
+                    $"{scenarioName} / {requestId}: an issue lacks code, path or message: {Render(issue)}");
+        }
+        foreach (var want in expected)
+        {
+            if (want is not Dictionary<string, object?> wm)
+                throw new Xunit.Sdk.XunitException($"{scenarioName} / {requestId}: malformed expected issue: {Render(want)}");
+            wm.TryGetValue("code", out var wantCode);
+            wm.TryGetValue("path", out var wantPath);
+            var found = issues.Any(issue =>
+            {
+                var im = (Dictionary<string, object?>)issue!;
+                return StructuralEquals(im["code"], wantCode) && StructuralEquals(im["path"], wantPath);
+            });
+            if (!found)
+                throw new Xunit.Sdk.XunitException(
+                    $"{scenarioName} / {requestId}: expected an issue {Render(want)}, got: {Render(issues)}");
         }
     }
 

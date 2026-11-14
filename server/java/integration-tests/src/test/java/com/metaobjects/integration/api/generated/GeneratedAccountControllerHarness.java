@@ -61,7 +61,10 @@ public final class GeneratedAccountControllerHarness implements AutoCloseable {
         ] } }
         """;
 
-    private final ObjectMapper mapper = new ObjectMapper();
+    // Mirrors Spring Boot's default mapper. The generated request handling does not depend on it:
+    // it reads body keys off the raw JSON and the DTOs ignore unknown properties.
+    private final ObjectMapper mapper = new ObjectMapper()
+        .disable(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
     private final URLClassLoader classLoader;
     private final Class<?> dtoClass;
     private final Constructor<?> controllerCtor;

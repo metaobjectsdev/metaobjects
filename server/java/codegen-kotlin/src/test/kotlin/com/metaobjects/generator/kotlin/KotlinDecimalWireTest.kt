@@ -104,7 +104,7 @@ class KotlinDecimalWireTest {
     fun `a PATCH decimal binds through the same reader as a create body and a bad one is a 400 naming the field`() {
         val src = emit(model, all()).getValue("acme/shop/ItemController.kt")
         assertTrue("MetaDecimalWire.fromNode(body.get(\"price\"))" in src, src)
-        assertTrue("mapOf(\"error\" to \"validation\", \"field\" to \"price\")" in src, src)
+        assertTrue("issues.bind<" in src && "(\"price\") { MetaDecimalWire.fromNode(body.get(\"price\")) }" in src, src)
     }
 
     @Test
@@ -130,10 +130,10 @@ class KotlinDecimalWireTest {
         val src = emit(model, all()).getValue("acme/shop/ItemController.kt")
         // @precision 12, @scale 2: at most 2 fraction digits and 10 integer digits.
         val fits = "MetaDecimalWire.fits(" ; val bounds = ", 12, 2)"
-        assertEquals(2, Regex(Regex.escape(fits) + "[^\\n]*?" + Regex.escape(bounds)).findAll(src).count(), src)
+        assertEquals(3, Regex(Regex.escape(fits) + "[^\\n]*?" + Regex.escape(bounds)).findAll(src).count(), src)
         assertTrue("if (!MetaDecimalWire.fits(dto.price, 12, 2))" in src, src)
         assertTrue("if (!MetaDecimalWire.fits(vPrice, 12, 2))" in src, src)
-        assertTrue("\"field\" to \"price\"" in src, src)
+        assertTrue("issues.add(\"too_big\", listOf(\"price\")" in src, src)
     }
 
     @Test
@@ -162,19 +162,23 @@ class KotlinDecimalWireTest {
 
             object Harness {
                 @JvmStatic fun create(dto: Dto): ResponseEntity<Any> = transaction {
+                    val issues = MetaValidationIssues.Collector()
                     ${line("if (dto.readings")}
+                    if (!issues.isEmpty()) return@transaction ResponseEntity.badRequest().body(issues.body())
                     ResponseEntity(201, dto.readings?.map { MetaDecimalWire.format(it) })
                 }
                 @JvmStatic fun patch(body: JsonNode): ResponseEntity<Any> = transaction {
+                    val issues = MetaValidationIssues.Collector()
                     ${line("val hasReadings")}
                     ${line("val nullReadings")}
                     ${line("val vReadings")}
-                    ${line("if (vReadings")}
+                    ${line("if (vReadings?.any")}
+                    if (!issues.isEmpty()) return@transaction ResponseEntity.badRequest().body(issues.body())
                     ResponseEntity(200, vReadings?.map { MetaDecimalWire.format(it) })
                 }
             }
         """.trimIndent()
-        val sources = files.filterKeys { it.endsWith("MetaDecimalWire.kt") }.map { (path, src) ->
+        val sources = files.filterKeys { it.endsWith("MetaDecimalWire.kt") || it.endsWith("MetaValidationIssues.kt") }.map { (path, src) ->
             com.tschuchort.compiletesting.SourceFile.kotlin(path.substringAfterLast('/'), src)
         } + com.tschuchort.compiletesting.SourceFile.kotlin("Harness.kt", harness)
         val result = com.tschuchort.compiletesting.KotlinCompilation().apply {
@@ -196,17 +200,27 @@ class KotlinDecimalWireTest {
                 .newInstance(readings.map { java.math.BigDecimal(it) })
             return outcome(h.getMethod("create", dto.javaClass).invoke(null, dto))
         }
-        val refused = mapOf("error" to "validation", "field" to "readings")
+        // The 400 body is the validation envelope: the issue is at the decimal array, too_big for a value past the
+        // declared range and invalid_type for one that is not a decimal, and `status` stays 400.
+        fun refused(code: String): Pair<Any?, Any?> = 400 to mapOf(
+            "error" to "validation",
+            "issues" to listOf(mapOf("code" to code, "path" to listOf("readings"), "message" to "*")),
+        )
+        fun withoutMessage(r: Pair<Any?, Any?>): Pair<Any?, Any?> {
+            val body = r.second as? Map<*, *> ?: return r
+            val issues = (body["issues"] as? List<*>)?.map { (it as Map<*, *>) + ("message" to "*") } ?: return r
+            return r.first to (body + ("issues" to issues))
+        }
 
         // Oracle: ADR-0019 Amendment 1 — canonical strings (W1), exact input (W2), decimal(9, 4) range (W3).
         assertEquals(200 to listOf("100.5", "0.3", "15"), patch("""{"readings": ["100.5000", 0.3, "1.5e1"]}"""))
-        assertEquals(400 to refused, patch("""{"readings": ["1", "0.12345"]}"""))
-        assertEquals(400 to refused, patch("""{"readings": ["100000"]}"""))
-        assertEquals(400 to refused, patch("""{"readings": ["12abc"]}"""))
-        assertEquals(400 to refused, patch("""{"readings": "100.5"}"""))
+        assertEquals(refused("too_big"), withoutMessage(patch("""{"readings": ["1", "0.12345"]}""")))
+        assertEquals(refused("too_big"), withoutMessage(patch("""{"readings": ["100000"]}""")))
+        assertEquals(refused("invalid_type"), withoutMessage(patch("""{"readings": ["12abc"]}""")))
+        assertEquals(refused("invalid_type"), withoutMessage(patch("""{"readings": "100.5"}""")))
         assertEquals(201 to listOf("100.5", "0"), create("100.5000", "0.0000"))
-        assertEquals(400 to refused, create("1", "0.12345"))
-        assertEquals(400 to refused, create("100000"))
+        assertEquals(refused("too_big"), withoutMessage(create("1", "0.12345")))
+        assertEquals(refused("too_big"), withoutMessage(create("100000")))
     }
 
     @Test

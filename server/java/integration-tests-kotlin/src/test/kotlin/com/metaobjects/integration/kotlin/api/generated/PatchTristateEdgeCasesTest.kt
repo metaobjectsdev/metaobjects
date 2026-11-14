@@ -87,8 +87,10 @@ class PatchTristateEdgeCasesTest {
             // empty patch-settable set must emit NO ObjectMapper ctor param and NO TypeReference
             // import (either would be an unused symbol → a real consumer's -Werror build fails).
             val src = Files.readString(outDir.resolve("acme/cfg/SettingsController.kt"))
-            assertTrue("ObjectMapper" !in src,
-                "a no-settable-field controller must not take an ObjectMapper ctor param:\n$src")
+            // (Under the default api.unknownFields: reject the create binds the raw body through the
+            // ObjectMapper to read its keys first, so the mapper IS used and is injected.)
+            assertTrue("objectMapper.treeToValue(body, Settings::class.java)" in src,
+                "the injected ObjectMapper must be used by the create handler:\n$src")
             assertTrue("TypeReference" !in src,
                 "a no-settable-field controller must not import TypeReference:\n$src")
 

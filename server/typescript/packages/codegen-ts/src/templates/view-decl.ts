@@ -7,7 +7,7 @@
 // attempt DDL (the SQL view is created/owned by migrate-ts). Both hosts emit the
 // SAME declaration shape, so it lives here once (extracted from projection-decl).
 
-import { code, imp, joinCode, type Code, type Import } from "ts-poet";
+import { code, imp, joinCode, type Code, type Import } from "../poet.js";
 import { dialectModule } from "../dialect-module.js";
 import type { Dialect } from "../metaobjects-config.js";
 import {

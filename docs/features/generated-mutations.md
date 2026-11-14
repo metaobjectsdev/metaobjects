@@ -41,7 +41,11 @@ but the semantics are one contract — call them **PATCH-1..7** (FR-035):
   simply omits every non-settable field, and Zod drops unknown keys — so
   `safeParse` succeeds and the key never reaches the `SET`. The TPH discriminator
   is additionally deleted by hand after parse, the same convention. A malformed
-  *value* on a settable key is still `400 {"error":"validation"}`.
+  *value* on a settable key is still `400 {"error":"validation", "issues": [...]}`. A key the entity
+  does not declare at all is NOT one of these: under `api.unknownFields: reject` (the default)
+  it answers `400 {"error":"unknown_fields","fields":[...]}` before validation, and only under
+  `drop` is it ignored the same way ([api-contract.md](api-contract.md#unknown-request-fields-apiunknownfields)).
+  The Python routes hand the repository only the keys their input model validated.
   This matters for `writeOnce` specifically: the generated edit form submits EVERY
   registered field (`handleSubmit` passes all values, and 0.19.2 switched the
   resolver to `UpdateSchema` on edit rather than diff-and-omit), so rejecting a
@@ -63,6 +67,22 @@ but the semantics are one contract — call them **PATCH-1..7** (FR-035):
   (`null` / `Optional.empty` / `404`).
 - **PATCH-7 (verbs).** At the HTTP tier both `PATCH` and `PUT` route to the update
   handler with partial-merge semantics. True PUT-as-full-replace is out of scope.
+
+**Create stores only what a client may set, in every port.** A generated create route
+never writes a client-sent value for a server-generated primary key (`@generation`
+`increment` or `uuid`), a `@mutability: "readOnly"` or `origin.*`-derived field, the TPH
+discriminator (a per-subtype route takes the subtype from the URL), a column only a
+sibling subtype declares, or (C#) an M:N navigation graph. Each is dropped silently, not
+answered with a 400. An assigned key (no `@generation`) is the caller's on create in
+TypeScript, C#, Java and Python, and on update it is the primary key like any other, so it
+is left out of the TypeScript `<Entity>UpdateSchema` too. (Kotlin's generated create is the
+exception: it never binds a declared key, assigned or not — `increment` is left to the
+column and a `uuid` key is minted app-side.) A key the entity does not declare at all is
+a separate case: `api.unknownFields` decides it in every port, `400 unknown_fields` under
+`reject` (the default) and dropped under `drop`
+([api-contract.md](api-contract.md#unknown-request-fields-apiunknownfields)).
+Gated cross-port by `fixtures/api-contract-conformance/scenarios/input-server-owned-dropped.yaml`
+and the `tph/` and `secret-fields/` input scenarios.
 
 The generated update does **not** guard against a concurrent write: two callers
 patching the same row both succeed, and the last one wins. Adding that guard is
@@ -109,10 +129,10 @@ repo.patch(id) { it[Authors.bio] = "…" }     // touches only what you set
 the controller binds the partial JSON body via `<Entity>Patch.fromJson` (presence-tracked)
 and delegates to `repository.patch`, so an omitted key is never written.
 
-**Python** — the generated FastAPI route binds the raw JSON body (the set of
-*present* keys — the tristate signal) and validates the present values against the
-generated `<Entity>Patch` model before delegating to the runtime `update`, which
-`SET`s only those keys.
+**Python** — the generated FastAPI route binds the JSON body (the set of
+*present* keys — the tristate signal), validates the present values against the
+generated `<Entity>Patch` model, and hands the repository only the keys that model
+validated. The runtime `update` then `SET`s only those keys.
 
 **C#** — the generated route runs a per-field merge loop over the present JSON keys
 (the app's configured `JsonSerializerOptions`), writing only the columns the body

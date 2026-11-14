@@ -1,0 +1,49 @@
+name: unknown-fields-dropped
+description: >
+  `api.unknownFields: drop` (this sub-corpus's config). A create, PUT or PATCH body carrying a
+  key the entity does not declare is answered as if the key were absent: the declared fields
+  are written, the undeclared key is ignored (201/200, never 400) and never stored or echoed.
+  This is the behaviour every port had before 1.3, kept for a project that asks for it.
+requests:
+  - id: r1
+    method: POST
+    path: /api/items
+    body:
+      title: "Forge"
+      isAdmin: true
+    expect:
+      status: 201
+      body:
+        row: { title: "Forge" }
+        hasId: true
+        absent: [isAdmin]
+  - id: r2
+    method: PATCH
+    path: /api/items/1
+    body:
+      title: "Anvil (patched)"
+      isAdmin: true
+    expect:
+      status: 200
+      body:
+        row: { id: 1, title: "Anvil (patched)" }
+        absent: [isAdmin]
+  - id: r3
+    method: PUT
+    path: /api/items/2
+    body:
+      title: "Bellows (put)"
+      isAdmin: true
+    expect:
+      status: 200
+      body:
+        row: { id: 2, title: "Bellows (put)" }
+        absent: [isAdmin]
+  - id: r4
+    method: GET
+    path: /api/items/1
+    expect:
+      status: 200
+      body:
+        row: { id: 1, title: "Anvil (patched)" }
+        absent: [isAdmin]

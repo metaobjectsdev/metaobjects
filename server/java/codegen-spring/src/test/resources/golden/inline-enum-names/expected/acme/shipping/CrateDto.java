@@ -3,6 +3,7 @@ package acme.shipping;
 import jakarta.validation.constraints.*;
 
 /** GENERATED — wire DTO for Crate. Do not hand-edit; regenerated from metadata. */
+@com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
 public record CrateDto(
     @NotNull Long id,
     @NotNull Status stage

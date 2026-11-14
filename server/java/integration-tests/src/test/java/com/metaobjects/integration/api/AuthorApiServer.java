@@ -52,6 +52,13 @@ final class AuthorApiServer implements AutoCloseable {
     // Mirrors the TS server's SORT_ALLOWLIST; cross-port contract.
     private static final Set<String> SORT_ALLOWLIST = Set.of("id", "name", "createdAt");
 
+    // Every field Author declares (meta.json), as named on the wire. The corpus sets no
+    // `api.unknownFields`, so the default applies: a write body key outside this set is refused
+    // with 400 {"error": "unknown_fields", "fields": [...]} before anything is read or written. A
+    // declared key the client may not set (id, @autoSet, writeOnce on update) is known and dropped.
+    private static final Set<String> DECLARED_KEYS = Set.of(
+        "id", "name", "bio", "createdAt", "issuedCurrency", "autoCreatedAt", "autoUpdatedAt");
+
     // Cross-port contract: each field's DECLARED @sortableDefaultOrder — the direction a
     // {@code ?sort=<field>} carrying no {@code :dir} takes. Hardcoded from meta.json for
     // the same reason the allowlist above is: this is the hand-rolled fixed point the
@@ -441,14 +448,21 @@ final class AuthorApiServer implements AutoCloseable {
     private void createAuthor(HttpExchange exchange) throws IOException, SQLException {
         Object parsed = readJsonBody(exchange);
         if (!(parsed instanceof Map<?, ?>)) {
-            sendJson(exchange, 400, Map.of("error", "validation"));
+            sendJson(exchange, 400, validationBody(List.of(issue("invalid_type", "request body must be a JSON object"))));
             return;
         }
         Map<String, Object> body = (Map<String, Object>) parsed;
+        if (refuseUnknownKeys(exchange, body)) return;
         // FR-036 wire-tier constraint enforcement: reject an over-length name/bio with the
         // cross-port {"error":"validation"} envelope BEFORE persisting (mirrors the generated
         // controller's @Size(max=…) rules).
-        if (violatesLength(body)) { sendJson(exchange, 400, Map.of("error", "validation")); return; }
+        // A @required field (name, createdAt) that is missing or null is an invalid_type issue, and every
+        // issue is listed, not just the first.
+        List<Map<String, Object>> createIssues = lengthIssues(body);
+        for (String reqField : List.of("name", "createdAt")) {
+            if (body.get(reqField) == null) createIssues.add(issue("invalid_type", "required", reqField));
+        }
+        if (!createIssues.isEmpty()) { sendJson(exchange, 400, validationBody(createIssues)); return; }
         // Issue #203 / ADR-0045: honor @autoSet on create — stamp BOTH the onCreate and onUpdate
         // columns from ONE now() (the caller's values are ignored; a fresh row's autoUpdatedAt
         // equals its autoCreatedAt).
@@ -486,22 +500,26 @@ final class AuthorApiServer implements AutoCloseable {
         Long id = parseLongOrNull(idStr);
         if (id == null) { sendJson(exchange, 400, Map.of("error", "invalid_id")); return; }
         Object parsed = readJsonBody(exchange);
-        if (!(parsed instanceof Map<?, ?>)) { sendJson(exchange, 400, Map.of("error", "validation")); return; }
+        if (!(parsed instanceof Map<?, ?>)) {
+            sendJson(exchange, 400, validationBody(List.of(issue("invalid_type", "request body must be a JSON object"))));
+            return;
+        }
         Map<String, Object> body = (Map<String, Object>) parsed;
+        if (refuseUnknownKeys(exchange, body)) return;
 
         // FR-035 PATCH-2: an explicit null on a @required field (name / createdAt, per
         // meta.json) is a 400 — a present null on the nullable bio clears it, and an
         // omitted required field is untouched (never a 400).
+        List<Map<String, Object>> patchIssues = lengthIssues(body);
         for (String reqField : List.of("name", "createdAt")) {
             if (body.containsKey(reqField) && body.get(reqField) == null) {
-                sendJson(exchange, 400, Map.of("error", "validation"));
-                return;
+                patchIssues.add(issue("invalid_type", "cannot be null", reqField));
             }
         }
-
         // FR-036 wire-tier constraint enforcement: a PRESENT, non-null over-length name/bio is a
-        // 400 (matches the generated controller's per-present-value PATCH validation).
-        if (violatesLength(body)) { sendJson(exchange, 400, Map.of("error", "validation")); return; }
+        // 400 (matches the generated controller's per-present-value PATCH validation). Every issue
+        // is listed in the envelope.
+        if (!patchIssues.isEmpty()) { sendJson(exchange, 400, validationBody(patchIssues)); return; }
 
         // Dynamic SET clause — only update fields present in the body.
         List<String> setClauses = new ArrayList<>();
@@ -562,10 +580,27 @@ final class AuthorApiServer implements AutoCloseable {
      * field is already rejected upstream. Returns {@code true} when a bound is exceeded so
      * the caller emits the {@code {"error":"validation"}} envelope.
      */
-    private static boolean violatesLength(Map<String, Object> body) {
-        if (body.get("name") instanceof String n && n.length() > 100) return true;
-        if (body.get("bio") instanceof String b && b.length() > 1000) return true;
-        return false;
+    private static List<Map<String, Object>> lengthIssues(Map<String, Object> body) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        if (body.get("name") instanceof String n && n.length() > 100) out.add(issue("too_big", "too long", "name"));
+        if (body.get("bio") instanceof String b && b.length() > 1000) out.add(issue("too_big", "too long", "bio"));
+        return out;
+    }
+
+    /** One validation issue: {@code {code, path, message}}; {@code path} is the field, empty when none is given. */
+    private static Map<String, Object> issue(String code, String message, String... path) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("code", code);
+        out.put("path", List.of(path));
+        out.put("message", message);
+        return out;
+    }
+
+    private static Map<String, Object> validationBody(List<Map<String, Object>> issues) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("error", "validation");
+        out.put("issues", issues);
+        return out;
     }
 
     private void deleteAuthor(HttpExchange exchange, String idStr) throws IOException, SQLException {
@@ -606,6 +641,15 @@ final class AuthorApiServer implements AutoCloseable {
         OffsetDateTime autoUpdated = rs.getObject("autoUpdatedAt", OffsetDateTime.class);
         row.put("autoUpdatedAt", autoUpdated == null ? null : formatInstant(autoUpdated.toInstant()));
         return row;
+    }
+
+    /** Answers {@code 400 unknown_fields} (keys in code-point order) when {@code body} carries an undeclared key. */
+    private boolean refuseUnknownKeys(HttpExchange exchange, Map<String, Object> body) throws IOException {
+        java.util.TreeSet<String> unknown = new java.util.TreeSet<>(body.keySet());
+        unknown.removeAll(DECLARED_KEYS);
+        if (unknown.isEmpty()) return false;
+        sendJson(exchange, 400, Map.of("error", "unknown_fields", "fields", new ArrayList<>(unknown)));
+        return true;
     }
 
     private Object readJsonBody(HttpExchange exchange) throws IOException {

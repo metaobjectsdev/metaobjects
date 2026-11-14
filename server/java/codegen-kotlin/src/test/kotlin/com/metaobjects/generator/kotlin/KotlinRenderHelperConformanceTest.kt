@@ -92,7 +92,7 @@ class KotlinRenderHelperConformanceTest {
     // runtime-drift/ → a variable not on the payload RAISES at render time. The helpers are
     // generated against the clean templates/; runtime-drift/templates/ serves {{nmae}} for
     // name (text edited after codegen, which the build-time gate cannot see). Covers a
-    // template.output and a template.prompt over the same payload.
+    // template.output, a template.prompt and an email template.output over the same payload.
     // -------------------------------------------------------------------------
     @Test fun `runtime drift raises for output and prompt helpers`() {
         val outDir = Files.createTempDirectory("krhc-rdrift-")
@@ -116,6 +116,20 @@ class KotlinRenderHelperConformanceTest {
                     render.invoke(instance, payload, fsProvider(cl, drifted))
                 }
                 assertTrue(ex.cause?.message?.contains("ERR_VAR_NOT_ON_PAYLOAD (nmae)") == true, "$name: ${ex.cause?.message}")
+            }
+
+            // runtime-drift/email-<part>/ drifts one part of WelcomeEmail each: the subject,
+            // the html body and the text body must each raise.
+            val emailClass = cl.loadClass("acme.ai.prompts.WelcomeEmailRenderHelper")
+            val emailInstance = emailClass.getDeclaredField("INSTANCE").get(null)
+            val email = emailClass.getDeclaredMethod("render", payloadClass, providerClass)
+            email.invoke(emailInstance, payload, fsProvider(cl, clean))
+            for (part in listOf("subject", "html", "text")) {
+                val dir = corpus.resolve("runtime-drift").resolve("email-$part")
+                val ex = kotlin.test.assertFailsWith<java.lang.reflect.InvocationTargetException>("email $part") {
+                    email.invoke(emailInstance, payload, fsProvider(cl, dir))
+                }
+                assertTrue(ex.cause?.message?.contains("ERR_VAR_NOT_ON_PAYLOAD (nmae)") == true, "email $part: ${ex.cause?.message}")
             }
         } finally {
             outDir.toFile().deleteRecursively()

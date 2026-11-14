@@ -45,8 +45,7 @@
   },
   "dependencies": {
     "@metaobjectsdev/metadata": "workspace:*",
-    "@metaobjectsdev/codegen-ts": "workspace:*",
-    "ts-poet": "^6.10.0"
+    "@metaobjectsdev/codegen-ts": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.0",

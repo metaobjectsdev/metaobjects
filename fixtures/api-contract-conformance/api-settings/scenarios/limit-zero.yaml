@@ -1,0 +1,13 @@
+name: limit-zero
+description: >
+  An explicit `?limit=0` is a real page size of zero, not "no limit": it answers an empty page,
+  never the default page (2) and never the whole table (5). The C# route read it as no limit and
+  served the default page while every other port served nothing.
+requests:
+  - id: r1
+    method: GET
+    path: /api/items?limit=0&sort=id:asc
+    expect:
+      status: 200
+      body:
+        ids: []

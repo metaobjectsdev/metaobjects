@@ -37,7 +37,7 @@ public sealed class ApiContractSecretFieldsConformanceTest
         await using var c = new Npgsql.NpgsqlConnection(connString);
         await c.OpenAsync();
         await using var cmd = c.CreateCommand();
-        cmd.CommandText = "SELECT \"id\", \"tokenHash\", \"pinHash\" FROM \"accounts\" ORDER BY \"id\"";
+        cmd.CommandText = "SELECT \"id\", \"tokenHash\", \"pinHash\", \"role\" FROM \"accounts\" ORDER BY \"id\"";
         await using var reader = await cmd.ExecuteReaderAsync();
         var seen = new HashSet<long>();
         while (await reader.ReadAsync())
@@ -45,16 +45,19 @@ public sealed class ApiContractSecretFieldsConformanceTest
             long id = reader.GetInt64(0);
             string? token = reader.IsDBNull(1) ? null : reader.GetString(1);
             string? pin = reader.IsDBNull(2) ? null : reader.GetString(2);
+            string? role = reader.IsDBNull(3) ? null : reader.GetString(3);
             seen.Add(id);
             if (seed.TryGetValue(id, out var row))
             {
                 Assert.Equal(row["tokenHash"]!.GetValue<string>(), token);
                 Assert.Equal(row["pinHash"]!.GetValue<string>(), pin);
+                Assert.Equal(row["role"]!.GetValue<string>(), role);   // readOnly: no write path reaches it
             }
             else
             {
                 Assert.Null(token);
                 Assert.Null(pin);
+                Assert.Null(role);
             }
         }
         Assert.True(seed.Keys.All(seen.Contains), "a seeded row went missing");

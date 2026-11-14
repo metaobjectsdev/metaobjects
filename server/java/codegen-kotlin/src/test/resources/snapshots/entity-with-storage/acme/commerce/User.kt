@@ -1,5 +1,6 @@
 package acme.commerce
 
+import com.fasterxml.jackson.`annotation`.JsonIgnoreProperties
 import jakarta.validation.Valid
 import jakarta.validation.constraints.Size
 import kotlin.Long
@@ -9,6 +10,7 @@ import kotlin.jvm.JvmStatic
 /**
  * GENERATED — do not hand-edit. Regenerated from metadata.
  */
+@JsonIgnoreProperties(ignoreUnknown = true)
 public data class User(
   public val id: Long? = null,
   @field:Size(max = 255)

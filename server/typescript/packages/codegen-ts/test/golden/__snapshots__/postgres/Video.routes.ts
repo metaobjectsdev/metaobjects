@@ -45,5 +45,6 @@ export async function videoRoutes(fastify: FastifyInstance) {
     filterAllowlist: VideoFilterAllowlist,
     sortAllowlist: VideoSortAllowlist,
     dialect: "postgres",
+    knownFields: ["id", "exerciseId", "url", "title", "durationSeconds"],
   });
 }

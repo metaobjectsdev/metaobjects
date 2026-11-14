@@ -206,8 +206,6 @@ class InMemoryTphRepository:
         if row is None:
             return None
         for k, v in dto.items():
-            if k == self._disc:
-                continue  # discriminator is immutable
             row[k] = v
         return row
 

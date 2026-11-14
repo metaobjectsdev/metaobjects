@@ -1,7 +1,7 @@
 // Queries template — individual CRUD function renderers.
 // Each returns a ts-poet Code block; composed into a file by queries-file.ts.
 
-import { code, imp, type Code } from "ts-poet";
+import { code, imp, type Code } from "../poet.js";
 import {
   type MetaObject,
   IDENTITY_REFERENCE_ATTR_REFERENCES,

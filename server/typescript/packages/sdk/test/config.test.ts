@@ -2,7 +2,7 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ConfigSchema, DEFAULT_CONFIG, loadConfig, saveConfig, setConfigWarningSink, type Config } from "../src/config.js";
+import { ConfigSchema, DEFAULT_CONFIG, apiPaginationFromConfig, apiUnknownFieldsFromConfig, loadConfig, saveConfig, setConfigWarningSink, type Config } from "../src/config.js";
 
 let metaRoot: string;
 beforeEach(() => {
@@ -298,5 +298,66 @@ describe("csharp.providers (read by the C# port only)", () => {
     expect(bad([{ assembly: "", type: "A.B" }])).toBe(false);
     expect(bad([{ assembly: "a.dll" }])).toBe(false);
     expect(bad([{ assembly: "a.dll", type: "A.B", extra: 1 }])).toBe(false);
+  });
+});
+
+describe("api.pagination (the generated list routes' page size)", () => {
+  const parse = (api: unknown) => ConfigSchema.safeParse({ schema_version: 1, api });
+  const messages = (api: unknown) => {
+    const r = parse(api);
+    return r.success ? [] : r.error.issues.map((i) => i.message);
+  };
+
+  test("absent: no page size, so lists behave as they always have", () => {
+    expect(DEFAULT_CONFIG.api).toBeUndefined();
+    expect(apiPaginationFromConfig(DEFAULT_CONFIG)).toBeUndefined();
+    expect(apiPaginationFromConfig(ConfigSchema.parse({ schema_version: 1, api: {} }))).toBeUndefined();
+  });
+
+  test("present: read as given", () => {
+    const cfg = ConfigSchema.parse({ schema_version: 1, api: { pagination: { defaultLimit: 50, maxLimit: 1000 } } });
+    expect(apiPaginationFromConfig(cfg)).toEqual({ defaultLimit: 50, maxLimit: 1000 });
+  });
+
+  test("a default above the cap is refused in words", () => {
+    expect(messages({ pagination: { defaultLimit: 100, maxLimit: 10 } }))
+      .toContain(`"api.pagination.defaultLimit" must not exceed "api.pagination.maxLimit"`);
+  });
+
+  test("a zero, negative or fractional size is refused", () => {
+    expect(messages({ pagination: { defaultLimit: 0, maxLimit: 10 } }).join(" ")).toContain("defaultLimit");
+    expect(messages({ pagination: { defaultLimit: 5, maxLimit: -1 } }).join(" ")).toContain("maxLimit");
+    expect(messages({ pagination: { defaultLimit: 2.5, maxLimit: 10 } }).join(" ")).toContain("defaultLimit");
+  });
+
+  test("a half-declared block or an unknown key is refused, naming the expected keys", () => {
+    expect(messages({ pagination: { defaultLimit: 5 } }).join(" ")).toContain("maxLimit");
+    expect(messages({ pagination: { defaultLimit: 5, maxLimit: 10, max: 3 } }).join(" ")).toContain('unknown key "max"');
+    expect(messages({ paging: {} }).join(" ")).toContain('"api" has an unknown key "paging"');
+  });
+});
+
+describe("api.unknownFields (what a generated write does with an undeclared key)", () => {
+  const messages = (api: unknown) => {
+    const r = ConfigSchema.safeParse({ schema_version: 1, api });
+    return r.success ? [] : r.error.issues.map((i) => i.message);
+  };
+
+  test("absent: undefined here, which the routes read as the default, reject", () => {
+    expect(apiUnknownFieldsFromConfig(DEFAULT_CONFIG)).toBeUndefined();
+  });
+
+  test("reject and drop are read as given", () => {
+    for (const mode of ["reject", "drop"] as const) {
+      expect(apiUnknownFieldsFromConfig(ConfigSchema.parse({ schema_version: 1, api: { unknownFields: mode } }))).toBe(mode);
+    }
+  });
+
+  test("any other value is refused, naming the two it may be", () => {
+    expect(messages({ unknownFields: "ignore" })).toEqual([`"api.unknownFields" must be "reject" or "drop"`]);
+  });
+
+  test("an unknown api key names both keys the block takes", () => {
+    expect(messages({ unknown: "drop" }).join(" ")).toContain(`(expected "pagination" or "unknownFields")`);
   });
 });

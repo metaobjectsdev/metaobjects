@@ -589,6 +589,31 @@ the list route's body through the application's `ObjectMapper`, so a `wire` sett
 it does to the list. CSV and XML are written as `byte[]`, which every Spring MVC setup has a converter
 for.
 
+### Page size and unknown body keys (`api` in `.metaobjects/config.json`)
+
+The generated controllers read two project settings from the `api` block, the same file that
+carries `naming` and `wire` (`NeutralConfig.getApiSettings()`, carried on the loaded root as
+`ApiSettings`):
+
+```json
+{ "api": { "pagination": { "defaultLimit": 50, "maxLimit": 1000 }, "unknownFields": "reject" } }
+```
+
+- `api.pagination`: a list route (entity, TPH base and per-subtype, projection) with no `limit`
+  returns `defaultLimit` rows, and a `limit` above `maxLimit` answers
+  `400 {"error": "limit_too_large", "maxLimit": N}`. Absent, a list route returns 50 rows when
+  `limit` is omitted and takes any `limit`, as before; `mvn metaobjects:verify` then warns
+  (`unbounded-list-pages`, advisory, never fails the build). A served report keeps its own row
+  ceiling, and an M:N traversal is not paged.
+- `api.unknownFields` (`reject`, the default, or `drop`): a create, PUT or PATCH body key the
+  entity does not declare answers `400 {"error": "unknown_fields", "fields": [...]}` (keys in code
+  point order) and writes nothing. Declared keys the client may not set (the generated key,
+  `readOnly`, derived, `@autoSet`, `writeOnce` on update, the discriminator, a sibling
+  subtype's column) are not unknown: they are dropped as before. The keys are read off the raw
+  `JsonNode` (`UnknownBodyKeys`, shipped with the generated runtime) before the body is bound, so
+  the answer does not depend on the host `ObjectMapper`'s `FAIL_ON_UNKNOWN_PROPERTIES`. Under
+  `reject` the generated create handler takes `@RequestBody JsonNode body` rather than the DTO.
+
 ### Decimals and null members on the wire
 
 What the generated records write is the project setting `wire` in `.metaobjects/config.json`

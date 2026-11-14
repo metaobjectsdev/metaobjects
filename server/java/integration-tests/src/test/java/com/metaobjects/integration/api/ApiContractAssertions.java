@@ -8,7 +8,7 @@ import java.util.Map;
 /**
  * Assertion engine for api-contract-conformance scenarios. The vocabulary
  * ({@code equals} / {@code length} / {@code ids} / {@code names} /
- * {@code row} / {@code hasId} / {@code envelope} / {@code error} /
+ * {@code row} / {@code unset} / {@code hasId} / {@code envelope} / {@code error} /
  * {@code empty} / {@code fieldsEqual} / {@code fieldsNotEqual}) is the
  * cross-port contract — every per-port runner must implement these keys
  * identically. See {@code fixtures/api-contract-conformance/README.md}.
@@ -127,6 +127,9 @@ final class ApiContractAssertions {
                     throw new AssertionError(scenarioName + " / " + request.id()
                         + ": expected field=\"" + wantField + "\", got: " + body);
             }
+            if (want.get("issues") instanceof List<?> wantIssues) {
+                assertIssues(scenarioName, request.id(), body, wantIssues);
+            }
             return;
         }
         Object lenObj = want.get("length");
@@ -176,6 +179,28 @@ final class ApiContractAssertions {
                     throw new AssertionError(scenarioName + " / " + request.id()
                         + ": expected row." + e.getKey() + "=" + e.getValue() + ", got " + actual);
             }
+        }
+        // The listed keys must not be on the object at all (not even as null): a key the client
+        // may not set never reached storage and so never comes back in the echo.
+        if (want.get("absent") instanceof List<?> absentKeys) {
+            if (!(body instanceof Map<?, ?> row))
+                throw new AssertionError(scenarioName + " / " + request.id()
+                    + ": expected object for absent, got: " + body);
+            List<?> present = absentKeys.stream().filter(row::containsKey).toList();
+            if (!present.isEmpty())
+                throw new AssertionError(scenarioName + " / " + request.id()
+                    + ": expected no " + present + " in body, got: " + body);
+        }
+        // Each listed key is missing or null: a value the client may not set never reached storage.
+        // (Missing-or-null, not strictly missing: ports differ on echoing an unset column as null.)
+        if (want.get("unset") instanceof List<?> unsetKeys) {
+            if (!(body instanceof Map<?, ?> row))
+                throw new AssertionError(scenarioName + " / " + request.id()
+                    + ": expected object for unset, got: " + body);
+            List<?> stored = unsetKeys.stream().filter(k -> row.get(k) != null).toList();
+            if (!stored.isEmpty())
+                throw new AssertionError(scenarioName + " / " + request.id()
+                    + ": expected " + stored + " unset, got: " + body);
         }
         if (Boolean.TRUE.equals(want.get("hasId"))) {
             if (!(body instanceof Map<?, ?> row))
@@ -257,5 +282,35 @@ final class ApiContractAssertions {
         if (body instanceof Map<?, ?> m) return m.isEmpty();
         if (body instanceof List<?> l) return l.isEmpty();
         return false;
+    }
+    /**
+     * The validation envelope lists its issues: {@code issues} is an array, every issue carries a
+     * string {@code code}, an array {@code path} and a string {@code message}, and each expected
+     * {@code {path, code}} is among them.
+     */
+    private static void assertIssues(String scenarioName, String requestId, Object body, List<?> expected) {
+        Object issues = body instanceof Map<?, ?> bm ? bm.get("issues") : null;
+        if (!(issues instanceof List<?> actual))
+            throw new AssertionError(scenarioName + " / " + requestId + ": expected an issues array, got: " + body);
+        for (Object issue : actual) {
+            if (!(issue instanceof Map<?, ?> im) || !(im.get("code") instanceof String)
+                    || !(im.get("path") instanceof List<?>) || !(im.get("message") instanceof String))
+                throw new AssertionError(scenarioName + " / " + requestId
+                    + ": an issue lacks code, path or message: " + issue);
+        }
+        for (Object want : expected) {
+            Map<?, ?> w = (Map<?, ?>) want;
+            boolean found = false;
+            for (Object issue : actual) {
+                Map<?, ?> im = (Map<?, ?>) issue;
+                if (w.get("code").equals(im.get("code")) && String.valueOf(w.get("path")).equals(String.valueOf(im.get("path")))) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found)
+                throw new AssertionError(scenarioName + " / " + requestId + ": expected an issue " + want
+                    + ", got: " + actual);
+        }
     }
 }

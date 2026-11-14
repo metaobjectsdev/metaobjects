@@ -83,6 +83,16 @@ from metaobjects.config.dependency_check import (
     summary_line,
 )
 from metaobjects.config.neutral_config import find_project_dir, read_neutral_config
+from metaobjects.api_settings import (
+    API_KEY_PAGINATION,
+    API_KEY_UNKNOWN_FIELDS,
+    INIT_DEFAULT_LIMIT,
+    INIT_MAX_LIMIT,
+    PAGINATION_KEY_DEFAULT_LIMIT,
+    PAGINATION_KEY_MAX_LIMIT,
+    UNKNOWN_FIELDS_REJECT,
+    ApiSettings,
+)
 from metaobjects.field_lint import lint_duplicate_fields, lint_reference_fields
 from metaobjects.loader.meta_data_loader import LoadResult
 from metaobjects.loader.sources import FileSource
@@ -521,6 +531,7 @@ def _load_root(
     # invocation) read the same values `gen`/`verify --codegen` would.
     result.root.naming = neutral.naming if neutral is not None else NamingRules()
     result.root.wire = neutral.wire if neutral is not None else WireFormat()
+    result.root.api = neutral.api if neutral is not None else ApiSettings()
     return result.root, []
 
 
@@ -584,6 +595,7 @@ def _load_collection_result(
         # it to the loaded root so codegen, the runtime and `verify` agree.
         result.root.naming = collection.naming
         result.root.wire = collection.wire
+        result.root.api = collection.api
     return result
 
 
@@ -1348,8 +1360,31 @@ _INIT_DOCS_CONFIG = """\
 """
 
 
+def _init_neutral_config() -> str:
+    """The port-neutral ``.metaobjects/config.json`` a new project starts with: the same
+    new-project settings TypeScript ``meta init`` writes. ``migrate.foreignKeyIndexes`` on (read by
+    the TypeScript ``meta migrate`` that owns the schema), ``verify.handEdits`` "fail" (this port's
+    ``verify --codegen`` already fails on a hand edit), a page size on every generated list route,
+    and ``api.unknownFields`` spelled out at its default so the choice is visible. Never written
+    over an existing file, so an upgraded project gains none of them."""
+    body = {
+        "schema_version": 1,
+        "migrate": {"foreignKeyIndexes": True},
+        "verify": {"handEdits": "fail"},
+        "api": {
+            API_KEY_PAGINATION: {
+                PAGINATION_KEY_DEFAULT_LIMIT: INIT_DEFAULT_LIMIT,
+                PAGINATION_KEY_MAX_LIMIT: INIT_MAX_LIMIT,
+            },
+            API_KEY_UNKNOWN_FIELDS: UNKNOWN_FIELDS_REJECT,
+        },
+    }
+    return json.dumps(body, indent=2) + "\n"
+
+
 def _cmd_init(args: argparse.Namespace) -> int:
-    """Scaffold ``metaobjects.config.yaml`` and the ``metaobjects/`` metadata directory.
+    """Scaffold ``metaobjects.config.yaml``, the port-neutral ``.metaobjects/config.json`` and the
+    ``metaobjects/`` metadata directory.
 
     Never overwrites: a file that exists is reported and left alone. ``--with-docs`` adds a
     ``docs`` target running ``api-docs``; without it no documentation generator is wired.
@@ -1360,6 +1395,7 @@ def _cmd_init(args: argparse.Namespace) -> int:
     kept: list[str] = []
     for rel, text in (
         (_CONFIG_NAME, config),
+        (".metaobjects/config.json", _init_neutral_config()),
         ("metaobjects/meta.app.yaml", _INIT_METADATA),
     ):
         path = root / rel
@@ -2732,6 +2768,54 @@ def _run_field_lint_advisory(args: argparse.Namespace, model: "_VerifyModel | No
         print(f"  {finding.code} [{finding.path}]: {finding.message}", file=sys.stderr)
 
 
+#: The registry id of the generator that writes the REST list routes.
+_ROUTES_GENERATOR = "routes"
+
+
+def _routes_generator_wired(args: argparse.Namespace) -> bool:
+    """Whether this run's generator list includes the routes generator: the ``--generators``
+    narrowing when given, else any target of ``metaobjects.config.yaml``. A project with no
+    config, or one whose routes are owned rather than generated, has no generated list route."""
+    selection = _selection_from_args(args)
+    if selection is not None:
+        return _ROUTES_GENERATOR in selection
+    config_path = _find_config(args)
+    if config_path is None:
+        return False
+    try:
+        config = load_project_config(config_path)
+    except ConfigError:
+        return False
+    return any(_ROUTES_GENERATOR in (t.generators or []) for t in config.targets)
+
+
+def _run_pagination_advisory(args: argparse.Namespace, model: "_VerifyModel | None") -> None:
+    """``unbounded-list-pages``: ONE advisory line when the project generates REST list routes
+    (the routes generator is wired and the model has an entity it serves) and sets no
+    ``api.pagination``, so a request with no ``limit`` is served by the 50-row historic default
+    and ``?limit=`` has no cap. Advisory only: stderr, never the exit code."""
+    if model is None or model.root.api.pagination is not None:
+        return
+    if not _routes_generator_wired(args):
+        return
+    try:
+        from metaobjects.codegen.runtime.shared_predicates import emits_router
+
+        serves = any(
+            isinstance(c, MetaObject) and emits_router(c) for c in model.root.children()
+        )
+    except Exception:  # noqa: BLE001 — an advisory scan never breaks verify
+        return
+    if serves:
+        print(
+            "metaobjects verify — unbounded-list-pages (advisory — does not fail the build): "
+            "generated list routes have no page cap, so a request may ask for any ?limit=. "
+            'Set "api": {"pagination": {"defaultLimit": 50, "maxLimit": 1000}} in '
+            ".metaobjects/config.json.",
+            file=sys.stderr,
+        )
+
+
 #: Raises ``WARN_REQUIREMENT_NOTHING_IMPLEMENTS`` to an error, beside ``--require-implementers``
 #: (Node `meta` parity, ADR-0057).
 REQUIRE_IMPLEMENTERS_ENV = "META_REQUIRE_IMPLEMENTERS"
@@ -2927,6 +3011,8 @@ def _cmd_verify(args: argparse.Namespace) -> int:
         exit_code = max(exit_code, _report_unloaded_model(load_failure, gates_stderr.lines()))
     exit_code = max(exit_code, _verify_requirements(args, model))
     _run_field_lint_advisory(args, model)
+    if exit_code != 2:  # 2 is a refused invocation: its own message is the whole answer
+        _run_pagination_advisory(args, model)
     return exit_code
 
 

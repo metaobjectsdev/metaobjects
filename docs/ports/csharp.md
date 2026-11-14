@@ -400,7 +400,7 @@ the gate like any packaged generator's. The example above is compiled and run by
 
 `dotnet meta init --with-docs` writes the list with the api reference already in it
 (`new MetaObjects.Codegen.Generators.ApiDocsGenerator { OutDir = "docs/csharp", ProjectName = "<dir>" }`),
-so `gen` writes it. It does not write `.metaobjects/config.json`: set `"csharp": { "outDir": "<dir>" }`
+so `gen` writes it. Init writes `.metaobjects/config.json` (the `api`, `migrate` and `verify` settings, described below) but no `outDir`: set `"csharp": { "outDir": "<dir>" }`
 there and a plain `dotnet meta verify` drift-checks the docs with the rest of the codegen output
 (`verify --codegen` compares the whole tree of each entry's `OutDir`, so keep it generated files
 only). Against an existing list, init prints the entry to add and edits nothing. Without the flag
@@ -1080,6 +1080,22 @@ feeds `FilterParser.Parse` + `EfCoreFilterDispatch.ApplyFilter`, both wired
 directly into the generated list handler. A read-only projection
 (`source.rdb @kind: view`) and a view-backed report get the same filter and sort
 on their list route, against an allowlist of their own fields.
+
+The `api` block of `.metaobjects/config.json` reaches the generated routes through the loaded root
+(`MetaRoot.Api`). `api.pagination` (`defaultLimit`, `maxLimit`) gives every entity, TPH and projection
+list route a default page and answers a larger `?limit=` with `400 { "error": "limit_too_large",
+"maxLimit": N }`; a served report keeps its own row ceiling, and with no block the routes are unchanged.
+`api.unknownFields` (`reject`, the default, or `drop`) makes a create, PUT or PATCH answer
+`400 { "error": "unknown_fields", "fields": [...] }` for a body key no field of the entity (for a TPH
+hierarchy, of the base or any subtype) declares; the check is `UnknownFieldCheck` in the helper runtime.
+It matches a key the way the route binds the body, with the app's System.Text.Json options: under the
+ASP.NET web default, which ignores case, `Title` is the declared `title`. `limit=0` is a page of zero rows.
+`dotnet meta init` writes `.metaobjects/config.json` with the same new-project settings as `meta init`:
+`api.pagination` 50/1000, `api.unknownFields: reject`, `verify.handEdits: fail` and
+`migrate.foreignKeyIndexes: true`; an existing config is left alone. `dotnet meta verify --codegen` prints a
+non-failing advisory (`unbounded-list-pages`, stderr, exit code unchanged) when the run includes the routes
+generator and the project sets no `api.pagination`; plain `verify` says nothing, because only `--codegen`
+runs the generator list.
 
 **Known gaps** (full list with workarounds in
 [KNOWN_GAPS.md](https://github.com/metaobjectsdev/metaobjects/blob/main/server/csharp/MetaObjects.Codegen/Generators/KNOWN_GAPS.md)):

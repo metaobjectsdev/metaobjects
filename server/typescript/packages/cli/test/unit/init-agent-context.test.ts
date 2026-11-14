@@ -1,5 +1,5 @@
 import { test, expect, describe, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { init } from "../../src/commands/init.js";
@@ -120,6 +120,24 @@ describe("init() — agent-context scaffolding", () => {
     await init({ cwd, refreshDocs: true, docsOnly: true, skillsDir: ".agents/skills" });
     expect(existsSync(join(cwd, ".agents/skills/metaobjects-codegen/SKILL.md"))).toBe(true);
     expect(existsSync(join(cwd, ".claude/skills/metaobjects-codegen/SKILL.md"))).toBe(false);
+  });
+
+  test("moving the skills leaves no empty skill directories behind at the old path", async () => {
+    await init({ cwd, servers: ["python"], clients: [] });
+    expect(readdirSync(join(cwd, ".claude/skills")).length).toBeGreaterThan(0);
+    await init({ cwd, refreshDocs: true, docsOnly: true, skillsDir: ".agents/skills" });
+    // Every skill directory (and its references/) is gone; the skills directory itself stays,
+    // since it may hold the user's own skills.
+    expect(readdirSync(join(cwd, ".claude/skills"))).toEqual([]);
+    expect(existsSync(join(cwd, ".agents/skills/metaobjects-codegen/SKILL.md"))).toBe(true);
+  });
+
+  test("a skill directory that still holds a file of the user's is kept with that file", async () => {
+    await init({ cwd, servers: ["python"], clients: [] });
+    writeFileSync(join(cwd, ".claude/skills/metaobjects-codegen/my-notes.md"), "mine\n", "utf8");
+    await init({ cwd, refreshDocs: true, docsOnly: true, skillsDir: ".agents/skills" });
+    expect(readdirSync(join(cwd, ".claude/skills"))).toEqual(["metaobjects-codegen"]);
+    expect(readdirSync(join(cwd, ".claude/skills/metaobjects-codegen"))).toEqual(["my-notes.md"]);
   });
 
   test("a --skills-dir outside the project is refused before anything is written", async () => {

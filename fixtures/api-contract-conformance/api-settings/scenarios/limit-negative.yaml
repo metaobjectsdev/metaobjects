@@ -1,0 +1,17 @@
+name: limit-negative
+description: >
+  A negative `?limit=` is refused with the malformed-bound envelope, never handed to the store:
+  SQLite reads `LIMIT -1` as no limit at all, so passing it through would step around
+  `api.pagination.maxLimit`.
+requests:
+  - id: r1
+    method: GET
+    path: /api/items?limit=-1
+    expect:
+      status: 400
+      body:
+        equals:
+          error: "pagination.invalid_value"
+          param: "limit"
+          value: "-1"
+          expected: "a non-negative integer (0 or more)"
