@@ -146,6 +146,20 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   scalar field; gated by the `error-origin-aggregate-value-object` conformance fixture. Refusing,
   rather than summing the flattened amount column, keeps a sum from adding amounts in different
   currencies. `count` is unaffected.
+- **A long foreign-key index or constraint name no longer reappears on every `meta migrate`.**
+  `migrate.foreignKeyIndexes` named an index `<table>_<columns>_idx` with no length check, and
+  Postgres stores a name over 63 bytes cut to 63, so the diff (which compares names exactly)
+  proposed the index again on every run. On Postgres the name is now cut to the 63 bytes Postgres
+  stores (SQLite and D1 keep it whole), and the C# EF context and the Kotlin Exposed tables
+  declare the same cut name. The diff also matches a foreign-key constraint by its stored name,
+  so a derived `<table>_<column>_fk` over the limit is no longer proposed as a rename. A new
+  shared corpus, `fixtures/foreign-key-index-conformance/`, pins which foreign keys get an index
+  and its name, and the TypeScript, C# and Kotlin rules all pass it; two migration scenarios
+  prove a long name converges on Postgres.
+- **`mvn metaobjects:verify` refuses the model `mvn metaobjects:generate` refuses.** Two metadata
+  packages that generate into one output directory (`ERR_NAME_COLLISION`) and a REST collection
+  claimed twice (`ERR_COLLECTION_NAME_COLLISION`) were checked by the generate goal only, so a
+  project could verify clean on a model generate would refuse. Java and Kotlin.
 
 ## [1.3.0] — 2026-11-11
 

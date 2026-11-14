@@ -1221,9 +1221,9 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                     val cols = idx.fields.joinToString(", ") { KotlinNaming.safeColumnProperty(it, exposedApi()) }
                     append("        index(${indexNameExpr(idx, shortName)}, false, $cols${indexOptions(idx)})\n")
                 }
-                for ((name, fields) in foreignKeyIndexes) {
-                    val cols = fields.joinToString(", ") { KotlinNaming.safeColumnProperty(it, exposedApi()) }
-                    append("        index(\"${KotlinGenUtil.kotlinStringLiteral(name)}\", false, $cols)\n")
+                for (ix in foreignKeyIndexes) {
+                    val cols = ix.fields.joinToString(", ") { KotlinNaming.safeColumnProperty(it, exposedApi()) }
+                    append("        index(\"${KotlinGenUtil.kotlinStringLiteral(ix.name)}\", false, $cols)\n")
                 }
                 append("    }\n")
             }
@@ -1335,17 +1335,19 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
 
     /**
      * `migrate.foreignKeyIndexes` — the index `meta migrate` gives each enforced foreign key that
-     * nothing already leads with, as `(name, field names)` pairs, so the table declares the index
-     * the database has under migrate's name (`<table>_<column>[_<column>…]_idx`). The rule is
+     * nothing already leads with, so the table declares the index the database has under
+     * migrate's name (`<table>_<column>[_<column>…]_idx`, cut by [foreignKeyIndexName]). The rule is
      * migrate's own (`uncoveredForeignKeyColumns` in migrate-ts): the primary key, a field's
      * `@unique`, an `identity.secondary` and an `index.lookup` without `@expr` cover a foreign
      * key whose columns they lead with, in any order; two foreign keys over one column set get one
      * index; and one that leads a longer one shares the longer one's index. Empty unless the
      * project sets the option, and under the `efcore` conventions or on MySQL
-     * ([MigrateSettings.indexesForeignKeys]). A TPH table is read whole: base and subtypes.
+     * ([MigrateSettings.indexesForeignKeys]). A TPH table is read whole: base and subtypes. The
+     * shared corpus fixtures/foreign-key-index-conformance/ pins this to migrate's answer.
      */
-    protected fun foreignKeyIndexes(entity: MetaObject, loader: MetaDataLoader, tableName: String): List<Pair<String, List<String>>> {
-        if (!MigrateSettings.of(entity).indexesForeignKeys()) return emptyList()
+    protected fun foreignKeyIndexes(entity: MetaObject, loader: MetaDataLoader, tableName: String): List<ForeignKeyIndex> {
+        val settings = MigrateSettings.of(entity)
+        if (!settings.indexesForeignKeys()) return emptyList()
         val members = listOf(entity) + KotlinTphPlan.planFor(entity, loader)?.subtypes.orEmpty().map { it.entity }
         // ADR-0039: resolving — fields, identities, index nodes and @unique may be inherited.
         fun field(owner: MetaObject, name: String): MetaField<*>? = owner.metaFields.firstOrNull { it.name == name }
@@ -1386,7 +1388,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         }
         return candidates
             .filter { (cols, _) -> candidates.none { (o, _) -> o.size > cols.size && leadsWith(o, cols) } }
-            .map { (cols, fields) -> "${tableName}_${cols.joinToString("_")}_idx" to fields }
+            .map { (cols, fields) -> ForeignKeyIndex(foreignKeyIndexName(tableName, cols, settings.dialect), cols, fields) }
     }
 
     protected fun indexNameExpr(node: MetaData, shortName: String): String {
@@ -2779,4 +2781,33 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         PackageMapping.splitFqn(md.name).first.replace('.', '/')
     override fun getSingleOutputFilename(md: MetaObject): String =
         PackageMapping.splitFqn(md.name).second + "Table.kt"
+}
+
+/** One foreign-key index `migrate.foreignKeyIndexes` adds: its name, its columns and their fields. */
+data class ForeignKeyIndex(val name: String, val columns: List<String>, val fields: List<String>)
+
+/** Postgres's identifier limit in bytes; a longer name is stored cut to it. */
+private const val PG_IDENTIFIER_MAX_BYTES = 63
+
+/**
+ * `<table>_<column>[_<column>…]_idx`, migrate's name for a foreign key's index. Except on SQLite
+ * and D1, a name over 63 bytes is cut to its first 63 bytes on a character boundary: the name
+ * Postgres stores, and the one `meta migrate` expects.
+ */
+fun foreignKeyIndexName(table: String, columns: List<String>, dialect: String?): String {
+    val name = "${table}_${columns.joinToString("_")}_idx"
+    if (dialect == "sqlite" || dialect == "d1" || name.toByteArray(Charsets.UTF_8).size <= PG_IDENTIFIER_MAX_BYTES) return name
+    val out = StringBuilder()
+    var bytes = 0
+    var i = 0
+    while (i < name.length) {
+        val cp = name.codePointAt(i)
+        val ch = String(Character.toChars(cp))
+        val n = ch.toByteArray(Charsets.UTF_8).size
+        if (bytes + n > PG_IDENTIFIER_MAX_BYTES) break
+        out.append(ch)
+        bytes += n
+        i += Character.charCount(cp)
+    }
+    return out.toString()
 }

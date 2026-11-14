@@ -570,6 +570,17 @@ primary key. Two foreign keys over the same columns get one index, and a foreign
 longer one shares the longer one's index. A name that collides with another index is refused with
 `ERR_DUPLICATE_SQL_NAME`.
 
+On Postgres a name over 63 bytes is cut to its first 63 bytes (on a character boundary), which is
+the name Postgres stores for it, so a converged schema compares equal and the next run proposes
+nothing. SQLite and D1 have no limit and keep the whole name. Two foreign keys on one table whose
+names cut to the same 63 bytes are refused with `ERR_DUPLICATE_SQL_NAME`; cover one of them with
+an `index.lookup` of your own naming. The diff also matches a foreign-key constraint by the name
+Postgres stores, so a derived `<table>_<column>_fk` over the limit is not proposed as a rename on
+every run. The shared corpus
+[`fixtures/foreign-key-index-conformance/`](../../fixtures/foreign-key-index-conformance/README.md)
+pins which foreign keys get an index and under what name, and the TypeScript, C# and Kotlin rules
+all pass it.
+
 It is separate from the `efcore` conventions, which index every foreign key too but also rename
 the primary-key and foreign-key constraints: a team can have the indexes without the renames.
 Under `efcore` the option adds nothing, since the preset's `IX_` indexes already cover every
@@ -796,14 +807,23 @@ and a `CREATE VIEW`:
 
 A drop and a create of the same view needs no `--allow`. It has two costs a replace does not:
 
-- **Privileges granted on the view are discarded.** `DROP VIEW` removes the view's grants with
-  it, and `meta migrate` writes no `GRANT`. A role that had `SELECT` on the view loses it, and
-  nothing reports that. In an offline plan every changed Postgres view takes this path.
+- **Privileges granted on the view are carried over, but the view gets a new owner.**
+  `DROP VIEW` removes the view's grants with it, so on Postgres the migration reads them from the
+  catalog first (the view's own privileges and its column privileges, not the owner's) into a
+  session temporary table, and after the `CREATE` grants each one again to the same role, `WITH
+  GRANT OPTION` where it was held. A column privilege is granted again only when the new view
+  still has that column; one on a column the new definition dropped is gone. The apply log shows
+  a `NOTICE` with the count carried over. The down migration does the same when it drops and
+  creates a view. The recreated view is owned by whoever applies the migration, not by the old
+  view's owner. In an offline plan every changed Postgres view takes this path. These are the
+  only `GRANT` statements `meta migrate` writes: it declares no privileges of its own (#574
+  tracks that). SQLite and D1 have no privileges.
 - If something depends on the view, Postgres refuses the `DROP VIEW` at apply and names the
   dependent.
 
-Plan with `--from-db` to get the in-place replace when it is legal, which keeps both. Otherwise
-grant the privileges again after the migration is applied.
+Plan with `--from-db` to get the in-place replace when it is legal, which keeps the view's
+owner and its dependents. Migrations are TypeScript-owned (ADR-0015): no other port writes a
+migration, so this is the only port that carries privileges over.
 
 A view whose definition does **not** change is dropped and created too, when the migration
 retypes, drops or renames a column the view reads: Postgres refuses to retype or drop it
@@ -900,6 +920,7 @@ The following conformance fixtures gate this feature's behavior across ports:
 - [`add-nullable-column.yaml`](../../fixtures/persistence-conformance/migrations/add-nullable-column.yaml) — incremental `ALTER TABLE … ADD COLUMN` for a new nullable field
 - [`drop-table-blocked-without-allow.yaml`](../../fixtures/persistence-conformance/migrations/drop-table-blocked-without-allow.yaml) — destructive operations require an explicit allow-flag
 - [`foreign-key-indexes-added.yaml`](../../fixtures/persistence-conformance/migrations/foreign-key-indexes-added.yaml) — `migrate.foreignKeyIndexes` turned on for an existing schema adds one `<table>_<columns>_idx` per uncovered foreign key and nothing else
+- [`foreign-key-index-long-name-added.yaml`](../../fixtures/persistence-conformance/migrations/foreign-key-index-long-name-added.yaml) and [`noop-converged-long-foreign-key-index-name.yaml`](../../fixtures/persistence-conformance/migrations/noop-converged-long-foreign-key-index-name.yaml) — a foreign-key index name over Postgres's 63-byte limit is created under its cut name and the next run proposes nothing
 - [`noop-converged-foreign-key-indexes.yaml`](../../fixtures/persistence-conformance/migrations/noop-converged-foreign-key-indexes.yaml) — with the option on, a converged schema emits zero SQL (the indexes introspect back exactly as emitted)
 - [`noop-converged-canonical.yaml`](../../fixtures/persistence-conformance/migrations/noop-converged-canonical.yaml) — **the idempotence gate**: apply the whole canonical schema, then diff the same metadata against the database it just produced. A converged schema must emit **zero** SQL. This is what catches any asymmetry between what `emit` writes, what `introspect` reads back, and what the expected schema models — the class of bug that makes `meta migrate` re-propose (and on SQLite, destructively rebuild) unchanged tables forever.
 

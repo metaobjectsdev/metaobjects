@@ -83,7 +83,7 @@ import type {
 import { qualifiedDbName } from "./qualified-name.js";
 import { SQLITE_ISO_NOW } from "./column-default.js";
 import { viewFingerprint } from "./view-fingerprint.js";
-import { DIALECT_SQLITE, PG_IDENTIFIER_MAX_BYTES, isSqliteFamily } from "./types.js";
+import { DIALECT_SQLITE, PG_IDENTIFIER_MAX_BYTES, isSqliteFamily, pgStoredIdentifier } from "./types.js";
 import {
   resolveReferentialActions,
   findReferentialActionConflict,
@@ -1433,7 +1433,7 @@ function applySchemaConventions(
     if (indexForeignKeys) {
       for (const columns of uncoveredForeignKeyColumns(t)) {
         push(
-          { name: foreignKeyIndexName(t.name, columns), columns },
+          { name: foreignKeyIndexName(t.name, columns, dialect), columns },
           `the foreign-key index on [${columns.join(", ")}] of table "${t.name}" (migrate.foreignKeyIndexes)`,
         );
       }
@@ -1443,9 +1443,15 @@ function applySchemaConventions(
   return added;
 }
 
-/** The name `foreignKeyIndexes` gives a foreign key's index: `<table>_<column>[_<column>…]_idx`. */
-export function foreignKeyIndexName(table: string, columns: readonly string[]): string {
-  return `${table}_${columns.join("_")}_idx`;
+/**
+ * The name `foreignKeyIndexes` gives a foreign key's index: `<table>_<column>[_<column>…]_idx`.
+ * Except on SQLite and D1, a name over 63 bytes is cut to the first 63 bytes, which is the name
+ * Postgres stores, so a converged schema compares equal and nothing is proposed again. Two names
+ * that cut to the same 63 bytes on one table are refused as duplicates.
+ */
+export function foreignKeyIndexName(table: string, columns: readonly string[], dialect?: Dialect): string {
+  const name = `${table}_${columns.join("_")}_idx`;
+  return isSqliteFamily(dialect) ? name : pgStoredIdentifier(name);
 }
 
 /** True when `prefix` leads with exactly `columns`, in any order (the advisory's rule, too). */

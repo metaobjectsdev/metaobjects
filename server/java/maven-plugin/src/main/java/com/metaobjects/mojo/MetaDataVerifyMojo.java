@@ -435,6 +435,9 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
         ClassLoader projectClassLoader = createProjectClassLoader();
         resolveProviders(projectClassLoader);
         MetaDataLoader loader = createLoader(projectClassLoader);
+        // The same model refusals the generate goal makes before any generator runs: a model
+        // gen refuses must not verify clean.
+        MetaDataGeneratorMojo.refuseModelCollisions(loader);
         runFieldLintAdvisory(loader);
         int requirementErrors = runRequirementGate(loader);
 
