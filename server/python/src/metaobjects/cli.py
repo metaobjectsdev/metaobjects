@@ -2029,6 +2029,9 @@ def _cmd_gen_config_run(args: argparse.Namespace, state: _SkipState) -> int:
                 skip.fold([*identity, *model_entries, *(skip_info.extra_entries or [])]),
                 skip_info.extras or [],
                 outputs,
+                skip.untracked_outputs(
+                    gen_state_dir, Path(project_root),
+                    [config.out_dir_for(t) for t in config.targets], emitted),
             )
             state.stored = True
     return 0

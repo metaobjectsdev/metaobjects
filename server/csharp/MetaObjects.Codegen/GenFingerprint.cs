@@ -217,7 +217,8 @@ public static class GenFingerprint
     // ------------------------------------------------------------------ the stored key
 
     /// <summary>The two halves a successful run stored.</summary>
-    public sealed record Stored(string Model, string Identity, IReadOnlyDictionary<string, string> Outputs);
+    public sealed record Stored(
+        string Model, string Identity, IReadOnlyDictionary<string, string> Outputs, IReadOnlyList<string> Untracked);
 
     private static string GenStateDir(string projectRoot) => Path.Combine(projectRoot, ".metaobjects", ".gen-state");
     private static string PathFor(string projectRoot) => Path.Combine(GenStateDir(projectRoot), FileName);
@@ -240,7 +241,17 @@ public static class GenFingerprint
                 if (prop.Value.ValueKind != JsonValueKind.String) return null;
                 outputs[prop.Name] = prop.Value.GetString()!;
             }
-            return new Stored(m.GetString()!, i.GetString()!, outputs);
+            var untracked = new List<string>();
+            if (root.TryGetProperty("untracked", out var u))
+            {
+                if (u.ValueKind != JsonValueKind.Array) return null;
+                foreach (var item in u.EnumerateArray())
+                {
+                    if (item.ValueKind != JsonValueKind.String) return null;
+                    untracked.Add(item.GetString()!);
+                }
+            }
+            return new Stored(m.GetString()!, i.GetString()!, outputs, untracked);
         }
         catch (Exception e) when (e is JsonException or IOException or UnauthorizedAccessException or InvalidOperationException)
         {
@@ -260,7 +271,8 @@ public static class GenFingerprint
     /// Amendment A: also records <c>outputs</c>, the hash of every manifest-recorded file as the run
     /// left it on disk. When a recorded file is missing no key is stored at all.
     /// </remarks>
-    public static void Write(string projectRoot, string model, string identity)
+    public static void Write(
+        string projectRoot, string model, string identity, IEnumerable<string>? untracked = null)
     {
         var outputs = new SortedDictionary<string, string>(StringComparer.Ordinal);
         if (ManifestOf(projectRoot) is { } manifest)
@@ -272,7 +284,11 @@ public static class GenFingerprint
             }
         Directory.CreateDirectory(GenStateDir(projectRoot));
         var json = JsonSerializer.Serialize(
-            new { format = FormatVersion, model, identity, outputs }, new JsonSerializerOptions { WriteIndented = true });
+            new
+            {
+                format = FormatVersion, model, identity, outputs,
+                untracked = (untracked ?? []).Order(StringComparer.Ordinal).ToArray(),
+            }, new JsonSerializerOptions { WriteIndented = true });
         File.WriteAllText(PathFor(projectRoot), json + "\n");
     }
 
@@ -299,7 +315,8 @@ public static class GenFingerprint
         if (ManifestOf(projectRoot) is not { } manifest) return false;
         // Amendment A: every recorded file must still be what the stored run left. A missing entry is a mismatch.
         var stored = Read(projectRoot)!;
-        return manifest.Keys.All(k => stored.Outputs.TryGetValue(k, out var h) && DiskHash(projectRoot, k) == h);
+        return manifest.Keys.All(k => stored.Outputs.TryGetValue(k, out var h) && DiskHash(projectRoot, k) == h)
+            && stored.Untracked.All(File.Exists);
     }
 
     /// <summary>Whether the <c>CI</c> environment variable says this is a CI run.</summary>
@@ -320,6 +337,7 @@ public static class GenFingerprint
         if (full || InCi(getenv)) return false;
         if (!MatchesStored(projectRoot, model, identity)) return false;
         if (ManifestOf(projectRoot) is not { } manifest) return false;
+        if (!Read(projectRoot)!.Untracked.All(File.Exists)) return false;
         foreach (var (key, recorded) in manifest)
         {
             var path = Path.Combine(projectRoot, key);

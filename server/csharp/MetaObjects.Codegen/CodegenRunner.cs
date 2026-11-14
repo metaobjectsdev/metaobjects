@@ -32,6 +32,10 @@ public static class CodegenRunner
         /// <summary>ADR-0062: false when a file was refused, adopted, or an edited orphan was kept.
         /// Only a complete run may store a key.</summary>
         public bool Complete { get; init; } = true;
+
+        /// <summary>ADR-0062: absolute paths written outside the project root. The manifest records no
+        /// file there, so the stored key lists them and a skip needs each to exist.</summary>
+        public IReadOnlyList<string> OutsidePaths { get; init; } = [];
     }
 
     public static RunResult Run(GenConfig config, MetaRoot root, IReadOnlyList<IGenerator> generators)
@@ -93,6 +97,7 @@ public static class CodegenRunner
         var adopted = new List<string>();
         var overwritePaths = new HashSet<string>(StringComparer.Ordinal);
         var untracked = 0;
+        var outsidePaths = new List<string>();
         var sweepRefused = false;
         // Captured BEFORE any write, because the first write creates the manifest —
         // read it afterwards and every project looks migrated.
@@ -144,7 +149,7 @@ public static class CodegenRunner
                     // .hashes.json. It gets the manifest-less rule a run with no project gets.
                     var outside = config.ProjectRoot is not null
                         && (key.StartsWith("..", StringComparison.Ordinal) || Path.IsPathRooted(key));
-                    if (outside) untracked++;
+                    if (outside) { untracked++; outsidePaths.Add(full); }
                     var status = WriteOne(
                         outside ? config with { GenStateDir = null } : config,
                         outside ? null : manifest,
@@ -192,6 +197,7 @@ public static class CodegenRunner
         {
             OverwritePaths = overwritePaths,
             Complete = refused.Count == 0 && adopted.Count == 0 && !sweepRefused,
+            OutsidePaths = outsidePaths,
         };
     }
 

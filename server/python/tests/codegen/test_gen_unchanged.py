@@ -207,3 +207,25 @@ def test_a_refused_orphan_stores_no_skip_key(
     assert not key.exists(), "a run whose orphan sweep refused stored a skip key"
     assert main(["gen"]) == 0
     assert "nothing changed" not in capsys.readouterr().out
+
+
+def test_a_deleted_output_outside_the_project_makes_gen_render_again(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = _project(tmp_path / "proj") if (tmp_path / "proj").mkdir() is None else tmp_path
+    (root / "metaobjects.config.yaml").write_text(
+        "metadata: metaobjects\ntargets:\n"
+        "  app:\n    outDir: gen\n    generators: [entity]\n"
+        "  other:\n    outDir: ../elsewhere\n    generators: [entity]\n"
+    )
+    monkeypatch.chdir(root)
+    assert main(["gen"]) == 0
+    assert list((root / "gen").glob("Order*.py")), "the in-project target must record a manifest"
+    outside = next((tmp_path / "elsewhere").glob("Order*.py"))
+    outside.unlink()
+    capsys.readouterr()
+
+    assert main(["gen"]) == 0
+
+    assert "nothing changed" not in capsys.readouterr().out
+    assert outside.exists(), "gen skipped and left a deleted output unrestored"

@@ -154,8 +154,10 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
             runWasClean = run.refusedCount() == 0;
             List<String> outside = new ArrayList<>();
             if (projectRoot != null) {
+                Set<String> recorded = genStateDir != null ? HashManifest.load(genStateDir).keySet() : Set.of();
                 for (Path emitted : run.emittedPaths()) {
-                    if (OrphanSweep.keyFor(projectRoot, emitted) == null) outside.add(emitted.toString());
+                    String key = OrphanSweep.keyFor(projectRoot, emitted);
+                    if (key == null || !recorded.contains(key)) outside.add(emitted.toString());
                 }
             }
             Collections.sort(outside);

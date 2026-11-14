@@ -183,6 +183,10 @@ class StoredFingerprint:
     #: Amendment A: every manifest-recorded path (project-relative, as the manifest keys it)
     #: mapped to the sha256 of the bytes on disk when the run finished.
     outputs: dict[str, str]
+    #: Every other path the run emitted, which the manifest does not record (a file outside
+    #: the project root, or one written without a record): project-relative when inside the
+    #: project, absolute otherwise. A skip needs each to exist.
+    untracked: tuple[str, ...] = ()
 
 
 def read_stored(gen_state_dir: str) -> StoredFingerprint | None:
@@ -205,11 +209,18 @@ def read_stored(gen_state_dir: str) -> StoredFingerprint | None:
         isinstance(k, str) and isinstance(v, str) for k, v in outputs.items()
     ):
         return None
-    return StoredFingerprint(raw["fingerprint"], tuple(extras), dict(outputs))
+    untracked = raw.get("untracked", [])
+    if not isinstance(untracked, list) or not all(isinstance(x, str) for x in untracked):
+        return None
+    return StoredFingerprint(raw["fingerprint"], tuple(extras), dict(outputs), tuple(untracked))
 
 
 def write_stored(
-    gen_state_dir: str, key: str, extras: Iterable[str], outputs: dict[str, str]
+    gen_state_dir: str,
+    key: str,
+    extras: Iterable[str],
+    outputs: dict[str, str],
+    untracked: Iterable[str] = (),
 ) -> None:
     os.makedirs(gen_state_dir, exist_ok=True)
     payload = {
@@ -217,6 +228,7 @@ def write_stored(
         "fingerprint": key,
         "extras": sorted(set(extras)),
         "outputs": dict(sorted(outputs.items())),
+        "untracked": sorted(set(untracked)),
     }
     with open(fingerprint_path(gen_state_dir), "w", encoding="utf-8") as fh:
         json.dump(payload, fh, indent=2)
@@ -294,12 +306,43 @@ def output_hashes(
     return hashes
 
 
+def untracked_outputs(
+    gen_state_dir: str, project_root: Path, out_dirs: Iterable[str], emitted: Iterable[str]
+) -> list[str]:
+    """Every emitted path the manifest does not record, project-relative when inside the
+    project and absolute otherwise."""
+    outs = list(out_dirs)
+    root = project_root.resolve()
+    recorded: set[str] = set()
+    for key in _manifest_records(gen_state_dir) or {}:
+        found = _locate(key, project_root, outs)
+        if found is not None:
+            recorded.add(os.path.realpath(found))
+    result: list[str] = []
+    for path in emitted:
+        real = os.path.realpath(path)
+        if real in recorded:
+            continue
+        rel = os.path.relpath(real, root)
+        result.append(real if rel.startswith("..") or os.path.isabs(rel) else rel)
+    return sorted(set(result))
+
+
+def untracked_exist(stored: StoredFingerprint, project_root: Path) -> bool:
+    """True when every path the stored run emitted outside the manifest still exists."""
+    return all((project_root / p).is_file() for p in stored.untracked)
+
+
 def outputs_unchanged(
     stored: StoredFingerprint, gen_state_dir: str, project_root: Path, out_dirs: Iterable[str]
 ) -> bool:
     """Amendment A: every manifest-recorded file exists and still hashes to the value the
-    last run left. A missing entry on either side is a mismatch."""
-    return output_hashes(gen_state_dir, project_root, out_dirs) == stored.outputs
+    last run left, and every path emitted outside the manifest still exists. A missing entry
+    on either side is a mismatch."""
+    return (
+        output_hashes(gen_state_dir, project_root, out_dirs) == stored.outputs
+        and untracked_exist(stored, project_root)
+    )
 
 
 def manifest_files_exist(

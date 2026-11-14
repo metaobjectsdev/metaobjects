@@ -499,6 +499,9 @@ public final class GeneratedFileWriter {
     /** {@link #writeIfChanged(Path, String)} for bytes already encoded. */
     public static boolean writeIfChanged(Path file, byte[] bytes) throws IOException {
         Run run = ACTIVE_RUN.get();
+        if (run != null) {
+            run.emittedPaths.add(file.toAbsolutePath().normalize());
+        }
         if (run != null && run.captured != null) {
             run.captured.put(file.toAbsolutePath().normalize(), bytes.clone());
             return true;

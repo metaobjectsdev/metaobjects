@@ -811,7 +811,7 @@ public static class CodegenCli
         var refusedCount = outcome.Result!.Files.Count(f => f.Status == "refused");
         if (refusedCount == 0 && outcome.Result!.Complete && suite.All(g => g.Cacheable))
         {
-            GenFingerprint.Write(projectRoot, modelHash, identity);
+            GenFingerprint.Write(projectRoot, modelHash, identity, outcome.Result!.OutsidePaths);
             gate.Keep = true;
         }
         if (refusedCount > 0)

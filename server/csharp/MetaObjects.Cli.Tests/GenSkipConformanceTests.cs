@@ -205,7 +205,7 @@ public sealed class GenSkipConformanceTests : IDisposable
                 // edit, then store the key the way a successful run would, over the file as it now is.
                 File.AppendAllText(Directory.GetFiles(OutDir).First(), "// hand edit\n");
                 var stored = GenFingerprint.Read(_tmp)!;
-                GenFingerprint.Write(_tmp, stored.Model, stored.Identity);
+                GenFingerprint.Write(_tmp, stored.Model, stored.Identity, stored.Untracked);
                 break;
             case "generated-file-deleted": File.Delete(Directory.GetFiles(OutDir).First()); break;
             case "generated-file-edited": File.AppendAllText(Directory.GetFiles(OutDir).First(), "// hand edit\n"); break;
