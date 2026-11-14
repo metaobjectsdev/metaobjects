@@ -314,8 +314,9 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
 - **`gen` writes `.hashes.json` once per run, and not at all when nothing changed.** TypeScript,
   Python and C# re-read and re-wrote the whole manifest after every generated file, so a run of
   N files wrote it N times; they now hold it in memory for the run and write it once, as Java
-  already did. Python's `metaobjects gen` also stops listing unchanged files as written: it
-  prints the files it wrote and counts the ones it left as they were separately. A run that
+  already did. Python's `metaobjects gen` output changes, which matters to a script that parses it:
+  it now lists only the files it wrote, and its summary line counts the files it left as they
+  were (unchanged or skipped) separately instead of reporting them as written. A run that
   fails still records the files it wrote before failing, and a failed manifest write then no
   longer hides the error that stopped the run.
 - **`meta gen` loads the metadata once.** The unknown-attribute warning re-loaded the project
@@ -323,10 +324,6 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   the lenient load reported an unknown bare key. `meta gen` also no longer imports a database
   driver: the migration advice it prints reads `@metaobjectsdev/migrate-ts/offline`, a new
   subpath with the schema builder and diff and none of the introspection or apply code.
-- **`meta gen` under Node stops filling the jiti cache.** Loading `metaobjects.config.ts`
-  rewrote it to a randomly named temp file, which missed jiti's cache on every run and left a
-  new cache entry behind each time. Under Node the config now loads from its own path, with the
-  package aliases applied by jiti.
 
 - **A projection view keeps the columns a reverse `@via` hop feeds.** An origin `@via` that walks
   an `identity.reference` backwards (`Project.timeEntries`, #560) loaded, but `meta migrate` left

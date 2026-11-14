@@ -469,15 +469,8 @@ export async function loadMetaobjectsConfig(projectRoot: string): Promise<Metaob
   // ensures the CLI's own copies are used: jiti's `alias` map is kept below as
   // a belt-and-suspenders fallback for runtimes where jiti's transformer IS
   // active, but under Bun the pre-processed source is the operative fix.
-  //
-  // Under Bun ONLY. Node runs jiti's own transformer, which applies `alias` to the config
-  // and to every module it imports (an owned generator's own imports have always relied
-  // on that), so the config loads where it is. That matters for speed: jiti caches each
-  // transform under a hash of the file's PATH, so a copy under a fresh name every run
-  // missed the cache every time — Babel re-transformed the config on every `meta gen`,
-  // and left one more cache file behind each run.
   const original = await readFile(fullPath, "utf8");
-  const processed = process.versions.bun !== undefined ? rewriteImportSpecifiers(original, aliasMap) : original;
+  const processed = rewriteImportSpecifiers(original, aliasMap);
 
   // When any specifiers were rewritten, write the modified source to a temp
   // file in the SAME directory as the original so that relative imports inside
