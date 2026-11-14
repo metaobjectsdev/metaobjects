@@ -34,9 +34,11 @@ class MySqlContainer : AutoCloseable {
             password = PASSWORD
             // Docker assigns the host port at bind time; see the port note in PostgresContainer.
             jdbcUrl = try {
+                ReaperLabels.removeAtExit(name)
                 runDocker(
                     *ReaperLabels.dockerRun(
                         "--name", name,
+                        *ReaperLabels.ramVolume(DATA_DIR),
                         "-e", "MYSQL_ROOT_PASSWORD=$PASSWORD",
                         "-e", "MYSQL_DATABASE=$DB",
                         "-p", "127.0.0.1::3306",
@@ -92,6 +94,7 @@ class MySqlContainer : AutoCloseable {
 
     private fun forceRemove() {
         try { runDocker("rm", "-f", "-v", name!!) } catch (_: RuntimeException) { /* already gone */ }
+        ReaperLabels.forget(name!!)
     }
 
     private fun inspectState(): String = try {
@@ -105,6 +108,8 @@ class MySqlContainer : AutoCloseable {
     companion object {
         private const val URL_ENV = "METAOBJECTS_TEST_MYSQL_URL"
         private const val IMAGE = "mysql:8.4"
+        /** The image's VOLUME (`docker image inspect`); a tmpfs there keeps the data in RAM. */
+        private const val DATA_DIR = "/var/lib/mysql"
         private const val DB = "mo_test"
         private const val PASSWORD = "test"
         private val READY_TIMEOUT_S: Int = (System.getenv("MO_MYSQL_READY_TIMEOUT_S") ?: "180").toInt()

@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from urllib.parse import urlsplit
 
 from .reaper import reaper_label_args
+from .throwaway import POSTGRES_DURABILITY_OFF, forget, ram_volume, remove_on_exit
 
 # Env var naming the shared CI Postgres sidecar (admin URL). Unset = per-container.
 SHARED_PG_URL_ENV = "METAOBJECTS_TEST_PG_URL"
@@ -41,6 +42,8 @@ class PostgresContainer:
     """Context manager around ``docker run`` for a per-scenario Postgres."""
 
     IMAGE = "postgres:16-alpine"
+    #: The image's ``VOLUME`` (``docker image inspect``); a tmpfs there keeps the data in RAM.
+    DATA_DIR = "/var/lib/postgresql/data"
 
     USER = "postgres"
     PASSWORD = "test"
@@ -64,14 +67,16 @@ class PostgresContainer:
         # Deliberately NOT `--rm`: an auto-removed container takes its logs with it, so
         # the one artefact explaining a failure vanishes exactly when it is needed.
         # close() force-removes, and Ryuk removes it when a killed run never reaches
-        # close() (see :mod:`reaper`).
+        # close() (see :mod:`reaper`); :mod:`throwaway` covers SIGTERM and a disabled Ryuk.
         try:
+            remove_on_exit(self._name)
             _docker(
                 "run", "-d", *reaper_label_args(),
                 "--name", self._name,
+                *ram_volume(self.DATA_DIR),
                 "-e", f"POSTGRES_PASSWORD={self.PASSWORD}",
                 "-p", "127.0.0.1::5432",
-                self.IMAGE,
+                self.IMAGE, *POSTGRES_DURABILITY_OFF,
             )
             self._port = published_port(self._name, 5432)
             self._info = PostgresInfo(
@@ -136,6 +141,7 @@ class PostgresContainer:
             _docker("rm", "-f", "-v", self._name)
         except subprocess.CalledProcessError:
             pass  # container already gone — fine
+        forget(self._name)
 
     def __enter__(self) -> "PostgresContainer":
         return self
@@ -162,6 +168,7 @@ class PostgresContainer:
             _docker("rm", "-f", "-v", self._name)
         except Exception:  # noqa: BLE001 — already gone
             pass
+        forget(self._name)
 
     def _inspect_state(self) -> str:
         """The container's docker state, or 'gone' when it cannot be determined."""
