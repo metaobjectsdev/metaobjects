@@ -50,6 +50,10 @@ export const API_CONTRACT_SECRET_FIELDS_SCENARIOS_DIR = resolve(API_CONTRACT_SEC
 export const API_CONTRACT_ENUM_DEFAULT_DIR = resolve(API_CONTRACT_DIR, "enum-default");
 export const API_CONTRACT_ENUM_DEFAULT_SCENARIOS_DIR = resolve(API_CONTRACT_ENUM_DEFAULT_DIR, "scenarios");
 
+// `api` settings subcorpus (GENERATED lane only): `api.pagination` and `api.unknownFields: drop`.
+export const API_CONTRACT_API_SETTINGS_DIR = resolve(API_CONTRACT_DIR, "api-settings");
+export const API_CONTRACT_API_SETTINGS_SCENARIOS_DIR = resolve(API_CONTRACT_API_SETTINGS_DIR, "scenarios");
+
 export const API_CONTRACT_PROJECTION_DIR = resolve(API_CONTRACT_DIR, "projection");
 export const API_CONTRACT_PROJECTION_SCENARIOS_DIR = resolve(API_CONTRACT_PROJECTION_DIR, "scenarios");
 // FR-044 view-backed report subcorpus (GENERATED lane only, every port).

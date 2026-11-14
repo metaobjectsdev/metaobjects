@@ -57,6 +57,7 @@ jsonb/
 ├── meta.json              # the Document entity + Marker and Telemetry value objects
 ├── seed.json              # 2 seed Documents (ids 1, 2), jsonb object + VO columns
 └── scenarios/
+    ├── jsonb-nested-undeclared-key-dropped.yaml # an undeclared member inside a value object is dropped, not refused
     ├── jsonb-open-bag-roundtrip.yaml   # open-bag parsed-value contract
     ├── jsonb-value-object-patch.yaml   # Program D — cross-port VO-column PATCH/POST
     ├── jsonb-value-object-map-decimals.yaml  # decimals in a field.map of value objects, per map value
@@ -179,3 +180,21 @@ the condition is emitted on nullable members only).
 |---|---|
 | `r1`/`r2` POST + GET | create is `201`, the double stays a JSON number, the timestamp keeps its UTC `Z` spelling, `tempC` round-trips |
 | `r3`/`r4` PATCH + GET | PATCH replaces the value object (`tempC` omitted when absent) and it persists |
+
+## Scenario — `jsonb-nested-undeclared-key-dropped.yaml`
+
+`api.unknownFields` judges the TOP level of a write body only (`reject`, the default, answers a
+top-level undeclared key with `400 unknown_fields`; see `../scenarios/input-unknown-fields-rejected.yaml`).
+A member a value object does not declare is a different case: it is dropped silently, on create
+and on PATCH, and never stored, so a client sending a newer shape of a value object is not
+refused. The open bag (`payload`) declares no members, so every key in it is the client's data
+and is kept.
+
+| Requests | What it pins |
+|---|---|
+| `r1`/`r2` POST + GET | `extra` inside `primaryMarker` and inside a `markers` element is dropped; `extra` inside `payload` is kept |
+| `r3`/`r4` PATCH + GET | the same drop on PATCH of `optionalMarker`, and the earlier value objects are unchanged |
+
+The Java generated lane answered `400 invalid_type` here before 1.3.0: the generated value-object
+record now carries `@JsonIgnoreProperties(ignoreUnknown = true)`, so the member is dropped
+whatever `FAIL_ON_UNKNOWN_PROPERTIES` the host's `ObjectMapper` sets.

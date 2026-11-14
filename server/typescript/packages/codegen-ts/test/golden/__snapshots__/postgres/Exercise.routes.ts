@@ -45,5 +45,6 @@ export async function exerciseRoutes(fastify: FastifyInstance) {
     filterAllowlist: ExerciseFilterAllowlist,
     sortAllowlist: ExerciseSortAllowlist,
     dialect: "postgres",
+    knownFields: ["id", "workoutId", "name", "sets", "reps", "notes"],
   });
 }

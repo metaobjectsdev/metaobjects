@@ -206,6 +206,55 @@ public sealed class VerifySubverbTests : IDisposable
     }
 
     [Fact]
+    public void Codegen_with_routes_and_no_pagination_advises_and_keeps_exit0()
+    {
+        File.WriteAllText(Path.Combine(MetaDir, "meta.ai.json"), EntityMetadata);
+        GenSuite.Run(MetaDir, OutDir, "Acme.Generated");
+
+        var r = VerifyCommand.RunSubverbs(TemplatesOpts(templates: false, codegen: true));
+        Assert.Equal(0, r.ExitCode);
+        Assert.Contains(r.Advisories, a => a.Contains("unbounded-list-pages"));
+    }
+
+    [Fact]
+    public void Codegen_with_pagination_set_has_no_advisory()
+    {
+        File.WriteAllText(Path.Combine(MetaDir, "meta.ai.json"), EntityMetadata);
+        GenSuite.Run(MetaDir, OutDir, "Acme.Generated");
+
+        var opts = TemplatesOpts(templates: false, codegen: true);
+        var r = VerifyCommand.RunSubverbs(new VerifyCommand.Options
+        {
+            MetadataDir = opts.MetadataDir, Generators = opts.Generators, TemplatesRoot = opts.TemplatesRoot,
+            OutDir = opts.OutDir, Namespace = opts.Namespace, Codegen = true, Templates = false,
+            Api = new ApiSettings(new ApiPagination(50, 1000)),
+        });
+        // (Exit is not asserted: the committed output was generated without a page size, so it drifts.)
+        Assert.Empty(r.Advisories);
+    }
+
+    [Fact]
+    public void Codegen_without_a_routes_generator_has_no_advisory()
+    {
+        File.WriteAllText(Path.Combine(MetaDir, "meta.ai.json"), EntityMetadata);
+        var opts = TemplatesOpts(templates: false, codegen: true);
+        var r = VerifyCommand.RunSubverbs(new VerifyCommand.Options
+        {
+            MetadataDir = opts.MetadataDir, Generators = ["entity"], TemplatesRoot = opts.TemplatesRoot,
+            OutDir = opts.OutDir, Namespace = opts.Namespace, Codegen = true, Templates = false,
+        });
+        Assert.Empty(r.Advisories);
+    }
+
+    [Fact]
+    public void Without_codegen_there_is_no_advisory()
+    {
+        File.WriteAllText(Path.Combine(MetaDir, "meta.ai.json"), EntityMetadata);
+        var r = VerifyCommand.RunSubverbs(TemplatesOpts(templates: true, codegen: false));
+        Assert.Empty(r.Advisories);
+    }
+
+    [Fact]
     public void Codegen_mutated_committed_file_is_nonzero_and_named()
     {
         File.WriteAllText(Path.Combine(MetaDir, "meta.ai.json"), EntityMetadata);

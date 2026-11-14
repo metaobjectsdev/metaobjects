@@ -190,6 +190,7 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
         warnIfAgentContextStale();
 
         advisoriesDone = false;
+        unboundedListAdvisoryDone = false;
         String m = mode == null ? "" : mode.trim();
         if (m.isEmpty()) {
             verifyDefaultSet();
@@ -261,6 +262,9 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
     /** Set once the field lint and requirement gate have run, so a two-gate run reports them once. */
     private boolean advisoriesDone;
 
+    /** Set once the pagination advisory has run, so a two-gate run reports it once. */
+    private boolean unboundedListAdvisoryDone;
+
     /**
      * Mode unset: the cross-port default gate set. Codegen drift always; template drift when
      * {@code templateRoot} is configured, else skipped with a note (there is no directory to
@@ -303,6 +307,7 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
      * Warnings ONLY: this never throws and never changes the build result.
      */
     private void runFieldLintAdvisory(MetaDataLoader loader) {
+        runUnboundedListAdvisory(loader);
         if (advisoriesDone || noFieldLint || "1".equals(System.getenv(FieldLint.ENV_OPT_OUT))) return;
         List<FieldLint.Finding> findings = new ArrayList<>();
         try {
@@ -316,6 +321,30 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
                 + " authoring warning(s) (advisory — does not fail the build):");
         for (FieldLint.Finding f : findings) {
             getLog().warn("  " + f.code() + " [" + f.path() + "]: " + f.message());
+        }
+    }
+
+    /**
+     * Advisory {@code unbounded-list-pages}: a project that generates REST controllers and sets no
+     * {@code api.pagination} has list routes that answer 50 rows when {@code limit} is omitted and
+     * accept any {@code limit}. Never fails the build.
+     */
+    private void runUnboundedListAdvisory(MetaDataLoader loader) {
+        if (unboundedListAdvisoryDone) return;
+        unboundedListAdvisoryDone = true;
+        try {
+            if (loader.getRoot().getApiSettings().hasPagination()) return;
+            boolean generatesRoutes = false;
+            for (GeneratorParam g : getGenerators() != null ? getGenerators() : List.<GeneratorParam>of()) {
+                String name = g.getClassname();
+                if (name != null && name.endsWith("ControllerGenerator")) generatesRoutes = true;
+            }
+            if (!generatesRoutes) return;
+            getLog().warn("metaobjects:verify — unbounded-list-pages (advisory — does not fail the build): "
+                    + "generated list routes take any limit and have no project-wide page size; "
+                    + "set api.pagination ({\"defaultLimit\": 50, \"maxLimit\": 1000}) in .metaobjects/config.json.");
+        } catch (RuntimeException e) {
+            // an advisory never breaks verify
         }
     }
 

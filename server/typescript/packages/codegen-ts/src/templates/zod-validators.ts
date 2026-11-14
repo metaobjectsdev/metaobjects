@@ -719,6 +719,7 @@ export function insertSchemaFields(obj: MetaObject): SchemaFieldShape[] {
  */
 export function updateSchemaFields(obj: MetaObject): SchemaFieldShape[] {
   const autoGenPkFields = autoGenPkFieldNames(obj);
+  const pkFields = primaryKeyFieldNames(obj);
   const tphPin = tphDiscriminatorPin(obj);
   const out: SchemaFieldShape[] = [];
   for (const child of flatSurfaceFields(obj)) {
@@ -734,6 +735,10 @@ export function updateSchemaFields(obj: MetaObject): SchemaFieldShape[] {
     // edit form for an entity carrying one. Clearing counts as a write, so the
     // FR-035 present-null arm never reaches it either.
     if (isWriteOnceMutability(child)) continue;
+    // A primary-key field is the row's identity, which the URL names: an ASSIGNED key is
+    // omitted from the update shape exactly like a generated one, so a client-sent id is
+    // stripped and can never re-key the row.
+    if (pkFields.has(child.name)) continue;
     // TPH subtype discriminator: omitted from the update schema entirely.
     if (tphPin !== undefined && child.name === tphPin.fieldName) continue;
     const autoSet = child.attr(FIELD_ATTR_AUTO_SET);
@@ -818,6 +823,9 @@ export function renderZodValidators(obj: MetaObject, ctx?: RenderContext): Code 
     // below; a value presented on PATCH is stripped, not 400'd (see
     // updateSchemaFields for the grounding).
     if (isWriteOnceMutability(child)) continue;
+    // The row's identity is the URL's: an ASSIGNED primary key leaves the update shape too
+    // (a generated one never entered it), so a client-sent id is stripped, never a re-key.
+    if (pkFields.has(child.name)) continue;
 
     // Update schema: @autoSet onCreate → omit entirely; onUpdate → transform
     if (autoSet === AUTO_SET_ON_CREATE) {
@@ -842,10 +850,8 @@ export function renderZodValidators(obj: MetaObject, ctx?: RenderContext): Code 
       // null — a present null CLEARS the column (`.set({field: null})` writes NULL).
       // Keyed on required-ness, NOT fieldWillBeOptional: a required-with-@default
       // field stays non-nullable so an explicit null on it is a 400 (validation),
-      // never a silent clear. PK fields are excluded: their Drizzle column is
-      // always not-null, so a nullable Zod type would fail `.set()`'s typecheck
-      // (and NOT NULL at runtime) — see primaryKeyFieldNames.
-      if (!isRequired(child) && !pkFields.has(child.name)) expr = code`${expr}.nullable()`;
+      // never a silent clear.
+      if (!isRequired(child)) expr = code`${expr}.nullable()`;
       updateFieldLines.push(code`  ${child.name}: ${expr}`);
     }
   }

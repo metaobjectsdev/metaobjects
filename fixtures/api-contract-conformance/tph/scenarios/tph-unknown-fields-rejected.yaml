@@ -1,0 +1,59 @@
+name: tph-unknown-fields-rejected
+description: >
+  The per-subtype write routes apply `api.unknownFields` (default `reject`) over the WHOLE
+  hierarchy. A key no member of the hierarchy declares (`isAdmin`) is refused with
+  `400 {"error": "unknown_fields", "fields": [...]}` and nothing is written. A column only a
+  sibling subtype declares (`approver` on the Bridge route) is declared in the table, so it is
+  known: it is dropped like any other key that subtype may not set, not refused.
+requests:
+  - id: r1
+    method: POST
+    path: /api/auths/bridge
+    body:
+      reference: "REF-UNKNOWN"
+      quantity: 3
+      isAdmin: true
+    expect:
+      status: 400
+      body:
+        equals:
+          error: "unknown_fields"
+          fields: [isAdmin]
+  - id: r2
+    method: GET
+    path: /api/auths?filter[reference][eq]=REF-UNKNOWN
+    expect:
+      status: 200
+      body:
+        length: 0
+  - id: r3
+    method: PATCH
+    path: /api/auths/bridge/1
+    body:
+      reference: "REF-1-PROBE"
+      isAdmin: true
+    expect:
+      status: 400
+      body:
+        equals:
+          error: "unknown_fields"
+          fields: [isAdmin]
+  - id: r4
+    method: GET
+    path: /api/auths/bridge/1
+    expect:
+      status: 200
+      body:
+        row: { id: 1, type: "Bridge", reference: "REF-1" }
+  - id: r5
+    method: POST
+    path: /api/auths/bridge
+    body:
+      reference: "REF-SIBLING"
+      quantity: 2
+      approver: "Dr. Sibling"
+    expect:
+      status: 201
+      body:
+        row: { type: "Bridge", reference: "REF-SIBLING", quantity: 2 }
+        hasId: true

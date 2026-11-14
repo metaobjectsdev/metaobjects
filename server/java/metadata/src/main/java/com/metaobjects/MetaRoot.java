@@ -221,6 +221,24 @@ public class MetaRoot extends MetaData implements com.metaobjects.database.Physi
     private transient com.metaobjects.config.EnumDefaults enumDefaults =
         com.metaobjects.config.EnumDefaults.DEFAULT;
 
+    /**
+     * The project's {@code api} block ({@code api.pagination}, {@code api.unknownFields}), set by
+     * the same project-aware load and read through {@link com.metaobjects.config.ApiSettings#of(MetaData)}.
+     * A tree loaded with no project has no page size and refuses undeclared body keys.
+     */
+    private transient com.metaobjects.config.ApiSettings apiSettings =
+        com.metaobjects.config.ApiSettings.DEFAULT;
+
+    /** The project's {@code api} settings for this tree. Never {@code null}. */
+    public com.metaobjects.config.ApiSettings getApiSettings() {
+        return apiSettings;
+    }
+
+    /** Sets the project's {@code api} settings on this root ({@code null} restores the default). */
+    public void setApiSettings(com.metaobjects.config.ApiSettings apiSettings) {
+        this.apiSettings = (apiSettings != null) ? apiSettings : com.metaobjects.config.ApiSettings.DEFAULT;
+    }
+
     public com.metaobjects.config.EnumDefaults getEnumDefaults() {
         return enumDefaults;
     }

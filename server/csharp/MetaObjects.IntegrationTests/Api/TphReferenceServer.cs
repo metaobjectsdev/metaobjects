@@ -30,6 +30,11 @@ namespace MetaObjects.IntegrationTests.Api;
 
 internal sealed class TphReferenceServer : IAsyncDisposable
 {
+    // api.unknownFields: reject (the default, unchanged by this corpus): the union of the base's and every
+    // subtype's declared fields, so a sibling subtype's column is known on another subtype's route.
+    private static readonly HashSet<string> DeclaredKeys = new(StringComparer.Ordinal)
+        { "id", "type", "reference", "issuedCurrency", "autoCreatedAt", "autoUpdatedAt", "quantity", "copayAmount", "approver" };
+
     // segment (lowercased @discriminatorValue) → discriminator value.
     private static readonly Dictionary<string, string> SegmentToValue = new(StringComparer.Ordinal)
     {
@@ -44,6 +49,12 @@ internal sealed class TphReferenceServer : IAsyncDisposable
     // rather than rejected (the same treatment autoCreatedAt/autoUpdatedAt get by being
     // absent here). It IS written on create, explicitly, below. Do NOT add it here.
     private static readonly string[] AllCols = { "id", "type", "reference", "quantity", "copayAmount", "approver" };
+    // The subtype-only columns, by discriminator value. A create stores only its own subtype's
+    // (1.2.x input contract: a sibling subtype's column in the body is dropped, not stored).
+    private static readonly Dictionary<string, string> SubtypeCol = new()
+    {
+        ["Bridge"] = "quantity", ["Copay"] = "copayAmount", ["PriorAuth"] = "approver",
+    };
 
     private readonly PostgresContainer _pg;
     private readonly WebApplication _app;
@@ -140,21 +151,23 @@ internal sealed class TphReferenceServer : IAsyncDisposable
                 if (method == "POST")
                 {
                     var body = await ReadBodyAsync(ctx);
-                    // ADR-0019 Amendment 1 (W3): copayAmount is decimal(10,2); a value it would
-                    // round or overflow is a 400 validation, never stored rounded.
-                    if (!CopayAmountFits(body))
+                    if (ReferenceValidation.UnknownFields(body.Select(kv => kv.Key), DeclaredKeys) is { } unknownFields)
                     {
-                        await SendJsonAsync(ctx, 400, new Dictionary<string, object?> { ["error"] = "validation" });
+                        await SendJsonAsync(ctx, 400, unknownFields);
                         return;
                     }
-                    // FR-036 — the per-subtype CREATE validates the present-value field
-                    // constraints, matching the generated controller's <Sub>Dto DataAnnotations
-                    // (and the vanilla POST + the per-subtype PATCH). `reference` is the base
-                    // @required @maxLength:80 column shared by every subtype; an over-length
-                    // value is a 400 {error:"validation"}, not a 500 on the PG write.
-                    if (ExceedsMaxLength(body))
+                    // FR-036 — the per-subtype CREATE validates every constraint, matching the generated
+                    // controller's <Sub>Dto DataAnnotations: the @required keys (the base `reference`, the
+                    // BridgeAuth `quantity`), the @maxLength:80 columns and copayAmount's decimal(10,2).
+                    // Every issue is listed, not just the first.
+                    var createIssues = new List<Dictionary<string, object?>>();
+                    if (!PresentNonNull(body, "reference")) createIssues.Add(ReferenceValidation.Required("reference"));
+                    if (disc == "Bridge" && !PresentNonNull(body, "quantity")) createIssues.Add(ReferenceValidation.Required("quantity"));
+                    AddMaxLengthIssues(body, createIssues);
+                    AddCopayIssues(body, createIssues);
+                    if (createIssues.Count > 0)
                     {
-                        await SendJsonAsync(ctx, 400, new Dictionary<string, object?> { ["error"] = "validation" });
+                        await SendJsonAsync(ctx, 400, ReferenceValidation.Envelope(createIssues));
                         return;
                     }
                     var created = await CreateAsync(disc, body);
@@ -173,25 +186,25 @@ internal sealed class TphReferenceServer : IAsyncDisposable
                 if (method is "PATCH" or "PUT")
                 {
                     var body = await ReadBodyAsync(ctx);
+                    if (ReferenceValidation.UnknownFields(body.Select(kv => kv.Key), DeclaredKeys) is { } unknownFields)
+                    {
+                        await SendJsonAsync(ctx, 400, unknownFields);
+                        return;
+                    }
                     // FR-036 Program B: a present null on the @required (NOT NULL) base
                     // `reference` column is a 400, matching the generated controller's
                     // not-null merge guard. In the single TPH table only base-required
                     // columns are NOT NULL; subtype columns (quantity/copayAmount/approver)
                     // are nullable, so a present null there clears them (FR-035 tristate).
-                    if (body.ContainsKey("reference"))
+                    // A present value exceeding @maxLength:80 (reference/approver) is a 400 too.
+                    var patchIssues = new List<Dictionary<string, object?>>();
+                    if (body.ContainsKey("reference") && !PresentNonNull(body, "reference"))
+                        patchIssues.Add(ReferenceValidation.Required("reference"));
+                    AddMaxLengthIssues(body, patchIssues);
+                    AddCopayIssues(body, patchIssues);
+                    if (patchIssues.Count > 0)
                     {
-                        var refVal = body["reference"];
-                        if (refVal is null || refVal.GetValueKind() == JsonValueKind.Null)
-                        {
-                            await SendJsonAsync(ctx, 400, new Dictionary<string, object?> { ["error"] = "validation" });
-                            return;
-                        }
-                    }
-                    // FR-036 — a present value exceeding @maxLength:80 (reference/approver) is a
-                    // 400, matching the generated controller's per-present-value PATCH validation.
-                    if (ExceedsMaxLength(body) || !CopayAmountFits(body))
-                    {
-                        await SendJsonAsync(ctx, 400, new Dictionary<string, object?> { ["error"] = "validation" });
+                        await SendJsonAsync(ctx, 400, ReferenceValidation.Envelope(patchIssues));
                         return;
                     }
                     var updated = await UpdateAsync(disc, subId, body);
@@ -340,6 +353,7 @@ internal sealed class TphReferenceServer : IAsyncDisposable
         foreach (var col in AllCols)
         {
             if (col is "id" or "type") continue;
+            if (SubtypeCol.ContainsValue(col) && SubtypeCol[discriminator] != col) continue;
             if (body[col] is { } v && v.GetValueKind() != JsonValueKind.Null)
             {
                 cols.Add(col);
@@ -426,12 +440,18 @@ internal sealed class TphReferenceServer : IAsyncDisposable
     // (mirrors the generated <Sub>Dto's [MaxLength(80)] + the vanilla ExceedsAuthorMaxLength
     // guard), rejected before the PG write (which would otherwise 500 with 22001) — on the
     // per-subtype create AND on a present PATCH value.
-    private static bool ExceedsMaxLength(JsonObject body) =>
-        IsOverLength(body, "reference") || IsOverLength(body, "approver");
+    private static void AddMaxLengthIssues(JsonObject body, List<Dictionary<string, object?>> issues)
+    {
+        foreach (var col in new[] { "reference", "approver" })
+            if (IsOverLength(body, col)) issues.Add(ReferenceValidation.TooLong(col, 80));
+    }
 
     private static bool IsOverLength(JsonObject body, string col) =>
         body.TryGetPropertyValue(col, out var node)
         && node is JsonValue jv && jv.TryGetValue<string>(out var s) && s.Length > 80;
+
+    private static bool PresentNonNull(JsonObject body, string key) =>
+        body.TryGetPropertyValue(key, out var node) && node is not null && node.GetValueKind() != JsonValueKind.Null;
 
     private static object CoerceColumn(string col, JsonNode v) => col switch
     {
@@ -450,11 +470,16 @@ internal sealed class TphReferenceServer : IAsyncDisposable
 
     // W3: copayAmount is decimal(10,2); a value the column would round or overflow is refused
     // rather than stored rounded. Absent or null is the caller's business, not this check's.
-    private static bool CopayAmountFits(JsonObject body)
+    // ADR-0019 Amendment 1 (W3): copayAmount is decimal(10,2); a value it would round or overflow is a
+    // 400 validation (too_big), never stored rounded; a value that is no decimal at all is invalid_type.
+    private static void AddCopayIssues(JsonObject body, List<Dictionary<string, object?>> issues)
     {
         if (!body.TryGetPropertyValue("copayAmount", out var node) || node is null
-            || node.GetValueKind() == JsonValueKind.Null) return true;
-        return ReadDecimal(node) is { } d && DecimalWire.Fits(d, 10, 2);
+            || node.GetValueKind() == JsonValueKind.Null) return;
+        if (ReadDecimal(node) is not { } d)
+            issues.Add(ReferenceValidation.Issue("invalid_type", "copayAmount", "copayAmount is not a decimal"));
+        else if (!DecimalWire.Fits(d, 10, 2))
+            issues.Add(ReferenceValidation.Issue("too_big", "copayAmount", "copayAmount exceeds decimal(10,2)"));
     }
 
     // Map a DB row into the wire dictionary. `type` is the discriminator value (text);

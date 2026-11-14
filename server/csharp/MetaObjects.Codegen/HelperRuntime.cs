@@ -69,6 +69,8 @@ public static class HelperRuntime
         "EfCoreFilterDispatch.cs",
         "ValueObjectValidator.cs",
         "ConstraintErrors.cs",
+        "ValidationIssues.cs",
+        "UnknownFieldCheck.cs",
         "Iso8601TimestampConverter.cs",
         "DecimalWire.cs",
         "DurationWire.cs",

@@ -751,6 +751,9 @@ public class MetaDataLoader implements LoaderConfigurable {
             loader.getRoot().setEnumDefaults(com.metaobjects.config.SourceResolver
                 .discoverEnumDefaults(List.of(directory.toAbsolutePath().toUri()))
                 .orElse(com.metaobjects.config.EnumDefaults.DEFAULT));
+            loader.getRoot().setApiSettings(com.metaobjects.config.SourceResolver
+                .discoverApiSettings(List.of(directory.toAbsolutePath().toUri()))
+                .orElse(com.metaobjects.config.ApiSettings.DEFAULT));
             loader.getRoot().setMigrateSettings(com.metaobjects.config.SourceResolver
                 .discoverMigrateSettings(List.of(directory.toAbsolutePath().toUri()))
                 .orElse(com.metaobjects.config.MigrateSettings.DEFAULT));
@@ -861,6 +864,8 @@ public class MetaDataLoader implements LoaderConfigurable {
                 .discoverWireFormat(uris).orElse(com.metaobjects.config.WireFormat.DEFAULT));
             loader.getRoot().setEnumDefaults(com.metaobjects.config.SourceResolver
                 .discoverEnumDefaults(uris).orElse(com.metaobjects.config.EnumDefaults.DEFAULT));
+            loader.getRoot().setApiSettings(com.metaobjects.config.SourceResolver
+                .discoverApiSettings(uris).orElse(com.metaobjects.config.ApiSettings.DEFAULT));
             loader.getRoot().setMigrateSettings(com.metaobjects.config.SourceResolver
                 .discoverMigrateSettings(uris).orElse(com.metaobjects.config.MigrateSettings.DEFAULT));
         } catch (MetaDataLoadingException e) {

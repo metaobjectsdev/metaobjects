@@ -69,6 +69,38 @@ export function stripDeniedColumns(body: unknown, denied: readonly string[] | un
   return omitKeys(body, denied);
 }
 
+/** The `error` of the 400 a write answers when its body carries a key the entity does not declare. */
+export const ERROR_CODE_UNKNOWN_FIELDS = "unknown_fields";
+
+/**
+ * The keys of a request body that are not in `known`, sorted by code point, or none when
+ * `known` is not given (the route drops undeclared keys instead: `api.unknownFields: drop`).
+ * Only the top level is checked; a body that is not a JSON object is left to validation.
+ */
+export function unknownBodyKeys(body: unknown, known: readonly string[] | undefined): string[] {
+  if (known === undefined || !isPlainObject(body)) return [];
+  const declared = new Set(known);
+  return Object.keys(body).filter((k) => !declared.has(k)).sort(compareCodePoints);
+}
+
+/**
+ * Code-point order, the order every port lists `fields` in. The default `sort()` compares
+ * UTF-16 code units, which puts a key outside the Basic Multilingual Plane (an emoji) before
+ * U+E000..U+FFFF; Java, Kotlin, Python and C# answer in code-point order.
+ */
+function compareCodePoints(a: string, b: string): number {
+  let i = 0;
+  let j = 0;
+  while (i < a.length && j < b.length) {
+    const ca = a.codePointAt(i)!;
+    const cb = b.codePointAt(j)!;
+    if (ca !== cb) return ca - cb;
+    i += ca > 0xffff ? 2 : 1;
+    j += cb > 0xffff ? 2 : 1;
+  }
+  return (a.length - i) - (b.length - j);
+}
+
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return v !== null && typeof v === "object" && !Array.isArray(v);
 }

@@ -47,9 +47,11 @@ When the project serves the generated routes (any port):
   (case-sensitive, `%` and `_`), `gt`, `gte`, `lt`, `lte`. Filters AND; only `@filterable`
   fields filter.
 - `?sort=<field>:asc|desc`, `?limit=N&offset=N`; `withCount=1` returns `{"rows", "total"}`.
-  Always send `limit`: without it TypeScript and C# return every row, the other ports 50.
-- `PUT` is the same partial update as `PATCH`.
-- Errors are `{"error": "<code>"}`: 400 for validation (only TypeScript adds `issues`) and for
+  Always send `limit`: without it the project's `api.pagination.defaultLimit` applies, or with
+  none set TypeScript and C# return every row, the other ports 50; above `maxLimit` is 400.
+- `PUT` is the same partial update as `PATCH`. Send only declared fields: an undeclared key is
+  400 `unknown_fields` (unless `api.unknownFields` is `drop`).
+- Errors are `{"error": "<code>"}`: 400 for validation (`issues` lists each problem) and for
   a bad filter or sort (`invalid_filter_field`, `_op`, `_value`, `invalid_sort`, each naming
   `field`), 404 `not_found`, 409 for a unique or foreign-key conflict.
 

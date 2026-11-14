@@ -225,6 +225,11 @@ public final class SourceResolver {
         return discoverConfig(uris).map(NeutralConfig::getWireFormat);
     }
 
+    /** The {@code api} settings of the {@code .metaobjects/config.json} the same walk finds, if any. */
+    public static java.util.Optional<ApiSettings> discoverApiSettings(List<java.net.URI> uris) {
+        return discoverConfig(uris).map(NeutralConfig::getApiSettings);
+    }
+
     /** The enum storage defaults of the {@code .metaobjects/config.json} the same walk finds, if any. */
     public static java.util.Optional<EnumDefaults> discoverEnumDefaults(List<java.net.URI> uris) {
         return discoverConfig(uris).map(NeutralConfig::getEnumDefaults);

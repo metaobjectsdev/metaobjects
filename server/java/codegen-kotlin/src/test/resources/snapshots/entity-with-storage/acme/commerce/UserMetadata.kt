@@ -1,11 +1,13 @@
 package acme.commerce
 
+import com.fasterxml.jackson.`annotation`.JsonIgnoreProperties
 import kotlin.String
 import kotlin.jvm.JvmStatic
 
 /**
  * GENERATED — do not hand-edit. Regenerated from metadata.
  */
+@JsonIgnoreProperties(ignoreUnknown = true)
 public data class UserMetadata(
   public val locale: String? = null,
   public val timezone: String? = null,

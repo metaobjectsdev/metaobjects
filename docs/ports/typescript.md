@@ -472,6 +472,25 @@ export default defineConfig({
 The mapping, the refusals, the Cube query that reproduces a report and the `cube` lane that
 checks the output against a real Cube are in [cube-export](../features/cube-export.md).
 
+### Page size and undeclared body keys: the `api` block
+
+`routesFile()` reads the `api` block of `.metaobjects/config.json` and hands it to the runtime
+mounts (`mountCrudRoutes` in `@metaobjectsdev/runtime-ts/drizzle-fastify` and `/hono`):
+
+```json
+{ "api": { "pagination": { "defaultLimit": 50, "maxLimit": 1000 }, "unknownFields": "reject" } }
+```
+
+`api.pagination` becomes the mount's `pagination` option: no `limit` answers `defaultLimit` rows
+and a `limit` above `maxLimit` is `400 {"error": "limit_too_large", "maxLimit": N}`. Without it a
+list returns every row, and `meta verify` advises (`unbounded-list-pages`). Under
+`api.unknownFields: reject` (the default) the generated mount passes the entity's declared field
+names as `knownFields`, and a create, PUT or PATCH body with any other key answers
+`400 {"error": "unknown_fields", "fields": [...]}` before Zod runs; under `drop`, or on a
+hand-written mount given no `knownFields`, the key is ignored. `meta init` writes both settings
+for a new project. The contract is in
+[api-contract](../features/api-contract.md#unknown-request-fields-apiunknownfields).
+
 ### Decimals and null members on the wire
 
 What the generated routes write is the project setting `wire` in `.metaobjects/config.json`

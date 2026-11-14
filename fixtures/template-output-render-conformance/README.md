@@ -232,3 +232,10 @@ same ref `pages/welcome`. Each port:
 2. renders with `templates/` → `"Hello Ada"`;
 3. renders with `runtime-drift/templates/` (`pages/welcome.mustache` = `Hello {{nmae}}`) → the
    helper throws, and the message contains `ERR_VAR_NOT_ON_PAYLOAD (nmae)`.
+
+The same `meta.json` also declares a `template.output @kind: email` (`WelcomeEmail`) over the
+`emails/welcome.*` refs. Each port generates its helper from the clean `templates/`, renders it
+clean, then renders it once against each of `runtime-drift/email-subject/`, `email-html/` and
+`email-text/`. Each of those directories is a full copy of the three email parts with exactly one
+part drifted to `{{nmae}}`, so the subject, the html body and the text body are each shown to
+raise `ERR_VAR_NOT_ON_PAYLOAD (nmae)`.

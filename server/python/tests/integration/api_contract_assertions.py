@@ -1,7 +1,7 @@
 """Assertion engine for api-contract-conformance scenarios.
 
 The vocabulary (``equals`` / ``length`` / ``ids`` / ``names`` / ``row`` /
-``hasId`` / ``envelope`` / ``error`` / ``field`` / ``empty``) is the cross-port contract —
+``unset`` / ``hasId`` / ``envelope`` / ``error`` / ``field`` / ``empty``) is the cross-port contract —
 every per-port runner must implement these keys identically. See
 ``fixtures/api-contract-conformance/README.md``.
 
@@ -93,6 +93,9 @@ def assert_response(
                 raise AssertionError(
                     f"{scenario_name} / {request_id}: expected field=\"{want_field}\", got: {body!r}"
                 )
+        # `issues` rides INSIDE this branch too, for the same reason as `field`.
+        if "issues" in expect_body:
+            _assert_issues(scenario_name, request_id, body, expect_body["issues"])
         return
 
     if "length" in expect_body:
@@ -202,6 +205,32 @@ def assert_response(
                 f"but both = {a_value!r}"
             )
 
+    if "absent" in expect_body:
+        # The listed keys must not be on the object at all (not even as null): a key the
+        # client may not set never reached storage and so never comes back in the echo.
+        if not isinstance(body, dict):
+            raise AssertionError(
+                f"{scenario_name} / {request_id}: expected object for absent, got: {body!r}"
+            )
+        present = [k for k in expect_body["absent"] if k in body]
+        if present:
+            raise AssertionError(
+                f"{scenario_name} / {request_id}: expected no {present!r} in body, got: {body!r}"
+            )
+
+    if "unset" in expect_body:
+        # Each listed key is missing or null: a value the client may not set never reached
+        # storage. (Missing-or-null: ports differ on echoing an unset column as null.)
+        if not isinstance(body, dict):
+            raise AssertionError(
+                f"{scenario_name} / {request_id}: expected object for unset, got: {body!r}"
+            )
+        stored = [k for k in expect_body["unset"] if body.get(k) is not None]
+        if stored:
+            raise AssertionError(
+                f"{scenario_name} / {request_id}: expected {stored!r} unset, got: {body!r}"
+            )
+
     if expect_body.get("hasId") is True:
         if not isinstance(body, dict):
             raise AssertionError(
@@ -255,3 +284,29 @@ def _is_empty(body: Any) -> bool:
     if isinstance(body, (str, list, dict)):
         return len(body) == 0
     return False
+
+
+def _assert_issues(scenario_name: str, request_id: str, body: Any, expected: list[dict[str, Any]]) -> None:
+    """The validation envelope lists its issues: ``issues`` is a list, every issue carries a
+    string ``code``, a list ``path`` and a string ``message``, and each expected
+    ``{path, code}`` is among them (``path`` deep-equal, ``code`` equal)."""
+    issues = body.get("issues") if isinstance(body, dict) else None
+    if not isinstance(issues, list):
+        raise AssertionError(
+            f"{scenario_name} / {request_id}: expected an issues array, got: {body!r}"
+        )
+    for issue in issues:
+        if not (
+            isinstance(issue, dict)
+            and isinstance(issue.get("code"), str)
+            and isinstance(issue.get("path"), list)
+            and isinstance(issue.get("message"), str)
+        ):
+            raise AssertionError(
+                f"{scenario_name} / {request_id}: an issue lacks code, path or message: {issue!r}"
+            )
+    for want in expected:
+        if not any(i["code"] == want["code"] and i["path"] == want["path"] for i in issues):
+            raise AssertionError(
+                f"{scenario_name} / {request_id}: expected an issue {want!r}, got: {issues!r}"
+            )

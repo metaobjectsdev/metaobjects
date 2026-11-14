@@ -83,7 +83,7 @@ public class SpringControllerGeneratorTest extends SharedRegistryTestBase {
         // envelope); the handler binds the raw DTO and validates it explicitly with the injected
         // Validator, returning {"error":"validation"} on any field-constraint violation.
         assertTrue("expected @PostMapping create handler; saw:\n" + src,
-            Pattern.compile("@PostMapping\\s*\\n\\s*public ResponseEntity<\\?> create\\(@RequestBody AuthorDto dto\\)").matcher(src).find());
+            Pattern.compile("@PostMapping\\s*\\n\\s*public ResponseEntity<\\?> create\\(@RequestBody JsonNode body\\)").matcher(src).find());
         assertTrue("expected explicit validator.validate(dto) on create (FR-036); saw:\n" + src,
             src.contains("validator.validate(dto)"));
         // PATCH AND PUT share the update handler (per API contract) — expressed as a single
@@ -350,7 +350,7 @@ public class SpringControllerGeneratorTest extends SharedRegistryTestBase {
 
         // The create handler must FILTER violations, not simply reject any.
         assertTrue("create must ignore violations on server-owned components; saw:\n" + src,
-            src.contains(".anyMatch(v -> !SERVER_OWNED_ON_CREATE.contains(v.getPropertyPath().toString()))"));
+            src.contains(".addViolationsExcept(validator.validate(dto), SERVER_OWNED_ON_CREATE)"));
         assertFalse("create must no longer reject on ANY violation; saw:\n" + src,
             src.contains("if (!validator.validate(dto).isEmpty())"));
 

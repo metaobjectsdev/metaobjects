@@ -1,0 +1,51 @@
+name: validation-lists-issues
+description: >
+  A body that fails validation is answered 400 with every issue listed, in the shape the
+  TypeScript routes already use: {"error": "validation", "issues": [...]}, where each issue
+  carries a `code` (Zod's names: invalid_type, too_small, too_big, invalid_format,
+  invalid_value, custom), a `path` (the field, as an array) and a `message` (the port's own
+  wording, never asserted). The `issues` assertion names the issues that must be present.
+
+  r1 breaks two rules at once (a name over its @maxLength and a missing @required createdAt), so
+  a port that stops at the first issue fails it. r3 sends a present null on a @required field.
+  r2 and r4 prove that nothing was written.
+requests:
+  - id: r1
+    method: POST
+    path: /api/authors
+    body:
+      name: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    expect:
+      status: 400
+      body:
+        error: "validation"
+        issues:
+          - { path: [name], code: too_big }
+          - { path: [createdAt], code: invalid_type }
+  - id: r2
+    method: GET
+    path: /api/authors
+    expect:
+      status: 200
+      body:
+        length: 5
+  - id: r3
+    method: PATCH
+    path: /api/authors/1
+    body:
+      name: null
+    expect:
+      status: 400
+      body:
+        error: "validation"
+        issues:
+          - { path: [name], code: invalid_type }
+  - id: r4
+    method: GET
+    path: /api/authors/1
+    expect:
+      status: 200
+      body:
+        row:
+          id: 1
+          name: "Ada Lovelace"

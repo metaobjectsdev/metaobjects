@@ -107,6 +107,16 @@
             <scope>provided</scope>
         </dependency>
 
+        <!-- ValidationIssues (a shipped runtime class) reads Bean Validation violations. provided: every
+             consumer of the generated REST surface has a jakarta Validator, the generated controllers
+             inject one. -->
+        <dependency>
+            <groupId>jakarta.validation</groupId>
+            <artifactId>jakarta.validation-api</artifactId>
+            <version>3.0.2</version>
+            <scope>provided</scope>
+        </dependency>
+
         <!-- validation-conformance runner: the corpus binds date / timestamp payload values into the
              generated DTO's java.time components, which Jackson only reads with this module. -->
         <dependency>
@@ -297,7 +307,9 @@
                                         <include>PatchValidationException.java</include>
                                         <include>RecordComponentNames.java</include>
                                         <include>ReportExport.java</include>
+                                        <include>UnknownBodyKeys.java</include>
                                         <include>UnreadableBody.java</include>
+                                        <include>ValidationIssues.java</include>
                                     </includes>
                                 </resource>
                             </resources>

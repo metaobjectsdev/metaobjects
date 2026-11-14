@@ -1412,11 +1412,11 @@ on are yours too. Eject copies two kinds of source with a Java generator:
 
 | Ejecting | Shared emit rules, beside the generator | Helper runtime its output imports |
 |---|---|---|
-| `routes` | `SpringGeneratorSupport` | `CanonicalDecimal`, `ConstraintErrors`, `FilterParseResult`, `FilterParser`, `FilterPredicate`, `PatchValidationException`, `RecordComponentNames`, `UnreadableBody` |
-| `dto` | `SpringGeneratorSupport` | `CanonicalDecimal`, `CanonicalDecimalDeserializer`, `CanonicalDecimalSerializer`, `DeclaredDecimal`, `PatchValidationException` |
+| `routes` | `SpringGeneratorSupport` | `CanonicalDecimal`, `CanonicalDuration`, `ConstraintErrors`, `FilterParseResult`, `FilterParser`, `FilterPredicate`, `PatchValidationException`, `RecordComponentNames`, `ReportExport`, `UnknownBodyKeys`, `UnreadableBody`, `ValidationIssues` |
+| `dto` | `SpringGeneratorSupport` | `CanonicalDecimal`, `CanonicalDecimalDeserializer`, `CanonicalDecimalSerializer`, `CanonicalDuration`, `CanonicalDurationDeserializer`, `CanonicalDurationSerializer`, `DeclaredDecimal`, `PatchValidationException` |
 | `repository` | `SpringGeneratorSupport` | `FilterPredicate` |
-| `value-object` | `SpringGeneratorSupport` | `CanonicalDecimal`, `CanonicalDecimalDeserializer`, `CanonicalDecimalSerializer`, `DeclaredDecimal` |
-| any other Java generator, every Kotlin generator | nothing | nothing: its output imports only core (Kotlin writes its decimal wire into the output as `MetaDecimalWire.kt`) |
+| `value-object` | `SpringGeneratorSupport` | `CanonicalDecimal`, `CanonicalDecimalDeserializer`, `CanonicalDecimalSerializer`, `CanonicalDuration`, `CanonicalDurationDeserializer`, `CanonicalDurationSerializer`, `DeclaredDecimal` |
+| any other Java generator, every Kotlin generator | nothing | nothing: its output imports only core (Kotlin writes its decimal wire and its validation-issue list into the output, as `MetaDecimalWire.kt` and `MetaValidationIssues.kt`, and its unknown-body-key check as `MetaUnknownBodyKeys.kt`) |
 
 **The shared emit rules.** `SpringGeneratorSupport` holds the rules those four generators
 apply together: which fields a DTO and a patch carry, which of them are stamped for
@@ -1656,7 +1656,7 @@ Otherwise a bug in the filter parser would still mean waiting for a MetaObjects 
 
 `dotnet meta eject routes` therefore also writes their source to `codegen/runtime/`:
 `FilterParser.cs`, `FilterParseResult.cs`, `FilterPredicate.cs`,
-`EfCoreFilterDispatch.cs`, `ValueObjectValidator.cs`, `ConstraintErrors.cs` and
+`EfCoreFilterDispatch.cs`, `ValueObjectValidator.cs`, `ValidationIssues.cs`, `UnknownFieldCheck.cs`, `ConstraintErrors.cs` and
 `Iso8601TimestampConverter.cs`, the converter your host registers for the api contract's
 timestamp spelling. Each file is the packaged source with one change: its namespace becomes
 `Codegen.Runtime`, matching the folder the way `codegen/generators/` matches

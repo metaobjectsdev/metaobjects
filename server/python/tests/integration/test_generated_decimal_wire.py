@@ -30,6 +30,19 @@ from metaobjects.codegen.runtime.m2m_codegen import build_object_index
 from metaobjects.runtime import ObjectManager, SqliteDriver
 from metaobjects.wire import WireFormat
 
+
+def _is_validation(body: object) -> bool:
+    """The 400 envelope: ``{"error": "validation", "issues": [{code, path, message}, ...]}``."""
+    if not isinstance(body, dict) or body.get("error") != "validation":
+        return False
+    issues = body.get("issues")
+    return (
+        isinstance(issues, list)
+        and bool(issues)
+        and all(isinstance(i, dict) and {"code", "path", "message"} <= i.keys() for i in issues)
+    )
+
+
 _META = {
     "metadata.root": {
         "package": "acme::shop",
@@ -139,14 +152,14 @@ def test_put_and_patch_take_decimals_too(client: TestClient) -> None:
     patched = client.patch("/api/entries/1", content='{"amount": "2.250"}', headers={"content-type": "application/json"})
     assert patched.status_code == 200 and patched.json()["amount"] == "2.25"
     bad = client.put("/api/entries/1", content='{"amount": "abc"}', headers={"content-type": "application/json"})
-    assert bad.status_code == 400 and bad.json() == {"error": "validation"}
+    assert bad.status_code == 400 and _is_validation(bad.json())
 
 
 @pytest.mark.parametrize("bad", ['""', '"abc"', '"1,5"', '" 1.5"', '"NaN"', '"Infinity"', '"0x10"', "true", "[1]", '"1e999999999"'])
 def test_garbage_is_a_400_validation(client: TestClient, bad: str) -> None:
     resp = _post(client, '{"amount": ' + bad + "}")
     assert resp.status_code == 400, resp.text
-    assert resp.json() == {"error": "validation"}
+    assert _is_validation(resp.json())
 
 
 @pytest.mark.parametrize("body", ["{", "", "not json", "[1]", '"text"', "null"])
@@ -160,7 +173,7 @@ def test_a_malformed_or_non_object_json_body_is_a_400_validation(client: TestCli
     ):
         resp = send()
         assert resp.status_code == 400, (body, resp.text)
-        assert resp.json() == {"error": "validation"}
+        assert _is_validation(resp.json())
 
 
 def test_a_decimal_filter_operand_is_validated_and_exact(client: TestClient) -> None:
@@ -199,7 +212,7 @@ def test_a_value_beyond_the_declared_range_is_a_400_and_nothing_is_rounded(clien
     """W3: @precision 30, @scale 20 here, so 21 fraction digits and 11 integer digits fail."""
     for bad in ('"0.123456789012345678901"', '"12345678901.5"'):
         resp = _post(client, '{"amount": ' + bad + "}")
-        assert resp.status_code == 400 and resp.json() == {"error": "validation"}
+        assert resp.status_code == 400 and _is_validation(resp.json())
     assert client.get("/api/entries").json() == []
 
 
@@ -314,7 +327,7 @@ def test_a_decimal_inside_a_jsonb_value_object_follows_the_top_level_rule(float_
     assert float_client.get("/api/samples/1").json()["fix"]["amount"] == "100.5"
     for bad in ('"0.12345"', '"abc"', '"123456789.5"'):
         resp = float_client.post("/api/samples", content='{"fix": {"latitude": 1, "amount": ' + bad + "}}", headers=hdr)
-        assert resp.status_code == 400 and resp.json() == {"error": "validation"}, (bad, resp.text)
+        assert resp.status_code == 400 and _is_validation(resp.json()), (bad, resp.text)
     assert len(float_client.get("/api/samples").json()) == 1
 
 
@@ -341,7 +354,7 @@ def test_a_decimal_in_a_value_object_map_applies_to_each_value_and_keys_are_neve
         '{"tiers": {"amount": {"amount": "abc"}}}',
     ):
         resp = float_client.post("/api/samples", content=bad, headers=hdr)
-        assert resp.status_code == 400 and resp.json() == {"error": "validation"}, (bad, resp.text)
+        assert resp.status_code == 400 and _is_validation(resp.json()), (bad, resp.text)
     assert len(float_client.get("/api/samples").json()) == 1
 
 
@@ -352,7 +365,7 @@ def test_a_decimal_array_is_range_checked_element_wise_and_coerced_for_the_drive
     # Decimal(str(list)) and raise InvalidOperation -> 500).
     hdr = {"content-type": "application/json"}
     bad = float_client.post("/api/samples", content='{"series": ["1", "0.12345"]}', headers=hdr)
-    assert bad.status_code == 400 and bad.json() == {"error": "validation"}
+    assert bad.status_code == 400 and _is_validation(bad.json())
     root = load_string(json.dumps(_FLOAT_META)).root
     sample = next(c for c in root.children() if c.name.endswith("Sample"))
     series = next(f for f in sample.fields() if f.name == "series")
@@ -436,7 +449,7 @@ def test_input_refusals_hold_under_native() -> None:
     hdr = {"content-type": "application/json"}
     for bad in ('{"series": ["abc"]}', '{"series": ["0.12345"]}', "[1]", "{"):
         resp = native.post("/api/samples", content=bad, headers=hdr)
-        assert resp.status_code == 400 and resp.json() == {"error": "validation"}, (bad, resp.text)
+        assert resp.status_code == 400 and _is_validation(resp.json()), (bad, resp.text)
     assert native.post("/api/samples", content='{"series": ["1.5", 2]}', headers=hdr).status_code == 201
     bad_filter = native.get("/api/samples", params={"filter[series][gt]": "oops"})
     assert bad_filter.status_code == 400

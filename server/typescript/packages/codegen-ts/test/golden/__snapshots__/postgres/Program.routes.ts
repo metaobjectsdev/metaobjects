@@ -45,5 +45,14 @@ export async function programRoutes(fastify: FastifyInstance) {
     filterAllowlist: ProgramFilterAllowlist,
     sortAllowlist: ProgramSortAllowlist,
     dialect: "postgres",
+    knownFields: [
+      "id",
+      "slug",
+      "title",
+      "description",
+      "priceCents",
+      "isPublished",
+      "createdAt",
+    ],
   });
 }

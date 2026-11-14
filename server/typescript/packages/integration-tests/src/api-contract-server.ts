@@ -22,7 +22,7 @@
 
 import Fastify, { type FastifyInstance, type RouteHandlerMethod } from "fastify";
 import { type MetaRoot } from "@metaobjectsdev/metadata";
-import { ObjectManager, ValidationError, type Filter } from "@metaobjectsdev/runtime-ts";
+import { ObjectManager, ValidationError, type Filter, type ValidationFailure } from "@metaobjectsdev/runtime-ts";
 import { kyselyDriver } from "@metaobjectsdev/runtime-ts/drivers";
 import { Kysely, PostgresDialect } from "kysely";
 import { Pool } from "pg";
@@ -133,7 +133,7 @@ export async function startServer(connectionUri: string, root: MetaRoot): Promis
   // 500 handling.
   fastify.setErrorHandler((err, _req, reply) => {
     if (err instanceof ValidationError) {
-      reply.code(400).send({ error: "validation" });
+      reply.code(400).send({ error: "validation", issues: err.errors.map(toIssue) });
       return;
     }
     throw err;
@@ -188,14 +188,33 @@ export async function startServer(connectionUri: string, root: MetaRoot): Promis
     return reply;
   });
 
+  // The keys a client may write, as the generated routes' Insert/Update schemas have them: the
+  // server-generated `id` and the @autoSet columns are declared but server-owned, so they are
+  // DROPPED silently (never 400'd), and `issuedCurrency` (writeOnce) is settable on create only.
+  // A key the entity does not declare is refused first: `api.unknownFields` at its default,
+  // `reject`, which this corpus does not change.
+  const DECLARED_KEYS = new Set(["id", "name", "bio", "createdAt", "issuedCurrency", "autoCreatedAt", "autoUpdatedAt"]);
+  const unknownKeys = (body: unknown): string[] =>
+    body !== null && typeof body === "object" && !Array.isArray(body)
+      ? Object.keys(body).filter((k) => !DECLARED_KEYS.has(k)).sort()
+      : [];
+  const CREATE_KEYS = ["name", "bio", "createdAt", "issuedCurrency"] as const;
+  const UPDATE_KEYS = ["name", "bio", "createdAt"] as const;
+  const pick = (body: unknown, keys: readonly string[]): Record<string, unknown> => {
+    const src = (body ?? {}) as Record<string, unknown>;
+    return Object.fromEntries(keys.filter((k) => Object.hasOwn(src, k)).map((k) => [k, src[k]]));
+  };
+
   // POST /api/authors
   fastify.post(ROUTE_BASE, async (req, reply) => {
     // #203 / ADR-0045 — the TS runtime ObjectManager does NOT stamp @autoSet
     // (that is codegen-only), so the reference server stamps explicitly to match
     // the generated lane's InsertSchema. Both onCreate + onUpdate columns get the
     // SAME captured now() on create; any caller-supplied value is ignored.
+    const unknown = unknownKeys(req.body);
+    if (unknown.length > 0) return reply.code(400).send({ error: "unknown_fields", fields: unknown });
     const now = new Date().toISOString();
-    const body = { ...(req.body as Record<string, unknown>), autoCreatedAt: now, autoUpdatedAt: now };
+    const body = { ...pick(req.body, CREATE_KEYS), autoCreatedAt: now, autoUpdatedAt: now };
     const row = await om.create(ENTITY, body);
     reply.code(201).send(row);
     return reply;
@@ -215,12 +234,9 @@ export async function startServer(connectionUri: string, root: MetaRoot): Promis
     // plain z.object() discards unknown keys). Dropping it also covers the
     // present-NULL arm for free: clearing is a write, so an explicit null must
     // not reach the column either.
-    const {
-      autoCreatedAt: _dropOnCreate,
-      issuedCurrency: _dropWriteOnce,
-      ...rest
-    } = (req.body as Record<string, unknown>) ?? {};
-    const body = { ...rest, autoUpdatedAt: new Date().toISOString() };
+    const unknown = unknownKeys(req.body);
+    if (unknown.length > 0) return reply.code(400).send({ error: "unknown_fields", fields: unknown });
+    const body = { ...pick(req.body, UPDATE_KEYS), autoUpdatedAt: new Date().toISOString() };
     // A ValidationError (e.g. FR-035 present-null on a @required field) propagates
     // to the shared setErrorHandler above → 400 {error:"validation"}.
     const row = await om.update(ENTITY, Number(id), body, { ifMissing: "ignore" });
@@ -400,4 +416,33 @@ function parseSort(
   const dir = (dirRaw ?? SORT_DEFAULT_ORDER[field] ?? "asc").toLowerCase();
   if (dir !== "asc" && dir !== "desc") return { invalid: true, field };
   return [field, dir];
+}
+
+/**
+ * One ObjectManager validation failure as a contract issue: `{ code, path, message }`, with the
+ * code taken from Zod's names (the generated routes' vocabulary) so every lane answers alike.
+ */
+function toIssue(f: ValidationFailure): { code: string; path: string[]; message: string } {
+  const expected = (f.expected ?? {}) as { min?: unknown; max?: unknown };
+  let code: string;
+  switch (f.rule) {
+    case "required":
+    case "type":
+    case "array":
+      code = "invalid_type";
+      break;
+    case "length":
+    case "range":
+      // A floor names `min` alone; a ceiling, or a decimal that overflows its precision, is too big.
+      code = expected.min !== undefined && expected.max === undefined ? "too_small" : "too_big";
+      break;
+    case "regex":
+    case "format":
+    case "numeric":
+      code = "invalid_format";
+      break;
+    default:
+      code = "custom";
+  }
+  return { code, path: f.field.split("."), message: f.message };
 }

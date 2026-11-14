@@ -566,6 +566,7 @@ static int RunVerify(string[] rest)
         Naming = resolvedMeta.Naming,
         // ADR-0019 Amendment 2 — the wire setting, from the same file, for the --codegen regen.
         Wire = resolvedMeta.Wire ?? MetaObjects.Meta.WireFormat.Default,
+        Api = resolvedMeta.Api ?? MetaObjects.Meta.ApiSettings.Default,
         TemplatesRoot = templatesRoot,
         OutDir = outDir,
         Namespace = ns,
@@ -634,6 +635,8 @@ static int RunVerify(string[] rest)
             foreach (var line in MetaObjects.Codegen.CodegenDrift.Remedy(c)) Console.Error.WriteLine(line);
         }
     }
+
+    foreach (var advisory in result.Advisories) Console.Error.WriteLine(advisory);
 
     // -- db gate (rejected in C#) --
     if (result.DbRejectionMessage is not null)

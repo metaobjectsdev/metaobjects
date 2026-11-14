@@ -27,6 +27,10 @@ public class MetaRoot(TypeId typeId, string name) : MetaData(typeId, name)
     /// </summary>
     public WireFormat WireFormat { get; set; } = WireFormat.Default;
 
+    /// <summary>The project's <c>api</c> block (<c>api.pagination</c>, <c>api.unknownFields</c>), set by the same
+    /// project-aware load as <see cref="WireFormat"/> and read by codegen through <see cref="ApiSettings.Of"/>.</summary>
+    public ApiSettings Api { get; set; } = ApiSettings.Default;
+
     /// <summary>
     /// The project's enum storage defaults (<c>enums</c> in <c>.metaobjects/config.json</c>), set by
     /// the same project-aware load as <see cref="PhysicalNaming"/> and read through

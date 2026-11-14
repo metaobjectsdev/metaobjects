@@ -21,6 +21,12 @@ from fastapi import APIRouter, Depends, Query, Request, status
 from fastapi.responses import JSONResponse, Response
 from metaobjects.codegen.runtime.constraint_errors import (
     classify_constraint_error,
+    pydantic_issues,
+    required_null_issues,
+    unknown_body_keys,
+    unreadable_body_issues,
+    validation_envelope,
+    value_error_issues,
 )
 from metaobjects.codegen.runtime.decimal_wire import (
     WireOutput,
@@ -92,7 +98,38 @@ async def _json_body(request: Request) -> dict[str, Any] | None:
         return None
 
 
+def _validated_input(valid: BaseModel, raw: dict[str, Any]) -> dict[str, Any]:
+    """GENERATED — *raw* cut down to the keys *valid* validated, at every depth. A key the
+    input model does not declare (an undeclared name, a server-generated id, a readOnly field)
+    is dropped silently and never reaches the repository; values stay the body's own."""
+    return {
+        _k: _validated_value(getattr(valid, _k), raw[_k])
+        for _k in valid.model_fields_set
+    }
+
+
+def _validated_value(valid: Any, raw: Any) -> Any:
+    if isinstance(valid, BaseModel) and isinstance(raw, dict):
+        return _validated_input(valid, raw)
+    if isinstance(valid, list) and isinstance(raw, list):
+        return [_validated_value(v, r) for v, r in zip(valid, raw)]
+    if isinstance(valid, dict) and isinstance(raw, dict):
+        return {k: _validated_value(v, raw[k]) for k, v in valid.items() if k in raw}
+    return raw
+
+
 _FROZEN_FIELDS: frozenset[str] = frozenset()
+
+
+_KNOWN_FIELDS: frozenset[str] = frozenset(
+    {
+        "id",
+        "email",
+        "name",
+        "status",
+        "createdAt",
+    }
+)
 
 
 def _parse_sort(raw: str) -> _SortClause | None:
@@ -189,19 +226,34 @@ def create_subscriber(
     if (
         dto is None
     ):  # the body was not a JSON object: the cross-port 400, not FastAPI's 422
-        return JSONResponse(status_code=400, content={"error": "validation"})
+        return JSONResponse(
+            status_code=400, content=validation_envelope(unreadable_body_issues())
+        )
+    _unknown = unknown_body_keys(dto, _KNOWN_FIELDS)
+    if _unknown:
+        return JSONResponse(
+            status_code=400, content={"error": "unknown_fields", "fields": _unknown}
+        )
     try:
         dto = coerce_decimal_fields(
             dto, _DECIMAL_FIELDS, _DECIMAL_LIMITS, _NESTED_DECIMALS
         )
-    except ValueError:
-        return JSONResponse(status_code=400, content={"error": "validation"})
+    except ValueError as _exc:
+        return JSONResponse(
+            status_code=400, content=validation_envelope(value_error_issues(_exc))
+        )
     # FR-036: run the generated field constraints (length / pattern /
     # numeric bounds) before persisting; a violation is the cross-port 400.
     try:
-        SubscriberCreate(**dto)
-    except ValidationError:
-        return JSONResponse(status_code=400, content={"error": "validation"})
+        _valid = SubscriberCreate(**dto)
+    except ValidationError as _exc:
+        return JSONResponse(
+            status_code=400, content=validation_envelope(pydantic_issues(_exc.errors()))
+        )
+    # SECURITY (1.2.1): only what the input model validated reaches the repository. A key
+    # it does not declare (an undeclared name, a server-generated id, a readOnly or derived
+    # field, a frozen one on update) is dropped silently, never 400'd.
+    dto = _validated_input(_valid, dto)
     # #203/ADR-0045: stamp @autoSet columns (server-owned; caller ignored).
     _asnow = _dt.datetime.now(_dt.timezone.utc)
     dto["createdAt"] = _asnow
@@ -224,25 +276,38 @@ def update_subscriber(
     if (
         dto is None
     ):  # the body was not a JSON object: the cross-port 400, not FastAPI's 422
-        return JSONResponse(status_code=400, content={"error": "validation"})
+        return JSONResponse(
+            status_code=400, content=validation_envelope(unreadable_body_issues())
+        )
+    _unknown = unknown_body_keys(dto, _KNOWN_FIELDS)
+    if _unknown:
+        return JSONResponse(
+            status_code=400, content={"error": "unknown_fields", "fields": _unknown}
+        )
     try:
         dto = coerce_decimal_fields(
             dto, _DECIMAL_FIELDS, _DECIMAL_LIMITS, _NESTED_DECIMALS
         )
-    except ValueError:
-        return JSONResponse(status_code=400, content={"error": "validation"})
-    # FR-035 PATCH-2: an explicit null on a @required field is a 400 —
-    # a present null on a NON-required field falls through and clears it,
-    # and an OMITTED required field is untouched (never a 400).
-    for _k in _REQUIRED_FIELDS:
-        if _k in dto and dto[_k] is None:
-            return JSONResponse(status_code=400, content={"error": "validation"})
+    except ValueError as _exc:
+        return JSONResponse(
+            status_code=400, content=validation_envelope(value_error_issues(_exc))
+        )
+    # FR-035 PATCH-2: an explicit null on a @required field is a 400 — a present
+    # null on a NON-required field falls through and clears it, and an OMITTED
+    # required field is untouched (never a 400).
     # FR-036: validate PRESENT, non-null values with the create rules (the
     # all-optional patch model never fires required-checks on ABSENT fields).
+    _issues = required_null_issues(dto, _REQUIRED_FIELDS)
     try:
-        SubscriberPatch(**dto)
-    except ValidationError:
-        return JSONResponse(status_code=400, content={"error": "validation"})
+        _valid = SubscriberPatch(**dto)
+    except ValidationError as _exc:
+        _issues += pydantic_issues(_exc.errors())
+    if _issues:
+        return JSONResponse(status_code=400, content=validation_envelope(_issues))
+    # SECURITY (1.2.1): only what the input model validated reaches the repository. A key
+    # it does not declare (an undeclared name, a server-generated id, a readOnly or derived
+    # field, a frozen one on update) is dropped silently, never 400'd.
+    dto = _validated_input(_valid, dto)
     dto.pop("createdAt", None)  # onCreate @autoSet is write-once (server-owned)
     try:
         saved = repo.update(subscriber_id, dto)

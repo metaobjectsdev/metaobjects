@@ -47,6 +47,13 @@ export async function purchaseRoutes(fastify: FastifyInstance) {
         filterAllowlist: PurchaseFilterAllowlist,
         sortAllowlist: PurchaseSortAllowlist,
         dialect: "postgres",
+        knownFields: [
+          "id",
+          "programId",
+          "amountCents",
+          "status",
+          "purchasedAt",
+        ],
       });
     },
     { prefix: "/api" },
