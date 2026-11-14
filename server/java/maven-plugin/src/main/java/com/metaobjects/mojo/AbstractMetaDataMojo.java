@@ -795,21 +795,23 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
         // ADR-0058 — the project's physical-naming rules, set on the loaded root so every
         // resolver downstream of this load (codegen, OMDB) reads the one setting.
         loader.getRoot().setPhysicalNaming(resolvePhysicalNaming(srcDir));
+        // The project's config file is read once; each setting below is mapped from it.
+        java.util.Optional<com.metaobjects.config.NeutralConfig> projectConfig = resolveProjectConfig(srcDir);
         // ADR-0019 Amendment 2 — the wire setting, from the same file, read by the generators.
-        loader.getRoot().setWireFormat(resolveProjectConfig(srcDir)
+        loader.getRoot().setWireFormat(projectConfig
                 .map(com.metaobjects.config.NeutralConfig::getWireFormat)
                 .orElse(com.metaobjects.config.WireFormat.DEFAULT));
         // The enum storage defaults (`enums`), from the same file, read by the table generators.
-        loader.getRoot().setEnumDefaults(resolveProjectConfig(srcDir)
+        loader.getRoot().setEnumDefaults(projectConfig
                 .map(com.metaobjects.config.NeutralConfig::getEnumDefaults)
                 .orElse(com.metaobjects.config.EnumDefaults.DEFAULT));
         // The `api` block (`api.pagination`, `api.unknownFields`), from the same file, read by the generators.
-        loader.getRoot().setApiSettings(resolveProjectConfig(srcDir)
+        loader.getRoot().setApiSettings(projectConfig
                 .map(com.metaobjects.config.NeutralConfig::getApiSettings)
                 .orElse(com.metaobjects.config.ApiSettings.DEFAULT));
         // The `migrate` schema settings (foreignKeyIndexes, conventions, dialect), read by the
         // table generators so a mapping declares the indexes `meta migrate` creates.
-        loader.getRoot().setMigrateSettings(resolveProjectConfig(srcDir)
+        loader.getRoot().setMigrateSettings(projectConfig
                 .map(com.metaobjects.config.NeutralConfig::getMigrateSettings)
                 .orElse(com.metaobjects.config.MigrateSettings.DEFAULT));
 

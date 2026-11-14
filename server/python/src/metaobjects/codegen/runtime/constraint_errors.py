@@ -226,7 +226,7 @@ def pydantic_issues(errors: list[Any]) -> list[dict[str, Any]]:
     return [
         {
             "code": _issue_code(str(e.get("type", ""))),
-            "path": [p if isinstance(p, (int, str)) else str(p) for p in e.get("loc", ())],
+            "path": list(e.get("loc", ())),
             "message": str(e.get("msg", "invalid value")),
         }
         for e in errors
