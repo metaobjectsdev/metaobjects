@@ -56,6 +56,9 @@ public static class VerifyCommand
     // ADR-0021 D2 — explicit verify subverbs (--templates / --codegen / --db).
     // ------------------------------------------------------------------------
 
+    /// <summary>The name the generated-routes generator reports (<c>RoutesGenerator.Name</c>).</summary>
+    private const string RoutesGeneratorName = "routes-generator";
+
     /// <summary>Advisory rule <c>unbounded-list-pages</c>: routes are generated and no <c>api.pagination</c> is set.</summary>
     public const string UNBOUNDED_LIST_PAGES_ADVISORY =
         "dotnet meta verify --codegen: advisory unbounded-list-pages: list routes return every row when `limit` is omitted; " +
@@ -448,9 +451,11 @@ public static class VerifyCommand
             };
 
         // unbounded-list-pages (advisory, never fails): the run generates list routes and the project sets no
-        // page size, so a list route returns every row when `limit` is omitted.
+        // page size, so a list route returns every row when `limit` is omitted. The routes generator is matched by
+        // type or by its exact name (an owned copy keeps the name), never by a substring: a generator that merely
+        // has "routes" in its name writes no list route.
         if (load.Root.Api.Pagination is null
-            && generators.Any(g => g is Codegen.Generators.RoutesGenerator || g.Name.Contains("routes", StringComparison.OrdinalIgnoreCase))
+            && generators.Any(g => g is Codegen.Generators.RoutesGenerator || g.Name == RoutesGeneratorName)
             && load.Root.Objects().Any(o => Codegen.Generators.RoutesGenerator.AppliesTo(o, load.Root)))
             advisories.Add(UNBOUNDED_LIST_PAGES_ADVISORY);
 

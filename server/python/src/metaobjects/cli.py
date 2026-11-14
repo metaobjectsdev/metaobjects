@@ -2768,11 +2768,35 @@ def _run_field_lint_advisory(args: argparse.Namespace, model: "_VerifyModel | No
         print(f"  {finding.code} [{finding.path}]: {finding.message}", file=sys.stderr)
 
 
-def _run_pagination_advisory(model: "_VerifyModel | None") -> None:
+#: The registry id of the generator that writes the REST list routes.
+_ROUTES_GENERATOR = "routes"
+
+
+def _routes_generator_wired(args: argparse.Namespace) -> bool:
+    """Whether this run's generator list includes the routes generator: the ``--generators``
+    narrowing when given, else any target of ``metaobjects.config.yaml``. A project with no
+    config, or one whose routes are owned rather than generated, has no generated list route."""
+    selection = _selection_from_args(args)
+    if selection is not None:
+        return _ROUTES_GENERATOR in selection
+    config_path = _find_config(args)
+    if config_path is None:
+        return False
+    try:
+        config = load_project_config(config_path)
+    except ConfigError:
+        return False
+    return any(_ROUTES_GENERATOR in (t.generators or []) for t in config.targets)
+
+
+def _run_pagination_advisory(args: argparse.Namespace, model: "_VerifyModel | None") -> None:
     """``unbounded-list-pages``: ONE advisory line when the project generates REST list routes
-    and sets no ``api.pagination``, so a request with no ``limit`` is served by the 50-row
-    historic default and ``?limit=`` has no cap. Advisory only: stderr, never the exit code."""
+    (the routes generator is wired and the model has an entity it serves) and sets no
+    ``api.pagination``, so a request with no ``limit`` is served by the 50-row historic default
+    and ``?limit=`` has no cap. Advisory only: stderr, never the exit code."""
     if model is None or model.root.api.pagination is not None:
+        return
+    if not _routes_generator_wired(args):
         return
     try:
         from metaobjects.codegen.runtime.shared_predicates import emits_router
@@ -2988,7 +3012,7 @@ def _cmd_verify(args: argparse.Namespace) -> int:
     exit_code = max(exit_code, _verify_requirements(args, model))
     _run_field_lint_advisory(args, model)
     if exit_code != 2:  # 2 is a refused invocation: its own message is the whole answer
-        _run_pagination_advisory(model)
+        _run_pagination_advisory(args, model)
     return exit_code
 
 

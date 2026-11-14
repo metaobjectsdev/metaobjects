@@ -25,6 +25,8 @@ scenarios can tell the default page from the whole table and the cap from the ta
 - **Over the cap is refused, not clamped.** `?limit=5` answers
   `400 {"error": "limit_too_large", "maxLimit": 4}`, so a client that asked for more than the
   server serves is told so instead of receiving a short page it cannot tell from the end.
+- **`limit=0` is an empty page.** `?limit=0` answers no rows: an explicit zero is a page size,
+  not "no limit", so it is neither the default page nor the whole table.
 - **A negative limit is refused.** `?limit=-1` answers `400 {"error": "pagination.invalid_value",
   "param": "limit", "value": "-1", "expected": "a non-negative integer (0 or more)"}` rather than
   reaching the store, where SQLite reads `LIMIT -1` as no limit at all.
@@ -73,6 +75,7 @@ api-settings/
     ├── limit-at-max.yaml
     ├── limit-negative.yaml
     ├── limit-over-max.yaml
+    ├── limit-zero.yaml
     ├── offset-pages-past-default.yaml
     ├── unknown-fields-dropped.yaml
     └── with-count-default-page.yaml

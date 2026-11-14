@@ -1057,7 +1057,8 @@ public class RoutesGenerator : PerEntityGenerator
     private static void AppendUnknownFieldsCheck(StringBuilder sb, MetaRoot root, string bodyVar)
     {
         if (root.Api.UnknownFields != UnknownFieldsMode.Reject) return;
-        sb.AppendLine($"            if (UnknownFieldCheck.Reject({bodyVar}.RootElement, {KnownFieldsConst}) is {{ }} __unknown) return __unknown;");
+        // `http` carries the app's JSON options: a key the binder matches case-insensitively is declared.
+        sb.AppendLine($"            if (UnknownFieldCheck.Reject({bodyVar}.RootElement, {KnownFieldsConst}, http) is {{ }} __unknown) return __unknown;");
     }
 
     // The offset + limit lines of a list route. Without `api.pagination` they are exactly what they always
@@ -1077,7 +1078,8 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine($"{indent}if (qs.TryGetValue(\"limit\", out var {limRaw}Neg) && long.TryParse({limRaw}Neg, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var {lim}Neg) && {lim}Neg < 0)");
         sb.AppendLine($"{indent}    return Results.BadRequest(new {{ error = \"pagination.invalid_value\", param = \"limit\", value = {lim}Neg.ToString(System.Globalization.CultureInfo.InvariantCulture), expected = \"a non-negative integer (0 or more)\" }});");
         sb.AppendLine($"{indent}var __take = {page.DefaultLimit};");
-        sb.AppendLine($"{indent}if (qs.TryGetValue(\"limit\", out var {limRaw}) && long.TryParse({limRaw}, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var {lim}) && {lim} > 0)");
+        // `limit=0` is a page of zero rows, as every other port serves it, not "no limit".
+        sb.AppendLine($"{indent}if (qs.TryGetValue(\"limit\", out var {limRaw}) && long.TryParse({limRaw}, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var {lim}) && {lim} >= 0)");
         sb.AppendLine($"{indent}{{");
         sb.AppendLine($"{indent}    if ({lim} > {page.MaxLimit}) return Results.BadRequest(new {{ error = \"limit_too_large\", maxLimit = {page.MaxLimit} }});");
         sb.AppendLine($"{indent}    __take = (int){lim};");

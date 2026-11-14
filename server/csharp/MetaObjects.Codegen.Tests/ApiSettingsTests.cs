@@ -123,4 +123,15 @@ public class ApiSettingsTests
         Assert.Null(UnknownFieldCheck.Reject(array.RootElement, known));
         Assert.Null(UnknownFieldCheck.Reject(declared.RootElement, known));
     }
+
+    [Fact]
+    public void A_key_differing_only_in_case_is_declared_when_the_binder_ignores_case()
+    {
+        // ASP.NET's web JSON defaults bind `Title` to `title`, so refusing it would refuse a body the
+        // route then binds. With case-sensitive options it is an undeclared key, as in the other ports.
+        var known = new HashSet<string> { "title" };
+        using var doc = JsonDocument.Parse("{\"Title\": \"x\"}");
+        Assert.Null(UnknownFieldCheck.Reject(doc.RootElement, known, caseInsensitive: true));
+        Assert.NotNull(UnknownFieldCheck.Reject(doc.RootElement, known, caseInsensitive: false));
+    }
 }

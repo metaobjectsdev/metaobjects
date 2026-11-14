@@ -215,13 +215,10 @@ _DECIMAL_COERCE_BODY: list[str] = [
     "        return JSONResponse(status_code=400, content=validation_envelope(value_error_issues(_exc)))",
 ]
 
-#: The start of every write handler: the unreadable-body answer, the unknown-key refusal when the
-#: project rejects them, then the exact decimal parse.
-_DECIMAL_COERCE: list[str] = [*_BODY_CHECK, *_DECIMAL_COERCE_BODY]
-
-
 def _write_prelude(reject: bool) -> list[str]:
-    """The body checks that open a create / PUT / PATCH handler (see :data:`_DECIMAL_COERCE`)."""
+    """The start of every create / PUT / PATCH handler: the unreadable-body answer, the
+    unknown-key refusal when the project rejects them (``api.unknownFields``), then the exact
+    decimal parse."""
     return [*_BODY_CHECK, *(_UNKNOWN_FIELDS_CHECK if reject else []), *_DECIMAL_COERCE_BODY]
 
 

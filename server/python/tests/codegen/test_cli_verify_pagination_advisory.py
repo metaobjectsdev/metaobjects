@@ -48,10 +48,10 @@ def _project(tmp_path: Path, api: dict[str, object] | None) -> str:
     return str(meta)
 
 
-def _verify(tmp_path: Path, meta_dir: str) -> int:
+def _verify(tmp_path: Path, meta_dir: str, generators: str = GEN_SUITE) -> int:
     out = tmp_path / "out"
-    assert main(as_config(["gen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)])) == 0
-    return main(as_config(["verify", "--codegen", "--generators", GEN_SUITE, meta_dir, "--out", str(out)]))
+    assert main(as_config(["gen", "--generators", generators, meta_dir, "--out", str(out)])) == 0
+    return main(as_config(["verify", "--codegen", "--generators", generators, meta_dir, "--out", str(out)]))
 
 
 def test_advises_when_routes_are_generated_and_no_page_size_is_set(
@@ -66,4 +66,13 @@ def test_silent_when_the_project_sets_api_pagination(
 ) -> None:
     api = {"pagination": {"defaultLimit": 50, "maxLimit": 1000}}
     assert _verify(tmp_path, _project(tmp_path, api)) == 0
+    assert _ADVISORY not in capsys.readouterr().err
+
+
+def test_silent_when_no_routes_generator_is_wired(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Entities and models only, no routers: nothing generated serves a list, so there is no
+    # page size to advise on (an owned routes copy is the adopter's, as in the other ports).
+    assert _verify(tmp_path, _project(tmp_path, None), "entity,filter-allowlist,names") == 0
     assert _ADVISORY not in capsys.readouterr().err

@@ -133,6 +133,17 @@ def test_decimal_failures_carry_a_wire_path_and_code() -> None:
     assert (issue["path"], issue["code"]) == (["amount"], "too_big")
 
 
+def test_a_rejected_decimal_is_never_echoed_into_the_issue() -> None:
+    # The client's text must not come back in the 400 body: a long or chosen string would be
+    # reflected, and a credential field would be repeated in a log of the response.
+    sent = "not-a-number-" + "x" * 200
+    with pytest.raises(ValueError) as caught:
+        coerce_decimal_fields({"amount": sent}, frozenset({"amount"}))
+    [issue] = value_error_issues(caught.value)
+    assert "not-a-number" not in issue["message"]
+    assert (issue["path"], issue["code"]) == (["amount"], "invalid_type")
+
+
 def test_a_nested_decimal_failure_names_its_member_path() -> None:
     spec = {"money": {"d": {"value": (5, 2)}, "o": {}}}
     with pytest.raises(ValueError) as caught:

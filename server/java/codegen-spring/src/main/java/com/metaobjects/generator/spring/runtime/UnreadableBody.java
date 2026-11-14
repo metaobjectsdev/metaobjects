@@ -10,10 +10,12 @@ import java.util.Map;
  * The wire answer for a request body Jackson could not bind (ADR-0019 Amendment 1, W2/W3): a
  * malformed decimal, an out-of-range one, a wrong JSON type. The generated controller's
  * {@code @ExceptionHandler} for {@code HttpMessageNotReadableException} returns
- * {@code 400 {"error": "validation", "field": "<name>"}}, the cross-port validation envelope,
- * instead of Spring's default body. {@code field} is the property Jackson was binding when it
- * failed, and is left out when the failure is not about one property (invalid JSON text).
- * Only the property name is read, never the offending value.
+ * {@code 400 {"error": "validation", "issues": [{"code", "path", "message"}], "field": "<name>"}},
+ * the cross-port validation envelope, instead of Spring's default body. The one issue's
+ * {@code path} is every property Jackson was binding (nested members and array indexes
+ * included), empty when the body as a whole cannot be read (invalid JSON text). {@code field}
+ * is kept for clients that read it: the last property name, left out when there is none.
+ * Only property names are read, never the offending value.
  */
 public final class UnreadableBody {
 

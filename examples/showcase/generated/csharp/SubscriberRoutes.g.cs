@@ -101,7 +101,7 @@ public static class SubscriberRoutes
             using var __bodyScope = __body;
             if (__body.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object)
                 return ValidationIssues.Unreadable();
-            if (UnknownFieldCheck.Reject(__body.RootElement, KnownFields) is { } __unknown) return __unknown;
+            if (UnknownFieldCheck.Reject(__body.RootElement, KnownFields, http) is { } __unknown) return __unknown;
             var __issues = new ValidationIssues();
             var __present = new System.Collections.Generic.HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
             foreach (var __p in __body.RootElement.EnumerateObject())
@@ -139,7 +139,7 @@ public static class SubscriberRoutes
             catch (System.Text.Json.JsonException) { return ValidationIssues.Unreadable(); }
             using var bodyScope = body;
             if (body.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object) return ValidationIssues.Unreadable();
-            if (UnknownFieldCheck.Reject(body.RootElement, KnownFields) is { } __unknown) return __unknown;
+            if (UnknownFieldCheck.Reject(body.RootElement, KnownFields, http) is { } __unknown) return __unknown;
             // Deserialize each value with the app's CONFIGURED JSON options, not defaults —
             // a field.timestamp binds to DateTimeOffset via a custom converter registered on
             // ConfigureHttpJsonOptions, and default options cannot read the wire format, throwing 500.

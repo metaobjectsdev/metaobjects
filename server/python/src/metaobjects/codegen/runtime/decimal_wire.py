@@ -93,11 +93,11 @@ def _reject() -> Decimal:
 
 def _parse_text(text: str) -> Decimal:
     if _JSON_NUMBER.fullmatch(text) is None:
-        raise ValueError(f"{text!r} is not a decimal")
+        raise ValueError("the text is not a decimal")
     try:
         return _checked(Decimal(text))
     except InvalidOperation:
-        raise ValueError(f"{text!r} is not a decimal") from None
+        raise ValueError("the text is not a decimal") from None
 
 
 def decimal_from_double15(value: float | str) -> Decimal:

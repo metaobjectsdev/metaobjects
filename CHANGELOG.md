@@ -96,7 +96,9 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   `fixtures/api-contract-conformance/api-settings/` sub-corpus. Every port's config reader takes a
   page size as a positive whole number however JSON spells it (`50.0` is `50`) and at most
   2147483647, and refuses a malformed block when the config is read; the shared cases, valid and
-  refused, are `api-settings/config-blocks.json`, run by every port. A config key, not vocabulary:
+  refused, are `api-settings/config-blocks.json`, run by every port. `limit=0` is a page of zero
+  rows in every port (the C# route served the default page; `api-settings/limit-zero`). An M:N
+  traversal route takes no `limit` and is not paged by the setting. A config key, not vocabulary:
   `metamodelVersion` does not move.
 
 - **Report measures over Money and other value-object members (FR-044 R12).** A dimension's or
@@ -187,7 +189,9 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   refused and never stored, on create and on PATCH, while the open JSON bag keeps every key
   (`jsonb/jsonb-nested-undeclared-key-dropped`, both lanes of every port). The Java generated
   value-object records now carry `@JsonIgnoreProperties(ignoreUnknown = true)` for this; they
-  answered `400 invalid_type` before.
+  answered `400 invalid_type` before. C# matches a key the way it binds the body, with the app's
+  JSON options: under the ASP.NET web default, which ignores case, `Title` is the declared
+  `title` and is not refused.
   A config key, not vocabulary: `metamodelVersion` does not move.
 
 - **A validation 400 lists every issue in every port.** The same model answered a failed create or
