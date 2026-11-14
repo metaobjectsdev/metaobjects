@@ -34,6 +34,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from collections.abc import Iterator
+from contextlib import contextmanager
 
 from .constants import GENERATED_MARKER
 
@@ -71,10 +73,58 @@ def has_hash_manifest(gen_state_dir: str) -> bool:
     manifest predates the manifest being committed, so all its refusals share one
     cause and deserve one instruction rather than one warning per file.
     """
-    return os.path.exists(_manifest_path(gen_state_dir))
+    batch = _batches.get(os.path.abspath(gen_state_dir))
+    return os.path.exists(_manifest_path(gen_state_dir)) or bool(batch and batch.dirty)
+
+
+class _ManifestBatch:
+    __slots__ = ("raw", "dirty")
+
+    def __init__(self, raw: dict[str, object]) -> None:
+        self.raw = raw
+        self.dirty = False
+
+
+# One in-memory manifest per gen-state dir while a run is in progress. Without it every
+# recorded file re-read and re-wrote the whole manifest, so a run of N files wrote it N
+# times. Mirrors codegen-ts's ``withManifestBatch`` and C#'s and Java's per-run save.
+_batches: dict[str, _ManifestBatch] = {}
+
+
+@contextmanager
+def manifest_batch(gen_state_dir: str | None) -> Iterator[None]:
+    """Hold the manifest in memory for the block and write it at most once, at the end.
+
+    A nested batch for the same directory joins the outer one, so a CLI run over several
+    targets plus the orphan sweep writes the manifest once. The write happens even when
+    the block raises: every file recorded so far IS on disk, and dropping its record
+    would make the next run refuse output it wrote itself.
+    """
+    if gen_state_dir is None:
+        yield
+        return
+    key = os.path.abspath(gen_state_dir)
+    if key in _batches:
+        yield
+        return
+    batch = _ManifestBatch(_read_manifest_file(gen_state_dir))
+    _batches[key] = batch
+    try:
+        yield
+    finally:
+        del _batches[key]
+        if batch.dirty:
+            _write_manifest_file(gen_state_dir, batch.raw)
 
 
 def _read_raw(gen_state_dir: str) -> dict[str, object]:
+    batch = _batches.get(os.path.abspath(gen_state_dir))
+    if batch is not None:
+        return batch.raw
+    return _read_manifest_file(gen_state_dir)
+
+
+def _read_manifest_file(gen_state_dir: str) -> dict[str, object]:
     path = _manifest_path(gen_state_dir)
     if not os.path.exists(path):
         return {}
@@ -108,7 +158,6 @@ def _load_hashes(gen_state_dir: str) -> dict[str, str]:
 
 
 def _save_hashes(gen_state_dir: str, hashes: dict[str, str]) -> None:
-    os.makedirs(gen_state_dir, exist_ok=True)
     raw = _read_raw(gen_state_dir)
     # Keys SORTED, because this file is committed. Insertion order would make the
     # diff — and any merge conflict between two people who both regenerated — depend
@@ -120,6 +169,16 @@ def _save_hashes(gen_state_dir: str, hashes: dict[str, str]) -> None:
             ordered[k] = {**existing, "hash": hashes[k]}
         else:
             ordered[k] = hashes[k]
+    batch = _batches.get(os.path.abspath(gen_state_dir))
+    if batch is not None:
+        batch.raw = ordered
+        batch.dirty = True
+        return
+    _write_manifest_file(gen_state_dir, ordered)
+
+
+def _write_manifest_file(gen_state_dir: str, ordered: dict[str, object]) -> None:
+    os.makedirs(gen_state_dir, exist_ok=True)
     with open(_manifest_path(gen_state_dir), "w", encoding="utf-8") as fh:
         json.dump(ordered, fh, indent=2)
         fh.write("\n")
@@ -160,7 +219,13 @@ def _record(
     gen_state_dir: str, rel_path: str, content: str, legacy_rel_path: str | None = None
 ) -> None:
     hashes = _load_hashes(gen_state_dir)
-    hashes[rel_path] = content_hash(content)
+    digest = content_hash(content)
+    stale_legacy = (
+        legacy_rel_path is not None and legacy_rel_path != rel_path and legacy_rel_path in hashes
+    )
+    if hashes.get(rel_path) == digest and not stale_legacy:
+        return  # already recorded exactly so: an unchanged file does not rewrite the manifest
+    hashes[rel_path] = digest
     # Drop the pre-re-keying spelling in the same write. Leaving it would keep a key
     # that means "this name, relative to whichever out dir ran last" alive forever —
     # which is the ambiguity being removed.

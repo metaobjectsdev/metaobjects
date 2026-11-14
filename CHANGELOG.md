@@ -297,6 +297,30 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
 
 ### Fixed
 
+- **`gen <Entity>` no longer shrinks the files rendered from the whole model.** Narrowing a run
+  to some entities (`meta gen Post`, Python `metaobjects gen --entities Post`) handed every
+  generator only the named entities, so a whole-model file (the TypeScript barrel and Cube
+  model, Python's shared enums module, duration codec and report writers, and the object index
+  Python's entity and route generators resolve relations through) was rendered from just them. A narrowed run now writes only the named entities' own files,
+  and every whole-model file it writes is byte-identical to a full run's. A generator sees the
+  whole model in `ctx.entities` and the narrowing as `ctx.selected`; `perEntity` (`per_entity`)
+  applies it. A Python target's declared `entities` still bounds that target's model. C# and
+  Java take no entity filter and were not affected.
+- **`gen` writes `.hashes.json` once per run, and not at all when nothing changed.** TypeScript,
+  Python and C# re-read and re-wrote the whole manifest after every generated file, so a run of
+  N files wrote it N times; they now hold it in memory for the run and write it once, as Java
+  already did. Python's `metaobjects gen` also stops listing unchanged files as written: it
+  prints the files it wrote and counts the unchanged ones separately.
+- **`meta gen` loads the metadata once.** The unknown-attribute warning re-loaded the project
+  strictly on every run; it now reuses the generation load and parses strictly again only when
+  the lenient load reported an unknown bare key. `meta gen` also no longer imports a database
+  driver: the migration advice it prints reads `@metaobjectsdev/migrate-ts/offline`, a new
+  subpath with the schema builder and diff and none of the introspection or apply code.
+- **`meta gen` under Node stops filling the jiti cache.** Loading `metaobjects.config.ts`
+  rewrote it to a randomly named temp file, which missed jiti's cache on every run and left a
+  new cache entry behind each time. Under Node the config now loads from its own path, with the
+  package aliases applied by jiti.
+
 - **A projection view keeps the columns a reverse `@via` hop feeds.** An origin `@via` that walks
   an `identity.reference` backwards (`Project.timeEntries`, #560) loaded, but `meta migrate` left
   its `origin.aggregate` / `origin.first` columns out of `CREATE VIEW` without a word. The view

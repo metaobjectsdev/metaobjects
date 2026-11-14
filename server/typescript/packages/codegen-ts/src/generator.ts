@@ -27,7 +27,16 @@ export interface EmittedFile {
 }
 
 export interface GenContext {
+  /** Every object the run generates for: the WHOLE model (after the project's `scope`),
+   *  even when `meta gen <Entity>` names some of them. A file rendered from the whole
+   *  model — a barrel, an index, a shared schema — reads this and so never shrinks to
+   *  the named entities. A per-entity file honours `selected` as well. */
   entities: MetaObject[];
+  /** The objects `meta gen <Entity>` named, as a predicate. Undefined ⇒ every object
+   *  in `entities` is selected. `perEntity` applies it for you; a generator that emits
+   *  one file per object by other means applies it itself, and one that renders a
+   *  single file from the whole model ignores it. */
+  selected?: (entity: MetaObject) => boolean;
   loadedRoot: MetaRoot;
   /** Pre-composed by the runner from generator.filter (returns true when no
    *  filter is set). Always call this from helpers; do not call generator.filter
@@ -289,7 +298,7 @@ export function perEntity(
     | Promise<EmittedFile | EmittedFile[]>,
 ): (ctx: GenContext) => Promise<EmittedFile[]> {
   return async (ctx) => {
-    const matched = ctx.entities.filter(ctx.matches);
+    const matched = ctx.entities.filter((e) => ctx.matches(e) && (ctx.selected?.(e) ?? true));
     const results = await Promise.all(matched.map(async (e) => {
       const r = await fn(e, ctx);
       // Each file names the object it was rendered from, unless the generator said
@@ -302,7 +311,8 @@ export function perEntity(
   };
 }
 
-/** Called once with all matching entities. Use for barrels and cross-entity files.
+/** Called once with all matching entities of the whole model, whatever `meta gen <Entity>`
+ *  named. Use for barrels and cross-entity files.
  *  @deprecated Use {@link perModel} — "run" is ambiguous under multi-target output
  *  (it reads as "per target"); `perModel` names the data scope (the whole model). */
 export function oncePerRun(

@@ -10,7 +10,7 @@
 // parameter, so a call site that forgets it is a compile error rather than a silent
 // default — the way #333 happened to `libraries` (see `loadMemoryOptionsFrom`).
 import type { MetaobjectsGenConfig } from "@metaobjectsdev/codegen-ts";
-import { isUnknownSchemaConventionsError, resolveSchemaConventions, type SchemaConventions } from "@metaobjectsdev/migrate-ts";
+import { isUnknownSchemaConventionsError, resolveSchemaConventions, type SchemaConventions } from "@metaobjectsdev/migrate-ts/offline";
 import type { Collection } from "@metaobjectsdev/sdk";
 
 /** What an expected-schema build needs from the project, every member resolved. */

@@ -88,6 +88,9 @@ public static class CodegenRunner
         // Captured BEFORE any write, because the first write creates the manifest —
         // read it afterwards and every project looks migrated.
         var hadManifest = config.GenStateDir is null || HashManifest.Exists(config.GenStateDir);
+        // One manifest write for the whole run (the writes and the orphan sweep), not one
+        // per recorded file.
+        using var manifestBatch = HashManifest.Batch(config.GenStateDir);
 
         foreach (var generator in generators)
         {
