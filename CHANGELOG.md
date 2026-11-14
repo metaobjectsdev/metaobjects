@@ -126,6 +126,14 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   lint gate), and a fresh npm install of the CLI drops from 245 MB to 151 MB of `node_modules`.
   `scripts/check-peer-ranges.ts` now fails a publishable package that requires `@biomejs/biome`
   through `dependencies` or a non-optional peer.
+- **Release scripts: a patch can be cut from a `release/<major>.<minor>` maintenance branch**
+  (brought from `release/1.2`, where 1.2.2 shipped this way). `scripts/release.mjs` and
+  `scripts/finish-release.mjs` accept that branch as well as `main`. The version must be on the
+  branch's own line, every push goes to that branch, and the sync check compares against it.
+  `release.mjs` also refuses, before anything is published, a version older than the newest
+  release and a release candidate of a version that already shipped, because either would move
+  npm's `latest` backwards. A minor or major cut is now refused while the previous maintenance
+  branch holds a commit that is not on `main`; `docs/RELEASING.md` Step 0 gains the same check.
 
 ### Deprecated
 
