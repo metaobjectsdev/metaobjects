@@ -51,7 +51,7 @@ vocabulary; upgrade every port together.
   between a boolean and a number exists only for `int`, and the count of `left`, `right`,
   `substring` and `splitPart` is an `int`, as in Postgres. `@dbColumnType` takes the text spellings `text`, `varchar`, `character
   varying`, `varchar(n)`, `character varying(n)` and `character(n)` on a `field.string` (`meta
-  migrate`, Drizzle, the C# EF context, the Kotlin Exposed table and the view cast honour them; the Java OMDB runtime binds them as text and creates no column from them; a `@maxLength` over n is
+  migrate`, Drizzle, the C# EF context, the Kotlin Exposed table and the view cast honour them; the Java OMDB runtime binds them as text, and a table OMDB itself creates keeps its VARCHAR or TEXT column; a `@maxLength` over n is
   refused), and the registry drops its `allowedValues`. A cross-field `@condition` takes only
   the CHECK subset of the grammar (fields, literals, comparisons, null tests, and/or/not,
   coalesce), refused at load otherwise. Rulings: the cast names a field subtype, the type
