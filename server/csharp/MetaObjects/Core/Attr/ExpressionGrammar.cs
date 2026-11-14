@@ -99,8 +99,13 @@ public static class ExpressionGrammar
         }
         if (to == FIELD_SUBTYPE_STRING) return null;
         if (from == FIELD_SUBTYPE_STRING) return null;
-        if (NumericSubtypes.Contains(to)) return NumericSubtypes.Contains(from) || from == FIELD_SUBTYPE_BOOLEAN ? null : $"a {from} cannot be cast to {to}";
-        if (to == FIELD_SUBTYPE_BOOLEAN) return IntegerSubtypes.Contains(from) ? null : $"a {from} cannot be cast to boolean";
+        // Postgres casts a boolean only to and from integer (int4), so those are the only number casts.
+        if (NumericSubtypes.Contains(to))
+        {
+            if (from == FIELD_SUBTYPE_BOOLEAN) return to == FIELD_SUBTYPE_INT ? null : $"a boolean casts only to int, not {to}";
+            return NumericSubtypes.Contains(from) ? null : $"a {from} cannot be cast to {to}";
+        }
+        if (to == FIELD_SUBTYPE_BOOLEAN) return from == FIELD_SUBTYPE_INT ? null : $"a {from} cannot be cast to boolean; only an int can";
         if (to is FIELD_SUBTYPE_DATE or FIELD_SUBTYPE_TIMESTAMP)
             return from is FIELD_SUBTYPE_DATE or FIELD_SUBTYPE_TIMESTAMP ? null : $"a {from} cannot be cast to {to}";
         return $"a {from} cannot be cast to {to}";
@@ -383,7 +388,7 @@ public static class ExpressionGrammar
                 var kind = sig.Params[Math.Min(i, sig.Params.Length - 1)];
                 if (kind == ParamKind.Same) same.Add(t);
                 else if (kind == ParamKind.String && t != FIELD_SUBTYPE_STRING) errors.Add($"'{name}' argument {i + 1} must be a string, got {t}");
-                else if (kind == ParamKind.Int && !IntegerSubtypes.Contains(t)) errors.Add($"'{name}' argument {i + 1} must be an integer, got {t}");
+                else if (kind == ParamKind.Int && t != FIELD_SUBTYPE_INT) errors.Add($"'{name}' argument {i + 1} must be an int, got {t}{(t == FIELD_SUBTYPE_LONG ? "; cast it ({ cast: <expr>, as: int })" : "")}");
                 else if (kind == ParamKind.Scalar && NonScalarSubtypes.Contains(t)) errors.Add($"'{name}' argument {i + 1} must be a scalar, got {t}");
             }
             string? unified = same.Count > 0 ? same[0] : null;

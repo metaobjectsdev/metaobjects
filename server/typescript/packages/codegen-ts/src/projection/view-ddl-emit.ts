@@ -184,9 +184,20 @@ function renderFn(name: string, args: readonly string[], nodes: readonly ViewExp
     case "replace": return `REPLACE(${list})`;
     case "nullif": return `NULLIF(${list})`;
     case "length": return pg ? `CHAR_LENGTH(${list})` : `LENGTH(${list})`;
-    case "substring": return `SUBSTR(${list})`;
-    case "left": return pg ? `LEFT(${list})` : `SUBSTR(${args[0]}, 1, ${args[1]})`;
-    case "right": return pg ? `RIGHT(${list})` : `(CASE WHEN ${args[1]} > 0 THEN SUBSTR(${args[0]}, -(${args[1]})) ELSE '' END)`;
+    // fix round M9: SQLite's substr counts a non-positive start from the end, and has no left/right;
+    // these spellings give Postgres's meaning for every count (a negative one included).
+    case "substring": {
+      if (pg) return `SUBSTR(${list})`;
+      const [str, start, len] = args;
+      const from1 = len === undefined ? `SUBSTR(${str}, 1)` : `SUBSTR(${str}, 1, MAX((${len}) + (${start}) - 1, 0))`;
+      return `(CASE WHEN ${start} >= 1 THEN SUBSTR(${list}) ELSE ${from1} END)`;
+    }
+    case "left":
+      return pg ? `LEFT(${list})`
+        : `(CASE WHEN ${args[1]} >= 0 THEN SUBSTR(${args[0]}, 1, ${args[1]}) ELSE SUBSTR(${args[0]}, 1, MAX(LENGTH(${args[0]}) + (${args[1]}), 0)) END)`;
+    case "right":
+      return pg ? `RIGHT(${list})`
+        : `(CASE WHEN ${args[1]} > 0 THEN SUBSTR(${args[0]}, -(${args[1]})) WHEN ${args[1]} = 0 THEN '' ELSE SUBSTR(${args[0]}, 1 - (${args[1]})) END)`;
     case "concat":
       return pg ? `CONCAT(${list})` : `(${args.map((a) => `COALESCE(CAST(${a} AS TEXT), '')`).join(" || ")})`;
     case "concatWs": {
@@ -578,6 +589,11 @@ export function emitViewDdl(spec: ViewSpec, options: EmitOptions): string {
 ${body};`;
 }
 
+/** A @grain view's array column on its base row. */
+function grainCol(spec: ViewSpec): string {
+  return `${spec.joinTree.baseAlias}.${quoteIfNeeded(spec.grain!.column)}`;
+}
+
 /** One SELECT of a view: its columns, base, grain, joins, WHERE and GROUP BY. */
 function emitViewBody(spec: ViewSpec, options: EmitOptions): string {
   const cols = spec.selectSpec.columns
@@ -586,8 +602,10 @@ function emitViewBody(spec: ViewSpec, options: EmitOptions): string {
   // rc.21 part B (U14): a @grain view reads one row per element of the base row's jsonb array.
   const grain = spec.grain === undefined ? ""
     : options.dialect === "postgres"
-      ? ` CROSS JOIN LATERAL jsonb_array_elements(${spec.joinTree.baseAlias}.${quoteIfNeeded(spec.grain.column)}) WITH ORDINALITY AS ${GRAIN_ALIAS}(value, ordinality)`
-      : ` CROSS JOIN json_each(${spec.joinTree.baseAlias}.${quoteIfNeeded(spec.grain.column)}) ${GRAIN_ALIAS}`;
+      // fix round M3: a row whose value is JSON null, an object or a scalar has no element (rather than
+      // failing the whole query on Postgres, or iterating an object's keys on SQLite).
+      ? ` CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(${grainCol(spec)}) = 'array' THEN ${grainCol(spec)} END) WITH ORDINALITY AS ${GRAIN_ALIAS}(value, ordinality)`
+      : ` CROSS JOIN json_each(CASE WHEN json_type(${grainCol(spec)}) = 'array' THEN ${grainCol(spec)} END) ${GRAIN_ALIAS}`;
   const fromClause = `  FROM ${viewRelation(spec.joinTree.baseEntity, options.baseTableName, options)} ${spec.joinTree.baseAlias}${grain}`;
   const joinsClause = spec.joinTree.joins
     .map((j) => renderJoin(j, spec.joinTree.baseAlias, options))

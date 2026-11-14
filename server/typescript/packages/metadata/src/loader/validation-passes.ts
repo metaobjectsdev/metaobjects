@@ -1497,6 +1497,15 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
                 `origin.passthrough on ${obj.name}.${field.name}: @from "${from}" reads the @grain element, which takes no @via.`,
                 { code: "ERR_INVALID_ORIGIN", source: origin.source }));
             }
+            // fix round M2: a value object's enum member is held in the document as its symbol; a value
+            // map (@intValueMap / @stringValueMap) describes a column the element does not have.
+            if (fromTarget.field.subType === FIELD_SUBTYPE_ENUM
+              && (fromTarget.field.attr(FIELD_ATTR_INT_VALUE_MAP) !== undefined || fromTarget.field.attr(FIELD_ATTR_STRING_VALUE_MAP) !== undefined)) {
+              errors.push(new ParseError(
+                `origin.passthrough on ${obj.name}.${field.name}: @from "${from}" is an enum with a value map, but a @grain element holds the member's symbol; ` +
+                  `read it as a field.string, or drop the map on the value object's member.`,
+                { code: "ERR_INVALID_ORIGIN", source: origin.source }));
+            }
             continue;
           }
           // FR-024 B6 — extends/origin agreement (host-agnostic; runs whether
@@ -3406,11 +3415,18 @@ export function validateProjectionUnionAndGrain(root: MetaData): ParseError[] {
           continue;
         }
         const theirs = member.children().filter((c) => c.type === TYPE_FIELD);
+        // fix round M4: an enum's members and value maps are part of the column's meaning.
         const describe = (f: MetaData): string => {
           const arr = (f as { resolvedIsArray?: () => boolean }).resolvedIsArray?.() === true ? "[]" : "";
           const col = f.attr(FIELD_ATTR_COLUMN);
-          return `${f.name}: field.${f.subType}${arr}${typeof col === "string" ? ` @column ${col}` : ""}`;
+          const enumShape = f.subType !== FIELD_SUBTYPE_ENUM ? ""
+            : ` ${JSON.stringify([f.attr(FIELD_ATTR_VALUES) ?? null, f.attr(FIELD_ATTR_INT_VALUE_MAP) ?? null, f.attr(FIELD_ATTR_STRING_VALUE_MAP) ?? null])}`;
+          return `${f.name}: field.${f.subType}${arr}${typeof col === "string" ? ` @column ${col}` : ""}${enumShape}`;
         };
+        // fix round M4: a member's own @union would be flattened away, silently.
+        if (member.ownAttr(OBJECT_PROJECTION_ATTR_UNION) !== undefined) {
+          bad(`@${OBJECT_PROJECTION_ATTR_UNION} member "${member.name}" declares its own @${OBJECT_PROJECTION_ATTR_UNION}; name its members here instead.`);
+        }
         const a = mine.map(describe);
         const b = theirs.map(describe);
         if (a.length !== b.length || a.some((x, i) => x !== b[i])) {

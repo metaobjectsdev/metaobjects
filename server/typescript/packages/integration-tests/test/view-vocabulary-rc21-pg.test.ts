@@ -152,8 +152,8 @@ describe("rc.21 part B view vocabulary — live Postgres", () => {
       INSERT INTO regions (id, code, label, note) VALUES (1, 'NE', 'north east', 'n');
       INSERT INTO customers (id, first_name, last_name, zip, region_id, contacts) VALUES
         (10, 'Ada', 'Lovelace', '02139-4307', 1, '[{"kind":"email","preferred":true,"rank":1},{"kind":"phone","preferred":false,"rank":2}]'),
-        (11, '  Alan', 'Turing  ', '12345', 1, '[]'),
-        (12, NULL, 'Hopper', NULL, NULL, NULL);
+        (11, '  Alan', 'Turing  ', '12345', 1, '{"kind":"not an array"}'),
+        (12, NULL, 'Hopper', NULL, NULL, 'null');
       INSERT INTO addresses (id, customer_id, street) VALUES (100, 10, 'Lovelace'), (101, 11, 'Main St');
       INSERT INTO orders (id, customer_id, status, stage, external_ref, updated_at) VALUES
         (1, 10, 1, 0, NULL, '2026-01-05T00:00:00Z'),
@@ -180,7 +180,7 @@ describe("rc.21 part B view vocabulary — live Postgres", () => {
         tier: null, last_event: null, first_at_status: null, touched: null, earliest: null, event_by_customer: null },
     ]);
 
-    // U14: one row per element; a customer with an empty or NULL array has none.
+    // U14: one row per element; a customer whose value is an object or JSON null has none (fix round M3).
     expect(await rows(`SELECT customer_id, position, kind, preferred, rank FROM v_customer_contact ORDER BY customer_id, position`)).toEqual([
       { customer_id: "10", position: 1, kind: "email", preferred: true, rank: 1 },
       { customer_id: "10", position: 2, kind: "phone", preferred: false, rank: 2 },

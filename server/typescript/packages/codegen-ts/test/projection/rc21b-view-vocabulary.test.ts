@@ -163,7 +163,8 @@ describe("U14 @grain — one row per array element", () => {
     { "field.int": { name: "rank", children: [ { "origin.passthrough": { "@from": "Contact.rank" } } ] } } ] } };
   test("postgres", async () => {
     const sql = await one("postgres", p);
-    expect(sql).toContain("FROM public.customers c CROSS JOIN LATERAL jsonb_array_elements(c.contacts) WITH ORDINALITY AS mo_el(value, ordinality)");
+    // fix round M3: a non-array value (JSON null, an object, a scalar) has no element.
+    expect(sql).toContain("FROM public.customers c CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(c.contacts) = 'array' THEN c.contacts END) WITH ORDINALITY AS mo_el(value, ordinality)");
     expect(sql).toContain("CAST(mo_el.ordinality AS INTEGER) AS position");
     expect(sql).toContain("(mo_el.value ->> 'kind') AS kind");
     expect(sql).toContain("CAST((mo_el.value ->> 'rank') AS INTEGER) AS rank");
@@ -172,7 +173,7 @@ describe("U14 @grain — one row per array element", () => {
     const sql = await one("sqlite", p);
     const db = new Database(":memory:");
     db.run("CREATE TABLE customers (id INTEGER PRIMARY KEY, first_name TEXT, last_name TEXT, zip TEXT, region_id INTEGER, default_warehouse_id INTEGER, contacts TEXT)");
-    db.run(`INSERT INTO customers (id, contacts) VALUES (1, '[{"kind":"email","rank":1},{"kind":"phone","rank":2}]'), (2, '[]'), (3, NULL)`);
+    db.run(`INSERT INTO customers (id, contacts) VALUES (1, '[{"kind":"email","rank":1},{"kind":"phone","rank":2}]'), (2, '[]'), (3, NULL), (4, '{"kind":"x"}'), (5, 'null'), (6, '7')`);
     db.run(`CREATE VIEW v AS ${sql}`);
     expect(db.query("SELECT customer_id, position, kind, rank FROM v ORDER BY customer_id, position").all()).toEqual([
       { customer_id: 1, position: 1, kind: "email", rank: 1 },
@@ -287,5 +288,33 @@ describe("a projection over a TPH root reads its subtypes' columns; a unique rev
     expect((await withUnique(false)).errors.some((m) => /is to-many/.test(m))).toBe(true);
     // A partial unique index is unique only over its subset, so the hop stays to-many.
     expect((await withUnique("partial")).errors.some((m) => /is to-many/.test(m))).toBe(true);
+  });
+});
+
+// rc.21 part B fix round (M9): SQLite's left / right / substring give Postgres's meaning for every count.
+describe("SQLite left, right and substring over non-positive counts", () => {
+  test("match Postgres", async () => {
+    const p = orderRow([
+      computed("l2", "string", { fn: "left", args: [{ field: "externalRef" }, { value: 2 }] }),
+      computed("lm2", "string", { fn: "left", args: [{ field: "externalRef" }, { value: -2 }] }),
+      computed("lm9", "string", { fn: "left", args: [{ field: "externalRef" }, { value: -9 }] }),
+      computed("r2", "string", { fn: "right", args: [{ field: "externalRef" }, { value: 2 }] }),
+      computed("rm2", "string", { fn: "right", args: [{ field: "externalRef" }, { value: -2 }] }),
+      computed("r0", "string", { fn: "right", args: [{ field: "externalRef" }, { value: 0 }] }),
+      computed("s23", "string", { fn: "substring", args: [{ field: "externalRef" }, { value: 2 }, { value: 3 }] }),
+      computed("s03", "string", { fn: "substring", args: [{ field: "externalRef" }, { value: 0 }, { value: 3 }] }),
+      computed("sm13", "string", { fn: "substring", args: [{ field: "externalRef" }, { value: -1 }, { value: 3 }] }),
+      computed("sm1", "string", { fn: "substring", args: [{ field: "externalRef" }, { value: -1 }] }),
+    ]);
+    const sql = await one("sqlite", p);
+    const db = new Database(":memory:");
+    db.run("CREATE TABLE orders (id INTEGER PRIMARY KEY, customer_id INTEGER, status INTEGER, stage INTEGER, external_ref TEXT, updated_at TEXT)");
+    db.run("INSERT INTO orders (id, external_ref) VALUES (1, 'abcdef')");
+    db.run(`CREATE VIEW v AS ${sql}`);
+    // Postgres: left('abcdef',2)='ab', left(-2)='abcd', left(-9)='', right(2)='ef', right(-2)='cdef', right(0)='',
+    // substr(s,2,3)='bcd', substr(s,0,3)='ab', substr(s,-1,3)='a', substr(s,-1)='abcdef'.
+    expect(db.query("SELECT l2, lm2, lm9, r2, rm2, r0, s23, s03, sm13, sm1 FROM v").get()).toEqual({
+      l2: "ab", lm2: "abcd", lm9: "", r2: "ef", rm2: "cdef", r0: "", s23: "bcd", s03: "ab", sm13: "a", sm1: "abcdef",
+    });
   });
 });

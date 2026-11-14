@@ -528,6 +528,12 @@ public static partial class ValidationPasses
                                 errors.Add(new MetaError(
                                     $"origin.passthrough on {obj.Name}.{field.Name}: @from \"{from}\" reads the @grain element, which takes no @via.",
                                     ErrorCode.ERR_INVALID_ORIGIN, Envelope: origin.Source));
+                            // fix round M2: a value-mapped enum member is held in the document as its symbol.
+                            if (gt.Field.SubType == FIELD_SUBTYPE_ENUM && (gt.Field.Attr(FIELD_ATTR_INT_VALUE_MAP) is not null || gt.Field.Attr(FIELD_ATTR_STRING_VALUE_MAP) is not null))
+                                errors.Add(new MetaError(
+                                    $"origin.passthrough on {obj.Name}.{field.Name}: @from \"{from}\" is an enum with a value map, but a @grain element holds the member's symbol; " +
+                                    "read it as a field.string, or drop the map on the value object's member.",
+                                    ErrorCode.ERR_INVALID_ORIGIN, Envelope: origin.Source));
                             continue;
                         }
                         // FR-024 B6 — extends/origin agreement (host-agnostic; runs
@@ -1892,7 +1898,10 @@ public static partial class ValidationPasses
                 {
                     var arr = f is MetaField mf && mf.ResolvedIsArray() ? "[]" : "";
                     var col = f.Attr(FIELD_ATTR_COLUMN) is string c ? $" @column {c}" : "";
-                    return $"{f.Name}: field.{f.SubType}{arr}{col}";
+                    // fix round M4: an enum's members and value maps are part of the column's meaning.
+                    var enumShape = f.SubType != FIELD_SUBTYPE_ENUM ? ""
+                        : " " + System.Text.Json.JsonSerializer.Serialize(new object?[] { f.Attr(FIELD_ATTR_VALUES), f.Attr(FIELD_ATTR_INT_VALUE_MAP), f.Attr(FIELD_ATTR_STRING_VALUE_MAP) });
+                    return $"{f.Name}: field.{f.SubType}{arr}{col}{enumShape}";
                 }
                 foreach (var nameObj in names)
                 {
@@ -1907,6 +1916,8 @@ public static partial class ValidationPasses
                         Bad($"@{OBJECT_PROJECTION_ATTR_UNION} names the projection itself.");
                         continue;
                     }
+                    if (member.OwnAttr(OBJECT_PROJECTION_ATTR_UNION) is not null)
+                        Bad($"@{OBJECT_PROJECTION_ATTR_UNION} member \"{member.Name}\" declares its own @{OBJECT_PROJECTION_ATTR_UNION}; name its members here instead.");
                     var a = mine.Select(Describe).ToList();
                     var b = member.Children().Where(c => c.Type == TYPE_FIELD).Select(Describe).ToList();
                     if (!a.SequenceEqual(b))

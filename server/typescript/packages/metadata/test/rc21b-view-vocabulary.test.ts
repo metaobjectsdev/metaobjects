@@ -252,3 +252,34 @@ describe("an extender whose view widened over a TPH base", () => {
       { "identity.primary": { name: "id", extends: "Truck.primary" } }]))).filter((m) => m.includes("TruckRow"))).toEqual([]);
   });
 });
+
+// rc.21 part B fix round minors.
+describe("fix round: casts Postgres has, value-mapped grain members, union value maps", () => {
+  test("M1: a boolean casts only to and from int; a count parameter takes only an int", async () => {
+    await refused("ERR_INVALID_ORIGIN", /a long cannot be cast to boolean; only an int can/, orderView([computed("a", "boolean", { cast: { field: "id" }, as: "boolean" })]));
+    await refused("ERR_INVALID_ORIGIN", /a boolean casts only to int, not long/, orderView([computed("a", "long", { cast: { value: true }, as: "long" })]));
+    await ok(orderView([computed("a", "boolean", { cast: { field: "n" }, as: "boolean" })]));
+    await refused("ERR_INVALID_ORIGIN", /'left' argument 2 must be an int, got long; cast it/, orderView([computed("a", "string", { fn: "left", args: [{ field: "ref" }, { field: "id" }] })]));
+    await ok(orderView([computed("a", "string", { fn: "left", args: [{ field: "ref" }, { cast: { field: "id" }, as: "int" }] })]));
+  });
+  test("M2: a @grain member that is a value-mapped enum is refused", async () => {
+    const doc = [
+      { "object.value": { name: "Tag", children: [ { "field.enum": { name: "kind", "@values": ["A", "B"], "@intValueMap": { A: 0, B: 1 } } } ] } },
+      { "object.entity": { name: "Item", children: [ { "source.rdb": { "@table": "items" } }, { "field.long": { name: "id" } },
+        { "field.object": { name: "tags", "@objectRef": "Tag", isArray: true, "@storage": "jsonb" } }, { "identity.primary": { name: "id", "@fields": "id" } } ] } },
+      { "object.projection": { name: "ItemTag", "@grain": "tags", children: [ { "source.rdb": { "@kind": "view", "@view": "v_item_tag" } },
+        { "field.long": { name: "itemId", extends: "Item.id" } },
+        { "field.enum": { name: "kind", "@values": ["A", "B"], "@intValueMap": { A: 0, B: 1 }, children: [ { "origin.passthrough": { "@from": "Tag.kind" } } ] } } ] } },
+    ];
+    await refused("ERR_INVALID_ORIGIN", /is an enum with a value map, but a @grain element holds the member's symbol/, ...doc);
+  });
+  test("M4: union members whose enum value maps differ, and a member's own @union, are refused", async () => {
+    const branch = (name: string, map: Record<string, number>, extra: Record<string, unknown> = {}) => ({ "object.projection": { name, abstract: true, ...extra, children: [
+      { "field.long": { name: "rowId", extends: "Order.id" } },
+      { "field.enum": { name: "state", "@values": ["X", "Y"], "@intValueMap": map, children: [ { "origin.passthrough": { "@from": "Order.status", "@convert": true } } ] } } ] } });
+    const union = { "object.projection": { name: "U", extends: "A", "@union": ["B"], children: [ { "source.rdb": { "@kind": "view", "@view": "u" } } ] } };
+    await refused("ERR_BAD_ATTR_VALUE", /member "B" has a different shape/, branch("A", { X: 0, Y: 1 }), branch("B", { X: 1, Y: 0 }), union);
+    await refused("ERR_BAD_ATTR_VALUE", /member "B" declares its own @union/, branch("A", { X: 0, Y: 1 }), branch("B", { X: 0, Y: 1 }, { "@union": ["C"] }),
+      branch("C", { X: 0, Y: 1 }), union);
+  });
+});

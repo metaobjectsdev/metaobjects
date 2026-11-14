@@ -132,8 +132,12 @@ export function castProblem(from: string | undefined, to: string, intStoredEnum:
   }
   if (to === FIELD_SUBTYPE_STRING) return undefined;
   if (from === FIELD_SUBTYPE_STRING) return undefined; // the database parses it
-  if (NUMERIC_SUBTYPES.has(to)) return NUMERIC_SUBTYPES.has(from) || from === FIELD_SUBTYPE_BOOLEAN ? undefined : `a ${from} cannot be cast to ${to}`;
-  if (to === FIELD_SUBTYPE_BOOLEAN) return INTEGER_SUBTYPES.has(from) ? undefined : `a ${from} cannot be cast to boolean`;
+  // Postgres casts a boolean only to and from integer (int4), so those are the only number casts.
+  if (NUMERIC_SUBTYPES.has(to)) {
+    if (from === FIELD_SUBTYPE_BOOLEAN) return to === FIELD_SUBTYPE_INT ? undefined : `a boolean casts only to int, not ${to}`;
+    return NUMERIC_SUBTYPES.has(from) ? undefined : `a ${from} cannot be cast to ${to}`;
+  }
+  if (to === FIELD_SUBTYPE_BOOLEAN) return from === FIELD_SUBTYPE_INT ? undefined : `a ${from} cannot be cast to boolean; only an int can`;
   if (to === FIELD_SUBTYPE_DATE || to === FIELD_SUBTYPE_TIMESTAMP) {
     return from === FIELD_SUBTYPE_DATE || from === FIELD_SUBTYPE_TIMESTAMP ? undefined : `a ${from} cannot be cast to ${to}`;
   }
@@ -357,8 +361,9 @@ export function inferExprType(
       if (kind === "same") same.push(a.type);
       else if (kind === "string" && a.type !== FIELD_SUBTYPE_STRING) {
         errors.push(`'${name}' argument ${i + 1} must be a string, got ${a.type}`);
-      } else if (kind === "int" && !INTEGER_SUBTYPES.has(a.type)) {
-        errors.push(`'${name}' argument ${i + 1} must be an integer, got ${a.type}`);
+      } else if (kind === "int" && a.type !== FIELD_SUBTYPE_INT) {
+        // Postgres resolves these functions over int4 only (no implicit bigint → int for a call).
+        errors.push(`'${name}' argument ${i + 1} must be an int, got ${a.type}${a.type === FIELD_SUBTYPE_LONG ? "; cast it ({ cast: <expr>, as: int })" : ""}`);
       } else if (kind === "scalar" && NON_SCALAR_SUBTYPES.has(a.type)) {
         errors.push(`'${name}' argument ${i + 1} must be a scalar, got ${a.type}`);
       }

@@ -245,4 +245,24 @@ public class ViewVocabularyRc21LoaderTests
         if (fragment is null) Assert.Empty(errors);
         else Assert.Contains(errors, e => e.Code.ToString() == "ERR_INVALID_ORIGIN" && e.Message.Contains(fragment, StringComparison.Ordinal));
     }
+
+    // rc.21 part B fix round (M1, M4): casts Postgres has; a union member's own @union is refused.
+    [Fact]
+    public void A_boolean_casts_only_with_int_and_a_count_parameter_takes_only_an_int()
+    {
+        Refused("ERR_INVALID_ORIGIN", "a long cannot be cast to boolean; only an int can", View(Computed("a", "boolean", Cast(F("id"), "boolean"))));
+        Refused("ERR_INVALID_ORIGIN", "'left' argument 2 must be an int, got long", View(Computed("a", "string", Fn("left", F("ref"), F("id")))));
+        Assert.Empty(Load(View(Computed("a", "boolean", Cast(F("n"), "boolean")))));
+    }
+
+    [Fact]
+    public void A_union_member_with_its_own_union_is_refused()
+    {
+        Refused("ERR_BAD_ATTR_VALUE", "member \"B\" declares its own @union", """
+          { "object.projection": { "name": "A", "abstract": true, "children": [ { "field.long": { "name": "personId", "extends": "Customer.id" } } ] } },
+          { "object.projection": { "name": "B", "abstract": true, "@union": ["C"], "children": [ { "field.long": { "name": "personId", "extends": "Order.customerId" } } ] } },
+          { "object.projection": { "name": "C", "abstract": true, "children": [ { "field.long": { "name": "personId", "extends": "Order.id" } } ] } },
+          { "object.projection": { "name": "U", "extends": "A", "@union": ["B"], "children": [ { "source.rdb": { "@kind": "view", "@view": "u" } } ] } }
+        """);
+    }
 }
