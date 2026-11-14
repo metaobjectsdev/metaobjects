@@ -165,11 +165,15 @@ public class ViewVocabularyRc21LoaderTests
 
     // rc.21 part B: a passthrough walks a reference backwards when its holder declares a unique identity over its fields.
     [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public void A_passthrough_over_a_reverse_hop_needs_a_unique_identity(bool unique)
+    [InlineData(true, false)]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    public void A_passthrough_over_a_reverse_hop_needs_a_unique_identity(bool unique, bool partial)
     {
-        var secondary = unique ? """{ "identity.secondary": { "name": "events_order_uq", "@fields": "orderId" } },""" : "";
+        // A partial (@where) unique index is unique only over its subset: the hop stays to-many.
+        var where = partial ? """, "@where": "\"note\" IS NOT NULL" """ : "";
+        var secondary = unique ? $$"""{ "identity.secondary": { "name": "events_order_uq", "@fields": "orderId"{{where}} } },""" : "";
+        unique = unique && !partial;
         var json = $$"""
           { "metadata.root": { "package": "acme", "children": [
             { "object.entity": { "name": "Order", "children": [ { "source.rdb": { "@table": "orders" } }, { "field.long": { "name": "id" } },

@@ -113,7 +113,7 @@ import {
   FIELD_SUBTYPE_TIMESTAMP,
   FIELD_SUBTYPE_UUID,
 } from "../core/field/field-constants.js";
-import { FIELD_ATTR_COLUMN, FIELD_ATTR_FLATTENED_COLUMN_PREFIX, FIELD_ATTR_DB_INDEXED, IDENTITY_ATTR_EXPR, IDENTITY_ATTR_SEQUENCE_NAME, IDENTITY_ATTR_SEQUENCE_START } from "../persistence/db/db-constants.js";
+import { FIELD_ATTR_COLUMN, FIELD_ATTR_FLATTENED_COLUMN_PREFIX, FIELD_ATTR_DB_INDEXED, IDENTITY_ATTR_EXPR, IDENTITY_ATTR_WHERE, IDENTITY_ATTR_SEQUENCE_NAME, IDENTITY_ATTR_SEQUENCE_START } from "../persistence/db/db-constants.js";
 import {
   IDENTITY_ATTR_FIELDS,
   IDENTITY_SUBTYPE_REFERENCE,
@@ -906,8 +906,11 @@ function _reverseHopIsUnique(rel: MetaData): boolean {
   const fields = _identityFieldSet(rel).join(",");
   if (fields === "") return false;
   // ADR-0039: resolving — a unique identity may be inherited.
+  // A partial (@where) or expression (@expr) unique index is unique over a subset or a value, not
+  // over the reference's rows, so it never makes the hop to-one.
   return holder.children().some((c) => c.type === TYPE_IDENTITY
     && (c.subType === IDENTITY_SUBTYPE_PRIMARY || c.subType === IDENTITY_SUBTYPE_SECONDARY)
+    && c.attr(IDENTITY_ATTR_WHERE) === undefined && c.attr(IDENTITY_ATTR_EXPR) === undefined
     && _identityFieldSet(c).join(",") === fields);
 }
 

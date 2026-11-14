@@ -251,14 +251,15 @@ describe("a projection over a TPH root reads its subtypes' columns; a unique rev
     expect(sql).toContain("FROM public.vehicles v");
     expect(sql).not.toContain("'TRUCK'");
   });
-  const viaCard = (unique: boolean) => [
+  const viaCard = (unique: boolean | "partial") => [
     { "object.entity": { name: "LockerKey", children: [
       { "source.rdb": { "@table": "locker_keys" } },
       { "field.long": { name: "id" } },
       { "field.long": { name: "lockerId" } },
       { "field.string": { name: "note" } },
       { "identity.primary": { "@fields": "id" } },
-      ...(unique ? [{ "identity.secondary": { name: "locker_keys_locker_uq", "@fields": "lockerId" } }] : []),
+      ...(unique ? [{ "identity.secondary": { name: "locker_keys_locker_uq", "@fields": "lockerId",
+        ...(unique === "partial" ? { "@where": "\"note\" IS NOT NULL" } : {}) } }] : []),
       { "identity.reference": { name: "lockerId", "@fields": "lockerId", "@references": "Locker" } } ] } },
   ];
   test("a passthrough over a reverse hop loads when the holder's reference fields are a unique identity, and only then", async () => {
@@ -267,7 +268,7 @@ describe("a projection over a TPH root reads its subtypes' columns; a unique rev
       { "field.long": { name: "id", extends: "Locker.id" } },
       { "field.string": { name: "note", children: [ { "origin.passthrough": { "@from": "LockerKey.note", "@via": "Locker.lockerKeys" } } ] } },
       { "identity.primary": { name: "id", extends: "Locker.primary" } } ] } };
-    const withUnique = async (unique: boolean) => {
+    const withUnique = async (unique: boolean | "partial") => {
       const doc = { "metadata.root": { package: "acme", children: [...tph.slice(0, 3), ...viaCard(unique), projection] } };
       const { root, errors } = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify(doc))]);
       return { root, errors: errors.map((e) => e.message) };
@@ -276,5 +277,7 @@ describe("a projection over a TPH root reads its subtypes' columns; a unique rev
     expect(ok.errors).toEqual([]);
     expect(buildProjectionViews(ok.root, { dialect: "postgres" })[0]!.sql).toContain("LEFT OUTER JOIN public.locker_keys l0 ON l0.locker_id = l.id");
     expect((await withUnique(false)).errors.some((m) => /is to-many/.test(m))).toBe(true);
+    // A partial unique index is unique only over its subset, so the hop stays to-many.
+    expect((await withUnique("partial")).errors.some((m) => /is to-many/.test(m))).toBe(true);
   });
 });

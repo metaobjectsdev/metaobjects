@@ -1305,8 +1305,10 @@ public static partial class ValidationPasses
         if (rel.Parent is not { } holder) return false;
         var fields = IdentityFieldSet(rel);
         if (fields.Length == 0) return false;
+        // A partial (@where) or expression (@expr) unique index never makes the hop to-one.
         return holder.Children().Any(c => c.Type == TYPE_IDENTITY
             && (c.SubType == IDENTITY_SUBTYPE_PRIMARY || c.SubType == IDENTITY_SUBTYPE_SECONDARY)
+            && c.Attr(IDENTITY_ATTR_WHERE) is null && c.Attr(IDENTITY_ATTR_EXPR) is null
             && IdentityFieldSet(c) == fields);
     }
 
