@@ -3,14 +3,5 @@
   "$id": "schemas/acme/social/MemberAccountTag.update.schema.json",
   "title": "MemberAccountTag.update",
   "type": "object",
-  "properties": {
-    "accountId": {
-      "type": "integer",
-      "format": "int64"
-    },
-    "tagId": {
-      "type": "integer",
-      "format": "int64"
-    }
-  }
+  "properties": {}
 }

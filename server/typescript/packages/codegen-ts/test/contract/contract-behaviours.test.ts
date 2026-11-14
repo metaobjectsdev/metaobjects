@@ -249,7 +249,8 @@ describe("the three shapes", () => {
     const tree = await contractTree(corpusCase("secret-fields"));
     const keysOf = (path: string): string[] => Object.keys(jsonAt(tree, path)["properties"] as JsonDoc);
     const account = "schemas/acme/secrets/Account";
-    expect(keysOf(`${account}.schema.json`)).toEqual(["id", "name", "tokenHash"]);
+    // `role` is the corpus's readOnly field (1.2.2): on the read, on neither write shape.
+    expect(keysOf(`${account}.schema.json`)).toEqual(["id", "name", "tokenHash", "role"]);
     expect(keysOf(`${account}.create.schema.json`)).toEqual(["name"]);
     expect(keysOf(`${account}.update.schema.json`)).toEqual(["name"]);
     expect(tree.get("openapi.json")).not.toContain("pinHash");

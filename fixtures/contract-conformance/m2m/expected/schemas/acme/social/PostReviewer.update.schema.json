@@ -3,14 +3,5 @@
   "$id": "schemas/acme/social/PostReviewer.update.schema.json",
   "title": "PostReviewer.update",
   "type": "object",
-  "properties": {
-    "postId": {
-      "type": "integer",
-      "format": "int64"
-    },
-    "accountId": {
-      "type": "integer",
-      "format": "int64"
-    }
-  }
+  "properties": {}
 }
