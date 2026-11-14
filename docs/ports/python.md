@@ -498,7 +498,7 @@ SUBSCRIBER_COLUMNS_BY_FIELD: Final[dict[str, str]] = {
 | `<E>_<FIELD>_FIELD` | the **logical** name — the field as your code and the wire call it |
 | `<E>_<FIELD>_COLUMN` | the **physical** column — `@column` if declared, else the name through the project's `naming.columns` rule |
 | `<E>_IDENTITY_<NAME>_*` / `<E>_INDEX_<NAME>_*` | one `identity.*` / `index.*` child, keyed by its metamodel name |
-| `…_INDEX` | the database index name — on `identity.secondary` and `index.lookup` only |
+| `…_INDEX` | the index name — on `identity.secondary` and `index.lookup` only. It holds the declared name; on Postgres `meta migrate` creates a name over 63 bytes as its first 63 bytes ([stored names](../features/migrations-and-drift.md#schema-conventions-names-for-objects-no-code-addresses)) |
 
 **Why the physical name is not just `<E>_NAME`.** One member cannot hold a
 table, a view and a stored procedure and still mean something. In a single run

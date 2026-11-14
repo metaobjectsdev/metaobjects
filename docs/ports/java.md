@@ -472,7 +472,9 @@ Every per-object file lands in the directory of its metadata package: `acme::blo
 Java package `acme.blog` and the file `acme/blog/Author.java`, so two objects named `Note` in two
 packages are two files. Two different metadata packages that would land in one directory (names
 that differ only in letter case, or `a.b` beside `a::b`) are refused before any generator runs,
-with `ERR_NAME_COLLISION` naming both objects. Nothing is renamed to avoid a clash.
+with `ERR_NAME_COLLISION` naming both objects. Nothing is renamed to avoid a clash. So is a REST
+collection claimed twice (`ERR_COLLECTION_NAME_COLLISION`), and `mvn metaobjects:verify` runs both
+refusals before it compares, so a model `metaobjects:generate` refuses cannot verify clean.
 
 A controller's REST collection segment is the object's `@collectionName` when it declares one
 (snake_cased: `CaseHistory` is `/case_history`), else the pluralizer `naming.collections` names in
@@ -686,8 +688,10 @@ names — has a member for each instead of one member between them.
 deliberate: a field's subType does not change what its column denotes, while an
 object's decides table-vs-view and an identity's decides unique-vs-not
 (ADR-0040 put uniqueness in the type). An `identity.secondary` or `index.lookup`
-also carries `IDENTITY_<NAME>_INDEX` / `INDEX_<NAME>_INDEX`, the database index
-name; `identity.primary` deliberately carries none, because migrate names a
+also carries `IDENTITY_<NAME>_INDEX` / `INDEX_<NAME>_INDEX`, the index name —
+the declared name; on Postgres `meta migrate` creates a name over 63 bytes as
+its first 63 bytes ([stored names](../features/migrations-and-drift.md#schema-conventions-names-for-objects-no-code-addresses)).
+`identity.primary` deliberately carries none, because migrate names a
 primary key by a dialect-conditional formula this artifact must not restate.
 
 There is no `READ_ONLY`. It was never metadata — it is a derivation over

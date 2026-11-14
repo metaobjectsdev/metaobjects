@@ -583,7 +583,7 @@ export const ProgramNames = {
 | `fields.<field>.name` | the **logical** name — the field as your code and the wire call it |
 | `fields.<field>.column` | the **physical** column — `@column` if declared, else `name` through the project's `naming.columns` rule (`.metaobjects/config.json`) |
 | `identities.<name>` / `indexes.<name>` | one `identity.*` / `index.*` child, keyed by its metamodel name |
-| `…​.index` | the database index name — on `identity.secondary` and `index.lookup` only |
+| `…​.index` | the index name — on `identity.secondary` and `index.lookup` only. It holds the declared name; on Postgres `meta migrate` creates a name over 63 bytes as its first 63 bytes, so the Drizzle table spells the cut form while this member keeps the declared name ([stored names](../features/migrations-and-drift.md#schema-conventions-names-for-objects-no-code-addresses)) |
 
 **Why the physical name is not just `name`.** One key cannot hold a table, a view and a
 stored procedure and still mean something. In a single run it used to:

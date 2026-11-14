@@ -628,8 +628,10 @@ one.
 > `Names.Name` before regenerating. `ReadOnly` is not relocated but REMOVED: it was never
 > metadata, only a derivation over `@kind` — ask `SourcePrimaryKind` instead.
 
-An identity or index carries an `Index` member — its DATABASE name — only where one
-exists: `identity.secondary` and `index.lookup`. An `identity.primary` gets none, because
+An identity or index carries an `Index` member — the declared index name; on Postgres
+`meta migrate` creates a name over 63 bytes as its first 63 bytes, and the EF context
+declares that cut name ([stored names](../features/migrations-and-drift.md#schema-conventions-names-for-objects-no-code-addresses)) —
+only where one exists: `identity.secondary` and `index.lookup`. An `identity.primary` gets none, because
 no port's codegen names a primary key (Postgres migrations hardcode `<table>_pkey`, SQLite
 emits an unnamed PK), and carrying that would restate a migrate-only formula in the
 artifact built to stop exactly that.
