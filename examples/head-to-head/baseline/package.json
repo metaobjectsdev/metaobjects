@@ -1,0 +1,19 @@
+{
+  "name": "h2h-baseline",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "fastify": "5.12.7",
+    "pg": "8.23.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "@types/pg": "8.23.1",
+    "@typespec/compiler": "1.17.0",
+    "@typespec/http": "1.17.0",
+    "@typespec/openapi3": "1.17.0",
+    "openapi-typescript": "7.13.0",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3"
+  }
+}
