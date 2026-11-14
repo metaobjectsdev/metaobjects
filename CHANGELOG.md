@@ -61,8 +61,8 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   write route's request body (and the value objects nested in one) now carry
   `@JsonIgnoreProperties(ignoreUnknown = true)`, so binding no longer depends on the host's
   `ObjectMapper` (a plain one answered 400). The Python 1.2.1 fix is carried forward to this
-  line, and the Python TPH create now drops a body's discriminator instead of answering 400 for
-  a foreign one.
+  line, and the Python TPH create and update now drop a body's discriminator instead of answering
+  400 for a foreign one.
 
   Gated by three shared api-contract scenarios: `input-server-owned-dropped` (generated and
   reference lanes in every port), and `tph/tph-input-server-owned-dropped` and
