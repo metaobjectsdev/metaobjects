@@ -186,7 +186,9 @@ Publish in tier order so a dependent never lands before its dependency. **`forge
    released. `v0.24.5` carries exactly that, and nothing caught it because no page
    displayed a coordinate yet.
 
-   So `release.mjs` pushes `main` and **stops**. After the ports are bumped, committed,
+   So `release.mjs` pushes the branch it runs on (`main`, or a `release/<major>.<minor>`
+   maintenance branch — see the maintenance-branch section below) and **stops**. After the
+   ports are bumped, committed,
    pushed and tagged (`python-v*`, `csharp-v*`, `java-v<npm major + 7>.*` — `java-v8.*` at the
    1.0 cut, NOT `java-v7.*`), run:
 
@@ -733,7 +735,9 @@ lock the repo/owner IDs against resurrection attacks.)
 
 ## Procedure
 
-1. **Pick the publish commit on `main`** (a stable, merged tip — not a mid-refactor branch). Ensure
+1. **Pick the publish commit on the branch the release is cut from** (`main`, or the
+   `release/<major>.<minor>` maintenance branch for a patch — the workflow publishes the
+   COMMITTED `<Version>`, so the tag must name that branch's tree). Ensure
    the packaging config + `publish-csharp.yml` are on it. Set `<Version>` in `Directory.Build.props`.
 2. **Validate locally** (catches immutable-version mistakes before they're permanent):
    ```bash
