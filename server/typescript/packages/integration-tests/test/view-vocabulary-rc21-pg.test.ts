@@ -4,7 +4,7 @@
 // production pipeline (build → diff → emit → apply), queried, and a second migrate is a no-op.
 
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
-import { buildExpectedSchema, diff, emit, introspectPostgres, postgresViewReplaceProbe, splitSqlStatements } from "@metaobjectsdev/migrate-ts";
+import { buildExpectedSchema, checkDeclaredFunctions, diff, emit, introspectPostgres, postgresViewReplaceProbe, splitSqlStatements } from "@metaobjectsdev/migrate-ts";
 import { buildProjectionViews } from "@metaobjectsdev/codegen-ts";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { Kysely, PostgresDialect, sql } from "kysely";
@@ -34,7 +34,14 @@ const MODEL = { "metadata.root": { package: "acme", children: [
     { "identity.primary": { name: "id", "@fields": "id" } },
     { "identity.reference": { name: "regionId", "@fields": "regionId", "@references": "Region" } },
     { "field.string": { name: "loyaltyTier", children: [
-      { "origin.function": { "@function": "loyalty_tier", "@schema": "app", "@args": ["id", "zip"], "@params": ["long", "string"], "@returns": "string" } } ] } } ] } },
+      { "origin.function": { "@function": "loyalty_tier", "@schema": "app", "@args": ["id", "zip"], "@params": ["long", "string"], "@returns": "string" } } ] } },
+    // Fix round 2 (N1): the call is cast to the field's full column type.
+    { "field.timestamp": { name: "memberSince", "@localTime": true, children: [
+      { "origin.function": { "@function": "member_since", "@schema": "app", "@args": ["id"], "@params": ["long"], "@returns": "timestamp" } } ] } },
+    { "field.string": { name: "regionCode", "@maxLength": 8, children: [
+      { "origin.function": { "@function": "region_code", "@schema": "app", "@args": ["id"], "@params": ["long"], "@returns": "string" } } ] } },
+    { "field.decimal": { name: "creditLimit", "@precision": 10, "@scale": 2, children: [
+      { "origin.function": { "@function": "credit_limit", "@schema": "app", "@args": ["id"], "@params": ["long"], "@returns": "decimal" } } ] } } ] } },
   { "object.entity": { name: "Address", children: [
     { "source.rdb": { "@table": "addresses" } },
     { "field.long": { name: "id" } },
@@ -73,6 +80,9 @@ const MODEL = { "metadata.root": { package: "acme", children: [
     { "field.int": { name: "refLength", children: [ { "origin.computed": { "@expr": { fn: "length", args: [ { fn: "replace", args: [ { fn: "substring", args: [ { field: "externalRef" }, { value: 2 }, { value: 3 } ] }, { value: "X" }, { value: "" } ] } ] } } } ] } },
     { "field.string": { name: "noRef", children: [ { "origin.computed": { "@expr": { fn: "nullif", args: [ { field: "externalRef" }, { value: "NONE" } ] } } } ] } },
     { "field.string": { name: "tier", children: [ { "origin.passthrough": { "@from": "Customer.loyaltyTier", "@via": "Order.customerId" } } ] } },
+    { "field.timestamp": { name: "memberSince", "@localTime": true, children: [ { "origin.passthrough": { "@from": "Customer.memberSince", "@via": "Order.customerId" } } ] } },
+    { "field.string": { name: "regionCode", "@maxLength": 8, children: [ { "origin.passthrough": { "@from": "Customer.regionCode", "@via": "Order.customerId" } } ] } },
+    { "field.decimal": { name: "creditLimit", "@precision": 10, "@scale": 2, children: [ { "origin.passthrough": { "@from": "Customer.creditLimit", "@via": "Order.customerId" } } ] } },
     { "field.timestamp": { name: "lastEvent", children: [ { "origin.aggregate": { "@agg": "max", "@of": "OrderEvent.createdAt", "@via": "Order.orderEvents" } } ] } },
     { "field.timestamp": { name: "firstAtStatus", children: [ { "origin.aggregate": { "@agg": "min", "@of": "OrderEvent.createdAt", "@via": "Order.orderEvents", "@filter": { stage: { eq: { field: "stage" } } } } } ] } },
     { "field.timestamp": { name: "touched", children: [ { "origin.computed": { "@expr": { fn: "greatest", args: [ { field: "updatedAt" }, { field: "lastEvent" } ] } } } ] } },
@@ -132,6 +142,10 @@ describe("rc.21 part B view vocabulary — live Postgres", () => {
     // The function the project owns: owned SQL, created before the view that calls it.
     await sql.raw(`CREATE FUNCTION app.loyalty_tier(bigint, text) RETURNS text LANGUAGE sql IMMUTABLE
       AS $$ SELECT CASE WHEN $1 % 2 = 0 THEN 'gold' ELSE 'silver' END || ':' || left($2, 2) $$`).execute(k);
+    await sql.raw(`CREATE FUNCTION app.member_since(bigint) RETURNS timestamp LANGUAGE sql IMMUTABLE
+      AS $$ SELECT timestamp '2026-01-01 08:30:00' + ($1 || ' days')::interval $$`).execute(k);
+    await sql.raw(`CREATE FUNCTION app.region_code(bigint) RETURNS text LANGUAGE sql IMMUTABLE AS $$ SELECT 'R-' || $1 $$`).execute(k);
+    await sql.raw(`CREATE FUNCTION app.credit_limit(bigint) RETURNS numeric LANGUAGE sql IMMUTABLE AS $$ SELECT $1 * 100.5 $$`).execute(k);
     const again = await migrate();
 
     // U2: the text spellings are the column types.
@@ -147,6 +161,14 @@ describe("rc.21 part B view vocabulary — live Postgres", () => {
     // I4: the function's call is cast to the carrying field's column type.
     expect(await rows(`SELECT data_type FROM information_schema.columns WHERE table_name = 'v_order_row' AND column_name = 'tier'`))
       .toEqual([{ data_type: "text" }]);
+    // N1: a local timestamp stays without a zone, a sized string keeps its length, a decimal its precision and scale.
+    expect(await rows(`SELECT column_name, data_type, character_maximum_length, numeric_precision, numeric_scale
+      FROM information_schema.columns WHERE table_name = 'v_order_row' AND column_name IN ('member_since', 'region_code', 'credit_limit')
+      ORDER BY column_name`)).toEqual([
+      { column_name: "credit_limit", data_type: "numeric", character_maximum_length: null, numeric_precision: 10, numeric_scale: 2 },
+      { column_name: "member_since", data_type: "timestamp without time zone", character_maximum_length: null, numeric_precision: null, numeric_scale: null },
+      { column_name: "region_code", data_type: "character varying", character_maximum_length: 8, numeric_precision: null, numeric_scale: null },
+    ]);
 
     await sql.raw(`
       INSERT INTO regions (id, code, label, note) VALUES (1, 'NE', 'north east', 'n');
@@ -180,6 +202,19 @@ describe("rc.21 part B view vocabulary — live Postgres", () => {
         tier: null, last_event: null, first_at_status: null, touched: null, earliest: null, event_by_customer: null },
     ]);
 
+    // N1: the local timestamp reads the same in any session zone (a TIMESTAMPTZ cast would have moved it).
+    // One connection: SET LOCAL holds for the transaction only.
+    const zoned = await k.transaction().execute(async (trx) => {
+      await sql.raw(`SET LOCAL TIME ZONE 'America/New_York'`).execute(trx);
+      return (await sql.raw(`SELECT current_setting('TimeZone') AS tz, id, member_since::text AS member_since, region_code,
+        credit_limit::text AS credit_limit FROM v_order_row ORDER BY id`).execute(trx)).rows;
+    });
+    expect(zoned).toEqual([
+      { tz: "America/New_York", id: "1", member_since: "2026-01-11 08:30:00", region_code: "R-10", credit_limit: "1005.00" },
+      { tz: "America/New_York", id: "2", member_since: "2026-01-12 08:30:00", region_code: "R-11", credit_limit: "1105.50" },
+      { tz: "America/New_York", id: "3", member_since: "2026-01-13 08:30:00", region_code: "R-12", credit_limit: "1206.00" },
+    ]);
+
     // U14: one row per element; a customer whose value is an object or JSON null has none (fix round M3).
     expect(await rows(`SELECT customer_id, position, kind, preferred, rank FROM v_customer_contact ORDER BY customer_id, position`)).toEqual([
       { customer_id: "10", position: 1, kind: "email", preferred: true, rank: 1 },
@@ -195,5 +230,46 @@ describe("rc.21 part B view vocabulary — live Postgres", () => {
 
     const followup = await again();
     expect(followup.changes).toEqual([]);
+
+    // N2: every declared function is the database's, with the declared types.
+    const { root } = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify(MODEL))]);
+    expect(await checkDeclaredFunctions(k, root)).toEqual([]);
   }, 120_000);
+
+  // N2: `meta verify --db` reads each declared function from pg_proc; a declaration the database
+  // does not have is a finding, never hidden by the view's cast. Runs after the test above, which
+  // created the functions.
+  test("a declared function signature the database does not have is a finding", async () => {
+    const fn = (field: Record<string, unknown>, origin: Record<string, unknown>) => ({ ...field, children: [ { "origin.function": { "@schema": "app", ...origin } } ] });
+    const findings = async (...fields: { [k: string]: Record<string, unknown> }[]) => {
+      const model = { "metadata.root": { package: "acme", children: [
+        { "object.entity": { name: "Account", children: [
+          { "source.rdb": { "@table": "accounts" } }, { "field.long": { name: "id" } }, { "field.int": { name: "pin" } },
+          { "identity.primary": { name: "id", "@fields": "id" } } ] } },
+        { "object.projection": { name: "AccountRow", children: [
+          { "source.rdb": { "@kind": "view", "@table": "v_account_row" } },
+          { "field.long": { name: "id", extends: "Account.id" } }, { "field.int": { name: "pin", extends: "Account.pin" } },
+          { "identity.primary": { name: "id", extends: "Account.id" } }, ...fields ] } } ] } };
+      const { root, errors } = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify(model))]);
+      expect(errors).toEqual([]);
+      return checkDeclaredFunctions(k, root);
+    };
+    // Matching declarations: none.
+    expect(await findings(
+      { "field.decimal": fn({ name: "limit" }, { "@function": "credit_limit", "@args": ["id"], "@params": ["long"], "@returns": "decimal" }) },
+      { "field.timestamp": fn({ name: "since", "@localTime": true }, { "@function": "member_since", "@args": ["id"], "@params": ["long"], "@returns": "timestamp" }) },
+    )).toEqual([]);
+    // A numeric result declared int: the cast would round it.
+    const [rounded] = await findings({ "field.int": fn({ name: "limit" }, { "@function": "credit_limit", "@args": ["id"], "@params": ["long"], "@returns": "int" }) });
+    expect(rounded).toBe("origin.function app.credit_limit on AccountRow.limit: declared (long) → int, which needs app.credit_limit(bigint) → integer; " +
+      "the database has app.credit_limit(bigint) → numeric.");
+    // A local timestamp result on a zoned field: the cast would read it in the session's zone.
+    const [zoned] = await findings({ "field.timestamp": fn({ name: "since" }, { "@function": "member_since", "@args": ["id"], "@params": ["long"], "@returns": "timestamp" }) });
+    expect(zoned).toMatch(/needs app\.member_since\(bigint\) → timestamp with time zone; the database has app\.member_since\(bigint\) → timestamp without time zone\.$/);
+    // A parameter of another type, and a function that does not exist.
+    const [param] = await findings({ "field.decimal": fn({ name: "limit" }, { "@function": "credit_limit", "@args": ["pin"], "@params": ["int"], "@returns": "decimal" }) });
+    expect(param).toMatch(/needs app\.credit_limit\(integer\) → numeric; the database has app\.credit_limit\(bigint\) → numeric\.$/);
+    const [missing] = await findings({ "field.int": fn({ name: "score" }, { "@function": "no_such_fn", "@args": [], "@params": [], "@returns": "int" }) });
+    expect(missing).toBe("origin.function app.no_such_fn on AccountRow.score: no such function in the database (declared () → int).");
+  }, 60_000);
 });

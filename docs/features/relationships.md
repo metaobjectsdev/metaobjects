@@ -282,8 +282,11 @@ expressions read.
 (plain identifiers), `@args` the fields passed to it in order, `@params` their declared types and
 `@returns` the result's (field subtypes). Each argument must have its parameter's type — pass an
 `origin.computed` field that casts it (`{ cast: { field: x }, as: int }`) otherwise — and
-`@returns` must be the carrying field's subtype; the view casts the call to the field's column
-type. Declared on an entity, it is
+`@returns` must be the carrying field's subtype; the view casts the call to the field's full
+column type, the one its table column would have (length or `@dbColumnType` spelling, precision and
+scale, a local or zoned timestamp). The signature is a declaration that `meta verify --db` checks:
+it reads the function from `pg_proc` and fails on a missing function, or a parameter or return
+type that differs, so the cast never hides a wrong `@returns`. Declared on an entity, it is
 entity-derived: a projection reaching the entity reads it like any derived field. MetaObjects
 never creates the function (it is owned SQL, created before the view). Postgres only.
 

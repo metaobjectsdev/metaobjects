@@ -1080,7 +1080,9 @@ function functionCall(
     args.push(a.expr);
   }
   const call: ViewExprNode = { kind: "call", name, ...(typeof schema === "string" ? { schema } : {}), args };
-  return { kind: "cast", arg: call, to: { subType: field.subType } };
+  // N1: the call is cast to the field's full column type — length, @dbColumnType spelling,
+  // precision and scale, local or zoned timestamp — the type `meta migrate` gives its column.
+  return { kind: "cast", arg: call, to: { subType: field.subType, column: fieldSqlType(field) } };
 }
 
 /** rc.21 part B (U14): the value object a `@grain` projection's rows are elements of, if it has one. */

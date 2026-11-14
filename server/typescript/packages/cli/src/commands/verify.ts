@@ -76,6 +76,7 @@ import {
   type ReplayEngine,
   verifyReplay,
   introspect,
+  checkDeclaredFunctions,
   diff,
   withoutViewRecreates,
   readSnapshot,
@@ -1463,7 +1464,19 @@ export async function verifyCommand(
         return 1;
       }
 
-      return reportSchemaDrift(driftResult, [...ledgerDrift, ...snapshotDrift], kysely.displayUrl);
+      // rc.21 part B (N2): a declared origin.function's signature is the database's, or a finding.
+      let functionDrift: string[] = [];
+      if (kysely.dialect === "postgres") {
+        try {
+          functionDrift = await checkDeclaredFunctions(kysely.db, root);
+        } catch (err) {
+          schemaRunError = `failed to read the declared functions from ${kysely.displayUrl}: ${describeError(err)}`;
+          log.error(`verify: ${schemaRunError}`);
+          return 1;
+        }
+      }
+
+      return reportSchemaDrift(driftResult, [...ledgerDrift, ...snapshotDrift, ...functionDrift], kysely.displayUrl);
     } finally {
       await shadow?.close();
       try {

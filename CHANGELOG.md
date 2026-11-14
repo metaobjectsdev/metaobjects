@@ -41,8 +41,12 @@ vocabulary; upgrade every port together.
   `@filter` operand, joined but not output. `origin.function` (`@function`, `@schema`, `@args`, `@params`,
   `@returns`) is a value computed by a database function the project owns: each argument's field
   type must be its declared parameter type (cast it through an `origin.computed` field otherwise),
-  `@returns` must be the carrying field's subtype, and the view casts the call to the field's column
-  type; declared on an entity it is entity-derived (Postgres only). On
+  `@returns` must be the carrying field's subtype, and the view casts the call to the field's full
+  column type, the one its table column would have (length or `@dbColumnType` spelling, precision and
+  scale, a local or zoned timestamp). The signature is a declaration: `meta verify --db` reads each
+  function from `pg_proc` and fails on a missing function or a parameter or return type that
+  differs, so the cast never hides a wrong `@returns`. Declared on an entity it is entity-derived
+  (Postgres only). On
   `object.projection`: `@grain` / `@grainOrdinal`, one row per element of a jsonb `field.object`
   array, its members read through `origin.passthrough @from: <ValueObject>.<member>`; and
   `@union` / `@unionAll`, a view that is the UNION (or UNION ALL) of projections of one shape,

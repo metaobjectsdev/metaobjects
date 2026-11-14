@@ -106,6 +106,9 @@ export type ViewExprNode =
 export interface CastTarget {
   readonly subType: string;
   readonly spelling?: { readonly kind: "text" | "varchar" | "char"; readonly length?: number };
+  /** rc.21 part B (N1): the full column type, when the cast is to a field's own column (an
+   *  `origin.function` call): the SqlType `meta migrate` gives that field's table column. */
+  readonly column?: SqlType;
 }
 
 /** An aggregate column a computed expression may read (U13): a scalar reduce or an any/all. */

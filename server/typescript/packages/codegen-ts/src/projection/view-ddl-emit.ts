@@ -234,6 +234,8 @@ function renderFn(name: string, args: readonly string[], nodes: readonly ViewExp
 /** rc.21 part B (U12): the column type a cast names, in the dialect's spelling. */
 function castTypeSql(to: CastTarget, dialect: EmitOptions["dialect"]): string {
   const pg = dialect === "postgres";
+  // N1: a field's own column type is spelled by the table DDL's own function.
+  if (pg && to.column !== undefined) return pgType(to.column);
   switch (to.subType) {
     case "string": {
       if (!pg) return "TEXT";
