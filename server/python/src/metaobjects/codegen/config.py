@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 
 from metaobjects.naming import DEFAULT_COLUMN_NAMING
 
+from .overwrite_policy import HashManifest
+
 #: What generated routers mount under when no ``apiPrefix`` is configured.
 DEFAULT_API_PREFIX = "/api"
 
@@ -71,6 +73,14 @@ class GenConfig:
     # The names of the generators declared ``handEdits: overwrite``: a hand edit to one of
     # their files is replaced with fresh output (and re-baselined) instead of refused.
     overwrite_hand_edits: frozenset[str] = frozenset()
+    # The run's shared manifest session (ADR-0062 decision 1): loaded once, saved once by
+    # whoever created it. ``None`` makes ``run_gen`` open its own for the one call and save
+    # it before returning, which is what a programmatic caller always got.
+    manifest: HashManifest | None = None
+    # When set, nothing is written: every emitted file is collected into this dict as
+    # ``{path: content}`` instead. ``verify --codegen`` renders into it and compares the bytes
+    # with disk in memory, so it creates no temp tree.
+    sink: dict[str, str] | None = None
     provided_enum_namespace: str | None = None
     provided_enum_packages: dict[str, str] = field(default_factory=dict)
 

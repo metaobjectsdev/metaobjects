@@ -72,6 +72,16 @@ public class MustacheTemplateGenerator implements Generator {
     private String targetLanguage = "java";
     private String templateName = null; // If null, auto-discover templates
     
+    /**
+     * Not cacheable (ADR-0062): a template is looked up under {@code templatePath} relative to
+     * the working directory or on the classpath, and which one answers is not something the
+     * build can name, so a run that includes this generator always runs in full.
+     */
+    @Override
+    public boolean cacheable() {
+        return false;
+    }
+
     @Override
     public Generator setArgs(Map<String, String> args) {
         this.args = args != null ? new HashMap<>(args) : new HashMap<>();
@@ -290,9 +300,8 @@ public class MustacheTemplateGenerator implements Generator {
             
             // Write generated file
             File outputFile = outputPath.resolve(fileName).toFile();
-            try (FileWriter writer = new FileWriter(outputFile)) {
-                writer.write(generatedCode);
-            }
+            com.metaobjects.generator.util.GeneratedFileWriter.writeIfChanged(
+                outputFile.toPath(), generatedCode, java.nio.charset.Charset.defaultCharset());
             
             log.debug("Generated file: {}", outputFile.getAbsolutePath());
             

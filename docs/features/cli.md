@@ -253,6 +253,30 @@ that differs refuses the whole call and removes nothing. It never edits your gen
 edit that points each entry back at the shipped generator. `--strict` exits 1 and writes
 nothing. No port has a `doctor` command: `eject --list` (or the matching goal) is the report.
 
+## `gen` skips a run when nothing changed — and `--force` runs it anyway (ADR-0062)
+
+Every port's `gen` loads the metadata, then computes a key before it renders anything: the
+loaded model (each node in its canonical effective form, so reformatting or splitting a metadata
+file changes nothing) plus everything the generators are built from (the engine's built code,
+the codegen config and every owned generator, the template roots, declared extra inputs, the
+project config, the output-changing flags). When the key matches the last successful run and
+every generated file still holds the bytes that run left, `gen` says so and renders and writes
+nothing. The key lives in `.metaobjects/.gen-state/.fingerprint-<port>.json`, which is not
+committed.
+
+| flag | ports | what it does |
+|---|---|---|
+| `gen --force` | `meta`, `metaobjects`, `dotnet meta` | render everything, even when nothing changed |
+| `-Dmetaobjects.force=true` / `<force>true</force>` | Maven (Java, Kotlin) | the same |
+| `verify --codegen --full` | `meta`, `metaobjects`, `dotnet meta` | render and compare, even when a local run could answer from the key |
+| `-Dmetaobjects.verify.full=true` | Maven (Java, Kotlin) | the same |
+
+A generator that reads something the key does not cover declares it (`inputs: [...]` in
+TypeScript, its port's equivalent elsewhere); one that cannot say what it reads sets
+`cache: false`, and a run that includes it never skips. In CI (`CI` set) `verify --codegen`
+always renders and compares everything, so a key that missed an input is caught before it
+ships. When `verify` renders, it compares in memory: no temp tree is written.
+
 ## `gen` refuses rather than guesses — and `--baseline` is how you answer it
 
 Every port's `gen` decides per file whether it may overwrite, from a committed hash

@@ -27,7 +27,9 @@ import { sweepOrphans, type OrphanJob } from "./orphan-sweep.js";
 import { refusedOrphanMessage } from "./reconcile-orphans.js";
 import { effectivePackage } from "./docs-paths.js";
 import {
+  beginManifestBatch,
   decideAndWrite,
+  endManifestBatch,
   previewWriteStatus,
   hasHashManifest,
   listGeneratedPaths,
@@ -205,6 +207,9 @@ export interface RunGenResult {
   /** The jobs the orphan sweep ran (or, on a dry run, would run) with, so a caller can
    *  classify an orphan by `orphanVerdict` exactly as the sweep does. */
   orphanSweepJobs?: readonly OrphanJob[];
+  /** On a dry run only: every rendered file's absolute path and content, so a caller can
+   *  compare the output with disk in memory (`verify --codegen`, ADR-0062) with no temp tree. */
+  rendered?: ReadonlyMap<string, string>;
 }
 
 /**
@@ -1245,41 +1250,56 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
     // A preview that hides a pending deletion is worse than no preview at all, so
     // the sweep still runs — in decide-and-report mode, touching nothing.
     sweep(true);
-    return { files: writes, warnings, conflicts, handEditsOverwrite: handEditsOverwrite(), orphanSweepJobs: sweepJobs };
+    return {
+      files: writes,
+      warnings,
+      conflicts,
+      handEditsOverwrite: handEditsOverwrite(),
+      orphanSweepJobs: sweepJobs,
+      rendered: new Map(emitted.map((f) => [f.fullPath, f.content])),
+    };
   }
 
-  for (const file of emitted) {
-    // Key the snapshot by project-relative path so multi-target projects keep
-    // distinct entries (e.g. `database/Post.ts` vs `web/Post.queries.ts`).
-    // Without an explicit projectRoot we let decideAndWrite derive a stable
-    // hash-of-path key — fine for ephemeral test runs.
-    const result = decideAndWrite(file.fullPath, file.content, policyFor(file.fullPath, file.handEdits));
-    writes.push(result);
-    if (result.discardedEdit === true) {
-      warnings.push(
-        `overwrote hand-edited ${relativeForDisplay(file.fullPath)} with fresh output ` +
-          `(handEdits: "overwrite" on ${file.generatedBy})`,
-      );
+  // ADR-0062 §1 — the manifest is read once here and written once below, only if an entry
+  // changed. The `finally` keeps a throwing write from leaving the batch open for the next
+  // run in this process; what it recorded before the throw is still saved.
+  beginManifestBatch(genStateDir);
+  try {
+    for (const file of emitted) {
+      // Key the snapshot by project-relative path so multi-target projects keep
+      // distinct entries (e.g. `database/Post.ts` vs `web/Post.queries.ts`).
+      // Without an explicit projectRoot we let decideAndWrite derive a stable
+      // hash-of-path key — fine for ephemeral test runs.
+      const result = decideAndWrite(file.fullPath, file.content, policyFor(file.fullPath, file.handEdits));
+      writes.push(result);
+      if (result.discardedEdit === true) {
+        warnings.push(
+          `overwrote hand-edited ${relativeForDisplay(file.fullPath)} with fresh output ` +
+            `(handEdits: "overwrite" on ${file.generatedBy})`,
+        );
+      }
+      if (result.status === "conflict") {
+        conflicts.push(result);
+        warnings.push(
+          `Merge conflict in ${file.fullPath}: resolve diff3 markers and re-run ` +
+          `'meta gen' to advance the canonical state.`,
+        );
+      }
+      // Refusals are reported together after the loop (see reportRefusals) so a
+      // whole-project cause can be stated once instead of once per file.
     }
-    if (result.status === "conflict") {
-      conflicts.push(result);
-      warnings.push(
-        `Merge conflict in ${file.fullPath}: resolve diff3 markers and re-run ` +
-        `'meta gen' to advance the canonical state.`,
-      );
-    }
-    // Refusals are reported together after the loop (see reportRefusals) so a
-    // whole-project cause can be stated once instead of once per file.
+
+    reportRefusals();
+    noteUntracked();
+    reportAdoptions();
+
+    // Sweep AFTER the writes: writing is the primary job, and a deletion that runs
+    // first would be unrecoverable if a later write threw. Ordering cannot change
+    // the decision — a path this run emitted is never an orphan either way.
+    sweep(false);
+  } finally {
+    endManifestBatch();
   }
-
-  reportRefusals();
-  noteUntracked();
-  reportAdoptions();
-
-  // Sweep AFTER the writes: writing is the primary job, and a deletion that runs
-  // first would be unrecoverable if a later write threw. Ordering cannot change
-  // the decision — a path this run emitted is never an orphan either way.
-  sweep(false);
 
   // #232 — stamp the engine version that produced this snapshot, so the NEXT gen can
   // detect an engine change. Written after a successful run only, and only by a run that

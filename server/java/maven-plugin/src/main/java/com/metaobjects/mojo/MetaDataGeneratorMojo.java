@@ -36,6 +36,30 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
     @Parameter(property = "metaobjects.allowUnmetRequires", defaultValue = "false")
     boolean allowUnmetRequires;
 
+    /**
+     * Run in full even when no input changed since the last successful run (ADR-0062).
+     * {@code -Dmetaobjects.force=true}, or {@code <force>true</force>} in the configuration.
+     */
+    @Parameter(property = "metaobjects.force", defaultValue = "false")
+    boolean force;
+
+    @Override
+    protected boolean skipsWhenUnchanged() {
+        return true;
+    }
+
+    @Override
+    protected boolean forced() {
+        return force;
+    }
+
+    @Override
+    protected void onWholeRunSkipped() {
+        getLog().info("MetaData Mojo > " + OWNER + ": nothing changed since the last run, so nothing was "
+                + "generated. Pass -Dmetaobjects.force=true to generate anyway.");
+        registerGeneratedSourceRoots();
+    }
+
     /** How this goal is named in a message telling the adopter what to run. */
     static final String OWNER = "mvn metaobjects:generate";
 
@@ -124,6 +148,18 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
                 sweepOrphans(genStateDir, projectRoot, handEditsByDir, emittedThisBuild, runOwners);
             }
             reportManifestNotices(run, genStateDir, hadManifestAtStart);
+
+            // ADR-0062: a run that refused a file stores no fingerprint, and a file written
+            // outside the module (no manifest record) is checked by path.
+            runWasClean = run.refusedCount() == 0;
+            List<String> outside = new ArrayList<>();
+            if (projectRoot != null) {
+                for (Path emitted : run.emittedPaths()) {
+                    if (OrphanSweep.keyFor(projectRoot, emitted) == null) outside.add(emitted.toString());
+                }
+            }
+            Collections.sort(outside);
+            outputsOutsideModule = outside;
         }
 
         registerGeneratedSourceRoots();

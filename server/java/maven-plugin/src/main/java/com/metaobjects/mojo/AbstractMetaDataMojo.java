@@ -429,10 +429,330 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
 
         MetaDataLoader loader = createLoader(projectClassLoader);
 
+        // ADR-0062: the metadata is loaded (the model key is made of it), and nothing has
+        // rendered yet: decide from the model and the generator identity whether this run can
+        // change anything.
+        if ( planWholeRun(loader) ) {
+            onWholeRunSkipped();
+            return;
+        }
+
         List<Generator> generatorImpls = buildGenerators( projectClassLoader, null );
 
+        noteGenerators( generatorImpls );
+
         executeGenerators( loader, generatorImpls );
+
+        finishWholeRun();
     }
+
+    // ---------------------------------------------------------------------------------
+    // ADR-0062: skip the whole run when none of its inputs changed
+
+    /** Whether this goal skips a run whose fingerprint matches the stored one. */
+    protected boolean skipsWhenUnchanged() {
+        return false;
+    }
+
+    /** Whether this run was asked to run in full whatever the fingerprint says. */
+    protected boolean forced() {
+        return false;
+    }
+
+    /** Called instead of the run when the fingerprint matched. */
+    protected void onWholeRunSkipped() {
+    }
+
+    /** Set by the goal when this run refused a file (hand-edited or hand-written): such a run
+     *  stores no fingerprint, since its output is not what the inputs describe. */
+    protected boolean runWasClean = true;
+
+    /** Generated files that landed outside the module (the manifest records only files inside
+     *  it); their existence is part of the skip rule. Set by the goal after its run. */
+    protected List<String> outputsOutsideModule = List.of();
+
+    // State of the current run, set by planWholeRun and read by finishWholeRun.
+    private Path fingerprintFile;
+    private List<GenFingerprint.Input> fingerprintBase;
+    private List<String> fingerprintExtras = List.of();
+    private List<GenFingerprint.Input> fingerprintExtraInputs = List.of();
+    private boolean allCacheable = true;
+
+    private Path moduleGenStateDir() {
+        return project != null && project.getBasedir() != null
+                ? project.getBasedir().toPath().resolve(".metaobjects").resolve(".gen-state") : null;
+    }
+
+    /** The stable name of this execution's generator/output-directory configuration. */
+    String fingerprintOwnerTag() {
+        List<String> lines = new ArrayList<>();
+        if ( getGenerators() != null ) {
+            for ( GeneratorParam g : getGenerators() ) {
+                String dir = mergeAndOverwriteArgs(g).get(GeneratorBase.ARG_OUTPUTDIR);
+                lines.add(g.getClassname() + "@" + (dir == null ? "-" : moduleDir(Path.of(dir))));
+            }
+        }
+        return GenFingerprint.ownerTag(lines);
+    }
+
+    /**
+     * Decide, before anything loads, whether this run can be skipped. Returns {@code true} to
+     * skip. Otherwise it deletes the stored fingerprint, so a run that fails halfway can never
+     * leave one claiming its half-written output is current.
+     */
+    private boolean planWholeRun(MetaDataLoader loader) {
+        fingerprintBase = null;
+        fingerprintFile = null;
+        Path genStateDir = moduleGenStateDir();
+        if ( !skipsWhenUnchanged() || genStateDir == null ) return false;
+        try {
+            fingerprintFile = GenFingerprint.fileFor(genStateDir, fingerprintOwnerTag());
+            fingerprintBase = fingerprintInputs(loader);
+        } catch ( java.io.IOException | RuntimeException e ) {
+            // Anything the fingerprint cannot prove unchanged counts as changed.
+            getLog().debug("MetaData Mojo > No fingerprint for this run: " + e);
+            fingerprintBase = null;
+        }
+        if ( fingerprintBase != null && !forced() && fingerprintMatches(genStateDir, false) ) return true;
+        if ( fingerprintFile != null ) GenFingerprint.delete(fingerprintFile);
+        return false;
+    }
+
+    /** Local {@code verify}: the stored fingerprint matches and every file the manifest records
+     *  still hashes to its record. Anything else is a full render. */
+    protected boolean fingerprintAnswersNoDrift(MetaDataLoader loader) {
+        Path genStateDir = moduleGenStateDir();
+        if ( genStateDir == null ) return false;
+        try {
+            fingerprintFile = GenFingerprint.fileFor(genStateDir, fingerprintOwnerTag());
+            fingerprintBase = fingerprintInputs(loader);
+        } catch ( java.io.IOException | RuntimeException e ) {
+            return false;
+        }
+        return fingerprintMatches(genStateDir, true);
+    }
+
+    /**
+     * Whether the stored fingerprint matches the one just computed and the files the last run
+     * wrote are all still there. With {@code checkHashes}, each file the manifest records must
+     * also still hash to its record (what a local {@code verify} needs).
+     */
+    protected boolean fingerprintMatches(Path genStateDir, boolean checkHashes) {
+        if ( fingerprintBase == null || fingerprintFile == null ) return false;
+        java.util.Optional<GenFingerprint.Stored> stored = GenFingerprint.read(fingerprintFile);
+        if ( stored.isEmpty() || stored.get().formatVersion() != GenFingerprint.FORMAT_VERSION ) return false;
+        try {
+            List<GenFingerprint.Input> all = new ArrayList<>(fingerprintBase);
+            all.addAll(extraInputsOf(stored.get().extras()));
+            if ( !GenFingerprint.fold(all).equals(stored.get().key()) ) return false;
+            Path root = project.getBasedir().toPath();
+            // Amendment A: every recorded file must still hash to what the last run left on
+            // disk. A hand edit therefore makes gen render, and a hand edit that gen merged and
+            // kept does not. Verify also wants each file to match the manifest record.
+            for ( Map.Entry<String, String> e : HashManifest.load(genStateDir).entrySet() ) {
+                Path file = root.resolve(e.getKey());
+                if ( !Files.isRegularFile(file) ) return false;
+                String onDisk = HashManifest.contentHash(Files.readString(file, StandardCharsets.UTF_8));
+                if ( !onDisk.equals(stored.get().outputs().get(e.getKey())) ) return false;
+                if ( checkHashes && !e.getValue().equals(onDisk) ) return false;
+            }
+            for ( String outside : stored.get().untracked() ) {
+                if ( !Files.isRegularFile(Path.of(outside)) ) return false;
+            }
+            return true;
+        } catch ( java.io.IOException | RuntimeException e ) {
+            return false;
+        }
+    }
+
+    /** Record what the built generators declare: whether they are cacheable and what extra
+     *  files they read, hashed now, before any of them runs. */
+    private void noteGenerators( List<Generator> impls ) {
+        allCacheable = true;
+        fingerprintExtras = List.of();
+        fingerprintExtraInputs = List.of();
+        if ( fingerprintBase == null ) return;
+        java.util.TreeSet<String> extras = new java.util.TreeSet<>();
+        for ( Generator g : impls ) {
+            if ( !g.cacheable() ) allCacheable = false;
+            extras.addAll(g.extraInputs());
+        }
+        try {
+            fingerprintExtras = new ArrayList<>(extras);
+            fingerprintExtraInputs = extraInputsOf(fingerprintExtras);
+        } catch ( java.io.IOException | RuntimeException e ) {
+            fingerprintBase = null;
+        }
+    }
+
+    /** Store the new fingerprint, after a run that succeeded, refused nothing and included
+     *  only cacheable generators. It was computed from inputs read before the run. */
+    private void finishWholeRun() {
+        if ( fingerprintBase == null || fingerprintFile == null || !allCacheable || !runWasClean ) return;
+        if ( getGenerators() == null || getGenerators().isEmpty() ) return;   // nothing ran, nothing to skip
+        List<GenFingerprint.Input> all = new ArrayList<>(fingerprintBase);
+        all.addAll(fingerprintExtraInputs);
+        // The outputs as this run left them. A recorded file that is missing means the run did
+        // not leave a state a later run could trust: store no key.
+        Path genStateDir = moduleGenStateDir();
+        if ( genStateDir == null ) return;
+        Map<String, String> outputs = new java.util.TreeMap<>();
+        try {
+            Path root = project.getBasedir().toPath();
+            for ( String rel : HashManifest.load(genStateDir).keySet() ) {
+                Path file = root.resolve(rel);
+                if ( !Files.isRegularFile(file) ) return;
+                outputs.put(rel, HashManifest.contentHash(Files.readString(file, StandardCharsets.UTF_8)));
+            }
+        } catch ( java.io.IOException | RuntimeException e ) {
+            return;
+        }
+        GenFingerprint.write(fingerprintFile, new GenFingerprint.Stored(GenFingerprint.FORMAT_VERSION,
+                GenFingerprint.fold(all), fingerprintExtras, outputsOutsideModule, outputs));
+    }
+
+    private List<GenFingerprint.Input> extraInputsOf( List<String> extras ) throws java.io.IOException {
+        List<GenFingerprint.Input> out = new ArrayList<>();
+        Path base = getProjectBaseDir().toPath();
+        for ( String extra : extras ) {
+            Path p = Path.of(extra);
+            GenFingerprint.addTree(out, "extra", extra, p.isAbsolute() ? p : base.resolve(p).normalize(), r -> false);
+        }
+        return out;
+    }
+
+    /** The version of this plugin, or "unknown" when it is not known (a unit test). */
+    private String pluginVersion() {
+        try {
+            if ( execution != null && execution.getPlugin() != null && execution.getPlugin().getVersion() != null ) {
+                return execution.getPlugin().getVersion();
+            }
+        } catch ( RuntimeException ignored ) {
+            // fall through
+        }
+        return "unknown";
+    }
+
+    /**
+     * The jars and directories whose content decides what the generators do: the plugin's own
+     * classpath (the shipped generators, and any generator jar the pom adds to the plugin's
+     * dependencies) and the project classpath the generators are loaded from. A unit test may
+     * override it.
+     */
+    protected List<Path> engineClasspath() {
+        java.util.TreeSet<Path> out = new java.util.TreeSet<>();
+        try {
+            if ( execution != null && execution.getMojoDescriptor() != null ) {
+                for ( org.apache.maven.artifact.Artifact a : execution.getMojoDescriptor().getPluginDescriptor().getArtifacts() ) {
+                    if ( a.getFile() != null ) out.add(a.getFile().toPath().toAbsolutePath().normalize());
+                }
+            }
+        } catch ( RuntimeException ignored ) {
+            // fall back to the code source below
+        }
+        if ( out.isEmpty() ) {
+            try {
+                out.add(Path.of(getClass().getProtectionDomain().getCodeSource().getLocation().toURI())
+                        .toAbsolutePath().normalize());
+            } catch ( Exception ignored ) {
+                // nothing known: the plugin version still keys it
+            }
+        }
+        if ( project != null && execution != null ) {
+            try {
+                // The module's own compiled output is a build product, not a generator: it moves
+                // whenever generated code is compiled. Left out unless this phase loads
+                // generators from it (the test and command-line phases do).
+                String phase = phaseName();
+                boolean loadsOwnClasses = phase.equals(PHASE_GENERATE_TEST_SOURCES)
+                        || phase.equals(PHASE_GENERATE_TEST_RESOURCES) || phase.equals("cli");
+                Set<Path> own = new HashSet<>();
+                if ( project.getBuild() != null ) {
+                    if ( project.getBuild().getOutputDirectory() != null )
+                        own.add(Path.of(project.getBuild().getOutputDirectory()).toAbsolutePath().normalize());
+                    if ( project.getBuild().getTestOutputDirectory() != null )
+                        own.add(Path.of(project.getBuild().getTestOutputDirectory()).toAbsolutePath().normalize());
+                }
+                for ( String e : classpathElements(phase) ) {
+                    Path p = Path.of(e).toAbsolutePath().normalize();
+                    if ( loadsOwnClasses || !own.contains(p) ) out.add(p);
+                }
+            } catch ( Exception e ) {
+                throw new MetaDataException("Could not read the project classpath: " + e.getMessage(), e);
+            }
+        }
+        return new ArrayList<>(out);
+    }
+
+    private String phaseName() {
+        String phase = execution != null ? execution.getLifecyclePhase() : null;
+        return phase == null ? "cli" : phase;
+    }
+
+    /** Every input that is known before the loader runs, as small named entries. Throws when
+     *  an input cannot be proven (a metadata source that is not a local file or the classpath). */
+    protected List<GenFingerprint.Input> fingerprintBaseInputs() throws java.io.IOException {
+        List<GenFingerprint.Input> in = new ArrayList<>();
+        Path base = getProjectBaseDir().toPath().toAbsolutePath().normalize();
+        in.add(new GenFingerprint.Input("tool", "fingerprint-format", String.valueOf(GenFingerprint.FORMAT_VERSION)));
+        in.add(new GenFingerprint.Input("tool", "plugin-version", pluginVersion()));
+
+        // Generator identity: the content of everything the generators are loaded from.
+        for ( Path p : engineClasspath() ) {
+            GenFingerprint.addTree(in, "engine", p.getFileName() == null ? p.toString() : p.getFileName().toString(),
+                    p, r -> false);
+        }
+        // An owned (ejected) generator: the content of its source.
+        GenFingerprint.addTree(in, "owned-generator", MetaDataEjectMojo.CODEGEN_DIR,
+                base.resolve(MetaDataEjectMojo.CODEGEN_DIR), r -> false);
+
+        // Options: the loader, the flags and every generator's configuration.
+        LoaderParam lp = getLoader();
+        in.add(config("loader", String.join("|", String.valueOf(lp.getClassname()), String.valueOf(lp.getName()),
+                String.valueOf(lp.getSourceDir()), String.valueOf(lp.getSources()),
+                String.valueOf(lp.getLibraries()), String.valueOf(lp.getFilters()))));
+        in.add(config("strict", String.valueOf(!lax)));
+        in.add(config("globals", new java.util.TreeMap<>(globals == null ? Map.of() : globals).toString()));
+        if ( getGenerators() != null ) {
+            for ( GeneratorParam g : getGenerators() ) {
+                Map<String, String> merged = new java.util.TreeMap<>(mergeAndOverwriteArgs(g));
+                in.add(new GenFingerprint.Input("generator", String.valueOf(g.getClassname()),
+                        GenFingerprint.sha256(String.join("|", String.valueOf(g.getHandEdits()),
+                                String.valueOf(g.getFilters()), String.valueOf(g.getScripts()), merged.toString()))));
+                if ( g.getScripts() != null ) {
+                    for ( String script : g.getScripts() ) {
+                        Path sp = base.resolve(script).normalize();
+                        if ( Files.isRegularFile(sp) ) in.add(GenFingerprint.fileInput("script", script, sp));
+                    }
+                }
+            }
+        }
+
+        // The project's .metaobjects folder (config, dependency lock, snapshot), minus the state.
+        File srcDir = getSourceDir();
+        java.util.Optional<Path> configDir = resolveProjectConfigDir(srcDir);
+        if ( configDir.isPresent() ) {
+            GenFingerprint.addTree(in, "project-config", ".metaobjects",
+                    configDir.get().resolve(".metaobjects"), r -> r.startsWith(".gen-state"));
+        } else {
+            in.add(new GenFingerprint.Input("project-config", ".metaobjects", "none"));
+        }
+
+        return in;
+    }
+
+    /** Generator identity, options and project config, plus the model's hash from the loaded
+     *  root. Never the metadata source files. */
+    private List<GenFingerprint.Input> fingerprintInputs( MetaDataLoader loader ) throws java.io.IOException {
+        List<GenFingerprint.Input> in = new ArrayList<>(fingerprintBaseInputs());
+        in.add(new GenFingerprint.Input("model", "model", ModelKey.of(loader).model()));
+        return in;
+    }
+
+    private static GenFingerprint.Input config( String name, String value ) {
+        return new GenFingerprint.Input("config", name, GenFingerprint.sha256(value));
+    }
+
 
     /**
      * Reflectively instantiate and configure each declared generator, mirroring the exact
@@ -827,50 +1147,7 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
 
                 getLog().info("MetaData Mojo > LifeCycle Phase: " + execution.getLifecyclePhase());
 
-                List<String> runTimeClasspath   = project.getRuntimeClasspathElements();
-                List<String> compileClasspath   = project.getCompileClasspathElements();
-                //List<String> compileSources     = project.getCompileSourceRoots();
-                List<String> testClasspath      = project.getTestClasspathElements();
-                //List<String> testCompileSources = project.getTestCompileSourceRoots();
-                //getLog().info( "runTimeClasspath: " + compileClasspath );
-                //getLog().info( "compileClasspath: " + compileClasspath );
-                //getLog().info( "compileSources: " + compileSources );
-                //getLog().info( "testClasspath: " + compileClasspath );
-                //getLog().info( "testSources: " + testCompileSources );
-
-                List<String> classpathElements = new ArrayList<>();
-
-                // Add runtime and compile time classes
-                classpathElements.addAll(runTimeClasspath);
-                classpathElements.addAll(compileClasspath);
-
-                if ( lifeCyclePhase.equals(PHASE_GENERATE_SOURCES)) {
-                    //classpathElements.add(project.getBuild().getOutputDirectory());
-                }
-                else if ( lifeCyclePhase.equals(PHASE_GENERATE_RESOURCES)) {
-                    //classpathElements.add(project.getBuild().getOutputDirectory());
-                    addDirIfExists( classpathElements, "generated-resources" );
-                }
-                else if (lifeCyclePhase.equals(PHASE_GENERATE_TEST_SOURCES)) {
-                    // Get the processed resources and compiled classes
-                    classpathElements.addAll(testClasspath);
-                    classpathElements.add(project.getBuild().getOutputDirectory());
-                    addDirIfExists( classpathElements, "generated-resources" );
-                }
-                else if (lifeCyclePhase.equals(PHASE_GENERATE_TEST_RESOURCES) ||
-                        lifeCyclePhase.equals("cli")) {
-                    // Get the processed resources and compiled classes
-                    // Also get any generated-test-resources
-                    classpathElements.addAll(testClasspath);
-                    classpathElements.add(project.getBuild().getOutputDirectory());
-                    addDirIfExists( classpathElements, "generated-resources" );
-                    addDirIfExists( classpathElements, "generated-test-resources" );
-
-                    //if ( lifeCyclePhase.equals("cli")) {
-                    //    classpathElements.addAll(runTimeClasspath);
-                    //    classpathElements.addAll(compileClasspath);
-                    //}
-                }
+                List<String> classpathElements = classpathElements(lifeCyclePhase);
 
                 if ( classpathElements.size() > 0 ) {
                     URL urls[] = new URL[classpathElements.size()];
@@ -894,6 +1171,46 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
         }
 
         return thisLoader;
+    }
+
+    /**
+     * The classpath elements the project class loader is built from for {@code lifeCyclePhase}:
+     * the runtime and compile classpaths, plus (for the test and command-line phases) the test
+     * classpath and the module's compiled classes.
+     */
+    protected List<String> classpathElements(String lifeCyclePhase) throws Exception {
+        List<String> runTimeClasspath   = project.getRuntimeClasspathElements();
+        List<String> compileClasspath   = project.getCompileClasspathElements();
+        List<String> testClasspath      = project.getTestClasspathElements();
+
+        List<String> classpathElements = new ArrayList<>();
+
+        // Add runtime and compile time classes
+        classpathElements.addAll(runTimeClasspath);
+        classpathElements.addAll(compileClasspath);
+
+        if ( lifeCyclePhase.equals(PHASE_GENERATE_SOURCES)) {
+            // nothing more
+        }
+        else if ( lifeCyclePhase.equals(PHASE_GENERATE_RESOURCES)) {
+            addDirIfExists( classpathElements, "generated-resources" );
+        }
+        else if (lifeCyclePhase.equals(PHASE_GENERATE_TEST_SOURCES)) {
+            // Get the processed resources and compiled classes
+            classpathElements.addAll(testClasspath);
+            classpathElements.add(project.getBuild().getOutputDirectory());
+            addDirIfExists( classpathElements, "generated-resources" );
+        }
+        else if (lifeCyclePhase.equals(PHASE_GENERATE_TEST_RESOURCES) ||
+                lifeCyclePhase.equals("cli")) {
+            // Get the processed resources and compiled classes
+            // Also get any generated-test-resources
+            classpathElements.addAll(testClasspath);
+            classpathElements.add(project.getBuild().getOutputDirectory());
+            addDirIfExists( classpathElements, "generated-resources" );
+            addDirIfExists( classpathElements, "generated-test-resources" );
+        }
+        return classpathElements;
     }
 
     protected void addDirIfExists(List<String> classpathElements, String s) {
