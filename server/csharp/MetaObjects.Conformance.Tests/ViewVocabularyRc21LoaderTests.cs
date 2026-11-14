@@ -217,7 +217,7 @@ public class ViewVocabularyRc21LoaderTests
         if (warns)
         {
             var w = Assert.Single(hit);
-            Assert.Contains("only the subtype Truck carries, over the TPH base Vehicle with no @filter on its discriminator \"kind\"", w);
+            Assert.Contains("\"payload\" (Truck.payloadClass) read columns only a subtype carries, over the TPH base Vehicle with no @filter on its discriminator \"kind\"", w);
         }
         else Assert.Empty(hit);
     }

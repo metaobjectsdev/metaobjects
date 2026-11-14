@@ -1056,14 +1056,22 @@ export function validateExtenderSubtypeScope(root: MetaData): string[] {
     if (discriminator === undefined) continue;
     if (filterKeys(effectiveProjectionFilter(obj)).includes(discriminator)) continue;
     const referrerPkg = obj.package ?? obj.fileDefaultPackage ?? "";
-    for (const f of obj.children().filter((c) => c.type === TYPE_FIELD)) {
+    // ADR-0039: own — only the extender's OWN fields chose its base before rc.21 (an inherited field
+    // was anchored by the super's identity then too), so only they can have widened it.
+    const subtypeFields: string[] = [];
+    let subtype: MetaData | undefined;
+    for (const f of obj.ownChildren().filter((c) => c.type === TYPE_FIELD)) {
       const owner = _refNamedOwner(f, root, referrerPkg);
       if (owner === undefined || owner === base || !_isDescendantOf(owner, base)) continue;
+      subtypeFields.push(`"${f.name}" (${owner.name}.${f.superRef?.split(".").pop() ?? f.name})`);
+      subtype ??= owner;
+    }
+    if (subtype !== undefined) {
       warnings.push(
-        `object.projection ${obj.name}: "${f.name}" reads ${owner.name}.${f.superRef?.split(".").pop() ?? f.name}, a column only the ` +
-          `subtype ${owner.name} carries, over the TPH base ${base.name} with no @filter on its discriminator "${discriminator}", so the ` +
-          `view returns every ${base.name} row (rc.21: an extender keeps its super's identity anchor; before, its base was ${owner.name}). ` +
-          `To keep a subtype-scoped view, add @filter { ${discriminator}: <value> } or declare identity.primary { extends: ${owner.name}.primary }.`,
+        `object.projection ${obj.name}: ${subtypeFields.join(", ")} read columns only a subtype carries, over the TPH base ` +
+          `${base.name} with no @filter on its discriminator "${discriminator}", so the view returns every ${base.name} row ` +
+          `(rc.21: an extender keeps its super's identity anchor; before, its base was the subtype). To keep a subtype-scoped ` +
+          `view, add @filter { ${discriminator}: <value> } or declare identity.primary { extends: ${subtype.name}.primary }.`,
       );
     }
   }

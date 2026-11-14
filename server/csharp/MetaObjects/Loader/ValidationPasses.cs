@@ -1357,7 +1357,10 @@ public static partial class ValidationPasses
             if (discriminator is null) continue;
             if (ProjectionFilters.Effective(obj) is IReadOnlyDictionary<string, object?> filter && FilterKeys(filter).Contains(discriminator)) continue;
             var pkg = NamingRefs.EffectivePackage(obj);
-            foreach (var f in obj.Children().Where(c => c.Type == TYPE_FIELD))
+            // Only the extender's OWN fields chose its base before rc.21, so only they can have widened it.
+            var subtypeFields = new List<string>();
+            MetaData? subtype = null;
+            foreach (var f in obj.OwnChildren().Where(c => c.Type == TYPE_FIELD))
             {
                 var owner = RefNamedOwner(f, root, pkg);
                 if (owner is null || ReferenceEquals(owner, baseEntity)) continue;
@@ -1366,12 +1369,15 @@ public static partial class ValidationPasses
                     if (ReferenceEquals(cur, baseEntity)) { descends = true; break; }
                 if (!descends) continue;
                 var col = f.SuperRef is { } r ? r.Split('.').Last() : f.Name;
-                warnings.Add(
-                    $"object.projection {obj.Name}: \"{f.Name}\" reads {owner.Name}.{col}, a column only the " +
-                    $"subtype {owner.Name} carries, over the TPH base {baseEntity.Name} with no @filter on its discriminator \"{discriminator}\", so the " +
-                    $"view returns every {baseEntity.Name} row (rc.21: an extender keeps its super's identity anchor; before, its base was {owner.Name}). " +
-                    $"To keep a subtype-scoped view, add @filter {{ {discriminator}: <value> }} or declare identity.primary {{ extends: {owner.Name}.primary }}.");
+                subtypeFields.Add($"\"{f.Name}\" ({owner.Name}.{col})");
+                subtype ??= owner;
             }
+            if (subtype is not null)
+                warnings.Add(
+                    $"object.projection {obj.Name}: {string.Join(", ", subtypeFields)} read columns only a subtype carries, over the TPH base " +
+                    $"{baseEntity.Name} with no @filter on its discriminator \"{discriminator}\", so the view returns every {baseEntity.Name} row " +
+                    "(rc.21: an extender keeps its super's identity anchor; before, its base was the subtype). To keep a subtype-scoped " +
+                    $"view, add @filter {{ {discriminator}: <value> }} or declare identity.primary {{ extends: {subtype.Name}.primary }}.");
         }
         return warnings.AsReadOnly();
     }

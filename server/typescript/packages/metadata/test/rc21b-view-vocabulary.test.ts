@@ -243,7 +243,7 @@ describe("an extender whose view widened over a TPH base", () => {
   test("warns, naming the remedy", async () => {
     const w = (await warningsOf(row())).filter((m) => m.includes("TruckRow"));
     expect(w.length).toBe(1);
-    expect(w[0]).toMatch(/only the subtype Truck carries, over the TPH base Vehicle with no @filter on its discriminator "kind"/);
+    expect(w[0]).toMatch(/"payload" \(Truck.payloadClass\) read columns only a subtype carries, over the TPH base Vehicle with no @filter on its discriminator "kind"/);
     expect(w[0]).toMatch(/@filter \{ kind: <value> \} or declare identity.primary \{ extends: Truck.primary \}/);
   });
   test("a discriminator filter, or its own identity, scopes it: no warning", async () => {
