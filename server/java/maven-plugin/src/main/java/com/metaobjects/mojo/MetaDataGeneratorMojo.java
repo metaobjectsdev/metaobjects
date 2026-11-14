@@ -326,8 +326,6 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
         }
     }
 
-    /** Fail the goal, naming each missing companion, when the list does not declare what its
-     *  generators' output references; with {@link #allowUnmetRequires}, warn instead. */
     /**
      * The {@link #entities} selection as a list, or {@code null} when none is set. Refuses a
      * selection that names nothing (a blank value, usually an unset shell variable, would
@@ -357,6 +355,8 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
         return names;
     }
 
+    /** Fail the goal, naming each missing companion, when the list does not declare what its
+     *  generators' output references; with {@link #allowUnmetRequires}, warn instead. */
     void refuseUnmetRequires(List<Generator> generatorImpls) {
         List<String> unmet = RequiresCheck.unmetFor(generatorImpls);
         if (unmet.isEmpty()) return;
