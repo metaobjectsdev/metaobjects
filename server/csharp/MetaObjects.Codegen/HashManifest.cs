@@ -72,41 +72,66 @@ public static class HashManifest
     /// Hold the manifest in memory until the returned handle is disposed, then write it at
     /// most once. A nested batch for the same directory joins the outer one. The write
     /// happens even when the run throws: every file recorded so far IS on disk, and dropping
-    /// its record would make the next run refuse output it wrote itself.
+    /// its record would make the next run refuse output it wrote itself. Call
+    /// <see cref="BatchScope.Complete"/> when the run succeeds: a scope disposed without it is
+    /// unwinding an exception, and a failed manifest write then must not replace that
+    /// exception, so it is swallowed.
     /// </summary>
-    public static IDisposable Batch(string? genStateDir)
+    public static BatchScope Batch(string? genStateDir)
     {
-        if (genStateDir is null) return NoBatch.Instance;
+        if (genStateDir is null) return BatchScope.None;
         var key = Path.GetFullPath(genStateDir);
         lock (Batches)
         {
-            if (Batches.ContainsKey(key)) return NoBatch.Instance;
+            if (Batches.ContainsKey(key)) return BatchScope.None;
             Batches[key] = new ManifestBatch(ReadFile(genStateDir));
         }
-        return new BatchHandle(genStateDir, key);
+        return new BatchScope(genStateDir, key);
     }
 
-    private sealed class NoBatch : IDisposable
+    /// <summary>The handle <see cref="Batch"/> returns; disposing it writes the manifest.</summary>
+    public sealed class BatchScope : IDisposable
     {
-        public static readonly NoBatch Instance = new();
-        public void Dispose() { }
-    }
+        internal static readonly BatchScope None = new(null, null);
 
-    private sealed class BatchHandle(string genStateDir, string key) : IDisposable
-    {
+        private readonly string? _genStateDir;
+        private readonly string? _key;
+        private bool _completed;
         private bool _disposed;
+
+        internal BatchScope(string? genStateDir, string? key)
+        {
+            _genStateDir = genStateDir;
+            _key = key;
+        }
+
+        /// <summary>Mark the run as finished normally, so a failed write is reported.</summary>
+        public void Complete() => _completed = true;
 
         public void Dispose()
         {
-            if (_disposed) return;
+            if (_disposed || _key is null || _genStateDir is null) return;
             _disposed = true;
             ManifestBatch batch;
             lock (Batches)
             {
-                batch = Batches[key];
-                Batches.Remove(key);
+                batch = Batches[_key];
+                Batches.Remove(_key);
             }
-            if (batch.Dirty) WriteFile(genStateDir, batch.Raw);
+            if (!batch.Dirty) return;
+            if (_completed)
+            {
+                WriteFile(_genStateDir, batch.Raw);
+                return;
+            }
+            try
+            {
+                WriteFile(_genStateDir, batch.Raw);
+            }
+            catch (Exception)
+            {
+                // The run is already unwinding an exception; that one is the cause to report.
+            }
         }
     }
 

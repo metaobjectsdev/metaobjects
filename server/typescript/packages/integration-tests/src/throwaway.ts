@@ -20,12 +20,16 @@ export const TMPFS_SIZE = "2g";
 export const MYSQL_8_DATA_DIR = "/var/lib/mysql";
 
 /**
- * The data directory a `postgres` image declares as its VOLUME: `/var/lib/postgresql` from
- * Postgres 18, `/var/lib/postgresql/data` before it (`docker image inspect`).
+ * The data directory a Postgres image declares as its VOLUME: `/var/lib/postgresql` from
+ * Postgres 18, `/var/lib/postgresql/data` before it (`docker image inspect`). The major comes
+ * from a `postgres:<major>` tag or a `pg<major>` tag (pgvector). A tag that names no major
+ * (`latest`, none, a digest) is today's release, 18 or later, so it takes the newer path:
+ * guessing the older one there would leave the data on an anonymous on-disk volume.
  */
 export function postgresDataDir(image: string): string {
-  const major = /^(?:[^/]+\/)*postgres:(\d+)/.exec(image)?.[1];
-  return major !== undefined && Number(major) >= 18 ? "/var/lib/postgresql" : "/var/lib/postgresql/data";
+  const tag = /:([^/:@]+)(?:@.*)?$/.exec(image)?.[1] ?? "";
+  const major = /^(\d+)/.exec(tag)?.[1] ?? /(?:^|-)pg(\d+)/.exec(tag)?.[1];
+  return major === undefined || Number(major) >= 18 ? "/var/lib/postgresql" : "/var/lib/postgresql/data";
 }
 
 /** `postgres` server options for a database whose contents may be lost at any moment. */

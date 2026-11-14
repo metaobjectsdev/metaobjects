@@ -177,20 +177,30 @@ function batchFor(genStateDir: string): ManifestBatch | undefined {
  * Run `fn` with the manifest under `genStateDir` held in memory, and write it once when
  * `fn` returns or throws, only if something changed. A throw still writes what was
  * recorded before it: those files are on disk, and a manifest that forgot them would
- * read them as unrecorded and refuse them next run. A nested call for the same
+ * read them as unrecorded and refuse them next run. When `fn` threw, a failed manifest
+ * write is swallowed so `fn`'s error stays the one reported. A nested call for the same
  * directory joins the outer batch.
  */
 export function withManifestBatch<T>(genStateDir: string, fn: () => T): T {
   const key = resolve(genStateDir);
   if (manifestBatches.has(key)) return fn();
-  manifestBatches.set(key, { raw: readManifestFile(genStateDir), dirty: false });
+  const batch: ManifestBatch = { raw: readManifestFile(genStateDir), dirty: false };
+  manifestBatches.set(key, batch);
+  let result: T;
   try {
-    return fn();
-  } finally {
-    const batch = manifestBatches.get(key)!;
+    result = fn();
+  } catch (err) {
     manifestBatches.delete(key);
-    if (batch.dirty) writeManifestFile(genStateDir, batch.raw);
+    try {
+      if (batch.dirty) writeManifestFile(genStateDir, batch.raw);
+    } catch {
+      // `fn`'s error is the cause to report; a failed manifest write must not replace it.
+    }
+    throw err;
   }
+  manifestBatches.delete(key);
+  if (batch.dirty) writeManifestFile(genStateDir, batch.raw);
+  return result;
 }
 
 function readRawManifest(genStateDir: string): Record<string, unknown> {

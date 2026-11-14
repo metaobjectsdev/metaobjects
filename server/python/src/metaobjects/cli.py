@@ -1006,9 +1006,9 @@ def _run_suite(
     # and only the ones that own an exit code care about the refusals.
     if refused_out is not None:
         refused_out.extend(path for path, status in result.files if status == "refused")
-    # Emitted but not written: the file already held this output. Still in the return
-    # value (the orphan sweep and the cross-target guard need every emitted path), but a
-    # caller reporting what it WROTE must leave these out.
+    # Emitted but not written: the file already held this output, or skip-existing kept
+    # it. Still in the return value (the orphan sweep and the cross-target guard need every
+    # emitted path), but a caller reporting what it WROTE must leave these out.
     if unchanged_out is not None:
         unchanged_out.update(
             path for path, status in result.files if status in ("unchanged", "skipped")
@@ -1856,7 +1856,7 @@ def _cmd_gen_config(args: argparse.Namespace) -> int:
         print(f"removed {path}")
     print(
         f"metaobjects gen: wrote {len(changed)} file(s) across {len(targets)} target(s)."
-        + (f" {len(unchanged)} file(s) unchanged." if unchanged else "")
+        + (f" {len(unchanged)} file(s) left as they were." if unchanged else "")
         + (f" Removed {len(removed)} file(s) no generator emits any more." if removed else "")
     )
     if refused:

@@ -305,12 +305,19 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   and every whole-model file it writes is byte-identical to a full run's. A generator sees the
   whole model in `ctx.entities` and the narrowing as `ctx.selected`; `perEntity` (`per_entity`)
   applies it. A Python target's declared `entities` still bounds that target's model. C# and
-  Java take no entity filter and were not affected.
+  Java take no entity filter and were not affected. Two consequences to expect: a narrowed run
+  checks the whole model as a full run does (a sourced object with no `dialect`, colliding
+  collection names), because the files it writes are rendered from it; and an owned generator
+  that writes one file per object by looping over `ctx.entities` itself, instead of through
+  `perEntity`, now sees every object, so it should set each file's `sourceNode` (the runner
+  then drops the unnamed objects' files) or apply `ctx.selected`.
 - **`gen` writes `.hashes.json` once per run, and not at all when nothing changed.** TypeScript,
   Python and C# re-read and re-wrote the whole manifest after every generated file, so a run of
   N files wrote it N times; they now hold it in memory for the run and write it once, as Java
   already did. Python's `metaobjects gen` also stops listing unchanged files as written: it
-  prints the files it wrote and counts the unchanged ones separately.
+  prints the files it wrote and counts the ones it left as they were separately. A run that
+  fails still records the files it wrote before failing, and a failed manifest write then no
+  longer hides the error that stopped the run.
 - **`meta gen` loads the metadata once.** The unknown-attribute warning re-loaded the project
   strictly on every run; it now reuses the generation load and parses strictly again only when
   the lenient load reported an unknown bare key. `meta gen` also no longer imports a database

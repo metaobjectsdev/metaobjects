@@ -3,12 +3,13 @@
 // of a large project's run time, for the same bytes one write produces.
 import { describe, test, expect, beforeEach, afterEach, spyOn } from "bun:test";
 import * as fs from "node:fs";
-import { mkdtempSync, rmSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { MetaDataLoader } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
 import { runGen, defineConfig } from "../src/index.js";
+import { decideAndWrite, withManifestBatch } from "../src/overwrite-policy.js";
 import { entityFile } from "../src/generators/entity-file.js";
 import { queriesFile } from "../src/generators/queries-file.js";
 import { barrel } from "../src/generators/barrel.js";
@@ -64,5 +65,17 @@ describe("the hash manifest is written once per run", () => {
     const before = readFileSync(manifestPath(), "utf-8");
     expect(await gen()).toBe(0);
     expect(readFileSync(manifestPath(), "utf-8")).toBe(before);
+  });
+
+  test("a run that throws keeps its own error when the manifest write fails too", () => {
+    const genStateDir = join(project, ".gen-state");
+    expect(() =>
+      withManifestBatch(genStateDir, () => {
+        decideAndWrite(join(project, "a.ts"), "export {};\n", { genStateDir, outputRelPath: "a.ts" });
+        // A directory where the manifest goes: the end-of-batch write now fails (EISDIR).
+        mkdirSync(join(genStateDir, MANIFEST), { recursive: true });
+        throw new Error("the generator's own failure");
+      }),
+    ).toThrow("the generator's own failure");
   });
 });

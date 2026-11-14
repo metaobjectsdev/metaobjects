@@ -95,7 +95,7 @@ def test_an_unchanged_file_is_not_reported_as_written(
     printed = capsys.readouterr().out.splitlines()
     assert [line for line in printed if line.endswith(".py")] == [str(out / "Program.py")]
     assert "metaobjects gen: wrote 1 file(s)" in printed[-1]
-    assert "unchanged" in printed[-1]
+    assert "left as they were" in printed[-1]
 
 
 def test_entities_narrows_the_write_not_the_whole_model_files(tmp_path: Path) -> None:
@@ -117,3 +117,17 @@ def test_entities_narrows_the_write_not_the_whole_model_files(tmp_path: Path) ->
     assert written
     for rel in written:
         assert (narrow / rel).read_bytes() == (full / rel).read_bytes(), str(rel)
+
+
+def test_a_failed_run_keeps_its_own_error_when_the_manifest_write_fails_too(
+    tmp_path: Path,
+) -> None:
+    gen_state = tmp_path / "gen-state"
+    with pytest.raises(RuntimeError, match="the generator's own failure"):
+        with overwrite_policy.manifest_batch(str(gen_state)):
+            overwrite_policy.decide_and_write(
+                str(tmp_path / "a.py"), "x = 1\n", gen_state_dir=str(gen_state), rel_path="a.py"
+            )
+            # A directory where the manifest goes: the end-of-batch write now fails.
+            (gen_state / overwrite_policy.HASHES_FILE).mkdir(parents=True)
+            raise RuntimeError("the generator's own failure")

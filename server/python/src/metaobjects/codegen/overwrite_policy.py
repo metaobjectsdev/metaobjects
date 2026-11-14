@@ -35,7 +35,7 @@ import hashlib
 import json
 import os
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 
 from .constants import GENERATED_MARKER
 
@@ -111,10 +111,16 @@ def manifest_batch(gen_state_dir: str | None) -> Iterator[None]:
     _batches[key] = batch
     try:
         yield
-    finally:
+    except BaseException:
         del _batches[key]
         if batch.dirty:
-            _write_manifest_file(gen_state_dir, batch.raw)
+            # The block's exception is the cause to report; a failed write must not replace it.
+            with suppress(Exception):
+                _write_manifest_file(gen_state_dir, batch.raw)
+        raise
+    del _batches[key]
+    if batch.dirty:
+        _write_manifest_file(gen_state_dir, batch.raw)
 
 
 def _read_raw(gen_state_dir: str) -> dict[str, object]:
