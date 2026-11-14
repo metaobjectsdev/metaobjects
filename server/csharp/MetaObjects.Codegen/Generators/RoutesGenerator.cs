@@ -1065,6 +1065,13 @@ public class RoutesGenerator : PerEntityGenerator
     // were; with it, no limit takes defaultLimit and one above maxLimit is 400 limit_too_large.
     private static void AppendOffsetLimit(StringBuilder sb, ApiPagination? page, string indent, string offRaw, string off, string limRaw, string lim)
     {
+        if (page is not null)
+        {
+            // A bound that is present but not a whole number is refused, as the TypeScript routes answer,
+            // never read as "absent" and answered with a page the client did not ask for.
+            sb.AppendLine($"{indent}if (qs.TryGetValue(\"offset\", out var {offRaw}Bad) && !long.TryParse({offRaw}Bad, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out _))");
+            sb.AppendLine($"{indent}    return Results.BadRequest(new {{ error = \"pagination.invalid_value\", param = \"offset\", value = {offRaw}Bad.ToString(), expected = \"a non-negative integer (0 or more)\" }});");
+        }
         sb.AppendLine($"{indent}if (qs.TryGetValue(\"offset\", out var {offRaw}) && int.TryParse({offRaw}, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var {off}) && {off} > 0)");
         sb.AppendLine($"{indent}    q = q.Skip({off});");
         if (page is null)
@@ -1074,9 +1081,9 @@ public class RoutesGenerator : PerEntityGenerator
             return;
         }
         sb.AppendLine($"{indent}// api.pagination: no limit takes defaultLimit; a limit above maxLimit is refused.");
-        // A negative limit is refused with the malformed-bound envelope, as the TypeScript routes answer.
-        sb.AppendLine($"{indent}if (qs.TryGetValue(\"limit\", out var {limRaw}Neg) && long.TryParse({limRaw}Neg, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var {lim}Neg) && {lim}Neg < 0)");
-        sb.AppendLine($"{indent}    return Results.BadRequest(new {{ error = \"pagination.invalid_value\", param = \"limit\", value = {lim}Neg.ToString(System.Globalization.CultureInfo.InvariantCulture), expected = \"a non-negative integer (0 or more)\" }});");
+        // A negative or non-numeric limit is refused with the malformed-bound envelope, as the TypeScript routes answer.
+        sb.AppendLine($"{indent}if (qs.TryGetValue(\"limit\", out var {limRaw}Neg) && !(long.TryParse({limRaw}Neg, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var {lim}Neg) && {lim}Neg >= 0))");
+        sb.AppendLine($"{indent}    return Results.BadRequest(new {{ error = \"pagination.invalid_value\", param = \"limit\", value = {limRaw}Neg.ToString(), expected = \"a non-negative integer (0 or more)\" }});");
         sb.AppendLine($"{indent}var __take = {page.DefaultLimit};");
         // `limit=0` is a page of zero rows, as every other port serves it, not "no limit".
         sb.AppendLine($"{indent}if (qs.TryGetValue(\"limit\", out var {limRaw}) && long.TryParse({limRaw}, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var {lim}) && {lim} >= 0)");

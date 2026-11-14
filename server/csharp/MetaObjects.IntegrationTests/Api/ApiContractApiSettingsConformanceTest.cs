@@ -25,6 +25,27 @@ public sealed class ApiContractApiSettingsConformanceTest
         await RunAsync(scenario, server.BaseUrl);
     }
 
+    // The corpus cannot pin this: Java/Kotlin answer Spring's type-mismatch 400 and Python FastAPI's 422
+    // for a non-numeric bound, so each C# route is exercised here against the cross-port 400 envelope.
+    [Theory]
+    [InlineData("/api/items?limit=abc", "limit", "abc")]
+    [InlineData("/api/items?limit=1O", "limit", "1O")]
+    [InlineData("/api/items?offset=x", "offset", "x")]
+    public async Task Non_numeric_page_bound_is_refused_not_served_as_default_page(string path, string param, string value)
+    {
+        await using var pg = await PostgresContainer.StartAsync();
+        await using var server = await ApiSettingsGeneratedServerFactory.StartAsync(pg);
+        await server.ApplySeedAsync();
+        using var client = new HttpClient { BaseAddress = new Uri(server.BaseUrl) };
+        var response = await client.GetAsync(ApiContractWire.VerbatimUri(client, path));
+        Assert.Equal(400, (int)response.StatusCode);
+        var body = JsonNode.Parse(await response.Content.ReadAsStringAsync())!.AsObject();
+        Assert.Equal("pagination.invalid_value", (string?)body["error"]);
+        Assert.Equal(param, (string?)body["param"]);
+        Assert.Equal(value, (string?)body["value"]);
+        Assert.Equal("a non-negative integer (0 or more)", (string?)body["expected"]);
+    }
+
     private static async Task RunAsync(ApiScenario scenario, string baseUrl)
     {
         using var client = new HttpClient { BaseAddress = new Uri(baseUrl) };

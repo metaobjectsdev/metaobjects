@@ -85,7 +85,8 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   the first `defaultLimit` rows, while an explicit `limit` above `maxLimit` answers
   `400 {"error": "limit_too_large", "maxLimit": N}` (refused, not clamped); a negative `limit`
   answers `400 pagination.invalid_value` in every port rather than reaching a store that reads
-  `LIMIT -1` as no limit. `meta init` writes
+  `LIMIT -1` as no limit, and the generated C# routes answer the same envelope for a `limit` or
+  `offset` that is not a whole number (`limit=abc`) rather than serving the default page. `meta init` writes
   that block for a new project. **A project without the setting behaves exactly as before**,
   because a cap added on upgrade would silently truncate a client that reads a whole list;
   each port's verify advises (rule `unbounded-list-pages`, never a failure) when a routes

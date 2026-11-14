@@ -286,8 +286,11 @@ each handler they register instead; an `HTTPException` is rethrown to your
   a client that asked for more than the server serves is told so rather than handed a short page
   it cannot tell from the end of the list. A negative `limit` answers the malformed-bound
   envelope above (`pagination.invalid_value`) in every port, so it never reaches a store that
-  reads `LIMIT -1` as no limit (SQLite). `limit=0` is a page of zero rows, not "no limit"
-  (`api-settings/limit-zero`). `offset` and `withCount=1` page past the default as
+  reads `LIMIT -1` as no limit (SQLite). The generated C# routes also answer that envelope for a
+  `limit` or `offset` that is present but not a whole number (`limit=abc`, `offset=x`) instead of
+  serving the default page; TypeScript does the same, Java and Kotlin answer Spring's type-mismatch
+  400 and Python FastAPI's 422, so the corpus pins only the negative limit.
+  `limit=0` is a page of zero rows, not "no limit" (`api-settings/limit-zero`). `offset` and `withCount=1` page past the default as
   usual, with `total` counting every row. `meta init` writes the block above for a new project;
   both sizes must be positive whole numbers (`50.0` reads as `50`) no larger than 2147483647, and
   `defaultLimit` may not exceed `maxLimit`; a block that breaks a rule is refused when the config
