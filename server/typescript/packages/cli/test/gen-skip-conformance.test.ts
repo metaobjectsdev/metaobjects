@@ -324,6 +324,23 @@ describe("an output outside the project root (ADR-0062)", () => {
   }, 30_000);
 });
 
+describe("an orphan the sweep refuses to delete (ADR-0062)", () => {
+  test("stores no key, so the next gen runs again and repeats the refusal", async () => {
+    const p = makeProject();
+    expect(await gen(p)).toBe(0);
+    expect(existsSync(stateFile(p))).toBe(true);
+    const orphan = join(p.root, "generated", "Customer.ts");
+    expect(existsSync(orphan)).toBe(true);
+    append(orphan, "// mine\n");
+    unlinkSync(join(p.root, "metaobjects", "meta.crm.json"));
+
+    expect(await gen(p)).toBe(0);
+    expect(existsSync(orphan)).toBe(true);
+    expect(existsSync(stateFile(p))).toBe(false);
+    expect(await genSkips(p, {})).toBe(false);
+  }, 30_000);
+});
+
 describe("verify --codegen renders in memory (ADR-0062)", () => {
   test("a full render writes no temp tree and no file anywhere", async () => {
     const p = makeProject();

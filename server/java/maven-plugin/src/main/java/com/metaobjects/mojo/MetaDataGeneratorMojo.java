@@ -141,17 +141,18 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
 
             run.flush();
             Set<Path> emittedThisBuild = refuseSharedPaths(run.emissions(), run.emittedPaths());
+            boolean sweepRefused = false;
             if (migrating) {
                 getLog().info("MetaData Mojo > Recorded the generator and output dir of every generated "
                         + "file in `.metaobjects/.gen-state/.hashes.json`; this build deletes no orphaned file.");
             } else if (genStateDir != null) {
-                sweepOrphans(genStateDir, projectRoot, handEditsByDir, emittedThisBuild, runOwners);
+                sweepRefused = sweepOrphans(genStateDir, projectRoot, handEditsByDir, emittedThisBuild, runOwners);
             }
             reportManifestNotices(run, genStateDir, hadManifestAtStart);
 
             // ADR-0062: a run that refused a file stores no fingerprint, and a file written
             // outside the module (no manifest record) is checked by path.
-            runWasClean = run.refusedCount() == 0;
+            runWasClean = run.refusedCount() == 0 && !sweepRefused;
             List<String> outside = new ArrayList<>();
             if (projectRoot != null) {
                 Set<String> recorded = genStateDir != null ? HashManifest.load(genStateDir).keySet() : Set.of();
@@ -190,7 +191,7 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
      * ({@link OrphanSweep#isCandidate}): its own generators' files, and files whose
      * generator the module configures in no execution any more.
      */
-    private void sweepOrphans(Path genStateDir, Path projectRoot, Map<Path, List<String>> handEditsByDir,
+    private boolean sweepOrphans(Path genStateDir, Path projectRoot, Map<Path, List<String>> handEditsByDir,
                               Set<Path> emitted, Set<HashManifest.Owner> runOwners) {
         List<OrphanSweep.Entry> dirs = new ArrayList<>();
         for (Map.Entry<Path, List<String>> e : handEditsByDir.entrySet()) {
@@ -209,6 +210,7 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
         if (!swept.refused.isEmpty()) {
             getLog().warn(OrphanSweep.refusedMessage(swept.refused, OWNER));
         }
+        return !swept.refused.isEmpty();
     }
 
     /**

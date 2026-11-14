@@ -213,6 +213,9 @@ export interface RunGenResult {
   /** The absolute paths this run wrote outside the project root. The manifest records none of
    *  them, so the stored skip key lists them and a later skip needs each to exist (ADR-0062). */
   outsidePaths?: readonly string[];
+  /** True when the orphan sweep kept an edited orphan. Such a run is incomplete: it stores no
+   *  skip key, so the next run repeats the warning (ADR-0062). */
+  sweepRefused?: boolean;
 }
 
 /**
@@ -1143,6 +1146,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
         ]
       : orphanJobs;
 
+  let sweepRefused = false;
   const sweep = (dryRun: boolean): void => {
     if (projectRoot === undefined || sweepJobs.length === 0) return;
 
@@ -1196,6 +1200,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
       writes.push({ path: join(projectRoot, relPath), status: "removed" });
     }
     if (result.refused.length > 0) {
+      sweepRefused = true;
       // Grouped by the generator that refused, so each message names a generator the
       // project actually registered. `orphanPolicy` is generic and apps are encouraged
       // to compose their own, so one blanket message naming `requirement-tests` would
@@ -1314,7 +1319,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
 
   return {
     files: writes, warnings, conflicts, handEditsOverwrite: handEditsOverwrite(), orphanSweepJobs: sweepJobs,
-    outsidePaths,
+    outsidePaths, sweepRefused,
   };
 }
 
