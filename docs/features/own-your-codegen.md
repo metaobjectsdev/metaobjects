@@ -109,8 +109,7 @@ holds), the naming tables and the type-mapping tables (`names.ts`, `naming.ts`,
 projection and report lowering that `meta migrate` and `meta verify` run. An owned file
 imports the engine from the package's engine entry, `@metaobjectsdev/codegen-ts/engine`,
 which also exports the code printer's `code`, `imp` and `joinCode` (`poet.ts`, the package's
-vendored copy of `ts-poet`). The list is
-`ENGINE_MODULES`, exported from that entry; a module
+vendored copy of `ts-poet`). The list is `ENGINE_MODULES`, exported from that entry; a module
 that is not on it and that a generator reaches is copied. An owned generator therefore
 imports no packaged module that returns emitted text, and a test ejects each generator alone
 into an empty project to prove it: it compiles as your `tsconfig.codegen.json` checks it and
