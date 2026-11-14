@@ -257,7 +257,7 @@ public class PackageBindingResolverTests
     }
 
     [Fact]
-    public void Real_P3_config_resolves_all_18_domains_correctly()
+    public void Adopter_style_config_resolves_all_domains_correctly()
     {
         var cfg = CfgWithDefaults() with
         {
@@ -275,8 +275,8 @@ public class PackageBindingResolverTests
                 ["acme::domain::dataEnums"] = "Acme.Domain.DataEnums",
                 ["acme::domain::dataEnums::authorizations"] = "Acme.Domain.DataEnums.Authorizations",
                 ["acme::domain::dataEnums::couponCards"] = "Acme.Domain.DataEnums.CouponCards",
-                ["acme::domain::dataEnums::dataExportIntegration"] = "Acme.Domain.DataEnums.DataExportIntegration",
-                ["acme::domain::dataEnums::spIntegration"] = "Acme.Domain.DataEnums.SPIntegration",
+                ["acme::domain::dataEnums::warehouseFeed"] = "Acme.Domain.DataEnums.WarehouseFeed",
+                ["acme::domain::dataEnums::ediIntegration"] = "Acme.Domain.DataEnums.EDIIntegration",
             },
         };
 
