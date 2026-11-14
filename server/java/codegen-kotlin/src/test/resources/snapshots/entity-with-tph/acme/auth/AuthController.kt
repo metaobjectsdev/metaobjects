@@ -435,9 +435,9 @@ class AuthController(private val objectMapper: ObjectMapper, private val validat
         issues.addAt(validator.validateValue(BridgeAuthValidation::class.java, "reference", dto.reference), "reference")
         if (!issues.isEmpty()) return@transaction ResponseEntity.badRequest().body(issues.body() as Any)
         val newId = AuthTable.insert {
-            it[type] = AuthType.Bridge
-            it[reference] = dto.reference!!
-            it[quantity] = dto.quantity
+            it[AuthTable.type] = AuthType.Bridge
+            it[AuthTable.reference] = dto.reference!!
+            it[AuthTable.quantity] = dto.quantity
         }[AuthTable.id]
         val saved = AuthTable.selectAll().where { AuthTable.id eq newId }.single()
         ResponseEntity.status(HttpStatus.CREATED).body(rowToAuth(saved) as Any)
@@ -533,9 +533,9 @@ class AuthController(private val objectMapper: ObjectMapper, private val validat
         issues.addAt(validator.validateValue(CopayAuthValidation::class.java, "reference", dto.reference), "reference")
         if (!issues.isEmpty()) return@transaction ResponseEntity.badRequest().body(issues.body() as Any)
         val newId = AuthTable.insert {
-            it[type] = AuthType.Copay
-            it[reference] = dto.reference!!
-            it[copayAmount] = dto.copayAmount
+            it[AuthTable.type] = AuthType.Copay
+            it[AuthTable.reference] = dto.reference!!
+            it[AuthTable.copayAmount] = dto.copayAmount
         }[AuthTable.id]
         val saved = AuthTable.selectAll().where { AuthTable.id eq newId }.single()
         ResponseEntity.status(HttpStatus.CREATED).body(rowToAuth(saved) as Any)
@@ -630,9 +630,9 @@ class AuthController(private val objectMapper: ObjectMapper, private val validat
         issues.addAt(validator.validateValue(PriorAuthAuthValidation::class.java, "reference", dto.reference), "reference")
         if (!issues.isEmpty()) return@transaction ResponseEntity.badRequest().body(issues.body() as Any)
         val newId = AuthTable.insert {
-            it[type] = AuthType.PriorAuth
-            it[reference] = dto.reference!!
-            it[priorAuthNumber] = dto.priorAuthNumber
+            it[AuthTable.type] = AuthType.PriorAuth
+            it[AuthTable.reference] = dto.reference!!
+            it[AuthTable.priorAuthNumber] = dto.priorAuthNumber
         }[AuthTable.id]
         val saved = AuthTable.selectAll().where { AuthTable.id eq newId }.single()
         ResponseEntity.status(HttpStatus.CREATED).body(rowToAuth(saved) as Any)

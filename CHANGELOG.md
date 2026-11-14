@@ -57,7 +57,8 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   route's subtype is its only source) and every column the route's subtype does not declare. An
   assigned key is still the caller's on create. No port answers them with a 400. A key the
   entity does not declare is a separate case, now a project setting (`api.unknownFields`,
-  under "Changed" below). Java DTOs and Kotlin entity classes now carry
+  under "Changed" below). Java DTOs and Kotlin entity classes that are a
+  write route's request body (and the value objects nested in one) now carry
   `@JsonIgnoreProperties(ignoreUnknown = true)`, so binding no longer depends on the host's
   `ObjectMapper` (a plain one answered 400). The Python 1.2.1 fix is carried forward to this
   line, and the Python TPH create now drops a body's discriminator instead of answering 400 for
@@ -188,7 +189,7 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   Only the top level is judged: a member a value object does not declare is dropped, never
   refused and never stored, on create and on PATCH, while the open JSON bag keeps every key
   (`jsonb/jsonb-nested-undeclared-key-dropped`, both lanes of every port). The Java generated
-  value-object records now carry `@JsonIgnoreProperties(ignoreUnknown = true)` for this; they
+  value-object records nested in a write route's body now carry `@JsonIgnoreProperties(ignoreUnknown = true)` for this; they
   answered `400 invalid_type` before. C# matches a key the way it binds the body, with the app's
   JSON options: under the ASP.NET web default, which ignores case, `Title` is the declared
   `title` and is not refused.

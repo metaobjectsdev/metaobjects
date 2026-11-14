@@ -190,6 +190,7 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
         warnIfAgentContextStale();
 
         advisoriesDone = false;
+        unboundedListAdvisoryDone = false;
         String m = mode == null ? "" : mode.trim();
         if (m.isEmpty()) {
             verifyDefaultSet();
@@ -261,6 +262,9 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
     /** Set once the field lint and requirement gate have run, so a two-gate run reports them once. */
     private boolean advisoriesDone;
 
+    /** Set once the pagination advisory has run, so a two-gate run reports it once. */
+    private boolean unboundedListAdvisoryDone;
+
     /**
      * Mode unset: the cross-port default gate set. Codegen drift always; template drift when
      * {@code templateRoot} is configured, else skipped with a note (there is no directory to
@@ -303,8 +307,8 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
      * Warnings ONLY: this never throws and never changes the build result.
      */
     private void runFieldLintAdvisory(MetaDataLoader loader) {
-        if (advisoriesDone || noFieldLint || "1".equals(System.getenv(FieldLint.ENV_OPT_OUT))) return;
         runUnboundedListAdvisory(loader);
+        if (advisoriesDone || noFieldLint || "1".equals(System.getenv(FieldLint.ENV_OPT_OUT))) return;
         List<FieldLint.Finding> findings = new ArrayList<>();
         try {
             findings.addAll(FieldLint.lintReferenceFields(loader));
@@ -326,6 +330,8 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
      * accept any {@code limit}. Never fails the build.
      */
     private void runUnboundedListAdvisory(MetaDataLoader loader) {
+        if (unboundedListAdvisoryDone) return;
+        unboundedListAdvisoryDone = true;
         try {
             if (loader.getRoot().getApiSettings().hasPagination()) return;
             boolean generatesRoutes = false;

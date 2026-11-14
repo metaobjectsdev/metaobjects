@@ -1,9 +1,9 @@
-// ApiContractApiSettingsConformanceTest — the C# #484 secret-fields api-contract lane.
+// ApiContractApiSettingsConformanceTest — the C# api-settings api-contract lane.
 //
-// Drives the fixtures/api-contract-conformance/secret-fields/ scenarios over HTTP against the
-// GENERATED Account routes booted unmodified on Kestrel against a Postgres testcontainer.
-// Proves the deployed REST surface ignores writes to @formExclude / credential fields and
-// never returns a credential. Generated lane only.
+// Drives the fixtures/api-contract-conformance/api-settings/ scenarios over HTTP against the
+// GENERATED Item routes booted unmodified on Kestrel. Proves the deployed REST surface applies
+// api.pagination (default page size, hard cap on limit) and api.unknownFields (drop or reject
+// undeclared request keys). Generated lane only.
 
 using System.Text.Json;
 using System.Text.Json.Nodes;

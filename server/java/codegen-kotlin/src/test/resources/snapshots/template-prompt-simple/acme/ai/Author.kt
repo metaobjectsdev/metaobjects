@@ -1,6 +1,5 @@
 package acme.ai
 
-import com.fasterxml.jackson.`annotation`.JsonIgnoreProperties
 import kotlin.Long
 import kotlin.String
 import kotlin.jvm.JvmStatic
@@ -8,7 +7,6 @@ import kotlin.jvm.JvmStatic
 /**
  * GENERATED — do not hand-edit. Regenerated from metadata.
  */
-@JsonIgnoreProperties(ignoreUnknown = true)
 public data class Author(
   public val id: Long? = null,
   public val name: String? = null,

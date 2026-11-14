@@ -98,6 +98,7 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         durationWirePackages.clear()
         // ADR-0019 Amendment 2: the project's wire setting, read from the loaded root.
         wire = WireFormat.of(loader.root)
+        requestBodies = RestSurfaceGate.requestBodyShapes(loader)
         fr019Config = Fr019SharedEnum.ProvidedEnumConfig.fromArgs(args)
         // emitAbstractShapes (default OFF): when ON, an abstract entity is emitted as a Kotlin
         // `interface` shape (read-only properties) instead of being suppressed. It is NEVER
@@ -148,6 +149,9 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
 
     /** ADR-0019 Amendment 2: the project's wire setting (native unless `.metaobjects/config.json` says otherwise). */
     private var wire: WireFormat = WireFormat.DEFAULT
+
+    /** Names of the classes bound from a write route's request body, for the current run. */
+    private var requestBodies: Set<String> = emptySet()
 
     /**
      * #234: emit the per-package `MetaNetJson.kt` support object (the strict field.uri / field.inet
@@ -240,13 +244,18 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             .addModifiers(KModifier.DATA)
             .addKdoc("GENERATED — do not hand-edit. Regenerated from metadata.\n")
             .apply {
-                // The class IS the create request body: an undeclared key is DROPPED, never rejected,
-                // whatever FAIL_ON_UNKNOWN_PROPERTIES the host's ObjectMapper carries.
-                addAnnotation(
-                    AnnotationSpec.builder(ClassName("com.fasterxml.jackson.annotation", "JsonIgnoreProperties"))
-                        .addMember("ignoreUnknown = true")
-                        .build(),
-                )
+                // A request body DROPS an undeclared key, never rejects it, whatever
+                // FAIL_ON_UNKNOWN_PROPERTIES the host's ObjectMapper carries. Only a write route's
+                // entity and the value objects nested in it are one; a stored-proc argument class, a
+                // response parser's decode target (ADR-0056), a prompt payload or a projection keeps
+                // the host mapper's strictness.
+                if (obj.name in requestBodies) {
+                    addAnnotation(
+                        AnnotationSpec.builder(ClassName("com.fasterxml.jackson.annotation", "JsonIgnoreProperties"))
+                            .addMember("ignoreUnknown = true")
+                            .build(),
+                    )
+                }
                 // `wire.nullMembers: omit` (ADR-0019 Amendment 2): a value object's null members are left
                 // out. Under native/emit Jackson writes them as null with the key present.
                 if (obj.subType == MetaObject.SUBTYPE_VALUE && wire.omitNullMembers()) {

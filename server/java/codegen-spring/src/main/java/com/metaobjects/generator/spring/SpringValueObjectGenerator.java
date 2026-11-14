@@ -16,6 +16,7 @@ import com.metaobjects.generator.GeneratorException;
 import com.metaobjects.generator.GeneratorIOWriter;
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase;
 import com.metaobjects.generator.util.GeneratorUtil;
+import com.metaobjects.generator.util.RestSurfaceGate;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.object.MetaObject;
 
@@ -91,6 +92,9 @@ public class SpringValueObjectGenerator extends MultiFileDirectGeneratorBase<Met
     /** The project's wire setting for the current run (ADR-0019 Amendment 2). */
     private WireFormat wire = WireFormat.DEFAULT;
 
+    /** Names of the classes bound from a write route's request body, for the current run. */
+    private Set<String> requestBodies = Set.of();
+
     @Override
     public void execute(MetaDataLoader loader) {
         parseArgs();
@@ -102,6 +106,7 @@ public class SpringValueObjectGenerator extends MultiFileDirectGeneratorBase<Met
         if (Boolean.parseBoolean(getArg(Fr019SharedEnum.ARG_EMIT_SHARED_ENUMS, "false"))) {
             Fr019SharedEnum.emitMaterialized(loader, outRoot);
         }
+        requestBodies = RestSurfaceGate.requestBodyShapes(loader);
         for (MetaObject vo : valueShapes(loader)) {
             emit(vo, outRoot);
         }
@@ -184,8 +189,11 @@ public class SpringValueObjectGenerator extends MultiFileDirectGeneratorBase<Met
         if (omitNulls) src.append("@JsonInclude(JsonInclude.Include.NON_NULL)\n");
         // A member the value object does not declare is DROPPED, never rejected, whatever
         // FAIL_ON_UNKNOWN_PROPERTIES the host's ObjectMapper carries: api.unknownFields judges a
-        // request body's top level only, so a nested undeclared key binds like the DTO's own.
-        src.append("@com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)\n");
+        // request body's top level only, so a nested undeclared key binds like the DTO's own. Only a
+        // value object nested in a write route's body is one; a payload or parser target is not.
+        if (requestBodies.contains(vo.getName())) {
+            src.append("@com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)\n");
+        }
         src.append("public record ").append(recordName).append("(\n");
         List<String[]> components = new ArrayList<>(fields.size());
         for (int i = 0; i < fields.size(); i++) {

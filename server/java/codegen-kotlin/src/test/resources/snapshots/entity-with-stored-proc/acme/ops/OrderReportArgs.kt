@@ -1,13 +1,11 @@
 package acme.ops
 
-import com.fasterxml.jackson.`annotation`.JsonIgnoreProperties
 import kotlin.Long
 import kotlin.jvm.JvmStatic
 
 /**
  * GENERATED — do not hand-edit. Regenerated from metadata.
  */
-@JsonIgnoreProperties(ignoreUnknown = true)
 public data class OrderReportArgs(
   public val orderId: Long? = null,
 ) {

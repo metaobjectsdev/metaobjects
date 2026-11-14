@@ -50,7 +50,12 @@ public class MetaDataVerifyUnboundedListAdvisoryTest {
     }
 
     private static CapturingLog verify(Path project, boolean generatesRoutes) throws Exception {
+        return verify(project, generatesRoutes, false);
+    }
+
+    private static CapturingLog verify(Path project, boolean generatesRoutes, boolean noFieldLint) throws Exception {
         MetaDataVerifyMojo mojo = new MetaDataVerifyMojo();
+        mojo.setNoFieldLint(noFieldLint);
         mojo.setLoader(LoaderParam.builder("verify-unbounded-test")
                 .withClassname("com.metaobjects.loader.MetaDataLoader")
                 .withSourceDir(project.toString())
@@ -88,5 +93,11 @@ public class MetaDataVerifyUnboundedListAdvisoryTest {
     @Test
     public void noControllerNoAdvisory() throws Exception {
         assertTrue(verify(project("{\"schema_version\": 1}"), false).warnings.isEmpty());
+    }
+
+    @Test
+    public void turningTheFieldLintOffDoesNotSilenceIt() throws Exception {
+        CapturingLog log = verify(project("{\"schema_version\": 1}"), true, true);
+        assertEquals(log.warnings.toString(), 1, log.warnings.size());
     }
 }

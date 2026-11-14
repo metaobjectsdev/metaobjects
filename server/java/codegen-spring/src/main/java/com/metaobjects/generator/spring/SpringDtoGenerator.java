@@ -48,6 +48,7 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Set;
 import com.metaobjects.generator.util.GeneratedFileWriter;
 
 /**
@@ -104,6 +105,9 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
     /** The project's wire setting for the current run (ADR-0019 Amendment 2). */
     private WireFormat wire = WireFormat.DEFAULT;
 
+    /** Names of the classes bound from a write route's request body, for the current run. */
+    private Set<String> requestBodies = Set.of();
+
     @Override
     protected Class<MetaObject> getFilterClass() {
         return MetaObject.class;
@@ -117,6 +121,7 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         // ADR-0019 Amendment 2: read from the loaded root, not from a shape being emitted - a
         // served report's shape is synthesized from its read model and carries no parent.
         wire = loader.getRoot().getWireFormat();
+        requestBodies = RestSurfaceGate.requestBodyShapes(loader);
         Path outRoot = Paths.get(outDir.getAbsolutePath());
         fr019Config = Fr019SharedEnum.ProvidedEnumConfig.of(
             getArg("providedEnumNamespace"), getArg("providedEnumPackages"));
@@ -649,9 +654,12 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         }
         src.append("/** GENERATED — wire DTO for ").append(shortName)
            .append(". Do not hand-edit; regenerated from metadata. */\n");
-        // The DTO is the create request body: an undeclared key is DROPPED, never rejected, whatever
-        // FAIL_ON_UNKNOWN_PROPERTIES the host's ObjectMapper carries (a plain ObjectMapper has it on).
-        src.append("@com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)\n");
+        // A request body DROPS an undeclared key, never rejects it, whatever FAIL_ON_UNKNOWN_PROPERTIES
+        // the host's ObjectMapper carries (a plain ObjectMapper has it on). Only a class bound from a
+        // write route's body is one; a projection or report row keeps the host mapper's strictness.
+        if (requestBodies.contains(entity.getName())) {
+            src.append("@com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)\n");
+        }
         src.append("public record ").append(recordName).append("(\n");
 
         // Filter ObjectField — see class javadoc. Same reason as the Kotlin port's

@@ -637,7 +637,7 @@ routes:
 None of these is a `400`, and none reaches the repository. Each port does it in its own idiom: TypeScript
 parses with the Zod input schema (which drops keys it does not list) and writes the parsed value; Python keeps only
 the keys its input model validated; Java nulls the dropped components of the bound DTO before
-`repository.create` and its DTOs carry `@JsonIgnoreProperties(ignoreUnknown = true)`, so the answer does not
+`repository.create` and its request-body DTOs carry `@JsonIgnoreProperties(ignoreUnknown = true)`, so the answer does not
 depend on the host's `ObjectMapper`; Kotlin writes only the route's settable columns; C# resets the bound
 entity's generated key, TPH discriminator and M:N navigations before `Add`, and gives a `readOnly` property
 a private setter, which System.Text.Json never binds. The shared scenarios `input-server-owned-dropped` and

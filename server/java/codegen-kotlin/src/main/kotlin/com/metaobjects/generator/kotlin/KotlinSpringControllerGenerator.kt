@@ -1232,9 +1232,9 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 // #203/ADR-0045: capture one now() per temporal type so createdAt == updatedAt exactly.
                 for ((expr, valName) in insertNowVal) append("        val $valName = $expr\n")
                 append("        val newId = $table.insert {\n")
-                append("            it[${plan.discriminatorField}] = $disc\n")
+                append("            it[$table.${plan.discriminatorField}] = $disc\n")
                 // `@generation: uuid` key minted app-side — see the vanilla create.
-                if (uuidGeneratedPk(base, pkFieldName)) append("            it[$pkFieldName] = java.util.UUID.randomUUID()\n")
+                if (uuidGeneratedPk(base, pkFieldName)) append("            it[$table.$pkFieldName] = java.util.UUID.randomUUID()\n")
                 // Only what THIS route's subtype may set on create: its effective (base + own)
                 // columns, never a readOnly or derived one and never a sibling subtype's column.
                 val createNames = st.entity.metaFields
@@ -1246,13 +1246,13 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                     // DTO field is still nullable, so force non-null on create (create bodies for
                     // that subtype always supply it); nullable columns bind the nullable value as-is.
                     val colNonNull = baseFieldNames.contains(f) && KotlinGenUtil.isRequiredField(scalarFields.first { it.name == f })
-                    if (colNonNull) append("            it[$f] = dto.$f!!\n")
-                    else append("            it[$f] = dto.$f\n")
+                    if (colNonNull) append("            it[$table.$f] = dto.$f!!\n")
+                    else append("            it[$table.$f] = dto.$f\n")
                 }
                 // #203/ADR-0045: insert stamps onCreate+onUpdate @autoSet columns from the captured
                 // now() (the caller's dto value is ignored — never bound).
                 for (f in insertAutoSetFields) {
-                    append("            it[${f.name}] = ${insertNowVal[KotlinTypeMapper.nowExpr(f)]}\n")
+                    append("            it[$table.${f.name}] = ${insertNowVal[KotlinTypeMapper.nowExpr(f)]}\n")
                 }
                 append("        }[$table.$pkFieldName]\n")
                 append("        val saved = $table.selectAll().where { $table.$pkFieldName eq newId }.single()\n")
