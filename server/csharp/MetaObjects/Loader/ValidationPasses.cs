@@ -1346,8 +1346,11 @@ public static partial class ValidationPasses
     public static IReadOnlyList<string> ValidateExtenderSubtypeScope(MetaData root)
     {
         var warnings = new List<string>();
-        foreach (var obj in root.OwnChildren().Where(c => c.Type == TYPE_OBJECT && c.SubType == OBJECT_SUBTYPE_PROJECTION))
+        // ADR-0039: effective children, the nodes TS iterates (fix round 2, N4).
+        foreach (var obj in root.Children().Where(c => c.Type == TYPE_OBJECT && c.SubType == OBJECT_SUBTYPE_PROJECTION))
         {
+            // An abstract extender emits no view, so nothing it declares widened one.
+            if (obj.IsAbstract) continue;
             if (obj.OwnChildren().Any(c => c.Type == TYPE_IDENTITY)) continue;
             if (obj.SuperData is not { Type: TYPE_OBJECT, SubType: OBJECT_SUBTYPE_PROJECTION } sup || !AnchorsByIdentity(sup)) continue;
             if (DeriveBaseEntity(obj, root, "@extends", obj.Source, new List<MetaError>()) is not { } baseEntity) continue;
@@ -1951,7 +1954,7 @@ public static partial class ValidationPasses
     public static IReadOnlyList<MetaError> ValidateProjectionUnionAndGrain(MetaData root)
     {
         var errors = new List<MetaError>();
-        foreach (var obj in root.OwnChildren().Where(c => c.Type == TYPE_OBJECT && c.SubType == OBJECT_SUBTYPE_PROJECTION))
+        foreach (var obj in root.Children().Where(c => c.Type == TYPE_OBJECT && c.SubType == OBJECT_SUBTYPE_PROJECTION))
         {
             void Bad(string message) => errors.Add(new MetaError($"object.projection {obj.Name}: {message}", ErrorCode.ERR_BAD_ATTR_VALUE, Envelope: obj.Source));
             // ADR-0039: own — a projection's @union / @grain names ITS view's shape.

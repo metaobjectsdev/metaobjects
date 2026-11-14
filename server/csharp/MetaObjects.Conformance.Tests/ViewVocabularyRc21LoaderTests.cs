@@ -196,6 +196,7 @@ public class ViewVocabularyRc21LoaderTests
     [Theory]
     [InlineData("", true)]
     [InlineData("\"@filter\": { \"kind\": \"TRUCK\" },", false)]
+    [InlineData("\"abstract\": true,", false)]
     public void An_extender_whose_view_widened_over_a_tph_base_warns(string filter, bool warns)
     {
         var json = $$"""

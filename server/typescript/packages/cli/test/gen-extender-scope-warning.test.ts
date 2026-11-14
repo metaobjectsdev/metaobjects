@@ -1,6 +1,7 @@
 // rc.21 part B (I2): an extender keeps its super's identity anchor, so a view whose own fields
 // read a TPH subtype's columns returns every base row. The loader records that on its warning
-// channel, which `loadMemory` does not return; `meta gen` prints it so the change is visible.
+// channel, which `loadMemory` does not return; every command that loads a model to emit or check
+// views (gen, migrate, verify) prints it, so the change is visible.
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -8,7 +9,7 @@ import { run } from "../src/index.js";
 
 const WORKSPACE_TMP = resolve(import.meta.dirname, "fixtures", "__tmp__");
 
-function model(scoped: boolean): string {
+function model(scoped: boolean, abstract = false): string {
   return JSON.stringify({
     "metadata.root": {
       package: "app",
@@ -21,7 +22,7 @@ function model(scoped: boolean): string {
         { "object.projection": { name: "VehicleBase", abstract: true, children: [
           { "field.long": { name: "vehicleId", extends: "Vehicle.id" } },
           { "identity.primary": { name: "id", extends: "Vehicle.primary" } } ] } },
-        { "object.projection": { name: "TruckRow", extends: "VehicleBase", ...(scoped ? { "@filter": { kind: "TRUCK" } } : {}), children: [
+        { "object.projection": { name: "TruckRow", extends: "VehicleBase", ...(abstract ? { abstract: true } : {}), ...(scoped ? { "@filter": { kind: "TRUCK" } } : {}), children: [
           { "source.rdb": { "@kind": "view", "@view": "v_trucks" } },
           { "field.string": { name: "payload", extends: "Truck.payloadClass" } } ] } },
       ],
@@ -29,11 +30,11 @@ function model(scoped: boolean): string {
   });
 }
 
-function setupRepo(scoped: boolean): string {
+function setupRepo(scoped: boolean, abstract = false): string {
   mkdirSync(WORKSPACE_TMP, { recursive: true });
   const root = mkdtempSync(join(WORKSPACE_TMP, "gen-extender-scope-"));
   mkdirSync(join(root, "metaobjects"), { recursive: true });
-  writeFileSync(join(root, "metaobjects", "meta.app.json"), model(scoped), "utf8");
+  writeFileSync(join(root, "metaobjects", "meta.app.json"), model(scoped, abstract), "utf8");
   mkdirSync(join(root, ".metaobjects"), { recursive: true });
   writeFileSync(join(root, ".metaobjects", "config.json"), JSON.stringify({ schema_version: 1, sources: [] }), "utf8");
   writeFileSync(join(root, "metaobjects.config.ts"), `
@@ -75,6 +76,32 @@ describe("meta gen — the widened-extender warning is printed", () => {
       expect(stderr).toContain("object.projection TruckRow");
       expect(stderr).toContain(`"payload" (Truck.payloadClass)`);
       expect(stderr).toContain("@filter { kind: <value> }");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("meta verify and meta migrate print it too (fix round 2, N4)", async () => {
+    const root = setupRepo(false);
+    try {
+      await run(["verify", "--cwd", root]);
+      expect(err.join("\n")).toContain("object.projection TruckRow");
+      err.length = 0;
+      await run(["migrate", "--cwd", root, "--dialect", "sqlite", "--dry-run"]);
+      expect(err.join("\n")).toContain("object.projection TruckRow");
+      err.length = 0;
+      await run(["migrate", "--cwd", root, "--from-db", "--db", `file:${join(root, "t.db")}`, "--slug", "init", "--dry-run"]);
+      expect(err.join("\n")).toContain("object.projection TruckRow");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("an abstract extender emits no view: no warning (fix round 2, N4)", async () => {
+    const root = setupRepo(false, true);
+    try {
+      expect(await run(["gen", "--cwd", root])).toBe(0);
+      expect(err.join("\n")).not.toContain("object.projection TruckRow");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

@@ -60,6 +60,7 @@ import {
 import type { MetaobjectsGenConfig } from "@metaobjectsdev/codegen-ts";
 import { buildProjectionViews } from "@metaobjectsdev/codegen-ts";
 import { buildKyselyFromUrl, inferDialect, type Dialect } from "../lib/kysely.js";
+import { warnWidenedExtenders } from "../lib/widened-extenders.js";
 import { tokensToAllowOptions, describeChange } from "../lib/allow.js";
 import {
   computeDrift,
@@ -403,6 +404,8 @@ export async function verifyCommand(
     }, fmt);
     return 1;
   }
+  // rc.21 part B (I2): an extender whose view now returns every row of a TPH base.
+  warnWidenedExtenders(root, (line) => log.warn(line));
 
   // The project's schema settings, resolved once for every expected-schema build and drift
   // computation below. A `migrate.conventions` preset this version does not ship is a config

@@ -18,7 +18,8 @@ import {
 import { loadMemory, resolveCollection } from "@metaobjectsdev/sdk";
 import { declaredGeneratorNames, runGen, undeclaredGeneratorsMessage } from "@metaobjectsdev/codegen-ts";
 import type { WriteStatus } from "@metaobjectsdev/codegen-ts";
-import { packageOfResolutionKey, validateExtenderSubtypeScope } from "@metaobjectsdev/metadata";
+import { packageOfResolutionKey } from "@metaobjectsdev/metadata";
+import { warnWidenedExtenders } from "../lib/widened-extenders.js";
 import type { MetaRoot } from "@metaobjectsdev/metadata";
 import type { Collection } from "@metaobjectsdev/sdk";
 import { describeLoadError, reportLoadError } from "../lib/load-error.js";
@@ -215,9 +216,8 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
     ? [...unknownAttrFindings, UNKNOWN_ATTR_GEN_ADVICE]
     : [];
   for (const w of unknownAttrs) { log.warn(`warning: ${w}`); warnings.push(w); }
-  // rc.21 part B (I2): an extender whose view now returns every row of a TPH base. The loader
-  // records it on its warning channel, which `loadMemory` does not return, so it is said here.
-  for (const w of validateExtenderSubtypeScope(metadata)) { log.warn(`warning: ${w}`); warnings.push(w); }
+  // rc.21 part B (I2): an extender whose view now returns every row of a TPH base.
+  warnings.push(...warnWidenedExtenders(metadata, (line) => log.warn(line)));
 
   // The schema settings `meta migrate` builds with, for the Prisma schema, the schema page and
   // the migrate advice. A conventions preset that does not resolve is a config error here as in

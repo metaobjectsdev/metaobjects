@@ -264,6 +264,9 @@ describe("an extender whose view widened over a TPH base", () => {
     expect(w[0]).toMatch(/"payload" \(Truck.payloadClass\) read columns only a subtype carries, over the TPH base Vehicle with no @filter on its discriminator "kind"/);
     expect(w[0]).toMatch(/@filter \{ kind: <value> \} or declare identity.primary \{ extends: Truck.primary \}/);
   });
+  test("an abstract extender emits no view: no warning (fix round 2)", async () => {
+    expect((await warningsOf(row({ abstract: true }))).filter((m) => m.includes("TruckRow"))).toEqual([]);
+  });
   test("a discriminator filter, or its own identity, scopes it: no warning", async () => {
     expect((await warningsOf(row({ "@filter": { kind: "TRUCK" } }))).filter((m) => m.includes("TruckRow"))).toEqual([]);
     expect((await warningsOf(row({}, [{ "field.long": { name: "vehicleId", extends: "Truck.id" } },

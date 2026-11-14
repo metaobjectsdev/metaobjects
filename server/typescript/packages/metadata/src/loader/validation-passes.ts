@@ -1045,6 +1045,8 @@ function _deriveBaseEntity(
 export function validateExtenderSubtypeScope(root: MetaData): string[] {
   const warnings: string[] = [];
   for (const obj of root.children().filter((c) => c.type === TYPE_OBJECT && c.subType === OBJECT_SUBTYPE_PROJECTION)) {
+    // An abstract extender emits no view, so nothing it declares widened one (fix round 2, N4).
+    if (obj.isAbstract) continue;
     // ADR-0039: own — the identity anchor rule applies to an extender that declares none of its own.
     if (obj.ownChildren().some((c) => c.type === TYPE_IDENTITY)) continue;
     const sup = obj.superResolved;
