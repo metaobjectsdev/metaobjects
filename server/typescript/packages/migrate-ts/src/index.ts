@@ -17,7 +17,7 @@ export {
 export type { ExpectedSchemaWithProvenance, SchemaProvenance, SchemaBuildSettings } from "./expected-schema.js";
 export { introspect, introspectPostgres, introspectSqlite } from "./introspect/index.js";
 // rc.21 part B (N2): each declared origin.function, checked against pg_proc by `meta verify --db`.
-export { checkDeclaredFunctions } from "./introspect/declared-functions.js";
+export { checkDeclaredFunctions, DECLARED_FUNCTION_CHECK_LIMITS } from "./introspect/declared-functions.js";
 export { diff } from "./diff/index.js";
 export {
   defaultConventions, efcoreConventions, resolveSchemaConventions, SCHEMA_CONVENTION_PRESETS,

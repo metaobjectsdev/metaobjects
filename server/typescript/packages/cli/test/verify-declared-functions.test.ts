@@ -71,6 +71,8 @@ describe("meta verify --db — declared origin.function signatures", () => {
       expect(bad.code).toBe(1);
       expect(bad.out).toContain("origin.function verify_fn.meter_reading on MeterRow.reading: declared (long) → int, which needs " +
         "verify_fn.meter_reading(bigint) → integer; the database has verify_fn.meter_reading(bigint) → numeric.");
+      // Fix round 3 (M2): the run says what the comparison does not see.
+      expect(bad.out).toContain("a domain is compared by its own name, not its base type");
 
       const good = await capture(async () => verifyCommand(["--db", PG_URL!], await project("decimal", "decimal")));
       expect(good.out).not.toContain("origin.function verify_fn.meter_reading");

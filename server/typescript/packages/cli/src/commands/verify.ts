@@ -78,6 +78,7 @@ import {
   verifyReplay,
   introspect,
   checkDeclaredFunctions,
+  DECLARED_FUNCTION_CHECK_LIMITS,
   diff,
   withoutViewRecreates,
   readSnapshot,
@@ -1472,6 +1473,7 @@ export async function verifyCommand(
       if (kysely.dialect === "postgres") {
         try {
           functionDrift = await checkDeclaredFunctions(kysely.db, root);
+          if (functionDrift.length > 0) log.warn(`verify: ${DECLARED_FUNCTION_CHECK_LIMITS}`);
         } catch (err) {
           schemaRunError = `failed to read the declared functions from ${kysely.displayUrl}: ${describeError(err)}`;
           log.error(`verify: ${schemaRunError}`);

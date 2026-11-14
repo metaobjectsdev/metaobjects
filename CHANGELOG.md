@@ -45,7 +45,8 @@ vocabulary; upgrade every port together.
   column type, the one its table column would have (length or `@dbColumnType` spelling, precision and
   scale, a local or zoned timestamp). The signature is a declaration: `meta verify --db` reads each
   function from `pg_proc` and fails on a missing function or a parameter or return type that
-  differs, so the cast never hides a wrong `@returns`. Declared on an entity it is entity-derived
+  differs, so the cast never hides a wrong `@returns` (a defaulted parameter may be left out; json,
+  array, enum and user-defined kinds are not type-checked, and a domain is compared by its name). Declared on an entity it is entity-derived
   (Postgres only). On
   `object.projection`: `@grain` / `@grainOrdinal`, one row per element of a jsonb `field.object`
   array, its members read through `origin.passthrough @from: <ValueObject>.<member>`; and

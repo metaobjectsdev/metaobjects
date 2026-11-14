@@ -269,6 +269,12 @@ describe("rc.21 part B view vocabulary — live Postgres", () => {
     // A parameter of another type, and a function that does not exist.
     const [param] = await findings({ "field.decimal": fn({ name: "limit" }, { "@function": "credit_limit", "@args": ["pin"], "@params": ["int"], "@returns": "decimal" }) });
     expect(param).toMatch(/needs app\.credit_limit\(integer\) → numeric; the database has app\.credit_limit\(bigint\) → numeric\.$/);
+    // Fix round 3 (M1): a trailing defaulted parameter may be left out; fewer than the required ones is a finding.
+    await sql.raw(`CREATE FUNCTION app.tier_label(bigint, as_of date DEFAULT current_date) RETURNS text LANGUAGE sql STABLE
+      AS $$ SELECT 'tier-' || $1 || '@' || $2 $$`).execute(k);
+    expect(await findings({ "field.string": fn({ name: "tierLabel" }, { "@function": "tier_label", "@args": ["id"], "@params": ["long"], "@returns": "string" }) })).toEqual([]);
+    const [tooFew] = await findings({ "field.string": fn({ name: "tierLabel" }, { "@function": "tier_label", "@args": [], "@params": [], "@returns": "string" }) });
+    expect(tooFew).toMatch(/needs app\.tier_label\(\) → text \| character varying \| character; the database has app\.tier_label\(bigint, date\) → text\.$/);
     const [missing] = await findings({ "field.int": fn({ name: "score" }, { "@function": "no_such_fn", "@args": [], "@params": [], "@returns": "int" }) });
     expect(missing).toBe("origin.function app.no_such_fn on AccountRow.score: no such function in the database (declared () → int).");
   }, 60_000);

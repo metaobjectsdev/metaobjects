@@ -3,6 +3,11 @@
 // load and codegen, so a wrong one would be hidden by that cast (a `numeric` result declared `int`
 // rounds). `meta verify --db` reads each declared function from `pg_proc` and refuses any whose
 // parameter or return types are not the declared ones.
+//
+// What it does not check (fix round 3, M2): a parameter or result whose column kind has no plain
+// Postgres type name here — json/jsonb, arrays, an enum, a user-defined type — matches any type at
+// that position (only the arity is checked there). A domain is not seen through: `format_type`
+// names the domain, so a domain-typed parameter or result is reported as a mismatch.
 
 import type { Kysely } from "kysely";
 import { sql } from "kysely";
@@ -34,6 +39,8 @@ interface DeclaredFunction {
 /** One overload as `pg_proc` has it, its types spelled by `format_type(oid, NULL)`. */
 interface PgFunction {
   readonly args: readonly string[];
+  /** How many trailing parameters have a default (`pronargdefaults`): a call may omit them. */
+  readonly defaults: number;
   readonly returns: string;
   readonly retset: boolean;
 }
@@ -120,16 +127,19 @@ export function declaredFunctions(root: MetaData): DeclaredFunction[] {
 }
 
 async function overloads(db: Kysely<any>, schema: string, name: string): Promise<PgFunction[]> {
-  const result = await sql<{ args: string[]; returns: string; retset: boolean }>`
+  const result = await sql<{ args: string[]; defaults: number; returns: string; retset: boolean }>`
     SELECT ARRAY(SELECT format_type(a.t, NULL) FROM unnest(p.proargtypes::oid[]) WITH ORDINALITY AS a(t, i) ORDER BY a.i) AS args,
-           format_type(p.prorettype, NULL) AS returns, p.proretset AS retset
+           p.pronargdefaults::int AS defaults, format_type(p.prorettype, NULL) AS returns, p.proretset AS retset
       FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
      WHERE n.nspname = ${schema} AND p.proname = ${name} AND p.prokind = 'f'`.execute(db);
-  return result.rows.map((r) => ({ args: r.args, returns: r.returns, retset: r.retset }));
+  return result.rows.map((r) => ({ args: r.args, defaults: Number(r.defaults), returns: r.returns, retset: r.retset }));
 }
 
 function matches(declared: DeclaredFunction, fn: PgFunction): boolean {
-  if (fn.retset || fn.args.length !== declared.params.length) return false;
+  // A declared arity between the required count and the full count matches: the omitted
+  // trailing parameters take their defaults (fix round 3, M1).
+  const declaredCount = declared.params.length;
+  if (fn.retset || declaredCount > fn.args.length || declaredCount < fn.args.length - fn.defaults) return false;
   if (declared.returns.length > 0 && !declared.returns.includes(fn.returns)) return false;
   return declared.params.every((accepted, i) => accepted.length === 0 || accepted.includes(fn.args[i]!));
 }
@@ -138,6 +148,11 @@ function matches(declared: DeclaredFunction, fn: PgFunction): boolean {
  * The findings for every declared `origin.function` the Postgres database does not have with
  * the declared parameter and return types: one line each, empty when all match.
  */
+/** Printed under any finding: what the comparison does not see (fix round 3, M2). */
+export const DECLARED_FUNCTION_CHECK_LIMITS =
+  "origin.function signatures are compared by plain type name: a json, array, enum or user-defined " +
+  "kind is not type-checked (only the arity is), and a domain is compared by its own name, not its base type.";
+
 export async function checkDeclaredFunctions(db: Kysely<any>, root: MetaData): Promise<string[]> {
   const findings: string[] = [];
   for (const declared of declaredFunctions(root)) {
