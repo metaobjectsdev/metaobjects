@@ -11,8 +11,12 @@
 # along the script's own `--only` section boundaries so neither step repeats the other.
 # `scripts/ci-local.sh --help` enumerates what each section contains, and
 # `MO_CI_LIST_ONLY=1 scripts/ci-local.sh --only <section>` prints its exact step list.
-# Measured green on a warm tree 2026-09-18: test 256s (it carries the mutation gate and is
-# almost all of the cost), lint 23s.
+# Measured green on a warm tree 2026-09-18: test 256s, lint 23s. The test step's mutation
+# gate is DIFF-SCOPED (gate_completeness_diff in the script): it mutates only the
+# stryker.conf.mjs `mutate` files the branch changed against its base, and SKIPs when it
+# changed none. Before 2026-11-14 it ran the full pass every round, 10-45 min under load
+# and most of this step's wall time. The full pass is `--only mutation`, the flagless
+# run's mutation lane, and conformance.yml (tags, nightly, dispatch).
 #
 # ORDER IS LOAD-BEARING, and it is why the work is split this way round rather than one
 # `--quick` in `test`. The pipeline runs test BEFORE lint. The `gates` section contains
