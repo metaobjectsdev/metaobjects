@@ -54,6 +54,9 @@ export interface StoredFingerprint {
    *  makes the next run render: `meta gen` then puts it back or merges it, as `verify`
    *  tells the user it will. An edit the last run already kept is unchanged, and skips. */
   outputs: Record<string, string>;
+  /** Absolute paths the run wrote outside the project root. The manifest records none of them,
+   *  so a skip needs each to still exist. */
+  untracked: string[];
 }
 
 export const FINGERPRINT_FILE = ".fingerprint-typescript.json";
@@ -402,11 +405,16 @@ export function readStoredFingerprint(genStateDir: string): StoredFingerprint | 
   const raw = readJson(join(genStateDir, FINGERPRINT_FILE));
   if (raw === undefined) return undefined;
   const { format, key, extras, outputs } = raw;
+  const untracked = raw.untracked ?? [];
   if (format !== FINGERPRINT_FORMAT || typeof key !== "string") return undefined;
   if (!Array.isArray(extras) || !extras.every((e) => typeof e === "string")) return undefined;
   if (typeof outputs !== "object" || outputs === null || Array.isArray(outputs)) return undefined;
   if (!Object.values(outputs).every((h) => typeof h === "string")) return undefined;
-  return { format, key, extras: extras as string[], outputs: outputs as Record<string, string> };
+  if (!Array.isArray(untracked) || !untracked.every((p) => typeof p === "string")) return undefined;
+  return {
+    format, key, extras: extras as string[], outputs: outputs as Record<string, string>,
+    untracked: untracked as string[],
+  };
 }
 
 /**
@@ -415,6 +423,7 @@ export function readStoredFingerprint(genStateDir: string): StoredFingerprint | 
  */
 export function writeStoredFingerprint(
   projectRoot: string, genStateDir: string, key: string, extras: readonly string[],
+  untracked: readonly string[] = [],
 ): void {
   const outputs: Record<string, string> = {};
   for (const path of [...recordedFiles(genStateDir).keys()].sort()) {
@@ -423,7 +432,9 @@ export function writeStoredFingerprint(
     outputs[path] = fileHash(full);
   }
   mkdirSync(genStateDir, { recursive: true });
-  const body: StoredFingerprint = { format: FINGERPRINT_FORMAT, key, extras: [...new Set(extras)].sort(), outputs };
+  const body: StoredFingerprint = { format: FINGERPRINT_FORMAT, key, extras: [...new Set(extras)].sort(), outputs,
+    untracked: [...new Set(untracked)].sort(),
+  };
   writeFileSync(join(genStateDir, FINGERPRINT_FILE), JSON.stringify(body, null, 2) + "\n");
 }
 
@@ -468,6 +479,9 @@ export function decideGenSkip(inputs: GenInputs): SkipVerdict {
     if (!existsSync(full)) return { skip: false, reason: `${path} is missing` };
     const left = stored.outputs[path];
     if (left === undefined || fileHash(full) !== left) return { skip: false, reason: `${path} changed since the last run` };
+  }
+  for (const path of stored.untracked) {
+    if (!existsSync(path)) return { skip: false, reason: `${path} is missing` };
   }
   return { skip: true, recorded: [...recorded.keys()].sort() };
 }

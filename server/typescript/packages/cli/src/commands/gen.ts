@@ -420,7 +420,7 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
 
   const hasFailure = files.some((f) => f.status === "conflict" || f.status === "refused");
   if (!hasFailure && skipInputs !== undefined && nextKey !== undefined && cacheable && declaredGenerators.length > 0) {
-    writeStoredFingerprint(projectRoot, skipInputs.genStateDir, nextKey, extras);
+    writeStoredFingerprint(projectRoot, skipInputs.genStateDir, nextKey, extras, result.outsidePaths);
   }
   return hasFailure ? 1 : 0;
 }

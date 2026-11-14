@@ -304,6 +304,26 @@ describe("meta gen with nothing changed (ADR-0062)", () => {
   }, 30_000);
 });
 
+describe("an output outside the project root (ADR-0062)", () => {
+  test("a deleted output there makes the next gen and the local verify shortcut render", async () => {
+    const p = makeProject();
+    const outside = mkdtempSync(join(WORKSPACE_TMP, "gen-skip-out-"));
+    made.push(outside);
+    writeFileSync(join(p.root, "metaobjects.config.ts"),
+      config().replace('outDir: "generated"', `outDir: ${JSON.stringify(outside)}`));
+    expect(await gen(p)).toBe(0);
+    expect(existsSync(join(outside, "mine.txt"))).toBe(true);
+    expect(await genSkips(p, {})).toBe(true);
+
+    unlinkSync(join(outside, "mine.txt"));
+
+    expect(await genSkips(p, {})).toBe(false);
+    expect(await verifyMayAnswer(p, {})).toBe(false);
+    expect(await gen(p)).toBe(0);
+    expect(existsSync(join(outside, "mine.txt"))).toBe(true);
+  }, 30_000);
+});
+
 describe("verify --codegen renders in memory (ADR-0062)", () => {
   test("a full render writes no temp tree and no file anywhere", async () => {
     const p = makeProject();
