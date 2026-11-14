@@ -105,6 +105,11 @@ public class ServerOwnedCreateInputTests
     ]}}
     """;
 
+    // A generated file's path is package-keyed (R39: `acme/input/PostRoutes.g.cs`), so a file is
+    // found by its name, wherever its package puts it.
+    private static bool IsFile(string path, string file) =>
+        path == file || path.EndsWith("/" + file, StringComparison.Ordinal);
+
     private static string Emit(string model, string generator, string file)
     {
         var r = new MetaDataLoader().Load([new InMemoryStringSource(model, id: "input.json")]);
@@ -116,7 +121,7 @@ public class ServerOwnedCreateInputTests
             Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", ColumnNamingStrategy = ColumnNamingStrategy.Literal },
         };
         IGenerator g = generator == "routes" ? new RoutesGenerator() : new EntityGenerator();
-        return g.Generate(ctx).Single(f => f.Path == file).Content;
+        return g.Generate(ctx).Single(f => IsFile(f.Path, file)).Content;
     }
 
     [Fact]
@@ -125,7 +130,7 @@ public class ServerOwnedCreateInputTests
         var src = Emit(PlainModel, "routes", "PostRoutes.g.cs");
         var post = src[src.IndexOf("app.MapPost(", StringComparison.Ordinal)..];
         var reset = post.IndexOf("input.Id = default!;", StringComparison.Ordinal);
-        var tags = post.IndexOf("input.Tags = new System.Collections.Generic.List<Tag>();", StringComparison.Ordinal);
+        var tags = post.IndexOf("input.Tags = new global::System.Collections.Generic.List<Tag>();", StringComparison.Ordinal);
         var add = post.IndexOf("db.Posts.Add(input);", StringComparison.Ordinal);
         Assert.True(reset >= 0 && tags >= 0 && add > reset && add > tags, post);
     }
@@ -205,7 +210,7 @@ public class ServerOwnedCreateInputTests
             .Concat(new FilterAllowlistGenerator().Generate(ctx))
             .Concat(new RoutesGenerator().Generate(ctx))
             .ToList();
-        var routes = sources.Single(f => f.Path == "SealRoutes.g.cs").Content;
+        var routes = sources.Single(f => IsFile(f.Path, "SealRoutes.g.cs")).Content;
         var post = routes[routes.IndexOf("app.MapPost(", StringComparison.Ordinal)..];
         Assert.DoesNotContain("input.Id = default!;", post);
         Assert.DoesNotContain("input.Kind = default!;", post);
