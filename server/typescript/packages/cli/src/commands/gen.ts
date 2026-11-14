@@ -268,7 +268,10 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
   // A name the registry does not know fails the run below; until then it is uncacheable.
   try { resolvedGenerators = resolveGenerators(declaredGenerators); } catch { resolvedGenerators = undefined; }
   const cacheable = resolvedGenerators !== undefined && resolvedGenerators.every((g) => g.cache !== false);
-  const extras = (resolvedGenerators ?? []).flatMap((g) => [...(g.inputs ?? [])]);
+  const extras = (resolvedGenerators ?? []).flatMap((g) => [
+    ...(g.inputs ?? []),
+    ...(g.readsMetadataSources === true ? genCollection.sourceRoots : []),
+  ]);
   const nextKey = skipInputs !== undefined ? keyFor(skipInputs, extras) : undefined;
   if (skipInputs !== undefined) clearStoredFingerprint(skipInputs.genStateDir);
 

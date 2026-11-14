@@ -170,6 +170,13 @@ export interface Generator {
    * editing one makes the next `meta gen` regenerate instead of skipping.
    */
   inputs?: readonly string[];
+  /**
+   * ADR-0062 — `true` when this generator reads the raw metadata source files beside the
+   * loaded model (their comments, say), which the model hash does not carry. The files under
+   * the run's metadata source roots join the fingerprint, so a comment-only edit makes the
+   * next `meta gen` regenerate instead of skipping.
+   */
+  readsMetadataSources?: boolean;
   /** Marks the OPT-IN Hono routes generator (routesFileHono). The runner
    *  aggregates this across the active suite into `ctx.config.includeHonoRoutes`,
    *  so a generator that documents the API surface (api-docs) can AUTO-DETECT
