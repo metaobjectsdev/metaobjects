@@ -1,0 +1,17 @@
+[package]
+name = "metaobjects"
+description = "MetaObjects metamodel registry, loader and canonical serializer for Rust (preview)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+# Not published yet: the first crates.io release is a separate, approved step.
+publish = false
+
+[dependencies]
+serde_json.workspace = true
+indexmap.workspace = true
+
+[lints]
+workspace = true

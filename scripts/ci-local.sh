@@ -52,6 +52,10 @@
 #                                    #   python → full python test suite + integration-tests
 #                                    #   csharp → full csharp codegen suite + conformance
 #                                    #            + integration-tests
+#                                    #   rust   → the Rust port (preview): cargo fmt
+#                                    #            --check, clippy -D warnings, and its
+#                                    #            tests, which run the registry and
+#                                    #            metamodel corpora. No docker half.
 #                                    #   cube   → the cube-model live check: a real Cube
 #                                    #            (cubejs/cube, pinned) over a private
 #                                    #            Postgres, both in docker (FR-044). Its
@@ -79,7 +83,7 @@
 # write into the tree first, in order: install, the drift gates, one workspace build.
 # Then it runs the rest as independent LANES side by side, at most MO_CI_JOBS at once
 # (default 8): java (the reactor, which already holds every java/kotlin conformance
-# class), python, mutation, csharp, ts, ts-integ, java-integ and kotlin-integ (both
+# class), python, mutation, csharp, rust, ts, ts-integ, java-integ and kotlin-integ (both
 # after java, which installs the jars they read), showcase (after java and csharp), cube
 # and gates. Each lane writes to its own log; the log prints as one block when the lane
 # ends, so output never interleaves. The summary lists every step with its time, the
@@ -111,7 +115,7 @@
 # flags) and exit 0 without running anything — useful for verifying section
 # selection without waiting for tests to complete.
 #
-# Ports whose toolchain (bun / dotnet / uv / mvn) is not installed are SKIPPED
+# Ports whose toolchain (bun / dotnet / uv / mvn / cargo) is not installed are SKIPPED
 # with a loud warning (not silently passed). With Actions off there is no CI run to
 # fall back on, so the full pre-release run (docs/RELEASING.md) must happen on a
 # machine with every toolchain. --strict-toolchains promotes every SKIP to a FAIL,
@@ -136,8 +140,8 @@ while [ $# -gt 0 ]; do
     --no-integration) NO_INTEG=1 ;;
     --integration-only) INTEG_ONLY=1 ;;
     --only) shift; case "${1:-}" in
-        gates|leak-scan|ts|ts-fast|ts-unit|ts-slow|java|java-fast|java-slow|python|csharp|cube) ONLY="$ONLY ${1}" ;;
-        *) echo "--only expects gates|leak-scan|ts|ts-fast|ts-unit|ts-slow|java|java-fast|java-slow|python|csharp|cube, got '${1:-}'" >&2; exit 2 ;;
+        gates|leak-scan|ts|ts-fast|ts-unit|ts-slow|java|java-fast|java-slow|python|csharp|rust|cube) ONLY="$ONLY ${1}" ;;
+        *) echo "--only expects gates|leak-scan|ts|ts-fast|ts-unit|ts-slow|java|java-fast|java-slow|python|csharp|rust|cube, got '${1:-}'" >&2; exit 2 ;;
       esac ;;
     -h|--help) awk 'NR==1{next} /^set -uo/{exit} {sub(/^# ?/,""); print}' "$0"; exit 0 ;;
     *) echo "unknown arg: $1 (see --help)" >&2; exit 2 ;;
@@ -762,6 +766,16 @@ gate_conf_python() {
   if [ "$NO_INTEG" -eq 1 ] || ! docker info >/dev/null 2>&1; then skip_integ=""; fi
   ( cd server/python && uv run --extra integration pytest tests/ $skip_integ -q -n "${MO_CI_PY_WORKERS:-8}" )
 }
+# The Rust port (preview, ADR-0063). The whole crate suite, not a cherry-pick: it is the
+# registry-conformance and metamodel corpora plus the unit tests, ~1s once built. --locked
+# so a stale Cargo.lock fails here instead of being rewritten. The build goes to the
+# workspace's own target/ (gitignored); never a CARGO_TARGET_DIR shared between checkouts.
+gate_conf_rust() {
+  ( cd server/rust \
+      && cargo fmt --all --check \
+      && cargo clippy --locked --all-targets -q -- -D warnings \
+      && cargo test --locked -q )
+}
 gate_conf_kotlin() {
   ( cd server/java \
       && mvn -pl codegen-kotlin -am install -DskipTests -q \
@@ -1201,6 +1215,7 @@ lane_csharp() {
   if want csharp; then step_if dotnet "conformance: csharp" gate_conf_csharp; fi
   if integ_ready; then use_pg_sidecar; step "integration-tests (csharp)" gate_integration_port csharp; fi
 }
+lane_rust() { if want rust; then step_if cargo "conformance: rust" gate_conf_rust; fi; }
 lane_python() {
   if want python; then step_if uv "conformance: python" gate_conf_python; fi
   if integ_ready; then use_pg_sidecar; step "integration-tests (python)" gate_integration_port python; fi
@@ -1295,11 +1310,11 @@ if [ "$PARALLEL" -eq 0 ]; then
 
   if [ "$QUICK" -eq 1 ]; then
     echo ""
-    echo "── ⊘ --quick: SKIPPING the other-language ports (csharp/java/python/kotlin),"
+    echo "── ⊘ --quick: SKIPPING the other-language ports (csharp/java/python/kotlin/rust),"
     echo "        the full Java reactor, the docker integration suite and the cube live"
     echo "        check. Run the full \`scripts/ci-local.sh\` (no flag) before opening/merging"
     echo "        a PR or tagging."
-    record SKIP 0 "csharp/java/python/kotlin conformance (--quick)"
+    record SKIP 0 "csharp/java/python/kotlin/rust conformance (--quick)"
     record SKIP 0 "java-reactor (--quick)"
     record SKIP 0 "integration-tests (--quick)"
     record SKIP 0 "cube-model live check (--quick)"
@@ -1315,6 +1330,7 @@ if [ "$PARALLEL" -eq 0 ]; then
     if want csharp;               then step_if dotnet "conformance: csharp"        gate_conf_csharp;  fi
     if want_any java java-fast;   then step_if mvn "conformance: java"             gate_conf_java;    fi
     if want python;               then step_if uv "conformance: python"            gate_conf_python;  fi
+    if want rust;                 then step_if cargo "conformance: rust"           gate_conf_rust;    fi
     if want_any java java-fast;   then step_if mvn "conformance: kotlin"           gate_conf_kotlin;  fi
     if want_any java java-slow;   then step_if mvn "java-reactor (install)"        gate_java_reactor; fi
     # --no-integration drops the docker half; --integration-only keeps ONLY it, which is
@@ -1411,6 +1427,7 @@ else
   lane kotlin-integ java          lane_kotlin_integ
   lane java-integ   java          lane_java_integ
   lane showcase     java,csharp   lane_showcase
+  lane rust         ""            lane_rust
   lane cube         ""            lane_cube
   lane gates        ""            lane_gates
 

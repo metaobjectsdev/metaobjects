@@ -82,7 +82,7 @@ jobs:
           elif [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.tier }}" = "affected" ]; then
             ports="$(scripts/ci-ports-to-run.sh "$GITHUB_SHA~1" "$GITHUB_SHA")"
           else
-            ports="ts java python csharp"
+            ports="ts java python csharp rust"
           fi
           echo "selected ports: '$ports'"
           echo "ports=$ports" >> "$GITHUB_OUTPUT"
@@ -272,8 +272,25 @@ jobs:
           METAOBJECTS_TEST_PG_URL: postgres://metaobjects:metaobjects@localhost:${{ job.services.postgres.ports['5432'] }}/metaobjects_test
         run: scripts/ci-local.sh --only csharp --strict-toolchains
 
+  # The Rust port (preview, ADR-0063): fmt, clippy and the crate's tests, which run the
+  # registry and metamodel corpora. No database, so no sidecar. rustup lives in the
+  # maintainer's ~/.cargo/bin, which the runner service's PATH does not necessarily
+  # carry; rust-toolchain.toml pins the compiler, and rustup installs it on first use.
+  rust:
+    needs: detect
+    if: contains(needs.detect.outputs.ports, 'rust')
+    runs-on: [self-hosted, linux]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: |
+          export PATH="$HOME/.cargo/bin:$PATH"
+          scripts/ci-local.sh --only rust --strict-toolchains
+
   notify:
-    needs: [detect, gates, ts-fast, ts-unit, ts-slow, java-fast, java-slow, python, csharp]
+    needs: [detect, gates, ts-fast, ts-unit, ts-slow, java-fast, java-slow, python, csharp, rust]
     if: always() && contains(needs.*.result, 'failure')
     runs-on: [self-hosted, linux]
     steps:

@@ -77,6 +77,17 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
 
 ### Added
 
+- **Rust port foundation, in preview (ADR-0063).** `server/rust/` is a Cargo workspace with a
+  pinned toolchain and one crate, `metaobjects`: the node model, the type registry and the
+  built-in providers (strict, sealed after bootstrap, the same `ERR_*` codes), and a JSON loader
+  that reads packages, children, subtypes, attributes, `extends` and references, with the
+  canonical serializer. It passes `registry-conformance` byte for byte and 256 of the 510
+  metamodel fixtures; the other 254 are on a ledger that may only shrink (the validation passes,
+  merge warnings and `script.json` fixtures it does not run yet). Nothing is published and there
+  is no codegen or `cargo meta` command yet. A `rust` lane runs `cargo fmt --check`, clippy and
+  the tests in `scripts/ci-local.sh --only rust`, `pr-ci` and `local-ci`, selected by changes
+  under `server/rust/`.
+
 - **A page size for generated list routes: `api.pagination`, in every port.** An external review
   of 1.2.0 found that list endpoints had no hard cap: the TypeScript and C# routes returned the
   whole table when `limit` was omitted, and `?limit=100000` was accepted in every port. The new
