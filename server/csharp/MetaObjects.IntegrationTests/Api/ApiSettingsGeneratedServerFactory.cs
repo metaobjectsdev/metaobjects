@@ -50,8 +50,8 @@ internal sealed class ApiSettingsGeneratedServerFactory : IAsyncDisposable
 
         var app = builder.Build();
 
-        // Mount each generated Map<Entity>Routes(app, "/api"). Both Customer and Order
-        // emit a routes class; only Order's api-settings routes are exercised.
+        // Mount each emitted Map<Entity>Routes(app, "/api"); the api-settings corpus
+        // declares a single entity, Item.
         foreach (var entity in entityNames)
         {
             var routesType = assembly.GetType($"{GeneratedNamespace}.{entity}Routes");
