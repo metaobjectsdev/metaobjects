@@ -9,7 +9,7 @@
         ],
         "jsonPath": "$['metadata.root'].children[1]['object.value'].children[0]['field.int'].children[0]['origin.passthrough']",
         "referrer": "Args::label",
-        "target": "demo::Case.label"
+        "target": "demo::Consignment.label"
       }
     }
   ],

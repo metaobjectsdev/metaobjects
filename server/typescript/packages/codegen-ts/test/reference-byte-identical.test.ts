@@ -991,7 +991,7 @@ const CALLABLE_MODEL = {
         "object.value": {
           name: "PhaseSummaryArgs",
           children: [
-            { "field.int": { name: "caseId", "@required": true } },
+            { "field.int": { name: "consignmentId", "@required": true } },
             { "field.timestamp": { name: "asOfDate" } },
           ],
         },
@@ -1013,7 +1013,7 @@ const CALLABLE_MODEL = {
           name: "OpenCase",
           children: [
             { "source.rdb": { "@kind": "tableFunction", "@function": "fn_open_cases" } },
-            { "field.long": { name: "caseId" } },
+            { "field.long": { name: "consignmentId" } },
           ],
         },
       },

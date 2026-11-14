@@ -53,7 +53,7 @@ describe("FR-015 happy paths", () => {
             "object.value": {
               name: "PhaseSummaryArgs",
               children: [
-                { "field.int": { name: "caseId", "@required": true } },
+                { "field.int": { name: "consignmentId", "@required": true } },
                 { "field.timestamp": { name: "asOfDate" } },
               ],
             },

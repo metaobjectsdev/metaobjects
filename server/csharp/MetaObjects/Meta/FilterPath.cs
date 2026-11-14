@@ -1,5 +1,5 @@
 // G7 (joined half) and entity-derived — a projection @filter key may be a PATH: to-one hops from
-// the base entity, then a field of the entity they reach (`caseId.status`). A hop is an
+// the base entity, then a field of the entity they reach (`consignmentId.status`). A hop is an
 // identity.reference or a relationship with @cardinality one; a to-many hop is refused. Ported
 // from typescript/packages/metadata/src/core/relationship/filter-path.ts.
 

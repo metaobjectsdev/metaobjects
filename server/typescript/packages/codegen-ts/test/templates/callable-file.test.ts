@@ -29,7 +29,7 @@ describe("renderCallableFile", () => {
             "object.value": {
               name: "PhaseSummaryArgs",
               children: [
-                { "field.int": { name: "caseId", "@required": true } },
+                { "field.int": { name: "consignmentId", "@required": true } },
                 { "field.timestamp": { name: "asOfDate" } },
               ],
             },
@@ -58,7 +58,7 @@ describe("renderCallableFile", () => {
     expect(out).toContain("export async function callPhaseSummary");
     expect(out).toContain("args: PhaseSummaryArgs");
     expect(out).toContain("fn_phase_summary");
-    expect(out).toContain("args.caseId");
+    expect(out).toContain("args.consignmentId");
     expect(out).toContain("args.asOfDate");
     expect(out).toContain("Promise<PhaseSummary[]>");
   });

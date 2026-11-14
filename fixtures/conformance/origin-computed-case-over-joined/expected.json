@@ -39,11 +39,11 @@
       },
       {
         "object.entity": {
-          "name": "Case",
+          "name": "Consignment",
           "children": [
             {
               "source.rdb": {
-                "@table": "cases"
+                "@table": "consignments"
               }
             },
             {
@@ -98,18 +98,18 @@
       },
       {
         "object.projection": {
-          "name": "CaseLabels",
+          "name": "ConsignmentLabels",
           "children": [
             {
               "source.rdb": {
                 "@kind": "view",
-                "@view": "v_caselabels"
+                "@view": "v_consignmentlabels"
               }
             },
             {
               "field.long": {
                 "name": "id",
-                "extends": "acme::views::Case.id"
+                "extends": "acme::views::Consignment.id"
               }
             },
             {
@@ -119,7 +119,7 @@
                   {
                     "origin.passthrough": {
                       "@from": "acme::views::Status.name",
-                      "@via": "acme::views::Case.statusId"
+                      "@via": "acme::views::Consignment.statusId"
                     }
                   }
                 ]
@@ -132,7 +132,7 @@
                   {
                     "origin.passthrough": {
                       "@from": "acme::views::Status.displayName",
-                      "@via": "acme::views::Case.statusId"
+                      "@via": "acme::views::Consignment.statusId"
                     }
                   }
                 ]
@@ -249,7 +249,7 @@
             {
               "identity.primary": {
                 "name": "id",
-                "extends": "acme::views::Case.id"
+                "extends": "acme::views::Consignment.id"
               }
             }
           ]

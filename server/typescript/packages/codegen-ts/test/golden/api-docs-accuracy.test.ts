@@ -877,7 +877,7 @@ const T5_FIXTURE = JSON.stringify({
         "object.value": {
           name: "PhaseSummaryArgs",
           children: [
-            { "field.long": { name: "caseId", "@required": true } },
+            { "field.long": { name: "consignmentId", "@required": true } },
             { "field.string": { name: "asOfDate", "@required": true } },
           ],
         },
@@ -889,7 +889,7 @@ const T5_FIXTURE = JSON.stringify({
           name: "PhaseSummary",
           children: [
             { "source.rdb": { "@kind": "storedProc", "@proc": "fn_phase_summary", "@parameterRef": "PhaseSummaryArgs" } },
-            { "field.long": { name: "caseId" } },
+            { "field.long": { name: "consignmentId" } },
             { "field.string": { name: "phase" } },
           ],
         },

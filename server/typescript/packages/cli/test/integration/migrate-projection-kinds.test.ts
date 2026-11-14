@@ -49,7 +49,7 @@ const META = JSON.stringify({
       {
         "object.value": {
           name: "PhaseArgs",
-          children: [{ "field.int": { name: "caseId", "@required": true } }],
+          children: [{ "field.int": { name: "consignmentId", "@required": true } }],
         },
       },
       {

@@ -1,5 +1,5 @@
 // G7 (joined half) and entity-derived — a projection @filter key may be a PATH: to-one hops
-// from the base entity, then a field of the entity they reach (`caseId.status`,
+// from the base entity, then a field of the entity they reach (`consignmentId.status`,
 // `orderId.customerId.hasActiveMembership`). A hop is an identity.reference (a forward FK) or
 // a relationship with @cardinality one, named as an origin @via names its hops. A to-many hop
 // would multiply the base rows, so it is refused. One resolver for the loaders and the view

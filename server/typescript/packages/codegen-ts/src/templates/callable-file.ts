@@ -11,7 +11,7 @@
 //     args: PhaseSummaryArgs,
 //   ): Promise<PhaseSummary[]> {
 //     const r = await db.execute(
-//       sql`SELECT * FROM fn_phase_summary(${args.caseId}, ${args.asOfDate})`,
+//       sql`SELECT * FROM fn_phase_summary(${args.consignmentId}, ${args.asOfDate})`,
 //     );
 //     return r.rows.map((row) => PhaseSummarySchema.parse(row));
 //   }

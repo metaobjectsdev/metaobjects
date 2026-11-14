@@ -3591,7 +3591,7 @@ export function validateProjectionFilter(root: MetaData): ParseError[] {
         if (!fields.has(f.name)) fields.set(f.name, { derived: entityFieldAggregates(f), ops: opsForField(f) });
       }
       // G7 (joined) / entity-derived: a key that is a PATH of to-one hops from the base, then a
-      // field of the entity reached (`caseId.status`). Not output; the view joins what it walks.
+      // field of the entity reached (`consignmentId.status`). Not output; the view joins what it walks.
       for (const key of filterKeys(filter)) {
         if (fields.has(key)) continue;
         const path = resolveFilterPath(base as MetaObject, key);

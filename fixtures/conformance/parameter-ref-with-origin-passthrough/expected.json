@@ -4,11 +4,11 @@
     "children": [
       {
         "object.entity": {
-          "name": "Case",
+          "name": "Consignment",
           "children": [
             {
               "source.rdb": {
-                "@table": "cases"
+                "@table": "consignments"
               }
             },
             {
@@ -33,12 +33,12 @@
           "children": [
             {
               "field.int": {
-                "name": "caseId",
+                "name": "consignmentId",
                 "@required": true,
                 "children": [
                   {
                     "origin.passthrough": {
-                      "@from": "demo::Case.id"
+                      "@from": "demo::Consignment.id"
                     }
                   }
                 ]

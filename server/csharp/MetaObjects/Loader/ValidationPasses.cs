@@ -2379,7 +2379,7 @@ public static partial class ValidationPasses
                     if (EntityFieldAggregates(f)) aggregateDerived.Add(f.Name);
                 }
                 // G7 (joined) / entity-derived: a key that is a PATH of to-one hops from the base,
-                // then a field of the entity reached (`caseId.status`). Not output; the view joins it.
+                // then a field of the entity reached (`consignmentId.status`). Not output; the view joins it.
                 if (baseEntity is MetaObject baseObject)
                 {
                     foreach (var key in FilterKeys(filter))

@@ -894,8 +894,8 @@ vocabulary; upgrade every port together.
   `fixtures/conformance/projection-filter-unprojected-base-field`.
 - **A projection `@filter` reads a joined field the view does not output** (rc.19 Phase 5, bug
   G7, joined half). A filter key may be a path of to-one hops from the base entity, named as an
-  origin's `@via` names them, then a field of the entity reached: `@filter: { "caseId.status":
-  "open" }` joins `cases` (sharing a join an origin already walks) and lowers to
+  origin's `@via` names them, then a field of the entity reached: `@filter: { "consignmentId.status":
+  "open" }` joins `consignments` (sharing a join an origin already walks) and lowers to
   `WHERE c.status = 'open'`. A to-many hop is refused (`ERR_BAD_ATTR_FILTER`): it would multiply
   the base rows. Pinned by `fixtures/conformance/projection-filter-joined-path` and
   `error-projection-filter-path-to-many`.

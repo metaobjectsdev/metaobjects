@@ -32,11 +32,11 @@
       },
       {
         "object.entity": {
-          "name": "Case",
+          "name": "Consignment",
           "children": [
             {
               "source.rdb": {
-                "@table": "cases"
+                "@table": "consignments"
               }
             },
             {
@@ -87,18 +87,18 @@
       },
       {
         "object.projection": {
-          "name": "BadCase",
+          "name": "BadConsignment",
           "children": [
             {
               "source.rdb": {
                 "@kind": "view",
-                "@view": "v_badcase"
+                "@view": "v_badconsignment"
               }
             },
             {
               "field.long": {
                 "name": "id",
-                "extends": "acme::views::Case.id"
+                "extends": "acme::views::Consignment.id"
               }
             },
             {
@@ -136,7 +136,7 @@
             {
               "identity.primary": {
                 "name": "id",
-                "extends": "acme::views::Case.id"
+                "extends": "acme::views::Consignment.id"
               }
             }
           ]
