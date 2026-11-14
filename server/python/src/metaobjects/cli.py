@@ -2392,11 +2392,10 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
             dataclasses.replace(t, out_dir=temp_for[config.out_dir_for(t)]) for t in closure
         ]
 
-        # The exact gen pipeline into the temp tree — verify now rejects exactly
+        # The exact gen pipeline, rendered into the in-memory sink — verify rejects exactly
         # what gen rejects (incl. the cross-target duplicate-output-path guard).
-        # gen_state_dir stays None: this regenerates into a temp tree purely to
-        # diff, so recording a manifest would mutate the user's project from a
-        # read-only drift check, keyed to a directory deleted seconds later.
+        # gen_state_dir stays None: this render exists purely to diff, so recording a
+        # manifest would mutate the user's project from a read-only drift check.
         # build_ctx from the SAME resolver `gen` uses — a verify that resolved the
         # template root differently would regenerate render-helper against another
         # directory and convict the committed output of being stale.

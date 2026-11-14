@@ -109,6 +109,47 @@ def test_decide_and_write_without_a_state_dir_does_not_rewrite_identical_bytes(
     assert status == "unchanged" and f.stat().st_mtime == 1
 
 
+def test_non_prompt_targets_rewrite_nothing_and_save_no_manifest_when_unchanged(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Drive-wear regression: two non-prompt targets, several generators each. A forced run
+    over unchanged output rewrites no file (every mtime stays) and saves no manifest; the
+    first run saves the manifest exactly once, however many files it writes."""
+    root = tmp_path
+    (root / "metaobjects").mkdir()
+    (root / "metaobjects" / "meta.app.json").write_text(json.dumps(_DOC))
+    (root / "metaobjects.config.yaml").write_text(
+        "metadata: metaobjects\n"
+        "targets:\n"
+        "  models:\n    outDir: gen/models\n    generators: [entity, names]\n"
+        "  api:\n    outDir: gen/api\n    generators: [routes, filter-allowlist]\n"
+    )
+    monkeypatch.chdir(root)
+    saves: list[int] = []
+    real = overwrite_policy._save_hashes
+
+    def counting(gen_state_dir: str, hashes: dict[str, str]) -> None:
+        saves.append(len(hashes))
+        real(gen_state_dir, hashes)
+
+    monkeypatch.setattr(overwrite_policy, "_save_hashes", counting)
+    assert main(["gen"]) == 0
+    files = [f for f in (root / "gen").rglob("*") if f.is_file()]
+    assert len(files) > 4 and {f.relative_to(root).parts[1] for f in files} == {"models", "api"}
+    assert len(saves) == 1, f"first run saved the manifest {len(saves)} times"
+    manifest = root / ".metaobjects" / ".gen-state" / ".hashes.json"
+    for f in [*files, manifest]:
+        os.utime(f, (1, 1))
+    saves.clear()
+    capsys.readouterr()
+
+    assert main(["gen", "--force"]) == 0
+    rewritten = [str(f) for f in files if f.stat().st_mtime != 1]
+    assert rewritten == [], f"unchanged files were rewritten: {rewritten}"
+    assert saves == [] and manifest.stat().st_mtime == 1
+    assert "wrote 0 file(s)" in capsys.readouterr().out
+
+
 # --- item 9: verify --codegen renders in memory and creates no temp tree ----------------------
 
 
