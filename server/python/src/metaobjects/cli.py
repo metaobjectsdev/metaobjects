@@ -1361,12 +1361,16 @@ _INIT_DOCS_CONFIG = """\
 
 
 def _init_neutral_config() -> str:
-    """The port-neutral ``.metaobjects/config.json`` a new project starts with: the same ``api``
-    block TypeScript ``meta init`` writes, a page size on every generated list route and
-    ``unknownFields`` spelled out at its default so the choice is visible. Never written over an
-    existing file, so an upgraded project gains no page size."""
+    """The port-neutral ``.metaobjects/config.json`` a new project starts with: the same
+    new-project settings TypeScript ``meta init`` writes. ``migrate.foreignKeyIndexes`` on (read by
+    the TypeScript ``meta migrate`` that owns the schema), ``verify.handEdits`` "fail" (this port's
+    ``verify --codegen`` already fails on a hand edit), a page size on every generated list route,
+    and ``api.unknownFields`` spelled out at its default so the choice is visible. Never written
+    over an existing file, so an upgraded project gains none of them."""
     body = {
         "schema_version": 1,
+        "migrate": {"foreignKeyIndexes": True},
+        "verify": {"handEdits": "fail"},
         "api": {
             API_KEY_PAGINATION: {
                 PAGINATION_KEY_DEFAULT_LIMIT: INIT_DEFAULT_LIMIT,

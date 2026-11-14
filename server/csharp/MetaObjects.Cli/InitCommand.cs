@@ -122,14 +122,17 @@ public static class InitCommand
             ? n.Replace("\\", "").Replace("\"", "") : "project") + "\" }";
 
     /// <summary>The project config a new project starts with: files written under their metadata
-    /// package, each packaged type in its package's namespace, and the <c>api</c> block TypeScript
-    /// <c>meta init</c> writes: a page size on every generated list route, and <c>unknownFields</c>
-    /// written out at its default so the choice is visible. An existing config is the project's and is
-    /// never edited, so an upgraded project gains no page size.</summary>
+    /// package, each packaged type in its package's namespace, and the new-project settings TypeScript
+    /// <c>meta init</c> writes: <c>migrate.foreignKeyIndexes</c> on, <c>verify.handEdits</c> "fail", a
+    /// page size on every generated list route, and <c>api.unknownFields</c> written out at its default
+    /// so the choice is visible. An existing config is the project's and is never edited, so an
+    /// upgraded project gains none of them.</summary>
     public const string ConfigRel = ".metaobjects/config.json";
 
     public static readonly string ConfigJson =
         "{\n  \"schema_version\": 1,\n  \"csharp\": {\n    \"outputLayout\": \"package\",\n    \"packageNamespaces\": true\n  },\n" +
+        "  \"migrate\": {\n    \"foreignKeyIndexes\": true\n  },\n" +
+        "  \"verify\": {\n    \"handEdits\": \"fail\"\n  },\n" +
         "  \"api\": {\n    \"pagination\": {\n" +
         $"      \"defaultLimit\": {ApiSettings.InitDefaultLimit},\n      \"maxLimit\": {ApiSettings.InitMaxLimit}\n" +
         "    },\n    \"unknownFields\": \"reject\"\n  }\n}\n";
@@ -155,7 +158,7 @@ public static class InitCommand
             Directory.CreateDirectory(Path.GetDirectoryName(configPath)!);
             File.WriteAllText(configPath, ConfigJson);
             lines.Add(
-                $"  wrote {ConfigRel} (outputLayout \"package\", packageNamespaces true, api.pagination " +
+                $"  wrote {ConfigRel} (outputLayout \"package\", packageNamespaces true, migrate.foreignKeyIndexes true, verify.handEdits \"fail\", api.pagination " +
                 $"{ApiSettings.InitDefaultLimit}/{ApiSettings.InitMaxLimit}, api.unknownFields \"reject\")");
         }
         lines.Add("");

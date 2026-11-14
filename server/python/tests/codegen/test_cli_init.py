@@ -75,7 +75,8 @@ def test_api_prefix_with_a_quote_or_backslash_is_refused(tmp_path: Path, capsys)
 def test_init_writes_the_new_project_api_block_that_typescript_meta_init_writes(
     tmp_path: Path, capsys
 ) -> None:
-    # Oracle: TypeScript `meta init` writes `api: {pagination: {defaultLimit: 50, maxLimit: 1000},
+    # Oracle: TypeScript `meta init` writes `migrate: {foreignKeyIndexes: true}`,
+    # `verify: {handEdits: "fail"}` and `api: {pagination: {defaultLimit: 50, maxLimit: 1000},
     # unknownFields: "reject"}` into .metaobjects/config.json for a new project.
     assert main(["init", "--root", str(tmp_path)]) == 0
     assert "wrote .metaobjects/config.json" in capsys.readouterr().out
@@ -84,6 +85,8 @@ def test_init_writes_the_new_project_api_block_that_typescript_meta_init_writes(
     assert neutral.api.pagination == ApiPagination(default_limit=50, max_limit=1000)
     raw = json.loads((tmp_path / ".metaobjects" / "config.json").read_text())
     assert raw["api"]["unknownFields"] == "reject"
+    assert raw["migrate"] == {"foreignKeyIndexes": True}
+    assert raw["verify"] == {"handEdits": "fail"}
     # The page size reaches a generated router.
     (tmp_path / "metaobjects" / "meta.app.yaml").write_text(
         "metadata:\n  package: app\n  children:\n"
