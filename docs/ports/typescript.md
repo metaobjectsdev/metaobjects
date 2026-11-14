@@ -320,8 +320,9 @@ meta verify --db <url>    # live DB schema vs metadata
 ```
 
 `meta gen Author Post` names objects by their short name (without the package). Each
-generator's `filter` option applies on top, and a selection that matches no object at all
-warns `No entities to generate`. Every port has the same selection: `--entities` in Python and C#,
+generator's `filter` option applies on top. A name that matches no object is refused with
+exit 2 before anything is written, even beside names that match (`meta gen: names 'Ordr',
+which matches no object in the metadata.`). Every port has the same selection: `--entities` in Python and C#,
 `-Dmeta.entities` on the Maven plugin for Java and Kotlin.
 
 ### Schema — first migration on a brand-new database

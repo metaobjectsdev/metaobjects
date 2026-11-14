@@ -89,6 +89,9 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   and binding provider) still renders from the whole model, a narrowed run neither deletes nor
   forgets the other objects' files, and a blank selection or a name that matches no object is
   refused (exit 2 in C#, a failed goal in Maven).
+- **`meta gen <Name>...` refuses a name that matches no object**, with exit 2 and nothing
+  written, as Python, C# and the Maven plugin do. It used to drop the unknown name silently
+  when another name matched, and only warn when none did.
 - **The Java loader's initialization timeout is a setting.** It stays 30 seconds by default. Raise
   it with `-Dmeta.loaderTimeoutMs` (or `<loaderTimeoutMs>`) on the Maven plugin,
   `LoaderOptions.setInitTimeoutMs`, the loader argument `initTimeoutMs`, or the system property
