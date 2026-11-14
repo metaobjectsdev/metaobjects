@@ -62,6 +62,24 @@ def test_gen_no_args_discovers_config_in_cwd(tmp_path: Path, monkeypatch) -> Non
     assert (tmp_path / "gen/models/Program.py").exists()
 
 
+def test_gen_reports_only_the_files_it_changed(tmp_path: Path, capsys) -> None:
+    """A second run with nothing changed writes nothing, and says so: unchanged files are
+    neither listed nor counted as written, as in the other ports."""
+    cfg = _project(tmp_path, TWO_TARGETS)
+    assert main(["gen", "--config", str(cfg)]) == 0
+    first = capsys.readouterr().out
+    assert "Program.py" in first
+    assert "metaobjects gen: wrote 0 file(s)" not in first
+
+    assert main(["gen", "--config", str(cfg)]) == 0
+    second = capsys.readouterr().out
+    assert "Program.py" not in second
+    summary = [line for line in second.splitlines() if line.startswith("metaobjects gen: wrote")]
+    assert len(summary) == 1
+    assert summary[0].startswith("metaobjects gen: wrote 0 file(s), ")
+    assert " unchanged, across 2 target(s)." in summary[0]
+
+
 def test_gen_target_scopes_to_one(tmp_path: Path) -> None:
     cfg = _project(tmp_path, TWO_TARGETS)
     rc = main(["gen", "--config", str(cfg), "--target", "models"])

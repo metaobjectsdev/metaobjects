@@ -507,6 +507,12 @@ mvn metaobjects:generate               # or run the codegen alone
 mvn metaobjects:verify                 # fails, naming the files, when generated code is stale against the model
 ```
 
+`-Dmeta.entities=Program,Week` regenerates only those objects' files, and each generator's
+`<filters>` narrow what it writes; `-Dmeta.loaderTimeoutMs` raises the loader's 30-second
+initialization timeout for a large model. Both are the Maven plugin's, shared with Java: see
+[Select objects](java.md#generate) on the Java page for what narrows, what stays whole-model,
+and the refusals.
+
 Schema migrations are owned by the TypeScript toolchain — see the
 [Migrations section](../features/migrations-and-drift.md#kotlin) for the `meta migrate` commands.
 

@@ -89,13 +89,16 @@ public static class CodegenRunner
         // read it afterwards and every project looks migrated.
         var hadManifest = config.GenStateDir is null || HashManifest.Exists(config.GenStateDir);
 
+        var selection = config.EntitySelection is { } names
+            ? names.ToHashSet(StringComparer.Ordinal) : null;
+
         foreach (var generator in generators)
         {
             var genRoot = outRoot(generator);
             // An entry with its own directory reports its files by that directory, so a reader
             // can tell the api reference's README.md from one under --out.
             var shown = generator.OutDir is { Length: > 0 } own ? own.TrimEnd('/', '\\') + "/" : "";
-            foreach (var generated in generator.Generate(ctx))
+            foreach (var generated in Emit(generator, ctx, selection))
             {
                 var file = FrameworkQualifier.Apply(config, generated);
                 var full = Path.GetFullPath(Path.Combine(genRoot, file.Path));
@@ -167,6 +170,37 @@ public static class CodegenRunner
         ReportRefusals(refused, hadManifest, warnings);
         ReportAdoptions(adopted, warnings);
         return new RunResult(results, warnings) { OverwritePaths = overwritePaths };
+    }
+
+    /// <summary>
+    /// What <paramref name="generator"/> emits, narrowed to <paramref name="selection"/> (the
+    /// <c>--entities</c> short names) when there is one.
+    /// <para>
+    /// The rule: only PER-OBJECT output narrows; a file built from the whole model is rendered from
+    /// the whole model. A generator already knows which of its files belong to which object (it
+    /// builds them from <see cref="GenContext.Entities"/>), so the runner does not guess from file
+    /// names. It asks twice: once with the whole model, and once with a context reduced to the
+    /// selected objects (<see cref="GenContext.NarrowForProbe"/>, the mechanism an entry's
+    /// <c>Include</c> uses). The files written are the WHOLE-model run's, restricted to the paths the
+    /// narrowed run also produced. So an unselected object's file (absent when narrowed) is dropped;
+    /// a selected object's file is kept; and a shared file, such as the <c>AppDbContext</c>, a shared
+    /// enum or a helper, is the whole-model rendering, never the narrowed one. A generator that walks
+    /// the model root rather than the entity list (template, docs, requirement tests) ignores the
+    /// narrowing, produces the same paths both times, and is not narrowed.
+    /// </para>
+    /// <para>
+    /// A generator answering <see cref="IGenerator.WholeModel"/> skips the probe: its single file would
+    /// otherwise vanish from the narrowed run whenever the selection contributes nothing to it.
+    /// </para>
+    /// </summary>
+    private static IEnumerable<EmittedFile> Emit(IGenerator generator, GenContext ctx, HashSet<string> selection)
+    {
+        if (selection is null) return generator.Generate(ctx);
+        var all = generator.Generate(ctx).ToList();
+        if (generator.WholeModel) return all;
+        var kept = generator.Generate(ctx.NarrowForProbe(o => selection.Contains(o.Name)))
+            .Select(f => f.Path).ToHashSet(StringComparer.Ordinal);
+        return all.Where(f => kept.Contains(f.Path)).ToList();
     }
 
     /// <summary>

@@ -25,6 +25,10 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   assigned one (`row.Role = ...`) no longer compiles. The value belongs to the server: set it
   through a database default or EF Core (`db.Entry(row).Property(r => r.Role).CurrentValue`),
   which writes private setters.
+- **Java and Kotlin: `<filters>` now narrow every generator.** The `codegen-spring` and
+  `codegen-kotlin` generators ignored a generator's `<filters>` and wrote every object; they now
+  honour them, as the `codegen-base` generators always did. A pom whose filters were inert
+  generates fewer files: remove the `<filters>` that no longer describe what you want.
 
 ### Security
 
@@ -77,6 +81,18 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
 
 ### Added
 
+- **Select objects to regenerate in every port.** C# `dotnet meta gen --entities A,B` (and
+  `verify --codegen --entities`) and, for Java and Kotlin, `mvn metaobjects:generate
+  -Dmeta.entities=A,B` regenerate only the named objects' files, like TypeScript's
+  `meta gen A B` and Python's `--entities`. Names are short object names. A file built from the
+  whole model (C#'s `AppDbContext`, the Java and Kotlin validator registry, report export writer
+  and binding provider) still renders from the whole model, a narrowed run neither deletes nor
+  forgets the other objects' files, and a blank selection or a name that matches no object is
+  refused (exit 2 in C#, a failed goal in Maven).
+- **The Java loader's initialization timeout is a setting.** It stays 30 seconds by default. Raise
+  it with `-Dmeta.loaderTimeoutMs` (or `<loaderTimeoutMs>`) on the Maven plugin,
+  `LoaderOptions.setInitTimeoutMs`, the loader argument `initTimeoutMs`, or the system property
+  `metaobjects.loader.initTimeoutMs`; the timeout error names them.
 - **A page size for generated list routes: `api.pagination`, in every port.** An external review
   of 1.2.0 found that list endpoints had no hard cap: the TypeScript and C# routes returned the
   whole table when `limit` was omitted, and `?limit=100000` was accepted in every port. The new
@@ -297,6 +313,16 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
 
 ### Fixed
 
+- **The Java loader loads a large model.** Each child added to a node was checked against a
+  list of the keys already added, so a root with 1,160 objects took more than the 30-second
+  timeout to load and failed. The check is a set lookup now, and a reference resolves through
+  the per-type name index instead of a scan of the root. Twenty copies of the canonical
+  conformance model (1,160 objects) load in about 2 seconds of CPU, and `LargeModelLoadTest`
+  holds that to a budget. Java and Kotlin.
+- **Python `metaobjects gen` lists only the files it changed.** It printed every file it emitted
+  and counted them all as written, unchanged ones included. It now lists the files it wrote and
+  counts the rest as unchanged (`wrote 2 file(s), 40 unchanged, across 1 target(s).`), as the
+  other ports report.
 - **A projection view keeps the columns a reverse `@via` hop feeds.** An origin `@via` that walks
   an `identity.reference` backwards (`Project.timeEntries`, #560) loaded, but `meta migrate` left
   its `origin.aggregate` / `origin.first` columns out of `CREATE VIEW` without a word. The view

@@ -113,6 +113,7 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         // Local-only abstract check (own attribute, not inherited) so concrete subtypes
         // extending an abstract base still emit normally.
         for (declared in loader.metaObjects) {
+            if (!isSelected(declared)) continue
             // FR-044: a served report is emitted from its read model (one field per derived
             // column); any other report maps to null and emits nothing.
             val obj = RestSurfaceGate.restShapeOf(declared) ?: continue

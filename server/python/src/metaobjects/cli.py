@@ -929,8 +929,12 @@ def _run_suite(
     output_layout: str = "flat",
     overwrite_hand_edits: frozenset[str] = frozenset(),
     overwrite_paths_out: set[str] | None = None,
+    unchanged_out: set[str] | None = None,
 ) -> list[str]:
     """Run a generator suite against an ALREADY-LOADED ``root`` into ``out_dir``.
+
+    ``unchanged_out`` collects the returned paths whose file already held exactly this
+    content, so a caller can report them as unchanged rather than as written.
 
     ``overwrite_hand_edits`` names the generators (by ``.name``) declared
     ``handEdits: overwrite``: a hand-edited file of theirs is replaced with fresh output
@@ -1002,6 +1006,8 @@ def _run_suite(
     # and only the ones that own an exit code care about the refusals.
     if refused_out is not None:
         refused_out.extend(path for path, status in result.files if status == "refused")
+    if unchanged_out is not None:
+        unchanged_out.update(path for path, status in result.files if status == "unchanged")
     return [path for path, status in result.files if status != "refused"]
 
 
@@ -1569,6 +1575,7 @@ def _run_gen_targets(
     selection: list[str] | None = None,
     targeted_out: set[str] | None = None,
     overwrite_paths_out: set[str] | None = None,
+    unchanged_out: set[str] | None = None,
 ) -> tuple[list[str], list[str]]:
     """Run each target's declared generators into its ``outDir``. Returns (all_written, errors).
 
@@ -1599,7 +1606,8 @@ def _run_gen_targets(
 
     A generator entry written as ``{name: ..., handEdits: overwrite}`` replaces its
     hand-edited files instead of refusing them; ``overwrite_paths_out`` collects the paths
-    such entries emitted (see :func:`_run_suite`).
+    such entries emitted (see :func:`_run_suite`). ``unchanged_out`` collects the paths whose
+    file already held the generated content (see :func:`_run_suite`).
     """
     all_written: list[str] = []
     seen: dict[str, str] = {}  # full path -> target name
@@ -1695,6 +1703,7 @@ def _run_gen_targets(
                     refused_out=refused_out, select=select, in_ledger=in_ledger,
                     api_prefix=config.api_prefix, output_layout=config.output_layout,
                     overwrite_hand_edits=overwrite, overwrite_paths_out=overwrite_paths_out,
+                    unchanged_out=unchanged_out,
                 )
             if spec_gens:
                 written = written + _run_suite(
@@ -1702,7 +1711,7 @@ def _run_gen_targets(
                     gen_state_dir=gen_state_dir, column_naming=column_naming,
                     project_root=project_root, baseline=baseline, refused_out=refused_out,
                     select=select, in_ledger=in_ledger, api_prefix=config.api_prefix,
-                    output_layout=config.output_layout,
+                    output_layout=config.output_layout, unchanged_out=unchanged_out,
                 )
         except ValueError as exc:  # intra-target run_gen collision → clean error
             errors.append(f"target '{t.name}': {exc}")
@@ -1805,6 +1814,7 @@ def _cmd_gen_config(args: argparse.Namespace) -> int:
 
     refused: list[str] = []
     targeted: set[str] = set()
+    unchanged: set[str] = set()
     baseline = getattr(args, "baseline", None) or "default"
     gen_state_dir = gen_state_dir_for(config.metadata_dir())
     project_root = str(project_root_for(config.metadata_dir()))
@@ -1820,12 +1830,17 @@ def _cmd_gen_config(args: argparse.Namespace) -> int:
         column_naming=column_naming,
         selection=selection,
         targeted_out=targeted,
+        unchanged_out=unchanged,
     )
     if errors:
         for msg in errors:
             print(f"error: {msg}", file=sys.stderr)
         return 1
-    for path in written:
+    # Only what this run changed is listed and counted as written, as in the other ports;
+    # a file that already held the output is counted as unchanged. `written` itself stays
+    # every emitted path: the orphan sweep needs all of them.
+    changed = [p for p in written if p not in unchanged]
+    for path in changed:
         print(path)
     removed = _sweep_orphans_after_gen(
         args, config, targets, targeted, selection, baseline, gen_state_dir, project_root,
@@ -1834,7 +1849,9 @@ def _cmd_gen_config(args: argparse.Namespace) -> int:
     for path in removed:
         print(f"removed {path}")
     print(
-        f"metaobjects gen: wrote {len(written)} file(s) across {len(targets)} target(s)."
+        f"metaobjects gen: wrote {len(changed)} file(s)"
+        + (f", {len(written) - len(changed)} unchanged," if len(changed) < len(written) else "")
+        + f" across {len(targets)} target(s)."
         + (f" Removed {len(removed)} file(s) no generator emits any more." if removed else "")
     )
     if refused:

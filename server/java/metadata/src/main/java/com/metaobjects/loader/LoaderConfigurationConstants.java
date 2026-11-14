@@ -24,6 +24,8 @@ public final class LoaderConfigurationConstants {
     public static final String ARG_REGISTER = "register";
     public static final String ARG_VERBOSE = "verbose";
     public static final String ARG_STRICT = "strict";
+    /** {@link LoaderOptions#setInitTimeoutMs}: how long {@code init()} waits, in milliseconds. */
+    public static final String ARG_INIT_TIMEOUT_MS = "initTimeoutMs";
     
     private LoaderConfigurationConstants() {
         // Utility class - no instances

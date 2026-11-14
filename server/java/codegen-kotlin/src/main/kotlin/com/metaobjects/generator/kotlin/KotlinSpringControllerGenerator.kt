@@ -195,6 +195,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         durationsIso = WireFormat.of(loader.root).durationsIso()
 
         for (declared in loader.metaObjects) {
+            if (!isSelected(declared)) continue
             // FR-044: a served report is emitted from its read model, the same object the
             // filter-allowlist, entity and table generators emit from, so the four files name
             // the same fields. Any other report maps to null and gets no controller.

@@ -65,6 +65,9 @@ def test_a_model_with_no_requirements_prints_nothing_and_exits_as_before(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     meta_dir = _meta_dir(tmp_path, [])
+    # Generate once first, so both runs below start from the same output on disk: `gen` lists
+    # only the files it changed, and the first run writes every file.
+    assert _verify(tmp_path, meta_dir) == 0
     capsys.readouterr()
 
     # AFTER: the gate wired in.

@@ -186,6 +186,17 @@ config is refused. Column naming is not a Python setting at all: it is `naming` 
 ([physical-naming.md](../features/migrations/physical-naming.md)). See [the migration section](../features/migrations/docs-are-generators.md#python)
 and the [config reference](../features/cli.md).
 
+**Select objects.** `metaobjects gen --entities Program,Week` (comma-separated short object
+names) regenerates only those objects' files; a target that lists `entities` keeps only the
+names in both. `metaobjects verify --codegen --entities ...` checks the same files. A narrowed
+run deletes no orphaned file; run without the flag to sweep. Two refusals, both exit 2:
+`--entities` naming nothing (`error: metaobjects gen: --entities names no object.`) and a
+name that matches no object (`error: metaobjects gen: --entities names 'X', which matches no
+object in the metadata.`). The same selection is a positional name list in TypeScript
+(`meta gen Program Week`), `--entities` in C#, and `-Dmeta.entities` on the Maven plugin.
+`gen` lists the files it changed and counts the rest as unchanged
+(`metaobjects gen: wrote 2 file(s), 40 unchanged, across 1 target(s).`).
+
 **Start a project.** `metaobjects init` writes `metaobjects.config.yaml` (one `app` target
 with no generators) and an empty, loadable `metaobjects/meta.app.yaml`, and reports what it
 wrote. It never overwrites a file it finds; it says it kept it. `metaobjects init --with-docs`
