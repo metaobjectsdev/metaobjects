@@ -732,3 +732,8 @@ export function pgStoredIdentifier(name: string): string {
   }
   return out;
 }
+
+/** The name `dialect` stores for `name`: whole on SQLite and D1, cut to Postgres's 63 bytes elsewhere. */
+export function storedIdentifier(name: string, dialect: Dialect | undefined): string {
+  return isSqliteFamily(dialect) ? name : pgStoredIdentifier(name);
+}

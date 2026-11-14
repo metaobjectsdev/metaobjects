@@ -83,7 +83,7 @@ import type {
 import { qualifiedDbName } from "./qualified-name.js";
 import { SQLITE_ISO_NOW } from "./column-default.js";
 import { viewFingerprint } from "./view-fingerprint.js";
-import { DIALECT_SQLITE, PG_IDENTIFIER_MAX_BYTES, isSqliteFamily, pgStoredIdentifier } from "./types.js";
+import { DIALECT_SQLITE, PG_IDENTIFIER_MAX_BYTES, isSqliteFamily, storedIdentifier } from "./types.js";
 import {
   resolveReferentialActions,
   findReferentialActionConflict,
@@ -462,7 +462,7 @@ export function buildExpectedSchemaWithProvenance(
     // Name the DECLARATION an index came from, so a collision says where to rename it.
     for (const node of [...entity.secondaryIdentities(), ...entity.lookupIndexes()]) {
       indexOwnerLabels.set(
-        `${tableName}.${resolveIndexName(node)}`,
+        `${tableName}.${storedIdentifier(resolveIndexName(node), dialect)}`,
         `${node.type}.${node.subType} "${resolveIndexName(node)}" on ${entity.resolutionKey()} (table "${tableName}")`,
       );
     }
@@ -709,7 +709,7 @@ function buildTable(
   const descriptor: TableDescriptor = {
     name: tableName,
     columns,
-    indexes: buildSecondaryIndexes(entity, tableName, strategy),
+    indexes: buildSecondaryIndexes(entity, tableName, strategy, dialect),
     foreignKeys: buildForeignKeys(entity, tableName, resolveTargetTable, root, strategy, fkCtx, onConflict),
     checks: buildChecks(entity, tableName, strategy, dialect, skipRedundantChecks),
     primaryKey,
@@ -731,7 +731,7 @@ function readDescription(node: { attr: (n: string) => unknown }): string | undef
 }
 
 function buildSecondaryIndexes(
-  entity: MetaObject, tableName: string, strategy: ColumnNamingStrategy,
+  entity: MetaObject, tableName: string, strategy: ColumnNamingStrategy, dialect: Dialect | undefined,
 ): IndexDescriptor[] {
   const indexes: IndexDescriptor[] = [];
 
@@ -744,7 +744,7 @@ function buildSecondaryIndexes(
     if (field.attr(FIELD_ATTR_UNIQUE) !== true) continue;
     const colName = resolveColumnName(field, strategy);
     indexes.push({
-      name: `${tableName}_${colName}_unique`,
+      name: storedIdentifier(`${tableName}_${colName}_unique`, dialect),
       columns: [colName],
       unique: true,
     });
@@ -774,7 +774,7 @@ function buildSecondaryIndexes(
       // function used to spell the same answer independently, which is how
       // `fdb4118f1` happened. One door, so the strip and the empty-name refusal
       // cannot apply to one caller and not the other.
-      name: resolveIndexName(identity),
+      name: storedIdentifier(resolveIndexName(identity), dialect),
       columns: expr ? [] : cols,
       unique: true,
     };
@@ -815,7 +815,7 @@ function buildSecondaryIndexes(
     });
     const index: IndexDescriptor = {
       // See the identity.secondary site above — one resolver for both.
-      name: resolveIndexName(lookup),
+      name: storedIdentifier(resolveIndexName(lookup), dialect),
       columns: expr ? [] : cols,
       unique: false,
     };
@@ -1451,7 +1451,7 @@ function applySchemaConventions(
  */
 export function foreignKeyIndexName(table: string, columns: readonly string[], dialect?: Dialect): string {
   const name = `${table}_${columns.join("_")}_idx`;
-  return isSqliteFamily(dialect) ? name : pgStoredIdentifier(name);
+  return storedIdentifier(name, dialect);
 }
 
 /** True when `prefix` leads with exactly `columns`, in any order (the advisory's rule, too). */

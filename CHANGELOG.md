@@ -94,6 +94,70 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   [docs/features/api-contract.md](docs/features/api-contract.md#sort--pagination). A config key, not
   vocabulary: `metamodelVersion` does not move.
 
+- **Report measures over Money and other value-object members (FR-044 R12).** A dimension's or
+  measure's `@of` may name `Entity.field.member`, a member of a value object stored with
+  `@storage: flattened` (`Payment.amount.amount`, `Payment.amount.currency`); the report reads
+  the member's own column. A `sum`, `avg`, `min` or `max` of a numeric member loads only when the
+  report lists a dimension over each non-numeric member of the same value object (its
+  currency), so amounts in different currencies are never combined; the rule follows the
+  measure into ratio and derived-measure operands. A member of a jsonb value object, an unknown
+  member and a deeper path are refused at load, and the Cube exporter refuses member paths.
+  Loader rules and report-shape derivation in TypeScript, C#, Java and Python.
+- **`measure.derived`: arithmetic between measures (FR-044 R13).** `@expr` is FR-037 R5's
+  first arithmetic wave: `add`, `subtract`, `multiply` and `divide` over two operands, where an
+  operand is `{ "field": <name> }` (a numeric `measure.aggregate` or `measure.ratio` of the
+  entity, or a numeric attribute dimension the report lists) or `{ "value": <number> }`. It
+  expresses a ratio scaled to a percent and a measure over a grouped quantity (utilization =
+  billable hours × 100 ÷ (weekly capacity × 52 ÷ 12); budget burn = cost ÷ budget). The result
+  is a nullable `decimal`; `divide` reads null on a zero divisor. `meta migrate` lowers it on
+  Postgres, SQLite, MySQL and D1, every port reads and serves it, and the Cube exporter writes
+  one over measures as a `number` member (one reading a dimension is refused). Loader rule M11,
+  report rule R13 and a conformance fixture per refusal, in every loader port.
+
+- **`verify.handEdits`: a hand-edited generated file can fail `meta verify`.** `meta verify
+  --codegen` already listed each generated file carrying a hand edit, but always exited 0, so a
+  rule changed by hand in generated code (a `max(32)` made `max(64)`) passed the gate. Set
+  `"verify": { "handEdits": "fail" }` in `.metaobjects/config.json` and it exits 1; `"notice"`
+  keeps the report and exit 0. `--allow-hand-edits` relaxes `fail` for one run, and the existing
+  `--forbid-hand-edits` still forces a failure for one run (passing both is refused). The report
+  names each file, how to see the edit, how to drop it (or move a changed rule into the
+  metadata), and how to keep it. A project without the key behaves exactly as before. The C#,
+  Java, Kotlin and Python gates compare generated files byte for byte and already fail on any
+  edit; the docs now say so.
+- **`migrate.foreignKeyIndexes`: an index on every foreign key, without the `efcore` renames.**
+  With it on, `meta migrate` gives each enforced foreign key that the primary key, a unique key or
+  an index does not already lead with a `<table>_<columns>_idx` index. The Drizzle and Prisma
+  generators, the C# `AppDbContext` and the Kotlin Exposed tables declare the same indexes under
+  the same names; Java and Python map no indexes. It adds nothing under the `efcore` conventions
+  (which already index every foreign key) or on MySQL. A project without the key is unchanged and
+  keeps the unindexed-foreign-key advisory, which now names the option. Gated by two new
+  persistence-corpus migration scenarios (adding the indexes to an existing schema, and the
+  converged no-op). Java's config reader now carries the `migrate` block's
+  `foreignKeyIndexes`, `conventions` and `dialect` on the loaded root (`MigrateSettings`).
+
+- **`meta init --skills-dir <dir>` and `meta agent-docs --skills-dir <dir>`: install the skills
+  for any coding assistant.** The `metaobjects-*` skills went only to `.claude/skills/`, which
+  Claude Code reads. `--skills-dir .agents/skills` (or any project-relative directory) puts them
+  where another assistant looks; the choice is recorded in `.metaobjects/.agent-context.json`,
+  so a later `--refresh-docs` keeps it, and moving the directory prunes the untouched copies at
+  the old one along with the skill directories that leaves empty (the old skills directory
+  itself stays, and so does any skill directory still holding a file of yours). The always-on file names the directory, so an assistant that does not load
+  skills opens `<dir>/<skill>/SKILL.md` by path. A directory outside the project is refused.
+- **[What differs by language](docs/features/language-differences.md).** One page lists what
+  the same model does differently per port: that schema migrations and database checks need
+  the Node `meta` tool in every language, the list default and cap, the validation error body,
+  filter extras, field names in code, generated data access and hand-edit handling. Every port
+  page now says up front that migrations and `verify --db` run in Node, and the README's
+  getting-started path says it for Java, Kotlin, C# and Python teams.
+- **The shared render-drift case now holds the email helper too.** 1.3.0 made a template
+  variable that is not on the payload raise `ERR_VAR_NOT_ON_PAYLOAD` at render time, and
+  `fixtures/template-output-render-conformance/runtime-drift/` held it for the `@kind: document`
+  helper and the `template.prompt` helper (the TypeScript `promptRender()` handle and the Python
+  helper over a Mustache body among them). A re-audit of every generated render path in the five
+  ports found none that still renders an unknown variable as empty, but the `@kind: email`
+  helper was not in the case. It now is: `runtime-drift/email-subject/`, `email-html/` and
+  `email-text/` each drift one part of a `WelcomeEmail`, and every port's runner checks that
+  the subject, the html body and the text body each raise. No generated code changes.
 
 ### Changed
 
@@ -253,7 +317,9 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   so a derived `<table>_<column>_fk` over the limit is no longer proposed as a rename. A new
   shared corpus, `fixtures/foreign-key-index-conformance/`, pins which foreign keys get an index
   and its name, and the TypeScript, C# and Kotlin rules all pass it; two migration scenarios
-  prove a long name converges on Postgres.
+  prove a long name converges on Postgres. A declared `index.lookup` or `identity.secondary` name
+  over 63 bytes is compared under the name Postgres stores in the same way, so it no longer
+  reappears on every run either.
 - **`mvn metaobjects:verify` refuses the model `mvn metaobjects:generate` refuses.** Two metadata
   packages that generate into one output directory (`ERR_NAME_COLLISION`) and a REST collection
   claimed twice (`ERR_COLLECTION_NAME_COLLISION`) were checked by the generate goal only, so a
