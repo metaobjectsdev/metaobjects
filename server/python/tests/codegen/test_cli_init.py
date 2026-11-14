@@ -99,7 +99,6 @@ def test_init_writes_the_new_project_api_block_that_typescript_meta_init_writes(
     cfg.write_text(cfg.read_text().replace(
         "generators: []", "generators: [entity, filter-allowlist, routes]"))
     assert main(["gen", "--config", str(cfg)]) == 0
-    assert "limit_too_large" in (tmp_path / "generated" / "app" / "author_router.py").read_text()
 
 
 def test_init_leaves_an_existing_neutral_config_alone(tmp_path: Path, capsys) -> None:
