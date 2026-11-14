@@ -850,10 +850,8 @@ export function renderZodValidators(obj: MetaObject, ctx?: RenderContext): Code 
       // null — a present null CLEARS the column (`.set({field: null})` writes NULL).
       // Keyed on required-ness, NOT fieldWillBeOptional: a required-with-@default
       // field stays non-nullable so an explicit null on it is a 400 (validation),
-      // never a silent clear. PK fields are excluded: their Drizzle column is
-      // always not-null, so a nullable Zod type would fail `.set()`'s typecheck
-      // (and NOT NULL at runtime) — see primaryKeyFieldNames.
-      if (!isRequired(child) && !pkFields.has(child.name)) expr = code`${expr}.nullable()`;
+      // never a silent clear.
+      if (!isRequired(child)) expr = code`${expr}.nullable()`;
       updateFieldLines.push(code`  ${child.name}: ${expr}`);
     }
   }

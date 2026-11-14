@@ -1,6 +1,5 @@
 package com.metaobjects.generator.spring.runtime;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
@@ -97,7 +96,6 @@ public class ValidationIssuesTest {
 
     @Test
     public void addAtUsesTheWireNameGiven() {
-        Bean b = new Bean();
         ValidationIssues issues = new ValidationIssues()
             .addAt(VALIDATOR.validateValue(Bean.class, "required", null), "wire_name");
         @SuppressWarnings("unchecked")
@@ -106,8 +104,7 @@ public class ValidationIssuesTest {
     }
 
     @Test
-    public void aPatchBindFailureListsEveryProblemAndKeepsTheBoundValues() throws Exception {
-        JsonNode body = new ObjectMapper().readTree("{\"a\": null, \"b\": 7, \"c\": 2}");
+    public void aPatchBindFailureListsEveryProblemAndKeepsTheBoundValues() {
         List<PatchValidationException.Problem> problems = PatchValidationException.newProblems();
         Map<String, Object> assigned = new java.util.LinkedHashMap<>();
         PatchValidationException.collect(problems, () -> { throw new PatchValidationException("a"); });
@@ -124,7 +121,6 @@ public class ValidationIssuesTest {
         assertEquals(List.of("a"), list.get(0).get("path"));
         assertEquals("too_big", list.get(1).get("code"));
         assertEquals(Map.of("c", 2), e.assignedValues());
-        assertTrue(body.has("a"));
     }
 
     @Test

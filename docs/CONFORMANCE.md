@@ -457,7 +457,7 @@ and 2 error shapes (`invalid_filter_field` / `invalid_filter_op`) under the
 URL grammar `?filter[<field>][<op>]=<value>` (FR-009). On top of the 34 core
 scenarios (among them the write-input rules: server-owned keys dropped, an undeclared key
 refused under the default `api.unknownFields: reject`, and every validation issue listed)
-the corpus carries eleven sub-corpora — `tph/` (13, single-table
+the corpus carries eleven sub-corpora — `tph/` (14, single-table
 inheritance; a subtype decimal filters and refuses extra digits, and the input rules hold over
 the whole hierarchy), `m2m/` (9 — 3 plain, 5 gating TPH x M:N together, the combination
 each corpus alone could not reach, and 1 pinning the collection-URL spelling),

@@ -38,7 +38,6 @@ fixtures/api-contract-conformance/
     ├── patch-empty-noop.yaml       # FR-037 PATCH-5 a patch stripping to zero assignments is a no-op read-back
     ├── writeonce-patch-stripped.yaml # FR-037 R1 @mutability:"writeOnce" — stripped on PATCH, never rejected
     ├── autoset-patch.yaml          # #203 @autoSet — PATCH bumps onUpdate, leaves onCreate alone
-    ├── input-server-owned-dropped.yaml # 1.2.x security: a client id / undeclared key never reaches storage
     ├── delete-204-and-404.yaml
     ├── invalid-sort-400.yaml
     ├── filter-eq.yaml             # FR-009 filter operators
