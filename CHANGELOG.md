@@ -317,9 +317,9 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   so a derived `<table>_<column>_fk` over the limit is no longer proposed as a rename. A new
   shared corpus, `fixtures/foreign-key-index-conformance/`, pins which foreign keys get an index
   and its name, and the TypeScript, C# and Kotlin rules all pass it; two migration scenarios
-  prove a long name converges on Postgres. A declared `index.lookup` or `identity.secondary` name
-  over 63 bytes is compared under the name Postgres stores in the same way, so it no longer
-  reappears on every run either.
+  prove a long name converges on Postgres. A declared `index.lookup` or `identity.secondary`
+  name, and a `@unique` field's derived `<table>_<column>_unique`, is created under the name
+  Postgres stores in the same way, so it no longer reappears on every run either.
 - **`mvn metaobjects:verify` refuses the model `mvn metaobjects:generate` refuses.** Two metadata
   packages that generate into one output directory (`ERR_NAME_COLLISION`) and a REST collection
   claimed twice (`ERR_COLLECTION_NAME_COLLISION`) were checked by the generate goal only, so a
