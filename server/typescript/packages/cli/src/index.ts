@@ -229,7 +229,8 @@ FLAGS:
                         inputs (metadata, metaobjects.config.ts and what it imports,
                         templates/, codegen/, the engine version, these flags) all match
                         the last successful run's, and whose generated files all still
-                        exist, loads nothing and writes nothing (ADR-0062).
+                        match what that run left, renders nothing and writes nothing
+                        (ADR-0062; the metadata is still loaded, since the key is made of it).
   --format <toon|json|text>   Output format (global flag; default toon off-TTY)
   <entity> [<entity>]   Positional filter on entity names
   --help, -h            Print this help
