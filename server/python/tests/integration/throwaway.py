@@ -65,8 +65,8 @@ def _remove_all() -> None:
     with _lock:
         names = sorted(_started)
         _started.clear()
-    for name in names:
-        subprocess.run(["docker", "rm", "-f", "-v", name], capture_output=True, timeout=120)
+    if names:
+        subprocess.run(["docker", "rm", "-f", "-v", *names], capture_output=True, timeout=120)
 
 
 def _chain_sigterm() -> None:

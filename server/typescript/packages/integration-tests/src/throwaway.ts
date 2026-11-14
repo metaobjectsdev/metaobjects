@@ -48,8 +48,8 @@ const started = new Set<string>();
 let hooksInstalled = false;
 
 function removeAll(): void {
-  for (const name of started) {
-    spawnSync("docker", ["rm", "-f", "-v", name], { stdio: "ignore", timeout: 60_000 });
+  if (started.size > 0) {
+    spawnSync("docker", ["rm", "-f", "-v", ...started], { stdio: "ignore", timeout: 60_000 });
   }
   started.clear();
 }

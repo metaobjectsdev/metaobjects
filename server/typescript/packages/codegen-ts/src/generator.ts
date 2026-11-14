@@ -290,6 +290,12 @@ export type GeneratorFactory<TOpts = void> = TOpts extends void
   ? () => Generator
   : (opts?: TOpts) => Generator;
 
+/** The objects this run generates for: `ctx.entities` narrowed by `ctx.matches` and the
+ *  `meta gen <Entity>` selection. The one predicate every per-object emitter applies. */
+export function selectedEntities(ctx: GenContext): MetaObject[] {
+  return ctx.entities.filter((e) => ctx.matches(e) && (ctx.selected?.(e) ?? true));
+}
+
 /** One-file-per-entity convenience. Async-safe. */
 export function perEntity(
   fn: (entity: MetaObject, ctx: GenContext) =>
@@ -298,7 +304,7 @@ export function perEntity(
     | Promise<EmittedFile | EmittedFile[]>,
 ): (ctx: GenContext) => Promise<EmittedFile[]> {
   return async (ctx) => {
-    const matched = ctx.entities.filter((e) => ctx.matches(e) && (ctx.selected?.(e) ?? true));
+    const matched = selectedEntities(ctx);
     const results = await Promise.all(matched.map(async (e) => {
       const r = await fn(e, ctx);
       // Each file names the object it was rendered from, unless the generator said

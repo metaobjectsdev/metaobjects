@@ -248,6 +248,10 @@ def _write(path: str, content: str) -> None:
 
 #: The status of a hand-edited file replaced under ``handEdits: overwrite``.
 STATUS_OVERWROTE_EDIT = "overwrote-edit"
+#: The file already held this output, so nothing was written.
+STATUS_UNCHANGED = "unchanged"
+#: skip-existing kept the file as it was.
+STATUS_SKIPPED = "skipped"
 
 
 def decide_and_write(
@@ -291,7 +295,7 @@ def decide_and_write(
         return "new"
 
     if strategy == "skip-existing":
-        return "skipped"
+        return STATUS_SKIPPED
 
     with open(path, encoding="utf-8") as fh:
         current = fh.read()
@@ -310,7 +314,7 @@ def decide_and_write(
         # Nothing to do, but record it: a first run over already-correct output should
         # leave the file recognisable as ours next time.
         _record(gen_state_dir, key, content, legacy_rel_path)
-        return "unchanged"
+        return STATUS_UNCHANGED
 
     if is_pristine_generated(gen_state_dir, key, current, legacy_rel_path):
         _write(path, content)

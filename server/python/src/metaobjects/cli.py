@@ -113,6 +113,8 @@ from metaobjects.requirement_check import (
 )
 from metaobjects.codegen.config import DEFAULT_API_PREFIX, GenConfig
 from metaobjects.codegen.overwrite_policy import (
+    STATUS_SKIPPED,
+    STATUS_UNCHANGED,
     has_hash_manifest,
     is_pristine_generated,
     manifest_batch,
@@ -1011,7 +1013,7 @@ def _run_suite(
     # emitted path), but a caller reporting what it WROTE must leave these out.
     if unchanged_out is not None:
         unchanged_out.update(
-            path for path, status in result.files if status in ("unchanged", "skipped")
+            path for path, status in result.files if status in (STATUS_UNCHANGED, STATUS_SKIPPED)
         )
     return [path for path, status in result.files if status != "refused"]
 

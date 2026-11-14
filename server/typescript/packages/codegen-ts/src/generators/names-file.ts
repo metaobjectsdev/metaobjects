@@ -1,4 +1,5 @@
 import type { Generator, GenContext, EmittedFile } from "../generator.js";
+import { selectedEntities } from "../generator.js";
 import { entityOutputPath, crossEntitySpecifier } from "../import-path.js";
 import { NAMES_FILE_SUFFIX } from "../constants.js";
 import { renderNamesDecl } from "../templates/names-decl.js";
@@ -78,7 +79,7 @@ export function namesFile(opts?: NamesFileOpts): Generator {
       // make pass 2 skip the very object it exists to produce.
       const emitted = new Set<string>();
       // The objects `meta gen <Entity>` named (all of them on a full run): one file each.
-      const participants = ctx.entities.filter((e) => ctx.matches(e) && (ctx.selected?.(e) ?? true));
+      const participants = selectedEntities(ctx);
       for (const entity of participants) {
         const content = renderNamesDecl(entity, {
           strategy, superSpecifier: superSpecifierFor(entity),
