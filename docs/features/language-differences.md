@@ -47,6 +47,8 @@ project.
 | **Field names on the wire** | The model's names, in every port | | | | |
 | **Decimals and null members on the wire** | Each port writes its serializer's default; a `wire` setting makes them identical. The per-port table is under [The wire setting](api-contract.md#the-wire-setting) | | | | |
 | **Hand edits to a generated file** | Merged (three-way) on the machine that generated it; refused by name elsewhere | Refused by name, or overwritten with `WithHandEdits(HandEdits.Overwrite)` | Refused by name, or overwritten with `<handEdits>overwrite</handEdits>` | Same as Java | Refused by name, or overwritten with `handEdits: overwrite` |
+| **`verify --codegen` on a hand-edited generated file** | Set by `verify.handEdits`: `"fail"` (what `meta init` writes) exits 1, `"notice"` or no key reports the file and exits 0; `--allow-hand-edits` / `--forbid-hand-edits` change it for one run | Byte comparison: any edit is drift and fails | Same as C# | Same as C# | Same as C# |
+| **Foreign-key indexes (`migrate.foreignKeyIndexes`)** | `meta migrate` creates them; the Drizzle and Prisma mappings declare them | The `AppDbContext` declares them | No index mapping to declare | The Exposed tables declare them | No index mapping to declare |
 | **Own a generator** | `npx meta eject` | `dotnet meta eject` | `mvn metaobjects:eject` | `mvn metaobjects:eject` | `metaobjects eject` |
 | **Requirement authoring lint** | Yes (advisory) | No | No | No | No |
 

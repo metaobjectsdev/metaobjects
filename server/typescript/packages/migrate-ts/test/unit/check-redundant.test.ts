@@ -41,7 +41,7 @@ describe("redundant CHECKs", () => {
   test("by default: unchanged — the length check is emitted whole", async () => {
     const r = await root({ "@min": 0, "@max": 3 }, 3);
     expect(checksOf(buildExpectedSchema(r))).toEqual(['length("code") >= 0 AND length("code") <= 3']);
-    expect(checksOf(buildExpectedSchema(r, { skipRedundantChecks: false }))).toEqual(['length("code") >= 0 AND length("code") <= 3']);
+    expect(checksOf(buildExpectedSchema(r, { skipRedundantChecks: false, foreignKeyIndexes: false }))).toEqual(['length("code") >= 0 AND length("code") <= 3']);
   });
 
   test("the efcore conventions alone skip nothing", async () => {

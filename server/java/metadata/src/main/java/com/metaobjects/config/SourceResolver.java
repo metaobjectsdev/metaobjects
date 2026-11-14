@@ -235,6 +235,11 @@ public final class SourceResolver {
         return discoverConfig(uris).map(NeutralConfig::getEnumDefaults);
     }
 
+    /** The {@code migrate} schema settings from the project config found the same way, if any. */
+    public static java.util.Optional<MigrateSettings> discoverMigrateSettings(List<java.net.URI> uris) {
+        return discoverConfig(uris).map(NeutralConfig::getMigrateSettings);
+    }
+
     /**
      * ADR-0058 — the physical-naming rules of the {@code .metaobjects/config.json} found by
      * walking up from the first {@code file:} URI (stopping after a directory holding

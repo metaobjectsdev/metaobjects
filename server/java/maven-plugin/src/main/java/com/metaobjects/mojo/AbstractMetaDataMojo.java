@@ -807,6 +807,11 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
         loader.getRoot().setApiSettings(resolveProjectConfig(srcDir)
                 .map(com.metaobjects.config.NeutralConfig::getApiSettings)
                 .orElse(com.metaobjects.config.ApiSettings.DEFAULT));
+        // The `migrate` schema settings (foreignKeyIndexes, conventions, dialect), read by the
+        // table generators so a mapping declares the indexes `meta migrate` creates.
+        loader.getRoot().setMigrateSettings(resolveProjectConfig(srcDir)
+                .map(com.metaobjects.config.NeutralConfig::getMigrateSettings)
+                .orElse(com.metaobjects.config.MigrateSettings.DEFAULT));
 
         getLog().info("MetaData Mojo > Create Loader: " + loader.toString());
 

@@ -475,6 +475,9 @@ public static class VerifyCommand
             // services read as drift.
             Dialect = neutralConfig?.MigrateDialect,
             SkipRedundantChecks = neutralConfig?.MigrateSkipRedundantChecks ?? false,
+            // The foreign-key indexes gen declared, so the regen indexes what gen indexed.
+            ForeignKeyIndexes = neutralConfig?.MigrateForeignKeyIndexes ?? false,
+            SchemaConventions = neutralConfig?.MigrateConventions,
         }.WithCSharpLayout(neutralConfig);
         return Codegen.CodegenDrift.Compute(config, load.Root, generators);
     }

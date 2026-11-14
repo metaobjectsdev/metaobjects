@@ -15,14 +15,17 @@ It works in a throwaway project and asserts, in this order:
 | 1 | Clean tree | **0** |
 | 2 | A field added to the metadata, `meta gen` not re-run | **1** (codegen gate) |
 | 3 | Metadata restored | **0** (the failure was the break, not the harness) |
-| 4 | A hand edit inside a generated file | **0** by default, **1** with `meta verify --codegen --forbid-hand-edits` |
+| 4 | A hand edit inside a generated file | **1** (the project `meta init` wrote sets `verify.handEdits: "fail"`); **0** with `meta verify --codegen --allow-hand-edits` |
 | 5 | A generated file deleted | **1** |
 | 6 | `meta gen` re-run | **0** |
 
-Step 4 is deliberate: `meta gen` three-way-merges hand edits, so a hand-edited generated file
-is a notice, not drift. If your policy is "generated code is never touched", gate on
-`--forbid-hand-edits`. A second test in the same file pins why step 0 exists: a project with no
-generators passes `meta verify` with exit 0 having checked nothing.
+Step 4 follows the project's `verify.handEdits` setting. `meta gen` three-way-merges hand edits, so
+a hand-edited generated file is reported apart from drift, by path; a project with
+`"verify": { "handEdits": "fail" }` in `.metaobjects/config.json` (what `meta init` writes) fails
+on it, and one without the key (a project from before 1.3) gets the report as a notice and exit 0.
+On such a project, set the key, or gate on `meta verify --codegen --forbid-hand-edits`. A second
+test in the same file pins why step 0 exists: a project with no generators passes `meta verify`
+with exit 0 having checked nothing.
 
 ## The same check in a shell, for your own CI
 

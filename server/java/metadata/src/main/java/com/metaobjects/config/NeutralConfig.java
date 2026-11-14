@@ -71,6 +71,7 @@ public final class NeutralConfig {
     private final WireFormat wireFormat;
     private EnumDefaults enumDefaults = EnumDefaults.DEFAULT;
     private ApiSettings apiSettings = ApiSettings.DEFAULT;
+    private MigrateSettings migrateSettings = MigrateSettings.DEFAULT;
     private List<String> requirementsInherit = List.of();
 
     private NeutralConfig(List<Map<String, String>> sources, List<Map<String, String>> dependencies,
@@ -158,6 +159,11 @@ public final class NeutralConfig {
     /** The project's enum storage defaults ({@code enums} in this file). Never {@code null}. */
     public EnumDefaults getEnumDefaults() {
         return enumDefaults;
+    }
+
+    /** The schema settings a mapping generator agrees with ({@code migrate.foreignKeyIndexes} and friends). */
+    public MigrateSettings getMigrateSettings() {
+        return migrateSettings;
     }
 
     /**
@@ -370,6 +376,7 @@ public final class NeutralConfig {
                 wireFormat);
         cfg.enumDefaults = parseEnums(root.get("enums"), origin);
         cfg.apiSettings = parseApi(root.get("api"), origin);
+        cfg.migrateSettings = parseMigrateSettings(root.get("migrate"));
         cfg.requirementsInherit = parseRequirementsInherit(root.get("requirements"), origin);
         return cfg;
     }
@@ -576,6 +583,23 @@ public final class NeutralConfig {
         JsonElement inherit = obj.get("inherit");
         if (inherit == null || inherit.isJsonNull()) return List.of();
         return stringArray(inherit, "requirements.inherit", origin);
+    }
+
+    /**
+     * {@code migrate.foreignKeyIndexes}, {@code migrate.conventions} and {@code migrate.dialect},
+     * read leniently (a wrong type reads as absent): {@code meta migrate} owns and validates them.
+     */
+    private static MigrateSettings parseMigrateSettings(JsonElement migrate) {
+        if (migrate == null || !migrate.isJsonObject()) return MigrateSettings.DEFAULT;
+        JsonObject m = migrate.getAsJsonObject();
+        JsonElement fk = m.get("foreignKeyIndexes");
+        boolean foreignKeyIndexes = fk != null && fk.isJsonPrimitive() && fk.getAsJsonPrimitive().isBoolean()
+            && fk.getAsBoolean();
+        return new MigrateSettings(foreignKeyIndexes, stringOrNull(m.get("conventions")), stringOrNull(m.get("dialect")));
+    }
+
+    private static String stringOrNull(JsonElement e) {
+        return e != null && e.isJsonPrimitive() && e.getAsJsonPrimitive().isString() ? e.getAsString() : null;
     }
 
     /** {@code migrate.scope}, or {@code null} when absent; every other {@code migrate} key is ignored. */

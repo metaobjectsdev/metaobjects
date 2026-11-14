@@ -75,6 +75,10 @@ const D1Block = z.object({
   wranglerConfigPath: z.string(),
 }).partial().strict();
 
+/** `verify.handEdits`: what `meta verify --codegen` does with a hand-edited generated file. */
+export const HAND_EDITS_POLICIES = ["fail", "notice"] as const;
+export type HandEditsPolicy = (typeof HAND_EDITS_POLICIES)[number];
+
 /** #192 — migration output-format adapters; orthogonal to dialect. */
 const MigrateFormatEnum = z.enum(["default", "flyway"]);
 
@@ -101,6 +105,13 @@ const MigrateBlock = z.object({
    *  out a CHECK the column type already enforces, for a database whose CHECKs were written by
    *  hand only where the type does not; a CHECK with a declared `@constraintName` is kept. */
   checks: z.object({ skipRedundant: z.boolean() }).partial().strict(),
+  /** Index every foreign key the conventions leave without one, named
+   *  `<table>_<column>[_<column>…]_idx`. Separate from `conventions`, so a project can have the
+   *  indexes without the `efcore` preset's constraint names. Absent = false: the schema migrate
+   *  has always built, and `meta verify` names each unindexed foreign key instead. Read by
+   *  `meta migrate` and by every generator that maps indexes (Drizzle, Prisma, EF Core,
+   *  Exposed); `meta init` writes it on for a new project. */
+  foreignKeyIndexes: z.boolean(),
 // .strict() for the same reason as the top level and the source arms below, and
 // with sharper teeth here: `{ migrate: { scopee: [...], dialect: "postgres" } }`
 // used to parse to `{ dialect: "postgres" }`, so a typo'd `scope` key meant
@@ -221,6 +232,25 @@ export const ConfigSchema = z.object({
     })
     .default({}),
   migrate: MigrateBlock.optional(),
+  /**
+   * `meta verify` settings. `handEdits`: `fail` makes `meta verify --codegen` exit 1 when a
+   * generated file carries a hand edit (`--allow-hand-edits` relaxes that for one run);
+   * `notice` lists the file and exits 0 (`--forbid-hand-edits` tightens that for one run).
+   * Absent means `notice`, what verify has always done; `meta init` writes `fail` for a new
+   * project. Only the TypeScript `meta verify` reads it: the other ports' verify already fails
+   * on any edit to a generated file.
+   */
+  verify: z
+    .strictObject({
+      handEdits: z.enum(HAND_EDITS_POLICIES, {
+        message: `"verify.handEdits" must be one of ${HAND_EDITS_POLICIES.map((v) => `"${v}"`).join(", ")}`,
+      }).optional(),
+    }, {
+      error: (iss) => iss.code === "unrecognized_keys"
+        ? `"verify" has an unknown key "${iss.keys[0]}" (expected "handEdits")`
+        : iss.code === "invalid_type" ? `"verify" must be an object` : undefined,
+    })
+    .optional(),
   /**
    * FR-023 — which dependencies' requirements this project takes on as its own ledger.
    * `inherit` lists scope patterns, and a pattern counts only when it NAMES a dependency's

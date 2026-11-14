@@ -247,6 +247,21 @@ public class MetaRoot extends MetaData implements com.metaobjects.database.Physi
         this.enumDefaults = (enumDefaults != null) ? enumDefaults : com.metaobjects.config.EnumDefaults.DEFAULT;
     }
 
+    /**
+     * The project's {@code migrate} schema settings, set by the same project-aware load as the
+     * naming rules and read through {@link com.metaobjects.config.MigrateSettings#of(MetaData)}.
+     */
+    private transient com.metaobjects.config.MigrateSettings migrateSettings =
+        com.metaobjects.config.MigrateSettings.DEFAULT;
+
+    public com.metaobjects.config.MigrateSettings getMigrateSettings() {
+        return migrateSettings;
+    }
+
+    public void setMigrateSettings(com.metaobjects.config.MigrateSettings migrateSettings) {
+        this.migrateSettings = (migrateSettings != null) ? migrateSettings : com.metaobjects.config.MigrateSettings.DEFAULT;
+    }
+
     /** The project's wire-format setting for this tree. Never {@code null}. */
     public com.metaobjects.config.WireFormat getWireFormat() {
         return wireFormat;

@@ -188,6 +188,19 @@ describe("init() — happy path", () => {
     expect(config.api).toEqual({ pagination: { defaultLimit: 50, maxLimit: 1000 }, unknownFields: "reject" });
   });
 
+  test("writes the new-project defaults as visible settings: FK indexes on, hand edits fail verify", async () => {
+    await init({ cwd });
+    const config = JSON.parse(readFileSync(join(cwd, ".metaobjects", "config.json"), "utf8"));
+    expect(config.migrate).toEqual({ foreignKeyIndexes: true });
+    expect(config.verify).toEqual({ handEdits: "fail" });
+  });
+
+  test("a dialect flag keeps the new-project defaults beside migrate.dialect", async () => {
+    await init({ cwd, dialect: "postgres" });
+    const config = JSON.parse(readFileSync(join(cwd, ".metaobjects", "config.json"), "utf8"));
+    expect(config.migrate).toEqual({ dialect: "postgres", foreignKeyIndexes: true });
+  });
+
   test("writes a .gitignore under .metaobjects/ that includes .gen-state", async () => {
     await init({ cwd });
     const ignore = readFileSync(join(cwd, ".metaobjects", ".gitignore"), "utf8");
@@ -516,6 +529,9 @@ describe("init() --config-only", () => {
     expect(result.preserved).toContain(".metaobjects/config.json");
     const cfg = JSON.parse(readFileSync(join(cwd, ".metaobjects", "config.json"), "utf8"));
     expect(cfg.sources).toEqual([{ path: "model" }]);
+    // An existing project keeps the behaviour it had: no new-project default is added to it.
+    expect(cfg.migrate).toBeUndefined();
+    expect(cfg.verify).toBeUndefined();
   });
 
   test("refuses to overwrite an existing config it cannot parse, without --force", async () => {

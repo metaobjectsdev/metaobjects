@@ -594,6 +594,11 @@ async function writeCodegenTsconfig(opts: InitOptions, result: InitResult): Prom
   result.created.push(CODEGEN_TSCONFIG_REL);
 }
 
+/** The `migrate` settings a new project starts with (absent in an existing one: no FK indexes). */
+export const NEW_PROJECT_MIGRATE_DEFAULTS = { foreignKeyIndexes: true } as const;
+/** The `verify` settings a new project starts with (absent in an existing one: hand edits are a notice). */
+export const NEW_PROJECT_VERIFY_DEFAULTS = { handEdits: "fail" } as const;
+
 /**
  * .metaobjects/config.json — write fresh defaults, or preserve+merge an existing
  * valid config. Shared by the full scaffold and `--config-only` so the two paths
@@ -603,22 +608,27 @@ async function writeConfigFile(opts: InitOptions, result: InitResult, agentDir: 
   // An explicit sqlite/postgres dialect is written so `meta migrate` needs no --dialect; an
   // unflagged init keeps the defaults it always wrote. MySQL schema is not migrate's.
   const dialect = resolveInitDialect(opts);
-  // A new project starts with a page size on every generated list route. It is written here
-  // and not into DEFAULT_CONFIG: the merge below must not add a cap to an existing project
-  // on `--force`, where it would truncate a client that reads a whole list. `unknownFields`
-  // is written out at its default, so the choice is visible where a project would change it.
-  const scaffold = {
+  const migrate = dialect === "d1"
+    ? buildD1MigrateBlock(opts.cwd)
+    : opts.dialect !== undefined ? { dialect } : {};
+  // New-project defaults, each written as its own visible setting (a project that predates
+  // a setting keeps the behaviour it had, because the key is absent there): every foreign key
+  // gets an index, a hand edit to a generated file fails `meta verify --codegen`, and every
+  // generated list route has a page size. They are written here and not into DEFAULT_CONFIG:
+  // the merge below must not add them to an existing project on `--force` (a page size added
+  // on upgrade would truncate a client that reads a whole list). `unknownFields` is written out
+  // at its default, so the choice is visible where a project would change it.
+  // MySQL writes no `migrate` block at all: MetaObjects does not own MySQL schema, and InnoDB
+  // indexes every foreign key itself.
+  const freshConfig = ConfigSchema.parse({
     ...DEFAULT_CONFIG,
+    ...(dialect === "mysql" ? {} : { migrate: { ...migrate, ...NEW_PROJECT_MIGRATE_DEFAULTS } }),
+    verify: NEW_PROJECT_VERIFY_DEFAULTS,
     api: {
       pagination: { defaultLimit: INIT_DEFAULT_LIMIT, maxLimit: INIT_MAX_LIMIT },
       unknownFields: UNKNOWN_FIELDS_REJECT,
     },
-  };
-  const freshConfig = dialect === "d1"
-    ? ConfigSchema.parse({ ...scaffold, migrate: buildD1MigrateBlock(opts.cwd) })
-    : opts.dialect !== undefined && dialect !== "mysql"
-      ? ConfigSchema.parse({ ...scaffold, migrate: { dialect } })
-      : ConfigSchema.parse(scaffold);
+  });
   const writeFresh = (): Promise<void> =>
     writeFile(join(agentDir, "config.json"), JSON.stringify(freshConfig, null, 2) + "\n", "utf8");
 

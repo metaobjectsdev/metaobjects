@@ -336,10 +336,15 @@ FLAGS:
                         An <Entity>.names.ts artifact is the exception: it must match a
                         fresh regen exactly — a hand edit in it is itself the defect.
                         Needs metaobjects.config.ts; exit 2 if absent.
-                        Every generated file that carries a hand edit is still LISTED
-                        (a notice, exit code unchanged), so an edit is never invisible.
+                        Every generated file that carries a hand edit is LISTED, so an
+                        edit is never invisible. Whether that fails the run is the
+                        project's verify.handEdits in .metaobjects/config.json: "fail"
+                        exits 1 ('meta init' writes it for a new project); "notice", or
+                        no key, lists them and leaves the exit code alone.
   --forbid-hand-edits   With --codegen: fail (exit 1) on ANY hand edit inside generated
-                        code, for teams that want generated files untouchable.
+                        code for this run, whatever verify.handEdits says.
+  --allow-hand-edits    With --codegen: list hand edits as a notice and exit 0 for this
+                        run, relaxing verify.handEdits: "fail".
   --docs                Removed in 1.1.0: says so and exits 2. --codegen checks documentation
                         with everything else \`generators\` declares.
   --deps                Dependency drift — re-resolve each declared dependency exactly as
@@ -413,7 +418,8 @@ A bare 'meta verify' also runs an ADVISORY anti-pattern pass: it scans your auth
 source for hand-rolled aggregates, money-as-float, and CHECK-IN enums and points you
 at the construct that models them (origin.aggregate / field.currency / field.enum).
 The same pass names every foreign key with no index on its referencing column(s)
-and the index.lookup that would cover it (migrate never adds one on its own).
+and the index.lookup that would cover it (migrate adds one only when
+.metaobjects/config.json sets "migrate": { "foreignKeyIndexes": true }).
 Warnings only — it never fails the build. Opt out with --no-antipatterns or
 META_NO_ANTIPATTERNS=1.
 

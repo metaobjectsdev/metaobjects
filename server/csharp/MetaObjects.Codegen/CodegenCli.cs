@@ -260,6 +260,8 @@ public static class CodegenCli
             SweepOrphans = sweepOrphans,
             Dialect = neutralConfig?.MigrateDialect,
             SkipRedundantChecks = neutralConfig?.MigrateSkipRedundantChecks ?? false,
+            ForeignKeyIndexes = neutralConfig?.MigrateForeignKeyIndexes ?? false,
+            SchemaConventions = neutralConfig?.MigrateConventions,
         }.WithCSharpLayout(neutralConfig);
 
         CodegenRunner.RunResult result;
@@ -963,6 +965,8 @@ public static class CodegenCli
             // services read as drift.
             Dialect = neutralConfig?.MigrateDialect,
             SkipRedundantChecks = neutralConfig?.MigrateSkipRedundantChecks ?? false,
+            ForeignKeyIndexes = neutralConfig?.MigrateForeignKeyIndexes ?? false,
+            SchemaConventions = neutralConfig?.MigrateConventions,
         }.WithCSharpLayout(neutralConfig);
         var result = CodegenDrift.Compute(config, load.Root, suite, narrowed: a.Selection is { Count: > 0 });
         if (result.Error is not null)

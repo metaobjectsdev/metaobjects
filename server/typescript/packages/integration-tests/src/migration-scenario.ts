@@ -13,12 +13,12 @@ import { Pool } from "pg";
 import { applyNearestNaming, loadMetadataDir } from "./load-metadata.ts";
 import { canonicalJson, normalizeRow } from "./normalization.ts";
 import { executeSql, queryRows } from "./postgres-sql.ts";
-import type { MigrationScenario } from "./scenario.ts";
+import type { MigrationScenario, MigrationSchemaSettings } from "./scenario.ts";
 
 export async function runMigrationScenario(scenario: MigrationScenario, connectionUri: string): Promise<void> {
   // 1. Bootstrap the starting schema, if any.
   if (scenario.seedMetadataDir) {
-    const seedSql = await buildFullCreate(scenario.seedMetadataDir);
+    const seedSql = await buildFullCreate(scenario.seedMetadataDir, scenario.seedSchemaSettings);
     await executeSql(connectionUri, seedSql);
   }
   // 2. Seed data.
@@ -33,6 +33,7 @@ export async function runMigrationScenario(scenario: MigrationScenario, connecti
   // without it `programId` would become `program_id` and the bootstrap up-SQL assertion
   // for `weeks_programId_fk` would never match.
   const expected = buildExpectedSchema(targetRoot, {
+    ...scenario.schemaSettings,
     views: buildProjectionViews(targetRoot, { dialect: "postgres" }),
   });
 
@@ -79,9 +80,10 @@ export async function runMigrationScenario(scenario: MigrationScenario, connecti
 // Helpers
 // ---------------------------------------------------------------------------
 
-async function buildFullCreate(metadataDir: string): Promise<string> {
+async function buildFullCreate(metadataDir: string, settings: MigrationSchemaSettings): Promise<string> {
   const root = await loadMetadataDir(metadataDir);
   const expected = buildExpectedSchema(root, {
+    ...settings,
     views: buildProjectionViews(root, { dialect: "postgres" }),
   });
   const result = await diff({ expected, actual: { tables: [], views: [] } });

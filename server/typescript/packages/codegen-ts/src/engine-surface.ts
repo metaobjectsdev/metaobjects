@@ -36,6 +36,7 @@ export const ENGINE_MODULES: readonly string[] = [
   "codegen-ts/src/enum-meta.ts",
   "codegen-ts/src/enum-shared.ts",
   "codegen-ts/src/flattened.ts",
+  "codegen-ts/src/foreign-key-indexes.ts",
   "codegen-ts/src/format.ts",
   "codegen-ts/src/generator.ts",
   "codegen-ts/src/generators/agent-schema-input.ts",

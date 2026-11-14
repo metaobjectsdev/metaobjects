@@ -1,0 +1,17 @@
+name: noop-converged-foreign-key-indexes
+description: |
+  IDEMPOTENCE GATE for `migrate.foreignKeyIndexes`: the canonical schema built WITH the option,
+  then diffed against the same metadata with the option still on, must produce zero SQL. Catches
+  a foreign-key index whose emitted form introspection reads back differently (a name, a column
+  list), which would otherwise re-propose the index on every migrate.
+
+seed-metadata: ../canonical/
+seed-schema-settings:
+  foreignKeyIndexes: true
+target-metadata: ../canonical/
+schema-settings:
+  foreignKeyIndexes: true
+
+expect:
+  blocked: []
+  up-empty: true
