@@ -530,6 +530,8 @@ public class MetaDataLoader
             errors.AddRange(ValidationPasses.ValidateOriginSegmentsAndCorrelation(root));
             // rc.21 part B — @union shapes and @grain projections.
             errors.AddRange(ValidationPasses.ValidateProjectionUnionAndGrain(root));
+            // rc.21 part B fix round 2 (N3): a derived field that depends on itself has no SQL.
+            errors.AddRange(ValidationPasses.ValidateDerivedCycles(root));
 
             // Pass 7c (FR-044): reporting vocabulary cross-node rules (dimensions, measures,
             // segments, reports, relative-date filter values).

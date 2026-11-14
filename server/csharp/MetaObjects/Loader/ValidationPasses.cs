@@ -1765,6 +1765,69 @@ public static partial class ValidationPasses
     }
 
     // =========================================================================
+    // rc.21 part B fix round 2 (N3): no derived field depends on itself. A view inlines a derived
+    // field's dependencies on the same row (an origin.function's @args, an origin.computed
+    // expression's field refs), so a cycle has no SQL and would recurse forever. Refused once per
+    // cycle, naming the path (ERR_INVALID_ORIGIN). Ported from validation-passes.ts
+    // validateDerivedCycles.
+    // =========================================================================
+
+    public static IReadOnlyList<MetaError> ValidateDerivedCycles(MetaData root)
+    {
+        var errors = new List<MetaError>();
+        // ADR-0039: effective children, as TS iterates them.
+        foreach (var obj in root.Children().Where(c => c.Type == TYPE_OBJECT))
+        {
+            // ADR-0039: effective — an inherited field's origin is inlined on the extender's row too.
+            var fields = obj.Children().Where(c => c.Type == TYPE_FIELD).ToList();
+            var byName = new Dictionary<string, MetaData>();
+            foreach (var f in fields) byName.TryAdd(f.Name, f);
+            // ADR-0039: own — origin.* never inherits (ADR-0029).
+            MetaData? OriginOf(MetaData f) => f.OwnChildren().FirstOrDefault(c => c.Type == TYPE_ORIGIN);
+            List<MetaData> Deps(MetaData f)
+            {
+                var origin = OriginOf(f);
+                var names = new List<string>();
+                if (origin?.SubType == ORIGIN_SUBTYPE_FUNCTION)
+                {
+                    var raw = origin.OwnAttr(ORIGIN_FUNCTION_ATTR_ARGS);
+                    var list = raw switch { null => new List<object?>(), IReadOnlyList<object?> l => l.ToList(), _ => new List<object?> { raw } };
+                    names.AddRange(list.OfType<string>());
+                }
+                else if (origin?.SubType == ORIGIN_SUBTYPE_COMPUTED)
+                {
+                    names.AddRange(ExpressionGrammar.FieldRefs(origin.OwnAttr(ORIGIN_COMPUTED_ATTR_EXPR)).Select(n => n.Split('.')[0]));
+                }
+                return names.Select(n => byName.TryGetValue(n, out var d) ? d : null)
+                    .Where(d => d is not null && !ReferenceEquals(d, f) && OriginOf(d) is not null).Select(d => d!).ToList();
+            }
+            var done = new HashSet<MetaData>(ReferenceEqualityComparer.Instance);
+            var reported = new HashSet<string>();
+            void Visit(MetaData f, List<MetaData> path)
+            {
+                var at = path.FindIndex(x => ReferenceEquals(x, f));
+                if (at >= 0)
+                {
+                    var cycle = path.Skip(at).Append(f).Select(x => x.Name).ToList();
+                    var key = string.Join(",", cycle.Take(cycle.Count - 1).OrderBy(n => n, StringComparer.Ordinal));
+                    if (reported.Add(key))
+                    {
+                        errors.Add(new MetaError(
+                            $"{obj.Name}.{f.Name}: a derived field depends on itself through {string.Join(" → ", cycle)}; a view inlines each dependency on the same row, so the cycle has no SQL. Break it.",
+                            ErrorCode.ERR_INVALID_ORIGIN, Envelope: (OriginOf(f) ?? f).Source));
+                    }
+                    return;
+                }
+                if (done.Contains(f)) return;
+                foreach (var d in Deps(f)) Visit(d, [.. path, f]);
+                done.Add(f);
+            }
+            foreach (var f in fields.Where(f => OriginOf(f) is not null)) Visit(f, []);
+        }
+        return errors;
+    }
+
+    // =========================================================================
     // rc.19 origin-segment and correlated-filter, on every origin.first / origin.aggregate:
     // @segment names a segment of the related entity (ERR_INVALID_ORIGIN); an @filter operand
     // { field: "<name>" } names a base-row field with a column-comparing op, and the null-safe

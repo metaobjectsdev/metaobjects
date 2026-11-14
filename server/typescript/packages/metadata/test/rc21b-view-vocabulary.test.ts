@@ -174,6 +174,24 @@ describe("U10 — origin.function", () => {
       { "field.int": { name: "idAsInt", children: [ { "origin.computed": { "@expr": { cast: { field: "id" }, as: "int" } } } ] } },
       { "field.string": { name: "tier", children: [ { "origin.function": { "@function": "tier_of", "@args": ["idAsInt"], "@params": ["int"], "@returns": "string" } } ] } } ] } }, reach);
   });
+  // Fix round 2 (N3): a view inlines a derived field's dependencies on the same row; a cycle has no SQL.
+  test("a cycle through derived function arguments is refused, naming the path", async () => {
+    const meter = (...fields: unknown[]) => ({ "object.entity": { name: "Meter", children: [
+      { "source.rdb": { "@table": "meters" } }, { "field.long": { name: "id" } }, { "identity.primary": { name: "id", "@fields": "id" } }, ...fields ] } });
+    const fnField = (name: string, arg: string) => ({ "field.long": { name, children: [
+      { "origin.function": { "@function": `f_${name}`, "@args": [arg], "@params": ["long"], "@returns": "long" } } ] } });
+    const meterRow = { "object.projection": { name: "MeterRow", children: [ { "source.rdb": { "@kind": "view", "@table": "v_meter" } },
+      { "field.long": { name: "id", extends: "Meter.id" } },
+      { "field.long": { name: "a", children: [ { "origin.passthrough": { "@from": "Meter.a" } } ] } },
+      { "identity.primary": { name: "id", extends: "Meter.id" } } ] } };
+    // function → function
+    await refused("ERR_INVALID_ORIGIN", /Meter\.a: a derived field depends on itself through a → b → a/, meter(fnField("a", "b"), fnField("b", "a")), meterRow);
+    // function → computed → function
+    await refused("ERR_INVALID_ORIGIN", /depends on itself through a → c → a/,
+      meter(fnField("a", "c"), { "field.long": { name: "c", children: [ { "origin.computed": { "@expr": { fn: "coalesce", args: [ { field: "a" }, { field: "id" } ] } } } ] } }), meterRow);
+    // A chain without a cycle loads.
+    await ok(meter(fnField("a", "b"), fnField("b", "id")), meterRow);
+  });
   test("an unreached function field on an entity with no read source is refused", async () => {
     await refused("ERR_DERIVED_FIELD_NO_READ_SOURCE", /tier/, withFn({ "@function": "tier_of", "@args": ["id"], "@params": ["long"], "@returns": "string" }));
   });

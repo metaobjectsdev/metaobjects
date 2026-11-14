@@ -2062,6 +2062,55 @@ function _reachFunctionArgs(f: MetaData, reached: Set<MetaData>): void {
 }
 
 /**
+ * rc.21 part B fix round 2 (N3): no derived field depends on itself. A view inlines a derived
+ * field's dependencies on the same row — an origin.function's @args, an origin.computed
+ * expression's field refs — so a cycle among them (a's argument is b, b's is a) has no SQL and
+ * would recurse forever. Refused at load, once per cycle, naming the path (ERR_INVALID_ORIGIN).
+ */
+export function validateDerivedCycles(root: MetaData): ParseError[] {
+  const errors: ParseError[] = [];
+  for (const obj of root.children().filter((c) => c.type === TYPE_OBJECT)) {
+    // ADR-0039: effective — an inherited field's origin is inlined on the extender's row too.
+    const fields = obj.children().filter((c) => c.type === TYPE_FIELD);
+    const byName = new Map(fields.map((f) => [f.name, f]));
+    // ADR-0039: own — origin.* never inherits (ADR-0029); it is the field's own child.
+    const originOf = (f: MetaData) => f.ownChildren().find((c) => c.type === TYPE_ORIGIN);
+    const deps = (f: MetaData): MetaData[] => {
+      const origin = originOf(f);
+      const names: string[] = [];
+      if (origin?.subType === ORIGIN_SUBTYPE_FUNCTION) {
+        const raw = origin.ownAttr(ORIGIN_FUNCTION_ATTR_ARGS);
+        for (const n of raw === undefined ? [] : Array.isArray(raw) ? raw : [raw]) if (typeof n === "string") names.push(n);
+      } else if (origin?.subType === ORIGIN_SUBTYPE_COMPUTED) {
+        for (const n of expressionFieldRefs(origin.ownAttr(ORIGIN_COMPUTED_ATTR_EXPR))) names.push(n.split(".")[0]!);
+      }
+      return names.map((n) => byName.get(n)).filter((d): d is MetaData => d !== undefined && d !== f && originOf(d) !== undefined);
+    };
+    const done = new Set<MetaData>();
+    const reported = new Set<string>();
+    const visit = (f: MetaData, path: MetaData[]): void => {
+      const at = path.indexOf(f);
+      if (at >= 0) {
+        const cycle = [...path.slice(at), f].map((x) => x.name);
+        const key = [...cycle.slice(0, -1)].sort().join(",");
+        if (!reported.has(key)) {
+          reported.add(key);
+          errors.push(new ParseError(
+            `${obj.name}.${f.name}: a derived field depends on itself through ${cycle.join(" → ")}; a view inlines each dependency on the same row, so the cycle has no SQL. Break it.`,
+            { code: "ERR_INVALID_ORIGIN", source: originOf(f)?.source ?? f.source }));
+        }
+        return;
+      }
+      if (done.has(f)) return;
+      for (const d of deps(f)) visit(d, [...path, f]);
+      done.add(f);
+    };
+    for (const f of fields) if (originOf(f) !== undefined) visit(f, []);
+  }
+  return errors;
+}
+
+/**
  * rc.19 origin-segment and correlated-filter, on every origin.first / origin.aggregate:
  *   - `@segment` names a segment.filter declared on the related entity (the @of entity, else
  *     the @via terminal) — ERR_INVALID_ORIGIN otherwise;

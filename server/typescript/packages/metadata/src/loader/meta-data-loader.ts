@@ -26,7 +26,7 @@ import type { LoaderWarning } from "../source.js";
 import { codeSource, resolvedSource } from "../source.js";
 import { parseJson } from "../parser-json.js";
 import { validateDataGridSortFields, validateFilterableHasIndex, validateFilterableHasSupportedOps, validateSortableHasSupportedSubtype, validateOriginPaths, validateDerivedFieldProvidability, validateDataGridFilterValues, validateFieldObjectStorage, validateFieldMap,
-  validateEnumMaxLength, validateIdentitySequence, validateCrossFieldValidators, validateDbCheck, validateTemplatePayloadRefs, validateFieldDefaults, validateRelationships, validateOneSideReferenceResolution, validateM2MJunctionPairing, validateIndexLookupFields, validateProjectionFilter, validateOriginSegmentsAndCorrelation, validateProjectionUnionAndGrain, validateExtenderSubtypeScope, validateRetiredRequirementLinks, validateColumnNameCollisions } from "./validation-passes.js";
+  validateEnumMaxLength, validateIdentitySequence, validateCrossFieldValidators, validateDbCheck, validateTemplatePayloadRefs, validateFieldDefaults, validateRelationships, validateOneSideReferenceResolution, validateM2MJunctionPairing, validateIndexLookupFields, validateProjectionFilter, validateOriginSegmentsAndCorrelation, validateProjectionUnionAndGrain, validateDerivedCycles, validateExtenderSubtypeScope, validateRetiredRequirementLinks, validateColumnNameCollisions } from "./validation-passes.js";
 import { validateReporting } from "./reporting-validation.js";
 import { runRegisteredValidation } from "./validation-registry.js";
 import { validateSourceRoles } from "../persistence/source/validate-source-roles.js";
@@ -667,6 +667,8 @@ export class MetaDataLoader {
       errors.push(...validateOriginSegmentsAndCorrelation(root));
       // rc.21 part B — @union shapes and @grain projections.
       errors.push(...validateProjectionUnionAndGrain(root));
+      // rc.21 part B fix round 2 (N3): a derived field that depends on itself has no SQL.
+      errors.push(...validateDerivedCycles(root));
 
       // FR-044 — reporting vocabulary cross-node rules (dimensions, measures,
       // segments, reports, relative-date filter values).

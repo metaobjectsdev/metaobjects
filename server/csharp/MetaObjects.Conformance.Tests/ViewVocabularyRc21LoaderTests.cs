@@ -265,4 +265,25 @@ public class ViewVocabularyRc21LoaderTests
           { "object.projection": { "name": "U", "extends": "A", "@union": ["B"], "children": [ { "source.rdb": { "@kind": "view", "@view": "u" } } ] } }
         """);
     }
+    // Fix round 2 (N3): a view inlines a derived field's dependencies on the same row; a cycle has no SQL.
+    private static string Meter(params string[] fields) => $$"""
+      { "object.entity": { "name": "Meter", "children": [
+        { "source.rdb": { "@table": "meters" } }, { "field.long": { "name": "id" } }, { "identity.primary": { "name": "id", "@fields": "id" } }{{string.Concat(fields.Select(f => ",\n" + f))}} ] } },
+      { "object.projection": { "name": "MeterRow", "children": [ { "source.rdb": { "@kind": "view", "@view": "v_meter" } },
+        { "field.long": { "name": "id", "extends": "Meter.id" } },
+        { "field.long": { "name": "a", "children": [ { "origin.passthrough": { "@from": "Meter.a" } } ] } },
+        { "identity.primary": { "name": "id", "extends": "Meter.id" } } ] } }
+    """;
+
+    private static string FnField(string name, string arg) =>
+        $$"""{ "field.long": { "name": "{{name}}", "children": [ { "origin.function": { "@function": "f_{{name}}", "@args": ["{{arg}}"], "@params": ["long"], "@returns": "long" } } ] } }""";
+
+    [Fact]
+    public void A_cycle_through_derived_function_arguments_is_refused_naming_the_path()
+    {
+        Refused("ERR_INVALID_ORIGIN", "Meter.a: a derived field depends on itself through a → b → a", Meter(FnField("a", "b"), FnField("b", "a")));
+        Refused("ERR_INVALID_ORIGIN", "depends on itself through a → c → a", Meter(FnField("a", "c"),
+            """{ "field.long": { "name": "c", "children": [ { "origin.computed": { "@expr": { "fn": "coalesce", "args": [ { "field": "a" }, { "field": "id" } ] } } } ] } }"""));
+        Assert.Empty(Load(Meter(FnField("a", "b"), FnField("b", "id"))));
+    }
 }
