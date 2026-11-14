@@ -107,7 +107,10 @@ describe("meta verify — schema refusals", () => {
     expect(scoped.out).toContain('field.enum "Ticket.status" has the member "IN_PROGRESS"');
   });
 
-  test("--db: a declared CHECK name two validators share is refused by name, not as an introspection failure", async () => {
+  // rc.21 (N1): SQLite and D1 accept and enforce two CHECKs under one name, so the shared name is
+  // not refused there (Postgres refuses it; migrate-ts check-name-collision.test.ts pins that). The
+  // run reports the ordinary drift, never an introspection failure.
+  test("--db: a CHECK name two validators share is not refused on SQLite, and is no introspection failure", async () => {
     const root = await mkdtemp(join(tmpdir(), "verify-schema-refusals-"));
     dirs.push(root);
     await mkdir(join(root, "metaobjects"), { recursive: true });
@@ -127,8 +130,8 @@ describe("meta verify — schema refusals", () => {
 
     const { code, out } = await capture(() => verifyCommand(["--db", `file:${join(root, "t.db")}`], root));
     expect(code).toBe(1);
-    expect(out).toContain("ERR_CHECK_NAME");
-    expect(out).toContain('CHECK "CK_Slot" on table "slots"');
+    expect(out).toContain("+ table slots");
+    expect(out).not.toContain("ERR_CHECK_NAME");
     expect(out).not.toContain("failed to introspect");
   });
 });
