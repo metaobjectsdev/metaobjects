@@ -1,6 +1,6 @@
 # Conformance coverage
 
-The MetaObjects standard ships **39 shared conformance corpora** under
+The MetaObjects standard ships **40 shared conformance corpora** under
 [`fixtures/`](../fixtures/). Every port runs every corpus that is *applicable to
 it* and asserts the same expected behaviour against the same fixtures. **This page
 is the inverse index**: fixture → feature doc + per-port pass status, and it is the
@@ -35,7 +35,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/jinja-verify-conformance/`](../fixtures/jinja-verify-conformance/) (ADR-0061 — the payload check over a Jinja body) | 31 | ✓ | refuses Jinja | refuses, via Java | refuses Jinja | ✓ |
 | [`fixtures/extract-conformance/`](../fixtures/extract-conformance/) | 58 | ✓ | ✓ | inherits the shared JVM engine | ✓ | ✓ |
 | [`fixtures/output-prompt-conformance/`](../fixtures/output-prompt-conformance/) | 17 | ✓ | ✓ | ✓ | ✓ | ✓ |
-| [`fixtures/persistence-conformance/`](../fixtures/persistence-conformance/) | 64 (55 query + 9 migration) | all 64; the 24 `report-*` and the `-15` decimal scenarios also on SQLite, MySQL and D1, `decimal-exact` also on MySQL (a scenario's `engines:` key is exact) | 55 query (migrations TS-only, ADR-0015); the `report-*` and `engines:` scenarios also on SQLite and MySQL | 55 query (via Exposed); the `report-*` and `engines:` scenarios also on SQLite and MySQL | 55 query; the `report-*` and `engines:` scenarios also on SQLite and MySQL | 55 query (pg8000); the `report-*` and `engines:` scenarios also on SQLite (`sqlite3`) and MySQL (PyMySQL) |
+| [`fixtures/persistence-conformance/`](../fixtures/persistence-conformance/) | 67 (55 query + 12 migration) | all 67; the 24 `report-*` and the `-15` decimal scenarios also on SQLite, MySQL and D1, `decimal-exact` also on MySQL (a scenario's `engines:` key is exact) | 55 query (migrations TS-only, ADR-0015); the `report-*` and `engines:` scenarios also on SQLite and MySQL | 55 query (via Exposed); the `report-*` and `engines:` scenarios also on SQLite and MySQL | 55 query; the `report-*` and `engines:` scenarios also on SQLite and MySQL | 55 query (pg8000); the `report-*` and `engines:` scenarios also on SQLite (`sqlite3`) and MySQL (PyMySQL) |
 | [`fixtures/api-contract-conformance/`](../fixtures/api-contract-conformance/) | 139 (34 core + 14 tph + 9 m2m + 6 jsonb + 2 write-through + 2 secret-fields + 2 enum-default + 12 projection + 37 report + 11 decimal + 2 duration + 8 api-settings) | ✓ (Fastify reference + generated lane); `report/`, `decimal/` and `duration/` also on SQLite, MySQL and D1 | ✓ (embedded HTTP + JDBC); `report/`, `decimal/` and `duration/` generated controllers over OMDB on Postgres, SQLite and MySQL | ✓ (embedded HTTP + Exposed); `report/`, `decimal/` and `duration/` also on SQLite and MySQL | ✓ (Kestrel + Npgsql); `report/`, `decimal/` and `duration/` also on SQLite and MySQL | ✓ (FastAPI + pg8000); `report/`, `decimal/` and `duration/` also on SQLite and MySQL |
 | [`fixtures/decimal-wire/`](../fixtures/decimal-wire/) | 1 vector file (format, parse, filter operand, 15-digit read) | ✓ (`runtime-ts` and the generated helper) | ✓ (`CanonicalDecimal`) | ✓ (the generated wire file) | ✓ (`DecimalWire`) | ✓ (`decimal_wire`) |
 | [`fixtures/duration-wire/`](../fixtures/duration-wire/) | 1 vector file: the `wire` vectors (parse, precision, refused) every port passes, and the `codecs` groups (Postgres text read and write, stored microseconds) each port passes only for the codecs it has | ✓ (`metadata` / `runtime-ts` and the generated helper) | ✓ | ✓ | ✓ | ✓ |
@@ -61,6 +61,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/wire-conformance/`](../fixtures/wire-conformance/) (the `wire` setting, ADR-0019 Amendment 2) | 6 cases + 8 refusals | ✓ | ✓ | inherits via Java (one config reader) | ✓ | ✓ |
 | [`fixtures/enum-length-conformance/`](../fixtures/enum-length-conformance/) (a string-stored enum's column length: `@maxLength`, else `enums.maxLength`) | 5 cases + 1 overflow + 5 refusals; run by a port that sizes the column | ✓ | ✓ | inherits via Java (one config reader, one resolver) | ✓ | — (sizes no column: emits no DDL or column type; the config reader accepts and shape-checks the `enums` block) |
 | [`fixtures/check-constraint-conformance/`](../fixtures/check-constraint-conformance/) (the CHECK constraints `meta migrate` derives: name and expression text per dialect) | 1 model, 5 expected files (postgres, sqlite, d1, and both skip-redundant variants) | ✓ (reference, `migrate-ts`) | — (no CHECK in a generated model) | — (same) | ✓ (the EF context declares them; live-Postgres `EnsureCreated` lane) | — (same) |
+| [`fixtures/foreign-key-index-conformance/`](../fixtures/foreign-key-index-conformance/) (the indexes `migrate.foreignKeyIndexes` adds: which foreign keys are uncovered, and each index's name per dialect, a name over 63 bytes cut on Postgres; and the name each declared `identity.secondary` / `index.lookup` is created under) | 1 model, 4 expected files (FK and declared, postgres and sqlite) | ✓ (reference, `migrate-ts`; the Drizzle tables declare the declared names) | — (no index in a generated model) | ✓ (the Exposed tables declare them) | ✓ (the EF context declares them) | — (same as Java) |
 | [`fixtures/codegen-noop/`](../fixtures/codegen-noop/) (FR-044 — reporting vocabulary: what is lowered, what stays inert) | 1 model pair (`reporting/with` vs `reporting/without`) | ✓ (codegen + migrate) | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/cube-model/`](../fixtures/cube-model/) (FR-044 Plan 4 — the `cube-model` generator's golden Cube files, plus the canonical model's golden) | 46 cases (36 trees + 10 errors) + 1 canonical golden | ✓ (the exporter is TypeScript-only, spec R6; its `cube` lane also loads the files into a real Cube) | — | — | — | — |
 | [`fixtures/contract-conformance/`](../fixtures/contract-conformance/) (FR-022 — the `contract-schema` and `openapi` generators' golden trees and refusals) | 19 cases (14 trees + 5 errors) | ✓ (one neutral engine, ADR-0034 Amendment 10; the generated API lanes also hold real traffic to the documents) | — | — | — | — |
@@ -119,12 +120,15 @@ existing database, the change sets `START WITH n` and moves the counter FORWARD 
 back, because live rows already hold the ids it handed out. Tracked in
 [#544](https://github.com/metaobjectsdev/metaobjects/issues/544).
 
-- *Honoured and pinned:* TypeScript (`meta migrate`). A fresh table is created `START WITH n`, and
-  the Drizzle schema template carries the start. A changed start writes `ALTER SEQUENCE … START
-  WITH n` plus an advance-only `setval`. The persistence migration scenarios
-  `sequence-start-change-moves-counter-forward` and `sequence-start-change-below-max-id` pin on
-  live Postgres that the next id is the start, or the highest id plus one when a row already
-  holds an id past the start.
+- *Honoured and pinned:* TypeScript (`meta migrate`). A fresh table is created `START WITH n`. A
+  changed start writes `ALTER SEQUENCE … START WITH n` plus an advance-only `setval`. The
+  persistence migration scenarios `sequence-start-change-moves-counter-forward` and
+  `sequence-start-change-below-max-id` pin on live Postgres that the next id is the start, or the
+  highest id plus one when a row already holds an id past the start.
+- *Honoured, string-tested only:* the Drizzle schema template (`entityFile()`). It writes the
+  start into the identity column's options (`startWith: n`), and a codegen unit test asserts that
+  text (`codegen-ts/test/templates/drizzle-schema.test.ts`). No test creates a table from the
+  Drizzle mapping and reads the first id, so the option's effect is not pinned.
 - *Honoured and pinned:* C#. The generated context carries the start on Npgsql, and the generated
   `<Context>DesignTimeServices` makes `dotnet ef migrations add` scaffold a start-only change as
   `SET START WITH n` plus the same advance-only move (Npgsql alone writes `RESTART WITH n`).
@@ -423,9 +427,9 @@ All 37 fixtures → [features/migrations-and-drift.md](features/migrations-and-d
 may carry `"isArray": true`; with `fields` it is a list of objects, without it a list of
 scalars. The six `verify-positional-accessor-*` cases pin where `-last` is available.
 
-### `fixtures/persistence-conformance/` (64 — 55 query + 9 migration)
+### `fixtures/persistence-conformance/` (67 — 55 query + 12 migration)
 
-- `migrations/*` (9) → [features/migrations-and-drift.md](features/migrations-and-drift.md) (schema migration section)
+- `migrations/*` (12) → [features/migrations-and-drift.md](features/migrations-and-drift.md) (schema migration section)
 - `queries/*` (55) → [features/source-kinds.md](features/source-kinds.md) (query semantics against `source.rdb`)
 
 **Engines beyond Postgres (FR-044 reports, decimals).** The twenty-four `queries/report-*.yaml`
@@ -621,7 +625,13 @@ only `KotlinSharedModelGeneratorTest`. **C# runs all 15**, in `SharedModelConfor
 
 `collection-segments.json` (23 cases) pins the REST collection segment from an object's
 `@collectionName` and the project's `naming.collections` pluralizer; every port runs it (see the
-corpus README). The pluralize cases:
+corpus README). It holds segment cases only. The collection-name clash refusal
+(`ERR_COLLECTION_NAME_COLLISION`, two objects mounting one collection) is not in it: each port
+gates the refusal with its own unit tests, which run the corpus's `collisionCases` pairs where
+the README's runner table says so. Kotlin has no refusal of its own (the Maven goal runs the
+shared JVM `RouteNaming` one before the Kotlin generators), and
+`codegen-kotlin`'s `KotlinRouteNamingTest` checks it refuses a model the Kotlin facade loads,
+for coinciding plurals and for a declared `@collectionName` that repeats another's segment. The pluralize cases:
 
 All 8 cases → the already-plural pluralize fix (CHANGELOG `## [Unreleased]`):
 an entity whose name is already a plural noun (`Stats`, `Settings`, `Series`)
@@ -731,7 +741,7 @@ JSON and verify payload feeds it unchanged.
 ## Orphaned fixtures (tested but not yet documented)
 
 The fixtures in the nine corpora mapped above (metamodel 510 + yaml 16 + verify 45
-+ render 18 + persistence 64 + api-contract 139 + source-resolution 25 + scope 10 +
++ render 18 + persistence 67 + api-contract 139 + source-resolution 25 + scope 10 +
 dependency 47) each map to a feature doc, and so do the two requirement corpora, `shared-model-conformance`, the
 `cube-model` corpus and `explorer-conformance`, whose case lists live in their own READMEs. None are orphaned today. The remaining
 corpora in the totals table gate tooling contracts (registry manifests, provider

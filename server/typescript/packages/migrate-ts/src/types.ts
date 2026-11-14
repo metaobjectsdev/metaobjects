@@ -718,3 +718,22 @@ export function isSqliteFamily(dialect: Dialect | undefined): boolean {
 
 /** Postgres's identifier limit, in bytes (NAMEDATALEN - 1). The server truncates a longer name. */
 export const PG_IDENTIFIER_MAX_BYTES = 63;
+
+/**
+ * The name Postgres stores for `name`: its first 63 bytes, cut on a character boundary. A name
+ * within the limit is returned unchanged.
+ */
+export function pgStoredIdentifier(name: string): string {
+  if (Buffer.byteLength(name, "utf8") <= PG_IDENTIFIER_MAX_BYTES) return name;
+  let out = "";
+  for (const ch of name) {
+    if (Buffer.byteLength(out + ch, "utf8") > PG_IDENTIFIER_MAX_BYTES) break;
+    out += ch;
+  }
+  return out;
+}
+
+/** The name `dialect` stores for `name`: whole on SQLite and D1, cut to Postgres's 63 bytes elsewhere. */
+export function storedIdentifier(name: string, dialect: Dialect | undefined): string {
+  return isSqliteFamily(dialect) ? name : pgStoredIdentifier(name);
+}

@@ -412,6 +412,8 @@
           "MetaObjects.Codegen.Generators.CheckConstraint",
           "MetaObjects.Codegen.Generators.CheckConstraints",
           "MetaObjects.Codegen.Generators.FindInbound",
+          "MetaObjects.Codegen.Generators.ForeignKeyIndex",
+          "MetaObjects.Codegen.Generators.ForeignKeyIndexes",
           "MetaObjects.Codegen.Generators.InboundShape",
           "MetaObjects.Codegen.Generators.TphPlan",
           "MetaObjects.Codegen.Generators.TphPlanBuilder",

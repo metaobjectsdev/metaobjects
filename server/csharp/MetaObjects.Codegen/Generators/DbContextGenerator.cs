@@ -1327,7 +1327,7 @@ public class DbContextGenerator : IGenerator
             if (f.Attr(FIELD_ATTR_UNIQUE) is not true || f.ResolvedIsArray()) continue;
             var column = CSharpNaming.Column(f, ctx.Config.ColumnNamingStrategy);
             modelLines.Add($"        modelBuilder.Entity<{owner}>().HasIndex(x => x.{PropertyName(f)}).IsUnique()" +
-                $".HasDatabaseName(\"{CSharpNaming.CSharpStringLiteral($"{table}_{column}_unique")}\");");
+                $".HasDatabaseName(\"{CSharpNaming.CSharpStringLiteral(ForeignKeyIndexes.StoredName($"{table}_{column}_unique", ctx.Config.Dialect))}\");");
         }
         var nodes = entity.SecondaryIdentities().Select(i => ((MetaData)i, i.Fields, true))
             .Concat(entity.LookupIndexes().Select(i => ((MetaData)i, i.Fields, false)))
@@ -1343,7 +1343,12 @@ public class DbContextGenerator : IGenerator
                 props.Add(PropertyName(mf));
             }
             if (props.Count == 0) continue;
-            var indexName = CSharpNaming.IndexRef(entity, node, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames, ctx.Config);
+            // Past Postgres's 63-byte limit migrate creates the index under the name Postgres stores,
+            // so the model spells that cut name; the names artifact keeps the declared one.
+            var storedName = ForeignKeyIndexes.DeclaredIndexName(node, ctx.Config.Dialect);
+            var indexName = storedName == IndexNaming.ResolveIndexName(node)
+                ? CSharpNaming.IndexRef(entity, node, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames, ctx.Config)
+                : $"\"{CSharpNaming.CSharpStringLiteral(storedName)}\"";
             var selector = props.Count == 1 ? $"x => x.{props[0]}" : $"x => new {{ {string.Join(", ", props.Select(p => "x." + p))} }}";
             // The NAMED overload: two indexes over one column list (a partial one beside a plain
             // one) are two EF indexes only when each carries its own name.
@@ -1372,92 +1377,17 @@ public class DbContextGenerator : IGenerator
     /// <summary>
     /// <c>migrate.foreignKeyIndexes</c> — the index <c>meta migrate</c> gives each enforced foreign
     /// key that nothing already leads with, so the model declares the index the database has,
-    /// under migrate's name (<c>&lt;table&gt;_&lt;column&gt;[_&lt;column&gt;…]_idx</c>). The
-    /// rule is migrate's own (<c>uncoveredForeignKeyColumns</c> in migrate-ts): the primary key,
-    /// a field's <c>@unique</c>, an <c>identity.secondary</c> and an <c>index.lookup</c> without
-    /// <c>@expr</c> cover a foreign key whose columns they lead with, in any order; two foreign
-    /// keys over one column set get one index; and a foreign key that leads a longer one shares
-    /// the longer one's index. Nothing under the <c>efcore</c> conventions, which already index
-    /// every foreign key with EF Core's own names, and nothing on MySQL, where InnoDB indexes each
-    /// foreign key itself. A TPH table is read whole: the base and every concrete subtype.
+    /// under migrate's name. The rule is <see cref="ForeignKeyIndexes.For"/>.
     /// </summary>
     private void EmitForeignKeyIndexConfig(MetaObject entity, TphPlan? tph, GenContext ctx, List<string> modelLines)
     {
-        var config = ctx.Config;
-        if (!config.ForeignKeyIndexes
-            || string.Equals(config.SchemaConventions, "efcore", StringComparison.Ordinal)
-            || string.Equals(config.Dialect, "mysql", StringComparison.OrdinalIgnoreCase))
-            return;
-        var strategy = config.ColumnNamingStrategy;
-        var members = new List<MetaObject> { entity };
-        if (tph is not null) members.AddRange(tph.Subtypes.Select(st => st.Entity));
-
-        List<string>? Columns(MetaObject owner, IEnumerable<string> fieldNames)
+        foreach (var index in ForeignKeyIndexes.For(entity, tph, ctx.Config))
         {
-            var cols = new List<string>();
-            foreach (var name in fieldNames)
-            {
-                if (owner.FindField(name) is not { } f) return null;
-                cols.Add(CSharpNaming.Column(f, strategy));
-            }
-            return cols;
-        }
-
-        var existing = new List<List<string>>();
-        if (entity.PrimaryIdentity()?.Fields is { Count: > 0 } pk && Columns(entity, pk) is { } pkCols) existing.Add(pkCols);
-        foreach (var m in members)
-        {
-            // ADR-0039: resolving — @unique and index nodes may be inherited via extends.
-            foreach (var f in m.Fields().Where(f => f.Attr(FIELD_ATTR_UNIQUE) is true))
-                existing.Add([CSharpNaming.Column(f, strategy)]);
-            foreach (var (node, fields) in m.SecondaryIdentities().Select(i => ((MetaData)i, i.Fields))
-                         .Concat(m.LookupIndexes().Select(i => ((MetaData)i, i.Fields))))
-            {
-                if (node.Attr(DbConstants.IDENTITY_ATTR_EXPR) is string { Length: > 0 } || fields.Count == 0) continue;
-                if (Columns(m, fields) is { } cols) existing.Add(cols);
-            }
-        }
-
-        // Each physical foreign key once, on the first class of the table that declares it.
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        var candidates = new List<(MetaObject Owner, List<MetaField> Fields, List<string> Columns)>();
-        foreach (var m in members)
-        {
-            foreach (var reference in m.ReferenceIdentities().Where(r => r.Enforce))
-            {
-                if (!seen.Add(FkKey(reference))) continue;
-                var fields = new List<MetaField>();
-                foreach (var name in ReferentialActions.ReadIdentityFields(reference))
-                {
-                    if (m.FindField(name) is not { } f) { fields.Clear(); break; }
-                    fields.Add(f);
-                }
-                if (fields.Count == 0) continue;
-                var cols = fields.Select(f => CSharpNaming.Column(f, strategy)).ToList();
-                if (existing.Any(e => LeadsWith(e, cols))) continue;
-                if (candidates.Any(c => c.Columns.Count == cols.Count && LeadsWith(c.Columns, cols))) continue;
-                candidates.Add((m, fields, cols));
-            }
-        }
-
-        var table = CSharpNaming.Table(entity);
-        foreach (var (owner, fields, cols) in candidates)
-        {
-            if (candidates.Any(o => o.Columns.Count > cols.Count && LeadsWith(o.Columns, cols))) continue;
-            var name = $"\"{CSharpNaming.CSharpStringLiteral($"{table}_{string.Join("_", cols)}_idx")}\"";
-            var props = fields.Select(PropertyName).ToList();
+            var name = $"\"{CSharpNaming.CSharpStringLiteral(index.Name)}\"";
+            var props = index.Fields.Select(PropertyName).ToList();
             var selector = props.Count == 1 ? $"x => x.{props[0]}" : $"x => new {{ {string.Join(", ", props.Select(p => "x." + p))} }}";
-            modelLines.Add($"        modelBuilder.Entity<{CSharpNaming.Pascal(owner.Name)}>().HasIndex({selector}, {name}).HasDatabaseName({name});");
+            modelLines.Add($"        modelBuilder.Entity<{CSharpNaming.Pascal(index.Owner.Name)}>().HasIndex({selector}, {name}).HasDatabaseName({name});");
         }
-    }
-
-    /// <summary>True when <paramref name="prefix"/> leads with exactly <paramref name="columns"/>,
-    /// in any order (migrate's <c>leadsWith</c>).</summary>
-    private static bool LeadsWith(IReadOnlyList<string> prefix, IReadOnlyList<string> columns)
-    {
-        if (columns.Count == 0 || prefix.Count < columns.Count) return false;
-        var want = new HashSet<string>(columns, StringComparer.Ordinal);
-        return prefix.Take(columns.Count).All(want.Contains);
     }
 
     // The SQL expressions migrate treats as an expression default (expected-schema.ts

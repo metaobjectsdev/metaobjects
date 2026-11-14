@@ -1,0 +1,41 @@
+{
+  "customer_order_line_item_allocations_by_region": [
+    {
+      "name": "allocation_external_reference_key_for_customer_order_line_items_by_region",
+      "columns": [
+        "external_reference"
+      ]
+    },
+    {
+      "name": "customer_order_line_item_allocations_by_region_region_code_lookup",
+      "columns": [
+        "region_code"
+      ]
+    }
+  ],
+  "customers": [
+    {
+      "name": "customers_code_key",
+      "columns": [
+        "code"
+      ]
+    }
+  ],
+  "orders": [
+    {
+      "name": "orders_bill_to",
+      "columns": [
+        "bill_to_id",
+        "id"
+      ]
+    }
+  ],
+  "shipments": [
+    {
+      "name": "shipments_open_returns",
+      "columns": [
+        "return_carrier_id"
+      ]
+    }
+  ]
+}

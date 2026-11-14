@@ -1,0 +1,75 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      { "object.entity": { "name": "Customer", "children": [
+        { "source.rdb": { "@table": "customers" } },
+        { "field.long": { "name": "id" } },
+        { "field.string": { "name": "code" } },
+        { "identity.primary": { "name": "pk", "@fields": "id" } },
+        { "identity.secondary": { "name": "customers_code_key", "@fields": ["code"] } }
+      ] } },
+      { "object.entity": { "name": "Order", "children": [
+        { "source.rdb": { "@table": "orders" } },
+        { "field.long": { "name": "id" } },
+        { "field.long": { "name": "customerId", "@column": "customer_id" } },
+        { "field.long": { "name": "billToId", "@column": "bill_to_id" } },
+        { "field.string": { "name": "customerCode", "@column": "customer_code" } },
+        { "identity.primary": { "name": "pk", "@fields": "id" } },
+        { "identity.reference": { "name": "customer", "@fields": ["customerId"], "@references": "Customer" } },
+        { "identity.reference": { "name": "billTo", "@fields": ["billToId"], "@references": "Customer" } },
+        { "identity.reference": { "name": "byCode", "@fields": ["customerCode"], "@references": "Customer.code" } },
+        { "index.lookup": { "name": "orders_bill_to", "@fields": ["billToId", "id"] } }
+      ] } },
+      { "object.entity": { "name": "Tag", "children": [
+        { "source.rdb": { "@table": "tags" } },
+        { "field.long": { "name": "id" } },
+        { "identity.primary": { "name": "pk", "@fields": "id" } }
+      ] } },
+      { "object.entity": { "name": "OrderTag", "children": [
+        { "source.rdb": { "@table": "order_tags" } },
+        { "field.long": { "name": "orderId", "@column": "order_id" } },
+        { "field.long": { "name": "tagId", "@column": "tag_id" } },
+        { "identity.primary": { "name": "pk", "@fields": ["orderId", "tagId"] } },
+        { "identity.reference": { "name": "order", "@fields": ["orderId"], "@references": "Order" } },
+        { "identity.reference": { "name": "tag", "@fields": ["tagId"], "@references": "Tag" } }
+      ] } },
+      { "object.entity": { "name": "Region", "children": [
+        { "source.rdb": { "@table": "regions" } },
+        { "field.string": { "name": "country" } },
+        { "field.string": { "name": "code" } },
+        { "identity.primary": { "name": "pk", "@fields": ["country", "code"] } }
+      ] } },
+      { "object.entity": { "name": "Shipment", "children": [
+        { "source.rdb": { "@table": "shipments" } },
+        { "field.long": { "name": "id" } },
+        { "field.long": { "name": "orderId", "@column": "order_id", "@unique": true } },
+        { "field.long": { "name": "carrierId", "@column": "carrier_id" } },
+        { "field.long": { "name": "returnCarrierId", "@column": "return_carrier_id" } },
+        { "field.string": { "name": "country" } },
+        { "field.string": { "name": "regionCode", "@column": "region_code" } },
+        { "identity.primary": { "name": "pk", "@fields": "id" } },
+        { "identity.reference": { "name": "order", "@fields": ["orderId"], "@references": "Order" } },
+        { "identity.reference": { "name": "carrier", "@fields": ["carrierId"], "@references": "Customer" } },
+        { "identity.reference": { "name": "carrierAgain", "@fields": ["carrierId"], "@references": "Customer" } },
+        { "identity.reference": { "name": "returnCarrier", "@fields": ["returnCarrierId"], "@references": "Customer" } },
+        { "identity.reference": { "name": "countryOnly", "@fields": ["country"], "@references": "Customer.code" } },
+        { "identity.reference": { "name": "region", "@fields": ["country", "regionCode"], "@references": "Region.country,code", "@constraintName": "shipments_region_fk" } },
+        { "index.lookup": { "name": "shipments_open_returns", "@fields": ["returnCarrierId"], "@where": "return_carrier_id IS NOT NULL" } }
+      ] } },
+      { "object.entity": { "name": "Allocation", "children": [
+        { "source.rdb": { "@table": "customer_order_line_item_allocations_by_region" } },
+        { "field.long": { "name": "id" } },
+        { "field.long": { "name": "fulfilmentWarehouseReferenceId", "@column": "fulfilment_warehouse_reference_id" } },
+        { "field.long": { "name": "orderId", "@column": "order_id" } },
+        { "field.string": { "name": "externalReference", "@column": "external_reference" } },
+        { "field.string": { "name": "regionCode", "@column": "region_code" } },
+        { "identity.primary": { "name": "pk", "@fields": "id" } },
+        { "identity.secondary": { "name": "allocation_external_reference_key_for_customer_order_line_items_by_region", "@fields": ["externalReference"] } },
+        { "index.lookup": { "name": "customer_order_line_item_allocations_by_region_region_code_lookup", "@fields": ["regionCode"] } },
+        { "identity.reference": { "name": "warehouse", "@fields": ["fulfilmentWarehouseReferenceId"], "@references": "Customer" } },
+        { "identity.reference": { "name": "order", "@fields": ["orderId"], "@references": "Order" } }
+      ] } }
+    ]
+  }
+}

@@ -102,9 +102,9 @@ describe("eject release gate — the command and its wiring", () => {
 
   // ADR-0034 Amendment 8 makes the gate the first preflight check of `release.mjs`. The
   // check after it is the branch check, so a fixture on another branch tells the two apart:
-  // a refused version stops before "must be on main", and an allowed one reaches it.
+  // a refused version stops before "not on main", and an allowed one reaches it.
   test("release.mjs asks the gate first in its preflight, and stops on a refusal", () => {
-    const RELEASE_SCRIPTS = ["release.mjs", "lib/changelog-promote.mjs", "publish-set.mjs", "maven-coordinate.mjs"];
+    const RELEASE_SCRIPTS = ["release.mjs", "lib/changelog-promote.mjs", "lib/release-branch.mjs", "publish-set.mjs", "maven-coordinate.mjs"];
     const onBranch = (pending: (typeof ENTRY)[]) => {
       const root = repoWith(JSON.stringify(manifest(pending)), RELEASE_SCRIPTS);
       const git = (...args: string[]) => spawnSync("git", ["-C", root, ...args], { encoding: "utf8" });
@@ -119,11 +119,11 @@ describe("eject release gate — the command and its wiring", () => {
     const refused = release(blocked, "1.1.0");
     expect(refused.code).not.toBe(0);
     expect(refused.out).toContain("the eject contract does not hold yet");
-    expect(refused.out).not.toContain("must be on main");
+    expect(refused.out).not.toContain("not on main");
 
     for (const allowed of [release(blocked, "1.1.0-rc.1"), release(onBranch([]), "1.1.0")]) {
       expect(allowed.out).not.toContain("the eject contract does not hold yet");
-      expect(allowed.out).toContain("must be on main (you are on not-main)");
+      expect(allowed.out).toContain("not on main or a release/<major>.<minor> maintenance branch (you are on not-main)");
     }
   });
 

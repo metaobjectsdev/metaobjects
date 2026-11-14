@@ -481,15 +481,12 @@ mounts (`mountCrudRoutes` in `@metaobjectsdev/runtime-ts/drizzle-fastify` and `/
 { "api": { "pagination": { "defaultLimit": 50, "maxLimit": 1000 }, "unknownFields": "reject" } }
 ```
 
-`api.pagination` becomes the mount's `pagination` option: no `limit` answers `defaultLimit` rows
-and a `limit` above `maxLimit` is `400 {"error": "limit_too_large", "maxLimit": N}`. Without it a
-list returns every row, and `meta verify` advises (`unbounded-list-pages`). Under
-`api.unknownFields: reject` (the default) the generated mount passes the entity's declared field
-names as `knownFields`, and a create, PUT or PATCH body with any other key answers
-`400 {"error": "unknown_fields", "fields": [...]}` before Zod runs; under `drop`, or on a
-hand-written mount given no `knownFields`, the key is ignored. `meta init` writes both settings
-for a new project. The contract is in
-[api-contract](../features/api-contract.md#unknown-request-fields-apiunknownfields).
+`api.pagination` becomes the mount's `pagination` option, and under `api.unknownFields: reject` the
+generated mount passes the entity's declared field names as `knownFields`, checked before Zod runs; a
+hand-written mount given no `knownFields` ignores an undeclared key. What each setting answers, and
+the default with no block, are in [api-contract](../features/api-contract.md) ([page size](../features/api-contract.md#sort--pagination),
+[unknown fields](../features/api-contract.md#unknown-request-fields-apiunknownfields)); the per-port defaults are in
+[What differs by language](../features/language-differences.md).
 
 ### Decimals and null members on the wire
 
@@ -586,7 +583,7 @@ export const ProgramNames = {
 | `fields.<field>.name` | the **logical** name — the field as your code and the wire call it |
 | `fields.<field>.column` | the **physical** column — `@column` if declared, else `name` through the project's `naming.columns` rule (`.metaobjects/config.json`) |
 | `identities.<name>` / `indexes.<name>` | one `identity.*` / `index.*` child, keyed by its metamodel name |
-| `…​.index` | the database index name — on `identity.secondary` and `index.lookup` only |
+| `…​.index` | the index name — on `identity.secondary` and `index.lookup` only. It holds the declared name; on Postgres `meta migrate` creates a name over 63 bytes as its first 63 bytes, so the Drizzle table spells the cut form while this member keeps the declared name ([stored names](../features/migrations-and-drift.md#schema-conventions-names-for-objects-no-code-addresses)) |
 
 **Why the physical name is not just `name`.** One key cannot hold a table, a view and a
 stored procedure and still mean something. In a single run it used to:
