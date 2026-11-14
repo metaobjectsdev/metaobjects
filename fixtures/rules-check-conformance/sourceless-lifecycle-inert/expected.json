@@ -1,0 +1,21 @@
+{
+  "diagnostics": [
+    {
+      "severity": "warn",
+      "code": "WARN_LIFECYCLE_UNREACHABLE_STATE",
+      "path": "acme::catalog::ProductTemplate.status",
+      "message": "state \"archived\" of \"status\" cannot be reached from the initial state \"draft\" by any transition. Add the transition that leads there, or set verify.lifecycle.unreachable if only seeded data uses it."
+    },
+    {
+      "severity": "error",
+      "code": "WARN_PERMISSION_DERIVED_NAME",
+      "path": "acme::catalog::Product.status.publish",
+      "message": "the command derived from transition \"publish\" of \"Product\" has no @permission, so it asks the policy about the derived name \"acme::catalog.Product.publish\", which changes if the transition is renamed. Declare @permission, or @public: true."
+    }
+  ],
+  "summary": {
+    "operations": 1,
+    "lifecycles": 2,
+    "transitions": 3
+  }
+}

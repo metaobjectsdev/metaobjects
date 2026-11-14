@@ -64,6 +64,12 @@ export type HttpMethod = (typeof HTTP_METHODS)[number];
  *  verbs of the same service (ERR_TRANSITION_NAME_COLLISION). */
 export const RESERVED_OPERATION_NAMES = ["create", "get", "list", "update", "delete"] as const;
 
+/** A declared @permission: a dotted identifier path (`purchasing.approve`). A package prefix may
+ *  use `::`, so a derived name (`acme::purchasing.PurchaseRequest.submit`) can be declared as
+ *  it is. The name becomes a constant and a key into grant data, so it carries no spaces,
+ *  punctuation or path segments. */
+export const PERMISSION_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*(?:(?:\.|::)[A-Za-z_][A-Za-z0-9_]*)*$/;
+
 /** A declared business error code: lower snake case. */
 export const BUSINESS_ERROR_CODE_PATTERN = /^[a-z][a-z0-9]*(_[a-z0-9]+)*$/;
 

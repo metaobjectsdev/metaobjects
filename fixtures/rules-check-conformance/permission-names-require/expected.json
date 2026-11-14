@@ -4,7 +4,7 @@
       "severity": "error",
       "code": "WARN_PERMISSION_DERIVED_NAME",
       "path": "acme::purchasing::PurchaseRequest.status.submit",
-      "message": "the command derived from transition \"submit\" of \"PurchaseRequest\" has no @permission, so it asks the policy about the derived name \"acme::purchasing.submit\", which changes if the transition is renamed. Declare @permission, or @public: true."
+      "message": "the command derived from transition \"submit\" of \"PurchaseRequest\" has no @permission, so it asks the policy about the derived name \"acme::purchasing.PurchaseRequest.submit\", which changes if the transition is renamed. Declare @permission, or @public: true."
     },
     {
       "severity": "error",

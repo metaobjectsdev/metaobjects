@@ -199,6 +199,10 @@ public final class ValidationPhase {
         pass(collected, () -> validateDiscriminator(root));
         // FR-015 — source.rdb @parameterRef typed-input rules.
         pass(collected, () -> validateSourceParameterRef(root));
+        // ADR-0063 — business rules: operations and lifecycles (L1-L7, P1, P2, O0-O6, B1). Run
+        // before the primary-source pass, as the TypeScript loader orders them: a lifecycle on an
+        // entity whose only source is read-only yields L2 first, then the source error.
+        pass(collected, () -> collected.addAll(RulesValidation.validate(root)));
         pass(collected, () -> validateOnePrimarySource(root));
         // #208 — DDL-ownership escape valves (@sql/@unmanaged on source.rdb).
         // Sibling of the source-role pass above; must run after it.
@@ -293,8 +297,6 @@ public final class ValidationPhase {
             reportingFindings.addAll(reporting);
             collected.addAll(reporting);
         });
-        // ADR-0063 — business rules: operations and lifecycles (L1-L7, P1, O0-O5, B1).
-        pass(collected, () -> collected.addAll(RulesValidation.validate(root)));
         pass(collected, () -> validateTemplates(root));
         pass(collected, () -> validateEntityHasPrimaryIdentity(root, loader));
         pass(collected, () -> validateFilterableHasSupportedOps(root));

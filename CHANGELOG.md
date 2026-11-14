@@ -29,15 +29,23 @@ loading. This vocabulary ships in 1.3.0 with `metamodelVersion` 1.3 if it merges
     transition is a lifecycle: its states, initial state (`@default`), terminal states and each
     unclaimed transition's command are derived. `transition.timed` is reserved. A lifecycle
     belongs to the entity that declares the field and to the entities that extend it, never to
-    one whose field merely `extends` that field.
+    one whose field merely `extends` that field. A lifecycle on an entity with no source loads
+    and is inert, so a library's core layer can declare one; the writable-source check applies
+    once a source is added.
+  - Permission names include their owner. A declared `@permission` is a dotted identifier path
+    (`purchasing.approve`; a package prefix may use `::`). When it is absent, an operation asks
+    about `<package>.<operation>` and a transition's derived command about
+    `<package>.<Entity>.<transition>`, so two entities' `cancel` transitions never share a
+    grant. Operation names are unique across the APIs of a package, except one operation
+    declared identically in two APIs, such as a `v1` beside a `v2`.
   - The loader refuses a malformed operation or lifecycle with eleven new codes, each pinned by a
     `fixtures/conformance/error-rules-*` case: `ERR_TRANSITION_UNKNOWN_STATE`,
     `ERR_TRANSITION_NOT_ON_ENTITY`, `ERR_LIFECYCLE_NO_INITIAL`, `ERR_LIFECYCLE_REDECLARED`,
     `ERR_TRANSITION_NAME_COLLISION`, `ERR_OPERATION_SHAPE`, `ERR_OPERATION_TARGET_UNRESOLVED`,
     `ERR_OPERATION_TARGET_MISMATCH`, `ERR_OPERATION_UNKNOWN_TRANSITION`,
     `ERR_PERMISSION_PUBLIC_CONFLICT` and `ERR_BINDING_PATH_MISMATCH`. Names are compared without
-    case, an `@errors` code may not be one the route answers itself, and two declared bindings
-    may not share a method and path.
+    case, an `@errors` code may not be one the route answers itself, two declared bindings
+    may not share a method and path, and a `@permission` must be a dotted identifier path.
   - `verify` in every port gains a rules gate: unreachable states, an initial state that is
     terminal, transitions that can never be made, a transition `@permission` no command reads,
     and permission names the model derived. It is pinned by the new

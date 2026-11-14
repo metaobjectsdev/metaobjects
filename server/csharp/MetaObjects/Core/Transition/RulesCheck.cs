@@ -73,11 +73,12 @@ public static class RulesCheck
         return pkg.Length == 0 ? dotted : $"{pkg}{PACKAGE_SEPARATOR}{dotted}";
     }
 
-    /// <summary>The permission name a node gets when it declares none: <c>&lt;package&gt;.&lt;name&gt;</c>.</summary>
-    private static string DerivedPermissionName(MetaData owner, string name)
+    /// <summary>The permission name a node gets when it declares none, <c>&lt;package&gt;.&lt;path&gt;</c>: the path is
+    /// <c>&lt;operation&gt;</c> for an operation and <c>&lt;Entity&gt;.&lt;transition&gt;</c> for a transition's derived command.</summary>
+    private static string DerivedPermissionName(MetaData owner, string path)
     {
         var pkg = NamingRefs.EffectivePackageOf(NamingRefs.TopLevelNodeOf(owner));
-        return pkg.Length == 0 ? name : $"{pkg}.{name}";
+        return pkg.Length == 0 ? path : $"{pkg}.{path}";
     }
 
     private static bool NeedsPermissionName(MetaData node) =>
@@ -186,16 +187,19 @@ public static class RulesCheck
             _ => ClaimsOn(claimed, entity, t).Count == 0,
         };
 
-    private static List<MetaData> ConcreteEntities(MetaData root) => Entities(root).Where(e => !e.IsAbstract).ToList();
+    /// <summary>The entities a transition can derive a command on: concrete, with a source.</summary>
+    private static List<MetaData> CommandEntities(MetaData root) =>
+        Entities(root).Where(e => !e.IsAbstract && Lifecycles.LifecycleIsLive(e)).ToList();
 
     /// <summary>A transition's @permission or @public is read only by the command derived from it. One that
-    /// derives no command for any concrete entity carrying it declares an attribute nothing reads.</summary>
+    /// derives no command for any entity carrying it declares an attribute nothing reads. One carried only by
+    /// entities with no source is inert, not shadowed.</summary>
     private static void CheckShadowedPermissions(MetaData root, RulesSettings settings, List<RequirementDiagnostic> output)
     {
         if (settings.LifecycleCommands == "all") return;
         var claimed = ClaimedTransitions(root);
         var carriers = new List<(MetaData T, List<MetaData> Entities)>();
-        foreach (var entity in ConcreteEntities(root))
+        foreach (var entity in CommandEntities(root))
         {
             foreach (var t in Lifecycles.EntityTransitions(entity))
             {
@@ -231,7 +235,7 @@ public static class RulesCheck
         if (settings.LifecycleCommands != "none")
         {
             var claimed = ClaimedTransitions(root);
-            foreach (var entity in ConcreteEntities(root))
+            foreach (var entity in CommandEntities(root))
             {
                 foreach (var t in Lifecycles.EntityTransitions(entity))
                 {
@@ -240,7 +244,7 @@ public static class RulesCheck
                     output.Add(new RequirementDiagnostic(severity, WARN_PERMISSION_DERIVED_NAME,
                         $"{Address(entity)}.{t.Parent?.Name ?? ""}.{t.Name}",
                         $"the command derived from transition \"{t.Name}\" of \"{entity.Name}\" has no @permission, so it asks " +
-                        $"the policy about the derived name \"{DerivedPermissionName(entity, t.Name)}\", {Advice("transition")}"));
+                        $"the policy about the derived name \"{DerivedPermissionName(entity, $"{entity.Name}.{t.Name}")}\", {Advice("transition")}"));
                 }
             }
         }

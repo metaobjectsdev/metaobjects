@@ -22,7 +22,7 @@ work: read a loaded model, report diagnostics.
 | `WARN_LIFECYCLE_UNREACHABLE_STATE` | `verify.lifecycle.unreachable` (default `warn`; `off` skips it) | A member of a lifecycle's enum that no chain of transitions reaches from the initial state (`@default`). One diagnostic per lifecycle, listing the states in `@values` order. |
 | `WARN_LIFECYCLE_INITIAL_TERMINAL` | `warn` | The initial state is terminal: no transition lists it in `@from` (a self-transition counts as leaving). |
 | `WARN_TRANSITION_UNREACHABLE` | `verify.lifecycle.unreachable` | A transition whose every `@from` state is unreachable, so it can never be made. |
-| `WARN_TRANSITION_PERMISSION_SHADOWED` | `warn` | A transition that declares `@permission` or `@public: true` but derives no command of its own for any concrete entity that carries it, so nothing reads the attribute: every carrier's transition is claimed by a declared command (`rules.lifecycle.commands: unclaimed`), or `rules.lifecycle.commands` is `none`. Never reported under `all`. One diagnostic per transition node, at its declaring address, naming the claiming commands as `<Api>.<operation>`. |
+| `WARN_TRANSITION_PERMISSION_SHADOWED` | `warn` | A transition that declares `@permission` or `@public: true` but derives no command of its own for any concrete entity with a source that carries it, so nothing reads the attribute: every carrier's transition is claimed by a declared command (`rules.lifecycle.commands: unclaimed`), or `rules.lifecycle.commands` is `none`. Never reported under `all`. One diagnostic per transition node, at its declaring address, naming the claiming commands as `<Api>.<operation>`. |
 | `WARN_PERMISSION_DERIVED_NAME` | `rules.permissions.names`: `derive` (default) skips it, `advise` warns, `require` errors | An operation, or a transition that derives a command of its own, with no `@permission` and not `@public: true`. Which transitions derive a command is `rules.lifecycle.commands`: `unclaimed` (default) means those no declared command claims for that entity, `all` means every transition, `none` means none. |
 
 A command claims a transition NODE, for its target entity and every entity that extends the
@@ -35,15 +35,21 @@ does under `--require-implementers`.
 Order of evaluation, which is the order the reference reports in (not part of the contract):
 each lifecycle once per DECLARING field, walking the root's entities in load order (abstract
 included) — unreachable states, then initial-terminal, then each unreachable transition; then
-each shadowed transition permission, per transition node; then the derived-command permission check per CONCRETE entity, over its effective transitions in
+each shadowed transition permission, per transition node; then the derived-command permission check per CONCRETE entity with a source, over its effective transitions in
 field order; then each operation of each `api.operational` in load order.
 
 A lifecycle declared on an abstract base is checked once, at its declaring field. A derived
-command exists per concrete entity, so the permission check names each concrete entity, with
-the path `<package>::<Entity>.<field>.<transition>`.
+command exists per concrete entity that has a source (declared or inherited), so the
+permission check names each such entity, with the path `<package>::<Entity>.<field>.<transition>`.
+A lifecycle on an entity with no source is inert: its shape is checked (unreachable states,
+initial-terminal), but it derives no command, so the permission and shadowed checks skip it.
 
-The derived permission name is `<package>.<name>`: the package of the operation's API or of
-the entity, a dot, then the operation or transition name. With no package it is the bare name.
+The derived permission name includes its owner. For a declared operation it is
+`<package>.<operation>`, with the package of the operation's API (the loader keeps operation
+names unique per package). For a transition's derived command it is
+`<package>.<Entity>.<transition>`, with the concrete entity's package and name, so two entities'
+`cancel` transitions ask about different permissions. With no package the `<package>.` prefix is
+dropped.
 
 ## Fixture format
 
@@ -89,4 +95,5 @@ edited to make a port pass.
 | `inherited-lifecycle` | A lifecycle on an abstract base: its unreachable state is reported once at the base's field, and the derived-command permission check names each concrete entity. |
 | `permission-shadowed-claimed` | `WARN_TRANSITION_PERMISSION_SHADOWED` at the default settings: a claimed transition with `@public: true` and one with `@permission` claimed by two commands (both named) are reported; an unclaimed transition with `@permission` is not. |
 | `claimed-abstract-target` | Under `require`, a command whose target is an abstract base (its input borrows the base's key) claims the inherited transition of each concrete child, so neither child is reported. |
+| `sourceless-lifecycle-inert` | Under `require`, two entities with a `publish` transition: the sourced one is reported with the owner-qualified name `acme::catalog.Product.publish`; the one with no source is inert, so its unreachable state is still reported but its transitions are not, and its claimed transition with `@permission` is not reported as shadowed. |
 | `operations-only` | A model with operations and no lifecycle, under `require`: an operation without `@permission` is an error, and one with it is clean. |

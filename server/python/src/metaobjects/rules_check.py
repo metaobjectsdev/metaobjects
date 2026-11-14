@@ -44,6 +44,7 @@ from metaobjects.meta.core.transition.lifecycle import (
     Lifecycle,
     entity_lineage,
     entity_transitions,
+    lifecycle_is_live,
     lifecycles_of,
     operation_target,
     reachable_states,
@@ -99,10 +100,12 @@ def rules_address(node: MetaData) -> str:
     return ".".join(parts) if pkg == "" else f"{pkg}{PACKAGE_SEP}{'.'.join(parts)}"
 
 
-def _derived_permission_name(owner: MetaData, name: str) -> str:
-    """The permission name a node gets when it declares none: ``<package>.<name>``."""
+def _derived_permission_name(owner: MetaData, path: str) -> str:
+    """The permission name a node gets when it declares none, ``<package>.<path>``: the path is
+    ``<operation>`` for a declared operation and ``<Entity>.<transition>`` for a transition's
+    derived command, so two entities' transitions of one name ask about different permissions."""
     pkg = effective_package_of(top_level_node_of(owner))
-    return name if pkg == "" else f"{pkg}.{name}"
+    return path if pkg == "" else f"{pkg}.{path}"
 
 
 def _needs_permission_name(node: MetaData) -> bool:
@@ -232,8 +235,9 @@ def _derives_command(
     return not _claims_on(claimed, entity, t)
 
 
-def _concrete_entities(root: MetaData) -> list[MetaData]:
-    return [e for e in _entities(root) if not e.is_abstract]
+def _command_entities(root: MetaData) -> list[MetaData]:
+    """The entities a transition can derive a command on: concrete, with a source."""
+    return [e for e in _entities(root) if not e.is_abstract and lifecycle_is_live(e)]
 
 
 def _check_shadowed_permissions(root: MetaData, settings: RulesSettings, out: list[Diagnostic]) -> None:
@@ -243,7 +247,7 @@ def _check_shadowed_permissions(root: MetaData, settings: RulesSettings, out: li
         return
     claimed = _claimed_transitions(root)
     carriers: dict[MetaData, list[MetaData]] = {}
-    for entity in _concrete_entities(root):
+    for entity in _command_entities(root):
         for t in entity_transitions(entity):
             carriers.setdefault(t, []).append(entity)
     for t, entities_with_t in carriers.items():
@@ -288,7 +292,7 @@ def _check_permission_names(root: MetaData, settings: RulesSettings, out: list[D
 
     if settings.lifecycle_commands != "none":
         claimed = _claimed_transitions(root)
-        for entity in _concrete_entities(root):
+        for entity in _command_entities(root):
             for t in entity_transitions(entity):
                 if not _derives_command(claimed, settings, entity, t):
                     continue
@@ -301,7 +305,7 @@ def _check_permission_names(root: MetaData, settings: RulesSettings, out: list[D
                     path=f"{rules_address(entity)}.{field_name}.{t.name}",
                     message=(
                         f'the command derived from transition "{t.name}" of "{entity.name}" has no @permission, '
-                        f'so it asks the policy about the derived name "{_derived_permission_name(entity, t.name)}", '
+                        f'so it asks the policy about the derived name "{_derived_permission_name(entity, f"{entity.name}.{t.name}")}", '
                         f'{advice("transition")}'
                     ),
                 ))

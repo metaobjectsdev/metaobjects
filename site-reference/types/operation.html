@@ -99,7 +99,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td></td>
 <td></td>
 <td>—</td>
-<td>The permission name the generated shell asks the project&#39;s policy about before anything is written. A key into grant data (who holds it is data, what the policy decides is code), so it is never derived from the operation&#39;s name: a rename would silently move access. Absent and not @public: the shell uses the derived name <code>&lt;package&gt;.&lt;operation&gt;</code>, and <code>verify</code> advises or requires an explicit one (setting <code>rules.permissions.names</code>). Several operations may share one.</td>
+<td>The permission name the generated shell asks the project&#39;s policy about before anything is written. A key into grant data (who holds it is data, what the policy decides is code), so it is never derived from the operation&#39;s name: a rename would silently move access. A dotted identifier path such as <code>purchasing.approve</code>; a package prefix may use <code>::</code> (ERR_BAD_ATTR_VALUE otherwise). Absent and not @public: the shell uses the derived name <code>&lt;package&gt;.&lt;operation&gt;</code>, with the package of the operation&#39;s API, and <code>verify</code> advises or requires an explicit one (setting <code>rules.permissions.names</code>). Several operations may share one.</td>
 </tr>
 <tr>
 <td><code>@public</code></td>
@@ -174,7 +174,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td></td>
 <td></td>
 <td>—</td>
-<td>The permission name the generated shell asks the project&#39;s policy about before anything is written. A key into grant data (who holds it is data, what the policy decides is code), so it is never derived from the operation&#39;s name: a rename would silently move access. Absent and not @public: the shell uses the derived name <code>&lt;package&gt;.&lt;operation&gt;</code>, and <code>verify</code> advises or requires an explicit one (setting <code>rules.permissions.names</code>). Several operations may share one.</td>
+<td>The permission name the generated shell asks the project&#39;s policy about before anything is written. A key into grant data (who holds it is data, what the policy decides is code), so it is never derived from the operation&#39;s name: a rename would silently move access. A dotted identifier path such as <code>purchasing.approve</code>; a package prefix may use <code>::</code> (ERR_BAD_ATTR_VALUE otherwise). Absent and not @public: the shell uses the derived name <code>&lt;package&gt;.&lt;operation&gt;</code>, with the package of the operation&#39;s API, and <code>verify</code> advises or requires an explicit one (setting <code>rules.permissions.names</code>). Several operations may share one.</td>
 </tr>
 <tr>
 <td><code>@public</code></td>
@@ -258,7 +258,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td></td>
 <td></td>
 <td>—</td>
-<td>The permission name the generated shell asks the project&#39;s policy about before anything is written. A key into grant data (who holds it is data, what the policy decides is code), so it is never derived from the operation&#39;s name: a rename would silently move access. Absent and not @public: the shell uses the derived name <code>&lt;package&gt;.&lt;operation&gt;</code>, and <code>verify</code> advises or requires an explicit one (setting <code>rules.permissions.names</code>). Several operations may share one.</td>
+<td>The permission name the generated shell asks the project&#39;s policy about before anything is written. A key into grant data (who holds it is data, what the policy decides is code), so it is never derived from the operation&#39;s name: a rename would silently move access. A dotted identifier path such as <code>purchasing.approve</code>; a package prefix may use <code>::</code> (ERR_BAD_ATTR_VALUE otherwise). Absent and not @public: the shell uses the derived name <code>&lt;package&gt;.&lt;operation&gt;</code>, with the package of the operation&#39;s API, and <code>verify</code> advises or requires an explicit one (setting <code>rules.permissions.names</code>). Several operations may share one.</td>
 </tr>
 <tr>
 <td><code>@public</code></td>

@@ -54,7 +54,7 @@ import java.util.regex.Pattern;
  *
  * <p>Rules: L1 and L2 {@code ERR_TRANSITION_NOT_ON_ENTITY}; L3 {@code ERR_LIFECYCLE_NO_INITIAL};
  * L4 {@code ERR_TRANSITION_UNKNOWN_STATE}; L5, L6 and O0 {@code ERR_TRANSITION_NAME_COLLISION};
- * L7 and O5 {@code ERR_BAD_ATTR_VALUE}; P1 {@code ERR_PERMISSION_PUBLIC_CONFLICT}; O1
+ * L7 and O5 {@code ERR_BAD_ATTR_VALUE}; P1 {@code ERR_PERMISSION_PUBLIC_CONFLICT}; P2 {@code ERR_BAD_ATTR_VALUE} (@permission shape); O1
  * {@code ERR_OPERATION_SHAPE}; O2 {@code ERR_OPERATION_TARGET_UNRESOLVED}; O3
  * {@code ERR_OPERATION_TARGET_MISMATCH}; O4 {@code ERR_OPERATION_UNKNOWN_TRANSITION}; B1
  * {@code ERR_BINDING_PATH_MISMATCH}.</p>
@@ -102,7 +102,8 @@ final class RulesValidation {
         }
     }
 
-    private static void checkPermissionPublic(MetaData node, Sink sink) {
+    /** P1 and P2 for an operation or a transition. */
+    private static void checkPermission(MetaData node, Sink sink) {
         boolean isPublic = node.hasMetaAttr(ApiConstants.ATTR_PUBLIC)
             && Boolean.TRUE.equals(node.getMetaAttr(ApiConstants.ATTR_PUBLIC).getValue());
         if (isPublic && node.hasMetaAttr(ApiConstants.ATTR_PERMISSION)) {
@@ -110,6 +111,13 @@ final class RulesValidation {
                 node.getType() + "." + node.getSubType() + " \"" + label(node)
                     + "\" declares both @public: true and @permission; a public " + node.getType()
                     + " calls no permission check, so remove one.");
+        }
+        String permission = Lifecycles.stringValue(node, ApiConstants.ATTR_PERMISSION);
+        if (permission != null && !ApiConstants.PERMISSION_NAME_PATTERN.matcher(permission).matches()) {
+            sink.add(node, ErrorCode.ERR_BAD_ATTR_VALUE,
+                node.getType() + "." + node.getSubType() + " \"" + label(node) + "\" @permission \"" + permission
+                    + "\" is not a dotted identifier path; use names of letters, digits and _ joined by \".\" "
+                    + "(a package prefix may use \"::\"), such as \"purchasing.approve\".");
         }
     }
 
@@ -146,7 +154,7 @@ final class RulesValidation {
         }
         Set<String> states = new LinkedHashSet<>(Lifecycles.stringList(field, EnumField.ATTR_VALUES));
         for (MetaData t : declared) {
-            checkPermissionPublic(t, sink);
+            checkPermission(t, sink);
             if (Lifecycles.transitionFrom(t).isEmpty()) {
                 sink.add(t, ErrorCode.ERR_BAD_ATTR_VALUE,
                     "transition.action \"" + label(t) + "\" @from is empty; name at least one state the transition leaves.");
@@ -242,12 +250,13 @@ final class RulesValidation {
         for (MetaData c : entity.getChildren(MetaData.class, true)) {
             if (c instanceof MetaSource src && src.isWritable()) { writable = true; break; }
         }
-        if (!Lifecycles.isAbstract(entity) && !writable) {
+        if (!Lifecycles.isAbstract(entity) && Lifecycles.lifecycleIsLive(entity) && !writable) {
             Set<String> fields = new LinkedHashSet<>();
             for (MetaData t : transitions) fields.add(t.getParent() == null ? "" : t.getParent().getShortName());
             sink.add(entity, ErrorCode.ERR_TRANSITION_NOT_ON_ENTITY,
                 "object.entity \"" + entity.getShortName() + "\" has a lifecycle (transitions on " + quoteList(fields)
-                    + ") but no writable source; a transition is a guarded update of a stored row.");
+                    + ") and a source, but no writable one; a transition is a guarded update of a stored row. "
+                    + "(An entity with no source at all may carry a lifecycle: it is inert until a source is added.)");
         }
     }
 
@@ -262,7 +271,7 @@ final class RulesValidation {
             sink.add(op, ErrorCode.ERR_TRANSITION_NAME_COLLISION,
                 head + " is named \"" + op.getShortName() + "\", which is a derived CRUD verb (" + RESERVED_LIST + "); rename it.");
         }
-        checkPermissionPublic(op, sink);
+        checkPermission(op, sink);
 
         List<String> errorCodes = Lifecycles.stringList(op, ApiConstants.ATTR_ERRORS);
         List<String> bad = new ArrayList<>();
@@ -399,6 +408,8 @@ final class RulesValidation {
         for (MetaData obj : root.getChildren(MetaData.class, true)) {
             if (Lifecycles.isEntity(obj)) checkEntityLifecycles(obj, sink);
         }
+        // O6 — keyed by package, then by the name without case.
+        Map<String, MetaData> byName = new java.util.HashMap<>();
         for (MetaData api : root.getChildren(MetaData.class, true)) {
             if (!ApiConstants.TYPE_API.equals(api.getType())) continue;
             List<MetaData> ops = new ArrayList<>();
@@ -406,23 +417,66 @@ final class RulesValidation {
                 if (ApiConstants.TYPE_OPERATION.equals(op.getType())) ops.add(op);
             }
             for (MetaData op : ops) checkOperation(op, sink);
-            checkApiNamespace(ops, sink);
+            for (MetaData op : ops) {
+                String pkg = References.effectivePackageOf(api);
+                String key = pkg + "\u0000" + op.getShortName().toLowerCase(java.util.Locale.ROOT);
+                MetaData first = byName.putIfAbsent(key, op);
+                if (first != null && first != op && !sameOperation(first, op)) {
+                    sink.add(op, ErrorCode.ERR_TRANSITION_NAME_COLLISION,
+                        "operation." + op.getSubType() + " \"" + label(op) + "\" has the same name as \"" + label(first)
+                            + "\" (names are compared without case) and is not the same operation; the operations of package \"" + pkg
+                            + "\" share one namespace (each derives the permission name <package>.<operation>), so rename one, or declare both identically to expose one operation in two APIs.");
+                }
+            }
+            checkApiRoutes(ops, sink);
         }
         return sink.errors;
     }
 
-    /** O6 and B2 across the operations of one API. */
-    private static void checkApiNamespace(List<MetaData> ops, Sink sink) {
-        Map<String, MetaData> byName = new java.util.HashMap<>();
+    /** A reference attr's identity: the node it resolves to, else the raw value. */
+    private static Object refIdentity(MetaData op, String attr) {
+        String ref = Lifecycles.stringValue(op, attr);
+        if (ref == null) return null;
+        MetaData node = Lifecycles.resolveObjectOn(op, ref);
+        return node != null ? node : ref;
+    }
+
+    /** A list attr as a set, for comparison. */
+    private static Set<String> setKey(MetaData op, String attr) {
+        return new java.util.TreeSet<>(Lifecycles.stringList(op, attr));
+    }
+
+    private static boolean flag(MetaData op, String attr) {
+        return op.hasMetaAttr(attr) && Boolean.TRUE.equals(op.getMetaAttr(attr).getValue());
+    }
+
+    /**
+     * Whether two operations of one package in different APIs are one operation exposed twice (a
+     * versioned API beside its successor, ADR-0064 section 2): same name and subtype and the same
+     * contract. Bindings are per API and are not compared.
+     */
+    private static boolean sameOperation(MetaData a, MetaData b) {
+        if (!a.getShortName().equals(b.getShortName()) || !a.getSubType().equals(b.getSubType())) return false;
+        for (String attr : List.of(ApiConstants.ATTR_INPUT_REF, ApiConstants.ATTR_OUTPUT_REF, ApiConstants.ATTR_OBJECT_REF)) {
+            Object x = refIdentity(a, attr);
+            Object y = refIdentity(b, attr);
+            // A resolved node compares by identity, a raw string by value.
+            boolean same = x instanceof String xs ? xs.equals(y) : x == y;
+            if (!same) return false;
+        }
+        for (String attr : List.of(ApiConstants.ATTR_TRANSITIONS, ApiConstants.ATTR_ERRORS)) {
+            if (!setKey(a, attr).equals(setKey(b, attr))) return false;
+        }
+        return java.util.Objects.equals(Lifecycles.stringValue(a, ApiConstants.ATTR_PERMISSION),
+                Lifecycles.stringValue(b, ApiConstants.ATTR_PERMISSION))
+            && flag(a, ApiConstants.ATTR_PUBLIC) == flag(b, ApiConstants.ATTR_PUBLIC)
+            && flag(a, ApiConstants.ATTR_MANY) == flag(b, ApiConstants.ATTR_MANY);
+    }
+
+    /** B2 across the operations of one API. */
+    private static void checkApiRoutes(List<MetaData> ops, Sink sink) {
         Map<String, MetaData> byRoute = new java.util.HashMap<>();
         for (MetaData op : ops) {
-            String key = op.getShortName().toLowerCase(java.util.Locale.ROOT);
-            MetaData first = byName.putIfAbsent(key, op);
-            if (first != null && first != op) {
-                sink.add(op, ErrorCode.ERR_TRANSITION_NAME_COLLISION,
-                    "operation." + op.getSubType() + " \"" + label(op) + "\" differs only in case from \"" + label(first)
-                        + "\"; the operations of one API share one namespace (each derives a route and a permission), so rename one.");
-            }
             // ADR-0039: own — a binding is checked on the operation that declares it.
             for (MetaData b : op.getChildren(MetaData.class, false)) {
                 if (!ApiConstants.TYPE_BINDING.equals(b.getType()) || !ApiConstants.BINDING_SUBTYPE_REST.equals(b.getSubType())) continue;

@@ -14,7 +14,8 @@
 //
 // Rules:
 //   L1 ERR_TRANSITION_NOT_ON_ENTITY   a transition under an enum field not declared on an object.entity
-//   L2 ERR_TRANSITION_NOT_ON_ENTITY   a concrete entity with a lifecycle and no writable source (on the entity)
+//   L2 ERR_TRANSITION_NOT_ON_ENTITY   a concrete entity with a lifecycle and a source, none of them writable
+//                                      (on the entity). An entity with no source at all is inert (LifecycleIsLive).
 //   L3 ERR_LIFECYCLE_NO_INITIAL       an enum field declaring transitions has no @default
 //   L4 ERR_TRANSITION_UNKNOWN_STATE   a @from or @to value is not one of the enum's @values
 //   L5 ERR_TRANSITION_NAME_COLLISION  a transition named create/get/list/update/delete, in any case
@@ -26,8 +27,11 @@
 //   L10 ERR_LIFECYCLE_REDECLARED      an entity redeclares an inherited lifecycle field without
 //                                      extending it, so the base's transitions would be lost
 //   P1 ERR_PERMISSION_PUBLIC_CONFLICT @public: true with @permission (operation or transition)
+//   P2 ERR_BAD_ATTR_VALUE             @permission is not a dotted identifier path (PERMISSION_NAME_PATTERN)
 //   O0 ERR_TRANSITION_NAME_COLLISION  an operation named create/get/list/update/delete, in any case
-//   O6 ERR_TRANSITION_NAME_COLLISION  two operations of one API whose names differ only in case
+//   O6 ERR_TRANSITION_NAME_COLLISION  two operations of one package share a name, compared without case, in
+//                                      one API or across its APIs; one operation declared twice merges, and
+//                                      the same operation declared identically in two APIs is exposed twice (SameOperation)
 //   O1 ERR_OPERATION_SHAPE            @inputRef is not an object.value; @outputRef is not an entity, projection or value
 //   O2 ERR_OPERATION_TARGET_UNRESOLVED @objectRef is not an object.entity, or a command lists
 //                                      @transitions and no target is declared or derivable
@@ -86,12 +90,19 @@ public static partial class ValidationPasses
         }
     }
 
-    private static void CheckPermissionPublic(MetaData node, RulesErrorSink sink)
+    /// <summary>P1 and P2 for an operation or a transition.</summary>
+    private static void CheckPermission(MetaData node, RulesErrorSink sink)
     {
-        if (node.Attr(OPERATION_ATTR_PUBLIC) is true && node.Attr(OPERATION_ATTR_PERMISSION) is not null)
+        var permission = node.Attr(OPERATION_ATTR_PERMISSION);
+        if (node.Attr(OPERATION_ATTR_PUBLIC) is true && permission is not null)
         {
             sink.Add(node, ErrorCode.ERR_PERMISSION_PUBLIC_CONFLICT,
                 $"{node.Type}.{node.SubType} \"{RulesLabel(node)}\" declares both @public: true and @permission; a public {node.Type} calls no permission check, so remove one.");
+        }
+        if (permission is string name && !PERMISSION_NAME_PATTERN.IsMatch(name))
+        {
+            sink.Add(node, ErrorCode.ERR_BAD_ATTR_VALUE,
+                $"{node.Type}.{node.SubType} \"{RulesLabel(node)}\" @permission \"{name}\" is not a dotted identifier path; use names of letters, digits and _ joined by \".\" (a package prefix may use \"::\"), such as \"purchasing.approve\".");
         }
     }
 
@@ -126,7 +137,7 @@ public static partial class ValidationPasses
         var states = stateList.ToHashSet(StringComparer.Ordinal);
         foreach (var t in declared)
         {
-            CheckPermissionPublic(t, sink);
+            CheckPermission(t, sink);
             if (Lifecycles.TransitionFrom(t).Count == 0)
             {
                 sink.Add(t, ErrorCode.ERR_BAD_ATTR_VALUE,
@@ -210,10 +221,11 @@ public static partial class ValidationPasses
                     $"transition.action \"{RulesLabel(t)}\" has the same name as \"{RulesLabel(first)}\" (names are compared without case); the transitions of \"{entity.Name}\" share one namespace (each may derive a command), so rename one.");
             }
         }
-        if (!entity.IsAbstract && !entity.Children().Any(c => c is MetaSource ms && ms.IsWritable()))
+        if (!entity.IsAbstract && Lifecycles.LifecycleIsLive(entity) &&
+            !entity.Children().Any(c => c is MetaSource ms && ms.IsWritable()))
         {
             sink.Add(entity, ErrorCode.ERR_TRANSITION_NOT_ON_ENTITY,
-                $"object.entity \"{entity.Name}\" has a lifecycle (transitions on {RulesQuoteList(transitions.Select(t => t.Parent?.Name ?? "").Distinct(StringComparer.Ordinal))}) but no writable source; a transition is a guarded update of a stored row.");
+                $"object.entity \"{entity.Name}\" has a lifecycle (transitions on {RulesQuoteList(transitions.Select(t => t.Parent?.Name ?? "").Distinct(StringComparer.Ordinal))}) and a source, but no writable one; a transition is a guarded update of a stored row. (An entity with no source at all may carry a lifecycle: it is inert until a source is added.)");
         }
     }
 
@@ -225,7 +237,7 @@ public static partial class ValidationPasses
             sink.Add(op, ErrorCode.ERR_TRANSITION_NAME_COLLISION,
                 $"operation.{op.SubType} \"{RulesLabel(op)}\" is named \"{op.Name}\", which is a derived CRUD verb ({ReservedOperationNameList}); rename it.");
         }
-        CheckPermissionPublic(op, sink);
+        CheckPermission(op, sink);
 
         var errorCodes = Lifecycles.StringList(op, OPERATION_ATTR_ERRORS);
         var bad = errorCodes.Where(c => !BUSINESS_ERROR_CODE_PATTERN.IsMatch(c)).ToList();
@@ -337,30 +349,61 @@ public static partial class ValidationPasses
         {
             if (obj.Type == TYPE_OBJECT && obj.SubType == OBJECT_SUBTYPE_ENTITY) CheckEntityLifecycles(obj, sink);
         }
+        // O6 — keyed by package, then by the name without case.
+        var byName = new Dictionary<string, MetaData>(StringComparer.Ordinal);
         foreach (var api in root.Children())
         {
             if (api.Type != TYPE_API) continue;
             var ops = api.Children().Where(c => c.Type == TYPE_OPERATION).ToList();
             foreach (var op in ops) CheckOperation(op, sink);
-            CheckApiNamespace(ops, sink);
+            foreach (var op in ops)
+            {
+                var pkg = NamingRefs.EffectivePackageOf(api);
+                var key = $"{pkg}\0{op.Name.ToLowerInvariant()}";
+                if (!byName.TryGetValue(key, out var first)) byName[key] = op;
+                else if (!ReferenceEquals(first, op) && !SameOperation(first, op))
+                {
+                    sink.Add(op, ErrorCode.ERR_TRANSITION_NAME_COLLISION,
+                        $"operation.{op.SubType} \"{RulesLabel(op)}\" has the same name as \"{RulesLabel(first)}\" (names are compared without case) and is not the same operation; the operations of package \"{pkg}\" share one namespace (each derives the permission name <package>.<operation>), so rename one, or declare both identically to expose one operation in two APIs.");
+                }
+            }
+            CheckApiRoutes(ops, sink);
         }
         return sink.Errors;
     }
 
-    /// <summary>O6 and B2 across the operations of one API.</summary>
-    private static void CheckApiNamespace(IReadOnlyList<MetaData> ops, RulesErrorSink sink)
+    /// <summary>A reference attr's identity: the node it resolves to, else the raw value.</summary>
+    private static object? RefIdentity(MetaData op, string attr) =>
+        op.Attr(attr) is string r ? (object?)Lifecycles.ResolveObjectOn(op, r) ?? r : op.Attr(attr);
+
+    private static string SetKey(MetaData op, string attr) =>
+        string.Join("\0", Lifecycles.StringList(op, attr).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal));
+
+    /// <summary>Whether two operations of one package in different APIs are one operation exposed twice
+    /// (a versioned API beside its successor, ADR-0064 section 2): same name and subtype, same contract.
+    /// Bindings are per API and are not compared.</summary>
+    private static bool SameOperation(MetaData a, MetaData b)
     {
-        var byName = new Dictionary<string, MetaData>(StringComparer.Ordinal);
+        if (a.Name != b.Name || a.SubType != b.SubType) return false;
+        foreach (var attr in new[] { OPERATION_ATTR_INPUT_REF, OPERATION_ATTR_OUTPUT_REF, OPERATION_ATTR_OBJECT_REF })
+        {
+            if (!Equals(RefIdentity(a, attr), RefIdentity(b, attr))) return false;
+        }
+        foreach (var attr in new[] { OPERATION_ATTR_TRANSITIONS, OPERATION_ATTR_ERRORS })
+        {
+            if (SetKey(a, attr) != SetKey(b, attr)) return false;
+        }
+        return Equals(a.Attr(OPERATION_ATTR_PERMISSION), b.Attr(OPERATION_ATTR_PERMISSION))
+            && (a.Attr(OPERATION_ATTR_PUBLIC) is true) == (b.Attr(OPERATION_ATTR_PUBLIC) is true)
+            && (a.Attr(OPERATION_ATTR_MANY) is true) == (b.Attr(OPERATION_ATTR_MANY) is true);
+    }
+
+    /// <summary>B2 across the operations of one API.</summary>
+    private static void CheckApiRoutes(IReadOnlyList<MetaData> ops, RulesErrorSink sink)
+    {
         var byRoute = new Dictionary<string, MetaData>(StringComparer.Ordinal);
         foreach (var op in ops)
         {
-            var key = op.Name.ToLowerInvariant();
-            if (!byName.TryGetValue(key, out var first)) byName[key] = op;
-            else if (!ReferenceEquals(first, op))
-            {
-                sink.Add(op, ErrorCode.ERR_TRANSITION_NAME_COLLISION,
-                    $"operation.{op.SubType} \"{RulesLabel(op)}\" differs only in case from \"{RulesLabel(first)}\"; the operations of one API share one namespace (each derives a route and a permission), so rename one.");
-            }
             // ADR-0039: own — a binding is checked on the operation that declares it.
             foreach (var b in op.OwnChildren())
             {

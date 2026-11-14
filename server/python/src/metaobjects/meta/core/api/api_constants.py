@@ -35,6 +35,13 @@ HTTP_METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE")
 # of the same service (ERR_TRANSITION_NAME_COLLISION).
 RESERVED_OPERATION_NAMES = ("create", "get", "list", "update", "delete")
 
+# A declared @permission: a dotted identifier path (``purchasing.approve``). A package prefix may
+# use ``::``, so a derived name can be declared as it is. Matched with ``fullmatch`` so a
+# trailing newline does not match.
+PERMISSION_NAME_PATTERN = re.compile(
+    r"[A-Za-z_][A-Za-z0-9_]*(?:(?:\.|::)[A-Za-z_][A-Za-z0-9_]*)*"
+)
+
 # A declared business error code: lower snake case.
 BUSINESS_ERROR_CODE_PATTERN = re.compile(r"^[a-z][a-z0-9]*(_[a-z0-9]+)*$")
 

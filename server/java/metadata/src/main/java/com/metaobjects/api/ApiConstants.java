@@ -55,6 +55,14 @@ public final class ApiConstants {
         "not_found", "forbidden", "invalid_transition", "transition_condition_failed", "state_managed",
         "validation", "invalid_json", "invalid_id", "method_not_allowed", "constraint_violation", "internal");
 
+    /**
+     * A declared {@code @permission}: a dotted identifier path ({@code purchasing.approve}). A
+     * package prefix may use {@code ::}, so a derived name can be declared as it is. Match with
+     * {@code matches()}, which anchors the whole string.
+     */
+    public static final Pattern PERMISSION_NAME_PATTERN = Pattern.compile(
+        "[A-Za-z_][A-Za-z0-9_]*(?:(?:\\.|::)[A-Za-z_][A-Za-z0-9_]*)*");
+
     /** A business error code: lower snake case. */
     public static final Pattern BUSINESS_ERROR_CODE_PATTERN = Pattern.compile("^[a-z][a-z0-9]*(_[a-z0-9]+)*$");
 }

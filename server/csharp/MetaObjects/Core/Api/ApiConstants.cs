@@ -46,6 +46,11 @@ public static partial class ApiConstants
     /// CRUD verbs of the same service (ERR_TRANSITION_NAME_COLLISION).</summary>
     public static readonly string[] RESERVED_OPERATION_NAMES = ["create", "get", "list", "update", "delete"];
 
+    /// <summary>A declared @permission: a dotted identifier path; a package prefix may use "::". Anchored
+    /// with \z so a trailing newline does not match.</summary>
+    public static readonly Regex PERMISSION_NAME_PATTERN =
+        new(@"^[A-Za-z_][A-Za-z0-9_]*(?:(?:\.|::)[A-Za-z_][A-Za-z0-9_]*)*\z", RegexOptions.CultureInvariant);
+
     /// <summary>A declared business error code: lower snake case.</summary>
     public static readonly Regex BUSINESS_ERROR_CODE_PATTERN =
         new(@"^[a-z][a-z0-9]*(_[a-z0-9]+)*\z", RegexOptions.CultureInvariant);

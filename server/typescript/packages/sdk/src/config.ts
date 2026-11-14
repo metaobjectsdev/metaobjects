@@ -305,7 +305,8 @@ export const ConfigSchema = z.object({
    * ADR-0063 — the business-rules settings. Read only for a model that declares an operation
    * or a transition, and every absent key takes the behaviour such a model has without it.
    * `permissions.names`: `derive` (default; verify says nothing), `advise` (verify warns on an
-   * operation or derived transition command with no explicit `@permission`) or `require` (it
+   * operation or derived transition command with no explicit `@permission`, which asks about the
+   * derived name `<package>.<operation>` or `<package>.<Entity>.<transition>`) or `require` (it
    * fails). `lifecycle.create`: `initial` (default; a create starts a row in the lifecycle's
    * initial state) or `any`; it is validated and has no effect yet, since no service shell reads
    * it. `lifecycle.commands`: which transitions derive a command of their

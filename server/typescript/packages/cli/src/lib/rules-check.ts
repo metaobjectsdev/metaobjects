@@ -24,8 +24,13 @@
 //                                      (severity: `rules.permissions.names`)
 //
 // Lifecycles are checked once per declaring field, so a lifecycle on an abstract base is
-// reported once, not once per inheritor. A derived command exists per concrete entity, so
-// the permission check runs per concrete entity and names it.
+// reported once, not once per inheritor. A derived command exists per concrete entity that has
+// a source, so the permission checks run per such entity and name it; a lifecycle on an entity
+// with no source is inert and derives no command (lifecycleIsLive).
+//
+// A derived permission name includes its owner: `<package>.<Entity>.<transition>` for a
+// transition's derived command, `<package>.<operation>` for a declared operation (the loader
+// keeps operation names unique per package).
 //
 // A command claims a transition NODE for its target entity and every entity that extends the
 // target: a command acting on an abstract base claims the inherited transition of each child.
@@ -43,6 +48,7 @@ import {
   effectivePackageOf,
   entityLineage,
   entityTransitions,
+  lifecycleIsLive,
   lifecyclesOf,
   operationTarget,
   reachableStates,
@@ -91,10 +97,12 @@ export function rulesAddress(node: MetaData): string {
   return pkg === "" ? parts.join(".") : `${pkg}${PACKAGE_SEPARATOR}${parts.join(".")}`;
 }
 
-/** The permission name a node gets when it declares none: `<package>.<name>`. */
-function derivedPermissionName(owner: MetaData, name: string): string {
+/** The permission name a node gets when it declares none, `<package>.<path>`: the path is
+ *  `<operation>` for a declared operation and `<Entity>.<transition>` for a transition's derived
+ *  command, so two entities' transitions of one name ask about different permissions. */
+function derivedPermissionName(owner: MetaData, path: string): string {
   const pkg = effectivePackageOf(topLevelNodeOf(owner));
-  return pkg === "" ? name : `${pkg}.${name}`;
+  return pkg === "" ? path : `${pkg}.${path}`;
 }
 
 function needsPermissionName(node: MetaData): boolean {
@@ -214,17 +222,19 @@ function derivesCommand(claimed: Map<MetaData, Claim[]>, settings: RulesSettings
   return claimsOn(claimed, entity, t).length === 0;
 }
 
-function concreteEntities(root: MetaData): MetaData[] {
-  return entities(root).filter((e) => !e.isAbstract);
+/** The entities a transition can derive a command on: concrete, with a source. */
+function commandEntities(root: MetaData): MetaData[] {
+  return entities(root).filter((e) => !e.isAbstract && lifecycleIsLive(e));
 }
 
 /** A transition's @permission or @public is read only by the command derived from it. One that
- *  derives no command for any concrete entity carrying it declares an attribute nothing reads. */
+ *  derives no command for any entity carrying it declares an attribute nothing reads. A transition
+ *  carried only by entities with no source is inert, not shadowed: it is not reported. */
 function checkShadowedPermissions(root: MetaData, settings: RulesSettings, out: Diagnostic[]): void {
   if (settings.lifecycleCommands === "all") return;
   const claimed = claimedTransitions(root);
   const carriers = new Map<MetaData, MetaData[]>();
-  for (const entity of concreteEntities(root)) {
+  for (const entity of commandEntities(root)) {
     for (const t of entityTransitions(entity)) carriers.set(t, [...(carriers.get(t) ?? []), entity]);
   }
   for (const [t, entitiesWithT] of carriers) {
@@ -258,7 +268,7 @@ function checkPermissionNames(root: MetaData, settings: RulesSettings, out: Diag
 
   if (settings.lifecycleCommands !== "none") {
     const claimed = claimedTransitions(root);
-    for (const entity of concreteEntities(root)) {
+    for (const entity of commandEntities(root)) {
       for (const t of entityTransitions(entity)) {
         if (!derivesCommand(claimed, settings, entity, t)) continue;
         if (!needsPermissionName(t)) continue;
@@ -268,7 +278,7 @@ function checkPermissionNames(root: MetaData, settings: RulesSettings, out: Diag
           path: `${rulesAddress(entity)}.${t.parent?.name ?? ""}.${t.name}`,
           message:
             `the command derived from transition "${t.name}" of "${entity.name}" has no @permission, so it asks ` +
-            `the policy about the derived name "${derivedPermissionName(entity, t.name)}", ${advice("transition")}`,
+            `the policy about the derived name "${derivedPermissionName(entity, `${entity.name}.${t.name}`)}", ${advice("transition")}`,
         });
       }
     }

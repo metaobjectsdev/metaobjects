@@ -16,7 +16,9 @@ One broken rule yields one error:
 
 Rules:
   L1 ERR_TRANSITION_NOT_ON_ENTITY    a transition under an enum field not declared on an object.entity
-  L2 ERR_TRANSITION_NOT_ON_ENTITY    a concrete entity with a lifecycle and no writable source (on the entity)
+  L2 ERR_TRANSITION_NOT_ON_ENTITY    a concrete entity with a lifecycle and a source, none of them writable
+                                     (on the entity). An entity with no source at all is inert: its
+                                     lifecycle loads and derives nothing (lifecycle_is_live).
   L3 ERR_LIFECYCLE_NO_INITIAL        an enum field declaring transitions has no @default
   L4 ERR_TRANSITION_UNKNOWN_STATE    a @from or @to value is not one of the enum's @values
   L5 ERR_TRANSITION_NAME_COLLISION   a transition named create/get/list/update/delete, in any case
@@ -25,10 +27,15 @@ Rules:
   L8 ERR_BAD_ATTR_VALUE              @from is empty
   L9 ERR_BAD_ATTR_VALUE              a lifecycle field is an array
   L10 ERR_LIFECYCLE_REDECLARED       an entity redeclares an inherited lifecycle field without extending it
-  O6 ERR_TRANSITION_NAME_COLLISION   two operations of one API whose names differ only in case
   B2 ERR_BINDING_PATH_MISMATCH       two bindings of one API share an effective method and path
   P1 ERR_PERMISSION_PUBLIC_CONFLICT  @public: true with @permission (operation or transition)
+  P2 ERR_BAD_ATTR_VALUE              @permission is not a dotted identifier path (PERMISSION_NAME_PATTERN)
   O0 ERR_TRANSITION_NAME_COLLISION   an operation named create/get/list/update/delete
+  O6 ERR_TRANSITION_NAME_COLLISION   two operations of one package share a name, compared without case,
+                                     in one API or across its APIs (each derives the permission name
+                                     <package>.<operation>), unless they are the same operation:
+                                     declared twice in one API (they merge), or declared identically
+                                     in two APIs (_same_operation)
   O1 ERR_OPERATION_SHAPE             @inputRef is not an object.value; @outputRef is not an entity, projection or value
   O2 ERR_OPERATION_TARGET_UNRESOLVED @objectRef is not an object.entity, or a command lists @transitions and
                                      no target is declared or derivable
@@ -54,11 +61,13 @@ from ..meta.core.api.api_constants import (
     BUSINESS_ERROR_CODE_PATTERN,
     OPERATION_ATTR_ERRORS,
     OPERATION_ATTR_INPUT_REF,
+    OPERATION_ATTR_MANY,
     OPERATION_ATTR_OBJECT_REF,
     OPERATION_ATTR_OUTPUT_REF,
     OPERATION_ATTR_PERMISSION,
     OPERATION_ATTR_PUBLIC,
     OPERATION_ATTR_TRANSITIONS,
+    PERMISSION_NAME_PATTERN,
     OPERATION_SUBTYPE_COMMAND,
     RESERVED_ERROR_CODES,
     RESERVED_OPERATION_NAMES,
@@ -77,6 +86,7 @@ from ..meta.core.transition.lifecycle import (
     derive_operation_target,
     entity_lineage,
     entity_transitions,
+    lifecycle_is_live,
     lifecycle_transitions_of,
     operation_is_keyed,
     primary_key_fields,
@@ -90,6 +100,7 @@ from ..meta.core.transition.transition_constants import (
     TRANSITION_SUBTYPE_ACTION,
 )
 from ..meta.meta_data import MetaData
+from ..naming_refs import effective_package_of
 from ..meta.persistence.source.meta_source import MetaSource
 from ..shared.base_types import (
     TYPE_API,
@@ -146,16 +157,23 @@ class _Sink:
         self.errors.append(MetaError(code=code, message=message, envelope=node.source))
 
 
-def _check_permission_public(node: MetaData, sink: _Sink) -> None:
-    if (
-        node.get_meta_attr(OPERATION_ATTR_PUBLIC) is True
-        and node.get_meta_attr(OPERATION_ATTR_PERMISSION) is not None
-    ):
+def _check_permission(node: MetaData, sink: _Sink) -> None:
+    """P1 and P2 for an operation or a transition."""
+    permission = node.get_meta_attr(OPERATION_ATTR_PERMISSION)
+    if node.get_meta_attr(OPERATION_ATTR_PUBLIC) is True and permission is not None:
         sink.add(
             node,
             ErrorCode.ERR_PERMISSION_PUBLIC_CONFLICT,
             f'{node.type}.{node.sub_type} "{_label(node)}" declares both @public: true and @permission; '
             f"a public {node.type} calls no permission check, so remove one.",
+        )
+    if isinstance(permission, str) and not PERMISSION_NAME_PATTERN.fullmatch(permission):
+        sink.add(
+            node,
+            ErrorCode.ERR_BAD_ATTR_VALUE,
+            f'{node.type}.{node.sub_type} "{_label(node)}" @permission "{permission}" is not a dotted '
+            'identifier path; use names of letters, digits and _ joined by "." (a package prefix may use '
+            '"::"), such as "purchasing.approve".',
         )
 
 
@@ -201,7 +219,7 @@ def _check_declared_transitions(field: MetaData, sink: _Sink) -> None:
         )
     states = _unique(string_list(field, FIELD_ATTR_VALUES))
     for t in declared:
-        _check_permission_public(t, sink)
+        _check_permission(t, sink)
         if not transition_from(t):
             sink.add(
                 t,
@@ -293,15 +311,20 @@ def _check_entity_lifecycles(entity: MetaData, sink: _Sink) -> None:
                 f'(names are compared without case); the transitions of '
                 f'"{entity.name}" share one namespace (each may derive a command), so rename one.',
             )
-    if not entity.is_abstract and not any(
-        c.type == TYPE_SOURCE and isinstance(c, MetaSource) and c.is_writable() for c in entity.children()
+    if (
+        not entity.is_abstract
+        and lifecycle_is_live(entity)
+        and not any(
+            c.type == TYPE_SOURCE and isinstance(c, MetaSource) and c.is_writable() for c in entity.children()
+        )
     ):
         owners = _unique([t.parent.name if t.parent is not None else "" for t in transitions])
         sink.add(
             entity,
             ErrorCode.ERR_TRANSITION_NOT_ON_ENTITY,
-            f'object.entity "{entity.name}" has a lifecycle (transitions on {_quote_list(owners)}) but no '
-            "writable source; a transition is a guarded update of a stored row.",
+            f'object.entity "{entity.name}" has a lifecycle (transitions on {_quote_list(owners)}) and a '
+            "source, but no writable one; a transition is a guarded update of a stored row. (An entity "
+            "with no source at all may carry a lifecycle: it is inert until a source is added.)",
         )
 
 
@@ -314,7 +337,7 @@ def _check_operation(op: MetaData, sink: _Sink) -> None:
             f'operation.{op.sub_type} "{_label(op)}" is named "{op.name}", which is a derived CRUD verb '
             f"({_RESERVED_LIST}); rename it.",
         )
-    _check_permission_public(op, sink)
+    _check_permission(op, sink)
 
     error_codes = string_list(op, OPERATION_ATTR_ERRORS)
     bad = [c for c in error_codes if not BUSINESS_ERROR_CODE_PATTERN.fullmatch(c)]
@@ -447,31 +470,69 @@ def validate_rules(root: MetaData, errors: list[MetaError]) -> None:
     for obj in root.children():
         if obj.type == TYPE_OBJECT and obj.sub_type == OBJECT_SUBTYPE_ENTITY:
             _check_entity_lifecycles(obj, sink)
+    # O6 — keyed by package, then by the name without case.
+    by_name: dict[tuple[str, str], MetaData] = {}
     for api in root.children():
         if api.type != TYPE_API:
             continue
         ops = [c for c in api.children() if c.type == TYPE_OPERATION]
         for op in ops:
             _check_operation(op, sink)
-        _check_api_namespace(ops, sink)
+        for op in ops:
+            pkg = effective_package_of(api)
+            key = (pkg, op.name.lower())
+            first = by_name.get(key)
+            if first is None:
+                by_name[key] = op
+            elif first is not op and not _same_operation(first, op):
+                sink.add(
+                    op,
+                    ErrorCode.ERR_TRANSITION_NAME_COLLISION,
+                    f'operation.{op.sub_type} "{_label(op)}" has the same name as "{_label(first)}" (names '
+                    f'are compared without case) and is not the same operation; the operations of package "{pkg}" '
+                    "share one namespace (each derives the permission name <package>.<operation>), so "
+                    "rename one, or declare both identically to expose one operation in two APIs.",
+                )
+        _check_api_routes(ops, sink)
 
 
-def _check_api_namespace(ops: list[MetaData], sink: _Sink) -> None:
-    """O6 and B2 across the operations of one API."""
-    by_name: dict[str, MetaData] = {}
+def _ref_identity(op: MetaData, attr: str) -> object:
+    """A reference attr's identity: the node it resolves to, else the raw value."""
+    ref = op.get_meta_attr(attr)
+    if isinstance(ref, str):
+        resolved = resolve_object_on(op, ref)
+        return resolved if resolved is not None else ref
+    return ref
+
+
+def _set_key(op: MetaData, attr: str) -> frozenset[str]:
+    return frozenset(string_list(op, attr))
+
+
+def _same_operation(a: MetaData, b: MetaData) -> bool:
+    """Whether two operations of one package in different APIs are one operation exposed twice (a
+    versioned API beside its successor, ADR-0064 section 2): the same name and subtype and the same
+    contract. Bindings are per API and are not compared."""
+    if a.name != b.name or a.sub_type != b.sub_type:
+        return False
+    for attr in (OPERATION_ATTR_INPUT_REF, OPERATION_ATTR_OUTPUT_REF, OPERATION_ATTR_OBJECT_REF):
+        ia, ib = _ref_identity(a, attr), _ref_identity(b, attr)
+        if not (ia is ib or (not isinstance(ia, MetaData) and not isinstance(ib, MetaData) and ia == ib)):
+            return False
+    for attr in (OPERATION_ATTR_TRANSITIONS, OPERATION_ATTR_ERRORS):
+        if _set_key(a, attr) != _set_key(b, attr):
+            return False
+    return (
+        a.get_meta_attr(OPERATION_ATTR_PERMISSION) == b.get_meta_attr(OPERATION_ATTR_PERMISSION)
+        and (a.get_meta_attr(OPERATION_ATTR_PUBLIC) is True) == (b.get_meta_attr(OPERATION_ATTR_PUBLIC) is True)
+        and (a.get_meta_attr(OPERATION_ATTR_MANY) is True) == (b.get_meta_attr(OPERATION_ATTR_MANY) is True)
+    )
+
+
+def _check_api_routes(ops: list[MetaData], sink: _Sink) -> None:
+    """B2 across the operations of one API."""
     by_route: dict[str, MetaData] = {}
     for op in ops:
-        key = op.name.lower()
-        first = by_name.get(key)
-        if first is None:
-            by_name[key] = op
-        elif first is not op:
-            sink.add(
-                op,
-                ErrorCode.ERR_TRANSITION_NAME_COLLISION,
-                f'operation.{op.sub_type} "{_label(op)}" differs only in case from "{_label(first)}"; the '
-                "operations of one API share one namespace (each derives a route and a permission), so rename one.",
-            )
         # ADR-0039 sanctioned own: a binding is checked on the operation that declares it.
         for b in op.own_children():
             if b.type != TYPE_BINDING or b.sub_type != BINDING_SUBTYPE_REST:

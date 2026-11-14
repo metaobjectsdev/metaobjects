@@ -21,7 +21,7 @@ export const API_DEFINITION: ProviderDefinition = {
       "extendsBase": true,
       "description": "A named, packaged request/response surface whose children are operations (ADR-0030). It is a wire contract: two of them (`v1`, `v2`) may declare the same operation side by side. The code behind it is one service per metadata package, whose surface is the package's operations (ADR-0064). Experimental since 1.3.0: the shape may change in a MINOR, including removals and renames (docs/compatibility-policy.md).",
       "whenToUse": "The application does something beyond derived CRUD: a named command (approve, cancel, import) or a named query (my open requests). Declare it here so its input, output, permission and business errors are part of the model. A plain lifecycle needs no api.operational at all: each transition nobody claims derives its own command.",
-      "rules": "Children are `operation.command` and `operation.query`. Lives at the document root. Declares no fields, sources or identities: shapes are referenced, never defined, by the surface. Operation names are compared without case and may not be create, get, list, update or delete in any case (ERR_TRANSITION_NAME_COLLISION). Two declared bindings may not share a method and path (ERR_BINDING_PATH_MISMATCH).",
+      "rules": "Children are `operation.command` and `operation.query`. Lives at the document root. Declares no fields, sources or identities: shapes are referenced, never defined, by the surface. Operation names are compared without case, are unique across every API of one package, except one operation declared identically in two APIs, such as a versioned API beside its successor (one operation declared twice in one API merges), and may not be create, get, list, update or delete in any case (ERR_TRANSITION_NAME_COLLISION). Two declared bindings may not share a method and path (ERR_BINDING_PATH_MISMATCH).",
       "children": [
         {
           "type": "operation",
@@ -76,7 +76,7 @@ export const API_DEFINITION: ProviderDefinition = {
           "name": "permission",
           "min": 0,
           "max": 1,
-          "description": "The permission name the generated shell asks the project's policy about before anything is written. A key into grant data (who holds it is data, what the policy decides is code), so it is never derived from the operation's name: a rename would silently move access. Absent and not @public: the shell uses the derived name `<package>.<operation>`, and `verify` advises or requires an explicit one (setting `rules.permissions.names`). Several operations may share one."
+          "description": "The permission name the generated shell asks the project's policy about before anything is written. A key into grant data (who holds it is data, what the policy decides is code), so it is never derived from the operation's name: a rename would silently move access. A dotted identifier path such as `purchasing.approve`; a package prefix may use `::` (ERR_BAD_ATTR_VALUE otherwise). Absent and not @public: the shell uses the derived name `<package>.<operation>`, with the package of the operation's API, and `verify` advises or requires an explicit one (setting `rules.permissions.names`). Several operations may share one."
         },
         {
           "type": "attr",

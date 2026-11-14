@@ -251,15 +251,17 @@ export const ERROR_CODES = [
   // member of its enum (L4).
   "ERR_TRANSITION_UNKNOWN_STATE",
   // A transition.action on a field of anything but an object.entity, or a concrete
-  // entity with a lifecycle and no writable source (L1, L2).
+  // entity with a lifecycle and a source but no writable one (L1, L2). A sourceless
+  // entity's lifecycle is inert, not an error.
   "ERR_TRANSITION_NOT_ON_ENTITY",
   // An enum field with transitions and no @default, its initial state (L3).
   "ERR_LIFECYCLE_NO_INITIAL",
   // An entity redeclares an inherited lifecycle field without extending it, dropping the
   // base's transitions (L10).
   "ERR_LIFECYCLE_REDECLARED",
-  // Two transitions of one entity share a name, or a transition or operation is named
-  // create / get / list / update / delete (L5, L6, O0).
+  // Two transitions of one entity share a name, two operations of one package share a
+  // name (unless one operation is declared identically in two APIs), or a transition or
+  // operation is named create / get / list / update / delete (L5, L6, O0, O6).
   "ERR_TRANSITION_NAME_COLLISION",
   // An operation's @objectRef is not an entity, or a command lists @transitions with no
   // target (O2).

@@ -14,7 +14,9 @@
 //
 // Rules:
 //   L1 ERR_TRANSITION_NOT_ON_ENTITY   a transition under an enum field not declared on an object.entity
-//   L2 ERR_TRANSITION_NOT_ON_ENTITY   a concrete entity with a lifecycle and no writable source (on the entity)
+//   L2 ERR_TRANSITION_NOT_ON_ENTITY   a concrete entity with a lifecycle and a source, none of them writable
+//                                      (on the entity). An entity with no source at all is inert: its
+//                                      lifecycle loads and derives nothing (lifecycleIsLive).
 //   L3 ERR_LIFECYCLE_NO_INITIAL       an enum field declaring transitions has no @default
 //   L4 ERR_TRANSITION_UNKNOWN_STATE   a @from or @to value is not one of the enum's @values
 //   L5 ERR_TRANSITION_NAME_COLLISION  a transition named create/get/list/update/delete, in any case
@@ -26,8 +28,13 @@
 //   L10 ERR_LIFECYCLE_REDECLARED      an entity redeclares an inherited lifecycle field without
 //                                      extending it, so the base's transitions would be lost
 //   P1 ERR_PERMISSION_PUBLIC_CONFLICT @public: true with @permission (operation or transition)
+//   P2 ERR_BAD_ATTR_VALUE             @permission is not a dotted identifier path (PERMISSION_NAME_PATTERN)
 //   O0 ERR_TRANSITION_NAME_COLLISION  an operation named create/get/list/update/delete, in any case
-//   O6 ERR_TRANSITION_NAME_COLLISION  two operations of one API whose names differ only in case
+//   O6 ERR_TRANSITION_NAME_COLLISION  two operations of one package share a name, compared without case,
+//                                      in one API or across its APIs (each derives the permission
+//                                      name <package>.<operation>), unless they are the same
+//                                      operation: declared twice in one API (they merge), or
+//                                      declared identically in two APIs (sameOperation)
 //   O1 ERR_OPERATION_SHAPE            @inputRef is not an object.value; @outputRef is not an entity, projection or value
 //   O2 ERR_OPERATION_TARGET_UNRESOLVED @objectRef is not an object.entity, or a command lists
 //                                      @transitions and no target is declared or derivable
@@ -59,8 +66,10 @@ import {
   BINDING_ATTR_PATH,
   BINDING_SUBTYPE_REST,
   BUSINESS_ERROR_CODE_PATTERN,
+  PERMISSION_NAME_PATTERN,
   OPERATION_ATTR_ERRORS,
   OPERATION_ATTR_INPUT_REF,
+  OPERATION_ATTR_MANY,
   OPERATION_ATTR_OBJECT_REF,
   OPERATION_ATTR_OUTPUT_REF,
   OPERATION_ATTR_PERMISSION,
@@ -75,6 +84,7 @@ import {
   deriveOperationTarget,
   entityLineage,
   entityTransitions,
+  lifecycleIsLive,
   lifecycleTransitionsOf,
   operationIsKeyed,
   primaryKeyFields,
@@ -84,6 +94,7 @@ import {
   transitionTo,
 } from "../core/transition/lifecycle.js";
 import { isWritableSource } from "../shared/node-guards.js";
+import { effectivePackageOf } from "../naming-refs.js";
 import { conditionMessage } from "./validation-passes.js";
 
 const RESERVED = new Set<string>(RESERVED_OPERATION_NAMES);
@@ -127,10 +138,16 @@ class Sink {
   }
 }
 
-function checkPermissionPublic(node: MetaData, sink: Sink): void {
-  if (node.attr(OPERATION_ATTR_PUBLIC) === true && node.attr(OPERATION_ATTR_PERMISSION) !== undefined) {
+/** P1 and P2 for an operation or a transition. */
+function checkPermission(node: MetaData, sink: Sink): void {
+  const permission = node.attr(OPERATION_ATTR_PERMISSION);
+  if (node.attr(OPERATION_ATTR_PUBLIC) === true && permission !== undefined) {
     sink.add(node, "ERR_PERMISSION_PUBLIC_CONFLICT",
       `${node.type}.${node.subType} "${label(node)}" declares both @public: true and @permission; a public ${node.type} calls no permission check, so remove one.`);
+  }
+  if (typeof permission === "string" && !PERMISSION_NAME_PATTERN.test(permission)) {
+    sink.add(node, "ERR_BAD_ATTR_VALUE",
+      `${node.type}.${node.subType} "${label(node)}" @permission "${permission}" is not a dotted identifier path; use names of letters, digits and _ joined by "." (a package prefix may use "::"), such as "purchasing.approve".`);
   }
 }
 
@@ -158,7 +175,7 @@ function checkDeclaredTransitions(field: MetaData, sink: Sink): void {
   }
   const states = new Set(stringList(field, FIELD_ATTR_VALUES));
   for (const t of declared) {
-    checkPermissionPublic(t, sink);
+    checkPermission(t, sink);
     if (transitionFrom(t).length === 0) {
       sink.add(t, "ERR_BAD_ATTR_VALUE",
         `transition.action "${label(t)}" @from is empty; name at least one state the transition leaves.`);
@@ -228,9 +245,10 @@ function checkEntityLifecycles(entity: MetaData, sink: Sink): void {
         `transition.action "${label(t)}" has the same name as "${label(first)}" (names are compared without case); the transitions of "${entity.name}" share one namespace (each may derive a command), so rename one.`);
     }
   }
-  if (!entity.isAbstract && !entity.children().some((c) => c.type === TYPE_SOURCE && isWritableSource(c))) {
+  if (!entity.isAbstract && lifecycleIsLive(entity) &&
+      !entity.children().some((c) => c.type === TYPE_SOURCE && isWritableSource(c))) {
     sink.add(entity, "ERR_TRANSITION_NOT_ON_ENTITY",
-      `object.entity "${entity.name}" has a lifecycle (transitions on ${quoteList([...new Set(transitions.map((t) => t.parent?.name ?? ""))])}) but no writable source; a transition is a guarded update of a stored row.`);
+      `object.entity "${entity.name}" has a lifecycle (transitions on ${quoteList([...new Set(transitions.map((t) => t.parent?.name ?? ""))])}) and a source, but no writable one; a transition is a guarded update of a stored row. (An entity with no source at all may carry a lifecycle: it is inert until a source is added.)`);
   }
 }
 
@@ -240,7 +258,7 @@ function checkOperation(op: MetaData, sink: Sink): void {
     sink.add(op, "ERR_TRANSITION_NAME_COLLISION",
       `operation.${op.subType} "${label(op)}" is named "${op.name}", which is a derived CRUD verb (${RESERVED_LIST}); rename it.`);
   }
-  checkPermissionPublic(op, sink);
+  checkPermission(op, sink);
 
   const errorCodes = stringList(op, OPERATION_ATTR_ERRORS);
   const bad = errorCodes.filter((c) => !BUSINESS_ERROR_CODE_PATTERN.test(c));
@@ -339,27 +357,62 @@ export function validateRules(root: MetaData): ParseError[] {
   for (const obj of root.children()) {
     if (obj.type === TYPE_OBJECT && obj.subType === OBJECT_SUBTYPE_ENTITY) checkEntityLifecycles(obj, sink);
   }
+  // O6 — keyed by package, then by the name without case.
+  const byName = new Map<string, MetaData>();
   for (const api of root.children()) {
     if (api.type !== TYPE_API) continue;
     const ops = api.children().filter((c) => c.type === TYPE_OPERATION);
     for (const op of ops) checkOperation(op, sink);
-    checkApiNamespace(ops, sink);
+    for (const op of ops) {
+      const pkg = effectivePackageOf(api);
+      const key = `${pkg}\u0000${op.name.toLowerCase()}`;
+      const first = byName.get(key);
+      if (first === undefined) byName.set(key, op);
+      else if (first !== op && !sameOperation(first, op)) {
+        sink.add(op, "ERR_TRANSITION_NAME_COLLISION",
+          `operation.${op.subType} "${label(op)}" has the same name as "${label(first)}" (names are compared without case) and is not the same operation; the operations of package "${pkg}" share one namespace (each derives the permission name <package>.<operation>), so rename one, or declare both identically to expose one operation in two APIs.`);
+      }
+    }
+    checkApiRoutes(ops, sink);
   }
   return sink.errors;
 }
 
-/** O6 and B2 across the operations of one API. */
-function checkApiNamespace(ops: readonly MetaData[], sink: Sink): void {
-  const byName = new Map<string, MetaData>();
+/** A reference attr's identity: the node it resolves to, else the raw value. */
+function refIdentity(op: MetaData, attr: string): unknown {
+  const ref = op.attr(attr);
+  return typeof ref === "string" ? resolveObjectOn(op, ref) ?? ref : ref;
+}
+
+/** A list attr as a set, for comparison. */
+function setKey(op: MetaData, attr: string): string {
+  return [...new Set(stringList(op, attr))].sort().join("\u0000");
+}
+
+/**
+ * Whether two operations of one package in different APIs are one operation exposed twice, as a
+ * versioned API beside its successor does (ADR-0064 §2: one router per API, one service): the same
+ * name and subtype, and the same contract. The contract is every operation attribute: the
+ * referenced shapes (compared by the node they resolve to), the transitions and errors (as sets),
+ * the permission, public and many. Bindings are per API and are not compared.
+ */
+function sameOperation(a: MetaData, b: MetaData): boolean {
+  if (a.name !== b.name || a.subType !== b.subType) return false;
+  for (const attr of [OPERATION_ATTR_INPUT_REF, OPERATION_ATTR_OUTPUT_REF, OPERATION_ATTR_OBJECT_REF]) {
+    if (refIdentity(a, attr) !== refIdentity(b, attr)) return false;
+  }
+  for (const attr of [OPERATION_ATTR_TRANSITIONS, OPERATION_ATTR_ERRORS]) {
+    if (setKey(a, attr) !== setKey(b, attr)) return false;
+  }
+  return a.attr(OPERATION_ATTR_PERMISSION) === b.attr(OPERATION_ATTR_PERMISSION) &&
+    (a.attr(OPERATION_ATTR_PUBLIC) === true) === (b.attr(OPERATION_ATTR_PUBLIC) === true) &&
+    (a.attr(OPERATION_ATTR_MANY) === true) === (b.attr(OPERATION_ATTR_MANY) === true);
+}
+
+/** B2 across the operations of one API. */
+function checkApiRoutes(ops: readonly MetaData[], sink: Sink): void {
   const byRoute = new Map<string, MetaData>();
   for (const op of ops) {
-    const key = op.name.toLowerCase();
-    const first = byName.get(key);
-    if (first === undefined) byName.set(key, op);
-    else if (first !== op) {
-      sink.add(op, "ERR_TRANSITION_NAME_COLLISION",
-        `operation.${op.subType} "${label(op)}" differs only in case from "${label(first)}"; the operations of one API share one namespace (each derives a route and a permission), so rename one.`);
-    }
     // ADR-0039: own — a binding is checked on the operation that declares it.
     for (const b of op.ownChildren()) {
       if (b.type !== TYPE_BINDING || b.subType !== BINDING_SUBTYPE_REST) continue;

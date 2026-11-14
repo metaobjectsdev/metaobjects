@@ -101,9 +101,32 @@ call around it.
 
 These calls are recorded here:
 
-- **Transactions.** The service opens one transaction per operation. The setting
-  `layers.transactions: "caller"` lets a project open them outside, for a job that runs several
-  operations atomically. The shell then requires a transaction to be passed in.
+- **Transactions and hooks.** Every write operation of the service runs in one transaction:
+  derived create, update and delete, derived transition commands, and declared commands. The
+  shell opens it, or under `layers.transactions: "caller"` requires one passed in, for a job
+  that runs several operations atomically. Inside it, in this order:
+  1. The shell loads the target row, with a row lock where the dialect has one. The policy
+     check and the state check use that row.
+  2. The before hook runs (derived CRUD, when `layers.crudHooks` is `beforeAfter`). It may
+     return a replacement input or refuse.
+  3. The shell validates and stamps the final input (ADR-0045).
+  4. The write runs, or the body, then the guarded update for a transition.
+  5. The after hook runs.
+  6. The write-event hook runs.
+
+  Every hook receives the transaction the write used. If a hook or body throws or refuses, the
+  whole transaction rolls back: the row, any cascade a hook wrote, and the event handler's own
+  rows (an audit row, an outbox row). A refusal is answered `409 {"error": "<code>"}`, and a
+  code reserved by the shell or the API contract is refused (ADR-0063 O5). Queries open no
+  write transaction and call no hooks.
+- **Stores without interactive transactions.** A store whose driver cannot hold a transaction
+  across application code declares it in the storage kit (`interactiveTransactions: false`).
+  Cloudflare D1 is one. On such a store the shell generator refuses hooks and events with
+  `ERR_STORE_NO_INTERACTIVE_TX`, naming the package and `layers.events: "off"`.
+
+  The settings `layers.transactions`, `layers.crudHooks` and `layers.events`, the storage kit's
+  `interactiveTransactions` and the code `ERR_STORE_NO_INTERACTIVE_TX` are designed here and
+  land with the service shells; nothing in 1.3.0 reads or reports them.
 - **Kotlin** returns a sealed result for declared business errors, and the transport maps it.
   The setting `layers.errors` switches to exceptions.
 - **Java's** generated `@Service` class is not `final`, so Spring's transaction proxy works.
@@ -172,6 +195,7 @@ no existing output churns.
   through `layers.service.unit`.
 - **Hooks as events (`onBeforeCreate` style) instead of bodies.** An event can observe but
   cannot decide which transition applies, so the decision would leak into an untyped place.
-  Events are kept for derived CRUD, where the shell may offer optional before and after hooks
-  per verb.
+  Events are kept for derived CRUD as optional before and after hooks per verb
+  (`layers.crudHooks`), inside the operation's transaction (§4). They may refuse or replace
+  the input, but they never choose which operation runs.
 - **C# partial methods.** Rejected by the attachment ruling (§3).

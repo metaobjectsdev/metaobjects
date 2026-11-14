@@ -620,7 +620,7 @@ public enum ErrorCode {
     /** ADR-0063: a transition.action @from or @to names a value that is not a member of its enum (L4). */
     ERR_TRANSITION_UNKNOWN_STATE,
 
-    /** ADR-0063: a transition.action on a field of anything but an object.entity, or a concrete entity with a lifecycle and no writable source (L1, L2). */
+    /** ADR-0063: a transition.action on a field of anything but an object.entity, or a concrete entity with a lifecycle and a source but no writable one; an entity with no source is inert (L1, L2). */
     ERR_TRANSITION_NOT_ON_ENTITY,
 
     /** ADR-0063: a field.enum declares transitions but no @default, its initial state (L3). */

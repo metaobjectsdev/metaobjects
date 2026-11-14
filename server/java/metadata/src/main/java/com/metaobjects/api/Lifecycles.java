@@ -77,6 +77,17 @@ public final class Lifecycles {
             && Boolean.TRUE.equals(node.getMetaAttr(MetaData.ATTR_IS_ABSTRACT, false).getValue());
     }
 
+    /**
+     * Whether an entity's lifecycles are live: it declares or inherits a source (read resolving).
+     * A lifecycle on an entity with no source loads and is inert (ADR-0063 section 2).
+     */
+    public static boolean lifecycleIsLive(MetaData entity) {
+        for (MetaData c : entity.getChildren(MetaData.class, true)) {
+            if (com.metaobjects.source.MetaSource.TYPE_SOURCE.equals(c.getType())) return true;
+        }
+        return false;
+    }
+
     /** True for an {@code object.entity}. */
     public static boolean isEntity(MetaData node) {
         return node != null && MetaObject.TYPE_OBJECT.equals(node.getType())

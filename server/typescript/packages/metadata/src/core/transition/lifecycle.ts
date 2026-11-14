@@ -9,7 +9,7 @@
 // table of an order's status is not an order (lifecycleTransitionsOf).
 
 import type { MetaData } from "../../shared/meta-data.js";
-import { TYPE_FIELD, TYPE_IDENTITY, TYPE_OBJECT, TYPE_TRANSITION } from "../../shared/base-types.js";
+import { TYPE_FIELD, TYPE_IDENTITY, TYPE_OBJECT, TYPE_SOURCE, TYPE_TRANSITION } from "../../shared/base-types.js";
 import { CHILD_REF_SEPARATOR, PACKAGE_SEPARATOR } from "../../shared/structural.js";
 import { FIELD_ATTR_DEFAULT, FIELD_ATTR_VALUES, FIELD_SUBTYPE_ENUM } from "../field/field-constants.js";
 import { IDENTITY_ATTR_FIELDS, IDENTITY_SUBTYPE_PRIMARY } from "../identity/identity-constants.js";
@@ -44,6 +44,16 @@ export function entityLineage(entity: MetaData): MetaData[] {
   const out: MetaData[] = [];
   for (let e: MetaData | undefined = entity; e !== undefined && !out.includes(e); e = e.superResolved) out.push(e);
   return out;
+}
+
+/**
+ * Whether an entity's lifecycles are live: it declares or inherits a source. A lifecycle on an
+ * entity with no source loads and is inert, like everything else on a sourceless entity (#248):
+ * it derives no command, and the writable-source check applies once a source is added
+ * (ADR-0063 §2). A library's core layer declares its lifecycles this way.
+ */
+export function lifecycleIsLive(entity: MetaData): boolean {
+  return entity.children().some((c) => c.type === TYPE_SOURCE);
 }
 
 /**

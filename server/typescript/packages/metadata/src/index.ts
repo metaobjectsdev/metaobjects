@@ -58,6 +58,7 @@ export {
   entityLineage,
   entityTransitions,
   lifecycleTransitionsOf,
+  lifecycleIsLive,
   transitionsOf,
   transitionFrom,
   transitionTo,

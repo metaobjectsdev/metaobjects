@@ -76,10 +76,10 @@ public final class RulesCheck {
         return pkg.isEmpty() ? String.join(".", parts) : pkg + MetaData.PKG_SEPARATOR + String.join(".", parts);
     }
 
-    /** The permission name a node gets when it declares none: {@code <package>.<name>}. */
-    private static String derivedPermissionName(MetaData owner, String name) {
+    /** The permission name a node gets when it declares none, {@code <package>.<path>}: the path is {@code <operation>} for an operation and {@code <Entity>.<transition>} for a transition's derived command. */
+    private static String derivedPermissionName(MetaData owner, String path) {
         String pkg = References.effectivePackageOf(owner);
-        return pkg.isEmpty() ? name : pkg + "." + name;
+        return pkg.isEmpty() ? path : pkg + "." + path;
     }
 
     private static boolean needsPermissionName(MetaData node) {
@@ -196,9 +196,10 @@ public final class RulesCheck {
         return claimsOn(claimed, entity, t).isEmpty();
     }
 
-    private static List<MetaData> concreteEntities(MetaRoot root) {
+    /** The entities a transition can derive a command on: concrete, with a source. */
+    private static List<MetaData> commandEntities(MetaRoot root) {
         List<MetaData> out = new ArrayList<>();
-        for (MetaData e : entities(root)) if (!Lifecycles.isAbstract(e)) out.add(e);
+        for (MetaData e : entities(root)) if (!Lifecycles.isAbstract(e) && Lifecycles.lifecycleIsLive(e)) out.add(e);
         return out;
     }
 
@@ -211,7 +212,7 @@ public final class RulesCheck {
         Map<MetaData, List<Claim>> claimed = claimedTransitions(root);
         Map<MetaData, List<MetaData>> carriers = new IdentityHashMap<>();
         List<MetaData> order = new ArrayList<>();
-        for (MetaData entity : concreteEntities(root)) {
+        for (MetaData entity : commandEntities(root)) {
             for (MetaData t : Lifecycles.entityTransitions(entity)) {
                 List<MetaData> list = carriers.get(t);
                 if (list == null) { list = new ArrayList<>(); carriers.put(t, list); order.add(t); }
@@ -252,7 +253,7 @@ public final class RulesCheck {
 
         if (settings.lifecycleCommands() != RulesSettings.LifecycleCommands.NONE) {
             Map<MetaData, List<Claim>> claimed = claimedTransitions(root);
-            for (MetaData entity : concreteEntities(root)) {
+            for (MetaData entity : commandEntities(root)) {
                 for (MetaData t : Lifecycles.entityTransitions(entity)) {
                     if (!derivesCommand(claimed, settings, entity, t)) continue;
                     if (!needsPermissionName(t)) continue;
@@ -260,7 +261,7 @@ public final class RulesCheck {
                         rulesAddress(entity) + "." + (t.getParent() == null ? "" : t.getParent().getShortName()) + "." + t.getShortName(),
                         "the command derived from transition \"" + t.getShortName() + "\" of \"" + entity.getShortName()
                             + "\" has no @permission, so it asks the policy about the derived name \""
-                            + derivedPermissionName(entity, t.getShortName()) + "\", " + advice("transition")));
+                            + derivedPermissionName(entity, entity.getShortName() + "." + t.getShortName()) + "\", " + advice("transition")));
                 }
             }
         }

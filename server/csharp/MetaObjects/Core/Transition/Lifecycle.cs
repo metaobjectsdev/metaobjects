@@ -44,6 +44,11 @@ public static class Lifecycles
     public static IReadOnlyList<MetaData> TransitionsOf(MetaData field) =>
         field.Children().Where(c => c.Type == TYPE_TRANSITION && c.SubType == TRANSITION_SUBTYPE_ACTION).ToList();
 
+    /// <summary>Whether an entity's lifecycles are live: it declares or inherits a source. A lifecycle on an
+    /// entity with no source loads and is inert (it derives no command); the writable-source check applies
+    /// once a source is added (ADR-0063 section 2). Read through the resolving accessor.</summary>
+    public static bool LifecycleIsLive(MetaData entity) => entity.Children().Any(c => c.Type == TYPE_SOURCE);
+
     /// <summary>An entity and every entity it extends, nearest first.</summary>
     public static IReadOnlyList<MetaData> EntityLineage(MetaData entity)
     {

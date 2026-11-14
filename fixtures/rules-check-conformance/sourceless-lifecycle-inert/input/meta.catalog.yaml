@@ -1,0 +1,42 @@
+metadata:
+  package: acme::catalog
+  children:
+    # Sourced: its unclaimed transition derives a command, reported under require.
+    - object.entity:
+        name: Product
+        children:
+          - source.rdb: { table: products }
+          - field.long: { name: id }
+          - identity.primary: { name: pk, fields: [id] }
+          - field.enum:
+              name: status
+              values: [draft, live]
+              default: draft
+              children:
+                - transition.action: { name: publish, from: [draft], to: live }
+    # No source: the lifecycle is inert. Its shape is still checked (the unreachable state),
+    # but it derives no command, so neither the permission check nor the shadowed check names it.
+    - object.entity:
+        name: ProductTemplate
+        children:
+          - field.long: { name: id }
+          - identity.primary: { name: pk, fields: [id] }
+          - field.enum:
+              name: status
+              values: [draft, live, retired, archived]
+              default: draft
+              children:
+                - transition.action: { name: publish, from: [draft], to: live }
+                - transition.action: { name: retire, from: [live], to: retired, permission: catalog.retire }
+    - object.value:
+        name: TemplateRef
+        children:
+          - field.long: { name: templateId, extends: ProductTemplate.id }
+    - api.operational:
+        name: Catalog
+        children:
+          - operation.command:
+              name: retireTemplate
+              inputRef: TemplateRef
+              transitions: [retire]
+              permission: catalog.templates.retire

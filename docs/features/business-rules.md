@@ -82,7 +82,7 @@ operations:
 | `many` | query | It returns a list, with the filter, sort and paging contract of a generated list. |
 | `objectRef` | both | The target entity. Declare it only when it cannot be derived (below). |
 | `transitions` | command | The transitions of its target that it may make. |
-| `permission` | both | The permission name the policy is asked about. Several operations may share one. |
+| `permission` | both | The permission name the policy is asked about: a dotted identifier path such as `purchasing.approve`. Several operations may share one. |
 | `public` | both | `true`: no permission check. Cannot be combined with `permission`. |
 | `errors` | command | The business errors its body may return, as lower snake case codes. |
 
@@ -136,18 +136,33 @@ and redeclares the field must extend the base's field too, or the loader refuses
 (`ERR_LIFECYCLE_REDECLARED`). `transition.timed`, a move made by time rather than by a command, is reserved and not yet
 registered.
 
+**A lifecycle on an entity with no source is inert.** It loads and is checked for shape, but
+nothing is derived from it until the entity gets a source, declared or inherited; from then on
+the source must be writable. A library's core layer, which declares no source, can carry its
+lifecycles this way, and its `db` layer makes them live.
+
 **Permission names.** Every operation and every derived command asks the project's policy
-about a permission name. When `permission` is absent, the name is `<package>.<name>`:
-`acme::purchasing.submit` above. A derived name changes when the operation or transition is
-renamed, which silently moves access. The setting `rules.permissions.names` makes `verify` warn
-about derived names, or fail on them.
+about a permission name. A declared `permission` is a dotted identifier path: names of letters,
+digits and `_` joined by `.`, such as `purchasing.approve`. When `permission` is absent, the name
+is derived and includes its owner:
+
+- a declared operation: `<package>.<operation>`, with its API's package. Operation names are
+  unique across the APIs of a package, so two operations never share one by accident. Two
+  APIs may expose the same operation by declaring it identically, and then share its name;
+- a transition's derived command: `<package>.<Entity>.<transition>`, so `Order.cancel` and
+  `Invoice.cancel` ask about different permissions. Above, `submit` derives
+  `acme::purchasing.PurchaseRequest.submit`.
+
+A package prefix may use `::`, so a derived name can be declared as it is. A derived name
+changes when the operation, transition or entity is renamed, which silently moves access. The
+setting `rules.permissions.names` makes `verify` warn about derived names, or fail on them.
 
 ## What the loader refuses
 
 | Rule | Code | When |
 |---|---|---|
 | L1 | `ERR_TRANSITION_NOT_ON_ENTITY` | A transition on a field that is not a field of an `object.entity`: a document-root field, or a field of a value, projection or report. |
-| L2 | `ERR_TRANSITION_NOT_ON_ENTITY` | A concrete entity has a lifecycle and no writable source. |
+| L2 | `ERR_TRANSITION_NOT_ON_ENTITY` | A concrete entity has a lifecycle and a source, but no writable one. An entity with no source is not refused: its lifecycle is inert. |
 | L3 | `ERR_LIFECYCLE_NO_INITIAL` | An enum field with transitions has no `default`. |
 | L4 | `ERR_TRANSITION_UNKNOWN_STATE` | A `from` or `to` value is not one of the enum's `values`. |
 | L5, O0 | `ERR_TRANSITION_NAME_COLLISION` | A transition or an operation is named `create`, `get`, `list`, `update` or `delete`, in any case. |
@@ -157,12 +172,13 @@ about derived names, or fail on them.
 | L9 | `ERR_BAD_ATTR_VALUE` | The lifecycle field is an array (`isArray: true`). |
 | L10 | `ERR_LIFECYCLE_REDECLARED` | An entity redeclares an inherited lifecycle field without extending it, dropping the base's transitions. |
 | P1 | `ERR_PERMISSION_PUBLIC_CONFLICT` | `public: true` together with `permission`. |
+| P2 | `ERR_BAD_ATTR_VALUE` | A `permission` is not a dotted identifier path. |
 | O1 | `ERR_OPERATION_SHAPE` | `inputRef` is not an `object.value`, or `outputRef` is not an entity, projection or value. |
 | O2 | `ERR_OPERATION_TARGET_UNRESOLVED` | `objectRef` is not an `object.entity`, or a command lists `transitions` and has no target. |
 | O3 | `ERR_OPERATION_TARGET_MISMATCH` | A declared `objectRef` disagrees with the derived target. |
 | O4 | `ERR_OPERATION_UNKNOWN_TRANSITION` | A `transitions` name is not a transition of the target. |
 | O5 | `ERR_BAD_ATTR_VALUE` | An `errors` code is not lower snake case, is listed twice, or is one the route answers itself: `not_found`, `forbidden`, `invalid_transition`, `transition_condition_failed`, `state_managed`, `validation`, `invalid_json`, `invalid_id`, `method_not_allowed`, `constraint_violation`, `internal`. |
-| O6 | `ERR_TRANSITION_NAME_COLLISION` | Two operations of one API have names that differ only in case. |
+| O6 | `ERR_TRANSITION_NAME_COLLISION` | Two operations of one package share a name, compared without case, in one API or across the package's APIs. One operation declared in two files merges and is not refused. Neither is one operation declared identically in two APIs (a `v1` beside a `v2`): same name, subtype and every operation attribute; only the bindings may differ. |
 | B1 | `ERR_BINDING_PATH_MISMATCH` | A `binding.rest` `path` has the wrong placeholders. |
 | B2 | `ERR_BINDING_PATH_MISMATCH` | Two declared bindings of one API have the same method (declared or derived) and the same path, ignoring placeholder names. |
 
@@ -195,7 +211,7 @@ and reports:
 | `WARN_LIFECYCLE_INITIAL_TERMINAL` | warn | The initial state is terminal, so no row can ever move. |
 | `WARN_TRANSITION_UNREACHABLE` | `verify.lifecycle.unreachable` | A transition whose every `from` state is unreachable. |
 | `WARN_TRANSITION_PERMISSION_SHADOWED` | warn | A transition declares `permission` or `public: true` but derives no command of its own (every carrier's transition is claimed by a declared command, or `rules.lifecycle.commands` is `none`), so nothing reads it. |
-| `WARN_PERMISSION_DERIVED_NAME` | `rules.permissions.names` | An operation, or a transition that derives a command, relies on a derived permission name. |
+| `WARN_PERMISSION_DERIVED_NAME` | `rules.permissions.names` | An operation, or a transition that derives a command, relies on a derived permission name. The message names it. A transition on an entity with no source derives no command and is not reported. |
 
 An error-severity finding fails the run. A model with no operation and no transition sees no
 line and no finding. The cases are in `fixtures/rules-check-conformance/`.

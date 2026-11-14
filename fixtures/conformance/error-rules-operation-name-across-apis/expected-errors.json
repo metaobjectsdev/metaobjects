@@ -1,13 +1,13 @@
 {
   "errors": [
     {
-      "code": "ERR_TRANSITION_NOT_ON_ENTITY",
+      "code": "ERR_TRANSITION_NAME_COLLISION",
       "source": {
         "format": "json",
         "files": [
           "meta.purchasing.json"
         ],
-        "jsonPath": "$['metadata.root'].children[0]['object.entity']"
+        "jsonPath": "$['metadata.root'].children[2]['api.operational'].children[0]['operation.query']"
       }
     }
   ],

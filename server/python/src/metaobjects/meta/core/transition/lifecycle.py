@@ -18,7 +18,7 @@ from ....naming_refs import (
     resolve_object_ref,
     top_level_node_of,
 )
-from ....shared.base_types import TYPE_FIELD, TYPE_IDENTITY, TYPE_OBJECT, TYPE_TRANSITION
+from ....shared.base_types import TYPE_FIELD, TYPE_IDENTITY, TYPE_OBJECT, TYPE_SOURCE, TYPE_TRANSITION
 from ....shared.separators import PACKAGE_SEP
 from ...meta_data import MetaData
 from ..api.api_constants import (
@@ -113,6 +113,13 @@ def lifecycles_of(obj: MetaData) -> list[Lifecycle]:
             transitions=tuple(transitions),
         ))
     return out
+
+
+def lifecycle_is_live(entity: MetaData) -> bool:
+    """Whether an entity's lifecycles are live: it declares or inherits a source (RESOLVING
+    ``children()``, ADR-0039). A lifecycle on an entity with no source loads and is inert: it
+    derives no command (ADR-0063 section 2)."""
+    return any(c.type == TYPE_SOURCE for c in entity.children())
 
 
 def entity_transitions(obj: MetaData) -> list[MetaData]:

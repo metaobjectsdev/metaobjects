@@ -94,8 +94,18 @@ and what the policy decides is code. *The model names where a decision is needed
 the decision is.* A team that wants a policy engine wires one behind the same call, and the
 vocabulary does not change.
 
-The derived permission name is `<package>.<name>`, using the package of the operation's API or
-of the transition's entity. With no package, it is the bare name.
+The derived permission name includes its owner, so a grant means one thing. A declared
+operation derives `<package>.<operation>`, with the package of its API; operation names are
+unique per package across its APIs (O6), so two operations never share it by accident. The
+one exception is the same operation exposed by two APIs, as a versioned API beside its
+successor (ADR-0064 §2: one router per API, one service): two declarations with the same name,
+subtype and contract are one operation, and share the name on purpose. A
+transition's derived command derives `<package>.<Entity>.<transition>`, with the concrete
+entity's package and name, so `Order.cancel` and `Invoice.cancel` ask about different
+permissions. With no package, the `<package>.` prefix is dropped. A declared `@permission` is a
+dotted identifier path (P2): it becomes a constant and a key into grant data, so it carries no
+spaces, punctuation or path segments. A package prefix may use `::`, so a derived name can be
+declared as it is. (Captain's ruling, 2026-11-13, on the independent check's call 1.)
 
 ### 2. Slice B: lifecycles
 
@@ -134,6 +144,13 @@ every entity that extends that entity. It does not belong to an entity whose fie
 is not the thing whose status it records. An inheritor that redeclares the lifecycle field must
 extend the base's field, or the base's transitions would silently stop applying to it; the
 loader refuses that (L10).
+
+**A lifecycle on an entity with no source is inert.** It loads, like everything else on a
+sourceless entity (#248): the shape rules apply (L1, L3-L10), but it derives no command, and
+`verify` checks its states and skips its permission points. The writable-source check (L2)
+applies when a source is added, declared or inherited. A library's core layer is sourceless by
+rule, so it can declare its lifecycles there and its `db` layer makes them live. (Captain's
+ruling, 2026-11-13, on the independent check's call 2.)
 
 ### 3. The derived target of an operation
 
@@ -179,7 +196,7 @@ case each (`error-rules-*`):
 | Rule | Code | When |
 |---|---|---|
 | L1 | `ERR_TRANSITION_NOT_ON_ENTITY` | A transition under an enum field that is not a field of an `object.entity`: a document-root field, or a field of a value, projection or report. |
-| L2 | `ERR_TRANSITION_NOT_ON_ENTITY` | A concrete entity has a lifecycle and no writable source. Reported on the entity. |
+| L2 | `ERR_TRANSITION_NOT_ON_ENTITY` | A concrete entity has a lifecycle and a source, declared or inherited, but no writable one. Reported on the entity. An entity with no source at all is not refused: its lifecycle is inert (§2). |
 | L3 | `ERR_LIFECYCLE_NO_INITIAL` | An enum field with transitions has no `@default`. |
 | L4 | `ERR_TRANSITION_UNKNOWN_STATE` | A `@from` or `@to` value is not one of the enum's `@values`. |
 | L5, O0 | `ERR_TRANSITION_NAME_COLLISION` | A transition or an operation is named `create`, `get`, `list`, `update` or `delete`, in any case. |
@@ -189,12 +206,13 @@ case each (`error-rules-*`):
 | L9 | `ERR_BAD_ATTR_VALUE` | The lifecycle field is an array (`isArray`, read through the resolving accessor). A guarded update compares one state. |
 | L10 | `ERR_LIFECYCLE_REDECLARED` | An entity declares a field with the name of an inherited lifecycle field and does not extend it, so the base's transitions would be lost. Reported on the field. |
 | P1 | `ERR_PERMISSION_PUBLIC_CONFLICT` | `@public: true` together with `@permission`, on an operation or a transition. |
+| P2 | `ERR_BAD_ATTR_VALUE` | A `@permission` is not a dotted identifier path: names of letters, digits and `_` joined by `.`, where a package prefix may use `::`. |
 | O1 | `ERR_OPERATION_SHAPE` | `@inputRef` is not an `object.value`, or `@outputRef` is not an entity, projection or value. This includes a reference that does not resolve. |
 | O2 | `ERR_OPERATION_TARGET_UNRESOLVED` | `@objectRef` does not name an `object.entity`, or a command lists `@transitions` and has no target. |
 | O3 | `ERR_OPERATION_TARGET_MISMATCH` | A declared `@objectRef` disagrees with the derived target. |
 | O4 | `ERR_OPERATION_UNKNOWN_TRANSITION` | A `@transitions` name is not a transition of the target, declared or inherited. |
 | O5 | `ERR_BAD_ATTR_VALUE` | An `@errors` code is not lower snake case, is listed twice, or is a code the route answers itself: the shell's `not_found`, `forbidden`, `invalid_transition`, `transition_condition_failed` and `state_managed` (§6), and the API contract's `validation`, `invalid_json`, `invalid_id`, `method_not_allowed`, `constraint_violation` and `internal`. A body returning one would be indistinguishable on the wire from the shell. |
-| O6 | `ERR_TRANSITION_NAME_COLLISION` | Two operations of one API have names that differ only in case. |
+| O6 | `ERR_TRANSITION_NAME_COLLISION` | Two operations of one package share a name, compared without case, in one API or across the package's APIs. Each derives the permission name `<package>.<operation>` and a file in the package's service. Not refused: two APIs declaring the same operation, meaning the same name and subtype and the same `@inputRef`, `@outputRef` and `@objectRef` (compared by the node they resolve to), `@transitions` and `@errors` (as sets), `@permission`, `@public` and `@many`. Bindings are per API and may differ. |
 | B1 | `ERR_BINDING_PATH_MISMATCH` | A `binding.rest @path`'s placeholders are not exactly the target's key fields, for an operation that addresses one row by key, or are not empty, for one that does not. |
 | B2 | `ERR_BINDING_PATH_MISMATCH` | Two declared bindings of one API have the same effective method (declared, else derived) and the same `@path` once placeholder names are ignored. |
 
@@ -208,9 +226,10 @@ Some inputs load on purpose, and are refused elsewhere or are legal:
   collection path and the mount point, which are transport facts the loader does not have. The
   transport generator that mounts the routes refuses a collision, including a binding declared
   on the method and path of a derived CRUD route.
-- **One operation name declared twice in one API, or one API declared twice.** Same-named
+- **One operation declared twice in one API, or one API declared twice.** Same-named
   siblings merge under the loader's general rule (`WARN_DUPLICATE_DECLARATION` when the
-  declarations are in different files), so there is one operation and one API, and an
+  declarations are in different files), so there is one operation and one API, O6 does not
+  fire, and an
   `@implementedBy` claim on it resolves. `fixtures/requirement-check-conformance/claim-operation-api-in-two-files`
   pins that.
 - **An input that borrows the keys of two entities.** It derives no target (§3); the operation
@@ -234,8 +253,8 @@ checked further. One that fails O2 or O3 is not checked for O4 or B1.
 | `WARN_LIFECYCLE_UNREACHABLE_STATE` | `verify.lifecycle.unreachable` (default `warn`) | A state that no chain of transitions reaches from the initial state. This is almost always a missing transition. Sometimes only seeded data uses the state, so it is not an error by default. |
 | `WARN_LIFECYCLE_INITIAL_TERMINAL` | `warn` | The initial state is terminal, so nothing can ever move. |
 | `WARN_TRANSITION_UNREACHABLE` | `verify.lifecycle.unreachable` | A transition whose every `@from` state is unreachable, so it can never be made. |
-| `WARN_TRANSITION_PERMISSION_SHADOWED` | `warn` | A transition declares `@permission` or `@public: true` but derives no command of its own for any concrete entity carrying it (claimed by a declared command, or `rules.lifecycle.commands: none`), so nothing reads the attribute. An author reading the model would believe it guards the move. |
-| `WARN_PERMISSION_DERIVED_NAME` | `rules.permissions.names`: `derive` (default) skips it, `advise` warns, `require` errors | An operation, or a transition that derives a command, has no `@permission` and is not `@public`. A rename would silently move access. |
+| `WARN_TRANSITION_PERMISSION_SHADOWED` | `warn` | A transition declares `@permission` or `@public: true` but derives no command of its own for any concrete entity with a source carrying it (claimed by a declared command, or `rules.lifecycle.commands: none`), so nothing reads the attribute. An author reading the model would believe it guards the move. |
+| `WARN_PERMISSION_DERIVED_NAME` | `rules.permissions.names`: `derive` (default) skips it, `advise` warns, `require` errors | An operation, or a transition that derives a command (on a concrete entity with a source), has no `@permission` and is not `@public`. A rename would silently move access. The message names the derived name. |
 
 A requirement's `@implementedBy` may name an operation (`Purchasing.decide`) or a transition
 (`PurchaseRequest.status.submit`), at level 5. The reference resolves like any other member
@@ -273,8 +292,9 @@ driver, including one an adopter writes, is held to it by a persistence-conforma
 ### 7. Events and invariants in 1.3.0
 
 - **Events: the derived transition hook only.** Every transition already carries what an event
-  needs: entity, key, transition, `from`, `to`, actor and time. So the shell can call a typed
-  event hook inside the transaction with no new vocabulary. That hook is where an adopter
+  needs: entity, key, transition, `from`, `to`, actor and time. So the shell calls the package's
+  write-event hook (ADR-0064 §4) inside the transaction, with `kind: "transition"`, with no new
+  vocabulary. That hook is where an adopter
   writes to an outbox, history table or audit log.
   - **`@emits` is held.** It would decide half of ADR-0030's reserved event surface without the
     other half.
@@ -314,3 +334,10 @@ particular language and framework is a helper (ADR-0064).
   lose the names.
 - **Operations without `@permission` and `@public`, with the policy mapping operation names
   itself.** Renaming an operation would silently change who may run it.
+- **A package-flat derived permission name, `<package>.<name>`.** Two entities' `cancel`
+  transitions, or two APIs' `approve` operations, would share one permission, so a grant for
+  orders would silently grant invoices. Refusing every repeated name in a package instead would
+  allow `cancel` on one entity per package.
+- **Refusing a lifecycle on an entity with no source.** A library's core layer is sourceless by
+  rule, so its lifecycles, and requirements pointing at them, could live only in its `db`
+  layer.
