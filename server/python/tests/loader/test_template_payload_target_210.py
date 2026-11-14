@@ -82,6 +82,8 @@ def test_assembly_origins_rejected_on_value_host() -> None:
         "first": {"origin.first": {"@of": "t::ai::Author.name",
                                    "@via": "t::ai::Author.posts",
                                    "@orderBy": ["name:desc"]}},
+        # rc.21 part B (U10).
+        "function": {"origin.function": {"@function": "f"}},
     }
     assert set(origin_by_subtype) == set(ASSEMBLY_ORIGIN_SUBTYPES)
     for sub, origin in origin_by_subtype.items():
