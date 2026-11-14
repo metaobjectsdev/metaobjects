@@ -3,8 +3,7 @@ description: >
   A per-subtype route takes the row's subtype from the URL, never from the body (the 1.2.x
   security fix). A `type` naming a different subtype, sent to the Bridge route, is DROPPED
   SILENTLY on create and on update: the created row is a Bridge, no Copay row appears, and an
-  updated Bridge stays a Bridge. Python's generated TPH routes answer this body with 400 rather
-  than dropping it; that runner skips this scenario (see the Python codegen KNOWN_GAPS.md).
+  updated Bridge stays a Bridge. Every port answers the same way.
 requests:
   - id: r1
     method: POST

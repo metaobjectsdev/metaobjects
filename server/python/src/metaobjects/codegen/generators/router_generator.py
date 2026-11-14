@@ -1778,6 +1778,7 @@ class RouterGenerator:
             parts.append(") -> Any:")
             parts.extend(prelude)
             parts.extend(denied_strip_tph)
+            parts.append(f'    dto.pop("{plan.discriminator_field}", None)')
             parts.extend(_validated_input_lines(
                 f"{sub}Patch",
                 "FR-035 PATCH-2: an explicit null on a @required field is a 400.",
