@@ -1067,9 +1067,9 @@ public class RoutesGenerator : PerEntityGenerator
     {
         if (page is not null)
         {
-            // A bound that is present but not a whole number is refused, as the TypeScript routes answer,
+            // An offset that is present but not a non-negative int is refused, as the TypeScript routes answer,
             // never read as "absent" and answered with a page the client did not ask for.
-            sb.AppendLine($"{indent}if (qs.TryGetValue(\"offset\", out var {offRaw}Bad) && !long.TryParse({offRaw}Bad, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out _))");
+            sb.AppendLine($"{indent}if (qs.TryGetValue(\"offset\", out var {offRaw}Bad) && !(int.TryParse({offRaw}Bad, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var {off}Bad) && {off}Bad >= 0))");
             sb.AppendLine($"{indent}    return Results.BadRequest(new {{ error = \"pagination.invalid_value\", param = \"offset\", value = {offRaw}Bad.ToString(), expected = \"a non-negative integer (0 or more)\" }});");
         }
         sb.AppendLine($"{indent}if (qs.TryGetValue(\"offset\", out var {offRaw}) && int.TryParse({offRaw}, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var {off}) && {off} > 0)");

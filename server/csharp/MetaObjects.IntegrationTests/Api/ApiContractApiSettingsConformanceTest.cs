@@ -26,11 +26,15 @@ public sealed class ApiContractApiSettingsConformanceTest
     }
 
     // The corpus cannot pin this: Java/Kotlin answer Spring's type-mismatch 400 and Python FastAPI's 422
-    // for a non-numeric bound, so each C# route is exercised here against the cross-port 400 envelope.
+    // for a non-numeric bound, so the generated C# route is exercised here against the cross-port 400 envelope.
+    // Only the plain entity list is driven: the TPH base and per-subtype lists emit through the same
+    // AppendOffsetLimit, and no TPH fixture with api.pagination boots in this lane.
     [Theory]
     [InlineData("/api/items?limit=abc", "limit", "abc")]
     [InlineData("/api/items?limit=1O", "limit", "1O")]
     [InlineData("/api/items?offset=x", "offset", "x")]
+    [InlineData("/api/items?offset=3000000000", "offset", "3000000000")]
+    [InlineData("/api/items?offset=-5", "offset", "-5")]
     public async Task Non_numeric_page_bound_is_refused_not_served_as_default_page(string path, string param, string value)
     {
         await using var pg = await PostgresContainer.StartAsync();
