@@ -383,8 +383,9 @@ vocabulary; upgrade every port together.
   the shared table, the subtype column NULL on the others. A field bound to a TPH relative of the
   base reads the shared table's column (it read a column named after the projection field). The
   load now warns in exactly the case whose output widened: an extender with no identity of its
-  own, anchored by its super on a TPH base, that binds a field to a subtype-only column and has no
-  `@filter` on the discriminator. **Upgrade note:** to get the subtype-scoped view back, either add
+  own, anchored by its super on a TPH base, whose own fields bind a subtype-only column, and no
+  `@filter` on the discriminator. `meta gen` and `dotnet meta gen` print that warning (the
+  loader's warning channel is not otherwise printed). **Upgrade note:** to get the subtype-scoped view back, either add
   `@filter: { <discriminator>: <value> }` to the extender, or anchor it on the subtype: declare
   `identity.primary { name: id, extends: <Subtype>.primary }` with a field extending
   `<Subtype>.id`.
