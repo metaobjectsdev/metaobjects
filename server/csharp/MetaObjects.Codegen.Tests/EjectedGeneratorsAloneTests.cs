@@ -57,6 +57,8 @@ public class EjectedGeneratorsAloneTests
         ["MetaObjects.Codegen.CSharpNaming"] = "the naming and type-mapping tables",
         ["MetaObjects.Codegen.Generators.CheckConstraints"] = "the CHECKs meta migrate derives: a schema contract both delivery paths must agree on, not emitted code an owned copy should change",
         ["MetaObjects.Codegen.Generators.CheckConstraint"] = "one of those CHECKs, a name and an expression",
+        ["MetaObjects.Codegen.Generators.ForeignKeyIndexes"] = "the indexes and index names meta migrate creates (foreign-key indexes, and a declared name cut to what Postgres stores): a schema contract both delivery paths must agree on, held by fixtures/foreign-key-index-conformance",
+        ["MetaObjects.Codegen.Generators.ForeignKeyIndex"] = "one of those indexes, a name and its columns",
         ["MetaObjects.Codegen.ValueObjectNames"] = "the one answer to what a value object's type is called and where it lives",
         ["MetaObjects.Codegen.PackageBindingResolver"] = "package -> namespace binding",
         ["MetaObjects.Codegen.OutputPaths"] = "where an object's file lands under the output layout, and the claim that no two share a path: a path table, ruled engine",

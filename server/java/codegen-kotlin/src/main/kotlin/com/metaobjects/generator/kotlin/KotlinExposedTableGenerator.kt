@@ -1214,12 +1214,12 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 for (sec in emittableSecondaries) {
                     val cols = sec.fields.joinToString(", ") { KotlinNaming.safeColumnProperty(it, exposedApi()) }
                     val options = indexOptions(sec)
-                    if (options.isEmpty()) append("        uniqueIndex(${indexNameExpr(sec, shortName)}, $cols)\n")
-                    else append("        index(${indexNameExpr(sec, shortName)}, true, $cols$options)\n")
+                    if (options.isEmpty()) append("        uniqueIndex(${indexNameExpr(sec, shortName, MigrateSettings.of(entity).dialect)}, $cols)\n")
+                    else append("        index(${indexNameExpr(sec, shortName, MigrateSettings.of(entity).dialect)}, true, $cols$options)\n")
                 }
                 for (idx in lookupIndexes) {
                     val cols = idx.fields.joinToString(", ") { KotlinNaming.safeColumnProperty(it, exposedApi()) }
-                    append("        index(${indexNameExpr(idx, shortName)}, false, $cols${indexOptions(idx)})\n")
+                    append("        index(${indexNameExpr(idx, shortName, MigrateSettings.of(entity).dialect)}, false, $cols${indexOptions(idx)})\n")
                 }
                 for (ix in foreignKeyIndexes) {
                     val cols = ix.fields.joinToString(", ") { KotlinNaming.safeColumnProperty(it, exposedApi()) }
@@ -1391,8 +1391,12 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             .map { (cols, fields) -> ForeignKeyIndex(foreignKeyIndexName(tableName, cols, settings.dialect), cols, fields) }
     }
 
-    protected fun indexNameExpr(node: MetaData, shortName: String): String {
+    protected fun indexNameExpr(node: MetaData, shortName: String, dialect: String?): String {
         val name = IndexNaming.resolve(node)
+        // Past Postgres's 63-byte limit migrate creates the index under the name Postgres stores,
+        // so the table spells that cut name; the names artifact keeps the declared one.
+        val stored = declaredIndexName(node, dialect)
+        if (stored != name) return "\"${KotlinGenUtil.kotlinStringLiteral(stored)}\""
         if (!useNames()) return "\"$name\""
         val member = "${KotlinNaming.namesMember(node.type)}_${KotlinNaming.namesMember(name)}_INDEX"
         return "${KotlinNaming.namesObjectName(shortName)}.$member"
@@ -2790,13 +2794,27 @@ data class ForeignKeyIndex(val name: String, val columns: List<String>, val fiel
 private const val PG_IDENTIFIER_MAX_BYTES = 63
 
 /**
- * `<table>_<column>[_<column>…]_idx`, migrate's name for a foreign key's index. Except on SQLite
- * and D1, a name over 63 bytes is cut to its first 63 bytes on a character boundary: the name
- * Postgres stores, and the one `meta migrate` expects.
+ * `<table>_<column>[_<column>…]_idx`, migrate's name for a foreign key's index, cut by
+ * [storedIdentifier].
  */
-fun foreignKeyIndexName(table: String, columns: List<String>, dialect: String?): String {
-    val name = "${table}_${columns.joinToString("_")}_idx"
-    if (dialect == "sqlite" || dialect == "d1" || name.toByteArray(Charsets.UTF_8).size <= PG_IDENTIFIER_MAX_BYTES) return name
+fun foreignKeyIndexName(table: String, columns: List<String>, dialect: String?): String =
+    storedIdentifier("${table}_${columns.joinToString("_")}_idx", dialect)
+
+/**
+ * The database name of an `identity.secondary` or `index.lookup`: its declared name
+ * ([IndexNaming.resolve]), cut by [storedIdentifier]. The shared corpus
+ * fixtures/foreign-key-index-conformance/ (`declared.<dialect>.json`) pins it.
+ */
+fun declaredIndexName(node: MetaData, dialect: String?): String = storedIdentifier(IndexNaming.resolve(node), dialect)
+
+/**
+ * The name the database stores for [name], which is the name `meta migrate` creates and compares
+ * (migrate-ts `storedIdentifier`): on Postgres a name over 63 bytes is cut to its first 63 bytes on
+ * a character boundary. SQLite and D1 keep the whole name, and so does MySQL, where migrate writes
+ * no DDL and an over-long name is refused rather than cut.
+ */
+fun storedIdentifier(name: String, dialect: String?): String {
+    if (dialect == "sqlite" || dialect == "d1" || dialect == "mysql" || name.toByteArray(Charsets.UTF_8).size <= PG_IDENTIFIER_MAX_BYTES) return name
     val out = StringBuilder()
     var bytes = 0
     var i = 0

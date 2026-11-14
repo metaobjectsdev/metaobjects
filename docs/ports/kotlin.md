@@ -758,7 +758,9 @@ names — has a member for each instead of one member between them.
 
 An `identity.secondary` or `index.lookup` also carries `IDENTITY_<NAME>_INDEX` /
 `INDEX_<NAME>_INDEX`, the database index name that the generated
-`init { uniqueIndex(…) }` / `init { index(…) }` block references;
+`init { uniqueIndex(…) }` / `init { index(…) }` block references (on Postgres a
+name over 63 bytes is spelled in the table as the first 63 bytes, the name the
+database stores, while the constant keeps the declared name);
 `identity.primary` deliberately carries none, because migrate names a primary
 key by a dialect-conditional formula this artifact must not restate.
 

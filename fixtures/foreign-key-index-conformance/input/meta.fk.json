@@ -62,7 +62,11 @@
         { "field.long": { "name": "id" } },
         { "field.long": { "name": "fulfilmentWarehouseReferenceId", "@column": "fulfilment_warehouse_reference_id" } },
         { "field.long": { "name": "orderId", "@column": "order_id" } },
+        { "field.string": { "name": "externalReference", "@column": "external_reference" } },
+        { "field.string": { "name": "regionCode", "@column": "region_code" } },
         { "identity.primary": { "name": "pk", "@fields": "id" } },
+        { "identity.secondary": { "name": "allocation_external_reference_key_for_customer_order_line_items_by_region", "@fields": ["externalReference"] } },
+        { "index.lookup": { "name": "customer_order_line_item_allocations_by_region_region_code_lookup", "@fields": ["regionCode"] } },
         { "identity.reference": { "name": "warehouse", "@fields": ["fulfilmentWarehouseReferenceId"], "@references": "Customer" } },
         { "identity.reference": { "name": "order", "@fields": ["orderId"], "@references": "Order" } }
       ] } }

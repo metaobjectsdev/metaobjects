@@ -3,6 +3,11 @@
 // context generator and the Kotlin Exposed table generator write the same indexes into their
 // models and pass the same expected files, so one rule decides "uncovered" in every port.
 //
+// `declared.<dialect>.json` pins the other half of the agreement: the database name of every
+// `identity.secondary` and `index.lookup`, which a declared name over 63 bytes cuts on Postgres
+// exactly as a foreign-key index name is cut. The Drizzle, EF Core and Exposed mappings declare
+// those names, so the C# and Kotlin runners read this file too.
+//
 // Regenerate the expected files (after a deliberate change, reviewed):
 // META_WRITE_FK_INDEXES=1 bun test test/foreign-key-index-conformance.test.ts
 
@@ -11,14 +16,14 @@ import { readFileSync, writeFileSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { buildExpectedSchemaWithProvenance } from "../src/expected-schema.js";
-import { PG_IDENTIFIER_MAX_BYTES, type IndexDescriptor } from "../src/types.js";
+import { PG_IDENTIFIER_MAX_BYTES, storedIdentifier, type IndexDescriptor } from "../src/types.js";
 import { qualifiedDbName } from "../src/qualified-name.js";
 
 const CORPUS = resolve(import.meta.dir, "../../../../../fixtures/foreign-key-index-conformance");
 
 const CASES = [
-  { file: "expected.postgres.json", dialect: "postgres" },
-  { file: "expected.sqlite.json", dialect: "sqlite" },
+  { file: "expected.postgres.json", declared: "declared.postgres.json", dialect: "postgres" },
+  { file: "expected.sqlite.json", declared: "declared.sqlite.json", dialect: "sqlite" },
 ] as const;
 
 async function load() {
@@ -44,6 +49,32 @@ describe("foreign-key-index-conformance — the indexes migrate.foreignKeyIndexe
           .map(([table, ixs]) => [table, ixs.map((ix) => ({ name: ix.name, columns: [...ix.columns] }))]),
       );
       const path = join(CORPUS, c.file);
+      if (process.env["META_WRITE_FK_INDEXES"] === "1") writeFileSync(path, JSON.stringify(actual, null, 2) + "\n");
+      expect(actual).toEqual(JSON.parse(readFileSync(path, "utf8")));
+    });
+  }
+
+  for (const c of CASES) {
+    test(c.declared, async () => {
+      const root = await load();
+      const built = buildExpectedSchemaWithProvenance(root, { dialect: c.dialect, foreignKeyIndexes: true });
+      const added = built.foreignKeyIndexes ?? new Map<string, IndexDescriptor[]>();
+      // Every index but the foreign-key ones and a `@unique` field's `<table>_<column>_unique`:
+      // the `identity.secondary` and `index.lookup` nodes, under the name migrate gives them.
+      const actual = Object.fromEntries(
+        built.snapshot.tables
+          .map((t) => {
+            const fk = new Set((added.get(qualifiedDbName(t)) ?? []).map((ix) => ix.name));
+            const declared = t.indexes.filter((ix) =>
+              !fk.has(ix.name) && !(ix.unique && ix.columns.length === 1 &&
+                ix.name === storedIdentifier(`${t.name}_${ix.columns[0]}_unique`, c.dialect)));
+            return [t.name, declared] as const;
+          })
+          .filter(([, ixs]) => ixs.length > 0)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([table, ixs]) => [table, ixs.map((ix) => ({ name: ix.name, columns: [...ix.columns] }))]),
+      );
+      const path = join(CORPUS, c.declared);
       if (process.env["META_WRITE_FK_INDEXES"] === "1") writeFileSync(path, JSON.stringify(actual, null, 2) + "\n");
       expect(actual).toEqual(JSON.parse(readFileSync(path, "utf8")));
     });

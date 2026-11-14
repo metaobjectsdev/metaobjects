@@ -98,14 +98,22 @@ public static class ForeignKeyIndexes
     }
 
     /// <summary>
-    /// <c>&lt;table&gt;_&lt;column&gt;[_&lt;column&gt;…]_idx</c>. Except on SQLite and D1, a name over 63
-    /// bytes is cut to its first 63 bytes on a character boundary: the name Postgres stores, and
-    /// the one <c>meta migrate</c> expects.
+    /// <c>&lt;table&gt;_&lt;column&gt;[_&lt;column&gt;…]_idx</c>, cut by <see cref="StoredName"/>: the
+    /// name <c>meta migrate</c> expects.
     /// </summary>
-    public static string Name(string table, IReadOnlyList<string> columns, string? dialect)
+    public static string Name(string table, IReadOnlyList<string> columns, string? dialect) =>
+        StoredName($"{table}_{string.Join("_", columns)}_idx", dialect);
+
+    /// <summary>
+    /// The name the database stores for <paramref name="name"/>, which is the name <c>meta
+    /// migrate</c> creates and compares (migrate-ts <c>storedIdentifier</c>): on Postgres a name
+    /// over 63 bytes is cut to its first 63 bytes on a character boundary. SQLite and D1 keep the
+    /// whole name, and so does MySQL, where migrate writes no DDL and an over-long name is refused
+    /// rather than cut.
+    /// </summary>
+    public static string StoredName(string name, string? dialect)
     {
-        var name = $"{table}_{string.Join("_", columns)}_idx";
-        if (dialect is "sqlite" or "d1" || Encoding.UTF8.GetByteCount(name) <= PgIdentifierMaxBytes) return name;
+        if (dialect is "sqlite" or "d1" or "mysql" || Encoding.UTF8.GetByteCount(name) <= PgIdentifierMaxBytes) return name;
         var sb = new StringBuilder();
         var bytes = 0;
         foreach (var rune in name.EnumerateRunes())
@@ -117,6 +125,14 @@ public static class ForeignKeyIndexes
         }
         return sb.ToString();
     }
+
+    /// <summary>
+    /// The database name of an <c>identity.secondary</c> or <c>index.lookup</c>: its declared name
+    /// (<see cref="IndexNaming.ResolveIndexName"/>), cut by <see cref="StoredName"/>. The shared
+    /// corpus fixtures/foreign-key-index-conformance/ (<c>declared.&lt;dialect&gt;.json</c>) pins it.
+    /// </summary>
+    public static string DeclaredIndexName(MetaData node, string? dialect) =>
+        StoredName(IndexNaming.ResolveIndexName(node), dialect);
 
     /// <summary>True when <paramref name="prefix"/> leads with exactly <paramref name="columns"/>,
     /// in any order (migrate's <c>leadsWith</c>).</summary>

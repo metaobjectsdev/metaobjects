@@ -526,7 +526,12 @@ bytes — the name Postgres stores — whether the name is declared (`index.look
 `identity.secondary`) or derived (a `@unique` field's `<table>_<column>_unique`, and the
 [foreign-key indexes](#foreign-key-indexes-migrateforeignkeyindexes)); two names that cut to the
 same 63 bytes are refused with `ERR_DUPLICATE_SQL_NAME`. A declared CHECK name is the exception,
-refused rather than cut, so the CHECK always matches its declaration.
+refused rather than cut, so the CHECK always matches its declaration. The generated Drizzle
+tables, EF Core context and Exposed tables declare the cut name on Postgres as well, so the
+mapping names the index the database holds; the generated names artifacts (`Names`,
+`IDENTITY_<NAME>_INDEX`) keep the declared name, which is dialect-neutral. MySQL refuses an
+over-long name rather than cutting it, and `meta migrate` writes no MySQL DDL, so nothing is cut
+there.
 
 A project can supply its own conventions from `metaobjects.config.ts`, which wins over the
 preset name. Start from a preset so every member is present; an object missing one is refused

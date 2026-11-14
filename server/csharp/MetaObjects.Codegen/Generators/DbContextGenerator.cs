@@ -1327,7 +1327,7 @@ public class DbContextGenerator : IGenerator
             if (f.Attr(FIELD_ATTR_UNIQUE) is not true || f.ResolvedIsArray()) continue;
             var column = CSharpNaming.Column(f, ctx.Config.ColumnNamingStrategy);
             modelLines.Add($"        modelBuilder.Entity<{owner}>().HasIndex(x => x.{PropertyName(f)}).IsUnique()" +
-                $".HasDatabaseName(\"{CSharpNaming.CSharpStringLiteral($"{table}_{column}_unique")}\");");
+                $".HasDatabaseName(\"{CSharpNaming.CSharpStringLiteral(ForeignKeyIndexes.StoredName($"{table}_{column}_unique", ctx.Config.Dialect))}\");");
         }
         var nodes = entity.SecondaryIdentities().Select(i => ((MetaData)i, i.Fields, true))
             .Concat(entity.LookupIndexes().Select(i => ((MetaData)i, i.Fields, false)))
@@ -1343,7 +1343,12 @@ public class DbContextGenerator : IGenerator
                 props.Add(PropertyName(mf));
             }
             if (props.Count == 0) continue;
-            var indexName = CSharpNaming.IndexRef(entity, node, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames, ctx.Config);
+            // Past Postgres's 63-byte limit migrate creates the index under the name Postgres stores,
+            // so the model spells that cut name; the names artifact keeps the declared one.
+            var storedName = ForeignKeyIndexes.DeclaredIndexName(node, ctx.Config.Dialect);
+            var indexName = storedName == IndexNaming.ResolveIndexName(node)
+                ? CSharpNaming.IndexRef(entity, node, ctx.Config.ColumnNamingStrategy, ctx.Config.IncludeNames, ctx.Config)
+                : $"\"{CSharpNaming.CSharpStringLiteral(storedName)}\"";
             var selector = props.Count == 1 ? $"x => x.{props[0]}" : $"x => new {{ {string.Join(", ", props.Select(p => "x." + p))} }}";
             // The NAMED overload: two indexes over one column list (a partial one beside a plain
             // one) are two EF indexes only when each carries its own name.
