@@ -13,6 +13,19 @@ here.**
 **New metamodel vocabulary: `measure.derived` and its `@expr`.** It is additive: nothing that
 loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersion` 1.3 if it merges before the 1.3.0 publish; if it lands after, the next release moves `metamodelVersion`.
 
+### Upgrading
+
+- **`api.unknownFields: reject` is the one deliberate default change.** A generated create, PUT
+  or PATCH route that dropped an undeclared top-level key now answers `400 unknown_fields`, in
+  existing projects too, once they regenerate (under "Changed" below). Set
+  `"api": { "unknownFields": "drop" }` to keep the old answer. Everything else new here is either
+  a fix to input no client should send or a setting a project has to turn on.
+- **C#: a `readOnly` property has a private setter.** Regenerating gives every `readOnly`
+  property a private setter, whatever its shape (under "Security" below), so hand code that
+  assigned one (`row.Role = ...`) no longer compiles. The value belongs to the server: set it
+  through a database default or EF Core (`db.Entry(row).Property(r => r.Role).CurrentValue`),
+  which writes private setters.
+
 ### Security
 
 - **Generated create routes wrote fields a client must never set, in Java, Kotlin, C# and
@@ -80,7 +93,10 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   `pagination` option on the runtime mounts), the C# minimal-API routes, the Java and Kotlin
   Spring controllers and the Python FastAPI routers. An owned (ejected) routes copy picks it up
   when it is re-ejected. It is gated in the generated lane of every port by the new
-  `fixtures/api-contract-conformance/api-settings/` sub-corpus. A config key, not vocabulary:
+  `fixtures/api-contract-conformance/api-settings/` sub-corpus. Every port's config reader takes a
+  page size as a positive whole number however JSON spells it (`50.0` is `50`) and at most
+  2147483647, and refuses a malformed block when the config is read; the shared cases, valid and
+  refused, are `api-settings/config-blocks.json`, run by every port. A config key, not vocabulary:
   `metamodelVersion` does not move.
 
 - **Report measures over Money and other value-object members (FR-044 R12).** A dimension's or
@@ -167,6 +183,11 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   `input-unknown-fields-rejected` and `tph/tph-unknown-fields-rejected` (both lanes of every
   port) and `api-settings/unknown-fields-dropped` (`drop`, generated lane). Upgrade notes:
   [docs/features/migrations/unknown-fields-reject-by-default.md](docs/features/migrations/unknown-fields-reject-by-default.md).
+  Only the top level is judged: a member a value object does not declare is dropped, never
+  refused and never stored, on create and on PATCH, while the open JSON bag keeps every key
+  (`jsonb/jsonb-nested-undeclared-key-dropped`, both lanes of every port). The Java generated
+  value-object records now carry `@JsonIgnoreProperties(ignoreUnknown = true)` for this; they
+  answered `400 invalid_type` before.
   A config key, not vocabulary: `metamodelVersion` does not move.
 
 - **A validation 400 lists every issue in every port.** The same model answered a failed create or
@@ -225,8 +246,10 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   refreshed with `meta eject --list`.
 - **`meta init` writes stricter defaults for a new project.** The scaffolded
   `.metaobjects/config.json` now carries `"verify": { "handEdits": "fail" }` and (except on
-  MySQL) `"migrate": { "foreignKeyIndexes": true }`, each as its own visible setting. An existing
-  config is left as it is.
+  MySQL) `"migrate": { "foreignKeyIndexes": true }`, each as its own visible setting, beside the
+  `api` block. `dotnet meta init` and `metaobjects init` now write the same `migrate`, `verify`
+  and `api` settings, so a new project starts the same in every port. An existing config is left
+  as it is.
 - **Agent context routes report work to the reporting vocabulary.** The `meta init` agent guide
   and the `metaobjects-authoring` skill now send grouped totals, dashboard numbers and read-only
   report views to `object.report` (`references/declaring-reports.md`) before the `@sql` escape,

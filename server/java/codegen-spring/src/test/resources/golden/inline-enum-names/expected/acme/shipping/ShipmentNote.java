@@ -3,6 +3,7 @@ package acme.shipping;
 import jakarta.validation.constraints.*;
 
 /** GENERATED — value object ShipmentNote. Do not hand-edit; regenerated from metadata. */
+@com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
 public record ShipmentNote(
     @NotNull @Size(min = 1) String text,
     ShipmentNoteKind kind,

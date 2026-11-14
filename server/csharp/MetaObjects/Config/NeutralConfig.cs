@@ -700,9 +700,13 @@ public sealed class NeutralConfig
         return new ApiPagination(defaultLimit.Value, maxLimit.Value);
     }
 
+    // A positive whole number however JSON spells it (50 and 50.0 are one number, as every other
+    // port reads them), at most int.MaxValue. The shared corpus
+    // fixtures/api-contract-conformance/api-settings/config-blocks.json holds every port to it.
     private static int PageSizeNumber(JsonElement v, string key, string path) =>
-        v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out var n) && n >= 1
-            ? n
+        v.ValueKind == JsonValueKind.Number && v.TryGetDecimal(out var d)
+            && d == decimal.Truncate(d) && d >= 1 && d <= int.MaxValue
+            ? (int)d
             : throw new MetaModelException($"{path}: \"api.pagination.{key}\" must be a positive integer", ErrorCode.ERR_BAD_ATTR_VALUE);
 }
 

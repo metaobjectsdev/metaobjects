@@ -24,8 +24,10 @@ never refused:
 - a `writeOnce` field on PATCH or PUT;
 - the TPH discriminator, and a column only a sibling subtype declares.
 
-So a client that reads a row and sends it back, edited, keeps working. Value-object members are
-validated as before; only the top level is checked.
+So a client that reads a row and sends it back, edited, keeps working. Only the top level is
+checked: value-object members are validated as before, and a member a value object does not
+declare is dropped silently, never refused and never stored. The open JSON bag
+(`field.string` with `@dbColumnType: jsonb`) declares no members and keeps every key.
 
 ## Do you need to do anything?
 

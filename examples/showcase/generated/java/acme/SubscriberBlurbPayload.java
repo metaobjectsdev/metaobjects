@@ -3,6 +3,7 @@ package acme;
 import jakarta.validation.constraints.*;
 
 /** GENERATED — value object SubscriberBlurbPayload. Do not hand-edit; regenerated from metadata. */
+@com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
 public record SubscriberBlurbPayload(
     String name,
     @NotNull Status status

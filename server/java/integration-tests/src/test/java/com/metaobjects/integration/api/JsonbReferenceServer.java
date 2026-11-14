@@ -149,6 +149,7 @@ final class JsonbReferenceServer implements AutoCloseable {
             // Program D: nested value-object validation on CREATE (required primaryMarker present +
             // valid; a present optional/array VO valid) → 400 before persisting.
             if (!voValidForCreate(body) || !canonicalizeMeasures(body)) { sendJson(exchange, 400, invalidBody()); return; }
+            dropUndeclaredMembers(body);
             sendJson(exchange, 201, create(body));
             return;
         }
@@ -158,6 +159,7 @@ final class JsonbReferenceServer implements AutoCloseable {
             // FR-035 tristate + Program D nested VO validation: present-null on the @required
             // primaryMarker → 400; a present value must be a valid Marker (single or array) → 400.
             if (!voValidForPatch(body) || !canonicalizeMeasures(body)) { sendJson(exchange, 400, invalidBody()); return; }
+            dropUndeclaredMembers(body);
             Map<String, Object> row = patch(id, body);
             if (row == null) { sendJson(exchange, 404, Map.of("error", "not_found")); return; }
             sendJson(exchange, 200, row);
@@ -260,6 +262,39 @@ final class JsonbReferenceServer implements AutoCloseable {
         row.put("tiers", parseJson(rs.getString("tiers")));
         row.put("pricing", parseJson(rs.getString("pricing")));
         return row;
+    }
+
+    // A member a value object does not declare is dropped before the write (scenario
+    // jsonb-nested-undeclared-key-dropped): api.unknownFields judges the top level only, so a
+    // nested undeclared key is never refused and never stored. `payload` is the open bag and keeps
+    // every key. Mirrors the TS reference.
+    private static final List<String> MARKER_MEMBERS = List.of("label", "score");
+    private static final List<String> MEASURE_MEMBERS = List.of("ratio", "samples", "amount");
+    private static final Map<String, List<String>> VO_MEMBERS = Map.of(
+            "primaryMarker", MARKER_MEMBERS, "optionalMarker", MARKER_MEMBERS, "markers", MARKER_MEMBERS,
+            "measure", MEASURE_MEMBERS, "measures", MEASURE_MEMBERS,
+            "telemetry", List.of("capturedAt", "latitude", "tempC"));
+
+    private static void dropUndeclaredMembers(Map<String, Object> body) {
+        for (Map.Entry<String, List<String>> e : VO_MEMBERS.entrySet()) {
+            if (body.containsKey(e.getKey())) body.put(e.getKey(), keepDeclared(body.get(e.getKey()), e.getValue()));
+        }
+    }
+
+    private static Object keepDeclared(Object value, List<String> members) {
+        if (value instanceof List<?> list) {
+            List<Object> out = new ArrayList<>(list.size());
+            for (Object el : list) out.add(keepDeclared(el, members));
+            return out;
+        }
+        if (value instanceof Map<?, ?> map) {
+            Map<String, Object> out = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> m : map.entrySet()) {
+                if (members.contains(String.valueOf(m.getKey()))) out.put(String.valueOf(m.getKey()), m.getValue());
+            }
+            return out;
+        }
+        return value;
     }
 
     /** The validation envelope: this reference server checks the whole body and lists it as one issue (never asserted per field). */

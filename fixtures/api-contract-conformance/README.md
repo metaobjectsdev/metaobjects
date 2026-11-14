@@ -57,14 +57,14 @@ fixtures/api-contract-conformance/
 ```
 
 Beside the 34 core scenarios above sit eleven **sub-corpora**, each a directory with its
-own `meta.json`, `seed.json`, `scenarios/` and `README.md` (103 scenarios in all, 137 with the
+own `meta.json`, `seed.json`, `scenarios/` and `README.md` (104 scenarios in all, 138 with the
 core):
 
 | Directory | Scenarios | Gates | Lanes |
 |---|---|---|---|
 | `tph/` | 14 | single-table inheritance | both |
 | `m2m/` | 9 | M:N traversal, and TPH x M:N together | both |
-| `jsonb/` | 5 | typed value-object columns, and the numbers inside them (a double stays a JSON number; a decimal is a canonical string, option A of the 1.1.0 review) | both |
+| `jsonb/` | 6 | typed value-object columns, the numbers inside them, and an undeclared nested member dropped (a double stays a JSON number; a decimal is a canonical string, option A of the 1.1.0 review) | both |
 | `write-through/` | 2 | an entity that writes a table and reads a view | generated only |
 | `secret-fields/` | 2 | #484: a `@formExclude` or credential (`view.password`) field is ignored on create, PATCH and PUT, and a credential is never returned; a `readOnly` field is ignored the same way and still returned | generated only |
 | `enum-default/` | 2 | a create that omits a `field.enum` carrying `@default` stores the default (echo and GET by id), and a supplied member is kept | generated only |

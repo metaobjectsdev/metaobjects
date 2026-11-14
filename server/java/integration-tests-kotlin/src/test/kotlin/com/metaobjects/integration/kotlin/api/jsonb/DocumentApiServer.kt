@@ -140,7 +140,7 @@ class DocumentApiServer(private val pg: PostgresContainer) : AutoCloseable {
 
     private fun createDocument(exchange: HttpExchange) {
         @Suppress("UNCHECKED_CAST")
-        val body = readJsonBody(exchange) as? Map<String, Any?>
+        val body = (readJsonBody(exchange) as? Map<String, Any?>)?.let(::dropUndeclaredMembers)
             ?: return sendJson(exchange, 400, invalidBody())
         // primaryMarker is @required: absent / null / not-a-valid-Marker → 400.
         val primary = body["primaryMarker"]
@@ -183,7 +183,7 @@ class DocumentApiServer(private val pg: PostgresContainer) : AutoCloseable {
         val id = idStr.toLongOrNull()
             ?: return sendJson(exchange, 400, mapOf("error" to "invalid_id"))
         @Suppress("UNCHECKED_CAST")
-        val body = readJsonBody(exchange) as? Map<String, Any?>
+        val body = (readJsonBody(exchange) as? Map<String, Any?>)?.let(::dropUndeclaredMembers)
             ?: return sendJson(exchange, 400, invalidBody())
         // title is @required: an explicit null clears nothing — it is a 400.
         if (body.containsKey("title") && body["title"] == null)
@@ -228,6 +228,27 @@ class DocumentApiServer(private val pg: PostgresContainer) : AutoCloseable {
         }
         if (row == null) sendJson(exchange, 404, mapOf("error" to "not_found"))
         else sendJson(exchange, 200, row)
+    }
+
+    // A member a value object does not declare is dropped before the write (scenario
+    // jsonb-nested-undeclared-key-dropped): api.unknownFields judges the top level only, so a
+    // nested undeclared key is never refused and never stored. `payload` is the open bag and keeps
+    // every key. Mirrors the TS reference.
+    private val markerMembers = setOf("label", "score")
+    private val measureMembers = setOf("ratio", "samples", "amount")
+    private val voMembers: Map<String, Set<String>> = mapOf(
+        "primaryMarker" to markerMembers, "optionalMarker" to markerMembers, "markers" to markerMembers,
+        "measure" to measureMembers, "measures" to measureMembers,
+        "telemetry" to setOf("capturedAt", "latitude", "tempC"),
+    )
+
+    private fun dropUndeclaredMembers(body: Map<String, Any?>): Map<String, Any?> =
+        body.mapValuesTo(LinkedHashMap()) { (k, v) -> voMembers[k]?.let { keepDeclared(v, it) } ?: v }
+
+    private fun keepDeclared(value: Any?, members: Set<String>): Any? = when (value) {
+        is List<*> -> value.map { keepDeclared(it, members) }
+        is Map<*, *> -> value.filterKeys { it in members }
+        else -> value
     }
 
     /**

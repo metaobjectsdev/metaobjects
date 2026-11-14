@@ -405,11 +405,16 @@ def _check_enums(raw: dict[str, object], path: Path) -> None:
         )
 
 
+_PAGE_SIZE_MAX = 2147483647
+
+
 def _page_size(value: object, key: str, path: Path) -> int:
-    """A positive whole number however JSON spells it (50, 50.0), never a bool."""
+    """A positive whole number however JSON spells it (50, 50.0), never a bool, at most
+    2147483647 so every port's integer type holds it (the shared corpus
+    ``fixtures/api-contract-conformance/api-settings/config-blocks.json``)."""
     if isinstance(value, float) and value.is_integer():
         value = int(value)
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+    if isinstance(value, bool) or not isinstance(value, int) or not 0 < value <= _PAGE_SIZE_MAX:
         raise ParseError(
             f'{path}: "api.pagination.{key}" must be a positive integer',
             code=ErrorCode.ERR_COLLECTION_NOT_FOUND,

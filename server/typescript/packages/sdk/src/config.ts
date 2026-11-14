@@ -181,11 +181,14 @@ const ScopeSchema = z
 // "scope") is silently stripped by zod and the collection resolves as
 // "everything in scope" — the exact silent fail-open .strict() on the
 // nested arms exists to prevent, one level up.
-/** One `api.pagination` size: a positive integer, every failure (missing, wrong type, a
- *  fraction, zero) named by its key rather than Zod's generic "expected number". */
+/** One `api.pagination` size: a positive integer no larger than 2147483647 (so every port's
+ *  integer type holds it), every failure (missing, wrong type, a fraction, zero, too large) named
+ *  by its key rather than Zod's generic "expected number". The shared corpus
+ *  fixtures/api-contract-conformance/api-settings/config-blocks.json holds every port to it. */
+const PAGE_SIZE_MAX = 2147483647;
 function pageSizeNumber(key: string) {
   const error = `"api.pagination.${key}" must be a positive integer`;
-  return z.number({ error }).int({ error }).positive({ error });
+  return z.number({ error }).int({ error }).positive({ error }).max(PAGE_SIZE_MAX, { error });
 }
 
 export const ConfigSchema = z.object({

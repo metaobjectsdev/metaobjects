@@ -42,6 +42,18 @@ and no cap. That half is the other sub-corpora, none of which sets it.
 The default, `reject`, is pinned by the parent corpus, which sets nothing:
 `scenarios/input-unknown-fields-rejected.yaml` and `tph/scenarios/tph-unknown-fields-rejected.yaml`.
 
+## The shared config cases
+
+`config-blocks.json` is a second, smaller contract: what each port's CONFIG READER accepts in
+the `api` block, before any route runs. Each `cases[]` entry is an `api` block (`null` means the
+key is absent) and the `pagination` and `unknownFields` it must resolve to; each `invalid[]`
+entry must be refused when `.metaobjects/config.json` is read. A page size is a positive whole
+number however JSON spells it (`50` and `50.0` are the same number, since JavaScript cannot tell
+them apart), at most 2147483647 so every port's integer type holds it. The message wording is
+each port's own. Runners: TypeScript `sdk/test/api-config-conformance.test.ts`, C#
+`ApiConfigConformanceTests`, Java `ApiConfigConformanceTest` (Kotlin reads config through the
+Java reader), Python `tests/conformance/test_api_config_conformance.py`.
+
 ## Lanes
 
 Generated lane only, as for every sub-corpus whose subject is what a generator emits. Every
@@ -52,6 +64,7 @@ port runs it: TypeScript, C#, Java, Kotlin and Python.
 ```
 api-settings/
 ├── README.md
+├── config-blocks.json          # shared config-reader cases (not a scenario)
 ├── .metaobjects/config.json    # api.pagination { 2, 4 }, api.unknownFields "drop"
 ├── meta.json                   # Item
 ├── seed.json                   # five rows

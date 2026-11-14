@@ -182,6 +182,10 @@ public class SpringValueObjectGenerator extends MultiFileDirectGeneratorBase<Met
         src.append("/** GENERATED — value object ").append(recordName)
            .append(". Do not hand-edit; regenerated from metadata. */\n");
         if (omitNulls) src.append("@JsonInclude(JsonInclude.Include.NON_NULL)\n");
+        // A member the value object does not declare is DROPPED, never rejected, whatever
+        // FAIL_ON_UNKNOWN_PROPERTIES the host's ObjectMapper carries: api.unknownFields judges a
+        // request body's top level only, so a nested undeclared key binds like the DTO's own.
+        src.append("@com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)\n");
         src.append("public record ").append(recordName).append("(\n");
         List<String[]> components = new ArrayList<>(fields.size());
         for (int i = 0; i < fields.size(); i++) {

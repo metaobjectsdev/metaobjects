@@ -288,7 +288,9 @@ each handler they register instead; an `HTTPException` is rethrown to your
   envelope above (`pagination.invalid_value`) in every port, so it never reaches a store that
   reads `LIMIT -1` as no limit (SQLite). `offset` and `withCount=1` page past the default as
   usual, with `total` counting every row. `meta init` writes the block above for a new project;
-  both sizes must be positive integers and `defaultLimit` may not exceed `maxLimit`. A report
+  both sizes must be positive whole numbers (`50.0` reads as `50`) no larger than 2147483647, and
+  `defaultLimit` may not exceed `maxLimit`; a block that breaks a rule is refused when the config
+  is read, in every port (shared cases: `api-settings/config-blocks.json`). A report
   keeps its own row cap (above) and an opaque view its 1000, whatever the setting says.
 
   **Without the setting nothing changes, and the default is per port.** With `limit` omitted,
@@ -660,7 +662,9 @@ field of the base or of any subtype has it. Every key in the table above is decl
 **dropped, not refused, under either value**: a client that sends back a row it read (with its `id`,
 its `@autoSet` stamps and its `writeOnce` field) keeps working, and a sibling subtype's column on
 another subtype's route is dropped. Only the top level is checked; a value object's members are
-validated as before. `meta init` writes `"unknownFields": "reject"` for a new project.
+validated as before, and a member a value object does not declare is dropped silently, never
+refused and never stored, on create and on PATCH (`jsonb/jsonb-nested-undeclared-key-dropped`,
+both lanes of every port). The open JSON bag keeps every key. `meta init` writes `"unknownFields": "reject"` for a new project.
 
 Each port checks the raw body before it binds it, so the answer is the same whatever the host
 framework would do with an unknown property: Java and Kotlin read the keys from the request's JSON
