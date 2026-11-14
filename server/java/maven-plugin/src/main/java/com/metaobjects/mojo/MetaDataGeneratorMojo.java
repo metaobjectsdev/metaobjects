@@ -41,6 +41,20 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
     /** How this goal is named in a message telling the adopter what to run. */
     static final String OWNER = "mvn metaobjects:generate";
 
+    /**
+     * The refusals over the whole own object set that no single generator can make: two metadata
+     * packages generating into one output directory (#546, ERR_NAME_COLLISION) and two objects
+     * claiming one REST collection (ERR_COLLECTION_NAME_COLLISION). The generate goal and the
+     * verify goal both run them before any generator, so verify refuses the same model gen does.
+     */
+    static void refuseModelCollisions(MetaDataLoader loader) {
+        // FR-023: an object a dependency owns gets no route here, so it cannot collide with one.
+        List<com.metaobjects.object.MetaObject> own =
+                com.metaobjects.generator.util.GeneratorUtil.ownMetaObjects(loader);
+        com.metaobjects.generator.util.OutputPackageCollisions.assertDistinct(own);
+        RouteNaming.assertNoCollectionNameCollisions(own);
+    }
+
     @Override
     protected void executeGenerators(MetaDataLoader loader, List<Generator> generatorImpls) {
 
@@ -57,14 +71,7 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
         // `loader` is null in SourceRootRegistrationTest's unit tests, which exercise
         // only the post-loop registerGeneratedSourceRoots() logic below with no real
         // metadata — nothing to collide-check in that case.
-        if (loader != null) {
-            // FR-023: an object a dependency owns gets no route here, so it cannot collide with one.
-            List<com.metaobjects.object.MetaObject> own =
-                    com.metaobjects.generator.util.GeneratorUtil.ownMetaObjects(loader);
-            // #546: two metadata packages that generate into one output directory.
-            com.metaobjects.generator.util.OutputPackageCollisions.assertDistinct(own);
-            RouteNaming.assertNoCollectionNameCollisions(own);
-        }
+        if (loader != null) refuseModelCollisions(loader);
 
         // Where this EXECUTION's codegen hash manifest lives: anchored on the module
         // basedir, so two executions in one module share it (merged — every entry names

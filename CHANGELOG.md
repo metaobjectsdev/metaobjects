@@ -79,29 +79,20 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
 
 - **A page size for generated list routes: `api.pagination`, in every port.** An external review
   of 1.2.0 found that list endpoints had no hard cap: the TypeScript and C# routes returned the
-  whole table when `limit` was omitted, and `?limit=100000` was accepted in every port. Set
-  `"api": { "pagination": { "defaultLimit": 50, "maxLimit": 1000 } }` in
-  `.metaobjects/config.json` and a generated entity or projection list with no `limit` answers
-  the first `defaultLimit` rows, while an explicit `limit` above `maxLimit` answers
-  `400 {"error": "limit_too_large", "maxLimit": N}` (refused, not clamped); a negative `limit`
-  answers `400 pagination.invalid_value` in every port rather than reaching a store that reads
-  `LIMIT -1` as no limit, and the generated C# routes answer the same envelope for a `limit` or
-  `offset` that is not a whole number (`limit=abc`) rather than serving the default page. `meta init` writes
-  that block for a new project. **A project without the setting behaves exactly as before**,
-  because a cap added on upgrade would silently truncate a client that reads a whole list;
-  each port's verify advises (rule `unbounded-list-pages`, never a failure) when a routes
-  generator is wired and no page size is set (C# under `dotnet meta verify --codegen`). Reports keep their own row cap and opaque views their 1000. Every port's
-  generated list routes read it: the TypeScript Fastify and Hono routes (through a new
-  `pagination` option on the runtime mounts), the C# minimal-API routes, the Java and Kotlin
-  Spring controllers and the Python FastAPI routers. An owned (ejected) routes copy picks it up
-  when it is re-ejected. It is gated in the generated lane of every port by the new
-  `fixtures/api-contract-conformance/api-settings/` sub-corpus. Every port's config reader takes a
-  page size as a positive whole number however JSON spells it (`50.0` is `50`) and at most
-  2147483647, and refuses a malformed block when the config is read; the shared cases, valid and
-  refused, are `api-settings/config-blocks.json`, run by every port. `limit=0` is a page of zero
-  rows in every port (the C# route served the default page; `api-settings/limit-zero`). An M:N
-  traversal route takes no `limit` and is not paged by the setting. A config key, not vocabulary:
-  `metamodelVersion` does not move.
+  whole table when `limit` was omitted, and `?limit=100000` was accepted in every port. The new
+  `api.pagination` block in `.metaobjects/config.json` gives a generated entity or projection list a
+  default page and refuses a larger `limit`; `meta init` writes it for a new project. **A project
+  without the setting behaves exactly as before**, because a cap added on upgrade would silently
+  truncate a client that reads a whole list; each port's verify advises (`unbounded-list-pages`,
+  never a failure). A negative `limit`, and in C# a `limit` or `offset` that is not a whole number,
+  now answers the malformed-bound 400 rather than reaching the store, and `limit=0` is a page of
+  zero rows in every port (the C# route served the default page). Every port's generated list
+  routes read it (TypeScript through a new `pagination` option on the runtime mounts); an owned
+  (ejected) routes copy picks it up when it is re-ejected. Gated in the generated lane of every port
+  by the new `fixtures/api-contract-conformance/api-settings/` sub-corpus, whose
+  `config-blocks.json` every port's config reader runs. The answers, limits and exceptions are in
+  [docs/features/api-contract.md](docs/features/api-contract.md#sort--pagination). A config key, not
+  vocabulary: `metamodelVersion` does not move.
 
 - **Report measures over Money and other value-object members (FR-044 R12).** A dimension's or
   measure's `@of` may name `Entity.field.member`, a member of a value object stored with
@@ -174,43 +165,37 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   Existing projects get `reject` when they regenerate.** Until now every port dropped an
   undeclared body key silently, so a client that misspelled a field (`emial`) got a 200 and lost
   the value without a word. A generated create, PUT or PATCH route now answers
-  `400 {"error": "unknown_fields", "fields": ["emial"]}` (the undeclared top-level keys, sorted)
-  before validation, and writes nothing. To keep the old behaviour set
-  `"api": { "unknownFields": "drop" }` in `.metaobjects/config.json` and regenerate. A declared
-  key the client may not set (a generated `id`, a `readOnly` or derived field, an `@autoSet`
-  stamp, a `writeOnce` field on update, the TPH discriminator, a sibling subtype's column) is
-  still dropped, not refused, under either value, so a client that sends back a row it read keeps
-  working. `meta init` writes `"unknownFields": "reject"` for a new project. Every port checks the
-  raw body before binding it, so Java and Kotlin answer the same whatever the host's Jackson
-  `FAIL_ON_UNKNOWN_PROPERTIES` says. TypeScript passes the declared field list to the runtime
-  mounts as a new `knownFields` option; a mount given none keeps dropping. Pinned by
-  `input-unknown-fields-rejected` and `tph/tph-unknown-fields-rejected` (both lanes of every
-  port) and `api-settings/unknown-fields-dropped` (`drop`, generated lane). Upgrade notes:
+  `400 unknown_fields` before validation and writes nothing. To keep the old behaviour set
+  `"api": { "unknownFields": "drop" }` in `.metaobjects/config.json` and regenerate. A declared key
+  the client may not set is still dropped, not refused, so a client that sends back a row it read
+  keeps working. `meta init` writes `reject` for a new project. TypeScript passes the declared
+  field list to the runtime mounts as a new `knownFields` option (a mount given none keeps
+  dropping); Java and Kotlin read the raw body, so the answer does not depend on Jackson's
+  `FAIL_ON_UNKNOWN_PROPERTIES`, and the Java value-object records nested in a write route's body now
+  carry `@JsonIgnoreProperties(ignoreUnknown = true)` (they answered `400 invalid_type` before).
+  Pinned by `input-unknown-fields-rejected`, `tph/tph-unknown-fields-rejected` and
+  `jsonb/jsonb-nested-undeclared-key-dropped` (both lanes of every port) and
+  `api-settings/unknown-fields-dropped` (`drop`, generated lane). The rule, which keys count as
+  declared and how each port matches them:
+  [docs/features/api-contract.md](docs/features/api-contract.md#unknown-request-fields-apiunknownfields).
+  Upgrade notes:
   [docs/features/migrations/unknown-fields-reject-by-default.md](docs/features/migrations/unknown-fields-reject-by-default.md).
-  Only the top level is judged: a member a value object does not declare is dropped, never
-  refused and never stored, on create and on PATCH, while the open JSON bag keeps every key
-  (`jsonb/jsonb-nested-undeclared-key-dropped`, both lanes of every port). The Java generated
-  value-object records nested in a write route's body now carry `@JsonIgnoreProperties(ignoreUnknown = true)` for this; they
-  answered `400 invalid_type` before. C# matches a key the way it binds the body, with the app's
-  JSON options: under the ASP.NET web default, which ignores case, `Title` is the declared
-  `title` and is not refused.
   A config key, not vocabulary: `metamodelVersion` does not move.
 
 - **A validation 400 lists every issue in every port.** The same model answered a failed create or
   update differently by language: TypeScript listed each problem, while C#, Java, Kotlin and Python
   returned a bare `{"error": "validation"}` (found by an external review of 1.2.0). Every port now
-  answers `400 {"error": "validation", "issues": [{"code", "path", "message"}]}` with every failure,
-  not the first. `path` is an array of wire names (value-object members, array indexes and map keys
-  as further elements), `code` uses Zod's names (`invalid_type`, `too_small`, `too_big`,
-  `invalid_format`, `invalid_value`, `custom`), and `message` is each port's own wording. C# ships a
-  new `ValidationIssues` runtime file (also copied by `dotnet meta eject routes`), and its create
-  route now reads the body itself so an unbindable body lists its issue rather than answering an
-  empty 400. Java ships `ValidationIssues` beside `PatchValidationException`, and a patch binds every
-  field before it throws. Kotlin emits `MetaValidationIssues.kt` with the controllers. Python maps
-  every Pydantic error in `constraint_errors`. The hand-rolled reference servers list issues too,
-  and two shared scenarios pin the list in both lanes (`validation-lists-issues`,
-  `tph/tph-validation-lists-issues`, with a new `issues` corpus assertion). A client that read only
-  `error` is unaffected. An owned (ejected) routes copy keeps the bare answer until it is re-ejected.
+  answers with an `issues` list holding every failure, in the shape
+  [docs/features/api-contract.md](docs/features/api-contract.md#a-validation-error-lists-every-issue)
+  defines. C# ships a new `ValidationIssues` runtime file (also copied by `dotnet meta eject routes`),
+  and its create route now reads the body itself so an unbindable body lists its issue rather than
+  answering an empty 400. Java ships `ValidationIssues` beside `PatchValidationException`, and a
+  patch binds every field before it throws. Kotlin emits `MetaValidationIssues.kt` with the
+  controllers. Python maps every Pydantic error in `constraint_errors`. The hand-rolled reference
+  servers list issues too, and two shared scenarios pin the list in both lanes
+  (`validation-lists-issues`, `tph/tph-validation-lists-issues`, with a new `issues` corpus
+  assertion). A client that read only `error` is unaffected. An owned (ejected) routes copy keeps
+  the bare answer until it is re-ejected.
 
 - **The always-on agent file works with any coding assistant, carries the REST conventions,
   and is written once.** `.metaobjects/CLAUDE.md`, an identical copy of `.metaobjects/AGENTS.md`
@@ -268,6 +253,14 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   lint gate), and a fresh npm install of the CLI drops from 245 MB to 151 MB of `node_modules`.
   `scripts/check-peer-ranges.ts` now fails a publishable package that requires `@biomejs/biome`
   through `dependencies` or a non-optional peer.
+- **Release scripts: a patch can be cut from a `release/<major>.<minor>` maintenance branch**
+  (brought from `release/1.2`, where 1.2.2 shipped this way). `scripts/release.mjs` and
+  `scripts/finish-release.mjs` accept that branch as well as `main`. The version must be on the
+  branch's own line, every push goes to that branch, and the sync check compares against it.
+  `release.mjs` also refuses, before anything is published, a version older than the newest
+  release and a release candidate of a version that already shipped, because either would move
+  npm's `latest` backwards. A minor or major cut is now refused while the previous maintenance
+  branch holds a commit that is not on `main`; `docs/RELEASING.md` Step 0 gains the same check.
 - **`@metaobjectsdev/cli` no longer installs `dprint-node`.** The TypeScript generators printed
   code with `ts-poet`, which loads `dprint-node` on import, and dprint-node ships all seven of
   its platform binaries in one package (24 MB, of which a machine runs one). `codegen-ts` now
@@ -279,8 +272,10 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   `codegen-ts-angular` drop their `ts-poet` dependency and import the printer from
   `@metaobjectsdev/codegen-ts/engine`, which an ejected template also uses. A bare `ts-poet`
   import in an older owned generator is still pointed at that entry by `meta gen`, which
-  carries `code`, `imp`, `joinCode`, `Import` and the `Code` type; ts-poet's `saveFiles`,
-  `conditionalOutput` and its `toString` import options are not carried over. A fresh npm
+  carries `code`, `imp`, `joinCode`, `Import` and the `Code` type; ts-poet's `def`, `literalOf`,
+  `arrayOf`, `asOneline`, `Import.fromMaybeString`, `saveFiles`, `conditionalOutput` and its
+  `toString` import options are not carried over, so an owned generator that imports one of them
+  no longer loads. A fresh npm
   install of the CLI drops from 151 MB (134,641,989 bytes) to 133 MB (115,302,944 bytes) of
   `node_modules`. `scripts/check-peer-ranges.ts` now also fails a publishable package that
   requires `dprint-node`, `ts-poet` or any `@types/*` package through `dependencies`,
@@ -313,6 +308,24 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   scalar field; gated by the `error-origin-aggregate-value-object` conformance fixture. Refusing,
   rather than summing the flattened amount column, keeps a sum from adding amounts in different
   currencies. `count` is unaffected.
+- **A long foreign-key index or constraint name no longer reappears on every `meta migrate`.**
+  `migrate.foreignKeyIndexes` named an index `<table>_<columns>_idx` with no length check, and
+  Postgres stores a name over 63 bytes cut to 63, so the diff (which compares names exactly)
+  proposed the index again on every run. On Postgres the name is now cut to the 63 bytes Postgres
+  stores (SQLite and D1 keep it whole), and the C# EF context and the Kotlin Exposed tables
+  declare the same cut name. The diff also matches a foreign-key constraint by its stored name,
+  so a derived `<table>_<column>_fk` over the limit is no longer proposed as a rename. A new
+  shared corpus, `fixtures/foreign-key-index-conformance/`, pins which foreign keys get an index
+  and its name, and the TypeScript, C# and Kotlin rules all pass it; two migration scenarios
+  prove a long name converges on Postgres. A declared `index.lookup` or `identity.secondary`
+  name, and a `@unique` field's derived `<table>_<column>_unique`, is created under the name
+  Postgres stores in the same way, so it no longer reappears on every run either. The Drizzle
+  tables, the EF context and the Exposed tables declare that cut name too; the shared corpus
+  pins it with a long `index.lookup` and `identity.secondary` (`declared.<dialect>.json`).
+- **`mvn metaobjects:verify` refuses the model `mvn metaobjects:generate` refuses.** Two metadata
+  packages that generate into one output directory (`ERR_NAME_COLLISION`) and a REST collection
+  claimed twice (`ERR_COLLECTION_NAME_COLLISION`) were checked by the generate goal only, so a
+  project could verify clean on a model generate would refuse. Java and Kotlin.
 
 ## [1.3.0] — 2026-11-11
 

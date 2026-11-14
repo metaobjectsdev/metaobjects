@@ -472,7 +472,9 @@ Every per-object file lands in the directory of its metadata package: `acme::blo
 Java package `acme.blog` and the file `acme/blog/Author.java`, so two objects named `Note` in two
 packages are two files. Two different metadata packages that would land in one directory (names
 that differ only in letter case, or `a.b` beside `a::b`) are refused before any generator runs,
-with `ERR_NAME_COLLISION` naming both objects. Nothing is renamed to avoid a clash.
+with `ERR_NAME_COLLISION` naming both objects. Nothing is renamed to avoid a clash. So is a REST
+collection claimed twice (`ERR_COLLECTION_NAME_COLLISION`), and `mvn metaobjects:verify` runs both
+refusals before it compares, so a model `metaobjects:generate` refuses cannot verify clean.
 
 A controller's REST collection segment is the object's `@collectionName` when it declares one
 (snake_cased: `CaseHistory` is `/case_history`), else the pluralizer `naming.collections` names in
@@ -599,20 +601,12 @@ carries `naming` and `wire` (`NeutralConfig.getApiSettings()`, carried on the lo
 { "api": { "pagination": { "defaultLimit": 50, "maxLimit": 1000 }, "unknownFields": "reject" } }
 ```
 
-- `api.pagination`: a list route (entity, TPH base and per-subtype, projection) with no `limit`
-  returns `defaultLimit` rows, and a `limit` above `maxLimit` answers
-  `400 {"error": "limit_too_large", "maxLimit": N}`. Absent, a list route returns 50 rows when
-  `limit` is omitted and takes any `limit`, as before; `mvn metaobjects:verify` then warns
-  (`unbounded-list-pages`, advisory, never fails the build). A served report keeps its own row
-  ceiling, and an M:N traversal is not paged.
-- `api.unknownFields` (`reject`, the default, or `drop`): a create, PUT or PATCH body key the
-  entity does not declare answers `400 {"error": "unknown_fields", "fields": [...]}` (keys in code
-  point order) and writes nothing. Declared keys the client may not set (the generated key,
-  `readOnly`, derived, `@autoSet`, `writeOnce` on update, the discriminator, a sibling
-  subtype's column) are not unknown: they are dropped as before. The keys are read off the raw
-  `JsonNode` (`UnknownBodyKeys`, shipped with the generated runtime) before the body is bound, so
-  the answer does not depend on the host `ObjectMapper`'s `FAIL_ON_UNKNOWN_PROPERTIES`. Under
-  `reject` the generated create handler takes `@RequestBody JsonNode body` rather than the DTO.
+What each setting answers, and the default with no block, are in
+[api-contract](../features/api-contract.md) ([page size](../features/api-contract.md#sort--pagination), [unknown fields](../features/api-contract.md#unknown-request-fields-apiunknownfields)).
+Java-specific: with no `api.pagination`, `mvn metaobjects:verify` warns (`unbounded-list-pages`,
+advisory, never fails the build). The body keys are read off the raw `JsonNode`
+(`UnknownBodyKeys`, shipped with the generated runtime) before the body is bound, so under
+`reject` the generated create handler takes `@RequestBody JsonNode body` rather than the DTO.
 
 ### Decimals and null members on the wire
 
@@ -694,8 +688,10 @@ names — has a member for each instead of one member between them.
 deliberate: a field's subType does not change what its column denotes, while an
 object's decides table-vs-view and an identity's decides unique-vs-not
 (ADR-0040 put uniqueness in the type). An `identity.secondary` or `index.lookup`
-also carries `IDENTITY_<NAME>_INDEX` / `INDEX_<NAME>_INDEX`, the database index
-name; `identity.primary` deliberately carries none, because migrate names a
+also carries `IDENTITY_<NAME>_INDEX` / `INDEX_<NAME>_INDEX`, the index name —
+the declared name; on Postgres `meta migrate` creates a name over 63 bytes as
+its first 63 bytes ([stored names](../features/migrations-and-drift.md#schema-conventions-names-for-objects-no-code-addresses)).
+`identity.primary` deliberately carries none, because migrate names a
 primary key by a dialect-conditional formula this artifact must not restate.
 
 There is no `READ_ONLY`. It was never metadata — it is a derivation over

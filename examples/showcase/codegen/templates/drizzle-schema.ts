@@ -26,7 +26,7 @@ import { dialectModule } from "@metaobjectsdev/codegen-ts/engine";
 import {
   namesRef, physicalNameExpr, sourceSchemaExpr, indexNameExpr, columnExpr,
 } from "@metaobjectsdev/codegen-ts/engine";
-import { resolveTableSchema } from "@metaobjectsdev/metadata";
+import { resolveTableSchema, resolveIndexName } from "@metaobjectsdev/metadata";
 import { renderEnumIntCustomType } from "./enum-int-codec.js";
 import { renderDurationCustomType } from "./duration-wire-helper.js";
 import { renderRelationsBlock } from "./relations-block.js";
@@ -35,7 +35,7 @@ import { collectTphSubtypeFields, tphConcreteSubtypes } from "./tph-discriminato
 import { tphStorageObject } from "@metaobjectsdev/codegen-ts/engine";
 import { flattenedMembersOf } from "@metaobjectsdev/codegen-ts/engine";
 import { effectivePackage } from "@metaobjectsdev/codegen-ts/engine";
-import { foreignKeyIndexesOf } from "@metaobjectsdev/codegen-ts/engine";
+import { foreignKeyIndexesOf, storedIndexName } from "@metaobjectsdev/codegen-ts/engine";
 
 /**
  * Render the Drizzle table definition for one entity, including:
@@ -384,7 +384,16 @@ export function renderDrizzleSchema(
     // `idx_<table>_<col>` against an index the database actually held under
     // `identity.name` (fdb4118f1); and an empty `index.lookup` name — which the loader
     // accepts, unlike an identity — is refused here rather than emitting `index("")`.
-    const indexName = indexNameExpr(names, node);
+    //
+    // Except past Postgres's 63-byte identifier limit: migrate creates and compares such an
+    // index under the name Postgres stores (`storedIdentifier`, its first 63 bytes; SQLite
+    // keeps the whole name), so the mapping spells that cut name as a literal. The names
+    // artifact is dialect-neutral and keeps the declared name.
+    const declaredIndexName = resolveIndexName(node);
+    const storedName = storedIndexName(declaredIndexName, dialect);
+    const indexName = storedName === declaredIndexName
+      ? indexNameExpr(names, node)
+      : code`${JSON.stringify(storedName)}`;
     const head: Code =
       using !== undefined && using !== "btree"
         ? code`${indexSym}(${indexName}).using(${JSON.stringify(using)}, ${target})`

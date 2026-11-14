@@ -450,7 +450,11 @@ gate_no_api_prefix() { bun scripts/check-no-api-prefix.ts; }
 # documented pre-PR command. The other four ports are checked by `gate_showcase_all_ports`
 # in the heavy tier of the flagless run, and again by the release preflight
 # (`--check --all-ports`); both refuse to leave a port out.
-gate_site_payload() { bun_install && bun test scripts/site && bun scripts/build-site-payload.ts --check; }
+#
+# `--timeout 60000`: several of these tests (registries, llms, reference) build real
+# output and fit bun's default 5 s per test on an idle machine but not under heavy load,
+# where a release gate read red with nothing wrong. A minute per test still fails a hang.
+gate_site_payload() { bun_install && bun test --timeout 60000 scripts/site && bun scripts/build-site-payload.ts --check; }
 
 # ── the showcase is current in EVERY port, not just ts+sql ────────────────────
 # `gate_site_payload` can only afford `--bun-only`, so a change to the python, csharp,
@@ -489,7 +493,7 @@ gate_site_reference() { bun_install && bun scripts/build-site-reference.ts --che
 # exercised) are the ones worth a test at all. See scripts/maven-coordinate.mjs.
 # And the publish workflows' tag check (scripts/check-release-tag.mjs), whose test also reads
 # each real manifest, so a layout change fails here rather than on a release tag.
-gate_release_tag() { bun test scripts/finish-release.test.ts scripts/eject-release-gate.test.ts && node scripts/test-maven-coordinate.mjs && node scripts/test-prerelease-version.mjs && node scripts/test-check-release-tag.mjs && node scripts/test-changelog-promote.mjs && bash tools/prerelease/test-prerelease-link.sh; }
+gate_release_tag() { bun test scripts/finish-release.test.ts scripts/eject-release-gate.test.ts && node scripts/test-maven-coordinate.mjs && node scripts/test-prerelease-version.mjs && node scripts/test-check-release-tag.mjs && node scripts/test-changelog-promote.mjs && node scripts/test-release-branch.mjs && bash tools/prerelease/test-prerelease-link.sh; }
 
 # ── repo-root scripts/ typechecks ─────────────────────────────────────────────
 # `bun test` transpiles per file and never typechecks, and `bun run --filter '*'

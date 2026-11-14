@@ -1,0 +1,7 @@
+{ "metadata.root": { "package": "acme::sales", "children": [
+  { "object.entity": { "name": "Ordersales", "children": [
+    { "source.rdb": { "@table": "orders_sales_b" } },
+    { "field.long": { "name": "id" } },
+    { "identity.primary": { "name": "pk", "@fields": "id" } }
+  ] } }
+] } }

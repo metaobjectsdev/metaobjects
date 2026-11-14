@@ -15,7 +15,7 @@
  *
  * It lives under `scripts/site/` for two reasons: it feeds the payload, and this is the
  * only directory in `scripts/` whose bun tests a CI lane actually runs
- * (`gate_site_payload` → `bun test scripts/site`). A counts test anywhere else in
+ * (`gate_site_payload` → `bun test --timeout 60000 scripts/site`). A counts test anywhere else in
  * `scripts/` would sit unrun, which is how a gate becomes decoration.
  */
 import { readdirSync, readFileSync } from "node:fs";
