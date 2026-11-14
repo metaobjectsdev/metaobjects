@@ -116,8 +116,9 @@ jobs:
   # gate runs only named conformance FILES, so the rest of those suites ran nowhere
   # and a regression could sit red on `main` under a green ts lane.
   # Deliberately separate from ts-fast rather than folded into it: ts-fast carries
-  # the 30-min mutation gate, which flakes under runner contention, and a mutation
-  # flake must not mask a unit-test failure. The suites total ~5s, so this lane is
+  # the mutation gate (diff-scoped: on a push to main it mutates nothing new and
+  # SKIPs; the full pass runs in conformance.yml), which flaked under runner
+  # contention, and a mutation flake must not mask a unit-test failure. The suites total ~5s, so this lane is
   # nearly free and gives an independent, fast signal.
   ts-unit:
     needs: detect

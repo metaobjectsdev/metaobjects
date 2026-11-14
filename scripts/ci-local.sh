@@ -21,7 +21,8 @@
 #   scripts/ci-local.sh --quick      # FAST inner-loop tier: the cheap TS-centric
 #                                    #   gates only (leak-scan, pom parity, fixture-
 #                                    #   lint, ts build+typecheck, ts conformance,
-#                                    #   completeness, drift). Skips the other-
+#                                    #   completeness on the CHANGED files only, drift).
+#                                    #   Skips the other-
 #                                    #   language ports, the reactor, and docker.
 #   scripts/ci-local.sh --only <section> [--only <section> ...]
 #                                    # Run one or more named sections. Mutually
@@ -31,10 +32,23 @@
 #                                    #   leak-scan → the public-repo leak scan ALONE
 #                                    #            (hygiene.yml's PR gate; also in gates)
 #                                    #   ts     → ts build+typecheck, ts conformance,
-#                                    #            completeness-gate, full unit suites
+#                                    #            completeness-gate (changed files),
+#                                    #            full unit suites
 #                                    #            (ts-unit), integration-tests ts
 #                                    #   ts-fast → build+typecheck, conformance,
-#                                    #            completeness (the pure-code signal)
+#                                    #            completeness (the pure-code signal).
+#                                    #            Its mutation step mutates only the
+#                                    #            stryker.conf.mjs `mutate` files this
+#                                    #            change touches vs the base branch, and
+#                                    #            prints a SKIP when it touches none
+#                                    #            (MO_CI_MUTATION_SCOPE=full forces all;
+#                                    #            MO_CI_MUTATION_BASE sets the base ref)
+#                                    #   mutation → the FULL mutation pass over every
+#                                    #            `mutate` file (~10-45 min). For release
+#                                    #            prep and on demand; the flagless run
+#                                    #            and conformance.yml also run it. It
+#                                    #            replaces ts-fast's diff-scoped step
+#                                    #            when both are selected
 #                                    #   ts-unit → full per-package unit suites for
 #                                    #            metadata/render/runtime-ts + the
 #                                    #            client/web packages — runs in
@@ -136,8 +150,8 @@ while [ $# -gt 0 ]; do
     --no-integration) NO_INTEG=1 ;;
     --integration-only) INTEG_ONLY=1 ;;
     --only) shift; case "${1:-}" in
-        gates|leak-scan|ts|ts-fast|ts-unit|ts-slow|java|java-fast|java-slow|python|csharp|cube) ONLY="$ONLY ${1}" ;;
-        *) echo "--only expects gates|leak-scan|ts|ts-fast|ts-unit|ts-slow|java|java-fast|java-slow|python|csharp|cube, got '${1:-}'" >&2; exit 2 ;;
+        gates|leak-scan|ts|ts-fast|ts-unit|ts-slow|mutation|java|java-fast|java-slow|python|csharp|cube) ONLY="$ONLY ${1}" ;;
+        *) echo "--only expects gates|leak-scan|ts|ts-fast|ts-unit|ts-slow|mutation|java|java-fast|java-slow|python|csharp|cube, got '${1:-}'" >&2; exit 2 ;;
       esac ;;
     -h|--help) awk 'NR==1{next} /^set -uo/{exit} {sub(/^# ?/,""); print}' "$0"; exit 0 ;;
     *) echo "unknown arg: $1 (see --help)" >&2; exit 2 ;;
@@ -635,8 +649,9 @@ gate_conf_ts() {
 # conformance gate runs only NAMED conformance files in metadata/render, so the rest
 # of those suites (and runtime-ts + the client/web packages) ran nowhere — which is
 # how a @formExclude regression sat red on `main`. Deliberately its OWN lane rather
-# than folded into ts-fast: ts-fast carries the 30-min mutation gate, which flakes
-# under runner contention, and a mutation flake must not mask a unit-test failure.
+# than folded into ts-fast: ts-fast carries the mutation gate (diff-scoped since
+# 2026-11; the full pass took up to ~45 min and flaked under runner contention), and a
+# mutation flake must not mask a unit-test failure.
 # Measured ~5s total, so the independent signal is nearly free.
 # NOTE: per-package `bun test` only — a bare root `bun test` walks java/python/
 # csharp/fixtures and takes many minutes.
@@ -783,7 +798,87 @@ gate_java_reactor() {
 # themselves (two concurrent `mvn install`s clobber the shared module jars). When the reactor
 # step is not selected — `--integration-only` — this installs it without its tests.
 gate_java_install() { ( cd server/java && mvn -q -DskipTests -Djacoco.skip=true install ); }
-gate_completeness() { ( cd server/typescript/packages/metadata && bun run conformance:mutation ); }
+# ── The mutation (completeness) gate: two scopes over ONE file list ───────────
+# Stryker mutates the files listed in `mutate` in server/typescript/packages/metadata/
+# stryker.conf.mjs — the ONLY copy of that list; both scopes read it from there.
+#
+#   FULL (gate_completeness): every listed file. ~10–45 min of CPU on a contended host.
+#     Runs in the flagless full run's `mutation` lane, in `--only mutation` (release prep
+#     and on demand), and wherever MO_CI_MUTATION_SCOPE=full is set — conformance.yml does,
+#     so its tag (`v*`, the release gate), nightly and dispatch runs mutate everything.
+#   DIFF (gate_completeness_diff): only the listed files this change touches. This is
+#     the step in ts-fast / --quick / --only ts, and so in the no-mistakes gate's Test
+#     step (.no-mistakes.yaml). It used to run the full pass on every gate round, which
+#     was most of that step's wall time and most of the machine's load.
+#
+# "Touches" = differs between the merge base with the base branch and the working tree.
+# The base is MO_CI_MUTATION_BASE when set, else origin/$GITHUB_BASE_REF on a GitHub PR,
+# else whichever of origin/main and origin/release/* HEAD is fewest commits ahead of (a
+# branch cut from release/1.2 diffs against release/1.2, not main). When no base resolves
+# (a shallow checkout, no remote refs) the step says so and runs the FULL pass — it never
+# guesses a smaller scope. A change to stryker.conf.mjs itself also runs the full pass.
+# When none of the listed files changed it prints a SKIP banner naming the base and the
+# reason, and passes: there is nothing new to mutate, and the full lane still covers the
+# whole list. Thresholds and concurrency come from stryker.conf.mjs unchanged.
+#
+# Why --mutate on the diff rather than Stryker's incremental mode: incremental keeps a
+# results file between runs, and a cache shared across branches and worktrees can report
+# a mutant killed by tests another branch has. The diff scope keeps no state at all.
+#
+# Sandboxes: when DEV_SCRATCH names a directory (a RAM scratch area), Stryker's sandbox
+# goes there instead of the package's .stryker-tmp/, and is removed when the step ends.
+MUTATION_PKG="server/typescript/packages/metadata"
+stryker_run() { # stryker_run [stryker args...] — in the metadata package, sandbox in DEV_SCRATCH when set
+  local tmp="" rc
+  if [ -n "${DEV_SCRATCH:-}" ] && [ -d "${DEV_SCRATCH}" ]; then
+    tmp="${DEV_SCRATCH%/}/stryker/metaobjects-$(printf '%s' "$ROOT" | cksum | cut -d' ' -f1)-$$"
+    mkdir -p "$tmp" || return 1
+  fi
+  ( cd "$MUTATION_PKG" && bun run conformance:mutation ${tmp:+--tempDirName "$tmp"} "$@" ); rc=$?
+  [ -n "$tmp" ] && rm -rf "$tmp"
+  return "$rc"
+}
+gate_completeness() { bun_install || return 1; stryker_run; }
+mutation_base() { # prints the base ref the diff scope compares against; empty when none resolves
+  local ref best="" best_n="" mb n
+  if [ -n "${MO_CI_MUTATION_BASE:-}" ]; then echo "$MO_CI_MUTATION_BASE"; return 0; fi
+  if [ -n "${GITHUB_BASE_REF:-}" ]; then echo "origin/$GITHUB_BASE_REF"; return 0; fi
+  for ref in origin/main $(git for-each-ref --format='%(refname:short)' 'refs/remotes/origin/release/*'); do
+    git rev-parse --verify -q "$ref^{commit}" >/dev/null 2>&1 || continue
+    mb="$(git merge-base HEAD "$ref" 2>/dev/null)" || continue
+    n="$(git rev-list --count "$mb..HEAD")"
+    if [ -z "$best_n" ] || [ "$n" -lt "$best_n" ]; then best="$ref"; best_n="$n"; fi
+  done
+  echo "$best"
+}
+gate_completeness_diff() {
+  if [ "${MO_CI_MUTATION_SCOPE:-diff}" = "full" ]; then
+    echo "  mutation scope: FULL (MO_CI_MUTATION_SCOPE=full)"; gate_completeness; return
+  fi
+  local base mb files changed
+  base="$(mutation_base)"
+  if [ -z "$base" ] || ! mb="$(git merge-base HEAD "$base" 2>/dev/null)"; then
+    echo "  mutation scope: FULL — no merge base with '${base:-origin/main or origin/release/*}' resolves here (shallow checkout or no remote refs), so the changed files cannot be computed"
+    gate_completeness; return
+  fi
+  files="$(cd "$MUTATION_PKG" && bun -e 'const c = (await import("./stryker.conf.mjs")).default; console.log(c.mutate.join("\n"))')" || {
+    echo "  ✖ could not read the mutate list from $MUTATION_PKG/stryker.conf.mjs" >&2; return 1; }
+  if ! git diff --quiet "$mb" -- "$MUTATION_PKG/stryker.conf.mjs"; then
+    echo "  mutation scope: FULL — stryker.conf.mjs changed since $base (merge base ${mb:0:12})"
+    gate_completeness; return
+  fi
+  # shellcheck disable=SC2086 # the mutate entries are plain paths, one per line
+  changed="$(cd "$MUTATION_PKG" && git diff --name-only --relative "$mb" -- $files)"
+  if [ -z "$changed" ]; then
+    echo ""
+    echo "  ⊘ SKIP mutation: none of the $(echo "$files" | wc -l | tr -d ' ') files in stryker.conf.mjs 'mutate' changed since $base (merge base ${mb:0:12})."
+    echo "    The full pass runs in the flagless run's mutation lane, in --only mutation, and in conformance.yml."
+    return 0
+  fi
+  echo "  mutation scope: changed files only, vs $base (merge base ${mb:0:12}):"
+  echo "$changed" | sed 's/^/    /'
+  stryker_run --mutate "$(echo "$changed" | paste -sd, -)"
+}
 gate_doc_template_drift() {
   bash scripts/sync-doc-templates.sh \
     && git diff --exit-code -- \
@@ -1189,7 +1284,8 @@ lane_ts() {
   if want ts; then step_if bun "conformance: typescript" gate_conf_ts;      fi
   if want ts; then step_if bun "ts unit suites"          gate_ts_unit;      fi
 }
-lane_mutation() { if want ts; then step_if bun "completeness-gate (mutation)" gate_completeness; fi; }
+# The full run's mutation lane is the FULL pass over every file stryker.conf.mjs lists.
+lane_mutation() { if want ts; then step_if bun "completeness-gate (mutation, full)" gate_completeness; fi; }
 # ts-slow's half: the two real-PG suites plus the TS integration suite.
 lane_ts_integ() {
   integ_ready || return 0
@@ -1288,13 +1384,19 @@ if [ "$PARALLEL" -eq 0 ]; then
   run_gates_bun
   # The ts port is split into two lanes so CI can run them as separate jobs (see
   # .github/workflows/local-ci.yml): a FAST lane (build+typecheck, conformance,
-  # completeness — the pure-code correctness signal, no docker) and a SLOW lane
+  # completeness on the changed files — the pure-code correctness signal, no docker) and a SLOW lane
   # (docker/sidecar integration). Isolating integration means a docker/sidecar
   # hiccup no longer fails the code signal, and vice versa. `--only ts` still runs both.
   if want_any ts ts-fast; then step_if bun "ts build + typecheck"         gate_ts_build_typecheck;     fi
   if want_any ts ts-fast; then step_if bun "conformance: typescript"      gate_conf_ts;                fi
   if want_any ts ts-unit; then step_if bun "ts unit suites"               gate_ts_unit;                fi
-  if want_any ts ts-fast; then step_if bun "completeness-gate (mutation)" gate_completeness;           fi
+  # The DIFF-scoped mutation step (see gate_completeness_diff); `--only mutation` asks for
+  # the full pass instead, and gets it in place of this step rather than as well.
+  if [ -n "$ONLY" ] && want mutation; then
+    step_if bun "completeness-gate (mutation, full)" gate_completeness
+  elif want_any ts ts-fast; then
+    step_if bun "completeness-gate (mutation, changed files)" gate_completeness_diff
+  fi
   run_drift_gates
 
   if [ "$QUICK" -eq 1 ]; then
