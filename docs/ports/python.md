@@ -190,7 +190,9 @@ and the [config reference](../features/cli.md).
 with no generators) and an empty, loadable `metaobjects/meta.app.yaml`, and reports what it
 wrote. It never overwrites a file it finds; it says it kept it. `metaobjects init --with-docs`
 also adds a `docs` target running `api-docs`; without the flag no documentation generator is
-wired. Nothing writes docs until the config lists `api-docs`. The "Model / metadata" link on
+wired. Nothing writes docs until the config lists `api-docs`. It also writes `.metaobjects/config.json`
+with the `api` block (a page size and `api.unknownFields: reject`), `verify.handEdits: "fail"` and
+`migrate.foreignKeyIndexes: true`, unless that file exists ([the `api` block](#page-size-and-undeclared-body-keys-the-api-block)). The "Model / metadata" link on
 each api page is emitted only when `apiDocs.modelBaseUrl` is set (the Python port writes no
 model page, so a relative link would be dead).
 

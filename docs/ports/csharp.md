@@ -400,7 +400,7 @@ the gate like any packaged generator's. The example above is compiled and run by
 
 `dotnet meta init --with-docs` writes the list with the api reference already in it
 (`new MetaObjects.Codegen.Generators.ApiDocsGenerator { OutDir = "docs/csharp", ProjectName = "<dir>" }`),
-so `gen` writes it. The `.metaobjects/config.json` init writes names no `outDir`: set `"csharp": { "outDir": "<dir>" }`
+so `gen` writes it. Init writes `.metaobjects/config.json` (the `api`, `migrate` and `verify` settings, described below) but no `outDir`: set `"csharp": { "outDir": "<dir>" }`
 there and a plain `dotnet meta verify` drift-checks the docs with the rest of the codegen output
 (`verify --codegen` compares the whole tree of each entry's `OutDir`, so keep it generated files
 only). Against an existing list, init prints the entry to add and edits nothing. Without the flag
