@@ -193,19 +193,19 @@ export { renderSharedEnumsFile, SHARED_ENUMS_BASENAME } from "./templates/enums-
 export { resolveReferenceRoot, readReferenceTemplate, REFERENCE_GENERATOR_NAMES, makeReferenceReader } from "./reference-templates.js";
 export type { ReferenceGeneratorName } from "./reference-templates.js";
 
-// ts-poet composition primitives, re-exported from THIS package's own ts-poet
-// instance. The ADR-0034 owned/scaffolded generators MUST import these from here
-// rather than from a bare "ts-poet": ts-poet recognizes nested Code/Import
-// placeholders by `instanceof`, so a Code built by this package's render*
-// primitives is only recognized by a `code`/`joinCode` from the SAME physical
-// ts-poet copy. With a globally-installed or linked CLI, the project tree and the
-// CLI tree each hold their own ts-poet, and a bare project-side import split the
-// class identity — every cross-boundary section was then stringified standalone
-// with its own import header (duplicate `import { eq } from "drizzle-orm"`,
-// TS2300 on the adopter's first tsc). Gated by
+// Code-printing primitives (src/poet.ts, a vendored copy of ts-poet's printer; this package
+// no longer depends on ts-poet). Generators compose a `Code` with these, and the printer
+// recognises nested Code/Import placeholders by `instanceof`, so a Code built by this
+// package's render* primitives is only recognised by a `code`/`joinCode` from the SAME
+// physical module. An owned generator imports them from here or from the engine entry, never
+// from a second copy. Before the printer was vendored, a bare "ts-poet" import in the
+// project tree did exactly that and split the class identity: every cross-boundary section
+// was then printed standalone with its own import header (duplicate `import { eq } from
+// "drizzle-orm"`, TS2300 on the adopter's first tsc). `meta gen` still points a bare
+// "ts-poet" import in an older scaffold at the engine entry. Gated by
 // cli/test/gen-split-tree-single-import.test.ts.
-export { code, imp, joinCode } from "ts-poet";
-export type { Code } from "ts-poet";
+export { code, imp, joinCode } from "./poet.js";
+export type { Code } from "./poet.js";
 
 export {
   renderFindByIdFn,

@@ -1,7 +1,7 @@
 // Queries file composer — composes all CRUD function renderers (from queries.ts) into
 // a complete <Entity>.queries.ts file with @generated header and correct imports.
 
-import { code, joinCode, imp, type Code } from "ts-poet";
+import { code, joinCode, imp, type Code } from "../poet.js";
 import {
   MetaObject,
   OBJECT_ATTR_DISCRIMINATOR,

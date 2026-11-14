@@ -126,6 +126,31 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   lint gate), and a fresh npm install of the CLI drops from 245 MB to 151 MB of `node_modules`.
   `scripts/check-peer-ranges.ts` now fails a publishable package that requires `@biomejs/biome`
   through `dependencies` or a non-optional peer.
+- **`@metaobjectsdev/cli` no longer installs `dprint-node`.** The TypeScript generators printed
+  code with `ts-poet`, which loads `dprint-node` on import, and dprint-node ships all seven of
+  its platform binaries in one package (24 MB, of which a machine runs one). `codegen-ts` now
+  vendors the part of ts-poet the generators use (`src/poet.ts`, Apache-2.0, licence in
+  `LICENSE.ts-poet`) and runs the same dprint TypeScript plugin as WebAssembly
+  (`@dprint/typescript`, pinned to 0.87.1, the version dprint-node 1.0.8 compiles in, 5 MB) with
+  ts-poet's configuration, so generated code is byte-identical: every codegen golden and
+  conformance fixture is unchanged. `codegen-ts-react`, `codegen-ts-tanstack` and
+  `codegen-ts-angular` drop their `ts-poet` dependency and import the printer from
+  `@metaobjectsdev/codegen-ts/engine`, which an ejected template also uses. A bare `ts-poet`
+  import in an older owned generator is still pointed at that entry by `meta gen`, which
+  carries `code`, `imp`, `joinCode`, `Import` and the `Code` type; ts-poet's `saveFiles`,
+  `conditionalOutput` and its `toString` import options are not carried over. A fresh npm
+  install of the CLI drops from 151 MB (134,641,989 bytes) to 133 MB (115,302,944 bytes) of
+  `node_modules`. `scripts/check-peer-ranges.ts` now also fails a publishable package that
+  requires `dprint-node`, `ts-poet` or any `@types/*` package through `dependencies`,
+  `optionalDependencies` or a non-optional peer; a type package a published `.d.ts` imports goes
+  in its `ALLOWED_TYPES_DEPS`
+  with the reason. No `@metaobjectsdev/*` package declares `@types/node`: the 3 MB copy in the
+  install comes through the libSQL driver (`@libsql/isomorphic-ws` → `@types/ws`), which is
+  unchanged here. This also repairs the standalone binary (`bun run build:binary`): `--compile`
+  cannot embed dprint-node's native `.node` file, so a binary built from 1.2.0 crashed with
+  `Cannot find module './dprint-node.linux-x64-gnu.node'` on every command that loads the
+  codegen engine, `meta migrate` and `meta verify --db` included. Those schema commands, the
+  binary's documented scope, now run; `meta gen` is still not supported inside the binary.
 
 ### Deprecated
 

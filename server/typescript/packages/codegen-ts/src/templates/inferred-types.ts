@@ -8,7 +8,7 @@
 // without the superfluous `| null` that Drizzle nullable columns introduce).
 
 import { flatSurfaceFields } from "../flattened.js";
-import { code, imp, joinCode, type Code } from "ts-poet";
+import { code, imp, joinCode, type Code } from "../poet.js";
 import type { MetaObject, MetaField } from "@metaobjectsdev/metadata";
 import {
   FIELD_SUBTYPE_ENUM,

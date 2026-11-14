@@ -24,7 +24,7 @@
 //   isProjection(entity)              → mountReadOnlyCrudRoutes (GET list + GET :id)
 //   vanilla / write-through entity    → mountCrudRoutes (all 5 CRUD verbs)
 
-import { code, imp } from "ts-poet";
+import { code, imp } from "../poet.js";
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import { type RenderContext } from "../render-context.js";
 import { entityModuleSpecifier, siblingSpecifier } from "../import-path.js";
