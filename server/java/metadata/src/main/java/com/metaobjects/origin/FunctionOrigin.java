@@ -31,6 +31,8 @@ public class FunctionOrigin extends MetaOrigin {
     public static final String ATTR_FUNCTION = "function";
     public static final String ATTR_SCHEMA = "schema";
     public static final String ATTR_ARGS = "args";
+    public static final String ATTR_PARAMS = "params";
+    public static final String ATTR_RETURNS = "returns";
 
     public FunctionOrigin(String name) {
         super(SUBTYPE_FUNCTION, name);
@@ -48,6 +50,10 @@ public class FunctionOrigin extends MetaOrigin {
                .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
             def.optionalAttributeWithConstraints(ATTR_ARGS)
                .ofType(StringAttribute.SUBTYPE_STRING).asArray();
+            def.optionalAttributeWithConstraints(ATTR_PARAMS)
+               .ofType(StringAttribute.SUBTYPE_STRING).asArray();
+            def.requiredAttributeWithConstraints(ATTR_RETURNS)
+               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
         });
     }
 }

@@ -36,7 +36,7 @@ Core metaobjects metamodel types and subtypes.
 - `origin.aggregate`: `@agg`, `@distinct`, `@filter`, `@of`, `@orderBy`, `@segment`, `@via`
 - `origin.computed`: `@expr`
 - `origin.first`: `@filter`, `@of`, `@orderBy`, `@segment`, `@via`
-- `origin.function`: `@args`, `@function`, `@schema`
+- `origin.function`: `@args`, `@function`, `@params`, `@returns`, `@schema`
 - `origin.passthrough`: `@convert`, `@from`, `@via`
 - `relationship.aggregation`: `@cardinality`, `@objectRef`, `@onDelete`, `@onUpdate`, `@sourceRefField`, `@symmetric`, `@through`
 - `relationship.association`: `@cardinality`, `@objectRef`, `@onDelete`, `@onUpdate`, `@sourceRefField`, `@symmetric`, `@through`

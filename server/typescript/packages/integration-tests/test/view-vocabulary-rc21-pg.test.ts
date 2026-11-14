@@ -34,7 +34,7 @@ const MODEL = { "metadata.root": { package: "acme", children: [
     { "identity.primary": { name: "id", "@fields": "id" } },
     { "identity.reference": { name: "regionId", "@fields": "regionId", "@references": "Region" } },
     { "field.string": { name: "loyaltyTier", children: [
-      { "origin.function": { "@function": "loyalty_tier", "@schema": "app", "@args": ["id", "zip"] } } ] } } ] } },
+      { "origin.function": { "@function": "loyalty_tier", "@schema": "app", "@args": ["id", "zip"], "@params": ["long", "string"], "@returns": "string" } } ] } } ] } },
   { "object.entity": { name: "Address", children: [
     { "source.rdb": { "@table": "addresses" } },
     { "field.long": { name: "id" } },
@@ -144,6 +144,9 @@ describe("rc.21 part B view vocabulary — live Postgres", () => {
     ]);
     const nothingType = await rows(`SELECT data_type FROM information_schema.columns WHERE table_name = 'v_order_row' AND column_name = 'nothing'`);
     expect(nothingType).toEqual([{ data_type: "character varying" }]);
+    // I4: the function's call is cast to the carrying field's column type.
+    expect(await rows(`SELECT data_type FROM information_schema.columns WHERE table_name = 'v_order_row' AND column_name = 'tier'`))
+      .toEqual([{ data_type: "text" }]);
 
     await sql.raw(`
       INSERT INTO regions (id, code, label, note) VALUES (1, 'NE', 'north east', 'n');

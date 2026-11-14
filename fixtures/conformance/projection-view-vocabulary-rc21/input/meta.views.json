@@ -15,7 +15,7 @@
         { "field.object": { "name": "contacts", "@objectRef": "Contact", "isArray": true, "@storage": "jsonb" } },
         { "identity.primary": { "name": "id", "@fields": "id" } },
         { "field.string": { "name": "tier", "children": [
-          { "origin.function": { "@function": "tier_of", "@schema": "app", "@args": ["id", "zip"] } }
+          { "origin.function": { "@function": "tier_of", "@schema": "app", "@args": ["id", "zip"], "@params": ["long", "string"], "@returns": "string" } }
         ] } }
       ] } },
       { "object.entity": { "name": "Order", "children": [

@@ -221,4 +221,28 @@ public class ViewVocabularyRc21LoaderTests
         }
         else Assert.Empty(hit);
     }
+
+    // rc.21 part B fix round (I4): origin.function's declared signature is checked.
+    [Theory]
+    [InlineData("[\"id\"]", "[\"int\"]", "string", "argument 1 \"id\" is a field.long, but parameter 1 is declared int")]
+    [InlineData("[\"id\"]", "[\"long\"]", "int", "@returns int, but the field is field.string")]
+    [InlineData("[\"id\", \"zip\"]", "[\"long\"]", "string", "@params declares 1 parameter type(s) for 2 argument(s)")]
+    [InlineData("[\"id\", \"zip\"]", "[\"long\", \"string\"]", "string", null)]
+    public void Origin_function_checks_its_declared_signature(string args, string parameters, string returns, string? fragment)
+    {
+        var json = $$"""
+          { "metadata.root": { "package": "acme", "children": [
+            { "object.entity": { "name": "C2", "children": [ { "source.rdb": { "@table": "c2" } }, { "field.long": { "name": "id" } },
+              { "field.string": { "name": "zip" } }, { "identity.primary": { "name": "id", "@fields": "id" } },
+              { "field.string": { "name": "tier", "children": [ { "origin.function": { "@function": "tier_of", "@args": {{args}}, "@params": {{parameters}}, "@returns": "{{returns}}" } } ] } } ] } },
+            { "object.projection": { "name": "P2", "children": [ { "source.rdb": { "@kind": "view", "@view": "p2" } },
+              { "field.long": { "name": "id", "extends": "C2.id" } },
+              { "field.string": { "name": "tier", "children": [ { "origin.passthrough": { "@from": "C2.tier" } } ] } },
+              { "identity.primary": { "name": "id", "extends": "C2.id" } } ] } } ] } }
+        """;
+        var registry = Provider.ComposeRegistry(new[] { CoreTypes.CoreTypesProvider });
+        var errors = new MetaDataLoader(registry).Load([new InMemoryStringSource(json, format: MetaDataFormat.Json, id: "f.json")]).Errors;
+        if (fragment is null) Assert.Empty(errors);
+        else Assert.Contains(errors, e => e.Code.ToString() == "ERR_INVALID_ORIGIN" && e.Message.Contains(fragment, StringComparison.Ordinal));
+    }
 }

@@ -89,6 +89,8 @@ export const ORIGIN_FIRST_ATTR_FILTER = "filter";
 export const ORIGIN_FUNCTION_ATTR_FUNCTION = "function";
 export const ORIGIN_FUNCTION_ATTR_SCHEMA   = "schema";
 export const ORIGIN_FUNCTION_ATTR_ARGS     = "args";
+export const ORIGIN_FUNCTION_ATTR_PARAMS   = "params";
+export const ORIGIN_FUNCTION_ATTR_RETURNS  = "returns";
 /** A plain SQL identifier: what @function and @schema may hold (never free SQL). */
 export const ORIGIN_FUNCTION_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
 

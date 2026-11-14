@@ -151,15 +151,31 @@ describe("U10 — origin.function", () => {
     { "field.string": { name: "tier", children: [ { "origin.passthrough": { "@from": "Customer2.tier" } } ] } },
     { "identity.primary": { name: "id", extends: "Customer2.id" } } ] } };
   test("a declared call on an entity, reached by a projection, loads", async () => {
-    await ok(withFn({ "@function": "tier_of", "@schema": "app", "@args": ["id", "zip"] }), reach);
+    await ok(withFn({ "@function": "tier_of", "@schema": "app", "@args": ["id", "zip"], "@params": ["long", "string"], "@returns": "string" }), reach);
   });
   test("free SQL, an unknown argument and a non-scalar argument are refused", async () => {
-    await refused("ERR_INVALID_ORIGIN", /is not a plain identifier/, withFn({ "@function": "tier_of(1); drop table x", "@args": [] }), reach);
-    await refused("ERR_INVALID_ORIGIN", /@args names "nope"/, withFn({ "@function": "tier_of", "@args": ["nope"] }), reach);
-    await refused("ERR_INVALID_ORIGIN", /a field.object array; a function argument is a scalar/, withFn({ "@function": "tier_of", "@args": ["contacts"] }), reach);
+    await refused("ERR_INVALID_ORIGIN", /is not a plain identifier/, withFn({ "@function": "tier_of(1); drop table x", "@args": [], "@returns": "string" }), reach);
+    await refused("ERR_INVALID_ORIGIN", /@args names "nope"/, withFn({ "@function": "tier_of", "@args": ["nope"], "@params": ["long"], "@returns": "string" }), reach);
+    await refused("ERR_INVALID_ORIGIN", /a field.object array; a function argument is a scalar/, withFn({ "@function": "tier_of", "@args": ["contacts"], "@params": ["string"], "@returns": "string" }), reach);
+  });
+  // rc.21 part B fix round (I4): the declared signature is checked.
+  test("an argument of another type than its parameter, a return type other than the field's, and a short @params are refused", async () => {
+    await refused("ERR_INVALID_ORIGIN", /argument 1 "id" is a field.long, but parameter 1 is declared int; pass an origin.computed field that casts it/,
+      withFn({ "@function": "tier_of", "@args": ["id"], "@params": ["int"], "@returns": "string" }), reach);
+    await refused("ERR_INVALID_ORIGIN", /@returns int, but the field is field.string/, withFn({ "@function": "tier_of", "@args": ["id"], "@params": ["long"], "@returns": "int" }), reach);
+    await refused("ERR_INVALID_ORIGIN", /@params declares 1 parameter type\(s\) for 2 argument\(s\)/,
+      withFn({ "@function": "tier_of", "@args": ["id", "zip"], "@params": ["long"], "@returns": "string" }), reach);
+    await refused("ERR_MISSING_REQUIRED_ATTR", /returns/, withFn({ "@function": "tier_of", "@args": [] }), reach);
+  });
+  test("an argument cast through an origin.computed field loads", async () => {
+    await ok({ "object.entity": { name: "Customer2", children: [
+      { "source.rdb": { "@table": "customers2" } }, { "field.long": { name: "id" } },
+      { "identity.primary": { name: "id", "@fields": "id" } },
+      { "field.int": { name: "idAsInt", children: [ { "origin.computed": { "@expr": { cast: { field: "id" }, as: "int" } } } ] } },
+      { "field.string": { name: "tier", children: [ { "origin.function": { "@function": "tier_of", "@args": ["idAsInt"], "@params": ["int"], "@returns": "string" } } ] } } ] } }, reach);
   });
   test("an unreached function field on an entity with no read source is refused", async () => {
-    await refused("ERR_DERIVED_FIELD_NO_READ_SOURCE", /tier/, withFn({ "@function": "tier_of", "@args": ["id"] }));
+    await refused("ERR_DERIVED_FIELD_NO_READ_SOURCE", /tier/, withFn({ "@function": "tier_of", "@args": ["id"], "@params": ["long"], "@returns": "string" }));
   });
 });
 

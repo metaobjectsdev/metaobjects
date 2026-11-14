@@ -1736,7 +1736,20 @@ public static partial class ValidationPasses
                             if (FilterPaths.Resolve(bo2, name, out _) is { } p) reached.Add(p.Field);
             }
         }
+        // rc.21 part B fix round (I4): a reached origin.function's arguments are reached too.
+        foreach (var f in reached.ToList()) ReachFunctionArgs(f, reached);
         return reached;
+    }
+
+    private static void ReachFunctionArgs(MetaData f, HashSet<MetaData> reached)
+    {
+        var origin = f.OwnChildren().FirstOrDefault(c => c.Type == TYPE_ORIGIN && c.SubType == ORIGIN_SUBTYPE_FUNCTION);
+        if (origin is null || f.Parent is not { } host) return;
+        var raw = origin.OwnAttr(ORIGIN_FUNCTION_ATTR_ARGS);
+        var names = raw switch { null => new List<object?>(), IReadOnlyList<object?> l => l.ToList(), _ => new List<object?> { raw } };
+        foreach (var name in names.OfType<string>())
+            if (host.Children().FirstOrDefault(c => c.Type == TYPE_FIELD && c.Name == name) is { } arg && reached.Add(arg))
+                ReachFunctionArgs(arg, reached);
     }
 
     // =========================================================================
@@ -1799,10 +1812,28 @@ public static partial class ValidationPasses
         }
         var raw = origin.OwnAttr(ORIGIN_FUNCTION_ATTR_ARGS);
         var args = raw switch { null => new List<object?>(), IReadOnlyList<object?> l => l.ToList(), _ => new List<object?> { raw } };
+        // rc.21 part B fix round (I4): the declared signature (TS _validateFunctionOrigin, message for message).
+        var rawParams = origin.OwnAttr(ORIGIN_FUNCTION_ATTR_PARAMS);
+        var parameters = rawParams switch { null => new List<object?>(), IReadOnlyList<object?> pl => pl.ToList(), _ => new List<object?> { rawParams } };
+        var returns = origin.OwnAttr(ORIGIN_FUNCTION_ATTR_RETURNS);
+        foreach (var t in parameters.Concat(returns is null ? [] : new[] { returns }))
+            if (t is not string ts || !ExpressionGrammar.CastTargets.Contains(ts))
+                errors.Add(new MetaError(
+                    $"{where}: {System.Text.Json.JsonSerializer.Serialize(t?.ToString())} is not a parameter or return type; use one of {string.Join(", ", ExpressionGrammar.CastTargets)}.",
+                    ErrorCode.ERR_INVALID_ORIGIN, Envelope: src));
+        if (returns is string r && r != field.SubType)
+            errors.Add(new MetaError(
+                $"{where}: @returns {r}, but the field is field.{field.SubType}; the declared return type must be the field's type.",
+                ErrorCode.ERR_INVALID_ORIGIN, Envelope: src));
+        if (parameters.Count != args.Count)
+            errors.Add(new MetaError(
+                $"{where}: @params declares {parameters.Count} parameter type(s) for {args.Count} argument(s); declare one per @args entry.",
+                ErrorCode.ERR_INVALID_ORIGIN, Envelope: src));
         var isProjection = obj.SubType == OBJECT_SUBTYPE_PROJECTION;
         var baseEntity = isProjection ? DeriveBaseEntity(obj, root, field.Name, src, new List<MetaError>()) : obj;
-        foreach (var a in args)
+        for (var index = 0; index < args.Count; index++)
         {
+            var a = args[index];
             var name = a as string;
             var own = name is not null && name != field.Name
                 ? obj.Children().FirstOrDefault(c => c.Type == TYPE_FIELD && c.Name == name) : null;
@@ -1820,6 +1851,11 @@ public static partial class ValidationPasses
             else if (arg.SubType is FIELD_SUBTYPE_OBJECT or FIELD_SUBTYPE_MAP || (arg is MetaField af && af.ResolvedIsArray()))
                 errors.Add(new MetaError(
                     $"{where}: @args names \"{a}\", a field.{arg.SubType}{(arg is MetaField af2 && af2.ResolvedIsArray() ? " array" : "")}; a function argument is a scalar.",
+                    ErrorCode.ERR_INVALID_ORIGIN, Envelope: src));
+            else if (index < parameters.Count && parameters[index] is string p && arg.SubType != p)
+                errors.Add(new MetaError(
+                    $"{where}: argument {index + 1} \"{a}\" is a field.{arg.SubType}, but parameter {index + 1} is declared {p}; " +
+                    $"pass an origin.computed field that casts it ({{ cast: {{ field: {a} }}, as: {p} }}).",
                     ErrorCode.ERR_INVALID_ORIGIN, Envelope: src));
         }
     }

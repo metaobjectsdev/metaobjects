@@ -24,7 +24,7 @@ export const RC21B_ENTITIES: unknown[] = [
     { "identity.primary": { name: "id", "@fields": "id" } },
     { "identity.reference": { name: "regionId", "@fields": "regionId", "@references": "Region" } },
     { "field.string": { name: "loyaltyTier", children: [
-      { "origin.function": { "@function": "loyalty_tier", "@schema": "app", "@args": ["id", "zip"] } } ] } },
+      { "origin.function": { "@function": "loyalty_tier", "@schema": "app", "@args": ["id", "zip"], "@params": ["long", "string"], "@returns": "string" } } ] } },
   ] } },
   { "object.entity": { name: "Address", children: [
     { "source.rdb": { "@table": "addresses" } },

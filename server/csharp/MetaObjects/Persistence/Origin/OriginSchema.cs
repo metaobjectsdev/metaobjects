@@ -138,6 +138,10 @@ public static class OriginSchema
             Description: "The schema the function lives in, a plain identifier. Absent: public."),
         new AttrSchema(Name: OriginConstants.ORIGIN_FUNCTION_ATTR_ARGS, ValueType: AttrConstants.ATTR_SUBTYPE_STRING, Required: false, IsArray: true,
             Description: "The fields passed to the function, in parameter order."),
+        new AttrSchema(Name: OriginConstants.ORIGIN_FUNCTION_ATTR_PARAMS, ValueType: AttrConstants.ATTR_SUBTYPE_STRING, Required: false, IsArray: true,
+            Description: "The function's declared parameter types, one field subtype per @args entry."),
+        new AttrSchema(Name: OriginConstants.ORIGIN_FUNCTION_ATTR_RETURNS, ValueType: AttrConstants.ATTR_SUBTYPE_STRING, Required: true,
+            Description: "The function's declared return type, the carrying field's subtype."),
     ];
 
     /// <summary>

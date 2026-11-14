@@ -129,6 +129,8 @@ import {
   ORIGIN_FUNCTION_ATTR_FUNCTION,
   ORIGIN_FUNCTION_ATTR_SCHEMA,
   ORIGIN_FUNCTION_ATTR_ARGS,
+  ORIGIN_FUNCTION_ATTR_PARAMS,
+  ORIGIN_FUNCTION_ATTR_RETURNS,
   ORIGIN_FUNCTION_IDENTIFIER,
   ORIGIN_PASSTHROUGH_ATTR_FROM,
   ORIGIN_PASSTHROUGH_ATTR_VIA,
@@ -157,6 +159,7 @@ import {
   inferExprType,
   validateExprNode,
   exprViewOnlyNode,
+  EXPR_CAST_TARGETS,
   type ExprNode,
 } from "../core/attr/meta-attr-expression.js";
 import { SORT_ORDER_VALUES } from "../core/query/query-constants.js";
@@ -1863,9 +1866,31 @@ function _validateFunctionOrigin(origin: MetaData, obj: MetaData, field: MetaDat
   }
   const raw = origin.ownAttr(ORIGIN_FUNCTION_ATTR_ARGS);
   const args = raw === undefined ? [] : Array.isArray(raw) ? raw : [raw];
+  // rc.21 part B fix round (I4): the declared signature. Each parameter and the result is a field
+  // subtype (the cast targets); the result is the carrying field's, each argument its parameter's.
+  const rawParams = origin.ownAttr(ORIGIN_FUNCTION_ATTR_PARAMS);
+  const params = rawParams === undefined ? [] : Array.isArray(rawParams) ? rawParams : [rawParams];
+  const returns = origin.ownAttr(ORIGIN_FUNCTION_ATTR_RETURNS);
+  for (const t of [...params, ...(returns === undefined ? [] : [returns])]) {
+    if (typeof t !== "string" || !EXPR_CAST_TARGETS.includes(t)) {
+      errors.push(new ParseError(
+        `${where}: ${JSON.stringify(t)} is not a parameter or return type; use one of ${EXPR_CAST_TARGETS.join(", ")}.`,
+        { code: "ERR_INVALID_ORIGIN", source: src }));
+    }
+  }
+  if (typeof returns === "string" && returns !== field.subType) {
+    errors.push(new ParseError(
+      `${where}: @returns ${returns}, but the field is field.${field.subType}; the declared return type must be the field's type.`,
+      { code: "ERR_INVALID_ORIGIN", source: src }));
+  }
+  if (params.length !== args.length) {
+    errors.push(new ParseError(
+      `${where}: @params declares ${params.length} parameter type(s) for ${args.length} argument(s); declare one per @args entry.`,
+      { code: "ERR_INVALID_ORIGIN", source: src }));
+  }
   const isProjection = obj.subType === OBJECT_SUBTYPE_PROJECTION;
   const base = isProjection ? _deriveBaseEntity(obj, root, field.name, src, []) : obj;
-  for (const name of args) {
+  for (const [index, name] of args.entries()) {
     const own = typeof name === "string" && name !== field.name
       ? obj.children().find((c) => c.type === TYPE_FIELD && c.name === name) : undefined;
     const ownOrigin = own?.ownChildren().find((c) => c.type === TYPE_ORIGIN);
@@ -1882,6 +1907,11 @@ function _validateFunctionOrigin(origin: MetaData, obj: MetaData, field: MetaDat
     } else if (arg.subType === FIELD_SUBTYPE_OBJECT || arg.subType === FIELD_SUBTYPE_MAP || (arg as { resolvedIsArray?: () => boolean }).resolvedIsArray?.()) {
       errors.push(new ParseError(
         `${where}: @args names "${String(name)}", a field.${arg.subType}${(arg as { resolvedIsArray?: () => boolean }).resolvedIsArray?.() ? " array" : ""}; a function argument is a scalar.`,
+        { code: "ERR_INVALID_ORIGIN", source: src }));
+    } else if (typeof params[index] === "string" && arg.subType !== params[index]) {
+      errors.push(new ParseError(
+        `${where}: argument ${index + 1} "${String(name)}" is a field.${arg.subType}, but parameter ${index + 1} is declared ${String(params[index])}; ` +
+          `pass an origin.computed field that casts it ({ cast: { field: ${String(name)} }, as: ${String(params[index])} }).`,
         { code: "ERR_INVALID_ORIGIN", source: src }));
     }
   }
@@ -1993,7 +2023,25 @@ export function projectionReachedEntityFields(root: MetaData): Set<MetaData> {
       }
     }
   }
+  // rc.21 part B fix round (I4): a reached origin.function inlines its arguments on the same row, so a
+  // derived argument (an origin.computed cast, say) is reached too.
+  for (const f of [...reached]) _reachFunctionArgs(f, reached);
   return reached;
+}
+
+function _reachFunctionArgs(f: MetaData, reached: Set<MetaData>): void {
+  // ADR-0039: own — origin.* never inherits (ADR-0029).
+  const origin = f.ownChildren().find((c) => c.type === TYPE_ORIGIN && c.subType === ORIGIN_SUBTYPE_FUNCTION);
+  const host = f.parent;
+  if (origin === undefined || host === undefined) return;
+  const raw = origin.ownAttr(ORIGIN_FUNCTION_ATTR_ARGS);
+  for (const name of raw === undefined ? [] : Array.isArray(raw) ? raw : [raw]) {
+    const arg = host.children().find((c) => c.type === TYPE_FIELD && c.name === name);
+    if (arg !== undefined && !reached.has(arg)) {
+      reached.add(arg);
+      _reachFunctionArgs(arg, reached);
+    }
+  }
 }
 
 /**

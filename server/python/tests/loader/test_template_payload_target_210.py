@@ -83,7 +83,7 @@ def test_assembly_origins_rejected_on_value_host() -> None:
                                    "@via": "t::ai::Author.posts",
                                    "@orderBy": ["name:desc"]}},
         # rc.21 part B (U10).
-        "function": {"origin.function": {"@function": "f"}},
+        "function": {"origin.function": {"@function": "f", "@returns": "int"}},
     }
     assert set(origin_by_subtype) == set(ASSEMBLY_ORIGIN_SUBTYPES)
     for sub, origin in origin_by_subtype.items():

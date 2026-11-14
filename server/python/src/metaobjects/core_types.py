@@ -1074,6 +1074,8 @@ core_provider.add(
             AttrSchema(name="function", value_type=ATTR_SUBTYPE_STRING, required=True),
             AttrSchema(name="schema", value_type=ATTR_SUBTYPE_STRING, required=False),
             AttrSchema(name="args", value_type=ATTR_SUBTYPE_STRING, required=False, is_array=True),
+            AttrSchema(name="params", value_type=ATTR_SUBTYPE_STRING, required=False, is_array=True),
+            AttrSchema(name="returns", value_type=ATTR_SUBTYPE_STRING, required=True),
         ],
         child_rules=[ChildRule(TYPE_ATTR, "*")],
     )

@@ -78,6 +78,11 @@
                         "zip"
                       ],
                       "@function": "tier_of",
+                      "@params": [
+                        "long",
+                        "string"
+                      ],
+                      "@returns": "string",
                       "@schema": "app"
                     }
                   }

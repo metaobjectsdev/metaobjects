@@ -94,7 +94,7 @@ _No structural children._
 
 ### origin.function
 
-A value computed by a database function the project owns (rc.21): @function names it, @schema its schema (absent: public), and @args the fields passed to it, in order. On an entity an argument is one of its fields; on a projection, one of its own fields (not an aggregate) or a field of its base entity. Each argument is typed by its field and the result by the carrying field's subtype, so the call is checked, never free SQL. MetaObjects never creates the function: it is owned SQL, created before the view. Declared on an entity, it is entity-derived: a projection reaching the entity reads it like any derived field. Postgres only; the SQLite view emitter refuses it.
+A value computed by a database function the project owns (rc.21): @function names it, @schema its schema (absent: public), and @args the fields passed to it, in order. On an entity an argument is one of its fields; on a projection, one of its own fields (not an aggregate) or a field of its base entity. @params declares each argument's type and @returns the result's: an argument must have its parameter's type (cast it through an origin.computed field otherwise), @returns must be the carrying field's subtype, and the view casts the call to the field's column type, so the call is checked, never free SQL. MetaObjects never creates the function: it is owned SQL, created before the view. Declared on an entity, it is entity-derived: a projection reaching the entity reads it like any derived field. Postgres only; the SQLite view emitter refuses it.
 
 **Owning provider:** metaobjects-core-types
 
@@ -104,8 +104,10 @@ A value computed by a database function the project owns (rc.21): @function name
 
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
 | --- | --- | --- | --- | --- | --- | --- |
-| `@args` | string[] | no |  |  | metaobjects-core-types | The fields passed to the function, in parameter order: field names of the host entity, or (on a projection) of the projection or its base entity. Each must be a scalar field. Absent or empty: a function of no arguments. |
+| `@args` | string[] | no |  |  | metaobjects-core-types | The fields passed to the function, in parameter order: field names of the host entity, or (on a projection) of the projection or its base entity. Each must be a scalar field whose subtype is the declared parameter type in @params; to pass another type, pass an origin.computed field that casts it ({ cast: { field: x }, as: <param> }). Absent or empty: a function of no arguments. |
 | `@function` | string | yes |  |  | metaobjects-core-types | The function's name as the database names it: a plain identifier ([A-Za-z_][A-Za-z0-9_]*), quoted when it is not lowercase. |
+| `@params` | string[] | no |  |  | metaobjects-core-types | The function's declared parameter types, one field subtype per @args entry, in order (string, int, long, double, float, decimal, boolean, date, timestamp, uuid). Required when @args is not empty; an argument of another type is refused (ERR_INVALID_ORIGIN). |
+| `@returns` | string | yes |  |  | metaobjects-core-types | The function's declared return type, a field subtype; it must be the carrying field's subtype (ERR_INVALID_ORIGIN). The view casts the call to the field's column type, so the column has that type whatever the function returns. |
 | `@schema` | string | no |  |  | metaobjects-core-types | The schema the function lives in, a plain identifier. Absent: public. |
 
 **Allowed children**

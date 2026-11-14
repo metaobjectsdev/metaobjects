@@ -136,7 +136,15 @@ describe("U10 origin.function", () => {
   test("postgres: the declared call, its arguments read on the reached row", async () => {
     const sql = await one("postgres", orderRow([
       { "field.string": { name: "tier", children: [ { "origin.passthrough": { "@from": "Customer.loyaltyTier", "@via": "Order.customerId" } } ] } }]));
-    expect(sql).toContain("app.loyalty_tier(c.id, c.zip) AS tier");
+    // fix round I4: the call is cast to the field's column type, so the column has it.
+    expect(sql).toContain("CAST(app.loyalty_tier(c.id, c.zip) AS TEXT) AS tier");
+  });
+  test("codegen refuses a signature the loader would refuse (a caller that skipped it)", async () => {
+    const bad = JSON.parse(JSON.stringify(RC21B_ENTITIES).replace('"@params":["long","string"]', '"@params":["int","string"]'));
+    const doc = { "metadata.root": { package: "acme", children: [...bad, orderRow([
+      { "field.string": { name: "tier", children: [ { "origin.passthrough": { "@from": "Customer.loyaltyTier", "@via": "Order.customerId" } } ] } }])] } };
+    const { root } = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify(doc))]);
+    expect(() => buildProjectionViews(root, { dialect: "postgres" })).toThrow(/argument 1 "id" is a field.long, but parameter 1 is declared int/);
   });
   test("a SQLite view refuses it: SQLite has no stored functions", async () => {
     const doc = { "metadata.root": { package: "acme", children: [...RC21B_ENTITIES, orderRow([

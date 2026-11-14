@@ -81,7 +81,7 @@ describe("#210 — assembly origins are illegal on an object.value host", () => 
     computed: { "origin.computed": { "@expr": { op: "isNotNull", arg: { field: "name" } } } },
     first: { "origin.first": { "@of": "t::ai::Author.name", "@via": "t::ai::Author.posts", "@orderBy": ["name:desc"] } },
     // rc.21 part B (U10).
-    function: { "origin.function": { "@function": "f" } },
+    function: { "origin.function": { "@function": "f", "@returns": "int" } },
   };
 
   test("the originNode table covers exactly the ASSEMBLY_ORIGIN_SUBTYPES set (drift guard)", () => {

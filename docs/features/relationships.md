@@ -279,15 +279,18 @@ filterable (it exists only after grouping). A grouped view also groups every joi
 expressions read.
 
 **A database function the project owns** (`origin.function`). `@function` and `@schema` name it
-(plain identifiers), `@args` the fields passed to it in order; each argument is typed by its
-field and the result by the carrying field's subtype. Declared on an entity, it is
+(plain identifiers), `@args` the fields passed to it in order, `@params` their declared types and
+`@returns` the result's (field subtypes). Each argument must have its parameter's type — pass an
+`origin.computed` field that casts it (`{ cast: { field: x }, as: int }`) otherwise — and
+`@returns` must be the carrying field's subtype; the view casts the call to the field's column
+type. Declared on an entity, it is
 entity-derived: a projection reaching the entity reads it like any derived field. MetaObjects
 never creates the function (it is owned SQL, created before the view). Postgres only.
 
 ```yaml
 - field.int:
     name: riskScore
-    children: [ { origin.function: { "@function": compute_risk_score, "@schema": app, "@args": [id] } } ]
+    children: [ { origin.function: { "@function": compute_risk_score, "@schema": app, "@args": [id], "@params": [long], "@returns": int } } ]
 ```
 
 **One row per array element** (`@grain`, `@grainOrdinal`). A projection whose `@grain` names a

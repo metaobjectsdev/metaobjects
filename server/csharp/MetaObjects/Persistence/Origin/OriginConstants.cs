@@ -93,6 +93,8 @@ public static class OriginConstants
     public const string ORIGIN_FUNCTION_ATTR_FUNCTION = "function";
     public const string ORIGIN_FUNCTION_ATTR_SCHEMA   = "schema";
     public const string ORIGIN_FUNCTION_ATTR_ARGS     = "args";
+    public const string ORIGIN_FUNCTION_ATTR_PARAMS   = "params";
+    public const string ORIGIN_FUNCTION_ATTR_RETURNS  = "returns";
     /// <summary>A plain SQL identifier: what @function and @schema may hold (never free SQL).</summary>
     public static readonly System.Text.RegularExpressions.Regex ORIGIN_FUNCTION_IDENTIFIER = new("^[A-Za-z_][A-Za-z0-9_]*$");
 

@@ -32,6 +32,8 @@ import {
   ORIGIN_FUNCTION_ATTR_FUNCTION,
   ORIGIN_FUNCTION_ATTR_SCHEMA,
   ORIGIN_FUNCTION_ATTR_ARGS,
+  ORIGIN_FUNCTION_ATTR_PARAMS,
+  ORIGIN_FUNCTION_ATTR_RETURNS,
   OBJECT_PROJECTION_ATTR_UNION,
   OBJECT_PROJECTION_ATTR_UNION_ALL,
   OBJECT_PROJECTION_ATTR_GRAIN,
@@ -1043,17 +1045,42 @@ function temporalOfField(f: MetaField): ReportTemporal {
   return f.subType === FIELD_SUBTYPE_DATE || f.subType === FIELD_SUBTYPE_TIMESTAMP ? temporalOf(f) : "instant";
 }
 
-/** rc.21 part B (U10): an origin.function's call, each argument resolved by `arg` (undefined if one does not). */
-function functionCall(origin: MetaData, arg: (name: string) => ViewExprNode | undefined): ViewExprNode | undefined {
+/**
+ * rc.21 part B (U10): an origin.function's call, each argument resolved by `arg` (undefined if one does
+ * not), cast to the carrying field's column type (fix round I4: the view column has the field's type
+ * whatever the function returns). The declared signature is checked here too, for a caller that skipped
+ * the loader: each argument's subtype is its `@params` entry, and `@returns` is the field's subtype.
+ */
+function functionCall(
+  origin: MetaData, field: MetaField, arg: (name: string) => { expr: ViewExprNode; subType: string } | undefined,
+): ViewExprNode | undefined {
   // ADR-0039: own — origin.* never inherits (ADR-0029).
   const name = origin.ownAttr(ORIGIN_FUNCTION_ATTR_FUNCTION);
   const schema = origin.ownAttr(ORIGIN_FUNCTION_ATTR_SCHEMA);
   const raw = origin.ownAttr(ORIGIN_FUNCTION_ATTR_ARGS);
+  const rawParams = origin.ownAttr(ORIGIN_FUNCTION_ATTR_PARAMS);
+  const returns = origin.ownAttr(ORIGIN_FUNCTION_ATTR_RETURNS);
   if (typeof name !== "string") return undefined;
   const names = raw === undefined ? [] : Array.isArray(raw) ? raw : [raw];
-  const args = names.map((n) => (typeof n === "string" ? arg(n) : undefined));
-  if (args.some((a) => a === undefined)) return undefined;
-  return { kind: "call", name, ...(typeof schema === "string" ? { schema } : {}), args: args as ViewExprNode[] };
+  const params = rawParams === undefined ? [] : Array.isArray(rawParams) ? rawParams : [rawParams];
+  const where = `origin.function "${name}" on "${field.name}"`;
+  if (returns !== field.subType) {
+    throw new Error(`${where}: @returns ${String(returns)}, but the field is field.${field.subType}; the declared return type must be the field's type.`);
+  }
+  if (params.length !== names.length) {
+    throw new Error(`${where}: @params declares ${params.length} parameter type(s) for ${names.length} argument(s).`);
+  }
+  const args: ViewExprNode[] = [];
+  for (const [i, n] of names.entries()) {
+    const a = typeof n === "string" ? arg(n) : undefined;
+    if (a === undefined) return undefined;
+    if (a.subType !== params[i]) {
+      throw new Error(`${where}: argument ${i + 1} "${String(n)}" is a field.${a.subType}, but parameter ${i + 1} is declared ${String(params[i])}; cast it through an origin.computed field.`);
+    }
+    args.push(a.expr);
+  }
+  const call: ViewExprNode = { kind: "call", name, ...(typeof schema === "string" ? { schema } : {}), args };
+  return { kind: "cast", arg: call, to: { subType: field.subType } };
 }
 
 /** rc.21 part B (U14): the value object a `@grain` projection's rows are elements of, if it has one. */
@@ -1747,8 +1774,13 @@ function buildSelectSpec(
       if (c.kind === "aggregate" || c.kind === "predicateAgg") return { expr: { kind: "agg", column: c }, field: f };
       throw new Error(`Projection ${projection.name}: origin.computed "${name}" refers to "${ref}", a collect; a computed value cannot read an array.`);
     };
+    const argOf = (arg: string): { expr: ViewExprNode; subType: string } | undefined => {
+      const e = resolveExprNode({ field: arg }, base, joinTree.baseAlias, ctx, lookup);
+      const f = lookup(arg)?.field ?? base.fields().find((x) => x.name === arg);
+      return e === undefined || f === undefined ? undefined : { expr: e, subType: f.subType };
+    };
     const expr = pending.origin.subType === ORIGIN_SUBTYPE_FUNCTION
-      ? functionCall(pending.origin, (arg) => resolveExprNode({ field: arg }, base, joinTree.baseAlias, ctx, lookup))
+      ? functionCall(pending.origin, pending.field, argOf)
       : resolveExprNode(pending.origin.ownAttr(ORIGIN_COMPUTED_ATTR_EXPR), base, joinTree.baseAlias, ctx, lookup);
     resolving.delete(name);
     pendingComputed.delete(name);
@@ -2008,7 +2040,13 @@ export function inlineEntityDerived(
     if (first !== undefined) return { kind: "first", column: { ...first, outerAlias: alias } };
   } else if (origin?.subType === ORIGIN_SUBTYPE_FUNCTION) {
     // rc.21 part B (U10): the call, its arguments read on the reached row.
-    const call = functionCall(origin, (arg) => resolveExprNode({ field: arg }, entity, alias, ctx));
+    const call = functionCall(origin, field, (arg) => {
+      const f = entity.fields().find((x) => x.name === arg);
+      if (f === undefined) return undefined;
+      // An argument that is itself derived (an origin.computed cast, say) inlines on the same row.
+      const e = f.isDerived() ? inlineEntityDerived(f, entity, alias, root, usedAliases, ctx, where) : resolveExprNode({ field: arg }, entity, alias, ctx);
+      return e === undefined ? undefined : { expr: e, subType: f.subType };
+    });
     if (call !== undefined) return call;
   }
   throw new Error(

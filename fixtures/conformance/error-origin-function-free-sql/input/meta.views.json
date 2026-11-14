@@ -3,7 +3,7 @@
     { "source.rdb": { "@table": "customers" } },
     { "field.long": { "name": "id" } },
     { "identity.primary": { "name": "id", "@fields": "id" } },
-    { "field.string": { "name": "tier", "children": [ { "origin.function": { "@function": "tier_of(id); drop table customers", "@args": ["id"] } } ] } }
+    { "field.string": { "name": "tier", "children": [ { "origin.function": { "@function": "tier_of(id); drop table customers", "@args": ["id"], "@params": ["long"], "@returns": "string" } } ] } }
   ] } },
   { "object.projection": { "name": "V", "children": [
     { "source.rdb": { "@kind": "view", "@view": "v" } },
