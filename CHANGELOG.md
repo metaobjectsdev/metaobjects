@@ -15,7 +15,9 @@ here.**
 `@unionAll`, `@grain`, `@grainOrdinal`, the text `@dbColumnType` spellings, and the `cast` node and function
 set of `attr.expression`), `@condition`, `atLeastOne @max`, `@sequenceStart`, `@sequenceName`,
 `@flattenedColumnPrefix`, the `pascal` column rule, and `@dbSetName`, a C#-only attr) and nothing
-that loaded before stops loading. The registry gains two fields on a type or attr entry, carried
+that loaded before stops loading, with one exception: a cross-field `@condition` that used `case`,
+`now` or another view-only expression node, which no CHECK emitter could render (`meta migrate`
+threw on it), is now refused at load. The registry gains two fields on a type or attr entry, carried
 into the registry manifest: `implementedIn` (kind 1: cross-port vocabulary only the named ports
 implement so far, e.g. the `view.*` controls, `["typescript"]`) and `ports` (kind 2: vocabulary
 only the named ports ever act on, e.g. `@dbSetName`, `["csharp"]`, and `@objectAdapter`,
@@ -36,15 +38,20 @@ vocabulary; upgrade every port together.
   `right` and `length` beside `coalesce`, each argument typed; a `{ field }` ref to a scalar
   `origin.aggregate` (read on the grouped row, not filterable); and, on a projection, a path of
   to-one hops (`"customerId.regionId"`) in an expression or as a correlated
-  `@filter` operand, joined but not output. `origin.function` (`@function`, `@schema`, `@args`)
-  is a value computed by a database function the project owns, typed by its argument fields and
-  its carrying field; declared on an entity it is entity-derived (Postgres only). On
+  `@filter` operand, joined but not output. `origin.function` (`@function`, `@schema`, `@args`, `@params`,
+  `@returns`) is a value computed by a database function the project owns: each argument's field
+  type must be its declared parameter type (cast it through an `origin.computed` field otherwise),
+  `@returns` must be the carrying field's subtype, and the view casts the call to the field's column
+  type; declared on an entity it is entity-derived (Postgres only). On
   `object.projection`: `@grain` / `@grainOrdinal`, one row per element of a jsonb `field.object`
   array, its members read through `origin.passthrough @from: <ValueObject>.<member>`; and
   `@union` / `@unionAll`, a view that is the UNION (or UNION ALL) of projections of one shape,
-  checked at load. `@dbColumnType` takes the text spellings `text`, `varchar`, `character
+  checked at load (enum members and value maps included; a member's own `@union` is refused). A
+  `@grain` row whose value is not a JSON array (null, an object, a scalar) has no element. A cast
+  between a boolean and a number exists only for `int`, and the count of `left`, `right`,
+  `substring` and `splitPart` is an `int`, as in Postgres. `@dbColumnType` takes the text spellings `text`, `varchar`, `character
   varying`, `varchar(n)`, `character varying(n)` and `character(n)` on a `field.string` (`meta
-  migrate`, Drizzle, the C# EF context and the view cast honour them; a `@maxLength` over n is
+  migrate`, Drizzle, the C# EF context, the Kotlin Exposed table and the view cast honour them; the Java OMDB runtime binds them as text and creates no column from them; a `@maxLength` over n is
   refused), and the registry drops its `allowedValues`. A cross-field `@condition` takes only
   the CHECK subset of the grammar (fields, literals, comparisons, null tests, and/or/not,
   coalesce), refused at load otherwise. Rulings: the cast names a field subtype, the type
@@ -361,6 +368,12 @@ vocabulary; upgrade every port together.
   application registered and keep the built-ins.
 
 ### Changed
+
+- **Behaviour change: the registry manifest no longer lists `@dbColumnType`'s `allowedValues`
+  (rc.21).** The sized text spellings (`varchar(n)`, `character varying(n)`, `character(n)`) are no
+  closed set, so the value is parsed by each port's loader instead (a misspelling is still
+  `ERR_BAD_ATTR_VALUE` in every port). Tooling that read the enumeration from the manifest (an
+  editor schema) now sees a free string; the legal spellings are in the attr's description.
 
 - **Behaviour change, TypeScript and C#: a projection that extends another keeps its super's
   identity anchor (rc.21).** An extender that declared no identity of its own took its base from

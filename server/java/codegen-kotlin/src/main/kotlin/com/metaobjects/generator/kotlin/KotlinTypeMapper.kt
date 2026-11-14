@@ -405,6 +405,14 @@ object KotlinTypeMapper {
             else -> null
         }
 
+    /** rc.21 part B: the Exposed column for a text `@dbColumnType` spelling, or null for none. */
+    private fun textSpellingColumn(value: String?, colExpr: String): String? {
+        if (value == null) return null
+        if (value == "text" || value == "varchar" || value == "character varying") return "text($colExpr)"
+        val m = Regex("^(varchar|character varying|character)\\(([1-9][0-9]{0,8})\\)$").matchEntire(value) ?: return null
+        return if (m.groupValues[1] == "character") "char($colExpr, ${m.groupValues[2]})" else "varchar($colExpr, ${m.groupValues[2]})"
+    }
+
     /**
      * Map a MetaField to the Exposed `Table` column statement (e.g., `varchar("name", 100)`).
      *
@@ -526,7 +534,10 @@ object KotlinTypeMapper {
                 // (the `{ it }` identity codec would have left it `Column<String>`). The table file
                 // imports `kotlinx.serialization.json.Json` (see KotlinExposedTableGenerator).
                 DB_COLUMN_TYPE_JSONB -> "jsonb($colExpr, { it.toString() }, { Json.parseToJsonElement(it) })"
-                else -> {
+                // rc.21 part B (fix round M6): the text spellings. `character(n)` is Exposed's
+                // `char(name, n)`, a sized varchar `varchar(name, n)`; an unbounded varchar or `text`
+                // is `text(name)` (Exposed has no unbounded varchar; Postgres treats them alike).
+                else -> textSpellingColumn(dbColumnType(field), colExpr) ?: run {
                     // Dispatch to Exposed `text(name)` when the field is unbounded text:
                     //   (1) no `@maxLength` declared — the DEFAULT for `field.string` (Phase 1:
                     //       no-maxLength string → `text`, matching the canonical TS Postgres DDL), OR

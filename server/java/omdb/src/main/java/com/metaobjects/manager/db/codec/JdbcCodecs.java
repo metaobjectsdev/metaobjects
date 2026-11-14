@@ -504,7 +504,8 @@ public final class JdbcCodecs {
                 }
                 String stored = storedMap.get(member);
                 if (stored == null) {
-                    throw new SQLException("field.enum '" + f.getName() + "' cannot write " + member
+                    // One bind serves a write and a filter argument alike, so the message says "bind".
+                    throw new SQLException("field.enum '" + f.getName() + "' cannot bind " + member
                         + ": it has no stored string in @" + EnumField.ATTR_STRING_VALUE_MAP
                         + " — the value is not one of the members the model declares.");
                 }

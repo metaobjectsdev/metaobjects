@@ -83,7 +83,7 @@ def parse_db_column_type(value: str) -> tuple[str, int | None] | None:
         return ("text", None)
     if value in (DB_COLUMN_TYPE_VARCHAR, DB_COLUMN_TYPE_CHARACTER_VARYING):
         return ("varchar", None)
-    m = _SIZED_DB_COLUMN_TYPE.match(value)
+    m = _SIZED_DB_COLUMN_TYPE.fullmatch(value)
     if m is None:
         return None
     return ("char" if m.group(1) == "character" else "varchar", int(m.group(2)))
