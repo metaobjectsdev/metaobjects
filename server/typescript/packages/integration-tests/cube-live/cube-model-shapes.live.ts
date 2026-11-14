@@ -53,7 +53,7 @@ INSERT INTO matches (id, home_team_id, away_team_id) VALUES
   (1, 1, 2), (2, 1, 2), (3, 2, 1), (4, 3, 1), (5, 3, 2);
 
 CREATE TABLE auths (id BIGINT PRIMARY KEY, type TEXT NOT NULL);
-INSERT INTO auths (id, type) VALUES (1, 'Bridge'), (2, 'Copay'), (3, 'Bridge'), (4, 'Copay'), (5, 'Copay'), (6, 'Bridge'), (7, 'Bridge');
+INSERT INTO auths (id, type) VALUES (1, 'Bridge'), (2, 'Coupon'), (3, 'Bridge'), (4, 'Coupon'), (5, 'Coupon'), (6, 'Bridge'), (7, 'Bridge');
 
 -- programs: 1 and 3 have a profile, 2 has none; program 4 has sessions through no week (spine row, no facts).
 CREATE TABLE programs (id BIGINT PRIMARY KEY, title TEXT);

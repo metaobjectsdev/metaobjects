@@ -519,7 +519,7 @@ describe("selection — a report writes into its @from cube whenever that cube i
         [
           { "source.rdb": { "@table": "auths" } },
           longId,
-          { "field.enum": { name: "type", "@values": ["Bridge", "Copay"] } },
+          { "field.enum": { name: "type", "@values": ["Bridge", "Coupon"] } },
           { "field.string": { name: "status" } },
           pk,
         ],

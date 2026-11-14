@@ -8,9 +8,9 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace MetaObjects.IntegrationTests.Generated;
 
-public class CopayAuth : Auth
+public class PermitAuth : Auth
 {
-    [Column(CopayAuthNames.CopayAmountColumn)]
-    [DecimalWire.Declared(10, 2)]
-    public decimal? CopayAmount { get; set; }
+    [Column(PermitAuthNames.ApproverColumn)]
+    [MaxLength(80)]
+    public string? Approver { get; set; }
 }

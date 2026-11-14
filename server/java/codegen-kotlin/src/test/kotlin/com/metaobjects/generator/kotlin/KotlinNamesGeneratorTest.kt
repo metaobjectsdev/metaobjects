@@ -434,26 +434,26 @@ class KotlinNamesGeneratorTest {
             { "object.entity": { "name": "Auth", "@discriminator": "kind", "children": [
                 { "source.rdb":   { "@table": "zz_auths" } },
                 { "field.long":   { "name": "id" } },
-                { "field.enum":   { "name": "kind", "@values": ["Copay"] } },
+                { "field.enum":   { "name": "kind", "@values": ["Coupon"] } },
                 { "identity.primary": { "@fields": ["id"], "@generation": "increment" } }
             ] } },
-            { "object.entity": { "name": "CopayAuth", "extends": "Auth", "@discriminatorValue": "Copay",
+            { "object.entity": { "name": "CouponAuth", "extends": "Auth", "@discriminatorValue": "Coupon",
               "children": [
-                { "field.long": { "name": "copayAmount", "@column": "zz_copay_cents" } }
+                { "field.long": { "name": "couponAmount", "@column": "zz_coupon_cents" } }
             ] } }
           ] }
         }""".trimIndent()
-        val src = emit(model).getValue("acme/CopayAuthNames.kt")
+        val src = emit(model).getValue("acme/CouponAuthNames.kt")
         // The subtype declares no source of its own, so every SOURCE_* member lands in the
         // inherited half and is re-exported by reference from the base. No `inheritsSource`
         // flag decides that — the own-source map is simply empty, which is the same
         // structural question answered by the accessor that had to be consulted anyway.
         assertTrue("const val SOURCE_PRIMARY_TABLE: String = AuthNames.SOURCE_PRIMARY_TABLE" in src, src)
         assertTrue("const val ID_COLUMN: String = AuthNames.ID_COLUMN" in src, src)
-        assertTrue("const val COPAY_AMOUNT_COLUMN: String = \"zz_copay_cents\"" in src, src)
+        assertTrue("const val COUPON_AMOUNT_COLUMN: String = \"zz_coupon_cents\"" in src, src)
         // ...while its OWN identity is restated, because it differs: `NAME` is the object's
-        // metamodel name, so the subtype's must say "CopayAuth", not the base's.
-        assertTrue("const val NAME: String = \"CopayAuth\"" in src, src)
+        // metamodel name, so the subtype's must say "CouponAuth", not the base's.
+        assertTrue("const val NAME: String = \"CouponAuth\"" in src, src)
         // The whole point: the subtype used to restate the base's table name and columns.
         assertFalse("zz_auths" in src, src)
     }

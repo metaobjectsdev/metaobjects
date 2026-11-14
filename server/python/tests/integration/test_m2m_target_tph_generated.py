@@ -52,7 +52,7 @@ _META = {
                 "children": [
                     {"source.rdb": {"@table": "auths"}},
                     {"field.long": {"name": "id"}},
-                    {"field.enum": {"name": "type", "@values": ["Bridge", "Copay"]}},
+                    {"field.enum": {"name": "type", "@values": ["Bridge", "Coupon"]}},
                     {"field.string": {"name": "reference", "@required": True, "@maxLength": 80}},
                     {"identity.primary": {"name": "pk", "@fields": "id", "@generation": "increment"}},
                 ],
@@ -68,9 +68,9 @@ _META = {
                 ],
             }},
             {"object.entity": {
-                "name": "CopayAuth",
+                "name": "CouponAuth",
                 "extends": "Auth",
-                "@discriminatorValue": "Copay",
+                "@discriminatorValue": "Coupon",
                 "children": [
                     {"field.string": {"name": "payer", "@maxLength": 80}},
                 ],
@@ -244,14 +244,14 @@ def _seed(repo: _SponsorRepo) -> None:
         sponsors=[{"id": 1, "name": "Acme"}],
         auths=[
             {"id": 10, "type": "Bridge", "reference": "b1", "quantity": 3, "pinHash": "bridge-pin"},
-            {"id": 11, "type": "Copay", "reference": "c1", "payer": "acme"},
+            {"id": 11, "type": "Coupon", "reference": "c1", "payer": "acme"},
         ],
         sponsor_auths=[(1, 10), (1, 11)],
     )
 
 
 def test_compliant_repo_filters_target_to_the_resolved_discriminator() -> None:
-    # The junction links Sponsor 1 to BOTH a Bridge row (10) and a Copay row (11)
+    # The junction links Sponsor 1 to BOTH a Bridge row (10) and a Coupon row (11)
     # — the physical FK on SponsorAuth can only address the shared `auths` table,
     # it cannot itself tell subtypes apart. The router hands the compliant repo
     # target_subtype="Bridge" (resolved from BridgeAuth's @discriminatorValue at
@@ -302,6 +302,6 @@ def test_router_threads_the_correct_literal_even_when_repo_ignores_it() -> None:
 
     assert resp.status_code == 200
     assert calls == [(1, "Bridge")]
-    # The hostile repo's own non-compliance leaks the Copay row — expected, and
+    # The hostile repo's own non-compliance leaks the Coupon row — expected, and
     # exactly the boundary this test documents rather than papers over.
     assert {r["id"] for r in resp.json()} == {10, 11}

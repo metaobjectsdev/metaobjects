@@ -17,7 +17,7 @@
                 "name": "type",
                 "@values": [
                   "Bridge",
-                  "Copay"
+                  "Coupon"
                 ]
               }
             },
@@ -53,13 +53,13 @@
       },
       {
         "object.entity": {
-          "name": "CopayAuth",
+          "name": "CouponAuth",
           "extends": "demo::Auth",
-          "@discriminatorValue": "Copay",
+          "@discriminatorValue": "Coupon",
           "children": [
             {
               "field.decimal": {
-                "name": "copayAmount",
+                "name": "couponAmount",
                 "@precision": 10,
                 "@scale": 2
               }

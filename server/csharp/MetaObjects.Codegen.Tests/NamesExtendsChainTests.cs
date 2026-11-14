@@ -38,12 +38,12 @@ public class NamesExtendsChainTests
       { "object.entity": { "name": "Auth", "@discriminator": "kind", "children": [
         { "source.rdb":   { "@table": "zz_auths" } },
         { "field.long":   { "name": "id" } },
-        { "field.enum":   { "name": "kind", "@values": ["Copay"] } },
+        { "field.enum":   { "name": "kind", "@values": ["Coupon"] } },
         { "identity.primary": { "name": "pk", "@fields": "id", "@generation": "increment" } }
       ]}},
-      { "object.entity": { "name": "CopayAuth", "extends": "Auth", "@discriminatorValue": "Copay",
+      { "object.entity": { "name": "CouponAuth", "extends": "Auth", "@discriminatorValue": "Coupon",
         "children": [
-        { "field.long": { "name": "copayAmount", "@column": "zz_copay_cents" } }
+        { "field.long": { "name": "couponAmount", "@column": "zz_coupon_cents" } }
       ]}},
       { "object.value": { "name": "Money", "children": [
         { "field.long": { "name": "cents", "@column": "zz_cents" } }
@@ -107,9 +107,9 @@ public class NamesExtendsChainTests
     [Fact]
     public void A_tph_subtype_inherits_the_shared_table_name_rather_than_restating_it()
     {
-        var src = Generate()["CopayAuthNames.g.cs"];
-        Assert.Contains("public abstract class CopayAuthNames : AuthNames", src);
-        Assert.Contains("public const string CopayAmountColumn = \"zz_copay_cents\";", src);
+        var src = Generate()["CouponAuthNames.g.cs"];
+        Assert.Contains("public abstract class CouponAuthNames : AuthNames", src);
+        Assert.Contains("public const string CouponAmountColumn = \"zz_coupon_cents\";", src);
         // The whole point: the subtype used to restate the base's table name and every one
         // of its columns.
         Assert.DoesNotContain("zz_auths", src);
@@ -197,11 +197,11 @@ public class NamesExtendsChainTests
             // An inherited const from a TPH base, including the shared table name. A TPH
             // subtype declares no own source, so `SourcePrimaryTable` is the base's, reached
             // through the base class — not restated here.
-            public const string B = CopayAuthNames.SourcePrimaryTable;
-            public const string C = CopayAuthNames.CopayAmountColumn;
+            public const string B = CouponAuthNames.SourcePrimaryTable;
+            public const string C = CouponAuthNames.CouponAmountColumn;
             // ColumnsByField stays COMPLETE on the subtype — it is the lookup surface, and a
             // miss on an inherited field is the fallback-to-literal this artifact removes.
-            public static readonly int Count = CopayAuthNames.ColumnsByField.Count;
+            public static readonly int Count = CouponAuthNames.ColumnsByField.Count;
         }
         """;
         var trees = files.Values.Append(probe)
@@ -219,11 +219,11 @@ public class NamesExtendsChainTests
 
         // A clean compile proves the members resolve; this proves the SUBTYPE's dictionary
         // is the complete one rather than the base's (a static field is hidden, not
-        // overridden, so `new` is what makes CopayAuthNames.ColumnsByField the 4-entry one).
-        var sub = files["CopayAuthNames.g.cs"];
+        // overridden, so `new` is what makes CouponAuthNames.ColumnsByField the 4-entry one).
+        var sub = files["CouponAuthNames.g.cs"];
         Assert.Contains("public static new readonly Dictionary<string, string> ColumnsByField", sub);
         Assert.Contains("[\"id\"] = IdColumn,", sub);
-        Assert.Contains("[\"copayAmount\"] = CopayAmountColumn,", sub);
+        Assert.Contains("[\"couponAmount\"] = CouponAmountColumn,", sub);
     }
 
     [Fact]

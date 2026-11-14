@@ -75,7 +75,7 @@ constants instead of embedding the physical names a second time — so wiring it
 generated output, and that diff is the point.
 
 **It follows `extends`.** An object that extends another does not restate what it
-inherits: C# and Java use real class inheritance (`class CopayAuthNames extends
+inherits: C# and Java use real class inheritance (`class CouponAuthNames extends
 AuthNames`), TypeScript spreads (`...AuthNames.fields`), and Kotlin and Python re-export
 the parent's constants by reference. An abstract base a persisted object extends gets an
 artifact of its own — columns only, no table name, because it has none. So if you are

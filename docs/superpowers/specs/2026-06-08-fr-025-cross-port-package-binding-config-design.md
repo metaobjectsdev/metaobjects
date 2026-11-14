@@ -198,8 +198,8 @@ csharp:
       # The 12 @provided enums that live in DataEnums sub-namespaces
       "acme::authorizations::AuthorizationType":      "Acme.Domain.DataEnums.Authorizations"
       "acme::authorizations::AuthorizationStatus":    "Acme.Domain.DataEnums.Authorizations"
-      "acme::authorizations::CopayCardStatus":        "Acme.Domain.DataEnums.CopayCards"
-      # ... 6 more Copay* enums in acme::authorizations
+      "acme::authorizations::CouponCardStatus":        "Acme.Domain.DataEnums.CouponCards"
+      # ... 6 more Coupon* enums in acme::authorizations
       "acme::integrations::DataExportRunStatusEnum":  "Acme.Domain.DataEnums.DataExportIntegration"
       "acme::integrations::SPFileType":               "Acme.Domain.DataEnums.SPIntegration"
       "acme::integrations::SPProcessLogStatus":       "Acme.Domain.DataEnums.SPIntegration"

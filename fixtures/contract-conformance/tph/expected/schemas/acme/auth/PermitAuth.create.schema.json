@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "schemas/acme/auth/PriorAuthAuth.update.schema.json",
-  "title": "PriorAuthAuth.update",
+  "$id": "schemas/acme/auth/PermitAuth.create.schema.json",
+  "title": "PermitAuth.create",
   "type": "object",
   "properties": {
     "reference": {
@@ -9,12 +9,16 @@
       "minLength": 1,
       "maxLength": 80
     },
+    "issuedCurrency": {
+      "type": "string",
+      "maxLength": 3
+    },
     "approver": {
-      "type": [
-        "string",
-        "null"
-      ],
+      "type": "string",
       "maxLength": 80
     }
-  }
+  },
+  "required": [
+    "reference"
+  ]
 }

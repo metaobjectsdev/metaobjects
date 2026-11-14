@@ -35,7 +35,7 @@ import kotlin.test.assertTrue
  * Generates the FULL shared fitness corpus (not a trimmed selection) with
  * `exposedApi=1`, using every generator a real build would wire alongside the controller
  * (Entity, ExposedTable, Names, Relations, FilterAllowlist, Validator, SpringController) so the
- * corpus's TPH hierarchy (Auth/Bridge/Copay/PriorAuth/Referral — exercises `emitTph`), its M:N
+ * corpus's TPH hierarchy (Auth/Bridge/Coupon/Permit/Referral — exercises `emitTph`), its M:N
  * associations (tags/referrals/following/friends — exercises `emitM2mEndpoint` +
  * `KotlinRelationsGenerator`'s M:N join helpers), its view projections (exercises
  * `emitReadOnly`), and its mixed scalar subtypes (string/enum/int-backed-enum/boolean/numeric/

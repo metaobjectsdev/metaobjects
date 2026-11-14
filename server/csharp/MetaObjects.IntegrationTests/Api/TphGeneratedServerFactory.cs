@@ -1,7 +1,7 @@
 // TphGeneratedServerFactory — FR-017: the C# GENERATED-server lane for TPH.
 //
 // Runs the real MetaObjects.Codegen generators (Entity + DbContext + FilterAllowlist
-// + Routes) on the tph corpus model (Auth + Bridge/Copay/PriorAuth subtypes),
+// + Routes) on the tph corpus model (Auth + Bridge/Coupon/Permit subtypes),
 // Roslyn-compiles the emitted sources in-memory, and hosts them on a real ASP.NET
 // Core host (Kestrel) against Testcontainers Postgres. The EMITTED AuthRoutes
 // (polymorphic GET + per-subtype CRUD) is the artifact under test — a failing

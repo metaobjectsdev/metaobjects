@@ -71,10 +71,10 @@ def test_plan_detects_base_and_subtypes(entities, index) -> None:
     assert plan.discriminator_field == "type"
     assert [(s.entity.name, s.value, s.route_segment) for s in plan.subtypes] == [
         ("BridgeAuth", "Bridge", "bridge"),
-        ("CopayAuth", "Copay", "copay"),
-        ("PriorAuthAuth", "PriorAuth", "priorauth"),
+        ("CouponAuth", "Coupon", "coupon"),
+        ("PermitAuth", "Permit", "permit"),
     ]
-    for sub in ("BridgeAuth", "CopayAuth", "PriorAuthAuth"):
+    for sub in ("BridgeAuth", "CouponAuth", "PermitAuth"):
         assert is_tph_subtype(entities[sub])
     assert not is_tph_subtype(entities["Auth"])
 
@@ -92,12 +92,12 @@ def test_subtype_pins_discriminator_to_literal(entities, index) -> None:
 
 def test_base_entity_model_is_plain_base(entities, index) -> None:
     # The base is a plain BaseModel; its `type` enum legitimately emits the full
-    # Literal["Bridge","Copay","PriorAuth"] (the enum values), but it must NOT carry a
+    # Literal["Bridge","Coupon","Permit"] (the enum values), but it must NOT carry a
     # single-value discriminator PIN (that's the subtype's job). Python also defers the
     # discriminated-UNION alias (dict runtime; see the entity_model TPH note).
     src = render_entity_model(entities["Auth"], index)
     assert "class Auth(BaseModel):" in src
-    for val in ("Bridge", "Copay", "PriorAuth"):
+    for val in ("Bridge", "Coupon", "Permit"):
         assert f'type: Literal["{val}"] = "{val}"' not in src
 
 
@@ -117,7 +117,7 @@ def test_base_router_polymorphic_plus_per_subtype(entities, index) -> None:
     # no polymorphic create (can't create an abstract base)
     assert '@router.post("", ' not in src
     # per-subtype CRUD at the lowercased segment, discriminator injected from the URL
-    for seg, val in (("bridge", "Bridge"), ("copay", "Copay"), ("priorauth", "PriorAuth")):
+    for seg, val in (("bridge", "Bridge"), ("coupon", "Coupon"), ("permit", "Permit")):
         assert f'@router.get("/{seg}")' in src
         assert f'@router.post("/{seg}", status_code=status.HTTP_201_CREATED)' in src
         assert f'@router.get("/{seg}/{{auth_id}}")' in src
@@ -149,5 +149,5 @@ def test_base_allowlist_unions_subtype_fields(entities, index) -> None:
     assert '"id"' in src and '"type"' in src and '"reference"' in src
     # subtype-only filterable columns folded into the single-table base allowlist
     assert '"quantity"' in src       # BridgeAuth
-    assert '"copayAmount"' in src    # CopayAuth
-    assert '"approver"' in src       # PriorAuthAuth
+    assert '"couponAmount"' in src    # CouponAuth
+    assert '"approver"' in src       # PermitAuth

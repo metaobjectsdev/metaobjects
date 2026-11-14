@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "schemas/acme/auth/CopayAuth.create.schema.json",
-  "title": "CopayAuth.create",
+  "$id": "schemas/acme/auth/CouponAuth.update.schema.json",
+  "title": "CouponAuth.update",
   "type": "object",
   "properties": {
     "reference": {
@@ -9,8 +9,5 @@
       "minLength": 1,
       "maxLength": 80
     }
-  },
-  "required": [
-    "reference"
-  ]
+  }
 }

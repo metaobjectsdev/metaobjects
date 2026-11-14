@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "schemas/acme/auth/PriorAuthAuth.schema.json",
-  "title": "PriorAuthAuth",
+  "$id": "schemas/acme/auth/PermitAuth.schema.json",
+  "title": "PermitAuth",
   "type": "object",
   "properties": {
     "id": {
@@ -9,7 +9,7 @@
       "format": "int64"
     },
     "type": {
-      "const": "PriorAuth"
+      "const": "Permit"
     },
     "reference": {
       "type": "string",

@@ -382,7 +382,7 @@ public class NamesGenerator : PerEntityGenerator
         // `abstract class`, not `static class`: a static class can neither inherit nor be
         // inherited, and this artifact now extends its parent's rather than restating it.
         // Abstract keeps the "never instantiate this" guarantee a static class gave, and a
-        // `const` is inherited — `CopayAuthNames.IdColumn` resolves through the base — so
+        // `const` is inherited — `CouponAuthNames.IdColumn` resolves through the base — so
         // every consumption site is unchanged.
         var extends = superCls is null ? "" : $" : {superCls}";
         sb.AppendLine($"public abstract class {cls}{extends}");

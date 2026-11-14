@@ -340,7 +340,7 @@ public class SpringAutoSetStampingTest {
         Path classesDir = tmp.newFolder("tph-classes").toPath();
         MetaDataLoader loader = SpringTestFixtures.loadFixture(tmp.newFolder("tph-fx").toPath(), "auth", TPH_AUTOSET_JSON);
         runGenerator(new SpringDtoGenerator(), loader, srcDir);
-        // Real javac compile of the DTO layer (AuthDto + BridgeAuthDto/Copay.../Patch) — not just
+        // Real javac compile of the DTO layer (AuthDto + BridgeAuthDto/Coupon.../Patch) — not just
         // string assertions. Catches exactly the class of bug found while implementing this: a
         // subtype-typed stampForInsert(BridgeAuthDto) would NOT type-check if the controller ever
         // called it with an AuthDto argument (the union type repository.createWithType binds).

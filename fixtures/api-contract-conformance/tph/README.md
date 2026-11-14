@@ -17,14 +17,14 @@ DELETE {prefix}/auths/<sub>/:id    → per-subtype delete (404 cross-subtype)
 ```
 
 The per-subtype URL segment is the **`@discriminatorValue` lowercased** —
-`"Bridge"` → `/auths/bridge`, `"PriorAuth"` → `/auths/priorauth` — NOT the subtype
+`"Bridge"` → `/auths/bridge`, `"Permit"` → `/auths/permit` — NOT the subtype
 entity name. There is intentionally **no polymorphic `POST /auths`** (you can't
 create an abstract base).
 
 ## The three cross-port invariants (must hold byte-identically)
 
 1. **Single-table TPH storage.** One physical `auths` table; every subtype-only
-   column (`quantity` / `copay_amount` / `approver`) is **nullable** (a row of any
+   column (`quantity` / `coupon_amount` / `approver`) is **nullable** (a row of any
    other subtype stores NULL there), even when the field is `@required`.
 2. **Polymorphic GET / per-subtype POST URLs.** `GET /auths` returns the union;
    `POST /auths/bridge` etc. create per subtype. The URL paths are identical
@@ -37,7 +37,7 @@ create an abstract base).
 ```
 tph/
 ├── README.md              # this file
-├── meta.json              # Auth (base, @discriminator "type") + BridgeAuth / CopayAuth / PriorAuthAuth
+├── meta.json              # Auth (base, @discriminator "type") + BridgeAuth / CouponAuth / PermitAuth
 ├── seed.json              # 3 seed rows (one per subtype) into the single `auths` table
 └── scenarios/
     ├── tph-polymorphic-list-and-get.yaml      # polymorphic GET: the /auths union + get-by-id of any subtype
@@ -56,10 +56,10 @@ tph/
 
 | Entity | Discriminator | Own fields (a subtype inherits everything on `Auth`) |
 |---|---|---|
-| `Auth` (base) | `@discriminator: "type"`, `@table "auths"` | `id` (long, pk), `type` (enum `Bridge`/`Copay`/`PriorAuth`), `reference` (string, `@required`, `@maxLength` 80), `issuedCurrency` (string, `@maxLength` 3, `@mutability` "writeOnce"), `autoCreatedAt` / `autoUpdatedAt` (timestamp, `@autoSet` onCreate / onUpdate) |
+| `Auth` (base) | `@discriminator: "type"`, `@table "auths"` | `id` (long, pk), `type` (enum `Bridge`/`Coupon`/`Permit`), `reference` (string, `@required`, `@maxLength` 80), `issuedCurrency` (string, `@maxLength` 3, `@mutability` "writeOnce"), `autoCreatedAt` / `autoUpdatedAt` (timestamp, `@autoSet` onCreate / onUpdate) |
 | `BridgeAuth` | `@discriminatorValue: "Bridge"` | `quantity` (int, required → nullable in the single table) |
-| `CopayAuth` | `@discriminatorValue: "Copay"` | `copayAmount` (decimal 10,2) |
-| `PriorAuthAuth` | `@discriminatorValue: "PriorAuth"` | `approver` (string, `@maxLength` 80) |
+| `CouponAuth` | `@discriminatorValue: "Coupon"` | `couponAmount` (decimal 10,2) |
+| `PermitAuth` | `@discriminatorValue: "Permit"` | `approver` (string, `@maxLength` 80) |
 
 `seed.json` is applied fresh before every scenario (truncate-then-insert into the
 single `auths` table). Subtype-only columns are `null` for rows of other subtypes.
@@ -71,7 +71,7 @@ Identical to the parent `api-contract-conformance` corpus
 `ids` / `length` / `row` (subset key-match) / `error` / `empty` / `fieldsNotEqual`
 cover TPH (the last pins the `@autoSet` leg: `autoCreatedAt` preserved vs
 `autoUpdatedAt` bumped).
-A subtype's decimal is asserted over the wire as the canonical string (`copayAmount` `"12.50"`
+A subtype's decimal is asserted over the wire as the canonical string (`couponAmount` `"12.50"`
 is `"12.5"`, ADR-0019 Amendment 1), filters exactly on its subtype segment, and refuses a value
 with more digits than its `@scale` with `400 validation`. The `row` assertions pin the discriminator
 value (`type`) and the integer/string subtype-only columns.

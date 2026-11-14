@@ -202,15 +202,15 @@ After TS reference + REST decision, port the attr-registration + repo-emission p
 
 FR-014 covers the metamodel + ORM-layer emission. FR-017 covers everything else — the generator surfaces that surround a polymorphic entity. The next session writes FR-017 covering:
 
-- **Discriminated TS union types.** `entityFile` emits `type Auth = BridgeAuth | CopayAuth | PriorAuthAuth | QuickStartAuth | UnknownAuth` as a tagged-union keyed by the discriminator field.
-- **Per-subtype Zod schemas.** `entityFile` emits `BridgeAuthSchema`, `CopayAuthSchema`, etc., each `.merge(BaseAuthSchema)`. The TS reference + runtime `parse(json)` dispatch on the discriminator value.
+- **Discriminated TS union types.** `entityFile` emits `type Auth = BridgeAuth | CouponAuth | PermitAuth | QuickStartAuth | UnknownAuth` as a tagged-union keyed by the discriminator field.
+- **Per-subtype Zod schemas.** `entityFile` emits `BridgeAuthSchema`, `CouponAuthSchema`, etc., each `.merge(BaseAuthSchema)`. The TS reference + runtime `parse(json)` dispatch on the discriminator value.
 - **Polymorphic queries.** `queriesFile` always projects the discriminator column on `findAll/findById` for a discriminated base; row → subtype constructor dispatch.
 - **REST contract decisions** (and the design must MAKE these decisions, not punt):
   - `GET /auths` returns polymorphic rows tagged with the discriminator → `@type` field.
-  - `POST /auths` — choose: (a) removed in favor of per-subtype `POST /bridge-auths`, `POST /copay-auths`; (b) accepts a discriminated body with `type: "Bridge"` keying the validation branch.
+  - `POST /auths` — choose: (a) removed in favor of per-subtype `POST /bridge-auths`, `POST /coupon-auths`; (b) accepts a discriminated body with `type: "Bridge"` keying the validation branch.
 - **TanStack hooks.** `useAuths()` returns the union. Per-subtype hooks `useBridgeAuths()` filter on discriminator. Per-subtype mutations `useCreateBridgeAuth()`, etc.
 - **TanStack grid.** Decide: single polymorphic grid with mixed rows + a `@type` column, OR per-subtype grids? Specify.
-- **React forms.** Per-subtype `<BridgeAuthForm>`, `<CopayAuthForm>` etc. (you can't create an abstract `Auth`).
+- **React forms.** Per-subtype `<BridgeAuthForm>`, `<CouponAuthForm>` etc. (you can't create an abstract `Auth`).
 - **Filter allowlists.** Per-subtype filter allowlist auto-includes the discriminator field, pinned to that subtype's value.
 - **Spring (Java) generator stack.** `EntityGenerator` (JPA `@Inheritance`), `PayloadGenerator` (per-subtype request DTOs), `ControllerGenerator` (polymorphic GET + per-subtype POST), `RepositoryGenerator` (Spring Data repo on the base; per-subtype repos optional), filter-allowlist generator per subtype.
 - **Kotlin generator stack.** Sealed class hierarchy in `EntityGenerator`; per-subtype `ControllerGenerator`, `PayloadGenerator`, `FilterAllowlistGenerator`.

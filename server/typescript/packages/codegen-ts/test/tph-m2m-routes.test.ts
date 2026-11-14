@@ -44,7 +44,7 @@ const MODEL = {
       { "object.entity": { name: "Auth", "@discriminator": "type", children: [
         { "source.rdb": { "@table": "auths" } },
         { "field.long": { name: "id" } },
-        { "field.enum": { name: "type", "@values": ["Bridge", "Copay", "PriorAuth"] } },
+        { "field.enum": { name: "type", "@values": ["Bridge", "Coupon", "Permit"] } },
         { "field.string": { name: "reference", "@required": true, "@maxLength": 80 } },
         // Declared on the BASE: legitimate for every row of the table.
         { "relationship.association": { name: "tags", "@cardinality": "many", "@objectRef": "Tag", "@through": "AuthTag" } },
@@ -55,15 +55,15 @@ const MODEL = {
         // Declared on a SUBTYPE, and a directed self-join onto that same subtype.
         { "relationship.association": { name: "linkedAuths", "@cardinality": "many", "@objectRef": "BridgeAuth", "@through": "AuthLink", "@sourceRefField": "fromAuthId" } },
       ]}},
-      { "object.entity": { name: "CopayAuth", extends: "Auth", "@discriminatorValue": "Copay", children: [
-        { "field.int": { name: "copayCents" } },
+      { "object.entity": { name: "CouponAuth", extends: "Auth", "@discriminatorValue": "Coupon", children: [
+        { "field.int": { name: "couponCents" } },
       ]}},
       // An ABSTRACT intermediate level that declares an M:N. It is neither the base nor
       // a concrete subtype, so it is the level an own-only filter loses entirely.
       { "object.entity": { name: "ScopedAuth", extends: "Auth", abstract: true, children: [
         { "relationship.association": { name: "auditors", "@cardinality": "many", "@objectRef": "Tag", "@through": "AuthAudit" } },
       ]}},
-      { "object.entity": { name: "PriorAuthAuth", extends: "ScopedAuth", "@discriminatorValue": "PriorAuth", children: [
+      { "object.entity": { name: "PermitAuth", extends: "ScopedAuth", "@discriminatorValue": "Permit", children: [
         { "field.string": { name: "approver", "@maxLength": 80 } },
       ]}},
       // The junction references the CONCRETE subtype, not the base. That is the supported
@@ -76,7 +76,7 @@ const MODEL = {
         { "field.long": { name: "auditAuthId", "@required": true } },
         { "field.long": { name: "auditTagId", "@required": true } },
         { "identity.primary": { name: "pk", "@fields": ["auditAuthId", "auditTagId"] } },
-        { "identity.reference": { name: "fkAuditAuth", "@fields": "auditAuthId", "@references": "PriorAuthAuth" } },
+        { "identity.reference": { name: "fkAuditAuth", "@fields": "auditAuthId", "@references": "PermitAuth" } },
         { "identity.reference": { name: "fkAuditTag", "@fields": "auditTagId", "@references": "Tag" } },
       ]}},
       { "object.entity": { name: "AuthTag", children: [
@@ -193,13 +193,13 @@ describe("M:N traversal in a TPH hierarchy", () => {
     // `tags` is declared on Auth, so every subtype resolves it. A subtype resource is a
     // resource: it carries the same sub-resources as any other. The overlap is not
     // redundancy — the subtype segment is a type assertion, and only the subtype mount
-    // gates the source id, so /auths/bridge/{a Copay id}/tags is [] where /auths/{that
+    // gates the source id, so /auths/bridge/{a Coupon id}/tags is [] where /auths/{that
     // id}/tags is not. This is the independent oracle's rule (expectedRoutes), which
     // walks every SERVED object's RESOLVED relationships.
     const tagMounts = routes.match(/relationName: "tags"/g) ?? [];
-    expect(tagMounts.length).toBe(4); // the base, plus /bridge, /copay and /priorauth
-    const copayTags = m2mMount(routes.slice(routes.indexOf('Auth.$path + "/copay"')), "tags");
-    expect(copayTags).toMatch(/sourceDiscriminator: \{ table: auths, pkColumn: \S+, column: \S+, value: "Copay",? \}/);
+    expect(tagMounts.length).toBe(4); // the base, plus /bridge, /coupon and /permit
+    const couponTags = m2mMount(routes.slice(routes.indexOf('Auth.$path + "/coupon"')), "tags");
+    expect(couponTags).toMatch(/sourceDiscriminator: \{ table: auths, pkColumn: \S+, column: \S+, value: "Coupon",? \}/);
   });
 
   test("an M:N from a NON-subtype onto a subtype filters the target, not the source", async () => {
@@ -219,11 +219,11 @@ describe("M:N traversal in a TPH hierarchy", () => {
     // own. It is not on the base either, so the ONLY place it can be served is beneath
     // each concrete subtype under that level.
     const mount = m2mMount(routes, "auditors");
-    expect(mount).toContain('path: Auth.$path + "/priorauth",');
+    expect(mount).toContain('path: Auth.$path + "/permit",');
     expect(mount).toContain("junctionTable: authAudits,");
     expect(mount).toContain("targetTable: tags,");
     expect(mount).toMatch(
-      /sourceDiscriminator: \{ table: auths, pkColumn: AuthNames\.fields\.id\.column, column: AuthNames\.fields\.type\.column, value: "PriorAuth",? \}/,
+      /sourceDiscriminator: \{ table: auths, pkColumn: AuthNames\.fields\.id\.column, column: AuthNames\.fields\.type\.column, value: "Permit",? \}/,
     );
     // It is NOT mounted at the base path: Auth does not resolve `auditors`, and
     // ScopedAuth is abstract, so it is served nowhere else. Matches the oracle, whose
@@ -235,6 +235,6 @@ describe("M:N traversal in a TPH hierarchy", () => {
     const routes = fileNamed(await generate(await loadModel()), "Auth.routes.ts");
     expect(routes).toContain("mountCrudRoutes({ fastify: fastify, path: Auth.$path, db: db,");
     expect(routes).toContain('path: Auth.$path + "/bridge",');
-    expect(routes).toContain('path: Auth.$path + "/copay",');
+    expect(routes).toContain('path: Auth.$path + "/coupon",');
   });
 });

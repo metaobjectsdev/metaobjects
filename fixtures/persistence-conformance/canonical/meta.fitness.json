@@ -256,7 +256,7 @@
         "children": [
           { "source.rdb": { "@table": "auths" } },
           { "field.long":   { "name": "id" } },
-          { "field.enum":   { "name": "type", "@values": ["Bridge", "Copay", "PriorAuth", "Referral"] } },
+          { "field.enum":   { "name": "type", "@values": ["Bridge", "Coupon", "Permit", "Referral"] } },
           { "field.string": { "name": "reference", "@required": true, "@maxLength": 80 } },
           { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
           { "dimension.attribute": { "name": "kind", "@of": "Auth.type" } },
@@ -273,17 +273,17 @@
         ]
       }},
       { "object.entity": {
-        "name": "CopayAuth",
+        "name": "CouponAuth",
         "extends": "Auth",
-        "@discriminatorValue": "Copay",
+        "@discriminatorValue": "Coupon",
         "children": [
-          { "field.decimal": { "name": "copayAmount", "@precision": 10, "@scale": 2 } }
+          { "field.decimal": { "name": "couponAmount", "@precision": 10, "@scale": 2 } }
         ]
       }},
       { "object.entity": {
-        "name": "PriorAuthAuth",
+        "name": "PermitAuth",
         "extends": "Auth",
-        "@discriminatorValue": "PriorAuth",
+        "@discriminatorValue": "Permit",
         "children": [
           { "field.string": { "name": "approver", "@maxLength": 80 } }
         ]
@@ -468,7 +468,7 @@
         "@dimensions": ["parentLabel"], "@measures": ["nodes"],
         "children": [ { "source.rdb": { "@kind": "view", "@view": "v_nodes_by_parent" } } ] } },
       { "object.report": { "name": "AuthsByKind", "@from": "Auth",
-        "@dimensions": ["kind"], "@measures": ["auths", "distinctRefs"], "@filter": { "type": { "ne": "PriorAuth" } },
+        "@dimensions": ["kind"], "@measures": ["auths", "distinctRefs"], "@filter": { "type": { "ne": "Permit" } },
         "children": [ { "source.rdb": { "@kind": "view", "@view": "v_auths_by_kind" } } ] } },
 
       { "object.entity": {

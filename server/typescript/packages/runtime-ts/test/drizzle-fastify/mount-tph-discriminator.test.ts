@@ -25,11 +25,11 @@ describe("mountCrudRoutes — TPH discriminator scoping", () => {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         type TEXT NOT NULL,
         quantity INTEGER,
-        copay_amount TEXT
+        coupon_amount TEXT
       );
     `);
     await client.execute(
-      `INSERT INTO auths (id, type, quantity, copay_amount) VALUES (1,'Bridge',5,NULL),(2,'Copay',NULL,'10.00');`,
+      `INSERT INTO auths (id, type, quantity, coupon_amount) VALUES (1,'Bridge',5,NULL),(2,'Coupon',NULL,'10.00');`,
     );
 
     const db = drizzle(client);
@@ -37,7 +37,7 @@ describe("mountCrudRoutes — TPH discriminator scoping", () => {
       id: integer("id").primaryKey({ autoIncrement: true }),
       type: text("type").notNull(),
       quantity: integer("quantity"),
-      copay_amount: text("copay_amount"),
+      coupon_amount: text("coupon_amount"),
     });
 
     // Per-subtype schemas omit the discriminator (the route injects it).
@@ -96,7 +96,7 @@ describe("mountCrudRoutes — TPH discriminator scoping", () => {
 
     // Own update, with a sneaky discriminator in the body — must be stripped.
     const own = await fastify.inject({
-      method: "PATCH", url: "/auths/bridge/1", payload: { quantity: 9, type: "Copay" },
+      method: "PATCH", url: "/auths/bridge/1", payload: { quantity: 9, type: "Coupon" },
     });
     expect(own.statusCode).toBe(200);
     const row = JSON.parse(own.body) as { type: string; quantity: number };
@@ -114,7 +114,7 @@ describe("mountCrudRoutes — TPH discriminator scoping", () => {
   // patch must never reach the driver.
   test("PATCH carrying ONLY the discriminator is a no-op 200, not a 500", async () => {
     const res = await fastify.inject({
-      method: "PATCH", url: "/auths/bridge/1", payload: { type: "Copay" },
+      method: "PATCH", url: "/auths/bridge/1", payload: { type: "Coupon" },
     });
     expect(res.statusCode).toBe(200);
     const row = JSON.parse(res.body) as { type: string; quantity: number };

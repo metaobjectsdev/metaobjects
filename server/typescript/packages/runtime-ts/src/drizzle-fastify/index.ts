@@ -328,7 +328,7 @@ export function mountUpdateRoute(opts: VerbOptions): void {
     }
     const discCond = discriminatorCond(opts);
     // FR-017 TPH: a row's subtype is immutable — strip the discriminator from
-    // the patch so a client can't flip a Bridge into a Copay.
+    // the patch so a client can't flip a Bridge into a Coupon.
     let data = parsed.data as Record<string, unknown>;
     if (opts.discriminator) {
       const { [opts.discriminator.column]: _omit, ...rest } = data;

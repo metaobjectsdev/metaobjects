@@ -1,5 +1,5 @@
 {
-  "title": "CopayAuth",
+  "title": "CouponAuth",
   "type": "object",
   "properties": {
     "reference": {

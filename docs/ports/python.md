@@ -452,16 +452,16 @@ from its parent's.** Python has no static inheritance, so an artifact whose
 object extends another re-exports the inherited constants by REFERENCE:
 
 ```python
-# generated/copay_auth_names.py (excerpt)
+# generated/coupon_auth_names.py (excerpt)
 from .auth_names import (
     AUTH_ID_COLUMN, AUTH_ID_FIELD, AUTH_IDENTITY_PK_NAME,
     AUTH_SOURCE_PRIMARY_KIND, AUTH_SOURCE_PRIMARY_TABLE,
 )
 
-COPAYAUTH_NAME: Final[str] = "CopayAuth"            # its own name, always
-COPAYAUTH_SOURCE_PRIMARY_TABLE: Final[str] = AUTH_SOURCE_PRIMARY_TABLE  # SHARED, spelled once
-COPAYAUTH_ID_COLUMN: Final[str] = AUTH_ID_COLUMN
-COPAYAUTH_COPAY_AMOUNT_COLUMN: Final[str] = "copay_cents"
+COUPONAUTH_NAME: Final[str] = "CouponAuth"            # its own name, always
+COUPONAUTH_SOURCE_PRIMARY_TABLE: Final[str] = AUTH_SOURCE_PRIMARY_TABLE  # SHARED, spelled once
+COUPONAUTH_ID_COLUMN: Final[str] = AUTH_ID_COLUMN
+COUPONAUTH_COUPON_AMOUNT_COLUMN: Final[str] = "coupon_cents"
 ```
 
 Two forms, and which one you get is structural. An object with its OWN source

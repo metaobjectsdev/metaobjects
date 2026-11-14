@@ -22,7 +22,7 @@
 > **What's already shipped (read first):**
 > - Design + status: [FR-017 spec](../specs/2026-06-02-fr-017-tph-polymorphic-codegen-design.md) → see the **Realization status** section (Tier-4 TS foundations + Tier-5 corpora).
 > - **The oracle (do not modify — make each port match it):**
->   - api-contract: `fixtures/api-contract-conformance/tph/` (Auth base + BridgeAuth/CopayAuth/PriorAuthAuth, 4 scenarios, both lanes).
+>   - api-contract: `fixtures/api-contract-conformance/tph/` (Auth base + BridgeAuth/CouponAuth/PermitAuth, 4 scenarios, both lanes).
 >   - persistence: `fixtures/persistence-conformance/queries/tph-*.yaml` (4 scenarios) + `Auth`/subtypes in `canonical/meta.fitness.json` + the committed `canonical/schema.postgres.sql` (single `auths` table). The query DSL gained `create`/`update` ops + an `expectError` flag — each port's persistence runner must implement these.
 > - **migrate-ts TPH single-table EMISSION (Task C.1 + C.2 below) is DONE** — `expected-schema.ts` now folds subtype-only columns (nullable) into the single base table and skips subtype tables; the canonical `schema.postgres.sql` is regenerated + drift-checked green. The verify-time **drift rules (C.3/C.4 — `WARN_DISCRIMINATOR_VALUE_UNKNOWN` etc.) remain open** in this plan. Schema is TS-owned per ADR-0015, so **no per-port schema work** — every port executes the committed `schema.postgres.sql`.
 > - **TS reference to mirror** (per the cross-language-porting skill — mirror, don't re-derive): `server/typescript/packages/codegen-ts/src/templates/{tph-discriminator,drizzle-schema,routes-file}.ts`, `runtime-ts/src/drizzle-fastify/index.ts` (the `discriminator: {column,value}` option), and `runtime-ts/src/{tph.ts,object-manager.ts}` (effective-children resolution + discriminator inject/scope/strip — the runtime-layer reference).
@@ -32,7 +32,7 @@
 > 2. **Runtime/data-access TPH** so the port passes the `tph-*` persistence scenarios (inherited fields/identity/single-table resolution + discriminator inject/scope/strip + the new `create`/`update`/`expectError` DSL ops in the port's persistence-conformance runner). NB: Java/Kotlin/Python persistence-conformance runs the **generated** controller + a consumer-supplied repo seam per the api-contract README — confirm how each port's query runner executes writes.
 > 3. **Conformance, both corpora:** make the port green against `api-contract-conformance/tph/` (reference lane + GENERATED artifact over HTTP) and `persistence-conformance/queries/tph-*.yaml`. Until a port's slice lands it **skips** `tph-*` (the m2n-* convention) — do not delete fixtures.
 >
-> **Cross-port invariants (byte-identical):** single `auths` table, subtype cols nullable; `GET /auths` polymorphic union + `GET|POST|PATCH|DELETE /auths/{bridge|copay|priorauth}` per subtype (segment = `@discriminatorValue` lowercased); discriminator injected from the URL on create (never the body); cross-subtype get/delete → 404; response always carries the discriminator field by value.
+> **Cross-port invariants (byte-identical):** single `auths` table, subtype cols nullable; `GET /auths` polymorphic union + `GET|POST|PATCH|DELETE /auths/{bridge|coupon|permit}` per subtype (segment = `@discriminatorValue` lowercased); discriminator injected from the URL on create (never the body); cross-subtype get/delete → 404; response always carries the discriminator field by value.
 >
 > Use `superpowers:subagent-driven-development` to fan the three ports out. Each is gated by the corpus (the oracle), TDD-first.
 
@@ -173,7 +173,7 @@ Recognize a TPH root by: an `object.entity` carrying `@discriminator` + at least
 #### C.2 — Single `CREATE TABLE` for the base
 Emit one `CREATE TABLE` for the discriminated base. Include:
 - All base fields as columns (nullability per their own `@required`).
-- All subtype-only fields as columns, **automatically nullable** (TPH rule — a row that's a `Bridge` won't have `Copay`'s columns populated).
+- All subtype-only fields as columns, **automatically nullable** (TPH rule — a row that's a `Bridge` won't have `Coupon`'s columns populated).
 - The discriminator column with the right type derived from the named field's subtype:
   - `field.enum` → `varchar` with `CHECK` constraint enumerating all subtype values.
   - `field.int` → `integer`.

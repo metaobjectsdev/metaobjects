@@ -10,7 +10,7 @@ namespace MetaObjects.IntegrationTests.Generated;
 
 public class AuthsByKind
 {
-    public enum AuthsByKindKind { Bridge, Copay, PriorAuth, Referral }
+    public enum AuthsByKindKind { Bridge, Coupon, Permit, Referral }
     [Column("kind")]
     public AuthsByKindKind? Kind { get; set; }
     [Column("auths")]

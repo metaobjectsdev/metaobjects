@@ -8,9 +8,9 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace MetaObjects.IntegrationTests.Generated;
 
-public class PriorAuthAuth : Auth
+public class CouponAuth : Auth
 {
-    [Column(PriorAuthAuthNames.ApproverColumn)]
-    [MaxLength(80)]
-    public string? Approver { get; set; }
+    [Column(CouponAuthNames.CouponAmountColumn)]
+    [DecimalWire.Declared(10, 2)]
+    public decimal? CouponAmount { get; set; }
 }

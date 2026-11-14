@@ -354,25 +354,25 @@ describe("resolveObjectNames — extends chain", () => {
           children: [
             { "source.rdb": { "@table": "auths" } },
             { "field.long": { name: "id" } },
-            { "field.enum": { name: "type", "@values": ["Copay"] } },
+            { "field.enum": { name: "type", "@values": ["Coupon"] } },
             { "identity.primary": { name: "pk", "@fields": "id", "@generation": "increment" } },
           ],
         },
       },
       {
         "object.entity": {
-          name: "CopayAuth",
+          name: "CouponAuth",
           extends: "Auth",
-          "@discriminatorValue": "Copay",
-          children: [{ "field.long": { name: "copayAmount", "@column": "copay_cents" } }],
+          "@discriminatorValue": "Coupon",
+          children: [{ "field.long": { name: "couponAmount", "@column": "coupon_cents" } }],
         },
       },
     ]);
-    const n = resolveObjectNames(obj(root, "CopayAuth"), "snake_case");
+    const n = resolveObjectNames(obj(root, "CouponAuth"), "snake_case");
     expect(n?.superNames?.name).toBe("Auth");
     // The whole point of the TPH case: the subtype restated `auths` and every base column.
     expect(n?.inheritsSource).toBe(true);
-    expect(Object.keys(n?.ownFields ?? {})).toEqual(["copayAmount"]);
+    expect(Object.keys(n?.ownFields ?? {})).toEqual(["couponAmount"]);
   });
 
   test("a base with no own fields and no source is NOT an artifact — there is nothing to extend", async () => {

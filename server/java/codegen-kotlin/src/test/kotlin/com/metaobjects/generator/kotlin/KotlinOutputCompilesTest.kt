@@ -55,7 +55,7 @@ class KotlinOutputCompilesTest {
       ] }
     }""".trimIndent()
 
-    // FR-017 TPH regression guard: a subtype's OWN field.enum (CopayAuth.tier) folds into the base
+    // FR-017 TPH regression guard: a subtype's OWN field.enum (CouponAuth.tier) folds into the base
     // Auth union data class, so the base must emit that enum class (owner = base) — else the union
     // references a type no generated file defines. The subtypes themselves emit nothing.
     private val tphSubtypeEnumFixture = """{
@@ -63,13 +63,13 @@ class KotlinOutputCompilesTest {
         { "object.entity": { "name": "Auth", "@discriminator": "type", "children": [
             { "source.rdb":   { "@table": "auths" } },
             { "field.long":   { "name": "id" } },
-            { "field.enum":   { "name": "type", "@values": ["Bridge", "Copay"] } },
+            { "field.enum":   { "name": "type", "@values": ["Bridge", "Coupon"] } },
             { "identity.primary": { "@fields": "id", "@generation": "increment" } }
         ] } },
         { "object.entity": { "name": "BridgeAuth", "extends": "Auth", "@discriminatorValue": "Bridge", "children": [
             { "field.int": { "name": "quantity", "@required": true } }
         ] } },
-        { "object.entity": { "name": "CopayAuth", "extends": "Auth", "@discriminatorValue": "Copay", "children": [
+        { "object.entity": { "name": "CouponAuth", "extends": "Auth", "@discriminatorValue": "Coupon", "children": [
             { "field.enum": { "name": "tier", "@values": ["Standard", "Premium"] } }
         ] } }
       ] }
@@ -87,15 +87,15 @@ class KotlinOutputCompilesTest {
             // The base emits the union + the discriminator enum + the folded subtype enum; the
             // subtypes emit NO entity data class or enum of their own (they fold into the base).
             assertTrue("AuthTier.kt" in names,
-                "the folded subtype enum (CopayAuth.tier) must be emitted by the base; got $names")
-            assertFalse("BridgeAuth.kt" in names || "CopayAuth.kt" in names,
+                "the folded subtype enum (CouponAuth.tier) must be emitted by the base; got $names")
+            assertFalse("BridgeAuth.kt" in names || "CouponAuth.kt" in names,
                 "TPH subtypes must emit no entity data class of their own; got $names")
-            assertFalse("BridgeAuthTier.kt" in names || "CopayAuthTier.kt" in names,
+            assertFalse("BridgeAuthTier.kt" in names || "CouponAuthTier.kt" in names,
                 "a subtype must not re-emit a folded enum under its own name; got $names")
             // FR-036: each concrete subtype DOES emit a validation-only <Sub>Validation shape (the
             // base controller validates per-subtype POST/PATCH present values against it) — BridgeAuth
-            // has a @required `quantity`, CopayAuth an unconstrained enum `tier`.
-            assertTrue("BridgeAuthValidation.kt" in names && "CopayAuthValidation.kt" in names,
+            // has a @required `quantity`, CouponAuth an unconstrained enum `tier`.
+            assertTrue("BridgeAuthValidation.kt" in names && "CouponAuthValidation.kt" in names,
                 "each concrete TPH subtype must emit its annotated <Sub>Validation shape; got $names")
 
             val result = KotlinCompilation().apply {

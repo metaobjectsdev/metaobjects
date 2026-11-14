@@ -623,15 +623,15 @@ can be inherited — and an object that extends another produces a class that ex
 other's:
 
 ```csharp
-public abstract class CopayAuthNames : AuthNames
+public abstract class CouponAuthNames : AuthNames
 {
-    public const string CopayAmountField = "copayAmount";
-    public const string CopayAmountColumn = "copay_cents";
+    public const string CouponAmountField = "couponAmount";
+    public const string CouponAmountColumn = "coupon_cents";
     public new const string Type = "object";
     public new const string SubType = "entity";
-    public new const string Name = "CopayAuth";
+    public new const string Name = "CouponAuth";
     // SourcePrimaryTable / IdColumn / … are the base's. A C# const is inherited, so
-    // CopayAuthNames.SourcePrimaryTable and CopayAuthNames.IdColumn both resolve.
+    // CouponAuthNames.SourcePrimaryTable and CouponAuthNames.IdColumn both resolve.
 }
 ```
 

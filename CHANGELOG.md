@@ -1120,7 +1120,7 @@ vocabulary; upgrade every port together.
   was left for EF to discover as an entity (model validation failed with "requires a primary
   key"), and a timestamp, enum, decimal precision, array, map, duration or `@readOnly` column
   lost the mapping the same field gets on the root. Each concrete subtype now configures the
-  fields it adds, on its own builder. The integration corpus's `CopayAuth.copayAmount` gains its
+  fields it adds, on its own builder. The integration corpus's `CouponAuth.couponAmount` gains its
   `HasPrecision(10, 2)`.
 
 - **C#: under `EmitAbstractShapes`, a concrete entity extends its abstract shape and keeps the
@@ -9188,8 +9188,8 @@ reintroduced one level up. On the persistence corpus's three-subtype TPH hierarc
 the C# output sheds 30 restated lines.
 
 The shape is per-language, the guarantee is not. **C# and Java** use real inheritance —
-`class CopayAuthNames : AuthNames` / `extends AuthNames` — since both languages inherit
-static members, so `CopayAuthNames.IdColumn` resolves through the base. **TypeScript**
+`class CouponAuthNames : AuthNames` / `extends AuthNames` — since both languages inherit
+static members, so `CouponAuthNames.IdColumn` resolves through the base. **TypeScript**
 spreads (`...AuthNames.fields`). **Kotlin and Python** have no static inheritance at all, so
 they re-export the parent's constants BY REFERENCE.
 

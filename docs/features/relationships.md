@@ -416,7 +416,7 @@ level between the base and a subtype. Both cases are treated the same way:
       - field.long: { name: id }
       - field.enum:
           name: type
-          "@values": ["Bridge", "Copay"]
+          "@values": ["Bridge", "Coupon"]
       - field.long: { name: approverId }  # FK to the approver
       - identity.reference:
           name: fkApprover

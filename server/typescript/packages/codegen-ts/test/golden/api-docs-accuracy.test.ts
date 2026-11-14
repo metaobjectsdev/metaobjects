@@ -97,7 +97,7 @@ const FIXTURE = JSON.stringify({
           "@discriminator": "type",
           children: [
             { "source.rdb": { "@table": "auths" } },
-            { "field.enum": { name: "type", "@values": ["Bridge", "Copay"] } },
+            { "field.enum": { name: "type", "@values": ["Bridge", "Coupon"] } },
             { "field.long": { name: "id" } },
             { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
           ],

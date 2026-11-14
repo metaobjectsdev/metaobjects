@@ -30,7 +30,7 @@ import kotlin.io.path.readText
 
 /**
  * FR-017 Tier 4/5 — host the GENERATED Kotlin Spring `@RestController` for the TPH corpus
- * (`Auth` base + `Bridge`/`Copay`/`PriorAuth` subtypes) over real HTTP (an embedded Tomcat)
+ * (`Auth` base + `Bridge`/`Coupon`/`Permit` subtypes) over real HTTP (an embedded Tomcat)
  * and drive the polymorphic-CRUD scenarios against it.
  *
  * Mechanism (the SP-F generate→compile→load pattern, mirroring [com.metaobjects.integration.kotlin.api.generated.GeneratedAuthorControllerHarness]):
@@ -148,7 +148,7 @@ class GeneratedTphControllerHarness(
         // autoCreatedAt stays OLD — the two robustly diverge.
         //
         // `id` is OMITTED so the auto-increment PK assigns 1..3 in the seed's own order (empty table),
-        // exactly as the prior POST-seed did (1=Bridge, 2=Copay, 3=PriorAuth). Columns are matched by
+        // exactly as the prior POST-seed did (1=Bridge, 2=Coupon, 3=Permit). Columns are matched by
         // NAME normalized (lowercase, underscores stripped) so the field camelCase (autoCreatedAt)
         // resolves to the generated snake_case physical column (auto_created_at) regardless of naming
         // strategy; typed inserts (not raw SQL) let Exposed handle all dialect identifier quoting.
@@ -172,7 +172,7 @@ class GeneratedTphControllerHarness(
                     stmt[columnFor("autoCreatedAt")] = parseSeedInstant(r["autoCreatedAt"] as String)
                     stmt[columnFor("autoUpdatedAt")] = parseSeedInstant(r["autoUpdatedAt"] as String)
                     stmt[columnFor("quantity")] = (r["quantity"] as? Number)?.toInt()
-                    stmt[columnFor("copayAmount")] = (r["copayAmount"] as? String)?.let { java.math.BigDecimal(it) }
+                    stmt[columnFor("couponAmount")] = (r["couponAmount"] as? String)?.let { java.math.BigDecimal(it) }
                     stmt[columnFor("approver")] = r["approver"] as String?
                 }
             }

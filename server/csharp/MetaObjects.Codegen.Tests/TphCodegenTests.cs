@@ -26,23 +26,23 @@ namespace MetaObjects.Codegen.Tests;
 public class TphCodegenTests
 {
     // Mirrors fixtures/api-contract-conformance/tph/meta.json: Auth base
-    // (@discriminator "type", table "auths") + Bridge/Copay/PriorAuth subtypes.
+    // (@discriminator "type", table "auths") + Bridge/Coupon/Permit subtypes.
     private const string Model = """
     { "metadata.root": { "package": "acme::auth", "children": [
       { "object.entity": { "name": "Auth", "@discriminator": "type", "children": [
         { "source.rdb":       { "@table": "auths" } },
         { "field.long":       { "name": "id", "@filterable": true, "@sortable": true } },
-        { "field.enum":       { "name": "type", "@values": ["Bridge", "Copay", "PriorAuth"], "@filterable": true } },
+        { "field.enum":       { "name": "type", "@values": ["Bridge", "Coupon", "Permit"], "@filterable": true } },
         { "field.string":     { "name": "reference", "@required": true, "@maxLength": 80, "@filterable": true, "@sortable": true } },
         { "identity.primary": { "@fields": "id", "@generation": "increment" } }
       ]}},
       { "object.entity": { "name": "BridgeAuth", "extends": "Auth", "@discriminatorValue": "Bridge", "children": [
         { "field.int": { "name": "quantity", "@required": true, "@filterable": true, "@sortable": true } }
       ]}},
-      { "object.entity": { "name": "CopayAuth", "extends": "Auth", "@discriminatorValue": "Copay", "children": [
-        { "field.decimal": { "name": "copayAmount", "@precision": 10, "@scale": 2, "@filterable": true } }
+      { "object.entity": { "name": "CouponAuth", "extends": "Auth", "@discriminatorValue": "Coupon", "children": [
+        { "field.decimal": { "name": "couponAmount", "@precision": 10, "@scale": 2, "@filterable": true } }
       ]}},
-      { "object.entity": { "name": "PriorAuthAuth", "extends": "Auth", "@discriminatorValue": "PriorAuth", "children": [
+      { "object.entity": { "name": "PermitAuth", "extends": "Auth", "@discriminatorValue": "Permit", "children": [
         { "field.string": { "name": "approver", "@maxLength": 80, "@filterable": true, "@sortable": true } }
       ]}}
     ]}}
@@ -75,14 +75,14 @@ public class TphCodegenTests
         var plan = TphPlanBuilder.For(auth, root);
         Assert.NotNull(plan);
         Assert.Equal("type", plan!.DiscriminatorField);
-        // Name-sorted: BridgeAuth, CopayAuth, PriorAuthAuth.
-        Assert.Equal(["BridgeAuth", "CopayAuth", "PriorAuthAuth"], plan.Subtypes.Select(s => s.Entity.Name));
-        Assert.Equal(["Bridge", "Copay", "PriorAuth"], plan.Subtypes.Select(s => s.Value));
-        Assert.Equal(["bridge", "copay", "priorauth"], plan.Subtypes.Select(s => s.RouteSegment));
+        // Name-sorted: BridgeAuth, CouponAuth, PermitAuth.
+        Assert.Equal(["BridgeAuth", "CouponAuth", "PermitAuth"], plan.Subtypes.Select(s => s.Entity.Name));
+        Assert.Equal(["Bridge", "Coupon", "Permit"], plan.Subtypes.Select(s => s.Value));
+        Assert.Equal(["bridge", "coupon", "permit"], plan.Subtypes.Select(s => s.RouteSegment));
 
         // The subtypes are NOT TPH bases; they ARE TPH subtypes.
         Assert.True(TphPlanBuilder.IsTphDiscriminatorBase(auth, root));
-        foreach (var name in new[] { "BridgeAuth", "CopayAuth", "PriorAuthAuth" })
+        foreach (var name in new[] { "BridgeAuth", "CouponAuth", "PermitAuth" })
         {
             var sub = root.FindObject(name)!;
             Assert.False(TphPlanBuilder.IsTphDiscriminatorBase(sub, root));
@@ -127,8 +127,8 @@ public class TphCodegenTests
         var auth = FileContent(new EntityGenerator().Generate(Ctx(Load())), "Auth.g.cs");
 
         Assert.Contains("[global::System.Text.Json.Serialization.JsonDerivedType(typeof(BridgeAuth))]", auth);
-        Assert.Contains("[global::System.Text.Json.Serialization.JsonDerivedType(typeof(CopayAuth))]", auth);
-        Assert.Contains("[global::System.Text.Json.Serialization.JsonDerivedType(typeof(PriorAuthAuth))]", auth);
+        Assert.Contains("[global::System.Text.Json.Serialization.JsonDerivedType(typeof(CouponAuth))]", auth);
+        Assert.Contains("[global::System.Text.Json.Serialization.JsonDerivedType(typeof(PermitAuth))]", auth);
         Assert.DoesNotContain("typeDiscriminator", auth);
     }
 
@@ -174,15 +174,15 @@ public class TphCodegenTests
         Assert.DoesNotContain("public long Id", bridge);
         Assert.DoesNotContain("public string Reference", bridge);
 
-        var copay = FileContent(files, "CopayAuth.g.cs");
-        Assert.Contains("public class CopayAuth : Auth", copay);
-        Assert.DoesNotContain("[Table", copay);
-        Assert.Contains("public decimal? CopayAmount { get; set; }", copay);
+        var coupon = FileContent(files, "CouponAuth.g.cs");
+        Assert.Contains("public class CouponAuth : Auth", coupon);
+        Assert.DoesNotContain("[Table", coupon);
+        Assert.Contains("public decimal? CouponAmount { get; set; }", coupon);
 
-        var priorAuth = FileContent(files, "PriorAuthAuth.g.cs");
-        Assert.Contains("public class PriorAuthAuth : Auth", priorAuth);
-        Assert.DoesNotContain("[Table", priorAuth);
-        Assert.Contains("public string? Approver { get; set; }", priorAuth);
+        var permit = FileContent(files, "PermitAuth.g.cs");
+        Assert.Contains("public class PermitAuth : Auth", permit);
+        Assert.DoesNotContain("[Table", permit);
+        Assert.Contains("public string? Approver { get; set; }", permit);
     }
 
     [Fact]
@@ -192,8 +192,8 @@ public class TphCodegenTests
         // Exactly one DbSet for the hierarchy (the base); no per-subtype DbSet.
         Assert.Contains("public DbSet<global::Acme.Auth.Auth> Auths { get; set; }", db);
         Assert.DoesNotContain("DbSet<global::Acme.Auth.BridgeAuth>", db);
-        Assert.DoesNotContain("DbSet<global::Acme.Auth.CopayAuth>", db);
-        Assert.DoesNotContain("DbSet<global::Acme.Auth.PriorAuthAuth>", db);
+        Assert.DoesNotContain("DbSet<global::Acme.Auth.CouponAuth>", db);
+        Assert.DoesNotContain("DbSet<global::Acme.Auth.PermitAuth>", db);
         // HasDiscriminator + HasValue per subtype (the discriminator maps to the enum prop;
         // the enum's HasConversion<string>() stores the symbol, so the column is TEXT).
         // Bare "Auth." stays bare: the global::-qualification (CSharpNaming.QualifiedOwnerTypeRef)
@@ -201,8 +201,8 @@ public class TphCodegenTests
         // a base entity named like e.g. "AllTypes" would get the qualified form.
         Assert.Contains("HasDiscriminator(e => e.Type)", db);
         Assert.Contains("HasValue<global::Acme.Auth.BridgeAuth>(global::Acme.Auth.Auth.AuthType.Bridge)", db);
-        Assert.Contains("HasValue<global::Acme.Auth.CopayAuth>(global::Acme.Auth.Auth.AuthType.Copay)", db);
-        Assert.Contains("HasValue<global::Acme.Auth.PriorAuthAuth>(global::Acme.Auth.Auth.AuthType.PriorAuth)", db);
+        Assert.Contains("HasValue<global::Acme.Auth.CouponAuth>(global::Acme.Auth.Auth.AuthType.Coupon)", db);
+        Assert.Contains("HasValue<global::Acme.Auth.PermitAuth>(global::Acme.Auth.Auth.AuthType.Permit)", db);
     }
 
     [Fact]
@@ -213,8 +213,8 @@ public class TphCodegenTests
 
         // Subtypes emit NO routes file (they are folded into the base).
         Assert.DoesNotContain(files, f => System.IO.Path.GetFileName(f.Path) == "BridgeAuthRoutes.g.cs");
-        Assert.DoesNotContain(files, f => System.IO.Path.GetFileName(f.Path) == "CopayAuthRoutes.g.cs");
-        Assert.DoesNotContain(files, f => System.IO.Path.GetFileName(f.Path) == "PriorAuthAuthRoutes.g.cs");
+        Assert.DoesNotContain(files, f => System.IO.Path.GetFileName(f.Path) == "CouponAuthRoutes.g.cs");
+        Assert.DoesNotContain(files, f => System.IO.Path.GetFileName(f.Path) == "PermitAuthRoutes.g.cs");
 
         var auth = FileContent(files, "AuthRoutes.g.cs");
         // Polymorphic list + get at the base path; NO base POST (can't create an abstract base).
@@ -222,8 +222,8 @@ public class TphCodegenTests
         Assert.Contains("prefix + \"/auths/{id}\"", auth);
         // Per-subtype segments are the @discriminatorValue lowercased.
         Assert.Contains("prefix + \"/auths/bridge\"", auth);
-        Assert.Contains("prefix + \"/auths/copay\"", auth);
-        Assert.Contains("prefix + \"/auths/priorauth\"", auth);
+        Assert.Contains("prefix + \"/auths/coupon\"", auth);
+        Assert.Contains("prefix + \"/auths/permit\"", auth);
         // Per-subtype CRUD: create scopes reads/mutations via OfType<Sub>() and injects the
         // discriminator via the subtype CLR type on Add (the POST body omits it). FR-036 #4 —
         // because every subtype has a @required field (the base string `reference`, and
@@ -236,8 +236,8 @@ public class TphCodegenTests
         Assert.Matches(@"new\[\] \{[^}]*""reference""[^}]*\}", auth);   // base @required string
         Assert.Matches(@"new\[\] \{[^}]*""quantity""[^}]*\}", auth);    // own @required value-type
         Assert.Contains("OfType<BridgeAuth>()", auth);
-        Assert.Contains("OfType<CopayAuth>()", auth);
-        Assert.Contains("OfType<PriorAuthAuth>()", auth);
+        Assert.Contains("OfType<CouponAuth>()", auth);
+        Assert.Contains("OfType<PermitAuth>()", auth);
         // Polymorphic POST is NOT emitted on the base path itself.
         Assert.DoesNotContain("MapPost(prefix + \"/auths\",", auth);
         // Per-subtype list ?sort resolves the raw qs field through a per-subtype

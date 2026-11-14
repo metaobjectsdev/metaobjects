@@ -51,7 +51,7 @@ Add two logical attributes on `object.entity`:
       { "field.enum": {                 // the discriminator field itself
           "name": "type",
           "@column": "Type",             // physical column name lives here, not on source.rdb
-          "@values": ["Unknown", "Bridge", "Copay", "PriorAuth", "QuickStart"]
+          "@values": ["Unknown", "Bridge", "Coupon", "Permit", "QuickStart"]
       }},
       { "field.string": { "name": "number" } },
       { "identity.primary": { "@fields": "id" } }
@@ -69,11 +69,11 @@ Add two logical attributes on `object.entity`:
 }}
 
 { "object.entity": {
-    "name": "CopayAuthorization",
+    "name": "CouponAuthorization",
     "extends": "Authorization",
-    "@discriminatorValue": "Copay",
+    "@discriminatorValue": "Coupon",
     "children": [
-      { "field.decimal": { "name": "copayAmount", "@precision": 18, "@scale": 2 } }
+      { "field.decimal": { "name": "couponAmount", "@precision": 18, "@scale": 2 } }
     ]
 }}
 ```
@@ -133,7 +133,7 @@ Multi-level hierarchies (`Base → Mid → Leaf`) are supported. `@discriminator
 
 | Port | Emission |
 |---|---|
-| **TypeScript** | Discriminated union type: `type Auth = Bridge \| Copay \| ...`; per-subtype Zod schemas via `.merge(BaseSchema)`; Drizzle: one `pgTable` for the base + per-subtype TypeScript narrowing. |
+| **TypeScript** | Discriminated union type: `type Auth = Bridge \| Coupon \| ...`; per-subtype Zod schemas via `.merge(BaseSchema)`; Drizzle: one `pgTable` for the base + per-subtype TypeScript narrowing. |
 | **Java** | `@Inheritance(strategy = InheritanceType.SINGLE_TABLE)` + `@DiscriminatorColumn(name="...")` on the base + `@DiscriminatorValue("...")` on each subtype. Spring repo methods on the base; per-subtype query methods optional. |
 | **Kotlin** | Sealed class hierarchy with KotlinPoet: `sealed class Auth` + per-subtype `data class` with `@DiscriminatorValue`-equivalent. Exposed: single-table query with subtype dispatch. |
 | **C#** | EF Core: `modelBuilder.Entity<Auth>().HasDiscriminator<T>(x => x.Type).HasValue<BridgeAuth>(AuthType.Bridge)...`; subtype POCOs inherit from base; `OfType<T>()` polymorphic queries. |
@@ -146,7 +146,7 @@ Each port also emits polymorphic query helpers (e.g., `.OfType<Bridge>()` in C#,
 Per [ADR-0015](../../../spec/decisions/ADR-0015-single-shared-migrate-engine.md), schema migration is TS-only. The TS reference work:
 
 - **TPH detection.** `migrate-ts/src/expected-schema.ts` recognizes a TPH root by: an `object.entity` carrying `@discriminator` + the presence of one or more entities `extends:`-ing it with `@discriminatorValue`.
-- **DDL emission.** A single `CREATE TABLE` for the base. Every subtype's own fields become columns on the base table, **automatically nullable** if any subtype omits them (the TPH nullability rule — a row that's a `Bridge` won't have `Copay`'s columns populated).
+- **DDL emission.** A single `CREATE TABLE` for the base. Every subtype's own fields become columns on the base table, **automatically nullable** if any subtype omits them (the TPH nullability rule — a row that's a `Bridge` won't have `Coupon`'s columns populated).
 - **Discriminator-column type derivation.** The discriminator column's type follows from the named field's subtype (`field.enum` → `varchar` with CHECK; `field.int` → `integer`; `field.string` → `varchar`).
 - **Introspection round-trip.** Reading the live DB recovers the column set but **not** the discriminator semantic (which column IS the discriminator). Drift detection compares the metadata-declared expected column set against the actual columns; the discriminator-column identity itself is metadata-declared, not introspected.
 

@@ -6,20 +6,20 @@ using System.Collections.Generic;
 namespace MetaObjects.IntegrationTests.Generated;
 
 /// <summary>
-/// GENERATED — per-object physical database names for CopayAuth (spec A1/A2/A6).
+/// GENERATED — per-object physical database names for CouponAuth (spec A1/A2/A6).
 /// </summary>
-public abstract class CopayAuthNames : AuthNames
+public abstract class CouponAuthNames : AuthNames
 {
     public new const string Type = "object";
     public new const string SubType = "entity";
-    public new const string Name = "CopayAuth";
+    public new const string Name = "CouponAuth";
 
-    public const string CopayAmountField = "copayAmount";
-    public const string CopayAmountColumn = "copayAmount";
+    public const string CouponAmountField = "couponAmount";
+    public const string CouponAmountColumn = "couponAmount";
 
     public static new readonly Dictionary<string, string> ColumnsByField = new(global::System.StringComparer.Ordinal)
     {
-        ["copayAmount"] = CopayAmountColumn,
+        ["couponAmount"] = CouponAmountColumn,
         ["id"] = IdColumn,
         ["reference"] = ReferenceColumn,
         ["type"] = TypeColumn,

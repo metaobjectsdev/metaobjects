@@ -30,7 +30,7 @@ const TPH_META = JSON.stringify({
           children: [
             { "source.rdb": { "@table": "auths" } },
             { "field.long": { name: "id" } },
-            { "field.enum": { name: "type", "@values": ["Bridge", "Copay"] } },
+            { "field.enum": { name: "type", "@values": ["Bridge", "Coupon"] } },
             { "field.string": { name: "reference", "@required": true, "@maxLength": 80 } },
             { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
           ],
@@ -46,10 +46,10 @@ const TPH_META = JSON.stringify({
       },
       {
         "object.entity": {
-          name: "CopayAuth",
+          name: "CouponAuth",
           extends: "Auth",
-          "@discriminatorValue": "Copay",
-          children: [{ "field.decimal": { name: "copayAmount", "@precision": 10, "@scale": 2 } }],
+          "@discriminatorValue": "Coupon",
+          children: [{ "field.decimal": { name: "couponAmount", "@precision": 10, "@scale": 2 } }],
         },
       },
     ],
@@ -70,8 +70,8 @@ beforeEach(async () => {
   const driver = inMemoryDriver({
     seed: {
       auths: [
-        { id: 1, type: "Bridge", reference: "REF-1", quantity: 5, copay_amount: null },
-        { id: 2, type: "Copay", reference: "REF-2", quantity: null, copay_amount: "12.50" },
+        { id: 1, type: "Bridge", reference: "REF-1", quantity: 5, coupon_amount: null },
+        { id: 2, type: "Coupon", reference: "REF-2", quantity: null, coupon_amount: "12.50" },
       ],
     },
     pkFields: { auths: ["id"] },
@@ -91,13 +91,13 @@ describe("ObjectManager TPH — subtype field/identity/source resolution (effect
 
   test("base entity reads polymorphically (all rows, tagged by discriminator)", async () => {
     const rows = await om.findMany("Auth", undefined, { orderBy: [["id", "asc"]] });
-    expect(rows.map((r) => r.type)).toEqual(["Bridge", "Copay"]);
+    expect(rows.map((r) => r.type)).toEqual(["Bridge", "Coupon"]);
   });
 });
 
 describe("ObjectManager TPH — discriminator scoping", () => {
   test("findById is scoped to the subtype — a different-subtype row is invisible (null)", async () => {
-    // id 2 is a Copay; addressing it through BridgeAuth must NOT return it.
+    // id 2 is a Coupon; addressing it through BridgeAuth must NOT return it.
     expect(await om.findById("BridgeAuth", 2)).toBeNull();
   });
 
@@ -108,7 +108,7 @@ describe("ObjectManager TPH — discriminator scoping", () => {
 
   test("count on a subtype counts only that subtype's rows", async () => {
     expect(await om.count("BridgeAuth")).toBe(1);
-    expect(await om.count("CopayAuth")).toBe(1);
+    expect(await om.count("CouponAuth")).toBe(1);
   });
 });
 
@@ -124,9 +124,9 @@ describe("ObjectManager TPH — create injects the discriminator", () => {
   test("a cross-subtype-only column is rejected (not a field of this subtype)", async () => {
     // Identity matters: create() has many other reachable throws (validation,
     // unsafe-name, identity resolution) — the rejection must be about THIS column.
-    const attempt = om.create("BridgeAuth", { reference: "X", quantity: 1, copayAmount: "1.00" });
+    const attempt = om.create("BridgeAuth", { reference: "X", quantity: 1, couponAmount: "1.00" });
     await expect(attempt).rejects.toThrow(MetadataError);
-    await expect(attempt).rejects.toThrow(/Unknown field 'copayAmount' on entity 'BridgeAuth'/);
+    await expect(attempt).rejects.toThrow(/Unknown field 'couponAmount' on entity 'BridgeAuth'/);
   });
 });
 
@@ -139,7 +139,7 @@ describe("ObjectManager TPH — update/delete are subtype-scoped + discriminator
   });
 
   test("update is scoped — patching a different subtype's row is not found", async () => {
-    // id 2 is a Copay; through BridgeAuth it's invisible → not found (default
+    // id 2 is a Coupon; through BridgeAuth it's invisible → not found (default
     // ifMissing="throw"), exactly like updating a non-existent id.
     await expect(om.update("BridgeAuth", 2, { quantity: 99 })).rejects.toThrow(NotFoundError);
     // With ifMissing="ignore" the scoped-out row resolves to null, not the row.
@@ -147,18 +147,18 @@ describe("ObjectManager TPH — update/delete are subtype-scoped + discriminator
   });
 
   test("update cannot change the discriminator (stripped from the patch)", async () => {
-    const updated = await om.update("BridgeAuth", 1, { type: "Copay", quantity: 7 } as Record<string, unknown>);
+    const updated = await om.update("BridgeAuth", 1, { type: "Coupon", quantity: 7 } as Record<string, unknown>);
     expect(updated).not.toBeNull();
     expect(updated!.type).toBe("Bridge");
     expect(updated!.quantity).toBe(7);
   });
 
   test("delete is scoped — deleting a different subtype's row is not found", async () => {
-    // id 2 is a Copay; through BridgeAuth it's invisible → not found.
+    // id 2 is a Coupon; through BridgeAuth it's invisible → not found.
     await expect(om.delete("BridgeAuth", 2)).rejects.toThrow(NotFoundError);
     expect(await om.delete("BridgeAuth", 2, { ifMissing: "ignore" })).toBe(false);
-    // the Copay row is still there
-    expect(await om.findById("CopayAuth", 2)).not.toBeNull();
+    // the Coupon row is still there
+    expect(await om.findById("CouponAuth", 2)).not.toBeNull();
   });
 
   test("delete removes the subtype's own row", async () => {

@@ -247,7 +247,7 @@ open class KotlinNamesGenerator :
             }
             // Inherited constants, re-exported by REFERENCE — the literal is spelled once,
             // on the base. `const val` folds the reference at compile time, so a consumer
-            // reading `CopayAuthNames.ID_COLUMN` is unaffected by which object declared it.
+            // reading `CouponAuthNames.ID_COLUMN` is unaffected by which object declared it.
             // A TPH subtype's SOURCE members arrive here for the same reason its inherited
             // columns do: it declares no source of its own, so the own set has none.
             if (inherited.isNotEmpty()) append("\n")

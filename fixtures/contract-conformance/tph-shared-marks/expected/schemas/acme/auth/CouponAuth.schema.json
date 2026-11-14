@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "schemas/acme/auth/CopayAuth.schema.json",
-  "title": "CopayAuth",
+  "$id": "schemas/acme/auth/CouponAuth.schema.json",
+  "title": "CouponAuth",
   "type": "object",
   "properties": {
     "id": {
@@ -9,7 +9,7 @@
       "format": "int64"
     },
     "type": {
-      "const": "Copay"
+      "const": "Coupon"
     },
     "reference": {
       "type": "string",

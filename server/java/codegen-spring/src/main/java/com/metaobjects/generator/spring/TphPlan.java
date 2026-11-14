@@ -39,7 +39,7 @@ public final class TphPlan {
     /**
      * The per-subtype REST route segment for a discriminator value — the ONE place this rule
      * lives: the value lowercased ({@code "Bridge"} → {@code bridge},
-     * {@code "PriorAuth"} → {@code priorauth}).
+     * {@code "Permit"} → {@code permit}).
      */
     public static String routeSegment(String discriminatorValue) {
         return discriminatorValue.toLowerCase(Locale.ROOT);

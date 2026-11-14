@@ -11,8 +11,8 @@
 //   PUT    /api/auths/<seg>/{id} alias of PATCH
 //   DELETE /api/auths/<seg>/{id} per-subtype delete (404 cross-subtype)
 //
-// The per-subtype segment is the discriminator value lowercased (bridge/copay/
-// priorauth). This is the contract the GENERATED lane (TphGeneratedServerFactory)
+// The per-subtype segment is the discriminator value lowercased (bridge/coupon/
+// permit). This is the contract the GENERATED lane (TphGeneratedServerFactory)
 // must also satisfy; the corpus + assertion vocabulary are shared.
 
 using System.Globalization;
@@ -34,8 +34,8 @@ internal sealed class TphReferenceServer : IAsyncDisposable
     private static readonly Dictionary<string, string> SegmentToValue = new(StringComparer.Ordinal)
     {
         ["bridge"]    = "Bridge",
-        ["copay"]     = "Copay",
-        ["priorauth"] = "PriorAuth",
+        ["coupon"]     = "Coupon",
+        ["permit"] = "Permit",
     };
 
     // Every column the `auths` table carries (base + every subtype-only column).
@@ -43,7 +43,7 @@ internal sealed class TphReferenceServer : IAsyncDisposable
     // from this caller-settable projection, so a presented value is STRIPPED on PATCH
     // rather than rejected (the same treatment autoCreatedAt/autoUpdatedAt get by being
     // absent here). It IS written on create, explicitly, below. Do NOT add it here.
-    private static readonly string[] AllCols = { "id", "type", "reference", "quantity", "copayAmount", "approver" };
+    private static readonly string[] AllCols = { "id", "type", "reference", "quantity", "couponAmount", "approver" };
 
     private readonly PostgresContainer _pg;
     private readonly WebApplication _app;
@@ -120,7 +120,7 @@ internal sealed class TphReferenceServer : IAsyncDisposable
             return;
         }
 
-        // segs[2] is either a subtype segment (bridge/copay/priorauth) or an {id}.
+        // segs[2] is either a subtype segment (bridge/coupon/permit) or an {id}.
         if (segs.Length >= 3 && SegmentToValue.TryGetValue(segs[2], out var disc))
         {
             // Per-subtype routes.
@@ -140,9 +140,9 @@ internal sealed class TphReferenceServer : IAsyncDisposable
                 if (method == "POST")
                 {
                     var body = await ReadBodyAsync(ctx);
-                    // ADR-0019 Amendment 1 (W3): copayAmount is decimal(10,2); a value it would
+                    // ADR-0019 Amendment 1 (W3): couponAmount is decimal(10,2); a value it would
                     // round or overflow is a 400 validation, never stored rounded.
-                    if (!CopayAmountFits(body))
+                    if (!CouponAmountFits(body))
                     {
                         await SendJsonAsync(ctx, 400, new Dictionary<string, object?> { ["error"] = "validation" });
                         return;
@@ -176,7 +176,7 @@ internal sealed class TphReferenceServer : IAsyncDisposable
                     // FR-036 Program B: a present null on the @required (NOT NULL) base
                     // `reference` column is a 400, matching the generated controller's
                     // not-null merge guard. In the single TPH table only base-required
-                    // columns are NOT NULL; subtype columns (quantity/copayAmount/approver)
+                    // columns are NOT NULL; subtype columns (quantity/couponAmount/approver)
                     // are nullable, so a present null there clears them (FR-035 tristate).
                     if (body.ContainsKey("reference"))
                     {
@@ -189,7 +189,7 @@ internal sealed class TphReferenceServer : IAsyncDisposable
                     }
                     // FR-036 — a present value exceeding @maxLength:80 (reference/approver) is a
                     // 400, matching the generated controller's per-present-value PATCH validation.
-                    if (ExceedsMaxLength(body) || !CopayAmountFits(body))
+                    if (ExceedsMaxLength(body) || !CouponAmountFits(body))
                     {
                         await SendJsonAsync(ctx, 400, new Dictionary<string, object?> { ["error"] = "validation" });
                         return;
@@ -230,13 +230,13 @@ internal sealed class TphReferenceServer : IAsyncDisposable
     };
 
     // A per-subtype collection filters by the base's columns plus that subtype's own. Only
-    // CopayAuth.copayAmount is filterable among the subtype columns the corpus exercises; a
+    // CouponAuth.couponAmount is filterable among the subtype columns the corpus exercises; a
     // decimal operand is compared exactly (ADR-0019 Amendment 1, W2).
     private static IReadOnlyDictionary<string, string[]> SubtypeFilterOps(string discriminator)
     {
         var ops = new Dictionary<string, string[]>(BaseFilterOps, StringComparer.Ordinal);
         ops.Remove("type");
-        if (discriminator == "Copay") ops["copayAmount"] = new[] { "eq", "ne", "gt", "gte", "lt", "lte", "in" };
+        if (discriminator == "Coupon") ops["couponAmount"] = new[] { "eq", "ne", "gt", "gte", "lt", "lte", "in" };
         return ops;
     }
 
@@ -258,7 +258,7 @@ internal sealed class TphReferenceServer : IAsyncDisposable
             string raw = query[key].ToString();
             string[] values = op == "in" ? raw.Split(',') : new[] { raw };
             if (field == "id" && values.Any(v => !long.TryParse(v, out _))) return (filters, "invalid_filter_value", field);
-            if (field == "copayAmount" && values.Any(v => !DecimalWire.TryParse(v, out _))) return (filters, "invalid_filter_value", field);
+            if (field == "couponAmount" && values.Any(v => !DecimalWire.TryParse(v, out _))) return (filters, "invalid_filter_value", field);
             filters.Add(new BaseFilter(field, op, values));
         }
         return (filters, null, null);
@@ -278,7 +278,7 @@ internal sealed class TphReferenceServer : IAsyncDisposable
             object Bind(string v) => f.Field switch
             {
                 "id" => long.Parse(v),
-                "copayAmount" => DecimalWire.TryParse(v, out var d) ? d : throw new FormatException(v),
+                "couponAmount" => DecimalWire.TryParse(v, out var d) ? d : throw new FormatException(v),
                 _ => v,
             };
             var names = new List<string>();
@@ -422,7 +422,7 @@ internal sealed class TphReferenceServer : IAsyncDisposable
     // -------- helpers --------
 
     // FR-036 — the TPH @maxLength:80 string columns: `reference` (base) and `approver`
-    // (PriorAuth subtype). A present value exceeding 80 chars is a 400 {error:"validation"}
+    // (Permit subtype). A present value exceeding 80 chars is a 400 {error:"validation"}
     // (mirrors the generated <Sub>Dto's [MaxLength(80)] + the vanilla ExceedsAuthorMaxLength
     // guard), rejected before the PG write (which would otherwise 500 with 22001) — on the
     // per-subtype create AND on a present PATCH value.
@@ -436,7 +436,7 @@ internal sealed class TphReferenceServer : IAsyncDisposable
     private static object CoerceColumn(string col, JsonNode v) => col switch
     {
         "quantity" => v.GetValue<long>(),
-        "copayAmount" => ReadDecimal(v) ?? throw new FormatException("copayAmount"),
+        "couponAmount" => ReadDecimal(v) ?? throw new FormatException("couponAmount"),
         _ => v.GetValue<string>(),
     };
 
@@ -448,11 +448,11 @@ internal sealed class TphReferenceServer : IAsyncDisposable
             ? d
             : null;
 
-    // W3: copayAmount is decimal(10,2); a value the column would round or overflow is refused
+    // W3: couponAmount is decimal(10,2); a value the column would round or overflow is refused
     // rather than stored rounded. Absent or null is the caller's business, not this check's.
-    private static bool CopayAmountFits(JsonObject body)
+    private static bool CouponAmountFits(JsonObject body)
     {
-        if (!body.TryGetPropertyValue("copayAmount", out var node) || node is null
+        if (!body.TryGetPropertyValue("couponAmount", out var node) || node is null
             || node.GetValueKind() == JsonValueKind.Null) return true;
         return ReadDecimal(node) is { } d && DecimalWire.Fits(d, 10, 2);
     }

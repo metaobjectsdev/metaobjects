@@ -64,7 +64,7 @@ describe("api contract secret fields (#484) — GENERATED routes lane", () => {
       expect(Object.keys(one)).not.toContain("pinHash");
 
       const auths = await getJson(server, "/api/payers/1/auths");
-      expect(auths.map((r) => [r.id, r.type]).sort()).toEqual([[1, "Bridge"], [2, "Copay"]]);
+      expect(auths.map((r) => [r.id, r.type]).sort()).toEqual([[1, "Bridge"], [2, "Coupon"]]);
       for (const row of auths) expect(Object.keys(row)).not.toContain("pinHash");
     } finally {
       if (server) await server.close();

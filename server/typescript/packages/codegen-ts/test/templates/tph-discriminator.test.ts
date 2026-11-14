@@ -2,7 +2,7 @@
 //
 // For an entity with @discriminator + concrete subtypes carrying
 // @discriminatorValue, entityFile additionally emits:
-//   - The union type `Auth = BridgeAuth | CopayAuth | ...`
+//   - The union type `Auth = BridgeAuth | CouponAuth | ...`
 //   - Type guards `isBridgeAuth(a): a is BridgeAuth`
 //   - The `parseAuth(row)` dispatcher
 //
@@ -36,7 +36,7 @@ async function loadTph() {
                   {
                     "field.enum": {
                       name: "type",
-                      "@values": ["Bridge", "Copay"],
+                      "@values": ["Bridge", "Coupon"],
                     },
                   },
                   { "field.long": { name: "id" } },
@@ -54,13 +54,13 @@ async function loadTph() {
             },
             {
               "object.entity": {
-                name: "CopayAuth",
+                name: "CouponAuth",
                 extends: "Auth",
-                "@discriminatorValue": "Copay",
+                "@discriminatorValue": "Coupon",
                 children: [
                   {
                     "field.decimal": {
-                      name: "copayAmount",
+                      name: "couponAmount",
                       "@precision": 10,
                       "@scale": 2,
                     },
@@ -77,8 +77,8 @@ async function loadTph() {
   if (errors.length > 0) throw new Error(errors.map((e) => e.message).join("; "));
   const base = root.objects().find((o) => o.name === "Auth")! as MetaObject;
   const bridge = root.objects().find((o) => o.name === "BridgeAuth")! as MetaObject;
-  const copay = root.objects().find((o) => o.name === "CopayAuth")! as MetaObject;
-  return { root, base, bridge, copay };
+  const coupon = root.objects().find((o) => o.name === "CouponAuth")! as MetaObject;
+  return { root, base, bridge, coupon };
 }
 
 describe("FR-017 Tier 1 — renderTphDiscriminatorUnion", () => {
@@ -87,19 +87,19 @@ describe("FR-017 Tier 1 — renderTphDiscriminatorUnion", () => {
     const out = renderTphDiscriminatorUnion(base, root)!.toString();
 
     // Union type spans every concrete subtype, base does not appear in members.
-    expect(out).toContain("export type Auth = BridgeAuth | CopayAuth");
+    expect(out).toContain("export type Auth = BridgeAuth | CouponAuth");
 
     // Type guards per subtype.
     expect(out).toContain("export function isBridgeAuth(value: Auth)");
-    expect(out).toContain("export function isCopayAuth(value: Auth)");
+    expect(out).toContain("export function isCouponAuth(value: Auth)");
     expect(out).toContain('value.type === "Bridge"');
-    expect(out).toContain('value.type === "Copay"');
+    expect(out).toContain('value.type === "Coupon"');
 
     // Dispatcher function reads the discriminator without committing to a
     // subtype yet, then dispatches via switch.
     expect(out).toContain("export function parseAuth(row: unknown): Auth");
     expect(out).toContain('case "Bridge":');
-    expect(out).toContain('case "Copay":');
+    expect(out).toContain('case "Coupon":');
   });
 
   test("returns null for an entity that has no @discriminator", async () => {
@@ -116,10 +116,10 @@ describe("FR-017 Tier 1 — subtype Zod pins discriminator via z.literal", () =>
     expect(out).toContain('z.literal("Bridge")');
   });
 
-  test("CopayAuth's Zod schema pins type to z.literal(\"Copay\")", async () => {
-    const { copay } = await loadTph();
-    const out = renderZodValidators(copay).toString();
-    expect(out).toContain('z.literal("Copay")');
+  test("CouponAuth's Zod schema pins type to z.literal(\"Coupon\")", async () => {
+    const { coupon } = await loadTph();
+    const out = renderZodValidators(coupon).toString();
+    expect(out).toContain('z.literal("Coupon")');
   });
 
   test("BridgeAuth's schema still emits the subtype-only field", async () => {

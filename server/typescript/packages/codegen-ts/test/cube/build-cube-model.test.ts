@@ -170,7 +170,7 @@ describe("Table A — what becomes a cube", () => {
         [
           table("auths"),
           longId,
-          { "field.enum": { name: "type", "@values": ["Bridge", "Copay"] } },
+          { "field.enum": { name: "type", "@values": ["Bridge", "Coupon"] } },
           pk,
         ],
         { "@discriminator": "type" },
@@ -1501,7 +1501,7 @@ describe("Table H — the canonical model", () => {
     // The other canonical entities (Node, Session, Measurement, the Auth family, AllTypes) and the
     // join-path cubes carry no report of Table H's; only their presence is asserted here.
     expect(model.cubes.map((c) => c.name)).toEqual([
-      "Program", "Week", "Node", "Session", "Measurement", "Asset", "Auth", "BridgeAuth", "CopayAuth", "PriorAuthAuth",
+      "Program", "Week", "Node", "Session", "Measurement", "Asset", "Auth", "BridgeAuth", "CouponAuth", "PermitAuth",
       "ReferralAuth", "AllTypes", "Gadget", "GadgetEvent", "Entry", "Node_fkParent", "ProgramRosterFacts", "ProgramLongWeeksFacts",
       "ProgramFlagRosterFacts", "ProgramSessionsFacts", "ProgramSessions_fkWeek",
     ]);

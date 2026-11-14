@@ -28,7 +28,7 @@ const META = JSON.stringify({
       // TPH: the base is registered, the subtype is not (its routes live in the base's file).
       { "object.entity": { name: "Auth", "@discriminator": "type", children: [
         { "source.rdb": { "@table": "auths" } },
-        { "field.enum": { name: "type", "@values": ["Bridge", "Copay"] } },
+        { "field.enum": { name: "type", "@values": ["Bridge", "Coupon"] } },
         { "field.long": { name: "id" } },
         { "identity.primary": { name: "pk", "@fields": "id", "@generation": "increment" } },
       ] } },

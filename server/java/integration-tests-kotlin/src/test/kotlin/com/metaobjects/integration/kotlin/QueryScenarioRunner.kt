@@ -547,7 +547,7 @@ object QueryScenarioRunner {
             // ADR-0019 Amendment 1: the decimal subject table.
             "Entry" -> EntryTable
             // FR-017 TPH: the discriminator base + all its subtypes share the single `auths` table.
-            "Auth", "BridgeAuth", "CopayAuth", "PriorAuthAuth" -> AuthTable
+            "Auth", "BridgeAuth", "CouponAuth", "PermitAuth" -> AuthTable
             else -> error("No Exposed Table registered for entity '$entity' — extend QueryScenarioRunner.tableFor or tables/ReportViews")
         }
 

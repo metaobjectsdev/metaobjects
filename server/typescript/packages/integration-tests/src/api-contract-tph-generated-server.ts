@@ -2,7 +2,7 @@
 // deployed artifact) over HTTP and drives them against the FR-017 TPH corpus.
 //
 // Mirrors api-contract-m2m-generated-server.ts but for the single-table
-// table-per-hierarchy model (Auth + BridgeAuth / CopayAuth / PriorAuthAuth). It:
+// table-per-hierarchy model (Auth + BridgeAuth / CouponAuth / PermitAuth). It:
 //   1. runs the real codegen (runGen from @metaobjectsdev/codegen-ts) over the
 //      TPH meta into a temp dir, emitting the single Drizzle `auths` table +
 //      per-subtype Zod/allowlists AND Auth.routes.ts — which mounts the
@@ -32,7 +32,7 @@ export interface TphSeed {
     type: string;
     reference: string;
     quantity: number | null;
-    copayAmount: string | null;
+    couponAmount: string | null;
     approver: string | null;
     // FR-037 R1 — the @mutability "writeOnce" column, declared on the TPH BASE so
     // every subtype inherits it (which also exercises the resolving-accessor rule:
@@ -94,7 +94,7 @@ export const db = drizzle(pool);
   writeFileSync(join(tmp, "db.ts"), dbModule, "utf8");
 
   // 3. Provision the SINGLE TPH table to match the EMITTED Drizzle table.
-  //    Subtype-only columns (quantity / copay_amount / approver) are nullable.
+  //    Subtype-only columns (quantity / coupon_amount / approver) are nullable.
   //    #203 / ADR-0045 — auto_created_at/auto_updated_at mirror the emitted
   //    Auth.ts columns (physical snake_case naming). Plain `timestamp` here
   //    (not `timestamptz`) matches the precedent in api-contract-generated-server.ts
@@ -106,7 +106,7 @@ export const db = drizzle(pool);
       "type"            text,
       "reference"       varchar(80) NOT NULL,
       "quantity"        integer,
-      "copay_amount"    numeric(10,2),
+      "coupon_amount"    numeric(10,2),
       "approver"        varchar(80),
       "issued_currency" varchar(3),
       "auto_created_at" timestamp,
@@ -152,8 +152,8 @@ export async function seedTph(connectionUri: string, seed: TphSeed): Promise<voi
     // tph-autoset-patch scenario asserts.
     await executeSql(
       connectionUri,
-      `INSERT INTO "auths" ("id","type","reference","quantity","copay_amount","approver","issued_currency","auto_created_at","auto_updated_at")
-       VALUES (${a.id}, ${str(a.type)}, ${str(a.reference)}, ${num(a.quantity)}, ${num(a.copayAmount)}, ${str(a.approver)}, ${str(a.issuedCurrency ?? null)}, ${str(a.autoCreatedAt ?? null)}, ${str(a.autoUpdatedAt ?? null)})`,
+      `INSERT INTO "auths" ("id","type","reference","quantity","coupon_amount","approver","issued_currency","auto_created_at","auto_updated_at")
+       VALUES (${a.id}, ${str(a.type)}, ${str(a.reference)}, ${num(a.quantity)}, ${num(a.couponAmount)}, ${str(a.approver)}, ${str(a.issuedCurrency ?? null)}, ${str(a.autoCreatedAt ?? null)}, ${str(a.autoUpdatedAt ?? null)})`,
     );
   }
   // Seeding explicit ids into the bigserial PK does NOT advance its sequence, so

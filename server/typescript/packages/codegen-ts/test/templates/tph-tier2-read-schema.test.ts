@@ -33,7 +33,7 @@ async function loadTph(): Promise<{ root: MetaRoot; base: MetaObject; bridge: Me
                 "@discriminator": "type",
                 children: [
                   { "source.rdb": { "@table": "auths" } },
-                  { "field.enum": { name: "type", "@values": ["Bridge", "Copay"] } },
+                  { "field.enum": { name: "type", "@values": ["Bridge", "Coupon"] } },
                   { "field.long": { name: "id" } },
                   // increment generation → InsertSchema OMITS id, read schema KEEPS it.
                   { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
@@ -50,11 +50,11 @@ async function loadTph(): Promise<{ root: MetaRoot; base: MetaObject; bridge: Me
             },
             {
               "object.entity": {
-                name: "CopayAuth",
+                name: "CouponAuth",
                 extends: "Auth",
-                "@discriminatorValue": "Copay",
+                "@discriminatorValue": "Coupon",
                 children: [
-                  { "field.decimal": { name: "copayAmount", "@precision": 10, "@scale": 2 } },
+                  { "field.decimal": { name: "couponAmount", "@precision": 10, "@scale": 2 } },
                 ],
               },
             },
@@ -122,7 +122,7 @@ describe("FR-017 Tier 2 — per-subtype full read schema", () => {
     // Exactly one `export type Auth =` — the discriminated union.
     const count = (out.match(/export type Auth =/g) ?? []).length;
     expect(count).toBe(1);
-    expect(out).toContain("export type Auth = BridgeAuth | CopayAuth");
+    expect(out).toContain("export type Auth = BridgeAuth | CouponAuth");
     // The raw single-table row type is emitted under the non-colliding `AuthRow`.
     expect(out).toContain("export type AuthRow =");
   });

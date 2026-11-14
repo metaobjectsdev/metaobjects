@@ -601,7 +601,7 @@ public class SpringNamesGenerator extends MultiFileDirectGeneratorBase<MetaObjec
         src.append(" * GENERATED — per-object physical database names for ").append(shortName).append(".\n");
         src.append(" */\n");
         // `abstract`, not `final`: this class is now a base other names classes extend
-        // rather than restate. Java inherits static members, so `CopayAuthNames.ID_COLUMN`
+        // rather than restate. Java inherits static members, so `CouponAuthNames.ID_COLUMN`
         // resolves through the base and every consumption site is unchanged; `abstract`
         // keeps the "no instances" guarantee `final` + a private constructor used to give,
         // while still allowing a subclass.

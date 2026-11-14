@@ -25,8 +25,8 @@
 //      silent 404.
 //   C. a THIRD, latent compile defect this model's abstract mid level (ScopedAuth)
 //      surfaced under the DEFAULT config (EmitAbstractShapes: false — see Ctx() below):
-//      `class PriorAuthAuth : ScopedAuth` named a class that is never emitted, AND
-//      ScopedAuth's own field was silently excluded from PriorAuthAuth's member set as
+//      `class PermitAuth : ScopedAuth` named a class that is never emitted, AND
+//      ScopedAuth's own field was silently excluded from PermitAuth's member set as
 //      "already inherited" by that never-emitted class — a dropped member, worse than
 //      the compile error alone. Fixed by EntityGenerator.EmittedTphAncestor (walks past
 //      any skipped abstract level to the nearest ancestor that IS emitted — ultimately
@@ -42,9 +42,9 @@
 //   - BridgeAuth (subtype) declares "linkedAuths", a directed self-join onto
 //     itself through AuthLink — subtype-declared AND a subtype-typed M:N target
 //     in one relationship                                                     (rule b/c + defect B)
-//   - CopayAuth (subtype) declares nothing of its own; it still resolves "tags"
+//   - CouponAuth (subtype) declares nothing of its own; it still resolves "tags"
 //     via extends                                                             (rule b, overlap with a)
-//   - ScopedAuth (ABSTRACT mid level between Auth and PriorAuthAuth) declares
+//   - ScopedAuth (ABSTRACT mid level between Auth and PermitAuth) declares
 //     "auditors" -> Tag through AuthAudit — served nowhere but under the one
 //     concrete subtype beneath it                                            (rule d)
 //   - Payer (non-TPH source) declares "bridgeAuths" -> BridgeAuth through
@@ -73,7 +73,7 @@ public class TphM2mRoutesTests
       { "object.entity": { "name": "Auth", "@discriminator": "type", "children": [
         { "source.rdb": { "@table": "auths2" } },
         { "field.long": { "name": "id" } },
-        { "field.enum": { "name": "type", "@values": ["Bridge", "Copay", "PriorAuth"] } },
+        { "field.enum": { "name": "type", "@values": ["Bridge", "Coupon", "Permit"] } },
         { "field.string": { "name": "reference", "@required": true, "@maxLength": 80 } },
         { "relationship.association": { "name": "tags", "@cardinality": "many", "@objectRef": "Tag", "@through": "AuthTag" } },
         { "identity.primary": { "@fields": "id", "@generation": "increment" } }
@@ -83,14 +83,14 @@ public class TphM2mRoutesTests
         { "field.boolean": { "name": "verified", "@required": true, "@default": true } },
         { "relationship.association": { "name": "linkedAuths", "@cardinality": "many", "@objectRef": "BridgeAuth", "@through": "AuthLink", "@sourceRefField": "fromAuthId" } }
       ]}},
-      { "object.entity": { "name": "CopayAuth", "extends": "Auth", "@discriminatorValue": "Copay", "children": [
-        { "field.int": { "name": "copayCents" } }
+      { "object.entity": { "name": "CouponAuth", "extends": "Auth", "@discriminatorValue": "Coupon", "children": [
+        { "field.int": { "name": "couponCents" } }
       ]}},
       { "object.entity": { "name": "ScopedAuth", "extends": "Auth", "abstract": true, "children": [
         { "field.string": { "name": "auditNotes", "@maxLength": 200 } },
         { "relationship.association": { "name": "auditors", "@cardinality": "many", "@objectRef": "Tag", "@through": "AuthAudit" } }
       ]}},
-      { "object.entity": { "name": "PriorAuthAuth", "extends": "ScopedAuth", "@discriminatorValue": "PriorAuth", "children": [
+      { "object.entity": { "name": "PermitAuth", "extends": "ScopedAuth", "@discriminatorValue": "Permit", "children": [
         { "field.string": { "name": "approver", "@maxLength": 80 } }
       ]}},
       { "object.entity": { "name": "AuthTag", "children": [
@@ -114,7 +114,7 @@ public class TphM2mRoutesTests
         { "field.long": { "name": "auditAuthId", "@required": true } },
         { "field.long": { "name": "auditTagId", "@required": true } },
         { "identity.primary": { "@fields": ["auditAuthId", "auditTagId"] } },
-        { "identity.reference": { "name": "fkAuditAuth", "@fields": "auditAuthId", "@references": "PriorAuthAuth" } },
+        { "identity.reference": { "name": "fkAuditAuth", "@fields": "auditAuthId", "@references": "PermitAuth" } },
         { "identity.reference": { "name": "fkAuditTag", "@fields": "auditTagId", "@references": "Tag" } }
       ]}},
       { "object.entity": { "name": "Payer", "children": [
@@ -136,10 +136,10 @@ public class TphM2mRoutesTests
     """;
 
     // DEFAULT config deliberately — EmitAbstractShapes is false (the GenConfig default),
-    // so ScopedAuth (the abstract TPH mid level between Auth and PriorAuthAuth) emits NO
-    // class of its own. That used to leave `class PriorAuthAuth : ScopedAuth` referencing
+    // so ScopedAuth (the abstract TPH mid level between Auth and PermitAuth) emits NO
+    // class of its own. That used to leave `class PermitAuth : ScopedAuth` referencing
     // a type that does not exist, AND silently dropped ScopedAuth's own fields (excluded
-    // from PriorAuthAuth's member set as "already inherited" by a class that was never
+    // from PermitAuth's member set as "already inherited" by a class that was never
     // emitted). See EntityGenerator.EmittedTphAncestor + the tests below.
     private static GenContext Ctx(MetaRoot root) => new()
     {
@@ -215,16 +215,16 @@ public class TphM2mRoutesTests
     public void Inherited_m2m_is_served_at_the_base_and_under_every_concrete_subtype()
     {
         var routes = FileContent(new RoutesGenerator().Generate(Ctx(Load())), "AuthRoutes.g.cs");
-        // "tags" is declared on Auth, so BridgeAuth/CopayAuth/PriorAuthAuth all resolve it
+        // "tags" is declared on Auth, so BridgeAuth/CouponAuth/PermitAuth all resolve it
         // too (rule b) — the base mount plus one per subtype is FOUR mounts total. This is
         // the independent oracle's rule (expectedRoutes), which walks every SERVED
         // object's RESOLVED relationships, not an own-only read.
         var tagMounts = System.Text.RegularExpressions.Regex.Matches(routes, "\\{id\\}/tags\"").Count;
-        Assert.Equal(4, tagMounts); // /auths, /auths/bridge, /auths/copay, /auths/priorauth
-        var copayMount = ExtractMount(routes, "/auths/copay/{id}/tags");
-        Assert.Contains("if (!await db.Auths.OfType<CopayAuth>().AnyAsync(x => x.Id == id))", copayMount);
-        var priorAuthMount = ExtractMount(routes, "/auths/priorauth/{id}/tags");
-        Assert.Contains("if (!await db.Auths.OfType<PriorAuthAuth>().AnyAsync(x => x.Id == id))", priorAuthMount);
+        Assert.Equal(4, tagMounts); // /auths, /auths/bridge, /auths/coupon, /auths/permit
+        var couponMount = ExtractMount(routes, "/auths/coupon/{id}/tags");
+        Assert.Contains("if (!await db.Auths.OfType<CouponAuth>().AnyAsync(x => x.Id == id))", couponMount);
+        var permitMount = ExtractMount(routes, "/auths/permit/{id}/tags");
+        Assert.Contains("if (!await db.Auths.OfType<PermitAuth>().AnyAsync(x => x.Id == id))", permitMount);
     }
 
     [Fact]
@@ -233,26 +233,26 @@ public class TphM2mRoutesTests
         var routes = FileContent(new RoutesGenerator().Generate(Ctx(Load())), "AuthRoutes.g.cs");
         // "auditors" lives on ScopedAuth — abstract, so it has no path and no rows of its
         // own, and it is not on the base either. The ONLY place it can be served is
-        // beneath PriorAuthAuth, the one concrete subtype beneath that level.
-        var mount = ExtractMount(routes, "/auths/priorauth/{id}/auditors");
+        // beneath PermitAuth, the one concrete subtype beneath that level.
+        var mount = ExtractMount(routes, "/auths/permit/{id}/auditors");
         Assert.Contains("db.AuthAudits", mount);
         Assert.Contains("db.Tags.AsNoTracking()", mount);
         Assert.DoesNotContain("/auths/{id}/auditors\"", routes);
         Assert.DoesNotContain("/auths/bridge/{id}/auditors\"", routes);
-        Assert.DoesNotContain("/auths/copay/{id}/auditors\"", routes);
+        Assert.DoesNotContain("/auths/coupon/{id}/auditors\"", routes);
     }
 
     [Fact]
     public void Abstract_mid_level_extends_and_field_fold_under_the_default_config()
     {
         // GenConfig.EmitAbstractShapes defaults to false, so ScopedAuth (abstract, between
-        // Auth and PriorAuthAuth) emits NO class of its own. Two things must still be true:
-        //   1. PriorAuthAuth's base-class clause resolves PAST ScopedAuth to the nearest
+        // Auth and PermitAuth) emits NO class of its own. Two things must still be true:
+        //   1. PermitAuth's base-class clause resolves PAST ScopedAuth to the nearest
         //      ancestor that DOES get emitted — here, the TPH discriminator base itself
         //      (always emitted; never metadata-abstract) — instead of naming a type that
         //      does not exist.
         //   2. ScopedAuth's OWN field ("auditNotes") still lands SOMEWHERE — on
-        //      PriorAuthAuth, the one concrete subtype beneath it — rather than being
+        //      PermitAuth, the one concrete subtype beneath it — rather than being
         //      silently dropped because it was excluded as "already inherited" by a class
         //      that was never emitted. A dropped member is worse than the compile error
         //      fixing only the base-class clause would have left behind: the compile error
@@ -260,17 +260,17 @@ public class TphM2mRoutesTests
         var files = new EntityGenerator().Generate(Ctx(Load())).ToList();
         Assert.DoesNotContain(files, f => System.IO.Path.GetFileName(f.Path) == "ScopedAuth.g.cs");
 
-        var priorAuth = FileContent(files, "PriorAuthAuth.g.cs");
-        Assert.Contains("public class PriorAuthAuth : Auth", priorAuth);
-        Assert.DoesNotContain("ScopedAuth", priorAuth);
+        var permit = FileContent(files, "PermitAuth.g.cs");
+        Assert.Contains("public class PermitAuth : Auth", permit);
+        Assert.DoesNotContain("ScopedAuth", permit);
         // ScopedAuth's own field, folded onto the one concrete subtype beneath it.
-        Assert.Contains("public string? AuditNotes { get; set; }", priorAuth);
+        Assert.Contains("public string? AuditNotes { get; set; }", permit);
 
         // The sibling subtypes (which do NOT extend ScopedAuth) never see it.
         var bridge = FileContent(files, "BridgeAuth.g.cs");
         Assert.DoesNotContain("AuditNotes", bridge);
-        var copay = FileContent(files, "CopayAuth.g.cs");
-        Assert.DoesNotContain("AuditNotes", copay);
+        var coupon = FileContent(files, "CouponAuth.g.cs");
+        Assert.DoesNotContain("AuditNotes", coupon);
     }
 
     [Fact]
@@ -291,8 +291,8 @@ public class TphM2mRoutesTests
     {
         var files = new RoutesGenerator().Generate(Ctx(Load())).ToList();
         Assert.DoesNotContain(files, f => System.IO.Path.GetFileName(f.Path) == "BridgeAuthRoutes.g.cs");
-        Assert.DoesNotContain(files, f => System.IO.Path.GetFileName(f.Path) == "CopayAuthRoutes.g.cs");
-        Assert.DoesNotContain(files, f => System.IO.Path.GetFileName(f.Path) == "PriorAuthAuthRoutes.g.cs");
+        Assert.DoesNotContain(files, f => System.IO.Path.GetFileName(f.Path) == "CouponAuthRoutes.g.cs");
+        Assert.DoesNotContain(files, f => System.IO.Path.GetFileName(f.Path) == "PermitAuthRoutes.g.cs");
         Assert.DoesNotContain(files, f => System.IO.Path.GetFileName(f.Path) == "ScopedAuthRoutes.g.cs");
     }
 
@@ -318,9 +318,9 @@ public class TphM2mRoutesTests
         // compiles clean everywhere else and only fails here, or in a live consumer's build.
         //
         // Also the regression guard for the abstract-TPH-mid-level defect (ScopedAuth,
-        // between Auth and PriorAuthAuth): Ctx() uses the DEFAULT config
+        // between Auth and PermitAuth): Ctx() uses the DEFAULT config
         // (EmitAbstractShapes: false), the shape a shared cross-port conformance fixture
-        // carries — a `class PriorAuthAuth : ScopedAuth` referencing a class that is never
+        // carries — a `class PermitAuth : ScopedAuth` referencing a class that is never
         // emitted is exactly what this compile assertion exists to catch.
         var ctx = Ctx(Load());
         var sources = new EntityGenerator().Generate(ctx)

@@ -23,14 +23,14 @@ const MODEL = {
       { "object.entity": { name: "Auth", "@discriminator": "type", children: [
         { "source.rdb": { "@table": "auths" } },
         { "field.long": { name: "id" } },
-        { "field.enum": { name: "type", "@values": ["Bridge", "Copay"] } },
+        { "field.enum": { name: "type", "@values": ["Bridge", "Coupon"] } },
         { "identity.primary": { name: "pk", "@fields": "id", "@generation": "increment" } },
       ]}},
       { "object.entity": { name: "BridgeAuth", extends: "Auth", "@discriminatorValue": "Bridge", children: [
         { "field.string": { name: "pinHash", children: [{ "view.password": {} }] } },
       ]}},
-      { "object.entity": { name: "CopayAuth", extends: "Auth", "@discriminatorValue": "Copay", children: [
-        { "field.int": { name: "copayCents" } },
+      { "object.entity": { name: "CouponAuth", extends: "Auth", "@discriminatorValue": "Coupon", children: [
+        { "field.int": { name: "couponCents" } },
       ]}},
       { "object.entity": { name: "PayerAuth", children: [
         { "source.rdb": { "@table": "payer_auths" } },

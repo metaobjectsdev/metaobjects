@@ -32,7 +32,7 @@ const MODEL = {
       { "object.entity": { name: "Auth", "@discriminator": "type", children: [
         { "source.rdb": { "@table": "auths" } },
         { "field.long": { name: "id" } },
-        { "field.enum": { name: "type", "@values": ["Bridge", "Copay"] } },
+        { "field.enum": { name: "type", "@values": ["Bridge", "Coupon"] } },
         { "relationship.association": { name: "bridgeTags", "@cardinality": "many",
             "@objectRef": "Tag", "@through": "AuthTag" } },
         { "identity.primary": { name: "pk", "@fields": "id", "@generation": "increment" } },

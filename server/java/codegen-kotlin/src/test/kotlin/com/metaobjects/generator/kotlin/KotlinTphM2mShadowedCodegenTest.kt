@@ -21,13 +21,13 @@ import kotlin.test.assertTrue
  * so pre-fix the generated code COMPILES (every reference is a statically valid `Column<T>`,
  * regardless of which query actually produced the `ResultRow`) but the per-subtype endpoint
  * calls the WRONG-target shared helper: `AuthTable.tagsQuery(id)` returns rows joined against
- * `Tag`/`AuthTag`, then the Copay-scoped endpoint tries to read `SpecialTagTable.*` columns off
+ * `Tag`/`AuthTag`, then the Coupon-scoped endpoint tries to read `SpecialTagTable.*` columns off
  * those rows — a `ResultRow` access that is well-typed but throws at RUNTIME (the column was
  * never selected), or silently maps unrelated data.
  *
  * Model: `Auth` (base, `@discriminator: type`) declares a hetero M:N `tags -> Tag` through
- * `AuthTag` (resolved unchanged by `BridgeAuth`). `CopayAuth` SHADOWS `tags`, redeclaring it as
- * `tags -> SpecialTag` through `CopaySpecialTag` — same relation NAME, genuinely different
+ * `AuthTag` (resolved unchanged by `BridgeAuth`). `CouponAuth` SHADOWS `tags`, redeclaring it as
+ * `tags -> SpecialTag` through `CouponSpecialTag` — same relation NAME, genuinely different
  * target + junction.
  */
 class KotlinTphM2mShadowedCodegenTest {
@@ -37,7 +37,7 @@ class KotlinTphM2mShadowedCodegenTest {
         { "object.entity": { "name": "Auth", "@discriminator": "type", "children": [
             { "source.rdb":   { "@table": "auths" } },
             { "field.long":   { "name": "id" } },
-            { "field.enum":   { "name": "type", "@values": ["Bridge", "Copay"] } },
+            { "field.enum":   { "name": "type", "@values": ["Bridge", "Coupon"] } },
             { "field.string": { "name": "reference", "@required": true, "@maxLength": 80 } },
             { "relationship.association": { "name": "tags", "@cardinality": "many",
                 "@objectRef": "Tag", "@through": "AuthTag" } },
@@ -46,10 +46,10 @@ class KotlinTphM2mShadowedCodegenTest {
         { "object.entity": { "name": "BridgeAuth", "extends": "Auth", "@discriminatorValue": "Bridge", "children": [
             { "field.int": { "name": "quantity", "@required": true } }
         ] } },
-        { "object.entity": { "name": "CopayAuth", "extends": "Auth", "@discriminatorValue": "Copay", "children": [
-            { "field.decimal": { "name": "copayAmount", "@precision": 10, "@scale": 2 } },
+        { "object.entity": { "name": "CouponAuth", "extends": "Auth", "@discriminatorValue": "Coupon", "children": [
+            { "field.decimal": { "name": "couponAmount", "@precision": 10, "@scale": 2 } },
             { "relationship.association": { "name": "tags", "@cardinality": "many",
-                "@objectRef": "SpecialTag", "@through": "CopaySpecialTag" } }
+                "@objectRef": "SpecialTag", "@through": "CouponSpecialTag" } }
         ] } },
         { "object.entity": { "name": "Tag", "children": [
             { "source.rdb":   { "@table": "tags" } },
@@ -71,12 +71,12 @@ class KotlinTphM2mShadowedCodegenTest {
             { "identity.reference": { "name": "fkAuth", "@fields": "authId", "@references": "Auth" } },
             { "identity.reference": { "name": "fkTag",  "@fields": "tagId",  "@references": "Tag" } }
         ] } },
-        { "object.entity": { "name": "CopaySpecialTag", "children": [
-            { "source.rdb":         { "@table": "copay_special_tags" } },
-            { "field.long":         { "name": "copayAuthId",  "@required": true } },
+        { "object.entity": { "name": "CouponSpecialTag", "children": [
+            { "source.rdb":         { "@table": "coupon_special_tags" } },
+            { "field.long":         { "name": "couponAuthId",  "@required": true } },
             { "field.long":         { "name": "specialTagId", "@required": true } },
-            { "identity.primary":   { "@fields": ["copayAuthId", "specialTagId"] } },
-            { "identity.reference": { "name": "fkCopay",      "@fields": "copayAuthId",  "@references": "CopayAuth" } },
+            { "identity.primary":   { "@fields": ["couponAuthId", "specialTagId"] } },
+            { "identity.reference": { "name": "fkCoupon",      "@fields": "couponAuthId",  "@references": "CouponAuth" } },
             { "identity.reference": { "name": "fkSpecialTag", "@fields": "specialTagId", "@references": "SpecialTag" } }
         ] } }
       ] }
@@ -119,8 +119,8 @@ class KotlinTphM2mShadowedCodegenTest {
 
     @Test fun shadowingSubtypeShapeGetsItsOwnDistinctHelper() {
         val src = relations()
-        // The shadowing CopayAuth->SpecialTag shape must NOT collapse into tagsQuery — it needs
-        // its own helper, joining SpecialTagTable/CopaySpecialTagTable, not TagTable/AuthTagTable.
+        // The shadowing CouponAuth->SpecialTag shape must NOT collapse into tagsQuery — it needs
+        // its own helper, joining SpecialTagTable/CouponSpecialTagTable, not TagTable/AuthTagTable.
         assertFalse(
             src.contains(Regex("""fun AuthTable\.tagsQuery\([^)]*\): Query =\s*\n\s*SpecialTagTable""")),
             "the shared tagsQuery helper must not join SpecialTagTable; saw:\n$src",
@@ -134,34 +134,34 @@ class KotlinTphM2mShadowedCodegenTest {
         val shadowName = distinctHelpers.first { it != "tags" }
         val shadowFn = src.substringAfter("fun AuthTable.${shadowName}Query").substringBefore("\n\n")
         assertTrue("SpecialTagTable" in shadowFn, "expected the shadow helper to join SpecialTagTable; saw:\n$shadowFn")
-        assertTrue("CopaySpecialTagTable" in shadowFn, "expected the shadow helper to join CopaySpecialTagTable; saw:\n$shadowFn")
+        assertTrue("CouponSpecialTagTable" in shadowFn, "expected the shadow helper to join CouponSpecialTagTable; saw:\n$shadowFn")
         assertFalse(
             "AuthTagTable" in shadowFn,
             "the shadow helper must not join the BASE shape's junction (AuthTagTable); saw:\n$shadowFn",
         )
     }
 
-    // --- controller: the Copay-scoped mount must call ITS OWN helper, not the base's -----
+    // --- controller: the Coupon-scoped mount must call ITS OWN helper, not the base's -----
 
-    @Test fun copayScopedMountReturnsSpecialTagAndCallsItsOwnHelper() {
+    @Test fun couponScopedMountReturnsSpecialTagAndCallsItsOwnHelper() {
         val src = controller()
-        assertTrue("@GetMapping(\"/copay/{id}/tags\")" in src, "expected /copay/{id}/tags; saw:\n$src")
-        assertTrue("fun tagsCopay(@PathVariable id: Long): ResponseEntity<List<SpecialTag>>" in src,
-            "expected tagsCopay() to return List<SpecialTag> (already correct pre-fix); saw:\n$src")
+        assertTrue("@GetMapping(\"/coupon/{id}/tags\")" in src, "expected /coupon/{id}/tags; saw:\n$src")
+        assertTrue("fun tagsCoupon(@PathVariable id: Long): ResponseEntity<List<SpecialTag>>" in src,
+            "expected tagsCoupon() to return List<SpecialTag> (already correct pre-fix); saw:\n$src")
 
-        val tagsCopayBody = src.substringAfter("fun tagsCopay(").substringBefore("\n    }\n")
+        val tagsCouponBody = src.substringAfter("fun tagsCoupon(").substringBefore("\n    }\n")
 
-        // THE regression this fix targets: tagsCopay() must NOT delegate to the base/Bridge
+        // THE regression this fix targets: tagsCoupon() must NOT delegate to the base/Bridge
         // shape's AuthTable.tagsQuery(id) helper — that helper joins Tag/AuthTag, not
-        // SpecialTag/CopaySpecialTag, so reading SpecialTagTable columns off its rows throws
+        // SpecialTag/CouponSpecialTag, so reading SpecialTagTable columns off its rows throws
         // at runtime (a well-typed but empty-record-set ResultRow access).
-        assertFalse("AuthTable.tagsQuery(id)" in tagsCopayBody,
-            "tagsCopay() must not call the base-shape tagsQuery helper (wrong target/junction); saw:\n$tagsCopayBody")
-        assertTrue(Regex("""AuthTable\.tags\w+Query\(id\)""").containsMatchIn(tagsCopayBody),
-            "expected tagsCopay() to call its OWN disambiguated helper; saw:\n$tagsCopayBody")
+        assertFalse("AuthTable.tagsQuery(id)" in tagsCouponBody,
+            "tagsCoupon() must not call the base-shape tagsQuery helper (wrong target/junction); saw:\n$tagsCouponBody")
+        assertTrue(Regex("""AuthTable\.tags\w+Query\(id\)""").containsMatchIn(tagsCouponBody),
+            "expected tagsCoupon() to call its OWN disambiguated helper; saw:\n$tagsCouponBody")
 
         // And the row-mapping columns (already correct pre-fix) must be SpecialTagTable's.
-        assertTrue("row[SpecialTagTable." in tagsCopayBody, "expected row mapping off SpecialTagTable; saw:\n$tagsCopayBody")
+        assertTrue("row[SpecialTagTable." in tagsCouponBody, "expected row mapping off SpecialTagTable; saw:\n$tagsCouponBody")
     }
 
     @Test fun bridgeScopedMountIsUnaffectedByTheShadow() {

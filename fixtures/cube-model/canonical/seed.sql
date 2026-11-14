@@ -54,8 +54,8 @@ INSERT INTO "nodes" ("id","label","parentId") VALUES
 INSERT INTO "auths" ("id","type","reference","quantity","urgency") VALUES
   (1, 'Bridge', 'A-1', 2, NULL),
   (2, 'Bridge', 'A-1', 3, NULL),
-  (3, 'Copay', 'C-1', NULL, NULL),
-  (4, 'PriorAuth', 'P-1', NULL, NULL),
+  (3, 'Coupon', 'C-1', NULL, NULL),
+  (4, 'Permit', 'P-1', NULL, NULL),
   (5, 'Referral', 'R-1', NULL, 'routine'),
   (6, 'Referral', 'R-2', NULL, 'urgent'),
   (7, NULL, 'N-1', NULL, NULL);

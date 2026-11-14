@@ -7,7 +7,7 @@ table (single-table inheritance). The plan is the single source of truth every
 TPH-aware generator reads, so the route-segment rule and subtype set never drift.
 
 The per-subtype REST route segment is the ``@discriminatorValue`` lowercased
-(``"Bridge"`` → ``bridge``, ``"PriorAuth"`` → ``priorauth``) — derived in exactly
+(``"Bridge"`` → ``bridge``, ``"Permit"`` → ``permit``) — derived in exactly
 one place (:func:`route_segment`).
 """
 from __future__ import annotations

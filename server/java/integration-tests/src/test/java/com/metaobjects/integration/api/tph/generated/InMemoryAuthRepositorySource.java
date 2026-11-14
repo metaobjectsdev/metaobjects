@@ -113,7 +113,7 @@ final class InMemoryAuthRepositorySource {
                     // FR-037 R1: writeOnce IS bound on create — settable exactly once.
                     dto.issuedCurrency(),
                     dto.autoCreatedAt(), dto.autoUpdatedAt(),
-                    dto.quantity(), dto.copayAmount(), dto.approver());
+                    dto.quantity(), dto.couponAmount(), dto.approver());
                 rows.add(saved);
                 return saved;
             }
@@ -131,7 +131,7 @@ final class InMemoryAuthRepositorySource {
                         dto.autoCreatedAt() != null ? dto.autoCreatedAt() : cur.autoCreatedAt(),
                         dto.autoUpdatedAt() != null ? dto.autoUpdatedAt() : cur.autoUpdatedAt(),
                         dto.quantity()      != null ? dto.quantity()      : cur.quantity(),
-                        dto.copayAmount()   != null ? dto.copayAmount()   : cur.copayAmount(),
+                        dto.couponAmount()   != null ? dto.couponAmount()   : cur.couponAmount(),
                         dto.approver()      != null ? dto.approver()      : cur.approver());
                     rows.set(i, merged);
                     return Optional.of(merged);
@@ -163,7 +163,7 @@ final class InMemoryAuthRepositorySource {
                         assigned.containsKey("autoCreatedAt") ? (Instant) assigned.get("autoCreatedAt")  : cur.autoCreatedAt(),
                         assigned.containsKey("autoUpdatedAt") ? (Instant) assigned.get("autoUpdatedAt")  : cur.autoUpdatedAt(),
                         assigned.containsKey("quantity")      ? (Integer) assigned.get("quantity")       : cur.quantity(),
-                        assigned.containsKey("copayAmount")   ? (BigDecimal) assigned.get("copayAmount") : cur.copayAmount(),
+                        assigned.containsKey("couponAmount")   ? (BigDecimal) assigned.get("couponAmount") : cur.couponAmount(),
                         assigned.containsKey("approver")      ? (String) assigned.get("approver")        : cur.approver());
                     rows.set(i, merged);
                     return Optional.of(merged);
@@ -220,7 +220,7 @@ final class InMemoryAuthRepositorySource {
                     case "type" -> a.type();
                     case "reference" -> a.reference();
                     case "quantity" -> a.quantity();
-                    case "copayAmount" -> a.copayAmount();
+                    case "couponAmount" -> a.couponAmount();
                     case "approver" -> a.approver();
                     default -> throw new IllegalStateException("unknown column: " + field);
                 };

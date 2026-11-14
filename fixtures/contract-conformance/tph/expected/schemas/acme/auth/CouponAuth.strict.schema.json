@@ -1,5 +1,5 @@
 {
-  "title": "CopayAuth",
+  "title": "CouponAuth",
   "type": "object",
   "properties": {
     "reference": {
@@ -13,7 +13,7 @@
         "null"
       ]
     },
-    "copayAmount": {
+    "couponAmount": {
       "description": "A decimal, as a string in JSON-number grammar or a JSON number. Precision 10, scale 2. Pattern: ^-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)?$.",
       "type": [
         "string",
@@ -24,7 +24,7 @@
   "required": [
     "reference",
     "issuedCurrency",
-    "copayAmount"
+    "couponAmount"
   ],
   "additionalProperties": false
 }

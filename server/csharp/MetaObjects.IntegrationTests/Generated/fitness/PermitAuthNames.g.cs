@@ -6,13 +6,13 @@ using System.Collections.Generic;
 namespace MetaObjects.IntegrationTests.Generated;
 
 /// <summary>
-/// GENERATED — per-object physical database names for PriorAuthAuth (spec A1/A2/A6).
+/// GENERATED — per-object physical database names for PermitAuth (spec A1/A2/A6).
 /// </summary>
-public abstract class PriorAuthAuthNames : AuthNames
+public abstract class PermitAuthNames : AuthNames
 {
     public new const string Type = "object";
     public new const string SubType = "entity";
-    public new const string Name = "PriorAuthAuth";
+    public new const string Name = "PermitAuth";
 
     public const string ApproverField = "approver";
     public const string ApproverColumn = "approver";

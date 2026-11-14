@@ -86,7 +86,7 @@ class KotlinUuidPrimaryKeyCodegenTest {
         { "object.entity": { "name": "Auth", "@discriminator": "type", "children": [
             { "source.rdb":   { "@table": "auths" } },
             { "field.uuid":   { "name": "id" } },
-            { "field.enum":   { "name": "type", "@values": ["Bridge", "Copay"] } },
+            { "field.enum":   { "name": "type", "@values": ["Bridge", "Coupon"] } },
             { "field.string": { "name": "reference", "@required": true, "@maxLength": 80 } },
             { "identity.primary": { "@fields": "id", "@generation": "uuid" } }
         ] } },
@@ -94,9 +94,9 @@ class KotlinUuidPrimaryKeyCodegenTest {
             "@discriminatorValue": "Bridge", "children": [
             { "field.int": { "name": "quantity" } }
         ] } },
-        { "object.entity": { "name": "CopayAuth", "extends": "Auth",
-            "@discriminatorValue": "Copay", "children": [
-            { "field.string": { "name": "copayCode", "@maxLength": 40 } }
+        { "object.entity": { "name": "CouponAuth", "extends": "Auth",
+            "@discriminatorValue": "Coupon", "children": [
+            { "field.string": { "name": "couponCode", "@maxLength": 40 } }
         ] } }
       ] }
     }""".trimIndent()
@@ -176,8 +176,8 @@ class KotlinUuidPrimaryKeyCodegenTest {
             "expected per-subtype getBridge(@PathVariable id: UUID); saw:\n$src")
         assertTrue("fun updateBridge(@PathVariable id: UUID," in src,
             "expected per-subtype updateBridge(@PathVariable id: UUID, ...); saw:\n$src")
-        assertTrue("fun deleteCopay(@PathVariable id: UUID)" in src,
-            "expected per-subtype deleteCopay(@PathVariable id: UUID); saw:\n$src")
+        assertTrue("fun deleteCoupon(@PathVariable id: UUID)" in src,
+            "expected per-subtype deleteCoupon(@PathVariable id: UUID); saw:\n$src")
         assertTrue("import java.util.UUID" in src,
             "expected import java.util.UUID; saw:\n$src")
         assertTrue("@PathVariable id: Long" !in src,

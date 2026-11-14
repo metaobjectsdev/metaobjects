@@ -38,7 +38,7 @@ from metaobjects.shared.base_types import TYPE_OBJECT
 
 # Auth (base, @discriminator "type") --helpers--> Tag             [non-TPH target]
 # BridgeAuth (subtype)      --helpers--> PriorityTicket [SHADOWS the name; TPH target]
-# CopayAuth (subtype)                                            [inherits, unshadowed]
+# CouponAuth (subtype)                                            [inherits, unshadowed]
 _META = {
     "metadata.root": {
         "package": "acme::auth",
@@ -58,7 +58,7 @@ _META = {
                 "children": [
                     {"source.rdb": {"@table": "auths"}},
                     {"field.long": {"name": "id"}},
-                    {"field.enum": {"name": "type", "@values": ["Bridge", "Copay"]}},
+                    {"field.enum": {"name": "type", "@values": ["Bridge", "Coupon"]}},
                     {"field.string": {"name": "reference", "@required": True, "@maxLength": 80}},
                     {"relationship.association": {
                         "name": "helpers", "@cardinality": "many",
@@ -80,9 +80,9 @@ _META = {
                 ],
             }},
             {"object.entity": {
-                "name": "CopayAuth",
+                "name": "CouponAuth",
                 "extends": "Auth",
-                "@discriminatorValue": "Copay",
+                "@discriminatorValue": "Coupon",
                 "children": [
                     {"field.string": {"name": "payer", "@maxLength": 80}},
                 ],
@@ -284,12 +284,12 @@ def _build_app() -> tuple[FastAPI, _StrictRepo]:
 @pytest.fixture()
 def client_and_repo():
     app, repo = _build_app()
-    # id=1 Bridge, id=2 Copay; tag 10; tickets 20 (Priority) and 21 (Standard).
+    # id=1 Bridge, id=2 Coupon; tag 10; tickets 20 (Priority) and 21 (Standard).
     # auth 1 has tag 10 AND ticket 20; auth 2 has tag 10 only.
     repo.seed(
         auths=[
             {"id": 1, "type": "Bridge", "reference": "b1", "quantity": 3},
-            {"id": 2, "type": "Copay", "reference": "c1", "payer": "acme"},
+            {"id": 2, "type": "Coupon", "reference": "c1", "payer": "acme"},
         ],
         tags=[{"id": 10, "name": "shared"}],
         tickets=[
@@ -324,13 +324,13 @@ def test_base_mount_threads_an_explicit_none_and_returns_the_base_targets(
 def test_non_shadowing_subtype_mount_threads_an_explicit_none(
     client_and_repo,
 ) -> None:
-    # CopayAuth inherits the BASE's helpers→Tag unchanged: same widened arity,
+    # CouponAuth inherits the BASE's helpers→Tag unchanged: same widened arity,
     # gated by its own discriminator value, None for the target.
     client, repo = client_and_repo
-    resp = client.get("/api/auths/copay/2/helpers")
+    resp = client.get("/api/auths/coupon/2/helpers")
     assert resp.status_code == 200
     assert [t["id"] for t in resp.json()] == [10]
-    assert repo.calls[-1] == ("Copay", 2, None)
+    assert repo.calls[-1] == ("Coupon", 2, None)
 
 
 def test_shadowing_subtype_mount_threads_its_own_target_discriminator(
@@ -349,7 +349,7 @@ def test_shadowing_subtype_mount_threads_its_own_target_discriminator(
 def test_shadowed_subtype_gate_answers_empty_for_a_siblings_id(
     client_and_repo,
 ) -> None:
-    # Rule (c) composes unchanged under the shadow: id=2 is a Copay row, so the
+    # Rule (c) composes unchanged under the shadow: id=2 is a Coupon row, so the
     # bridge-segment mount short-circuits to [] before the join is ever reached.
     client, repo = client_and_repo
     resp = client.get("/api/auths/bridge/2/helpers")

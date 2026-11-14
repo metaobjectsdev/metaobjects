@@ -34,7 +34,7 @@ async function loadTph(): Promise<{ root: MetaRoot; base: MetaObject; bridge: Me
                 children: [
                   { "source.rdb": { "@table": "auths" } },
                   // Discriminator is filterable on the base (polymorphic GET).
-                  { "field.enum": { name: "type", "@values": ["Bridge", "Copay"], "@filterable": true } },
+                  { "field.enum": { name: "type", "@values": ["Bridge", "Coupon"], "@filterable": true } },
                   { "field.long": { name: "id" } },
                   { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
                 ],
@@ -50,11 +50,11 @@ async function loadTph(): Promise<{ root: MetaRoot; base: MetaObject; bridge: Me
             },
             {
               "object.entity": {
-                name: "CopayAuth",
+                name: "CouponAuth",
                 extends: "Auth",
-                "@discriminatorValue": "Copay",
+                "@discriminatorValue": "Coupon",
                 children: [
-                  { "field.decimal": { name: "copayAmount", "@precision": 10, "@scale": 2 } },
+                  { "field.decimal": { name: "couponAmount", "@precision": 10, "@scale": 2 } },
                 ],
               },
             },

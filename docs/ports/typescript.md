@@ -620,14 +620,14 @@ a log line, an external system's column mapping.
 object extends another spreads the parent's collections rather than restating them:
 
 ```ts
-export const CopayAuthNames = {
+export const CouponAuthNames = {
   type: "object",
   subType: "entity",
-  name: "CopayAuth",
+  name: "CouponAuth",
   sources: { ...AuthNames.sources },     // the SHARED table, named once on the base
   fields: {
     ...AuthNames.fields,
-    copayAmount: { name: "copayAmount", column: "copay_cents" },
+    couponAmount: { name: "couponAmount", column: "coupon_cents" },
   },
   identities: { ...AuthNames.identities },
   indexes:    { ...AuthNames.indexes },
@@ -642,7 +642,7 @@ which is what a single-table hierarchy legitimately has two of.
 
 An abstract base a persisted entity extends gets an artifact of its own, carrying the
 columns it declares and an **empty `sources`** — it has no table, and must never acquire
-one. Reading `CopayAuthNames.sources.primary.table` still works: the spread resolves it,
+one. Reading `CouponAuthNames.sources.primary.table` still works: the spread resolves it,
 with the literal types intact.
 
 ## Use

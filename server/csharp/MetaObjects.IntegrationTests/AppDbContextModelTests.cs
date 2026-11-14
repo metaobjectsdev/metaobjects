@@ -32,8 +32,8 @@ public class AppDbContextModelTests
         var auth = model.FindEntityType(typeof(Auth));
         Assert.NotNull(auth);
         Assert.NotNull(model.FindEntityType(typeof(BridgeAuth)));
-        Assert.NotNull(model.FindEntityType(typeof(CopayAuth)));
-        Assert.NotNull(model.FindEntityType(typeof(PriorAuthAuth)));
+        Assert.NotNull(model.FindEntityType(typeof(CouponAuth)));
+        Assert.NotNull(model.FindEntityType(typeof(PermitAuth)));
         Assert.Equal("auths", auth!.GetTableName());
     }
 

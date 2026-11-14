@@ -99,11 +99,11 @@ CREATE TABLE "auths" (
   "type" TEXT,
   "reference" VARCHAR(80) NOT NULL,
   "quantity" INTEGER,
-  "copayAmount" NUMERIC(10,2),
+  "couponAmount" NUMERIC(10,2),
   "approver" VARCHAR(80),
   "urgency" VARCHAR(16),
   CONSTRAINT "auths_pkey" PRIMARY KEY ("id"),
-  CONSTRAINT "auths_type_chk" CHECK ("type" IN ('Bridge', 'Copay', 'PriorAuth', 'Referral'))
+  CONSTRAINT "auths_type_chk" CHECK ("type" IN ('Bridge', 'Coupon', 'Permit', 'Referral'))
 );
 
 CREATE TABLE "post_referrals" (
@@ -472,7 +472,7 @@ CREATE VIEW "v_auths_by_kind" AS
     COUNT(a."id") AS "auths",
     COUNT(DISTINCT a."reference") AS "distinctRefs"
   FROM "public"."auths" a
-  WHERE a."type" <> 'PriorAuth'
+  WHERE a."type" <> 'Permit'
   GROUP BY a."type";
 COMMENT ON VIEW "v_auths_by_kind" IS 'metaobjects:v1:sha256:1c8464289f36afaa7132f22c64ba8e5c5d529d4866cc27bc57b01b148dbbffbd';
 

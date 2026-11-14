@@ -274,7 +274,7 @@ public class PackageBindingResolverTests
                 ["acme::reporting"] = "Acme.Domain.Entities.ReportEntities",
                 ["acme::domain::dataEnums"] = "Acme.Domain.DataEnums",
                 ["acme::domain::dataEnums::authorizations"] = "Acme.Domain.DataEnums.Authorizations",
-                ["acme::domain::dataEnums::copayCards"] = "Acme.Domain.DataEnums.CopayCards",
+                ["acme::domain::dataEnums::couponCards"] = "Acme.Domain.DataEnums.CouponCards",
                 ["acme::domain::dataEnums::dataExportIntegration"] = "Acme.Domain.DataEnums.DataExportIntegration",
                 ["acme::domain::dataEnums::spIntegration"] = "Acme.Domain.DataEnums.SPIntegration",
             },
