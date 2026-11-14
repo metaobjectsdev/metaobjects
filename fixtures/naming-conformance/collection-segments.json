@@ -12,7 +12,7 @@
     { "name": "SSN", "segment": "ssns" },
     { "name": "PA", "segment": "pas" },
     { "name": "URLHost", "segment": "url_hosts" },
-    { "name": "CaseHistory", "collectionName": "CaseHistory", "segment": "case_history" },
+    { "name": "ConsignmentHistory", "collectionName": "ConsignmentHistory", "segment": "consignment_history" },
     { "name": "Faq", "collectionName": "FAQs", "segment": "faqs" },
     { "name": "TaxId", "collectionName": "TaxIDs", "segment": "tax_ids" },
     { "name": "Box", "collectionName": "PDFBoxes", "segment": "pdf_boxes" },

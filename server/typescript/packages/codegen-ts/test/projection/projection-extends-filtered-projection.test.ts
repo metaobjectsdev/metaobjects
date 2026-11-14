@@ -1,5 +1,5 @@
 // rc.19 fix round, C1: a projection that extends a FILTERED projection keeps the base's row scope.
-// Codegen read only the extender's own @filter, so a gated base (a consent or HIPAA gate) became
+// Codegen read only the extender's own @filter, so a gated base (an access gate) became
 // an ungated view in the extender, with no error. The effective filter is every level's @filter,
 // supers first, ANDed — through any depth of inheritance.
 
@@ -12,7 +12,7 @@ const plan = { "object.entity": { name: "Plan", children: [
   { "field.long": { name: "id" } },
   { "field.string": { name: "name" } },
   { "field.string": { name: "code" } },
-  { "field.boolean": { name: "consented" } },
+  { "field.boolean": { name: "contracted" } },
   { "field.boolean": { name: "deleted" } },
   { "field.int": { name: "tier" } },
   { "identity.primary": { name: "id", "@fields": "id" } },
@@ -45,23 +45,23 @@ async function sqlOf(projections: unknown[]) {
 
 describe("C1 — an extender keeps its base projection's @filter", () => {
   test("a gated base keeps its gate in an extender that declares no filter", async () => {
-    const sql = await sqlOf([gated({ consented: true }), leaf("GatedPlans", undefined)]);
-    expect(sql).toContain("WHERE p.consented = TRUE");
+    const sql = await sqlOf([gated({ contracted: true }), leaf("GatedPlans", undefined)]);
+    expect(sql).toContain("WHERE p.contracted = TRUE");
   });
 
   test("the extender's own filter is ANDed with the base's, base first", async () => {
-    const sql = await sqlOf([gated({ consented: true }), leaf("GatedPlans", { deleted: false })]);
-    expect(sql).toMatch(/WHERE \(p\.consented = TRUE AND p\.deleted = FALSE\)/);
+    const sql = await sqlOf([gated({ contracted: true }), leaf("GatedPlans", { deleted: false })]);
+    expect(sql).toMatch(/WHERE \(p\.contracted = TRUE AND p\.deleted = FALSE\)/);
   });
 
   test("every level of a deeper chain contributes, root-most first", async () => {
-    const sql = await sqlOf([gated({ consented: true }), middle({ deleted: false }), leaf("LivePlans", { tier: { gte: 2 } })]);
-    expect(sql).toMatch(/WHERE \(p\.consented = TRUE AND p\.deleted = FALSE AND p\.tier >= 2\)/);
+    const sql = await sqlOf([gated({ contracted: true }), middle({ deleted: false }), leaf("LivePlans", { tier: { gte: 2 } })]);
+    expect(sql).toMatch(/WHERE \(p\.contracted = TRUE AND p\.deleted = FALSE AND p\.tier >= 2\)/);
   });
 
   test("a gate two levels up survives an unfiltered middle level", async () => {
-    const sql = await sqlOf([gated({ consented: true }), middle(undefined), leaf("LivePlans", undefined)]);
-    expect(sql).toContain("WHERE p.consented = TRUE");
+    const sql = await sqlOf([gated({ contracted: true }), middle(undefined), leaf("LivePlans", undefined)]);
+    expect(sql).toContain("WHERE p.contracted = TRUE");
   });
 
   test("an extender of an unfiltered base emits no WHERE (unchanged)", async () => {

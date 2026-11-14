@@ -4,11 +4,11 @@
     "children": [
       {
         "object.entity": {
-          "name": "Patient",
+          "name": "Player",
           "children": [
             {
               "source.rdb": {
-                "@table": "patients"
+                "@table": "players"
               }
             },
             {
@@ -18,16 +18,16 @@
             },
             {
               "field.boolean": {
-                "name": "hasActiveHipaaConsent",
+                "name": "hasActiveLeagueContract",
                 "children": [
                   {
                     "origin.first": {
-                      "@via": "acme::Patient.consents",
-                      "@of": "acme::Consent.consentIsOnFile",
+                      "@via": "acme::Player.contracts",
+                      "@of": "acme::Contract.contractIsOnFile",
                       "@orderBy": [
                         "id:desc"
                       ],
-                      "@segment": "hipaaDecisive"
+                      "@segment": "leagueDecisive"
                     }
                   }
                 ]
@@ -44,11 +44,11 @@
       },
       {
         "object.entity": {
-          "name": "Consent",
+          "name": "Contract",
           "children": [
             {
               "source.rdb": {
-                "@table": "consents"
+                "@table": "contracts"
               }
             },
             {
@@ -58,23 +58,23 @@
             },
             {
               "field.long": {
-                "name": "patientId",
+                "name": "playerId",
                 "@required": true
               }
             },
             {
               "field.int": {
-                "name": "consentTypeId"
+                "name": "contractTypeId"
               }
             },
             {
               "field.boolean": {
-                "name": "consentIsOnFile"
+                "name": "contractIsOnFile"
               }
             },
             {
               "field.boolean": {
-                "name": "patientConsent"
+                "name": "playerContract"
               }
             },
             {
@@ -95,32 +95,32 @@
             },
             {
               "identity.reference": {
-                "name": "patientId",
-                "@fields": "patientId",
-                "@references": "acme::Patient"
+                "name": "playerId",
+                "@fields": "playerId",
+                "@references": "acme::Player"
               }
             },
             {
               "segment.filter": {
-                "name": "hipaaDecisive",
+                "name": "leagueDecisive",
                 "@filter": {
-                  "consentTypeId": 1,
+                  "contractTypeId": 1,
                   "or": [
                     {
-                      "consentIsOnFile": false
+                      "contractIsOnFile": false
                     },
                     {
                       "and": [
                         {
-                          "consentIsOnFile": true
+                          "contractIsOnFile": true
                         },
                         {
                           "or": [
                             {
-                              "patientConsent": null
+                              "playerContract": null
                             },
                             {
-                              "patientConsent": true
+                              "playerContract": true
                             }
                           ]
                         },
@@ -156,11 +156,11 @@
       },
       {
         "object.entity": {
-          "name": "Case",
+          "name": "Camp",
           "children": [
             {
               "source.rdb": {
-                "@table": "cases"
+                "@table": "camps"
               }
             },
             {
@@ -170,7 +170,7 @@
             },
             {
               "field.long": {
-                "name": "patientId",
+                "name": "playerId",
                 "@required": true
               }
             },
@@ -182,9 +182,9 @@
             },
             {
               "identity.reference": {
-                "name": "patientId",
-                "@fields": "patientId",
-                "@references": "acme::Patient"
+                "name": "playerId",
+                "@fields": "playerId",
+                "@references": "acme::Player"
               }
             }
           ]
@@ -206,7 +206,7 @@
             },
             {
               "field.long": {
-                "name": "caseId",
+                "name": "campId",
                 "@required": true
               }
             },
@@ -223,9 +223,9 @@
             },
             {
               "identity.reference": {
-                "name": "caseId",
-                "@fields": "caseId",
-                "@references": "acme::Case"
+                "name": "campId",
+                "@fields": "campId",
+                "@references": "acme::Camp"
               }
             }
           ]
@@ -235,7 +235,7 @@
         "object.projection": {
           "name": "AuthorizationExtract",
           "@filter": {
-            "caseId.patientId.hasActiveHipaaConsent": true
+            "campId.playerId.hasActiveLeagueContract": true
           },
           "children": [
             {
@@ -267,27 +267,27 @@
       },
       {
         "object.projection": {
-          "name": "PatientExtract",
+          "name": "PlayerExtract",
           "@filter": {
-            "hasActiveHipaaConsent": true
+            "hasActiveLeagueContract": true
           },
           "children": [
             {
               "source.rdb": {
                 "@kind": "view",
-                "@view": "v_patient_extract"
+                "@view": "v_player_extract"
               }
             },
             {
               "field.long": {
                 "name": "id",
-                "extends": "acme::Patient.id"
+                "extends": "acme::Player.id"
               }
             },
             {
               "identity.primary": {
                 "name": "id",
-                "extends": "acme::Patient.id"
+                "extends": "acme::Player.id"
               }
             }
           ]

@@ -118,7 +118,7 @@ csharp:
       # Most acme::lookups types land in .Entities.Lookups via the convention,
       # but Currency is a top-level concept owned elsewhere in the codebase.
       "acme::lookups::Currency": "Acme.Domain.Shared"
-      # Authorization's value-objects live in the Dto namespace by P3 convention,
+      # Authorization's value-objects live in the Dto namespace by the adopter's convention,
       # while the entities live in the Entities namespace.
       "acme::authorizations::InsuranceParameters": "Acme.Domain.Dto"
 ```
@@ -155,7 +155,7 @@ Resolution order on either path:
 4. (port-level legacy fallback, e.g. FR-019's `providedEnumNamespace` single-string)
 5. `unmappedStrategy`
 
-Adopters whose `@provided` enums are FLAT in a single namespace (no per-package sub-tree) skip `providedEnumPrepend` entirely and use the FR-019 single-string `providedEnumNamespace` fallback + `typeOverrides` for sub-namespace exceptions. This is exactly what the P3 C# adopter does (see worked example below).
+Adopters whose `@provided` enums are FLAT in a single namespace (no per-package sub-tree) skip `providedEnumPrepend` entirely and use the FR-019 single-string `providedEnumNamespace` fallback + `typeOverrides` for sub-namespace exceptions. This is exactly what the the adopter C# adopter does (see worked example below).
 
 **Why not a general rule/predicate engine.** We explicitly chose NOT to add `perKindOverrides`, `rules: when {}`, or a `NamedKind` enum. Reasons:
 - `NamedKind` would be a closed set of values the framework knows about today; metadata kinds grow over time and the enum would need amendments + a new release every time a new kind appears.
@@ -177,7 +177,7 @@ Adopters whose `@provided` enums are FLAT in a single namespace (no per-package 
 
 ### Worked examples
 
-**P3 C# adopter** (the driving case — `@provided` enums live FLAT in `DataEnums`, with 12 sub-namespace exceptions):
+**The driving C# adopter** (the driving case — `@provided` enums live FLAT in `DataEnums`, with 12 sub-namespace exceptions):
 ```yaml
 csharp:
   namespace:
@@ -210,7 +210,7 @@ Resolves:
 - `acme::cases` → convention → `Acme.Domain.Entities.Cases`
 - `acme::users-access` → convention → `Acme.Domain.Entities.UsersAccess`
 - `acme::reporting` → override → `Acme.Domain.Entities.ReportEntities`
-- `acme::patients::Gender` (provided enum) → `providedEnumNamespace` → `Acme.Domain.DataEnums.Gender`
+- `acme::players::Gender` (provided enum) → `providedEnumNamespace` → `Acme.Domain.DataEnums.Gender`
 - `acme::authorizations::AuthorizationType` (provided enum) → `typeOverrides` → `Acme.Domain.DataEnums.Authorizations.AuthorizationType`
 
 ~18 entries instead of ~80 — convention covers 13 entity packages, 3 entity overrides, the `providedEnumNamespace` single-string fallback covers ~51 flat enums, and 12 `typeOverrides` pin the sub-namespace exceptions.

@@ -134,26 +134,26 @@ public sealed class EfModelGapsTests
 
     private const string EntityDerivedModel = """
     { "metadata.root": { "package": "acme", "children": [
-      { "object.entity": { "name": "Patient", "children": [
-        { "source.rdb": { "@table": "patients" } },
+      { "object.entity": { "name": "Player", "children": [
+        { "source.rdb": { "@table": "players" } },
         { "field.long": { "name": "id" } },
-        { "field.boolean": { "name": "hasConsent", "children": [
-          { "origin.first": { "@via": "Patient.consents", "@of": "Consent.onFile", "@orderBy": ["id:desc"] } }
+        { "field.boolean": { "name": "hasContract", "children": [
+          { "origin.first": { "@via": "Player.contracts", "@of": "Contract.onFile", "@orderBy": ["id:desc"] } }
         ]}},
         { "identity.primary": { "name": "id", "@fields": "id" } }
       ]}},
-      { "object.entity": { "name": "Consent", "children": [
-        { "source.rdb": { "@table": "consents" } },
+      { "object.entity": { "name": "Contract", "children": [
+        { "source.rdb": { "@table": "contracts" } },
         { "field.long": { "name": "id" } },
-        { "field.long": { "name": "patientId", "@required": true } },
+        { "field.long": { "name": "playerId", "@required": true } },
         { "field.boolean": { "name": "onFile" } },
         { "identity.primary": { "name": "id", "@fields": "id" } },
-        { "identity.reference": { "name": "patientId", "@fields": "patientId", "@references": "Patient" } }
+        { "identity.reference": { "name": "playerId", "@fields": "playerId", "@references": "Player" } }
       ]}},
-      { "object.projection": { "name": "ConsentedPatients", "@filter": { "hasConsent": true }, "children": [
-        { "source.rdb": { "@kind": "view", "@view": "v_consented_patients" } },
-        { "field.long": { "name": "id", "extends": "acme::Patient.id" } },
-        { "identity.primary": { "name": "id", "extends": "acme::Patient.id" } }
+      { "object.projection": { "name": "ContractedPlayers", "@filter": { "hasContract": true }, "children": [
+        { "source.rdb": { "@kind": "view", "@view": "v_contracted_players" } },
+        { "field.long": { "name": "id", "extends": "acme::Player.id" } },
+        { "identity.primary": { "name": "id", "extends": "acme::Player.id" } }
       ]}}
     ]}}
     """;
@@ -164,9 +164,9 @@ public sealed class EfModelGapsTests
         // The field has no column: the view a projection reaching it is built from inlines it.
         var gen = GeneratedEfModel.Compile(EntityDerivedModel, "Acme.EntityDerived");
         using var db = gen.ModelOnlyContext();
-        var patient = EntityType(db, "Patient");
-        Assert.Null(patient.FindProperty("HasConsent"));
-        Assert.Null(patient.ClrType.GetProperty("HasConsent"));
+        var player = EntityType(db, "Player");
+        Assert.Null(player.FindProperty("HasContract"));
+        Assert.Null(player.ClrType.GetProperty("HasContract"));
     }
 
     // ── rc.21: @stringValueMap — a member's stored string ────────────────────────────────────

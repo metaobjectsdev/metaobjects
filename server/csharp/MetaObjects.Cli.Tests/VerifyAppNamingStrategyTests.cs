@@ -20,8 +20,8 @@ public sealed class VerifyAppNamingStrategyTests : IDisposable
 
     private const string Model = """
     { "metadata.root": { "package": "acme", "children": [
-      { "object.entity": { "name": "Patient", "children": [
-        { "source.rdb": { "@table": "patients" } },
+      { "object.entity": { "name": "Player", "children": [
+        { "source.rdb": { "@table": "players" } },
         { "field.long":   { "name": "id" } },
         { "field.string": { "name": "firstName" } },
         { "identity.primary": { "@fields": "id" } }

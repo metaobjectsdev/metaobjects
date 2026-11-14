@@ -1198,7 +1198,7 @@ public static partial class ValidationPasses
             {
                 // R-walk: a hop may walk an identity.reference BACKWARDS, from the entity it targets
                 // to the entity that declares it, named by that entity's collection name
-                // (`Patient.consents` for Consent.patient). A declared relationship or reference wins.
+                // (`Player.contracts` for Contract.player). A declared relationship or reference wins.
                 var reversed = currentObj is MetaObject walkedFrom && root is MetaRoot metaRoot
                     ? ReverseReferenceHops.Find(walkedFrom, relName, metaRoot.Objects())
                     : [];

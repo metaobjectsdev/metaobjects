@@ -24,8 +24,8 @@ public class PortScopedAttrTest {
 
     private static String model(String attr) {
         return "{ \"metadata.root\": { \"package\": \"acme\", \"children\": [\n"
-            + "  { \"object.entity\": { \"name\": \"Diagnosis\", " + attr + " \"children\": [\n"
-            + "    { \"source.rdb\": { \"@table\": \"diagnoses\" } },\n"
+            + "  { \"object.entity\": { \"name\": \"Analysis\", " + attr + " \"children\": [\n"
+            + "    { \"source.rdb\": { \"@table\": \"analyses\" } },\n"
             + "    { \"field.long\": { \"name\": \"id\" } },\n"
             + "    { \"identity.primary\": { \"@fields\": \"id\" } }\n"
             + "  ] } }\n] } }";
@@ -45,16 +45,16 @@ public class PortScopedAttrTest {
 
     @Test
     public void aCsharpOnlyAttributeLoadsStrictly() {
-        assertTrue(loads("\"@dbSetName\": \"Diagnosis\","));
+        assertTrue(loads("\"@dbSetName\": \"Analysis\","));
     }
 
     @Test
     public void itIsTypeChecked() {
-        assertFalse(loads("\"@dbSetName\": [\"Diagnosis\"],"));
+        assertFalse(loads("\"@dbSetName\": [\"Analysis\"],"));
     }
 
     @Test
     public void anAttributeTheRegistryDoesNotCarryStillFails() {
-        assertFalse(loads("\"@dbSetNameX\": \"Diagnosis\","));
+        assertFalse(loads("\"@dbSetNameX\": \"Analysis\","));
     }
 }

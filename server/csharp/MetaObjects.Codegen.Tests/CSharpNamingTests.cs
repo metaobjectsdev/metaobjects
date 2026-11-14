@@ -114,12 +114,12 @@ public class CSharpNamingTests
         Assert.Equal(expected, CSharpNaming.Pluralize(input));
     }
 
-    // A Greek "-sis" noun takes "-ses" (Diagnosis -> Diagnoses), not the sibilant "+es" that
-    // produced "Diagnosises" in every DbSet and finder name. The other common endings are pinned
+    // A Greek "-sis" noun takes "-ses" (Analysis -> Analyses), not the sibilant "+es" that
+    // produced "Analysises" in every DbSet and finder name. The other common endings are pinned
     // beside it so the new rule cannot widen past "-sis".
     [Theory]
-    [InlineData("Diagnosis", "Diagnoses")]
     [InlineData("Analysis", "Analyses")]
+    [InlineData("Thesis", "Theses")]
     [InlineData("Basis", "Bases")]
     [InlineData("OrderAnalysis", "OrderAnalyses")]
     [InlineData("Notification", "Notifications")]
@@ -137,8 +137,8 @@ public class CSharpNamingTests
     [Fact]
     public void DbSetName_and_reverse_finder_name_use_the_sis_plural()
     {
-        Assert.Equal("Diagnoses", CSharpNaming.DbSetName(Entity("Diagnosis")));
-        Assert.Equal("FindDiagnosesByPatient", CSharpNaming.ReverseFinderName(Entity("Diagnosis"), "patientId"));
+        Assert.Equal("Analyses", CSharpNaming.DbSetName(Entity("Analysis")));
+        Assert.Equal("FindAnalysesByPlayer", CSharpNaming.ReverseFinderName(Entity("Analysis"), "playerId"));
     }
 
     [Fact]
@@ -147,7 +147,7 @@ public class CSharpNamingTests
         // The REST collection segment is a wire contract every port spells the same way
         // (fixtures/naming-conformance); the "-sis" rule is a C# identifier fix only, so the
         // route does not move until every port moves with it.
-        Assert.Equal("diagnosises", CSharpNaming.RoutePath(Entity("Diagnosis")));
+        Assert.Equal("analysises", CSharpNaming.RoutePath(Entity("Analysis")));
     }
 
     [Fact]
@@ -456,17 +456,17 @@ public class CSharpNamingTests
 
     private const string HistoryModel = """
         { "metadata.root": { "package": "core", "children": [
-          { "object.entity": { "name": "Case", "children": [
-            { "source.rdb": { "@table": "cases" } },
+          { "object.entity": { "name": "Consignment", "children": [
+            { "source.rdb": { "@table": "consignments" } },
             { "field.long": { "name": "id" } },
             { "identity.primary": { "@fields": "id" } }
           ] } },
-          { "object.entity": { "name": "CaseHistory", ATTRS "children": [
-            { "source.rdb": { "@table": "case_history" } },
+          { "object.entity": { "name": "ConsignmentHistory", ATTRS "children": [
+            { "source.rdb": { "@table": "consignment_history" } },
             { "field.long": { "name": "id" } },
-            { "field.long": { "name": "caseId" } },
+            { "field.long": { "name": "consignmentId" } },
             { "identity.primary": { "@fields": "id" } },
-            { "identity.reference": { "name": "caseId", "@fields": "caseId", "@references": "Case" } }
+            { "identity.reference": { "name": "consignmentId", "@fields": "consignmentId", "@references": "Consignment" } }
           ] } }
         ] } }
         """;
@@ -485,37 +485,37 @@ public class CSharpNamingTests
         Config = new GenConfig { OutDir = "/unused", Namespace = "Acme.Generated" },
     };
 
-    private static MetaObject HistoryOf(MetaRoot root) => root.Objects().Single(o => o.Name == "CaseHistory");
+    private static MetaObject HistoryOf(MetaRoot root) => root.Objects().Single(o => o.Name == "ConsignmentHistory");
 
     [Fact]
     public void CollectionName_names_the_DbSet_the_route_the_finder_and_the_reverse_hop()
     {
-        var root = History("\"@collectionName\": \"CaseHistory\",");
+        var root = History("\"@collectionName\": \"ConsignmentHistory\",");
         var history = HistoryOf(root);
-        Assert.Equal("CaseHistory", CSharpNaming.DbSetName(history));
-        Assert.Equal("case_history", CSharpNaming.RoutePath(history));
-        Assert.Equal("FindCaseHistoryByCase", CSharpNaming.ReverseFinderName(history, "caseId"));
-        Assert.Equal("caseHistory", MetaObjects.Meta.ReverseReferenceHops.HopName(history));
+        Assert.Equal("ConsignmentHistory", CSharpNaming.DbSetName(history));
+        Assert.Equal("consignment_history", CSharpNaming.RoutePath(history));
+        Assert.Equal("FindConsignmentHistoryByConsignment", CSharpNaming.ReverseFinderName(history, "consignmentId"));
+        Assert.Equal("consignmentHistory", MetaObjects.Meta.ReverseReferenceHops.HopName(history));
         var warnings = new List<string>();
         var context = Assert.Single(new DbContextGenerator().Generate(CtxWarn(root, warnings))).Content;
-        Assert.Contains("DbSet<global::Core.CaseHistory> CaseHistory { get; set; }", context);
+        Assert.Contains("DbSet<global::Core.ConsignmentHistory> ConsignmentHistory { get; set; }", context);
         Assert.DoesNotContain(warnings, w => w.Contains("deprecated"));
     }
 
     [Fact]
     public void DbSetName_is_a_deprecated_alias_that_warns()
     {
-        var root = History("\"@dbSetName\": \"CaseHistory\",");
-        Assert.Equal("case_history", CSharpNaming.RoutePath(HistoryOf(root)));
+        var root = History("\"@dbSetName\": \"ConsignmentHistory\",");
+        Assert.Equal("consignment_history", CSharpNaming.RoutePath(HistoryOf(root)));
         var warnings = new List<string>();
-        Assert.Contains("DbSet<global::Core.CaseHistory> CaseHistory { get; set; }", Assert.Single(new DbContextGenerator().Generate(CtxWarn(root, warnings))).Content);
+        Assert.Contains("DbSet<global::Core.ConsignmentHistory> ConsignmentHistory { get; set; }", Assert.Single(new DbContextGenerator().Generate(CtxWarn(root, warnings))).Content);
         Assert.Contains(warnings, w => w.Contains("@dbSetName is deprecated") && w.Contains("@collectionName"));
     }
 
     [Fact]
     public void Declaring_both_is_refused()
     {
-        var root = History("\"@collectionName\": \"CaseHistory\", \"@dbSetName\": \"Histories\",");
+        var root = History("\"@collectionName\": \"ConsignmentHistory\", \"@dbSetName\": \"Histories\",");
         var ex = Assert.Throws<MetaModelException>(() => CSharpNaming.DbSetName(HistoryOf(root)));
         Assert.Contains("declares both @collectionName and @dbSetName", ex.Message);
     }
@@ -524,13 +524,13 @@ public class CSharpNamingTests
     public void Absent_the_configured_pluralizer_names_the_collection_and_unconfigured_output_is_unchanged()
     {
         var unconfigured = HistoryOf(History(""));
-        Assert.Equal("CaseHistories", CSharpNaming.DbSetName(unconfigured));
-        Assert.Equal("case_histories", CSharpNaming.RoutePath(unconfigured));
+        Assert.Equal("ConsignmentHistories", CSharpNaming.DbSetName(unconfigured));
+        Assert.Equal("consignment_histories", CSharpNaming.RoutePath(unconfigured));
 
         var none = HistoryOf(History("", pluralizer: "none"));
-        Assert.Equal("CaseHistory", CSharpNaming.DbSetName(none));
-        Assert.Equal("case_history", CSharpNaming.RoutePath(none));
-        Assert.Equal("caseHistory", MetaObjects.Meta.ReverseReferenceHops.HopName(none));
+        Assert.Equal("ConsignmentHistory", CSharpNaming.DbSetName(none));
+        Assert.Equal("consignment_history", CSharpNaming.RoutePath(none));
+        Assert.Equal("consignmentHistory", MetaObjects.Meta.ReverseReferenceHops.HopName(none));
     }
 
     [Fact]
@@ -539,7 +539,7 @@ public class CSharpNamingTests
         // The registry is process-wide and other test classes register strategies in it, so this
         // one is left registered (registering a name again replaces it) rather than reset.
         MetaObjects.Meta.NamingStrategies.RegisterPluralizer("cs-test-latin", n => n.EndsWith("History") ? n[..^1] + "ies" : n + "s");
-        Assert.Equal("CaseHistories", CSharpNaming.DbSetName(HistoryOf(History("", pluralizer: "cs-test-latin"))));
+        Assert.Equal("ConsignmentHistories", CSharpNaming.DbSetName(HistoryOf(History("", pluralizer: "cs-test-latin"))));
         Assert.Throws<ArgumentException>(() => MetaObjects.Meta.NamingStrategies.RegisterPluralizer("standard", n => n));
         var ex = Assert.Throws<MetaModelException>(() => MetaObjects.Meta.NamingStrategies.Pluralizer("klingon"));
         Assert.Contains("\"naming.collections\" names \"klingon\"", ex.Message);

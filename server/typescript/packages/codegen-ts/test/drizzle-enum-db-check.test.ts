@@ -16,7 +16,7 @@ async function load() {
       { "source.rdb": { name: "src", "@table": "providers" } },
       { "field.long": { name: "id" } },
       { "field.enum": { name: "state", "@values": ["OPEN", "SHUT"], "@dbCheck": false } },
-      { "field.enum": { name: "kind", "@values": ["CLINIC", "LAB"] } },
+      { "field.enum": { name: "kind", "@values": ["DEPOT", "LAB"] } },
       { "field.enum": { name: "tier", "@values": ["GOLD", "SILVER"], "@constraintName": "CK_Providers_Tier" } },
       { "identity.primary": { name: "pk", "@fields": ["id"] } },
     ] } },

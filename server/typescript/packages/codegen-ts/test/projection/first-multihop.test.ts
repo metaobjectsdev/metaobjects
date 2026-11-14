@@ -10,34 +10,34 @@ const MODEL = {
   "metadata.root": {
     package: "acme",
     children: [
-      { "object.entity": { name: "Patient", children: [
-        { "source.rdb": { "@table": "patients" } },
+      { "object.entity": { name: "Player", children: [
+        { "source.rdb": { "@table": "players" } },
         { "field.long": { name: "id" } },
         { "identity.primary": { name: "id", "@fields": "id" } },
       ] } },
-      { "object.entity": { name: "Case", children: [
-        { "source.rdb": { "@table": "cases" } },
+      { "object.entity": { name: "Camp", children: [
+        { "source.rdb": { "@table": "camps" } },
         { "field.long": { name: "id" } },
-        { "field.long": { name: "patientId" } },
-        { "field.long": { name: "programId" } },
+        { "field.long": { name: "playerId" } },
+        { "field.long": { name: "seasonId" } },
         { "field.boolean": { name: "active" } },
         { "identity.primary": { name: "id", "@fields": "id" } },
-        { "identity.reference": { name: "patient", "@fields": "patientId", "@references": "Patient" } },
+        { "identity.reference": { name: "player", "@fields": "playerId", "@references": "Player" } },
       ] } },
-      { "object.entity": { name: "Caregiver", children: [
-        { "source.rdb": { "@table": "caregivers" } },
+      { "object.entity": { name: "Coach", children: [
+        { "source.rdb": { "@table": "coaches" } },
         { "field.long": { name: "id" } },
-        { "field.long": { name: "patientId" } },
+        { "field.long": { name: "playerId" } },
         { "identity.primary": { name: "id", "@fields": "id" } },
-        { "identity.reference": { name: "patient", "@fields": "patientId", "@references": "Patient" } },
+        { "identity.reference": { name: "player", "@fields": "playerId", "@references": "Player" } },
       ] } },
-      { "object.projection": { name: "CaregiverExtract", children: [
-        { "source.rdb": { "@kind": "view", "@table": "v_caregiver_extract" } },
-        { "field.long": { name: "id", extends: "Caregiver.id" } },
-        { "field.long": { name: "programId", children: [{ "origin.first": {
-          "@of": "Case.programId", "@via": "Caregiver.patient.cases", "@orderBy": ["id:desc"], "@filter": { active: true },
+      { "object.projection": { name: "CoachExtract", children: [
+        { "source.rdb": { "@kind": "view", "@table": "v_coach_extract" } },
+        { "field.long": { name: "id", extends: "Coach.id" } },
+        { "field.long": { name: "seasonId", children: [{ "origin.first": {
+          "@of": "Camp.seasonId", "@via": "Coach.player.camps", "@orderBy": ["id:desc"], "@filter": { active: true },
         } }] } },
-        { "identity.primary": { name: "id", extends: "Caregiver.id" } },
+        { "identity.primary": { name: "id", extends: "Coach.id" } },
       ] } },
     ],
   },
@@ -49,8 +49,8 @@ describe("first-multihop — origin.first follows a multi-hop @via", () => {
     expect(errors).toEqual([]);
     const [v] = buildProjectionViews(root, { dialect: "postgres" });
     expect(v!.sql).toMatch(
-      /\(SELECT (\w+)\.program_id FROM public\.patients (\w+) INNER JOIN public\.cases \1 ON \1\.patient_id = \2\.id WHERE \2\.id = c\.patient_id AND \1\.active = TRUE ORDER BY \1\.id DESC NULLS LAST, \1\.id ASC LIMIT 1\) AS program_id/,
+      /\(SELECT (\w+)\.season_id FROM public\.players (\w+) INNER JOIN public\.camps \1 ON \1\.player_id = \2\.id WHERE \2\.id = c\.player_id AND \1\.active = TRUE ORDER BY \1\.id DESC NULLS LAST, \1\.id ASC LIMIT 1\) AS season_id/,
     );
-    expect([...v!.dependsOn].sort()).toEqual(["caregivers", "cases", "patients"]);
+    expect([...v!.dependsOn].sort()).toEqual(["camps", "coaches", "players"]);
   });
 });

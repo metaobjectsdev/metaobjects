@@ -56,12 +56,12 @@
             },
             {
               "field.int": {
-                "name": "priorType"
+                "name": "serviceLevel"
               }
             },
             {
               "field.int": {
-                "name": "cumulativeStatus"
+                "name": "rollupStatus"
               }
             },
             {
@@ -166,7 +166,7 @@
                             "when": {
                               "op": "eq",
                               "left": {
-                                "field": "cumulativeStatus"
+                                "field": "rollupStatus"
                               },
                               "right": {
                                 "value": 0
@@ -178,7 +178,7 @@
                           }
                         ],
                         "else": {
-                          "field": "cumulativeStatus"
+                          "field": "rollupStatus"
                         }
                       }
                     }
@@ -188,13 +188,13 @@
             },
             {
               "field.string": {
-                "name": "benefitTypeName",
+                "name": "serviceLevelName",
                 "children": [
                   {
                     "origin.computed": {
                       "@expr": {
                         "operand": {
-                          "field": "priorType"
+                          "field": "serviceLevel"
                         },
                         "case": [
                           {
@@ -202,7 +202,7 @@
                               "value": 1
                             },
                             "then": {
-                              "value": "Medical"
+                              "value": "Standard"
                             }
                           },
                           {
@@ -210,7 +210,7 @@
                               "value": 2
                             },
                             "then": {
-                              "value": "Pharmacy"
+                              "value": "Express"
                             }
                           }
                         ]

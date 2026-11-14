@@ -787,8 +787,8 @@ function _validateViaPath(
     const rel = _findRelationship(currentObj, relName) ?? _findReference(currentObj, relName);
     if (!rel) {
       // R-walk: a hop may walk an identity.reference BACKWARDS, from the entity it targets to the
-      // entity that declares it, named by that entity's collection name (`Patient.consents` for
-      // Consent.patient). A declared relationship or reference of the same name wins (above).
+      // entity that declares it, named by that entity's collection name (`Player.contracts` for
+      // Contract.player). A declared relationship or reference of the same name wins (above).
       const reversed = findReverseReferenceHops(currentObj as MetaObject, relName, isMetaRoot(root) ? root.objects() : []);
       if (reversed.length === 1) {
         validSegments.push(relName);

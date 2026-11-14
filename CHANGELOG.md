@@ -149,7 +149,7 @@ vocabulary; upgrade every port together.
   string attr, as the other ports did). `meta types` marks such an attr `[csharp-only]` and its JSON
   carries `ports`. The first one is `@dbSetName`: the EF Core DbSet property name the generated C#
   context gives an `object.entity`, `object.projection` or `object.report` (`"@dbSetName":
-  "Diagnosis"`), in place of the derived plural; the routes, the reverse finders and the api
+  "Analysis"`), in place of the derived plural; the routes, the reverse finders and the api
   reference read the property name through it.
 - **C#: `expression-indexes` generator.** The `@expr` indexes EF Core cannot model, written as one
   SQL file (`CREATE [UNIQUE] INDEX IF NOT EXISTS`, in the source's `@schema`, with `@using` and
@@ -857,8 +857,8 @@ vocabulary; upgrade every port together.
   `skipRedundant`, a string-stored enum with a `validator.length`, and a `@constraintName`
   validator under `skipRedundant`.
 - **An extender keeps its base projection's `@filter`** (rc.19 fix round, C1). Codegen read only
-  the extender's own `@filter`, so a projection extending a gated projection (a consent or HIPAA
-  gate on an abstract base) emitted an ungated view, with no error. A projection's effective
+  the extender's own `@filter`, so a projection extending a gated projection (an access or
+  eligibility gate on an abstract base) emitted an ungated view, with no error. A projection's effective
   `@filter` is now every level of its `extends` chain, root-most first, ANDed — it composes, it
   never overrides — and that is what the view's `WHERE` applies and what both loaders check
   (against the extender's effective fields, so an extender may filter on an inherited
@@ -936,7 +936,7 @@ vocabulary; upgrade every port together.
     SQL that compares with `CURRENT_DATE` or `CURRENT_TIMESTAMP` reads the session zone instead,
     so near midnight the two disagree by a day: in a session at UTC−5, from 19:00 local time the
     view's "today" is already tomorrow's date. A hand-written function you replace with a
-    `now` filter (a consent or eligibility window, say) can include or exclude a row for those
+    `now` filter (a contract or eligibility window, say) can include or exclude a row for those
     hours that it did not before. Keep the session zone UTC, or compare a `timestamptz`
     instant, if the two must agree.
   - *correlated-filter*: `{ field: "<base field>" }` operands in an origin `@filter`, with the
@@ -944,7 +944,7 @@ vocabulary; upgrade every port together.
   - *computed-over-joined*: `origin.computed` refs name the projection's own fields first.
   - *case*: searched and simple `case` expression nodes.
   C# entity classes never carry a derived field. Pinned by the fixtures
-  `entity-derived-hipaa-gate`, `origin-computed-case-over-joined`,
+  `entity-derived-league-gate`, `origin-computed-case-over-joined`,
   `origin-correlated-filter-and-segment`, `error-origin-computed-case-mixed-types`,
   `error-origin-segment-unresolved`, `error-origin-correlated-operand-unknown`.
 - **`@collectionName`, and a pluggable pluralizer** (rc.19 Phase 6, ruling R57; C# and
@@ -974,8 +974,8 @@ vocabulary; upgrade every port together.
   a value object have no EF mapping; C# warns and configures none. Pinned by
   `fixtures/conformance/reference-flattened-member`.
 - **An origin's `@via` walks the reverse of a reference** (rc.19 Phase 5, bug R-walk). A hop
-  named by the referencing entity's collection name (`Patient.consents` for
-  `Consent.patient`) walks that identity.reference backwards, to-many, with no relationship
+  named by the referencing entity's collection name (`Player.contracts` for
+  `Contract.player`) walks that identity.reference backwards, to-many, with no relationship
   declared; the loader refused it ("no such relationship or reference") in TypeScript and C#,
   and TypeScript view codegen silently dropped the join. A declared relationship or reference of
   the same name wins; two references onto the parent make the hop `ERR_AMBIGUOUS_PATH`. Pinned
@@ -1164,11 +1164,11 @@ vocabulary; upgrade every port together.
   as their first parameter's type, so a project that renamed its context got finders that did
   not compile.
 
-- **C#: a "-sis" entity name pluralizes to "-ses" in DbSet and finder names.** `Diagnosis` gave
-  `DbSet<Diagnosis> Diagnosises` and `FindDiagnosisesByPatient`; it now gives `Diagnoses` and
-  `FindDiagnosesByPatient` (`Analysis` → `Analyses`, `Basis` → `Bases`). The `-tion`, `-y` and
+- **C#: a "-sis" entity name pluralizes to "-ses" in DbSet and finder names.** `Analysis` gave
+  `DbSet<Analysis> Analysises` and `FindAnalysisesByPlayer`; it now gives `Analyses` and
+  `FindAnalysesByPlayer` (`Basis` → `Bases`, `Thesis` → `Theses`). The `-tion`, `-y` and
   `-s` endings were already right and are now pinned by tests. The REST collection segment is a
-  cross-port wire contract and keeps the shared rule (`/api/diagnosises`) until every port
+  cross-port wire contract and keeps the shared rule (`/api/analysises`) until every port
   changes together. An adopter that aliased the old DbSet name can drop the alias.
 
 - **Postgres introspection reads a composite foreign key's columns once each, in order.** It joined

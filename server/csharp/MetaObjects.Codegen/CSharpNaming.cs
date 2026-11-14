@@ -1166,9 +1166,9 @@ public static class CSharpNaming
     /// detection (<see cref="IsAlreadyPlural"/>) on top of the historical suffix rule
     /// (<see cref="PluralizeLegacySuffixOnly"/>).</para>
     ///
-    /// <para>A Greek <c>-sis</c> noun takes <c>-ses</c> (<c>Diagnosis</c> -&gt; <c>Diagnoses</c>,
-    /// <c>Analysis</c> -&gt; <c>Analyses</c>) instead of the sibilant <c>+es</c> rule's
-    /// <c>Diagnosises</c>. Every name this spells is a C# identifier (DbSet properties, reverse
+    /// <para>A Greek <c>-sis</c> noun takes <c>-ses</c> (<c>Analysis</c> -&gt; <c>Analyses</c>,
+    /// <c>Basis</c> -&gt; <c>Bases</c>) instead of the sibilant <c>+es</c> rule's
+    /// <c>Analysises</c>. Every name this spells is a C# identifier (DbSet properties, reverse
     /// finders); the REST collection segment, which IS a cross-port wire contract, keeps
     /// <see cref="PluralizeCrossPort"/> until every port adopts the rule together.</para>
     /// </summary>

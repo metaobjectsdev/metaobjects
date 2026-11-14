@@ -177,17 +177,17 @@ is valid in a `passthrough` and rejected in an `aggregate`.
 
 The same reference can be walked **backwards**, parent → many children, with no relationship
 declared for it: the hop is named by the referencing entity's collection name, lowerFirst
-(`consents` for `Consent`; its `@collectionName`, else the project's pluralizer — see
+(`contracts` for `Contract`; its `@collectionName`, else the project's pluralizer — see
 [entities](entities.md#collection-names-collectionname)), and it is to-many, so it is valid in an
 `aggregate` or `first` and rejected in a `passthrough`:
 
 ```yaml
-# Consent has `identity.reference: { name: patient, references: Patient }`; Patient declares nothing:
-- origin.aggregate: { agg: count, of: "Consent.id", via: "Patient.consents" }
+# Contract has `identity.reference: { name: player, references: Player }`; Player declares nothing:
+- origin.aggregate: { agg: count, of: "Contract.id", via: "Player.contracts" }
 ```
 
-A relationship or reference of that name on the parent wins. Two references from `Consent`
-to `Patient` make `Patient.consents` ambiguous, and the loader refuses it naming both
+A relationship or reference of that name on the parent wins. Two references from `Contract`
+to `Player` make `Player.contracts` ambiguous, and the loader refuses it naming both
 (`ERR_AMBIGUOUS_PATH`); declare a relationship for the hop instead. Explicit `@via` resolves
 every kind; single-hop-unique inference stays relationship-only.
 
@@ -204,7 +204,7 @@ walks) and filters on the column. A to-many hop would multiply the base rows and
 (`ERR_BAD_ATTR_FILTER`).
 
 ```yaml
-"@filter": { "caseId.status": open }         # JOIN cases c … WHERE c.status = 'open'
+"@filter": { "orderId.status": open }        # JOIN orders o … WHERE o.status = 'open'
 ```
 
 **A derived field declared once on an entity** (entity-derived). An entity may declare an
@@ -238,11 +238,11 @@ field; never an aggregate, and a cycle is refused. A `case` node is searched
 (`{ case: [ { when: <predicate>, then: <expr> } ], else: <expr> }`) or, with `operand`, simple
 (each `when` a value compared with it); every result has one type.
 
-The HIPAA-gate shape uses all of them at once: a `segment.filter` on `Consent` with `now`, a
-boolean on `Patient` declared as `origin.first { @via: Patient.consents, @segment: … }`, and
-`@filter: { "caseId.patientId.hasActiveHipaaConsent": true }` on every gated projection.
-`fixtures/conformance/entity-derived-hipaa-gate` pins the metadata;
-`codegen-ts/test/projection/hipaa-gate-entity-derived.test.ts` pins the view and runs it.
+The league-gate shape uses all of them at once: a `segment.filter` on `Contract` with `now`, a
+boolean on `Player` declared as `origin.first { @via: Player.contracts, @segment: … }`, and
+`@filter: { "campId.playerId.hasActiveLeagueContract": true }` on every gated projection.
+`fixtures/conformance/entity-derived-league-gate` pins the metadata;
+`codegen-ts/test/projection/league-gate-entity-derived.test.ts` pins the view and runs it.
 
 ### rc.21: the rest of what a view needs
 

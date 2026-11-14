@@ -99,8 +99,8 @@ describe("buildExpectedSchema — field.object @storage", () => {
           { "object.value": { name: "ContactInfo", children: [
             { "field.string": { name: "email" } },
           ]}},
-          { "object.entity": { name: "Patient", children: [
-            { "source.rdb": { "@table": "patients" } },
+          { "object.entity": { name: "Player", children: [
+            { "source.rdb": { "@table": "players" } },
             { "field.long":   { name: "id" } },
             { "field.object": { name: "contactInfos", isArray: true, "@objectRef": "ContactInfo", "@storage": "jsonb" } },
             { "identity.primary": { "name": "id", "@fields": "id" } },
@@ -109,8 +109,8 @@ describe("buildExpectedSchema — field.object @storage", () => {
       },
     });
     const snap = buildExpectedSchema(root, { dialect: "postgres" });
-    const patients = snap.tables.find((t) => t.name === "patients")!;
-    const contactInfos = patients.columns.find((c) => c.name === "contact_infos");
+    const players = snap.tables.find((t) => t.name === "players")!;
+    const contactInfos = players.columns.find((c) => c.name === "contact_infos");
     expect(contactInfos?.sqlType.kind).toBe("json");
   });
 

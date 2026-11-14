@@ -13,8 +13,8 @@ from metaobjects.core_types import core_provider  # noqa: F401  — side-effect 
 
 def _model(attr: dict) -> str:
     return json.dumps({"metadata.root": {"package": "acme", "children": [{"object.entity": {
-        "name": "Diagnosis", **attr, "children": [
-            {"source.rdb": {"@table": "diagnoses"}},
+        "name": "Analysis", **attr, "children": [
+            {"source.rdb": {"@table": "analyses"}},
             {"field.long": {"name": "id"}},
             {"identity.primary": {"@fields": "id"}},
         ]}}]}})
@@ -25,12 +25,12 @@ def _codes(attr: dict) -> list[str]:
 
 
 def test_a_csharp_only_attribute_loads_strictly() -> None:
-    assert _codes({"@dbSetName": "Diagnosis"}) == []
+    assert _codes({"@dbSetName": "Analysis"}) == []
 
 
 def test_it_is_type_checked() -> None:
-    assert _codes({"@dbSetName": ["Diagnosis"]}) != []
+    assert _codes({"@dbSetName": ["Analysis"]}) != []
 
 
 def test_an_attribute_the_registry_does_not_carry_still_fails() -> None:
-    assert any("UNKNOWN_ATTR" in c for c in _codes({"@dbSetNameX": "Diagnosis"}))
+    assert any("UNKNOWN_ATTR" in c for c in _codes({"@dbSetNameX": "Analysis"}))

@@ -1,8 +1,8 @@
 {
   "metadata.root": {
-    "package": "acme::clinical",
+    "package": "acme::lab",
     "children": [
-      { "object.entity": { "name": "Diagnosis", "@dbSetName": ["Diagnosis"], "children": [
+      { "object.entity": { "name": "Analysis", "@dbSetName": ["Analysis"], "children": [
         { "field.long": { "name": "id" } },
         { "identity.primary": { "name": "pk", "@fields": ["id"] } }
       ] } }

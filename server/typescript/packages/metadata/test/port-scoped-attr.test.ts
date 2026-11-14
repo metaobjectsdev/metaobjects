@@ -10,8 +10,8 @@ import { buildVocabularyCatalog } from "../src/vocabulary-catalog.js";
 
 function model(attr: string): string {
   return JSON.stringify(JSON.parse(`{ "metadata.root": { "package": "acme", "children": [
-    { "object.entity": { "name": "Diagnosis", ${attr} "children": [
-      { "source.rdb": { "@table": "diagnoses" } },
+    { "object.entity": { "name": "Analysis", ${attr} "children": [
+      { "source.rdb": { "@table": "analyses" } },
       { "field.long": { "name": "id" } },
       { "identity.primary": { "@fields": "id" } }
     ] } }
@@ -25,15 +25,15 @@ async function codes(json: string): Promise<string[]> {
 
 describe("a C#-only attribute (R40)", () => {
   test("loads under the strict loader", async () => {
-    expect(await codes(model(`"@dbSetName": "Diagnosis",`))).toEqual([]);
+    expect(await codes(model(`"@dbSetName": "Analysis",`))).toEqual([]);
   });
 
   test("is type-checked: a list is not a DbSet name", async () => {
-    expect(await codes(model(`"@dbSetName": ["Diagnosis"],`))).not.toEqual([]);
+    expect(await codes(model(`"@dbSetName": ["Analysis"],`))).not.toEqual([]);
   });
 
   test("an attribute the registry does not carry still fails", async () => {
-    expect(await codes(model(`"@dbSetNameX": "Diagnosis",`))).toContain("ERR_UNKNOWN_ATTR");
+    expect(await codes(model(`"@dbSetNameX": "Analysis",`))).toContain("ERR_UNKNOWN_ATTR");
   });
 
   test("the vocabulary names the ports that act on it", async () => {

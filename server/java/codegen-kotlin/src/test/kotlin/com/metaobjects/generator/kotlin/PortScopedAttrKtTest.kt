@@ -16,8 +16,8 @@ import kotlin.test.assertTrue
 class PortScopedAttrKtTest {
     private fun model(attr: String) = """
         { "metadata.root": { "package": "acme", "children": [
-          { "object.entity": { "name": "Diagnosis", $attr "children": [
-            { "source.rdb": { "@table": "diagnoses" } },
+          { "object.entity": { "name": "Analysis", $attr "children": [
+            { "source.rdb": { "@table": "analyses" } },
             { "field.long": { "name": "id" } },
             { "identity.primary": { "@fields": "id" } }
           ] } }
@@ -35,9 +35,9 @@ class PortScopedAttrKtTest {
         ObjectClassRegistry.resetGlobal()
     }
 
-    @Test fun `a csharp-only attribute loads`() = assertEquals(emptyList(), errors("\"@dbSetName\": \"Diagnosis\","))
+    @Test fun `a csharp-only attribute loads`() = assertEquals(emptyList(), errors("\"@dbSetName\": \"Analysis\","))
 
-    @Test fun `it is type-checked`() = assertTrue(errors("\"@dbSetName\": [\"Diagnosis\"],").isNotEmpty())
+    @Test fun `it is type-checked`() = assertTrue(errors("\"@dbSetName\": [\"Analysis\"],").isNotEmpty())
 
-    @Test fun `an unregistered attribute still fails`() = assertTrue(errors("\"@dbSetNameX\": \"Diagnosis\",").isNotEmpty())
+    @Test fun `an unregistered attribute still fails`() = assertTrue(errors("\"@dbSetNameX\": \"Analysis\",").isNotEmpty())
 }

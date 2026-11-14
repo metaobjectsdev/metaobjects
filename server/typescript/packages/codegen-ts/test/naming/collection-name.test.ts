@@ -24,17 +24,17 @@ const model = (historyAttrs: Json): Json => ({
   "metadata.root": {
     package: "acme",
     children: [
-      { "object.entity": { name: "Case", children: [
-        { "source.rdb": { "@table": "cases" } },
+      { "object.entity": { name: "Consignment", children: [
+        { "source.rdb": { "@table": "consignments" } },
         { "field.long": { name: "id" } },
         { "identity.primary": { "@fields": "id", "@generation": "increment" } },
       ] } },
-      { "object.entity": { name: "CaseHistory", ...historyAttrs, children: [
-        { "source.rdb": { "@table": "case_history" } },
+      { "object.entity": { name: "ConsignmentHistory", ...historyAttrs, children: [
+        { "source.rdb": { "@table": "consignment_history" } },
         { "field.long": { name: "id" } },
-        { "field.long": { name: "caseId" } },
+        { "field.long": { name: "consignmentId" } },
         { "identity.primary": { "@fields": "id", "@generation": "increment" } },
-        { "identity.reference": { name: "caseId", "@fields": "caseId", "@references": "Case" } },
+        { "identity.reference": { name: "consignmentId", "@fields": "consignmentId", "@references": "Consignment" } },
       ] } },
     ],
   },
@@ -69,39 +69,39 @@ async function gen(root: MetaRoot): Promise<{ files: Map<string, string>; warnin
   }
 }
 
-const history = (root: MetaRoot) => root.objects().find((o) => o.name === "CaseHistory")!;
+const history = (root: MetaRoot) => root.objects().find((o) => o.name === "ConsignmentHistory")!;
 
 afterEach(() => resetNamingStrategiesForTesting());
 
 describe("@collectionName", () => {
   test("absent, the standard pluralizer derives it", async () => {
     const root = await load();
-    expect(collectionNameOf(history(root))).toBe("CaseHistories");
-    expect(reverseHopName(history(root))).toBe("caseHistories");
+    expect(collectionNameOf(history(root))).toBe("ConsignmentHistories");
+    expect(reverseHopName(history(root))).toBe("consignmentHistories");
   });
 
   test("names the REST segment, the list and finder exports, the collection variable and the reverse hop", async () => {
-    const root = await load({ "@collectionName": "CaseHistory" });
-    expect(reverseHopName(history(root))).toBe("caseHistory");
+    const root = await load({ "@collectionName": "ConsignmentHistory" });
+    expect(reverseHopName(history(root))).toBe("consignmentHistory");
     const { files, warnings } = await gen(root);
-    const queries = files.get("CaseHistory.queries.ts")!;
-    expect(queries).toContain("export async function listCaseHistory(");
-    expect(queries).toContain("export async function findCaseHistoryByCase(");
-    expect(queries).toContain(".from(caseHistory)");
-    expect(files.get("CaseHistory.ts")!).toContain("export const caseHistory = ");
-    expect([...files.values()].join("\n")).toContain('"/case_history"');
+    const queries = files.get("ConsignmentHistory.queries.ts")!;
+    expect(queries).toContain("export async function listConsignmentHistory(");
+    expect(queries).toContain("export async function findConsignmentHistoryByConsignment(");
+    expect(queries).toContain(".from(consignmentHistory)");
+    expect(files.get("ConsignmentHistory.ts")!).toContain("export const consignmentHistory = ");
+    expect([...files.values()].join("\n")).toContain('"/consignment_history"');
     expect(warnings.filter((w) => w.includes("deprecated"))).toEqual([]);
   });
 
   test("@dbSetName is its deprecated alias: the same names, and a warning", async () => {
-    const root = await load({ "@dbSetName": "CaseHistory" });
+    const root = await load({ "@dbSetName": "ConsignmentHistory" });
     const { files, warnings } = await gen(root);
-    expect(files.get("CaseHistory.queries.ts")!).toContain("export async function listCaseHistory(");
+    expect(files.get("ConsignmentHistory.queries.ts")!).toContain("export async function listConsignmentHistory(");
     expect(warnings.some((w) => w.includes("@dbSetName is deprecated") && w.includes("@collectionName"))).toBe(true);
   });
 
   test("declaring both is refused", async () => {
-    const root = await load({ "@collectionName": "CaseHistory", "@dbSetName": "Histories" });
+    const root = await load({ "@collectionName": "ConsignmentHistory", "@dbSetName": "Histories" });
     expect(() => collectionNameOf(history(root))).toThrow(/declares both @collectionName and @dbSetName/);
   });
 });
@@ -156,22 +156,22 @@ describe("the pluggable pluralizer (naming.collections)", () => {
   test("the project's pluralizer names every object without @collectionName", async () => {
     const root = await load();
     Object.assign(root, { physicalNaming: { ...root.physicalNaming, collections: "none" } });
-    expect(collectionNameOf(history(root))).toBe("CaseHistory");
+    expect(collectionNameOf(history(root))).toBe("ConsignmentHistory");
     const { files } = await gen(root);
-    expect(files.get("Case.queries.ts")!).toContain("export async function listCase(");
+    expect(files.get("Consignment.queries.ts")!).toContain("export async function listConsignment(");
   });
 
   test("an application registers its own, and every artifact follows it", async () => {
-    // Distinguishable from `standard` (CaseHistories) on purpose: a test whose pluralizer agrees
+    // Distinguishable from `standard` (ConsignmentHistories) on purpose: a test whose pluralizer agrees
     // with the default cannot tell the two apart.
     registerPluralizer("latin", (n) => (n.endsWith("History") ? n.slice(0, -1) + "ae" : n + "a"));
     const root = await load();
     Object.assign(root, { physicalNaming: { ...root.physicalNaming, collections: "latin" } });
-    expect(collectionNameOf(history(root))).toBe("CaseHistorae");
-    expect(reverseHopName(history(root))).toBe("caseHistorae");
+    expect(collectionNameOf(history(root))).toBe("ConsignmentHistorae");
+    expect(reverseHopName(history(root))).toBe("consignmentHistorae");
     const { files } = await gen(root);
-    expect(files.get("CaseHistory.queries.ts")!).toContain("export async function listCaseHistorae(");
-    expect([...files.values()].join("\n")).toContain('"/case_historae"');
+    expect(files.get("ConsignmentHistory.queries.ts")!).toContain("export async function listConsignmentHistorae(");
+    expect([...files.values()].join("\n")).toContain('"/consignment_historae"');
   });
 
   test("an unknown name fails loudly, naming the built-ins", () => {

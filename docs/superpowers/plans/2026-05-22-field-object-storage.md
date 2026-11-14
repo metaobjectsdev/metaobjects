@@ -299,8 +299,8 @@ describe("@storage cross-attribute validation", () => {
           { "object.value": { name: "ContactInfo", children: [
             { "field.string": { name: "email" } },
           ]}},
-          { "object.entity": { name: "Patient", children: [
-            { "source.dbTable": { "@name": "patients" } },
+          { "object.entity": { name: "Player", children: [
+            { "source.dbTable": { "@name": "players" } },
             { "field.object": { name: "contactInfos", isArray: true, "@objectRef": "ContactInfo", "@storage": "jsonb" } },
             { "field.long":   { name: "id" } },
             { "identity.primary": { "@fields": "id" } },
@@ -439,8 +439,8 @@ describe("buildExpectedSchema — field.object @storage", () => {
           { "object.value": { name: "ContactInfo", children: [
             { "field.string": { name: "email" } },
           ]}},
-          { "object.entity": { name: "Patient", children: [
-            { "source.dbTable": { "@name": "patients" } },
+          { "object.entity": { name: "Player", children: [
+            { "source.dbTable": { "@name": "players" } },
             { "field.long":   { name: "id" } },
             { "field.object": { name: "contactInfos", isArray: true, "@objectRef": "ContactInfo", "@storage": "jsonb" } },
             { "identity.primary": { "@fields": "id" } },
@@ -449,8 +449,8 @@ describe("buildExpectedSchema — field.object @storage", () => {
       },
     });
     const snap = buildExpectedSchema(root, { dialect: "postgres" });
-    const patients = snap.tables.find((t) => t.name === "patients")!;
-    const contactInfos = patients.columns.find((c) => c.name === "contact_infos");
+    const players = snap.tables.find((t) => t.name === "players")!;
+    const contactInfos = players.columns.find((c) => c.name === "contact_infos");
     expect(contactInfos?.sqlType.kind).toBe("json");
   });
 
@@ -883,9 +883,9 @@ Expected: PASS. Adjust expected if needed.
       },
       {
         "object.entity": {
-          "name": "Patient",
+          "name": "Player",
           "children": [
-            { "source.dbTable": { "@name": "patients" } },
+            { "source.dbTable": { "@name": "players" } },
             { "field.long":   { "name": "id" } },
             { "field.object": { "name": "contactInfos", "isArray": true, "@objectRef": "ContactInfo", "@storage": "jsonb" } },
             { "identity.primary": { "@fields": "id" } }
@@ -918,9 +918,9 @@ Expected: PASS. Adjust expected if needed.
       },
       {
         "object.entity": {
-          "name": "Patient",
+          "name": "Player",
           "children": [
-            { "source.dbTable": { "@name": "patients" } },
+            { "source.dbTable": { "@name": "players" } },
             { "field.long":   { "name": "id" } },
             { "field.object": { "name": "contactInfos", "isArray": true, "@objectRef": "ContactInfo", "@storage": "jsonb" } },
             { "identity.primary": { "@fields": ["id"] } }

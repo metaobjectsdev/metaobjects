@@ -15,8 +15,8 @@
             { "field.timestamp": { "name": "endsAt" } },
             { "identity.primary": { "name": "pk", "@fields": "id" } },
             { "validator.comparison": { "name": "window", "@left": "startsAt", "@op": "lte", "@right": "endsAt", "@dbCheck": false } },
-            { "validator.requiredWhen": { "name": "clinicEmail", "@field": "email", "@when": "kind", "@equals": "clinic", "@dbCheck": false } },
-            { "validator.presentIff": { "name": "clinicStart", "@field": "startsAt", "@when": "kind", "@equals": "clinic", "@dbCheck": false } },
+            { "validator.requiredWhen": { "name": "depotEmail", "@field": "email", "@when": "kind", "@equals": "depot", "@dbCheck": false } },
+            { "validator.presentIff": { "name": "depotStart", "@field": "startsAt", "@when": "kind", "@equals": "depot", "@dbCheck": false } },
             { "validator.atLeastOne": { "name": "contact", "@fields": ["email", "phone"], "@dbCheck": false, "@constraintName": "visits_contact_ok" } }
           ]
         }

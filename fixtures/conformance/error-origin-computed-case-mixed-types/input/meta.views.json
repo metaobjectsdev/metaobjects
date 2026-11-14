@@ -51,12 +51,12 @@
             },
             {
               "field.int": {
-                "name": "priorType"
+                "name": "serviceLevel"
               }
             },
             {
               "field.int": {
-                "name": "cumulativeStatus"
+                "name": "rollupStatus"
               }
             },
             {

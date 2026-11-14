@@ -13,8 +13,8 @@ public sealed class DbSetNameVocabularyTests
 {
     private const string Model = """
         { "metadata.root": { "package": "acme", "children": [
-          { "object.entity": { "name": "Diagnosis", "@dbSetName": "Diagnosis", "children": [
-            { "source.rdb": { "@table": "diagnoses" } },
+          { "object.entity": { "name": "Analysis", "@dbSetName": "Analysis", "children": [
+            { "source.rdb": { "@table": "analyses" } },
             { "field.long": { "name": "id" } },
             { "identity.primary": { "@fields": "id" } }
           ] } }
@@ -27,7 +27,7 @@ public sealed class DbSetNameVocabularyTests
         var result = new MetaDataLoader(Provider.ComposeRegistry(CoreTypes.LibraryProviders), strict: true)
             .Load([new InMemoryStringSource(Model, id: "meta.json")]);
         Assert.Empty(result.Errors.Select(e => e.Code + ": " + e.Message));
-        Assert.Equal("Diagnosis", result.Root.Objects().Single().OwnAttr("dbSetName"));
+        Assert.Equal("Analysis", result.Root.Objects().Single().OwnAttr("dbSetName"));
     }
 
     [Fact]

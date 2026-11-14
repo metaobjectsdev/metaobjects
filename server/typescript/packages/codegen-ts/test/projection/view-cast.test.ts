@@ -12,22 +12,22 @@ const MODEL = {
   "metadata.root": {
     package: "acme",
     children: [
-      { "object.entity": { name: "Physician", children: [
-        { "source.rdb": { "@table": "physicians" } },
+      { "object.entity": { name: "Pilot", children: [
+        { "source.rdb": { "@table": "pilots" } },
         { "field.long": { name: "id" } },
         { "field.string": { name: "externalReferenceId", "@maxLength": 100 } },
         { "field.int": { name: "rank" } },
         { "identity.primary": { name: "id", "@fields": "id" } },
       ] } },
-      { "object.projection": { name: "PhysicianExtract", children: [
-        { "source.rdb": { "@kind": "view", "@table": "v_physician_extract" } },
-        { "field.long": { name: "id", extends: "Physician.id" } },
+      { "object.projection": { name: "PilotExtract", children: [
+        { "source.rdb": { "@kind": "view", "@table": "v_pilot_extract" } },
+        { "field.long": { name: "id", extends: "Pilot.id" } },
         { "field.int": { name: "locationType", children: [{ "origin.computed": { "@expr": { value: null } } }] } },
         { "field.string": { name: "territoryName", children: [{ "origin.computed": { "@expr": { value: null } } }] } },
         { "field.timestamp": { name: "removedAt", children: [{ "origin.computed": { "@expr": { value: null } } }] } },
-        { "field.string": { name: "externalRef", children: [{ "origin.passthrough": { "@from": "Physician.externalReferenceId", "@convert": true } }] } },
-        { "field.long": { name: "rankWide", children: [{ "origin.passthrough": { "@from": "Physician.rank", "@convert": true } }] } },
-        { "identity.primary": { name: "id", extends: "Physician.id" } },
+        { "field.string": { name: "externalRef", children: [{ "origin.passthrough": { "@from": "Pilot.externalReferenceId", "@convert": true } }] } },
+        { "field.long": { name: "rankWide", children: [{ "origin.passthrough": { "@from": "Pilot.rank", "@convert": true } }] } },
+        { "identity.primary": { name: "id", extends: "Pilot.id" } },
       ] } },
     ],
   },

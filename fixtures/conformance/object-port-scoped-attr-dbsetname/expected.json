@@ -1,15 +1,15 @@
 {
   "metadata.root": {
-    "package": "acme::clinical",
+    "package": "acme::lab",
     "children": [
       {
         "object.entity": {
-          "name": "Diagnosis",
-          "@dbSetName": "Diagnosis",
+          "name": "Analysis",
+          "@dbSetName": "Analysis",
           "children": [
             {
               "source.rdb": {
-                "@table": "diagnoses"
+                "@table": "analyses"
               }
             },
             {
@@ -33,15 +33,15 @@
             {
               "dimension.attribute": {
                 "name": "code",
-                "@of": "acme::clinical::Diagnosis.code"
+                "@of": "acme::lab::Analysis.code"
               }
             },
             {
               "measure.aggregate": {
-                "name": "diagnoses",
+                "name": "analyses",
                 "@agg": "count",
                 "@of": [
-                  "acme::clinical::Diagnosis.id"
+                  "acme::lab::Analysis.id"
                 ]
               }
             }
@@ -50,13 +50,13 @@
       },
       {
         "object.projection": {
-          "name": "DiagnosisSummary",
-          "@dbSetName": "DiagnosisSummary",
+          "name": "AnalysisSummary",
+          "@dbSetName": "AnalysisSummary",
           "children": [
             {
               "source.rdb": {
                 "@kind": "view",
-                "@view": "v_diagnosis_summary"
+                "@view": "v_analysis_summary"
               }
             },
             {
@@ -69,20 +69,20 @@
       },
       {
         "object.report": {
-          "name": "DiagnosisCounts",
-          "@dbSetName": "DiagnosisCounts",
+          "name": "AnalysisCounts",
+          "@dbSetName": "AnalysisCounts",
           "@dimensions": [
             "code"
           ],
-          "@from": "acme::clinical::Diagnosis",
+          "@from": "acme::lab::Analysis",
           "@measures": [
-            "diagnoses"
+            "analyses"
           ],
           "children": [
             {
               "source.rdb": {
                 "@kind": "view",
-                "@view": "v_diagnosis_counts"
+                "@view": "v_analysis_counts"
               }
             }
           ]

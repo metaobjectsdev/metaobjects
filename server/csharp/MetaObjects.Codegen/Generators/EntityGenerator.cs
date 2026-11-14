@@ -825,7 +825,7 @@ public class EntityGenerator : IGenerator
 
     // The directly-extended entity to emit as a C# base class for a NON-TPH entity (mapped
     // entity or abstract shape). The metadata `extends` chain becomes the C# inheritance
-    // chain: `class Physician : BaseAuditableEntity`, `abstract class BaseAuditableEntity :
+    // chain: `class Pilot : BaseAuditableEntity`, `abstract class BaseAuditableEntity :
     // BaseEntity`. Returns the immediate `extends` target when it is an emitted entity — an
     // abstract base (only when EmitAbstractShapes is on, since the base must exist as a type)
     // or a concrete parent. Null when there is no such parent: the entity then flattens its

@@ -34,11 +34,11 @@
       },
       {
         "object.entity": {
-          "name": "Case",
+          "name": "Consignment",
           "children": [
             {
               "source.rdb": {
-                "@table": "cases"
+                "@table": "consignments"
               }
             },
             {
@@ -53,12 +53,12 @@
             },
             {
               "field.int": {
-                "name": "priorType"
+                "name": "serviceLevel"
               }
             },
             {
               "field.int": {
-                "name": "cumulativeStatus"
+                "name": "rollupStatus"
               }
             },
             {
@@ -93,12 +93,12 @@
       },
       {
         "object.entity": {
-          "name": "CaseHistory",
-          "@collectionName": "CaseHistory",
+          "name": "ConsignmentHistory",
+          "@collectionName": "ConsignmentHistory",
           "children": [
             {
               "source.rdb": {
-                "@table": "case_history"
+                "@table": "consignment_history"
               }
             },
             {
@@ -108,7 +108,7 @@
             },
             {
               "field.long": {
-                "name": "caseId",
+                "name": "consignmentId",
                 "@required": true
               }
             },
@@ -137,11 +137,11 @@
             },
             {
               "identity.reference": {
-                "name": "caseId",
+                "name": "consignmentId",
                 "@fields": [
-                  "caseId"
+                  "consignmentId"
                 ],
-                "@references": "acme::views::Case"
+                "@references": "acme::views::Consignment"
               }
             },
             {
@@ -170,7 +170,7 @@
             {
               "field.long": {
                 "name": "id",
-                "extends": "acme::views::Case.id"
+                "extends": "acme::views::Consignment.id"
               }
             },
             {
@@ -187,9 +187,9 @@
                           }
                         }
                       },
-                      "@of": "acme::views::CaseHistory.createdDate",
+                      "@of": "acme::views::ConsignmentHistory.createdDate",
                       "@segment": "live",
-                      "@via": "acme::views::Case.caseHistory"
+                      "@via": "acme::views::Consignment.consignmentHistory"
                     }
                   }
                 ]
@@ -208,12 +208,12 @@
                           }
                         }
                       },
-                      "@of": "acme::views::CaseHistory.statusId",
+                      "@of": "acme::views::ConsignmentHistory.statusId",
                       "@orderBy": [
                         "statusId"
                       ],
                       "@segment": "live",
-                      "@via": "acme::views::Case.caseHistory"
+                      "@via": "acme::views::Consignment.consignmentHistory"
                     }
                   }
                 ]
@@ -222,7 +222,7 @@
             {
               "identity.primary": {
                 "name": "id",
-                "extends": "acme::views::Case.id"
+                "extends": "acme::views::Consignment.id"
               }
             }
           ]

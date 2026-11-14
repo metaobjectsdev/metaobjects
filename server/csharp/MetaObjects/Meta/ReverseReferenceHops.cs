@@ -15,7 +15,7 @@ public static class ReverseReferenceHops
 {
     /// <summary>
     /// The name a reverse hop takes: the holder's collection name (its @collectionName, else the project's pluralizer), lowerFirst —
-    /// <c>consents</c> for <c>Consent</c>. The pluralization is the one every port shares
+    /// <c>contracts</c> for <c>Contract</c>. The pluralization is the one every port shares
     /// (already-plural names stay; else the suffix rule), as <c>fixtures/naming-conformance</c> pins it.
     /// </summary>
     public static string HopName(MetaObject holder)

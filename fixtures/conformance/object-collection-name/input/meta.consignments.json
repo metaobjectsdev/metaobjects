@@ -1,14 +1,14 @@
 {
   "metadata.root": {
-    "package": "acme::cases",
+    "package": "acme::consignments",
     "children": [
       {
         "object.entity": {
-          "name": "Case",
+          "name": "Consignment",
           "children": [
             {
               "source.rdb": {
-                "@table": "cases"
+                "@table": "consignments"
               }
             },
             {
@@ -27,12 +27,12 @@
       },
       {
         "object.entity": {
-          "name": "CaseHistory",
-          "@collectionName": "CaseHistory",
+          "name": "ConsignmentHistory",
+          "@collectionName": "ConsignmentHistory",
           "children": [
             {
               "source.rdb": {
-                "@table": "case_history"
+                "@table": "consignment_history"
               }
             },
             {
@@ -42,7 +42,7 @@
             },
             {
               "field.long": {
-                "name": "caseId"
+                "name": "consignmentId"
               }
             },
             {
@@ -63,22 +63,22 @@
             },
             {
               "identity.reference": {
-                "name": "caseId",
-                "@fields": "caseId",
-                "@references": "acme::cases::Case"
+                "name": "consignmentId",
+                "@fields": "consignmentId",
+                "@references": "acme::consignments::Consignment"
               }
             },
             {
               "dimension.attribute": {
                 "name": "status",
-                "@of": "acme::cases::CaseHistory.status"
+                "@of": "acme::consignments::ConsignmentHistory.status"
               }
             },
             {
               "measure.aggregate": {
                 "name": "entries",
                 "@agg": "count",
-                "@of": "acme::cases::CaseHistory.id"
+                "@of": "acme::consignments::ConsignmentHistory.id"
               }
             }
           ]
@@ -86,19 +86,19 @@
       },
       {
         "object.projection": {
-          "name": "CaseActivity",
-          "@collectionName": "CaseActivity",
+          "name": "ConsignmentActivity",
+          "@collectionName": "ConsignmentActivity",
           "children": [
             {
               "source.rdb": {
                 "@kind": "view",
-                "@view": "v_case_activity"
+                "@view": "v_consignment_activity"
               }
             },
             {
               "field.long": {
                 "name": "id",
-                "extends": "acme::cases::Case.id"
+                "extends": "acme::consignments::Consignment.id"
               }
             },
             {
@@ -108,8 +108,8 @@
                   {
                     "origin.aggregate": {
                       "@agg": "count",
-                      "@of": "acme::cases::CaseHistory.id",
-                      "@via": "acme::cases::Case.caseHistory"
+                      "@of": "acme::consignments::ConsignmentHistory.id",
+                      "@via": "acme::consignments::Consignment.consignmentHistory"
                     }
                   }
                 ]
@@ -118,7 +118,7 @@
             {
               "identity.primary": {
                 "name": "id",
-                "extends": "acme::cases::Case.id"
+                "extends": "acme::consignments::Consignment.id"
               }
             }
           ]
@@ -128,7 +128,7 @@
         "object.report": {
           "name": "HistoryCounts",
           "@collectionName": "HistoryCounts",
-          "@from": "acme::cases::CaseHistory",
+          "@from": "acme::consignments::ConsignmentHistory",
           "@dimensions": [
             "status"
           ],

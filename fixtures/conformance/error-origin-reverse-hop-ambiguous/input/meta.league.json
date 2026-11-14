@@ -1,14 +1,14 @@
 {
   "metadata.root": {
-    "package": "acme::care",
+    "package": "acme::league",
     "children": [
       {
         "object.entity": {
-          "name": "Patient",
+          "name": "Player",
           "children": [
             {
               "source.rdb": {
-                "@table": "patients"
+                "@table": "players"
               }
             },
             {
@@ -27,11 +27,11 @@
       },
       {
         "object.entity": {
-          "name": "Consent",
+          "name": "Contract",
           "children": [
             {
               "source.rdb": {
-                "@table": "consents"
+                "@table": "contracts"
               }
             },
             {
@@ -41,7 +41,7 @@
             },
             {
               "field.long": {
-                "name": "patientId"
+                "name": "playerId"
               }
             },
             {
@@ -62,16 +62,16 @@
             },
             {
               "identity.reference": {
-                "name": "patient",
-                "@fields": "patientId",
-                "@references": "acme::care::Patient"
+                "name": "player",
+                "@fields": "playerId",
+                "@references": "acme::league::Player"
               }
             },
             {
               "identity.reference": {
                 "name": "witness",
                 "@fields": "witnessId",
-                "@references": "acme::care::Patient"
+                "@references": "acme::league::Player"
               }
             }
           ]
@@ -79,29 +79,29 @@
       },
       {
         "object.projection": {
-          "name": "PatientConsentSummary",
+          "name": "PlayerContractSummary",
           "children": [
             {
               "source.rdb": {
                 "@kind": "view",
-                "@view": "v_patient_consent_summary"
+                "@view": "v_player_contract_summary"
               }
             },
             {
               "field.long": {
                 "name": "id",
-                "extends": "acme::care::Patient.id"
+                "extends": "acme::league::Player.id"
               }
             },
             {
               "field.int": {
-                "name": "consentCount",
+                "name": "contractCount",
                 "children": [
                   {
                     "origin.aggregate": {
                       "@agg": "count",
-                      "@of": "acme::care::Consent.id",
-                      "@via": "acme::care::Patient.consents"
+                      "@of": "acme::league::Contract.id",
+                      "@via": "acme::league::Player.contracts"
                     }
                   }
                 ]
@@ -110,7 +110,7 @@
             {
               "identity.primary": {
                 "name": "id",
-                "extends": "acme::care::Patient.id"
+                "extends": "acme::league::Player.id"
               }
             }
           ]

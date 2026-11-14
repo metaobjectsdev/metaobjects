@@ -15,7 +15,7 @@ const ENTITIES = [
   { "object.entity": { name: "Authorization", "@discriminator": "type", children: [
     { "source.rdb": { "@table": "authorizations" } },
     { "field.long": { name: "id" } },
-    { "field.enum": { name: "type", "@required": true, "@values": ["Coupon", "Prior", "Medical", "Pharmacy"], "@intValueMap": { Coupon: 1, Prior: 2, Medical: 3, Pharmacy: 4 } } },
+    { "field.enum": { name: "type", "@required": true, "@values": ["Coupon", "Permit", "Ground", "Air"], "@intValueMap": { Coupon: 1, Permit: 2, Ground: 3, Air: 4 } } },
     { "field.string": { name: "code" } },
     { "identity.primary": { name: "id", "@fields": "id" } },
   ] } },
@@ -24,11 +24,11 @@ const ENTITIES = [
     { "identity.reference": { name: "couponCard", "@fields": "couponCardId", "@references": "CouponCard" } },
   ] } },
   // An abstract level between the base and two concrete subtypes: its rows are both subtypes'.
-  { "object.entity": { name: "BenefitAuthorization", extends: "Authorization", abstract: true, children: [
-    { "field.string": { name: "payer" } },
+  { "object.entity": { name: "CarrierAuthorization", extends: "Authorization", abstract: true, children: [
+    { "field.string": { name: "carrier" } },
   ] } },
-  { "object.entity": { name: "MedicalAuthorization", extends: "BenefitAuthorization", "@discriminatorValue": "Medical", children: [] } },
-  { "object.entity": { name: "PharmacyAuthorization", extends: "BenefitAuthorization", "@discriminatorValue": "Pharmacy", children: [] } },
+  { "object.entity": { name: "GroundAuthorization", extends: "CarrierAuthorization", "@discriminatorValue": "Ground", children: [] } },
+  { "object.entity": { name: "AirAuthorization", extends: "CarrierAuthorization", "@discriminatorValue": "Air", children: [] } },
 ];
 
 const model = (projections: unknown[]) => ({ "metadata.root": { package: "acme", children: [...ENTITIES, ...projections] } });
@@ -65,12 +65,12 @@ describe("TPH-scope — a view over a TPH subtype carries its discriminator", ()
   });
 
   test("an abstract intermediate level reads every concrete subtype beneath it", async () => {
-    const sql = await viewSql([{ "object.projection": { name: "BenefitAuthView", children: [
-      { "source.rdb": { "@kind": "view", "@table": "v_benefit_auth" } },
-      { "field.long": { name: "id", extends: "BenefitAuthorization.id" } },
-      { "field.string": { name: "payer", extends: "BenefitAuthorization.payer" } },
-      { "identity.primary": { name: "id", extends: "BenefitAuthorization.id" } },
+    const sql = await viewSql([{ "object.projection": { name: "CarrierAuthView", children: [
+      { "source.rdb": { "@kind": "view", "@table": "v_carrier_auth" } },
+      { "field.long": { name: "id", extends: "CarrierAuthorization.id" } },
+      { "field.string": { name: "carrier", extends: "CarrierAuthorization.carrier" } },
+      { "identity.primary": { name: "id", extends: "CarrierAuthorization.id" } },
     ] } }]);
-    expect(sql).toContain("WHERE b.type IN (3, 4)");
+    expect(sql).toContain("WHERE c.type IN (3, 4)");
   });
 });

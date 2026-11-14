@@ -40,7 +40,7 @@ const AFTER: Shape = { kindColumn: "kind", microchip: true, nameRequired: false 
 function model(s: Shape): string {
   return JSON.stringify({
     "metadata.root": {
-      package: "clinic",
+      package: "depot",
       children: [
         {
           "object.entity": {

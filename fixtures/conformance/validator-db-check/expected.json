@@ -107,18 +107,18 @@
             },
             {
               "validator.requiredWhen": {
-                "name": "clinicEmail",
+                "name": "depotEmail",
                 "@dbCheck": true,
-                "@equals": "clinic",
+                "@equals": "depot",
                 "@field": "email",
                 "@when": "kind"
               }
             },
             {
               "validator.presentIff": {
-                "name": "clinicStart",
+                "name": "depotStart",
                 "@dbCheck": true,
-                "@equals": "clinic",
+                "@equals": "depot",
                 "@field": "startsAt",
                 "@when": "kind"
               }

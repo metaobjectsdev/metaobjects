@@ -130,16 +130,16 @@ upstream fails loudly instead of silently becoming a new, disconnected object �
 ## Collection names (`@collectionName`)
 
 An object's **collection name** is what a port calls "the set of these": the C# `DbSet`
-property, the REST collection segment (snake_cased: `CaseHistory` → `/case_history`), the
-TypeScript collection exports (`listCaseHistory`, `findCaseHistoryByCase`, the Drizzle
-collection variable `caseHistory`) and the reverse `@via` hop another object walks to reach its
-rows (`Case.caseHistory`). Declare it in the object's own casing; it need not be a grammatical
+property, the REST collection segment (snake_cased: `ConsignmentHistory` → `/consignment_history`), the
+TypeScript collection exports (`listConsignmentHistory`, `findConsignmentHistoryByConsignment`, the Drizzle
+collection variable `consignmentHistory`) and the reverse `@via` hop another object walks to reach its
+rows (`Consignment.consignmentHistory`). Declare it in the object's own casing; it need not be a grammatical
 plural:
 
 ```yaml
 - object.entity:
-    name: CaseHistory
-    "@collectionName": CaseHistory
+    name: ConsignmentHistory
+    "@collectionName": ConsignmentHistory
 ```
 
 Absent, the project's **pluralizer** derives it from the object's name. One setting,
