@@ -128,7 +128,7 @@ public static class PackageBindingResolver
     /// <see cref="UnmappedPackageStrategy.Error"/>.
     /// </summary>
     /// <param name="config">The codegen config holding the convention + overrides.</param>
-    /// <param name="package">Metadata package (e.g. <c>acme::cases</c>). Empty/null → fall through
+    /// <param name="package">Metadata package (e.g. <c>acme::orders</c>). Empty/null → fall through
     ///   to the unmapped strategy (no overrides/convention apply to no-package).</param>
     /// <param name="typeName">Optional named type within the package. When provided, enables the
     ///   type-level override layer (<c>typeOverrides["<pkg>::<typeName>"]</c>). When null, only

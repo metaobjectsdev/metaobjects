@@ -4,12 +4,12 @@
     "children": [
       {
         "object.projection": {
-          "name": "PhaseSummary",
+          "name": "StageSummary",
           "children": [
             {
               "source.rdb": {
                 "@kind": "storedProc",
-                "@proc": "fn_get_phase_summary"
+                "@proc": "fn_get_stage_summary"
               }
             },
             {

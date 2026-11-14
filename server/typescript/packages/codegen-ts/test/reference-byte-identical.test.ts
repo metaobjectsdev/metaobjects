@@ -989,7 +989,7 @@ const CALLABLE_MODEL = {
     children: [
       {
         "object.value": {
-          name: "PhaseSummaryArgs",
+          name: "StageSummaryArgs",
           children: [
             { "field.int": { name: "consignmentId", "@required": true } },
             { "field.timestamp": { name: "asOfDate" } },
@@ -999,9 +999,9 @@ const CALLABLE_MODEL = {
       {
         // A stored procedure taking typed arguments.
         "object.projection": {
-          name: "PhaseSummary",
+          name: "StageSummary",
           children: [
-            { "source.rdb": { "@kind": "storedProc", "@proc": "fn_phase_summary", "@parameterRef": "PhaseSummaryArgs" } },
+            { "source.rdb": { "@kind": "storedProc", "@proc": "fn_stage_summary", "@parameterRef": "StageSummaryArgs" } },
             { "field.long": { name: "phaseId" } },
             { "field.string": { name: "phaseName" } },
           ],
@@ -1012,7 +1012,7 @@ const CALLABLE_MODEL = {
         "object.projection": {
           name: "OpenCase",
           children: [
-            { "source.rdb": { "@kind": "tableFunction", "@function": "fn_open_cases" } },
+            { "source.rdb": { "@kind": "tableFunction", "@function": "fn_open_consignments" } },
             { "field.long": { name: "consignmentId" } },
           ],
         },
@@ -1020,10 +1020,10 @@ const CALLABLE_MODEL = {
       {
         // An ordinary table: must emit no wrapper on either side.
         "object.entity": {
-          name: "Case",
+          name: "Consignment",
           children: [
             { "field.long": { name: "id" } },
-            { "source.rdb": { "@table": "cases" } },
+            { "source.rdb": { "@table": "consignments" } },
             { "identity.primary": { name: "pk", "@fields": ["id"] } },
           ],
         },

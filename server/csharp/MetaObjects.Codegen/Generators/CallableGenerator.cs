@@ -49,7 +49,7 @@ public class CallableGenerator : PerEntityGenerator
 
         var cls = CSharpNaming.Pascal(entity.Name);
 
-        // Schema-qualified physical proc/function name (e.g. analytics.fn_phase_summary).
+        // Schema-qualified physical proc/function name (e.g. analytics.fn_stage_summary).
         var physical = source.PhysicalName;
         var schemaPrefix = string.IsNullOrEmpty(source.Schema) ? "" : $"{source.Schema}.";
         var procName = $"{schemaPrefix}{physical}";

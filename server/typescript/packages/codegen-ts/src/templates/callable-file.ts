@@ -3,17 +3,17 @@
 //
 //   import { sql } from "drizzle-orm";
 //   import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
-//   import type { PhaseSummaryArgs } from "./PhaseSummaryArgs.js";
-//   import { PhaseSummarySchema, type PhaseSummary } from "./PhaseSummary.js";
+//   import type { StageSummaryArgs } from "./StageSummaryArgs.js";
+//   import { StageSummarySchema, type StageSummary } from "./StageSummary.js";
 //
-//   export async function callPhaseSummary(
+//   export async function callStageSummary(
 //     db: PgDatabase<PgQueryResultHKT, Record<string, unknown>>,
-//     args: PhaseSummaryArgs,
-//   ): Promise<PhaseSummary[]> {
+//     args: StageSummaryArgs,
+//   ): Promise<StageSummary[]> {
 //     const r = await db.execute(
-//       sql`SELECT * FROM fn_phase_summary(${args.consignmentId}, ${args.asOfDate})`,
+//       sql`SELECT * FROM fn_stage_summary(${args.consignmentId}, ${args.asOfDate})`,
 //     );
-//     return r.rows.map((row) => PhaseSummarySchema.parse(row));
+//     return r.rows.map((row) => StageSummarySchema.parse(row));
 //   }
 //
 // Zero-argument procs (no @parameterRef) emit a no-args version that drops the

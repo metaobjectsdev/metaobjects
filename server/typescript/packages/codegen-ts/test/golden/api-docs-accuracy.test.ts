@@ -872,23 +872,23 @@ const T5_FIXTURE = JSON.stringify({
           ],
         },
       },
-      // PhaseSummaryArgs — the @parameterRef value-object for the callable.
+      // StageSummaryArgs — the @parameterRef value-object for the callable.
       {
         "object.value": {
-          name: "PhaseSummaryArgs",
+          name: "StageSummaryArgs",
           children: [
             { "field.long": { name: "consignmentId", "@required": true } },
             { "field.string": { name: "asOfDate", "@required": true } },
           ],
         },
       },
-      // PhaseSummary — a projection entity backed by a stored procedure → the
-      // callable generator emits callPhaseSummary(db, args): Promise<PhaseSummary[]>.
+      // StageSummary — a projection entity backed by a stored procedure → the
+      // callable generator emits callStageSummary(db, args): Promise<StageSummary[]>.
       {
         "object.projection": {
-          name: "PhaseSummary",
+          name: "StageSummary",
           children: [
-            { "source.rdb": { "@kind": "storedProc", "@proc": "fn_phase_summary", "@parameterRef": "PhaseSummaryArgs" } },
+            { "source.rdb": { "@kind": "storedProc", "@proc": "fn_stage_summary", "@parameterRef": "StageSummaryArgs" } },
             { "field.long": { name: "consignmentId" } },
             { "field.string": { name: "phase" } },
           ],
@@ -944,7 +944,7 @@ describe("api-docs ACCURACY gate (T5) — relations / callable / prompt / Hono",
     model = buildApiModel(root, { outputLayout: "flat", loadedRoot: root, includeHonoRoutes: true });
 
     expect(entityFiles.length).toBeGreaterThan(0);
-    // Exactly one callable entity in the fixture (PhaseSummary).
+    // Exactly one callable entity in the fixture (StageSummary).
     expect(callableFiles.length).toBe(1);
     // One aggregated prompts.ts.
     expect(promptFiles.length).toBe(1);
@@ -1014,21 +1014,21 @@ describe("api-docs ACCURACY gate (T5) — relations / callable / prompt / Hono",
   // -----------------------------------------------------------------------
   // CALLABLE: call<Entity> in <Entity>.callable.ts at the documented path.
   // -----------------------------------------------------------------------
-  test("CALLABLE: callPhaseSummary documented + emitted at PhaseSummary.callable", () => {
-    const unit = model.units.find((u) => u.node === "PhaseSummary")!;
+  test("CALLABLE: callStageSummary documented + emitted at StageSummary.callable", () => {
+    const unit = model.units.find((u) => u.node === "StageSummary")!;
     const callable = unit.symbols.find((s) => s.kind === "callable");
-    expect(callable, "PhaseSummary carries a callable symbol").toBeDefined();
-    expect(callable!.name).toBe("callPhaseSummary");
+    expect(callable, "StageSummary carries a callable symbol").toBeDefined();
+    expect(callable!.name).toBe("callStageSummary");
 
-    const f = fileFor(callableFiles, "PhaseSummary.callable.ts")!;
+    const f = fileFor(callableFiles, "StageSummary.callable.ts")!;
     expect(f, "callable file emitted").toBeDefined();
-    expect(hasExportedFn(f.content, "callPhaseSummary")).toBe(true);
-    expect(callable!.importPath).toBe("PhaseSummary.callable");
+    expect(hasExportedFn(f.content, "callStageSummary")).toBe(true);
+    expect(callable!.importPath).toBe("StageSummary.callable");
     expect(`${callable!.importPath}.ts`).toBe(f.path);
 
     // Signature: takes the @parameterRef args VO + returns the projection array.
-    expect(callable!.signature).toContain("PhaseSummaryArgs");
-    expect(callable!.returns).toBe("PhaseSummary[]");
+    expect(callable!.signature).toContain("StageSummaryArgs");
+    expect(callable!.returns).toBe("StageSummary[]");
   });
 
   test("CALLABLE inverse: a non-callable entity carries no callable symbol", () => {

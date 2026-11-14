@@ -61,9 +61,9 @@ const MODEL: unknown[] = [
   },
   {
     "object.projection": {
-      name: "PhaseSummary",
+      name: "StageSummary",
       children: [
-        { "source.rdb": { "@kind": "storedProc", "@proc": "fn_phase_summary", "@parameterRef": "PhaseArgs" } },
+        { "source.rdb": { "@kind": "storedProc", "@proc": "fn_stage_summary", "@parameterRef": "PhaseArgs" } },
         { "field.long": { name: "phaseId" } },
         { "field.string": { name: "phaseName" } },
       ],

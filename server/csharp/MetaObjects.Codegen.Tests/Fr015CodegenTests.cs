@@ -4,16 +4,16 @@
 // method (one <Entity>.callable.cs per callable entity). Per the FR-015 spec, the C#
 // emission uses EF Core FromSqlInterpolated when the names artifact is NOT in the run:
 //
-//   public static Task<IReadOnlyList<PhaseSummary>> Call(global::Acme.Generated.AppDbContext db, global::Acme.Analytics.PhaseSummaryArgs args)
-//       => db.Set<PhaseSummary>()
-//             .FromSqlInterpolated($"SELECT * FROM analytics.fn_phase_summary({args.ConsignmentId}, {args.AsOfDate})")
+//   public static Task<IReadOnlyList<StageSummary>> Call(global::Acme.Generated.AppDbContext db, global::Acme.Analytics.StageSummaryArgs args)
+//       => db.Set<StageSummary>()
+//             .FromSqlInterpolated($"SELECT * FROM analytics.fn_stage_summary({args.ConsignmentId}, {args.AsOfDate})")
 //             .ToListAsync()...;
 //
 // and, when it IS (the default suite — §A6 / no-magic-physical-names), references the
 // procedure's name through FromSqlRaw, because an interpolation hole is a PARAMETER and an
 // identifier cannot be one:
 //
-//             .FromSqlRaw("SELECT * FROM " + global::Acme.Analytics.PhaseSummaryNames.SourcePrimarySchema + "." + global::Acme.Analytics.PhaseSummaryNames.SourcePrimaryProc + "({0}, {1})", args.ConsignmentId, args.AsOfDate)
+//             .FromSqlRaw("SELECT * FROM " + global::Acme.Analytics.StageSummaryNames.SourcePrimarySchema + "." + global::Acme.Analytics.StageSummaryNames.SourcePrimaryProc + "({0}, {1})", args.ConsignmentId, args.AsOfDate)
 //
 // Args bind in the @parameterRef value-object's field DECLARATION order on both arms. A
 // callable with no @parameterRef emits a zero-arg overload calling fn_x().
@@ -39,17 +39,17 @@ public class Fr015CodegenTests
     // storedProc entity (no @parameterRef).
     internal const string Model = """
     { "metadata.root": { "package": "acme::analytics", "children": [
-      { "object.value": { "name": "PhaseSummaryArgs", "children": [
+      { "object.value": { "name": "StageSummaryArgs", "children": [
         { "field.int":       { "name": "consignmentId", "@required": true } },
         { "field.timestamp": { "name": "asOfDate" } }
       ]}},
-      { "object.projection": { "name": "PhaseSummary", "children": [
-        { "source.rdb":  { "@kind": "storedProc", "@proc": "fn_phase_summary", "@schema": "analytics", "@parameterRef": "PhaseSummaryArgs" } },
+      { "object.projection": { "name": "StageSummary", "children": [
+        { "source.rdb":  { "@kind": "storedProc", "@proc": "fn_stage_summary", "@schema": "analytics", "@parameterRef": "StageSummaryArgs" } },
         { "field.long":   { "name": "phaseId" } },
         { "field.string": { "name": "phaseName" } }
       ]}},
       { "object.projection": { "name": "ActivePhases", "children": [
-        { "source.rdb":  { "@kind": "tableFunction", "@function": "fn_active_phases", "@parameterRef": "PhaseSummaryArgs" } },
+        { "source.rdb":  { "@kind": "tableFunction", "@function": "fn_active_phases", "@parameterRef": "StageSummaryArgs" } },
         { "field.long":   { "name": "phaseId" } }
       ]}},
       { "object.projection": { "name": "AllPhases", "children": [
@@ -88,9 +88,9 @@ public class Fr015CodegenTests
     public void Source_ParameterRef_and_IsCallable_reflect_attrs()
     {
         var root = Load();
-        var ps = root.FindObject("PhaseSummary")!.Sources()[0];
+        var ps = root.FindObject("StageSummary")!.Sources()[0];
         Assert.True(ps.IsCallable());
-        Assert.Equal("acme::analytics::PhaseSummaryArgs", ps.ParameterRef);
+        Assert.Equal("acme::analytics::StageSummaryArgs", ps.ParameterRef);
 
         var plain = root.FindObject("Plain")!.Sources()[0];
         Assert.False(plain.IsCallable());
@@ -103,25 +103,25 @@ public class Fr015CodegenTests
         var files = Files();
         var paths = files.Select(f => System.IO.Path.GetFileName(f.Path)).OrderBy(p => p, StringComparer.Ordinal).ToList();
         Assert.Equal(
-            ["ActivePhases.callable.g.cs", "AllPhases.callable.g.cs", "PhaseSummary.callable.g.cs"],
+            ["ActivePhases.callable.g.cs", "AllPhases.callable.g.cs", "StageSummary.callable.g.cs"],
             paths);
     }
 
     [Fact]
     public void StoredProc_with_parameterRef_emits_FromSqlInterpolated_in_declaration_order()
     {
-        var c = Content(Files(), "PhaseSummary.callable.g.cs");
+        var c = Content(Files(), "StageSummary.callable.g.cs");
 
         // Method signature: db + the args value-object.
-        Assert.Contains("global::Acme.Generated.AppDbContext db, global::Acme.Analytics.PhaseSummaryArgs args", c);
+        Assert.Contains("global::Acme.Generated.AppDbContext db, global::Acme.Analytics.StageSummaryArgs args", c);
         // Returns the projection rows.
-        Assert.Contains("Task<IReadOnlyList<global::Acme.Analytics.PhaseSummary>>", c);
+        Assert.Contains("Task<IReadOnlyList<global::Acme.Analytics.StageSummary>>", c);
         // FromSqlInterpolated with schema-qualified proc name + args in declaration
         // order (consignmentId, asOfDate → ConsignmentId, AsOfDate).
         Assert.Contains(
-            "FromSqlInterpolated($\"SELECT * FROM analytics.fn_phase_summary({args.ConsignmentId}, {args.AsOfDate})\")",
+            "FromSqlInterpolated($\"SELECT * FROM analytics.fn_stage_summary({args.ConsignmentId}, {args.AsOfDate})\")",
             c);
-        Assert.Contains("db.Set<global::Acme.Analytics.PhaseSummary>()", c);
+        Assert.Contains("db.Set<global::Acme.Analytics.StageSummary>()", c);
         Assert.Contains("ToListAsync", c);
     }
 
@@ -133,7 +133,7 @@ public class Fr015CodegenTests
         Assert.Contains(
             "FromSqlInterpolated($\"SELECT * FROM fn_active_phases({args.ConsignmentId}, {args.AsOfDate})\")",
             c);
-        Assert.Contains("global::Acme.Generated.AppDbContext db, global::Acme.Analytics.PhaseSummaryArgs args", c);
+        Assert.Contains("global::Acme.Generated.AppDbContext db, global::Acme.Analytics.StageSummaryArgs args", c);
     }
 
     [Fact]
@@ -170,20 +170,20 @@ public class Fr015CodegenTests
     [Fact]
     public void NamesOn_references_the_constant_through_FromSqlRaw_including_the_schema()
     {
-        var c = Content(NamesOnFiles(), "PhaseSummary.callable.g.cs");
+        var c = Content(NamesOnFiles(), "StageSummary.callable.g.cs");
         // The identifier is text; each argument is a `{n}` placeholder → a DbParameter.
         // BOTH halves of the qualified name are constants now. The schema used to stay a
         // spelled literal here while the artifact's schema constant sat unread, justified by "schema
         // qualification is ruled on separately across the ports" — it has been ruled on, every
         // port qualifies, and this was the one C# site that qualified at all.
         Assert.Contains(
-            ".FromSqlRaw(\"SELECT * FROM \" + global::Acme.Analytics.PhaseSummaryNames.SourcePrimarySchema + \".\" + global::Acme.Analytics.PhaseSummaryNames.SourcePrimaryProc + \"({0}, {1})\", args.ConsignmentId, args.AsOfDate)",
+            ".FromSqlRaw(\"SELECT * FROM \" + global::Acme.Analytics.StageSummaryNames.SourcePrimarySchema + \".\" + global::Acme.Analytics.StageSummaryNames.SourcePrimaryProc + \"({0}, {1})\", args.ConsignmentId, args.AsOfDate)",
             c);
         Assert.DoesNotContain("FromSqlInterpolated", c);
         // The doc summary names it the same way the SQL does.
-        Assert.Contains("typed wrapper around the stored procedure named by <c>PhaseSummaryNames.SourcePrimaryProc</c> in schema <c>PhaseSummaryNames.SourcePrimarySchema</c>.", c);
+        Assert.Contains("typed wrapper around the stored procedure named by <c>StageSummaryNames.SourcePrimaryProc</c> in schema <c>StageSummaryNames.SourcePrimarySchema</c>.", c);
         // Neither physical name appears in the file — the proc name OR the schema.
-        Assert.DoesNotContain("fn_phase_summary", c);
+        Assert.DoesNotContain("fn_stage_summary", c);
         Assert.DoesNotContain("\"analytics", c);
     }
 

@@ -174,7 +174,7 @@ The FR specifies how the **calling code** emits. It does NOT specify whether sto
 - **Opt-in:** an additive attribute `@exposeAsRoute: true` on `source.rdb` causes `routesFile` to emit a `POST /procs/<EntityName>` (or whatever path the project's `apiPrefix` + naming convention dictates) accepting the `@parameterRef` value-object as the request body, returning the projection array.
 - **Generator surfaces gated by `@exposeAsRoute: true`** (when set):
   - `server/typescript/packages/codegen-ts/src/generators/routesFile.ts` — Fastify POST handler.
-  - `server/typescript/packages/codegen-ts-tanstack/src/generators/tanstackQuery.ts` — `useGetPhaseSummaryPerCase(args)` hook (a `useQuery` wrapping the POST since the args are a body).
+  - `server/typescript/packages/codegen-ts-tanstack/src/generators/tanstackQuery.ts` — `useGetStageSummaryPerConsignment(args)` hook (a `useQuery` wrapping the POST since the args are a body).
   - `server/typescript/packages/codegen-ts/src/generators/entityFile.ts` — Zod schema for the parameter value-object (already covered by the value-object's existing codegen path — should be no-op).
   - `server/java/codegen-spring/ControllerGenerator.java` — Spring `@PostMapping` analog.
   - C# / Kotlin / Python equivalents.
