@@ -10,6 +10,19 @@ here.**
 
 ## [Unreleased]
 
+### Added
+
+- **A code writer for generators: `CodeWriter` and `TsWriter` in `@metaobjectsdev/codegen-ts`**
+  (ADR-0063). A generator says what a line contains, and the writer decides where it sits. It
+  builds the file in memory with no formatter. It collects imports while the body is written,
+  treats blank lines as requests that collapse, and prints a list on one line when the line fits
+  120 columns, otherwise one item per line. `TsWriter` accepts ts-poet `Code` fragments and
+  collects their `imp()` imports, so a generator can move to it one function at a time. The
+  writer is exported from the package root and from `@metaobjectsdev/codegen-ts/engine`, so an
+  owned (ejected) generator can use it too. The contract is `spec/code-writer.md`, pinned by
+  the new `fixtures/writer-conformance/` corpus. No shipped generator uses the writer yet, so
+  generated output does not change in this release.
+
 ## [1.2.2] — 2026-11-13
 
 _npm `1.2.2` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._

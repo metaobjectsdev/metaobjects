@@ -1,0 +1,28 @@
+{
+  "description": "The indent unit is an option; a tab is one unit like any other.",
+  "dialect": "core",
+  "options": {
+    "indent": "\t",
+    "width": 40,
+    "trailingComma": true
+  },
+  "ops": [
+    [
+      "open",
+      "func() {"
+    ],
+    [
+      "line",
+      "x()"
+    ],
+    [
+      "close",
+      "}"
+    ]
+  ],
+  "expected": [
+    "func() {",
+    "\tx()",
+    "}"
+  ]
+}

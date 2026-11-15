@@ -1,0 +1,15 @@
+{
+  "description": "A writer with nothing written produces the empty string, not a lone newline.",
+  "dialect": "core",
+  "options": {
+    "indent": "  ",
+    "width": 40,
+    "trailingComma": true
+  },
+  "ops": [
+    [
+      "blank"
+    ]
+  ],
+  "expected": []
+}
