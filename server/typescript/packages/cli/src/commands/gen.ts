@@ -231,10 +231,8 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
     return 1;
   }
 
-  // ADR-0064 — skip rendering when the loaded model and every generator input match the last
-  // successful run and every file it recorded exists. Nothing renders and nothing is written,
-  // the manifest and the stored key included. `--force` (and every mode that does not write)
-  // never skips.
+  // ADR-0064 — the skip key's model half, from the same load the warnings below come from.
+  // The skip decision itself runs below, after those warnings have been printed.
   const skipInputs = skipBase !== undefined ? withModel(skipBase, modelHashTree(loaded.root)) : undefined;
 
   // ADR-0023: gen loads leniently, so an unknown attribute (`isAbstrakt: true`, a
