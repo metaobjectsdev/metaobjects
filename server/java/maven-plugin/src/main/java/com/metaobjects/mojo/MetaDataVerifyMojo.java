@@ -44,8 +44,9 @@ import java.util.TreeSet;
  * The {@code meta:verify} goal — a generator-neutral codegen-drift check, the Java/Kotlin
  * port's parallel to {@code meta:gen}.
  *
- * <p>It regenerates every declared generator into a throwaway temp directory (by overriding
- * each generator's {@code outputDir} arg) and then compares the freshly generated tree
+ * <p>It regenerates every declared generator with its output captured in memory (each generator's
+ * {@code outputDir} arg is pointed at a virtual directory, so no file is written) and then
+ * compares the freshly generated tree
  * against the committed output under the configured (real) {@code outputDir}. Any drift —
  * a file whose content differs, a committed file that the generator no longer produces, or
  * a newly produced file that is not committed — fails the build with a

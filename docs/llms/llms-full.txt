@@ -83,7 +83,7 @@ Runtime use cases include CRUD scaffolding, validation rules, relationship trave
 
 Catch divergence between code and metadata. `verify` is one verb with three explicit subverbs (ADR-0021):
 
-- `verify --codegen` — regenerate from metadata into a temp dir and fail if it differs from the committed generated output (catches "metadata changed but codegen wasn't re-run" and hand-edited generated files).
+- `verify --codegen` — regenerate from metadata in memory and fail if it differs from the committed generated output (catches "metadata changed but codegen wasn't re-run" and hand-edited generated files).
 - `verify --templates` — check each `template.*` node's `{{field}}` references (Mustache, or Jinja in Python and TypeScript) against its payload VO (prompt-to-payload drift).
 - `verify --db` — live-DB schema drift; Node `meta` only (it is part of the schema toolchain, ADR-0015).
 
