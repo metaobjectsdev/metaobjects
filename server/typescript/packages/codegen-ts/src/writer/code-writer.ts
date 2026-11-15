@@ -72,18 +72,24 @@ function widthOf(s: string): number {
   return /^[\x00-\x7f]*$/.test(s) ? s.length : [...s].length;
 }
 
+/**
+ * The core writer. Built to be extended (ADR-0063): every method is public or protected, so a
+ * dialect or an adopter's subclass overrides the one step it needs to change, such as where a
+ * line breaks (`breakAt`) or what a part becomes (`piece`). These methods are not a stability
+ * contract and may change between minor versions.
+ */
 export class CodeWriter {
   readonly indent: string;
   readonly width: number;
   readonly trailingComma: boolean;
 
-  private readonly out: string[] = [];
+  protected readonly out: string[] = [];
   /** The text of each line that opened a block still open, outermost first. */
-  private readonly openers: string[] = [];
-  private readonly prefixes: string[] = [""];
-  private wantBlank = false;
+  protected readonly openers: string[] = [];
+  protected readonly prefixes: string[] = [""];
+  protected wantBlank = false;
   /** True at the start of the file and right after a block opens: no blank line goes here. */
-  private atBlockStart = true;
+  protected atBlockStart = true;
 
   constructor(options: CodeWriterOptions = {}) {
     this.indent = options.indent ?? "  ";
@@ -176,14 +182,22 @@ export class CodeWriter {
     return widthOf(this.prefix()) + widthOf(text) <= this.width;
   }
 
-  private openPiece(piece: Piece): this {
+  /**
+   * Where a line that does not fit breaks: [text before, the list that breaks, text after], or
+   * undefined to print the line as it is. The default is the line's LAST non-empty list.
+   */
+  protected breakAt(piece: Piece): [string, Group, string] | undefined {
+    return lastGroup(piece);
+  }
+
+  protected openPiece(piece: Piece): this {
     this.put(piece);
     this.openers.push(flat(piece).trim());
     this.atBlockStart = true;
     return this;
   }
 
-  private closePiece(piece: Piece): this {
+  protected closePiece(piece: Piece): this {
     if (this.openers.length === 0) {
       throw new WriterError(WRITER_ERRORS.unbalancedClose, `close(${JSON.stringify(flat(piece))}) with no block open`);
     }
@@ -192,13 +206,13 @@ export class CodeWriter {
     return this.put(piece);
   }
 
-  private prefix(): string {
+  protected prefix(): string {
     const depth = this.openers.length;
     while (this.prefixes.length <= depth) this.prefixes.push(this.prefixes[this.prefixes.length - 1]! + this.indent);
     return this.prefixes[depth]!;
   }
 
-  private put(piece: Piece): this {
+  protected put(piece: Piece): this {
     const text = flat(piece).trimEnd();
     if (ANY_LINE_BREAK.test(text)) {
       throw new WriterError(
@@ -211,7 +225,7 @@ export class CodeWriter {
     this.wantBlank = false;
     this.atBlockStart = false;
     const pre = this.prefix();
-    const split = this.fits(text) ? undefined : lastGroup(piece);
+    const split = this.fits(text) ? undefined : this.breakAt(piece);
     if (split === undefined) {
       this.out.push(pre + text);
       return this;

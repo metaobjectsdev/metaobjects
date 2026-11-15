@@ -79,6 +79,25 @@ its spaces too, and nothing stopped that.
    `server/typescript/packages/codegen-ts/test/layout-ratchet.test.ts`, and the other ports add
    theirs with their writers.
 
+7. **Reference generators are extended by subclassing.** Ejecting a generator and maintaining
+   the copy (ADR-0034) stays available, but it is not the only way to change one. An adopter may
+   extend the reference generator's class and override the few methods it needs, and keep
+   taking every other change the reference gets. So:
+   - each reference generator is a class, and each meaningful piece of its output (the file
+     header, the imports, each section or member) comes from its own overridable method;
+   - nothing an adopter might want to change is `final`, `private`, `sealed`, `#private` or a
+     module-private helper only; it is `protected` or public;
+   - the generator config or registry accepts an adopter's subclass wherever it accepts the
+     reference generator (in TypeScript it already does, since `generators` takes any
+     `Generator` object);
+   - `CodeWriter` and `TsWriter` are not final, and their methods are overridable, so a
+     subclass can change one layout step, such as import order or where a line breaks.
+
+   **This is not a stability contract.** Overridable methods may be renamed, split or have
+   their signatures changed between minor versions, and the CHANGELOG notes it when they do.
+   An adopter who needs a contract ejects. The ratchet in item 6 does not enforce this rule;
+   review does. Existing generators take this shape as each one is converted to the writer.
+
 ## The TypeScript writer
 
 `CodeWriter` and `TsWriter` (`server/typescript/packages/codegen-ts/src/writer/`) are exported
@@ -103,5 +122,7 @@ copy cannot be read, so it is refused rather than written without its imports.
 - The writer stays small because it never parses text. A shape the fit-or-break rule lays out
   badly is broken explicitly by the generator with a block, rather than by making the writer
   smarter.
+- Adopters can change one piece of a reference generator without owning all of it. The price
+  is that an override can break on a minor upgrade, which is the trade item 7 accepts.
 - Five writers must agree, which the shared corpus checks, as the repository already does for
   everything else that must match across ports.
