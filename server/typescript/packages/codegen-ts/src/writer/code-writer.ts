@@ -213,13 +213,14 @@ export class CodeWriter {
   }
 
   protected put(piece: Piece): this {
-    const text = flat(piece).trimEnd();
-    if (ANY_LINE_BREAK.test(text)) {
+    const raw = flat(piece);
+    if (ANY_LINE_BREAK.test(raw)) {
       throw new WriterError(
         WRITER_ERRORS.newlineInLine,
-        `line text contains a line break; write each line separately or use text(): ${JSON.stringify(text)}`,
+        `line text contains a line break; write each line separately or use text(): ${JSON.stringify(raw)}`,
       );
     }
+    const text = raw.trimEnd();
     if (text === "") return this.blank();
     if (this.wantBlank && !this.atBlockStart) this.out.push("");
     this.wantBlank = false;
