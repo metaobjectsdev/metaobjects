@@ -36,7 +36,7 @@ public sealed class ApiContractCredentialHostVariantsTest
 
     private static string AccountSpelling(MetaField f) => f.Name switch
     {
-        "pinHash" => "Secret",
+        "pinHash" => "PinSecret",
         "tokenHash" => "ApiToken",
         "displayName" => "ShownAs",
         _ => CSharpNaming.Pascal(f.Name),
@@ -55,7 +55,10 @@ public sealed class ApiContractCredentialHostVariantsTest
         MetaJson: AccountMeta(), ExtraDdl: AccountDdl);
 
     // A key is a credential key iff it spells the credential (or its resolved name) ignoring case and `_`/`-`.
-    private static readonly string[] CredentialKeys = ["pinhash", "secret"];
+    private static readonly string[] CredentialKeys = ["pinhash", "pinsecret", "permitsecret"];
+
+    // The credential VALUES seeded by the corpus and the TPH test: they may appear in no response body, under any key.
+    private static readonly string[] CredentialValues = ["pin-hash-1", "pin-hash-2", "permit-secret"];
 
     private static string Normalize(string key) => key.Replace("_", "").Replace("-", "").ToLowerInvariant();
 
@@ -82,6 +85,8 @@ public sealed class ApiContractCredentialHostVariantsTest
         if (body is not null) req.Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
         var res = await c.SendAsync(req);
         var text = await res.Content.ReadAsStringAsync();
+        foreach (var v in CredentialValues)
+            Assert.DoesNotContain(v, text);   // by value: no key spelling can hide it
         return ((int)res.StatusCode, string.IsNullOrEmpty(text) ? null : JsonNode.Parse(text));
     }
 
@@ -107,7 +112,7 @@ public sealed class ApiContractCredentialHostVariantsTest
     {
         ["name"] = name,
         ["pinHash"] = "forged", ["tokenHash"] = "forged", ["role"] = "admin",
-        ["secret"] = "forged", ["Secret"] = "forged", ["apiToken"] = "forged", ["ApiToken"] = "forged",
+        ["pinSecret"] = "forged", ["PinSecret"] = "forged", ["pin_secret"] = "forged", ["apiToken"] = "forged", ["ApiToken"] = "forged",
         ["pin_hash"] = "forged", ["token_hash"] = "forged", ["api_token"] = "forged",
     };
 
@@ -213,7 +218,7 @@ public sealed class ApiContractCredentialHostVariantsTest
         }
         using var client = new HttpClient { BaseAddress = new Uri(server.BaseUrl) };
 
-        foreach (var path in new[] { "/api/auths?sort=id:asc", "/api/auths/permit?sort=id:asc", "/api/auths/permit/3", "/api/auths/3" })
+        foreach (var path in new[] { "/api/auths?sort=id:asc", "/api/auths?withCount=1&sort=id:asc", "/api/auths/permit?sort=id:asc", "/api/auths/permit?withCount=1&sort=id:asc", "/api/auths/permit/3", "/api/auths/3" })
         {
             var res = await SendAsync(client, "GET", path);
             Assert.Equal(200, res.Status);
@@ -254,5 +259,49 @@ public sealed class ApiContractCredentialHostVariantsTest
         Assert.Equal("permit-secret", rows.Single(x => x.Id == 3).Pin);
         Assert.Equal("PUT-note", rows.Single(x => x.Id == 3).Note);   // a multi-word subtype field is applied under the policy
         Assert.Null(rows.Single(x => x.Id > 3).Pin);
+    }
+
+    // ---- a host whose serializer contract cannot be read must be refused, never leak ----
+
+    // Every property loses its reflection member: what a custom type-info resolver, a modifier that rebuilds
+    // properties, or a source-generated context that does not carry it can do.
+    private static void NoReflectionMembers(JsonSerializerOptions o)
+    {
+        var resolver = new System.Text.Json.Serialization.Metadata.DefaultJsonTypeInfoResolver();
+        resolver.Modifiers.Add(ti => { foreach (var p in ti.Properties) p.AttributeProvider = null; });
+        o.TypeInfoResolver = resolver;
+    }
+
+    private static bool Refused(Exception e)
+    {
+        for (var x = e; x is not null; x = x.InnerException!)
+            if (x.Message.Contains("cannot strip the credential", StringComparison.Ordinal)) return true;
+        return false;
+    }
+
+    [Fact]
+    public async Task A_host_whose_contract_cannot_be_read_refuses_to_start_instead_of_leaking_the_account_credential()
+    {
+        await using var pg = await PostgresContainer.StartAsync();
+        var host = AccountHost("rename", "snake") with { ConfigureJson = NoReflectionMembers };
+        var ex = await Assert.ThrowsAnyAsync<Exception>(async () =>
+        {
+            await using var server = await SecretFieldsGeneratedServerFactory.StartAsync(pg, host);
+        });
+        Assert.True(Refused(ex), ex.ToString());
+        Assert.DoesNotContain("pin-hash", ex.ToString());
+    }
+
+    [Fact]
+    public async Task A_host_whose_contract_cannot_be_read_refuses_to_start_instead_of_leaking_the_subtype_credential()
+    {
+        await using var pg = await PostgresContainer.StartAsync();
+        var host = new TphHost(PropertyNaming: TphSpelling, JsonPolicy: JsonNamingPolicy.SnakeCaseLower,
+            MetaJson: TphMeta(), ExtraDdl: TphDdl, ConfigureJson: NoReflectionMembers);
+        var ex = await Assert.ThrowsAnyAsync<Exception>(async () =>
+        {
+            await using var server = await TphGeneratedServerFactory.StartAsync(pg, host);
+        });
+        Assert.True(Refused(ex), ex.ToString());
     }
 }

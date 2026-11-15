@@ -28,7 +28,8 @@ internal sealed record SecretFieldsHost(
     Func<MetaField, string>? PropertyNaming = null,
     System.Text.Json.JsonNamingPolicy? JsonPolicy = null,
     string? MetaJson = null,
-    string? ExtraDdl = null);
+    string? ExtraDdl = null,
+    Action<System.Text.Json.JsonSerializerOptions>? ConfigureJson = null);
 
 internal sealed class SecretFieldsGeneratedServerFactory : IAsyncDisposable
 {
@@ -57,8 +58,12 @@ internal sealed class SecretFieldsGeneratedServerFactory : IAsyncDisposable
         var builder = WebApplication.CreateBuilder();
         LoopbackKestrel.BindAnyPort(builder);
         builder.Logging.ClearProviders();
-        if (host?.JsonPolicy is { } policy)
-            builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.PropertyNamingPolicy = policy);
+        if (host is not null)
+            builder.Services.ConfigureHttpJsonOptions(o =>
+            {
+                if (host.JsonPolicy is { } policy) o.SerializerOptions.PropertyNamingPolicy = policy;
+                host.ConfigureJson?.Invoke(o.SerializerOptions);
+            });
         RegisterGeneratedDbContext(builder.Services, dbContextType, pg.ConnectionString);
 
         var app = builder.Build();

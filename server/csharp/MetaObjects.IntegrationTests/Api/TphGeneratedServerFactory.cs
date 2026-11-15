@@ -38,7 +38,8 @@ internal sealed record TphHost(
     Func<MetaField, string>? PropertyNaming = null,
     System.Text.Json.JsonNamingPolicy? JsonPolicy = null,
     string? MetaJson = null,
-    string? ExtraDdl = null);
+    string? ExtraDdl = null,
+    Action<System.Text.Json.JsonSerializerOptions>? ConfigureJson = null);
 
 internal sealed class TphGeneratedServerFactory : IAsyncDisposable
 {
@@ -70,8 +71,12 @@ internal sealed class TphGeneratedServerFactory : IAsyncDisposable
         // TPH host concern: serialize the discriminator enum as its string symbol.
         builder.Services.ConfigureHttpJsonOptions(o =>
             o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
-        if (host?.JsonPolicy is { } policy)
-            builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.PropertyNamingPolicy = policy);
+        if (host is not null)
+            builder.Services.ConfigureHttpJsonOptions(o =>
+            {
+                if (host.JsonPolicy is { } policy) o.SerializerOptions.PropertyNamingPolicy = policy;
+                host.ConfigureJson?.Invoke(o.SerializerOptions);
+            });
         RegisterGeneratedDbContext(builder.Services, dbContextType, pg.ConnectionString);
 
         var app = builder.Build();
