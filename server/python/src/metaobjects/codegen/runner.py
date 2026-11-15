@@ -17,7 +17,12 @@ from .config import GenConfig
 from .constants import generated_package_init
 from .generator import GenContext, Generator
 from .instance_artifacts import is_served_report
-from .overwrite_policy import STATUS_OVERWROTE_EDIT, decide_and_write, has_hash_manifest
+from .overwrite_policy import (
+    STATUS_OVERWROTE_EDIT,
+    HashManifest,
+    decide_and_write,
+    has_hash_manifest,
+)
 
 _VALID_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -34,6 +39,8 @@ class RunGenResult:
     #: Which generator emitted each path (``verify --codegen`` reads it to apply a
     #: generator's ``handEdits`` to the file).
     generated_by: dict[str, str] = field(default_factory=dict)
+    #: How many files were written outside the project root (never recorded).
+    untracked: int = 0
 
 
 def _objects(root: MetaData) -> list[MetaObject]:
@@ -188,9 +195,38 @@ def run_gen(
 
     refused: list[str] = []
     adopted: list[str] = []
-    untracked = 0
+    # ONE manifest session for the whole write loop (ADR-0062 decision 1): loaded here,
+    # saved once below, and only when an entry changed. A caller that runs several passes
+    # hands in its own session through ``config.manifest`` and saves it itself.
+    own_session = config.manifest is None and config.gen_state_dir is not None
+    session = config.manifest
+    if session is None and config.gen_state_dir is not None:
+        session = HashManifest(config.gen_state_dir)
+    try:
+        _write_all(
+            config, emitted, merge_strategy, session, result, refused, adopted
+        )
+    finally:
+        if own_session and session is not None:
+            session.save()
+    return _finish(result, config, emitted, refused, adopted, tracking_hashes, had_manifest)
+
+
+def _write_all(
+    config: GenConfig,
+    emitted: dict[str, tuple[str, str]],
+    merge_strategy: str,
+    session: HashManifest | None,
+    result: RunGenResult,
+    refused: list[str],
+    adopted: list[str],
+) -> None:
     for full, (content, by) in emitted.items():
         result.generated_by[full] = by
+        if config.sink is not None:
+            config.sink[full] = content
+            result.files.append((full, "new"))
+            continue
         # The out-dir-relative name: what the manifest used to be keyed by, and still
         # what a refusal is REPORTED as (it is the name the reader sees in `--out`).
         rel = os.path.relpath(full, config.out_dir)
@@ -217,7 +253,7 @@ def run_gen(
         # manifest-less rule a run with no project gets — written, never recorded.
         outside = bool(config.project_root) and (key.startswith("..") or os.path.isabs(key))
         if outside:
-            untracked += 1
+            result.untracked += 1
         status = decide_and_write(
             full,
             content,
@@ -227,6 +263,7 @@ def run_gen(
             legacy_rel_path=rel if key != rel else None,
             baseline=config.baseline,
             hand_edits="overwrite" if by in config.overwrite_hand_edits else "keep",
+            manifest=None if outside else session,
         )
         result.files.append((full, status))
         if status == STATUS_OVERWROTE_EDIT:
@@ -238,6 +275,17 @@ def run_gen(
         elif status == "adopted":
             adopted.append(rel)
 
+
+def _finish(
+    result: RunGenResult,
+    config: GenConfig,
+    emitted: dict[str, tuple[str, str]],
+    refused: list[str],
+    adopted: list[str],
+    tracking_hashes: bool,
+    had_manifest: bool,
+) -> RunGenResult:
+    untracked = result.untracked
     if untracked:
         result.warnings.append(
             f"{untracked} generated file(s) were written outside the project root and are "

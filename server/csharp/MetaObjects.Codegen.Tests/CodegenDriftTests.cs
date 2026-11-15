@@ -7,10 +7,10 @@ namespace MetaObjects.Codegen.Tests;
 
 /// <summary>
 /// `dotnet meta verify --codegen` drift logic (ADR-0021 D2, C# port of the TS
-/// codegen-drift reference). Regenerates the default suite into a TEMP tree and
+/// codegen-drift reference). Regenerates the default suite IN MEMORY (no temp tree) and
 /// diffs it against the committed output under the real out dir. A fresh regen
 /// that matches is clean; a mutated / missing / extra committed file is drift.
-/// Crucially: the real out dir is never touched (we only write to temp).
+/// Crucially: the real out dir is never touched, and nothing is written anywhere.
 /// </summary>
 public sealed class CodegenDriftTests : IDisposable
 {
@@ -149,6 +149,22 @@ public sealed class CodegenDriftTests : IDisposable
         Assert.Equal(afterMutation, afterDrift);
         // (sanity: our own mutation is the only delta vs the pristine snapshot)
         Assert.NotEqual(before, afterMutation);
+    }
+
+    [Fact]
+    public void Verify_renders_in_memory_and_leaves_no_temp_files_behind()
+    {
+        // ADR-0062 / drive wear: the drift gate compares rendered bytes with disk in memory. It must
+        // never create a rendered tree (or any meta-verify-codegen-* directory) under the temp dir.
+        Gen();
+        var tempRoot = Path.GetTempPath();
+        var before = Directory.EnumerateFileSystemEntries(tempRoot, "meta-verify-codegen-*").ToHashSet();
+        var result = RunDrift();
+        var after = Directory.EnumerateFileSystemEntries(tempRoot, "meta-verify-codegen-*").ToHashSet();
+        Assert.True(result.Clean);
+        Assert.Equal(before, after);
+        Assert.Empty(Directory.EnumerateFileSystemEntries(tempRoot, "meta-verify-codegen-*")
+            .Except(before));
     }
 
     private static Dictionary<string, string> SnapshotDir(string dir)

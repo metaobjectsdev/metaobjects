@@ -206,7 +206,7 @@ public class JavaObjectCodeGenerator extends JavaCodeGenerator {
         // content is a bare provider FQN with nowhere to carry a GENERATED marker. Guarding it
         // would make the FIRST run write and every run after refuse — the artifact frozen while
         // the build stays green, which is the failure the guard exists to prevent.
-        Files.write(services.toPath(), (PROVIDER_FQN + "\n").getBytes(StandardCharsets.UTF_8));
+        GeneratedFileWriter.writeIfChanged(services.toPath(), (PROVIDER_FQN + "\n").getBytes(StandardCharsets.UTF_8));
     }
 
     private static String escape(String s) {

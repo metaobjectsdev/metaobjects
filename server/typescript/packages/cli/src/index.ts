@@ -225,6 +225,12 @@ FLAGS:
   --strict              Load the model strictly, as \`meta verify\` does (ADR-0023): an
                         unknown attribute (a typo'd \`@requird\`) is an error and nothing is
                         written, instead of a warning over output that silently changed.
+  --force               Run in full even when nothing changed. Without it, a run whose
+                        inputs (metadata, metaobjects.config.ts and what it imports,
+                        templates/, codegen/, the engine version, these flags) all match
+                        the last successful run's, and whose generated files all still
+                        match what that run left, renders nothing and writes nothing
+                        (ADR-0062; the metadata is still loaded, since the key is made of it).
   --format <toon|json|text>   Output format (global flag; default toon off-TTY)
   <entity> [<entity>]   Positional filter on entity names
   --help, -h            Print this help
@@ -332,6 +338,10 @@ FLAGS:
                         (a notice, exit code unchanged), so an edit is never invisible.
   --forbid-hand-edits   With --codegen: fail (exit 1) on ANY hand edit inside generated
                         code, for teams that want generated files untouchable.
+  --full                With --codegen: render and compare everything. Without it, a LOCAL
+                        run whose inputs match the last successful 'meta gen' and whose
+                        generated files all still match their recorded hashes answers "no
+                        drift" without rendering. CI (CI set) always renders (ADR-0062).
   --docs                Removed in 1.1.0: says so and exits 2. --codegen checks documentation
                         with everything else \`generators\` declares.
   --deps                Dependency drift — re-resolve each declared dependency exactly as

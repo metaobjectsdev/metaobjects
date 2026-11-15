@@ -36,6 +36,8 @@ public abstract class MultiFileDirectGeneratorBase<M extends MetaData> extends D
 
         String filename = null;
         OutputStream out = null;
+        java.io.ByteArrayOutputStream finalBuffer = new java.io.ByteArrayOutputStream();
+        File finalFile = null;
         GeneratorIOWriter<?> writer = null;
 
         parseArgs();
@@ -96,7 +98,8 @@ public abstract class MultiFileDirectGeneratorBase<M extends MetaData> extends D
                 outf.createNewFile();
 
                 // Get the printwriter
-                out = new FileOutputStream(outf);
+                out = finalBuffer;   // written below, and only when the bytes differ from what is on disk
+                finalFile = outf;
 
                 writer = getFinalWriter(loader, out);
                 if ( writer != null ) {
@@ -129,6 +132,13 @@ public abstract class MultiFileDirectGeneratorBase<M extends MetaData> extends D
                     out.close();
                 } catch (IOException e) {
                     log.error("Error closing output stream for file [" + filename + "]: " + e, e );
+                }
+            }
+            if ( finalFile != null && out != null ) {
+                try {
+                    GeneratedFileWriter.writeIfChanged(finalFile.toPath(), finalBuffer.toByteArray());
+                } catch (IOException e) {
+                    throw new GeneratorException( "Unable to write to file [" + filename + "]: " + e, e );
                 }
             }
         }

@@ -93,9 +93,8 @@ export function httpRuntimeSpecifier(
  *
  * Relative rather than absolute so the emitted imports are the same on every machine,
  * and computed from the two directories rather than configured, so moving `outDir`
- * moves the imports with it. `meta verify --codegen` regenerates into a temp tree that
- * mirrors each outDir at its project-relative path, so the path it computes there is
- * the same one `meta gen` computed.
+ * moves the imports with it. `meta verify --codegen` renders in memory against the real
+ * project paths, so the path it computes there is the same one `meta gen` computed.
  */
 export function ownedRuntimeImport(
   projectRoot: string,

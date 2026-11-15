@@ -16,7 +16,8 @@ import {
   type AdvisoryFindingRow, type AdvisorySection,
 } from "../lib/advisory.js";
 import { loadMemory, resolveCollection } from "@metaobjectsdev/sdk";
-import { declaredGeneratorNames, runGen, undeclaredGeneratorsMessage } from "@metaobjectsdev/codegen-ts";
+import { declaredGeneratorNames, modelHashTree, resolveGenerators, runGen, undeclaredGeneratorsMessage } from "@metaobjectsdev/codegen-ts";
+import type { Generator } from "@metaobjectsdev/codegen-ts";
 import type { WriteStatus } from "@metaobjectsdev/codegen-ts";
 import { packageOfResolutionKey } from "@metaobjectsdev/metadata";
 import type { MetaRoot } from "@metaobjectsdev/metadata";
@@ -35,6 +36,11 @@ import { findRuntimeBoundaryCrossings, runtimeBoundaryWarnings } from "../lib/ru
 import { hasLegacyDocsBlock, legacyDocsConfigMessage, NO_CONFIG_MESSAGE } from "../lib/docs-removed.js";
 import { buildAgentSchemaInput } from "../lib/agent-schema.js";
 import { existsSync } from "node:fs";
+import { genMaySkip, reportGenSkip } from "../lib/gen-skip.js";
+import {
+  clearStoredFingerprint, computeGenInputs, decideGenSkip, keyFor, withModel, writeStoredFingerprint, type GenInputs,
+} from "../lib/gen-fingerprint.js";
+import { GEN_CONFIG_FILE } from "../lib/gen-collection.js";
 
 /**
  * Print a load failure with everything the loader's ADR-0009 envelope carried — the stable
@@ -125,6 +131,18 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
   // metadata from unrelated trees. Identical object when the two configs sit together.
   const genCollection = await resolveGenCollection(collection, projectRoot);
 
+  // ADR-0062 — the generator half of the skip key (engine, codegen config and owned
+  // generators, templates, project config, output-changing flags), read now, before the run
+  // can write anything. The model half is added once the metadata has loaded.
+  const skipBase: GenInputs | undefined = !cliConfig.dryRun && existsSync(join(projectRoot, GEN_CONFIG_FILE))
+    ? computeGenInputs(projectRoot, collection, genCollection, {
+      entities: flags.entities,
+      generators: flags.generators,
+      strict: flags.strict,
+      baseline: flags.baseline,
+    })
+    : undefined;
+
   // Advisory: nudge to refresh the .claude/skills docs if they predate this CLI.
   // Rooted at `projectRoot`, not ambient cwd — the scaffolded agent context sits
   // with the project that declares the metadata, so a run from a subdirectory
@@ -204,6 +222,19 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
     return 1;
   }
 
+  // ADR-0062 — skip rendering when the loaded model and every generator input match the last
+  // successful run and every file it recorded exists. Nothing renders and nothing is written,
+  // the manifest and the stored key included. `--force` (and every mode that does not write)
+  // never skips.
+  const skipInputs = skipBase !== undefined ? withModel(skipBase, modelHashTree(metadata)) : undefined;
+  if (skipInputs !== undefined && genMaySkip(flags)) {
+    const verdict = decideGenSkip(skipInputs);
+    if (verdict.skip) {
+      await reportGenSkip(fmt, verdict.recorded.length);
+      return 0;
+    }
+  }
+
   // ADR-0023: gen loads leniently, so an unknown attribute (`isAbstrakt: true`, a
   // misspelt `@required`) used to pass without a word while `meta verify` rejected the
   // same file — and the typo changed what was generated. Say so, naming attribute, node
@@ -226,6 +257,23 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
     log.error(importedRefusal);
     return 2;
   }
+
+  // ADR-0062 — the key this run will store, from the inputs as read before it, plus the
+  // extra inputs its generators declare (hashed now, before they run). A run that
+  // includes a generator that cannot declare its inputs stores none and never skips. The
+  // old fingerprint goes first: a run that fails half-way must not leave one that claims
+  // its half-written output is current.
+  const declaredGenerators = forgeConfig.generators ?? [];
+  let resolvedGenerators: Generator[] | undefined;
+  // A name the registry does not know fails the run below; until then it is uncacheable.
+  try { resolvedGenerators = resolveGenerators(declaredGenerators); } catch { resolvedGenerators = undefined; }
+  const cacheable = resolvedGenerators !== undefined && resolvedGenerators.every((g) => g.cache !== false);
+  const extras = (resolvedGenerators ?? []).flatMap((g) => [
+    ...(g.inputs ?? []),
+    ...(g.readsMetadataSources === true ? genCollection.sourceRoots : []),
+  ]);
+  const nextKey = skipInputs !== undefined ? keyFor(skipInputs, extras) : undefined;
+  if (skipInputs !== undefined) clearStoredFingerprint(skipInputs.genStateDir);
 
   let result;
   try {
@@ -374,6 +422,9 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
   }
 
   const hasFailure = files.some((f) => f.status === "conflict" || f.status === "refused");
+  if (!hasFailure && result.sweepRefused !== true && skipInputs !== undefined && nextKey !== undefined && cacheable && declaredGenerators.length > 0) {
+    writeStoredFingerprint(projectRoot, skipInputs.genStateDir, nextKey, extras, result.outsidePaths);
+  }
   return hasFailure ? 1 : 0;
 }
 
