@@ -380,6 +380,21 @@ vocabulary; upgrade every port together.
 
 ### Changed
 
+- **Behaviour change, C#: with a property rename beyond case, the accepted `?sort=` key is the
+  resolved property name (rc.22).** The sort allowlist, `@sortableDefaultOrder` keys and the
+  `EF.Property` names carry the resolved name (EF matches the model's property name, so before
+  this any rename made a sort return 500). A project with no resolver, or one whose rename differs
+  only in case, is unchanged (the key is matched case-insensitively). With `ownerRef` spelled
+  `OwnerKey`, `?sort=ownerRef` becomes `400 invalid_sort` and `?sort=OwnerKey` is accepted.
+  `?filter[<field>]` keeps the field name.
+
+- **Behaviour change, C#: a `PropertyName` hook that disagrees with `GenConfig.PropertyNaming` is
+  refused (rc.22).** `EntityGenerator.PropertyName` and `DbContextGenerator.PropertyName` default to
+  the resolver and are now `[Obsolete]`. Only the resolver reaches every generator (routes, callable,
+  extractor, report export, filter map), so an override that names any field differently from it
+  stops the run with an error naming the field and saying to set `GenConfig.PropertyNaming`. Move
+  the override's logic into the resolver. An override that agrees with the resolver is unaffected.
+
 - **Behaviour change: the registry manifest no longer lists `@dbColumnType`'s `allowedValues`
   (rc.21).** The sized text spellings (`varchar(n)`, `character varying(n)`, `character(n)`) are no
   closed set, so the value is parsed by each port's loader instead (a misspelling is still
@@ -658,17 +673,33 @@ vocabulary; upgrade every port together.
   already named a missing variable, regenerate and fix the name; the generated helper text changes
   (TypeScript `prompts.ts` and Python helpers gain a `verify` argument).
 
+### Security
+
+- **Fix, C#: a credential or write-denied field renamed by the property-naming resolver can no longer
+  escape its protection (rc.22).** The routes keyed credential stripping (`view.password` fields are
+  omitted from every body), the PATCH write-deny of `@formExclude` and credential fields, and the
+  PATCH value-object and map arms on the metadata field name. An entity property serializes under
+  the host's naming policy applied to the resolved property name, so with a rename beyond case
+  (`pinHash` spelled `Secret`) the stripping missed the key and sent the credential in every read,
+  list, create and update response, and `PATCH {"secret": "x"}` wrote it. Stripping and the PATCH
+  arms now match the field name and the resolved name, so create and PATCH agree. A rename that is
+  only a different case was never affected. Regenerate any project that sets
+  `GenConfig.PropertyNaming`.
+
 ### Fixed
 
-- **Fix, C#: every generator names a field's property through the one property-naming resolver
-  (rc.22).** Since rc.20 `GenConfig.PropertyNaming` (and the `PropertyName` hook) renamed a field's
-  property in the entity, the context's model lines, the reverse finders and the composite key, but
-  these emit sites still spelled `Pascal(field.Name)`: the `@sequenceStart` identity annotation in
-  `DbContextGenerator` (a key renamed `WidgetID` got `.Property(x => x.WidgetId)`, CS1061), the
-  argument properties in `CallableGenerator`, the mapper targets in `ExtractorGenerator`, the row
-  cells in `ReportExportGenerator`, and the `RoutesGenerator` key, sort-allowlist, `EF.Property`,
-  frozen, auto-set, value-object, create-reset, TPH discriminator and M:N junction names. With no
-  resolver set the output is unchanged.
+- **Fix, C#: the generators name a field's property through the one property-naming resolver
+  (rc.22).** Since rc.20 `GenConfig.PropertyNaming` renamed a field's property in the entity, the
+  context's model lines, the reverse finders and the composite key, but these emit sites still
+  spelled `Pascal(field.Name)`: the `@sequenceStart` identity annotation in `DbContextGenerator` (a
+  key renamed `WidgetID` got `.Property(x => x.WidgetId)`, CS1061), the argument properties in
+  `CallableGenerator`, the mapper targets in `ExtractorGenerator`, the row cells in
+  `ReportExportGenerator`, and the `RoutesGenerator` key, sort-allowlist, `EF.Property`, frozen,
+  auto-set, value-object, create-reset, TPH discriminator and M:N junction names. The runtime filter
+  dispatch looked a property up by the field name, so `?filter[<field>]` on a property renamed
+  beyond case threw (500); the generated allowlist now carries a field-to-property map, emitted only
+  when a rename goes beyond case, and `EfCoreFilterDispatch.ApplyFilter` and `Validate` take it as an
+  optional argument. With no resolver set the output is byte-identical (pinned by a golden test).
 
 - **Fix, TypeScript and C#: a passthrough may walk a reference backwards when at most one row
   references it (rc.21).** A reverse hop was always to-many, so a passthrough over it was refused
