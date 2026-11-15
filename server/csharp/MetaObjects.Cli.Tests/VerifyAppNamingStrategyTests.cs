@@ -65,7 +65,7 @@ public sealed class VerifyAppNamingStrategyTests : IDisposable
     {
         WriteStandInRunner();
 
-        var (exit, stdout, stderr) = CliProcess.Run(_tmp, "verify", "--codegen", "--out", "gen");
+        var (exit, stdout, stderr) = CliProcess.Run(_tmp, "verify", "--codegen", "--full", "--out", "gen");
 
         Assert.Contains("stand-in runner: verify --codegen --out", stdout);
         Assert.DoesNotContain("acme-app-columns", stderr);
@@ -92,7 +92,7 @@ public sealed class VerifyAppNamingStrategyTests : IDisposable
     {
         WriteStandInRunner();
 
-        var (exit, stdout, stderr) = CliProcess.Run(_tmp, ["verify", "--codegen", "--out", "gen", .. gate]);
+        var (exit, stdout, stderr) = CliProcess.Run(_tmp, ["verify", "--codegen", "--full", "--out", "gen", .. gate]);
 
         Assert.Contains("stand-in runner: verify --codegen --out", stdout);
         Assert.Equal(2, exit);

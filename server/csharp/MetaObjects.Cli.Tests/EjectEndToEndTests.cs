@@ -192,7 +192,7 @@ public sealed class EjectEndToEndTests : IDisposable
         // 5. `dotnet run --project codegen -- verify --codegen ...` — the committed output
         //    (produced by the SAME edited copy) must read as in sync with a fresh regen.
         var (verifyExit, verifyOutput) = RunCodegenProject(
-            "verify", "--codegen", MetadataDir, "--out", OutDir, "--namespace", "Acme.Generated",
+            "verify", "--codegen", "--full", MetadataDir, "--out", OutDir, "--namespace", "Acme.Generated",
             "--generators", "entity,names");
         Assert.True(verifyExit == 0, $"verify --codegen failed (exit {verifyExit}):\n{verifyOutput}");
         Assert.Contains("OK", verifyOutput);
@@ -326,7 +326,7 @@ public sealed class EjectEndToEndTests : IDisposable
 
         // verify --codegen: the owned runtime lives outside --out and is never drift.
         var (verifyExit, verifyOutput) = RunCodegenProject(
-            "verify", "--codegen", MetadataDir, "--out", OutDir, "--namespace", "Acme.Generated", "--generators", selection);
+            "verify", "--codegen", "--full", MetadataDir, "--out", OutDir, "--namespace", "Acme.Generated", "--generators", selection);
         Assert.True(verifyExit == 0, $"verify --codegen failed (exit {verifyExit}):\n{verifyOutput}");
 
         // The adopter's fix, made in their own copy.
@@ -337,7 +337,7 @@ public sealed class EjectEndToEndTests : IDisposable
 
         // The same verify stays clean after the edit: the runtime copy is owned code.
         var (verify2Exit, verify2Output) = RunCodegenProject(
-            "verify", "--codegen", MetadataDir, "--out", OutDir, "--namespace", "Acme.Generated", "--generators", selection);
+            "verify", "--codegen", "--full", MetadataDir, "--out", OutDir, "--namespace", "Acme.Generated", "--generators", selection);
         Assert.True(verify2Exit == 0, $"verify --codegen after a runtime edit failed (exit {verify2Exit}):\n{verify2Output}");
 
         // A real web app: generated output + the owned runtime, EF Core + SQLite, and no

@@ -143,7 +143,7 @@ public sealed class ColumnNamingFlagTests : IDisposable
         Assert.Equal(0, OwnedRunner.Run(_tmp, ["entity", "names"], "gen", MetaDir, "--out", outDir, "--namespace", "Acme.Generated").ExitCode);
 
         var (exit, stdout, stderr) = OwnedRunner.Run(
-            _tmp, ["entity", "names"], "verify", "--codegen", MetaDir, "--out", outDir, "--column-naming", "literal", "--namespace", "Acme.Generated");
+            _tmp, ["entity", "names"], "verify", "--codegen", "--full", MetaDir, "--out", outDir, "--column-naming", "literal", "--namespace", "Acme.Generated");
         var output = stdout + stderr;
         Assert.Equal(2, exit);
         Assert.Contains("--column-naming was removed in 1.1.0", output);
@@ -162,7 +162,7 @@ public sealed class ColumnNamingFlagTests : IDisposable
         Assert.Equal(0, OwnedRunner.Run(_tmp, ["entity", "names"], "gen", MetaDir, "--out", outDir, "--namespace", "Acme.Generated").ExitCode);
 
         WriteConfig("\"columns\": \"literal\"");
-        var (exit, stdout, stderr) = OwnedRunner.Run(_tmp, ["entity", "names"], "verify", "--codegen", MetaDir, "--out", outDir, "--namespace", "Acme.Generated");
+        var (exit, stdout, stderr) = OwnedRunner.Run(_tmp, ["entity", "names"], "verify", "--codegen", "--full", MetaDir, "--out", outDir, "--namespace", "Acme.Generated");
         var output = stdout + stderr;
         Assert.Equal(1, exit);
         Assert.Contains(
@@ -188,7 +188,7 @@ public sealed class ColumnNamingFlagTests : IDisposable
         Assert.Contains("\"OrderItems\"", File.ReadAllText(Path.Combine(outDir, "acme", "OrderItemNames.g.cs")));
 
         WriteConfig(null);
-        var (exit, stdout, stderr) = OwnedRunner.Run(_tmp, ["entity", "names"], "verify", "--codegen", MetaDir, "--out", outDir, "--namespace", "Acme.Generated");
+        var (exit, stdout, stderr) = OwnedRunner.Run(_tmp, ["entity", "names"], "verify", "--codegen", "--full", MetaDir, "--out", outDir, "--namespace", "Acme.Generated");
         var output = stdout + stderr;
         Assert.Equal(1, exit);
         Assert.Contains(
@@ -212,7 +212,7 @@ public sealed class ColumnNamingFlagTests : IDisposable
         Assert.Contains("[Table(\"OrderItems\")]", File.ReadAllText(Path.Combine(outDir, "acme", "OrderItem.g.cs")));
 
         WriteConfig(null);
-        var (exit, stdout, stderr) = OwnedRunner.Run(_tmp, ["entity"], "verify", "--codegen", MetaDir, "--out", outDir, "--namespace", "Acme.Generated");
+        var (exit, stdout, stderr) = OwnedRunner.Run(_tmp, ["entity"], "verify", "--codegen", "--full", MetaDir, "--out", outDir, "--namespace", "Acme.Generated");
         var output = stdout + stderr;
         Assert.Equal(1, exit);
         Assert.Contains(
@@ -231,7 +231,7 @@ public sealed class ColumnNamingFlagTests : IDisposable
         Assert.Equal(0, OwnedRunner.Run(_tmp, ["entity", "names"], "gen", MetaDir, "--out", outDir, "--namespace", "Acme.Generated").ExitCode);
 
         WriteConfig(null);
-        var (exit, stdout, stderr) = OwnedRunner.Run(_tmp, ["entity", "names"], "verify", "--codegen", MetaDir, "--out", outDir, "--namespace", "Acme.Generated");
+        var (exit, stdout, stderr) = OwnedRunner.Run(_tmp, ["entity", "names"], "verify", "--codegen", "--full", MetaDir, "--out", outDir, "--namespace", "Acme.Generated");
         var output = stdout + stderr;
         Assert.Equal(1, exit);
         Assert.Contains(
@@ -248,7 +248,7 @@ public sealed class ColumnNamingFlagTests : IDisposable
         Assert.Equal(0, OwnedRunner.Run(_tmp, ["entity", "names"], "gen", MetaDir, "--out", outDir, "--namespace", "Acme.Generated").ExitCode);
         File.AppendAllText(Path.Combine(outDir, "acme", "SubscriberNames.g.cs"), "// edited\n");
 
-        var (exit, stdout, stderr) = OwnedRunner.Run(_tmp, ["entity", "names"], "verify", "--codegen", MetaDir, "--out", outDir, "--namespace", "Acme.Generated");
+        var (exit, stdout, stderr) = OwnedRunner.Run(_tmp, ["entity", "names"], "verify", "--codegen", "--full", MetaDir, "--out", outDir, "--namespace", "Acme.Generated");
         var output = stdout + stderr;
         Assert.Equal(1, exit);
         Assert.Contains("Run 'dotnet meta gen' to regenerate", output);

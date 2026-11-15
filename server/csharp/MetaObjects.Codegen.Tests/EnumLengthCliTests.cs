@@ -53,7 +53,7 @@ public sealed class EnumLengthCliTests : IDisposable
     [Fact]
     public void Verify_codegen_reports_the_member_by_name_and_fails()
     {
-        var (code, text) = Run("verify", "--codegen", Meta, "--out", Out, "--namespace", "Acme.Generated");
+        var (code, text) = Run("verify", "--codegen", "--full", Meta, "--out", Out, "--namespace", "Acme.Generated");
         Assert.NotEqual(0, code);
         Assert.Contains("field.enum \"Ticket.status\" has the member \"CLOSED\"", text);
     }

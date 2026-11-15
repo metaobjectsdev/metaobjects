@@ -66,12 +66,12 @@ public class RecipeGeneratorTests : IDisposable
         Assert.Equal("3.1.0", (string?)api["openapi"]);
         Assert.Equal(["/api/customers", "/api/customers/{id}"], api["paths"]!.AsObject().Select(p => p.Key));
 
-        Assert.Equal(0, CodegenCli.Run(["verify", "--codegen", Meta, "--out", Out], Suite));
+        Assert.Equal(0, CodegenCli.Run(["verify", "--codegen", "--full", Meta, "--out", Out], Suite));
 
         File.WriteAllText(Path.Combine(Meta, "meta.shop.json"),
             Model.Replace("""{ "field.string": { "name": "email", "@required": true } },""",
                 """{ "field.string": { "name": "email", "@required": true } }, { "field.string": { "name": "note" } },"""));
-        Assert.NotEqual(0, CodegenCli.Run(["verify", "--codegen", Meta, "--out", Out], Suite));
+        Assert.NotEqual(0, CodegenCli.Run(["verify", "--codegen", "--full", Meta, "--out", Out], Suite));
     }
 
     private sealed class Throws : IGenerator
