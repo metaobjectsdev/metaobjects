@@ -207,6 +207,22 @@ export type { ReferenceGeneratorName } from "./reference-templates.js";
 export { code, imp, joinCode } from "./poet.js";
 export type { Code } from "./poet.js";
 
+// The code writer (ADR-0063): generators say what a line contains, the writer decides where
+// it sits. No formatter runs over its output. `TsWriter` accepts the `Code` fragments above,
+// so a generator can move to it one function at a time.
+export {
+  CodeWriter,
+  flat,
+  Group,
+  list,
+  WRITER_ERRORS,
+  WriterError,
+  type CodeWriterOptions,
+  type Piece,
+  type WriterErrorCode,
+} from "./writer/code-writer.js";
+export { arr, call, key, Props, props, str, TsWriter, type TsWriterOptions } from "./writer/ts-writer.js";
+
 export {
   renderFindByIdFn,
   renderListFn,

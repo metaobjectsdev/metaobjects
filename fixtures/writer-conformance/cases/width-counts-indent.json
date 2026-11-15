@@ -1,0 +1,58 @@
+{
+  "description": "The indent counts toward the width: the same line fits at the root and breaks inside a block.",
+  "dialect": "core",
+  "options": {
+    "indent": "  ",
+    "width": 19,
+    "trailingComma": true
+  },
+  "ops": [
+    [
+      "line",
+      "f",
+      {
+        "list": {
+          "open": "(",
+          "items": [
+            "aaaaaa",
+            "bbbbbb"
+          ],
+          "close": ")"
+        }
+      },
+      ";"
+    ],
+    [
+      "open",
+      "{"
+    ],
+    [
+      "line",
+      "f",
+      {
+        "list": {
+          "open": "(",
+          "items": [
+            "aaaaaa",
+            "bbbbbb"
+          ],
+          "close": ")"
+        }
+      },
+      ";"
+    ],
+    [
+      "close",
+      "}"
+    ]
+  ],
+  "expected": [
+    "f(aaaaaa, bbbbbb);",
+    "{",
+    "  f(",
+    "    aaaaaa,",
+    "    bbbbbb,",
+    "  );",
+    "}"
+  ]
+}

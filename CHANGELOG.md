@@ -77,6 +77,17 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
 
 ### Added
 
+- **A code writer for generators: `CodeWriter` and `TsWriter` in `@metaobjectsdev/codegen-ts`**
+  (ADR-0063). A generator says what a line contains, and the writer decides where it sits. It
+  builds the file in memory with no formatter. It collects imports while the body is written,
+  treats blank lines as requests that collapse, and prints a list on one line when the line fits
+  120 columns, otherwise one item per line. `TsWriter` accepts ts-poet `Code` fragments and
+  collects their `imp()` imports, so a generator can move to it one function at a time. The
+  writer is exported from the package root and from `@metaobjectsdev/codegen-ts/engine`, so an
+  owned (ejected) generator can use it too. The contract is `spec/code-writer.md`, pinned by
+  the new `fixtures/writer-conformance/` corpus. No shipped generator uses the writer yet, so
+  generated output does not change in this release.
+
 - **A page size for generated list routes: `api.pagination`, in every port.** An external review
   of 1.2.0 found that list endpoints had no hard cap: the TypeScript and C# routes returned the
   whole table when `limit` was omitted, and `?limit=100000` was accepted in every port. The new

@@ -1,0 +1,153 @@
+# The code writer contract
+
+Every port's generators write text through a code writer
+([ADR-0063](decisions/ADR-0063-generators-own-layout.md)). The generator says what a line
+contains, and the writer decides where it sits. This document is the contract the writers
+share. The cases in [`fixtures/writer-conformance/`](../fixtures/writer-conformance/) pin it.
+
+A writer has two parts:
+
+- **The core**, which is language-neutral: lines, indentation, blocks, blank-line requests,
+  snippets, fit-or-break lists and the output form. Every port's core runs the `core` cases.
+- **A dialect** for the language being written: import collection and ordering, string
+  quoting, doc comments and expression helpers. A dialect runs the cases for its language,
+  such as `typescript`.
+
+The writer never parses text. It lays out the structure the generator handed it. When a shape
+comes out badly, the generator breaks it explicitly with a block. The writer is not made
+smarter.
+
+## Core
+
+### Options
+
+| Option | Meaning | TypeScript default |
+|---|---|---|
+| `indent` | One level of indentation | two spaces |
+| `width` | The last column a line may reach before its last list breaks | 120 |
+| `trailingComma` | Whether a broken list puts a comma after its last item too | true |
+
+A dialect sets the defaults for its language. A `core` case always states all three, so it
+means the same thing in every port.
+
+### Lines and blocks
+
+- **`line(parts...)`** writes one line at the current indent. Its parts are concatenated. There
+  is no unindented variant.
+- **`open(parts...)`** writes the line, then indents one level. **`close(parts...)`** dedents
+  one level, then writes the line. **`block(head, body, tail)`** is `open(head)`, then the body,
+  then `close(tail)`. A port gives `block` its idiomatic scoped form: a callback in
+  TypeScript, `try (var b = ...)` in Java, `with` in Python, `using` in C#.
+- Indentation comes only from open blocks, so a line's indent is the depth of the blocks around
+  it times `indent`.
+- `close` with no block open is **`ERR_WRITER_UNBALANCED_CLOSE`**. Finishing the file with a
+  block still open is **`ERR_WRITER_UNCLOSED_BLOCK`**, and the message quotes the line that
+  opened the innermost open block.
+- Line text containing a line break (`\n`, `\r\n` or `\r`) is **`ERR_WRITER_NEWLINE_IN_LINE`**.
+  Write each line separately, or use `text`.
+
+### Blank lines are requests
+
+- **`blank()`** asks for one blank line before whatever is written next.
+- Two or more requests in a row give one blank line.
+- A request gives nothing at the start of the file, directly after a line that opens a block,
+  directly before a line that closes a block, or at the end of the file.
+- A line whose text is empty is a blank-line request, not a written line.
+
+### Snippets
+
+**`text(snippet)`** writes a block of fixed code as it should read. The writer splits it on
+line breaks (`\n`, `\r\n` and `\r`). It drops the first line when that line is blank, and the
+last line when that line is blank. It removes the common left margin of the non-blank lines and
+writes each line at the current indent, keeping the line's indentation beyond the margin. A
+blank line inside the snippet is a blank-line request. Every line is re-indented, including a
+line inside a multi-line string literal in the snippet.
+
+### Lists fit or break
+
+A **list** is an opener, items and a closer. On one line its items are separated by `, `. A
+**padded** list puts a space inside its brackets (`{ a, b }`); an unpadded one does not
+(`[a, b]`, `f(a, b)`). An empty list prints as its opener and closer (`{}`, `[]`, `()`) and
+never breaks.
+
+When a line's indent plus its text is at most `width`, the line prints as it is. When it is
+longer:
+
+1. The **last** non-empty list on the line breaks. Everything before it, flattened, plus its
+   opener, is a line that opens a block. Each item is a line followed by a comma, except the
+   last item when `trailingComma` is false. The closer plus everything after it closes the
+   block.
+2. Each item line is held to the same rule, so an item that still does not fit breaks its own
+   last list.
+3. A line with no non-empty list prints as it is, however long.
+
+Width is counted in Unicode code points, so an emoji counts as one even though it is two UTF-16
+units. The comparison includes the indent, and a line exactly `width` long fits.
+
+### Output form
+
+- Lines end with `\n` on every platform.
+- No line has trailing whitespace.
+- A file with any content ends with exactly one `\n`. A file with no content is the empty
+  string.
+- Text is UTF-8 when it is written to disk.
+
+## TypeScript dialect (`TsWriter`)
+
+- **Imports are collected while the body is written.** `use(name, from)` records a value
+  import and returns the name to write. `useType` records a type-only import. `useDefault`,
+  `useNamespace` and `useSideEffect` record the other forms. Imports print before the body,
+  after any `header(...)` lines, with one blank line between each of the three sections.
+- **Order.** Package modules come first, then relative ones (those starting with `.`). Each
+  group is in code-unit order, with no blank line between the groups. Within a module, names are
+  in code-unit order.
+- **One line per module.** `import * as ns from "m";` prints on its own line. Default and named
+  imports share a line: `import D, { a, type B } from "m";`. A module whose every named import
+  is type-only, with no default, prints as `import type { A, B } from "m";`. A name used both as
+  a type and as a value is imported as a value. A side-effect import (`import "m";`) prints only
+  when nothing else is imported from that module.
+- The named list is a padded list and fits or breaks like any other. A single name never
+  breaks.
+- One local name imported from two modules, or naming two different exports, is
+  **`ERR_WRITER_IMPORT_CONFLICT`**.
+- **`doc(lines...)`** writes `/** text */` when there is one entry and it fits. Otherwise it
+  writes a block of ` * ` lines, with a bare ` *` line for an empty entry. A `*/` inside the
+  text is written as `*\/`.
+- **ts-poet interop.** Any part may be a ts-poet `Code` or `Import`. Its text is written, and
+  its imports are collected. `code(fragment)` writes a multi-line fragment as a snippet. A
+  fragment from a different physical ts-poet copy is refused with **`ERR_WRITER_UNKNOWN_PIECE`**,
+  because its imports cannot be read.
+- Helpers: `str` (a quoted string literal), `arr`, `call`, `props()` (an object literal built
+  with `.set(name, value)` and `.add(member)`) and `key` (an object key, quoted only when it is
+  not an identifier).
+
+## Fixture format
+
+Each case in `fixtures/writer-conformance/cases/` is one JSON file:
+
+```jsonc
+{
+  "description": "What the case pins, in one sentence.",
+  "dialect": "core",                       // or a language: "typescript"
+  "options": { "indent": "  ", "width": 40, "trailingComma": true },   // required for core
+  "ops": [
+    ["open", "class A {"],
+    ["line", "f", { "list": { "open": "(", "items": ["a", "b"], "close": ")" } }, ";"],
+    ["blank"],
+    ["text", "fixed\ncode"],
+    ["close", "}"]
+  ],
+  "expected": ["class A {", "  f(a, b);", "  fixed", "  code", "}"]
+}
+```
+
+- An op is an array: its name, then its arguments. The core ops are `line`, `open` and `close`
+  (whose arguments are parts), `blank` and `text`. The TypeScript ops are `use`, `useType`,
+  `useDefault`, `useNamespace` and `useSideEffect` (name, then module; `useSideEffect` takes
+  only the module), `header` and `doc` (lines).
+- A part is a string, a list (`{"list": {"open", "items", "close", "pad"?}}`, where items are
+  parts) or an array of parts, which are concatenated.
+- `expected` is the output's lines. The file is those lines joined with `\n` plus a final `\n`,
+  or the empty string when the array is empty.
+- A case that must fail has `"error"` (the error code) in place of `expected`. It may also have
+  `"errorQuotes"`, text the error message must contain.

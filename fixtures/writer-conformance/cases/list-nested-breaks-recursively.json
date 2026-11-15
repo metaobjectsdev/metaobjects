@@ -1,0 +1,50 @@
+{
+  "description": "An item that still does not fit after its list broke breaks its own last list.",
+  "dialect": "core",
+  "options": {
+    "indent": "  ",
+    "width": 40,
+    "trailingComma": true
+  },
+  "ops": [
+    [
+      "line",
+      "const rule = ",
+      {
+        "list": {
+          "open": "{",
+          "items": [
+            "short: 1",
+            [
+              "ops: ",
+              {
+                "list": {
+                  "open": "[",
+                  "items": [
+                    "\"equalsEquals\"",
+                    "\"notEqualsNot\"",
+                    "\"greaterThan\""
+                  ],
+                  "close": "]"
+                }
+              }
+            ]
+          ],
+          "close": "}",
+          "pad": true
+        }
+      },
+      ";"
+    ]
+  ],
+  "expected": [
+    "const rule = {",
+    "  short: 1,",
+    "  ops: [",
+    "    \"equalsEquals\",",
+    "    \"notEqualsNot\",",
+    "    \"greaterThan\",",
+    "  ],",
+    "};"
+  ]
+}

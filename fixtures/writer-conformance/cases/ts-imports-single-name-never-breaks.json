@@ -1,0 +1,20 @@
+{
+  "description": "An import of a single name stays on one line however long the module path is.",
+  "dialect": "typescript",
+  "ops": [
+    [
+      "line",
+      "x;"
+    ],
+    [
+      "use",
+      "VeryLongExportedSymbolNameForTesting",
+      "@metaobjectsdev/some-really-long-package-name/with/a/deep/sub/path/module"
+    ]
+  ],
+  "expected": [
+    "import { VeryLongExportedSymbolNameForTesting } from \"@metaobjectsdev/some-really-long-package-name/with/a/deep/sub/path/module\";",
+    "",
+    "x;"
+  ]
+}

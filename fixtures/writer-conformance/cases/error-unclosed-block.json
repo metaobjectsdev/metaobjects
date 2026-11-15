@@ -1,0 +1,29 @@
+{
+  "description": "Finishing the file with a block open is an error whose message quotes the line that opened it.",
+  "dialect": "core",
+  "options": {
+    "indent": "  ",
+    "width": 40,
+    "trailingComma": true
+  },
+  "ops": [
+    [
+      "open",
+      "function outer() {"
+    ],
+    [
+      "open",
+      "if (ready) {"
+    ],
+    [
+      "line",
+      "go();"
+    ],
+    [
+      "close",
+      "}"
+    ]
+  ],
+  "error": "ERR_WRITER_UNCLOSED_BLOCK",
+  "errorQuotes": "function outer() {"
+}

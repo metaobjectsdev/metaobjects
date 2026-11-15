@@ -1,0 +1,34 @@
+{
+  "description": "A one-entry doc comment that fits is one line; more entries, or one that does not fit, make a block. An empty entry is a bare ` *` line.",
+  "dialect": "typescript",
+  "ops": [
+    [
+      "doc",
+      "The user."
+    ],
+    [
+      "line",
+      "a;"
+    ],
+    [
+      "doc",
+      "First line.",
+      "",
+      "@see other"
+    ],
+    [
+      "line",
+      "b;"
+    ]
+  ],
+  "expected": [
+    "/** The user. */",
+    "a;",
+    "/**",
+    " * First line.",
+    " *",
+    " * @see other",
+    " */",
+    "b;"
+  ]
+}

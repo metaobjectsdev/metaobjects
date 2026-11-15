@@ -1,0 +1,23 @@
+{
+  "description": "Each line() is one line at the current indent, which starts at zero.",
+  "dialect": "core",
+  "options": {
+    "indent": "  ",
+    "width": 40,
+    "trailingComma": true
+  },
+  "ops": [
+    [
+      "line",
+      "const a = 1;"
+    ],
+    [
+      "line",
+      "const b = 2;"
+    ]
+  ],
+  "expected": [
+    "const a = 1;",
+    "const b = 2;"
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "description": "A blank-line request before the first line writes nothing.",
+  "dialect": "core",
+  "options": {
+    "indent": "  ",
+    "width": 40,
+    "trailingComma": true
+  },
+  "ops": [
+    [
+      "blank"
+    ],
+    [
+      "line",
+      "a;"
+    ]
+  ],
+  "expected": [
+    "a;"
+  ]
+}

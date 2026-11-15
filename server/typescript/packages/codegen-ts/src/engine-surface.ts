@@ -9,7 +9,9 @@
 //     route an entity is served on, which requirements a model holds),
 //   - the naming tables and the type-mapping tables (`names.ts`, `naming.ts`,
 //     `column-mapper.ts`) — the ruling in Amendment 8 that an adopter keeps importing them,
-//   - the projection/report lowering `meta migrate` and `meta verify` also run.
+//   - the projection/report lowering `meta migrate` and `meta verify` also run,
+//   - the code writer (`CodeWriter`, `TsWriter`, ADR-0063): it lays a file out and decides
+//     nothing about what the file contains, so an owned generator keeps importing it.
 //
 // An owned copy imports these from the package, by its public entry. Every other module
 // the owned generator reaches is copied into the project, under `codegen/templates/`.
@@ -69,4 +71,6 @@ export const ENGINE_MODULES: readonly string[] = [
   "codegen-ts/src/templates/find-templates.ts",
   "codegen-ts/src/tph.ts",
   "codegen-ts/src/view-context.ts",
+  "codegen-ts/src/writer/code-writer.ts",
+  "codegen-ts/src/writer/ts-writer.ts",
 ];

@@ -1,0 +1,30 @@
+{
+  "description": "A line exactly as long as the width fits (the width is inclusive).",
+  "dialect": "core",
+  "options": {
+    "indent": "  ",
+    "width": 36,
+    "trailingComma": true
+  },
+  "ops": [
+    [
+      "line",
+      "x = ",
+      {
+        "list": {
+          "open": "[",
+          "items": [
+            "aaaaaaaaaa",
+            "bbbbbbbbbb",
+            "ccccc"
+          ],
+          "close": "]"
+        }
+      },
+      ";"
+    ]
+  ],
+  "expected": [
+    "x = [aaaaaaaaaa, bbbbbbbbbb, ccccc];"
+  ]
+}
