@@ -337,6 +337,50 @@ public static class CSharpNaming
     public static string PropertyName(MetaField field, GenConfig? config) =>
         config?.PropertyNaming?.Invoke(field) ?? Pascal(field.Name);
 
+    /// <summary>
+    /// The fields whose C# property (the run's <see cref="GenConfig.PropertyNaming"/> resolver)
+    /// is not the field name in another case: the only ones the runtime's case-insensitive
+    /// property lookup cannot find on its own. Shared with the routes generator, which
+    /// passes the emitted map to the filter dispatch exactly when this is non-empty.
+    /// </summary>
+    public static IReadOnlyDictionary<string, string> RenamedProperties(MetaObject entity, GenConfig config)
+    {
+        var map = new Dictionary<string, string>(System.StringComparer.Ordinal);
+        foreach (var f in entity.Fields())
+        {
+            var prop = CSharpNaming.PropertyName(f, config);
+            if (!string.Equals(prop, f.Name, StringComparison.OrdinalIgnoreCase)) map[f.Name] = prop;
+        }
+        return map;
+    }
+
+    /// <summary>
+    /// Refuse a generator whose <c>PropertyName</c> hook is overridden to answer differently from
+    /// <see cref="GenConfig.PropertyNaming"/> for any field. Only the resolver reaches every
+    /// generator (the entity, the context, the routes, the callable, the extractor, the report
+    /// export, the filter map), so a lone override would declare one name and reference another
+    /// in a different file: output that does not compile, or a sort that fails at run time.
+    /// </summary>
+    public static void RefuseDivergingPropertyHook(
+        string generatorName, IEnumerable<MetaObject> objects, GenConfig config, Func<MetaField, string> hook)
+    {
+        foreach (var obj in objects)
+        {
+            foreach (var f in obj.Fields())
+            {
+                var resolved = PropertyName(f, config);
+                var hooked = hook(f);
+                if (!string.Equals(hooked, resolved, StringComparison.Ordinal))
+                {
+                    throw new InvalidOperationException(
+                        $"{generatorName}: its PropertyName hook names field \"{obj.Name}.{f.Name}\" \"{hooked}\", but the run's " +
+                        $"property-naming resolver names it \"{resolved}\"; every other generator uses the resolver, so the " +
+                        "generated files would disagree: set GenConfig.PropertyNaming instead of overriding the hook.");
+                }
+            }
+        }
+    }
+
     // ----------------------------------------------------------------------------
     // Generated-SDK SYMBOL names — the single source of truth for the public C#
     // identifiers the generators emit. Each generator calls one of these instead of
