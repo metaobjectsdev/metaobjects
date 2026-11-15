@@ -701,7 +701,10 @@ vocabulary; upgrade every port together.
   field, because the deny arm matched the field name only and the generic lookup found the renamed
   property case-insensitively; 1.2.3 closes that too. Regenerate every project whose host sets a
   snake or kebab policy or `GenConfig.PropertyNaming`; a project on the default policy with no
-  rename is unaffected.
+  rename is unaffected. **Known limit, not fixed here:** a credential (`view.password`) declared on a
+  value-object member is not listed, checked or stripped. Only an entity's top-level fields are
+  treated as credentials, and stripping does not recurse into nested objects. Declare credentials
+  as top-level entity fields until that is fixed.
 
 ### Fixed
 
