@@ -254,7 +254,7 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
   if (skipInputs !== undefined && genMaySkip(flags)) {
     const verdict = decideGenSkip(skipInputs);
     if (verdict.skip) {
-      await reportGenSkip(fmt, verdict.recorded.length);
+      await reportGenSkip(fmt, verdict.recorded.length, warnings);
       return 0;
     }
   }

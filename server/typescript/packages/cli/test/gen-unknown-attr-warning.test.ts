@@ -187,6 +187,22 @@ describe("meta gen — a run that skips still names the unknown attribute (ADR-0
       rmSync(root, { recursive: true, force: true });
     }
   });
+
+  test("the skipped structured document carries the same warning", async () => {
+    const root = setupRepo({ typos: false });
+    try {
+      expect(await run(["gen", "--cwd", root])).toBe(0);
+      writeFileSync(join(root, "metaobjects", "meta.app.json"), model({ typos: false, bareTypo: true }), "utf8");
+      out = [];
+      err = [];
+      expect(await run(["gen", "--cwd", root, "--format", "json"])).toBe(0);
+      const payload = JSON.parse(out.join("\n")) as { skipped?: boolean; warnings?: string[] };
+      expect(payload.skipped).toBe(true);
+      expect(payload.warnings?.some((w) => w.includes("isAbstrakt"))).toBe(true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("meta gen — owned generator copies that are the shipped reference", () => {

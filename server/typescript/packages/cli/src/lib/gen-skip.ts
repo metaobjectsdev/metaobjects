@@ -19,7 +19,7 @@ const SKIP_SUMMARY = "nothing changed since the last meta gen, so nothing was re
 const SKIP_HELP = "meta gen --force regenerates everything";
 
 /** Print the skipped run in the requested format. */
-export async function reportGenSkip(fmt: Format, recorded: number): Promise<void> {
+export async function reportGenSkip(fmt: Format, recorded: number, warnings: readonly string[]): Promise<void> {
   if (fmt === "text") {
     log.info(`meta gen — ${SKIP_SUMMARY} (${recorded} generated file(s) up to date). ${SKIP_HELP}.`);
     return;
@@ -32,6 +32,7 @@ export async function reportGenSkip(fmt: Format, recorded: number): Promise<void
     antiPatterns: skippedSection("not run: nothing changed since the last meta gen"),
     skipped: true,
     upToDate: recorded,
+    warnings,
   };
   if (fmt === "json") log.info(JSON.stringify(doc, null, 2));
   else {
