@@ -78,17 +78,22 @@ or when you want the same output across languages. Mustache is also the natural
 cross-language bridge: the render engine is byte-identical in every port, so one
 template emits identical output anywhere.
 
-## 4. Regeneration strategy — only optimize when it's worth it
+## 4. Regeneration strategy — the run skips itself
 
-A common optimization: **skip regeneration when the output is already up-to-date** —
-compare the mtime of the generator code and/or template against the mtime of the
-existing generated file, and don't regenerate if the output is newer.
+**Skipping unchanged work is the engine's job now, and it happens before anything
+renders:** `gen` keys the run on the loaded model and everything the generators are
+built from — content hashes, never timestamps — and a match, with every generated
+file still holding the bytes the last run left, renders and writes nothing
+([ADR-0064](../../spec/decisions/ADR-0064-skip-codegen-when-nothing-changed.md);
+`--force` runs it anyway).
 
-The catch: **it's only worth the effort for the slow paths.** Mustache and Groovy
-templates are slow enough that skipping unchanged output is a real win. **Direct-code
-codegen is so fast that the skip logic costs more than it saves** — just regenerate
-every time. Match the optimization to the mechanism: timestamp-skip for templates,
-always-regenerate for direct code.
+What that leaves a generator author is not a skip to build but a dependency to
+declare: a file or directory the generator reads beyond the model and the template
+roots goes in `inputs` (the port's equivalent elsewhere), and a generator that cannot
+name what it reads sets `cache: false`, which opts its runs out of skipping. An
+mtime-based skip built inside a generator is the one thing to avoid: timestamps are
+never an input to the key, and such a skip can serve stale output inside a run that
+did render.
 
 ## 5. Preserving hand edits — one shipped strategy, and two you would build
 

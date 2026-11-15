@@ -73,8 +73,9 @@ it can neither write nor satisfy the key of a full run. The rule the key keeps: 
 it over-counts causes an extra render; an input it misses would cause a wrong skip, so anything
 in doubt is counted. Timestamps are never an input.
 
-The stored key lives in `.metaobjects/.gen-state/.fingerprint-<port>.json`, which is not
-committed (`.gen-state/*` is ignored except `.hashes.json`). A run deletes it before it writes
+The stored key lives in `.metaobjects/.gen-state/.fingerprint-<port>.json` (on the JVM,
+one per owner module: `.fingerprint-java-<owner>.json`), which is not committed
+(`.gen-state/*` is ignored except `.hashes.json`). A run deletes it before it writes
 anything and stores the new one only after it succeeds with every generator cacheable, so a
 failed or half-written run is never mistaken for a current one. The full run comes back with
 `meta gen --force` (TypeScript), `metaobjects gen --force` (Python), `dotnet meta gen --force`
