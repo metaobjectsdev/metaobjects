@@ -5,6 +5,8 @@
 // jsonb / subdocument / absent → a single json column via .ToJson), and uses
 // .PrimitiveCollection() for scalar/enum array fields (EF Core 8 API).
 
+// The PropertyName hook is obsolete for adopters (set GenConfig.PropertyNaming); this generator still calls it.
+#pragma warning disable CS0618
 using System.Text;
 using MetaObjects.Codegen.Docs;
 using MetaObjects.Meta;
@@ -60,7 +62,10 @@ public class DbContextGenerator : IGenerator
     /// names one. Default: the run's <see cref="GenConfig.PropertyNaming"/> resolver, else
     /// PascalCase of the field name — the same answer <c>EntityGenerator.PropertyName</c> gives
     /// by default, so the two agree. A subclass that overrides the entity generator's hook
-    /// overrides this one the same way (or sets the resolver on the config instead).</summary>
+    /// overrides this one the same way (or sets the resolver on the config instead).
+    /// An override that answers differently from the resolver for any field is refused when the
+    /// generator runs (set <c>GenConfig.PropertyNaming</c> instead).</summary>
+    [Obsolete("set GenConfig.PropertyNaming: it is the one resolver every generator consults. An override that names a field differently from the resolver is refused when the generator runs.")]
     protected virtual string PropertyName(MetaField field) => CSharpNaming.PropertyName(field, _config);
 
     // The run's config, for the PropertyName default. Set when Generate starts.
@@ -97,6 +102,7 @@ public class DbContextGenerator : IGenerator
             .OrderBy(o => o.Name, StringComparer.Ordinal)
             .ToList();
         if (objects.Count == 0) return [];
+        CSharpNaming.RefuseDivergingPropertyHook(Name, objects, ctx.Config, PropertyName);
         // One context, one property per name (CS0102 otherwise), claimed as emitted: an object
         // that gets no DbSet here never takes part. Two objects on one table are EF's to refuse
         // (it does, at model build), not this generator's.

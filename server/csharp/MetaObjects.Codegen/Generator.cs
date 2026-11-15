@@ -229,11 +229,14 @@ public sealed record GenConfig
     /// <summary>
     /// The C# property name of a field, for every generator that names one: the entity and
     /// value-object classes, the composite <c>[PrimaryKey]</c>, the DbContext's model
-    /// configuration, the reverse finders and the routes. <c>null</c>, the default, is the
-    /// PascalCased field name (<see cref="CSharpNaming.Pascal"/>). Set it to rename a property
-    /// (an acronym, say) once, so the class that declares it and every line that references it
-    /// agree. <c>EntityGenerator.PropertyName</c> and <c>DbContextGenerator.PropertyName</c> read
-    /// it by default; a subclass that overrides one of those hooks must override both.
+    /// configuration, the reverse finders, the routes (members, sort and filter names, credential
+    /// and write-deny keys), the callable arguments, the extractor mapper, the report export and
+    /// the filter allowlist's property map. <c>null</c>, the default, is the PascalCased field name
+    /// (<see cref="CSharpNaming.Pascal"/>). Set it to rename a property (an acronym, say) once, so
+    /// the class that declares it and every line that references it agree. This is the only way
+    /// to rename consistently: <c>EntityGenerator.PropertyName</c> and
+    /// <c>DbContextGenerator.PropertyName</c> default to it, are obsolete, and a generator whose
+    /// override answers differently from this resolver for any field refuses to run.
     /// </summary>
     public Func<MetaField, string>? PropertyNaming { get; init; }
 

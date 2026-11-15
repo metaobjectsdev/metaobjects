@@ -12,6 +12,8 @@
 // Object-typed fields on read-only projections are not mapped here — that is a
 // separate projection-materialization concern.
 
+// The PropertyName hook is obsolete for adopters (set GenConfig.PropertyNaming); this generator still calls it.
+#pragma warning disable CS0618
 using System.Text;
 using MetaObjects.Codegen.Docs;
 using MetaObjects.Meta;
@@ -43,8 +45,10 @@ public class EntityGenerator : IGenerator
     /// subclass can override to honor an explicit casing source (an all-caps acronym a plain
     /// PascalCase of the field name would mangle). Every name this generator emits for a field —
     /// the property, the composite <c>[PrimaryKey]</c>, the reverse finders — goes through here.
-    /// The DbContext generator names the same properties: set the resolver on the config, or
-    /// override <c>DbContextGenerator.PropertyName</c> to match.</summary>
+    /// Every other generator that names a property reads <see cref="GenConfig.PropertyNaming"/>
+    /// only, so an override that answers differently from the resolver for any field is refused
+    /// when the generator runs (set <c>GenConfig.PropertyNaming</c> instead).</summary>
+    [Obsolete("set GenConfig.PropertyNaming: it is the one resolver every generator consults. An override that names a field differently from the resolver is refused when the generator runs.")]
     protected virtual string PropertyName(MetaField field) => CSharpNaming.PropertyName(field, _config);
 
     // The run's config, for the PropertyName default. Set when Generate starts.
@@ -114,6 +118,7 @@ public class EntityGenerator : IGenerator
         _wire = ctx.Root.WireFormat;
         _config = ctx.Config;
         _ctx = ctx;
+        CSharpNaming.RefuseDivergingPropertyHook(Name, ReportRows.WithReportRows(ctx), ctx.Config, PropertyName);
         // FR-044 — a view-backed report joins the set as its ROW MODEL (a keyless,
         // projection-shaped object carrying its derived fields); every other report node
         // is dropped. See ReportRows.

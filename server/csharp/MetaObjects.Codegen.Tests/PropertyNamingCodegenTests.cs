@@ -141,11 +141,23 @@ public class PropertyNamingCodegenTests
     [Fact]
     public void The_overridable_hooks_agree_across_both_generators()
     {
-        var ctx = Ctx(Load());
+        // The hooks agree with the resolver: the run is accepted and compiles.
+        var ctx = Ctx(Load(), Acronyms);
         var files = Generate(ctx, new AcronymEntities(), new AcronymContext());
 
         Assert.Empty(CompileErrors(files));
         Assert.Contains("e.CustomerID ==", files.Single(f => System.IO.Path.GetFileName(f.Path) == "OrderLineQueries.g.cs").Content);
+    }
+
+    [Fact]
+    public void A_hook_override_that_differs_from_the_resolver_is_refused()
+    {
+        // No resolver set: the override alone would rename the entity's property and nothing else.
+        var ex = Assert.Throws<InvalidOperationException>(() => new AcronymEntities().Generate(Ctx(Load())).ToList());
+        Assert.Contains("set GenConfig.PropertyNaming", ex.Message);
+        Assert.Contains("hook names field \"", ex.Message);
+        var ex2 = Assert.Throws<InvalidOperationException>(() => new AcronymContext().Generate(Ctx(Load())).ToList());
+        Assert.Contains("set GenConfig.PropertyNaming", ex2.Message);
     }
 
     [Fact]
