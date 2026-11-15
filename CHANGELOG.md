@@ -10,6 +10,13 @@ here.**
 
 ## [Unreleased]
 
+## [1.2.3] — 2026-11-15
+
+_npm `1.2.3` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._
+
+_Also PyPI `1.2.3`, NuGet `1.2.3` and Maven Central `8.2.3`: every port changed. PyPI skips
+`1.2.2`. No vocabulary or `metamodelVersion` change._
+
 ### Changed
 
 - **`gen` skips rendering when nothing it is built from changed, in every port (ADR-0062).**
@@ -36,6 +43,22 @@ here.**
 - **TypeScript runs `git merge-file` only for a file edited by hand since it was generated**, and
   deletes the merge's temporary files in every case, under `$DEV_SCRATCH` when set. An untouched
   file is overwritten directly.
+
+### Upgrading
+
+- **Add `**/.metaobjects/.gen-state/*` and `!**/.metaobjects/.gen-state/.hashes.json` to your
+  `.gitignore`.** Otherwise the new `.fingerprint-<port>.json` file shows as untracked (in each
+  Maven module, for Java and Kotlin). The exception matters: the fingerprint files stay
+  uncommitted, but `.hashes.json` stays committed, so do not ignore the whole `.metaobjects/`
+  directory.
+- **Generated TypeScript docs change if you are coming from 1.2.0.** Since 1.2.2 an update schema
+  leaves out every primary-key field, so the documented `<Entity>UpdateSchema` type, the update
+  function's patch type and the PATCH/PUT body no longer list the key (the `id` row is gone).
+  Regenerate the docs and commit them, or `meta verify --codegen` reports drift.
+- **Committed generated code changes too, not only the docs.** Because primary-key fields leave
+  the update schemas, and because of 1.2.2's create-route fixes in Java, Kotlin and C#, regenerate
+  and commit your generated code when you upgrade from 1.2.0 or 1.2.1. Otherwise the drift gate
+  fails against the new generators.
 
 ## [1.2.2] — 2026-11-13
 
