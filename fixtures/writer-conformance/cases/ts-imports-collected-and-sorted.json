@@ -1,0 +1,43 @@
+{
+  "description": "Imports used anywhere in the body print first: package modules, then relative ones, each in code-unit order; names in code-unit order.",
+  "dialect": "typescript",
+  "ops": [
+    [
+      "line",
+      "const x = 1;"
+    ],
+    [
+      "use",
+      "eq",
+      "drizzle-orm"
+    ],
+    [
+      "use",
+      "and",
+      "drizzle-orm"
+    ],
+    [
+      "use",
+      "z",
+      "zod"
+    ],
+    [
+      "use",
+      "helper",
+      "./helper"
+    ],
+    [
+      "use",
+      "Alpha",
+      "../alpha"
+    ]
+  ],
+  "expected": [
+    "import { and, eq } from \"drizzle-orm\";",
+    "import { z } from \"zod\";",
+    "import { Alpha } from \"../alpha\";",
+    "import { helper } from \"./helper\";",
+    "",
+    "const x = 1;"
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "description": "A line whose text is empty is a blank-line request, so it collapses and is dropped like one.",
+  "dialect": "core",
+  "options": {
+    "indent": "  ",
+    "width": 40,
+    "trailingComma": true
+  },
+  "ops": [
+    [
+      "line",
+      "a;"
+    ],
+    [
+      "line",
+      ""
+    ],
+    [
+      "line",
+      ""
+    ],
+    [
+      "line",
+      "b;"
+    ],
+    [
+      "line",
+      ""
+    ]
+  ],
+  "expected": [
+    "a;",
+    "",
+    "b;"
+  ]
+}

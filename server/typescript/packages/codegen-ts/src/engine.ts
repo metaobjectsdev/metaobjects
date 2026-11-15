@@ -59,4 +59,6 @@ export * from "./templates/find-inbound.js";
 export * from "./templates/find-templates.js";
 export * from "./tph.js";
 export * from "./view-context.js";
+export * from "./writer/code-writer.js";
+export * from "./writer/ts-writer.js";
 export { ENGINE_MODULES } from "./engine-surface.js";

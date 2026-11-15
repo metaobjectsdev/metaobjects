@@ -1,0 +1,31 @@
+{
+  "description": "No blank line directly before the line that closes a block.",
+  "dialect": "core",
+  "options": {
+    "indent": "  ",
+    "width": 40,
+    "trailingComma": true
+  },
+  "ops": [
+    [
+      "open",
+      "f() {"
+    ],
+    [
+      "line",
+      "a;"
+    ],
+    [
+      "blank"
+    ],
+    [
+      "close",
+      "}"
+    ]
+  ],
+  "expected": [
+    "f() {",
+    "  a;",
+    "}"
+  ]
+}

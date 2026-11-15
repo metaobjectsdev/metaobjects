@@ -396,7 +396,9 @@
           "codegen-ts/src/templates/find-inbound.ts",
           "codegen-ts/src/templates/find-templates.ts",
           "codegen-ts/src/tph.ts",
-          "codegen-ts/src/view-context.ts"
+          "codegen-ts/src/view-context.ts",
+          "codegen-ts/src/writer/code-writer.ts",
+          "codegen-ts/src/writer/ts-writer.ts"
         ]
       },
       "csharp": {

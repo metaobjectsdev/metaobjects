@@ -1,0 +1,16 @@
+{
+  "description": "line() refuses text containing a line break; each line is written separately.",
+  "dialect": "core",
+  "options": {
+    "indent": "  ",
+    "width": 40,
+    "trailingComma": true
+  },
+  "ops": [
+    [
+      "line",
+      "a;\nb;"
+    ]
+  ],
+  "error": "ERR_WRITER_NEWLINE_IN_LINE"
+}
