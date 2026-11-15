@@ -30,6 +30,9 @@ public class DbContextGenerator : IGenerator
 {
     public virtual string Name => "dbcontext-generator";
 
+    /// <summary>One context for the whole model: an <c>--entities</c> selection does not narrow it.</summary>
+    public bool WholeModel => true;
+
     /// <summary>
     /// Whether <c>OnModelCreating</c> carries the explicit 1:N relationship configuration for each
     /// enforced <c>identity.reference</c> (ADR-0047 / #294). <c>true</c> by default — that is what

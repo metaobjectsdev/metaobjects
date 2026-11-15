@@ -38,6 +38,20 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
     @Parameter(property = "metaobjects.allowUnmetRequires", defaultValue = "false")
     boolean allowUnmetRequires;
 
+    /**
+     * Regenerate only these objects' files: short object names, comma-separated
+     * ({@code -Dmeta.entities=Program,Week}, or {@code <entities>Program,Week</entities>}). The
+     * same selection as {@code meta gen Program Week} in TypeScript and {@code --entities} in
+     * Python and C#. Each generator still applies its own {@code <filters>} on top.
+     *
+     * <p>It narrows per-object output only: a file built from the whole model (a validator
+     * listing every table, a shared support class) still renders from the whole model. A
+     * narrowed run deletes no orphaned file and keeps every other file's manifest entry, since
+     * it did not try to produce them. A name that matches no object fails the goal.</p>
+     */
+    @Parameter(property = "meta.entities")
+    String entities;
+
     /** How this goal is named in a message telling the adopter what to run. */
     static final String OWNER = "mvn metaobjects:generate";
 
@@ -72,6 +86,20 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
         // only the post-loop registerGeneratedSourceRoots() logic below with no real
         // metadata — nothing to collide-check in that case.
         if (loader != null) refuseModelCollisions(loader);
+
+        List<String> selected = selectedEntities(loader);
+        if (selected != null) {
+            getLog().info("MetaData Mojo > Generating only " + String.join(", ", selected)
+                    + " (meta.entities); files built from the whole model still see every object.");
+            for (Generator gen : generatorImpls) {
+                if (gen instanceof GeneratorBase) {
+                    ((GeneratorBase) gen).setEntities(selected);
+                } else {
+                    getLog().warn("MetaData Mojo > " + gen.getClass().getName()
+                            + " cannot narrow to meta.entities; it renders every object.");
+                }
+            }
+        }
 
         // Where this EXECUTION's codegen hash manifest lives: anchored on the module
         // basedir, so two executions in one module share it (merged — every entry names
@@ -132,6 +160,10 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
             if (migrating) {
                 getLog().info("MetaData Mojo > Recorded the generator and output dir of every generated "
                         + "file in `.metaobjects/.gen-state/.hashes.json`; this build deletes no orphaned file.");
+            } else if (selected != null) {
+                // A narrowed run did not try to produce the other objects' files, so not
+                // emitting them says nothing about whether they are orphans.
+                getLog().info("MetaData Mojo > Deleted no orphaned file: meta.entities narrowed this build.");
             } else if (genStateDir != null) {
                 sweepOrphans(genStateDir, projectRoot, handEditsByDir, emittedThisBuild, runOwners);
             }
@@ -297,6 +329,35 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
                     + "root and are not recorded in `.metaobjects/.gen-state/.hashes.json`, so "
                     + "hand-edit protection does not apply to them beyond the GENERATED marker rule.");
         }
+    }
+
+    /**
+     * The {@link #entities} selection as a list, or {@code null} when none is set. Refuses a
+     * selection that names nothing (a blank value, usually an unset shell variable, would
+     * otherwise regenerate everything) and a name that matches no object.
+     */
+    List<String> selectedEntities(MetaDataLoader loader) {
+        if (entities == null) return null;
+        List<String> names = new ArrayList<>();
+        for (String raw : entities.split(",")) {
+            String name = raw.trim();
+            if (!name.isEmpty() && !names.contains(name)) names.add(name);
+        }
+        if (names.isEmpty()) {
+            throw new MetaDataException(OWNER + ": meta.entities names no object.");
+        }
+        if (loader == null) return names;
+        Set<String> known = new HashSet<>();
+        for (com.metaobjects.object.MetaObject o : loader.getMetaObjects()) known.add(o.getShortName());
+        List<String> unknown = new ArrayList<>();
+        for (String name : names) {
+            if (!known.contains(name)) unknown.add("'" + name + "'");
+        }
+        if (!unknown.isEmpty()) {
+            throw new MetaDataException(OWNER + ": meta.entities names " + String.join(", ", unknown)
+                    + ", which matches no object in the metadata.");
+        }
+        return names;
     }
 
     /** Fail the goal, naming each missing companion, when the list does not declare what its

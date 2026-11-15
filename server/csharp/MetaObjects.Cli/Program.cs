@@ -31,9 +31,10 @@ if (args.Length == 0 || helpRequested)
         "                                                     codegen/Program.cs and codegen/Codegen.csproj;\n" +
         "                                                     --with-docs lists the api-docs generator in it\n" +
         "    gen [<metadataDir>] --out <dir> [--namespace <ns>] [--emit-abstract-shapes]\n" +
-        "        [--generators <a,b,c>] [--template-root <dir>] [--strict]\n" +
+        "        [--generators <a,b,c>] [--entities <A,B>] [--template-root <dir>] [--strict]\n" +
         "                                                     run the generator list in codegen/Generators.cs;\n" +
         "                                                     --generators narrows it to the entries named;\n" +
+        "                                                     --entities narrows per-object output to the objects named;\n" +
         "                                                     --strict rejects an unknown @attr before writing\n" +
         "                                                     (as verify does, ADR-0023; default is a warning)\n" +
         "    gen --list                                       list available generators (stable names) and exit\n" +
@@ -384,6 +385,7 @@ static int RunVerify(string[] rest)
     string? outDir = null;
     string? ns = null;
     string? generatorsCsv = null;
+    string? entitiesCsv = null;
     string? templateRoot = null;
     string? columnNamingRaw = null;
     bool templates = false, codegen = false, deps = false, db = false, lax = false, noFieldLint = false, requireImplementers = false;
@@ -423,6 +425,7 @@ static int RunVerify(string[] rest)
         else if (a == "--out" && i + 1 < rest.Length) outDir = rest[++i];
         else if (a == "--namespace" && i + 1 < rest.Length) { ns = rest[++i]; }
         else if (a == "--generators" && i + 1 < rest.Length) generatorsCsv = rest[++i];
+        else if (a == "--entities" && i + 1 < rest.Length) entitiesCsv = rest[++i];
         else if (a == "--template-root" && i + 1 < rest.Length) templateRoot = rest[++i];
         // ADR-0058 — the flag is removed: column and table naming is one project setting
         // now, "naming" in .metaobjects/config.json, read by every port. Captured here (not
@@ -526,6 +529,7 @@ static int RunVerify(string[] rest)
             if (metadataDir is not null) codegenArgs.Insert(2, metadataDir);
             if (ns is not null) codegenArgs.AddRange(["--namespace", ns]);
             if (generatorsCsv is not null) codegenArgs.AddRange(["--generators", generatorsCsv]);
+            if (entitiesCsv is not null) codegenArgs.AddRange(["--entities", entitiesCsv]);
             if (templateRoot is not null) codegenArgs.AddRange(["--template-root", templateRoot]);
             if (lax) codegenArgs.Add("--lax");
             codegenHandedOff = CodegenHandoff.TryRun(projectRoot, codegenArgs.ToArray(), out codegenHandoffExit);
@@ -716,26 +720,28 @@ static int RunDepsGate(string? metadataDir)
 partial class Program
 {
     static readonly string[] GenValueFlags =
-        ["--out", "--namespace", "--generators", "--template-root", "--template-spec", "--column-naming", "--baseline"];
+        ["--out", "--namespace", "--generators", "--template-root", "--template-spec", "--column-naming", "--baseline", "--entities"];
     static readonly string[] GenBoolFlags = ["--list", "--emit-abstract-shapes", "--strict"];
     static readonly string[] VerifyValueFlags =
-        ["--prompts", "--out", "--namespace", "--generators", "--template-root", "--column-naming"];
+        ["--prompts", "--out", "--namespace", "--generators", "--template-root", "--column-naming", "--entities"];
     static readonly string[] VerifyBoolFlags = ["--templates", "--codegen", "--deps", "--db", "--lax", "--no-field-lint", "--require-implementers"];
 
     /// <summary>Each command's usage, printed by <c>dotnet meta &lt;command&gt; --help</c>.</summary>
     static readonly Dictionary<string, string> CommandUsage = new()
     {
-        ["gen"] = "usage: dotnet meta gen [<metadataDir>] --out <dir> [--namespace <ns>] [--generators <a,b,c>] [--template-root <dir>] [--emit-abstract-shapes] [--baseline default|adopt] [--strict]\n" +
+        ["gen"] = "usage: dotnet meta gen [<metadataDir>] --out <dir> [--namespace <ns>] [--generators <a,b,c>] [--entities <A,B>] [--template-root <dir>] [--emit-abstract-shapes] [--baseline default|adopt] [--strict]\n" +
                   "       dotnet meta gen --list\n" +
                   "  runs the generator list in codegen/Generators.cs (`dotnet meta init` writes it);\n" +
                   "  --generators narrows that list to the entries named, and never adds one.\n" +
+                  "  --entities narrows per-object output to the objects named (short names); whole-model files such as\n" +
+                  "  AppDbContext still render from the whole model, and nothing else is deleted or forgotten.\n" +
                   "  --strict: an unknown @attr is an error (exit 1, nothing written), as in verify (ADR-0023);\n" +
                   "  without it gen warns and generates. Owned copies identical to the shipped generators\n" +
                   "  get one advisory line naming `dotnet meta eject --undo`.\n" +
                   "  column/table naming: \"naming\" in .metaobjects/config.json (ADR-0058), not a flag here",
         ["init"] = "usage: dotnet meta init [--root <dir>] [--with-docs]\n" +
                   "  --with-docs lists the api-docs generator in codegen/Generators.cs (written to docs/csharp)",
-        ["verify"] = "usage: dotnet meta verify <metadataDir> [--templates [--prompts <dir>]] [--codegen --out <dir> [--namespace <ns>] [--generators <a,b,c>] [--template-root <dir>]] [--deps] [--db] [--lax] [--no-field-lint] [--require-implementers]",
+        ["verify"] = "usage: dotnet meta verify <metadataDir> [--templates [--prompts <dir>]] [--codegen --out <dir> [--namespace <ns>] [--generators <a,b,c>] [--entities <A,B>] [--template-root <dir>]] [--deps] [--db] [--lax] [--no-field-lint] [--require-implementers]",
         ["fmt"] = "usage: dotnet meta fmt [<metadataDir>] [--check]",
         ["eject"] = "usage: dotnet meta eject <name>... [--force] [--root <dir>]\n" +
                     "       dotnet meta eject --undo [<name>...] [--force] [--root <dir>]\n" +

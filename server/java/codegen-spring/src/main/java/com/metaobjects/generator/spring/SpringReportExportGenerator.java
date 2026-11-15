@@ -152,6 +152,9 @@ public class SpringReportExportGenerator extends MultiFileDirectGeneratorBase<Me
 
         List<MetaObject> served = new ArrayList<>();
         for (MetaObject declared : loader.getMetaObjects()) {
+            // The writer is shared by every served report, so it is built from all of them:
+            // <filters> narrow that set, the run's entity selection only the per-report files.
+            if (!passesFilters(declared)) continue;
             // A served report is emitted from its read model; any other report has no shape.
             MetaObject entity = RestSurfaceGate.restShapeOf(declared);
             if (entity == null || !GeneratorUtil.isReport(entity)) continue;
@@ -166,6 +169,7 @@ public class SpringReportExportGenerator extends MultiFileDirectGeneratorBase<Me
         write(outRoot, writerPackage, WRITER_NAME,
             writerSource(writerPackage, xmlNulls, csvBom, decimalsAsString, usesDurationCell(served)));
         for (MetaObject entity : served) {
+            if (!inEntitySelection(entity)) continue;
             String[] split = SpringNaming.splitFqn(entity.getName());
             write(outRoot, split[0], split[1] + "Export",
                 exportSource(entity, split[0], split[1], writerPackage, maxRows));

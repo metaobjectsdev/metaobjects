@@ -295,6 +295,21 @@ reference their output; `gen` warns when one is missing from the list, since the
 would not compile. `--generators <names>` narrows a run to the declared entries named; it
 never adds one, and naming an entry the list does not declare is refused.
 
+**Select objects.** `dotnet meta gen --entities Product,Supplier` (comma-separated short object
+names, the `name` of the object without its package, as TypeScript's positional names and
+Python's `--entities` match) regenerates only those objects' files; `dotnet meta verify --codegen
+--entities ...` checks only the same files. Only per-object output narrows. A file built from
+the whole model, such as `AppDbContext.g.cs`, still renders from the whole model and is
+byte-identical to an unfiltered run, and a shared file (a shared enum, a helper) is the
+whole-model rendering too. A generator that reads the model root rather than the object list
+(`api-docs`, `requirement-tests`, template entries) is not narrowed. A narrowed run never
+deletes a stale file and never drops the manifest entry of a file it did not write, so the
+unselected objects' files are left as they are; run `gen` without the flag to sweep. Two
+refusals, both exit 2: `--entities` naming nothing (`error: dotnet meta gen: --entities names no
+object.`) and a name that matches no object (`error: dotnet meta gen: --entities names 'X',
+which matches no object in the metadata.`). An owned generator whose output is a single
+whole-model file declares `public bool WholeModel => true;`.
+
 **Own a generator.** `dotnet meta eject <name>...` copies a reference generator into
 `codegen/generators/`. Every generator `dotnet meta gen --list` shows is ejectable except
 `template`, the Mustache primitive, which has no emit logic of its own to own. An ejected

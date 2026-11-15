@@ -427,6 +427,21 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
      */
     @Parameter(property = "meta.lax", defaultValue = "false")
     private boolean lax;
+
+    /**
+     * How long the metadata load may take, in milliseconds, before the goal fails with a
+     * timeout ({@code LoaderOptions.setInitTimeoutMs}). Unset keeps the loader's default of
+     * 30 seconds. Raise it for a very large model on a slow or busy machine:
+     * {@code -Dmeta.loaderTimeoutMs=120000}.
+     */
+    @Parameter(property = "meta.loaderTimeoutMs")
+    private Long loaderTimeoutMs;
+    public Long getLoaderTimeoutMs() {
+        return loaderTimeoutMs;
+    }
+    public void setLoaderTimeoutMs(Long loaderTimeoutMs) {
+        this.loaderTimeoutMs = loaderTimeoutMs;
+    }
     public boolean isLax() {
         return lax;
     }
@@ -839,10 +854,13 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
      * wins (advanced override). Kept separate from {@link #mergeAndOverwriteArgs} so the
      * injected flag never pollutes generator args.
      */
-    private Map<String, String> loaderArgs(boolean strict) {
+    Map<String, String> loaderArgs(boolean strict) {
         Map<String, String> args = new HashMap<>();
         if (globals != null) args.putAll(globals);
         args.putIfAbsent(LoaderConfigurationConstants.ARG_STRICT, String.valueOf(strict));
+        if (loaderTimeoutMs != null) {
+            args.put(LoaderConfigurationConstants.ARG_INIT_TIMEOUT_MS, String.valueOf(loaderTimeoutMs));
+        }
         return args;
     }
 

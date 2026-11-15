@@ -52,7 +52,10 @@ open class KotlinValidatorGenerator : MultiFileDirectGeneratorBase<MetaObject>()
             ?: throw GeneratorException("KotlinValidatorGenerator (\"validator\"): packageName is required")
         val outRoot = Paths.get(outDir.absolutePath)
 
+        // One registry of every table, so it is built from the whole model: <filters> narrow it,
+        // the run's entity selection does not (a narrowed run would drop the other tables).
         val entries = GeneratorUtil.ownMetaObjects(loader)
+            .filter { passesFilters(it) }
             .filter { it.subType == MetaObject.SUBTYPE_ENTITY }
             // Abstract entities are inheritance scaffolding — never register a validator for them.
             .filter { !KotlinGenUtil.isAbstractEntity(it) }

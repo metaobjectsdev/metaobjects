@@ -184,6 +184,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         // a view-kind entity was pre-FR-024 (read-only by construction; projections
         // carry no relationships/references, so passes 1+3 stay entity-only).
         for (entity in GeneratorUtil.ownMetaObjects(loader)) {
+            if (!isSelected(entity)) continue
             // FR-044: a report declares no fields, so it is emitted from its derived shape
             // rather than through the entity/projection path below.
             if (entity.subType == MetaObject.SUBTYPE_REPORT) {

@@ -169,6 +169,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         this.loader = loader;
         Path outRoot = Paths.get(outDir.getAbsolutePath());
         for (MetaObject declared : loader.getMetaObjects()) {
+            if (!isSelected(declared)) continue;
             // FR-044: a served report is emitted from its read model; any other report
             // has no shape and emits nothing.
             MetaObject entity = RestSurfaceGate.restShapeOf(declared);

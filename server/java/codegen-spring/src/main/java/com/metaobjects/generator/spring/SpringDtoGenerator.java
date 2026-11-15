@@ -131,6 +131,7 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         Fr019SharedEnum.emitMaterialized(loader, outRoot);
         boolean emitAbstractShapes = Boolean.parseBoolean(getArg("emitAbstractShapes", "false"));
         for (MetaObject declared : loader.getMetaObjects()) {
+            if (!isSelected(declared)) continue;
             // FR-044: a served report's row DTO is emitted from its read model (one
             // component per derived field) and nothing else is: no <R>Patch, no stamping
             // helper, no builder. Any other report has no shape and emits nothing.

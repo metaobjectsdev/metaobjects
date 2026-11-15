@@ -89,7 +89,6 @@ public class MetaDataLoader implements LoaderConfigurable {
 
     // Concurrent loading protection
     private static final ConcurrentHashMap<String, CompletableFuture<MetaDataLoader>> activeLoaders = new ConcurrentHashMap<>();
-    private static final long DEFAULT_LOADING_TIMEOUT_MS = 30000; // 30 seconds
 
     public final static String TYPE_LOADER = "loader";
     public final static String SUBTYPE_MANUAL = "manual";
@@ -1518,6 +1517,15 @@ public class MetaDataLoader implements LoaderConfigurable {
         if (args.get(LoaderConfigurationConstants.ARG_STRICT) != null) {
             getLoaderOptions().setStrict(Boolean.parseBoolean(args.get(LoaderConfigurationConstants.ARG_STRICT)));
         }
+        String timeout = args.get(LoaderConfigurationConstants.ARG_INIT_TIMEOUT_MS);
+        if (timeout != null) {
+            try {
+                getLoaderOptions().setInitTimeoutMs(Long.parseLong(timeout.trim()));
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException("Loader argument '" + LoaderConfigurationConstants.ARG_INIT_TIMEOUT_MS
+                    + "' must be a positive number of milliseconds, got \"" + timeout + "\"", e);
+            }
+        }
     }
 
     ////////////////////////////////////////////////////////////////////////////////////////////
@@ -1539,11 +1547,12 @@ public class MetaDataLoader implements LoaderConfigurable {
 
     /**
      * Initialize the MetaDataLoader with enhanced thread-safe state management and concurrent protection.
+     * Waits up to {@link LoaderOptions#getInitTimeoutMs()} for the load.
      * @return This MetaDataLoader
-     * @throws MetaDataLoadingException if initialization fails
+     * @throws MetaDataLoadingException if initialization fails or times out
      */
     public MetaDataLoader init() {
-        return initWithConcurrencyProtection(DEFAULT_LOADING_TIMEOUT_MS);
+        return initWithConcurrencyProtection(loaderOptions.getInitTimeoutMs());
     }
 
     /**
@@ -1576,7 +1585,10 @@ public class MetaDataLoader implements LoaderConfigurable {
         } catch (TimeoutException e) {
             activeLoaders.remove(loaderKey);
             throw new MetaDataLoadingException(
-                "Loader initialization timeout after " + timeoutMs + "ms: " + loaderKey,
+                "Loader initialization timeout after " + timeoutMs + "ms: " + loaderKey
+                    + ". A large model can need longer: raise LoaderOptions.setInitTimeoutMs, the loader"
+                    + " argument '" + LoaderConfigurationConstants.ARG_INIT_TIMEOUT_MS + "' (Maven: -Dmeta.loaderTimeoutMs),"
+                    + " or -D" + LoaderOptions.INIT_TIMEOUT_PROPERTY + ".",
                 getName(), LoadingState.Phase.INITIALIZING, timeoutMs, e);
         } catch (InterruptedException | ExecutionException e) {
             activeLoaders.remove(loaderKey);

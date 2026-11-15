@@ -708,8 +708,11 @@ the snapshots first under `dep:<name>/<artifact>` source ids. It never writes ei
 POCO of a *value object* (and the shared enums it uses) that a generated type reaches — an entity
 or local value object that holds it, or a local template whose `@payloadRef` / `@responseRef` names
 it — because that generated type needs it to compile. `inScope` is Python's formula (no `matchesScope` on the
-project's own objects), and C# has no entity-name positional on `gen`, so the TypeScript
-"refuse an explicitly named imported object" check has no C# surface. Known edge: a local entity
+project's own objects). `dotnet meta gen --entities` resolves names against the in-scope
+objects only, so naming an excluded import is refused the way TypeScript's "refuse an
+explicitly named imported object" check refuses it (exit 2, `--entities names 'X', which
+matches no object in the metadata.` — C#'s wording, not TypeScript's imported-specific
+message). Known edge: a local entity
 that `extends` an imported concrete entity in a table-per-hierarchy mapping is not specially handled.
 
 ## Vendoring vs. depending

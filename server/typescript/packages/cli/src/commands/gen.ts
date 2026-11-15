@@ -233,13 +233,20 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
     return 2;
   }
 
+  // A positional that matches no loaded object is refused, exit 2, even beside names that
+  // do match: the selection would silently generate less than was asked for. Every port
+  // refuses it in the same words (Python and C# `--entities`, Maven `-Dmeta.entities`).
+  const unknownRefusal = refuseUnknownPositional(cliConfig.entities, metadata);
+  if (unknownRefusal !== undefined) {
+    log.error(unknownRefusal);
+    return 2;
+  }
+
   // FR-023 §11.1 item 2 — refuse a positional that names ONLY objects imported
   // from a dependency and excluded from output by the default exclusion rule.
-  // Distinct from the runner's existing "no entities matched" WARNING
-  // (runner.ts): that path covers a name matching nothing loaded at all; this
+  // The refusal above covers a name matching nothing loaded at all; this
   // one covers a name that matches something real, just not something this
-  // project generates. A name matching nothing falls through untouched — the
-  // runner's own warning still covers it.
+  // project generates.
   const importedRefusal = refuseImportedPositional(cliConfig.entities, metadata, genCollection);
   if (importedRefusal !== undefined) {
     log.error(importedRefusal);
@@ -437,7 +444,7 @@ function refuseImportedPositional(
   const allObjects = metadata.objects();
   for (const name of entityNames) {
     const matches = allObjects.filter((o) => o.name === name);
-    if (matches.length === 0) continue; // nothing loaded by this name — the runner's own warning covers it
+    if (matches.length === 0) continue; // nothing loaded by this name — refuseUnknownPositional has already refused it
     const allExcludedImports = matches.every((o) => {
       const fqn = o.resolutionKey();
       return collection.imported(fqn) && !collection.inScope(fqn);
@@ -452,6 +459,19 @@ function refuseImportedPositional(
     );
   }
   return undefined;
+}
+
+/**
+ * The refusal for positionals that match no loaded object by short name, or `undefined`
+ * when every name matches (or none is given). Names are matched as `refuseImportedPositional`
+ * matches them: against `entity.name`, never a qualified name.
+ */
+function refuseUnknownPositional(entityNames: readonly string[], metadata: MetaRoot): string | undefined {
+  if (entityNames.length === 0) return undefined;
+  const known = new Set(metadata.objects().map((o) => o.name));
+  const unknown = entityNames.filter((n) => !known.has(n));
+  if (unknown.length === 0) return undefined;
+  return `meta gen: names ${unknown.map((n) => `'${n}'`).join(", ")}, which matches no object in the metadata.`;
 }
 
 /**

@@ -135,6 +135,7 @@ public class SpringNamesGenerator extends MultiFileDirectGeneratorBase<MetaObjec
         // Pass 1 — every object that participates in the database (#248).
         Set<String> emitted = new HashSet<>();
         for (MetaObject entity : GeneratorUtil.ownMetaObjects(loader)) {
+            if (!isSelected(entity)) continue;
             // FR-044 Plan 1: object.report has no output until its lowering lands (Plan 2/3).
             if (GeneratorUtil.isReport(entity)) continue;
             if (emit(entity, outRoot, strategy, false)) emitted.add(entity.getName());

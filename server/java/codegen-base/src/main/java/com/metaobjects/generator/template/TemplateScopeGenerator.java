@@ -15,6 +15,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Maven-wirable declarative Mustache template generator (SP-1b). Reads the
@@ -59,10 +60,13 @@ public class TemplateScopeGenerator extends GeneratorBase {
         File outDir = getOutputDir();
 
         List<MetaObject> objects = com.metaobjects.generator.util.GeneratorUtil.ownMetaObjects(loader);
+        List<MetaObject> walked = ScopeWalk.PER_ENTITY.equals(scope)
+            ? objects.stream().filter(this::inEntitySelection).collect(Collectors.toList())
+            : objects;
         List<EmittedFile> files = TemplateGenerator.generate(
             scope,
             template,
-            root -> ScopeWalk.forScope(scope, outputPattern).apply(objects),
+            root -> ScopeWalk.forScope(scope, outputPattern).apply(walked),
             provider,
             format,
             objects);

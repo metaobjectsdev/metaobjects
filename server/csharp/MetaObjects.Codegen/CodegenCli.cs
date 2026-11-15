@@ -230,7 +230,8 @@ public static class CodegenCli
         IReadOnlyList<IGenerator> generators, string? projectRoot = null,
         string baseline = "default",
         bool? includeNames = null,
-        bool sweepOrphans = false)
+        bool sweepOrphans = false,
+        IReadOnlyList<string>? entities = null)
     {
         var loadErrors = load.Errors.Select(e => e.Code.ToString()).ToList();
         if (loadErrors.Count > 0) return new GenOutcome(loadErrors, null);
@@ -258,6 +259,7 @@ public static class CodegenCli
             // type, in a different assembly, once ejected — still satisfies the gate.
             IncludeNames = includeNames ?? generators.Any(g => g.Name == "names"),
             SweepOrphans = sweepOrphans,
+            EntitySelection = entities,
             Dialect = neutralConfig?.MigrateDialect,
             SkipRedundantChecks = neutralConfig?.MigrateSkipRedundantChecks ?? false,
             ForeignKeyIndexes = neutralConfig?.MigrateForeignKeyIndexes ?? false,
@@ -453,10 +455,10 @@ public static class CodegenCli
         if (args.Length == 0)
         {
             Console.Error.WriteLine(
-                "usage: gen [<metadataDir>] --out <dir> [--namespace <ns>] [--generators <a,b,c>]\n" +
+                "usage: gen [<metadataDir>] --out <dir> [--namespace <ns>] [--generators <a,b,c>] [--entities <A,B>]\n" +
                 "           [--emit-abstract-shapes] [--strict] [--baseline default|adopt] [--template-root <dir>]\n" +
                 "     | verify --codegen [<metadataDir>] --out <dir> [--namespace <ns>] [--generators <a,b,c>]\n" +
-                "           [--template-root <dir>] [--lax]\n" +
+                "           [--entities <A,B>] [--template-root <dir>] [--lax]\n" +
                 "   (column/table naming: \"naming\" in .metaobjects/config.json — ADR-0058)");
             return 2;
         }
@@ -528,16 +530,16 @@ public static class CodegenCli
     }
 
     private static readonly string[] GenValueFlags =
-        ["--out", "--namespace", "--generators", "--template-root", "--template-spec", "--column-naming", "--baseline"];
+        ["--out", "--namespace", "--generators", "--template-root", "--template-spec", "--column-naming", "--baseline", "--entities"];
     private static readonly string[] GenBoolFlags = ["--emit-abstract-shapes", "--strict"];
     private static readonly string[] VerifyValueFlags =
-        ["--out", "--namespace", "--generators", "--template-root", "--column-naming"];
+        ["--out", "--namespace", "--generators", "--template-root", "--column-naming", "--entities"];
     private static readonly string[] VerifyBoolFlags = ["--codegen", "--lax"];
 
     /// <summary>The flags both commands share, parsed once.</summary>
     private sealed class OwnedArgs
     {
-        public string? MetadataDir, OutDir, TemplateRoot, TemplateSpecPath, ColumnNamingRaw, GeneratorsCsv;
+        public string? MetadataDir, OutDir, TemplateRoot, TemplateSpecPath, ColumnNamingRaw, GeneratorsCsv, EntitiesCsv;
         public string? Namespace;
         public string Baseline = "default";
         public bool EmitAbstractShapes, Codegen, Lax, Strict;
@@ -547,6 +549,11 @@ public static class CodegenCli
         public string? Refusal;
 
         public IReadOnlyList<string>? Selection => GeneratorsCsv
+            ?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        /// <summary>The <c>--entities</c> short names, or <c>null</c> when the flag was not given.
+        /// Given but naming nothing is an empty list, which <see cref="RefuseEntities"/> refuses.</summary>
+        public IReadOnlyList<string>? Entities => EntitiesCsv
             ?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
         public static OwnedArgs Parse(string[] rest, string command, string[] valueFlags, string[] boolFlags)
@@ -582,6 +589,7 @@ public static class CodegenCli
                         case "--template-root": a.TemplateRoot = value; break;
                         case "--template-spec": a.TemplateSpecPath = value; break;
                         case "--generators": a.GeneratorsCsv = value; break;
+                        case "--entities": a.EntitiesCsv = value; break;
                     }
                 }
                 else if (boolFlags.Contains(flag))
@@ -647,6 +655,24 @@ public static class CodegenCli
     private const string GenCommandName = "dotnet meta gen";
     private const string VerifyCommandName = "dotnet meta verify --codegen";
 
+    /// <summary>
+    /// The refusal an <c>--entities</c> selection earns, or <c>null</c>: nothing named, or a name
+    /// that is no object of the model. Names are short object names (<c>MetaData.Name</c>), as in
+    /// the TypeScript and Python ports. Pass <paramref name="root"/> <c>null</c> for the blank check
+    /// alone, before the metadata is loaded.
+    /// </summary>
+    private static string? RefuseEntities(OwnedArgs a, MetaRoot? root, string command)
+    {
+        if (a.Entities is not { } names) return null;
+        if (names.Count == 0) return $"error: {command}: --entities names no object.";
+        if (root is null) return null;
+        var known = root.Objects().Where(root.InScope).Select(o => o.Name).ToHashSet(StringComparer.Ordinal);
+        var unknown = names.Where(n => !known.Contains(n)).ToList();
+        return unknown.Count == 0 ? null
+            : $"error: {command}: --entities names {string.Join(", ", unknown.Select(n => $"'{n}'"))}, " +
+              "which matches no object in the metadata.";
+    }
+
     private static int RunGenArgs(string[] rest, IReadOnlyList<IGenerator> declared)
     {
         var a = OwnedArgs.Parse(rest, GenCommandName, GenValueFlags, GenBoolFlags);
@@ -660,6 +686,12 @@ public static class CodegenCli
         if (a.LegacyDocs.Count > 0)
         {
             Console.Error.WriteLine(LegacyDocsConfiguration(GenCommandName, a.LegacyDocs));
+            return 2;
+        }
+
+        if (RefuseEntities(a, null, GenCommandName) is { } blank)
+        {
+            Console.Error.WriteLine(blank);
             return 2;
         }
 
@@ -694,7 +726,7 @@ public static class CodegenCli
         }
         if (a.OutDir is null)
         {
-            Console.Error.WriteLine("usage: dotnet meta gen [<metadataDir>] --out <dir> [--namespace <ns>] [--generators <a,b,c>] [...]");
+            Console.Error.WriteLine("usage: dotnet meta gen [<metadataDir>] --out <dir> [--namespace <ns>] [--generators <a,b,c>] [--entities <A,B>] [...]");
             Console.Error.WriteLine("  (or set \"csharp\": { \"outDir\": \"<dir>\" } in .metaobjects/config.json)");
             return 2;
         }
@@ -753,11 +785,17 @@ public static class CodegenCli
             WarnUnknownAttrs(meta);
             genLoad = meta.Load();
         }
+        if (RefuseEntities(a, genLoad.Root, GenCommandName) is { } unknownEntity)
+        {
+            Console.Error.WriteLine(unknownEntity);
+            return 2;
+        }
         var outcome = RunGen(genLoad, a.OutDir, a.Namespace ?? meta.Namespace, a.EmitAbstractShapes, suite, projectRoot, a.Baseline,
             includeNames: declared.Any(g => g.Name == "names"),
             // Only a run of the whole declared list can tell a stale file from one the
-            // narrowing left out.
-            sweepOrphans: a.Selection is not { Count: > 0 });
+            // narrowing left out; --entities narrows the same way, so it never sweeps either.
+            sweepOrphans: a.Selection is not { Count: > 0 } && a.Entities is null,
+            entities: a.Entities);
         if (!outcome.Ok)
         {
             ReportFailure(outcome, GenCommandName);
@@ -897,6 +935,11 @@ public static class CodegenCli
             Console.Error.WriteLine(ColumnNamingFlagRemoved(a.ColumnNamingRaw));
             return 2;
         }
+        if (RefuseEntities(a, null, VerifyCommandName) is { } blankEntities)
+        {
+            Console.Error.WriteLine(blankEntities);
+            return 2;
+        }
         if (a.OutDir is null)
         {
             if (!TryConfiguredOutDir(a.MetadataDir, out var configuredOut)) return 2;
@@ -917,6 +960,11 @@ public static class CodegenCli
             foreach (var e in load.Errors) Console.Error.WriteLine($"  load error: {e.Code}: {e.Message}");
             Console.Error.WriteLine($"{VerifyCommandName}: FAILED (metadata did not load cleanly)");
             return 1;
+        }
+        if (RefuseEntities(a, load.Root, VerifyCommandName) is { } unknownEntity)
+        {
+            Console.Error.WriteLine(unknownEntity);
+            return 2;
         }
 
         // The same suite `gen` builds: verify must regenerate what gen wrote, or it convicts
@@ -958,6 +1006,7 @@ public static class CodegenCli
             Namespace = a.Namespace ?? meta.Namespace,
             ColumnNamingStrategy = columnNaming,
             IncludeNames = declared.Any(g => g.Name == "names"),
+            EntitySelection = a.Entities,
             // The manifest gen keeps: an extra file is classified by what gen recorded writing.
             GenStateDir = Path.Combine(projectRoot, ".metaobjects", ".gen-state"),
             ProjectRoot = projectRoot,
@@ -968,7 +1017,7 @@ public static class CodegenCli
             ForeignKeyIndexes = neutralConfig?.MigrateForeignKeyIndexes ?? false,
             SchemaConventions = neutralConfig?.MigrateConventions,
         }.WithCSharpLayout(neutralConfig);
-        var result = CodegenDrift.Compute(config, load.Root, suite, narrowed: a.Selection is { Count: > 0 });
+        var result = CodegenDrift.Compute(config, load.Root, suite, narrowed: a.Selection is { Count: > 0 } || a.Entities is not null);
         if (result.Error is not null)
         {
             Console.Error.WriteLine($"  {result.Error}");
@@ -985,7 +1034,7 @@ public static class CodegenCli
         // every column and table name, so regenerating would commit the wrong names. When
         // another naming reproduces the committed tree exactly, say that instead of "regenerate".
         var naming = load.Root.PhysicalNaming;
-        if (MatchingNaming(config, () => meta.Load(strict: !a.Lax).Root, suite, a.Selection is { Count: > 0 }, naming) is { } committed)
+        if (MatchingNaming(config, () => meta.Load(strict: !a.Lax).Root, suite, a.Selection is { Count: > 0 } || a.Entities is not null, naming) is { } committed)
         {
             Console.Error.WriteLine(NamingDiffers(committed, naming));
             return 1;
@@ -993,7 +1042,7 @@ public static class CodegenCli
         // The same for the wire setting: it reaches every decimal property's converter and every
         // value object's null handling, so a regen under the wrong one changes the API's JSON.
         var wire = load.Root.WireFormat;
-        if (MatchingWire(config, () => meta.Load(strict: !a.Lax).Root, suite, a.Selection is { Count: > 0 }, wire) is { } committedWire)
+        if (MatchingWire(config, () => meta.Load(strict: !a.Lax).Root, suite, a.Selection is { Count: > 0 } || a.Entities is not null, wire) is { } committedWire)
         {
             Console.Error.WriteLine(WireDiffers(committedWire, wire));
             return 1;

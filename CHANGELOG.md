@@ -25,6 +25,10 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   assigned one (`row.Role = ...`) no longer compiles. The value belongs to the server: set it
   through a database default or EF Core (`db.Entry(row).Property(r => r.Role).CurrentValue`),
   which writes private setters.
+- **Java and Kotlin: `<filters>` now narrow every generator.** The `codegen-spring` and
+  `codegen-kotlin` generators ignored a generator's `<filters>` and wrote every object; they now
+  honour them, as the `codegen-base` generators always did. A pom whose filters were inert
+  generates fewer files: remove the `<filters>` that no longer describe what you want.
 
 ### Security
 
@@ -92,6 +96,21 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   the new `fixtures/writer-conformance/` corpus. No shipped generator uses the writer yet, so
   generated output does not change in this release.
 
+- **Select objects to regenerate in every port.** C# `dotnet meta gen --entities A,B` (and
+  `verify --codegen --entities`) and, for Java and Kotlin, `mvn metaobjects:generate
+  -Dmeta.entities=A,B` regenerate only the named objects' files, like TypeScript's
+  `meta gen A B` and Python's `--entities`. Names are short object names. A file built from the
+  whole model (C#'s `AppDbContext`, the Java and Kotlin validator registry, report export writer
+  and binding provider) still renders from the whole model, a narrowed run neither deletes nor
+  forgets the other objects' files, and a blank selection or a name that matches no object is
+  refused (exit 2 in C#, a failed goal in Maven).
+- **`meta gen <Name>...` refuses a name that matches no object**, with exit 2 and nothing
+  written, as Python, C# and the Maven plugin do. It used to drop the unknown name silently
+  when another name matched, and only warn when none did.
+- **The Java loader's initialization timeout is a setting.** It stays 30 seconds by default. Raise
+  it with `-Dmeta.loaderTimeoutMs` (or `<loaderTimeoutMs>`) on the Maven plugin,
+  `LoaderOptions.setInitTimeoutMs`, the loader argument `initTimeoutMs`, or the system property
+  `metaobjects.loader.initTimeoutMs`; the timeout error names them.
 - **A page size for generated list routes: `api.pagination`, in every port.** An external review
   of 1.2.0 found that list endpoints had no hard cap: the TypeScript and C# routes returned the
   whole table when `limit` was omitted, and `?limit=100000` was accepted in every port. The new
@@ -322,6 +341,12 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
 
 ### Fixed
 
+- **The Java loader loads a large model.** Each child added to a node was checked against a
+  list of the keys already added, so a root with 1,160 objects took more than the 30-second
+  timeout to load and failed. The check is a set lookup now, and a reference resolves through
+  the per-type name index instead of a scan of the root. Twenty copies of the canonical
+  conformance model (1,160 objects) load in about 2 seconds of CPU, and `LargeModelLoadTest`
+  holds that to a budget. Java and Kotlin.
 - **`gen <Entity>` no longer shrinks the files rendered from the whole model.** Narrowing a run
   to some entities (`meta gen Post`, Python `metaobjects gen --entities Post`) handed every
   generator only the named entities, so a whole-model file (the TypeScript barrel and Cube
@@ -329,8 +354,8 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   Python's entity and route generators resolve relations through) was rendered from just them. A narrowed run now writes only the named entities' own files,
   and every whole-model file it writes is byte-identical to a full run's. A generator sees the
   whole model in `ctx.entities` and the narrowing as `ctx.selected`; `perEntity` (`per_entity`)
-  applies it. A Python target's declared `entities` still bounds that target's model. C# and
-  Java take no entity filter and were not affected. Two consequences to expect: a narrowed run
+  applies it. A Python target's declared `entities` still bounds that target's model. The C# and
+  Maven entity selection added in this release follows the same rule. Two consequences to expect: a narrowed run
   checks the whole model as a full run does (a sourced object with no `dialect`, colliding
   collection names), because the files it writes are rendered from it; and an owned generator
   that writes one file per object by looping over `ctx.entities` itself, instead of through

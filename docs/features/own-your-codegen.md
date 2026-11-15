@@ -593,7 +593,8 @@ handles those files by one rule:
 
 - **Only a full run cleans up.** A run of the project's whole generator list decides; a run
   narrowed to some generators (`--generators`), to some entities (`meta gen <Entity>`,
-  `metaobjects gen --entities`), or to a target that shares its directory with a target left
+  `metaobjects gen --entities`, `dotnet meta gen --entities`, Maven `-Dmeta.entities`), or to
+  a target that shares its directory with a target left
   out, deletes nothing, because the files of the part it skipped would all look stale. So
   does `--baseline=adopt`, which writes nothing by definition.
 - **A candidate is a file the manifest says `gen` wrote.** It lies under an output directory
@@ -614,8 +615,10 @@ handles those files by one rule:
   that name is not mistaken for generated output.
 - **A dry run** (`meta gen --dry-run`) reports what it would remove and removes nothing.
 
-On **Java and Kotlin** every `mvn metaobjects:generate` execution is a full run, since its
-`<generators>` list is always complete. Every manifest entry names its owner: the generator's
+On **Java and Kotlin** every `mvn metaobjects:generate` execution runs the whole
+`<generators>` list, since there is no `--generators` narrowing; a run narrowed by
+`meta.entities` is the one exception, and it deletes no orphaned file (see
+[Select objects](../ports/java.md#generate) on the Java page). Every manifest entry names its owner: the generator's
 registry id and its output directory within the module, not the Maven execution, so
 `default-cli`, a renamed execution and the lifecycle execution agree. A recorded file no
 generator emitted in this build is an orphan when this run's own generators own it, or when
