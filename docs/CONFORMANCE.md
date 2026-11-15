@@ -1,6 +1,6 @@
 # Conformance coverage
 
-The MetaObjects standard ships **35 shared conformance corpora** under
+The MetaObjects standard ships **36 shared conformance corpora** under
 [`fixtures/`](../fixtures/). Every port runs every corpus that is *applicable to
 it* and asserts the same expected behaviour against the same fixtures. **This page
 is the inverse index**: fixture → feature doc + per-port pass status, and it is the
