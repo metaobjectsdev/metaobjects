@@ -247,7 +247,7 @@ public class RoutesGenerator : PerEntityGenerator
         var frozenNavs = FrozenNavs(entity, ctx.Config);
         // #484 — write-denied (@formExclude or credential) keys are ignored on every write; credentials never leave.
         var deniedFields = WriteDeniedFields(entity);
-        var credentials = CredentialNames(entity);
+        var credentials = CredentialNames(entity, ctx.Config);
         // Physical table + PK column for the post-save array-null clear (EF OwnsMany ToJson
         // writes [] for a null nav, so a nullable array column is NULLed via raw SQL). Both
         // are C# EXPRESSIONS — the <Entity>Names constant when the names artifact is in this
@@ -334,12 +334,13 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine($"            IQueryable<{readCls}> q = db." + readDbSet + ".AsNoTracking();");
         sb.AppendLine();
         sb.AppendLine("            // Filter: ?filter[<field>][<op>]=<value> against the per-entity allowlist.");
-        sb.AppendLine($"            var filter = EfCoreFilterDispatch.Validate<{readCls}>(FilterParser.Parse(qs, {cls}FilterAllowlist.Fields, {cls}FilterAllowlist.OpsByField));");
+        var fm = FilterMapArg($"{cls}FilterAllowlist", entity, ctx.Config);
+        sb.AppendLine($"            var filter = EfCoreFilterDispatch.Validate<{readCls}>(FilterParser.Parse(qs, {cls}FilterAllowlist.Fields, {cls}FilterAllowlist.OpsByField){fm});");
         sb.AppendLine("            if (filter.ErrorEnvelope is not null)");
         // `field` names the rejected filter field — required cross-port on every
         // filter envelope, so a caller with several filters knows which one failed.
         sb.AppendLine("                return Results.BadRequest(new { error = filter.ErrorEnvelope, field = filter.Field });");
-        sb.AppendLine($"            q = EfCoreFilterDispatch.ApplyFilter(q, filter.Predicates);");
+        sb.AppendLine($"            q = EfCoreFilterDispatch.ApplyFilter(q, filter.Predicates{fm});");
         sb.AppendLine();
         sb.AppendLine("            // Sort: ?sort=field:asc|desc against the static allowlist.");
         sb.AppendLine("            if (qs.TryGetValue(\"sort\", out var sortRaw) && !string.IsNullOrWhiteSpace(sortRaw))");
@@ -382,7 +383,7 @@ public class RoutesGenerator : PerEntityGenerator
             sb.AppendLine($"            if (!withCount) return {OkResult("rows", credentials)};");
         else
             sb.AppendLine($"            if (!withCount) return format is null ? {OkResult("rows", credentials)} : ReportExportHttp.Json(http, \"{route}\", rows{ExportOmit(credentials, false)});");
-        sb.AppendLine($"            var totalQ = EfCoreFilterDispatch.ApplyFilter(db.{readDbSet}.AsNoTracking(), filter.Predicates);");
+        sb.AppendLine($"            var totalQ = EfCoreFilterDispatch.ApplyFilter(db.{readDbSet}.AsNoTracking(), filter.Predicates{fm});");
         sb.AppendLine("            var total = await totalQ.CountAsync();");
         if (export is null)
             sb.AppendLine($"            return {OkResult("new { rows, total }", credentials, envelope: true)};");
@@ -451,7 +452,7 @@ public class RoutesGenerator : PerEntityGenerator
             sb.AppendLine("            var entry = db.Entry(existing);");
             AppendUpdateAutoSet(sb, autoSetFields);
             AppendPartialMergeLoop(sb, null, voFields, mapVoFields, autoSetNavs, frozenNavs, HasDecimalField(entity),
-                deniedFields.Select(f => f.Name).ToList(), HasDurationField(entity));
+                deniedFields.SelectMany(f => WireKeys(f, ctx.Config)).ToList(), HasDurationField(entity));
             AppendSaveChanges(sb);
             AppendArrayNullClears(sb, voFields, tableRef, pkColumnRef);
             // #214 — writes target the table; for a write-through entity re-read the row
@@ -595,8 +596,8 @@ public class RoutesGenerator : PerEntityGenerator
         var discField = baseEntity.FindField(tph.DiscriminatorField);
         // #484 — the polymorphic base rows carry every subtype's columns, so a credential declared
         // on the base OR on any subtype is omitted from them.
-        var baseCredentials = CredentialNames(baseEntity)
-            .Concat(tph.Subtypes.SelectMany(st => CredentialNames(st.Entity)))
+        var baseCredentials = CredentialNames(baseEntity, ctx.Config)
+            .Concat(tph.Subtypes.SelectMany(st => CredentialNames(st.Entity, ctx.Config)))
             .Distinct(StringComparer.Ordinal).ToList();
 
         // Sortable base scalar fields (the polymorphic list sorts on base columns).
@@ -661,9 +662,10 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("        {");
         sb.AppendLine("            var qs = http.Request.Query;");
         sb.AppendLine($"            IQueryable<{baseCls}> q = db.{dbSet}.AsNoTracking();");
-        sb.AppendLine($"            var filter = EfCoreFilterDispatch.Validate<{baseCls}>(FilterParser.Parse(qs, {baseCls}FilterAllowlist.Fields, {baseCls}FilterAllowlist.OpsByField));");
+        var fmB = FilterMapArg($"{baseCls}FilterAllowlist", baseEntity, ctx.Config);
+        sb.AppendLine($"            var filter = EfCoreFilterDispatch.Validate<{baseCls}>(FilterParser.Parse(qs, {baseCls}FilterAllowlist.Fields, {baseCls}FilterAllowlist.OpsByField){fmB});");
         sb.AppendLine("            if (filter.ErrorEnvelope is not null) return Results.BadRequest(new { error = filter.ErrorEnvelope, field = filter.Field });");
-        sb.AppendLine("            q = EfCoreFilterDispatch.ApplyFilter(q, filter.Predicates);");
+        sb.AppendLine($"            q = EfCoreFilterDispatch.ApplyFilter(q, filter.Predicates{fmB});");
         sb.AppendLine("            if (qs.TryGetValue(\"sort\", out var sortRaw) && !string.IsNullOrWhiteSpace(sortRaw))");
         sb.AppendLine("            {");
         sb.AppendLine("                var parts = sortRaw.ToString().Split(':', 2);");
@@ -678,7 +680,7 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("            var rows = await q.ToListAsync();");
         sb.AppendLine("            var withCount = qs.TryGetValue(\"withCount\", out var wc) && (wc == \"1\" || string.Equals(wc, \"true\", global::System.StringComparison.OrdinalIgnoreCase));");
         sb.AppendLine($"            if (!withCount) return {OkResult("rows", baseCredentials)};");
-        sb.AppendLine($"            var total = await EfCoreFilterDispatch.ApplyFilter(db.{dbSet}.AsNoTracking(), filter.Predicates).CountAsync();");
+        sb.AppendLine($"            var total = await EfCoreFilterDispatch.ApplyFilter(db.{dbSet}.AsNoTracking(), filter.Predicates{fmB}).CountAsync();");
         sb.AppendLine($"            return {OkResult("new { rows, total }", baseCredentials, envelope: true)};");
         sb.AppendLine("        });");
 
@@ -814,10 +816,10 @@ public class RoutesGenerator : PerEntityGenerator
     /// An entity's credential names plus, for a TPH base, those of every subtype: its rows are
     /// shared-table rows of every subtype (#484).
     /// </summary>
-    private static List<string> TphUnionCredentialNames(MetaObject entity, MetaRoot root) =>
-        CredentialNames(entity)
+    private static List<string> TphUnionCredentialNames(MetaObject entity, MetaRoot root, GenConfig config) =>
+        CredentialNames(entity, config)
             .Concat(TphPlanBuilder.For(entity, root) is { } tph
-                ? tph.Subtypes.SelectMany(st => CredentialNames(st.Entity))
+                ? tph.Subtypes.SelectMany(st => CredentialNames(st.Entity, config))
                 : Enumerable.Empty<string>())
             .Distinct(StringComparer.Ordinal).ToList();
 
@@ -834,8 +836,26 @@ public class RoutesGenerator : PerEntityGenerator
         return subtype.Fields().Where(f => marked.Contains(f.Name)).ToList();
     }
 
-    private static List<string> CredentialNames(MetaObject entity) =>
-        entity.Fields().Where(IsCredentialField).Select(f => f.Name).ToList();
+    // The keys a body can carry a field under: its metadata name and, when a resolver renames the
+    // property beyond case, the resolved property name (an entity property serializes under the
+    // host's naming policy applied to the resolved name). Credential stripping and the PATCH
+    // deny and value-object arms match on both, so a renamed property cannot escape them. Without
+    // a rename the two differ at most by case and the list is the field name alone.
+    private static List<string> WireKeys(MetaField f, GenConfig config) =>
+        new[] { f.Name, CSharpNaming.PropertyName(f, config) }
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+    private static List<string> CredentialNames(MetaObject entity, GenConfig config) =>
+        entity.Fields().Where(IsCredentialField).SelectMany(f => WireKeys(f, config)).ToList();
+
+    // `string.Equals(prop.Name, "a", ...) || string.Equals(prop.Name, "b", ...)` over the keys.
+    private static string KeyMatch(IEnumerable<string> keys) =>
+        string.Join(" || ", keys.Select(k => $"string.Equals(prop.Name, \"{k}\", global::System.StringComparison.OrdinalIgnoreCase)"));
+
+    // The extra argument that hands the filter dispatch the allowlist's field-to-property map: only
+    // when a resolver renamed a property beyond case (the allowlist emits the map on the same test).
+    private static string FilterMapArg(string allowlistRef, MetaObject entity, GenConfig config) =>
+        CSharpNaming.RenamedProperties(entity, config).Count > 0 ? $", {allowlistRef}.PropertyByField" : "";
 
     // A C# string[] expression of the names, spliced into the credential-omitting result.
     private static string NamesLiteral(IEnumerable<string> names) =>
@@ -925,7 +945,7 @@ public class RoutesGenerator : PerEntityGenerator
 
     // Program D — a value-object column the entity carries: a field.object whose @objectRef
     // resolves to an object.value (single or @isArray). The generated create + PATCH handlers
-    // deserialize, validate, and assign these as CLR owned-nav properties. WireName is the
+    // deserialize, validate, and assign these as CLR owned-nav properties. WireKeys are the
     // metadata (camelCase) field name; Nav is the PascalCase property; DeserType is the VO
     // POCO type (or List<VO> for an array); JsonColumnRef is the physical jsonb column (the
     // .ToJson name) as a C# EXPRESSION — `<Entity>Names.<Field>Column` when the names artifact
@@ -933,7 +953,7 @@ public class RoutesGenerator : PerEntityGenerator
     // splicing into the post-save null-clear SQL; IsArray / Required drive the merge semantics
     // (present-null: a nullable single/array clears, a @required column 400s).
     private sealed record VoField(
-        string WireName, string Nav, string DeserType, string JsonColumnRef, bool IsArray, bool Required);
+        IReadOnlyList<string> WireKeys, string Nav, string DeserType, string JsonColumnRef, bool IsArray, bool Required);
 
     // #362 — the `field.map @objectRef` columns, deliberately NOT folded into VoField.
     // A VoField drives the owned-nav machinery (EF OwnsMany/.ToJson, deserialization as an
@@ -941,7 +961,7 @@ public class RoutesGenerator : PerEntityGenerator
     // with a jsonb converter and none of that applies. What it DOES share is the nested
     // value-object graph, which the create and PATCH paths must validate — before this the
     // map reached neither, so its values were written unchecked on every write path.
-    private sealed record MapVoField(string WireName, string Nav, string DeserType);
+    private sealed record MapVoField(IReadOnlyList<string> WireKeys, string Nav, string DeserType);
 
     // A value object is named global::-qualified (rc.19 R65): it may live in any package's
     // namespace, and a same-named type in the routes file's own namespace would otherwise win.
@@ -955,7 +975,7 @@ public class RoutesGenerator : PerEntityGenerator
             var target = ValueObjectNames.ResolveFieldRef(f, root);
             if (target is null || !target.IsValue()) continue;   // scalar-valued maps have no bean
             list.Add(new MapVoField(
-                WireName: f.Name,
+                WireKeys: WireKeys(f, config),
                 Nav: CSharpNaming.PropertyName(f, config),
                 DeserType: $"global::System.Collections.Generic.Dictionary<string, {ValueObjectNames.GlobalRef(target, config)}>"));
         }
@@ -974,7 +994,7 @@ public class RoutesGenerator : PerEntityGenerator
             var voType = ValueObjectNames.GlobalRef(target, config);
             var isArray = f.ResolvedIsArray();                    // ADR-0039: resolving array-ness
             list.Add(new VoField(
-                WireName: f.Name,
+                WireKeys: WireKeys(f, config),
                 Nav: CSharpNaming.PropertyName(f, config),
                 DeserType: isArray ? $"global::System.Collections.Generic.List<{voType}>" : voType,
                 JsonColumnRef: CSharpNaming.ColumnRef(entity, f, config.ColumnNamingStrategy, config.IncludeNames),
@@ -1341,7 +1361,7 @@ public class RoutesGenerator : PerEntityGenerator
         {
             var vf = voFields[i];
             var v = "__vo" + i;
-            sb.AppendLine($"                if (string.Equals(prop.Name, \"{vf.WireName}\", global::System.StringComparison.OrdinalIgnoreCase))");
+            sb.AppendLine($"                if ({KeyMatch(vf.WireKeys)})");
             sb.AppendLine("                {");
             sb.AppendLine("                    if (prop.Value.ValueKind == global::System.Text.Json.JsonValueKind.Null)");
             sb.AppendLine("                    {");
@@ -1375,7 +1395,7 @@ public class RoutesGenerator : PerEntityGenerator
         {
             var mf = mapVoFields[i];
             var mv = "__map" + i;
-            sb.AppendLine($"                if (string.Equals(prop.Name, \"{mf.WireName}\", global::System.StringComparison.OrdinalIgnoreCase))");
+            sb.AppendLine($"                if ({KeyMatch(mf.WireKeys)})");
             sb.AppendLine("                {");
             sb.AppendLine("                    if (prop.Value.ValueKind == global::System.Text.Json.JsonValueKind.Null)");
             sb.AppendLine($"                    {{ existing.{mf.Nav} = null; continue; }}");
@@ -1509,7 +1529,7 @@ public class RoutesGenerator : PerEntityGenerator
         // #484 — as on a plain entity: write-denied keys ignored, credentials omitted. One shared
         // column may be declared by several subtypes, so a mark on any declaration counts.
         var deniedFields = HierarchyMarkedFields(st.Entity, hierarchy, IsApiWriteDenied);
-        var credentials = HierarchyMarkedFields(st.Entity, hierarchy, IsCredentialField).Select(f => f.Name).ToList();
+        var credentials = HierarchyMarkedFields(st.Entity, hierarchy, IsCredentialField).SelectMany(f => WireKeys(f, config)).ToList();
 
         // Per-subtype list: GET /<base>/<seg>
         sb.AppendLine();
@@ -1517,9 +1537,10 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("        {");
         sb.AppendLine("            var qs = http.Request.Query;");
         sb.AppendLine($"            IQueryable<{subType}> q = db.{dbSet}.OfType<{subType}>().AsNoTracking();");
-        sb.AppendLine($"            var filter = EfCoreFilterDispatch.Validate<{subType}>(FilterParser.Parse(qs, {subAllowlist}.Fields, {subAllowlist}.OpsByField));");
+        var fmS = FilterMapArg(subAllowlist, st.Entity, config);
+        sb.AppendLine($"            var filter = EfCoreFilterDispatch.Validate<{subType}>(FilterParser.Parse(qs, {subAllowlist}.Fields, {subAllowlist}.OpsByField){fmS});");
         sb.AppendLine("            if (filter.ErrorEnvelope is not null) return Results.BadRequest(new { error = filter.ErrorEnvelope, field = filter.Field });");
-        sb.AppendLine("            q = EfCoreFilterDispatch.ApplyFilter(q, filter.Predicates);");
+        sb.AppendLine($"            q = EfCoreFilterDispatch.ApplyFilter(q, filter.Predicates{fmS});");
         sb.AppendLine("            if (qs.TryGetValue(\"sort\", out var sortRaw) && !string.IsNullOrWhiteSpace(sortRaw))");
         sb.AppendLine("            {");
         sb.AppendLine("                var parts = sortRaw.ToString().Split(':', 2);");
@@ -1534,7 +1555,7 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("            var rows = await q.ToListAsync();");
         sb.AppendLine("            var withCount = qs.TryGetValue(\"withCount\", out var wc) && (wc == \"1\" || string.Equals(wc, \"true\", global::System.StringComparison.OrdinalIgnoreCase));");
         sb.AppendLine($"            if (!withCount) return {OkResult("rows", credentials)};");
-        sb.AppendLine($"            var total = await EfCoreFilterDispatch.ApplyFilter(db.{dbSet}.OfType<{subType}>().AsNoTracking(), filter.Predicates).CountAsync();");
+        sb.AppendLine($"            var total = await EfCoreFilterDispatch.ApplyFilter(db.{dbSet}.OfType<{subType}>().AsNoTracking(), filter.Predicates{fmS}).CountAsync();");
         sb.AppendLine($"            return {OkResult("new { rows, total }", credentials, envelope: true)};");
         sb.AppendLine("        });");
 
@@ -1584,7 +1605,7 @@ public class RoutesGenerator : PerEntityGenerator
         // ADR-0045 + the 0.19.4 lesson: TPH is a SEPARATE code path per port, so the
         // per-subtype merge states the same exclusion rather than inheriting it.
         AppendPartialMergeLoop(sb, discProp, [], mapVoFields, autoSetNavs, frozenNavs, HasDecimalField(st.Entity),
-            deniedFields.Select(f => f.Name).ToList(), HasDurationField(st.Entity));
+            deniedFields.SelectMany(f => WireKeys(f, config)).ToList(), HasDurationField(st.Entity));
         AppendSaveChanges(sb);
         sb.AppendLine($"            return {OkResult("existing", credentials)};");
         sb.AppendLine("        }");
@@ -1727,7 +1748,7 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine($"            var rows = await {targetFrom}.AsNoTracking()");
         sb.AppendLine($"                .Where(t => relatedIds.Contains(EF.Property<{fkType}>(t, \"{targetPk}\")))");
         sb.AppendLine("                .ToListAsync();");
-        sb.AppendLine($"            return {OkResult("rows", TphUnionCredentialNames(nav.Target, root))};");
+        sb.AppendLine($"            return {OkResult("rows", TphUnionCredentialNames(nav.Target, root, config))};");
         sb.AppendLine("        });");
     }
 
