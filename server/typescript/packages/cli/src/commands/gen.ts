@@ -236,13 +236,6 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
   // the manifest and the stored key included. `--force` (and every mode that does not write)
   // never skips.
   const skipInputs = skipBase !== undefined ? withModel(skipBase, modelHashTree(loaded.root)) : undefined;
-  if (skipInputs !== undefined && genMaySkip(flags)) {
-    const verdict = decideGenSkip(skipInputs);
-    if (verdict.skip) {
-      await reportGenSkip(fmt, verdict.recorded.length);
-      return 0;
-    }
-  }
 
   // ADR-0023: gen loads leniently, so an unknown attribute (`isAbstrakt: true`, a
   // misspelt `@required`) used to pass without a word while `meta verify` rejected the
@@ -255,6 +248,18 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
     ? [...unknownAttrFindings, UNKNOWN_ATTR_GEN_ADVICE]
     : [];
   for (const w of unknownAttrs) { log.warn(`warning: ${w}`); warnings.push(w); }
+
+  // ADR-0064 — skip rendering when the loaded model and every generator input match the last
+  // successful run and every file it recorded exists. Nothing renders and nothing is written,
+  // the manifest and the stored key included. `--force` (and every mode that does not write)
+  // never skips.
+  if (skipInputs !== undefined && genMaySkip(flags)) {
+    const verdict = decideGenSkip(skipInputs);
+    if (verdict.skip) {
+      await reportGenSkip(fmt, verdict.recorded.length);
+      return 0;
+    }
+  }
 
   // The schema settings `meta migrate` builds with, for the Prisma schema, the schema page and
   // the migrate advice. A conventions preset that does not resolve is a config error here as in
