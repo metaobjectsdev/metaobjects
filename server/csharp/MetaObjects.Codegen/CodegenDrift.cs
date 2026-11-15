@@ -88,7 +88,14 @@ public static class CodegenDrift
         var virtualRoot = Path.Combine(Path.GetTempPath(), "meta-verify-codegen-" + Guid.NewGuid().ToString("N"));
         var temps = roots.Select((_, i) => Path.Combine(virtualRoot, i.ToString())).ToList();
         // No manifest and no sweep for the throwaway regen: it records nothing and deletes nothing.
-        var tempConfig = config with { OutDir = temps[0], GenStateDir = null, ProjectRoot = null, SweepOrphans = false };
+        // The context's assembly name is pinned before --out moves: unset, it is read from the
+        // .csproj in or above --out, and the virtual root has none, so the render would leave the
+        // DesignTimeServicesReference line gen wrote out and report the file as drift.
+        var tempConfig = config with
+        {
+            OutDir = temps[0], ContextAssemblyName = config.ContextAssemblyName,
+            GenStateDir = null, ProjectRoot = null, SweepOrphans = false,
+        };
         var rendered = new Dictionary<string, string>(StringComparer.Ordinal);
         CodegenRunner.RunResult regen;
         try

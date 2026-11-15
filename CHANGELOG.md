@@ -710,6 +710,14 @@ vocabulary; upgrade every port together.
 
 ### Fixed
 
+- **Fix, C#: `verify --codegen` renders the design-time services file `gen` wrote.** With no
+  `GenConfig.ContextAssemblyName`, `gen` reads the context's assembly name from the `.csproj` in or
+  above `--out` and writes `[assembly: DesignTimeServicesReference(...)]` into
+  `<Context>DesignTimeServices.g.cs`. The drift render ran under a temporary directory with no
+  project, left that line out, and reported the file as drift on every rendering `verify` (always
+  in CI) for a Postgres project laid out that way. The render now uses the name `gen` resolved.
+  Locally the stored-key answer (ADR-0062) hid it; `verify --codegen --full` showed it.
+
 - **Fix, C#: a query can test an optional value-mapped enum against a list (rc.22).**
   `DbContextGenerator` handed a scalar `@intValueMap` or `@stringValueMap` enum's two conversion
   lambdas straight to `HasConversion(...)`, so EF typed the converter on the property: an optional
