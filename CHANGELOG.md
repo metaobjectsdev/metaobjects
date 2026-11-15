@@ -288,6 +288,16 @@ loaded before stops loading. This vocabulary ships in 1.3.0 with `metamodelVersi
   `Cannot find module './dprint-node.linux-x64-gnu.node'` on every command that loads the
   codegen engine, `meta migrate` and `meta verify --db` included. Those schema commands, the
   binary's documented scope, now run; `meta gen` is still not supported inside the binary.
+- **Test databases stay off the drives.** Every Docker-backed database launcher in every port
+  (the TypeScript `integration-tests` Postgres, MySQL and Cube containers; the Python MySQL and
+  Postgres launchers; the C# MySQL and Postgres runners; the Java and Kotlin Testcontainers
+  classes; the services and sidecars in the integration-test and local-CI workflows and
+  `scripts/ci-local.sh`) mounts a 2 GiB tmpfs at the image's `VOLUME` path, and Postgres runs
+  with `fsync`, `synchronous_commit` and `full_page_writes` off. Each container is removed when
+  its run ends: by `--rm`, by Ryuk when a killed process never reaches its own cleanup, and by an
+  exit or SIGTERM handler that also removes anonymous volumes. The Stryker mutation gate for the
+  metadata package builds its sandbox under `$DEV_SCRATCH` (the system temp directory when unset)
+  and stops its test runners with it. Contributor steps are in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ### Deprecated
 
