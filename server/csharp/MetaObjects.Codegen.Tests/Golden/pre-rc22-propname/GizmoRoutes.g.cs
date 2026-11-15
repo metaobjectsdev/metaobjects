@@ -38,6 +38,7 @@ public static class GizmoRoutes
     /// </remarks>
     public static IEndpointRouteBuilder MapGizmoRoutes(this IEndpointRouteBuilder app, string prefix = "/api")
     {
+        SerializerKeys.EnsureContract(app.ServiceProvider, new global::System.Type[] { typeof(Gizmo) }, new string[] { "PinHash" });
         IEndpointRouteBuilder mount = app;
         app = app.MapGroup(string.Empty).AddEndpointFilter(new DecimalRangeEndpointFilter());
         app.MapGet(prefix + "/gizmos", async (HttpContext http, global::Acme.Generated.AppDbContext db) =>
@@ -285,7 +286,7 @@ public static class GizmoRoutes
             var node = global::System.Text.Json.JsonSerializer.SerializeToNode(_value, _value.GetType(), opts);
             // The keys are the serializer's own for these properties (naming policy, rename, attribute), never guessed from names.
             SerializerKeys.Strip(_envelope && node is global::System.Text.Json.Nodes.JsonObject env ? env["rows"] : node,
-                SerializerKeys.KeysOf(_value, _envelope, opts, _names));
+                SerializerKeys.KeysOf(_value, _envelope, opts, _names), _names);
             http.Response.StatusCode = _status;
             if (_location is not null) http.Response.Headers.Location = _location;
             await http.Response.WriteAsJsonAsync(node, opts);
