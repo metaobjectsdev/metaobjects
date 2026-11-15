@@ -48,9 +48,97 @@ public static class HashManifest
     /// committed, so every refusal in it shares one cause and deserves one instruction
     /// rather than one warning per file.
     /// </summary>
-    public static bool Exists(string genStateDir) => File.Exists(PathFor(genStateDir));
+    public static bool Exists(string genStateDir) =>
+        File.Exists(PathFor(genStateDir)) || (BatchFor(genStateDir)?.Dirty ?? false);
 
-    private static Dictionary<string, JsonElement> ReadRaw(string genStateDir)
+    private sealed class ManifestBatch(Dictionary<string, JsonElement> raw)
+    {
+        public Dictionary<string, JsonElement> Raw = raw;
+        public bool Dirty;
+    }
+
+    // One in-memory manifest per gen-state dir while a run is in progress. Without it every
+    // recorded file re-read and re-wrote the whole manifest, so a run of N files wrote it N
+    // times. Mirrors codegen-ts's withManifestBatch, Python's manifest_batch and Java's
+    // per-run save.
+    private static readonly Dictionary<string, ManifestBatch> Batches = new(StringComparer.Ordinal);
+
+    private static ManifestBatch? BatchFor(string genStateDir)
+    {
+        lock (Batches) return Batches.GetValueOrDefault(Path.GetFullPath(genStateDir));
+    }
+
+    /// <summary>
+    /// Hold the manifest in memory until the returned handle is disposed, then write it at
+    /// most once. A nested batch for the same directory joins the outer one. The write
+    /// happens even when the run throws: every file recorded so far IS on disk, and dropping
+    /// its record would make the next run refuse output it wrote itself. Call
+    /// <see cref="BatchScope.Complete"/> when the run succeeds: a scope disposed without it is
+    /// unwinding an exception, and a failed manifest write then must not replace that
+    /// exception, so it is swallowed.
+    /// </summary>
+    public static BatchScope Batch(string? genStateDir)
+    {
+        if (genStateDir is null) return BatchScope.None;
+        var key = Path.GetFullPath(genStateDir);
+        lock (Batches)
+        {
+            if (Batches.ContainsKey(key)) return BatchScope.None;
+            Batches[key] = new ManifestBatch(ReadFile(genStateDir));
+        }
+        return new BatchScope(genStateDir, key);
+    }
+
+    /// <summary>The handle <see cref="Batch"/> returns; disposing it writes the manifest.</summary>
+    public sealed class BatchScope : IDisposable
+    {
+        internal static readonly BatchScope None = new(null, null);
+
+        private readonly string? _genStateDir;
+        private readonly string? _key;
+        private bool _completed;
+        private bool _disposed;
+
+        internal BatchScope(string? genStateDir, string? key)
+        {
+            _genStateDir = genStateDir;
+            _key = key;
+        }
+
+        /// <summary>Mark the run as finished normally, so a failed write is reported.</summary>
+        public void Complete() => _completed = true;
+
+        public void Dispose()
+        {
+            if (_disposed || _key is null || _genStateDir is null) return;
+            _disposed = true;
+            ManifestBatch batch;
+            lock (Batches)
+            {
+                batch = Batches[_key];
+                Batches.Remove(_key);
+            }
+            if (!batch.Dirty) return;
+            if (_completed)
+            {
+                WriteFile(_genStateDir, batch.Raw);
+                return;
+            }
+            try
+            {
+                WriteFile(_genStateDir, batch.Raw);
+            }
+            catch (Exception)
+            {
+                // The run is already unwinding an exception; that one is the cause to report.
+            }
+        }
+    }
+
+    private static Dictionary<string, JsonElement> ReadRaw(string genStateDir) =>
+        BatchFor(genStateDir)?.Raw ?? ReadFile(genStateDir);
+
+    private static Dictionary<string, JsonElement> ReadFile(string genStateDir)
     {
         var path = PathFor(genStateDir);
         if (!File.Exists(path)) return new Dictionary<string, JsonElement>(StringComparer.Ordinal);
@@ -98,9 +186,8 @@ public static class HashManifest
     /// </para></summary>
     public static void Save(string genStateDir, Dictionary<string, string> hashes)
     {
-        Directory.CreateDirectory(genStateDir);
         var raw = ReadRaw(genStateDir);
-        var ordered = new SortedDictionary<string, object>(StringComparer.Ordinal);
+        var next = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
         foreach (var (key, hash) in hashes)
         {
             if (raw.TryGetValue(key, out var existing) && existing.ValueKind == JsonValueKind.Object)
@@ -108,10 +195,23 @@ public static class HashManifest
                 var entry = new Dictionary<string, object?>(StringComparer.Ordinal);
                 foreach (var prop in existing.EnumerateObject()) entry[prop.Name] = prop.Value;
                 entry["hash"] = hash;
-                ordered[key] = entry;
+                next[key] = JsonSerializer.SerializeToElement(entry);
             }
-            else ordered[key] = hash;
+            else next[key] = JsonSerializer.SerializeToElement(hash);
         }
+        if (BatchFor(genStateDir) is { } batch)
+        {
+            batch.Raw = next;
+            batch.Dirty = true;
+            return;
+        }
+        WriteFile(genStateDir, next);
+    }
+
+    private static void WriteFile(string genStateDir, Dictionary<string, JsonElement> raw)
+    {
+        Directory.CreateDirectory(genStateDir);
+        var ordered = new SortedDictionary<string, JsonElement>(raw, StringComparer.Ordinal);
         var json = JsonSerializer.Serialize(ordered, new JsonSerializerOptions { WriteIndented = true });
         File.WriteAllText(PathFor(genStateDir), json + "\n");
     }
@@ -127,7 +227,13 @@ public static class HashManifest
         string genStateDir, string relPath, string content, string? legacyRelPath = null)
     {
         var hashes = Load(genStateDir);
-        hashes[relPath] = ContentHash(content);
+        var hash = ContentHash(content);
+        var staleLegacy = legacyRelPath is not null
+            && !string.Equals(legacyRelPath, relPath, StringComparison.Ordinal)
+            && hashes.ContainsKey(legacyRelPath);
+        // Already recorded exactly so: an unchanged file does not rewrite the manifest.
+        if (!staleLegacy && hashes.TryGetValue(relPath, out var recorded) && recorded == hash) return;
+        hashes[relPath] = hash;
         if (legacyRelPath is not null && !string.Equals(legacyRelPath, relPath, StringComparison.Ordinal))
             hashes.Remove(legacyRelPath);
         Save(genStateDir, hashes);

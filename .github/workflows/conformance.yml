@@ -18,6 +18,7 @@ name: conformance
 #   gates     — fixture-lint, doc-template drift, embedded-library drift, leak scan and
 #               the other offline repo gates (`--only gates`)
 #   ts-fast   — workspace build + typecheck, TS conformance, completeness (mutation) gate
+#               (the FULL pass here: MO_CI_MUTATION_SCOPE=full on that job)
 #   csharp / java-fast (java + kotlin) / python — each port's conformance corpora
 #   java-reactor — full-reactor `mvn clean install`, tests on (`--only java-slow`)
 # The Java lanes point the script's Maven repository at ~/.m2/repository so setup-java's
@@ -129,6 +130,9 @@ jobs:
       - name: Conformance (${{ matrix.lane }})
         env:
           LANE: ${{ matrix.lane }}
+          # Tag, nightly and dispatch runs mutate EVERY stryker.conf.mjs file, not only the
+          # changed ones ts-fast mutates elsewhere (see gate_completeness_diff).
+          MO_CI_MUTATION_SCOPE: full
         run: |
           METAOBJECTS_CI_M2_REPO="$HOME/.m2/repository" \
             scripts/ci-local.sh --only "$LANE" --no-integration --strict-toolchains

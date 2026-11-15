@@ -150,7 +150,65 @@ function sha256(content: string | Buffer): string {
   return createHash("sha256").update(content).digest("hex");
 }
 
+/**
+ * The manifest of a run in progress, held in memory and written once at its end.
+ *
+ * Every write updates `.hashes.json`, and the file is the whole project's record, so
+ * rewriting it per written file made bookkeeping quadratic in the project's size: at
+ * a thousand generated files the rewrites were most of a run's wall time, for the same
+ * bytes one write at the end produces. `withManifestBatch` holds the manifest for one
+ * gen-state directory in memory while it runs; every reader and writer in this module
+ * goes through it, so a read inside the batch sees the batch's own writes.
+ *
+ * Synchronous on purpose: nothing can interleave with a batch, so two runs in one
+ * process cannot see each other's half-finished manifest.
+ */
+interface ManifestBatch {
+  raw: Record<string, unknown>;
+  dirty: boolean;
+}
+const manifestBatches = new Map<string, ManifestBatch>();
+
+function batchFor(genStateDir: string): ManifestBatch | undefined {
+  return manifestBatches.size === 0 ? undefined : manifestBatches.get(resolve(genStateDir));
+}
+
+/**
+ * Run `fn` with the manifest under `genStateDir` held in memory, and write it once when
+ * `fn` returns or throws, only if something changed. A throw still writes what was
+ * recorded before it: those files are on disk, and a manifest that forgot them would
+ * read them as unrecorded and refuse them next run. When `fn` threw, a failed manifest
+ * write is swallowed so `fn`'s error stays the one reported. A nested call for the same
+ * directory joins the outer batch.
+ */
+export function withManifestBatch<T>(genStateDir: string, fn: () => T): T {
+  const key = resolve(genStateDir);
+  if (manifestBatches.has(key)) return fn();
+  const batch: ManifestBatch = { raw: readManifestFile(genStateDir), dirty: false };
+  manifestBatches.set(key, batch);
+  let result: T;
+  try {
+    result = fn();
+  } catch (err) {
+    manifestBatches.delete(key);
+    try {
+      if (batch.dirty) writeManifestFile(genStateDir, batch.raw);
+    } catch {
+      // `fn`'s error is the cause to report; a failed manifest write must not replace it.
+    }
+    throw err;
+  }
+  manifestBatches.delete(key);
+  if (batch.dirty) writeManifestFile(genStateDir, batch.raw);
+  return result;
+}
+
 function readRawManifest(genStateDir: string): Record<string, unknown> {
+  const batch = batchFor(genStateDir);
+  return batch !== undefined ? batch.raw : readManifestFile(genStateDir);
+}
+
+function readManifestFile(genStateDir: string): Record<string, unknown> {
   const f = join(genStateDir, HASHES_FILE);
   if (!existsSync(f)) return {};
   try {
@@ -193,7 +251,25 @@ function saveHashes(genStateDir: string, hashes: HashesFile): void {
   writeRawManifest(genStateDir, next);
 }
 
+/** Record one path's hash, keeping any other fields on its entry. */
+function setHash(genStateDir: string, relPath: string, hash: string): void {
+  const raw = readRawManifest(genStateDir);
+  const existing = raw[relPath];
+  raw[relPath] = isRecord(existing) ? { ...existing, hash } : hash;
+  writeRawManifest(genStateDir, raw);
+}
+
 function writeRawManifest(genStateDir: string, entries: Record<string, unknown>): void {
+  const batch = batchFor(genStateDir);
+  if (batch !== undefined) {
+    batch.raw = entries;
+    batch.dirty = true;
+    return;
+  }
+  writeManifestFile(genStateDir, entries);
+}
+
+function writeManifestFile(genStateDir: string, entries: Record<string, unknown>): void {
   mkdirSync(genStateDir, { recursive: true });
   // Keys SORTED, because this file is committed. Insertion order would make the
   // diff — and any merge conflict between two people who both regenerated —
@@ -236,7 +312,7 @@ export function recordGeneratedProvenance(
   genStateDir: string,
   provenance: ReadonlyMap<string, GeneratedProvenance>,
 ): void {
-  if (!existsSync(join(genStateDir, HASHES_FILE))) return;
+  if (!hasHashManifest(genStateDir)) return;
   const raw = readRawManifest(genStateDir);
   let changed = false;
   for (const [key, prov] of provenance) {
@@ -327,7 +403,7 @@ export function readGeneratedHash(
   genStateDir: string,
   relPath: string,
 ): string | undefined {
-  return loadHashes(genStateDir)[relPath];
+  return entryHash(readRawManifest(genStateDir)[relPath]);
 }
 
 /**
@@ -444,9 +520,7 @@ function advanceSnapshot(
   const dest = snapshotPath(genStateDir, relPath);
   mkdirSync(dirname(dest), { recursive: true });
   writeFileSync(dest, content);
-  const hashes = loadHashes(genStateDir);
-  hashes[relPath] = sha256(content);
-  saveHashes(genStateDir, hashes);
+  setHash(genStateDir, relPath, sha256(content));
 }
 
 /** Return the snapshot text iff present AND the hash matches; else undefined. */
@@ -457,8 +531,7 @@ function readSnapshotChecked(
   const path = snapshotPath(genStateDir, relPath);
   if (!existsSync(path)) return undefined;
   const text = readFileSync(path, "utf-8");
-  const hashes = loadHashes(genStateDir);
-  const expected = hashes[relPath];
+  const expected = readGeneratedHash(genStateDir, relPath);
   if (expected !== undefined && expected !== sha256(text)) {
     return undefined;
   }
@@ -578,6 +651,7 @@ function resolveGenStateDir(opts: DecideAndWriteOpts): string {
  *  problem rather than N independent hand edits, and it deserves one instruction
  *  instead of a wall of per-file warnings. */
 export function hasHashManifest(genStateDir: string): boolean {
+  if (batchFor(genStateDir)?.dirty === true) return true;
   return existsSync(join(genStateDir, HASHES_FILE));
 }
 

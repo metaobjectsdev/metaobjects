@@ -2,8 +2,8 @@
 // both `meta migrate` and `meta verify --db`. Keeping a single copy avoids the
 // two commands drifting on which `--allow` tokens exist or how a change reads.
 
-import { allowOptionFor, describeSqlType, isViewRecreateOnly, suggestColumnRenames, viewsNamingRenamedColumns } from "@metaobjectsdev/migrate-ts";
-import type { AllowOptions, Change, ColumnRenameSuggestion, ViewChangeReason } from "@metaobjectsdev/migrate-ts";
+import { allowOptionFor, describeSqlType, isViewRecreateOnly, suggestColumnRenames, viewsNamingRenamedColumns } from "@metaobjectsdev/migrate-ts/offline";
+import type { AllowOptions, Change, ColumnRenameSuggestion, ViewChangeReason } from "@metaobjectsdev/migrate-ts/offline";
 import type { BlockedEntry } from "./output.js";
 
 // Map CLI allow tokens → migrate-ts AllowOptions field names.

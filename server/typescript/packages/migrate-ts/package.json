@@ -15,6 +15,11 @@
       "bun": "./src/expected.ts",
       "types": "./dist/expected.d.ts",
       "default": "./dist/expected.js"
+    },
+    "./offline": {
+      "bun": "./src/offline.ts",
+      "types": "./dist/offline.d.ts",
+      "default": "./dist/offline.js"
     }
   },
   "files": [

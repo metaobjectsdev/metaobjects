@@ -29,7 +29,7 @@ import {
   withoutFlywayHistory,
   type Change,
   type D1Binding,
-} from "@metaobjectsdev/migrate-ts";
+} from "@metaobjectsdev/migrate-ts/offline";
 import type { SchemaBuildOptions } from "./schema-build-options.js";
 
 /** The FQN separator; an object's short name is the segment after the last one. */

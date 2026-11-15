@@ -60,7 +60,8 @@ export function reportExport(opts?: ReportExportOpts): Generator {
       const out: EmittedFile[] = [
         { path: `${EXPORT_WRITERS_BASENAME}.ts`, content: await formatTs(renderExportWriters(emit)) },
       ];
-      for (const report of reports) {
+      // One module per report `meta gen <Entity>` named; the writers above serve them all.
+      for (const report of reports.filter((r) => ctx.selected?.(r) ?? true)) {
         const pkg = effectivePackage(report);
         out.push({
           path: entityOutputPath(layout, pkg, `${report.name}.export.ts`),

@@ -194,8 +194,8 @@ run deletes no orphaned file; run without the flag to sweep. Two refusals, both 
 name that matches no object (`error: metaobjects gen: --entities names 'X', which matches no
 object in the metadata.`). The same selection is a positional name list in TypeScript
 (`meta gen Program Week`), `--entities` in C#, and `-Dmeta.entities` on the Maven plugin.
-`gen` lists the files it changed and counts the rest as unchanged
-(`metaobjects gen: wrote 2 file(s), 40 unchanged, across 1 target(s).`).
+`gen` lists the files it changed and counts the rest separately
+(`metaobjects gen: wrote 2 file(s) across 1 target(s). 40 file(s) left as they were.`).
 
 **Start a project.** `metaobjects init` writes `metaobjects.config.yaml` (one `app` target
 with no generators) and an empty, loadable `metaobjects/meta.app.yaml`, and reports what it

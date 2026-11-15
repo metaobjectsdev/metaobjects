@@ -19,7 +19,12 @@ from .generator import GenContext, Generator
 from .import_path import OUTPUT_LAYOUT_PACKAGE
 from .name_claims import NameClaims, assert_importable_package_tree
 from .instance_artifacts import is_served_report
-from .overwrite_policy import STATUS_OVERWROTE_EDIT, decide_and_write, has_hash_manifest
+from .overwrite_policy import (
+    STATUS_OVERWROTE_EDIT,
+    decide_and_write,
+    has_hash_manifest,
+    manifest_batch,
+)
 
 _VALID_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -72,8 +77,14 @@ def run_gen(
     select: Callable[[str], bool] | None = None,
     merge_strategy: str = "overwrite",
     in_ledger: Callable[[str], bool] | None = None,
+    entity_scope: list[str] | None = None,
 ) -> RunGenResult:
     """Mirrors ``codegen-ts``'s ``runner.ts``.
+
+    ``entity_filter`` (``gen --entities``) narrows what is WRITTEN: per-entity files for
+    the named entities only, while every generator still sees the whole model in
+    ``ctx.entities`` (``ctx.selected`` says which entities were named). ``entity_scope``
+    narrows the model itself — a config target's declared ``entities``.
 
     ``select`` (FR-023 §11.1 item 2) — applied AFTER ``entity_filter``, over each
     object's ``resolution_key()`` (never the bare name — two packages may declare
@@ -92,6 +103,19 @@ def run_gen(
 
     objs = _objects(metadata)
     model_has_objects = bool(objs)
+    # The WHOLE model in scope. `entity_filter` narrows what is written, never what a
+    # generator sees: a whole-model file (shared enums, the duration codec, the report
+    # writers, relation targets in the object index) rendered from the filtered set would
+    # shrink to it, and `gen <Entity>` would rewrite those files for one entity.
+    #
+    # ``entity_scope`` is the one thing that does shrink it: a config target's declared
+    # ``entities``, which IS that target's model (two targets may split one out dir by
+    # entity, and each must render its shared files from its own half).
+    whole = [
+        o for o in objs
+        if (entity_scope is None or o.name in entity_scope)
+        and (select is None or select(o.resolution_key()))
+    ]
     if entity_filter is not None:
         objs = [o for o in objs if o.name in entity_filter]
     if select is not None:
@@ -115,12 +139,21 @@ def run_gen(
     # read-only generators emit as a keyless object. Every other report generates nothing:
     # a sourceless report, or one over a kind the lowering skips, has no relation to read.
     # Decided here, at the entity set every generator reads, and not per generator.
-    objs = [
-        report_read_model(o, metadata) if o.sub_type == OBJECT_SUBTYPE_REPORT else o
-        for o in objs
-        if o.sub_type != OBJECT_SUBTYPE_REPORT or is_served_report(o)
-    ]
-    if not objs and not result.warnings:
+    def _generatable(candidates: list[MetaObject]) -> list[MetaObject]:
+        return [
+            report_read_model(o, metadata) if o.sub_type == OBJECT_SUBTYPE_REPORT else o
+            for o in candidates
+            if o.sub_type != OBJECT_SUBTYPE_REPORT or is_served_report(o)
+        ]
+
+    narrowed = entity_filter is not None
+    selected_objs = _generatable(objs)
+    selected_keys = {o.resolution_key() for o in [*objs, *selected_objs]}
+
+    def is_selected(o: MetaObject) -> bool:
+        return o.resolution_key() in selected_keys
+
+    if not selected_objs and not result.warnings:
         result.warnings.append(
             "No entities to generate — every selected object is an object.report with no "
             "view source, which has no generated output (FR-044)."
@@ -128,14 +161,15 @@ def run_gen(
         return result
 
     safe: list[MetaObject] = []
-    for o in objs:
+    for o in _generatable(whole) if narrowed else selected_objs:
         if not _VALID_NAME.match(o.name):
-            result.warnings.append(
-                f"Skipping entity with unsafe name {o.name!r} — must match ^[A-Za-z_]\\w*$."
-            )
+            if is_selected(o):
+                result.warnings.append(
+                    f"Skipping entity with unsafe name {o.name!r} — must match ^[A-Za-z_]\\w*$."
+                )
             continue
         safe.append(o)
-    if not safe and objs:
+    if selected_objs and not any(is_selected(o) for o in safe):
         return result
 
     # Refuse before any generator runs — the one choke point that sees the WHOLE
@@ -154,6 +188,7 @@ def run_gen(
             generators=tuple(g.name for g in generators),
             in_ledger=in_ledger,
             claims=claims,
+            selected=is_selected if narrowed else None,
         )
         for f in gen.generate(ctx):
             full = os.path.join(config.out_dir, f.path)
@@ -200,54 +235,56 @@ def run_gen(
     refused: list[str] = []
     adopted: list[str] = []
     untracked = 0
-    for full, (content, by) in emitted.items():
-        result.generated_by[full] = by
-        # The out-dir-relative name: what the manifest used to be keyed by, and still
-        # what a refusal is REPORTED as (it is the name the reader sees in `--out`).
-        rel = os.path.relpath(full, config.out_dir)
-        # The manifest key. Project-root-relative when the caller knows the project, so
-        # two runs with different --out cannot collide on one key inside the single
-        # manifest that is anchored on that project. `rel` rides along as the legacy
-        # spelling so an existing manifest keeps working and converges on the new one.
-        # BOTH SIDES RESOLVED. `project_root` arrives resolved (project_root_for calls
-        # .resolve()) while `full` is built from the raw `out_dir`, and relpath between a
-        # resolved anchor and an unresolved path is not the path between the two
-        # directories — under a directory symlink it walks OUT of the project
-        # (`../link/gen/X.py`). Every key then points outside, `_is_ours_for` matches
-        # none of them, and `verify --codegen` prints `in sync (0 file(s))` over stale
-        # output. The pre-existing `relpath(full, out_dir)` was immune by accident: both
-        # sides came from the same unresolved string, so it was symmetric. Symmetry is
-        # the property, and resolving both is how it is kept deliberately.
-        key = (
-            os.path.relpath(os.path.realpath(full), config.project_root)
-            if config.project_root
-            else rel
-        )
-        # A file written OUTSIDE the project has no place in the project's manifest: its
-        # key would be `../`-relative and committed into `.hashes.json`. It gets the
-        # manifest-less rule a run with no project gets — written, never recorded.
-        outside = bool(config.project_root) and (key.startswith("..") or os.path.isabs(key))
-        if outside:
-            untracked += 1
-        status = decide_and_write(
-            full,
-            content,
-            merge_strategy,
-            gen_state_dir=None if outside else config.gen_state_dir,
-            rel_path=key,
-            legacy_rel_path=rel if key != rel else None,
-            baseline=config.baseline,
-            hand_edits="overwrite" if by in config.overwrite_hand_edits else "keep",
-        )
-        result.files.append((full, status))
-        if status == STATUS_OVERWROTE_EDIT:
-            result.warnings.append(
-                f"overwrote hand-edited {rel} with fresh output (handEdits: overwrite on {by})"
+    # One manifest write for the whole loop, not one per recorded file.
+    with manifest_batch(config.gen_state_dir):
+        for full, (content, by) in emitted.items():
+            result.generated_by[full] = by
+            # The out-dir-relative name: what the manifest used to be keyed by, and still
+            # what a refusal is REPORTED as (it is the name the reader sees in `--out`).
+            rel = os.path.relpath(full, config.out_dir)
+            # The manifest key. Project-root-relative when the caller knows the project, so
+            # two runs with different --out cannot collide on one key inside the single
+            # manifest that is anchored on that project. `rel` rides along as the legacy
+            # spelling so an existing manifest keeps working and converges on the new one.
+            # BOTH SIDES RESOLVED. `project_root` arrives resolved (project_root_for calls
+            # .resolve()) while `full` is built from the raw `out_dir`, and relpath between a
+            # resolved anchor and an unresolved path is not the path between the two
+            # directories — under a directory symlink it walks OUT of the project
+            # (`../link/gen/X.py`). Every key then points outside, `_is_ours_for` matches
+            # none of them, and `verify --codegen` prints `in sync (0 file(s))` over stale
+            # output. The pre-existing `relpath(full, out_dir)` was immune by accident: both
+            # sides came from the same unresolved string, so it was symmetric. Symmetry is
+            # the property, and resolving both is how it is kept deliberately.
+            key = (
+                os.path.relpath(os.path.realpath(full), config.project_root)
+                if config.project_root
+                else rel
             )
-        if status == "refused":
-            refused.append(rel)
-        elif status == "adopted":
-            adopted.append(rel)
+            # A file written OUTSIDE the project has no place in the project's manifest: its
+            # key would be `../`-relative and committed into `.hashes.json`. It gets the
+            # manifest-less rule a run with no project gets — written, never recorded.
+            outside = bool(config.project_root) and (key.startswith("..") or os.path.isabs(key))
+            if outside:
+                untracked += 1
+            status = decide_and_write(
+                full,
+                content,
+                merge_strategy,
+                gen_state_dir=None if outside else config.gen_state_dir,
+                rel_path=key,
+                legacy_rel_path=rel if key != rel else None,
+                baseline=config.baseline,
+                hand_edits="overwrite" if by in config.overwrite_hand_edits else "keep",
+            )
+            result.files.append((full, status))
+            if status == STATUS_OVERWROTE_EDIT:
+                result.warnings.append(
+                    f"overwrote hand-edited {rel} with fresh output (handEdits: overwrite on {by})"
+                )
+            if status == "refused":
+                refused.append(rel)
+            elif status == "adopted":
+                adopted.append(rel)
 
     if untracked:
         result.warnings.append(

@@ -179,8 +179,45 @@ export async function loadMemory(
   repoRoot: string,
   options?: LoadMemoryOptions,
 ): Promise<MetaRoot> {
-  const { result, importedPackages, importedNodes, libraries, physicalNaming, wireFormat, enumDefaults, apiPagination, apiUnknownFields } =
-    await loadCollectionRaw(repoRoot, options, options?.strict === true);
+  return finishLoad(await loadCollectionRaw(repoRoot, options, options?.strict === true));
+}
+
+/**
+ * {@link loadMemory} and {@link unknownAttributeFindings} from ONE load: the root, and the
+ * ADR-0023 unknown-attribute findings a strict load of the same collection would raise.
+ * For a command that loads leniently and must name those findings (`meta gen`), without
+ * loading the model three times to do it.
+ *
+ * A strict load (`options.strict`) has no findings: it throws on the first one instead.
+ * Otherwise the attribute-schema check runs strictly over the lenient tree, which is all
+ * a strict load adds for an `@attr`. A bare key (`isAbstrakt`) is the one thing the lenient
+ * tree cannot locate (the parser drops it, warning without a file), so only when the load
+ * reported one is the collection parsed strictly again, for the file and path.
+ */
+export async function loadMemoryWithFindings(
+  repoRoot: string,
+  options?: LoadMemoryOptions,
+): Promise<{ root: MetaRoot; unknownAttributes: readonly (Error & LoaderError)[] }> {
+  const strict = options?.strict === true;
+  const run = await loadCollectionRaw(repoRoot, options, strict);
+  const root = finishLoad(run);
+  if (strict) return { root, unknownAttributes: [] };
+  let unknownAttributes: readonly (Error & LoaderError)[];
+  try {
+    unknownAttributes = await findingsFrom(repoRoot, options, run);
+  } catch {
+    // The lenient load succeeded; a strict re-parse that cannot complete has nothing more
+    // precise to say, and must never turn an advisory into a failure.
+    unknownAttributes = [];
+  }
+  return { root, unknownAttributes };
+}
+
+type RawLoad = Awaited<ReturnType<typeof loadCollectionRaw>>;
+
+/** The checks {@link loadMemory} makes after the loader, and the root they leave. */
+function finishLoad(run: RawLoad): MetaRoot {
+  const { result, importedPackages, importedNodes, libraries, physicalNaming, wireFormat, enumDefaults, apiPagination, apiUnknownFields } = run;
 
   if (result.errors.length > 0) {
     const first = result.errors[0]!;
@@ -245,10 +282,22 @@ export async function unknownAttributeFindings(
   // the attribute-schema pass — so the strict load alone would hide every misspelt
   // `@attr` behind the first bare-key typo. The second pass runs that attribute-schema
   // check, strictly, over the lenient tree, where both kinds of typo are still present.
-  const strictRun = await loadCollectionRaw(repoRoot, options, true);
-  const lenientRun = await loadCollectionRaw(repoRoot, options, false);
+  return findingsFrom(repoRoot, options, await loadCollectionRaw(repoRoot, options, false));
+}
+
+/** The prefix the parser gives an unknown bare key's message (`parser-core.ts`), which a
+ *  lenient load records as a warning with no file or path. */
+const UNKNOWN_BARE_KEY = "Unknown key '";
+
+async function findingsFrom(
+  repoRoot: string,
+  options: LoadMemoryOptions | undefined,
+  lenientRun: RawLoad,
+): Promise<readonly (Error & LoaderError)[]> {
+  const bareKey = lenientRun.result.warnings.some((w) => w.message.startsWith(UNKNOWN_BARE_KEY));
+  const strictErrors = bareKey ? (await loadCollectionRaw(repoRoot, options, true)).result.errors : [];
   const found = [
-    ...strictRun.result.errors,
+    ...strictErrors,
     ...validateAttrSchema(lenientRun.result.root, lenientRun.registry, true).errors,
   ].filter(isUnknownAttrError);
   const seen = new Set<string>();

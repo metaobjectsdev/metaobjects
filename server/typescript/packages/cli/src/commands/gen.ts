@@ -16,7 +16,7 @@ import {
   antiPatternRows, ranSection, skippedSection, warnAdvisory,
   type AdvisoryFindingRow, type AdvisorySection,
 } from "../lib/advisory.js";
-import { loadMemory, resolveCollection } from "@metaobjectsdev/sdk";
+import { loadMemory, loadMemoryWithFindings, resolveCollection } from "@metaobjectsdev/sdk";
 import { declaredGeneratorNames, runGen, undeclaredGeneratorsMessage, walkRequirements } from "@metaobjectsdev/codegen-ts";
 import type { WriteStatus } from "@metaobjectsdev/codegen-ts";
 import { packageOfResolutionKey } from "@metaobjectsdev/metadata";
@@ -36,7 +36,7 @@ import { findRuntimeBoundaryCrossings, runtimeBoundaryWarnings } from "../lib/ru
 import { hasLegacyDocsBlock, legacyDocsConfigMessage, NO_CONFIG_MESSAGE } from "../lib/docs-removed.js";
 import { buildAgentSchemaInput } from "../lib/agent-schema.js";
 import { schemaBuildOptions, schemaBuildOptionsOrWarn, type SchemaBuildOptions } from "../lib/schema-build-options.js";
-import { isUnknownSchemaConventionsError } from "@metaobjectsdev/migrate-ts";
+import { isUnknownSchemaConventionsError } from "@metaobjectsdev/migrate-ts/offline";
 import { requirementPayload } from "../lib/requirement-payload.js";
 import { existsSync } from "node:fs";
 
@@ -189,7 +189,7 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
     }
   }
 
-  let metadata;
+  let loaded;
   const loadOptions = {
     ...collectionLoadOptions(genCollection),
     ...loadMemoryOptionsFrom(forgeConfig),
@@ -197,7 +197,7 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
   try {
     // `--strict` is the load `meta verify` makes (ADR-0023): an unknown attribute stops the
     // run before anything is written, instead of being warned about and generated anyway.
-    metadata = await loadMemory(genCollection.configDir, flags.strict ? { ...loadOptions, strict: true } : loadOptions);
+    loaded = await loadMemoryWithFindings(genCollection.configDir, flags.strict ? { ...loadOptions, strict: true } : loadOptions);
   } catch (err) {
     reportLoadError(log, "failed to load metadata", err);
     // The hint explains the strict-only rejection (an undeclared attribute); any other load
@@ -212,7 +212,9 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
   // misspelt `@required`) used to pass without a word while `meta verify` rejected the
   // same file — and the typo changed what was generated. Say so, naming attribute, node
   // and file. Advisory: the exit code is unchanged.
-  const unknownAttrFindings = await unknownAttrWarnings(genCollection.configDir, loadOptions, projectRoot);
+  // The findings come from the same load: the model is loaded once.
+  const metadata = loaded.root;
+  const unknownAttrFindings = unknownAttrWarnings(loaded.unknownAttributes, projectRoot);
   const unknownAttrs = unknownAttrFindings.length > 0
     ? [...unknownAttrFindings, UNKNOWN_ATTR_GEN_ADVICE]
     : [];
