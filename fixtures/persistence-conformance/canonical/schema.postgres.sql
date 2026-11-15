@@ -474,7 +474,7 @@ CREATE VIEW "v_auths_by_kind" AS
   FROM "public"."auths" a
   WHERE a."type" <> 'Permit'
   GROUP BY a."type";
-COMMENT ON VIEW "v_auths_by_kind" IS 'metaobjects:v1:sha256:1c8464289f36afaa7132f22c64ba8e5c5d529d4866cc27bc57b01b148dbbffbd';
+COMMENT ON VIEW "v_auths_by_kind" IS 'metaobjects:v1:sha256:30dd6efe1ae75fef8c329affdeab88614fcc1965a43c36b6e3a5d246b7df3980';
 
 CREATE VIEW "v_gadget_events_by_label" AS
   SELECT
